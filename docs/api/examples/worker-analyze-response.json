@@ -1,0 +1,43 @@
+{
+  "meetingId": "c1f7d2e0-1aa3-4f4e-8a01-7b2cf9d4e567",
+  "summary": "Reunião de discovery com a Acme para renovação 2026. Cliente sinaliza interesse em expandir o módulo financeiro e mencionou avaliar concorrente X. Combinada proposta comercial até 09/05.",
+  "decisions": [
+    { "text": "Enviar proposta comercial até 09/05/2026", "confidence": 0.92 },
+    { "text": "Incluir módulo financeiro no escopo", "confidence": 0.81 }
+  ],
+  "actionItems": [
+    {
+      "title": "Preparar proposta de renovação com módulo financeiro",
+      "assignee": "Lucas Silva",
+      "dueDate": "2026-05-09",
+      "priority": "HIGH",
+      "sourceQuote": "Lucas: fechado, mando a proposta até sexta com o financeiro incluso."
+    }
+  ],
+  "risks": [
+    {
+      "text": "Cliente mencionou estar avaliando concorrente X com proposta mais barata",
+      "severity": "HIGH",
+      "category": "COMPETITION",
+      "sourceQuote": "Marina: o pessoal do X chegou com 15% a menos."
+    }
+  ],
+  "opportunities": [
+    {
+      "text": "Upsell de módulo financeiro com ROI claro",
+      "estimatedValue": "MEDIUM",
+      "category": "UPSELL",
+      "sourceQuote": "Marina: se o financeiro entregar isso, faz sentido investir mais."
+    }
+  ],
+  "sentimentOverall": "POSITIVE",
+  "topics": ["renovação", "módulo financeiro", "concorrência", "preço"],
+  "metadata": {
+    "modelVersion": "azure-openai-gpt-4o-2026-04",
+    "promptVersion": "meeting-analysis-v1",
+    "tokensInput": 4218,
+    "tokensOutput": 612,
+    "processingMillis": 5840,
+    "piiRedactionsApplied": 2
+  }
+}

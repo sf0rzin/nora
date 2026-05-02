@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nora.ai/schemas/tenant-context-embedding-v1.json",
+  "title": "TenantContextEmbeddingV1",
+  "description": "Chunk indexável do contexto do tenant para uso em RAG (Azure AI Search).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["chunkId", "tenantId", "type", "content"],
+  "properties": {
+    "chunkId": { "type": "string", "format": "uuid" },
+    "tenantId": { "type": "string", "format": "uuid" },
+    "type": {
+      "type": "string",
+      "enum": ["COMPANY_OVERVIEW", "PRODUCT", "PLAYBOOK", "GLOSSARY", "COMPETITOR", "ICP"]
+    },
+    "title": { "type": "string", "maxLength": 240 },
+    "content": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "embedding": {
+      "type": "array",
+      "items": { "type": "number" },
+      "description": "Vetor de embedding text-embedding-3-large (3072 dimensões)."
+    },
+    "version": { "type": "integer", "minimum": 1 },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

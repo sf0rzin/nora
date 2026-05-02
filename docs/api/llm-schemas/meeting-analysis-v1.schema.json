@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nora.ai/schemas/meeting-analysis-v1.json",
+  "title": "MeetingAnalysisV1",
+  "description": "Resultado estruturado da análise de uma reunião pelo LLM, validado pelo NLP Worker antes de ser persistido pelo backend.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "decisions", "actionItems", "risks", "opportunities", "sentimentOverall", "topics"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 30,
+      "maxLength": 2000,
+      "description": "Resumo executivo em texto puro, 1 a 3 parágrafos, no idioma da transcrição."
+    },
+    "decisions": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "confidence"],
+        "properties": {
+          "text": { "type": "string", "minLength": 5, "maxLength": 500 },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "actionItems": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "priority", "sourceQuote"],
+        "properties": {
+          "title": { "type": "string", "minLength": 5, "maxLength": 240 },
+          "assignee": { "type": ["string", "null"], "maxLength": 120 },
+          "dueDate": { "type": ["string", "null"], "format": "date" },
+          "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+          "sourceQuote": { "type": "string", "minLength": 5, "maxLength": 500 }
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "severity", "category", "sourceQuote"],
+        "properties": {
+          "text": { "type": "string", "minLength": 5, "maxLength": 500 },
+          "severity": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+          "category": {
+            "type": "string",
+            "enum": ["COMPETITION", "PRICE", "CHURN", "TIMELINE", "TECHNICAL", "COMPLIANCE", "OTHER"]
+          },
+          "sourceQuote": { "type": "string", "minLength": 5, "maxLength": 500 }
+        }
+      }
+    },
+    "opportunities": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "estimatedValue", "category", "sourceQuote"],
+        "properties": {
+          "text": { "type": "string", "minLength": 5, "maxLength": 500 },
+          "estimatedValue": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+          "category": {
+            "type": "string",
+            "enum": ["UPSELL", "CROSS_SELL", "REFERRAL", "EXPANSION", "OTHER"]
+          },
+          "sourceQuote": { "type": "string", "minLength": 5, "maxLength": 500 }
+        }
+      }
+    },
+    "sentimentOverall": {
+      "type": "string",
+      "enum": ["POSITIVE", "NEUTRAL", "NEGATIVE", "MIXED"]
+    },
+    "topics": {
+      "type": "array",
+      "maxItems": 12,
+      "items": { "type": "string", "minLength": 2, "maxLength": 60 }
+    }
+  }
+}
