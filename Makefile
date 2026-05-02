@@ -39,11 +39,11 @@ db-reset: ## Apaga volume e sobe banco do zero
 
 .PHONY: api-dev
 api-dev: ## Roda o backend Spring Boot em modo dev
-	cd services/api && ./mvnw spring-boot:run
+	cd services/api && mvn spring-boot:run
 
 .PHONY: api-test
 api-test: ## Roda os testes do backend
-	cd services/api && ./mvnw test
+	cd services/api && mvn test
 
 # --- Worker NLP ---
 
@@ -71,13 +71,13 @@ web-test: ## Roda os testes do web
 lint: ## Roda lint em todos os pacotes
 	cd apps/web && pnpm lint || true
 	cd services/nlp-worker && ruff check . || true
-	cd services/api && ./mvnw spotless:check || true
+	cd services/api && mvn spotless:check || true
 
 .PHONY: format
 format: ## Formata todos os pacotes
 	cd apps/web && pnpm format || true
 	cd services/nlp-worker && ruff format . || true
-	cd services/api && ./mvnw spotless:apply || true
+	cd services/api && mvn spotless:apply || true
 
 .PHONY: test
 test: api-test worker-test web-test ## Roda toda a bateria de testes
