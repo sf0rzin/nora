@@ -1,0 +1,60 @@
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+
+# --- Ambientes ---
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# --- Logs / temporários ---
+*.log
+logs/
+tmp/
+.cache/
+
+# --- Node / Web ---
+node_modules/
+.next/
+out/
+coverage/
+.pnpm-store/
+
+# --- Java / Spring ---
+target/
+*.class
+*.jar
+*.war
+.mvn/
+!.mvn/wrapper/maven-wrapper.jar
+HELP.md
+
+# --- Python / Worker ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# --- Docker ---
+infra/docker/data/
+
+# --- Dados sensíveis / artefatos não versionáveis ---
+data/raw/
+data/private/
+
+# --- Secrets ---
+*.pem
+*.key
+*.p12
