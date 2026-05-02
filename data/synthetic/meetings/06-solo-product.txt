@@ -1,0 +1,11 @@
+[2026-05-02 11:00] Camila: Pauta do roadmap Q3. Três temas: analytics de hashtags, integração com TikTok, e onboarding self-service.
+[2026-05-02 11:02] Lia: Pesquisa com 30 usuários mostrou que onboarding é o maior atrito. 6 em cada 10 desistem antes do primeiro post agendado.
+[2026-05-02 11:03] Camila: Decisão: onboarding self-service vira prioridade 1 do Q3.
+[2026-05-02 11:04] Bruno: Isso bloqueia o trabalho do TikTok?
+[2026-05-02 11:05] Camila: Bloqueia. TikTok empurra pra Q4.
+[2026-05-02 11:06] Lia: Risco: dois concorrentes (CreatorHub e PostMate) já anunciaram TikTok pra Q3. Se a gente atrasar muito vamos perder lead.
+[2026-05-02 11:07] Camila: Anotado, mas onboarding tem ROI mais claro agora. Vamos priorizar e revisitar TikTok no fim do Q3.
+[2026-05-02 11:08] Bruno: Pra onboarding, preciso definir até semana que vem se a gente usa Stripe Checkout ou mantém integração custom.
+[2026-05-02 11:09] Camila: Vamos com Stripe Checkout. Decisão tomada. Bruno, abre a issue e atribui pra você.
+[2026-05-02 11:10] Lia: Eu cuido do redesign do fluxo de cadastro. Entrego mocks até 15/05.
+[2026-05-02 11:11] Camila: Perfeito. Reunião encerrada.

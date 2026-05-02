@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nora:schemas:pii-redaction:v1",
+  "title": "PiiRedactionV1",
+  "description": "Resultado do shield de PII aplicado em uma transcrição antes do envio ao LLM.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["redactedText", "redactions"],
+  "properties": {
+    "redactedText": {
+      "type": "string",
+      "description": "Transcrição com PII substituído por placeholders no formato [[TIPO_N]]."
+    },
+    "redactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["placeholder", "type"],
+        "properties": {
+          "placeholder": { "type": "string", "pattern": "^\\[\\[[A-Z_]+_[0-9]+\\]\\]$" },
+          "type": {
+            "type": "string",
+            "enum": ["EMAIL", "PHONE", "CPF", "CNPJ", "CREDIT_CARD", "PERSON_NAME", "ADDRESS", "OTHER"]
+          },
+          "originalHash": {
+            "type": "string",
+            "description": "Hash do valor original (não armazenar valor cru). Usado para reaplicação opcional pós-processamento."
+          }
+        }
+      }
+    }
+  }
+}

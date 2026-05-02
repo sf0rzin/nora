@@ -1,0 +1,16 @@
+[2026-05-02 14:00] Lucas (Acme): Bom dia Marina, obrigado por separar esse tempo. A ideia hoje é entender como vocês estão usando o Acme ERP Core e pensar juntos a renovação para 2026.
+[2026-05-02 14:01] Marina (Cliente): Bom dia Lucas. A gente está bem com o Core, principalmente a parte de NF-e e SPED. O time fiscal parou de fazer hora extra desde a implantação.
+[2026-05-02 14:02] Lucas: Ótimo ouvir isso. E do lado financeiro, como está? Sei que vocês estavam avaliando o Acme Financeiro Pro.
+[2026-05-02 14:03] Marina: Esse é o ponto. O fluxo de caixa hoje é planilha, e o CFO pediu pra resolver isso ainda em 2026. A gente quer entender se o Pro entrega previsão de caixa de verdade.
+[2026-05-02 14:05] Lucas: Entrega sim. Posso agendar uma demo técnica do módulo financeiro com o time da Carla na semana que vem?
+[2026-05-02 14:05] Marina: Pode marcar pra dia 12, terça, de manhã.
+[2026-05-02 14:07] Marina: Lucas, preciso ser transparente: o pessoal da TotalSys chegou aqui semana passada com uma proposta agressiva, uns 15% abaixo do que pagamos hoje. Eles incluem o financeiro deles no pacote.
+[2026-05-02 14:08] Lucas: Agradeço a transparência. A gente compete em valor, não em preço — mas posso preparar uma proposta cheia incluindo o Financeiro Pro pra você comparar de forma justa.
+[2026-05-02 14:09] Marina: Isso ajudaria. Quando você consegue me mandar?
+[2026-05-02 14:10] Lucas: Fechado, mando a proposta até sexta com o Financeiro Pro incluso.
+[2026-05-02 14:11] Marina: Perfeito. Outra coisa: a gente vai abrir uma planta nova em Goiânia em julho. Faz sentido a gente já incluir o Acme Manufatura nesse projeto?
+[2026-05-02 14:12] Lucas: Faz total sentido. Posso colocar uma estimativa separada na proposta e a gente discute o timing depois.
+[2026-05-02 14:13] Marina: Beleza. Última coisa, o contrato atual vence em 30/06, então a gente precisa fechar isso antes disso.
+[2026-05-02 14:14] Lucas: Anotado. Vou alinhar internamente pra termos a versão final aprovada até 20/05.
+[2026-05-02 14:15] Marina: Combinado. Obrigada Lucas.
+[2026-05-02 14:15] Lucas: Eu que agradeço, Marina. Até a demo dia 12.

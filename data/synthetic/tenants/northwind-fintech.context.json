@@ -1,0 +1,28 @@
+{
+  "companyName": "Northwind Fintech",
+  "industry": "Pagamentos B2B",
+  "valueProposition": "Infraestrutura de pagamentos e conciliação para marketplaces e plataformas SaaS no Brasil.",
+  "products": [
+    {
+      "name": "Northwind Payments",
+      "description": "Gateway de pagamentos com Pix, boleto e cartão.",
+      "keyFeatures": ["Pix", "Boleto", "Cartão", "Split de pagamento"]
+    },
+    {
+      "name": "Northwind Reconcile",
+      "description": "Conciliação automatizada com adquirentes e bancos.",
+      "keyFeatures": ["Conciliação multi-adquirente", "Relatórios fiscais", "API de extratos"]
+    }
+  ],
+  "competitors": ["PayMatch", "ConciliaJá"],
+  "idealCustomerProfile": "Marketplaces e plataformas SaaS B2B com TPV mensal acima de R$ 5M.",
+  "commercialPlaybook": [
+    "Renovação começa 90 dias antes do vencimento.",
+    "Objeção de preço responder com benchmark de TCO da conciliação manual.",
+    "Sempre revisar volume real vs. contratado antes da reunião."
+  ],
+  "glossary": [
+    { "term": "TPV", "meaning": "Total Payment Volume processado por mês." },
+    { "term": "Split", "meaning": "Divisão automática do pagamento entre múltiplos recebedores." }
+  ]
+}
