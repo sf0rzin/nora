@@ -226,7 +226,7 @@ components:
         tenantId: { type: string, format: uuid }
         roles:
           type: array
-          items: { type: string, enum: [ADMIN, MANAGER, MEMBER] }
+          items: { type: string, enum: [ROOT, ADMIN, MANAGER, ANALYST, VIEWER] }
         scope: { $ref: '#/components/schemas/AccessScope' }
     AccessScope:
       type: object

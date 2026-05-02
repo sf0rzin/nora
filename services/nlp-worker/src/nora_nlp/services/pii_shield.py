@@ -12,7 +12,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 
-from .models import PiiRedactionV1, PiiType, Redaction
+from ..models import PiiRedactionV1, PiiType, Redaction
 
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 _PHONE_RE = re.compile(

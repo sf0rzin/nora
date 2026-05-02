@@ -7,7 +7,7 @@
     "email": "lucas.silva@acme.com",
     "displayName": "Lucas Silva",
     "tenantId": "5f1c0a44-9b71-4f2c-8e51-1c2d4b3a9f00",
-    "roles": ["MEMBER"],
+    "roles": ["ANALYST"],
     "scope": {
       "type": "OWN_MEETINGS",
       "teamIds": [],

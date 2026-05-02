@@ -62,13 +62,13 @@ erDiagram
 
 ### 2.3 `roles`
 
-Roles fixas no MVP: `ADMIN`, `MANAGER`, `MEMBER`. Tabela existe para suportar custom roles pós-MVP.
+Roles padrão no MVP: `ROOT`, `ADMIN`, `MANAGER`, `ANALYST`, `VIEWER` (ver backlog US35 e seção RBAC em `docs/PROJECT.md`). Tabela existe para suportar custom roles pós-MVP (US36+).
 
 | Coluna | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | |
 | tenant_id | uuid NULL | NULL = role global do sistema |
-| code | text NOT NULL | `ADMIN`, `MANAGER`, `MEMBER` |
+| code | text NOT NULL | `ROOT`, `ADMIN`, `MANAGER`, `ANALYST`, `VIEWER` |
 | description | text | |
 | is_system | boolean NOT NULL DEFAULT true | |
 

@@ -1,6 +1,7 @@
 -- V002: cria usuarios, papeis (roles) e ligacao usuario-papel.
--- Roles MVP: ADMIN, MANAGER, MEMBER. is_system = true para roles fixas.
--- Roles customizadas (is_system = false) sao pos-MVP, ver docs/backlog-mvp.md US35.
+-- Roles padrao MVP: ROOT, ADMIN, MANAGER, ANALYST, VIEWER (ver backlog US35 e docs/PROJECT.md secao RBAC).
+-- is_system = true marca as roles padrao e impede edicao/remocao.
+-- Roles customizadas (is_system = false) sao pos-MVP.
 
 CREATE EXTENSION IF NOT EXISTS "citext";
 
@@ -28,14 +29,16 @@ CREATE TABLE roles (
     is_system     BOOLEAN NOT NULL DEFAULT TRUE,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT roles_code_chk CHECK (code IN ('ADMIN', 'MANAGER', 'MEMBER'))
+    CONSTRAINT roles_code_chk CHECK (code IN ('ROOT', 'ADMIN', 'MANAGER', 'ANALYST', 'VIEWER'))
 );
 
--- Roles globais do sistema (tenant_id = NULL).
+-- Roles globais do sistema (tenant_id = NULL). Hierarquia logica: ROOT > ADMIN > MANAGER > ANALYST > VIEWER.
 INSERT INTO roles (code, description, is_system) VALUES
-    ('ADMIN',   'Administrador do tenant. Acesso total.', TRUE),
-    ('MANAGER', 'Gestor com visibilidade ampliada conforme escopo.', TRUE),
-    ('MEMBER',  'Usuario padrao com visibilidade do proprio escopo.', TRUE);
+    ('ROOT',    'Superadmin global. Reservado para suporte interno NORA.', TRUE),
+    ('ADMIN',   'Administrador do tenant. Acesso total dentro do tenant.', TRUE),
+    ('MANAGER', 'Gestor com visibilidade ampliada conforme escopo (departamentos/tags/contas).', TRUE),
+    ('ANALYST', 'Analista com leitura ampla e edicao limitada de tarefas e anotacoes.', TRUE),
+    ('VIEWER',  'Usuario somente leitura no escopo atribuido.', TRUE);
 
 CREATE TABLE user_roles (
     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
