@@ -1,0 +1,28 @@
+{
+  "companyName": "Acme Software",
+  "industry": "B2B SaaS — ERP",
+  "valueProposition": "Plataforma ERP para indústrias de médio porte com foco em automação fiscal brasileira.",
+  "products": [
+    {
+      "name": "Acme ERP Core",
+      "description": "Núcleo financeiro, fiscal e contábil.",
+      "keyFeatures": ["NF-e", "SPED", "Contas a Pagar/Receber", "Conciliação bancária"]
+    },
+    {
+      "name": "Acme Manufatura",
+      "description": "Módulo de chão de fábrica integrado ao ERP Core.",
+      "keyFeatures": ["MRP", "Apontamento de produção", "Controle de qualidade"]
+    }
+  ],
+  "competitors": ["Concorrente X", "Concorrente Y"],
+  "idealCustomerProfile": "Indústria de médio porte (R$ 50M–R$ 500M), 100–1000 funcionários, no Brasil.",
+  "commercialPlaybook": [
+    "Discovery foca em dor fiscal e perdas operacionais.",
+    "Proposta sempre inclui PoC de 30 dias.",
+    "Negociar via valor por usuário; descontos só com aprovação Manager."
+  ],
+  "glossary": [
+    { "term": "Núcleo", "meaning": "Conjunto de módulos financeiros base." },
+    { "term": "Onboarding Pro", "meaning": "Pacote de implementação acelerada de 60 dias." }
+  ]
+}

@@ -1,0 +1,12 @@
+[2026-04-30 10:00] Camila: Bom dia pessoal. Pauta rápida: revisar o sprint atual, decidir o que fica pra próxima e destravar o bug do agendamento.
+[2026-04-30 10:01] Bruno: Sobre o bug, identificamos que é um race condition na fila do worker quando o usuário agenda dois posts pro mesmo segundo. Vou subir um lock otimista.
+[2026-04-30 10:02] Camila: Beleza. Quanto tempo?
+[2026-04-30 10:02] Bruno: Até amanhã 18h.
+[2026-04-30 10:03] Camila: Decidido então: hotfix do agendamento sai amanhã.
+[2026-04-30 10:04] Lia: Sobre o sprint, a gente não vai conseguir entregar a feature de analytics de hashtags. Falta integração com a API nova.
+[2026-04-30 10:05] Camila: Move pra próxima sprint. E adiciona uma task pra investigar se a API nova tem rate limit que justifique cache nosso.
+[2026-04-30 10:06] Lia: Anotado. Crio a task ainda hoje.
+[2026-04-30 10:07] Bruno: Risco: se o lock otimista não resolver, vamos precisar repensar a fila do worker. Isso pode estourar a sprint que vem também.
+[2026-04-30 10:08] Camila: Combinado. Se até quinta o hotfix não bater verde no staging, a gente reúne de novo pra plano B.
+[2026-04-30 10:09] Lia: Última coisa: o Solo Suite passou de 10 mil contas ativas ontem. Marketing quer postar.
+[2026-04-30 10:10] Camila: Adoro. Pede pro João postar com print do dashboard interno, mas sem dado de cliente.

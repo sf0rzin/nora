@@ -1,0 +1,28 @@
+{
+  "meetingId": "c1f7d2e0-1aa3-4f4e-8a01-7b2cf9d4e567",
+  "tenantId": "5f1c0a44-9b71-4f2c-8e51-1c2d4b3a9f00",
+  "language": "pt-BR",
+  "transcript": "Lucas: Bom dia Marina, obrigado por separar esse tempo...\nMarina: Bom dia Lucas, vamos lá...",
+  "tenantContext": {
+    "companyName": "Acme Software",
+    "industry": "B2B SaaS — ERP",
+    "valueProposition": "Plataforma ERP para indústrias de médio porte com foco em automação fiscal brasileira.",
+    "products": [
+      {
+        "name": "Acme ERP Core",
+        "description": "Núcleo financeiro, fiscal e contábil.",
+        "keyFeatures": ["NF-e", "SPED"]
+      }
+    ],
+    "competitors": ["Concorrente X"],
+    "glossary": [
+      { "term": "Núcleo", "meaning": "Conjunto de módulos financeiros base." }
+    ]
+  },
+  "options": {
+    "includeRisks": true,
+    "includeOpportunities": true,
+    "maxActionItems": 20,
+    "promptVersion": "meeting-analysis-v1"
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "id": "c1f7d2e0-1aa3-4f4e-8a01-7b2cf9d4e567",
+  "tenantId": "5f1c0a44-9b71-4f2c-8e51-1c2d4b3a9f00",
+  "title": "Discovery Acme — Renovação 2026",
+  "startedAt": "2026-05-02T14:00:00Z",
+  "endedAt": "2026-05-02T14:48:00Z",
+  "durationSeconds": 2880,
+  "language": "pt-BR",
+  "owner": {
+    "id": "8b2a1f10-77c6-4d5b-9a44-2b9c2f6a3d11",
+    "displayName": "Lucas Silva"
+  },
+  "participants": [
+    { "displayName": "Lucas Silva", "email": "lucas.silva@acme.com", "isInternal": true },
+    { "displayName": "Marina Costa", "email": "marina@cliente.com.br", "isInternal": false }
+  ],
+  "processingStatus": "COMPLETED",
+  "analysis": {
+    "id": "f99c0a3e-2b41-4d8f-a8b2-9d1e3c4f5678",
+    "summary": "Reunião de discovery com a Acme para renovação 2026. Cliente sinaliza interesse em expandir o módulo financeiro e mencionou avaliar concorrente X. Combinada proposta comercial até 09/05.",
+    "decisions": [
+      { "id": "d1", "text": "Enviar proposta comercial até 09/05/2026", "confidence": 0.92 },
+      { "id": "d2", "text": "Incluir módulo financeiro no escopo", "confidence": 0.81 }
+    ],
+    "actionItems": [
+      {
+        "id": "a1",
+        "title": "Preparar proposta de renovação com módulo financeiro",
+        "assignee": "Lucas Silva",
+        "dueDate": "2026-05-09",
+        "priority": "HIGH",
+        "status": "OPEN",
+        "sourceQuote": "Lucas: fechado, mando a proposta até sexta com o financeiro incluso."
+      },
+      {
+        "id": "a2",
+        "title": "Agendar demo técnica do módulo financeiro",
+        "assignee": "Marina Costa",
+        "dueDate": "2026-05-12",
+        "priority": "MEDIUM",
+        "status": "OPEN",
+        "sourceQuote": "Marina: a gente alinha uma demo na semana que vem."
+      }
+    ],
+    "risks": [
+      {
+        "id": "r1",
+        "text": "Cliente mencionou estar avaliando concorrente X com proposta mais barata",
+        "severity": "HIGH",
+        "category": "COMPETITION",
+        "sourceQuote": "Marina: o pessoal do X chegou com 15% a menos."
+      }
+    ],
+    "opportunities": [
+      {
+        "id": "o1",
+        "text": "Upsell de módulo financeiro com ROI claro para o cliente",
+        "estimatedValue": "MEDIUM",
+        "category": "UPSELL",
+        "sourceQuote": "Marina: se o financeiro entregar isso, faz sentido investir mais."
+      }
+    ],
+    "sentimentOverall": "POSITIVE",
+    "topics": ["renovação", "módulo financeiro", "concorrência", "preço"],
+    "modelVersion": "azure-openai-gpt-4o-2026-04",
+    "promptVersion": "meeting-analysis-v1",
+    "generatedAt": "2026-05-02T14:51:30Z"
+  },
+  "createdAt": "2026-05-02T14:50:12Z",
+  "updatedAt": "2026-05-02T14:51:30Z"
+}

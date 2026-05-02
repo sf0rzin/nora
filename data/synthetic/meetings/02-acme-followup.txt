@@ -1,0 +1,10 @@
+[2026-05-09 10:00] Lucas (Acme): Oi Marina, mandei a proposta ontem à noite. Conseguiu olhar?
+[2026-05-09 10:01] Marina (Cliente): Olhei sim Lucas. O escopo do Financeiro Pro está alinhado, mas o valor anual ficou 8% acima do que esperávamos.
+[2026-05-09 10:02] Lucas: Entendi. A diferença vem do módulo de tesouraria, que estamos incluindo de fábrica. Posso desmembrar e deixar a tesouraria como adicional opcional.
+[2026-05-09 10:03] Marina: Faz sentido. Se desmembrar, conseguimos fechar dentro do orçamento.
+[2026-05-09 10:04] Lucas: Ótimo. Reenvio a versão revisada hoje à tarde.
+[2026-05-09 10:05] Marina: Outra preocupação: o time de TI está em janela de congelamento de mudanças até 15/06. Implantação tem que começar antes disso ou só em julho.
+[2026-05-09 10:06] Lucas: Entendi. Para garantir, vou subir uma reunião com a Carla e o time de implantação ainda essa semana pra travar o cronograma.
+[2026-05-09 10:07] Marina: Perfeito. Se passar de julho, o CFO vai questionar.
+[2026-05-09 10:08] Lucas: Tranquilo. Decidido então: proposta revisada hoje, reunião de cronograma até sexta, decisão final do contrato até 20/05.
+[2026-05-09 10:09] Marina: Combinado. Obrigada.
