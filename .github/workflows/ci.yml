@@ -26,6 +26,7 @@ jobs:
             worker:
               - 'services/nlp-worker/**'
               - 'docs/api/llm-schemas/**'
+              - 'data/synthetic/**'
             web:
               - 'apps/web/**'
               - 'packages/**'
@@ -47,10 +48,10 @@ jobs:
           cache: maven
       - name: Spotless check
         working-directory: services/api
-        run: ./mvnw -B spotless:check || echo "Spotless config pendente — falha esperada até o setup."
+        run: mvn -B spotless:check
       - name: Build & tests
         working-directory: services/api
-        run: ./mvnw -B verify || echo "Build pendente — esqueleto ainda não criado."
+        run: mvn -B verify
 
   worker:
     needs: changes
@@ -62,17 +63,21 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+          cache-dependency-path: services/nlp-worker/pyproject.toml
       - name: Install
         working-directory: services/nlp-worker
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pytest pydantic
+          pip install -e ".[dev]"
       - name: Lint
         working-directory: services/nlp-worker
-        run: ruff check . || echo "Sem código ainda — falha esperada."
+        run: ruff check .
+      - name: Format check
+        working-directory: services/nlp-worker
+        run: ruff format --check .
       - name: Tests
         working-directory: services/nlp-worker
-        run: pytest || echo "Sem testes ainda — falha esperada."
+        run: pytest
 
   web:
     needs: changes
@@ -87,16 +92,21 @@ jobs:
         with:
           node-version: '20'
           cache: pnpm
-          cache-dependency-path: apps/web/pnpm-lock.yaml
+          cache-dependency-path: apps/web/package.json
       - name: Install
         working-directory: apps/web
-        run: pnpm install --frozen-lockfile || echo "lockfile ainda não existe — falha esperada."
+        run: pnpm install --no-frozen-lockfile
       - name: Lint
         working-directory: apps/web
-        run: pnpm lint || echo "Sem código ainda — falha esperada."
+        run: pnpm lint
+      - name: Typecheck
+        working-directory: apps/web
+        run: pnpm typecheck
       - name: Build
         working-directory: apps/web
-        run: pnpm build || echo "Sem código ainda — falha esperada."
+        env:
+          NEXT_PUBLIC_USE_MOCKS: 'true'
+        run: pnpm build
 
   docs-link-check:
     needs: changes
