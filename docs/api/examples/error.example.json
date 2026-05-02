@@ -1,0 +1,7 @@
+{
+  "code": "MEETING_NOT_FOUND",
+  "message": "Meeting not found or outside user scope.",
+  "traceId": "01HXYZABCDEFGHIJKMNPQRSTUV",
+  "timestamp": "2026-05-02T14:55:01Z",
+  "details": []
+}

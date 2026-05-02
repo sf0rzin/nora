@@ -1,0 +1,429 @@
+openapi: 3.1.0
+info:
+  title: NORA API
+  version: 0.1.0
+  description: |
+    API REST do backend NORA. Cobre o MVP: autenticação, tenants, contexto comercial,
+    upload de transcrições, listagem/consulta de reuniões com escopo Enterprise.
+servers:
+  - url: http://localhost:8080
+    description: Local dev
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Tenants
+  - name: Meetings
+  - name: Tasks
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Login com e-mail e senha
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /tenants/{tenantId}/context:
+    get:
+      tags: [Tenants]
+      summary: Obter contexto comercial/produto do tenant
+      parameters: [{ $ref: '#/components/parameters/TenantId' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantContext' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Tenants]
+      summary: Atualizar contexto comercial/produto do tenant (Admin/Manager)
+      parameters: [{ $ref: '#/components/parameters/TenantId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TenantContextInput' }
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantContext' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /meetings:
+    get:
+      tags: [Meetings]
+      summary: Listar reuniões dentro do escopo do usuário
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 0 }
+        - in: query
+          name: size
+          schema: { type: integer, default: 20, maximum: 100 }
+        - in: query
+          name: sort
+          schema: { type: string, default: 'startedAt,desc' }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: tag
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingsPage' }
+    post:
+      tags: [Meetings]
+      summary: Upload de uma reunião (multipart com arquivo + metadata JSON)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, metadata]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                metadata:
+                  $ref: '#/components/schemas/MeetingUploadRequest'
+      responses:
+        '201':
+          description: Criada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingSummary' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /meetings/{meetingId}:
+    get:
+      tags: [Meetings]
+      summary: Detalhe de uma reunião com análise e tarefas
+      parameters: [{ $ref: '#/components/parameters/MeetingId' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingDetail' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tasks:
+    get:
+      tags: [Tasks]
+      summary: Listar tarefas extraídas das reuniões dentro do escopo do usuário
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [OPEN, IN_PROGRESS, DONE, CANCELLED] }
+        - in: query
+          name: assignee
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ActionItem' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    TenantId:
+      in: path
+      name: tenantId
+      required: true
+      schema: { type: string, format: uuid }
+    MeetingId:
+      in: path
+      name: meetingId
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    BadRequest:
+      description: Requisição inválida
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Não autenticado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Sem permissão
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Não encontrado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      required: [code, message, traceId, timestamp]
+      properties:
+        code: { type: string, example: MEETING_NOT_FOUND }
+        message: { type: string }
+        traceId: { type: string }
+        timestamp: { type: string, format: date-time }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+    LoginResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, enum: [Bearer] }
+        expiresIn: { type: integer }
+        user: { $ref: '#/components/schemas/SessionUser' }
+    SessionUser:
+      type: object
+      required: [id, email, displayName, tenantId, roles, scope]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        tenantId: { type: string, format: uuid }
+        roles:
+          type: array
+          items: { type: string, enum: [ROOT, ADMIN, MANAGER, ANALYST, VIEWER] }
+        scope: { $ref: '#/components/schemas/AccessScope' }
+    AccessScope:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [ALL_TENANT, OWN_MEETINGS, TEAMS, REGIONS] }
+        teamIds: { type: array, items: { type: string, format: uuid } }
+        regionIds: { type: array, items: { type: string, format: uuid } }
+    TenantContextInput:
+      type: object
+      required: [companyName, valueProposition]
+      properties:
+        companyName: { type: string }
+        industry: { type: string }
+        valueProposition: { type: string }
+        products:
+          type: array
+          items: { $ref: '#/components/schemas/Product' }
+        competitors:
+          type: array
+          items: { type: string }
+        idealCustomerProfile: { type: string }
+        commercialPlaybook:
+          type: array
+          items: { type: string }
+        glossary:
+          type: array
+          items:
+            type: object
+            properties:
+              term: { type: string }
+              meaning: { type: string }
+    TenantContext:
+      allOf:
+        - $ref: '#/components/schemas/TenantContextInput'
+        - type: object
+          required: [tenantId, version, updatedAt]
+          properties:
+            tenantId: { type: string, format: uuid }
+            version: { type: integer }
+            updatedAt: { type: string, format: date-time }
+            updatedBy:
+              type: object
+              properties:
+                id: { type: string, format: uuid }
+                displayName: { type: string }
+    Product:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        keyFeatures:
+          type: array
+          items: { type: string }
+    MeetingUploadRequest:
+      type: object
+      required: [title, startedAt, transcriptFormat]
+      properties:
+        title: { type: string }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        participants:
+          type: array
+          items: { $ref: '#/components/schemas/Participant' }
+        language: { type: string, default: pt-BR }
+        transcriptFormat: { type: string, enum: [TXT, VTT, SRT] }
+        tags:
+          type: array
+          items: { type: string }
+    Participant:
+      type: object
+      required: [displayName]
+      properties:
+        displayName: { type: string }
+        email: { type: string, format: email }
+        isInternal: { type: boolean }
+    MeetingSummary:
+      type: object
+      required: [id, tenantId, title, startedAt, processingStatus]
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        title: { type: string }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        durationSeconds: { type: integer }
+        ownerName: { type: string }
+        ownerId: { type: string, format: uuid }
+        processingStatus:
+          type: string
+          enum: [PENDING, PROCESSING, COMPLETED, FAILED]
+        summarySnippet: { type: string }
+        actionItemCount: { type: integer }
+        riskCount: { type: integer }
+        opportunityCount: { type: integer }
+        tags:
+          type: array
+          items: { type: string }
+        createdAt: { type: string, format: date-time }
+    MeetingsPage:
+      type: object
+      required: [items, page, size, totalItems, totalPages]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/MeetingSummary' }
+        page: { type: integer }
+        size: { type: integer }
+        totalItems: { type: integer }
+        totalPages: { type: integer }
+    MeetingDetail:
+      allOf:
+        - $ref: '#/components/schemas/MeetingSummary'
+        - type: object
+          properties:
+            language: { type: string }
+            participants:
+              type: array
+              items: { $ref: '#/components/schemas/Participant' }
+            owner:
+              type: object
+              properties:
+                id: { type: string, format: uuid }
+                displayName: { type: string }
+            analysis: { $ref: '#/components/schemas/MeetingAnalysis' }
+            updatedAt: { type: string, format: date-time }
+    MeetingAnalysis:
+      type: object
+      required: [id, summary, generatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        summary: { type: string }
+        decisions:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              text: { type: string }
+              confidence: { type: number, minimum: 0, maximum: 1 }
+        actionItems:
+          type: array
+          items: { $ref: '#/components/schemas/ActionItem' }
+        risks:
+          type: array
+          items: { $ref: '#/components/schemas/Risk' }
+        opportunities:
+          type: array
+          items: { $ref: '#/components/schemas/Opportunity' }
+        sentimentOverall:
+          type: string
+          enum: [POSITIVE, NEUTRAL, NEGATIVE, MIXED]
+        topics:
+          type: array
+          items: { type: string }
+        modelVersion: { type: string }
+        promptVersion: { type: string }
+        generatedAt: { type: string, format: date-time }
+    ActionItem:
+      type: object
+      required: [title]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        assignee: { type: string }
+        dueDate: { type: string, format: date }
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+        status:
+          type: string
+          enum: [OPEN, IN_PROGRESS, DONE, CANCELLED]
+        sourceQuote: { type: string }
+    Risk:
+      type: object
+      required: [text, severity]
+      properties:
+        id: { type: string }
+        text: { type: string }
+        severity:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+        category:
+          type: string
+          enum: [COMPETITION, PRICE, CHURN, TIMELINE, TECHNICAL, COMPLIANCE, OTHER]
+        sourceQuote: { type: string }
+    Opportunity:
+      type: object
+      required: [text]
+      properties:
+        id: { type: string }
+        text: { type: string }
+        estimatedValue:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+        category:
+          type: string
+          enum: [UPSELL, CROSS_SELL, REFERRAL, EXPANSION, OTHER]
+        sourceQuote: { type: string }

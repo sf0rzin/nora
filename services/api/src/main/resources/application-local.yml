@@ -1,0 +1,7 @@
+# Perfil local de desenvolvimento. Ativado por SPRING_PROFILES_ACTIVE=local.
+spring:
+  jpa:
+    show-sql: false
+logging:
+  level:
+    br.com.nora: DEBUG

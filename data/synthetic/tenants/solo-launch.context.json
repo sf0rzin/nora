@@ -1,0 +1,19 @@
+{
+  "companyName": "Solo Launch",
+  "industry": "Software / Startup",
+  "valueProposition": "Plataforma SaaS de automação de marketing para criadores de conteúdo solo.",
+  "products": [
+    {
+      "name": "Solo Suite",
+      "description": "Suite única com agendamento, analytics e automação.",
+      "keyFeatures": ["Agendamento multi-rede", "Analytics", "Automação de respostas"]
+    }
+  ],
+  "competitors": ["CreatorHub", "PostMate"],
+  "idealCustomerProfile": "Criadores de conteúdo solo entre 10k e 500k seguidores.",
+  "commercialPlaybook": [
+    "Onboarding self-service.",
+    "Plano único, sem desconto."
+  ],
+  "glossary": []
+}
