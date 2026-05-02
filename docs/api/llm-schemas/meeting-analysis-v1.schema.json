@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://nora.ai/schemas/meeting-analysis-v1.json",
+  "$id": "urn:nora:schemas:meeting-analysis:v1",
   "title": "MeetingAnalysisV1",
   "description": "Resultado estruturado da análise de uma reunião pelo LLM, validado pelo NLP Worker antes de ser persistido pelo backend.",
   "type": "object",

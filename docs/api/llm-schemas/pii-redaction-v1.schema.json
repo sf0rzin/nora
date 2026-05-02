@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://nora.ai/schemas/pii-redaction-v1.json",
+  "$id": "urn:nora:schemas:pii-redaction:v1",
   "title": "PiiRedactionV1",
   "description": "Resultado do shield de PII aplicado em uma transcrição antes do envio ao LLM.",
   "type": "object",
