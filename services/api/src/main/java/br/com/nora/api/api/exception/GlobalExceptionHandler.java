@@ -26,22 +26,43 @@ public class GlobalExceptionHandler {
             MethodArgumentNotValidException ex, HttpServletRequest req) {
         List<ErrorResponse.FieldIssue> issues =
                 ex.getBindingResult().getFieldErrors().stream()
-                        .map(fe -> new ErrorResponse.FieldIssue(fe.getField(), fe.getDefaultMessage()))
+                        .map(
+                                fe ->
+                                        new ErrorResponse.FieldIssue(
+                                                fe.getField(), fe.getDefaultMessage()))
                         .toList();
         return ResponseEntity.badRequest()
-                .body(new ErrorResponse("VALIDATION_FAILED", "Invalid request payload.", traceId(), Instant.now(), issues));
+                .body(
+                        new ErrorResponse(
+                                "VALIDATION_FAILED",
+                                "Invalid request payload.",
+                                traceId(),
+                                Instant.now(),
+                                issues));
     }
 
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponse> handleAuth(AuthenticationException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(new ErrorResponse("UNAUTHENTICATED", "Authentication required.", traceId(), Instant.now(), List.of()));
+                .body(
+                        new ErrorResponse(
+                                "UNAUTHENTICATED",
+                                "Authentication required.",
+                                traceId(),
+                                Instant.now(),
+                                List.of()));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ErrorResponse> handleDenied(AccessDeniedException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(new ErrorResponse("FORBIDDEN", "Access denied.", traceId(), Instant.now(), List.of()));
+                .body(
+                        new ErrorResponse(
+                                "FORBIDDEN",
+                                "Access denied.",
+                                traceId(),
+                                Instant.now(),
+                                List.of()));
     }
 
     @ExceptionHandler(Exception.class)
@@ -49,7 +70,13 @@ public class GlobalExceptionHandler {
         String trace = traceId();
         LOG.error("Unhandled exception traceId={}", trace, ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ErrorResponse("INTERNAL_ERROR", "Unexpected error.", trace, Instant.now(), List.of()));
+                .body(
+                        new ErrorResponse(
+                                "INTERNAL_ERROR",
+                                "Unexpected error.",
+                                trace,
+                                Instant.now(),
+                                List.of()));
     }
 
     private static String traceId() {

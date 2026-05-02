@@ -44,7 +44,8 @@ class NoraApiApplicationTests {
 
     @Test
     void healthzIsPublic() {
-        ResponseEntity<String> resp = rest.getForEntity("http://localhost:" + port + "/healthz", String.class);
+        ResponseEntity<String> resp =
+                rest.getForEntity("http://localhost:" + port + "/healthz", String.class);
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resp.getBody()).contains("\"status\":\"ok\"");
     }

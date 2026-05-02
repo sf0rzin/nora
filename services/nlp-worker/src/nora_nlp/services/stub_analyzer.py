@@ -15,7 +15,6 @@ import time
 
 from ..models import (
     ActionItem,
-    AnalyzeMetadata,
     AnalyzeRequest,
     AnalyzeResponse,
     Decision,
@@ -165,7 +164,8 @@ def _action_items(sentences: list[str], max_items: int) -> list[ActionItem]:
     for s in sentences:
         n = _normalize(s)
         if any(n.startswith(h) or f" {h}" in n for h in _ACTION_HINTS):
-            priority = Priority.HIGH if ("ate " in n or "hoje" in n or "amanha" in n) else Priority.MEDIUM
+            is_urgent = "ate " in n or "hoje" in n or "amanha" in n
+            priority = Priority.HIGH if is_urgent else Priority.MEDIUM
             title = s[:200]
             out.append(
                 ActionItem.model_validate(

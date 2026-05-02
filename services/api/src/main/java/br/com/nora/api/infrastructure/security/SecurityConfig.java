@@ -11,9 +11,9 @@ import org.springframework.security.web.SecurityFilterChain;
 /**
  * Configuracao base de seguranca.
  *
- * <p>Politica padrao: tudo autenticado, exceto endpoints publicos (health, login, docs).
- * O filtro de JWT sera adicionado nas stories US01-US04 do backlog. Enquanto isso, o servidor
- * responde 401 para qualquer rota protegida, garantindo que nada vaze por descuido.
+ * <p>Politica padrao: tudo autenticado, exceto endpoints publicos (health, login, docs). O filtro
+ * de JWT sera adicionado nas stories US01-US04 do backlog. Enquanto isso, o servidor responde 401
+ * para qualquer rota protegida, garantindo que nada vaze por descuido.
  */
 @Configuration
 public class SecurityConfig {

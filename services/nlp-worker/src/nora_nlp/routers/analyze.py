@@ -21,9 +21,7 @@ def analyze(req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> 
     safe_req = req.model_copy(update={"transcript": redaction.redacted_text})
 
     if settings.use_llm_stub:
-        return stub_analyzer.analyze(
-            safe_req, pii_redactions_applied=len(redaction.redactions)
-        )
+        return stub_analyzer.analyze(safe_req, pii_redactions_applied=len(redaction.redactions))
 
     # Implementacao real (Azure OpenAI) entra em historia futura do backlog.
     raise HTTPException(

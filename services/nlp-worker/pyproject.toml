@@ -44,6 +44,9 @@ select = [
 ]
 ignore = [
   "S101", # uso de assert é ok em testes
+  "S104", # bind 0.0.0.0 é esperado em servico containerizado
+  "B008", # Depends(...) em default e o padrao oficial do FastAPI
+  "UP042", # str+Enum mantido para compatibilidade com serializacao Pydantic v2
 ]
 
 [tool.ruff.lint.per-file-ignores]
