@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nora-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nora}
+      POSTGRES_USER: ${POSTGRES_USER:-nora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nora_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - nora_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nora} -d ${POSTGRES_DB:-nora}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  adminer:
+    image: adminer:4
+    container_name: nora-adminer
+    ports:
+      - "8090:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  nora_pgdata:

@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: nora-api
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  datasource:
+    url: ${DATASOURCE_URL:jdbc:postgresql://localhost:5432/nora}
+    username: ${DATASOURCE_USERNAME:nora}
+    password: ${DATASOURCE_PASSWORD:nora_dev}
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+    open-in-view: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+    include-stacktrace: never
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+nora:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:change-me-please-min-32-chars-long-aaaa}
+      expires-seconds: ${JWT_EXPIRES_SECONDS:3600}
+  worker:
+    base-url: ${NLP_WORKER_BASE_URL:http://localhost:8001}
+
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN

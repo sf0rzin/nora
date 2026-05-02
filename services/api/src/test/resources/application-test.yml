@@ -1,0 +1,14 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+nora:
+  security:
+    jwt:
+      secret: test-secret-with-at-least-32-chars-aaaa
+      expires-seconds: 3600
+
+logging:
+  level:
+    br.com.nora: INFO
