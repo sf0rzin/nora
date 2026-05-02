@@ -1,0 +1,1 @@
+"""Testes do worker NLP."""

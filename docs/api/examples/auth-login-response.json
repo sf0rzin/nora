@@ -1,0 +1,17 @@
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "tokenType": "Bearer",
+  "expiresIn": 3600,
+  "user": {
+    "id": "8b2a1f10-77c6-4d5b-9a44-2b9c2f6a3d11",
+    "email": "lucas.silva@acme.com",
+    "displayName": "Lucas Silva",
+    "tenantId": "5f1c0a44-9b71-4f2c-8e51-1c2d4b3a9f00",
+    "roles": ["ANALYST"],
+    "scope": {
+      "type": "OWN_MEETINGS",
+      "teamIds": [],
+      "regionIds": []
+    }
+  }
+}

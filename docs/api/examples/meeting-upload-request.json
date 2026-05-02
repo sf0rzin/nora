@@ -1,0 +1,13 @@
+{
+  "title": "Discovery Acme — Renovação 2026",
+  "startedAt": "2026-05-02T14:00:00Z",
+  "endedAt": "2026-05-02T14:48:00Z",
+  "participants": [
+    { "displayName": "Lucas Silva", "email": "lucas.silva@acme.com", "isInternal": true },
+    { "displayName": "Marina Costa", "email": "marina@cliente.com.br", "isInternal": false }
+  ],
+  "language": "pt-BR",
+  "transcriptFormat": "TXT",
+  "tags": ["discovery", "renovacao"],
+  "_note": "O arquivo da transcrição é enviado no campo multipart 'file'. Este JSON vai no campo multipart 'metadata'."
+}
