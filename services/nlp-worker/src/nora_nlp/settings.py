@@ -19,17 +19,11 @@ class Settings(BaseSettings):
     worker_port: int = Field(default=8001, alias="WORKER_PORT")
     log_level: str = Field(default="info", alias="LOG_LEVEL")
 
-    llm_provider: str = Field(default="azure_openai", alias="LLM_PROVIDER")
-    azure_openai_endpoint: str = Field(default="", alias="AZURE_OPENAI_ENDPOINT")
-    azure_openai_api_key: str = Field(default="", alias="AZURE_OPENAI_API_KEY")
-    azure_openai_deployment_chat: str = Field(
-        default="gpt-4o", alias="AZURE_OPENAI_DEPLOYMENT_CHAT"
-    )
-    azure_openai_deployment_embedding: str = Field(
-        default="text-embedding-3-large", alias="AZURE_OPENAI_DEPLOYMENT_EMBEDDING"
-    )
-    azure_openai_api_version: str = Field(
-        default="2024-08-01-preview", alias="AZURE_OPENAI_API_VERSION"
+    llm_provider: str = Field(default="openrouter", alias="LLM_PROVIDER")
+    openrouter_api_key: str = Field(default="", alias="OPENROUTER_API_KEY")
+    openrouter_model: str = Field(default="openai/gpt-4o", alias="OPENROUTER_MODEL")
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1", alias="OPENROUTER_BASE_URL"
     )
 
     use_llm_stub: bool = Field(default=True, alias="USE_LLM_STUB")
