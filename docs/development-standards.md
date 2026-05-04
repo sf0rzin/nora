@@ -27,7 +27,7 @@ Este documento define como o projeto deve ser desenvolvido, onde guardar cada in
 | Backend | Java 21 + Spring Boot 3 | DDD em camadas, REST + OpenAPI, validação com Bean Validation |
 | NLP Worker | Python 3.12 + FastAPI + Pydantic | Pipelines pequenos, schemas explícitos, prompts versionados |
 | Banco | Postgres 16 + Flyway | Migrations versionadas, `tenant_id`, índices planejados |
-| IA | Azure OpenAI | JSON schema, temperatura baixa, logs sem PII |
+| IA | Provider LLM agnóstico (default OpenAI `gpt-4o-mini`; Azure OpenAI em Enterprise) | JSON schema, temperatura baixa, logs sem PII. Ver ADR 0004. |
 | RAG/Search | Azure AI Search | Stub local permitido no MVP; interface estável desde cedo |
 | Auth | JWT/OAuth2 próprio no MVP; Entra ID pós-MVP | SSO não bloqueia o primeiro produto |
 | Infra | Azure + GitHub Actions | IaC com Bicep quando começar deploy real |
