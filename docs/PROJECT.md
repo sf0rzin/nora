@@ -46,7 +46,7 @@ Admin da empresa configura:
 ├── Lista de concorrentes com contexto de mercado
 └── Glossário de termos e processos internos
          │
-         ▼  (armazenado como embeddings — Azure AI Search)
+         ▼  (armazenado como embeddings — OpenAI Embeddings no MVP, Azure AI Search em Enterprise)
          │
 NLPWorker na análise:
 ├── RAG retrieval sobre o catálogo do tenant
@@ -129,8 +129,10 @@ NLPWorker na análise:
 │   2. Limpeza textual (lowercase, pontuação, stopwords)           │
 │   3. TF-IDF (baseline interpretável — exigência DS Sprint 1+2)   │
 │   4. RAG retrieval → Product Context do tenant                   │
-│   5. Embeddings (Azure OpenAI text-embedding-3-large)            │
-│   6. Extração estruturada (GPT-4o + JSON schema)                 │
+│   5. Embeddings (OpenAI text-embedding-3-small no MVP)            │
+│   6. Extração estruturada via LLM Provider agnóstico              │
+│      (default OpenAI gpt-4o-mini; Azure OpenAI em Enterprise)     │
+│      response_format=json_schema strict + validação jsonschema    │
 │   7. Account Health scoring (temporal, por tenant)               │
 └─────────┬──────────────────────────────────────────────────────┘
           │
@@ -196,18 +198,19 @@ Nada é throw-away. Cada entrega da rubrica vira artefato de produção:
 
 | Camada | Tecnologia | Justificativa |
 |---|---|---|
-| Cloud | Azure | Parceria Microsoft × TOTVS; Azure OpenAI região Brasil |
+| Cloud | Azure | Parceria Microsoft × TOTVS; deploy planejado em Container Apps + Azure DB |
 | Backend | Java 21 + Spring Boot 3 | Atende DDD-Java + é o backend real de produção |
 | Worker NLP | Python 3.12 + FastAPI | Ecossistema NLP/ML; Container Apps para escalar independente |
 | Frontend Web | Next.js 14 + TypeScript + shadcn/ui + Tailwind | SSR, acessível (WCAG AA), DX moderno |
 | Desktop | Tauri 2 (Rust) | Mais leve que Electron, acesso nativo WASAPI, bundle < 10MB |
 | Banco de dados | Postgres 16 (Azure DB Flexible Server) | RLS nativo para multi-tenancy |
-| IA | Azure OpenAI (GPT-4o + text-embedding-3-large) | SLA enterprise, dados não usados para treino, LGPD |
+| LLM | **Provider agnóstico** (API Chat Completions) — default **OpenAI `gpt-4o-mini`** no MVP; Azure OpenAI em Enterprise quando aprovado; Groq/OpenRouter como fallback. Ver ADR 0004. | Desbloqueia o time sem aprovação Azure pendente; mantém portabilidade total via `LLM_BASE_URL`/`LLM_API_KEY` |
+| Embeddings | OpenAI `text-embedding-3-small` no MVP; Azure OpenAI em Enterprise | Mesmo princípio agnóstico do LLM |
 | Transcrição | Azure AI Speech (PT-BR, diarização) | Melhor diarização PT-BR do mercado |
 | RAG / Search | Azure AI Search | Vetorial + full-text, integrado ao ecossistema |
 | MCPs | Node.js 22 + Azure Functions | Serverless, escala zero, padrão MCP 1.0 |
 | Auth | JWT/OAuth2 próprio no MVP + Microsoft Entra ID no Enterprise | Login e-mail/senha para velocidade; SSO/SAML quando tenant Enterprise exigir |
-| Segredos | Azure Key Vault | Zero credencial em código |
+| Segredos | `.env` no dev, GitHub Actions Secrets em CI, Azure Key Vault em produção | Zero credencial em código |
 | Observabilidade | App Insights + OpenTelemetry | Rastreio distribuído ponta a ponta |
 | IaC | Bicep + GitHub Actions | Infra reproduzível, CI/CD auditável |
 
@@ -267,4 +270,4 @@ A IA usa o contexto correto baseado nas policies de quem analisa.
 
 ---
 
-**Última atualização:** 2026-05-02
+**Última atualização:** 2026-05-04

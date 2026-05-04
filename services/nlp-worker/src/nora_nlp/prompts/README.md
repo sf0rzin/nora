@@ -6,7 +6,7 @@ Cada arquivo `.md` aqui é um prompt versionado. Mudança de comportamento exige
 
 - **System prompt** define identidade e regras invioláveis.
 - **User prompt** carrega contexto do tenant + transcrição.
-- **Schema** é referenciado em `docs/api/llm-schemas/` e enviado como `response_format=json_schema` na chamada Azure OpenAI.
+- **Schema** é referenciado em `docs/api/llm-schemas/` e enviado como `response_format=json_schema` na chamada ao provider LLM (API Chat Completions — ver ADR 0004).
 - Variáveis usam `{{snake_case}}` para serem renderizadas via Jinja2/string.format.
 - Saída sempre validada com Pydantic antes de retornar ao backend.
 
