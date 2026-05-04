@@ -49,7 +49,7 @@ Post-MVP / roadmap:
 - Backend: Java 21 + Spring Boot 3 + DDD + OpenAPI
 - NLP Worker: Python 3.12 + FastAPI + Pydantic
 - Database: Postgres 16 + Flyway migrations; Oracle model remains for academic delivery
-- AI: Azure OpenAI; JSON-schema structured outputs
+- AI: Provider agnóstico via API Chat Completions (default OpenAI `gpt-4o-mini` no MVP; Azure OpenAI em Enterprise). Ver `docs/adr/0004-llm-provider-strategy.md`. Saída obrigatória via JSON Schema (ADR 0003).
 - Search/RAG: Azure AI Search in production, local stub acceptable during MVP
 - Cloud: Azure
 - CI/CD: GitHub Actions
