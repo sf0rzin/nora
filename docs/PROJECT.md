@@ -123,15 +123,14 @@ NLPWorker na análise:
 └─────────┬──────────────┘
           │
 ┌─────────▼──────────────────────────────────────────────────────┐
-│  Worker NLP (Python + FastAPI · Azure Container Apps)           │
+│  Worker NLP (Python + FastAPI · deploy containerizado)          │
 │  Pipeline:                                                       │
 │   1. PII Shield (presidio + regex BR)                            │
 │   2. Limpeza textual (lowercase, pontuação, stopwords)           │
 │   3. TF-IDF (baseline interpretável — exigência DS Sprint 1+2)   │
 │   4. RAG retrieval → Product Context do tenant                   │
-│   5. Embeddings (Azure OpenAI text-embedding-3-large)            │
-│   6. Extração estruturada (GPT-4o + JSON schema)                 │
-│   7. Account Health scoring (temporal, por tenant)               │
+│   5. Extração estruturada (OpenRouter + JSON schema)              │
+│   6. Account Health scoring (temporal, por tenant)               │
 └─────────┬──────────────────────────────────────────────────────┘
           │
 ┌─────────▼──────────────────────────────────────────────────────┐
@@ -196,13 +195,13 @@ Nada é throw-away. Cada entrega da rubrica vira artefato de produção:
 
 | Camada | Tecnologia | Justificativa |
 |---|---|---|
-| Cloud | Azure | Parceria Microsoft × TOTVS; Azure OpenAI região Brasil |
+| Cloud | Azure | Parceria Microsoft × TOTVS |
 | Backend | Java 21 + Spring Boot 3 | Atende DDD-Java + é o backend real de produção |
 | Worker NLP | Python 3.12 + FastAPI | Ecossistema NLP/ML; Container Apps para escalar independente |
 | Frontend Web | Next.js 14 + TypeScript + shadcn/ui + Tailwind | SSR, acessível (WCAG AA), DX moderno |
 | Desktop | Tauri 2 (Rust) | Mais leve que Electron, acesso nativo WASAPI, bundle < 10MB |
 | Banco de dados | Postgres 16 (Azure DB Flexible Server) | RLS nativo para multi-tenancy |
-| IA | Azure OpenAI (GPT-4o + text-embedding-3-large) | SLA enterprise, dados não usados para treino, LGPD |
+| IA | OpenRouter (API OpenAI-compatible) | Modelos variados (GPT-4o, Claude, etc.), structured output, custo flexível |
 | Transcrição | Azure AI Speech (PT-BR, diarização) | Melhor diarização PT-BR do mercado |
 | RAG / Search | Azure AI Search | Vetorial + full-text, integrado ao ecossistema |
 | MCPs | Node.js 22 + Azure Functions | Serverless, escala zero, padrão MCP 1.0 |

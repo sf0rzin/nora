@@ -8,7 +8,7 @@
 
 NORA depende de saídas estáveis do LLM para alimentar UI, dashboards, action items e auditoria. Texto livre quebra a aplicação, dificulta testes e impede evolução do prompt sem impacto no consumo a jusante.
 
-A Azure OpenAI suporta `response_format: { type: "json_schema" }` em GPT-4o e similares.
+A API OpenAI-compatible (OpenRouter, Azure OpenAI, etc.) suporta `response_format: { type: "json_schema" }` em GPT-4o e similares.
 
 ## Decisão
 

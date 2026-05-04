@@ -27,7 +27,7 @@ Este documento define como o projeto deve ser desenvolvido, onde guardar cada in
 | Backend | Java 21 + Spring Boot 3 | DDD em camadas, REST + OpenAPI, validação com Bean Validation |
 | NLP Worker | Python 3.12 + FastAPI + Pydantic | Pipelines pequenos, schemas explícitos, prompts versionados |
 | Banco | Postgres 16 + Flyway | Migrations versionadas, `tenant_id`, índices planejados |
-| IA | Azure OpenAI | JSON schema, temperatura baixa, logs sem PII |
+| IA | OpenRouter (OpenAI-compatible API) | JSON schema structured output, temperatura baixa, logs sem PII |
 | RAG/Search | Azure AI Search | Stub local permitido no MVP; interface estável desde cedo |
 | Auth | JWT/OAuth2 próprio no MVP; Entra ID pós-MVP | SSO não bloqueia o primeiro produto |
 | Infra | Azure + GitHub Actions | IaC com Bicep quando começar deploy real |
@@ -216,7 +216,7 @@ src/nora_nlp/
 2. Redigir PII por regex BR (CPF, CNPJ, e-mail, telefone; Presidio depois).
 3. Normalizar texto.
 4. Gerar baseline TF-IDF para entrega acadêmica e interpretabilidade.
-5. Recuperar contexto do tenant (stub local no MVP, Azure AI Search depois).
+5. Recuperar contexto do tenant (stub local no MVP, Azure AI Search ou equivalente depois).
 6. Chamar LLM com prompt versionado e schema de saída.
 7. Validar resposta com Pydantic.
 8. Retornar JSON estruturado ao backend.

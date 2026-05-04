@@ -3,7 +3,7 @@
 Estes schemas são a **fonte da verdade** dos formatos que o NLP Worker exige do LLM.
 
 - **Padrão**: Draft 2020-12.
-- **Uso**: passar como `response_format: { type: "json_schema", json_schema: ... }` na chamada Azure OpenAI.
+- **Uso**: passar como `response_format: { type: "json_schema", json_schema: ... }` na chamada ao LLM (OpenRouter / OpenAI-compatible).
 - **Validação**: Pydantic (Python) e Bean Validation (Java) devem espelhar estes schemas.
 - **Versionamento**: alterações breaking incrementam o sufixo do nome do arquivo (`-v2`).
 
