@@ -1,0 +1,242 @@
+"""Testes do LLM analyzer com mock do OpenRouter.
+
+Valida o pipeline completo (prompt loading -> tenant context injection ->
+LLM call -> Pydantic validation) sem custo real de API.
+"""
+
+from __future__ import annotations
+
+import inspect
+import json
+import pathlib
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from nora_nlp.clients.openrouter import OpenRouterClient as _Real
+from nora_nlp.models import AnalyzeRequest
+from nora_nlp.services.llm_analyzer import _load_prompt, _render_template, analyze
+from nora_nlp.settings import Settings
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
+DATA_DIR = REPO_ROOT / "data" / "synthetic"
+
+
+def _make_settings() -> Settings:
+    return Settings(
+        worker_port=8001,
+        openrouter_api_key="sk-test-fake-1234567890",
+        openrouter_model="openai/gpt-4o",
+        openrouter_base_url="https://openrouter.ai/api/v1",
+        use_llm_stub=False,
+    )
+
+
+def _make_request(
+    transcript_file: str = "01-acme-discovery.txt",
+    tenant: str = "acme-software",
+) -> AnalyzeRequest:
+    transcript = (DATA_DIR / "meetings" / transcript_file).read_text(encoding="utf-8")
+    tenant_ctx = json.loads(
+        (DATA_DIR / "tenants" / f"{tenant}.context.json").read_text(encoding="utf-8")
+    )
+    return AnalyzeRequest(
+        meetingId="test-meeting-001",
+        tenantId="00000000-0000-4000-8000-000000000001",
+        language="pt-BR",
+        transcript=transcript,
+        tenantContext=tenant_ctx,
+    )
+
+
+_FAKE_LLM_RESPONSE = {
+    "summary": (
+        "## Objetivo\n"
+        "Reuniao de discovery com o cliente para entender necessidades de ERP.\n\n"
+        "## Proximos Passos\n"
+        "- **Enviar proposta** comercial ate sexta-feira\n"
+        "- Agendar demonstracao tecnica\n\n"
+        "## Observacoes\n"
+        "Cliente demonstrou interesse no modulo financeiro."
+    ),
+    "decisions": [
+        {"text": "Cliente aprovou avancar para fase de proposta comercial", "confidence": 0.9}
+    ],
+    "actionItems": [
+        {
+            "title": "Enviar proposta comercial",
+            "assignee": "Carlos",
+            "dueDate": "2026-06-15",
+            "priority": "HIGH",
+            "sourceQuote": "Vamos enviar a proposta ate o final da semana.",
+        }
+    ],
+    "risks": [
+        {
+            "text": "Concorrente TotalSys mencionado como alternativa mais barata",
+            "severity": "HIGH",
+            "category": "COMPETITION",
+            "sourceQuote": "O TotalSys ofereceu um preco bem abaixo do nosso.",
+        }
+    ],
+    "opportunities": [
+        {
+            "text": "Upsell do modulo de RH integrado ao financeiro",
+            "estimatedValue": "MEDIUM",
+            "category": "UPSELL",
+            "sourceQuote": "Voces teriam o modulo de RH integrado?",
+        }
+    ],
+    "sentimentOverall": "POSITIVE",
+    "topics": ["ERP", "proposta comercial", "modulo financeiro", "concorrencia"],
+    "participants": [
+        {"name": "Carlos", "role": "Gerente Comercial", "mentionCount": 8},
+        {"name": "Ana", "role": "Diretora Financeira", "mentionCount": 5},
+    ],
+}
+
+
+def test_load_prompt_returns_system_and_user():
+    system, user = _load_prompt("meeting-analysis-v1")
+    assert "NORA" in system
+    assert "{{tenant_context_json}}" in user
+    assert "{{transcript}}" in user
+
+
+def test_load_prompt_raises_for_missing_file():
+    with pytest.raises(FileNotFoundError):
+        _load_prompt("nonexistent-prompt-v99")
+
+
+def test_render_template_substitutes_variables():
+    template = "Hello {{name}}, your meeting {{meeting_id}} is ready."
+    result = _render_template(template, name="World", meeting_id="abc-123")
+    assert result == "Hello World, your meeting abc-123 is ready."
+
+
+@patch("nora_nlp.services.llm_analyzer.OpenRouterClient")
+def test_analyze_returns_valid_response(MockClient):
+    mock_instance = MagicMock()
+    mock_instance.chat_structured.return_value = (
+        json.dumps(_FAKE_LLM_RESPONSE),
+        1500,
+        800,
+    )
+    MockClient.return_value = mock_instance
+
+    req = _make_request()
+    settings = _make_settings()
+    response = analyze(req, settings, pii_redactions_applied=3)
+
+    assert response.meeting_id == "test-meeting-001"
+    assert response.summary.startswith("## Objetivo")
+    assert len(response.decisions) == 1
+    assert response.decisions[0].confidence == 0.9
+    assert len(response.action_items) == 1
+    assert response.action_items[0].priority.value == "HIGH"
+    assert len(response.risks) == 1
+    assert response.risks[0].category.value == "COMPETITION"
+    assert len(response.opportunities) == 1
+    assert response.sentiment_overall.value == "POSITIVE"
+    assert len(response.participants) == 2
+    assert response.participants[0].name == "Carlos"
+    assert response.participants[0].mention_count == 8
+
+    assert response.metadata.tokens_input == 1500
+    assert response.metadata.tokens_output == 800
+    assert response.metadata.pii_redactions_applied == 3
+    assert "openrouter" in response.metadata.model_version
+    assert response.metadata.processing_millis >= 0
+
+
+@patch("nora_nlp.services.llm_analyzer.OpenRouterClient")
+def test_analyze_injects_tenant_context_in_prompt(MockClient):
+    mock_instance = MagicMock()
+    mock_instance.chat_structured.return_value = (
+        json.dumps(_FAKE_LLM_RESPONSE),
+        100,
+        50,
+    )
+    MockClient.return_value = mock_instance
+
+    req = _make_request()
+    settings = _make_settings()
+    analyze(req, settings)
+
+    call_args = mock_instance.chat_structured.call_args
+    user_prompt = call_args.kwargs["user_prompt"]
+
+    assert "ACME" in user_prompt or "acme" in user_prompt.lower()
+    assert req.meeting_id in user_prompt
+
+
+@patch("nora_nlp.services.llm_analyzer.OpenRouterClient")
+def test_analyze_uses_low_temperature(MockClient):
+    mock_instance = MagicMock()
+    mock_instance.chat_structured.return_value = (
+        json.dumps(_FAKE_LLM_RESPONSE),
+        100,
+        50,
+    )
+    MockClient.return_value = mock_instance
+
+    req = _make_request()
+    settings = _make_settings()
+    analyze(req, settings)
+
+    mock_instance.chat_structured.assert_called_once()
+    sig = inspect.signature(_Real.chat_structured)
+    default_temp = sig.parameters["temperature"].default
+    assert default_temp <= 0.3
+
+
+@patch("nora_nlp.services.llm_analyzer.OpenRouterClient")
+def test_analyze_falls_back_to_json_mode(MockClient):
+    mock_instance = MagicMock()
+    mock_instance.chat_structured.side_effect = Exception("structured output not supported")
+    mock_instance.chat_json.return_value = (
+        json.dumps(_FAKE_LLM_RESPONSE),
+        100,
+        50,
+    )
+    MockClient.return_value = mock_instance
+
+    req = _make_request()
+    settings = _make_settings()
+    response = analyze(req, settings)
+
+    assert response.meeting_id == "test-meeting-001"
+    mock_instance.chat_json.assert_called_once()
+
+
+@patch("nora_nlp.services.llm_analyzer.OpenRouterClient")
+def test_analyze_handles_minimal_llm_response(MockClient):
+    minimal_response = {
+        "summary": (
+            "Reuniao breve sobre alinhamento de expectativas. Nenhuma decisao formal foi tomada."
+        ),
+        "decisions": [],
+        "actionItems": [],
+        "risks": [],
+        "opportunities": [],
+        "sentimentOverall": "NEUTRAL",
+        "topics": ["alinhamento"],
+        "participants": [],
+    }
+    mock_instance = MagicMock()
+    mock_instance.chat_structured.return_value = (
+        json.dumps(minimal_response),
+        500,
+        200,
+    )
+    MockClient.return_value = mock_instance
+
+    req = _make_request()
+    settings = _make_settings()
+    response = analyze(req, settings)
+
+    assert response.summary
+    assert response.decisions == []
+    assert response.action_items == []
+    assert response.participants == []
+    assert response.sentiment_overall.value == "NEUTRAL"
