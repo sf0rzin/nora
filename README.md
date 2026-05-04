@@ -34,7 +34,7 @@ Contexto para agentes de IA:
 apps/web              # Next.js + TypeScript + Tailwind + shadcn/ui
 apps/desktop          # Tauri (pós-MVP)
 services/api          # Spring Boot 3 + Java 21 (DDD)
-services/nlp-worker   # FastAPI + Pydantic + Azure OpenAI
+services/nlp-worker   # FastAPI + Pydantic + LLM provider agnóstico (default OpenAI)
 packages/shared-contracts
 mcp/{calendar,tasks,crm}   # MCP servers (pós-MVP)
 infra/{bicep,docker}
