@@ -18,7 +18,7 @@ public class UserJpaEntity {
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "citext")
     private String email;
 
     @Column(name = "password_hash", nullable = false)
