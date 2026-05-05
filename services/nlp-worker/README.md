@@ -18,8 +18,8 @@ Análise:     `POST http://localhost:8001/analyze`
 
 ## Modos de execucao
 
-- `USE_LLM_STUB=true` (padrao): usa o stub deterministico em `services/stub_analyzer.py`. Sem chamada externa, sem custo. Permite que o backend e o web evoluam sem depender de provedor LLM externo.
-- `USE_LLM_STUB=false`: tentaria chamar o provedor LLM real (default OpenAI `gpt-4o-mini` via API Chat Completions; provider configuravel por env, ver `docs/adr/0004-llm-provider-strategy.md`). Implementacao ainda nao esta plugada (entra em historia futura do backlog).
+- `USE_LLM_STUB=true` (padrao): usa o stub deterministico em `services/stub_analyzer.py`. Sem chamada externa, sem custo. Permite que o backend e o web evoluam sem depender do provedor de LLM.
+- `USE_LLM_STUB=false`: chama o provedor LLM real via `services/llm_analyzer.py`, configurado por `LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL` (default OpenAI direto, `gpt-4o-mini`). Ver ADR 0004.
 
 ## Estrutura
 
@@ -34,6 +34,9 @@ src/nora_nlp/
   services/
     pii_shield.py      # regex baseline para EMAIL/PHONE/CPF/CNPJ/CARD
     stub_analyzer.py   # heuristica deterministica (sumario, decisoes, ...)
+    llm_analyzer.py    # pipeline LLM real (provider agnostic)
+  clients/
+    llm.py             # SDK OpenAI com base_url plugável
   prompts/             # templates versionados (markdown)
 tests/
   test_health.py

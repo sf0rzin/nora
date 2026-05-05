@@ -89,6 +89,14 @@ class Opportunity(BaseModel):
     source_quote: Annotated[str, Field(min_length=5, max_length=500, alias="sourceQuote")]
 
 
+class Participant(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[str, Field(min_length=2, max_length=120)]
+    role: str | None = Field(default=None, max_length=120)
+    mention_count: Annotated[int, Field(ge=1, alias="mentionCount")]
+
+
 class MeetingAnalysisV1(BaseModel):
     """Espelho de docs/api/llm-schemas/meeting-analysis-v1.schema.json."""
 
@@ -103,6 +111,7 @@ class MeetingAnalysisV1(BaseModel):
     topics: list[Annotated[str, Field(min_length=2, max_length=60)]] = Field(
         default_factory=list, max_length=12
     )
+    participants: list[Participant] = Field(default_factory=list, max_length=30)
 
 
 # ---------- PII Redaction v1 ----------
