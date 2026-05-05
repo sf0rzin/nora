@@ -8,6 +8,13 @@ Backend Spring Boot 3 + Java 21 do projeto NORA.
 - Maven 3.9+ (ou use Docker para build)
 - Postgres 16 rodando (use `make db-up` na raiz do repo)
 
+## Configuracao local (.env.local)
+
+A API le automaticamente `services/api/.env.local` quando o profile `local` esta ativo.
+
+- Copie `services/api/.env.example` para `services/api/.env.local`
+- Para envio real de e-mail (Resend), preencha `RESEND_API_KEY`. Se ficar vazio, a API usa `LogEmailSender` e imprime os links no log.
+
 ## Comandos
 
 ```bash
@@ -34,7 +41,7 @@ Regras detalhadas em `docs/development-standards.md`.
 
 - `GET /healthz` (publico)
 - `GET /actuator/health` (publico)
-- demais rotas: `401 Unauthenticated` ate as US01-US04 (login, JWT) serem implementadas
+- demais rotas: protegidas por JWT (US01-US04). Ver OpenAPI em `/swagger-ui/index.html`.
 
 ## Multi-tenancy
 
