@@ -41,6 +41,17 @@ nora:
     jwt:
       secret: ${JWT_SECRET:change-me-please-min-32-chars-long-aaaa}
       expires-seconds: ${JWT_EXPIRES_SECONDS:3600}
+    email-verification:
+      expires-seconds: ${EMAIL_VERIFICATION_EXPIRES_SECONDS:86400}
+    password-reset:
+      expires-seconds: ${PASSWORD_RESET_EXPIRES_SECONDS:3600}
+    expose-dev-tokens: ${EXPOSE_DEV_TOKENS:false}
+  app:
+    public-base-url: ${NORA_APP_PUBLIC_BASE_URL:http://localhost:3000}
+  email:
+    from: ${NORA_EMAIL_FROM:NORA <onboarding@resend.dev>}
+    resend:
+      api-key: ${RESEND_API_KEY:}
   worker:
     base-url: ${NLP_WORKER_BASE_URL:http://localhost:8001}
 
