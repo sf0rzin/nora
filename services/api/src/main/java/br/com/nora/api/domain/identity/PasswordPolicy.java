@@ -28,9 +28,14 @@ public final class PasswordPolicy {
         boolean hasDigit = false;
         for (int i = 0; i < raw.length(); i++) {
             char c = raw.charAt(i);
-            if (Character.isLetter(c)) hasLetter = true;
-            else if (Character.isDigit(c)) hasDigit = true;
-            if (hasLetter && hasDigit) break;
+            if (Character.isLetter(c)) {
+                hasLetter = true;
+            } else if (Character.isDigit(c)) {
+                hasDigit = true;
+            }
+            if (hasLetter && hasDigit) {
+                break;
+            }
         }
         if (!hasLetter || !hasDigit) {
             throw new IllegalArgumentException("password must contain letters and digits");

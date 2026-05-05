@@ -42,30 +42,36 @@ public class ResendEmailSender implements EmailSender {
 
     @Override
     public void sendEmailVerification(String toEmail, String displayName, String verificationLink) {
+        String btnStyle =
+                "display:inline-block;padding:10px 20px;background:#111;"
+                        + "color:#fff;text-decoration:none;border-radius:6px;";
         send(
                 toEmail,
                 "Confirme seu e-mail na NORA",
                 """
                 <p>Ola %s,</p>
                 <p>Para ativar sua conta NORA, confirme seu e-mail clicando no botao abaixo.</p>
-                <p><a href="%s" style="display:inline-block;padding:10px 20px;background:#111;color:#fff;text-decoration:none;border-radius:6px;">Confirmar e-mail</a></p>
+                <p><a href="%s" style="%s">Confirmar e-mail</a></p>
                 <p>Se voce nao criou esta conta, pode ignorar este e-mail.</p>
                 """
-                        .formatted(escape(displayName), verificationLink));
+                        .formatted(escape(displayName), verificationLink, btnStyle));
     }
 
     @Override
     public void sendPasswordReset(String toEmail, String displayName, String resetLink) {
+        String btnStyle =
+                "display:inline-block;padding:10px 20px;background:#111;"
+                        + "color:#fff;text-decoration:none;border-radius:6px;";
         send(
                 toEmail,
                 "Redefinicao de senha NORA",
                 """
                 <p>Ola %s,</p>
                 <p>Recebemos um pedido para redefinir sua senha.</p>
-                <p><a href="%s" style="display:inline-block;padding:10px 20px;background:#111;color:#fff;text-decoration:none;border-radius:6px;">Redefinir senha</a></p>
+                <p><a href="%s" style="%s">Redefinir senha</a></p>
                 <p>Este link expira em uma hora. Se voce nao pediu isso, ignore o e-mail.</p>
                 """
-                        .formatted(escape(displayName), resetLink));
+                        .formatted(escape(displayName), resetLink, btnStyle));
     }
 
     private void send(String to, String subject, String html) {
