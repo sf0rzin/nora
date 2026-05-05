@@ -5,7 +5,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -19,7 +19,7 @@ import org.springframework.web.reactive.function.client.WebClient;
  * <p>Free tier (3.000 e-mails/mes) cobre o MVP inteiro. Custos reais: zero ate o lancamento.
  */
 @Component(value = "resendEmailSender")
-@ConditionalOnProperty(name = "nora.email.resend.api-key")
+@ConditionalOnExpression("'${nora.email.resend.api-key:}'.length() > 0")
 public class ResendEmailSender implements EmailSender {
 
     private static final Logger LOG = LoggerFactory.getLogger(ResendEmailSender.class);

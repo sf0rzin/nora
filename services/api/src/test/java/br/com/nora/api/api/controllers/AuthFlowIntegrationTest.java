@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,6 +17,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -46,6 +48,19 @@ class AuthFlowIntegrationTest {
     @LocalServerPort int port;
     @Autowired TestRestTemplate rest;
     @Autowired ObjectMapper mapper;
+
+    /**
+     * O SimpleClientHttpRequestFactory padrao do TestRestTemplate transmite o body em modo
+     * streaming. Quando o servidor responde 401 (caso esperado em login antes da verificacao), o
+     * HttpURLConnection tenta retentar com autenticacao e estoura HttpRetryException porque o body
+     * ja foi enviado. Desligamos o streaming para que respostas 401 sejam lidas normalmente.
+     */
+    @BeforeEach
+    void disableOutputStreaming() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setOutputStreaming(false);
+        rest.getRestTemplate().setRequestFactory(factory);
+    }
 
     @Test
     void completeAuthLifecycle() throws Exception {
