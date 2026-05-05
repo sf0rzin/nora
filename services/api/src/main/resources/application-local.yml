@@ -1,4 +1,11 @@
 # Perfil local de desenvolvimento. Ativado por SPRING_PROFILES_ACTIVE=local.
+
+# Dev convenience: carrega variaveis de `services/api/.env.local` automaticamente.
+# Em producao, variaveis de ambiente reais continuam tendo precedencia.
+springdotenv:
+  filename: .env.local
+  ignore-if-missing: true
+
 spring:
   jpa:
     show-sql: false
