@@ -9,13 +9,13 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
  * Configuracao base de seguranca.
  *
- * <p>Politica padrao: tudo autenticado, exceto endpoints publicos (health, login, docs). O filtro
- * de JWT sera adicionado nas stories US01-US04 do backlog. Enquanto isso, o servidor responde 401
- * para qualquer rota protegida, garantindo que nada vaze por descuido.
+ * <p>Politica padrao: tudo autenticado, exceto endpoints publicos. Filtro JWT instalado pelas
+ * stories US01-US04: para cada request com header Authorization Bearer, popula o SecurityContext.
  */
 @Configuration
 public class SecurityConfig {
@@ -24,14 +24,19 @@ public class SecurityConfig {
         "/healthz",
         "/actuator/health",
         "/actuator/info",
+        "/auth/signup",
+        "/auth/verify-email",
         "/auth/login",
+        "/auth/password/reset/request",
+        "/auth/password/reset/confirm",
         "/v3/api-docs/**",
         "/swagger-ui/**",
         "/swagger-ui.html"
     };
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http, JwtAuthenticationFilter jwtFilter) throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(
@@ -45,7 +50,8 @@ public class SecurityConfig {
                 .exceptionHandling(
                         e ->
                                 e.authenticationEntryPoint(
-                                        new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
+                                        new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
