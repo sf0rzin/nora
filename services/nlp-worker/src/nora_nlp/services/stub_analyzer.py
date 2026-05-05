@@ -20,6 +20,7 @@ from ..models import (
     Decision,
     Opportunity,
     OpportunityCategory,
+    Participant,
     Priority,
     Risk,
     RiskCategory,
@@ -227,6 +228,24 @@ def _opportunities(sentences: list[str]) -> list[Opportunity]:
     return out
 
 
+_SPEAKER_RE = re.compile(r"^[A-Z][\wáéíóúãâêôç ]{0,40}:\s*")
+
+
+def _participants(text: str) -> list[Participant]:
+    speakers: dict[str, int] = {}
+    for line in re.split(r"\r?\n", text):
+        line = line.strip()
+        m = _SPEAKER_RE.match(line)
+        if m:
+            name = m.group(0).rstrip(": ").strip()
+            if len(name) >= 2:
+                speakers[name] = speakers.get(name, 0) + 1
+    return [
+        Participant(name=name, role=None, mentionCount=count)
+        for name, count in sorted(speakers.items(), key=lambda x: -x[1])
+    ]
+
+
 def analyze(req: AnalyzeRequest, *, pii_redactions_applied: int = 0) -> AnalyzeResponse:
     """Analisa a transcricao de forma deterministica. Sem chamada externa."""
     started = time.monotonic()
@@ -247,6 +266,7 @@ def analyze(req: AnalyzeRequest, *, pii_redactions_applied: int = 0) -> AnalyzeR
             "opportunities": _opportunities(sentences) if req.options.include_opportunities else [],
             "sentimentOverall": _sentiment(req.transcript),
             "topics": _topics(req.transcript, ctx_terms),
+            "participants": _participants(req.transcript),
             "metadata": {
                 "modelVersion": "stub-deterministic-v1",
                 "promptVersion": req.options.prompt_version,

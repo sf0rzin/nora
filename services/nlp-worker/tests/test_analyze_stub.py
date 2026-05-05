@@ -1,8 +1,11 @@
 import json
+import os
 import pathlib
 
 import pytest
 from fastapi.testclient import TestClient
+
+os.environ["USE_LLM_STUB"] = "true"
 
 from nora_nlp.main import app
 
