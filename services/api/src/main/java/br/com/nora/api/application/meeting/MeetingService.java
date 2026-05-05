@@ -1,0 +1,105 @@
+package br.com.nora.api.application.meeting;
+
+import br.com.nora.api.application.ports.MeetingRepository;
+import br.com.nora.api.application.ports.MeetingRepository.PagedMeetings;
+import br.com.nora.api.application.ports.TranscriptRepository;
+import br.com.nora.api.domain.meeting.Meeting;
+import br.com.nora.api.domain.meeting.Participant;
+import br.com.nora.api.domain.meeting.Transcript;
+import br.com.nora.api.domain.meeting.TranscriptFormat;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * Servico de aplicacao para reunioes (US07).
+ *
+ * <p>Regras chave:
+ *
+ * <ul>
+ *   <li>Toda escrita/leitura recebe tenantId explicito vindo do JWT do chamador.
+ *   <li>Upload cria meeting + transcript em uma unica transacao.
+ *   <li>Status inicial e PENDING. Disparo de processamento e responsabilidade de outra story.
+ * </ul>
+ */
+@Service
+public class MeetingService {
+
+    private final MeetingRepository meetings;
+    private final TranscriptRepository transcripts;
+
+    public MeetingService(MeetingRepository meetings, TranscriptRepository transcripts) {
+        this.meetings = meetings;
+        this.transcripts = transcripts;
+    }
+
+    @Transactional
+    public Meeting upload(UploadCommand cmd) {
+        if (cmd.rawTranscript() == null || cmd.rawTranscript().isBlank()) {
+            throw new MeetingException.EmptyTranscript();
+        }
+        if (cmd.rawTranscript().length() > Transcript.MAX_CHAR_COUNT) {
+            throw new MeetingException.TranscriptTooLarge(Transcript.MAX_CHAR_COUNT);
+        }
+        TranscriptFormat format;
+        try {
+            format = TranscriptFormat.fromString(cmd.format());
+        } catch (IllegalArgumentException ex) {
+            throw new MeetingException.UnsupportedFormat(cmd.format());
+        }
+
+        Meeting meeting =
+                Meeting.newPending(
+                        cmd.tenantId(),
+                        cmd.ownerUserId(),
+                        cmd.title(),
+                        cmd.startedAt(),
+                        cmd.endedAt(),
+                        cmd.language(),
+                        format,
+                        cmd.participants(),
+                        cmd.tags());
+        Meeting saved = meetings.save(meeting);
+        Transcript transcript =
+                Transcript.create(saved.id(), saved.tenantId(), format, cmd.rawTranscript());
+        transcripts.save(transcript);
+        return saved;
+    }
+
+    @Transactional(readOnly = true)
+    public PagedMeetings list(UUID tenantId, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(100, Math.max(1, size));
+        return meetings.listByTenant(tenantId, safePage, safeSize);
+    }
+
+    @Transactional(readOnly = true)
+    public Meeting getById(UUID meetingId, UUID tenantId) {
+        return meetings.findByIdAndTenant(meetingId, tenantId)
+                .orElseThrow(MeetingException.NotFound::new);
+    }
+
+    @Transactional(readOnly = true)
+    public Transcript getTranscript(UUID meetingId, UUID tenantId) {
+        // Garante escopo: a meeting precisa existir no tenant antes de devolver o texto.
+        meetings.findByIdAndTenant(meetingId, tenantId).orElseThrow(MeetingException.NotFound::new);
+        return transcripts
+                .findByMeetingAndTenant(meetingId, tenantId)
+                .orElseThrow(MeetingException.NotFound::new);
+    }
+
+    /** Comando imutavel de upload. */
+    public record UploadCommand(
+            UUID tenantId,
+            UUID ownerUserId,
+            String title,
+            OffsetDateTime startedAt,
+            OffsetDateTime endedAt,
+            String language,
+            String format,
+            List<Participant> participants,
+            List<String> tags,
+            String rawTranscript) {}
+}
