@@ -1,6 +1,7 @@
 package br.com.nora.api.api.exception;
 
 import br.com.nora.api.api.dto.ErrorResponse;
+import br.com.nora.api.application.identity.AuthException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.List;
@@ -60,6 +61,34 @@ public class GlobalExceptionHandler {
                         new ErrorResponse(
                                 "FORBIDDEN",
                                 "Access denied.",
+                                traceId(),
+                                Instant.now(),
+                                List.of()));
+    }
+
+    @ExceptionHandler(AuthException.class)
+    public ResponseEntity<ErrorResponse> handleAuthDomain(AuthException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "EMAIL_ALREADY_TAKEN" -> HttpStatus.CONFLICT;
+                    case "INVALID_CREDENTIALS", "EMAIL_NOT_VERIFIED" -> HttpStatus.UNAUTHORIZED;
+                    case "USER_DISABLED" -> HttpStatus.FORBIDDEN;
+                    case "TOKEN_INVALID" -> HttpStatus.BAD_REQUEST;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.badRequest()
+                .body(
+                        new ErrorResponse(
+                                "VALIDATION_FAILED",
+                                ex.getMessage(),
                                 traceId(),
                                 Instant.now(),
                                 List.of()));
