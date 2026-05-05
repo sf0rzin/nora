@@ -73,6 +73,7 @@ public class OneTimeTokenRepositoryAdapter implements OneTimeTokenRepository {
     }
 
     @Override
+    @Transactional
     public Optional<OneTimeToken> findByTokenHashAndPurpose(String tokenHash, Purpose purpose) {
         return switch (purpose) {
             case EMAIL_VERIFICATION ->
