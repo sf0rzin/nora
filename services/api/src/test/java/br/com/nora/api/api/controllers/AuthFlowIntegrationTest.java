@@ -17,7 +17,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -50,16 +50,14 @@ class AuthFlowIntegrationTest {
     @Autowired ObjectMapper mapper;
 
     /**
-     * O SimpleClientHttpRequestFactory padrao do TestRestTemplate transmite o body em modo
-     * streaming. Quando o servidor responde 401 (caso esperado em login antes da verificacao), o
-     * HttpURLConnection tenta retentar com autenticacao e estoura HttpRetryException porque o body
-     * ja foi enviado. Desligamos o streaming para que respostas 401 sejam lidas normalmente.
+     * O SimpleClientHttpRequestFactory padrao do TestRestTemplate usa HttpURLConnection legado, que
+     * estoura {@code HttpRetryException} ao receber 401 (caso esperado em login antes da
+     * verificacao). Trocamos pela implementacao baseada em Java 11 HttpClient, que trata 401
+     * normalmente.
      */
     @BeforeEach
-    void disableOutputStreaming() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setOutputStreaming(false);
-        rest.getRestTemplate().setRequestFactory(factory);
+    void useJdkHttpClient() {
+        rest.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
     }
 
     @Test
