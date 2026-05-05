@@ -21,8 +21,7 @@ public class LogEmailSender implements EmailSender {
     private static final Logger LOG = LoggerFactory.getLogger(LogEmailSender.class);
 
     @Override
-    public void sendEmailVerification(
-            String toEmail, String displayName, String verificationLink) {
+    public void sendEmailVerification(String toEmail, String displayName, String verificationLink) {
         LOG.info(
                 "[email/dev] verification -> to={} name={} link={}",
                 toEmail,

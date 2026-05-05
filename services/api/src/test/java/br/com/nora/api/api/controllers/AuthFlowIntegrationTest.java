@@ -145,7 +145,13 @@ class AuthFlowIntegrationTest {
         JsonNode bad =
                 postJson(
                                 "/auth/signup",
-                                Map.of("email", "not-email", "password", "short", "displayName", ""))
+                                Map.of(
+                                        "email",
+                                        "not-email",
+                                        "password",
+                                        "short",
+                                        "displayName",
+                                        ""))
                         .read(HttpStatus.BAD_REQUEST);
         assertThat(bad.get("code").asText()).isEqualTo("VALIDATION_FAILED");
     }
@@ -161,8 +167,7 @@ class AuthFlowIntegrationTest {
     private RequestExec postJson(String path, Map<String, ?> body) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<String> entity =
-                new HttpEntity<>(mapper.writeValueAsString(body), headers);
+        HttpEntity<String> entity = new HttpEntity<>(mapper.writeValueAsString(body), headers);
         return new RequestExec(rest.postForEntity(path, entity, String.class));
     }
 

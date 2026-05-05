@@ -41,8 +41,7 @@ public class ResendEmailSender implements EmailSender {
     }
 
     @Override
-    public void sendEmailVerification(
-            String toEmail, String displayName, String verificationLink) {
+    public void sendEmailVerification(String toEmail, String displayName, String verificationLink) {
         send(
                 toEmail,
                 "Confirme seu e-mail na NORA",

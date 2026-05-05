@@ -28,8 +28,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Endpoints publicos de autenticacao. Stories US01 (signup), US02 (verificacao), US03 (login),
- * US04 (reset).
+ * Endpoints publicos de autenticacao. Stories US01 (signup), US02 (verificacao), US03 (login), US04
+ * (reset).
  */
 @RestController
 @RequestMapping("/auth")
@@ -70,8 +70,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
-        LoginResult result =
-                authService.login(new LoginCommand(req.email(), req.password()));
+        LoginResult result = authService.login(new LoginCommand(req.email(), req.password()));
         String token = jwtIssuer.issue(result.user(), SELF_SERVICE_ROLES, settings.jwtTtl());
         LoginResponse body =
                 new LoginResponse(

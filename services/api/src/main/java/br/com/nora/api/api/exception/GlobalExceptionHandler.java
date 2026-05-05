@@ -79,11 +79,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status)
                 .body(
                         new ErrorResponse(
-                                ex.code(),
-                                ex.getMessage(),
-                                traceId(),
-                                Instant.now(),
-                                List.of()));
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

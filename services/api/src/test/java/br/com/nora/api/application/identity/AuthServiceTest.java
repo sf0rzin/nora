@@ -87,15 +87,13 @@ class AuthServiceTest {
         assertThatThrownBy(
                         () ->
                                 service.signup(
-                                        new SignupCommand(
-                                                "DUP@nora.dev", "SenhaForte123", "Y")))
+                                        new SignupCommand("DUP@nora.dev", "SenhaForte123", "Y")))
                 .isInstanceOf(AuthException.EmailAlreadyTaken.class);
     }
 
     @Test
     void verifyEmailTransitionsUserToVerified() {
-        SignupResult sr =
-                service.signup(new SignupCommand("v@nora.dev", "SenhaForte123", "V"));
+        SignupResult sr = service.signup(new SignupCommand("v@nora.dev", "SenhaForte123", "V"));
         service.verifyEmail(sr.emailVerificationDevToken());
 
         User u = users.byId(sr.userId()).orElseThrow();
@@ -104,8 +102,7 @@ class AuthServiceTest {
 
     @Test
     void verifyEmailTokenCannotBeReused() {
-        SignupResult sr =
-                service.signup(new SignupCommand("once@nora.dev", "SenhaForte123", "O"));
+        SignupResult sr = service.signup(new SignupCommand("once@nora.dev", "SenhaForte123", "O"));
         service.verifyEmail(sr.emailVerificationDevToken());
         assertThatThrownBy(() -> service.verifyEmail(sr.emailVerificationDevToken()))
                 .isInstanceOf(AuthException.TokenInvalid.class);
@@ -113,8 +110,7 @@ class AuthServiceTest {
 
     @Test
     void verifyEmailRejectsExpiredToken() {
-        SignupResult sr =
-                service.signup(new SignupCommand("exp@nora.dev", "SenhaForte123", "E"));
+        SignupResult sr = service.signup(new SignupCommand("exp@nora.dev", "SenhaForte123", "E"));
         clock.advance(Duration.ofDays(2));
         assertThatThrownBy(() -> service.verifyEmail(sr.emailVerificationDevToken()))
                 .isInstanceOf(AuthException.TokenInvalid.class);
@@ -124,8 +120,7 @@ class AuthServiceTest {
 
     @Test
     void loginSucceedsAfterVerification() {
-        SignupResult sr =
-                service.signup(new SignupCommand("ok@nora.dev", "SenhaForte123", "Ok"));
+        SignupResult sr = service.signup(new SignupCommand("ok@nora.dev", "SenhaForte123", "Ok"));
         service.verifyEmail(sr.emailVerificationDevToken());
 
         var result = service.login(new LoginCommand("ok@nora.dev", "SenhaForte123"));
@@ -141,8 +136,7 @@ class AuthServiceTest {
 
     @Test
     void loginRejectsWrongPassword() {
-        SignupResult sr =
-                service.signup(new SignupCommand("wp@nora.dev", "SenhaForte123", "WP"));
+        SignupResult sr = service.signup(new SignupCommand("wp@nora.dev", "SenhaForte123", "WP"));
         service.verifyEmail(sr.emailVerificationDevToken());
         assertThatThrownBy(() -> service.login(new LoginCommand("wp@nora.dev", "errada123")))
                 .isInstanceOf(AuthException.InvalidCredentials.class);
@@ -165,12 +159,10 @@ class AuthServiceTest {
 
     @Test
     void resetFlowChangesPassword() {
-        SignupResult sr =
-                service.signup(new SignupCommand("rs@nora.dev", "SenhaForte123", "RS"));
+        SignupResult sr = service.signup(new SignupCommand("rs@nora.dev", "SenhaForte123", "RS"));
         service.verifyEmail(sr.emailVerificationDevToken());
 
-        var req =
-                service.requestPasswordReset(new RequestPasswordResetCommand("rs@nora.dev"));
+        var req = service.requestPasswordReset(new RequestPasswordResetCommand("rs@nora.dev"));
         assertThat(req.devToken()).isNotBlank();
 
         service.confirmPasswordReset(
@@ -185,12 +177,10 @@ class AuthServiceTest {
 
     @Test
     void requestingNewResetInvalidatesPreviousTokens() {
-        SignupResult sr =
-                service.signup(new SignupCommand("two@nora.dev", "SenhaForte123", "TW"));
+        SignupResult sr = service.signup(new SignupCommand("two@nora.dev", "SenhaForte123", "TW"));
         service.verifyEmail(sr.emailVerificationDevToken());
 
-        var first =
-                service.requestPasswordReset(new RequestPasswordResetCommand("two@nora.dev"));
+        var first = service.requestPasswordReset(new RequestPasswordResetCommand("two@nora.dev"));
         service.requestPasswordReset(new RequestPasswordResetCommand("two@nora.dev"));
 
         assertThatThrownBy(

@@ -12,8 +12,8 @@ import org.springframework.stereotype.Component;
  * Gera tokens de 32 bytes (256 bits) random URL-safe e armazena seu SHA-256 hexadecimal.
  *
  * <p>SHA-256 e suficiente porque o token cru ja tem entropia maxima (256 bits). Nao precisamos de
- * salt: o objetivo e tornar o token irrecuperavel a partir do hash, e nao defender contra dicionario
- * (impossivel com 256 bits aleatorios).
+ * salt: o objetivo e tornar o token irrecuperavel a partir do hash, e nao defender contra
+ * dicionario (impossivel com 256 bits aleatorios).
  */
 @Component
 public class SecureRandomTokenGenerator implements SecureTokenGenerator {

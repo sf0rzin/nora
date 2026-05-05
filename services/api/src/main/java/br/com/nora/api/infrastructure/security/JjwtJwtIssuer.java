@@ -54,7 +54,12 @@ public class JjwtJwtIssuer implements JwtIssuer {
 
     /** Valida assinatura/expiracao e retorna as claims principais para o filtro. */
     public AuthenticatedPrincipal parse(String token) throws JwtException {
-        Jws<Claims> jws = Jwts.parser().verifyWith(key).requireIssuer(issuer).build().parseSignedClaims(token);
+        Jws<Claims> jws =
+                Jwts.parser()
+                        .verifyWith(key)
+                        .requireIssuer(issuer)
+                        .build()
+                        .parseSignedClaims(token);
         Claims c = jws.getPayload();
         UUID userId = UUID.fromString(c.getSubject());
         UUID tenantId = UUID.fromString(c.get(CLAIM_TENANT, String.class));

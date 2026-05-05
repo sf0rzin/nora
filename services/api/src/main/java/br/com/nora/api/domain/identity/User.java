@@ -57,15 +57,7 @@ public final class User {
             String displayName,
             Instant now) {
         return new User(
-                id,
-                tenantId,
-                email,
-                passwordHash,
-                displayName,
-                UserStatus.ACTIVE,
-                null,
-                now,
-                now);
+                id, tenantId, email, passwordHash, displayName, UserStatus.ACTIVE, null, now, now);
     }
 
     public boolean isEmailVerified() {

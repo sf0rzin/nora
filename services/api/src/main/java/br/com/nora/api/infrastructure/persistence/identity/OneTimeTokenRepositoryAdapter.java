@@ -28,7 +28,8 @@ public class OneTimeTokenRepositoryAdapter implements OneTimeTokenRepository {
         return switch (token.purpose()) {
             case EMAIL_VERIFICATION -> {
                 EmailVerificationTokenJpaEntity entity =
-                        emailRepo.findById(token.id())
+                        emailRepo
+                                .findById(token.id())
                                 .map(
                                         e -> {
                                             e.setConsumedAt(token.consumedAt());

@@ -21,8 +21,7 @@ public class AuthConfig {
     @Bean
     public AuthSettings authSettings(
             @Value("${nora.app.public-base-url:http://localhost:3000}") String publicBaseUrl,
-            @Value("${nora.security.email-verification.expires-seconds:86400}")
-                    long emailVerifyTtl,
+            @Value("${nora.security.email-verification.expires-seconds:86400}") long emailVerifyTtl,
             @Value("${nora.security.password-reset.expires-seconds:3600}") long pwdResetTtl,
             @Value("${nora.security.jwt.expires-seconds:3600}") long jwtTtl,
             @Value("${nora.security.expose-dev-tokens:false}") boolean exposeDev) {

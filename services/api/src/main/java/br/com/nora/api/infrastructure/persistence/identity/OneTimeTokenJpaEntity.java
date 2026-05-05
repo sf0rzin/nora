@@ -1,7 +1,6 @@
 package br.com.nora.api.infrastructure.persistence.identity;
 
 import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.MappedSuperclass;
 import java.time.Instant;
