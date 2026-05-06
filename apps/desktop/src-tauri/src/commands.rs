@@ -2,7 +2,7 @@ use crate::audio_capture::{AudioCapture, RecordingStatus};
 use crate::azure_speech::AzureSpeechClient;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 pub type CaptureState = Arc<Mutex<AudioCapture>>;
 
@@ -20,7 +20,7 @@ pub fn list_audio_devices() -> Result<Vec<String>, String> {
 pub struct StartRecordingRequest {
     pub device_name: Option<String>,
     pub azure_speech_key: Option<String>,
-    pub azure_endpoint: Option<String>,
+    pub azure_region: Option<String>,
     pub language: Option<String>,
 }
 
@@ -35,15 +35,15 @@ pub async fn start_recording(
     let capture = state.lock().map_err(|e| e.to_string())?;
     let status = capture.start(app_handle.clone(), request.device_name, Some(tx))?;
 
-    if let (Some(key), Some(endpoint)) = (request.azure_speech_key, request.azure_endpoint) {
+    if let (Some(key), Some(region)) = (request.azure_speech_key, request.azure_region) {
         let lang = request.language.unwrap_or_else(|| "pt-BR".into());
-        let speech_client = AzureSpeechClient::new(key, endpoint, lang);
+        let speech_client = AzureSpeechClient::new(key, region, lang);
         let handle = app_handle.clone();
         let sr = status.sample_rate;
 
         tokio::spawn(async move {
             if let Err(e) = speech_client.recognize_stream(handle, rx, sr).await {
-                eprintln!("[azure-speech] error: {}", e);
+                eprintln!("Azure Speech error: {}", e);
             }
         });
     }

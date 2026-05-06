@@ -42,16 +42,15 @@ struct WordItem {
 
 pub struct AzureSpeechClient {
     subscription_key: String,
-    endpoint: String,
+    region: String,
     language: String,
 }
 
 impl AzureSpeechClient {
-    pub fn new(subscription_key: String, endpoint: String, language: String) -> Self {
-        let endpoint = endpoint.trim_end_matches('/').to_string();
+    pub fn new(subscription_key: String, region: String, language: String) -> Self {
         Self {
             subscription_key,
-            endpoint,
+            region,
             language,
         }
     }
@@ -59,11 +58,9 @@ impl AzureSpeechClient {
     fn build_ws_url(&self) -> Result<String, String> {
         let connection_id = uuid::Uuid::new_v4().to_string();
 
-        let ws_url = self.endpoint.replace("https://", "wss://");
-
         Ok(format!(
-            "{}/speech/recognition/conversation/cognitiveservices/v1?language={}&format=detailed&X-ConnectionId={}",
-            ws_url, self.language, connection_id
+            "wss://{}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language={}&format=detailed&X-ConnectionId={}",
+            self.region, self.language, connection_id
         ))
     }
 
@@ -86,7 +83,6 @@ impl AzureSpeechClient {
         sample_rate: u32,
     ) -> Result<(), String> {
         let ws_url = self.build_ws_url()?;
-        eprintln!("[azure-speech] connecting to: {}", ws_url);
 
         let mut request = IntoClientRequest::into_client_request(&ws_url)
             .map_err(|e| format!("WS request error: {}", e))?;
@@ -94,14 +90,12 @@ impl AzureSpeechClient {
         let headers = request.headers_mut();
         headers.insert(
             "Ocp-Apim-Subscription-Key",
-            self.subscription_key.parse().map_err(|e: http::header::InvalidHeaderValue| format!("Invalid key: {}", e))?,
+            self.subscription_key.parse().unwrap(),
         );
 
         let (mut ws_stream, _) = tokio_tungstenite::connect_async(request)
             .await
             .map_err(|e| format!("WS connect error: {}", e))?;
-
-        eprintln!("[azure-speech] connected, sending config");
 
         let config_msg = self.build_config_message();
         ws_stream
@@ -174,7 +168,7 @@ impl AzureSpeechClient {
                     }
                     Ok(Message::Close(_)) => break,
                     Err(e) => {
-                        eprintln!("[azure-speech] WS receive error: {}", e);
+                        eprintln!("WS receive error: {}", e);
                         break;
                     }
                     _ => {}

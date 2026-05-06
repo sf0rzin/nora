@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:* ws://localhost:*; connect-src 'self' http://localhost:* http://127.0.0.1:* https://*.cognitive.microsoft.com wss://*.cognitive.microsoft.com"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:* ws://localhost:*; connect-src 'self' http://localhost:* http://127.0.0.1:* https://*.microsoft.com wss://*.microsoft.com"
     }
   },
   "bundle": {
