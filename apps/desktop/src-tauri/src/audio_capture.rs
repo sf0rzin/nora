@@ -24,6 +24,7 @@ pub struct RecordingStatus {
 #[derive(Default)]
 pub struct AudioCapture {
     recording: Arc<AtomicBool>,
+    audio_sender: Arc<Mutex<Option<tokio::sync::mpsc::Sender<Vec<f32>>>>>,
 }
 
 unsafe impl Send for AudioCapture {}
@@ -33,6 +34,7 @@ impl AudioCapture {
     pub fn new() -> Self {
         Self {
             recording: Arc::new(AtomicBool::new(false)),
+            audio_sender: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -48,9 +50,14 @@ impl AudioCapture {
         &self,
         app_handle: AppHandle,
         device_name: Option<String>,
+        sender: Option<tokio::sync::mpsc::Sender<Vec<f32>>>,
     ) -> Result<RecordingStatus, String> {
         if self.recording.load(Ordering::SeqCst) {
             return Err("Already recording".into());
+        }
+
+        if let Some(s) = sender {
+            *self.audio_sender.lock().unwrap() = Some(s);
         }
 
         let host = cpal::default_host();
@@ -86,6 +93,7 @@ impl AudioCapture {
         let buffer: Arc<Mutex<Vec<f32>>> =
             Arc::new(Mutex::new(Vec::with_capacity(chunk_size * 2)));
         let buf = buffer.clone();
+        let sender = self.audio_sender.clone();
 
         let _stream = device
             .build_input_stream(
@@ -98,6 +106,13 @@ impl AudioCapture {
                         b.extend_from_slice(data);
                         if b.len() >= chunk_size {
                             let chunk: Vec<f32> = b.drain(..chunk_size).collect();
+
+                            if let Ok(guard) = sender.lock() {
+                                if let Some(tx) = guard.as_ref() {
+                                    let _ = tx.try_send(chunk.clone());
+                                }
+                            }
+
                             let payload = AudioChunkPayload {
                                 samples: chunk,
                                 sample_rate,
@@ -130,6 +145,10 @@ impl AudioCapture {
 
     pub fn stop(&self, app_handle: AppHandle) -> Result<(), String> {
         self.recording.store(false, Ordering::SeqCst);
+
+        if let Ok(mut guard) = self.audio_sender.lock() {
+            *guard = None;
+        }
 
         let status = RecordingStatus {
             is_recording: false,

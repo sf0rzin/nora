@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod audio_capture;
+pub mod azure_speech;
 pub mod commands;
 
 use commands::CaptureState;
