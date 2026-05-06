@@ -21,7 +21,7 @@ export function RecordingPage() {
     stopRecording,
   } = useRecording({
     azureSpeechKey: localStorage.getItem("nora_azure_speech_key") || undefined,
-    azureRegion: localStorage.getItem("nora_azure_region") || undefined,
+    azureEndpoint: localStorage.getItem("nora_azure_endpoint") || undefined,
     language: "pt-BR",
   });
 

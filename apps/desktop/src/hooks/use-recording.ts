@@ -5,7 +5,7 @@ import type { TranscriptLine, RecordingStatus } from "@/lib/recording-types";
 
 interface UseRecordingOptions {
   azureSpeechKey?: string;
-  azureRegion?: string;
+  azureEndpoint?: string;
   language?: string;
 }
 
@@ -84,7 +84,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
         request: {
           deviceName: selectedDevice,
           azureSpeechKey: options.azureSpeechKey,
-          azureRegion: options.azureRegion,
+          azureEndpoint: options.azureEndpoint,
           language: options.language || "pt-BR",
         },
       });

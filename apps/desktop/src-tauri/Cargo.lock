@@ -2157,6 +2157,7 @@ dependencies = [
  "cpal",
  "futures-util",
  "hmac",
+ "http",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
