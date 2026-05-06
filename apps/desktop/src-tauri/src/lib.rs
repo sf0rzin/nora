@@ -3,6 +3,7 @@
 mod audio_capture;
 pub mod azure_speech;
 pub mod commands;
+mod http_proxy;
 
 use commands::CaptureState;
 use std::sync::{Arc, Mutex};
@@ -13,13 +14,13 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_http::init())
         .manage(capture_state)
         .invoke_handler(tauri::generate_handler![
             commands::greet,
             commands::list_audio_devices,
             commands::start_recording,
             commands::stop_recording,
+            http_proxy::http_proxy,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

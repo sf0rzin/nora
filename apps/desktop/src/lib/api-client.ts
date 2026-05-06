@@ -1,8 +1,13 @@
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { invoke } from "@tauri-apps/api/core";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+
+interface ProxyResponse {
+  status: number;
+  body: unknown;
+}
 
 interface RequestOptions {
   method?: HttpMethod;
@@ -33,65 +38,22 @@ class ApiClient {
       }
     }
 
-    const response = await tauriFetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: allHeaders,
-      body: body ? JSON.stringify(body) : undefined,
+    const response: ProxyResponse = await invoke("http_proxy", {
+      req: {
+        url: `${this.baseUrl}${path}`,
+        method,
+        headers: allHeaders,
+        body: body || null,
+      },
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        code: "UNKNOWN",
+    if (response.status >= 400) {
+      throw response.body || {
         message: `HTTP ${response.status}`,
-        traceId: "",
-        timestamp: new Date().toISOString(),
-      }));
-      throw error;
+      };
     }
 
-    if (response.status === 204) return undefined as T;
-    return response.json();
-  }
-
-  async uploadMultipart<T>(
-    path: string,
-    fields: Record<string, string | Blob>,
-    fileField: { name: string; blob: Blob; fileName: string },
-  ): Promise<T> {
-    const formData = new FormData();
-
-    for (const [key, value] of Object.entries(fields)) {
-      if (value instanceof Blob) {
-        formData.append(key, value);
-      } else {
-        formData.append(key, value);
-      }
-    }
-    formData.append(fileField.name, fileField.blob, fileField.fileName);
-
-    const token = this.getStoredToken();
-    const headers: Record<string, string> = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    const response = await tauriFetch(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers,
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        code: "UNKNOWN",
-        message: `HTTP ${response.status}`,
-        traceId: "",
-        timestamp: new Date().toISOString(),
-      }));
-      throw error;
-    }
-
-    return response.json();
+    return response.body as T;
   }
 
   getStoredToken(): string | null {

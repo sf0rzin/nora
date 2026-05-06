@@ -22,29 +22,16 @@ export async function getMeeting(meetingId: string): Promise<MeetingDetail> {
 }
 
 export async function uploadTranscript(
-  title: string,
-  startedAt: string,
-  transcriptFormat: string,
-  fileContent: Blob,
-  fileName: string,
-  extra?: {
+  _title: string,
+  _startedAt: string,
+  _transcriptFormat: string,
+  _fileContent: Blob,
+  _fileName: string,
+  _extra?: {
     endedAt?: string;
     tags?: string[];
     participants?: { displayName: string; email?: string }[];
   },
 ): Promise<unknown> {
-  const metadata = JSON.stringify({
-    title,
-    startedAt,
-    transcriptFormat,
-    ...(extra?.endedAt && { endedAt: extra.endedAt }),
-    ...(extra?.tags && { tags: extra.tags }),
-    ...(extra?.participants && { participants: extra.participants }),
-  });
-
-  return apiClient.uploadMultipart(
-    "/meetings",
-    { metadata: new Blob([metadata], { type: "application/json" }) },
-    { name: "file", blob: fileContent, fileName },
-  );
+  throw new Error("Upload via desktop not yet implemented — use the web app");
 }
