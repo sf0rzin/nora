@@ -59,7 +59,7 @@ impl AzureSpeechClient {
         let connection_id = uuid::Uuid::new_v4().to_string();
 
         Ok(format!(
-            "wss://{}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language={}&format=detailed&X-ConnectionId={}",
+            "wss://{}.api.cognitive.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language={}&format=detailed&X-ConnectionId={}",
             self.region, self.language, connection_id
         ))
     }

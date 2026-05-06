@@ -4,12 +4,12 @@ import { useAuth } from "@/hooks/use-auth";
 export function SettingsPage() {
   const { user } = useAuth();
   const [speechKey, setSpeechKey] = useState("");
-  const [region, setRegion] = useState("brazilsouth");
+  const [region, setRegion] = useState("eastus");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     const storedKey = localStorage.getItem("nora_azure_speech_key") || "";
-    const storedRegion = localStorage.getItem("nora_azure_region") || "brazilsouth";
+    const storedRegion = localStorage.getItem("nora_azure_region") || "eastus";
     setSpeechKey(storedKey);
     setRegion(storedRegion);
   }, []);
@@ -72,9 +72,9 @@ export function SettingsPage() {
                 onChange={(e) => setRegion(e.target.value)}
                 className="w-full px-3 py-2 bg-zinc-900 border border-zinc-600 rounded text-sm focus:outline-none focus:border-blue-500"
               >
-                <option value="brazilsouth">Brazil South</option>
                 <option value="eastus">East US</option>
                 <option value="eastus2">East US 2</option>
+                <option value="brazilsouth">Brazil South</option>
                 <option value="westus2">West US 2</option>
                 <option value="westeurope">West Europe</option>
               </select>
