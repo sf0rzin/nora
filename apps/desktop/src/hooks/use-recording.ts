@@ -18,6 +18,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -28,6 +29,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
         is_final: boolean;
         speaker: string | null;
       };
+
+      console.log("[recording] transcript event:", payload);
 
       if (payload.is_final) {
         setTranscriptLines((prev) => [
@@ -48,6 +51,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
     const unlistenStatus = listen<RecordingStatus>("recording-status", (event) => {
       const s = event.payload;
+      console.log("[recording] status event:", s);
       setIsRecording(s.is_recording);
       setDeviceName(s.device_name);
       setSampleRate(s.sample_rate);
@@ -61,45 +65,58 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
   const loadDevices = useCallback(async () => {
     try {
+      console.log("[recording] loading devices...");
       const list = await invoke<string[]>("list_audio_devices");
+      console.log("[recording] devices:", list);
       setDevices(list);
     } catch (e) {
-      console.error("Failed to list devices:", e);
+      console.error("[recording] failed to list devices:", e);
     }
   }, []);
 
   const startRecording = useCallback(async () => {
+    console.log("[recording] startRecording called");
+    setError(null);
     setTranscriptLines([]);
     setPartialText("");
     setDuration(0);
-    startTimeRef.current = Date.now();
-    timerRef.current = setInterval(() => {
-      if (startTimeRef.current) {
-        setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
-      }
-    }, 1000);
+
+    const req = {
+      deviceName: selectedDevice,
+      azureSpeechKey: options.azureSpeechKey,
+      azureRegion: options.azureRegion,
+      language: options.language || "pt-BR",
+    };
+    console.log("[recording] invoke start_recording with:", JSON.stringify(req, null, 2));
 
     try {
-      await invoke("start_recording", {
-        request: {
-          deviceName: selectedDevice,
-          azureSpeechKey: options.azureSpeechKey,
-          azureRegion: options.azureRegion,
-          language: options.language || "pt-BR",
-        },
-      });
+      const result = await invoke<RecordingStatus>("start_recording", { request: req });
+      console.log("[recording] start_recording result:", result);
+
+      setIsRecording(true);
+      setDeviceName(result.device_name);
+      setSampleRate(result.sample_rate);
+      startTimeRef.current = Date.now();
+      timerRef.current = setInterval(() => {
+        if (startTimeRef.current) {
+          setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        }
+      }, 1000);
     } catch (e) {
-      console.error("Failed to start recording:", e);
+      console.error("[recording] start_recording FAILED:", e);
+      setError(String(e));
       setIsRecording(false);
-      if (timerRef.current) clearInterval(timerRef.current);
     }
   }, [selectedDevice, options]);
 
   const stopRecording = useCallback(async () => {
+    console.log("[recording] stopRecording called");
     try {
       await invoke("stop_recording");
+      console.log("[recording] stop_recording ok");
     } catch (e) {
-      console.error("Failed to stop recording:", e);
+      console.error("[recording] stop_recording FAILED:", e);
+      setError(String(e));
     }
     if (timerRef.current) clearInterval(timerRef.current);
     setIsRecording(false);
@@ -127,6 +144,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     selectedDevice,
     setSelectedDevice,
     duration,
+    error,
     startRecording,
     stopRecording,
     loadDevices,

@@ -8,6 +8,12 @@ function formatDuration(seconds: number): string {
 }
 
 export function RecordingPage() {
+  const azureSpeechKey = localStorage.getItem("nora_azure_speech_key") || undefined;
+  const azureRegion = localStorage.getItem("nora_azure_region") || undefined;
+
+  console.log("[recording-page] azureSpeechKey:", azureSpeechKey ? `present (${azureSpeechKey.length} chars)` : "MISSING");
+  console.log("[recording-page] azureRegion:", azureRegion || "MISSING");
+
   const {
     isRecording,
     transcriptLines,
@@ -17,11 +23,14 @@ export function RecordingPage() {
     selectedDevice,
     setSelectedDevice,
     duration,
+    error,
+    deviceName,
+    sampleRate,
     startRecording,
     stopRecording,
   } = useRecording({
-    azureSpeechKey: localStorage.getItem("nora_azure_speech_key") || undefined,
-    azureRegion: localStorage.getItem("nora_azure_region") || undefined,
+    azureSpeechKey,
+    azureRegion,
     language: "pt-BR",
   });
 
@@ -31,6 +40,18 @@ export function RecordingPage() {
     <div className="flex-1 overflow-auto p-6">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-xl font-bold mb-4">Captura ao Vivo</h1>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded text-sm text-red-300">
+            {error}
+          </div>
+        )}
+
+        {isRecording && (
+          <div className="mb-4 p-3 bg-green-900/30 border border-green-800 rounded text-sm text-green-300">
+            Gravando... Dispositivo: {deviceName} | Sample rate: {sampleRate}Hz
+          </div>
+        )}
 
         <div className="mb-4 flex items-center gap-4">
           <input

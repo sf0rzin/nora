@@ -1,79 +1,28 @@
-use futures_util::{SinkExt, StreamExt};
-use serde::Deserialize;
-use std::sync::Arc;
+use azure_speech::recognizer::{self, AudioDevice};
+use azure_speech::Auth;
 use tauri::{AppHandle, Emitter};
-use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
+use tokio_stream::StreamExt;
 
 #[derive(Debug, serde::Serialize, Clone)]
 pub struct TranscriptEvent {
     pub text: String,
     pub is_final: bool,
-    pub offset_ms: u64,
-    pub duration_ms: u64,
     pub speaker: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct SpeechRecognitionResult {
-    #[serde(rename = "RecognitionStatus")]
-    status: String,
-    #[serde(rename = "NBest")]
-    n_best: Option<Vec<NBestItem>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct NBestItem {
-    #[serde(rename = "Confidence")]
-    confidence: f64,
-    #[serde(rename = "Display")]
-    display: String,
-    #[serde(rename = "Words")]
-    words: Option<Vec<WordItem>>,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct WordItem {
-    #[serde(rename = "Word")]
-    word: String,
-    #[serde(rename = "Speaker")]
-    speaker: Option<i32>,
-}
-
 pub struct AzureSpeechClient {
-    subscription_key: String,
     region: String,
+    subscription_key: String,
     language: String,
 }
 
 impl AzureSpeechClient {
-    pub fn new(subscription_key: String, region: String, language: String) -> Self {
+    pub fn new(region: String, subscription_key: String, language: String) -> Self {
         Self {
-            subscription_key,
             region,
+            subscription_key,
             language,
         }
-    }
-
-    fn build_ws_url(&self) -> Result<String, String> {
-        let connection_id = uuid::Uuid::new_v4().to_string();
-
-        Ok(format!(
-            "wss://{}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language={}&format=detailed&X-ConnectionId={}",
-            self.region, self.language, connection_id
-        ))
-    }
-
-    fn build_config_message(&self) -> String {
-        serde_json::json!({
-            "config": {
-                "context": {
-                    "system": { "version": "4.0.0" },
-                    "os": { "platform": "Desktop", "name": "NORA Desktop" }
-                }
-            }
-        })
-        .to_string()
     }
 
     pub async fn recognize_stream(
@@ -81,41 +30,54 @@ impl AzureSpeechClient {
         app_handle: AppHandle,
         mut audio_rx: tokio::sync::mpsc::Receiver<Vec<f32>>,
         sample_rate: u32,
+        channels: u16,
     ) -> Result<(), String> {
-        let ws_url = self.build_ws_url()?;
+        eprintln!("[azure-speech] connecting with region={} lang={}", self.region, self.language);
 
-        let mut request = IntoClientRequest::into_client_request(&ws_url)
-            .map_err(|e| format!("WS request error: {}", e))?;
+        let auth = Auth::from_subscription(&self.region, &self.subscription_key);
 
-        let headers = request.headers_mut();
-        headers.insert(
-            "Ocp-Apim-Subscription-Key",
-            self.subscription_key.parse().unwrap(),
-        );
+        let config = recognizer::Config::default()
+            .set_language(recognizer::Language::from(self.language.as_str()))
+            .set_output_format(recognizer::OutputFormat::Detailed);
 
-        let (mut ws_stream, _) = tokio_tungstenite::connect_async(request)
+        let client = recognizer::Client::connect(auth, config)
             .await
-            .map_err(|e| format!("WS connect error: {}", e))?;
+            .map_err(|e| format!("Azure connect error: {:?}", e))?;
 
-        let config_msg = self.build_config_message();
-        ws_stream
-            .send(Message::Text(config_msg))
-            .await
-            .map_err(|e| format!("WS send config error: {}", e))?;
+        eprintln!("[azure-speech] connected to Azure Speech");
 
-        let emit_handle = app_handle.clone();
+        let (wav_tx, wav_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1024);
 
-        let (ws_sink, ws_stream_rx) = ws_stream.split();
-        let ws_tx = Arc::new(tokio::sync::Mutex::new(ws_sink));
+        let target_sr = if sample_rate > 48000 { 16000 } else { sample_rate };
 
-        let sender = ws_tx.clone();
-        let resample_ratio = 16000.0 / sample_rate as f64;
-        let send_task = tokio::spawn(async move {
+        let wav_header = hound::WavSpec {
+            sample_rate: target_sr,
+            channels: 1,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        }
+        .into_header_for_infinite_file();
+
+        wav_tx.send(wav_header).await.map_err(|e| format!("WAV header send error: {}", e))?;
+
+        let sr = sample_rate;
+        let ch = channels;
+        let encode_task = tokio::spawn(async move {
+            let ratio = target_sr as f64 / sr as f64;
+
             while let Some(chunk) = audio_rx.recv().await {
-                let resampled = if (resample_ratio - 1.0).abs() > 0.01 {
-                    Self::resample(&chunk, resample_ratio)
+                let mono: Vec<f32> = if ch > 1 {
+                    chunk.chunks(ch as usize)
+                        .map(|frame| frame.iter().sum::<f32>() / ch as f32)
+                        .collect()
                 } else {
                     chunk
+                };
+
+                let resampled = if sr != target_sr {
+                    resample_mono(&mono, ratio)
+                } else {
+                    mono
                 };
 
                 let pcm_bytes: Vec<u8> = resampled
@@ -126,75 +88,74 @@ impl AzureSpeechClient {
                     })
                     .collect();
 
-                let mut tx = sender.lock().await;
-                if tx.send(Message::Binary(pcm_bytes)).await.is_err() {
+                if wav_tx.send(pcm_bytes).await.is_err() {
+                    eprintln!("[azure-speech] wav_tx channel closed");
                     break;
                 }
             }
-
-            let mut tx = sender.lock().await;
-            let _ = tx.send(Message::Binary(vec![])).await;
         });
 
-        let receive_task = tokio::spawn(async move {
-            let mut stream = Box::pin(ws_stream_rx);
-            while let Some(msg) = stream.next().await {
-                match msg {
-                    Ok(Message::Text(text)) => {
-                        if let Ok(result) = serde_json::from_str::<SpeechRecognitionResult>(&text) {
-                            let is_final = result.status == "Success"
-                                || result.status == "EndOfDictation";
+        let audio_stream = tokio_stream::wrappers::ReceiverStream::new(wav_rx);
 
-                            if let Some(n_best) = result.n_best {
-                                if let Some(best) = n_best.first() {
-                                    let speaker = best.words.as_ref().and_then(|words| {
-                                        words
-                                            .first()
-                                            .and_then(|w| w.speaker.map(|s| format!("Speaker {}", s)))
-                                    });
+        let mut events = client
+            .recognize(audio_stream, recognizer::AudioFormat::Wav, AudioDevice::stream())
+            .await
+            .map_err(|e| format!("Azure recognize error: {:?}", e))?;
 
-                                    let event = TranscriptEvent {
-                                        text: best.display.clone(),
-                                        is_final,
-                                        offset_ms: 0,
-                                        duration_ms: 0,
-                                        speaker,
-                                    };
+        eprintln!("[azure-speech] recognition started, waiting for events...");
 
-                                    let _ = emit_handle.emit("transcript", &event);
-                                }
-                            }
-                        }
-                    }
-                    Ok(Message::Close(_)) => break,
-                    Err(e) => {
-                        eprintln!("WS receive error: {}", e);
-                        break;
-                    }
-                    _ => {}
+        while let Some(event) = events.next().await {
+            match event {
+                Ok(recognizer::Event::Recognized(_request_id, result, _offset, _duration, _raw)) => {
+                    eprintln!("[azure-speech] RECOGNIZED: {}", result.text);
+                    let evt = TranscriptEvent {
+                        text: result.text.clone(),
+                        is_final: true,
+                        speaker: None,
+                    };
+                    let _ = app_handle.emit("transcript", &evt);
+                }
+                Ok(recognizer::Event::Recognizing(_request_id, result, _offset, _duration, _raw)) => {
+                    eprintln!("[azure-speech] RECOGNIZING: {}", result.text);
+                    let evt = TranscriptEvent {
+                        text: result.text.clone(),
+                        is_final: false,
+                        speaker: None,
+                    };
+                    let _ = app_handle.emit("transcript", &evt);
+                }
+                Ok(recognizer::Event::SessionStarted(_request_id)) => {
+                    eprintln!("[azure-speech] session started");
+                }
+                Ok(other) => {
+                    eprintln!("[azure-speech] other event: {:?}", other);
+                }
+                Err(e) => {
+                    eprintln!("[azure-speech] stream error: {:?}", e);
+                    break;
                 }
             }
-        });
+        }
 
-        let _ = send_task.await;
-        let _ = receive_task.await;
+        encode_task.abort();
 
+        eprintln!("[azure-speech] recognition ended");
         Ok(())
     }
+}
 
-    fn resample(samples: &[f32], ratio: f64) -> Vec<f32> {
-        let new_len = (samples.len() as f64 * ratio) as usize;
-        let mut result = Vec::with_capacity(new_len);
-        for i in 0..new_len {
-            let src_idx = i as f64 / ratio;
-            let idx = src_idx as usize;
-            if idx + 1 < samples.len() {
-                let frac = src_idx - idx as f64;
-                result.push(samples[idx] * (1.0 - frac) as f32 + samples[idx + 1] * frac as f32);
-            } else if idx < samples.len() {
-                result.push(samples[idx]);
-            }
+fn resample_mono(samples: &[f32], ratio: f64) -> Vec<f32> {
+    let new_len = (samples.len() as f64 * ratio) as usize;
+    let mut result = Vec::with_capacity(new_len);
+    for i in 0..new_len {
+        let src_idx = i as f64 / ratio;
+        let idx = src_idx as usize;
+        if idx + 1 < samples.len() {
+            let frac = src_idx - idx as f64;
+            result.push(samples[idx] * (1.0 - frac) as f32 + samples[idx + 1] * frac as f32);
+        } else if idx < samples.len() {
+            result.push(samples[idx]);
         }
-        result
     }
+    result
 }
