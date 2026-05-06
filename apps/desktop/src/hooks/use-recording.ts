@@ -7,6 +7,8 @@ interface UseRecordingOptions {
   azureSpeechKey?: string;
   azureRegion?: string;
   language?: string;
+  captureSystemAudio?: boolean;
+  systemAudioDevice?: string | null;
 }
 
 export function useRecording(options: UseRecordingOptions = {}) {
@@ -86,6 +88,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
       azureSpeechKey: options.azureSpeechKey,
       azureRegion: options.azureRegion,
       language: options.language || "pt-BR",
+      captureSystemAudio: options.captureSystemAudio ?? false,
+      systemAudioDevice: options.systemAudioDevice ?? null,
     };
     console.log("[recording] invoke start_recording with:", JSON.stringify(req, null, 2));
 

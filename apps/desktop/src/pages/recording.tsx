@@ -8,6 +8,10 @@ function formatDuration(seconds: number): string {
 }
 
 export function RecordingPage() {
+  const [meetingTitle, setMeetingTitle] = useState("");
+  const [captureSystemAudio, setCaptureSystemAudio] = useState(true);
+  const [systemAudioDevice, setSystemAudioDevice] = useState<string | null>(null);
+
   const azureSpeechKey = localStorage.getItem("nora_azure_speech_key") || undefined;
   const azureRegion = localStorage.getItem("nora_azure_region") || undefined;
 
@@ -31,10 +35,10 @@ export function RecordingPage() {
   } = useRecording({
     azureSpeechKey,
     azureRegion,
+    captureSystemAudio,
+    systemAudioDevice,
     language: "pt-BR",
   });
-
-  const [meetingTitle, setMeetingTitle] = useState("");
 
   return (
     <div className="flex-1 overflow-auto p-6">
@@ -75,6 +79,35 @@ export function RecordingPage() {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="mb-6 flex items-center gap-6">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={captureSystemAudio}
+              onChange={(e) => setCaptureSystemAudio(e.target.checked)}
+              disabled={isRecording}
+              className="w-4 h-4 rounded"
+            />
+            <span className="text-zinc-300">Capturar áudio do sistema</span>
+          </label>
+
+          {captureSystemAudio && (
+            <select
+              value={systemAudioDevice || ""}
+              onChange={(e) => setSystemAudioDevice(e.target.value || null)}
+              disabled={isRecording}
+              className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm focus:outline-none disabled:opacity-50"
+            >
+              <option value="">Auto-detectar monitor</option>
+              {devices.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div className="flex items-center gap-4 mb-6">
