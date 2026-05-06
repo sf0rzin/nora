@@ -18,6 +18,8 @@ pub struct ProxyResponse {
 
 #[tauri::command]
 pub async fn http_proxy(req: ProxyRequest) -> Result<ProxyResponse, String> {
+    eprintln!("[http_proxy] {} {}", req.method.as_deref().unwrap_or("GET"), req.url);
+
     let client = Client::new();
     let method = req.method.unwrap_or_else(|| "GET".into());
 
@@ -28,18 +30,26 @@ pub async fn http_proxy(req: ProxyRequest) -> Result<ProxyResponse, String> {
         _ => client.get(&req.url),
     };
 
-    if let Some(headers) = req.headers {
+    if let Some(headers) = &req.headers {
         for (k, v) in headers {
-            builder = builder.header(&k, &v);
+            builder = builder.header(k.as_str(), v.as_str());
         }
     }
 
     if let Some(body) = req.body {
-        builder = builder.json(&body);
+        if !body.is_null() {
+            builder = builder.json(&body);
+        }
     }
 
-    let response = builder.send().await.map_err(|e| format!("Request failed: {}", e))?;
+    let response = builder.send().await.map_err(|e| {
+        eprintln!("[http_proxy] send error: {}", e);
+        format!("Request failed: {}", e)
+    })?;
+
     let status = response.status().as_u16();
+    eprintln!("[http_proxy] response status: {}", status);
+
     let body: serde_json::Value = response.json().await.unwrap_or(serde_json::Value::Null);
 
     Ok(ProxyResponse { status, body })

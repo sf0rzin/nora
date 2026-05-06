@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { login } from "@/lib/auth";
 
 export function LoginPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, login: setAuthUser } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -20,12 +20,13 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      await login({ email, password });
+      const user = await login({ email, password });
+      setAuthUser(user);
       window.location.hash = "#/meetings";
     } catch (err: unknown) {
       console.error("Login error:", err);
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg || "Erro ao fazer login. Verifique suas credenciais.");
+      const msg = err instanceof Error ? err.message : JSON.stringify(err);
+      setError(msg || "Erro ao fazer login.");
     } finally {
       setLoading(false);
     }

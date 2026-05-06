@@ -38,19 +38,27 @@ class ApiClient {
       }
     }
 
-    const response: ProxyResponse = await invoke("http_proxy", {
-      req: {
-        url: `${this.baseUrl}${path}`,
-        method,
-        headers: allHeaders,
-        body: body || null,
-      },
-    });
+    const payload = {
+      url: `${this.baseUrl}${path}`,
+      method,
+      headers: allHeaders,
+      body: body ?? null,
+    };
+
+    console.log("[api] invoking http_proxy:", method, path);
+
+    let response: ProxyResponse;
+    try {
+      response = await invoke<ProxyResponse>("http_proxy", { req: payload });
+    } catch (err) {
+      console.error("[api] invoke failed:", err);
+      throw err;
+    }
+
+    console.log("[api] response:", response.status, response.body);
 
     if (response.status >= 400) {
-      throw response.body || {
-        message: `HTTP ${response.status}`,
-      };
+      throw response.body || { message: `HTTP ${response.status}` };
     }
 
     return response.body as T;

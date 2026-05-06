@@ -10,7 +10,7 @@ function parseJwtRoles(token: string): string[] {
   }
 }
 
-export async function login(req: LoginRequest): Promise<LoginResponse> {
+export async function login(req: LoginRequest): Promise<SessionUser> {
   const response = await apiClient.request<LoginResponse>("/auth/login", {
     method: "POST",
     body: req,
@@ -30,7 +30,7 @@ export async function login(req: LoginRequest): Promise<LoginResponse> {
   apiClient.setStoredToken(response.accessToken);
   apiClient.setStoredUser(user);
 
-  return response;
+  return user;
 }
 
 export function logout(): void {
