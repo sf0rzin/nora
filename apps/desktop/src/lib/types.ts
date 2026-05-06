@@ -6,8 +6,11 @@ export interface LoginRequest {
 export interface LoginResponse {
   accessToken: string;
   tokenType: string;
-  expiresIn: number;
-  user: SessionUser;
+  expiresInSeconds: number;
+  userId: string;
+  tenantId: string;
+  email: string;
+  displayName: string;
 }
 
 export interface SessionUser {
@@ -16,13 +19,6 @@ export interface SessionUser {
   displayName: string;
   tenantId: string;
   roles: string[];
-  scope: AccessScope;
-}
-
-export interface AccessScope {
-  type: "ALL_TENANT" | "OWN_MEETINGS" | "TEAMS" | "REGIONS";
-  teamIds?: string[];
-  regionIds?: string[];
 }
 
 export interface MeetingSummary {

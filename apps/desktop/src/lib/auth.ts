@@ -1,6 +1,15 @@
 import { apiClient } from "./api-client";
 import type { LoginRequest, LoginResponse, SessionUser } from "./types";
 
+function parseJwtRoles(token: string): string[] {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.roles || [];
+  } catch {
+    return [];
+  }
+}
+
 export async function login(req: LoginRequest): Promise<LoginResponse> {
   const response = await apiClient.request<LoginResponse>("/auth/login", {
     method: "POST",
@@ -8,8 +17,18 @@ export async function login(req: LoginRequest): Promise<LoginResponse> {
     auth: false,
   });
 
+  const roles = parseJwtRoles(response.accessToken);
+
+  const user: SessionUser = {
+    id: response.userId,
+    email: response.email,
+    displayName: response.displayName,
+    tenantId: response.tenantId,
+    roles,
+  };
+
   apiClient.setStoredToken(response.accessToken);
-  apiClient.setStoredUser(response.user);
+  apiClient.setStoredUser(user);
 
   return response;
 }
