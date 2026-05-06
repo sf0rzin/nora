@@ -4,6 +4,7 @@ import { LoginPage } from "@/pages/login";
 import { MeetingsPage } from "@/pages/meetings";
 import { MeetingDetailPage } from "@/pages/meeting-detail";
 import { RecordingPage } from "@/pages/recording";
+import { SettingsPage } from "@/pages/settings";
 import { useState, useEffect } from "react";
 
 function Router() {
@@ -30,6 +31,7 @@ function Router() {
 
   const renderPage = () => {
     if (route === "#/recording") return <RecordingPage />;
+    if (route === "#/settings") return <SettingsPage />;
     const detailMatch = route?.match(/^#\/meetings\/([\w-]+)$/);
     if (detailMatch) return <MeetingDetailPage meetingId={detailMatch[1]} />;
     return <MeetingsPage />;
