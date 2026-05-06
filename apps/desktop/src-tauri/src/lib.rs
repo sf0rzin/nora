@@ -4,6 +4,7 @@ mod audio_capture;
 pub mod azure_speech;
 pub mod commands;
 mod http_proxy;
+mod system_audio;
 
 use commands::CaptureState;
 use std::sync::{Arc, Mutex};

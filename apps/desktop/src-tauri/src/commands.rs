@@ -23,6 +23,8 @@ pub struct StartRecordingRequest {
     pub azure_speech_key: Option<String>,
     pub azure_region: Option<String>,
     pub language: Option<String>,
+    pub capture_system_audio: Option<bool>,
+    pub system_audio_device: Option<String>,
 }
 
 #[tauri::command]
@@ -36,6 +38,8 @@ pub async fn start_recording(
     eprintln!("[commands] azure_region: {:?}", request.azure_region);
     eprintln!("[commands] azure_key present: {}", request.azure_speech_key.is_some());
     eprintln!("[commands] language: {:?}", request.language);
+    eprintln!("[commands] capture_system_audio: {:?}", request.capture_system_audio);
+    eprintln!("[commands] system_audio_device: {:?}", request.system_audio_device);
 
     let (tx, rx) = tokio::sync::mpsc::channel::<Vec<f32>>(100);
 
@@ -45,7 +49,13 @@ pub async fn start_recording(
     })?;
 
     eprintln!("[commands] calling capture.start()...");
-    let status = capture.start(app_handle.clone(), request.device_name.clone(), Some(tx)).map_err(|e| {
+    let status = capture.start(
+        app_handle.clone(),
+        request.device_name.clone(),
+        request.capture_system_audio.unwrap_or(false),
+        request.system_audio_device.clone(),
+        Some(tx),
+    ).map_err(|e| {
         eprintln!("[commands] capture.start FAILED: {}", e);
         e
     })?;
