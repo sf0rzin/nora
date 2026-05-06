@@ -1,3 +1,5 @@
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
@@ -31,7 +33,7 @@ class ApiClient {
       }
     }
 
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const response = await tauriFetch(`${this.baseUrl}${path}`, {
       method,
       headers: allHeaders,
       body: body ? JSON.stringify(body) : undefined,
@@ -73,7 +75,7 @@ class ApiClient {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const response = await tauriFetch(`${this.baseUrl}${path}`, {
       method: "POST",
       headers,
       body: formData,
