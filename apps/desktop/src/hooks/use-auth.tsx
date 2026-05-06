@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import type { SessionUser } from "@/lib/types";
 import { getCurrentUser, isAuthenticated, logout as doLogout } from "@/lib/auth";
+import { apiClient } from "@/lib/api-client";
 
 interface AuthState {
   user: SessionUser | null;
@@ -40,6 +41,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     doLogout();
     setUser(null);
   };
+
+  useEffect(() => {
+    apiClient.on401(logout);
+  }, []);
 
   return (
     <AuthContext.Provider

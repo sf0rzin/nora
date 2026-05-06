@@ -1,13 +1,23 @@
 import { apiClient } from "./api-client";
 import type { LoginRequest, LoginResponse, SessionUser } from "./types";
 
-function parseJwtRoles(token: string): string[] {
+function parseJwtPayload(token: string): Record<string, unknown> | null {
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
-    return payload.roles || [];
+    return JSON.parse(atob(token.split(".")[1]));
   } catch {
-    return [];
+    return null;
   }
+}
+
+function parseJwtRoles(token: string): string[] {
+  const payload = parseJwtPayload(token);
+  return (payload?.roles as string[]) || [];
+}
+
+function isTokenExpired(token: string): boolean {
+  const payload = parseJwtPayload(token);
+  if (!payload || typeof payload.exp !== "number") return true;
+  return payload.exp * 1000 < Date.now();
 }
 
 export async function login(req: LoginRequest): Promise<SessionUser> {
@@ -42,5 +52,11 @@ export function getCurrentUser(): SessionUser | null {
 }
 
 export function isAuthenticated(): boolean {
-  return !!apiClient.getStoredToken();
+  const token = apiClient.getStoredToken();
+  if (!token) return false;
+  if (isTokenExpired(token)) {
+    apiClient.clearStoredToken();
+    return false;
+  }
+  return true;
 }

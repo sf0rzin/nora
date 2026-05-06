@@ -4,6 +4,7 @@ use tauri::{AppHandle, Emitter};
 use tokio_stream::StreamExt;
 
 #[derive(Debug, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct TranscriptEvent {
     pub text: String,
     pub is_final: bool,
@@ -25,6 +26,16 @@ impl AzureSpeechClient {
         }
     }
 
+    pub async fn test_connection(&self) -> Result<(), String> {
+        let auth = Auth::from_subscription(&self.region, &self.subscription_key);
+        let config = recognizer::Config::default()
+            .set_language(recognizer::Language::from(self.language.as_str()));
+        let _client = recognizer::Client::connect(auth, config)
+            .await
+            .map_err(|e| format!("Azure connect error: {:?}", e))?;
+        Ok(())
+    }
+
     pub async fn recognize_stream(
         &self,
         app_handle: AppHandle,
@@ -32,6 +43,7 @@ impl AzureSpeechClient {
         sample_rate: u32,
         channels: u16,
     ) -> Result<(), String> {
+        #[cfg(debug_assertions)]
         eprintln!("[azure-speech] connecting with region={} lang={}", self.region, self.language);
 
         let auth = Auth::from_subscription(&self.region, &self.subscription_key);
@@ -44,11 +56,12 @@ impl AzureSpeechClient {
             .await
             .map_err(|e| format!("Azure connect error: {:?}", e))?;
 
+        #[cfg(debug_assertions)]
         eprintln!("[azure-speech] connected to Azure Speech");
 
         let (wav_tx, wav_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1024);
 
-        let target_sr = if sample_rate > 48000 { 16000 } else { sample_rate };
+        let target_sr: u32 = 16000;
 
         let wav_header = hound::WavSpec {
             sample_rate: target_sr,
@@ -89,6 +102,7 @@ impl AzureSpeechClient {
                     .collect();
 
                 if wav_tx.send(pcm_bytes).await.is_err() {
+                    #[cfg(debug_assertions)]
                     eprintln!("[azure-speech] wav_tx channel closed");
                     break;
                 }
@@ -102,11 +116,13 @@ impl AzureSpeechClient {
             .await
             .map_err(|e| format!("Azure recognize error: {:?}", e))?;
 
+        #[cfg(debug_assertions)]
         eprintln!("[azure-speech] recognition started, waiting for events...");
 
         while let Some(event) = events.next().await {
             match event {
                 Ok(recognizer::Event::Recognized(_request_id, result, _offset, _duration, _raw)) => {
+                    #[cfg(debug_assertions)]
                     eprintln!("[azure-speech] RECOGNIZED: {}", result.text);
                     let evt = TranscriptEvent {
                         text: result.text.clone(),
@@ -116,6 +132,7 @@ impl AzureSpeechClient {
                     let _ = app_handle.emit("transcript", &evt);
                 }
                 Ok(recognizer::Event::Recognizing(_request_id, result, _offset, _duration, _raw)) => {
+                    #[cfg(debug_assertions)]
                     eprintln!("[azure-speech] RECOGNIZING: {}", result.text);
                     let evt = TranscriptEvent {
                         text: result.text.clone(),
@@ -125,12 +142,15 @@ impl AzureSpeechClient {
                     let _ = app_handle.emit("transcript", &evt);
                 }
                 Ok(recognizer::Event::SessionStarted(_request_id)) => {
+                    #[cfg(debug_assertions)]
                     eprintln!("[azure-speech] session started");
                 }
                 Ok(other) => {
+                    #[cfg(debug_assertions)]
                     eprintln!("[azure-speech] other event: {:?}", other);
                 }
                 Err(e) => {
+                    #[cfg(debug_assertions)]
                     eprintln!("[azure-speech] stream error: {:?}", e);
                     break;
                 }
@@ -139,6 +159,7 @@ impl AzureSpeechClient {
 
         encode_task.abort();
 
+        #[cfg(debug_assertions)]
         eprintln!("[azure-speech] recognition ended");
         Ok(())
     }

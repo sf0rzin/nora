@@ -17,7 +17,6 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(capture_state)
         .invoke_handler(tauri::generate_handler![
-            commands::greet,
             commands::list_audio_devices,
             commands::start_recording,
             commands::stop_recording,

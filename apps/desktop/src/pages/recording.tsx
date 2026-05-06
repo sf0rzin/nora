@@ -15,9 +15,6 @@ export function RecordingPage() {
   const azureSpeechKey = localStorage.getItem("nora_azure_speech_key") || undefined;
   const azureRegion = localStorage.getItem("nora_azure_region") || undefined;
 
-  console.log("[recording-page] azureSpeechKey:", azureSpeechKey ? `present (${azureSpeechKey.length} chars)` : "MISSING");
-  console.log("[recording-page] azureRegion:", azureRegion || "MISSING");
-
   const {
     isRecording,
     transcriptLines,

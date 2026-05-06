@@ -25,16 +25,14 @@ export function useRecording(options: UseRecordingOptions = {}) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    const unlisten = listen<TranscriptLine>("transcript", (event) => {
-      const payload = event.payload as unknown as {
+    const unlisten = listen<unknown>("transcript", (event) => {
+      const payload = event.payload as {
         text: string;
-        is_final: boolean;
+        isFinal: boolean;
         speaker: string | null;
       };
 
-      console.log("[recording] transcript event:", payload);
-
-      if (payload.is_final) {
+      if (payload.isFinal) {
         setTranscriptLines((prev) => [
           ...prev,
           {
@@ -53,7 +51,6 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
     const unlistenStatus = listen<RecordingStatus>("recording-status", (event) => {
       const s = event.payload;
-      console.log("[recording] status event:", s);
       setIsRecording(s.is_recording);
       setDeviceName(s.device_name);
       setSampleRate(s.sample_rate);
@@ -67,9 +64,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
   const loadDevices = useCallback(async () => {
     try {
-      console.log("[recording] loading devices...");
       const list = await invoke<string[]>("list_audio_devices");
-      console.log("[recording] devices:", list);
       setDevices(list);
     } catch (e) {
       console.error("[recording] failed to list devices:", e);
@@ -77,7 +72,6 @@ export function useRecording(options: UseRecordingOptions = {}) {
   }, []);
 
   const startRecording = useCallback(async () => {
-    console.log("[recording] startRecording called");
     setError(null);
     setTranscriptLines([]);
     setPartialText("");
@@ -91,11 +85,9 @@ export function useRecording(options: UseRecordingOptions = {}) {
       captureSystemAudio: options.captureSystemAudio ?? false,
       systemAudioDevice: options.systemAudioDevice ?? null,
     };
-    console.log("[recording] invoke start_recording with:", JSON.stringify(req, null, 2));
 
     try {
       const result = await invoke<RecordingStatus>("start_recording", { request: req });
-      console.log("[recording] start_recording result:", result);
 
       setIsRecording(true);
       setDeviceName(result.device_name);
@@ -114,10 +106,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
   }, [selectedDevice, options]);
 
   const stopRecording = useCallback(async () => {
-    console.log("[recording] stopRecording called");
     try {
       await invoke("stop_recording");
-      console.log("[recording] stop_recording ok");
     } catch (e) {
       console.error("[recording] stop_recording FAILED:", e);
       setError(String(e));

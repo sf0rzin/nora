@@ -1,6 +1,12 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+fn http_client() -> &'static Client {
+    static CLIENT: OnceLock<Client> = OnceLock::new();
+    CLIENT.get_or_init(Client::new)
+}
 
 #[derive(Deserialize)]
 pub struct ProxyRequest {
@@ -18,9 +24,10 @@ pub struct ProxyResponse {
 
 #[tauri::command]
 pub async fn http_proxy(req: ProxyRequest) -> Result<ProxyResponse, String> {
+    #[cfg(debug_assertions)]
     eprintln!("[http_proxy] {} {}", req.method.as_deref().unwrap_or("GET"), req.url);
 
-    let client = Client::new();
+    let client = http_client();
     let method = req.method.unwrap_or_else(|| "GET".into());
 
     let mut builder = match method.as_str() {
@@ -43,11 +50,13 @@ pub async fn http_proxy(req: ProxyRequest) -> Result<ProxyResponse, String> {
     }
 
     let response = builder.send().await.map_err(|e| {
+        #[cfg(debug_assertions)]
         eprintln!("[http_proxy] send error: {}", e);
         format!("Request failed: {}", e)
     })?;
 
     let status = response.status().as_u16();
+    #[cfg(debug_assertions)]
     eprintln!("[http_proxy] response status: {}", status);
 
     let body: serde_json::Value = response.json().await.unwrap_or(serde_json::Value::Null);

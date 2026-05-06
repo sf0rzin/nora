@@ -7,13 +7,6 @@ use tauri::{AppHandle, Emitter};
 use crate::system_audio;
 
 #[derive(Debug, serde::Serialize, Clone)]
-pub struct AudioChunkPayload {
-    pub samples: Vec<f32>,
-    pub sample_rate: u32,
-    pub channels: u16,
-}
-
-#[derive(Debug, serde::Serialize, Clone)]
 pub struct RecordingStatus {
     pub is_recording: bool,
     pub device_name: String,
@@ -21,15 +14,17 @@ pub struct RecordingStatus {
     pub channels: u16,
 }
 
+#[allow(dead_code)]
+struct SendStream(cpal::Stream);
+unsafe impl Send for SendStream {}
+
 pub struct AudioCapture {
     recording: Arc<AtomicBool>,
     audio_sender: Arc<Mutex<Option<tokio::sync::mpsc::Sender<Vec<f32>>>>>,
     system_audio_buffer: Arc<Mutex<Vec<f32>>>,
     system_audio_capture: Arc<Mutex<Option<system_audio::SystemAudioCapture>>>,
+    mic_stream: Mutex<Option<SendStream>>,
 }
-
-unsafe impl Send for AudioCapture {}
-unsafe impl Sync for AudioCapture {}
 
 impl AudioCapture {
     pub fn new() -> Self {
@@ -38,6 +33,7 @@ impl AudioCapture {
             audio_sender: Arc::new(Mutex::new(None)),
             system_audio_buffer: Arc::new(Mutex::new(Vec::new())),
             system_audio_capture: Arc::new(Mutex::new(None)),
+            mic_stream: Mutex::new(None),
         }
     }
 
@@ -60,12 +56,14 @@ impl AudioCapture {
             return Err("No supported F32 audio config found".to_string());
         }
 
+        // Prefer 16kHz native to avoid resampling entirely
         if let Some(c) = supported_configs
             .iter()
             .find(|c| c.min_sample_rate().0 <= 16000 && c.max_sample_rate().0 >= 16000)
         {
             return Ok(c.clone().with_sample_rate(cpal::SampleRate(16000)).config());
         }
+        // Fallback to 48kHz (common on desktops, good quality)
         if let Some(c) = supported_configs
             .iter()
             .find(|c| c.min_sample_rate().0 <= 48000 && c.max_sample_rate().0 >= 48000)
@@ -80,9 +78,10 @@ impl AudioCapture {
         app_handle: AppHandle,
         device_name: Option<String>,
         capture_system_audio: bool,
-        _system_audio_device_name: Option<String>,
+        system_audio_device_name: Option<String>,
         sender: Option<tokio::sync::mpsc::Sender<Vec<f32>>>,
     ) -> Result<RecordingStatus, String> {
+        #[cfg(debug_assertions)]
         eprintln!("[audio] start() called, capture_system_audio={}", capture_system_audio);
 
         if self.recording.load(Ordering::SeqCst) {
@@ -90,7 +89,9 @@ impl AudioCapture {
         }
 
         if let Some(s) = sender {
-            *self.audio_sender.lock().unwrap() = Some(s);
+            if let Ok(mut guard) = self.audio_sender.lock() {
+                *guard = Some(s);
+            }
         }
 
         let host = cpal::default_host();
@@ -109,16 +110,17 @@ impl AudioCapture {
         };
 
         let actual_name = device.name().unwrap_or_else(|_| "Unknown".into());
+        #[cfg(debug_assertions)]
         eprintln!("[audio] mic device: {}", actual_name);
 
         let config = Self::find_best_config(&device)?;
         let sample_rate = config.sample_rate.0;
         let channels = config.channels;
+        #[cfg(debug_assertions)]
         eprintln!("[audio] mic config: sr={}, ch={}", sample_rate, channels);
 
         self.recording.store(true, Ordering::SeqCst);
         let flag = self.recording.clone();
-        let emit_handle = app_handle.clone();
 
         let chunk_size = (sample_rate as usize / 10) * channels as usize;
         let mic_buf: Arc<Mutex<Vec<f32>>> =
@@ -127,7 +129,7 @@ impl AudioCapture {
         let sender = self.audio_sender.clone();
         let sys_buf = self.system_audio_buffer.clone();
 
-        let _mic_stream = device
+        let mic_stream = device
             .build_input_stream(
                 &config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
@@ -142,56 +144,78 @@ impl AudioCapture {
                             if let Ok(mut sys) = sys_buf.lock() {
                                 let mix_len = chunk.len().min(sys.len());
                                 for i in 0..mix_len {
-                                    chunk[i] = chunk[i] + sys[i];
+                                    let mixed = chunk[i] + sys[i];
+                                    // Clamp to avoid clipping/distortion
+                                    chunk[i] = mixed.clamp(-1.0, 1.0);
                                 }
                                 if mix_len > 0 {
                                     sys.drain(..mix_len);
+                                }
+                                // Prevent system buffer from growing unbounded during mic pauses
+                                let max_sys_samples = (sample_rate as usize / 10) * 20;
+                                if sys.len() > max_sys_samples {
+                                    let excess = sys.len() - max_sys_samples;
+                                    sys.drain(..excess);
                                 }
                             }
 
                             if let Ok(guard) = sender.lock() {
                                 if let Some(tx) = guard.as_ref() {
-                                    let _ = tx.try_send(chunk.clone());
+                                    let _ = tx.try_send(chunk);
                                 }
                             }
-
-                            let payload = AudioChunkPayload {
-                                samples: chunk,
-                                sample_rate,
-                                channels,
-                            };
-                            let _ = emit_handle.emit("audio-chunk", &payload);
                         }
                     }
                 },
-                |err| eprintln!("[audio] mic stream error: {}", err),
+                |err| {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[audio] mic stream error: {}", err)
+                },
                 None,
             )
             .map_err(|e| format!("Mic stream build error: {}", e))?;
 
-        _mic_stream.play().map_err(|e| format!("Mic stream play error: {}", e))?;
+        mic_stream.play().map_err(|e| format!("Mic stream play error: {}", e))?;
+        #[cfg(debug_assertions)]
         eprintln!("[audio] mic stream playing!");
+
+        // Store stream so it gets dropped on stop (no leak)
+        if let Ok(mut guard) = self.mic_stream.lock() {
+            *guard = Some(SendStream(mic_stream));
+        }
 
         let mut system_audio_display_name = String::new();
 
         if capture_system_audio {
-            if let Some(source) = system_audio::find_system_audio_source() {
+            let source = system_audio_device_name
+                .as_deref()
+                .and_then(|name| {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[audio] using explicit system audio device: {}", name);
+                    Some(name.to_string())
+                })
+                .or_else(|| system_audio::find_system_audio_source());
+
+            if let Some(source) = source {
                 let sys_buf_clone = self.system_audio_buffer.clone();
                 let flag_clone = self.recording.clone();
 
-                if let Some(capture) = system_audio::SystemAudioCapture::start(&source, sys_buf_clone, flag_clone) {
+                if let Some(capture) = system_audio::SystemAudioCapture::start(&source, sample_rate, sys_buf_clone, flag_clone) {
+                    #[cfg(debug_assertions)]
                     eprintln!("[audio] system audio capture started");
                     system_audio_display_name = format!("System Audio ({})", source);
-                    *self.system_audio_capture.lock().unwrap() = Some(capture);
+                    if let Ok(mut guard) = self.system_audio_capture.lock() {
+                        *guard = Some(capture);
+                    }
                 } else {
+                    #[cfg(debug_assertions)]
                     eprintln!("[audio] failed to start system audio capture");
                 }
             } else {
+                #[cfg(debug_assertions)]
                 eprintln!("[audio] no system audio source found");
             }
         }
-
-        std::mem::forget(_mic_stream);
 
         let display_name = if system_audio_display_name.is_empty() {
             actual_name
@@ -213,6 +237,11 @@ impl AudioCapture {
 
     pub fn stop(&self, app_handle: AppHandle) -> Result<(), String> {
         self.recording.store(false, Ordering::SeqCst);
+
+        // Drop mic stream properly (stops ALSA device)
+        if let Ok(mut guard) = self.mic_stream.lock() {
+            *guard = None;
+        }
 
         if let Ok(mut guard) = self.system_audio_capture.lock() {
             if let Some(ref mut capture) = *guard {

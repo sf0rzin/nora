@@ -1,6 +1,7 @@
 #[cfg(target_os = "linux")]
 mod platform {
     use std::io::Read;
+    use std::os::unix::io::AsRawFd;
     use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
@@ -12,6 +13,7 @@ mod platform {
             .ok()?;
 
         if !output.status.success() {
+            #[cfg(debug_assertions)]
             eprintln!("[system-audio] pactl failed");
             return None;
         }
@@ -37,6 +39,7 @@ mod platform {
             for line in stdout.lines() {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() >= 2 && parts[1] == monitor_name {
+                    #[cfg(debug_assertions)]
                     eprintln!("[system-audio] using default sink monitor: {}", monitor_name);
                     return Some(monitor_name);
                 }
@@ -49,6 +52,7 @@ mod platform {
                 let source_name = parts[1];
                 let state = parts.get(3).unwrap_or(&"");
                 if source_name.to_lowercase().contains("monitor") && *state == "RUNNING" {
+                    #[cfg(debug_assertions)]
                     eprintln!("[system-audio] found running monitor: {}", source_name);
                     return Some(source_name.to_string());
                 }
@@ -58,6 +62,7 @@ mod platform {
         for line in stdout.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 && parts[1].to_lowercase().contains("monitor") {
+                #[cfg(debug_assertions)]
                 eprintln!("[system-audio] found monitor (fallback): {}", parts[1]);
                 return Some(parts[1].to_string());
             }
@@ -73,6 +78,7 @@ mod platform {
     impl SystemAudioCapture {
         pub fn start(
             source: &str,
+            sample_rate: u32,
             sys_buf: Arc<Mutex<Vec<f32>>>,
             flag: Arc<AtomicBool>,
         ) -> Option<Self> {
@@ -80,7 +86,7 @@ mod platform {
                 .args([
                     "--device", source,
                     "--format", "float32le",
-                    "--rate", "16000",
+                    "--rate", &sample_rate.to_string(),
                     "--channels", "1",
                     "--raw",
                 ])
@@ -89,7 +95,21 @@ mod platform {
                 .spawn()
                 .ok()?;
 
+            // Kill child automatically if parent dies (no orphans on crash)
+            unsafe {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+            }
+
             let mut stdout = child.stdout.take()?;
+
+            // Set stdout to non-blocking so the read thread can exit promptly
+            unsafe {
+                let fd = stdout.as_raw_fd();
+                let flags = libc::fcntl(fd, libc::F_GETFL);
+                if flags >= 0 {
+                    libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                }
+            }
 
             std::thread::spawn(move || {
                 let mut read_buf = [0u8; 6400];
@@ -106,11 +126,15 @@ mod platform {
                                 .collect();
                             if let Ok(mut buf) = sys_buf.lock() {
                                 buf.extend_from_slice(&samples);
-                                if buf.len() > 1600 * 20 {
-                                    let excess = buf.len() - 1600 * 20;
+                                let max_samples = (sample_rate as usize / 10) * 20;
+                                if buf.len() > max_samples {
+                                    let excess = buf.len() - max_samples;
                                     buf.drain(..excess);
                                 }
                             }
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(std::time::Duration::from_millis(10));
                         }
                         Err(_) => break,
                     }
@@ -121,6 +145,13 @@ mod platform {
         }
 
         pub fn stop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    impl Drop for SystemAudioCapture {
+        fn drop(&mut self) {
             let _ = self.child.kill();
             let _ = self.child.wait();
         }
@@ -143,6 +174,7 @@ mod platform {
     impl SystemAudioCapture {
         pub fn start(
             _source: &str,
+            sample_rate: u32,
             sys_buf: Arc<Mutex<Vec<f32>>>,
             flag: Arc<AtomicBool>,
         ) -> Option<Self> {
@@ -161,15 +193,16 @@ mod platform {
 
                 let mut audio_client: IAudioClient = device.Activate(
                     &IAudioClient::IID as *const _ as *const _,
-                   CLSCTX_ALL,
+                    CLSCTX_ALL,
                     None,
                 ).ok()?;
 
+                // TODO: query native mix format instead of hardcoding
                 let format = WAVEFORMATEX {
                     wFormatTag: 3, // IEEE_FLOAT
                     nChannels: 1,
-                    nSamplesPerSec: 16000,
-                    nAvgBytesPerSec: 64000,
+                    nSamplesPerSec: sample_rate,
+                    nAvgBytesPerSec: sample_rate * 4,
                     nBlockAlign: 4,
                     wBitsPerSample: 32,
                     cbSize: 0,
@@ -188,6 +221,7 @@ mod platform {
                 audio_client.Start().ok()?;
 
                 let flag_clone = flag.clone();
+                let sr = sample_rate;
                 let handle = std::thread::spawn(move || {
                     loop {
                         if !flag_clone.load(Ordering::SeqCst) {
@@ -211,8 +245,10 @@ mod platform {
                                 let slice = std::slice::from_raw_parts(data as *const f32, frames as usize);
                                 if let Ok(mut buf) = sys_buf.lock() {
                                     buf.extend_from_slice(slice);
-                                    if buf.len() > 1600 * 20 {
-                                        buf.drain(..buf.len() - 1600 * 20);
+                                    let max_samples = (sr as usize / 10) * 20;
+                                    if buf.len() > max_samples {
+                                        let excess = buf.len() - max_samples;
+                                        buf.drain(..excess);
                                     }
                                 }
                             }
@@ -221,6 +257,7 @@ mod platform {
                             frames
                         };
                     }
+                    #[cfg(debug_assertions)]
                     eprintln!("[system-audio] wasapi loopback thread ending");
                 });
 
@@ -244,8 +281,8 @@ mod platform {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     pub fn find_system_audio_source() -> Option<String> {
+        #[cfg(debug_assertions)]
         eprintln!("[system-audio] macOS system audio capture requires a virtual audio driver (e.g., BlackHole)");
-        eprintln!("[system-audio] install BlackHole from https://existential.audio/blackhole/");
         None
     }
 
@@ -254,10 +291,10 @@ mod platform {
     impl SystemAudioCapture {
         pub fn start(
             _source: &str,
+            _sample_rate: u32,
             _sys_buf: Arc<Mutex<Vec<f32>>>,
             _flag: Arc<AtomicBool>,
         ) -> Option<Self> {
-            eprintln!("[system-audio] macOS: install BlackHole for system audio capture");
             None
         }
 

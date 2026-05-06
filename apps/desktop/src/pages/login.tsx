@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { login } from "@/lib/auth";
 
@@ -9,8 +9,13 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (authenticated) {
+      window.location.hash = "#/meetings";
+    }
+  }, [authenticated]);
+
   if (authenticated) {
-    window.location.hash = "#/meetings";
     return null;
   }
 

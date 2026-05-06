@@ -18,9 +18,14 @@ interface RequestOptions {
 
 class ApiClient {
   private baseUrl: string;
+  private onUnauthorized: (() => void) | null = null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
+  }
+
+  on401(callback: () => void) {
+    this.onUnauthorized = callback;
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -56,6 +61,14 @@ class ApiClient {
     }
 
     console.log("[api] response:", response.status, response.body);
+
+    if (response.status === 401) {
+      console.warn("[api] 401 unauthorized — token expired");
+      this.clearStoredToken();
+      this.onUnauthorized?.();
+      window.location.hash = "#/login";
+      throw { message: "Sessão expirada. Faça login novamente." };
+    }
 
     if (response.status >= 400) {
       throw response.body || { message: `HTTP ${response.status}` };

@@ -12,9 +12,3 @@ export interface RecordingStatus {
   sample_rate: number;
   channels: number;
 }
-
-export interface AudioChunkPayload {
-  samples: number[];
-  sample_rate: number;
-  channels: number;
-}
