@@ -54,6 +54,9 @@ infra/docker/data/
 data/raw/
 data/private/
 
+# --- Rust / Tauri ---
+src-tauri/target/
+
 # --- Secrets ---
 *.pem
 *.key
