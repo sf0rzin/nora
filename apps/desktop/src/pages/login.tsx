@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { login } from "@/lib/auth";
-import type { ApiError } from "@/lib/types";
 
 export function LoginPage() {
   const { authenticated } = useAuth();
@@ -24,8 +23,9 @@ export function LoginPage() {
       await login({ email, password });
       window.location.hash = "#/meetings";
     } catch (err: unknown) {
-      const apiErr = err as ApiError;
-      setError(apiErr?.message || "Erro ao fazer login. Verifique suas credenciais.");
+      console.error("Login error:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg || "Erro ao fazer login. Verifique suas credenciais.");
     } finally {
       setLoading(false);
     }
