@@ -36,6 +36,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
         isFinal: boolean;
         speaker: string | null;
         speakerId: string | null;
+        track: string;
       };
 
       if (payload.isFinal) {
@@ -47,6 +48,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
             isFinal: true,
             speaker: payload.speaker,
             speakerId: payload.speakerId,
+            track: payload.track,
             timestamp: Date.now(),
           },
         ]);
@@ -127,7 +129,9 @@ export function useRecording(options: UseRecordingOptions = {}) {
     setSpeakerMap((prev) => ({ ...prev, [speakerId]: newName }));
   }, []);
 
-  const getSpeakerName = useCallback((speakerId: string | null, speaker: string | null) => {
+  const getSpeakerName = useCallback((speakerId: string | null, speaker: string | null, track?: string) => {
+    // Se for do microfone, sempre mostrar "Eu"
+    if (track === "mic") return "Eu";
     if (!speakerId) return speaker;
     // Se o speakerId for "UNKNOWN", mostrar como "Desconhecido"
     if (speakerId === "UNKNOWN") return "Desconhecido";
@@ -147,7 +151,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     try {
       const transcript = transcriptLines
         .map((l) => {
-          const speakerName = getSpeakerName(l.speakerId, l.speaker);
+          const speakerName = getSpeakerName(l.speakerId, l.speaker, l.track);
           return (speakerName ? `[${speakerName}] ` : "") + l.text;
         })
         .join("\n");
@@ -191,7 +195,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
   const fullTranscript = transcriptLines
     .map((l) => {
-      const speakerName = getSpeakerName(l.speakerId, l.speaker);
+      const speakerName = getSpeakerName(l.speakerId, l.speaker, l.track);
       return (speakerName ? `[${speakerName}] ` : "") + l.text;
     })
     .join("\n");

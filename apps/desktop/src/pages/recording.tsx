@@ -165,11 +165,11 @@ export function RecordingPage() {
             )}
 
             {transcriptLines.map((line) => {
-              const speakerName = getSpeakerName(line.speakerId, line.speaker);
+              const speakerName = getSpeakerName(line.speakerId, line.speaker, line.track);
               return (
                 <div key={line.id} className="flex gap-2 items-start group">
                   {speakerName && (
-                    <span className="text-blue-400 shrink-0 font-medium min-w-[80px]">
+                    <span className={`text-blue-400 shrink-0 font-medium min-w-[80px] ${line.track === 'mic' ? 'text-green-400' : ''}`}>
                       {speakerName}
                     </span>
                   )}

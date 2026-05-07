@@ -4,6 +4,7 @@ export interface TranscriptLine {
   isFinal: boolean;
   speaker: string | null;
   speakerId: string | null;
+  track: string;
   timestamp: number;
 }
 
