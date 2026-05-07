@@ -68,7 +68,8 @@ NLPWorker na análise:
 - Oportunidades de venda com produto e probabilidade estimada
 - Sinais de churn/insatisfação com contexto
 - Competitive Radar — menções a concorrentes com estágio (avaliando/comparando/contratado)
-- Account Health Score temporal — saúde da conta ao longo de múltiplas reuniões
+- **Customer Confidence Score (por reunião)** — confiança do cliente/lead em nós, baseada em sinais de compra e objeções; alimenta o Account Health Score
+- Account Health Score temporal — saúde da conta agregada ao longo de múltiplas reuniões
 - Next Best Action — recomendação de ação concreta nas próximas 48–72h
 - Persona & Sentimento multi-aspecto por tópico
 

@@ -272,6 +272,90 @@ Define o escopo de visibilidade de cada usuário (US19/US20/US36).
 | metadata | jsonb | |
 | occurred_at | timestamptz NOT NULL | |
 
+### 2.19 `customer_accounts`
+
+Conta/lead atendido pela empresa do tenant. Permite agregar reuniões e séries temporais por conta.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| tenant_id | uuid NOT NULL | |
+| name | text NOT NULL | |
+| external_ref | text | id no CRM externo (Salesforce, HubSpot, TOTVS CRM) — opcional |
+| created_at | timestamptz NOT NULL | |
+| updated_at | timestamptz NOT NULL | |
+
+Índice: UNIQUE `(tenant_id, name)`.
+
+### 2.20 `meeting_account_links`
+
+Liga uma reunião à(s) conta(s) discutida(s). N:N para suportar reuniões multi-account.
+
+| Coluna | Tipo |
+|---|---|
+| meeting_id | uuid FK→meetings(id) ON DELETE CASCADE |
+| account_id | uuid FK→customer_accounts(id) ON DELETE CASCADE |
+| tenant_id | uuid NOT NULL |
+| PK | (meeting_id, account_id) |
+
+### 2.21 `customer_confidence_assessments`
+
+Avaliação **por reunião** da confiança do cliente/lead na nossa empresa. Enterprise-only. Complementa (não substitui) o Account Health Score temporal — Confidence é o input por reunião; Health é o agregado da conta no tempo.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| tenant_id | uuid NOT NULL | |
+| analysis_id | uuid NOT NULL FK→meeting_analyses(id) ON DELETE CASCADE | |
+| account_id | uuid FK→customer_accounts(id) | nullable: pode haver reunião sem conta vinculada |
+| score | smallint NOT NULL | 0–100 |
+| band | text NOT NULL | `LOW`, `MEDIUM`, `HIGH` |
+| trend | text | `IMPROVING`, `STABLE`, `DECLINING` (vs. última avaliação da mesma conta); NULL se primeira |
+| rationale | text NOT NULL | |
+| generated_at | timestamptz NOT NULL | |
+
+Índices: `(tenant_id, account_id, generated_at DESC)` para séries temporais.
+
+### 2.22 `customer_buying_signals`
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| tenant_id | uuid NOT NULL | |
+| confidence_id | uuid NOT NULL FK→customer_confidence_assessments(id) ON DELETE CASCADE | |
+| type | text NOT NULL | `BUDGET_DISCUSSED`, `TIMELINE_DISCUSSED`, `STAKEHOLDER_INVOLVED`, `NEXT_STEP_REQUESTED`, `REFERENCE_REQUESTED`, `PROPOSAL_REQUESTED`, `OTHER` |
+| quote | text NOT NULL | |
+| weight | numeric(3,2) | 0–1; opcional |
+
+### 2.23 `customer_objections`
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| tenant_id | uuid NOT NULL | |
+| confidence_id | uuid NOT NULL FK→customer_confidence_assessments(id) ON DELETE CASCADE | |
+| type | text NOT NULL | `PRICE`, `TIMELINE`, `AUTHORITY`, `NEED`, `COMPETITOR_MENTION`, `TRUST`, `FEATURE_GAP`, `OTHER` |
+| quote | text NOT NULL | |
+| severity | text NOT NULL | `LOW`, `MEDIUM`, `HIGH` |
+| competitor | text | preenchido quando `type = COMPETITOR_MENTION` |
+
+### 2.24 `account_health_snapshots`
+
+Indicador agregado **por conta no tempo** (Account Health Score). Calculado a partir de inputs como `customer_confidence_assessments`, `risks` e `opportunities`. Snapshot a cada nova análise relevante.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| tenant_id | uuid NOT NULL | |
+| account_id | uuid NOT NULL FK→customer_accounts(id) ON DELETE CASCADE | |
+| score | smallint NOT NULL | 0–100 |
+| band | text NOT NULL | `AT_RISK`, `WATCH`, `HEALTHY`, `STRONG` |
+| trigger_analysis_id | uuid FK→meeting_analyses(id) | qual análise causou o snapshot |
+| inputs | jsonb NOT NULL | breakdown dos sinais usados (confidence, risks, opportunities, recência) |
+| computed_at | timestamptz NOT NULL | |
+
+Índices: `(tenant_id, account_id, computed_at DESC)`.
+
 ---
 
 ## 3. Regras de Integridade

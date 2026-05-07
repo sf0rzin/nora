@@ -77,6 +77,8 @@ graph TD
     CU25(["UC25 · Indexar conteúdo com embeddings"])
     CU26(["UC26 · Injetar contexto do produto/empresa"])
     CU27(["UC27 · Enviar notificações"])
+    CU29(["UC29 · Avaliar Customer Confidence (Enterprise)"])
+    CU30(["UC30 · Atualizar Account Health Score (Enterprise)"])
   end
 
   %% ─── Relações: Visitante ───
@@ -122,6 +124,8 @@ graph TD
   CU23 --> CU24
   CU23 --> CU25
   CU23 -. Enterprise .-> CU26
+  CU23 -. Enterprise + lead .-> CU29
+  CU29 --> CU30
   CU23 --> CU27
 
   %% ─── Relações: Serviço Externo ───
@@ -224,6 +228,30 @@ graph TD
 2. Para cada role, define quais tags/departamentos/contas são visíveis
 3. Define permissões granulares: visualizar, exportar, comentar
 4. Alterações aplicadas imediatamente (sem necessidade de logout)
+
+---
+
+### UC29 — Avaliar Customer Confidence (Enterprise)
+**Ator principal:** Usuário Enterprise (AE)
+**Pré-condição:** Reunião está vinculada a uma `customer_account`; tenant é Enterprise
+**Fluxo principal:**
+1. Após o resumo (UC23), o worker analisa sinais de compra e objeções na transcrição
+2. Calcula um Customer Confidence Score (0–100) e banda (`LOW` / `MEDIUM` / `HIGH`)
+3. Compara com a última avaliação da mesma conta para gerar `trend` (`IMPROVING` / `STABLE` / `DECLINING`)
+4. Persiste sinais e objeções com a citação textual
+**Resultado:** indicador disponível no detalhe da reunião e no painel da conta.
+
+---
+
+### UC30 — Atualizar Account Health Score (Enterprise)
+**Ator principal:** Sistema (disparado por UC29)
+**Pré-condição:** Existe um novo Customer Confidence persistido
+**Fluxo principal:**
+1. Sistema combina o Customer Confidence recente, riscos e oportunidades acumulados, recência de interação e tendência
+2. Calcula novo Account Health Score (0–100) com banda (`AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`)
+3. Persiste snapshot com referência à análise que disparou
+4. Se houve mudança de banda para pior, dispara alerta para os usuários autorizados (US43)
+**Resultado:** série temporal da saúde da conta atualizada.
 
 ---
 

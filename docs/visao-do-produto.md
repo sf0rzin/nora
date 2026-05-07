@@ -38,13 +38,14 @@ O NORA é uma plataforma com dois planos que compartilham o mesmo motor de IA e 
 ├──────────────────────────────────┼──────────────────────────────────┤
 │ • Resumo automático de reuniões  │ • Tudo do Core +                 │
 │ • Detecção de action items       │ • Product Context via RAG        │
-│ • Rastreamento de projetos       │ • Account Health Score temporal  │
-│ • PII Shield pessoal (LGPD)      │ • Competitive Radar configurável │
-│ • Integração via MCP:            │ • Next Best Action comercial     │
-│   · Google Calendar / Outlook   │ • IAM: RBAC + ABAC (departamento │
-│   · Linear / Jira               │   / projeto / conta)              │
-│   · GitHub                      │ • Team Analytics & dashboards    │
-│ • Freemium / plano individual    │ • SSO (Entra ID / SAML 2.0 —     │
+│ • Rastreamento de projetos       │ • Customer Confidence (por call) │
+│ • PII Shield pessoal (LGPD)      │ • Account Health Score temporal  │
+│ • Integração via MCP:            │ • Competitive Radar configurável │
+│   · Google Calendar / Outlook   │ • Next Best Action comercial     │
+│   · Linear / Jira               │ • IAM: RBAC + ABAC (departamento │
+│   · GitHub                      │   / projeto / conta)              │
+│ • Freemium / plano individual    │ • Team Analytics & dashboards    │
+│                                  │ • SSO (Entra ID / SAML 2.0 —     │
 │                                  │   pós-MVP)                       │
 │                                  │ • Multi-tenancy isolado (RLS)    │
 │                                  │ • SLA enterprise + suporte BR    │

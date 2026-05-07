@@ -17,6 +17,7 @@
 | **E6** | Integrações MCP | Core | Conexão com Claude MCP, Google Calendar, task managers |
 | **E7** | Administração Enterprise | Enterprise | Configuração de tenant, contexto da empresa, gestão de usuários |
 | **E8** | Controle de Acesso Enterprise | Enterprise | RBAC, escopos por departamento, permissões granulares |
+| **E9** | Customer Confidence & Account Health | Enterprise | Confiança do cliente/lead na empresa avaliada por reunião; Account Health Score agregado temporal |
 
 ---
 
@@ -123,15 +124,26 @@
 
 ---
 
+### E9 — Customer Confidence & Account Health
+
+| ID | User Story | Persona | MoSCoW | Pontos |
+|---|---|---|---|---|
+| US40 | Como **AE Enterprise**, quero ver, após cada reunião com lead/cliente, um **Customer Confidence Score (0–100)** com sinais de compra e objeções citados textualmente, para que eu saiba exatamente em que pé está a confiança do cliente em nós. | Rafael (Enterprise) | M | 5 |
+| US41 | Como **AE Enterprise**, quero ver a **tendência** (`IMPROVING` / `STABLE` / `DECLINING`) do Customer Confidence em relação à última reunião da mesma conta, para que eu detecte degradação cedo. | Rafael (Enterprise) | M | 3 |
+| US42 | Como **gestora comercial Enterprise**, quero ver o **Account Health Score** agregado por conta no tempo, calculado a partir de Customer Confidence, riscos e oportunidades, para que eu priorize atenção nas contas que importam. | Camila (Enterprise) | S | 8 |
+| US43 | Como **gestora comercial Enterprise**, quero receber alerta quando o Account Health de uma conta cair de banda (`HEALTHY` → `WATCH`, etc.), para que eu acione o time antes do churn. | Camila (Enterprise) | S | 5 |
+
+---
+
 ## Resumo de Prioridades
 
 | MoSCoW | Qtd. Stories | Total de Pontos |
 |---|---|---|
-| **Must Have** | 21 | 71 |
-| **Should Have** | 13 | 57 |
+| **Must Have** | 23 | 79 |
+| **Should Have** | 15 | 70 |
 | **Could Have** | 5 | 28 |
 | **Won't Have (v1)** | 1 | 13 |
-| **Total** | **40** | **169** |
+| **Total** | **44** | **190** |
 
 ---
 

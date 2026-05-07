@@ -86,6 +86,57 @@
       "type": "array",
       "maxItems": 12,
       "items": { "type": "string", "minLength": 2, "maxLength": 60 }
+    },
+    "customerConfidence": {
+      "type": ["object", "null"],
+      "description": "Confianca do cliente/lead na nossa empresa, derivada de sentimento, sinais de compra e objecoes. Enterprise-only; null para reunioes internas. Complementa (nao substitui) o Account Health Score temporal.",
+      "additionalProperties": false,
+      "required": ["score", "band", "rationale"],
+      "properties": {
+        "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "band": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "trend": {
+          "type": ["string", "null"],
+          "enum": ["IMPROVING", "STABLE", "DECLINING", null],
+          "description": "Comparacao com a ultima reuniao da mesma conta; null se for a primeira reuniao da conta."
+        },
+        "buyingSignals": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "quote"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["BUDGET_DISCUSSED", "TIMELINE_DISCUSSED", "STAKEHOLDER_INVOLVED", "NEXT_STEP_REQUESTED", "REFERENCE_REQUESTED", "PROPOSAL_REQUESTED", "OTHER"]
+              },
+              "quote": { "type": "string", "minLength": 5, "maxLength": 500 },
+              "weight": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "objections": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "quote", "severity"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["PRICE", "TIMELINE", "AUTHORITY", "NEED", "COMPETITOR_MENTION", "TRUST", "FEATURE_GAP", "OTHER"]
+              },
+              "quote": { "type": "string", "minLength": 5, "maxLength": 500 },
+              "severity": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+              "competitor": { "type": ["string", "null"], "maxLength": 120 }
+            }
+          }
+        },
+        "rationale": { "type": "string", "minLength": 10, "maxLength": 1000 }
+      }
     }
   }
 }
