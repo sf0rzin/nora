@@ -272,6 +272,50 @@ Define o escopo de visibilidade de cada usuário (US19/US20/US36).
 | metadata | jsonb | |
 | occurred_at | timestamptz NOT NULL | |
 
+### 2.19 `meeting_goals`
+
+Objetivo declarado pelo usuário ao subir a reunião quando o recurso de **Productivity Score** está ativo. 1:1 com `meetings`.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| meeting_id | uuid PK FK→meetings(id) ON DELETE CASCADE | |
+| tenant_id | uuid NOT NULL | |
+| enabled | boolean NOT NULL | sempre `true` quando o registro existe; ausência = recurso opt-out |
+| purpose | text NOT NULL | descrição livre do objetivo (ex.: "Refinement do épico X") |
+| expected_outcomes | jsonb NOT NULL DEFAULT '[]' | lista de strings curtas: pontos que precisam ser tratados/decididos |
+| project_state_snapshot | text | "o que está feito" — manual no MVP; vindo de Jira/Linear/Azure DevOps via MCP no pós-MVP |
+| created_at | timestamptz NOT NULL | |
+| created_by | uuid FK→users(id) | |
+
+### 2.20 `meeting_productivity_assessments`
+
+Resultado da avaliação de produtividade gerada pelo worker. 1:1 com `meeting_analyses`.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| analysis_id | uuid PK FK→meeting_analyses(id) ON DELETE CASCADE | |
+| tenant_id | uuid NOT NULL | |
+| score | smallint NOT NULL | 0–100 |
+| band | text NOT NULL | `LOW`, `MEDIUM`, `HIGH` |
+| off_topic_ratio | numeric(4,3) | 0.000–1.000 |
+| decision_density | numeric(4,3) | 0.000–1.000 |
+| rationale | text NOT NULL | justificativa textual produzida pelo LLM |
+| generated_at | timestamptz NOT NULL | |
+
+### 2.21 `meeting_outcome_coverage`
+
+Cobertura por outcome esperado declarado em `meeting_goals`. N:1 com `meeting_productivity_assessments`.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| tenant_id | uuid NOT NULL | |
+| analysis_id | uuid NOT NULL FK→meeting_productivity_assessments(analysis_id) ON DELETE CASCADE | |
+| expected_outcome | text NOT NULL | espelha o item do `meeting_goals.expected_outcomes` |
+| status | text NOT NULL | `ADDRESSED`, `PARTIAL`, `MISSED` |
+| evidence | text | trecho/quote da reunião que sustenta o status |
+| ordinal | integer NOT NULL | ordem original do outcome |
+
 ---
 
 ## 3. Regras de Integridade

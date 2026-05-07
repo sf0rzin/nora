@@ -17,6 +17,7 @@
 | **E6** | Integrações MCP | Core | Conexão com Claude MCP, Google Calendar, task managers |
 | **E7** | Administração Enterprise | Enterprise | Configuração de tenant, contexto da empresa, gestão de usuários |
 | **E8** | Controle de Acesso Enterprise | Enterprise | RBAC, escopos por departamento, permissões granulares |
+| **E9** | Produtividade da Reunião | Core + Enterprise | Avaliação opt-in: usuário declara objetivo e outcomes esperados; NORA mede cobertura e atribui Productivity Score |
 
 ---
 
@@ -123,15 +124,25 @@
 
 ---
 
+### E9 — Produtividade da Reunião
+
+| ID | User Story | Persona | MoSCoW | Pontos |
+|---|---|---|---|---|
+| US40 | Como **usuário (Core/Enterprise)**, quero **opcionalmente** ativar a avaliação de produtividade ao subir uma reunião e declarar a finalidade dela e os pontos que precisavam ser discutidos/decididos, para que a NORA tenha um gabarito do que era esperado. | Lucas (Core) / Rafael (Enterprise) | M | 3 |
+| US41 | Como **usuário**, quero receber um **Productivity Score (0–100)** com a cobertura de cada outcome esperado (`ADDRESSED` / `PARTIAL` / `MISSED`) e uma justificativa textual, para que eu saiba se a reunião entregou o que precisava. | Lucas (Core) / Rafael (Enterprise) | M | 5 |
+| US42 | Como **usuário Enterprise**, quero (pós-MVP) que a NORA puxe automaticamente o **estado do projeto** (Jira / Linear / Azure DevOps / GitHub Projects) via MCP, para que eu não precise colar manualmente o que está feito e o que falta. | Rafael (Enterprise) | W | 13 |
+
+---
+
 ## Resumo de Prioridades
 
 | MoSCoW | Qtd. Stories | Total de Pontos |
 |---|---|---|
-| **Must Have** | 21 | 71 |
+| **Must Have** | 23 | 79 |
 | **Should Have** | 13 | 57 |
 | **Could Have** | 5 | 28 |
-| **Won't Have (v1)** | 1 | 13 |
-| **Total** | **40** | **169** |
+| **Won't Have (v1)** | 2 | 26 |
+| **Total** | **43** | **190** |
 
 ---
 
