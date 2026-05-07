@@ -104,11 +104,6 @@ pub async fn start_recording(
         None
     };
 
-    // Store sidecars and bridges in app state for cleanup on stop
-    // TODO: implement proper sidecar lifecycle management in AudioCapture struct
-    std::mem::drop(mic_bridge);
-    std::mem::drop(system_bridge);
-
     let status = {
         let capture = state.lock().map_err(|e| {
             #[cfg(debug_assertions)]
@@ -141,6 +136,11 @@ pub async fn start_recording(
         "[commands] capture started ok - mic: {}, system: {:?}, sr: {}",
         status.mic_device, status.system_audio_device, status.sample_rate
     );
+
+    // Keep bridge tasks alive by storing them - they will be dropped when recording stops
+    // TODO: store these in AudioCapture state for proper cleanup
+    std::mem::drop(mic_bridge);
+    std::mem::drop(system_bridge);
 
     #[cfg(debug_assertions)]
     eprintln!("[commands] start_recording returning ok");
