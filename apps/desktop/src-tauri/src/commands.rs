@@ -1,5 +1,6 @@
 use crate::audio_capture::{AudioCapture, CaptureSinks, RecordingStatus};
 use crate::stt_sidecar::SidecarHandle;
+use crate::SidecarState;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, State};
@@ -26,6 +27,7 @@ pub struct StartRecordingRequest {
 pub async fn start_recording(
     app_handle: AppHandle,
     state: State<'_, CaptureState>,
+    sidecar_state: State<'_, SidecarState>,
     request: StartRecordingRequest,
 ) -> Result<RecordingStatus, String> {
     #[cfg(debug_assertions)]
@@ -137,10 +139,21 @@ pub async fn start_recording(
         status.mic_device, status.system_audio_device, status.sample_rate
     );
 
-    // Keep bridge tasks alive by storing them - they will be dropped when recording stops
-    // TODO: store these in AudioCapture state for proper cleanup
-    std::mem::drop(mic_bridge);
-    std::mem::drop(system_bridge);
+    // Store sidecars in app state so they stay alive
+    {
+        let mut sidecars = sidecar_state.lock().map_err(|e| e.to_string())?;
+        sidecars.push(mic_sidecar);
+        if let Some(s) = system_sidecar {
+            sidecars.push(s);
+        }
+    }
+
+    // Bridge tasks are now owned by the async runtime and will keep running
+    // They will be dropped when the channels close (when recording stops)
+    tokio::spawn(mic_bridge);
+    if let Some(bridge) = system_bridge {
+        tokio::spawn(bridge);
+    }
 
     #[cfg(debug_assertions)]
     eprintln!("[commands] start_recording returning ok");
