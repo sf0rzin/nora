@@ -11,6 +11,8 @@ As personas foram construídas para representar os **três perfis centrais de us
 
 No backlog do MVP, as personas oficiais são: **Lucas** para o uso Core individual, **Rafael** para o usuário Enterprise de campo e **Camila** para o perfil gestor/admin do Enterprise.
 
+> **Nota sobre a Camila:** no MVP, ela acumula **dois papéis** que em empresas maiores poderiam estar separados — gestor comercial (consumidor de dashboards e Account Health) e admin do tenant (responsável por contexto da empresa, IAM, convites e auditoria). Toda story marcada como "Camila (Enterprise Admin)" no backlog refere-se ao papel de admin do tenant; quando a story for de consumo de insights comerciais, a mesma persona aparece como gestora. Na evolução do produto, esses papéis podem ser desambiguados em duas personas distintas (ex.: "Camila — Gestora Comercial" e "TI/Owner do tenant").
+
 ---
 
 ## Persona 1 — Lucas Mendes
