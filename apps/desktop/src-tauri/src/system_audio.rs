@@ -329,7 +329,7 @@ mod platform {
 #[cfg(target_os = "macos")]
 mod platform {
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     pub fn find_system_audio_source() -> Option<String> {
         #[cfg(debug_assertions)]
@@ -337,19 +337,46 @@ mod platform {
         None
     }
 
-    pub struct SystemAudioCapture;
+    pub struct SystemAudioCapture {
+        stop_flag: Arc<AtomicBool>,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
 
     impl SystemAudioCapture {
         pub fn start(
             _source: &str,
             _sample_rate_hint: u32,
-            _sink: tokio::sync::mpsc::Sender<Vec<i16>>,
-            _flag: Arc<AtomicBool>,
+            sink: tokio::sync::mpsc::Sender<Vec<i16>>,
+            flag: Arc<AtomicBool>,
         ) -> Result<Self, String> {
-            Err("macOS system audio capture not yet implemented".to_string())
+            let stop_flag = flag.clone();
+            let thread = std::thread::Builder::new()
+                .name("nora-macos-audio".into())
+                .spawn(move || {
+                    // TODO: Implementar ScreenCaptureKit para macOS 13+ (Issue #15)
+                    // Por enquanto, apenas mantém a thread viva até o flag ser desligado
+                    #[cfg(debug_assertions)]
+                    eprintln!("[macos-audio] ScreenCaptureKit not yet implemented, using placeholder");
+                    
+                    while flag.load(Ordering::SeqCst) {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                })
+                .map_err(|e| format!("spawn macos audio thread: {}", e))?;
+
+            Ok(Self { stop_flag, thread: Some(thread) })
         }
 
-        pub fn stop(&mut self) {}
+        pub fn stop(&mut self) {
+            self.stop_flag.store(false, Ordering::SeqCst);
+            if let Some(t) = self.thread.take() {
+                let _ = t.join();
+            }
+        }
+    }
+
+    impl Drop for SystemAudioCapture {
+        fn drop(&mut self) { self.stop(); }
     }
 }
 
