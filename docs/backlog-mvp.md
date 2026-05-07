@@ -48,6 +48,9 @@
 | US07 | Como **usuário Core**, quero fazer upload de um arquivo de transcrição (.txt, .vtt, .srt), para que a NORA processe minha reunião sem necessidade de gravação. | Lucas (Core) | M | 3 |
 | US08 | Como **usuário Core**, quero fazer upload de um arquivo de áudio/vídeo (.mp3, .mp4), para que a NORA transcreva e analise automaticamente. | Lucas (Core) | S | 5 |
 | US09 | Como **usuário Core**, quero ativar a captura ao vivo no Desktop App durante uma videochamada, para que a transcrição aconteça em tempo real sem intervenção manual. | Lucas (Core) | S | 8 |
+| US09a | Como **usuário Core**, quero selecionar o dispositivo de áudio e configurar captura do sistema, para que eu controle qual fonte de áudio é transcrita. | Lucas (Core) | S | 3 |
+| US09b | Como **usuário Core**, quero renomear os participantes identificados na transcrição, para que eu saiba quem falou o quê. | Lucas (Core) | S | 2 |
+| US09c | Como **usuário Core**, quero salvar a transcrição da reunião no servidor, para que eu acesse depois pelo dashboard. | Lucas (Core) | S | 3 |
 | US10 | Como **usuário Core**, quero nomear e categorizar uma reunião ao fazer upload, para que eu encontre facilmente no histórico. | Lucas (Core) | S | 2 |
 
 ---
