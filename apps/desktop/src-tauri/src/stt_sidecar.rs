@@ -20,7 +20,7 @@ pub struct TranscriptEvent {
 #[allow(dead_code)]
 pub struct SidecarHandle {
     pub session_id: String,
-    audio_tx: mpsc::Sender<Vec<i16>>,
+    pub audio_tx: mpsc::Sender<Vec<i16>>,
     stop_tx: Option<oneshot::Sender<()>>,
     join: tokio::task::JoinHandle<()>,
     pub track_label: String,
