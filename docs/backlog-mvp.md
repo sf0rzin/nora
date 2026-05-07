@@ -17,6 +17,7 @@
 | **E6** | Integrações MCP | Core | Conexão com Claude MCP, Google Calendar, task managers |
 | **E7** | Administração Enterprise | Enterprise | Configuração de tenant, contexto da empresa, gestão de usuários |
 | **E8** | IAM Enterprise (estilo AWS) | Enterprise | Root user, Users, Groups e Policies (Effect/Action/Resource[/Condition]) gerenciados pelo próprio tenant. Sem hierarquia de roles fixas. |
+| **E9** | Produtividade da Reunião | Core + Enterprise | Avaliação opt-in: usuário declara objetivo e outcomes esperados; NORA mede cobertura e atribui Productivity Score |
 
 ---
 
@@ -128,19 +129,29 @@
 
 ---
 
+### E9 — Produtividade da Reunião
+
+| ID | User Story | Persona | MoSCoW | Pontos |
+|---|---|---|---|---|
+| US45 | Como **usuário (Core/Enterprise)**, quero **opcionalmente** ativar a avaliação de produtividade ao subir uma reunião e declarar a finalidade dela e os pontos que precisavam ser discutidos/decididos, para que a NORA tenha um gabarito do que era esperado. | Lucas (Core) / Rafael (Enterprise) | M | 3 |
+| US46 | Como **usuário**, quero receber um **Productivity Score (0–100)** com a cobertura de cada outcome esperado (`ADDRESSED` / `PARTIAL` / `MISSED`) e uma justificativa textual, para que eu saiba se a reunião entregou o que precisava. | Lucas (Core) / Rafael (Enterprise) | M | 5 |
+| US47 | Como **usuário Enterprise**, quero (pós-MVP) que a NORA puxe automaticamente o **estado do projeto** (Jira / Linear / Azure DevOps / GitHub Projects) via MCP, para que eu não precise colar manualmente o que está feito e o que falta. | Rafael (Enterprise) | W | 13 |
+
+---
+
 ## Resumo de Prioridades
 
 | MoSCoW | Qtd. Stories | Total de Pontos |
 |---|---|---|
 | MoSCoW | Qtd. Stories | Total de Pontos |
 |---|---|---|
-| **Must Have** | 27 | 94 |
+| **Must Have** | 29 | 102 |
 | **Should Have** | 12 | 47 |
 | **Could Have** | 5 | 28 |
-| **Won't Have (v1)** | 6 | 47 |
-| **Total** | **50** | **216** |
+| **Won't Have (v1)** | 7 | 60 |
+| **Total** | **53** | **237** |
 
-> Stories `W` reagrupam o que foi alinhado com `CLAUDE.md` e `docs/PROJECT.md` como pós-MVP: SSO corporativo (US05), upload de áudio/vídeo (US08), captura ao vivo no Desktop (US09), MCP Claude (US27), MCP Calendar (US28) e MCP task managers (US29).
+> Stories `W` reagrupam o que foi alinhado com `CLAUDE.md` e `docs/PROJECT.md` como pós-MVP: SSO corporativo (US05), upload de áudio/vídeo (US08), captura ao vivo no Desktop (US09), MCP Claude (US27), MCP Calendar (US28), MCP task managers (US29) e MCP project state para Productivity (US47).
 
 ---
 
