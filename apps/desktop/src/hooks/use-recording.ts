@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { TranscriptLine, RecordingStatus } from "@/lib/recording-types";
 import { uploadTranscript } from "@/lib/meetings";
+import { useRecordingContext } from "./use-recording-context";
 
 interface UseRecordingOptions {
   azureSpeechKey?: string;
@@ -13,9 +14,7 @@ interface UseRecordingOptions {
 }
 
 export function useRecording(options: UseRecordingOptions = {}) {
-  const [isRecording, setIsRecording] = useState(false);
-  const [deviceName, setDeviceName] = useState("");
-  const [sampleRate, setSampleRate] = useState(0);
+  const { isRecording, deviceName, sampleRate, setRecordingState } = useRecordingContext();
   const [transcriptLines, setTranscriptLines] = useState<TranscriptLine[]>([]);
   const [partialText, setPartialText] = useState("");
   const [speakerMap, setSpeakerMap] = useState<Record<string, string>>({});
@@ -27,8 +26,6 @@ export function useRecording(options: UseRecordingOptions = {}) {
   const [savedMeetingId, setSavedMeetingId] = useState<string | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Use a counter to force re-render when status changes from external source
-  const [, setForceUpdate] = useState(0);
 
   useEffect(() => {
     const unlisten = listen<unknown>("transcript", (event) => {
@@ -62,9 +59,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
     const unlistenStatus = listen<RecordingStatus>("recording-status", (event) => {
       const s = event.payload;
-      setIsRecording(s.is_recording);
-      setDeviceName(s.device_name);
-      setSampleRate(s.sample_rate);
+      setRecordingState(s.is_recording, s.device_name, s.sample_rate);
     });
 
     // Check recording status on mount
@@ -73,11 +68,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
         const status = await invoke<RecordingStatus>("get_recording_status");
         console.log("[recording] status check:", status);
         if (status.is_recording) {
-          setIsRecording(true);
-          setDeviceName(status.device_name);
-          setSampleRate(status.sample_rate);
-          // Force re-render to ensure UI updates
-          setForceUpdate(prev => prev + 1);
+          setRecordingState(true, status.device_name, status.sample_rate);
           console.log("[recording] restored recording state");
         }
       } catch (e) {
@@ -119,9 +110,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     try {
       const result = await invoke<RecordingStatus>("start_recording", { request: req });
 
-      setIsRecording(true);
-      setDeviceName(result.device_name);
-      setSampleRate(result.sample_rate);
+      setRecordingState(true, result.device_name, result.sample_rate);
       startTimeRef.current = Date.now();
       timerRef.current = setInterval(() => {
         if (startTimeRef.current) {
@@ -131,7 +120,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     } catch (e) {
       console.error("[recording] start_recording FAILED:", e);
       setError(String(e));
-      setIsRecording(false);
+      setRecordingState(false, "", 0);
     }
   }, [selectedDevice, options]);
 
@@ -143,7 +132,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
       setError(String(e));
     }
     if (timerRef.current) clearInterval(timerRef.current);
-    setIsRecording(false);
+    setRecordingState(false, "", 0);
   }, []);
 
   const renameSpeaker = useCallback((speakerId: string, newName: string) => {

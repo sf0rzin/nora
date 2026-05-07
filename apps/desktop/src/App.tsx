@@ -1,4 +1,5 @@
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
+import { RecordingProvider } from "@/hooks/use-recording-context";
 import { Sidebar } from "@/components/sidebar";
 import { LoginPage } from "@/pages/login";
 import { MeetingsPage } from "@/pages/meetings";
@@ -38,10 +39,12 @@ function Router() {
   };
 
   return (
-    <div className="flex h-full">
-      <Sidebar />
-      {renderPage()}
-    </div>
+    <RecordingProvider>
+      <div className="flex h-full">
+        <Sidebar />
+        {renderPage()}
+      </div>
+    </RecordingProvider>
   );
 }
 
