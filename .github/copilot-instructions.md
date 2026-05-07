@@ -15,7 +15,7 @@ Always read and respect:
 
 ## MVP Boundary
 
-Prioritize Web + Backend + NLP Worker. The first real product slice is text transcript upload, tenant context, structured NLP analysis, dashboard, meeting detail and scoped Enterprise access.
+Prioritize Web + Backend + NLP Worker. The first real product slice is text transcript upload, tenant context, structured NLP analysis, dashboard, meeting detail and AWS-style IAM (Root + Users + Groups + Policies) for Enterprise tenants.
 
 Treat Desktop real-time capture, SSO, full MCP integrations, audio/video upload and Salesforce/HubSpot as post-MVP unless the user explicitly asks otherwise.
 
