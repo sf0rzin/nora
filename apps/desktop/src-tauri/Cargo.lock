@@ -2186,6 +2186,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-shell",
  "tokio",
+ "url",
  "uuid",
  "windows 0.62.2",
 ]
