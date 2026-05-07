@@ -261,11 +261,7 @@ async fn run_sidecar(
                     None => break,
                 }
             }
-            _ = async {
-                if let Ok(()) = stop_rx.try_recv() {
-                    // Stop signal received
-                }
-            } => {
+            _ = &mut stop_rx => {
                 eprintln!("[stt_sidecar] stop signal received");
                 break;
             }
