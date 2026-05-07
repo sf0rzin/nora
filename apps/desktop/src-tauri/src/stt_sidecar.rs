@@ -17,13 +17,17 @@ pub struct TranscriptEvent {
     pub confidence: Option<f32>,
 }
 
-#[allow(dead_code)]
 pub struct SidecarHandle {
     pub session_id: String,
     pub audio_tx: mpsc::Sender<Vec<i16>>,
     stop_tx: Option<oneshot::Sender<()>>,
-    join: tokio::task::JoinHandle<()>,
     pub track_label: String,
+}
+
+impl Drop for SidecarHandle {
+    fn drop(&mut self) {
+        eprintln!("[SidecarHandle] DROPPED session_id={}", self.session_id);
+    }
 }
 
 #[allow(dead_code)]
@@ -80,7 +84,6 @@ impl SidecarHandle {
             session_id,
             audio_tx,
             stop_tx: Some(stop_tx),
-            join,
             track_label,
         })
     }
@@ -91,16 +94,9 @@ impl SidecarHandle {
             .map_err(|e| format!("Failed to feed audio: {}", e))
     }
 
-    pub async fn stop(mut self) -> Result<(), String> {
+    pub fn stop(mut self) {
         if let Some(stop_tx) = self.stop_tx.take() {
             let _ = stop_tx.send(());
-        }
-
-        // Wait for sidecar to stop gracefully
-        match tokio::time::timeout(tokio::time::Duration::from_secs(3), self.join).await {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(format!("Sidecar task error: {}", e)),
-            Err(_) => Err("Sidecar stop timeout (3s)".into()),
         }
     }
 }
