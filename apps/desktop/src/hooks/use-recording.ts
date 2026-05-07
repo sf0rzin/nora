@@ -30,6 +30,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
   useEffect(() => {
     const unlisten = listen<unknown>("transcript", (event) => {
+      console.log("[transcript event]", event.payload);
       const payload = event.payload as {
         text: string;
         isFinal: boolean;
@@ -128,7 +129,10 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
   const getSpeakerName = useCallback((speakerId: string | null, speaker: string | null) => {
     if (!speakerId) return speaker;
-    return speakerMap[speakerId] || speaker || speakerId;
+    // Se o speakerId for "UNKNOWN", mostrar como "Desconhecido"
+    if (speakerId === "UNKNOWN") return "Desconhecido";
+    // Retornar o nome mapeado, ou o speakerId original
+    return speakerMap[speakerId] || speakerId;
   }, [speakerMap]);
 
   const saveMeeting = useCallback(async (title: string) => {
