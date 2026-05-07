@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 const FORBIDDEN_HEADERS: &[&str] = &[
-    "host", "origin", "cookie", "authorization",
+    "host", "origin", "cookie",
     "x-forwarded-for", "x-real-ip",
 ];
 
