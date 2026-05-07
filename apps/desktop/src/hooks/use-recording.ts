@@ -167,7 +167,10 @@ export function useRecording(options: UseRecordingOptions = {}) {
   }, [transcriptLines, speakerMap, duration, getSpeakerName]);
 
   useEffect(() => {
-    loadDevices();
+    loadDevices().catch((e) => {
+      console.error("[recording] failed to load devices on mount:", e);
+      setError("Falha ao carregar dispositivos de áudio");
+    });
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
