@@ -18,6 +18,7 @@
 | **E7** | Administração Enterprise | Enterprise | Configuração de tenant, contexto da empresa, gestão de usuários |
 | **E8** | IAM Enterprise (estilo AWS) | Enterprise | Root user, Users, Groups e Policies (Effect/Action/Resource[/Condition]) gerenciados pelo próprio tenant. Sem hierarquia de roles fixas. |
 | **E9** | Produtividade da Reunião | Core + Enterprise | Avaliação opt-in: usuário declara objetivo e outcomes esperados; NORA mede cobertura e atribui Productivity Score |
+| **E10** | Customer Confidence & Account Health | Enterprise | Confiança do cliente/lead na empresa avaliada por reunião; Account Health Score agregado temporal |
 
 ---
 
@@ -139,17 +140,28 @@
 
 ---
 
+### E10 — Customer Confidence & Account Health
+
+| ID | User Story | Persona | MoSCoW | Pontos |
+|---|---|---|---|---|
+| US48 | Como **AE Enterprise**, quero ver, após cada reunião com lead/cliente, um **Customer Confidence Score (0–100)** com sinais de compra e objeções citados textualmente, para que eu saiba exatamente em que pé está a confiança do cliente em nós. | Rafael (Enterprise) | M | 5 |
+| US49 | Como **AE Enterprise**, quero ver a **tendência** (`IMPROVING` / `STABLE` / `DECLINING`) do Customer Confidence em relação à última reunião da mesma conta, para que eu detecte degradação cedo. | Rafael (Enterprise) | M | 3 |
+| US50 | Como **gestora comercial Enterprise**, quero ver o **Account Health Score** agregado por conta no tempo, calculado a partir de Customer Confidence, riscos e oportunidades, para que eu priorize atenção nas contas que importam. | Camila (Enterprise) | S | 8 |
+| US51 | Como **gestora comercial Enterprise**, quero receber alerta quando o Account Health de uma conta cair de banda (`HEALTHY` → `WATCH`, etc.), para que eu acione o time antes do churn. | Camila (Enterprise) | S | 5 |
+
+---
+
 ## Resumo de Prioridades
 
 | MoSCoW | Qtd. Stories | Total de Pontos |
 |---|---|---|
 | MoSCoW | Qtd. Stories | Total de Pontos |
 |---|---|---|
-| **Must Have** | 29 | 102 |
-| **Should Have** | 12 | 47 |
+| **Must Have** | 31 | 110 |
+| **Should Have** | 14 | 60 |
 | **Could Have** | 5 | 28 |
 | **Won't Have (v1)** | 7 | 60 |
-| **Total** | **53** | **237** |
+| **Total** | **57** | **258** |
 
 > Stories `W` reagrupam o que foi alinhado com `CLAUDE.md` e `docs/PROJECT.md` como pós-MVP: SSO corporativo (US05), upload de áudio/vídeo (US08), captura ao vivo no Desktop (US09), MCP Claude (US27), MCP Calendar (US28), MCP task managers (US29) e MCP project state para Productivity (US47).
 
