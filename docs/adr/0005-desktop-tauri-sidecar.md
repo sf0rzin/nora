@@ -87,13 +87,14 @@ Usar **Tauri 2** (Rust + WebView) como framework desktop, com um **sidecar Pytho
 ### Sidecar Python
 
 - Usa `azure-cognitiveservices-speech` (SDK oficial Microsoft)
-- Comunicação via stdin/stdout com protocolo JSON Lines
+- Comunicação via stdin/stdout com protocolo NDJSON (JSON Lines)
 - Empacotado com PyInstaller para binário standalone
 - Binário incluído no bundle Tauri via `externalBin`
+- **Entry point**: `nora_stt_sidecar_main.py` é um wrapper de 1 linha que delega para `nora_stt_sidecar.__main__:main()`
 
 ### Captura de Áudio
 
-- **Linux**: `cpal` + `parecord` (PulseAudio)
+- **Linux**: `cpal` + `parecord` (PulseAudio/PipeWire monitor)
 - **Windows**: `cpal` + WASAPI loopback
 - **macOS**: `cpal` + ScreenCaptureKit (placeholder)
 
@@ -102,6 +103,17 @@ Usar **Tauri 2** (Rust + WebView) como framework desktop, com um **sidecar Pytho
 - GitHub Actions com matrix: Ubuntu, Windows, macOS
 - Build do sidecar antes do build Tauri
 - Upload de artifacts para cada plataforma
+- **pytest** do sidecar roda no job desktop antes do build
+
+## Nota sobre Escopo do MVP
+
+O Desktop foi antecipado em relação ao boundary original do MVP (que previa apenas Web + Backend + Worker). A decisão de incluir o Desktop no Sprint 1+2 foi tomada para:
+
+1. **Diferenciação competitiva**: Captura em tempo real é um diferencial chave vs concorrentes
+2. **Validação técnica**: Provar que a arquitetura sidecar funciona end-to-end
+3. **Demo FIAP**: Ter uma demonstração visual forte para o Challenge
+
+O Desktop continua sendo **pós-MVP** em termos de maturidade (SSO, áudio/vídeo upload, MCPs completos), mas a fundação técnica foi estabelecida antecipadamente.
 
 ## Referências
 

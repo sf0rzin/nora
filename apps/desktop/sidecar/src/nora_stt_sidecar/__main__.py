@@ -2,7 +2,6 @@ import json
 import logging
 import signal
 import sys
-import uuid
 
 from .logging_setup import configure
 from .protocol import (

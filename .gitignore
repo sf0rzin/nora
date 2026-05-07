@@ -57,6 +57,8 @@ data/private/
 # --- Rust / Tauri ---
 src-tauri/target/
 src-tauri/binaries/nora-stt-sidecar-*
+src-tauri/gen/schemas/*.json
+*.tsbuildinfo
 
 # --- Secrets ---
 *.pem
