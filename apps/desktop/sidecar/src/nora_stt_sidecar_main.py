@@ -1,0 +1,181 @@
+import json
+import logging
+import signal
+import sys
+import uuid
+
+from nora_stt_sidecar.logging_setup import configure
+from nora_stt_sidecar.protocol import (
+    AudioMessage,
+    ErrorMessage,
+    OutboundMessage,
+    StartMessage,
+    StopMessage,
+    parse_inbound,
+)
+from nora_stt_sidecar.transcriber import LiveTranscriber
+from nora_stt_sidecar.audio_pipe import decode_audio_message
+
+logger = logging.getLogger("nora_stt_sidecar")
+
+
+class SidecarApp:
+    def __init__(self):
+        self._transcriber = None
+        self._running = True
+        self._audio_seq = 0
+        self._expected_seq = 0
+    
+    def _emit(self, msg):
+        """Emit NDJSON message to stdout."""
+        print(msg.model_dump_json(by_alias=True), flush=True)
+    
+    def _handle_start(self, msg):
+        """Handle start message."""
+        if self._transcriber is not None:
+            self._emit(
+                ErrorMessage(
+                    session_id=msg.session_id,
+                    code="BUSY",
+                    message="Another session is already active",
+                )
+            )
+            return
+        
+        try:
+            self._transcriber = LiveTranscriber(
+                session_id=msg.session_id,
+                region=msg.azure_region,
+                key=msg.azure_key,
+                language=msg.language,
+                on_event=self._emit,
+            )
+            self._transcriber.start()
+            self._audio_seq = 0
+            self._expected_seq = 0
+        except Exception as e:
+            logger.error(f"Failed to start session: {e}")
+            self._transcriber = None
+    
+    def _handle_audio(self, msg):
+        """Handle audio message."""
+        if self._transcriber is None:
+            self._emit(
+                ErrorMessage(
+                    session_id=msg.session_id,
+                    code="NO_SESSION",
+                    message="No active session. Send 'start' first.",
+                )
+            )
+            return
+        
+        # Validate sequence number
+        if msg.seq != self._expected_seq:
+            logger.warning(f"Sequence gap: expected {self._expected_seq}, got {msg.seq}")
+        self._expected_seq = msg.seq + 1
+        
+        try:
+            pcm_bytes = decode_audio_message(msg)
+            self._transcriber.feed(pcm_bytes)
+        except Exception as e:
+            logger.error(f"Failed to process audio: {e}")
+    
+    def _handle_stop(self, msg):
+        """Handle stop message."""
+        if self._transcriber is None:
+            self._emit(
+                ErrorMessage(
+                    session_id=msg.session_id,
+                    code="NO_SESSION",
+                    message="No active session to stop",
+                )
+            )
+            return
+        
+        self._transcriber.stop()
+        self._transcriber = None
+    
+    def _handle_signal(self, signum, frame):
+        """Handle SIGTERM/SIGINT."""
+        logger.info(f"Received signal {signum}, shutting down...")
+        self._running = False
+        if self._transcriber:
+            self._transcriber.stop()
+            self._transcriber = None
+    
+    def run(self):
+        """Main loop: read NDJSON from stdin and dispatch."""
+        configure()
+        
+        # Setup signal handlers
+        signal.signal(signal.SIGTERM, self._handle_signal)
+        signal.signal(signal.SIGINT, self._handle_signal)
+        
+        logger.info("NORA STT Sidecar started")
+        
+        try:
+            for line in sys.stdin:
+                if not self._running:
+                    break
+                
+                line = line.strip()
+                if not line:
+                    continue
+                
+                try:
+                    data = json.loads(line)
+                    msg = parse_inbound(data)
+                    
+                    if isinstance(msg, StartMessage):
+                        self._handle_start(msg)
+                    elif isinstance(msg, AudioMessage):
+                        self._handle_audio(msg)
+                    elif isinstance(msg, StopMessage):
+                        self._handle_stop(msg)
+                
+                except json.JSONDecodeError as e:
+                    logger.error(f"Invalid JSON: {e}")
+                    self._emit(
+                        ErrorMessage(
+                            session_id="unknown",
+                            code="INVALID_JSON",
+                            message=str(e),
+                        )
+                    )
+                except ValueError as e:
+                    logger.error(f"Invalid message: {e}")
+                    self._emit(
+                        ErrorMessage(
+                            session_id="unknown",
+                            code="INVALID_MESSAGE",
+                            message=str(e),
+                        )
+                    )
+                except Exception as e:
+                    logger.error(f"Unexpected error: {e}")
+                    self._emit(
+                        ErrorMessage(
+                            session_id="unknown",
+                            code="UNKNOWN",
+                            message=str(e),
+                        )
+                    )
+        
+        except KeyboardInterrupt:
+            logger.info("Interrupted by user")
+        
+        finally:
+            if self._transcriber:
+                self._transcriber.stop()
+            logger.info("NORA STT Sidecar stopped")
+
+
+def main():
+    """Entry point."""
+    app = SidecarApp()
+    app.run()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
