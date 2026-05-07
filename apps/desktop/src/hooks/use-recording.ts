@@ -69,10 +69,12 @@ export function useRecording(options: UseRecordingOptions = {}) {
     const checkStatus = async () => {
       try {
         const status = await invoke<RecordingStatus>("get_recording_status");
+        console.log("[recording] status check:", status);
         if (status.is_recording) {
           setIsRecording(true);
           setDeviceName(status.device_name);
           setSampleRate(status.sample_rate);
+          console.log("[recording] restored recording state");
         }
       } catch (e) {
         console.error("[recording] failed to get status:", e);
