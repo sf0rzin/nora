@@ -122,6 +122,15 @@ export function useRecording(options: UseRecordingOptions = {}) {
     setIsRecording(false);
   }, []);
 
+  const renameSpeaker = useCallback((speakerId: string, newName: string) => {
+    setSpeakerMap((prev) => ({ ...prev, [speakerId]: newName }));
+  }, []);
+
+  const getSpeakerName = useCallback((speakerId: string | null, speaker: string | null) => {
+    if (!speakerId) return speaker;
+    return speakerMap[speakerId] || speaker || speakerId;
+  }, [speakerMap]);
+
   const saveMeeting = useCallback(async (title: string) => {
     if (transcriptLines.length === 0) {
       setError("Nenhuma transcrição para salvar");
@@ -175,15 +184,6 @@ export function useRecording(options: UseRecordingOptions = {}) {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [loadDevices]);
-
-  const renameSpeaker = useCallback((speakerId: string, newName: string) => {
-    setSpeakerMap((prev) => ({ ...prev, [speakerId]: newName }));
-  }, []);
-
-  const getSpeakerName = useCallback((speakerId: string | null, speaker: string | null) => {
-    if (!speakerId) return speaker;
-    return speakerMap[speakerId] || speaker || speakerId;
-  }, [speakerMap]);
 
   const fullTranscript = transcriptLines
     .map((l) => {
