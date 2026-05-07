@@ -85,7 +85,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
     const req = {
       deviceName: selectedDevice,
-      azureSpeechKey: options.azureSpeechKey,
+      azureKey: options.azureSpeechKey,
       azureRegion: options.azureRegion,
       language: options.language || "pt-BR",
       captureSystemAudio: options.captureSystemAudio ?? false,
