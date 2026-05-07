@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod audio_capture;
+mod audio_resample;
 pub mod commands;
 mod http_proxy;
 mod stt_sidecar;
