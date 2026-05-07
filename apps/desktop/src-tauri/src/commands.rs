@@ -1,4 +1,4 @@
-use crate::audio_capture::{AudioCapture, RecordingStatus};
+use crate::audio_capture::{AudioCapture, CaptureSinks, RecordingStatus};
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, State};
@@ -34,8 +34,19 @@ pub async fn start_recording(
         eprintln!("[commands] system_audio_device: {:?}", request.system_audio_device);
     }
 
-    // TODO: Integrate with stt_sidecar (Issue #11 follow-up)
-    // For now, just start audio capture without STT
+    // Create channels for mic and system audio
+    let (mic_tx, _mic_rx) = tokio::sync::mpsc::channel::<Vec<i16>>(100);
+    let (system_tx, _system_rx) = tokio::sync::mpsc::channel::<Vec<i16>>(100);
+
+    let sinks = CaptureSinks {
+        mic_tx,
+        system_tx: if request.capture_system_audio.unwrap_or(false) {
+            Some(system_tx)
+        } else {
+            None
+        },
+    };
+
     let status = {
         let capture = state.lock().map_err(|e| {
             #[cfg(debug_assertions)]
@@ -51,7 +62,7 @@ pub async fn start_recording(
             request.device_name.clone(),
             request.capture_system_audio.unwrap_or(false),
             request.system_audio_device.clone(),
-            None,
+            sinks,
         ).map_err(|e| {
             #[cfg(debug_assertions)]
             eprintln!("[commands] capture.start FAILED: {}", e);
@@ -62,7 +73,8 @@ pub async fn start_recording(
     };
 
     #[cfg(debug_assertions)]
-    eprintln!("[commands] capture started ok - device: {}, sr: {}, ch: {}", status.device_name, status.sample_rate, status.channels);
+    eprintln!("[commands] capture started ok - mic: {}, system: {:?}, sr: {}", 
+        status.mic_device, status.system_audio_device, status.sample_rate);
 
     #[cfg(debug_assertions)]
     eprintln!("[commands] start_recording returning ok");

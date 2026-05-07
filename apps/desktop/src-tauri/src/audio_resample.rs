@@ -3,7 +3,9 @@ use audioadapter_buffers::owned::InterleavedOwned;
 
 pub struct MonoResampler {
     inner: Option<Fft<f32>>,
+    #[allow(dead_code)]
     src_sr: u32,
+    #[allow(dead_code)]
     dst_sr: u32,
     leftover: Vec<f32>,
 }
@@ -53,7 +55,7 @@ impl MonoResampler {
                 &mut output_buf,
                 None,
             ) {
-                Ok((input_frames, output_frames)) => {
+                Ok((_input_frames, output_frames)) => {
                     // Extract data from output buffer
                     let data = output_buf.take_data();
                     out.extend_from_slice(&data[..output_frames]);
