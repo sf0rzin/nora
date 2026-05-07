@@ -27,8 +27,14 @@ export function RecordingPage() {
     error,
     deviceName,
     sampleRate,
+    speakerMap,
+    renameSpeaker,
+    getSpeakerName,
+    isSaving,
+    savedMeetingId,
     startRecording,
     stopRecording,
+    saveMeeting,
   } = useRecording({
     azureSpeechKey,
     azureRegion,
@@ -158,14 +164,19 @@ export function RecordingPage() {
               </p>
             )}
 
-            {transcriptLines.map((line) => (
-              <div key={line.id} className="flex gap-2">
-                {line.speaker && (
-                  <span className="text-blue-400 shrink-0">{line.speaker}</span>
-                )}
-                <span className="text-zinc-200">{line.text}</span>
-              </div>
-            ))}
+            {transcriptLines.map((line) => {
+              const speakerName = getSpeakerName(line.speakerId, line.speaker);
+              return (
+                <div key={line.id} className="flex gap-2 items-start group">
+                  {speakerName && (
+                    <span className="text-blue-400 shrink-0 font-medium min-w-[80px]">
+                      {speakerName}
+                    </span>
+                  )}
+                  <span className="text-zinc-200">{line.text}</span>
+                </div>
+              );
+            })}
 
             {partialText && (
               <div className="flex gap-2 opacity-60">
@@ -183,6 +194,42 @@ export function RecordingPage() {
             >
               Copiar Transcrição
             </button>
+            {!isRecording && transcriptLines.length > 0 && !savedMeetingId && (
+              <button
+                onClick={() => saveMeeting(meetingTitle)}
+                disabled={isSaving}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded text-sm font-medium transition-colors"
+              >
+                {isSaving ? "Salvando..." : "Salvar Reunião"}
+              </button>
+            )}
+            {savedMeetingId && (
+              <span className="px-4 py-2 bg-green-900/30 border border-green-800 rounded text-sm text-green-300">
+                Reunião salva!
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Speaker Management Panel */}
+        {Object.keys(speakerMap).length > 0 && (
+          <div className="mt-6 border border-zinc-700 rounded-lg overflow-hidden">
+            <div className="px-4 py-2 bg-zinc-800 border-b border-zinc-700">
+              <span className="text-sm font-medium">Gerenciar Participantes</span>
+            </div>
+            <div className="p-4 space-y-2">
+              {Object.entries(speakerMap).map(([speakerId, name]) => (
+                <div key={speakerId} className="flex items-center gap-2">
+                  <span className="text-sm text-zinc-400 w-20">{speakerId}:</span>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => renameSpeaker(speakerId, e.target.value)}
+                    className="flex-1 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-sm focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

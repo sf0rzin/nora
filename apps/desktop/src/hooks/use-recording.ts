@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { TranscriptLine, RecordingStatus } from "@/lib/recording-types";
+import { uploadTranscript } from "@/lib/meetings";
 
 interface UseRecordingOptions {
   azureSpeechKey?: string;
@@ -17,10 +18,13 @@ export function useRecording(options: UseRecordingOptions = {}) {
   const [sampleRate, setSampleRate] = useState(0);
   const [transcriptLines, setTranscriptLines] = useState<TranscriptLine[]>([]);
   const [partialText, setPartialText] = useState("");
+  const [speakerMap, setSpeakerMap] = useState<Record<string, string>>({});
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedMeetingId, setSavedMeetingId] = useState<string | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -30,6 +34,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
         text: string;
         isFinal: boolean;
         speaker: string | null;
+        speakerId: string | null;
       };
 
       if (payload.isFinal) {
@@ -40,6 +45,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
             text: payload.text,
             isFinal: true,
             speaker: payload.speaker,
+            speakerId: payload.speakerId,
             timestamp: Date.now(),
           },
         ]);
@@ -116,6 +122,50 @@ export function useRecording(options: UseRecordingOptions = {}) {
     setIsRecording(false);
   }, []);
 
+  const saveMeeting = useCallback(async (title: string) => {
+    if (transcriptLines.length === 0) {
+      setError("Nenhuma transcrição para salvar");
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const transcript = transcriptLines
+        .map((l) => {
+          const speakerName = getSpeakerName(l.speakerId, l.speaker);
+          return (speakerName ? `[${speakerName}] ` : "") + l.text;
+        })
+        .join("\n");
+
+      const startedAt = new Date(
+        Date.now() - (duration * 1000)
+      ).toISOString();
+
+      const participants = Object.entries(speakerMap).map(([id, name]) => ({
+        displayName: name || id,
+      }));
+
+      const result = await uploadTranscript({
+        title: title || "Reunião sem título",
+        startedAt,
+        transcriptFormat: "text/plain",
+        fileContent: transcript,
+        fileName: `${title || "reuniao"}_${new Date().toISOString()}.txt`,
+        endedAt: new Date().toISOString(),
+        participants: participants.length > 0 ? participants : undefined,
+      });
+
+      setSavedMeetingId(result.meetingId);
+    } catch (e) {
+      console.error("[recording] save meeting FAILED:", e);
+      setError(String(e));
+    } finally {
+      setIsSaving(false);
+    }
+  }, [transcriptLines, speakerMap, duration, getSpeakerName]);
+
   useEffect(() => {
     loadDevices();
     return () => {
@@ -123,8 +173,20 @@ export function useRecording(options: UseRecordingOptions = {}) {
     };
   }, [loadDevices]);
 
+  const renameSpeaker = useCallback((speakerId: string, newName: string) => {
+    setSpeakerMap((prev) => ({ ...prev, [speakerId]: newName }));
+  }, []);
+
+  const getSpeakerName = useCallback((speakerId: string | null, speaker: string | null) => {
+    if (!speakerId) return speaker;
+    return speakerMap[speakerId] || speaker || speakerId;
+  }, [speakerMap]);
+
   const fullTranscript = transcriptLines
-    .map((l) => (l.speaker ? `[${l.speaker}] ` : "") + l.text)
+    .map((l) => {
+      const speakerName = getSpeakerName(l.speakerId, l.speaker);
+      return (speakerName ? `[${speakerName}] ` : "") + l.text;
+    })
     .join("\n");
 
   return {
@@ -139,8 +201,14 @@ export function useRecording(options: UseRecordingOptions = {}) {
     setSelectedDevice,
     duration,
     error,
+    speakerMap,
+    renameSpeaker,
+    getSpeakerName,
+    isSaving,
+    savedMeetingId,
     startRecording,
     stopRecording,
+    saveMeeting,
     loadDevices,
   };
 }

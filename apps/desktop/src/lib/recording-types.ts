@@ -3,6 +3,7 @@ export interface TranscriptLine {
   text: string;
   isFinal: boolean;
   speaker: string | null;
+  speakerId: string | null;
   timestamp: number;
 }
 
@@ -11,4 +12,8 @@ export interface RecordingStatus {
   device_name: string;
   sample_rate: number;
   channels: number;
+}
+
+export interface SpeakerMap {
+  [speakerId: string]: string;
 }

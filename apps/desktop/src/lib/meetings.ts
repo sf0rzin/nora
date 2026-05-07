@@ -21,17 +21,22 @@ export async function getMeeting(meetingId: string): Promise<MeetingDetail> {
   return apiClient.request<MeetingDetail>(`/meetings/${meetingId}`);
 }
 
+export interface UploadTranscriptRequest {
+  title: string;
+  startedAt: string;
+  transcriptFormat: string;
+  fileContent: string;
+  fileName: string;
+  endedAt?: string;
+  tags?: string[];
+  participants?: { displayName: string; email?: string }[];
+}
+
 export async function uploadTranscript(
-  _title: string,
-  _startedAt: string,
-  _transcriptFormat: string,
-  _fileContent: Blob,
-  _fileName: string,
-  _extra?: {
-    endedAt?: string;
-    tags?: string[];
-    participants?: { displayName: string; email?: string }[];
-  },
-): Promise<unknown> {
-  throw new Error("Upload via desktop not yet implemented — use the web app");
+  data: UploadTranscriptRequest
+): Promise<{ meetingId: string }> {
+  return apiClient.request<{ meetingId: string }>("/meetings/upload", {
+    method: "POST",
+    body: data,
+  });
 }
