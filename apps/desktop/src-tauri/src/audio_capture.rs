@@ -61,16 +61,16 @@ impl AudioCapture {
             .iter()
             .find(|c| c.min_sample_rate().0 <= 16000 && c.max_sample_rate().0 >= 16000)
         {
-            return Ok(c.clone().with_sample_rate(cpal::SampleRate(16000)).config());
+            return Ok((*c).with_sample_rate(cpal::SampleRate(16000)).config());
         }
         // Fallback to 48kHz (common on desktops, good quality)
         if let Some(c) = supported_configs
             .iter()
             .find(|c| c.min_sample_rate().0 <= 48000 && c.max_sample_rate().0 >= 48000)
         {
-            return Ok(c.clone().with_sample_rate(cpal::SampleRate(48000)).config());
+            return Ok((*c).with_sample_rate(cpal::SampleRate(48000)).config());
         }
-        Ok(supported_configs[0].clone().with_max_sample_rate().config())
+        Ok(supported_configs[0].with_max_sample_rate().config())
     }
 
     pub fn start(
@@ -189,12 +189,12 @@ impl AudioCapture {
         if capture_system_audio {
             let source = system_audio_device_name
                 .as_deref()
-                .and_then(|name| {
+                .map(|name| {
                     #[cfg(debug_assertions)]
                     eprintln!("[audio] using explicit system audio device: {}", name);
-                    Some(name.to_string())
+                    name.to_string()
                 })
-                .or_else(|| system_audio::find_system_audio_source());
+                .or_else(system_audio::find_system_audio_source);
 
             if let Some(source) = source {
                 let sys_buf_clone = self.system_audio_buffer.clone();
