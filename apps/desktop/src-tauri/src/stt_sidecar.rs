@@ -250,11 +250,9 @@ async fn run_sidecar(
                     }
                     Some(tauri_plugin_shell::process::CommandEvent::Stderr(chunk)) => {
                         let msg = String::from_utf8_lossy(&chunk);
-                        #[cfg(debug_assertions)]
                         eprintln!("[sidecar stderr] {}", msg.trim());
                     }
                     Some(tauri_plugin_shell::process::CommandEvent::Terminated(payload)) => {
-                        #[cfg(debug_assertions)]
                         eprintln!("[stt_sidecar] terminated: {:?}", payload);
                         let _ = app.emit("stt-error", serde_json::json!({
                             "session_id": session_id,
@@ -272,7 +270,6 @@ async fn run_sidecar(
                     // Stop signal received
                 }
             } => {
-                #[cfg(debug_assertions)]
                 eprintln!("[stt_sidecar] stop signal received");
                 break;
             }
