@@ -16,6 +16,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
   const [isRecording, setIsRecording] = useState(false);
   const [deviceName, setDeviceName] = useState("");
   const [sampleRate, setSampleRate] = useState(0);
+  const isRecordingRef = useRef(false);
   const [transcriptLines, setTranscriptLines] = useState<TranscriptLine[]>([]);
   const [partialText, setPartialText] = useState("");
   const [speakerMap, setSpeakerMap] = useState<Record<string, string>>({});
@@ -60,6 +61,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
     const unlistenStatus = listen<RecordingStatus>("recording-status", (event) => {
       const s = event.payload;
+      isRecordingRef.current = s.is_recording;
       setIsRecording(s.is_recording);
       setDeviceName(s.device_name);
       setSampleRate(s.sample_rate);
@@ -71,6 +73,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
         const status = await invoke<RecordingStatus>("get_recording_status");
         console.log("[recording] status check:", status);
         if (status.is_recording) {
+          isRecordingRef.current = true;
           setIsRecording(true);
           setDeviceName(status.device_name);
           setSampleRate(status.sample_rate);
@@ -218,7 +221,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     .join("\n");
 
   return {
-    isRecording,
+    isRecording: isRecording || isRecordingRef.current,
     deviceName,
     sampleRate,
     transcriptLines,
