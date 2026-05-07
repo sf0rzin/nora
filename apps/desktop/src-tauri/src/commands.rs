@@ -170,3 +170,11 @@ pub fn stop_recording(
     let capture = state.lock().map_err(|e| e.to_string())?;
     capture.stop(app_handle)
 }
+
+#[tauri::command]
+pub fn get_recording_status(
+    state: State<'_, CaptureState>,
+) -> Result<RecordingStatus, String> {
+    let capture = state.lock().map_err(|e| e.to_string())?;
+    Ok(capture.get_status())
+}

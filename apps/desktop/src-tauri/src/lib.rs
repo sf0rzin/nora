@@ -33,6 +33,7 @@ pub fn run() {
             commands::list_audio_devices,
             commands::start_recording,
             commands::stop_recording,
+            commands::get_recording_status,
             http_proxy::http_proxy,
             secrets::secret_set,
             secrets::secret_has,

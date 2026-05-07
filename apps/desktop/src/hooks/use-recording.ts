@@ -65,6 +65,21 @@ export function useRecording(options: UseRecordingOptions = {}) {
       setSampleRate(s.sample_rate);
     });
 
+    // Check recording status on mount
+    const checkStatus = async () => {
+      try {
+        const status = await invoke<RecordingStatus>("get_recording_status");
+        if (status.is_recording) {
+          setIsRecording(true);
+          setDeviceName(status.device_name);
+          setSampleRate(status.sample_rate);
+        }
+      } catch (e) {
+        console.error("[recording] failed to get status:", e);
+      }
+    };
+    checkStatus();
+
     return () => {
       unlisten.then((fn) => fn());
       unlistenStatus.then((fn) => fn());

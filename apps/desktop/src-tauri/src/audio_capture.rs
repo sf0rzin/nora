@@ -31,6 +31,7 @@ struct MicStream {
 pub struct AudioCapture {
     mic: Mutex<Option<MicStream>>,
     system: Mutex<Option<system_audio::SystemAudioCapture>>,
+    current_status: Mutex<RecordingStatus>,
 }
 
 impl AudioCapture {
@@ -38,6 +39,12 @@ impl AudioCapture {
         Self {
             mic: Mutex::new(None),
             system: Mutex::new(None),
+            current_status: Mutex::new(RecordingStatus {
+                is_recording: false,
+                mic_device: String::new(),
+                system_audio_device: None,
+                sample_rate: 0,
+            }),
         }
     }
 
@@ -250,9 +257,27 @@ impl AudioCapture {
             sample_rate: 16000,
         };
 
+        // Store current status
+        if let Ok(mut guard) = self.current_status.lock() {
+            *guard = status.clone();
+        }
+
         let _ = app_handle.emit("recording-status", &status);
 
         Ok(status)
+    }
+
+    pub fn get_status(&self) -> RecordingStatus {
+        if let Ok(guard) = self.current_status.lock() {
+            guard.clone()
+        } else {
+            RecordingStatus {
+                is_recording: false,
+                mic_device: String::new(),
+                system_audio_device: None,
+                sample_rate: 0,
+            }
+        }
     }
 
     pub fn stop(&self, app_handle: AppHandle) -> Result<(), String> {
@@ -278,6 +303,11 @@ impl AudioCapture {
             system_audio_device: None,
             sample_rate: 0,
         };
+
+        // Clear current status
+        if let Ok(mut guard) = self.current_status.lock() {
+            *guard = status.clone();
+        }
 
         let _ = app_handle.emit("recording-status", &status);
 
