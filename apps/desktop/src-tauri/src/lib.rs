@@ -4,6 +4,7 @@ mod audio_capture;
 mod audio_resample;
 pub mod commands;
 mod http_proxy;
+mod secrets;
 mod stt_sidecar;
 mod system_audio;
 
@@ -23,11 +24,15 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(capture_state)
         .manage(http_proxy::ApiBaseUrl(base_url))
+        .manage(secrets::SecretStore::new())
         .invoke_handler(tauri::generate_handler![
             commands::list_audio_devices,
             commands::start_recording,
             commands::stop_recording,
             http_proxy::http_proxy,
+            secrets::secret_set,
+            secrets::secret_has,
+            secrets::secret_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
