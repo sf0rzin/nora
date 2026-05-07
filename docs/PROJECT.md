@@ -46,7 +46,7 @@ Admin da empresa configura:
 ├── Lista de concorrentes com contexto de mercado
 └── Glossário de termos e processos internos
          │
-         ▼  (armazenado como embeddings — OpenAI Embeddings no MVP, Azure AI Search em Enterprise)
+         ▼  (embeddings: OpenAI `text-embedding-3-small` no MVP, Azure OpenAI em Enterprise; índice vetorial: stub local no MVP, Azure AI Search em produção)
          │
 NLPWorker na análise:
 ├── RAG retrieval sobre o catálogo do tenant
@@ -181,18 +181,26 @@ Nada é throw-away. Cada entrega da rubrica vira artefato de produção:
 
 ### Sequência de Build (pós Sprint 1+2)
 
+**MVP — vertical slice principal (Web + Backend + Worker NLP):**
+
 | # | Componente | Estratégia | Justificativa |
 |---|---|---|---|
-| 1 | Infra base + Auth e-mail/senha + Multi-tenant | BUILD | Fundação do MVP; SSO Entra ID entra como evolução Enterprise |
+| 1 | Infra base + Auth e-mail/senha + Multi-tenant | BUILD | Fundação do MVP |
 | 2 | Worker NLP + RAG + Product Context | BUILD | Coração do produto |
 | 3 | Web: upload texto + análise + dashboard | BUILD | Core do produto, atende rubrica |
-| 4 | IAM: RBAC + ABAC + tela de admin | BUILD | Requisito enterprise real |
+| 4 | IAM granular (estilo AWS: Root + Users + Groups + Policies) | BUILD | Requisito enterprise real |
+
+**Pós-MVP — evoluções após a vertical slice estar estável:**
+
+| # | Componente | Estratégia | Justificativa |
+|---|---|---|---|
 | 5 | MCP servers (Linear/Jira + Calendar) | BUILD | ~200 linhas cada, alto impacto no pitch |
 | 6 | Web: upload áudio (Azure AI Speech) | BUILD | Adiciona superfície sem mudar arquitetura |
-| 7 | Desktop: Tauri + WASAPI + streaming | BUILD (Windows pós-MVP) | Demo avançada depois que Web + Worker estiverem estáveis |
-| 8 | Polimento UX + landing page | BUILD | Cara de produto real |
-| 9 | iOS/Android | DESIGN only | Fora do escopo realista |
-| 10 | Integração TOTVS CRM nativa | DESIGN only | Depende de API TOTVS sem acesso |
+| 7 | SSO corporativo (Entra ID/SAML) | BUILD | Atende requisito Enterprise quando tenant exigir |
+| 8 | Desktop: Tauri + WASAPI + streaming | BUILD (Windows) | Demo avançada depois que Web + Worker estiverem estáveis |
+| 9 | Polimento UX + landing page | BUILD | Cara de produto real |
+| 10 | iOS/Android | DESIGN only | Fora do escopo realista |
+| 11 | Integração TOTVS CRM nativa | DESIGN only | Depende de API TOTVS sem acesso |
 
 ## 7. Cloud & Stack
 
