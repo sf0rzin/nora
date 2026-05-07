@@ -35,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleLogin = (u: SessionUser) => {
     setUser(u);
+    setLoading(false);
   };
 
   const logout = () => {

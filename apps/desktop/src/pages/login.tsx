@@ -27,7 +27,6 @@ export function LoginPage() {
     try {
       const user = await login({ email, password });
       setAuthUser(user);
-      window.location.hash = "#/meetings";
     } catch (err: unknown) {
       console.error("Login error:", err);
       const msg = err instanceof Error ? err.message : JSON.stringify(err);
