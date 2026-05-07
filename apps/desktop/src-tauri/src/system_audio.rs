@@ -2,9 +2,10 @@
 mod platform {
     use std::io::Read;
     use std::os::unix::io::AsRawFd;
+    use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     pub fn find_system_audio_source() -> Option<String> {
         let output = Command::new("pactl")
@@ -78,31 +79,36 @@ mod platform {
     impl SystemAudioCapture {
         pub fn start(
             source: &str,
-            sample_rate: u32,
-            sys_buf: Arc<Mutex<Vec<f32>>>,
+            _sample_rate_hint: u32,
+            sink: tokio::sync::mpsc::Sender<Vec<i16>>,
             flag: Arc<AtomicBool>,
-        ) -> Option<Self> {
-            let mut child = Command::new("parecord")
-                .args([
-                    "--device", source,
-                    "--format", "float32le",
-                    "--rate", &sample_rate.to_string(),
-                    "--channels", "1",
-                    "--raw",
-                ])
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null())
-                .spawn()
-                .ok()?;
+        ) -> Result<Self, String> {
+            let mut cmd = Command::new("parecord");
+            cmd.args([
+                "--device", source,
+                "--format=s16le",
+                "--rate=16000",
+                "--channels=1",
+                "--raw",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
 
-            // Kill child automatically if parent dies (no orphans on crash)
+            // prctl inside pre_exec (runs in child process before exec)
             unsafe {
-                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                cmd.pre_exec(|| {
+                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                    Ok(())
+                });
             }
 
-            let mut stdout = child.stdout.take()?;
+            let mut child = cmd.spawn()
+                .map_err(|e| format!("spawn parecord: {}", e))?;
 
-            // Set stdout to non-blocking so the read thread can exit promptly
+            let mut stdout = child.stdout.take()
+                .ok_or("no stdout")?;
+
+            // Set stdout to non-blocking
             unsafe {
                 let fd = stdout.as_raw_fd();
                 let flags = libc::fcntl(fd, libc::F_GETFL);
@@ -112,26 +118,19 @@ mod platform {
             }
 
             std::thread::spawn(move || {
-                let mut read_buf = [0u8; 6400];
+                let mut read_buf = [0u8; 6400]; // 3200 samples i16 = 200ms a 16kHz mono
                 while flag.load(Ordering::SeqCst) {
                     match stdout.read(&mut read_buf) {
                         Ok(0) => break,
                         Ok(n) => {
-                            if n % 4 != 0 {
+                            if n % 2 != 0 {
                                 continue;
                             }
-                            let samples: Vec<f32> = read_buf[..n]
-                                .chunks_exact(4)
-                                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                            let samples: Vec<i16> = read_buf[..n]
+                                .chunks_exact(2)
+                                .map(|c| i16::from_le_bytes([c[0], c[1]]))
                                 .collect();
-                            if let Ok(mut buf) = sys_buf.lock() {
-                                buf.extend_from_slice(&samples);
-                                let max_samples = (sample_rate as usize / 10) * 20;
-                                if buf.len() > max_samples {
-                                    let excess = buf.len() - max_samples;
-                                    buf.drain(..excess);
-                                }
-                            }
+                            let _ = sink.try_send(samples);
                         }
                         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                             std::thread::sleep(std::time::Duration::from_millis(10));
@@ -141,7 +140,7 @@ mod platform {
                 }
             });
 
-            Some(Self { child })
+            Ok(Self { child })
         }
 
         pub fn stop(&mut self) {
@@ -174,97 +173,12 @@ mod platform {
     impl SystemAudioCapture {
         pub fn start(
             _source: &str,
-            sample_rate: u32,
-            sys_buf: Arc<Mutex<Vec<f32>>>,
-            flag: Arc<AtomicBool>,
-        ) -> Option<Self> {
-            use windows::Win32::Media::Audio::*;
-            use windows::Win32::System::Com::*;
-            use windows::core::GUID;
-
-            unsafe {
-                let _ = CoInitializeEx(None, COINIT_MULTITHREADED).ok()?;
-
-                let enumerator: IMMDeviceEnumerator =
-                    windows::core::Factory::create_instance(&IMMDeviceEnumerator)?
-                        .ok()?;
-
-                let device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole).ok()?;
-
-                let mut audio_client: IAudioClient = device.Activate(
-                    &IAudioClient::IID as *const _ as *const _,
-                    CLSCTX_ALL,
-                    None,
-                ).ok()?;
-
-                // TODO: query native mix format instead of hardcoding
-                let format = WAVEFORMATEX {
-                    wFormatTag: 3, // IEEE_FLOAT
-                    nChannels: 1,
-                    nSamplesPerSec: sample_rate,
-                    nAvgBytesPerSec: sample_rate * 4,
-                    nBlockAlign: 4,
-                    wBitsPerSample: 32,
-                    cbSize: 0,
-                };
-
-                audio_client.Initialize(
-                    AUDCLNT_SHAREMODE_SHARED,
-                    AUDCLNT_STREAMFLAGS_LOOPBACK,
-                    10000000,
-                    0,
-                    &format,
-                    GUID::zeroed(),
-                ).ok()?;
-
-                let capture_client: IAudioCaptureClient = audio_client.GetService(&IAudioCaptureClient::IID as *const _ as *const _).ok()?;
-                audio_client.Start().ok()?;
-
-                let flag_clone = flag.clone();
-                let sr = sample_rate;
-                let handle = std::thread::spawn(move || {
-                    loop {
-                        if !flag_clone.load(Ordering::SeqCst) {
-                            break;
-                        }
-                        std::thread::sleep(std::time::Duration::from_millis(10));
-
-                        let _frame_count = unsafe {
-                            match capture_client.GetNextPacketSize() {
-                                Ok(0) => continue,
-                                Ok(_) => {},
-                                Err(_) => break,
-                            }
-
-                            let (data, frames, _flags) = match capture_client.GetBuffer() {
-                                Ok(result) => result,
-                                Err(_) => continue,
-                            };
-
-                            if frames > 0 {
-                                let slice = std::slice::from_raw_parts(data as *const f32, frames as usize);
-                                if let Ok(mut buf) = sys_buf.lock() {
-                                    buf.extend_from_slice(slice);
-                                    let max_samples = (sr as usize / 10) * 20;
-                                    if buf.len() > max_samples {
-                                        let excess = buf.len() - max_samples;
-                                        buf.drain(..excess);
-                                    }
-                                }
-                            }
-
-                            let _ = capture_client.ReleaseBuffer(frames);
-                            frames
-                        };
-                    }
-                    #[cfg(debug_assertions)]
-                    eprintln!("[system-audio] wasapi loopback thread ending");
-                });
-
-                Some(Self {
-                    thread_handle: Some(handle),
-                })
-            }
+            _sample_rate_hint: u32,
+            _sink: tokio::sync::mpsc::Sender<Vec<i16>>,
+            _flag: Arc<AtomicBool>,
+        ) -> Result<Self, String> {
+            // TODO: Implementar WASAPI loopback funcional (Issue #14)
+            Err("Windows system audio capture not yet implemented".to_string())
         }
 
         pub fn stop(&mut self) {
@@ -277,8 +191,8 @@ mod platform {
 
 #[cfg(target_os = "macos")]
 mod platform {
-    use std::sync::{Arc, Mutex};
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
 
     pub fn find_system_audio_source() -> Option<String> {
         #[cfg(debug_assertions)]
@@ -291,11 +205,11 @@ mod platform {
     impl SystemAudioCapture {
         pub fn start(
             _source: &str,
-            _sample_rate: u32,
-            _sys_buf: Arc<Mutex<Vec<f32>>>,
+            _sample_rate_hint: u32,
+            _sink: tokio::sync::mpsc::Sender<Vec<i16>>,
             _flag: Arc<AtomicBool>,
-        ) -> Option<Self> {
-            None
+        ) -> Result<Self, String> {
+            Err("macOS system audio capture not yet implemented".to_string())
         }
 
         pub fn stop(&mut self) {}

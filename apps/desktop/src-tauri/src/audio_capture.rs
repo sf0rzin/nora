@@ -216,40 +216,26 @@ impl AudioCapture {
 
             if let Some(source) = source {
                 let flag = Arc::new(AtomicBool::new(true));
-                let flag_clone = flag.clone();
-                let sys_buf = Arc::new(Mutex::new(Vec::new()));
-                let sys_buf_clone = sys_buf.clone();
                 let system_tx = sinks.system_tx.unwrap();
 
-                // Spawn thread to read from system buffer and send to channel
-                std::thread::spawn(move || {
-                    while flag_clone.load(Ordering::SeqCst) {
-                        if let Ok(mut buf) = sys_buf_clone.lock() {
-                            if !buf.is_empty() {
-                                let samples: Vec<f32> = buf.drain(..).collect();
-                                let i16_samples = f32_to_i16(&samples);
-                                let _ = system_tx.try_send(i16_samples);
-                            }
-                        }
-                        std::thread::sleep(std::time::Duration::from_millis(10));
-                    }
-                });
-
-                if let Some(capture) = system_audio::SystemAudioCapture::start(
+                match system_audio::SystemAudioCapture::start(
                     &source,
                     16000,
-                    sys_buf,
+                    system_tx,
                     flag,
                 ) {
-                    #[cfg(debug_assertions)]
-                    eprintln!("[audio] system audio capture started");
-                    system_audio_display_name = Some(format!("System Audio ({})", source));
-                    if let Ok(mut guard) = self.system.lock() {
-                        *guard = Some(capture);
+                    Ok(capture) => {
+                        #[cfg(debug_assertions)]
+                        eprintln!("[audio] system audio capture started");
+                        system_audio_display_name = Some(format!("System Audio ({})", source));
+                        if let Ok(mut guard) = self.system.lock() {
+                            *guard = Some(capture);
+                        }
                     }
-                } else {
-                    #[cfg(debug_assertions)]
-                    eprintln!("[audio] failed to start system audio capture");
+                    Err(e) => {
+                        #[cfg(debug_assertions)]
+                        eprintln!("[audio] failed to start system audio capture: {}", e);
+                    }
                 }
             } else {
                 #[cfg(debug_assertions)]
