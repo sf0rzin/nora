@@ -82,6 +82,8 @@ graph TD
     CU26(["UC26 · Injetar contexto do produto/empresa"])
     CU27(["UC27 · Enviar notificações"])
     CU28(["UC28 · Avaliar produtividade vs. objetivo declarado (opt-in)"])
+    CU29(["UC29 · Avaliar Customer Confidence (Enterprise)"])
+    CU30(["UC30 · Atualizar Account Health Score (Enterprise)"])
   end
 
   %% ─── Relações: Visitante ───
@@ -132,6 +134,8 @@ graph TD
   CU23 --> CU25
   CU23 -. Enterprise .-> CU26
   CU23 -. se goal declarado .-> CU28
+  CU23 -. Enterprise + lead .-> CU29
+  CU29 --> CU30
   CU23 --> CU27
 
   %% ─── Relações: Serviço Externo ───
@@ -276,6 +280,30 @@ graph TD
 4. Calcula um Productivity Score (0–100), banda (`LOW` / `MEDIUM` / `HIGH`) e justificativa
 5. Resultado fica visível no detalhe da reunião
 **Extensão (pós-MVP):** Em vez do `projectStateSnapshot` manual, a NORA puxa o estado do projeto via MCP de Jira / Linear / Azure DevOps / GitHub Projects.
+
+---
+
+### UC29 — Avaliar Customer Confidence (Enterprise)
+**Ator principal:** Usuário Enterprise (AE)
+**Pré-condição:** Reunião está vinculada a uma `customer_account`; tenant é Enterprise
+**Fluxo principal:**
+1. Após o resumo (UC23), o worker analisa sinais de compra e objeções na transcrição
+2. Calcula um Customer Confidence Score (0–100) e banda (`LOW` / `MEDIUM` / `HIGH`)
+3. Compara com a última avaliação da mesma conta para gerar `trend` (`IMPROVING` / `STABLE` / `DECLINING`)
+4. Persiste sinais e objeções com a citação textual
+**Resultado:** indicador disponível no detalhe da reunião e no painel da conta.
+
+---
+
+### UC30 — Atualizar Account Health Score (Enterprise)
+**Ator principal:** Sistema (disparado por UC29)
+**Pré-condição:** Existe um novo Customer Confidence persistido
+**Fluxo principal:**
+1. Sistema combina o Customer Confidence recente, riscos e oportunidades acumulados, recência de interação e tendência
+2. Calcula novo Account Health Score (0–100) com banda (`AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`)
+3. Persiste snapshot com referência à análise que disparou
+4. Se houve mudança de banda para pior, dispara alerta para os usuários autorizados (US51)
+**Resultado:** série temporal da saúde da conta atualizada.
 
 ---
 
