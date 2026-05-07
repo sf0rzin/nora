@@ -86,6 +86,33 @@
       "type": "array",
       "maxItems": 12,
       "items": { "type": "string", "minLength": 2, "maxLength": 60 }
+    },
+    "productivity": {
+      "type": ["object", "null"],
+      "description": "Avaliação de produtividade da reunião. Presente apenas quando o usuário ativou o recurso e declarou objetivo/outcomes esperados.",
+      "additionalProperties": false,
+      "required": ["score", "band", "coverage", "rationale"],
+      "properties": {
+        "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "band": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "coverage": {
+          "type": "array",
+          "description": "Para cada outcome esperado declarado, status de cobertura na reunião.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expectedOutcome", "status"],
+            "properties": {
+              "expectedOutcome": { "type": "string", "minLength": 3, "maxLength": 240 },
+              "status": { "type": "string", "enum": ["ADDRESSED", "PARTIAL", "MISSED"] },
+              "evidence": { "type": ["string", "null"], "maxLength": 500 }
+            }
+          }
+        },
+        "offTopicRatio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "decisionDensity": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "rationale": { "type": "string", "minLength": 10, "maxLength": 1000 }
+      }
     }
   }
 }

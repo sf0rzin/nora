@@ -81,6 +81,7 @@ graph TD
     CU25(["UC25 · Indexar conteúdo com embeddings"])
     CU26(["UC26 · Injetar contexto do produto/empresa"])
     CU27(["UC27 · Enviar notificações"])
+    CU28(["UC28 · Avaliar produtividade vs. objetivo declarado (opt-in)"])
   end
 
   %% ─── Relações: Visitante ───
@@ -130,6 +131,7 @@ graph TD
   CU23 --> CU24
   CU23 --> CU25
   CU23 -. Enterprise .-> CU26
+  CU23 -. se goal declarado .-> CU28
   CU23 --> CU27
 
   %% ─── Relações: Serviço Externo ───
@@ -261,6 +263,19 @@ graph TD
 1. Root abre o grupo desejado
 2. Adiciona ou remove usuários membros
 3. Permissões resultantes são reavaliadas na próxima requisição de cada usuário afetado
+
+---
+
+### UC28 — Avaliar produtividade vs. objetivo declarado (opt-in)
+**Ator principal:** Usuário Core / Usuário Enterprise
+**Pré-condição:** Recurso de produtividade ativado pelo usuário ao subir a reunião
+**Fluxo principal:**
+1. No upload, o usuário declara o `purpose` da reunião e a lista de `expectedOutcomes` que precisavam ser tratados
+2. (Opcional) o usuário cola/edita um `projectStateSnapshot` descrevendo o que já está feito
+3. A NORA processa a reunião normalmente (UC23) e, ao final, avalia cobertura outcome-a-outcome (`ADDRESSED` / `PARTIAL` / `MISSED`)
+4. Calcula um Productivity Score (0–100), banda (`LOW` / `MEDIUM` / `HIGH`) e justificativa
+5. Resultado fica visível no detalhe da reunião
+**Extensão (pós-MVP):** Em vez do `projectStateSnapshot` manual, a NORA puxa o estado do projeto via MCP de Jira / Linear / Azure DevOps / GitHub Projects.
 
 ---
 
