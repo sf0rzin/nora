@@ -30,6 +30,7 @@ impl SecretStore {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get(&self, key: &str) -> Result<Option<String>, String> {
         if !ALLOWED_KEYS.contains(&key) {
             return Err(format!("chave não permitida: {}", key));
