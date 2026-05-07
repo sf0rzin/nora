@@ -32,7 +32,7 @@ Build the Web + Backend + NLP Worker vertical slice first:
 - Dashboard of meetings
 - Meeting detail page
 - Basic task list
-- Enterprise access control with fixed roles and scoped visibility
+- AWS-style IAM in the Enterprise tenant: a Root user, plus Users, Groups and Policies (Effect/Action/Resource[/Condition]) created and managed by the tenant. No hardcoded role hierarchy.
 
 Post-MVP / roadmap:
 
