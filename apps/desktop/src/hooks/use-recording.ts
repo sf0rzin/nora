@@ -14,10 +14,20 @@ interface UseRecordingOptions {
 }
 
 export function useRecording(options: UseRecordingOptions = {}) {
-  const { isRecording, deviceName, sampleRate, setRecordingState } = useRecordingContext();
-  const [transcriptLines, setTranscriptLines] = useState<TranscriptLine[]>([]);
-  const [partialText, setPartialText] = useState("");
-  const [speakerMap, setSpeakerMap] = useState<Record<string, string>>({});
+  const { 
+    isRecording, 
+    deviceName, 
+    sampleRate, 
+    transcriptLines,
+    partialText: contextPartialText,
+    speakerMap,
+    setRecordingState,
+    addTranscriptLine,
+    setPartialText: setContextPartialText,
+    renameSpeaker: contextRenameSpeaker,
+    clearTranscript
+  } = useRecordingContext();
+  
   const [devices, setDevices] = useState<string[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
@@ -39,21 +49,18 @@ export function useRecording(options: UseRecordingOptions = {}) {
       };
 
       if (payload.isFinal) {
-        setTranscriptLines((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            text: payload.text,
-            isFinal: true,
-            speaker: payload.speaker,
-            speakerId: payload.speakerId,
-            track: payload.track,
-            timestamp: Date.now(),
-          },
-        ]);
-        setPartialText("");
+        addTranscriptLine({
+          id: crypto.randomUUID(),
+          text: payload.text,
+          isFinal: true,
+          speaker: payload.speaker,
+          speakerId: payload.speakerId,
+          track: payload.track,
+          timestamp: Date.now(),
+        });
+        setContextPartialText("");
       } else {
-        setPartialText(payload.text);
+        setContextPartialText(payload.text);
       }
     });
 
@@ -94,8 +101,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
   const startRecording = useCallback(async () => {
     setError(null);
-    setTranscriptLines([]);
-    setPartialText("");
+    clearTranscript();
     setDuration(0);
 
     const req = {
@@ -136,7 +142,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
   }, []);
 
   const renameSpeaker = useCallback((speakerId: string, newName: string) => {
-    setSpeakerMap((prev) => ({ ...prev, [speakerId]: newName }));
+    contextRenameSpeaker(speakerId, newName);
   }, []);
 
   const getSpeakerName = useCallback((speakerId: string | null, speaker: string | null, track?: string) => {
@@ -215,7 +221,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     deviceName,
     sampleRate,
     transcriptLines,
-    partialText,
+    partialText: contextPartialText,
     fullTranscript,
     devices,
     selectedDevice,
