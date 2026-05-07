@@ -35,6 +35,14 @@ db-reset: ## Apaga volume e sobe banco do zero
 	$(COMPOSE) down -v
 	$(COMPOSE) up -d
 
+# --- Dev completo ---
+
+.PHONY: dev
+dev: ## Sobe DB + worker (background) + API (foreground)
+	$(COMPOSE) up -d
+	cd services/nlp-worker && uvicorn nora_nlp.main:app --reload --port 8001 &
+	cd services/api && mvn spring-boot:run
+
 # --- Backend ---
 
 .PHONY: api-dev
