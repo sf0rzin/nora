@@ -50,7 +50,7 @@ Adotar dois indicadores distintos e complementares para o plano **Enterprise**:
   - Oportunidades abertas (bonus por `estimatedValue`).
   - Recência da última interação (penalidade por silêncio prolongado).
 - **Banda**: `AT_RISK` (<35), `WATCH` (35–59), `HEALTHY` (60–84), `STRONG` (≥85).
-- **Trigger de alerta** na mudança de banda para pior (US43).
+- **Trigger de alerta** na mudança de banda para pior (US51).
 
 ### Modelo de dados
 

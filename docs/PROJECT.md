@@ -46,7 +46,7 @@ Admin da empresa configura:
 ├── Lista de concorrentes com contexto de mercado
 └── Glossário de termos e processos internos
          │
-         ▼  (armazenado como embeddings — OpenAI Embeddings no MVP, Azure AI Search em Enterprise)
+         ▼  (embeddings: OpenAI `text-embedding-3-small` no MVP, Azure OpenAI em Enterprise; índice vetorial: stub local no MVP, Azure AI Search em produção)
          │
 NLPWorker na análise:
 ├── RAG retrieval sobre o catálogo do tenant
@@ -78,7 +78,7 @@ NLPWorker na análise:
 1. **Product Context via RAG** — inteligência calibrada ao negócio de cada tenant, não genérica.
 2. **Account Health Score temporal** — detecta degradação de sentimento ANTES do churn.
 3. **Desktop real-time** — coaching ao vivo durante a reunião, não só análise pós.
-4. **IAM enterprise-grade** — controle granular de quem vê o quê (RBAC + ABAC).
+4. **IAM enterprise-grade** — modelo estilo AWS (Root + Users + Groups + Policies) sem hierarquia fixa.
 5. **PII Shield / LGPD-first** — redação automática de dados sensíveis antes de qualquer LLM.
 
 ## 3. Público-alvo
@@ -114,9 +114,9 @@ NLPWorker na análise:
 │  Java 21 + DDD         │          │  E-mail/senha · SSO · JWT   │
 │  REST + OpenAPI        │          └─────────────────────────────┘
 │  Domain core           │
-│  IAM Middleware        │  ← intercepta toda query, injeta filtros
-│  RBAC + ABAC engine    │    ABAC (department, project, account)
-│  Multi-tenant (RLS)    │
+│  IAM Middleware       │  ← intercepta toda query, avalia policies
+│  Policy Evaluator     │    estilo AWS (Effect/Action/Resource[/Cond])
+│  Multi-tenant (RLS)   │
 └─────────┬──────────────┘
           │ enqueue
 ┌─────────▼──────────────┐
@@ -140,7 +140,7 @@ NLPWorker na análise:
 ┌─────────▼──────────────────────────────────────────────────────┐
 │  Persistência                                                    │
 │  · Postgres (Azure DB) — domínio, RLS multi-tenant              │
-│    · tenants, users, roles, policies (IAM)                      │
+│    · tenants, users, groups, policies (IAM estilo AWS)          │
 │    · product_catalog (por tenant — base do RAG)                 │
 │    · meetings, transcriptions, analyses, health_scores          │
 │  · Blob Storage — áudios temporários (TTL) + transcrições brutas │
@@ -182,18 +182,26 @@ Nada é throw-away. Cada entrega da rubrica vira artefato de produção:
 
 ### Sequência de Build (pós Sprint 1+2)
 
+**MVP — vertical slice principal (Web + Backend + Worker NLP):**
+
 | # | Componente | Estratégia | Justificativa |
 |---|---|---|---|
-| 1 | Infra base + Auth e-mail/senha + Multi-tenant | BUILD | Fundação do MVP; SSO Entra ID entra como evolução Enterprise |
+| 1 | Infra base + Auth e-mail/senha + Multi-tenant | BUILD | Fundação do MVP |
 | 2 | Worker NLP + RAG + Product Context | BUILD | Coração do produto |
 | 3 | Web: upload texto + análise + dashboard | BUILD | Core do produto, atende rubrica |
-| 4 | IAM: RBAC + ABAC + tela de admin | BUILD | Requisito enterprise real |
+| 4 | IAM granular (estilo AWS: Root + Users + Groups + Policies) | BUILD | Requisito enterprise real |
+
+**Pós-MVP — evoluções após a vertical slice estar estável:**
+
+| # | Componente | Estratégia | Justificativa |
+|---|---|---|---|
 | 5 | MCP servers (Linear/Jira + Calendar) | BUILD | ~200 linhas cada, alto impacto no pitch |
 | 6 | Web: upload áudio (Azure AI Speech) | BUILD | Adiciona superfície sem mudar arquitetura |
-| 7 | Desktop: Tauri + WASAPI + streaming | BUILD (Windows pós-MVP) | Demo avançada depois que Web + Worker estiverem estáveis |
-| 8 | Polimento UX + landing page | BUILD | Cara de produto real |
-| 9 | iOS/Android | DESIGN only | Fora do escopo realista |
-| 10 | Integração TOTVS CRM nativa | DESIGN only | Depende de API TOTVS sem acesso |
+| 7 | SSO corporativo (Entra ID/SAML) | BUILD | Atende requisito Enterprise quando tenant exigir |
+| 8 | Desktop: Tauri + WASAPI + streaming | BUILD (Windows) | Demo avançada depois que Web + Worker estiverem estáveis |
+| 9 | Polimento UX + landing page | BUILD | Cara de produto real |
+| 10 | iOS/Android | DESIGN only | Fora do escopo realista |
+| 11 | Integração TOTVS CRM nativa | DESIGN only | Depende de API TOTVS sem acesso |
 
 ## 7. Cloud & Stack
 
@@ -217,36 +225,75 @@ Nada é throw-away. Cada entrega da rubrica vira artefato de produção:
 
 ## 8. IAM — Identity & Access Management
 
-Modelo híbrido **RBAC + ABAC**, inspirado no AWS IAM:
+Modelo **estilo AWS IAM**: nada de hierarquia de roles fixas. Cada tenant define seus próprios grupos e políticas.
 
 ```
 Tenant (empresa)
-├── Root / Owner       — acesso irrestrito, gerencia billing e org
-├── Admin              — gerencia usuários/roles/policies, acesso configurável
-├── Roles (RBAC)
-│   ├── Viewer         — lê transcrições e análises
-│   ├── Analyst        — lê + exporta + comenta
-│   └── Manager        — lê, exporta, vê Health Score e dashboards do time
-└── Policies (ABAC)    — filtram o que cada role enxerga
-    ├── department:     ["sales", "design", "product"]
-    ├── project:        ["proj-alpha", "proj-beta"]
-    └── client_account: ["conta-XYZ", "conta-ABC"]
+├── Root user           — owner do tenant; criado no provisionamento; bypass total; não removível
+├── Users               — membros convidados pelo Root ou por quem tiver permissão de IAM
+├── Groups              — coleções de usuários (ex.: "Vendas-SP", "Engenharia-Backend", "Auditores")
+│   └── ⇄ Policies (N:N)
+├── Users ⇄ Groups       (N:N — um usuário pode estar em múltiplos grupos)
+├── Users ⇄ Policies     (N:N — políticas anexadas direto no usuário, opcional)
+└── Policies            — documentos JSON (Effect / Action / Resource [/ Condition])
 ```
 
-**Exemplo:** Diretor de Design → role `Manager` + policy `department: design`
-→ Gerencia o time de design, mas **nunca vê** uma transcrição de reunião de vendas.
+### Vocabulário de Action / Resource
 
-**Efeito no Product Context:** cada departamento pode ter subcatálogo próprio.
-A IA usa o contexto correto baseado nas policies de quem analisa.
+- **Actions** seguem o padrão `service:operation` — `meeting:read`, `meeting:upload`, `meeting:delete`, `analysis:read`, `analysis:export`, `task:read`, `task:write`, `tenant:context:read`, `tenant:context:write`, `iam:user:invite`, `iam:group:create`, `iam:policy:create`, `audit:read`, etc.
+- **Resources** são ARN-like: `nora:tenant/{tenantId}:meeting/{meetingId}`, `nora:tenant/{tenantId}:meeting/*`, com suporte a wildcard.
+- **Conditions** (estilo AWS) permitem filtros granulares por atributos arbitrários do tenant: `nora:Department`, `nora:Project`, `nora:Account`, etc. Os atributos são definidos pelo próprio tenant; a NORA não impõe taxonomia.
 
-**Efeito no Desktop:** o app já sabe as policies do usuário logado — a transcrição nasce tagueada com `department`, `project`, `participants` desde a captura.
+### Avaliação de autorização
+
+1. Se o usuário é o Root → **Allow** sem avaliar políticas.
+2. Coletar todas as políticas anexadas ao usuário diretamente e via grupos.
+3. Avaliar **Deny primeiro**: qualquer Deny aplicável vence.
+4. Caso contrário, exigir pelo menos um **Allow** que case `Action` + `Resource` + `Condition`.
+5. Default: **Deny**.
+
+### Exemplo de policy
+
+```json
+{
+  "version": "2026-05-07",
+  "statements": [
+    {
+      "effect": "Allow",
+      "action": ["meeting:read", "analysis:read"],
+      "resource": ["nora:tenant/acme:meeting/*"],
+      "condition": {
+        "stringEquals": { "nora:Department": "sales" }
+      }
+    }
+  ]
+}
+```
+
+Esse documento, anexado a um grupo "Vendas-SP", permite que seus membros leiam reuniões e análises do tenant `acme` somente quando o atributo `Department` da reunião for `sales`. Não há `role: Manager` ou `role: Viewer` — o que existe é um grupo + política.
+
+### Efeito no Product Context
+
+Cada departamento pode ter subcatálogo próprio. A NORA escolhe o subcatálogo a usar com base nas conditions aplicáveis ao usuário que disparou a análise.
+
+### Efeito no Desktop
+
+A transcrição já nasce tagueada com os atributos relevantes (`Department`, `Project`, `Participants`) desde a captura, para que o IAM consiga avaliar policies offline ou em sync com o servidor.
+
+### O que NÃO existe
+
+- Não existe role hierárquica fixa (Manager / Analyst / Viewer não são entidades).
+- "Admin" não é um nível especial — é qualquer usuário/grupo com policies de `iam:*`.
+- Roles padrão da v0.3 (`ROOT`, `ADMIN`, `MANAGER`, `ANALYST`, `VIEWER`) deixam de ser entidades. Podem reaparecer apenas como **policy templates opcionais** ("ReadOnlyAccess", "MeetingAnalystAccess") que aceleram o setup, mas o modelo real é Group + Policy.
+
+Ver ADR `0007-iam-aws-style.md` para a decisão arquitetural completa.
 
 ## 9. Segurança & Compliance
 
 - OWASP Top 10 endereçado item a item (documentado)
 - LGPD by design: PII detection/redaction pré-LLM, consentimento explícito, direito ao esquecimento
 - Multi-tenant isolation via Postgres Row-Level Security
-- IAM middleware no backend intercepta toda query — filtros ABAC aplicados automaticamente
+- IAM middleware no backend intercepta toda query — policies (estilo AWS) avaliadas com Deny-first
 - Audit log append-only: quem acessou qual transcrição, quando, de qual IP
 - Secrets em Azure Key Vault (zero credencial em código ou variável de ambiente não gerenciada)
 - TLS 1.3 em trânsito, AES-256 em repouso, CMK opcional para enterprise
