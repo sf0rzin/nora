@@ -36,7 +36,7 @@
 | US02 | Como **visitante**, quero receber um e-mail de verificação após o cadastro, para que minha conta seja validada com segurança. | Lucas (Core) | M | 2 |
 | US03 | Como **usuário Core**, quero fazer login com e-mail e senha, para que eu acesse meu painel de reuniões. | Lucas (Core) | M | 2 |
 | US04 | Como **usuário Core**, quero redefinir minha senha via link por e-mail, para que eu recupere o acesso caso esqueça a senha. | Lucas (Core) | M | 2 |
-| US05 | Como **admin Enterprise**, quero que usuários do meu tenant façam login via SSO corporativo (Google/Azure AD), para que a autenticação siga as políticas de segurança da empresa. | Camila (Enterprise Admin) | S | 5 |
+| US05 | Como **admin Enterprise**, quero que usuários do meu tenant façam login via SSO corporativo (Google/Azure AD), para que a autenticação siga as políticas de segurança da empresa. | Camila (Enterprise Admin) | W | 5 |
 | US06 | Como **usuário Enterprise**, quero ser convidado ao tenant por e-mail corporativo, para que eu acesse o sistema sem precisar criar conta manualmente. | Rafael (Enterprise AE) | M | 3 |
 
 ---
@@ -46,8 +46,8 @@
 | ID | User Story | Persona | MoSCoW | Pontos |
 |---|---|---|---|---|
 | US07 | Como **usuário Core**, quero fazer upload de um arquivo de transcrição (.txt, .vtt, .srt), para que a NORA processe minha reunião sem necessidade de gravação. | Lucas (Core) | M | 3 |
-| US08 | Como **usuário Core**, quero fazer upload de um arquivo de áudio/vídeo (.mp3, .mp4), para que a NORA transcreva e analise automaticamente. | Lucas (Core) | S | 5 |
-| US09 | Como **usuário Core**, quero ativar a captura ao vivo no Desktop App durante uma videochamada, para que a transcrição aconteça em tempo real sem intervenção manual. | Lucas (Core) | S | 8 |
+| US08 | Como **usuário Core**, quero fazer upload de um arquivo de áudio/vídeo (.mp3, .mp4), para que a NORA transcreva e analise automaticamente. | Lucas (Core) | W | 5 |
+| US09 | Como **usuário Core**, quero ativar a captura ao vivo no Desktop App durante uma videochamada, para que a transcrição aconteça em tempo real sem intervenção manual. | Lucas (Core) | W | 8 |
 | US10 | Como **usuário Core**, quero nomear e categorizar uma reunião ao fazer upload, para que eu encontre facilmente no histórico. | Lucas (Core) | S | 2 |
 
 ---
@@ -93,8 +93,8 @@
 
 | ID | User Story | Persona | MoSCoW | Pontos |
 |---|---|---|---|---|
-| US27 | Como **usuário Core**, quero conectar a NORA ao Claude via MCP, para que eu possa conversar sobre o conteúdo das minhas reuniões usando IA conversacional. | Lucas (Core) | S | 8 |
-| US28 | Como **usuário Core**, quero que as tarefas extraídas sejam sincronizadas automaticamente com meu Google Calendar, para que eu não precise criar compromissos manualmente. | Lucas (Core) | C | 8 |
+| US27 | Como **usuário Core**, quero conectar a NORA ao Claude via MCP, para que eu possa conversar sobre o conteúdo das minhas reuniões usando IA conversacional. | Lucas (Core) | W | 8 |
+| US28 | Como **usuário Core**, quero que as tarefas extraídas sejam sincronizadas automaticamente com meu Google Calendar, para que eu não precise criar compromissos manualmente. | Lucas (Core) | W | 8 |
 | US29 | Como **usuário Core**, quero conectar a NORA a ferramentas de task management (Linear, Jira, Notion), para que as tarefas sejam criadas diretamente no meu fluxo de trabalho. | Lucas (Core) | W | 13 |
 
 ---
@@ -128,10 +128,12 @@
 | MoSCoW | Qtd. Stories | Total de Pontos |
 |---|---|---|
 | **Must Have** | 21 | 71 |
-| **Should Have** | 13 | 57 |
-| **Could Have** | 5 | 28 |
-| **Won't Have (v1)** | 1 | 13 |
+| **Should Have** | 9 | 31 |
+| **Could Have** | 4 | 20 |
+| **Won't Have (v1)** | 6 | 47 |
 | **Total** | **40** | **169** |
+
+> Stories `W` reagrupam o que foi alinhado com `CLAUDE.md` e `docs/PROJECT.md` como pós-MVP: SSO corporativo (US05), upload de áudio/vídeo (US08), captura ao vivo no Desktop (US09), MCP Claude (US27), MCP Calendar (US28) e MCP task managers (US29).
 
 ---
 
