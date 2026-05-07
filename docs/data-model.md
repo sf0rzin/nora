@@ -10,14 +10,17 @@
 ```mermaid
 erDiagram
   TENANTS ||--o{ USERS : has
-  TENANTS ||--o{ ROLES : defines
+  TENANTS ||--o{ IAM_GROUPS : defines
+  TENANTS ||--o{ IAM_POLICIES : defines
   TENANTS ||--|| TENANT_CONTEXTS : "1:1"
-  TENANTS ||--o{ TEAMS : has
   TENANTS ||--o{ MEETINGS : owns
-  USERS ||--o{ USER_ROLES : assigned
-  ROLES ||--o{ USER_ROLES : grants
-  USERS ||--o{ USER_TEAMS : member
-  TEAMS ||--o{ USER_TEAMS : has
+  USERS ||--o{ IAM_USER_GROUPS : member
+  IAM_GROUPS ||--o{ IAM_USER_GROUPS : has
+  IAM_GROUPS ||--o{ IAM_GROUP_POLICIES : attached
+  IAM_POLICIES ||--o{ IAM_GROUP_POLICIES : grants
+  USERS ||--o{ IAM_USER_POLICIES : attached
+  IAM_POLICIES ||--o{ IAM_USER_POLICIES : grants
+  IAM_POLICIES ||--o{ IAM_POLICY_VERSIONS : history
   USERS ||--o{ MEETINGS : owns
   MEETINGS ||--|| TRANSCRIPTS : has
   MEETINGS ||--o{ MEETING_PARTICIPANTS : has
@@ -54,64 +57,112 @@ erDiagram
 | email | citext NOT NULL | UNIQUE por (tenant_id, email) |
 | password_hash | text NOT NULL | bcrypt/argon2 |
 | display_name | text NOT NULL | |
+| is_root | boolean NOT NULL DEFAULT false | exatamente um por tenant; criado no provisionamento; bypass total no IAM |
 | status | text NOT NULL | `ACTIVE`, `INVITED`, `DISABLED` |
 | created_at | timestamptz NOT NULL | |
 | updated_at | timestamptz NOT NULL | |
 
-Índices: `(tenant_id, email)` UNIQUE.
+Índices: `(tenant_id, email)` UNIQUE; partial unique `(tenant_id) WHERE is_root = true` para garantir um único Root por tenant.
 
-### 2.3 `roles`
+### 2.3 `iam_groups`
 
-Roles padrão no MVP: `ROOT`, `ADMIN`, `MANAGER`, `ANALYST`, `VIEWER` (ver backlog US35 e seção RBAC em `docs/PROJECT.md`). Tabela existe para suportar custom roles pós-MVP (US36+).
+Grupos são coleções nomeadas de usuários. Criados livremente pelo Root ou por usuários com permissão `iam:group:create`. Não existem grupos default impostos pela plataforma.
 
 | Coluna | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | |
-| tenant_id | uuid NULL | NULL = role global do sistema |
-| code | text NOT NULL | `ROOT`, `ADMIN`, `MANAGER`, `ANALYST`, `VIEWER` |
+| tenant_id | uuid NOT NULL FK→tenants(id) | |
+| name | text NOT NULL | UNIQUE por (tenant_id, name) |
 | description | text | |
-| is_system | boolean NOT NULL DEFAULT true | |
+| created_at | timestamptz NOT NULL | |
+| created_by | uuid FK→users(id) | |
+| updated_at | timestamptz NOT NULL | |
 
-### 2.4 `user_roles`
+### 2.4 `iam_user_groups`
 
 | Coluna | Tipo |
 |---|---|
-| user_id | uuid FK→users(id) |
-| role_id | uuid FK→roles(id) |
+| user_id | uuid FK→users(id) ON DELETE CASCADE |
+| group_id | uuid FK→iam_groups(id) ON DELETE CASCADE |
 | tenant_id | uuid NOT NULL |
-| PK | (user_id, role_id) |
+| attached_at | timestamptz NOT NULL |
+| attached_by | uuid FK→users(id) |
+| PK | (user_id, group_id) |
 
-### 2.5 `teams`
+### 2.5 `iam_policies`
+
+Documento JSON estilo AWS IAM: lista de statements com `effect` (Allow/Deny), `action[]`, `resource[]` e `condition` opcional.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| id | uuid PK | |
+| tenant_id | uuid NOT NULL FK→tenants(id) | |
+| name | text NOT NULL | UNIQUE por (tenant_id, name) |
+| description | text | |
+| document | jsonb NOT NULL | versão atual; ver schema em `docs/api/llm-schemas/...` (a definir) |
+| current_version | integer NOT NULL DEFAULT 1 | |
+| is_template | boolean NOT NULL DEFAULT false | `true` para presets opcionais ("ReadOnlyAccess" etc.) que aceleram setup |
+| created_at | timestamptz NOT NULL | |
+| created_by | uuid FK→users(id) | |
+| updated_at | timestamptz NOT NULL | |
+
+Formato esperado de `document`:
+
+```json
+{
+  "version": "2026-05-07",
+  "statements": [
+    {
+      "effect": "Allow",
+      "action": ["meeting:read", "analysis:read"],
+      "resource": ["nora:tenant/{tenantId}:meeting/*"],
+      "condition": {
+        "stringEquals": { "nora:Department": "sales" }
+      }
+    }
+  ]
+}
+```
+
+### 2.6 `iam_policy_versions`
+
+Histórico imutável para auditoria e rollback.
 
 | Coluna | Tipo |
 |---|---|
 | id | uuid PK |
+| policy_id | uuid FK→iam_policies(id) ON DELETE CASCADE |
 | tenant_id | uuid NOT NULL |
-| name | text NOT NULL |
+| version | integer NOT NULL |
+| document | jsonb NOT NULL |
 | created_at | timestamptz NOT NULL |
+| created_by | uuid FK→users(id) |
 
-### 2.6 `user_teams`
+Índice: UNIQUE `(policy_id, version)`.
+
+### 2.7 `iam_group_policies`
 
 | Coluna | Tipo |
 |---|---|
-| user_id | uuid |
-| team_id | uuid |
+| group_id | uuid FK→iam_groups(id) ON DELETE CASCADE |
+| policy_id | uuid FK→iam_policies(id) ON DELETE CASCADE |
 | tenant_id | uuid NOT NULL |
-| PK | (user_id, team_id) |
+| attached_at | timestamptz NOT NULL |
+| PK | (group_id, policy_id) |
 
-### 2.7 `access_scopes`
+### 2.8 `iam_user_policies`
 
-Define o escopo de visibilidade de cada usuário (US19/US20/US36).
+Políticas anexadas diretamente a um usuário (uso menos frequente; preferir grupos).
 
-| Coluna | Tipo | Notas |
-|---|---|---|
-| user_id | uuid PK FK→users(id) | |
-| tenant_id | uuid NOT NULL | |
-| scope_type | text NOT NULL | `ALL_TENANT`, `OWN_MEETINGS`, `TEAMS`, `REGIONS` |
-| team_ids | uuid[] | |
-| region_ids | uuid[] | |
+| Coluna | Tipo |
+|---|---|
+| user_id | uuid FK→users(id) ON DELETE CASCADE |
+| policy_id | uuid FK→iam_policies(id) ON DELETE CASCADE |
+| tenant_id | uuid NOT NULL |
+| attached_at | timestamptz NOT NULL |
+| PK | (user_id, policy_id) |
 
-### 2.8 `meetings`
+### 2.9 `meetings`
 
 | Coluna | Tipo | Notas |
 |---|---|---|
@@ -131,7 +182,7 @@ Define o escopo de visibilidade de cada usuário (US19/US20/US36).
 
 Índices: `(tenant_id, started_at DESC)`, `(tenant_id, owner_id, started_at DESC)`, `(tenant_id, processing_status)`.
 
-### 2.9 `meeting_participants`
+### 2.10 `meeting_participants`
 
 | Coluna | Tipo |
 |---|---|
@@ -142,7 +193,7 @@ Define o escopo de visibilidade de cada usuário (US19/US20/US36).
 | email | text |
 | is_internal | boolean NOT NULL DEFAULT false |
 
-### 2.10 `transcripts`
+### 2.11 `transcripts`
 
 | Coluna | Tipo | Notas |
 |---|---|---|
@@ -156,7 +207,7 @@ Define o escopo de visibilidade de cada usuário (US19/US20/US36).
 | word_count | integer NOT NULL | |
 | created_at | timestamptz NOT NULL | |
 
-### 2.11 `meeting_analyses`
+### 2.12 `meeting_analyses`
 
 | Coluna | Tipo | Notas |
 |---|---|---|
@@ -174,7 +225,7 @@ Define o escopo de visibilidade de cada usuário (US19/US20/US36).
 | pii_redactions_applied | integer | |
 | generated_at | timestamptz NOT NULL | |
 
-### 2.12 `decisions`
+### 2.13 `decisions`
 
 | Coluna | Tipo |
 |---|---|
@@ -185,7 +236,7 @@ Define o escopo de visibilidade de cada usuário (US19/US20/US36).
 | confidence | numeric(3,2) |
 | ordinal | integer NOT NULL |
 
-### 2.13 `action_items`
+### 2.14 `action_items`
 
 | Coluna | Tipo | Notas |
 |---|---|---|
@@ -204,7 +255,7 @@ Define o escopo de visibilidade de cada usuário (US19/US20/US36).
 
 Índices: `(tenant_id, status, due_date)`, `(tenant_id, assignee_user_id)`.
 
-### 2.14 `risks`
+### 2.15 `risks`
 
 | Coluna | Tipo |
 |---|---|
@@ -216,7 +267,7 @@ Define o escopo de visibilidade de cada usuário (US19/US20/US36).
 | category | text NOT NULL |
 | source_quote | text NOT NULL |
 
-### 2.15 `opportunities`
+### 2.16 `opportunities`
 
 | Coluna | Tipo |
 |---|---|
@@ -228,7 +279,7 @@ Define o escopo de visibilidade de cada usuário (US19/US20/US36).
 | category | text NOT NULL |
 | source_quote | text NOT NULL |
 
-### 2.16 `tenant_contexts`
+### 2.17 `tenant_contexts`
 
 | Coluna | Tipo | Notas |
 |---|---|---|
@@ -245,7 +296,7 @@ Define o escopo de visibilidade de cada usuário (US19/US20/US36).
 | updated_at | timestamptz NOT NULL | |
 | updated_by | uuid FK→users(id) | |
 
-### 2.17 `tenant_context_chunks`
+### 2.18 `tenant_context_chunks`
 
 | Coluna | Tipo | Notas |
 |---|---|---|
@@ -259,7 +310,7 @@ Define o escopo de visibilidade de cada usuário (US19/US20/US36).
 
 > O índice vetorial vive no Azure AI Search; esta tabela é a fonte da verdade para reconstrução.
 
-### 2.18 `audit_events`
+### 2.19 `audit_events`
 
 | Coluna | Tipo | Notas |
 |---|---|---|
@@ -331,8 +382,8 @@ Cobertura por outcome esperado declarado em `meeting_goals`. N:1 com `meeting_pr
 
 ```
 V001__create_tenants.sql
-V002__create_users_and_roles.sql
-V003__create_teams_and_scopes.sql
+V002__create_users.sql
+V003__create_iam_groups_policies.sql
 V004__create_meetings_and_transcripts.sql
 V005__create_meeting_analyses_and_children.sql
 V006__create_tenant_contexts.sql

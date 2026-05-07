@@ -16,7 +16,7 @@
 | **E5** | Gestão de Tarefas | Core | Tarefas extraídas, status, atribuição, exportação |
 | **E6** | Integrações MCP | Core | Conexão com Claude MCP, Google Calendar, task managers |
 | **E7** | Administração Enterprise | Enterprise | Configuração de tenant, contexto da empresa, gestão de usuários |
-| **E8** | Controle de Acesso Enterprise | Enterprise | RBAC, escopos por departamento, permissões granulares |
+| **E8** | IAM Enterprise (estilo AWS) | Enterprise | Root user, Users, Groups e Policies (Effect/Action/Resource[/Condition]) gerenciados pelo próprio tenant. Sem hierarquia de roles fixas. |
 | **E9** | Produtividade da Reunião | Core + Enterprise | Avaliação opt-in: usuário declara objetivo e outcomes esperados; NORA mede cobertura e atribui Productivity Score |
 
 ---
@@ -37,7 +37,7 @@
 | US02 | Como **visitante**, quero receber um e-mail de verificação após o cadastro, para que minha conta seja validada com segurança. | Lucas (Core) | M | 2 |
 | US03 | Como **usuário Core**, quero fazer login com e-mail e senha, para que eu acesse meu painel de reuniões. | Lucas (Core) | M | 2 |
 | US04 | Como **usuário Core**, quero redefinir minha senha via link por e-mail, para que eu recupere o acesso caso esqueça a senha. | Lucas (Core) | M | 2 |
-| US05 | Como **admin Enterprise**, quero que usuários do meu tenant façam login via SSO corporativo (Google/Azure AD), para que a autenticação siga as políticas de segurança da empresa. | Camila (Enterprise Admin) | S | 5 |
+| US05 | Como **admin Enterprise**, quero que usuários do meu tenant façam login via SSO corporativo (Google/Azure AD), para que a autenticação siga as políticas de segurança da empresa. | Camila (Enterprise Admin) | W | 5 |
 | US06 | Como **usuário Enterprise**, quero ser convidado ao tenant por e-mail corporativo, para que eu acesse o sistema sem precisar criar conta manualmente. | Rafael (Enterprise AE) | M | 3 |
 
 ---
@@ -47,8 +47,8 @@
 | ID | User Story | Persona | MoSCoW | Pontos |
 |---|---|---|---|---|
 | US07 | Como **usuário Core**, quero fazer upload de um arquivo de transcrição (.txt, .vtt, .srt), para que a NORA processe minha reunião sem necessidade de gravação. | Lucas (Core) | M | 3 |
-| US08 | Como **usuário Core**, quero fazer upload de um arquivo de áudio/vídeo (.mp3, .mp4), para que a NORA transcreva e analise automaticamente. | Lucas (Core) | S | 5 |
-| US09 | Como **usuário Core**, quero ativar a captura ao vivo no Desktop App durante uma videochamada, para que a transcrição aconteça em tempo real sem intervenção manual. | Lucas (Core) | S | 8 |
+| US08 | Como **usuário Core**, quero fazer upload de um arquivo de áudio/vídeo (.mp3, .mp4), para que a NORA transcreva e analise automaticamente. | Lucas (Core) | W | 5 |
+| US09 | Como **usuário Core**, quero ativar a captura ao vivo no Desktop App durante uma videochamada, para que a transcrição aconteça em tempo real sem intervenção manual. | Lucas (Core) | W | 8 |
 | US10 | Como **usuário Core**, quero nomear e categorizar uma reunião ao fazer upload, para que eu encontre facilmente no histórico. | Lucas (Core) | S | 2 |
 
 ---
@@ -94,8 +94,8 @@
 
 | ID | User Story | Persona | MoSCoW | Pontos |
 |---|---|---|---|---|
-| US27 | Como **usuário Core**, quero conectar a NORA ao Claude via MCP, para que eu possa conversar sobre o conteúdo das minhas reuniões usando IA conversacional. | Lucas (Core) | S | 8 |
-| US28 | Como **usuário Core**, quero que as tarefas extraídas sejam sincronizadas automaticamente com meu Google Calendar, para que eu não precise criar compromissos manualmente. | Lucas (Core) | C | 8 |
+| US27 | Como **usuário Core**, quero conectar a NORA ao Claude via MCP, para que eu possa conversar sobre o conteúdo das minhas reuniões usando IA conversacional. | Lucas (Core) | W | 8 |
+| US28 | Como **usuário Core**, quero que as tarefas extraídas sejam sincronizadas automaticamente com meu Google Calendar, para que eu não precise criar compromissos manualmente. | Lucas (Core) | W | 8 |
 | US29 | Como **usuário Core**, quero conectar a NORA a ferramentas de task management (Linear, Jira, Notion), para que as tarefas sejam criadas diretamente no meu fluxo de trabalho. | Lucas (Core) | W | 13 |
 
 ---
@@ -112,15 +112,20 @@
 
 ---
 
-### E8 — Controle de Acesso Enterprise (RBAC)
+### E8 — IAM Enterprise (estilo AWS)
 
 | ID | User Story | Persona | MoSCoW | Pontos |
 |---|---|---|---|---|
-| US35 | Como **admin Enterprise**, quero atribuir roles padrão (Root, Admin, Manager, Analyst, Viewer), para que eu organize o acesso por responsabilidade sem criar modelos complexos no MVP. | Camila (Enterprise Admin) | M | 3 |
-| US36 | Como **admin Enterprise**, quero associar um usuário a uma role padrão e definir quais departamentos/tags/contas ele pode visualizar, para que o acesso seja estritamente necessário. | Camila (Enterprise Admin) | M | 5 |
-| US37 | Como **admin Enterprise**, quero que as permissões sejam aplicadas imediatamente após alteração, sem necessidade de logout dos usuários, para que eu não gere interrupções operacionais. | Camila (Enterprise Admin) | S | 3 |
-| US38 | Como **usuário Enterprise**, quero receber uma mensagem clara quando tento acessar conteúdo fora do meu escopo, para que eu entenda os limites do meu acesso sem confusão. | Rafael (Enterprise AE) | M | 2 |
-| US39 | Como **admin Enterprise**, quero visualizar um log de auditoria das ações realizadas no tenant, para que eu rastreie acessos e alterações por motivos de compliance. | Camila (Enterprise Admin) | C | 8 |
+| US35 | Como **Root** do tenant, quero criar grupos no meu tenant (ex.: "Vendas-SP", "Auditores"), para que eu organize usuários sem depender de roles pré-definidas pela plataforma. | Camila (Enterprise Admin) | M | 3 |
+| US36 | Como **Root**, quero criar políticas em formato JSON (Effect/Action/Resource[/Condition]) e versionar cada alteração, para que eu defina exatamente o que cada grupo ou usuário pode fazer e em quais recursos. | Camila (Enterprise Admin) | M | 8 |
+| US37 | Como **Root**, quero anexar e desanexar políticas a grupos e a usuários, para que eu componha permissões por agregação sem reescrever políticas. | Camila (Enterprise Admin) | M | 3 |
+| US38 | Como **Root**, quero adicionar e remover usuários de grupos, para que eu ajuste o acesso conforme as pessoas mudam de função. | Camila (Enterprise Admin) | M | 2 |
+| US39 | Como **usuário Enterprise**, ao tentar acessar um recurso fora das minhas permissões, quero receber uma mensagem clara (HTTP 403 com código de erro estável), para que eu entenda o limite sem confusão. | Rafael (Enterprise AE) | M | 2 |
+| US40 | Como **Root**, quero visualizar um log de auditoria de mudanças de IAM (criação/alteração/anexação de políticas e grupos), para que mudanças sensíveis sejam rastreáveis. | Camila (Enterprise Admin) | M | 5 |
+| US41 | Como **Root**, quero usar **templates de policy** ("ReadOnlyAccess", "MeetingAnalystAccess") como ponto de partida, para que o onboarding seja rápido sem perder a flexibilidade. | Camila (Enterprise Admin) | S | 3 |
+| US42 | Como **Root**, quero um **editor visual de policy** (form-based) que gere o JSON correto, para que eu evite erros de sintaxe ao criar políticas. | Camila (Enterprise Admin) | S | 8 |
+| US43 | Como **Root**, quero um **simulador de policy** que responda "esse usuário pode fazer X em Y?", para que eu valide permissões antes de aplicar. | Camila (Enterprise Admin) | S | 5 |
+| US44 | Como **Root**, quero **permission boundaries** por grupo (limite máximo de permissões), para que eu garanta que sub-admins não concedam mais do que estão autorizados a delegar. | Camila (Enterprise Admin) | C | 8 |
 
 ---
 
@@ -128,9 +133,9 @@
 
 | ID | User Story | Persona | MoSCoW | Pontos |
 |---|---|---|---|---|
-| US40 | Como **usuário (Core/Enterprise)**, quero **opcionalmente** ativar a avaliação de produtividade ao subir uma reunião e declarar a finalidade dela e os pontos que precisavam ser discutidos/decididos, para que a NORA tenha um gabarito do que era esperado. | Lucas (Core) / Rafael (Enterprise) | M | 3 |
-| US41 | Como **usuário**, quero receber um **Productivity Score (0–100)** com a cobertura de cada outcome esperado (`ADDRESSED` / `PARTIAL` / `MISSED`) e uma justificativa textual, para que eu saiba se a reunião entregou o que precisava. | Lucas (Core) / Rafael (Enterprise) | M | 5 |
-| US42 | Como **usuário Enterprise**, quero (pós-MVP) que a NORA puxe automaticamente o **estado do projeto** (Jira / Linear / Azure DevOps / GitHub Projects) via MCP, para que eu não precise colar manualmente o que está feito e o que falta. | Rafael (Enterprise) | W | 13 |
+| US45 | Como **usuário (Core/Enterprise)**, quero **opcionalmente** ativar a avaliação de produtividade ao subir uma reunião e declarar a finalidade dela e os pontos que precisavam ser discutidos/decididos, para que a NORA tenha um gabarito do que era esperado. | Lucas (Core) / Rafael (Enterprise) | M | 3 |
+| US46 | Como **usuário**, quero receber um **Productivity Score (0–100)** com a cobertura de cada outcome esperado (`ADDRESSED` / `PARTIAL` / `MISSED`) e uma justificativa textual, para que eu saiba se a reunião entregou o que precisava. | Lucas (Core) / Rafael (Enterprise) | M | 5 |
+| US47 | Como **usuário Enterprise**, quero (pós-MVP) que a NORA puxe automaticamente o **estado do projeto** (Jira / Linear / Azure DevOps / GitHub Projects) via MCP, para que eu não precise colar manualmente o que está feito e o que falta. | Rafael (Enterprise) | W | 13 |
 
 ---
 
@@ -138,11 +143,15 @@
 
 | MoSCoW | Qtd. Stories | Total de Pontos |
 |---|---|---|
-| **Must Have** | 23 | 79 |
-| **Should Have** | 13 | 57 |
+| MoSCoW | Qtd. Stories | Total de Pontos |
+|---|---|---|
+| **Must Have** | 29 | 102 |
+| **Should Have** | 12 | 47 |
 | **Could Have** | 5 | 28 |
-| **Won't Have (v1)** | 2 | 26 |
-| **Total** | **43** | **190** |
+| **Won't Have (v1)** | 7 | 60 |
+| **Total** | **53** | **237** |
+
+> Stories `W` reagrupam o que foi alinhado com `CLAUDE.md` e `docs/PROJECT.md` como pós-MVP: SSO corporativo (US05), upload de áudio/vídeo (US08), captura ao vivo no Desktop (US09), MCP Claude (US27), MCP Calendar (US28), MCP task managers (US29) e MCP project state para Productivity (US47).
 
 ---
 
@@ -157,18 +166,19 @@ O MVP da NORA v1.0 contempla exclusivamente as stories classificadas como **Must
 4. Visualizar e gerenciar tarefas extraídas
 5. Buscar reuniões no histórico
 
-### Fluxo 2 — Admin Enterprise (Camila)
+### Fluxo 2 — Root do tenant Enterprise (Camila)
 1. Configurar tenant com domínio corporativo
-2. Convidar usuários e atribuir roles padrão
-3. Configurar contexto da empresa (product context injection)
-4. Visualizar todas as reuniões do tenant
-5. Definir escopos de acesso por departamento, tag ou conta
+2. Convidar usuários; criar **grupos** e **políticas** estilo AWS
+3. Anexar políticas a grupos/usuários; adicionar usuários a grupos
+4. Configurar contexto da empresa (product context injection)
+5. Visualizar todas as reuniões do tenant (Root tem bypass)
+6. Auditar mudanças de IAM
 
 ### Fluxo 3 — Usuário Enterprise (Rafael)
 1. Aceitar convite e fazer login com e-mail/senha corporativo
-2. Visualizar apenas as reuniões do seu escopo
+2. Visualizar apenas as reuniões permitidas pelas políticas IAM aplicáveis ao seu usuário/grupos
 3. Acessar resumo e tarefas das reuniões visíveis
-4. Receber mensagem clara ao tentar acessar conteúdo fora do escopo
+4. Receber mensagem clara (HTTP 403) ao tentar acessar conteúdo fora das permissões
 
 ---
 
@@ -202,24 +212,26 @@ O MVP da NORA v1.0 contempla exclusivamente as stories classificadas como **Must
 
 ### US19 — Visibilidade escopo-restrita (Enterprise)
 
-**Dado que** um usuário Enterprise tem role com escopo limitado às contas da sua carteira,
+**Dado que** um usuário Enterprise tem políticas IAM que limitam seu acesso (ex.: condition `nora:Department = "sales"`),
 **quando** ele acessa o painel de reuniões,
-**então** vê apenas reuniões associadas às contas, departamentos ou tags autorizadas para o seu escopo.
+**então** vê apenas reuniões cujos atributos satisfazem as políticas Allow aplicáveis e não caem em políticas Deny.
 
 **Regras de negócio:**
 - Filtro aplicado no backend (não apenas no frontend)
-- Tentativa de acesso direto por URL a recurso fora do escopo retorna 403
-- Admin não é afetado por restrições de escopo
+- Tentativa de acesso direto por URL a recurso fora das permissões retorna `403`
+- Root do tenant tem bypass total e vê tudo
 
 ---
 
-### US36 — Associar usuário a role e escopo
+### US36 — Políticas IAM (Effect/Action/Resource/Condition)
 
-**Dado que** o admin acessa "Configurações > Usuários",
-**quando** edita um usuário e define role + tags de departamento,
-**então** o acesso do usuário é imediatamente atualizado para refletir o novo escopo.
+**Dado que** o Root acessa "Configurações > IAM > Políticas",
+**quando** ele cria uma nova política enviando um documento JSON com `version`, `statements[]` (cada um com `effect`, `action[]`, `resource[]` e `condition` opcional),
+**então** a política deve ser persistida com versão 1, validada contra o schema oficial e disponível para anexação a grupos/usuários.
 
 **Regras de negócio:**
-- Roles padrão são configuradas a nível de tenant no MVP
-- Um usuário pode ter apenas uma role por tenant
-- Admin sempre tem role implícita de `root` e não pode ser restringido
+- Políticas são sempre escopadas ao tenant; não vazam entre tenants.
+- Cada alteração cria nova versão em `iam_policy_versions` (histórico imutável).
+- A avaliação segue ordem: Root → Allow; senão, **Deny** explicitíssimo vence; senão, exigir pelo menos um Allow aplicável; default Deny.
+- Wildcards (`*`) são suportados em `action` e `resource`.
+- Conditions usam operadores estilo AWS (`stringEquals`, `stringIn`, `dateGreaterThan`, etc.).

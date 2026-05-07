@@ -50,7 +50,7 @@ Adicionar um recurso opcional de **Productivity Score** com as seguintes proprie
 **Positivas:**
 
 - Avaliação passa a ser **verificável**: o LLM compara o que aconteceu com o que o usuário pediu para acontecer.
-- Cria um hook natural para uma futura integração MCP de project state (US42), com dados estruturados.
+- Cria um hook natural para uma futura integração MCP de project state (US47), com dados estruturados.
 - Funciona já no MVP sem dependência de integração externa.
 
 **Negativas:**
@@ -70,4 +70,4 @@ Adicionar um recurso opcional de **Productivity Score** com as seguintes proprie
 - O recurso é estritamente opt-in. UI deve deixar claro que sem `expectedOutcomes` o score não será gerado.
 - Nunca usar o score como métrica de avaliação de pessoas — documentar isso na própria UI ("indicador da reunião, não dos participantes").
 - O `projectStateSnapshot` segue PII Shield: redação antes de enviar ao LLM.
-- A integração MCP (US42) entra como `Won't Have v1` no backlog; um novo ADR cobrirá o desenho do MCP `nora-mcp-projectstate` quando chegar a hora.
+- A integração MCP (US47) entra como `Won't Have v1` no backlog; um novo ADR cobrirá o desenho do MCP `nora-mcp-projectstate` quando chegar a hora.

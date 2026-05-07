@@ -38,3 +38,4 @@ Sequencial, 4 dígitos, kebab-case: `0001-monorepo.md`, `0002-multi-tenancy.md`.
 | 0003 | Saída do LLM via JSON Schema obrigatório | aceito |
 | 0004 | Estratégia de Provider de LLM (agnóstica, OpenAI como default) | aceito |
 | 0005 | Productivity Score da reunião (opt-in, baseado em objetivo declarado) | aceito |
+| 0007 | IAM estilo AWS (Root + Users + Groups + Policies) | aceito |

@@ -41,8 +41,8 @@ O NORA é uma plataforma com dois planos que compartilham o mesmo motor de IA e 
 │ • Rastreamento de projetos       │ • Account Health Score temporal  │
 │ • PII Shield pessoal (LGPD)      │ • Competitive Radar configurável │
 │ • Integração via MCP:            │ • Next Best Action comercial     │
-│   · Google Calendar / Outlook   │ • IAM: RBAC + ABAC (departamento │
-│   · Linear / Jira               │   / projeto / conta)              │
+│   · Google Calendar / Outlook   │ • IAM estilo AWS: Root + Users + │
+│   · Linear / Jira               │   Groups + Policies              │
 │   · GitHub                      │ • Team Analytics & dashboards    │
 │ • Freemium / plano individual    │ • SSO (Entra ID / SAML 2.0 —     │
 │                                  │   pós-MVP)                       │
@@ -70,7 +70,7 @@ O NORA é uma plataforma com dois planos que compartilham o mesmo motor de IA e 
 | **Enterprise** | Um **motor de inteligência comercial** configurado com o contexto e produtos da própria empresa — para qualquer setor | Uma ferramenta exclusiva do ecossistema TOTVS ou de qualquer outro vendor específico |
 | **Contexto** | Uma plataforma que **aprende o vocabulário do cliente**: cada empresa configura seus produtos, concorrentes e termos | Uma IA genérica que usa conhecimento hardcoded de um único mercado |
 | **Desktop** | Um **app real-time** (Tauri/Windows) que captura e analisa a reunião enquanto acontece | Um plugin de videoconferência ou extensão de browser |
-| **IAM** | Um sistema de **controle de acesso granular** (RBAC + ABAC) onde cada colaborador vê apenas o que tem autorização | Um sistema onde todos na empresa enxergam todas as transcrições de todos os departamentos |
+| **IAM** | Um sistema de **controle de acesso granular** estilo **AWS IAM** (Root + Users + Groups + Policies criadas pelo próprio tenant) | Um sistema onde todos na empresa enxergam todas as transcrições de todos os departamentos |
 | **IA** | Motor de **análise, estruturação e recomendação** que amplifica o humano | Uma IA que toma decisões comerciais de forma autônoma sem revisão humana |
 | **Integração** | Uma plataforma **aberta via MCP**: os dados *saem* do NORA para as ferramentas que o usuário já usa | Um sistema fechado que exige substituir as ferramentas existentes |
 | **Dados** | Um sistema **LGPD-first**: PII é detectado e redigido antes de qualquer LLM externo, com consentimento explícito | Uma plataforma que armazena ou compartilha dados de conversas de terceiros |
@@ -95,8 +95,8 @@ O NORA é uma plataforma com dois planos que compartilham o mesmo motor de IA e 
 | **Enterprise — Retenção** | **Sinaliza risco de churn**: insatisfação, comparações com concorrentes configurados, sinais de saída | Não envia alertas automáticos no MVP — disponível via webhooks |
 | **Enterprise — Health Score** | **Calcula Account Health Score temporal**: rastreia evolução da saúde da conta em múltiplas reuniões | Não acessa dados financeiros do ERP do cliente |
 | **Enterprise — Next Action** | **Recomenda Next Best Action** nas próximas 48–72h com base no padrão da conversa | Não cria automaticamente tarefas no CRM — envia via MCP ou webhook |
-| **IAM — Roles** | **RBAC com quatro níveis**: Root, Admin, Manager, Analyst/Viewer | Não permite criar roles customizadas no MVP |
-| **IAM — Policies** | **ABAC por atributo**: restringe acesso por departamento, projeto ou conta do cliente | Não aplica policies em tempo real no desktop sem conexão com o servidor |
+| **IAM — Modelo** | **IAM granular estilo AWS**: Root + Users + Groups + Policies (Effect/Action/Resource/Condition) criados pelo próprio tenant | Não impõe hierarquia de roles fixas (sem Manager/Analyst/Viewer pré-definidos) |
+| **IAM — Conditions** | **Conditions estilo AWS** por atributos definidos pelo tenant: `Department`, `Project`, `Account` etc. | Não aplica policies em tempo real no desktop sem conexão com o servidor |
 | **Desktop** | **App Windows** (Tauri/Rust) que captura áudio do sistema via WASAPI, transcreve em streaming e exibe coaching ao vivo | Não suporta macOS no MVP (driver de áudio virtual exige complexidade extra) — roadmap |
 | **Multi-tenancy** | **Isolamento completo por organização** via Postgres RLS — dados de um tenant invisíveis a outro | Não oferece instalação on-premises no MVP |
 | **Conformidade** | **LGPD by design**: consentimento, registro auditado, direito ao esquecimento | Não realiza DPIAs automaticamente — ação manual do DPO do cliente |
@@ -105,28 +105,25 @@ O NORA é uma plataforma com dois planos que compartilham o mesmo motor de IA e 
 
 ## 5. IAM — Controle de Acesso Enterprise
 
-O NORA Enterprise implementa um modelo híbrido **RBAC + ABAC**, inspirado no AWS IAM. Nenhum colaborador vê mais do que precisa ver.
+O NORA Enterprise implementa um modelo **estilo AWS IAM**: o tenant cria seus próprios **grupos** e suas próprias **políticas**. Nenhuma role hierárquica é imposta pelo produto.
 
 ```
 Empresa (Tenant)
-├── Root / Owner       — acesso irrestrito, gerencia billing e org
-├── Admin              — gerencia usuários/roles/policies
-├── Roles (RBAC)
-│   ├── Manager        — vê dashboards e health score do time
-│   ├── Analyst        — lê, comenta e exporta
-│   └── Viewer         — só leitura
-└── Policies (ABAC)    — filtram o escopo de cada role
-    ├── department:     ["sales", "design", "product"]
-    ├── project:        ["proj-alpha"]
-    └── client_account: ["conta-XYZ"]
+├── Root user           — owner do tenant; bypass total; não removível
+├── Users               — convidados pelo Root ou por quem tiver permissão de IAM
+├── Groups              — criação livre ("Vendas-SP", "Auditores", etc.)
+│   └── ⇄ Policies
+├── Users ⇄ Groups       (N:N)
+├── Users ⇄ Policies     (N:N)
+└── Policies            — documento JSON: Effect / Action / Resource [/ Condition]
 ```
 
-**Exemplo real:** Diretor de Design com role `Manager` + policy `department: design`
-→ Gerencia o time de design, **nunca vê** uma transcrição de reunião de vendas.
+**Exemplo real:** o admin do tenant cria um grupo "Diretoria de Design" e anexa uma política que permite `meeting:read` e `analysis:read` apenas em recursos com a condição `nora:Department = "design"`.
+→ Os membros do grupo gerenciam reuniões do design e **nunca veem** transcrições de vendas.
 
-**Efeito no Product Context:** cada departamento pode ter subcatálogo próprio de produtos e termos. A IA usa o contexto correto baseado em quem analisa.
+**Efeito no Product Context:** cada departamento pode ter subcatálogo próprio. A IA escolhe o subcatálogo correto com base nas conditions aplicáveis ao usuário que disparou a análise.
 
-**Efeito no Desktop:** a transcrição já nasce tagueada com `department`, `project` e `participants` desde a captura, aplicando as policies do usuário logado.
+**Efeito no Desktop:** a transcrição nasce tagueada com os atributos relevantes (`Department`, `Project`, `Participants`) desde a captura, aplicando as policies do usuário logado.
 
 ## 6. Por que MCPs mudam o jogo
 
