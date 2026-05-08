@@ -1,4 +1,4 @@
-use crate::secrets::KeyVaultStore;
+use crate::secrets::SecretStore;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -42,7 +42,7 @@ pub struct ProxyResponse {
 pub async fn http_proxy(
     req: ProxyRequest,
     base_url: tauri::State<'_, ApiBaseUrl>,
-    keyvault: tauri::State<'_, KeyVaultStore>,
+    secrets: tauri::State<'_, SecretStore>,
 ) -> Result<ProxyResponse, String> {
     #[cfg(debug_assertions)]
     eprintln!("[http_proxy] {} {}", req.method.as_deref().unwrap_or("GET"), req.url);
@@ -67,7 +67,7 @@ pub async fn http_proxy(
     clean_headers.insert("Content-Type".into(), "application/json".into());
 
     if req.auth.unwrap_or(true) {
-        if let Some(token) = keyvault.get("access-token").await? {
+        if let Ok(Some(token)) = secrets.get("access-token") {
             clean_headers.insert("Authorization".into(), format!("Bearer {}", token));
         }
     }

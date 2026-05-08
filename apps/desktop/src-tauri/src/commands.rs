@@ -1,6 +1,5 @@
 use crate::audio_capture::{AudioCapture, CaptureSinks, RecordingStatus};
-use crate::http_proxy::ApiBaseUrl;
-use crate::secrets::KeyVaultStore;
+use crate::secrets::SecretStore;
 use crate::speech_token::fetch_speech_token;
 use crate::stt_sidecar::SidecarHandle;
 use crate::SidecarState;
@@ -29,7 +28,7 @@ pub async fn start_recording(
     app_handle: AppHandle,
     state: State<'_, CaptureState>,
     sidecar_state: State<'_, SidecarState>,
-    keyvault: State<'_, KeyVaultStore>,
+    secrets: State<'_, SecretStore>,
     request: StartRecordingRequest,
 ) -> Result<RecordingStatus, String> {
     #[cfg(debug_assertions)]
@@ -41,9 +40,9 @@ pub async fn start_recording(
         eprintln!("[commands] system_audio_device: {:?}", request.system_audio_device);
     }
 
-    let access_token = keyvault
+    let access_token = secrets
         .get("access-token")
-        .await?
+        .map_err(|e| format!("Failed to get access token: {}", e))?
         .ok_or("Not authenticated. Please login first.")?;
     let backend_url = std::env::var("NORA_API_BASE_URL")
         .unwrap_or_else(|_| "http://localhost:8080".to_string());
