@@ -24,18 +24,14 @@ pub fn run() {
     let base_url = url::Url::parse(&api_base_url)
         .expect("Invalid NORA_API_BASE_URL");
 
-    let keyvault_url = std::env::var("NORA_KEYVAULT_URL")
-        .expect("NORA_KEYVAULT_URL must be set (e.g. https://my-vault.vault.azure.net/)");
-
-    let keyvault_store = secrets::KeyVaultStore::new(&keyvault_url)
-        .expect("Failed to initialize Azure Key Vault client");
+    let secret_store = secrets::SecretStore::new();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(capture_state)
         .manage(sidecar_state)
         .manage(http_proxy::ApiBaseUrl(base_url))
-        .manage(keyvault_store)
+        .manage(secret_store)
         .invoke_handler(tauri::generate_handler![
             commands::list_audio_devices,
             commands::start_recording,
