@@ -1,0 +1,29 @@
+[project]
+name = "nora-stt-sidecar"
+version = "0.1.0"
+description = "NORA Desktop STT Sidecar - Microsoft Speech SDK with ConversationTranscriber"
+requires-python = ">=3.12"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+dependencies = [
+    "azure-cognitiveservices-speech>=1.40",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pyinstaller",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["src"]

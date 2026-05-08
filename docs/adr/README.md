@@ -40,3 +40,4 @@ Sequencial, 4 dígitos, kebab-case: `0001-monorepo.md`, `0002-multi-tenancy.md`.
 | 0005 | Productivity Score da reunião (opt-in, baseado em objetivo declarado) | aceito |
 | 0006 | Customer Confidence (por reunião) e Account Health (agregado) | aceito |
 | 0007 | IAM estilo AWS (Root + Users + Groups + Policies) | aceito |
+| 0008 | Desktop App com Tauri 2 + Sidecar Python | aceito |
