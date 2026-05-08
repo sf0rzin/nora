@@ -32,11 +32,12 @@ pub async fn fetch_speech_token(
         .await
         .map_err(|e| format!("speech token request failed: {e}"))?;
 
-    if !resp.status().is_success() {
-        return Err(format!("speech token http {}", resp.status()));
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!("speech token http {}: {}", status, body));
     }
 
-    resp.json::<SpeechTokenResponse>()
-        .await
-        .map_err(|e| format!("speech token parse: {e}"))
+    serde_json::from_str::<SpeechTokenResponse>(&body)
+        .map_err(|e| format!("speech token parse: {e} (body: {})", body))
 }

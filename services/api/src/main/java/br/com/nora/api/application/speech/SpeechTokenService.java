@@ -34,7 +34,7 @@ public class SpeechTokenService {
         String region =
                 (regionOrNull == null || regionOrNull.isBlank())
                         ? props.azure().defaultRegion()
-                        : regionOrNull;
+                        : regionOrNull.trim().toLowerCase();
 
         SpeechRegions.requireAllowed(region);
 

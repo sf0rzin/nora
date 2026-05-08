@@ -78,6 +78,8 @@ pub async fn start_recording(
         speech_token.token.clone(),
         language.clone(),
         "mic".to_string(),
+        backend_url.clone(),
+        access_token.clone(),
     )
     .await
     .map_err(|e| format!("Failed to start mic sidecar: {}", e))?;
@@ -90,6 +92,8 @@ pub async fn start_recording(
                 speech_token.token,
                 language,
                 "system".to_string(),
+                backend_url,
+                access_token,
             )
             .await
             .map_err(|e| format!("Failed to start system sidecar: {}", e))?,
