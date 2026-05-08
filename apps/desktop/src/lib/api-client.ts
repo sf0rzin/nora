@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { secrets } from "./secrets";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 
@@ -19,6 +20,7 @@ interface RequestOptions {
 class ApiClient {
   private baseUrl: string;
   private onUnauthorized: (() => void) | null = null;
+  private cachedUser: unknown = null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
@@ -36,18 +38,12 @@ class ApiClient {
       ...headers,
     };
 
-    if (auth) {
-      const token = this.getStoredToken();
-      if (token) {
-        allHeaders["Authorization"] = `Bearer ${token}`;
-      }
-    }
-
     const payload = {
       url: `${this.baseUrl}${path}`,
       method,
       headers: allHeaders,
       body: body ?? null,
+      auth,
     };
 
     console.log("[api] invoking http_proxy:", method, path);
@@ -64,7 +60,9 @@ class ApiClient {
 
     if (response.status === 401) {
       console.warn("[api] 401 unauthorized — token expired");
-      this.clearStoredToken();
+      await secrets.delete("access-token");
+      await secrets.delete("current-user");
+      this.cachedUser = null;
       this.onUnauthorized?.();
       window.location.hash = "#/login";
       throw { message: "Sessão expirada. Faça login novamente." };
@@ -77,31 +75,12 @@ class ApiClient {
     return response.body as T;
   }
 
-  getStoredToken(): string | null {
-    return localStorage.getItem("nora_access_token");
+  setCachedUser(user: unknown): void {
+    this.cachedUser = user;
   }
 
-  setStoredToken(token: string): void {
-    localStorage.setItem("nora_access_token", token);
-  }
-
-  clearStoredToken(): void {
-    localStorage.removeItem("nora_access_token");
-    localStorage.removeItem("nora_user");
-  }
-
-  setStoredUser(user: unknown): void {
-    localStorage.setItem("nora_user", JSON.stringify(user));
-  }
-
-  getStoredUser<T>(): T | null {
-    const raw = localStorage.getItem("nora_user");
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as T;
-    } catch {
-      return null;
-    }
+  getCachedUser<T>(): T | null {
+    return this.cachedUser as T | null;
   }
 }
 

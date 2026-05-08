@@ -6,8 +6,6 @@ import { uploadTranscript } from "@/lib/meetings";
 import { useRecordingContext } from "./use-recording-context";
 
 interface UseRecordingOptions {
-  azureSpeechKey?: string;
-  azureRegion?: string;
   language?: string;
   captureSystemAudio?: boolean;
   systemAudioDevice?: string | null;
@@ -106,8 +104,6 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
     const req = {
       deviceName: selectedDevice,
-      azureKey: options.azureSpeechKey,
-      azureRegion: options.azureRegion,
       language: options.language || "pt-BR",
       captureSystemAudio: options.captureSystemAudio ?? false,
       systemAudioDevice: options.systemAudioDevice ?? null,

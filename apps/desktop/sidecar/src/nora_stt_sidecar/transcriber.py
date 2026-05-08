@@ -35,13 +35,13 @@ class LiveTranscriber:
         self,
         session_id: str,
         region: str,
-        key: str,
+        auth_token: str,
         language: str = "pt-BR",
         on_event: Callable[[OutboundMessage], None] | None = None,
     ):
         self.session_id = session_id
         self.region = region
-        self.key = key
+        self.auth_token = auth_token
         self.language = language
         self.on_event = on_event
         
@@ -76,7 +76,7 @@ class LiveTranscriber:
     
     def _setup_transcriber(self) -> None:
         """Setup the ConversationTranscriber with push audio stream."""
-        speech_config = SpeechConfig(subscription=self.key, region=self.region)
+        speech_config = SpeechConfig(auth_token=self.auth_token, region=self.region)
         speech_config.speech_recognition_language = self.language
         
         # Enable diarization for intermediate results
@@ -198,6 +198,23 @@ class LiveTranscriber:
         self._emit(StoppedMessage(session_id=self.session_id))
         logger.info(f"Transcriber stopped for session {self.session_id}")
     
+    def update_auth_token(self, new_token: str) -> None:
+        """Update the authorization token without restarting the session."""
+        self.auth_token = new_token
+        if self._transcriber is not None:
+            try:
+                self._transcriber.authorization_token = new_token
+                logger.info(f"Updated auth token for session {self.session_id}")
+            except Exception as e:
+                logger.error(f"Failed to update auth token: {e}")
+                self._emit(
+                    ErrorMessage(
+                        session_id=self.session_id,
+                        code="TOKEN_REFRESH_FAILED",
+                        message=f"Failed to update auth token: {e}",
+                    )
+                )
+
     def _cleanup(self) -> None:
         """Clean up resources."""
         try:
