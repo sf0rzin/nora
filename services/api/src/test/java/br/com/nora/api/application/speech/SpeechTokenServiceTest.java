@@ -2,9 +2,7 @@ package br.com.nora.api.application.speech;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -35,7 +33,11 @@ class SpeechTokenServiceTest {
         props =
                 new SpeechProperties(
                         new SpeechProperties.Azure(
-                                "test-key", "brazilsouth", "https://%s.api.cognitive.microsoft.com/sts/v1.0/issueToken", 540, 5000),
+                                "test-key",
+                                "brazilsouth",
+                                "https://%s.api.cognitive.microsoft.com/sts/v1.0/issueToken",
+                                540,
+                                5000),
                         new SpeechProperties.RateLimit(6));
 
         service = new SpeechTokenService(broker, rateLimiter, props, clock);
@@ -45,7 +47,8 @@ class SpeechTokenServiceTest {
     void shouldIssueTokenWithDefaultRegion() {
         UUID userId = UUID.randomUUID();
         UUID tenantId = UUID.randomUUID();
-        SpeechToken expected = new SpeechToken("fake-token", "brazilsouth", Instant.now().plusSeconds(540));
+        SpeechToken expected =
+                new SpeechToken("fake-token", "brazilsouth", Instant.now().plusSeconds(540));
 
         when(rateLimiter.tryConsume(userId)).thenReturn(true);
         when(broker.issue("brazilsouth")).thenReturn(expected);
@@ -60,7 +63,8 @@ class SpeechTokenServiceTest {
     void shouldIssueTokenWithProvidedRegion() {
         UUID userId = UUID.randomUUID();
         UUID tenantId = UUID.randomUUID();
-        SpeechToken expected = new SpeechToken("fake-token", "eastus", Instant.now().plusSeconds(540));
+        SpeechToken expected =
+                new SpeechToken("fake-token", "eastus", Instant.now().plusSeconds(540));
 
         when(rateLimiter.tryConsume(userId)).thenReturn(true);
         when(broker.issue("eastus")).thenReturn(expected);
@@ -98,7 +102,8 @@ class SpeechTokenServiceTest {
     void shouldTrimAndNormalizeRegion() {
         UUID userId = UUID.randomUUID();
         UUID tenantId = UUID.randomUUID();
-        SpeechToken expected = new SpeechToken("fake-token", "brazilsouth", Instant.now().plusSeconds(540));
+        SpeechToken expected =
+                new SpeechToken("fake-token", "brazilsouth", Instant.now().plusSeconds(540));
 
         when(rateLimiter.tryConsume(userId)).thenReturn(true);
         when(broker.issue("brazilsouth")).thenReturn(expected);

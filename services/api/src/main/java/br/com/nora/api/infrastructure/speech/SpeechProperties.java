@@ -3,9 +3,7 @@ package br.com.nora.api.infrastructure.speech;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "nora.speech")
-public record SpeechProperties(
-        Azure azure,
-        RateLimit rateLimit) {
+public record SpeechProperties(Azure azure, RateLimit rateLimit) {
 
     public record Azure(
             String subscriptionKey,
@@ -14,6 +12,5 @@ public record SpeechProperties(
             int tokenTtlSeconds,
             int requestTimeoutMs) {}
 
-    public record RateLimit(
-            int tokensPerMinute) {}
+    public record RateLimit(int tokensPerMinute) {}
 }
