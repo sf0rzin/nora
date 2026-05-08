@@ -1,3 +1,4 @@
+use crate::secrets::KeyVaultStore;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,7 +9,7 @@ const FORBIDDEN_HEADERS: &[&str] = &[
     "x-forwarded-for", "x-real-ip",
 ];
 
-const MAX_BODY_BYTES: usize = 1024 * 1024; // 1 MiB
+const MAX_BODY_BYTES: usize = 1024 * 1024;
 
 fn http_client() -> &'static Client {
     static CLIENT: OnceLock<Client> = OnceLock::new();
@@ -28,6 +29,7 @@ pub struct ProxyRequest {
     pub method: Option<String>,
     pub headers: Option<HashMap<String, String>>,
     pub body: Option<serde_json::Value>,
+    pub auth: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -40,15 +42,14 @@ pub struct ProxyResponse {
 pub async fn http_proxy(
     req: ProxyRequest,
     base_url: tauri::State<'_, ApiBaseUrl>,
+    keyvault: tauri::State<'_, KeyVaultStore>,
 ) -> Result<ProxyResponse, String> {
     #[cfg(debug_assertions)]
     eprintln!("[http_proxy] {} {}", req.method.as_deref().unwrap_or("GET"), req.url);
 
-    // Parse and validate URL
     let target = url::Url::parse(&req.url)
         .map_err(|e| format!("invalid url: {}", e))?;
 
-    // Allowlist: scheme + host + porta devem bater com base
     if target.scheme() != base_url.0.scheme()
         || target.host_str() != base_url.0.host_str()
         || target.port_or_known_default() != base_url.0.port_or_known_default()
@@ -56,7 +57,6 @@ pub async fn http_proxy(
         return Err("URL não permitida pelo proxy".into());
     }
 
-    // Sanitizar headers
     let mut clean_headers: HashMap<String, String> = HashMap::new();
     for (k, v) in req.headers.unwrap_or_default() {
         if FORBIDDEN_HEADERS.contains(&k.to_ascii_lowercase().as_str()) {
@@ -65,6 +65,12 @@ pub async fn http_proxy(
         clean_headers.insert(k, v);
     }
     clean_headers.insert("Content-Type".into(), "application/json".into());
+
+    if req.auth.unwrap_or(true) {
+        if let Some(token) = keyvault.get("access-token").await? {
+            clean_headers.insert("Authorization".into(), format!("Bearer {}", token));
+        }
+    }
 
     let client = http_client();
     let method = req.method.unwrap_or_else(|| "GET".into());

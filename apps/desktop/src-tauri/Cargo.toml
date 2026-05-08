@@ -15,7 +15,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 cpal = "0.15"
@@ -25,8 +25,11 @@ uuid = { version = "1", features = ["v4"] }
 rubato = "2.0.0"
 audioadapter-buffers = "3.0.0"
 url = "2.5.8"
-tauri-plugin-stronghold = "2"
-sha2 = "0.11.0"
+urlencoding = "2"
+azure_identity = "0.21"
+azure_security_keyvault_secrets = "0.14"
+futures = "0.3"
+tokio-util = { version = "0.7", features = ["rt"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

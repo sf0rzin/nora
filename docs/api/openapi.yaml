@@ -15,6 +15,7 @@ tags:
   - name: Tenants
   - name: Meetings
   - name: Tasks
+  - name: Speech
 paths:
   /auth/login:
     post:
@@ -63,6 +64,24 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/TenantContext' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /speech/token:
+    post:
+      tags: [Speech]
+      summary: Emite token de autorização efêmero para Azure Speech
+      parameters:
+        - in: query
+          name: region
+          required: false
+          schema: { type: string, example: brazilsouth }
+      responses:
+        '200':
+          description: Token emitido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SpeechTokenResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /meetings:
     get:
@@ -183,6 +202,11 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     NotFound:
       description: Não encontrado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Rate limit excedido
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -427,3 +451,16 @@ components:
           type: string
           enum: [UPSELL, CROSS_SELL, REFERRAL, EXPANSION, OTHER]
         sourceQuote: { type: string }
+    SpeechTokenResponse:
+      type: object
+      required: [token, region, expiresAt]
+      properties:
+        token:
+          type: string
+          description: JWT efêmero (≤ 10 min)
+        region:
+          type: string
+          example: brazilsouth
+        expiresAt:
+          type: string
+          format: date-time

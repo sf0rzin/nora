@@ -1,4 +1,5 @@
 import { apiClient } from "./api-client";
+import { secrets } from "./secrets";
 import type { LoginRequest, LoginResponse, SessionUser } from "./types";
 
 function parseJwtPayload(token: string): Record<string, unknown> | null {
@@ -37,26 +38,30 @@ export async function login(req: LoginRequest): Promise<SessionUser> {
     roles,
   };
 
-  apiClient.setStoredToken(response.accessToken);
-  apiClient.setStoredUser(user);
+  await secrets.set("access-token", response.accessToken);
+  await secrets.set("current-user", JSON.stringify(user));
+  apiClient.setCachedUser(user);
 
   return user;
 }
 
-export function logout(): void {
-  apiClient.clearStoredToken();
+export async function logout(): Promise<void> {
+  await secrets.delete("access-token");
+  await secrets.delete("current-user");
+  apiClient.setCachedUser(null);
 }
 
-export function getCurrentUser(): SessionUser | null {
-  return apiClient.getStoredUser<SessionUser>();
+export async function bootstrapSession(): Promise<SessionUser | null> {
+  const hasToken = await secrets.has("access-token");
+  if (!hasToken) return null;
+
+  const hasUser = await secrets.has("current-user");
+  if (!hasUser) return null;
+
+  return apiClient.getCachedUser<SessionUser>();
 }
 
-export function isAuthenticated(): boolean {
-  const token = apiClient.getStoredToken();
-  if (!token) return false;
-  if (isTokenExpired(token)) {
-    apiClient.clearStoredToken();
-    return false;
-  }
-  return true;
+export async function isAuthenticated(): Promise<boolean> {
+  const hasToken = await secrets.has("access-token");
+  return hasToken;
 }
