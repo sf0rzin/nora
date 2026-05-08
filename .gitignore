@@ -54,6 +54,12 @@ infra/docker/data/
 data/raw/
 data/private/
 
+# --- Rust / Tauri ---
+src-tauri/target/
+src-tauri/binaries/nora-stt-sidecar-*
+src-tauri/gen/
+*.tsbuildinfo
+
 # --- Secrets ---
 *.pem
 *.key
