@@ -1,4 +1,4 @@
-# 0005 — Desktop App com Tauri 2 + Sidecar Python
+# 0008 — Desktop App com Tauri 2 + Sidecar Python
 
 - Status: aceito
 - Data: 2025-05-07

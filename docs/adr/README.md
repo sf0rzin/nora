@@ -37,4 +37,7 @@ Sequencial, 4 dígitos, kebab-case: `0001-monorepo.md`, `0002-multi-tenancy.md`.
 | 0002 | Estratégia de multi-tenancy: filtro de aplicação no MVP, RLS em produção | aceito |
 | 0003 | Saída do LLM via JSON Schema obrigatório | aceito |
 | 0004 | Estratégia de Provider de LLM (agnóstica, OpenAI como default) | aceito |
-| 0005 | Desktop App com Tauri 2 + Sidecar Python | aceito |
+| 0005 | Productivity Score da reunião (opt-in, baseado em objetivo declarado) | aceito |
+| 0006 | Customer Confidence (por reunião) e Account Health (agregado) | aceito |
+| 0007 | IAM estilo AWS (Root + Users + Groups + Policies) | aceito |
+| 0008 | Desktop App com Tauri 2 + Sidecar Python | aceito |

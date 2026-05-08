@@ -60,13 +60,17 @@ graph TD
   end
 
   %% ─── Casos de Uso: Enterprise (Admin) ───
-  subgraph ENT_ADMIN["Módulo: Enterprise — Administração"]
+  subgraph ENT_ADMIN["Módulo: Enterprise — Administração (Root do tenant)"]
     CU16(["UC16 · Configurar contexto da empresa"])
-    CU17(["UC17 · Gerenciar usuários e roles"])
-    CU18(["UC18 · Definir escopos de acesso (RBAC)"])
-    CU19(["UC19 · Ver todas as transcrições"])
+    CU17(["UC17 · Convidar e gerenciar usuários"])
+    CU18(["UC18 · Criar grupos IAM"])
+    CU18A(["UC18A · Criar e versionar políticas IAM (JSON)"])
+    CU18B(["UC18B · Anexar políticas a grupos/usuários"])
+    CU18C(["UC18C · Adicionar/remover usuários em grupos"])
+    CU19(["UC19 · Ver todas as transcrições (bypass Root)"])
     CU20(["UC20 · Configurar tenant"])
     CU21(["UC21 · Exportar relatório global"])
+    CU21A(["UC21A · Auditar mudanças de IAM"])
   end
 
   %% ─── Casos de Uso: IA ───
@@ -77,6 +81,9 @@ graph TD
     CU25(["UC25 · Indexar conteúdo com embeddings"])
     CU26(["UC26 · Injetar contexto do produto/empresa"])
     CU27(["UC27 · Enviar notificações"])
+    CU28(["UC28 · Avaliar produtividade vs. objetivo declarado (opt-in)"])
+    CU29(["UC29 · Avaliar Customer Confidence (Enterprise)"])
+    CU30(["UC30 · Atualizar Account Health Score (Enterprise)"])
   end
 
   %% ─── Relações: Visitante ───
@@ -108,9 +115,13 @@ graph TD
   AE --> CU16
   AE --> CU17
   AE --> CU18
+  AE --> CU18A
+  AE --> CU18B
+  AE --> CU18C
   AE --> CU19
   AE --> CU20
   AE --> CU21
+  AE --> CU21A
   AE --> CU12
   AE --> CU14
 
@@ -122,6 +133,9 @@ graph TD
   CU23 --> CU24
   CU23 --> CU25
   CU23 -. Enterprise .-> CU26
+  CU23 -. se goal declarado .-> CU28
+  CU23 -. Enterprise + lead .-> CU29
+  CU29 --> CU30
   CU23 --> CU27
 
   %% ─── Relações: Serviço Externo ───
@@ -205,25 +219,91 @@ graph TD
 
 ---
 
-### UC17 — Gerenciar usuários e roles
-**Ator principal:** Admin Enterprise
+### UC17 — Convidar e gerenciar usuários
+**Ator principal:** Root do tenant (Admin Enterprise)
 **Pré-condição:** Tenant ativo
 **Fluxo principal:**
-1. Admin acessa "Configurações > Usuários"
+1. Root acessa "Configurações > IAM > Usuários"
 2. Convida usuário por e-mail corporativo
-3. Define role padrão (Root, Admin, Manager, Analyst, Viewer) e escopo de tags/departamentos/contas
-4. Usuário recebe convite e acessa somente o escopo configurado
+3. (Opcional) adiciona o usuário a um ou mais grupos já existentes (ver UC18C)
+4. Usuário recebe convite, define senha e acessa apenas o que suas políticas IAM permitem
 
 ---
 
-### UC18 — Definir escopos de acesso (RBAC)
-**Ator principal:** Admin Enterprise
-**Pré-condição:** Roles criadas
+### UC18 — Criar grupos IAM
+**Ator principal:** Root do tenant
+**Pré-condição:** Tenant ativo
 **Fluxo principal:**
-1. Admin acessa "Configurações > Permissões"
-2. Para cada role, define quais tags/departamentos/contas são visíveis
-3. Define permissões granulares: visualizar, exportar, comentar
-4. Alterações aplicadas imediatamente (sem necessidade de logout)
+1. Root acessa "Configurações > IAM > Grupos"
+2. Cria um novo grupo (ex.: "Vendas-SP", "Auditores")
+3. Grupo fica disponível para anexação de políticas (UC18B) e adição de membros (UC18C)
+
+---
+
+### UC18A — Criar e versionar políticas IAM (JSON)
+**Ator principal:** Root do tenant
+**Pré-condição:** Tenant ativo
+**Fluxo principal:**
+1. Root acessa "Configurações > IAM > Políticas"
+2. Cria política enviando documento JSON com `version` e `statements[]` (cada um com `effect`, `action[]`, `resource[]` e `condition` opcional)
+3. Sistema valida contra schema oficial e cria versão 1
+4. Cada alteração cria uma nova versão (histórico imutável)
+**Extensão:** Root pode partir de **templates** opcionais ("ReadOnlyAccess", "MeetingAnalystAccess") como ponto de partida.
+
+---
+
+### UC18B — Anexar políticas a grupos/usuários
+**Ator principal:** Root do tenant
+**Fluxo principal:**
+1. Root seleciona uma política
+2. Anexa a um ou mais grupos (recomendado) ou a um usuário específico
+3. Sistema atualiza permissões imediatamente; próximas requisições já refletem o novo estado
+
+---
+
+### UC18C — Adicionar/remover usuários em grupos
+**Ator principal:** Root do tenant
+**Fluxo principal:**
+1. Root abre o grupo desejado
+2. Adiciona ou remove usuários membros
+3. Permissões resultantes são reavaliadas na próxima requisição de cada usuário afetado
+
+---
+
+### UC28 — Avaliar produtividade vs. objetivo declarado (opt-in)
+**Ator principal:** Usuário Core / Usuário Enterprise
+**Pré-condição:** Recurso de produtividade ativado pelo usuário ao subir a reunião
+**Fluxo principal:**
+1. No upload, o usuário declara o `purpose` da reunião e a lista de `expectedOutcomes` que precisavam ser tratados
+2. (Opcional) o usuário cola/edita um `projectStateSnapshot` descrevendo o que já está feito
+3. A NORA processa a reunião normalmente (UC23) e, ao final, avalia cobertura outcome-a-outcome (`ADDRESSED` / `PARTIAL` / `MISSED`)
+4. Calcula um Productivity Score (0–100), banda (`LOW` / `MEDIUM` / `HIGH`) e justificativa
+5. Resultado fica visível no detalhe da reunião
+**Extensão (pós-MVP):** Em vez do `projectStateSnapshot` manual, a NORA puxa o estado do projeto via MCP de Jira / Linear / Azure DevOps / GitHub Projects.
+
+---
+
+### UC29 — Avaliar Customer Confidence (Enterprise)
+**Ator principal:** Usuário Enterprise (AE)
+**Pré-condição:** Reunião está vinculada a uma `customer_account`; tenant é Enterprise
+**Fluxo principal:**
+1. Após o resumo (UC23), o worker analisa sinais de compra e objeções na transcrição
+2. Calcula um Customer Confidence Score (0–100) e banda (`LOW` / `MEDIUM` / `HIGH`)
+3. Compara com a última avaliação da mesma conta para gerar `trend` (`IMPROVING` / `STABLE` / `DECLINING`)
+4. Persiste sinais e objeções com a citação textual
+**Resultado:** indicador disponível no detalhe da reunião e no painel da conta.
+
+---
+
+### UC30 — Atualizar Account Health Score (Enterprise)
+**Ator principal:** Sistema (disparado por UC29)
+**Pré-condição:** Existe um novo Customer Confidence persistido
+**Fluxo principal:**
+1. Sistema combina o Customer Confidence recente, riscos e oportunidades acumulados, recência de interação e tendência
+2. Calcula novo Account Health Score (0–100) com banda (`AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`)
+3. Persiste snapshot com referência à análise que disparou
+4. Se houve mudança de banda para pior, dispara alerta para os usuários autorizados (US51)
+**Resultado:** série temporal da saúde da conta atualizada.
 
 ---
 
