@@ -1,0 +1,15 @@
+{
+  "identifier": "default",
+  "description": "Default capability for NORA Desktop",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "binaries/nora-stt-sidecar", "sidecar": true, "args": true }
+      ]
+    }
+  ]
+}
