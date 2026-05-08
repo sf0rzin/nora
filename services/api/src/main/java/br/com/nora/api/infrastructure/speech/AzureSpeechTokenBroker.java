@@ -4,7 +4,6 @@ import br.com.nora.api.application.ports.Clock;
 import br.com.nora.api.application.speech.SpeechException;
 import br.com.nora.api.application.speech.SpeechToken;
 import br.com.nora.api.application.speech.ports.SpeechTokenBroker;
-import java.time.Duration;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -16,11 +15,15 @@ public class AzureSpeechTokenBroker implements SpeechTokenBroker {
     private final RestClient restClient;
     private final Clock clock;
 
-    public AzureSpeechTokenBroker(SpeechProperties props, RestClient.Builder restClientBuilder, Clock clock) {
+    public AzureSpeechTokenBroker(
+            SpeechProperties props, RestClient.Builder restClientBuilder, Clock clock) {
         this.props = props;
-        this.restClient = restClientBuilder
-                .requestFactory(new org.springframework.http.client.SimpleClientHttpRequestFactory())
-                .build();
+        this.restClient =
+                restClientBuilder
+                        .requestFactory(
+                                new org.springframework.http.client
+                                        .SimpleClientHttpRequestFactory())
+                        .build();
         this.clock = clock;
     }
 
@@ -48,8 +51,6 @@ public class AzureSpeechTokenBroker implements SpeechTokenBroker {
         }
 
         return new SpeechToken(
-                token,
-                region,
-                clock.now().plusSeconds(props.azure().tokenTtlSeconds()));
+                token, region, clock.now().plusSeconds(props.azure().tokenTtlSeconds()));
     }
 }

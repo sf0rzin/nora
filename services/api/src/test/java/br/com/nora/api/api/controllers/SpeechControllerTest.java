@@ -39,7 +39,8 @@ class SpeechControllerTest {
         UUID userId = UUID.randomUUID();
         UUID tenantId = UUID.randomUUID();
         JjwtJwtIssuer.AuthenticatedPrincipal principal =
-                new JjwtJwtIssuer.AuthenticatedPrincipal(userId, tenantId, "user@nora.ai", List.of("USER"));
+                new JjwtJwtIssuer.AuthenticatedPrincipal(
+                        userId, tenantId, "user@nora.ai", List.of("USER"));
         AbstractAuthenticationToken auth =
                 new AbstractAuthenticationToken(List.of(new SimpleGrantedAuthority("ROLE_USER"))) {
                     @Override
@@ -60,13 +61,13 @@ class SpeechControllerTest {
     void shouldReturnTokenWhenAuthenticated() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID tenantId = UUID.randomUUID();
-        SpeechToken token = new SpeechToken("fake-jwt-token", "brazilsouth", Instant.parse("2026-05-08T12:09:00Z"));
+        SpeechToken token =
+                new SpeechToken(
+                        "fake-jwt-token", "brazilsouth", Instant.parse("2026-05-08T12:09:00Z"));
 
         when(speechTokenService.issueFor(any(), any(), eq((String) null))).thenReturn(token);
 
-        mockMvc.perform(
-                        post("/speech/token")
-                                .contentType(MediaType.APPLICATION_JSON))
+        mockMvc.perform(post("/speech/token").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").value("fake-jwt-token"))
                 .andExpect(jsonPath("$.region").value("brazilsouth"))
@@ -77,7 +78,8 @@ class SpeechControllerTest {
     void shouldReturnTokenWithRegionParam() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID tenantId = UUID.randomUUID();
-        SpeechToken token = new SpeechToken("fake-jwt-token", "eastus", Instant.parse("2026-05-08T12:09:00Z"));
+        SpeechToken token =
+                new SpeechToken("fake-jwt-token", "eastus", Instant.parse("2026-05-08T12:09:00Z"));
 
         when(speechTokenService.issueFor(any(), any(), eq("eastus"))).thenReturn(token);
 
