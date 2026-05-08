@@ -30,7 +30,7 @@ class SpeechTokenServiceTest {
         broker = mock(SpeechTokenBroker.class);
         rateLimiter = mock(SpeechRateLimiter.class);
         clock = mock(Clock.class);
-        when(clock.instant()).thenReturn(Instant.parse("2026-05-08T12:00:00Z"));
+        when(clock.now()).thenReturn(Instant.parse("2026-05-08T12:00:00Z"));
 
         props =
                 new SpeechProperties(

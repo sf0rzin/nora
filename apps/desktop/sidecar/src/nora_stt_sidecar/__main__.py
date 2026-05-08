@@ -3,8 +3,8 @@ import logging
 import signal
 import sys
 
-from .logging_setup import configure
-from .protocol import (
+from nora_stt_sidecar.logging_setup import configure
+from nora_stt_sidecar.protocol import (
     AudioMessage,
     ErrorMessage,
     OutboundMessage,
@@ -13,8 +13,8 @@ from .protocol import (
     StopMessage,
     parse_inbound,
 )
-from .transcriber import LiveTranscriber
-from .audio_pipe import decode_audio_message
+from nora_stt_sidecar.transcriber import LiveTranscriber
+from nora_stt_sidecar.audio_pipe import decode_audio_message
 
 logger = logging.getLogger("nora_stt_sidecar")
 

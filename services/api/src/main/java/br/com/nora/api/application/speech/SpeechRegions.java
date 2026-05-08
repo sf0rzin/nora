@@ -6,14 +6,31 @@ public final class SpeechRegions {
 
     private static final Set<String> ALLOWED =
             Set.of(
-                    "brazilsouth",
-                    "eastus",
-                    "westeurope",
-                    "southeastasia",
-                    "westus2",
-                    "northeurope",
                     "australiaeast",
-                    "japaneast");
+                    "brazilsouth",
+                    "canadacentral",
+                    "centralus",
+                    "eastasia",
+                    "eastus",
+                    "eastus2",
+                    "francecentral",
+                    "germanywestcentral",
+                    "japaneast",
+                    "koreacentral",
+                    "northcentralus",
+                    "northeurope",
+                    "southafricanorth",
+                    "southcentralus",
+                    "southeastasia",
+                    "swedencentral",
+                    "switzerlandnorth",
+                    "uaenorth",
+                    "uksouth",
+                    "westcentralus",
+                    "westeurope",
+                    "westus",
+                    "westus2",
+                    "westus3");
 
     private SpeechRegions() {}
 

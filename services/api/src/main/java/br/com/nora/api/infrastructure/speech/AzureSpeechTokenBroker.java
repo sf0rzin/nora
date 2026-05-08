@@ -50,6 +50,6 @@ public class AzureSpeechTokenBroker implements SpeechTokenBroker {
         return new SpeechToken(
                 token,
                 region,
-                clock.instant().plusSeconds(props.azure().tokenTtlSeconds()));
+                clock.now().plusSeconds(props.azure().tokenTtlSeconds()));
     }
 }

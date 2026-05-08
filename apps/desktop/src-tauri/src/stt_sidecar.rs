@@ -1,7 +1,13 @@
+use std::path::PathBuf;
+use std::process::Stdio;
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::{mpsc, oneshot};
-use tauri_plugin_shell::ShellExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::Command;
+use tokio::sync::{mpsc, oneshot, Mutex};
 use base64::Engine;
+
+use crate::speech_token::fetch_speech_token;
 
 #[derive(Debug, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +36,45 @@ impl Drop for SidecarHandle {
     }
 }
 
+fn resolve_sidecar_binary() -> Option<PathBuf> {
+    // 1. Check NORA_SIDECAR_PATH env var (highest priority)
+    if let Ok(path) = std::env::var("NORA_SIDECAR_PATH") {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+
+    // 2. Relative to executable (packaged app):
+    //    <app-dir>/binaries/nora-stt-sidecar-x86_64-unknown-linux-gnu
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let candidates = [
+                exe_dir.join("binaries/nora-stt-sidecar-x86_64-unknown-linux-gnu"),
+                exe_dir.join("../binaries/nora-stt-sidecar-x86_64-unknown-linux-gnu"),
+                exe_dir.join("../../binaries/nora-stt-sidecar-x86_64-unknown-linux-gnu"),
+            ];
+            for candidate in candidates {
+                if candidate.exists() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+
+    // 3. Relative to the Rust source tree (dev mode):
+    //    src-tauri/binaries/nora-stt-sidecar-x86_64-unknown-linux-gnu
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let dev_binary = PathBuf::from(&manifest_dir)
+            .join("binaries/nora-stt-sidecar-x86_64-unknown-linux-gnu");
+        if dev_binary.exists() {
+            return Some(dev_binary);
+        }
+    }
+
+    None
+}
+
 #[allow(dead_code)]
 impl SidecarHandle {
     pub async fn start(
@@ -38,6 +83,8 @@ impl SidecarHandle {
         auth_token: String,
         language: String,
         track_label: String,
+        backend_url: String,
+        access_token: String,
     ) -> Result<Self, String> {
         let session_id = uuid::Uuid::new_v4().to_string();
         let (audio_tx, audio_rx) = mpsc::channel::<Vec<i16>>(100);
@@ -59,6 +106,8 @@ impl SidecarHandle {
                 audio_rx,
                 stop_rx,
                 ready_tx,
+                backend_url,
+                access_token,
             )
             .await
             {
@@ -101,6 +150,69 @@ impl SidecarHandle {
     }
 }
 
+/// Spawn a background task that refreshes the auth token every 8 minutes.
+/// Sends `{"type":"refresh_token",...}` to the sidecar via stdin.
+async fn spawn_refresh_loop(
+    session_id: String,
+    stdin: Arc<Mutex<tokio::process::ChildStdin>>,
+    backend_url: String,
+    access_token: String,
+    region: String,
+    mut cancel_rx: oneshot::Receiver<()>,
+) {
+    // First refresh after 8 minutes (480 seconds)
+    // Azure tokens last 10 minutes, we refresh at 8 to have a 2-minute buffer
+    let refresh_interval = tokio::time::Duration::from_secs(480);
+    
+    #[cfg(debug_assertions)]
+    eprintln!("[stt_sidecar] refresh loop started for session {}", session_id);
+
+    loop {
+        tokio::select! {
+            _ = &mut cancel_rx => {
+                #[cfg(debug_assertions)]
+                eprintln!("[stt_sidecar] refresh loop cancelled for session {}", session_id);
+                break;
+            }
+            _ = tokio::time::sleep(refresh_interval) => {
+                #[cfg(debug_assertions)]
+                eprintln!("[stt_sidecar] refreshing token for session {}", session_id);
+                
+                match fetch_speech_token(&backend_url, &access_token, Some(&region)
+                ).await {
+                    Ok(token_response) => {
+                        let refresh_msg = serde_json::json!({
+                            "v": 1,
+                            "type": "refresh_token",
+                            "session_id": session_id,
+                            "auth_token": token_response.token,
+                        });
+                        
+                        let line = format!("{}\n", refresh_msg);
+                        let mut stdin_guard = stdin.lock().await;
+                        if let Err(e) = stdin_guard.write_all(line.as_bytes()).await {
+                            eprintln!("[stt_sidecar] failed to write refresh_token: {}", e);
+                            break;
+                        }
+                        if let Err(e) = stdin_guard.flush().await {
+                            eprintln!("[stt_sidecar] failed to flush refresh_token: {}", e);
+                            break;
+                        }
+                        
+                        #[cfg(debug_assertions)]
+                        eprintln!("[stt_sidecar] token refreshed successfully for session {}", session_id);
+                    }
+                    Err(e) => {
+                        eprintln!("[stt_sidecar] failed to refresh token: {}", e);
+                        // Don't break on refresh failure - the sidecar might still work
+                        // with the old token until it expires
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_sidecar(
     app: AppHandle,
@@ -112,15 +224,34 @@ async fn run_sidecar(
     mut audio_rx: mpsc::Receiver<Vec<i16>>,
     mut stop_rx: oneshot::Receiver<()>,
     ready_tx: oneshot::Sender<()>,
+    backend_url: String,
+    access_token: String,
 ) -> Result<(), String> {
-    let sidecar = app
-        .shell()
-        .sidecar("nora-stt-sidecar")
-        .map_err(|e| format!("sidecar lookup: {}", e))?;
+    let binary_path = resolve_sidecar_binary()
+        .ok_or("Sidecar binary not found. Set NORA_SIDECAR_PATH or ensure binaries/ directory exists")?;
 
-    let (mut rx, mut child) = sidecar
+    #[cfg(debug_assertions)]
+    eprintln!("[stt_sidecar] using binary: {:?}", binary_path);
+
+    let mut child = Command::new(&binary_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("sidecar spawn: {}", e))?;
+        .map_err(|e| format!("failed to spawn sidecar: {}", e))?;
+
+    let stdin = Arc::new(Mutex::new(child
+        .stdin
+        .take()
+        .ok_or("failed to get stdin")?));
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or("failed to get stdout")?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or("failed to get stderr")?;
 
     #[cfg(debug_assertions)]
     eprintln!("[stt_sidecar] spawned sidecar for session {}", session_id);
@@ -138,13 +269,30 @@ async fn run_sidecar(
         "speakers_hint": 2,
     });
 
-    let start_line = format!("{}\n", start_msg);
-    child
-        .write(start_line.as_bytes())
-        .map_err(|e| format!("failed to write start: {}", e))?;
+    {
+        let mut stdin_guard = stdin.lock().await;
+        let start_line = format!("{}\n", start_msg);
+        stdin_guard
+            .write_all(start_line.as_bytes())
+            .await
+            .map_err(|e| format!("failed to write start: {}", e))?;
+        stdin_guard.flush().await.map_err(|e| format!("failed to flush: {}", e))?;
+    }
+
+    // Spawn refresh loop
+    let (refresh_cancel_tx, refresh_cancel_rx) = oneshot::channel::<()>();
+    let refresh_handle = tokio::spawn(spawn_refresh_loop(
+        session_id.clone(),
+        Arc::clone(&stdin),
+        backend_url,
+        access_token,
+        region.clone(),
+        refresh_cancel_rx,
+    ));
 
     // Writer task
     let writer_session = session_id.clone();
+    let writer_stdin = Arc::clone(&stdin);
     let writer = tokio::spawn(async move {
         let mut seq = 0u64;
         while let Some(samples) = audio_rx.recv().await {
@@ -164,9 +312,15 @@ async fn run_sidecar(
             seq += 1;
 
             let line = format!("{}\n", audio_msg);
-            if let Err(e) = child.write(line.as_bytes()) {
+            let mut stdin_guard = writer_stdin.lock().await;
+            if let Err(e) = stdin_guard.write_all(line.as_bytes()).await {
                 #[cfg(debug_assertions)]
                 eprintln!("[stt_sidecar] write error: {}", e);
+                break;
+            }
+            if let Err(e) = stdin_guard.flush().await {
+                #[cfg(debug_assertions)]
+                eprintln!("[stt_sidecar] flush error: {}", e);
                 break;
             }
         }
@@ -177,88 +331,86 @@ async fn run_sidecar(
             "type": "stop",
             "session_id": writer_session,
         });
-        let _ = child.write(format!("{}\n", stop_msg).as_bytes());
+        let mut stdin_guard = writer_stdin.lock().await;
+        let _ = stdin_guard.write_all(format!("{}\n", stop_msg).as_bytes()).await;
+        let _ = stdin_guard.flush().await;
     });
 
-    // Reader task
-    let mut buf = Vec::new();
+    // Stderr reader
+    let stderr_handle = tokio::spawn(async move {
+        let reader = BufReader::new(stderr);
+        let mut lines = reader.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            eprintln!("[sidecar stderr] {}", line.trim());
+        }
+    });
+
+    // Stdout reader
     let mut ready_sent = false;
     let mut ready_tx_opt = Some(ready_tx);
 
+    let stdout_reader = BufReader::new(stdout);
+    let mut lines = stdout_reader.lines();
+
     loop {
         tokio::select! {
-            event = rx.recv() => {
-                match event {
-                    Some(tauri_plugin_shell::process::CommandEvent::Stdout(chunk)) => {
-                        buf.extend_from_slice(&chunk);
+            line_result = lines.next_line() => {
+                match line_result {
+                    Ok(Some(line)) => {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                            let msg_type = json.get("type").and_then(|v| v.as_str());
 
-                        // Process complete lines
-                        while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
-                            let line = buf.drain(..=pos).collect::<Vec<u8>>();
-                            let line_str = String::from_utf8_lossy(&line);
-
-                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line_str) {
-                                let msg_type = json.get("type").and_then(|v| v.as_str());
-
-                                match msg_type {
-                                    Some("ready") if !ready_sent => {
-                                        if let Some(tx) = ready_tx_opt.take() {
-                                            let _ = tx.send(());
-                                        }
-                                        ready_sent = true;
+                            match msg_type {
+                                Some("ready") if !ready_sent => {
+                                    if let Some(tx) = ready_tx_opt.take() {
+                                        let _ = tx.send(());
                                     }
-                                    Some("partial") | Some("final") => {
-                                        let evt = TranscriptEvent {
-                                            session_id: json.get("session_id")
-                                                .and_then(|v| v.as_str())
-                                                .unwrap_or(&session_id)
-                                                .to_string(),
-                                            track: track_label.clone(),
-                                            speaker_id: json.get("speaker_id")
-                                                .and_then(|v| v.as_str())
-                                                .map(|s| s.to_string()),
-                                            text: json.get("text")
-                                                .and_then(|v| v.as_str())
-                                                .unwrap_or("")
-                                                .to_string(),
-                                            is_final: msg_type == Some("final"),
-                                            offset_ms: json.get("offset_ms")
-                                                .and_then(|v| v.as_u64())
-                                                .unwrap_or(0),
-                                            duration_ms: json.get("duration_ms")
-                                                .and_then(|v| v.as_u64()),
-                                            confidence: json.get("confidence")
-                                                .and_then(|v| v.as_f64())
-                                                .map(|v| v as f32),
-                                        };
-                                        let _ = app.emit("transcript", &evt);
-                                    }
-                                    Some("error") => {
-                                        let _ = app.emit("stt-error", &json);
-                                    }
-                                    Some("stopped") => {
-                                        break;
-                                    }
-                                    _ => {}
+                                    ready_sent = true;
                                 }
+                                Some("partial") | Some("final") => {
+                                    let evt = TranscriptEvent {
+                                        session_id: json.get("session_id")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or(&session_id)
+                                            .to_string(),
+                                        track: track_label.clone(),
+                                        speaker_id: json.get("speaker_id")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string()),
+                                        text: json.get("text")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string(),
+                                        is_final: msg_type == Some("final"),
+                                        offset_ms: json.get("offset_ms")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0),
+                                        duration_ms: json.get("duration_ms")
+                                            .and_then(|v| v.as_u64()),
+                                        confidence: json.get("confidence")
+                                            .and_then(|v| v.as_f64())
+                                            .map(|v| v as f32),
+                                    };
+                                    let _ = app.emit("transcript", &evt);
+                                }
+                                Some("error") => {
+                                    let _ = app.emit("stt-error", &json);
+                                }
+                                Some("stopped") => {
+                                    break;
+                                }
+                                _ => {}
                             }
                         }
                     }
-                    Some(tauri_plugin_shell::process::CommandEvent::Stderr(chunk)) => {
-                        let msg = String::from_utf8_lossy(&chunk);
-                        eprintln!("[sidecar stderr] {}", msg.trim());
-                    }
-                    Some(tauri_plugin_shell::process::CommandEvent::Terminated(payload)) => {
-                        eprintln!("[stt_sidecar] terminated: {:?}", payload);
-                        let _ = app.emit("stt-error", serde_json::json!({
-                            "session_id": session_id,
-                            "code": "SIDECAR_DIED",
-                            "message": "Sidecar process terminated unexpectedly",
-                        }));
+                    Ok(None) => {
+                        eprintln!("[stt_sidecar] stdout closed");
                         break;
                     }
-                    Some(_) => {}
-                    None => break,
+                    Err(e) => {
+                        eprintln!("[stt_sidecar] read error: {}", e);
+                        break;
+                    }
                 }
             }
             _ = &mut stop_rx => {
@@ -268,6 +420,12 @@ async fn run_sidecar(
         }
     }
 
+    // Cancel refresh loop
+    let _ = refresh_cancel_tx.send(());
+    refresh_handle.abort();
+    
     writer.abort();
+    stderr_handle.abort();
+    let _ = child.kill().await;
     Ok(())
 }
