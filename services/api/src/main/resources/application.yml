@@ -56,6 +56,15 @@ nora:
       api-key: ${RESEND_API_KEY:}
   worker:
     base-url: ${NLP_WORKER_BASE_URL:http://localhost:8001}
+  speech:
+    azure:
+      subscription-key: ${AZURE_SPEECH_KEY:}
+      default-region: ${AZURE_SPEECH_REGION:brazilsouth}
+      token-endpoint-template: "https://%s.api.cognitive.microsoft.com/sts/v1.0/issueToken"
+      token-ttl-seconds: 540
+      request-timeout-ms: 5000
+    rate-limit:
+      tokens-per-minute: 6
 
 logging:
   level:
