@@ -5,6 +5,7 @@ import br.com.nora.api.application.analysis.AnalysisException;
 import br.com.nora.api.application.iam.IamException;
 import br.com.nora.api.application.identity.AuthException;
 import br.com.nora.api.application.meeting.MeetingException;
+import br.com.nora.api.application.speech.SpeechException;
 import br.com.nora.api.application.task.TaskException;
 import br.com.nora.api.application.tenant.TenantContextException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -150,6 +151,21 @@ public class GlobalExceptionHandler {
                     case "IAM_GROUP_NOT_FOUND", "IAM_POLICY_NOT_FOUND" -> HttpStatus.NOT_FOUND;
                     case "IAM_NAME_TAKEN" -> HttpStatus.CONFLICT;
                     case "IAM_FORBIDDEN" -> HttpStatus.FORBIDDEN;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
+    @ExceptionHandler(SpeechException.class)
+    public ResponseEntity<ErrorResponse> handleSpeechDomain(SpeechException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "RATE_LIMIT_EXCEEDED" -> HttpStatus.TOO_MANY_REQUESTS;
+                    case "INVALID_REGION" -> HttpStatus.BAD_REQUEST;
+                    case "BROKER_ERROR" -> HttpStatus.BAD_GATEWAY;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)

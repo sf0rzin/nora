@@ -12,9 +12,6 @@ export function RecordingPage() {
   const [captureSystemAudio, setCaptureSystemAudio] = useState(true);
   const [systemAudioDevice, setSystemAudioDevice] = useState<string | null>(null);
 
-  const azureSpeechKey = localStorage.getItem("nora_azure_speech_key") || undefined;
-  const azureRegion = localStorage.getItem("nora_azure_region") || undefined;
-
   const {
     isRecording,
     transcriptLines,
@@ -36,8 +33,6 @@ export function RecordingPage() {
     stopRecording,
     saveMeeting,
   } = useRecording({
-    azureSpeechKey,
-    azureRegion,
     captureSystemAudio,
     systemAudioDevice,
     language: "pt-BR",

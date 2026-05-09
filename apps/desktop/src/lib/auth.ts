@@ -1,4 +1,5 @@
 import { apiClient } from "./api-client";
+import { secrets } from "./secrets";
 import type { LoginRequest, LoginResponse, SessionUser } from "./types";
 
 function parseJwtPayload(token: string): Record<string, unknown> | null {
@@ -37,25 +38,54 @@ export async function login(req: LoginRequest): Promise<SessionUser> {
     roles,
   };
 
-  apiClient.setStoredToken(response.accessToken);
-  apiClient.setStoredUser(user);
+  await secrets.set("access-token", response.accessToken);
+  await secrets.set("current-user", JSON.stringify(user));
+  apiClient.setCachedUser(user);
 
   return user;
 }
 
-export function logout(): void {
-  apiClient.clearStoredToken();
+export async function logout(): Promise<void> {
+  await secrets.delete("access-token");
+  await secrets.delete("current-user");
+  apiClient.setCachedUser(null);
 }
 
-export function getCurrentUser(): SessionUser | null {
-  return apiClient.getStoredUser<SessionUser>();
+export async function bootstrapSession(): Promise<SessionUser | null> {
+  const token = await secrets.get("access-token");
+  if (!token) return null;
+
+  if (isTokenExpired(token)) {
+    await secrets.delete("access-token");
+    await secrets.delete("current-user");
+    apiClient.setCachedUser(null);
+    return null;
+  }
+
+  const userJson = await secrets.get("current-user");
+  if (!userJson) return null;
+
+  let user: SessionUser;
+  try {
+    user = JSON.parse(userJson) as SessionUser;
+  } catch {
+    // Corrupted store: clear and force re-login.
+    await secrets.delete("access-token");
+    await secrets.delete("current-user");
+    return null;
+  }
+
+  apiClient.setCachedUser(user);
+  return user;
 }
 
-export function isAuthenticated(): boolean {
-  const token = apiClient.getStoredToken();
+export async function isAuthenticated(): Promise<boolean> {
+  const token = await secrets.get("access-token");
   if (!token) return false;
   if (isTokenExpired(token)) {
-    apiClient.clearStoredToken();
+    await secrets.delete("access-token");
+    await secrets.delete("current-user");
+    apiClient.setCachedUser(null);
     return false;
   }
   return true;
