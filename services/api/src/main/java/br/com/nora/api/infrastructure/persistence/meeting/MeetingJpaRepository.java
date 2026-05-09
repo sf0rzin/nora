@@ -16,10 +16,11 @@ public interface MeetingJpaRepository extends JpaRepository<MeetingJpaEntity, UU
     @Query(
             "SELECT m FROM MeetingJpaEntity m "
                     + "WHERE m.tenantId = :tenantId "
-                    + "AND (:search IS NULL OR LOWER(m.title) LIKE LOWER(CONCAT('%', :search, '%'))) "
-                    + "AND (:status IS NULL OR m.processingStatus = :status) "
-                    + "AND (:fromTs IS NULL OR m.createdAt >= :fromTs) "
-                    + "AND (:toTs IS NULL OR m.createdAt <= :toTs) "
+                    + "AND (cast(:search as string) IS NULL "
+                    + "     OR LOWER(m.title) LIKE LOWER(CONCAT('%', cast(:search as string), '%'))) "
+                    + "AND (cast(:status as string) IS NULL OR m.processingStatus = cast(:status as string)) "
+                    + "AND (cast(:fromTs as timestamp) IS NULL OR m.createdAt >= :fromTs) "
+                    + "AND (cast(:toTs as timestamp) IS NULL OR m.createdAt <= :toTs) "
                     + "ORDER BY m.createdAt DESC")
     Page<MeetingJpaEntity> search(
             @Param("tenantId") UUID tenantId,
