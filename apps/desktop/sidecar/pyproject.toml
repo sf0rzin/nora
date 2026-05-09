@@ -17,7 +17,6 @@ dependencies = [
 dev = [
     "pytest",
     "pytest-asyncio",
-    "pyinstaller",
 ]
 
 [tool.setuptools.packages.find]

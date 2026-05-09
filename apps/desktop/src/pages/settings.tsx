@@ -1,25 +1,35 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { secrets } from "@/lib/secrets";
 
 export function SettingsPage() {
   const { user } = useAuth();
-  const [speechKey, setSpeechKey] = useState("");
-  const [region, setRegion] = useState("eastus");
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [cleanupDone, setCleanupDone] = useState(false);
 
   useEffect(() => {
-    const storedKey = localStorage.getItem("nora_azure_speech_key") || "";
-    const storedRegion = localStorage.getItem("nora_azure_region") || "eastus";
-    setSpeechKey(storedKey);
-    setRegion(storedRegion);
+    (async () => {
+      try {
+        // Migration: remove old azure-speech-key if exists
+        const hasOldKey = await secrets.has("azure-speech-key");
+        if (hasOldKey) {
+          await secrets.delete("azure-speech-key");
+          console.log("[settings] migrated: removed old azure-speech-key");
+        }
+        const hasOldRegion = await secrets.has("azure-region");
+        if (hasOldRegion) {
+          await secrets.delete("azure-region");
+          console.log("[settings] migrated: removed old azure-region");
+        }
+        setCleanupDone(true);
+      } catch (e) {
+        console.error("[settings] failed to cleanup old secrets:", e);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
-
-  const handleSave = () => {
-    localStorage.setItem("nora_azure_speech_key", speechKey);
-    localStorage.setItem("nora_azure_region", region);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
 
   return (
     <div className="flex-1 overflow-auto p-6">
@@ -53,39 +63,21 @@ export function SettingsPage() {
             Azure Speech to Text
           </h2>
           <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-4">
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1">
-                Region
-              </label>
-              <input
-                type="text"
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-                placeholder="eastus"
-                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-600 rounded text-sm focus:outline-none focus:border-blue-500"
-              />
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <span className="text-sm text-zinc-300">
+                Transcrição gerenciada pelo NORA
+              </span>
             </div>
-            <div>
-              <label className="block text-sm text-zinc-400 mb-1">
-                Subscription Key
-              </label>
-              <input
-                type="password"
-                value={speechKey}
-                onChange={(e) => setSpeechKey(e.target.value)}
-                placeholder="Cole sua Azure Speech Key aqui"
-                className="w-full px-3 py-2 bg-zinc-900 border border-zinc-600 rounded text-sm focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium transition-colors"
-            >
-              {saved ? "Salvo!" : "Salvar"}
-            </button>
-            <p className="text-xs text-zinc-500">
-              Armazenado localmente no dispositivo. Nunca enviado ao backend NORA.
+            <p className="text-sm text-zinc-400">
+              Nenhuma configuração necessária. O NORA gerencia automaticamente os tokens 
+              de autorização para o Azure Speech Services.
             </p>
+            {cleanupDone && (
+              <p className="text-xs text-zinc-500">
+                Chaves antigas removidas com sucesso.
+              </p>
+            )}
           </div>
         </section>
       </div>

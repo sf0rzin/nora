@@ -3,17 +3,18 @@ import logging
 import signal
 import sys
 
-from .logging_setup import configure
-from .protocol import (
+from nora_stt_sidecar.logging_setup import configure
+from nora_stt_sidecar.protocol import (
     AudioMessage,
     ErrorMessage,
     OutboundMessage,
+    RefreshTokenMessage,
     StartMessage,
     StopMessage,
     parse_inbound,
 )
-from .transcriber import LiveTranscriber
-from .audio_pipe import decode_audio_message
+from nora_stt_sidecar.transcriber import LiveTranscriber
+from nora_stt_sidecar.audio_pipe import decode_audio_message
 
 logger = logging.getLogger("nora_stt_sidecar")
 
@@ -45,7 +46,7 @@ class SidecarApp:
             self._transcriber = LiveTranscriber(
                 session_id=msg.session_id,
                 region=msg.azure_region,
-                key=msg.azure_key,
+                auth_token=msg.auth_token,
                 language=msg.language,
                 on_event=self._emit,
             )
@@ -55,6 +56,30 @@ class SidecarApp:
         except Exception as e:
             logger.error(f"Failed to start session: {e}")
             self._transcriber = None
+    
+    def _handle_refresh_token(self, msg: RefreshTokenMessage) -> None:
+        """Handle refresh token message."""
+        if self._transcriber is None:
+            self._emit(
+                ErrorMessage(
+                    session_id=msg.session_id,
+                    code="NO_SESSION",
+                    message="No active session to refresh token",
+                )
+            )
+            return
+        
+        try:
+            self._transcriber.update_auth_token(msg.auth_token)
+        except Exception as e:
+            logger.error(f"Failed to refresh token: {e}")
+            self._emit(
+                ErrorMessage(
+                    session_id=msg.session_id,
+                    code="TOKEN_REFRESH_FAILED",
+                    message=str(e),
+                )
+            )
     
     def _handle_audio(self, msg: AudioMessage) -> None:
         """Handle audio message."""
@@ -131,6 +156,8 @@ class SidecarApp:
                         self._handle_audio(msg)
                     elif isinstance(msg, StopMessage):
                         self._handle_stop(msg)
+                    elif isinstance(msg, RefreshTokenMessage):
+                        self._handle_refresh_token(msg)
                 
                 except json.JSONDecodeError as e:
                     logger.error(f"Invalid JSON: {e}")
