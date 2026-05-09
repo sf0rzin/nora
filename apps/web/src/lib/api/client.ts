@@ -228,3 +228,126 @@ export async function updateTask(
     body: JSON.stringify(patch),
   });
 }
+
+// ---------- IAM (AWS-style) ----------
+
+export interface GroupDto {
+  id: string;
+  name: string;
+  description?: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PolicyDto {
+  id: string;
+  name: string;
+  description?: string | null;
+  document: unknown;
+  currentVersion: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuditEventDto {
+  id: string;
+  actorUserId: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export async function listGroups(): Promise<GroupDto[]> {
+  return request<GroupDto[]>(`/iam/groups`);
+}
+
+export async function createGroup(name: string, description?: string): Promise<GroupDto> {
+  return request<GroupDto>(`/iam/groups`, {
+    method: "POST",
+    body: JSON.stringify({ name, description: description ?? null }),
+  });
+}
+
+export async function deleteGroup(id: string): Promise<void> {
+  return request<void>(`/iam/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function listGroupMembers(id: string): Promise<string[]> {
+  return request<string[]>(`/iam/groups/${encodeURIComponent(id)}/members`);
+}
+
+export async function addGroupMember(groupId: string, userId: string): Promise<void> {
+  return request<void>(
+    `/iam/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
+    { method: "POST" },
+  );
+}
+
+export async function removeGroupMember(groupId: string, userId: string): Promise<void> {
+  return request<void>(
+    `/iam/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function listPolicies(): Promise<PolicyDto[]> {
+  return request<PolicyDto[]>(`/iam/policies`);
+}
+
+export async function createPolicy(
+  name: string,
+  document: unknown,
+  description?: string,
+): Promise<PolicyDto> {
+  return request<PolicyDto>(`/iam/policies`, {
+    method: "POST",
+    body: JSON.stringify({ name, description: description ?? null, document }),
+  });
+}
+
+export async function updatePolicyDocument(id: string, document: unknown): Promise<PolicyDto> {
+  return request<PolicyDto>(`/iam/policies/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify({ document }),
+  });
+}
+
+export async function deletePolicy(id: string): Promise<void> {
+  return request<void>(`/iam/policies/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function attachPolicyToGroup(policyId: string, groupId: string): Promise<void> {
+  return request<void>(
+    `/iam/groups/${encodeURIComponent(groupId)}/policies/${encodeURIComponent(policyId)}`,
+    { method: "POST" },
+  );
+}
+
+export async function detachPolicyFromGroup(policyId: string, groupId: string): Promise<void> {
+  return request<void>(
+    `/iam/groups/${encodeURIComponent(groupId)}/policies/${encodeURIComponent(policyId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function attachPolicyToUser(policyId: string, userId: string): Promise<void> {
+  return request<void>(
+    `/iam/users/${encodeURIComponent(userId)}/policies/${encodeURIComponent(policyId)}`,
+    { method: "POST" },
+  );
+}
+
+export async function detachPolicyFromUser(policyId: string, userId: string): Promise<void> {
+  return request<void>(
+    `/iam/users/${encodeURIComponent(userId)}/policies/${encodeURIComponent(policyId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function listAuditEvents(limit = 50): Promise<AuditEventDto[]> {
+  return request<AuditEventDto[]>(`/iam/audit?limit=${limit}`);
+}

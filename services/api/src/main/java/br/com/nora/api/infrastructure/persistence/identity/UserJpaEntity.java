@@ -27,6 +27,9 @@ public class UserJpaEntity {
     @Column(name = "display_name", nullable = false)
     private String displayName;
 
+    @Column(name = "is_root", nullable = false)
+    private boolean isRoot;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private br.com.nora.api.domain.identity.UserStatus status;
@@ -81,6 +84,14 @@ public class UserJpaEntity {
 
     public String getDisplayName() {
         return displayName;
+    }
+
+    public boolean isRoot() {
+        return isRoot;
+    }
+
+    public void setRoot(boolean root) {
+        this.isRoot = root;
     }
 
     public br.com.nora.api.domain.identity.UserStatus getStatus() {

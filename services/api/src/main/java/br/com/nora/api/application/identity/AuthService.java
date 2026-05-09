@@ -98,6 +98,9 @@ public class AuthService {
                         now);
         User savedUser = userRepository.save(user);
 
+        // Primeiro usuario do tenant pessoal recem-criado vira o Root automaticamente (ADR 0007).
+        userRepository.markAsRoot(savedUser.id(), savedUser.tenantId());
+
         GeneratedToken token = tokenGenerator.generate();
         tokenRepository.save(
                 new OneTimeToken(
