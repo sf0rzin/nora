@@ -11,6 +11,8 @@ nora:
     expose-dev-tokens: true
   app:
     public-base-url: http://localhost:3000
+  analysis:
+    auto-dispatch: false
 
 logging:
   level:

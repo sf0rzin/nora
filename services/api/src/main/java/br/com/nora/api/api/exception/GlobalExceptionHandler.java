@@ -1,8 +1,10 @@
 package br.com.nora.api.api.exception;
 
 import br.com.nora.api.api.dto.ErrorResponse;
+import br.com.nora.api.application.analysis.AnalysisException;
 import br.com.nora.api.application.identity.AuthException;
 import br.com.nora.api.application.meeting.MeetingException;
+import br.com.nora.api.application.tenant.TenantContextException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.List;
@@ -89,6 +91,35 @@ public class GlobalExceptionHandler {
                 switch (ex.code()) {
                     case "MEETING_NOT_FOUND" -> HttpStatus.NOT_FOUND;
                     case "TRANSCRIPT_TOO_LARGE" -> HttpStatus.PAYLOAD_TOO_LARGE;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
+    @ExceptionHandler(AnalysisException.class)
+    public ResponseEntity<ErrorResponse> handleAnalysisDomain(AnalysisException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "ANALYSIS_MEETING_NOT_FOUND", "ANALYSIS_TRANSCRIPT_MISSING" ->
+                            HttpStatus.NOT_FOUND;
+                    case "ANALYSIS_WORKER_UNAVAILABLE" -> HttpStatus.BAD_GATEWAY;
+                    case "ANALYSIS_INVALID_RESPONSE" -> HttpStatus.BAD_GATEWAY;
+                    default -> HttpStatus.INTERNAL_SERVER_ERROR;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
+    @ExceptionHandler(TenantContextException.class)
+    public ResponseEntity<ErrorResponse> handleTenantContext(TenantContextException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "TENANT_CONTEXT_NOT_FOUND" -> HttpStatus.NOT_FOUND;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)
