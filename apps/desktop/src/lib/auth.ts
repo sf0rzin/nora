@@ -52,16 +52,41 @@ export async function logout(): Promise<void> {
 }
 
 export async function bootstrapSession(): Promise<SessionUser | null> {
-  const hasToken = await secrets.has("access-token");
-  if (!hasToken) return null;
+  const token = await secrets.get("access-token");
+  if (!token) return null;
 
-  const hasUser = await secrets.has("current-user");
-  if (!hasUser) return null;
+  if (isTokenExpired(token)) {
+    await secrets.delete("access-token");
+    await secrets.delete("current-user");
+    apiClient.setCachedUser(null);
+    return null;
+  }
 
-  return apiClient.getCachedUser<SessionUser>();
+  const userJson = await secrets.get("current-user");
+  if (!userJson) return null;
+
+  let user: SessionUser;
+  try {
+    user = JSON.parse(userJson) as SessionUser;
+  } catch {
+    // Corrupted store: clear and force re-login.
+    await secrets.delete("access-token");
+    await secrets.delete("current-user");
+    return null;
+  }
+
+  apiClient.setCachedUser(user);
+  return user;
 }
 
 export async function isAuthenticated(): Promise<boolean> {
-  const hasToken = await secrets.has("access-token");
-  return hasToken;
+  const token = await secrets.get("access-token");
+  if (!token) return false;
+  if (isTokenExpired(token)) {
+    await secrets.delete("access-token");
+    await secrets.delete("current-user");
+    apiClient.setCachedUser(null);
+    return false;
+  }
+  return true;
 }
