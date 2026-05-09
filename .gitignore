@@ -16,6 +16,8 @@ Thumbs.db
 logs/
 tmp/
 .cache/
+.logs/
+.run/
 
 # --- Node / Web ---
 node_modules/
