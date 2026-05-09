@@ -281,6 +281,7 @@ class AuthServiceTest {
 
     static class InMemoryUserRepo implements UserRepository {
         private final Map<UUID, User> byId = new LinkedHashMap<>();
+        private final java.util.Set<UUID> rootIds = new java.util.HashSet<>();
 
         @Override
         public Optional<User> findById(UUID id) {
@@ -296,6 +297,20 @@ class AuthServiceTest {
         public User save(User u) {
             byId.put(u.id(), u);
             return u;
+        }
+
+        @Override
+        public void markAsRoot(UUID userId, UUID tenantId) {
+            User u = byId.get(userId);
+            if (u != null && u.tenantId().equals(tenantId)) {
+                rootIds.add(userId);
+            }
+        }
+
+        @Override
+        public boolean isRoot(UUID userId, UUID tenantId) {
+            User u = byId.get(userId);
+            return u != null && u.tenantId().equals(tenantId) && rootIds.contains(userId);
         }
 
         Optional<User> byId(UUID id) {
