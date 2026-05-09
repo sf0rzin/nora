@@ -190,3 +190,41 @@ export async function upsertTenantContext(payload: Omit<TenantContextDto, "tenan
     body: JSON.stringify(payload),
   });
 }
+
+// ---------- Tasks ----------
+
+export type TaskStatus = "OPEN" | "IN_PROGRESS" | "DONE";
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
+
+export interface TaskListItemDto {
+  id: string;
+  title: string;
+  assignee?: string;
+  dueDate?: string;
+  priority: TaskPriority;
+  status: TaskStatus;
+  meetingId: string;
+  meetingTitle: string;
+  updatedAt: string;
+}
+
+export interface TaskListResponse {
+  items: TaskListItemDto[];
+}
+
+export async function listTasks(status?: TaskStatus): Promise<TaskListResponse> {
+  const qs = new URLSearchParams();
+  if (status) qs.set("status", status);
+  const path = qs.toString().length > 0 ? `/tasks?${qs.toString()}` : `/tasks`;
+  return request<TaskListResponse>(path);
+}
+
+export async function updateTask(
+  id: string,
+  patch: { status?: TaskStatus; title?: string },
+): Promise<TaskListItemDto> {
+  return request<TaskListItemDto>(`/tasks/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
