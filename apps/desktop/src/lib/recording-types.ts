@@ -9,10 +9,10 @@ export interface TranscriptLine {
 }
 
 export interface RecordingStatus {
-  is_recording: boolean;
-  device_name: string;
-  sample_rate: number;
-  channels: number;
+  isRecording: boolean;
+  micDevice: string;
+  systemAudioDevice: string | null;
+  sampleRate: number;
 }
 
 export interface SpeakerMap {
