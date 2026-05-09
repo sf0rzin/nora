@@ -147,6 +147,23 @@ Verifique se o PulseAudio está rodando:
 pactl info
 ```
 
+### macOS: Captura de áudio do sistema
+
+A captura do áudio do sistema (vozes de outros participantes em chamadas) atualmente requer
+o driver virtual **BlackHole**:
+
+1. Instale o BlackHole 2ch: https://existential.audio/blackhole/
+2. Em **Audio MIDI Setup → Multi-Output Device**, crie um device combinando seus alto-falantes
+   e o BlackHole 2ch para continuar ouvindo o áudio enquanto o NORA captura.
+3. Selecione esse Multi-Output Device como saída do sistema durante a reunião.
+4. Na primeira execução, o macOS pedirá permissão de **Microphone** e (futuro) **Screen Recording**
+   em *Privacy & Security*. Aprove ambas.
+
+> **Roadmap (Issue #15):** suporte nativo via ScreenCaptureKit em macOS 13+ (sem driver virtual)
+> está planejado. As entitlements (`NSScreenCaptureUsageDescription`) e a detecção de versão
+> já estão no código; apenas a integração com a crate `screencapturekit` falta — requer
+> validação em hardware Apple.
+
 ### Sidecar não encontrado
 
 O sidecar deve estar em `src-tauri/binaries/` com o nome correto:
