@@ -1,15 +1,19 @@
 package br.com.nora.api.api.controllers;
 
+import br.com.nora.api.api.dto.analysis.AnalysisResponse;
+import br.com.nora.api.api.dto.analysis.AnalysisResponseMapper;
 import br.com.nora.api.api.dto.meeting.MeetingDetailResponse;
 import br.com.nora.api.api.dto.meeting.MeetingListItem;
 import br.com.nora.api.api.dto.meeting.MeetingListResponse;
 import br.com.nora.api.api.dto.meeting.MeetingUploadMetadata;
 import br.com.nora.api.api.dto.meeting.MeetingUploadResponse;
 import br.com.nora.api.api.security.CurrentUser;
+import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.meeting.MeetingService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
 import br.com.nora.api.application.ports.MeetingRepository.PagedMeetings;
+import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
@@ -18,6 +22,7 @@ import jakarta.validation.Validator;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -43,12 +48,17 @@ public class MeetingsController {
     private static final Set<String> ALLOWED_FORMATS = Set.of("TXT", "VTT", "SRT");
 
     private final MeetingService meetings;
+    private final AnalysisService analyses;
     private final ObjectMapper objectMapper;
     private final Validator validator;
 
     public MeetingsController(
-            MeetingService meetings, ObjectMapper objectMapper, Validator validator) {
+            MeetingService meetings,
+            AnalysisService analyses,
+            ObjectMapper objectMapper,
+            Validator validator) {
         this.meetings = meetings;
+        this.analyses = analyses;
         this.objectMapper = objectMapper;
         this.validator = validator;
     }
@@ -96,19 +106,22 @@ public class MeetingsController {
         List<MeetingListItem> items =
                 paged.items().stream()
                         .map(
-                                m ->
-                                        new MeetingListItem(
-                                                m.id(),
-                                                m.title(),
-                                                m.startedAt(),
-                                                m.durationSeconds(),
-                                                null,
-                                                m.processingStatus().name(),
-                                                m.summarySnippet(),
-                                                0,
-                                                0,
-                                                0,
-                                                m.tags()))
+                                m -> {
+                                    Optional<MeetingAnalysis> a =
+                                            analyses.findByMeeting(m.id(), principal.tenantId());
+                                    return new MeetingListItem(
+                                            m.id(),
+                                            m.title(),
+                                            m.startedAt(),
+                                            m.durationSeconds(),
+                                            null,
+                                            m.processingStatus().name(),
+                                            m.summarySnippet(),
+                                            a.map(x -> x.actionItems().size()).orElse(0),
+                                            a.map(x -> x.risks().size()).orElse(0),
+                                            a.map(x -> x.opportunities().size()).orElse(0),
+                                            m.tags());
+                                })
                         .toList();
         return new MeetingListResponse(
                 items, paged.page(), paged.size(), paged.totalItems(), paged.totalPages());
@@ -118,6 +131,10 @@ public class MeetingsController {
     public MeetingDetailResponse get(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         Meeting m = meetings.getById(id, principal.tenantId());
+        AnalysisResponse analysisDto =
+                analyses.findByMeeting(m.id(), principal.tenantId())
+                        .map(AnalysisResponseMapper::from)
+                        .orElse(null);
         return new MeetingDetailResponse(
                 m.id(),
                 m.tenantId(),
@@ -135,7 +152,7 @@ public class MeetingsController {
                         .toList(),
                 m.tags(),
                 m.processingStatus().name(),
-                null,
+                analysisDto,
                 m.createdAt(),
                 m.updatedAt());
     }
