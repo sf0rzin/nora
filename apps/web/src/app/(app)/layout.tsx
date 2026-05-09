@@ -19,6 +19,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Link href={"/meetings/upload" as Route} className="rounded-md px-3 py-2 hover:bg-white">
             Nova reunião
           </Link>
+          <Link href={"/tasks" as Route} className="rounded-md px-3 py-2 hover:bg-white">
+            Tarefas
+          </Link>
           <Link href={"/settings/context" as Route} className="rounded-md px-3 py-2 hover:bg-white">
             Contexto do tenant
           </Link>
