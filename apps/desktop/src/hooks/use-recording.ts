@@ -64,7 +64,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
     const unlistenStatus = listen<RecordingStatus>("recording-status", (event) => {
       const s = event.payload;
-      setRecordingState(s.is_recording, s.device_name, s.sample_rate);
+      setRecordingState(s.isRecording, s.micDevice, s.sampleRate);
     });
 
     // Check recording status on mount
@@ -72,8 +72,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
       try {
         const status = await invoke<RecordingStatus>("get_recording_status");
         console.log("[recording] status check:", status);
-        if (status.is_recording) {
-          setRecordingState(true, status.device_name, status.sample_rate);
+        if (status.isRecording) {
+          setRecordingState(true, status.micDevice, status.sampleRate);
           console.log("[recording] restored recording state");
         }
       } catch (e) {
@@ -112,7 +112,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     try {
       const result = await invoke<RecordingStatus>("start_recording", { request: req });
 
-      setRecordingState(true, result.device_name, result.sample_rate);
+      setRecordingState(true, result.micDevice, result.sampleRate);
       startTimeRef.current = Date.now();
       timerRef.current = setInterval(() => {
         if (startTimeRef.current) {
