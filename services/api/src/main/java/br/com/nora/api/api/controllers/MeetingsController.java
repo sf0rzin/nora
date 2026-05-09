@@ -12,15 +12,19 @@ import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.meeting.MeetingService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
+import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
 import br.com.nora.api.application.ports.MeetingRepository.PagedMeetings;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
+import br.com.nora.api.domain.meeting.ProcessingStatus;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Validator;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -100,9 +104,14 @@ public class MeetingsController {
     @GetMapping
     public MeetingListResponse list(
             @RequestParam(name = "page", defaultValue = "0") int page,
-            @RequestParam(name = "size", defaultValue = "20") int size) {
+            @RequestParam(name = "size", defaultValue = "20") int size,
+            @RequestParam(name = "search", required = false) String search,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        PagedMeetings paged = meetings.list(principal.tenantId(), page, size);
+        MeetingFilter filter = buildFilter(search, status, from, to);
+        PagedMeetings paged = meetings.list(principal.tenantId(), filter, page, size);
         List<MeetingListItem> items =
                 paged.items().stream()
                         .map(
@@ -200,5 +209,34 @@ public class MeetingsController {
                                         p.email(),
                                         Boolean.TRUE.equals(p.isInternal())))
                 .toList();
+    }
+
+    private MeetingFilter buildFilter(String search, String status, String from, String to) {
+        ProcessingStatus parsedStatus = null;
+        if (status != null && !status.isBlank()) {
+            try {
+                parsedStatus = ProcessingStatus.valueOf(status.trim().toUpperCase());
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalArgumentException("invalid status: " + status);
+            }
+        }
+        OffsetDateTime fromTs = parseInstant(from, "from");
+        OffsetDateTime toTs = parseInstant(to, "to");
+        return new MeetingFilter(
+                (search == null || search.isBlank()) ? null : search.trim(),
+                parsedStatus,
+                fromTs,
+                toTs);
+    }
+
+    private OffsetDateTime parseInstant(String value, String field) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(value.trim());
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException("invalid " + field + " timestamp: " + value);
+        }
     }
 }
