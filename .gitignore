@@ -56,6 +56,7 @@ data/private/
 
 # --- Rust / Tauri ---
 src-tauri/target/
+apps/desktop/src-tauri/binaries/
 src-tauri/binaries/nora-stt-sidecar-*
 src-tauri/gen/
 *.tsbuildinfo
