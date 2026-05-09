@@ -45,6 +45,7 @@ pub fn run() {
             commands::start_recording,
             commands::stop_recording,
             commands::get_recording_status,
+            commands::upload_meeting,
             http_proxy::http_proxy,
             secrets::secret_set,
             secrets::secret_get,

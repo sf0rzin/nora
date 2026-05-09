@@ -208,3 +208,99 @@ pub fn get_recording_status(
     let capture = state.lock().map_err(|e| e.to_string())?;
     Ok(capture.get_status())
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadMeetingRequest {
+    pub title: String,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub language: Option<String>,
+    pub transcript_format: String,
+    pub tags: Option<Vec<String>>,
+    pub participants: Option<Vec<UploadParticipant>>,
+    pub file_content: String,
+    pub file_name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadParticipant {
+    pub display_name: String,
+    pub email: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadMeetingResponse {
+    pub meeting_id: String,
+    pub processing_status: String,
+}
+
+#[tauri::command]
+pub async fn upload_meeting(
+    secrets: State<'_, SecretStore>,
+    request: UploadMeetingRequest,
+) -> Result<UploadMeetingResponse, String> {
+    let access_token = secrets
+        .get("access-token")
+        .map_err(|e| format!("Failed to get access token: {}", e))?
+        .ok_or("Not authenticated. Please login first.")?;
+
+    let backend_url = std::env::var("NORA_API_BASE_URL")
+        .unwrap_or_else(|_| "http://localhost:8080".to_string());
+
+    let metadata = serde_json::json!({
+        "title": request.title,
+        "startedAt": request.started_at,
+        "endedAt": request.ended_at,
+        "language": request.language.unwrap_or_else(|| "pt-BR".to_string()),
+        "transcriptFormat": request.transcript_format,
+        "tags": request.tags.unwrap_or_default(),
+        "participants": request.participants.unwrap_or_default().iter().map(|p| {
+            serde_json::json!({
+                "displayName": p.display_name,
+                "email": p.email,
+            })
+        }).collect::<Vec<_>>(),
+    });
+
+    let metadata_bytes = serde_json::to_vec(&metadata)
+        .map_err(|e| format!("Failed to serialize metadata: {}", e))?;
+
+    let file_bytes = request.file_content.into_bytes();
+
+    let form = reqwest::multipart::Form::new()
+        .part("metadata", reqwest::multipart::Part::bytes(metadata_bytes)
+            .mime_str("application/json")
+            .map_err(|e| e.to_string())?)
+        .part("file", reqwest::multipart::Part::bytes(file_bytes)
+            .file_name(request.file_name)
+            .mime_str("text/plain")
+            .map_err(|e| e.to_string())?);
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{}/meetings", backend_url))
+        .header("Authorization", format!("Bearer {}", access_token))
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| format!("Upload request failed: {}", e))?;
+
+    let status = response.status();
+    let body_text = response.text().await
+        .map_err(|e| format!("Failed to read response body: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("Upload failed ({}): {}", status, body_text));
+    }
+
+    let json: serde_json::Value = serde_json::from_str(&body_text)
+        .map_err(|e| format!("Failed to parse response: {} — body: {}", e, body_text))?;
+
+    Ok(UploadMeetingResponse {
+        meeting_id: json["id"].as_str().unwrap_or("").to_string(),
+        processing_status: json["processingStatus"].as_str().unwrap_or("PENDING").to_string(),
+    })
+}

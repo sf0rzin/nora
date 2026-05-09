@@ -1,4 +1,5 @@
 import { apiClient } from "./api-client";
+import { invoke } from "@tauri-apps/api/core";
 import type { MeetingsPage, MeetingDetail } from "./types";
 
 export async function listMeetings(params?: {
@@ -41,11 +42,6 @@ export interface UploadTranscriptOptions {
   onRetry?: (attempt: number, delayMs: number, error: unknown) => void;
 }
 
-/**
- * Determines if a thrown error from apiClient is transient and worth retrying.
- * Retries: invoke/network failures (string errors from Tauri), and 5xx HTTP responses.
- * Does NOT retry: 4xx (auth, validation), 401 (already handled by apiClient).
- */
 function isTransient(err: unknown): boolean {
   if (err == null) return false;
   if (typeof err === "string") return true;
@@ -67,10 +63,23 @@ export async function uploadTranscript(
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await apiClient.request<{ meetingId: string }>("/meetings/upload", {
-        method: "POST",
-        body: data,
-      });
+      const response = await invoke<{ meetingId: string; processingStatus: string }>(
+        "upload_meeting",
+        {
+          request: {
+            title: data.title,
+            startedAt: data.startedAt,
+            endedAt: data.endedAt,
+            language: "pt-BR",
+            transcriptFormat: data.transcriptFormat,
+            tags: data.tags ?? [],
+            participants: data.participants ?? [],
+            fileContent: data.fileContent,
+            fileName: data.fileName,
+          },
+        }
+      );
+      return { meetingId: response.meetingId };
     } catch (err) {
       lastError = err;
       if (attempt === maxRetries || !isTransient(err)) {
