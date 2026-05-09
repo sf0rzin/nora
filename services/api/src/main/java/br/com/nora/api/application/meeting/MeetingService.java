@@ -12,6 +12,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -34,14 +35,17 @@ public class MeetingService {
     private final MeetingRepository meetings;
     private final TranscriptRepository transcripts;
     private final ObjectProvider<AnalysisService> analysisServiceProvider;
+    private final boolean autoDispatchAnalysis;
 
     public MeetingService(
             MeetingRepository meetings,
             TranscriptRepository transcripts,
-            ObjectProvider<AnalysisService> analysisServiceProvider) {
+            ObjectProvider<AnalysisService> analysisServiceProvider,
+            @Value("${nora.analysis.auto-dispatch:true}") boolean autoDispatchAnalysis) {
         this.meetings = meetings;
         this.transcripts = transcripts;
         this.analysisServiceProvider = analysisServiceProvider;
+        this.autoDispatchAnalysis = autoDispatchAnalysis;
     }
 
     @Transactional
@@ -80,6 +84,9 @@ public class MeetingService {
     }
 
     private void scheduleAnalysisAfterCommit(UUID meetingId, UUID tenantId) {
+        if (!autoDispatchAnalysis) {
+            return;
+        }
         AnalysisService svc = analysisServiceProvider.getIfAvailable();
         if (svc == null) {
             return;

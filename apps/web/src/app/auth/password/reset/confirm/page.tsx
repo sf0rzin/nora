@@ -2,10 +2,18 @@
 
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { confirmPasswordReset, ApiRequestError } from "@/lib/api/client";
 
 export default function PasswordResetConfirmPage() {
+  return (
+    <Suspense fallback={null}>
+      <ConfirmForm />
+    </Suspense>
+  );
+}
+
+function ConfirmForm() {
   const params = useSearchParams();
   const router = useRouter();
   const token = params.get("token") ?? "";

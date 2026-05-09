@@ -33,7 +33,8 @@ class MeetingServiceTest {
     void setUp() {
         meetingRepo = new InMemoryMeetingRepo();
         transcriptRepo = new InMemoryTranscriptRepo();
-        service = new MeetingService(meetingRepo, transcriptRepo, new NullAnalysisProvider());
+        service =
+                new MeetingService(meetingRepo, transcriptRepo, new NullAnalysisProvider(), false);
     }
 
     @Test
