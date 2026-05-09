@@ -1,5 +1,6 @@
 import { useRecording } from "@/hooks/use-recording";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -7,10 +8,31 @@ function formatDuration(seconds: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+interface AudioPrerequisites {
+  platform: string;
+  available: boolean;
+  missingDriver: string | null;
+  supportsScreenCaptureKit: boolean;
+  message: string;
+}
+
 export function RecordingPage() {
   const [meetingTitle, setMeetingTitle] = useState("");
   const [captureSystemAudio, setCaptureSystemAudio] = useState(true);
   const [systemAudioDevice, setSystemAudioDevice] = useState<string | null>(null);
+  const [audioPrereqs, setAudioPrereqs] = useState<AudioPrerequisites | null>(null);
+  const [showBlackHoleWizard, setShowBlackHoleWizard] = useState(false);
+
+  useEffect(() => {
+    invoke<AudioPrerequisites>("check_system_audio_prerequisites")
+      .then((result) => {
+        setAudioPrereqs(result);
+        if (result.platform === "macos" && !result.available) {
+          setShowBlackHoleWizard(true);
+        }
+      })
+      .catch((e) => console.error("[recording] failed to check audio prerequisites:", e));
+  }, []);
 
   const {
     isRecording,
@@ -43,6 +65,40 @@ export function RecordingPage() {
     <div className="flex-1 overflow-auto p-6">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-xl font-bold mb-4">Captura ao Vivo</h1>
+
+        {showBlackHoleWizard && (
+          <div className="mb-4 p-4 bg-yellow-900/30 border border-yellow-800 rounded-lg">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-yellow-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div className="flex-1">
+                <h3 className="text-sm font-medium text-yellow-200 mb-1">
+                  Driver de áudio necessário
+                </h3>
+                <p className="text-sm text-yellow-300/80 mb-3">
+                  Para capturar áudio do sistema no macOS, você precisa instalar o BlackHole (driver virtual gratuito).
+                </p>
+                <div className="flex gap-2">
+                  <a
+                    href="https://existential.audio/blackhole/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 bg-yellow-700 hover:bg-yellow-600 rounded text-xs font-medium text-white transition-colors"
+                  >
+                    Baixar BlackHole
+                  </a>
+                  <button
+                    onClick={() => setShowBlackHoleWizard(false)}
+                    className="px-3 py-1.5 border border-yellow-700 hover:bg-yellow-900/50 rounded text-xs text-yellow-300 transition-colors"
+                  >
+                    Ignorar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-3 bg-red-900/30 border border-red-800 rounded text-sm text-red-300">
