@@ -25,6 +25,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Link href={"/settings/context" as Route} className="rounded-md px-3 py-2 hover:bg-white">
             Contexto do tenant
           </Link>
+          <Link href={"/settings/iam" as Route} className="rounded-md px-3 py-2 hover:bg-white">
+            IAM
+          </Link>
         </nav>
         <div className="mt-auto space-y-2 text-xs text-slate-500">
           <LogoutButton />
