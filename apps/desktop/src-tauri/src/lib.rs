@@ -7,6 +7,8 @@ mod http_proxy;
 mod secrets;
 mod speech_token;
 mod stt_sidecar;
+#[cfg(test)]
+mod stt_sidecar_test;
 mod system_audio;
 
 use commands::CaptureState;
