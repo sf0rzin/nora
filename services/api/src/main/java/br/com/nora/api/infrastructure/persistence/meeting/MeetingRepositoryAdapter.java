@@ -1,6 +1,7 @@
 package br.com.nora.api.infrastructure.persistence.meeting;
 
 import br.com.nora.api.application.ports.MeetingRepository;
+import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
@@ -37,9 +38,12 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
     }
 
     @Override
-    public PagedMeetings listByTenant(UUID tenantId, int page, int size) {
+    public PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size) {
+        MeetingFilter f = filter == null ? MeetingFilter.empty() : filter;
+        String search = (f.search() == null || f.search().isBlank()) ? null : f.search().trim();
+        String status = f.status() == null ? null : f.status().name();
         Page<MeetingJpaEntity> result =
-                jpa.findByTenantOrderByCreatedAtDesc(tenantId, PageRequest.of(page, size));
+                jpa.search(tenantId, search, status, f.from(), f.to(), PageRequest.of(page, size));
         List<Meeting> items = result.getContent().stream().map(this::toDomain).toList();
         return new PagedMeetings(items, result.getTotalElements(), page, size);
     }
