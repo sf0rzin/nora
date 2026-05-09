@@ -3,6 +3,7 @@ package br.com.nora.api.application.meeting;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
 import br.com.nora.api.application.ports.MeetingRepository;
 import br.com.nora.api.application.ports.TranscriptRepository;
@@ -18,6 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 class MeetingServiceTest {
 
@@ -31,7 +33,7 @@ class MeetingServiceTest {
     void setUp() {
         meetingRepo = new InMemoryMeetingRepo();
         transcriptRepo = new InMemoryTranscriptRepo();
-        service = new MeetingService(meetingRepo, transcriptRepo);
+        service = new MeetingService(meetingRepo, transcriptRepo, new NullAnalysisProvider());
     }
 
     @Test
@@ -177,6 +179,29 @@ class MeetingServiceTest {
         public Optional<Transcript> findByMeetingAndTenant(UUID meetingId, UUID tenantId) {
             Transcript t = store.get(meetingId);
             return (t != null && t.tenantId().equals(tenantId)) ? Optional.of(t) : Optional.empty();
+        }
+    }
+
+    /** Provider que nunca devolve um AnalysisService — dispatch async vira no-op nos testes. */
+    static final class NullAnalysisProvider implements ObjectProvider<AnalysisService> {
+        @Override
+        public AnalysisService getObject(Object... args) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public AnalysisService getObject() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public AnalysisService getIfAvailable() {
+            return null;
+        }
+
+        @Override
+        public AnalysisService getIfUnique() {
+            return null;
         }
     }
 }
