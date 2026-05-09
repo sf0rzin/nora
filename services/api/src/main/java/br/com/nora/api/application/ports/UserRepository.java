@@ -13,4 +13,10 @@ public interface UserRepository {
     Optional<User> findByEmail(Email email);
 
     User save(User user);
+
+    /** Marca o usuario como Root do tenant. So pode existir um Root ativo por tenant. */
+    void markAsRoot(UUID userId, UUID tenantId);
+
+    /** Indica se o usuario e o Root do tenant. */
+    boolean isRoot(UUID userId, UUID tenantId);
 }
