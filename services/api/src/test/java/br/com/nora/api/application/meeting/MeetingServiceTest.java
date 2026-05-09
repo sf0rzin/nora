@@ -130,7 +130,7 @@ class MeetingServiceTest {
                         List.of(),
                         "z"));
 
-        var paged = service.list(tenant, 0, 10);
+        var paged = service.list(tenant, MeetingFilter.empty(), 0, 10);
         assertThat(paged.items()).hasSize(2);
         assertThat(paged.totalItems()).isEqualTo(2);
     }
@@ -153,7 +153,7 @@ class MeetingServiceTest {
         }
 
         @Override
-        public PagedMeetings listByTenant(UUID tenantId, int page, int size) {
+        public PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size) {
             List<Meeting> all = new ArrayList<>();
             for (Meeting m : store.values()) {
                 if (m.tenantId().equals(tenantId)) {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Route } from "next";
 import { notFound } from "next/navigation";
 import { getMeeting } from "@/lib/api/client";
 import { formatDateTime } from "@/lib/utils";
@@ -24,7 +25,7 @@ export default async function MeetingDetailPage({
     <div className="space-y-8">
       <div>
         <Link
-          href="/dashboard"
+          href={"/dashboard" as Route}
           className="text-sm text-muted-foreground hover:underline"
         >
           ← Voltar para reuniões

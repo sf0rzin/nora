@@ -2,6 +2,7 @@ package br.com.nora.api.application.meeting;
 
 import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.ports.MeetingRepository;
+import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
 import br.com.nora.api.application.ports.MeetingRepository.PagedMeetings;
 import br.com.nora.api.application.ports.TranscriptRepository;
 import br.com.nora.api.domain.meeting.Meeting;
@@ -105,10 +106,11 @@ public class MeetingService {
     }
 
     @Transactional(readOnly = true)
-    public PagedMeetings list(UUID tenantId, int page, int size) {
+    public PagedMeetings list(UUID tenantId, MeetingFilter filter, int page, int size) {
         int safePage = Math.max(0, page);
         int safeSize = Math.min(100, Math.max(1, size));
-        return meetings.listByTenant(tenantId, safePage, safeSize);
+        return meetings.listByTenant(
+                tenantId, filter == null ? MeetingFilter.empty() : filter, safePage, safeSize);
     }
 
     @Transactional(readOnly = true)
