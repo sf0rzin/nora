@@ -140,6 +140,56 @@ public final class Meeting {
         return java.time.Duration.between(startedAt, endedAt).toSeconds();
     }
 
+    /** Devolve copia com novo status (e updatedAt = now). */
+    public Meeting withStatus(ProcessingStatus newStatus) {
+        if (newStatus == null) {
+            throw new IllegalArgumentException("status is required");
+        }
+        if (newStatus == this.processingStatus) {
+            return this;
+        }
+        return new Meeting(
+                id,
+                tenantId,
+                ownerUserId,
+                title,
+                startedAt,
+                endedAt,
+                language,
+                transcriptFormat,
+                newStatus,
+                summarySnippet,
+                participants,
+                tags,
+                createdAt,
+                OffsetDateTime.now());
+    }
+
+    /** Devolve copia com novo snippet (e updatedAt = now). Trunca em SUMMARY_SNIPPET_MAX. */
+    public Meeting withSummarySnippet(String snippet) {
+        String trimmed =
+                snippet == null
+                        ? null
+                        : (snippet.length() > SUMMARY_SNIPPET_MAX
+                                ? snippet.substring(0, SUMMARY_SNIPPET_MAX)
+                                : snippet);
+        return new Meeting(
+                id,
+                tenantId,
+                ownerUserId,
+                title,
+                startedAt,
+                endedAt,
+                language,
+                transcriptFormat,
+                processingStatus,
+                trimmed,
+                participants,
+                tags,
+                createdAt,
+                OffsetDateTime.now());
+    }
+
     /** Apenas leitura — getters. */
     public UUID id() {
         return id;
