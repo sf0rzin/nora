@@ -58,11 +58,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ---------- Meetings ----------
 
-export async function listMeetings(params?: { page?: number; size?: number }): Promise<MeetingsListResponse> {
+export interface ListMeetingsParams {
+  page?: number;
+  size?: number;
+  search?: string;
+  status?: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+  from?: string; // ISO-8601
+  to?: string; // ISO-8601
+}
+
+export async function listMeetings(params?: ListMeetingsParams): Promise<MeetingsListResponse> {
   if (USE_MOCKS) return meetingsListFixture as unknown as MeetingsListResponse;
-  const page = params?.page ?? 0;
-  const size = params?.size ?? 20;
-  return request<MeetingsListResponse>(`/meetings?page=${page}&size=${size}`);
+  const qs = new URLSearchParams();
+  qs.set("page", String(params?.page ?? 0));
+  qs.set("size", String(params?.size ?? 20));
+  if (params?.search) qs.set("search", params.search);
+  if (params?.status) qs.set("status", params.status);
+  if (params?.from) qs.set("from", params.from);
+  if (params?.to) qs.set("to", params.to);
+  return request<MeetingsListResponse>(`/meetings?${qs.toString()}`);
 }
 
 export async function getMeeting(id: string): Promise<MeetingDetail> {
