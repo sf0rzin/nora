@@ -328,13 +328,109 @@ mod platform {
 
 #[cfg(target_os = "macos")]
 mod platform {
+    //! macOS system-audio capture.
+    //!
+    //! Status (Issue #15):
+    //! - Implementado: fallback BlackHole via cpal (PCM f32 → mono → 16 kHz i16).
+    //!   Funciona em qualquer versão de macOS desde que o usuário tenha o driver
+    //!   virtual BlackHole instalado e o esteja roteando como saída do sistema
+    //!   (ou via Multi-Output Device no Audio MIDI Setup).
+    //! - TODO: caminho ScreenCaptureKit (macOS 13+) sem driver virtual. Deixado
+    //!   como follow-up: requer crate `screencapturekit` + bindings objc2 e
+    //!   validação em hardware Apple. A infraestrutura aqui (detecção de versão,
+    //!   Info.plist, README) já está pronta para receber o caminho SCK.
+    //!
+    //! Fluxo atual:
+    //!   `find_system_audio_source()` retorna o nome do device "BlackHole" se
+    //!   presente; caso contrário `None` (o caller deve mostrar instruções).
+    //!   `SystemAudioCapture::start(name, ...)` abre o device com cpal, downmix
+    //!   para mono, resample para 16 kHz, converte para i16 e envia ao sink.
+
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+    use cpal::SampleFormat;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
+    use crate::audio_resample::{downmix_to_mono, f32_to_i16, MonoResampler};
+
+    /// Nomes conhecidos do driver virtual BlackHole (pode aparecer com sufixo
+    /// de canais, ex: "BlackHole 2ch", "BlackHole 16ch").
+    const BLACKHOLE_HINTS: &[&str] = &["blackhole", "soundflower"];
+
+    /// Detecta se o sistema é macOS 13+ (Ventura), onde ScreenCaptureKit
+    /// passa a suportar captura de áudio do sistema sem driver virtual.
+    /// Mantido para uso futuro pelo caminho SCK; hoje apenas registra um log.
+    fn macos_supports_sck_audio() -> bool {
+        // Lê via sysctlbyname("kern.osrelease") — Darwin kernel.
+        // macOS 13 (Ventura) = Darwin 22.x; macOS 14 = Darwin 23.x; etc.
+        // ScreenCaptureKit audio: macOS 13+.
+        unsafe {
+            let name = b"kern.osrelease\0";
+            let mut size: libc::size_t = 0;
+            if libc::sysctlbyname(
+                name.as_ptr() as *const _,
+                std::ptr::null_mut(),
+                &mut size,
+                std::ptr::null_mut(),
+                0,
+            ) != 0
+                || size == 0
+            {
+                return false;
+            }
+            let mut buf = vec![0u8; size];
+            if libc::sysctlbyname(
+                name.as_ptr() as *const _,
+                buf.as_mut_ptr() as *mut _,
+                &mut size,
+                std::ptr::null_mut(),
+                0,
+            ) != 0
+            {
+                return false;
+            }
+            // strip trailing NUL
+            if let Some(&0) = buf.last() {
+                buf.pop();
+            }
+            let s = String::from_utf8_lossy(&buf);
+            let major: u32 = s
+                .split('.')
+                .next()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(0);
+            major >= 22
+        }
+    }
+
+    /// Retorna o nome do device de input que parece ser o BlackHole (ou similar),
+    /// ou `None` se nenhum estiver instalado.
     pub fn find_system_audio_source() -> Option<String> {
+        let host = cpal::default_host();
+        let devices = host.input_devices().ok()?;
+        let candidate = devices
+            .filter_map(|d| d.name().ok())
+            .find(|name| {
+                let lower = name.to_lowercase();
+                BLACKHOLE_HINTS.iter().any(|h| lower.contains(h))
+            });
+
         #[cfg(debug_assertions)]
-        eprintln!("[system-audio] macOS system audio capture requires a virtual audio driver (e.g., BlackHole)");
-        None
+        match (&candidate, macos_supports_sck_audio()) {
+            (Some(n), sck) => eprintln!(
+                "[macos-audio] using virtual driver: {} (sck_supported={})",
+                n, sck
+            ),
+            (None, true) => eprintln!(
+                "[macos-audio] no BlackHole/Soundflower found; ScreenCaptureKit \
+                 path not yet implemented (Issue #15)"
+            ),
+            (None, false) => eprintln!(
+                "[macos-audio] no BlackHole/Soundflower found and macOS < 13; \
+                 user must install BlackHole"
+            ),
+        }
+        candidate
     }
 
     pub struct SystemAudioCapture {
@@ -344,27 +440,137 @@ mod platform {
 
     impl SystemAudioCapture {
         pub fn start(
-            _source: &str,
+            source: &str,
             _sample_rate_hint: u32,
             sink: tokio::sync::mpsc::Sender<Vec<i16>>,
             flag: Arc<AtomicBool>,
         ) -> Result<Self, String> {
+            // Localiza o device pelo nome fornecido (case-insensitive contains).
+            let host = cpal::default_host();
+            let device = host
+                .input_devices()
+                .map_err(|e| format!("cpal input_devices: {}", e))?
+                .find(|d| {
+                    d.name()
+                        .map(|n| n.to_lowercase().contains(&source.to_lowercase()))
+                        .unwrap_or(false)
+                })
+                .ok_or_else(|| {
+                    if macos_supports_sck_audio() {
+                        format!(
+                            "Device de áudio do sistema '{}' não encontrado. \
+                             Instale o BlackHole (https://existential.audio/blackhole/) \
+                             e roteie a saída do sistema através dele. \
+                             Suporte nativo via ScreenCaptureKit está em desenvolvimento (#15).",
+                            source
+                        )
+                    } else {
+                        format!(
+                            "Device '{}' não encontrado. Em macOS < 13, a captura \
+                             de áudio do sistema requer instalar o BlackHole \
+                             (https://existential.audio/blackhole/).",
+                            source
+                        )
+                    }
+                })?;
+
+            let device_name = device.name().unwrap_or_else(|_| source.to_string());
+
+            // Escolhe um config F32 com sample rate razoável.
+            let supported: Vec<_> = device
+                .supported_input_configs()
+                .map_err(|e| format!("supported_input_configs: {}", e))?
+                .filter(|c| c.sample_format() == SampleFormat::F32)
+                .collect();
+            if supported.is_empty() {
+                return Err(format!(
+                    "Device '{}' não expõe configuração F32 suportada",
+                    device_name
+                ));
+            }
+            let chosen = supported
+                .iter()
+                .find(|c| c.min_sample_rate().0 <= 48000 && c.max_sample_rate().0 >= 48000)
+                .map(|c| c.with_sample_rate(cpal::SampleRate(48000)))
+                .unwrap_or_else(|| supported[0].with_max_sample_rate());
+
+            let config: cpal::StreamConfig = chosen.config();
+            let src_sr = config.sample_rate.0;
+            let channels = config.channels as usize;
+
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "[macos-audio] opening '{}' @ {} Hz / {} ch",
+                device_name, src_sr, channels
+            );
+
             let stop_flag = flag.clone();
+            // cpal::Stream é !Send: precisa viver em thread dedicada.
             let thread = std::thread::Builder::new()
                 .name("nora-macos-audio".into())
                 .spawn(move || {
-                    // TODO: Implementar ScreenCaptureKit para macOS 13+ (Issue #15)
-                    // Por enquanto, apenas mantém a thread viva até o flag ser desligado
-                    #[cfg(debug_assertions)]
-                    eprintln!("[macos-audio] ScreenCaptureKit not yet implemented, using placeholder");
-                    
-                    while flag.load(Ordering::SeqCst) {
-                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    let mut resampler = match MonoResampler::new(src_sr, 16_000) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            #[cfg(debug_assertions)]
+                            eprintln!("[macos-audio] resampler init failed: {}", e);
+                            return;
+                        }
+                    };
+
+                    let sink_for_cb = sink.clone();
+                    let err_fn = |e| {
+                        #[cfg(debug_assertions)]
+                        eprintln!("[macos-audio] cpal stream error: {}", e);
+                        let _ = e;
+                    };
+
+                    let stream_result = device.build_input_stream(
+                        &config,
+                        move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                            let mono = if channels == 1 {
+                                data.to_vec()
+                            } else {
+                                downmix_to_mono(data, channels)
+                            };
+                            let resampled = resampler.process(&mono);
+                            if !resampled.is_empty() {
+                                let pcm = f32_to_i16(&resampled);
+                                let _ = sink_for_cb.try_send(pcm);
+                            }
+                        },
+                        err_fn,
+                        None,
+                    );
+
+                    let stream = match stream_result {
+                        Ok(s) => s,
+                        Err(e) => {
+                            #[cfg(debug_assertions)]
+                            eprintln!("[macos-audio] build_input_stream failed: {}", e);
+                            return;
+                        }
+                    };
+
+                    if let Err(e) = stream.play() {
+                        #[cfg(debug_assertions)]
+                        eprintln!("[macos-audio] stream.play failed: {}", e);
+                        return;
                     }
+
+                    while flag.load(Ordering::SeqCst) {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+
+                    let _ = stream.pause();
+                    drop(stream);
                 })
                 .map_err(|e| format!("spawn macos audio thread: {}", e))?;
 
-            Ok(Self { stop_flag, thread: Some(thread) })
+            Ok(Self {
+                stop_flag,
+                thread: Some(thread),
+            })
         }
 
         pub fn stop(&mut self) {
@@ -376,7 +582,9 @@ mod platform {
     }
 
     impl Drop for SystemAudioCapture {
-        fn drop(&mut self) { self.stop(); }
+        fn drop(&mut self) {
+            self.stop();
+        }
     }
 }
 
