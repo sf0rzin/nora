@@ -1,4 +1,6 @@
 use crate::audio_capture::{AudioCapture, CaptureSinks, RecordingStatus};
+use crate::secrets::SecretStore;
+use crate::speech_token::fetch_speech_token;
 use crate::stt_sidecar::SidecarHandle;
 use crate::SidecarState;
 use serde::Deserialize;
@@ -19,8 +21,6 @@ pub struct StartRecordingRequest {
     pub language: Option<String>,
     pub capture_system_audio: Option<bool>,
     pub system_audio_device: Option<String>,
-    pub azure_key: Option<String>,
-    pub azure_region: Option<String>,
 }
 
 #[tauri::command]
@@ -28,6 +28,7 @@ pub async fn start_recording(
     app_handle: AppHandle,
     state: State<'_, CaptureState>,
     sidecar_state: State<'_, SidecarState>,
+    secrets: State<'_, SecretStore>,
     request: StartRecordingRequest,
 ) -> Result<RecordingStatus, String> {
     #[cfg(debug_assertions)]
@@ -39,9 +40,21 @@ pub async fn start_recording(
         eprintln!("[commands] system_audio_device: {:?}", request.system_audio_device);
     }
 
-    // Get Azure credentials
-    let azure_key = request.azure_key.ok_or("azure_key is required")?;
-    let azure_region = request.azure_region.ok_or("azure_region is required")?;
+    let access_token = secrets
+        .get("access-token")
+        .map_err(|e| format!("Failed to get access token: {}", e))?
+        .ok_or("Not authenticated. Please login first.")?;
+    let backend_url = std::env::var("NORA_API_BASE_URL")
+        .unwrap_or_else(|_| "http://localhost:8080".to_string());
+    
+    let speech_token = fetch_speech_token(
+        &backend_url,
+        &access_token,
+        None, // Use default region from backend
+    )
+    .await
+    .map_err(|e| format!("Failed to fetch speech token: {}", e))?;
+    
     let language = request.language.unwrap_or_else(|| "pt-BR".to_string());
     let capture_system = request.capture_system_audio.unwrap_or(false);
 
@@ -58,13 +71,15 @@ pub async fn start_recording(
         },
     };
 
-    // Start sidecars
+    // Start sidecars with auth token
     let mic_sidecar = SidecarHandle::start(
         app_handle.clone(),
-        azure_region.clone(),
-        azure_key.clone(),
+        speech_token.region.clone(),
+        speech_token.token.clone(),
         language.clone(),
         "mic".to_string(),
+        backend_url.clone(),
+        access_token.clone(),
     )
     .await
     .map_err(|e| format!("Failed to start mic sidecar: {}", e))?;
@@ -73,10 +88,12 @@ pub async fn start_recording(
         Some(
             SidecarHandle::start(
                 app_handle.clone(),
-                azure_region,
-                azure_key,
+                speech_token.region,
+                speech_token.token,
                 language,
                 "system".to_string(),
+                backend_url,
+                access_token,
             )
             .await
             .map_err(|e| format!("Failed to start system sidecar: {}", e))?,
