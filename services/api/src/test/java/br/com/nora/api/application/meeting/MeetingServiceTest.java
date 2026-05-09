@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
 import br.com.nora.api.application.ports.MeetingRepository;
+import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
 import br.com.nora.api.application.ports.TranscriptRepository;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
@@ -130,7 +131,7 @@ class MeetingServiceTest {
                         List.of(),
                         "z"));
 
-        var paged = service.list(tenant, 0, 10);
+        var paged = service.list(tenant, MeetingFilter.empty(), 0, 10);
         assertThat(paged.items()).hasSize(2);
         assertThat(paged.totalItems()).isEqualTo(2);
     }
@@ -153,7 +154,7 @@ class MeetingServiceTest {
         }
 
         @Override
-        public PagedMeetings listByTenant(UUID tenantId, int page, int size) {
+        public PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size) {
             List<Meeting> all = new ArrayList<>();
             for (Meeting m : store.values()) {
                 if (m.tenantId().equals(tenantId)) {
