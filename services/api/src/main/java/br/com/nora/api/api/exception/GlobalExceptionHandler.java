@@ -4,6 +4,7 @@ import br.com.nora.api.api.dto.ErrorResponse;
 import br.com.nora.api.application.analysis.AnalysisException;
 import br.com.nora.api.application.identity.AuthException;
 import br.com.nora.api.application.meeting.MeetingException;
+import br.com.nora.api.application.task.TaskException;
 import br.com.nora.api.application.tenant.TenantContextException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
@@ -120,6 +121,19 @@ public class GlobalExceptionHandler {
         HttpStatus status =
                 switch (ex.code()) {
                     case "TENANT_CONTEXT_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
+    @ExceptionHandler(TaskException.class)
+    public ResponseEntity<ErrorResponse> handleTask(TaskException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "TASK_NOT_FOUND" -> HttpStatus.NOT_FOUND;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)
