@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import type { SessionUser } from "@/lib/types";
-import { getCurrentUser, isAuthenticated, logout as doLogout } from "@/lib/auth";
+import { bootstrapSession, logout as doLogout } from "@/lib/auth";
 import { apiClient } from "@/lib/api-client";
 
 interface AuthState {
@@ -24,16 +24,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (isAuthenticated()) {
-      const stored = getCurrentUser();
+    bootstrapSession().then((stored) => {
       if (stored) {
+        apiClient.setCachedUser(stored);
         setUser(stored);
       }
-    }
-    setLoading(false);
+      setLoading(false);
+    });
   }, []);
 
   const handleLogin = (u: SessionUser) => {
+    apiClient.setCachedUser(u);
     setUser(u);
     setLoading(false);
   };

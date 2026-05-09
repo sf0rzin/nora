@@ -11,11 +11,16 @@ class InboundMessage(BaseModel):
 class StartMessage(InboundMessage):
     type: Literal["start"] = "start"
     azure_region: str = Field(alias="azure_region")
-    azure_key: str = Field(alias="azure_key")
+    auth_token: str = Field(alias="auth_token")
     language: str = "pt-BR"
     sample_rate: int = Field(alias="sample_rate", default=16000)
     channels: int = 1
     speakers_hint: int = Field(alias="speakers_hint", default=2)
+
+
+class RefreshTokenMessage(InboundMessage):
+    type: Literal["refresh_token"] = "refresh_token"
+    auth_token: str = Field(alias="auth_token")
 
 
 class AudioMessage(InboundMessage):
@@ -64,7 +69,7 @@ class StoppedMessage(OutboundMessage):
     type: Literal["stopped"] = "stopped"
 
 
-def parse_inbound(data: dict) -> StartMessage | AudioMessage | StopMessage:
+def parse_inbound(data: dict) -> StartMessage | AudioMessage | StopMessage | RefreshTokenMessage:
     if data.get("v") != 1:
         raise ValueError(f"Unsupported protocol version: {data.get('v')}")
     
@@ -75,5 +80,7 @@ def parse_inbound(data: dict) -> StartMessage | AudioMessage | StopMessage:
         return AudioMessage.model_validate(data)
     elif msg_type == "stop":
         return StopMessage.model_validate(data)
+    elif msg_type == "refresh_token":
+        return RefreshTokenMessage.model_validate(data)
     else:
         raise ValueError(f"Unknown message type: {msg_type}")
