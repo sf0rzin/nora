@@ -1,6 +1,8 @@
 package br.com.nora.api.application.meeting;
 
+import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.ports.MeetingRepository;
+import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
 import br.com.nora.api.application.ports.MeetingRepository.PagedMeetings;
 import br.com.nora.api.application.ports.TranscriptRepository;
 import br.com.nora.api.domain.meeting.Meeting;
@@ -10,8 +12,12 @@ import br.com.nora.api.domain.meeting.TranscriptFormat;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Servico de aplicacao para reunioes (US07).
@@ -21,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <ul>
  *   <li>Toda escrita/leitura recebe tenantId explicito vindo do JWT do chamador.
  *   <li>Upload cria meeting + transcript em uma unica transacao.
- *   <li>Status inicial e PENDING. Disparo de processamento e responsabilidade de outra story.
+ *   <li>Apos commit do upload, dispara analise async via {@link AnalysisService#runAsync}.
  * </ul>
  */
 @Service
@@ -29,10 +35,18 @@ public class MeetingService {
 
     private final MeetingRepository meetings;
     private final TranscriptRepository transcripts;
+    private final ObjectProvider<AnalysisService> analysisServiceProvider;
+    private final boolean autoDispatchAnalysis;
 
-    public MeetingService(MeetingRepository meetings, TranscriptRepository transcripts) {
+    public MeetingService(
+            MeetingRepository meetings,
+            TranscriptRepository transcripts,
+            ObjectProvider<AnalysisService> analysisServiceProvider,
+            @Value("${nora.analysis.auto-dispatch:true}") boolean autoDispatchAnalysis) {
         this.meetings = meetings;
         this.transcripts = transcripts;
+        this.analysisServiceProvider = analysisServiceProvider;
+        this.autoDispatchAnalysis = autoDispatchAnalysis;
     }
 
     @Transactional
@@ -65,14 +79,38 @@ public class MeetingService {
         Transcript transcript =
                 Transcript.create(saved.id(), saved.tenantId(), format, cmd.rawTranscript());
         transcripts.save(transcript);
+
+        scheduleAnalysisAfterCommit(saved.id(), saved.tenantId());
         return saved;
     }
 
+    private void scheduleAnalysisAfterCommit(UUID meetingId, UUID tenantId) {
+        if (!autoDispatchAnalysis) {
+            return;
+        }
+        AnalysisService svc = analysisServiceProvider.getIfAvailable();
+        if (svc == null) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            svc.runAsync(meetingId, tenantId);
+                        }
+                    });
+        } else {
+            svc.runAsync(meetingId, tenantId);
+        }
+    }
+
     @Transactional(readOnly = true)
-    public PagedMeetings list(UUID tenantId, int page, int size) {
+    public PagedMeetings list(UUID tenantId, MeetingFilter filter, int page, int size) {
         int safePage = Math.max(0, page);
         int safeSize = Math.min(100, Math.max(1, size));
-        return meetings.listByTenant(tenantId, safePage, safeSize);
+        return meetings.listByTenant(
+                tenantId, filter == null ? MeetingFilter.empty() : filter, safePage, safeSize);
     }
 
     @Transactional(readOnly = true)
