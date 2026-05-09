@@ -181,11 +181,24 @@ pub async fn start_recording(
 pub fn stop_recording(
     app_handle: AppHandle,
     state: State<'_, CaptureState>,
+    sidecar_state: State<'_, SidecarState>,
 ) -> Result<(), String> {
     #[cfg(debug_assertions)]
     eprintln!("[commands] stop_recording called");
+
+    // Stop audio capture first
     let capture = state.lock().map_err(|e| e.to_string())?;
-    capture.stop(app_handle)
+    capture.stop(app_handle)?;
+
+    // Stop and clear all sidecars to prevent zombie processes
+    let mut sidecars = sidecar_state.lock().map_err(|e| e.to_string())?;
+    for sidecar in sidecars.drain(..) {
+        #[cfg(debug_assertions)]
+        eprintln!("[commands] stopping sidecar session_id={}", sidecar.session_id);
+        sidecar.stop();
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
