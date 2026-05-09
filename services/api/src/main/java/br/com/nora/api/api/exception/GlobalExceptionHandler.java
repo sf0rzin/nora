@@ -2,6 +2,7 @@ package br.com.nora.api.api.exception;
 
 import br.com.nora.api.api.dto.ErrorResponse;
 import br.com.nora.api.application.analysis.AnalysisException;
+import br.com.nora.api.application.iam.IamException;
 import br.com.nora.api.application.identity.AuthException;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.task.TaskException;
@@ -134,6 +135,21 @@ public class GlobalExceptionHandler {
         HttpStatus status =
                 switch (ex.code()) {
                     case "TASK_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
+    @ExceptionHandler(IamException.class)
+    public ResponseEntity<ErrorResponse> handleIam(IamException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "IAM_GROUP_NOT_FOUND", "IAM_POLICY_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+                    case "IAM_NAME_TAKEN" -> HttpStatus.CONFLICT;
+                    case "IAM_FORBIDDEN" -> HttpStatus.FORBIDDEN;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)
