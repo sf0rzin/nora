@@ -32,6 +32,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [savedMeetingId, setSavedMeetingId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -158,6 +159,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     }
 
     setIsSaving(true);
+    setSaveError(null);
     setError(null);
 
     try {
@@ -187,9 +189,11 @@ export function useRecording(options: UseRecordingOptions = {}) {
       });
 
       setSavedMeetingId(result.meetingId);
+      setSaveError(null);
     } catch (e) {
       console.error("[recording] save meeting FAILED:", e);
-      setError(String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setSaveError(msg);
     } finally {
       setIsSaving(false);
     }
@@ -229,6 +233,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     getSpeakerName,
     isSaving,
     savedMeetingId,
+    saveError,
     startRecording,
     stopRecording,
     saveMeeting,
