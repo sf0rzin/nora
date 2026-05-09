@@ -179,7 +179,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
       const result = await uploadTranscript({
         title: title || "Reunião sem título",
         startedAt,
-        transcriptFormat: "text/plain",
+        transcriptFormat: "TXT",
         fileContent: transcript,
         fileName: `${title || "reuniao"}_${new Date().toISOString()}.txt`,
         endedAt: new Date().toISOString(),
