@@ -304,3 +304,46 @@ pub async fn upload_meeting(
         processing_status: json["processingStatus"].as_str().unwrap_or("PENDING").to_string(),
     })
 }
+
+#[tauri::command]
+pub fn check_system_audio_prerequisites() -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let has_blackhole = crate::system_audio::is_blackhole_installed();
+        let supports_sck = false; // TODO: Issue #15 — ScreenCaptureKit
+        
+        Ok(serde_json::json!({
+            "platform": "macos",
+            "available": has_blackhole,
+            "missingDriver": if has_blackhole { null } else { "blackhole" },
+            "supportsScreenCaptureKit": supports_sck,
+            "message": if has_blackhole {
+                "Driver virtual detectado"
+            } else {
+                "BlackHole não instalado. Instale para capturar áudio do sistema."
+            }
+        }))
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        Ok(serde_json::json!({
+            "platform": "linux",
+            "available": true,
+            "missingDriver": null,
+            "supportsScreenCaptureKit": false,
+            "message": "Linux usa PulseAudio nativamente"
+        }))
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        Ok(serde_json::json!({
+            "platform": "windows",
+            "available": true,
+            "missingDriver": null,
+            "supportsScreenCaptureKit": false,
+            "message": "Windows usa WASAPI loopback nativamente"
+        }))
+    }
+}
