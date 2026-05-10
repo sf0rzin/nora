@@ -150,8 +150,9 @@ impl SidecarHandle {
     }
 }
 
-/// Spawn a background task that refreshes the auth token every 8 minutes.
+/// Spawn a background task that refreshes the auth token every 5 minutes.
 /// Sends `{"type":"refresh_token",...}` to the sidecar via stdin.
+/// Retries with exponential backoff on transient failures.
 async fn spawn_refresh_loop(
     session_id: String,
     stdin: Arc<Mutex<tokio::process::ChildStdin>>,
@@ -160,9 +161,9 @@ async fn spawn_refresh_loop(
     region: String,
     mut cancel_rx: oneshot::Receiver<()>,
 ) {
-    // First refresh after 8 minutes (480 seconds)
-    // Azure tokens last 10 minutes, we refresh at 8 to have a 2-minute buffer
-    let refresh_interval = tokio::time::Duration::from_secs(480);
+    // Refresh every 5 minutes (300 seconds)
+    // Azure tokens last 10 minutes, we refresh at 5 to have a 5-minute buffer
+    let refresh_interval = tokio::time::Duration::from_secs(300);
     
     #[cfg(debug_assertions)]
     eprintln!("[stt_sidecar] refresh loop started for session {}", session_id);
@@ -178,34 +179,46 @@ async fn spawn_refresh_loop(
                 #[cfg(debug_assertions)]
                 eprintln!("[stt_sidecar] refreshing token for session {}", session_id);
                 
-                match fetch_speech_token(&backend_url, &access_token, Some(&region)
-                ).await {
-                    Ok(token_response) => {
-                        let refresh_msg = serde_json::json!({
-                            "v": 1,
-                            "type": "refresh_token",
-                            "session_id": session_id,
-                            "auth_token": token_response.token,
-                        });
-                        
-                        let line = format!("{}\n", refresh_msg);
-                        let mut stdin_guard = stdin.lock().await;
-                        if let Err(e) = stdin_guard.write_all(line.as_bytes()).await {
-                            eprintln!("[stt_sidecar] failed to write refresh_token: {}", e);
-                            break;
+                // Retry with exponential backoff: 1s, 2s, 4s, 8s, 16s, then every 30s
+                let mut retry_delay = tokio::time::Duration::from_secs(1);
+                const MAX_RETRY_DELAY: tokio::time::Duration = tokio::time::Duration::from_secs(30);
+                
+                loop {
+                    match fetch_speech_token(&backend_url, &access_token, Some(&region)).await {
+                        Ok(token_response) => {
+                            let refresh_msg = serde_json::json!({
+                                "v": 1,
+                                "type": "refresh_token",
+                                "session_id": session_id,
+                                "auth_token": token_response.token,
+                            });
+                            
+                            let line = format!("{}\n", refresh_msg);
+                            let mut stdin_guard = stdin.lock().await;
+                            if let Err(e) = stdin_guard.write_all(line.as_bytes()).await {
+                                eprintln!("[stt_sidecar] failed to write refresh_token: {}", e);
+                                break;
+                            }
+                            if let Err(e) = stdin_guard.flush().await {
+                                eprintln!("[stt_sidecar] failed to flush refresh_token: {}", e);
+                                break;
+                            }
+                            #[cfg(debug_assertions)]
+                            eprintln!("[stt_sidecar] token refreshed successfully for session {}", session_id);
+                            break; // Success, exit retry loop
                         }
-                        if let Err(e) = stdin_guard.flush().await {
-                            eprintln!("[stt_sidecar] failed to flush refresh_token: {}", e);
-                            break;
+                        Err(e) => {
+                            eprintln!("[stt_sidecar] failed to refresh token (retry in {:?}): {}", retry_delay, e);
+                            tokio::select! {
+                                _ = &mut cancel_rx => {
+                                    #[cfg(debug_assertions)]
+                                    eprintln!("[stt_sidecar] refresh loop cancelled during retry");
+                                    break;
+                                }
+                                _ = tokio::time::sleep(retry_delay) => {}
+                            }
+                            retry_delay = std::cmp::min(retry_delay * 2, MAX_RETRY_DELAY);
                         }
-                        
-                        #[cfg(debug_assertions)]
-                        eprintln!("[stt_sidecar] token refreshed successfully for session {}", session_id);
-                    }
-                    Err(e) => {
-                        eprintln!("[stt_sidecar] failed to refresh token: {}", e);
-                        // Don't break on refresh failure - the sidecar might still work
-                        // with the old token until it expires
                     }
                 }
             }
