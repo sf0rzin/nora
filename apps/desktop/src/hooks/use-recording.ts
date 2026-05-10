@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { TranscriptLine, RecordingStatus } from "@/lib/recording-types";
 import { uploadTranscript } from "@/lib/meetings";
+import { savePendingMeeting, removePendingMeeting, getPendingMeetings } from "@/lib/pending-meetings";
 import { useRecordingContext } from "./use-recording-context";
 
 interface UseRecordingOptions {
@@ -32,6 +33,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [savedMeetingId, setSavedMeetingId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const startTimeRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -158,38 +161,53 @@ export function useRecording(options: UseRecordingOptions = {}) {
     }
 
     setIsSaving(true);
+    setSaveError(null);
     setError(null);
 
+    const transcript = transcriptLines
+      .map((l) => {
+        const speakerName = getSpeakerName(l.speakerId, l.speaker, l.track);
+        return (speakerName ? `[${speakerName}] ` : "") + l.text;
+      })
+      .join("\n");
+
+    const startedAt = new Date(
+      Date.now() - (duration * 1000)
+    ).toISOString();
+
+    const participants = Object.entries(speakerMap).map(([id, name]) => ({
+      displayName: name || id,
+    }));
+
+    const meetingId = crypto.randomUUID();
+    const payload = {
+      title: title || "Reunião sem título",
+      startedAt,
+      transcriptFormat: "TXT" as const,
+      fileContent: transcript,
+      fileName: `${title || "reuniao"}_${new Date().toISOString()}.txt`,
+      endedAt: new Date().toISOString(),
+      participants: participants.length > 0 ? participants : undefined,
+    };
+
     try {
-      const transcript = transcriptLines
-        .map((l) => {
-          const speakerName = getSpeakerName(l.speakerId, l.speaker, l.track);
-          return (speakerName ? `[${speakerName}] ` : "") + l.text;
-        })
-        .join("\n");
-
-      const startedAt = new Date(
-        Date.now() - (duration * 1000)
-      ).toISOString();
-
-      const participants = Object.entries(speakerMap).map(([id, name]) => ({
-        displayName: name || id,
-      }));
-
-      const result = await uploadTranscript({
-        title: title || "Reunião sem título",
-        startedAt,
-        transcriptFormat: "TXT",
-        fileContent: transcript,
-        fileName: `${title || "reuniao"}_${new Date().toISOString()}.txt`,
-        endedAt: new Date().toISOString(),
-        participants: participants.length > 0 ? participants : undefined,
-      });
-
+      const result = await uploadTranscript(payload);
       setSavedMeetingId(result.meetingId);
+      setSaveError(null);
     } catch (e) {
-      console.error("[recording] save meeting FAILED:", e);
-      setError(String(e));
+      console.error("[recording] save meeting FAILED, queueing locally:", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      setSaveError(msg);
+      savePendingMeeting({
+        id: meetingId,
+        status: "pending",
+        payload,
+        createdAt: new Date().toISOString(),
+        retryCount: 0,
+        lastError: msg,
+      });
+      setPendingCount(getPendingMeetings().filter((m) => m.status === "pending").length);
+      setError("Falha ao salvar — reunião armazenada localmente. Tentaremos enviar automaticamente.");
     } finally {
       setIsSaving(false);
     }
@@ -200,8 +218,33 @@ export function useRecording(options: UseRecordingOptions = {}) {
       console.error("[recording] failed to load devices on mount:", e);
       setError("Falha ao carregar dispositivos de áudio");
     });
+
+    // Update pending count on mount
+    setPendingCount(getPendingMeetings().filter((m) => m.status === "pending").length);
+
+    // Retry worker: attempts to send pending meetings every 30 seconds
+    const retryInterval = setInterval(() => {
+      const pending = getPendingMeetings().filter((m) => m.status === "pending" && m.retryCount < 10);
+      pending.forEach(async (meeting) => {
+        try {
+          await uploadTranscript(meeting.payload);
+          removePendingMeeting(meeting.id);
+          setPendingCount(getPendingMeetings().filter((m) => m.status === "pending").length);
+          console.log("[recording] queued meeting sent successfully:", meeting.id);
+        } catch (e) {
+          console.error("[recording] retry failed for queued meeting:", meeting.id, e);
+          savePendingMeeting({
+            ...meeting,
+            retryCount: meeting.retryCount + 1,
+            lastError: e instanceof Error ? e.message : String(e),
+          });
+        }
+      });
+    }, 30000);
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      clearInterval(retryInterval);
     };
   }, [loadDevices]);
 
@@ -229,6 +272,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
     getSpeakerName,
     isSaving,
     savedMeetingId,
+    saveError,
+    pendingCount,
     startRecording,
     stopRecording,
     saveMeeting,
