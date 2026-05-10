@@ -14,6 +14,9 @@ public class DecisionJpaEntity {
 
     @Id private UUID id;
 
+    @Column(name = "analysis_id", nullable = false)
+    private UUID analysisId;
+
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
@@ -35,6 +38,14 @@ public class DecisionJpaEntity {
 
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public UUID getAnalysisId() {
+        return analysisId;
+    }
+
+    public void setAnalysisId(UUID analysisId) {
+        this.analysisId = analysisId;
     }
 
     public UUID getTenantId() {
