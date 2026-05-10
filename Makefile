@@ -6,6 +6,9 @@ SHELL := bash
 
 COMPOSE := docker compose -f infra/docker/docker-compose.yml --env-file .env.local
 
+# Caminho para o uvicorn dentro do venv do worker (evita depender do PATH global).
+WORKER_UVICORN := $(CURDIR)/services/nlp-worker/.venv/bin/uvicorn
+
 .PHONY: help
 help: ## Lista os comandos disponíveis
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
@@ -49,7 +52,7 @@ dev: ## Sobe DB + worker + API + web (tudo em background, logs em .logs/)
 	@$(COMPOSE) up -d
 	@echo ">> [2/4] subindo NLP worker (FastAPI :8001)..."
 	@cd services/nlp-worker && \
-		nohup uvicorn nora_nlp.main:app --reload --port 8001 \
+		nohup $(WORKER_UVICORN) nora_nlp.main:app --reload --port 8001 \
 			> "$(DEV_LOG_DIR)/worker.log" 2>&1 & \
 		echo $$! > "$(DEV_RUN_DIR)/worker.pid"
 	@echo ">> [3/4] subindo API (Spring Boot :8080)..."
@@ -111,7 +114,7 @@ api-test: ## Roda os testes do backend
 
 .PHONY: worker-dev
 worker-dev: ## Roda o worker FastAPI com reload
-	cd services/nlp-worker && uvicorn nora_nlp.main:app --reload --port 8001
+	cd services/nlp-worker && $(WORKER_UVICORN) nora_nlp.main:app --reload --port 8001
 
 .PHONY: worker-test
 worker-test: ## Roda os testes do worker

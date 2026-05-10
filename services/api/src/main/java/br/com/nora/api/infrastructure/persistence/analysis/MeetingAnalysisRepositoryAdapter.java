@@ -78,6 +78,7 @@ public class MeetingAnalysisRepositoryAdapter implements MeetingAnalysisReposito
             Decision d = a.decisions().get(i);
             DecisionJpaEntity de = new DecisionJpaEntity();
             de.setId(UUID.randomUUID());
+            de.setAnalysisId(a.id());
             de.setTenantId(a.tenantId());
             de.setText(d.text());
             de.setConfidence(BigDecimal.valueOf(d.confidence()).setScale(2, RoundingMode.HALF_UP));
@@ -89,6 +90,7 @@ public class MeetingAnalysisRepositoryAdapter implements MeetingAnalysisReposito
             ActionItem ai = a.actionItems().get(i);
             ActionItemJpaEntity ae = new ActionItemJpaEntity();
             ae.setId(UUID.randomUUID());
+            ae.setAnalysisId(a.id());
             ae.setTenantId(a.tenantId());
             ae.setTitle(ai.title());
             ae.setAssignee(ai.assignee());
@@ -105,6 +107,7 @@ public class MeetingAnalysisRepositoryAdapter implements MeetingAnalysisReposito
             Risk r = a.risks().get(i);
             RiskJpaEntity re = new RiskJpaEntity();
             re.setId(UUID.randomUUID());
+            re.setAnalysisId(a.id());
             re.setTenantId(a.tenantId());
             re.setText(r.text());
             re.setSeverity(r.severity().name());
@@ -118,6 +121,7 @@ public class MeetingAnalysisRepositoryAdapter implements MeetingAnalysisReposito
             Opportunity o = a.opportunities().get(i);
             OpportunityJpaEntity oe = new OpportunityJpaEntity();
             oe.setId(UUID.randomUUID());
+            oe.setAnalysisId(a.id());
             oe.setTenantId(a.tenantId());
             oe.setText(o.text());
             oe.setEstimatedValue(o.estimatedValue().name());
