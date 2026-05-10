@@ -122,8 +122,9 @@ public class MeetingService {
 
     @Transactional
     public Meeting reprocess(UUID meetingId, UUID tenantId) {
-        Meeting meeting = meetings.findByIdAndTenant(meetingId, tenantId)
-                .orElseThrow(MeetingException.NotFound::new);
+        Meeting meeting =
+                meetings.findByIdAndTenant(meetingId, tenantId)
+                        .orElseThrow(MeetingException.NotFound::new);
         if (meeting.processingStatus() != ProcessingStatus.FAILED) {
             throw new MeetingException.CannotReprocess(
                     "Only meetings in FAILED status can be reprocessed. Current status: "
