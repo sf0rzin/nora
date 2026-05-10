@@ -166,6 +166,23 @@ public class MeetingsController {
                 m.updatedAt());
     }
 
+    @PostMapping("/{id}/reprocess")
+    public ResponseEntity<MeetingUploadResponse> reprocess(@PathVariable("id") UUID id) {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        Meeting updated = meetings.reprocess(id, principal.tenantId());
+        MeetingUploadResponse body =
+                new MeetingUploadResponse(
+                        updated.id(),
+                        updated.tenantId(),
+                        updated.title(),
+                        updated.startedAt(),
+                        updated.endedAt(),
+                        updated.ownerUserId(),
+                        updated.processingStatus().name(),
+                        updated.createdAt());
+        return ResponseEntity.accepted().body(body);
+    }
+
     private MeetingUploadMetadata parseMetadata(String json) {
         try {
             MeetingUploadMetadata parsed =
