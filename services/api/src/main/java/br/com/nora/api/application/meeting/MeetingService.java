@@ -7,6 +7,7 @@ import br.com.nora.api.application.ports.MeetingRepository.PagedMeetings;
 import br.com.nora.api.application.ports.TranscriptRepository;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
+import br.com.nora.api.domain.meeting.ProcessingStatus;
 import br.com.nora.api.domain.meeting.Transcript;
 import br.com.nora.api.domain.meeting.TranscriptFormat;
 import java.time.OffsetDateTime;
@@ -117,6 +118,22 @@ public class MeetingService {
     public Meeting getById(UUID meetingId, UUID tenantId) {
         return meetings.findByIdAndTenant(meetingId, tenantId)
                 .orElseThrow(MeetingException.NotFound::new);
+    }
+
+    @Transactional
+    public Meeting reprocess(UUID meetingId, UUID tenantId) {
+        Meeting meeting =
+                meetings.findByIdAndTenant(meetingId, tenantId)
+                        .orElseThrow(MeetingException.NotFound::new);
+        if (meeting.processingStatus() != ProcessingStatus.FAILED) {
+            throw new MeetingException.CannotReprocess(
+                    "Only meetings in FAILED status can be reprocessed. Current status: "
+                            + meeting.processingStatus());
+        }
+        Meeting updated = meeting.withStatus(ProcessingStatus.PENDING);
+        meetings.save(updated);
+        scheduleAnalysisAfterCommit(meetingId, tenantId);
+        return updated;
     }
 
     @Transactional(readOnly = true)

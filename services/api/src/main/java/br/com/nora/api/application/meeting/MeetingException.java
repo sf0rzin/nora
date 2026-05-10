@@ -5,7 +5,8 @@ public sealed class MeetingException extends RuntimeException
         permits MeetingException.NotFound,
                 MeetingException.TranscriptTooLarge,
                 MeetingException.UnsupportedFormat,
-                MeetingException.EmptyTranscript {
+                MeetingException.EmptyTranscript,
+                MeetingException.CannotReprocess {
 
     private final String code;
 
@@ -41,6 +42,12 @@ public sealed class MeetingException extends RuntimeException
     public static final class EmptyTranscript extends MeetingException {
         public EmptyTranscript() {
             super("EMPTY_TRANSCRIPT", "Transcript file is empty.");
+        }
+    }
+
+    public static final class CannotReprocess extends MeetingException {
+        public CannotReprocess(String reason) {
+            super("CANNOT_REPROCESS", reason);
         }
     }
 }
