@@ -37,8 +37,8 @@ db-reset: ## Apaga volume e sobe banco do zero
 
 # --- Dev completo ---
 
-# Diretório de logs e PIDs dos processos lançados pelo `make dev`.
-# Usamos $(CURDIR) para paths absolutos — evita problemas com cwd em sub-shells.
+# Diretorio de logs e PIDs dos processos lancados pelo `make dev`.
+# Usamos $(CURDIR) para paths absolutos -- evita problemas com cwd em sub-shells.
 DEV_RUN_DIR := $(CURDIR)/.run
 DEV_LOG_DIR := $(CURDIR)/.logs
 
@@ -48,20 +48,17 @@ dev: ## Sobe DB + worker + API + web (tudo em background, logs em .logs/)
 	@echo ">> [1/4] subindo Postgres + Adminer (docker compose)..."
 	@$(COMPOSE) up -d
 	@echo ">> [2/4] subindo NLP worker (FastAPI :8001)..."
-	@mkdir -p "$(DEV_RUN_DIR)" "$(DEV_LOG_DIR)"; \
-		cd services/nlp-worker && \
+	@cd services/nlp-worker && \
 		nohup uvicorn nora_nlp.main:app --reload --port 8001 \
 			> "$(DEV_LOG_DIR)/worker.log" 2>&1 & \
 		echo $$! > "$(DEV_RUN_DIR)/worker.pid"
 	@echo ">> [3/4] subindo API (Spring Boot :8080)..."
-	@mkdir -p "$(DEV_RUN_DIR)" "$(DEV_LOG_DIR)"; \
-		cd services/api && \
+	@cd services/api && \
 		nohup mvn -q spring-boot:run \
 			> "$(DEV_LOG_DIR)/api.log" 2>&1 & \
 		echo $$! > "$(DEV_RUN_DIR)/api.pid"
 	@echo ">> [4/4] subindo Web (Next.js :3000)..."
-	@mkdir -p "$(DEV_RUN_DIR)" "$(DEV_LOG_DIR)"; \
-		cd apps/web && \
+	@cd apps/web && \
 		nohup pnpm dev \
 			> "$(DEV_LOG_DIR)/web.log" 2>&1 & \
 		echo $$! > "$(DEV_RUN_DIR)/web.pid"
@@ -76,18 +73,8 @@ dev: ## Sobe DB + worker + API + web (tudo em background, logs em .logs/)
 	@echo "Para parar tudo: make dev-stop"
 
 .PHONY: dev-stop
-dev-stop: ## Para worker, API e web lançados pelo `make dev` (NÃO derruba o DB)
-	@for svc in web api worker; do \
-		if [ -f "$(DEV_RUN_DIR)/$$svc.pid" ]; then \
-			pid=$$(cat "$(DEV_RUN_DIR)/$$svc.pid"); \
-			echo ">> parando $$svc (pid $$pid)"; \
-			kill $$pid 2>/dev/null || true; \
-			rm -f "$(DEV_RUN_DIR)/$$svc.pid"; \
-		else \
-			echo ">> $$svc: sem pid registrado"; \
-		fi; \
-	done
-	@echo "OK -- processos parados. DB segue de pe (use 'make db-down' para derrubar)."
+dev-stop: ## Para worker, API e web lancados pelo `make dev` (NAO derruba o DB)
+	@DEV_RUN_DIR="$(DEV_RUN_DIR)" bash scripts/dev-stop.sh
 
 .PHONY: dev-logs
 dev-logs: ## Tail simultâneo dos logs de api, worker e web
