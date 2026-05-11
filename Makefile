@@ -6,8 +6,12 @@ SHELL := bash
 
 COMPOSE := docker compose -f infra/docker/docker-compose.yml --env-file .env.local
 
-# Caminho para o uvicorn dentro do venv do worker (evita depender do PATH global).
-WORKER_UVICORN := $(CURDIR)/services/nlp-worker/.venv/bin/uvicorn
+# Caminho do venv do worker. O python concreto e resolvido em runtime
+# (Windows usa .venv/Scripts/python.exe; Unix usa .venv/bin/python).
+WORKER_VENV := $(CURDIR)/services/nlp-worker/.venv
+WORKER_PYTHON_RESOLVE := if [ -x "$(WORKER_VENV)/Scripts/python.exe" ]; then echo "$(WORKER_VENV)/Scripts/python.exe"; else echo "$(WORKER_VENV)/bin/python"; fi
+# Python do sistema usado para criar o venv (override: make ... PYTHON=python3.12)
+PYTHON ?= python
 
 .PHONY: help
 help: ## Lista os comandos disponíveis
@@ -45,14 +49,26 @@ db-reset: ## Apaga volume e sobe banco do zero
 DEV_RUN_DIR := $(CURDIR)/.run
 DEV_LOG_DIR := $(CURDIR)/.logs
 
+.PHONY: worker-setup
+worker-setup: ## Cria venv do worker e instala dependencias (idempotente)
+	@WORKER_PY=$$($(WORKER_PYTHON_RESOLVE)); \
+	if [ ! -x "$$WORKER_PY" ]; then \
+		echo ">> criando venv do worker em $(WORKER_VENV)..."; \
+		cd services/nlp-worker && $(PYTHON) -m venv .venv; \
+		WORKER_PY=$$($(WORKER_PYTHON_RESOLVE)); \
+		"$$WORKER_PY" -m pip install -q --upgrade pip; \
+		"$$WORKER_PY" -m pip install -q -e ".[dev]"; \
+		echo ">> venv do worker pronto."; \
+	fi
+
 .PHONY: dev
-dev: ## Sobe DB + worker + API + web (tudo em background, logs em .logs/)
+dev: worker-setup ## Sobe DB + worker + API + web (tudo em background, logs em .logs/)
 	@mkdir -p "$(DEV_RUN_DIR)" "$(DEV_LOG_DIR)"
 	@echo ">> [1/4] subindo Postgres + Adminer (docker compose)..."
 	@$(COMPOSE) up -d
 	@echo ">> [2/4] subindo NLP worker (FastAPI :8001)..."
-	@cd services/nlp-worker && \
-		nohup $(WORKER_UVICORN) nora_nlp.main:app --reload --port 8001 \
+	@WORKER_PY=$$($(WORKER_PYTHON_RESOLVE)); cd services/nlp-worker && \
+		nohup "$$WORKER_PY" -m uvicorn nora_nlp.main:app --reload --port 8001 \
 			> "$(DEV_LOG_DIR)/worker.log" 2>&1 & \
 		echo $$! > "$(DEV_RUN_DIR)/worker.pid"
 	@echo ">> [3/4] subindo API (Spring Boot :8080)..."
@@ -113,12 +129,12 @@ api-test: ## Roda os testes do backend
 # --- Worker NLP ---
 
 .PHONY: worker-dev
-worker-dev: ## Roda o worker FastAPI com reload
-	cd services/nlp-worker && $(WORKER_UVICORN) nora_nlp.main:app --reload --port 8001
+worker-dev: worker-setup ## Roda o worker FastAPI com reload
+	@WORKER_PY=$$($(WORKER_PYTHON_RESOLVE)); cd services/nlp-worker && "$$WORKER_PY" -m uvicorn nora_nlp.main:app --reload --port 8001
 
 .PHONY: worker-test
-worker-test: ## Roda os testes do worker
-	cd services/nlp-worker && pytest
+worker-test: worker-setup ## Roda os testes do worker
+	@WORKER_PY=$$($(WORKER_PYTHON_RESOLVE)); cd services/nlp-worker && "$$WORKER_PY" -m pytest
 
 # --- Web ---
 
