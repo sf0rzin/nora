@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { TranscriptLine, RecordingStatus } from "@/lib/recording-types";
+import type { RecordingStatus } from "@/lib/recording-types";
 import { uploadTranscript } from "@/lib/meetings";
 import { savePendingMeeting, removePendingMeeting, getPendingMeetings } from "@/lib/pending-meetings";
 import { useRecordingContext } from "./use-recording-context";
