@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 
 /** Metadados enviados como JSON multipart (campo "metadata") junto ao arquivo da transcricao. */
 public record MeetingUploadMetadata(
@@ -15,7 +16,9 @@ public record MeetingUploadMetadata(
         @JsonProperty("transcriptFormat") @NotBlank(message = "transcriptFormat is required")
                 String transcriptFormat,
         List<ParticipantPayload> participants,
-        List<String> tags) {
+        List<String> tags,
+        @Size(max = 20, message = "attributes must have at most 20 entries")
+                Map<@Size(max = 64) String, @Size(max = 256) String> attributes) {
 
     public record ParticipantPayload(
             @NotBlank String displayName, String email, Boolean isInternal) {}

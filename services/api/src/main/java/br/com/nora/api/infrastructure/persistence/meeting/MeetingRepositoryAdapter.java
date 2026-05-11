@@ -8,6 +8,7 @@ import br.com.nora.api.domain.meeting.ProcessingStatus;
 import br.com.nora.api.domain.meeting.TranscriptFormat;
 import br.com.nora.api.infrastructure.persistence.meeting.MeetingTagJpaEntity.MeetingTagId;
 import java.time.OffsetDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -60,6 +61,7 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
         e.setTranscriptFormat(m.transcriptFormat().name());
         e.setProcessingStatus(m.processingStatus().name());
         e.setSummarySnippet(m.summarySnippet());
+        e.setAttributes(m.attributes() == null ? new HashMap<>() : new HashMap<>(m.attributes()));
         e.setCreatedAt(m.createdAt());
         e.setUpdatedAt(m.updatedAt());
 
@@ -102,6 +104,7 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
                 e.getSummarySnippet(),
                 participants,
                 tags,
+                e.getAttributes(),
                 e.getCreatedAt(),
                 e.getUpdatedAt());
     }
