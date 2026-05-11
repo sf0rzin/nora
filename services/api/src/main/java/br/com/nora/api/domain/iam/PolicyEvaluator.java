@@ -39,6 +39,23 @@ public final class PolicyEvaluator {
         return isAllowed(statements, action, resource, Collections.emptyMap());
     }
 
+    /**
+     * Pre-check: retorna true se houver qualquer Allow para action+resource, ignorando conditions.
+     * Usado em list-endpoints para evitar 403 em usuarios com policies condicionais.
+     */
+    public static boolean hasAnyAllow(
+            List<PolicyStatement> statements, String action, String resource) {
+        if (statements == null || statements.isEmpty()) {
+            return false;
+        }
+        for (PolicyStatement s : statements) {
+            if (s.effect() != Effect.ALLOW) continue;
+            if (!matchesAction(s, action) || !matchesResource(s, resource)) continue;
+            return true;
+        }
+        return false;
+    }
+
     /** Avaliacao completa com request context (usado para conditions). */
     public static boolean isAllowed(
             List<PolicyStatement> statements,

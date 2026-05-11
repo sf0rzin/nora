@@ -61,4 +61,17 @@ public class AuthorizationService {
             throw IamException.forbidden(action);
         }
     }
+
+    /**
+     * Pre-check sem conditions: garante que o usuario tenha pelo menos um Allow para
+     * action+resource, ignorando conditions. Ideal para list-endpoints onde conditions sao
+     * avaliadas por item.
+     */
+    public void requireAnyAllow(UUID userId, UUID tenantId, String action, String resource) {
+        if (users.isRoot(userId, tenantId)) return;
+        List<PolicyStatement> stmts = iam.collectStatementsForUser(userId, tenantId);
+        if (!PolicyEvaluator.hasAnyAllow(stmts, action, resource)) {
+            throw IamException.forbidden(action);
+        }
+    }
 }

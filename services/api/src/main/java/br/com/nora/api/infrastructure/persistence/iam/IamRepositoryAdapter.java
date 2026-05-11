@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -398,7 +399,7 @@ public class IamRepositoryAdapter implements IamRepository {
                             (String) r[4],
                             (UUID) r[5],
                             payload,
-                            ((Timestamp) r[7]).toInstant().atOffset(ZoneOffset.UTC)));
+                            toOdt(r[7])));
         }
         return out;
     }
@@ -412,8 +413,8 @@ public class IamRepositoryAdapter implements IamRepository {
                 (String) r[2],
                 (String) r[3],
                 (UUID) r[4],
-                ((Timestamp) r[5]).toInstant().atOffset(ZoneOffset.UTC),
-                ((Timestamp) r[6]).toInstant().atOffset(ZoneOffset.UTC));
+                toOdt(r[5]),
+                toOdt(r[6]));
     }
 
     private IamPolicy toPolicy(Object[] r) {
@@ -426,8 +427,8 @@ public class IamRepositoryAdapter implements IamRepository {
                 doc,
                 ((Number) r[5]).intValue(),
                 (UUID) r[6],
-                ((Timestamp) r[7]).toInstant().atOffset(ZoneOffset.UTC),
-                ((Timestamp) r[8]).toInstant().atOffset(ZoneOffset.UTC));
+                toOdt(r[7]),
+                toOdt(r[8]));
     }
 
     private PolicyDocument parseDocument(String docJson) {
@@ -486,5 +487,12 @@ public class IamRepositoryAdapter implements IamRepository {
         } catch (JsonProcessingException ex) {
             return new HashMap<>();
         }
+    }
+
+    private static OffsetDateTime toOdt(Object col) {
+        if (col instanceof OffsetDateTime odt) return odt;
+        if (col instanceof Instant i) return i.atOffset(ZoneOffset.UTC);
+        if (col instanceof Timestamp ts) return ts.toInstant().atOffset(ZoneOffset.UTC);
+        throw new IllegalStateException("unexpected timestamp type: " + col.getClass());
     }
 }
