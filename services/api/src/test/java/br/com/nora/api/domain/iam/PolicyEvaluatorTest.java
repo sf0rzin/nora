@@ -3,6 +3,7 @@ package br.com.nora.api.domain.iam;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class PolicyEvaluatorTest {
@@ -13,6 +14,15 @@ class PolicyEvaluatorTest {
 
     private static PolicyStatement deny(String action, String resource) {
         return new PolicyStatement(Effect.DENY, List.of(action), List.of(resource), null);
+    }
+
+    private static PolicyStatement allowIfStringEquals(
+            String action, String resource, String key, String expected) {
+        return new PolicyStatement(
+                Effect.ALLOW,
+                List.of(action),
+                List.of(resource),
+                Map.of("StringEquals", Map.of(key, expected)));
     }
 
     @Test
@@ -63,5 +73,49 @@ class PolicyEvaluatorTest {
         var stmts = List.of(allow("meeting:read", "nora:tenant/t1:meeting/*"));
         assertThat(PolicyEvaluator.isAllowed(stmts, "meeting:read", "nora:tenant/t2:meeting/abc"))
                 .isFalse();
+    }
+
+    @Test
+    void stringEqualsConditionAllowsWhenContextMatches() {
+        var stmts =
+                List.of(allowIfStringEquals(
+                        "meeting:read", "nora:tenant/t1:meeting/*", "department", "Vendas"));
+        assertThat(PolicyEvaluator.isAllowed(
+                        stmts,
+                        "meeting:read",
+                        "nora:tenant/t1:meeting/abc",
+                        Map.of("department", "Vendas")))
+                .isTrue();
+    }
+
+    @Test
+    void stringEqualsConditionDeniesWhenContextDiffers() {
+        var stmts =
+                List.of(allowIfStringEquals(
+                        "meeting:read", "nora:tenant/t1:meeting/*", "department", "Vendas"));
+        assertThat(PolicyEvaluator.isAllowed(
+                        stmts,
+                        "meeting:read",
+                        "nora:tenant/t1:meeting/abc",
+                        Map.of("department", "Suporte")))
+                .isFalse();
+    }
+
+    @Test
+    void stringEqualsConditionDeniesWhenContextMissing() {
+        var stmts =
+                List.of(allowIfStringEquals(
+                        "meeting:read", "nora:tenant/t1:meeting/*", "department", "Vendas"));
+        assertThat(PolicyEvaluator.isAllowed(
+                        stmts, "meeting:read", "nora:tenant/t1:meeting/abc", Map.of()))
+                .isFalse();
+    }
+
+    @Test
+    void emptyConditionAlwaysSatisfied() {
+        var stmts = List.of(allow("meeting:read", "nora:tenant/t1:meeting/*"));
+        assertThat(PolicyEvaluator.isAllowed(
+                        stmts, "meeting:read", "nora:tenant/t1:meeting/abc", Map.of()))
+                .isTrue();
     }
 }

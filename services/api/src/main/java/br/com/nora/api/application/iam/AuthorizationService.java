@@ -5,6 +5,7 @@ import br.com.nora.api.application.ports.UserRepository;
 import br.com.nora.api.domain.iam.PolicyEvaluator;
 import br.com.nora.api.domain.iam.PolicyStatement;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -24,16 +25,39 @@ public class AuthorizationService {
     }
 
     public boolean isAllowed(UUID userId, UUID tenantId, String action, String resource) {
+        return isAllowed(userId, tenantId, action, resource, Map.of());
+    }
+
+    /**
+     * Versao com request context (usado para conditions que dependem de atributos do recurso, do
+     * usuario ou do request).
+     */
+    public boolean isAllowed(
+            UUID userId,
+            UUID tenantId,
+            String action,
+            String resource,
+            Map<String, String> requestContext) {
         if (users.isRoot(userId, tenantId)) {
             return true;
         }
         List<PolicyStatement> stmts = iam.collectStatementsForUser(userId, tenantId);
-        return PolicyEvaluator.isAllowed(stmts, action, resource);
+        return PolicyEvaluator.isAllowed(stmts, action, resource, requestContext);
     }
 
     /** Conveniencia: lanca {@link IamException#forbidden} caso a autorizacao falhe. */
     public void require(UUID userId, UUID tenantId, String action, String resource) {
-        if (!isAllowed(userId, tenantId, action, resource)) {
+        require(userId, tenantId, action, resource, Map.of());
+    }
+
+    /** Conveniencia com request context: lanca {@link IamException#forbidden} caso negado. */
+    public void require(
+            UUID userId,
+            UUID tenantId,
+            String action,
+            String resource,
+            Map<String, String> requestContext) {
+        if (!isAllowed(userId, tenantId, action, resource, requestContext)) {
             throw IamException.forbidden(action);
         }
     }
