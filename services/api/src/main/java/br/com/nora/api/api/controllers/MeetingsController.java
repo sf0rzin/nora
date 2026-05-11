@@ -80,6 +80,11 @@ public class MeetingsController {
     public ResponseEntity<MeetingUploadResponse> upload(
             @RequestPart("metadata") String metadataJson, @RequestPart("file") MultipartFile file) {
         AuthenticatedPrincipal principal = CurrentUser.require();
+        authz.require(
+                principal.userId(),
+                principal.tenantId(),
+                "meeting:upload",
+                meetingResource(principal.tenantId(), null));
         MeetingUploadMetadata metadata = parseMetadata(metadataJson);
 
         String rawTranscript = readFile(file);
@@ -205,6 +210,14 @@ public class MeetingsController {
     @PostMapping("/{id}/reprocess")
     public ResponseEntity<MeetingUploadResponse> reprocess(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
+        // Resolve para usar attributes no context (authz especifica do recurso).
+        Meeting current = meetings.getById(id, principal.tenantId());
+        authz.require(
+                principal.userId(),
+                principal.tenantId(),
+                "meeting:reprocess",
+                meetingResource(principal.tenantId(), current.id()),
+                current.attributes());
         Meeting updated = meetings.reprocess(id, principal.tenantId());
         MeetingUploadResponse body =
                 new MeetingUploadResponse(
