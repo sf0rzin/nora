@@ -24,8 +24,15 @@
         <spotless.version>2.43.0</spotless.version>
         <checkstyle.version>3.5.0</checkstyle.version>
         <jacoco.version>0.8.12</jacoco.version>
-        <testcontainers.version>1.20.3</testcontainers.version>
+        <testcontainers.version>1.21.0</testcontainers.version>
         <springdotenv.version>5.1.0</springdotenv.version>
+        <!--
+          docker.host: default tcp://localhost:2375 (Docker Desktop com "Expose daemon on tcp"
+          habilitado). Sobrescreva via -Ddocker.host=npipe:////./pipe/docker_engine no Windows
+          sem TCP, ou unix:///var/run/docker.sock em Linux/Mac. Em CI sem Docker Desktop, o
+          Testcontainers tambem descobre pelo env DOCKER_HOST.
+        -->
+        <docker.host>tcp://localhost:2375</docker.host>
     </properties>
 
     <dependencies>
@@ -190,6 +197,17 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <docker.host>${docker.host}</docker.host>
+                        <api.version>1.40</api.version>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
 
             <plugin>
