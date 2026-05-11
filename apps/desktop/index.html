@@ -4,9 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NORA Desktop</title>
+    <style>
+      /* Critical CSS to prevent white flash during startup */
+      html, body, #root {
+        height: 100%;
+        margin: 0;
+        background-color: #18181b;
+      }
+      body {
+        color: #f4f4f5;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+    </style>
   </head>
   <body class="bg-zinc-900 text-zinc-100">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Loading state shown while React hydrates -->
+      <div id="app-loader" style="display: flex; align-items: center; justify-content: center; height: 100%; flex-direction: column; gap: 1rem;">
+        <div style="width: 32px; height: 32px; border: 3px solid #3f3f46; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <span style="color: #a1a1aa; font-size: 0.875rem;">Carregando NORA...</span>
+      </div>
+      <style>
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      </style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

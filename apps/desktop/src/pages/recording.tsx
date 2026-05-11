@@ -20,7 +20,7 @@ export function RecordingPage() {
   const [meetingTitle, setMeetingTitle] = useState("");
   const [captureSystemAudio, setCaptureSystemAudio] = useState(true);
   const [systemAudioDevice, setSystemAudioDevice] = useState<string | null>(null);
-  const [audioPrereqs, setAudioPrereqs] = useState<AudioPrerequisites | null>(null);
+  const [, setAudioPrereqs] = useState<AudioPrerequisites | null>(null);
   const [showBlackHoleWizard, setShowBlackHoleWizard] = useState(false);
 
   useEffect(() => {

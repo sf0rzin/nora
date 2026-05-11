@@ -4,8 +4,6 @@ import { secrets } from "@/lib/secrets";
 
 export function SettingsPage() {
   const { user } = useAuth();
-  const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [cleanupDone, setCleanupDone] = useState(false);
 
   useEffect(() => {
@@ -25,8 +23,6 @@ export function SettingsPage() {
         setCleanupDone(true);
       } catch (e) {
         console.error("[settings] failed to cleanup old secrets:", e);
-      } finally {
-        setLoading(false);
       }
     })();
   }, []);
