@@ -97,8 +97,7 @@ class IamScopingIntegrationTest {
                         "Carlos: ticket aberto.\nAna: vou ver.");
 
         // Root acessa ambos via bypass.
-        assertThat(authGetStatus("/meetings/" + meetingVendas, rootToken))
-                .isEqualTo(HttpStatus.OK);
+        assertThat(authGetStatus("/meetings/" + meetingVendas, rootToken)).isEqualTo(HttpStatus.OK);
         assertThat(authGetStatus("/meetings/" + meetingSuporte, rootToken))
                 .isEqualTo(HttpStatus.OK);
 
@@ -149,7 +148,9 @@ class IamScopingIntegrationTest {
 
     private String signupAndLogin(String email, String pwd, String name) throws Exception {
         JsonNode signup =
-                postJson("/auth/signup", Map.of("email", email, "password", pwd, "displayName", name))
+                postJson(
+                                "/auth/signup",
+                                Map.of("email", email, "password", pwd, "displayName", name))
                         .body(HttpStatus.CREATED);
         String verifyToken = signup.get("emailVerificationDevToken").asText();
         postJson("/auth/verify-email", Map.of("token", verifyToken)).expect(HttpStatus.NO_CONTENT);
@@ -223,10 +224,7 @@ class IamScopingIntegrationTest {
     private String createPolicy(String token, String name, String documentJson) throws Exception {
         JsonNode docNode = mapper.readTree(documentJson);
         JsonNode body =
-                postJsonAuth(
-                                "/iam/policies",
-                                Map.of("name", name, "document", docNode),
-                                token)
+                postJsonAuth("/iam/policies", Map.of("name", name, "document", docNode), token)
                         .body(HttpStatus.CREATED);
         return body.get("id").asText();
     }
@@ -257,7 +255,8 @@ class IamScopingIntegrationTest {
 
     private UUID readClaim(String jwt, String claim) throws Exception {
         String[] parts = jwt.split("\\.");
-        String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+        String payload =
+                new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
         return UUID.fromString(mapper.readTree(payload).get(claim).asText());
     }
 

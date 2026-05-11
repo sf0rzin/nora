@@ -126,7 +126,8 @@ public class MeetingsController {
             @RequestParam(name = "to", required = false) String to) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         // Pre-check: usuario precisa de meeting:read em pelo menos algum recurso do tenant.
-        // Sem isso, devolve 403 antes de tocar o banco. Filtragem fina por attributes acontece abaixo.
+        // Sem isso, devolve 403 antes de tocar o banco. Filtragem fina por attributes acontece
+        // abaixo.
         authz.require(
                 principal.userId(),
                 principal.tenantId(),
