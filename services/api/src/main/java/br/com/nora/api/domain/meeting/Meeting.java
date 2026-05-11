@@ -3,7 +3,10 @@ package br.com.nora.api.domain.meeting;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -29,6 +32,7 @@ public final class Meeting {
     private final String summarySnippet;
     private final List<Participant> participants;
     private final List<String> tags;
+    private final Map<String, String> attributes;
     private final OffsetDateTime createdAt;
     private final OffsetDateTime updatedAt;
 
@@ -45,6 +49,40 @@ public final class Meeting {
             String summarySnippet,
             List<Participant> participants,
             List<String> tags,
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt) {
+        this(
+                id,
+                tenantId,
+                ownerUserId,
+                title,
+                startedAt,
+                endedAt,
+                language,
+                transcriptFormat,
+                processingStatus,
+                summarySnippet,
+                participants,
+                tags,
+                Map.of(),
+                createdAt,
+                updatedAt);
+    }
+
+    public Meeting(
+            UUID id,
+            UUID tenantId,
+            UUID ownerUserId,
+            String title,
+            OffsetDateTime startedAt,
+            OffsetDateTime endedAt,
+            String language,
+            TranscriptFormat transcriptFormat,
+            ProcessingStatus processingStatus,
+            String summarySnippet,
+            List<Participant> participants,
+            List<String> tags,
+            Map<String, String> attributes,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt) {
         if (id == null) {
@@ -100,8 +138,23 @@ public final class Meeting {
                                                         .filter(t -> t != null && !t.isBlank())
                                                         .map(t -> t.trim().toLowerCase())
                                                         .toList())));
+        this.attributes = normalizeAttributes(attributes);
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+    }
+
+    private static Map<String, String> normalizeAttributes(Map<String, String> input) {
+        if (input == null || input.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : input.entrySet()) {
+            if (e.getKey() == null || e.getKey().isBlank() || e.getValue() == null) {
+                continue;
+            }
+            copy.put(e.getKey().trim(), e.getValue());
+        }
+        return Collections.unmodifiableMap(new HashMap<>(copy));
     }
 
     /** Cria uma nova reuniao em estado PENDING (logo apos upload). */
@@ -115,6 +168,31 @@ public final class Meeting {
             TranscriptFormat format,
             List<Participant> participants,
             List<String> tags) {
+        return newPending(
+                tenantId,
+                ownerUserId,
+                title,
+                startedAt,
+                endedAt,
+                language,
+                format,
+                participants,
+                tags,
+                Map.of());
+    }
+
+    /** Cria uma nova reuniao em estado PENDING com attributes (US19 / IAM conditions). */
+    public static Meeting newPending(
+            UUID tenantId,
+            UUID ownerUserId,
+            String title,
+            OffsetDateTime startedAt,
+            OffsetDateTime endedAt,
+            String language,
+            TranscriptFormat format,
+            List<Participant> participants,
+            List<String> tags,
+            Map<String, String> attributes) {
         OffsetDateTime now = OffsetDateTime.now();
         return new Meeting(
                 UUID.randomUUID(),
@@ -129,6 +207,7 @@ public final class Meeting {
                 null,
                 participants,
                 tags,
+                attributes,
                 now,
                 now);
     }
@@ -161,6 +240,7 @@ public final class Meeting {
                 summarySnippet,
                 participants,
                 tags,
+                attributes,
                 createdAt,
                 OffsetDateTime.now());
     }
@@ -186,6 +266,7 @@ public final class Meeting {
                 trimmed,
                 participants,
                 tags,
+                attributes,
                 createdAt,
                 OffsetDateTime.now());
     }
@@ -237,6 +318,10 @@ public final class Meeting {
 
     public List<String> tags() {
         return tags;
+    }
+
+    public Map<String, String> attributes() {
+        return attributes;
     }
 
     public Set<String> tagSet() {

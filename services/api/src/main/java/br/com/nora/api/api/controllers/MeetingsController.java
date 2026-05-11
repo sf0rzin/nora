@@ -26,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -85,7 +86,8 @@ public class MeetingsController {
                         metadata.transcriptFormat(),
                         toDomainParticipants(metadata.participants()),
                         metadata.tags() == null ? List.of() : metadata.tags(),
-                        rawTranscript);
+                        rawTranscript,
+                        metadata.attributes() == null ? Map.of() : metadata.attributes());
 
         Meeting saved = meetings.upload(cmd);
         MeetingUploadResponse body =

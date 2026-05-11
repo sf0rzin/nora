@@ -10,8 +10,12 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "meetings")
@@ -45,6 +49,10 @@ public class MeetingJpaEntity {
 
     @Column(name = "summary_snippet")
     private String summarySnippet;
+
+    @Column(name = "attributes", nullable = false, columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, String> attributes = new HashMap<>();
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
@@ -141,6 +149,14 @@ public class MeetingJpaEntity {
 
     public void setSummarySnippet(String summarySnippet) {
         this.summarySnippet = summarySnippet;
+    }
+
+    public Map<String, String> getAttributes() {
+        return attributes;
+    }
+
+    public void setAttributes(Map<String, String> attributes) {
+        this.attributes = attributes != null ? attributes : new HashMap<>();
     }
 
     public OffsetDateTime getCreatedAt() {

@@ -12,6 +12,7 @@ import br.com.nora.api.domain.meeting.Transcript;
 import br.com.nora.api.domain.meeting.TranscriptFormat;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -75,7 +76,8 @@ public class MeetingService {
                         cmd.language(),
                         format,
                         cmd.participants(),
-                        cmd.tags());
+                        cmd.tags(),
+                        cmd.attributes());
         Meeting saved = meetings.save(meeting);
         Transcript transcript =
                 Transcript.create(saved.id(), saved.tenantId(), format, cmd.rawTranscript());
@@ -156,5 +158,39 @@ public class MeetingService {
             String format,
             List<Participant> participants,
             List<String> tags,
-            String rawTranscript) {}
+            String rawTranscript,
+            Map<String, String> attributes) {
+
+        /** Compat: chamadas antigas sem attributes assumem mapa vazio. */
+        public UploadCommand(
+                UUID tenantId,
+                UUID ownerUserId,
+                String title,
+                OffsetDateTime startedAt,
+                OffsetDateTime endedAt,
+                String language,
+                String format,
+                List<Participant> participants,
+                List<String> tags,
+                String rawTranscript) {
+            this(
+                    tenantId,
+                    ownerUserId,
+                    title,
+                    startedAt,
+                    endedAt,
+                    language,
+                    format,
+                    participants,
+                    tags,
+                    rawTranscript,
+                    Map.of());
+        }
+
+        public UploadCommand {
+            if (attributes == null) {
+                attributes = Map.of();
+            }
+        }
+    }
 }
