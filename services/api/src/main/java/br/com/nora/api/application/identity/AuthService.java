@@ -235,7 +235,8 @@ public class AuthService {
                         now,
                         Purpose.PASSWORD_RESET));
 
-        String link = settings.publicBaseUrl() + "/auth/reset-password?token=" + token.rawToken();
+        String link =
+                settings.publicBaseUrl() + "/auth/password/reset/confirm?token=" + token.rawToken();
         emailSender.sendPasswordReset(email.value(), user.displayName(), link);
 
         return new RequestPasswordResetResult(settings.exposeDevTokens() ? token.rawToken() : null);
