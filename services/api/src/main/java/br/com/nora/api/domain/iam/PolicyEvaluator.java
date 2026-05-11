@@ -57,7 +57,9 @@ public final class PolicyEvaluator {
         }
         boolean anyAllow = false;
         for (PolicyStatement s : statements) {
-            if (!matchesAction(s, action) || !matchesResource(s, resource)) continue;
+            if (!matchesAction(s, action) || !matchesResource(s, resource)) {
+                continue;
+            }
             if (s.effect() == Effect.DENY && (s.condition() == null || s.condition().isEmpty())) {
                 return false;
             }

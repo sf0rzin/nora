@@ -68,7 +68,9 @@ public class AuthorizationService {
      * avaliadas por item.
      */
     public void requireAnyAllow(UUID userId, UUID tenantId, String action, String resource) {
-        if (users.isRoot(userId, tenantId)) return;
+        if (users.isRoot(userId, tenantId)) {
+            return;
+        }
         List<PolicyStatement> stmts = iam.collectStatementsForUser(userId, tenantId);
         if (!PolicyEvaluator.hasAnyAllow(stmts, action, resource)) {
             throw IamException.forbidden(action);

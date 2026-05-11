@@ -156,10 +156,10 @@ public class MeetingsController {
                         .toList();
 
         long totalItems = visible.size();
-        int from_ = Math.min(safePage * safeSize, visible.size());
-        int to_ = Math.min(from_ + safeSize, visible.size());
+        int fromIdx = Math.min(safePage * safeSize, visible.size());
+        int toIdx = Math.min(fromIdx + safeSize, visible.size());
         List<MeetingListItem> items =
-                visible.subList(from_, to_).stream()
+                visible.subList(fromIdx, toIdx).stream()
                         .map(
                                 m -> {
                                     Optional<MeetingAnalysis> a =
