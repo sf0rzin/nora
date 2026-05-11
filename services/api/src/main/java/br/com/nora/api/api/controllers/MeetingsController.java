@@ -9,11 +9,11 @@ import br.com.nora.api.api.dto.meeting.MeetingUploadMetadata;
 import br.com.nora.api.api.dto.meeting.MeetingUploadResponse;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.analysis.AnalysisService;
+import br.com.nora.api.application.iam.AuthorizationService;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.meeting.MeetingService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
 import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
-import br.com.nora.api.application.ports.MeetingRepository.PagedMeetings;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
@@ -26,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -50,27 +51,40 @@ import org.springframework.web.multipart.MultipartFile;
 public class MeetingsController {
 
     private static final Set<String> ALLOWED_FORMATS = Set.of("TXT", "VTT", "SRT");
+    private static final int AUTH_FILTER_HARD_CAP = 500;
 
     private final MeetingService meetings;
     private final AnalysisService analyses;
     private final ObjectMapper objectMapper;
     private final Validator validator;
+    private final AuthorizationService authz;
 
     public MeetingsController(
             MeetingService meetings,
             AnalysisService analyses,
             ObjectMapper objectMapper,
-            Validator validator) {
+            Validator validator,
+            AuthorizationService authz) {
         this.meetings = meetings;
         this.analyses = analyses;
         this.objectMapper = objectMapper;
         this.validator = validator;
+        this.authz = authz;
+    }
+
+    private static String meetingResource(UUID tenantId, UUID meetingId) {
+        return "nora:tenant/" + tenantId + ":meeting/" + (meetingId == null ? "*" : meetingId);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<MeetingUploadResponse> upload(
             @RequestPart("metadata") String metadataJson, @RequestPart("file") MultipartFile file) {
         AuthenticatedPrincipal principal = CurrentUser.require();
+        authz.require(
+                principal.userId(),
+                principal.tenantId(),
+                "meeting:upload",
+                meetingResource(principal.tenantId(), null));
         MeetingUploadMetadata metadata = parseMetadata(metadataJson);
 
         String rawTranscript = readFile(file);
@@ -85,7 +99,8 @@ public class MeetingsController {
                         metadata.transcriptFormat(),
                         toDomainParticipants(metadata.participants()),
                         metadata.tags() == null ? List.of() : metadata.tags(),
-                        rawTranscript);
+                        rawTranscript,
+                        metadata.attributes() == null ? Map.of() : metadata.attributes());
 
         Meeting saved = meetings.upload(cmd);
         MeetingUploadResponse body =
@@ -110,10 +125,41 @@ public class MeetingsController {
             @RequestParam(name = "from", required = false) String from,
             @RequestParam(name = "to", required = false) String to) {
         AuthenticatedPrincipal principal = CurrentUser.require();
+        // Pre-check: usuario precisa de meeting:read em pelo menos algum recurso do tenant.
+        // Sem isso, devolve 403 antes de tocar o banco. Filtragem fina por attributes acontece
+        // abaixo.
+        authz.requireAnyAllow(
+                principal.userId(),
+                principal.tenantId(),
+                "meeting:read",
+                meetingResource(principal.tenantId(), null));
+
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(100, Math.max(1, size));
         MeetingFilter filter = buildFilter(search, status, from, to);
-        PagedMeetings paged = meetings.list(principal.tenantId(), filter, page, size);
+        // Carrega ate AUTH_FILTER_HARD_CAP meetings, filtra por IAM e pagina apos.
+        // Necessario para que totalItems reflita o conjunto que o usuario pode realmente ver
+        // (caso contrario paginas podem chegar vazias com totalItems > 0). Fase 1: empurrar o
+        // predicado de attributes para o SQL.
+        List<Meeting> candidates =
+                meetings.listForAuthFilter(principal.tenantId(), filter, AUTH_FILTER_HARD_CAP);
+        List<Meeting> visible =
+                candidates.stream()
+                        .filter(
+                                m ->
+                                        authz.isAllowed(
+                                                principal.userId(),
+                                                principal.tenantId(),
+                                                "meeting:read",
+                                                meetingResource(principal.tenantId(), m.id()),
+                                                m.attributes()))
+                        .toList();
+
+        long totalItems = visible.size();
+        int fromIdx = Math.min(safePage * safeSize, visible.size());
+        int toIdx = Math.min(fromIdx + safeSize, visible.size());
         List<MeetingListItem> items =
-                paged.items().stream()
+                visible.subList(fromIdx, toIdx).stream()
                         .map(
                                 m -> {
                                     Optional<MeetingAnalysis> a =
@@ -132,14 +178,22 @@ public class MeetingsController {
                                             m.tags());
                                 })
                         .toList();
-        return new MeetingListResponse(
-                items, paged.page(), paged.size(), paged.totalItems(), paged.totalPages());
+        int totalPages =
+                safeSize <= 0 ? 0 : (int) Math.ceil((double) totalItems / (double) safeSize);
+        return new MeetingListResponse(items, safePage, safeSize, totalItems, totalPages);
     }
 
     @GetMapping("/{id}")
     public MeetingDetailResponse get(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
+        // Resolve primeiro (404 se de outro tenant) e usa attributes no context da authz.
         Meeting m = meetings.getById(id, principal.tenantId());
+        authz.require(
+                principal.userId(),
+                principal.tenantId(),
+                "meeting:read",
+                meetingResource(principal.tenantId(), m.id()),
+                m.attributes());
         AnalysisResponse analysisDto =
                 analyses.findByMeeting(m.id(), principal.tenantId())
                         .map(AnalysisResponseMapper::from)
@@ -169,7 +223,19 @@ public class MeetingsController {
     @PostMapping("/{id}/reprocess")
     public ResponseEntity<MeetingUploadResponse> reprocess(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        Meeting updated = meetings.reprocess(id, principal.tenantId());
+        // Reprocess autoriza com authz callback dentro da mesma transacao do service para evitar
+        // TOCTOU (attributes nao mudam entre check e execucao).
+        Meeting updated =
+                meetings.reprocess(
+                        id,
+                        principal.tenantId(),
+                        current ->
+                                authz.require(
+                                        principal.userId(),
+                                        principal.tenantId(),
+                                        "meeting:reprocess",
+                                        meetingResource(principal.tenantId(), current.id()),
+                                        current.attributes()));
         MeetingUploadResponse body =
                 new MeetingUploadResponse(
                         updated.id(),
