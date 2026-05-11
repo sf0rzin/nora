@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { getMeeting } from "@/lib/meetings";
 import type { MeetingDetail, ApiError } from "@/lib/types";
 
@@ -67,7 +68,9 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
         <div className="space-y-6">
           <section>
             <h2 className="text-lg font-semibold mb-2">Resumo</h2>
-            <p className="text-sm text-zinc-300 leading-relaxed">{analysis.summary}</p>
+            <div className="prose prose-invert prose-sm max-w-none text-zinc-300">
+              <ReactMarkdown>{analysis.summary}</ReactMarkdown>
+            </div>
             <div className="flex items-center gap-2 mt-2 text-xs text-zinc-500">
               <span>Sentimento: {analysis.sentimentOverall}</span>
               <span>·</span>
