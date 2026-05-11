@@ -18,7 +18,12 @@ export function middleware(req: NextRequest) {
 
   // Usuario logado abrindo /auth/* -> redireciona pro dashboard.
   const isAuthPage = AUTH_PREFIXES.some((p) => pathname.startsWith(p));
-  if (isAuthPage && token && pathname !== "/auth/verify-email" && pathname !== "/auth/password/reset/confirm") {
+  if (
+    isAuthPage &&
+    token &&
+    pathname !== "/auth/verify-email" &&
+    pathname !== "/auth/password/reset/confirm"
+  ) {
     const url = req.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
