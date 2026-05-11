@@ -1,9 +1,9 @@
 package br.com.nora.api.domain.meeting;
 
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -154,7 +154,7 @@ public final class Meeting {
             }
             copy.put(e.getKey().trim(), e.getValue());
         }
-        return Collections.unmodifiableMap(new HashMap<>(copy));
+        return Collections.unmodifiableMap(copy);
     }
 
     /** Cria uma nova reuniao em estado PENDING (logo apos upload). */
@@ -193,7 +193,34 @@ public final class Meeting {
             List<Participant> participants,
             List<String> tags,
             Map<String, String> attributes) {
-        OffsetDateTime now = OffsetDateTime.now();
+        return newPending(
+                tenantId,
+                ownerUserId,
+                title,
+                startedAt,
+                endedAt,
+                language,
+                format,
+                participants,
+                tags,
+                attributes,
+                Clock.systemUTC());
+    }
+
+    /** Variante com Clock explicito (testabilidade). */
+    public static Meeting newPending(
+            UUID tenantId,
+            UUID ownerUserId,
+            String title,
+            OffsetDateTime startedAt,
+            OffsetDateTime endedAt,
+            String language,
+            TranscriptFormat format,
+            List<Participant> participants,
+            List<String> tags,
+            Map<String, String> attributes,
+            Clock clock) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
         return new Meeting(
                 UUID.randomUUID(),
                 tenantId,

@@ -17,7 +17,8 @@ public record MeetingUploadMetadata(
                 String transcriptFormat,
         List<ParticipantPayload> participants,
         List<String> tags,
-        Map<String, String> attributes) {
+        @Size(max = 20, message = "attributes must have at most 20 entries")
+                Map<@Size(max = 64) String, @Size(max = 256) String> attributes) {
 
     public record ParticipantPayload(
             @NotBlank String displayName, String email, Boolean isInternal) {}

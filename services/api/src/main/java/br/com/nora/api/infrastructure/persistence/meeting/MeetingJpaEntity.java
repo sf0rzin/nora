@@ -152,11 +152,11 @@ public class MeetingJpaEntity {
     }
 
     public Map<String, String> getAttributes() {
-        return attributes;
+        return attributes == null ? Map.of() : Map.copyOf(attributes);
     }
 
     public void setAttributes(Map<String, String> attributes) {
-        this.attributes = attributes != null ? attributes : new HashMap<>();
+        this.attributes = attributes != null ? new HashMap<>(attributes) : new HashMap<>();
     }
 
     public OffsetDateTime getCreatedAt() {

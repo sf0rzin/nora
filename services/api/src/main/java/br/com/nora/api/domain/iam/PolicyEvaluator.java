@@ -3,6 +3,7 @@ package br.com.nora.api.domain.iam;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -27,9 +28,13 @@ import java.util.regex.Pattern;
  *
  * <p>A {@code chave} eh resolvida no {@code requestContext} passado pelo chamador (atributos do
  * recurso, do usuario, do request, etc.). Statements sem condition sao avaliados como sempre
- * satisfeitos.
+ * satisfeitos. Operadores nao suportados (ex.: StringNotEquals, DateGreaterThan) fazem o statement
+ * NAO casar (fail-closed) — qualquer Allow com operador desconhecido eh ignorado em vez de ser
+ * tratado como satisfeito.
  */
 public final class PolicyEvaluator {
+
+    private static final Set<String> SUPPORTED_CONDITION_OPERATORS = Set.of("StringEquals");
 
     private PolicyEvaluator() {}
 
@@ -40,20 +45,27 @@ public final class PolicyEvaluator {
     }
 
     /**
-     * Pre-check: retorna true se houver qualquer Allow para action+resource, ignorando conditions.
-     * Usado em list-endpoints para evitar 403 em usuarios com policies condicionais.
+     * Pre-check para list-endpoints: retorna true se existir algum Allow para action+resource (sem
+     * avaliar conditions), e nao houver Deny incondicional cobrindo o mesmo action+resource. Um
+     * Deny incondicional bloqueia todas as instancias e nao pode ser superado por contexto, entao
+     * curto-circuita o pre-check.
      */
     public static boolean hasAnyAllow(
             List<PolicyStatement> statements, String action, String resource) {
         if (statements == null || statements.isEmpty()) {
             return false;
         }
+        boolean anyAllow = false;
         for (PolicyStatement s : statements) {
-            if (s.effect() != Effect.ALLOW) continue;
             if (!matchesAction(s, action) || !matchesResource(s, resource)) continue;
-            return true;
+            if (s.effect() == Effect.DENY && (s.condition() == null || s.condition().isEmpty())) {
+                return false;
+            }
+            if (s.effect() == Effect.ALLOW) {
+                anyAllow = true;
+            }
         }
-        return false;
+        return anyAllow;
     }
 
     /** Avaliacao completa com request context (usado para conditions). */
@@ -101,18 +113,24 @@ public final class PolicyEvaluator {
     }
 
     /**
-     * Avalia as conditions do statement. Retorna true se todas as conditions forem satisfeitas (ou
-     * se nao houver conditions). Suporta apenas {@code StringEquals} no MVP. Operadores
-     * desconhecidos sao ignorados (statements com operadores nao suportados sao tratados como sem
-     * restricao adicional alem do ja avaliado).
+     * Avalia as conditions do statement. Retorna true sse TODOS os blocos forem satisfeitos.
+     * Suporta apenas {@code StringEquals} no MVP. Operadores nao suportados causam o statement a
+     * NAO casar (return false) — fail-closed para evitar privilege escalation com policies que usem
+     * operadores ainda nao implementados.
      */
     private static boolean matchesCondition(PolicyStatement s, Map<String, String> ctx) {
         Map<String, Object> condition = s.condition();
         if (condition == null || condition.isEmpty()) {
             return true;
         }
-        Object stringEqualsBlock = condition.get("StringEquals");
-        if (stringEqualsBlock instanceof Map<?, ?> requirements) {
+        for (Map.Entry<String, Object> block : condition.entrySet()) {
+            String operator = block.getKey();
+            if (!SUPPORTED_CONDITION_OPERATORS.contains(operator)) {
+                return false;
+            }
+            if (!(block.getValue() instanceof Map<?, ?> requirements)) {
+                return false;
+            }
             for (Map.Entry<?, ?> entry : requirements.entrySet()) {
                 String key = String.valueOf(entry.getKey());
                 String expected = String.valueOf(entry.getValue());

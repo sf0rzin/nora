@@ -14,7 +14,6 @@ import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.meeting.MeetingService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
 import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
-import br.com.nora.api.application.ports.MeetingRepository.PagedMeetings;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
@@ -52,6 +51,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class MeetingsController {
 
     private static final Set<String> ALLOWED_FORMATS = Set.of("TXT", "VTT", "SRT");
+    private static final int AUTH_FILTER_HARD_CAP = 500;
 
     private final MeetingService meetings;
     private final AnalysisService analyses;
@@ -134,13 +134,17 @@ public class MeetingsController {
                 "meeting:read",
                 meetingResource(principal.tenantId(), null));
 
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(100, Math.max(1, size));
         MeetingFilter filter = buildFilter(search, status, from, to);
-        PagedMeetings paged = meetings.list(principal.tenantId(), filter, page, size);
-        // Filtra item-a-item aplicando conditions com os attributes de cada meeting.
-        // NOTA: paginacao real (com filtro at-query) fica para Fase 1 — aqui o totalItems
-        // ainda reflete o total nao-filtrado para nao quebrar o cliente.
-        List<MeetingListItem> items =
-                paged.items().stream()
+        // Carrega ate AUTH_FILTER_HARD_CAP meetings, filtra por IAM e pagina apos.
+        // Necessario para que totalItems reflita o conjunto que o usuario pode realmente ver
+        // (caso contrario paginas podem chegar vazias com totalItems > 0). Fase 1: empurrar o
+        // predicado de attributes para o SQL.
+        List<Meeting> candidates =
+                meetings.listForAuthFilter(principal.tenantId(), filter, AUTH_FILTER_HARD_CAP);
+        List<Meeting> visible =
+                candidates.stream()
                         .filter(
                                 m ->
                                         authz.isAllowed(
@@ -149,6 +153,13 @@ public class MeetingsController {
                                                 "meeting:read",
                                                 meetingResource(principal.tenantId(), m.id()),
                                                 m.attributes()))
+                        .toList();
+
+        long totalItems = visible.size();
+        int from_ = Math.min(safePage * safeSize, visible.size());
+        int to_ = Math.min(from_ + safeSize, visible.size());
+        List<MeetingListItem> items =
+                visible.subList(from_, to_).stream()
                         .map(
                                 m -> {
                                     Optional<MeetingAnalysis> a =
@@ -167,8 +178,9 @@ public class MeetingsController {
                                             m.tags());
                                 })
                         .toList();
-        return new MeetingListResponse(
-                items, paged.page(), paged.size(), paged.totalItems(), paged.totalPages());
+        int totalPages =
+                safeSize <= 0 ? 0 : (int) Math.ceil((double) totalItems / (double) safeSize);
+        return new MeetingListResponse(items, safePage, safeSize, totalItems, totalPages);
     }
 
     @GetMapping("/{id}")
@@ -211,15 +223,19 @@ public class MeetingsController {
     @PostMapping("/{id}/reprocess")
     public ResponseEntity<MeetingUploadResponse> reprocess(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        // Resolve para usar attributes no context (authz especifica do recurso).
-        Meeting current = meetings.getById(id, principal.tenantId());
-        authz.require(
-                principal.userId(),
-                principal.tenantId(),
-                "meeting:reprocess",
-                meetingResource(principal.tenantId(), current.id()),
-                current.attributes());
-        Meeting updated = meetings.reprocess(id, principal.tenantId());
+        // Reprocess autoriza com authz callback dentro da mesma transacao do service para evitar
+        // TOCTOU (attributes nao mudam entre check e execucao).
+        Meeting updated =
+                meetings.reprocess(
+                        id,
+                        principal.tenantId(),
+                        current ->
+                                authz.require(
+                                        principal.userId(),
+                                        principal.tenantId(),
+                                        "meeting:reprocess",
+                                        meetingResource(principal.tenantId(), current.id()),
+                                        current.attributes()));
         MeetingUploadResponse body =
                 new MeetingUploadResponse(
                         updated.id(),

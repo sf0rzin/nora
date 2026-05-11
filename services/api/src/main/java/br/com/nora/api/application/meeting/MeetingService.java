@@ -116,6 +116,21 @@ public class MeetingService {
                 tenantId, filter == null ? MeetingFilter.empty() : filter, safePage, safeSize);
     }
 
+    /**
+     * Variante para uso do controller quando a listagem precisa ser filtrada por IAM com conditions
+     * por item antes de paginar. Devolve ate {@code hardCap} meetings em ordem (created_at desc) —
+     * o controller eh responsavel por aplicar o filtro IAM e depois paginar in-memory. Fase 1 deve
+     * substituir por uma query que ja considere os attributes no SQL.
+     */
+    @Transactional(readOnly = true)
+    public List<Meeting> listForAuthFilter(UUID tenantId, MeetingFilter filter, int hardCap) {
+        int safeCap = Math.min(Math.max(1, hardCap), 1000);
+        PagedMeetings paged =
+                meetings.listByTenant(
+                        tenantId, filter == null ? MeetingFilter.empty() : filter, 0, safeCap);
+        return paged.items();
+    }
+
     @Transactional(readOnly = true)
     public Meeting getById(UUID meetingId, UUID tenantId) {
         return meetings.findByIdAndTenant(meetingId, tenantId)
@@ -124,9 +139,21 @@ public class MeetingService {
 
     @Transactional
     public Meeting reprocess(UUID meetingId, UUID tenantId) {
+        return reprocess(meetingId, tenantId, m -> {});
+    }
+
+    /**
+     * Variante com callback de autorizacao executado dentro da mesma transacao apos resolver o
+     * meeting — evita TOCTOU entre check de authz e execucao. O callback recebe o meeting carregado
+     * e deve lancar caso a autorizacao falhe.
+     */
+    @Transactional
+    public Meeting reprocess(
+            UUID meetingId, UUID tenantId, java.util.function.Consumer<Meeting> authorize) {
         Meeting meeting =
                 meetings.findByIdAndTenant(meetingId, tenantId)
                         .orElseThrow(MeetingException.NotFound::new);
+        authorize.accept(meeting);
         if (meeting.processingStatus() != ProcessingStatus.FAILED) {
             throw new MeetingException.CannotReprocess(
                     "Only meetings in FAILED status can be reprocessed. Current status: "

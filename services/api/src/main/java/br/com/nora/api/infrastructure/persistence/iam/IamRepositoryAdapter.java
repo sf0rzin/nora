@@ -490,6 +490,9 @@ public class IamRepositoryAdapter implements IamRepository {
     }
 
     private static OffsetDateTime toOdt(Object col) {
+        if (col == null) {
+            throw new IllegalStateException("expected non-null timestamp column");
+        }
         if (col instanceof OffsetDateTime odt) return odt;
         if (col instanceof Instant i) return i.atOffset(ZoneOffset.UTC);
         if (col instanceof Timestamp ts) return ts.toInstant().atOffset(ZoneOffset.UTC);
