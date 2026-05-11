@@ -18,6 +18,7 @@ function ConfirmForm() {
   const router = useRouter();
   const token = params.get("token") ?? "";
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -28,12 +29,16 @@ function ConfirmForm() {
       setError("Token ausente.");
       return;
     }
+    if (password !== confirmPassword) {
+      setError("As senhas nao coincidem.");
+      return;
+    }
     setLoading(true);
     try {
       await confirmPasswordReset(token, password);
-      router.replace("/auth/login");
+      router.replace("/auth/login?reset=ok");
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Token invalido.");
+      setError(err instanceof ApiRequestError ? err.message : "Token invalido ou expirado.");
     } finally {
       setLoading(false);
     }
@@ -42,6 +47,9 @@ function ConfirmForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <h2 className="text-lg font-medium text-slate-800">Definir nova senha</h2>
+      <p className="text-sm text-slate-600">
+        Escolha uma nova senha para sua conta. Use no minimo 8 caracteres.
+      </p>
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-slate-700">Nova senha</label>
         <input
@@ -50,6 +58,17 @@ function ConfirmForm() {
           minLength={8}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-slate-700">Confirmar nova senha</label>
+        <input
+          type="password"
+          required
+          minLength={8}
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
         />
       </div>
