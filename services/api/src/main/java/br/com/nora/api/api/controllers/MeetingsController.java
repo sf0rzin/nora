@@ -9,6 +9,7 @@ import br.com.nora.api.api.dto.meeting.MeetingUploadMetadata;
 import br.com.nora.api.api.dto.meeting.MeetingUploadResponse;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.analysis.AnalysisService;
+import br.com.nora.api.application.iam.AuthorizationService;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.meeting.MeetingService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
@@ -56,16 +57,23 @@ public class MeetingsController {
     private final AnalysisService analyses;
     private final ObjectMapper objectMapper;
     private final Validator validator;
+    private final AuthorizationService authz;
 
     public MeetingsController(
             MeetingService meetings,
             AnalysisService analyses,
             ObjectMapper objectMapper,
-            Validator validator) {
+            Validator validator,
+            AuthorizationService authz) {
         this.meetings = meetings;
         this.analyses = analyses;
         this.objectMapper = objectMapper;
         this.validator = validator;
+        this.authz = authz;
+    }
+
+    private static String meetingResource(UUID tenantId, UUID meetingId) {
+        return "nora:tenant/" + tenantId + ":meeting/" + (meetingId == null ? "*" : meetingId);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -112,10 +120,29 @@ public class MeetingsController {
             @RequestParam(name = "from", required = false) String from,
             @RequestParam(name = "to", required = false) String to) {
         AuthenticatedPrincipal principal = CurrentUser.require();
+        // Pre-check: usuario precisa de meeting:read em pelo menos algum recurso do tenant.
+        // Sem isso, devolve 403 antes de tocar o banco. Filtragem fina por attributes acontece abaixo.
+        authz.require(
+                principal.userId(),
+                principal.tenantId(),
+                "meeting:read",
+                meetingResource(principal.tenantId(), null));
+
         MeetingFilter filter = buildFilter(search, status, from, to);
         PagedMeetings paged = meetings.list(principal.tenantId(), filter, page, size);
+        // Filtra item-a-item aplicando conditions com os attributes de cada meeting.
+        // NOTA: paginacao real (com filtro at-query) fica para Fase 1 — aqui o totalItems
+        // ainda reflete o total nao-filtrado para nao quebrar o cliente.
         List<MeetingListItem> items =
                 paged.items().stream()
+                        .filter(
+                                m ->
+                                        authz.isAllowed(
+                                                principal.userId(),
+                                                principal.tenantId(),
+                                                "meeting:read",
+                                                meetingResource(principal.tenantId(), m.id()),
+                                                m.attributes()))
                         .map(
                                 m -> {
                                     Optional<MeetingAnalysis> a =
@@ -141,7 +168,14 @@ public class MeetingsController {
     @GetMapping("/{id}")
     public MeetingDetailResponse get(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
+        // Resolve primeiro (404 se de outro tenant) e usa attributes no context da authz.
         Meeting m = meetings.getById(id, principal.tenantId());
+        authz.require(
+                principal.userId(),
+                principal.tenantId(),
+                "meeting:read",
+                meetingResource(principal.tenantId(), m.id()),
+                m.attributes());
         AnalysisResponse analysisDto =
                 analyses.findByMeeting(m.id(), principal.tenantId())
                         .map(AnalysisResponseMapper::from)
