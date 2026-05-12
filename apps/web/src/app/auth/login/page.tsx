@@ -6,6 +6,10 @@ import type { Route } from "next";
 import { Suspense, useState } from "react";
 import { login, ApiRequestError } from "@/lib/api/client";
 import { setSession } from "@/lib/auth";
+import { NoraLogo } from "@/components/brand/nora-logo";
+import { OrbAnimation } from "@/components/login/orb-animation";
+import { SoundwaveBars } from "@/components/login/soundwave-bars";
+import styles from "./login.module.css";
 
 export default function LoginPage() {
   return (
@@ -21,6 +25,7 @@ function LoginForm() {
   const next = (params.get("next") ?? "/dashboard") as Route;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -46,51 +51,176 @@ function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <h2 className="text-lg font-medium text-slate-800">Entrar</h2>
+    <div className={styles.shell}>
+      {/* ── LEFT: art panel (dark) ── */}
+      <aside className={styles.art}>
+        <div className={styles.artGrid} aria-hidden="true" />
 
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium text-slate-700">E-mail</label>
-        <input
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-          placeholder="voce@empresa.com"
-        />
-      </div>
+        <div className={styles.artLogo}>
+          <NoraLogo size={28} variant="paper" />
+        </div>
 
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium text-slate-700">Senha</label>
-        <input
-          type="password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-          placeholder="••••••••"
-        />
-      </div>
+        <OrbAnimation>
+          <SoundwaveBars />
+        </OrbAnimation>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+        <div className={styles.artFoot}>
+          <span>Inteligência conversacional</span>
+          <span>v.1</span>
+        </div>
+      </aside>
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
-      >
-        {loading ? "Entrando…" : "Entrar"}
-      </button>
+      {/* ── RIGHT: form ── */}
+      <main className={styles.formWrap}>
+        <form onSubmit={onSubmit} className={styles.form}>
+          <Link href="/" className={styles.back}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path
+                d="M11 7H3M7 3L3 7l4 4"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Voltar
+          </Link>
 
-      <div className="flex items-center justify-between text-xs text-slate-600">
-        <Link href="/auth/signup" className="underline">
-          Criar conta
-        </Link>
-        <Link href="/auth/password/reset/request" className="underline">
-          Esqueci a senha
-        </Link>
-      </div>
-    </form>
+          <div className={styles.head}>
+            <h1>Bem-vindo de volta</h1>
+            <p>Entre na sua conta para continuar.</p>
+          </div>
+
+          <div className={styles.sso}>
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              title="Em breve — SSO corporativo (Entra ID/SAML) chega pós-MVP"
+              className={`${styles.ssoBtn} ${styles.ssoBtnDisabled}`}
+            >
+              <svg
+                className={styles.ssoIcon}
+                viewBox="0 0 23 23"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <rect x="1" y="1" width="10" height="10" fill="#F25022" />
+                <rect x="12" y="1" width="10" height="10" fill="#7FBA00" />
+                <rect x="1" y="12" width="10" height="10" fill="#00A4EF" />
+                <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
+              </svg>
+              Continuar com Microsoft
+              <span className={styles.ssoBadge}>Em breve</span>
+            </button>
+          </div>
+
+          <div className={styles.divider}>ou</div>
+
+          <div className={styles.fields}>
+            <div className={styles.field}>
+              <label className={styles.fieldLabel} htmlFor="login-email">
+                E-mail
+              </label>
+              <div className={styles.fieldInputWrap}>
+                <input
+                  id="login-email"
+                  className={styles.fieldInput}
+                  type="email"
+                  autoComplete="email"
+                  placeholder="você@empresa.com"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className={styles.field}>
+              <label className={styles.fieldLabel} htmlFor="login-password">
+                <span>Senha</span>
+                <Link href="/auth/password/reset/request">Esqueci minha senha</Link>
+              </label>
+              <div className={styles.fieldInputWrap}>
+                <input
+                  id="login-password"
+                  className={`${styles.fieldInput} ${styles.fieldInputWithIcon}`}
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className={styles.fieldToggle}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  aria-pressed={showPassword}
+                  onClick={() => setShowPassword((v) => !v)}
+                >
+                  {showPassword ? (
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      aria-hidden="true"
+                    >
+                      <path d="M3 3l18 18" strokeLinecap="round" />
+                      <path d="M10.6 6.2A11 11 0 0 1 12 6c6.5 0 10 6 10 6a16 16 0 0 1-3 3.4M6.1 6.1A16 16 0 0 0 2 12s3.5 6 10 6a11 11 0 0 0 4.6-1" />
+                      <path d="M14.1 14.1A3 3 0 0 1 9.9 9.9" />
+                    </svg>
+                  ) : (
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      aria-hidden="true"
+                    >
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {error && (
+            <p className={styles.error} role="alert">
+              {error}
+            </p>
+          )}
+
+          <button type="submit" disabled={loading} className={styles.submit}>
+            {loading ? "Entrando…" : "Entrar"}
+            {!loading && (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path
+                  d="M3 7h8M7 3l4 4-4 4"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </button>
+
+          <div className={styles.foot}>
+            <span>
+              Não tem conta? <Link href="/auth/signup">Falar com vendas</Link>
+            </span>
+            <span className={styles.footMeta}>SSO · SAML</span>
+          </div>
+        </form>
+      </main>
+    </div>
   );
 }
