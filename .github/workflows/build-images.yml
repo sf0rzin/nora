@@ -1,0 +1,188 @@
+name: build-images
+
+# Builda e pusha imagens Docker pra GHCR.
+#
+# Triggers:
+#   - push em main: rebuild só dos serviços que mudaram (path filter)
+#   - workflow_dispatch: rebuild todos manualmente
+#
+# Imagens publicadas:
+#   - ghcr.io/sys0xff/nora-api:{latest, sha-XXXXXXX}
+#   - ghcr.io/sys0xff/nora-worker:{latest, sha-XXXXXXX}
+#   - ghcr.io/sys0xff/nora-web:{latest, sha-XXXXXXX}
+#
+# IMPORTANTE: por padrão, pacotes no GHCR ficam privados. Após o primeiro push,
+# ir em github.com/sys0xff/<package>/settings → "Change visibility" → Public
+# (caso queira que Container Apps puxe sem autenticação).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/api/**'
+      - 'services/nlp-worker/**'
+      - 'packages/nlp-baseline/**'
+      - 'apps/web/**'
+      - '.github/workflows/build-images.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/api/**'
+      - 'services/nlp-worker/**'
+      - 'packages/nlp-baseline/**'
+      - 'apps/web/**'
+      - '.github/workflows/build-images.yml'
+      - 'services/*/Dockerfile'
+      - 'apps/*/Dockerfile'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: sys0xff/nora
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      worker: ${{ steps.filter.outputs.worker }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'services/api/**'
+            worker:
+              - 'services/nlp-worker/**'
+              - 'packages/nlp-baseline/**'
+            web:
+              - 'apps/web/**'
+
+  api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/api
+          file: services/api/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+          provenance: false
+
+  worker:
+    needs: changes
+    if: needs.changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-worker
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .  # repo root — Dockerfile do worker precisa de packages/nlp-baseline
+          file: services/nlp-worker/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,scope=worker,mode=max
+          provenance: false
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-web
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: apps/web
+          file: apps/web/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+          provenance: false
+
+  summary:
+    needs: [api, worker, web]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build summary
+        run: |
+          echo "## Build Images — resultados" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Imagem | Status | Tag SHA |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| api | ${{ needs.api.result }} | ghcr.io/${{ env.IMAGE_PREFIX }}-api:sha-${GITHUB_SHA::7} |" >> $GITHUB_STEP_SUMMARY
+          echo "| worker | ${{ needs.worker.result }} | ghcr.io/${{ env.IMAGE_PREFIX }}-worker:sha-${GITHUB_SHA::7} |" >> $GITHUB_STEP_SUMMARY
+          echo "| web | ${{ needs.web.result }} | ghcr.io/${{ env.IMAGE_PREFIX }}-web:sha-${GITHUB_SHA::7} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Pull com: \`docker pull ghcr.io/${{ env.IMAGE_PREFIX }}-<api|worker|web>:latest\`" >> $GITHUB_STEP_SUMMARY
