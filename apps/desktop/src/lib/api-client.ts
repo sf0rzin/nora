@@ -58,14 +58,14 @@ class ApiClient {
 
     console.log("[api] response:", response.status, response.body);
 
-    if (response.status === 401) {
+    if (response.status === 401 && auth) {
       console.warn("[api] 401 unauthorized — token expired");
       await secrets.delete("access-token");
       await secrets.delete("current-user");
       this.cachedUser = null;
       this.onUnauthorized?.();
       window.location.hash = "#/login";
-      throw { message: "Sessão expirada. Faça login novamente." };
+      throw new Error("Sessão expirada. Faça login novamente.");
     }
 
     if (response.status >= 400) {
