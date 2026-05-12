@@ -344,7 +344,9 @@ public class MeetingsController {
     }
 
     private WorkerDtos.LiveHighlights toWorkerHighlights(LiveAnalyzeDtos.LiveHighlightsDto dto) {
-        if (dto == null) return null;
+        if (dto == null) {
+            return null;
+        }
         return new WorkerDtos.LiveHighlights(
                 toWorkerHighlightItems(dto.decisions()),
                 toWorkerHighlightItems(dto.nextSteps()),
@@ -354,7 +356,9 @@ public class MeetingsController {
 
     private List<WorkerDtos.LiveHighlightItem> toWorkerHighlightItems(
             List<LiveAnalyzeDtos.LiveHighlightItemDto> items) {
-        if (items == null) return null;
+        if (items == null) {
+            return null;
+        }
         return items.stream()
                 .map(
                         i ->
@@ -365,7 +369,9 @@ public class MeetingsController {
 
     private List<WorkerDtos.LiveTaskItem> toWorkerLiveTaskItems(
             List<LiveAnalyzeDtos.LiveTaskItemDto> items) {
-        if (items == null) return null;
+        if (items == null) {
+            return null;
+        }
         return items.stream()
                 .map(
                         i ->
@@ -393,7 +399,9 @@ public class MeetingsController {
 
     private List<LiveAnalyzeDtos.LiveHighlightItemDto> toApiHighlightItems(
             List<WorkerDtos.LiveHighlightItem> items) {
-        if (items == null) return List.of();
+        if (items == null) {
+            return List.of();
+        }
         return items.stream()
                 .map(
                         i ->
@@ -404,7 +412,9 @@ public class MeetingsController {
 
     private List<LiveAnalyzeDtos.LiveTaskItemDto> toApiLiveTaskItems(
             List<WorkerDtos.LiveTaskItem> items) {
-        if (items == null) return List.of();
+        if (items == null) {
+            return List.of();
+        }
         return items.stream()
                 .map(
                         i ->
