@@ -1,6 +1,7 @@
 import { useLiveHighlights } from "@/hooks/use-live-highlights";
 import { listen } from "@tauri-apps/api/event";
 import { useState, useEffect } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 function formatTimeAgo(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -144,39 +145,8 @@ export function OverlayPage() {
       className="h-screen flex flex-col bg-zinc-900/95 backdrop-blur-sm text-zinc-100 select-none overflow-hidden rounded-xl border border-zinc-700/50"
     >
       <div
-        onMouseDown={async (e) => {
-          let winPos: { x: number; y: number };
-          try {
-            const [wx, wy] = (await invoke("get_overlay_position")) as [number, number];
-            winPos = { x: wx, y: wy };
-          } catch {
-            return;
-          }
-
-          const mouseStart = { x: e.screenX, y: e.screenY };
-          const isDragging = { current: true };
-          const lastSent = { x: winPos.x, y: winPos.y };
-
-          const handleMouseMove = (ev: MouseEvent) => {
-            if (!isDragging.current) return;
-            const newX = winPos.x + (ev.screenX - mouseStart.x);
-            const newY = winPos.y + (ev.screenY - mouseStart.y);
-
-            if (newX !== lastSent.x || newY !== lastSent.y) {
-              lastSent.x = newX;
-              lastSent.y = newY;
-              invoke("set_overlay_position", { x: newX, y: newY }).catch(() => {});
-            }
-          };
-
-          const handleMouseUp = () => {
-            isDragging.current = false;
-            window.removeEventListener("mousemove", handleMouseMove);
-            window.removeEventListener("mouseup", handleMouseUp);
-          };
-
-          window.addEventListener("mousemove", handleMouseMove);
-          window.addEventListener("mouseup", handleMouseUp);
+        onMouseDown={() => {
+          getCurrentWindow().startDragging().catch(() => {});
         }}
         className="flex items-center justify-between px-3 py-2 bg-zinc-900 border-b border-zinc-800 cursor-move"
       >
