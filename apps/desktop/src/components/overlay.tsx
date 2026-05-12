@@ -1,6 +1,7 @@
 import { useLiveHighlights } from "@/hooks/use-live-highlights";
 import { listen } from "@tauri-apps/api/event";
 import { useState, useEffect } from "react";
+import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
 
 function formatTimeAgo(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -145,28 +146,17 @@ export function OverlayPage() {
     >
       <div
         onMouseDown={async (e) => {
-          let winPos: { x: number; y: number };
-          try {
-            const [wx, wy] = (await invoke("get_overlay_position")) as [number, number];
-            winPos = { x: wx, y: wy };
-          } catch {
-            return;
-          }
-
+          const overlayWindow = getCurrentWindow();
+          const pos = await overlayWindow.outerPosition();
           const mouseStart = { x: e.screenX, y: e.screenY };
+          const winStart = { x: pos.x, y: pos.y };
           const isDragging = { current: true };
-          const lastSent = { x: winPos.x, y: winPos.y };
 
           const handleMouseMove = (ev: MouseEvent) => {
             if (!isDragging.current) return;
-            const newX = winPos.x + (ev.screenX - mouseStart.x);
-            const newY = winPos.y + (ev.screenY - mouseStart.y);
-
-            if (newX !== lastSent.x || newY !== lastSent.y) {
-              lastSent.x = newX;
-              lastSent.y = newY;
-              invoke("set_overlay_position", { x: newX, y: newY }).catch(() => {});
-            }
+            const newX = winStart.x + (ev.screenX - mouseStart.x);
+            const newY = winStart.y + (ev.screenY - mouseStart.y);
+            overlayWindow.setPosition(new LogicalPosition(newX, newY)).catch(() => {});
           };
 
           const handleMouseUp = () => {
