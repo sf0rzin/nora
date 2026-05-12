@@ -12,6 +12,7 @@ import br.com.nora.api.application.ports.IamRepository;
 import br.com.nora.api.application.ports.InvitationRepository;
 import br.com.nora.api.application.ports.JwtIssuer;
 import br.com.nora.api.application.ports.PasswordHasher;
+import br.com.nora.api.application.ports.RefreshTokenRepository;
 import br.com.nora.api.application.ports.SecureTokenGenerator;
 import br.com.nora.api.application.ports.TenantRepository;
 import br.com.nora.api.application.ports.UserRepository;
@@ -23,6 +24,7 @@ import br.com.nora.api.domain.iam.IamPolicy;
 import br.com.nora.api.domain.iam.InvitationStatus;
 import br.com.nora.api.domain.iam.PolicyStatement;
 import br.com.nora.api.domain.identity.Email;
+import br.com.nora.api.domain.identity.RefreshToken;
 import br.com.nora.api.domain.identity.User;
 import br.com.nora.api.domain.identity.UserStatus;
 import br.com.nora.api.domain.tenant.Tenant;
@@ -62,6 +64,7 @@ class InvitationServiceTest {
     private FakeTokenGenerator tokens;
     private PlainHasher hasher;
     private FakeJwtIssuer jwt;
+    private InMemoryRefreshTokenRepo refreshTokens;
     private InvitationService service;
 
     @BeforeEach
@@ -75,6 +78,7 @@ class InvitationServiceTest {
         tokens = new FakeTokenGenerator();
         hasher = new PlainHasher();
         jwt = new FakeJwtIssuer();
+        refreshTokens = new InMemoryRefreshTokenRepo();
 
         Tenant tenant =
                 new Tenant(
@@ -114,7 +118,8 @@ class InvitationServiceTest {
                         fixedNow));
 
         InvitationSettings settings =
-                new InvitationSettings("http://localhost:3000", Duration.ofHours(1));
+                new InvitationSettings(
+                        "http://localhost:3000", Duration.ofMinutes(15), Duration.ofDays(30));
         service =
                 new InvitationService(
                         invitations,
@@ -125,6 +130,7 @@ class InvitationServiceTest {
                         hasher,
                         mail,
                         jwt,
+                        refreshTokens,
                         clock,
                         settings);
     }
@@ -313,6 +319,31 @@ class InvitationServiceTest {
         boolean hasAcceptedAudit =
                 iam.audits.stream().anyMatch(a -> a.action.equals("iam.invite.accepted"));
         assertThat(hasAcceptedAudit).isTrue();
+    }
+
+    @Test
+    void accept_issuesAccessAndRefreshTokenPair() {
+        IamInvitation inv = service.inviteUser(tenantId, invitedBy, "carol@acme.com", Set.of(), 7);
+
+        AcceptResult result = service.acceptInvite(inv.token(), "Carol", "SenhaForte123");
+
+        // Par access+refresh emitido.
+        assertThat(result.accessToken()).isNotBlank();
+        assertThat(result.expiresInSeconds()).isEqualTo(Duration.ofMinutes(15).toSeconds());
+        assertThat(result.refreshTokenPlain()).isNotBlank();
+        assertThat(result.refreshExpiresInSeconds()).isEqualTo(Duration.ofDays(30).toSeconds());
+
+        // Refresh persistido como HASH (nao plain).
+        assertThat(refreshTokens.all)
+                .hasSize(1)
+                .allSatisfy(
+                        rt -> {
+                            assertThat(rt.tokenHash())
+                                    .isEqualTo(tokens.hash(result.refreshTokenPlain()));
+                            assertThat(rt.tokenHash()).isNotEqualTo(result.refreshTokenPlain());
+                            assertThat(rt.userId()).isEqualTo(result.user().id());
+                            assertThat(rt.tenantId()).isEqualTo(tenantId);
+                        });
     }
 
     @Test
@@ -804,6 +835,39 @@ class InvitationServiceTest {
         @Override
         public List<IamAuditEvent> listAudit(UUID tenantId, OffsetDateTime since, int limit) {
             throw new UnsupportedOperationException();
+        }
+    }
+
+    static class InMemoryRefreshTokenRepo implements RefreshTokenRepository {
+        final List<RefreshToken> all = new ArrayList<>();
+
+        @Override
+        public RefreshToken save(RefreshToken token) {
+            all.removeIf(t -> t.id().equals(token.id()));
+            all.add(token);
+            return token;
+        }
+
+        @Override
+        public Optional<RefreshToken> findByTokenHash(String hash) {
+            return all.stream().filter(t -> t.tokenHash().equals(hash)).findFirst();
+        }
+
+        @Override
+        public List<RefreshToken> findActiveByUserId(UUID userId) {
+            return all.stream().filter(t -> t.userId().equals(userId) && !t.isRevoked()).toList();
+        }
+
+        @Override
+        public int revokeAllByUserId(UUID userId, Instant now) {
+            int count = 0;
+            for (RefreshToken t : all) {
+                if (t.userId().equals(userId) && !t.isRevoked()) {
+                    t.revoke(now);
+                    count++;
+                }
+            }
+            return count;
         }
     }
 }

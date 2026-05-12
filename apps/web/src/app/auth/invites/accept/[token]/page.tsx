@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * Pagina publica de aceite de convite (US06, ADR 0011).
@@ -17,10 +17,10 @@
  *  - Mensagens de erro sao mapeadas por status HTTP (404/409/410/422/403).
  */
 
-import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
-import { ApiRequestError, acceptInvite } from "@/lib/api/client";
-import { setSession } from "@/lib/auth";
+import { useParams, useRouter } from 'next/navigation';
+import { useState } from 'react';
+import { ApiRequestError, acceptInvite } from '@/lib/api/client';
+import { setSession } from '@/lib/auth';
 
 // Espelha br.com.nora.api.domain.identity.PasswordPolicy.
 const PASSWORD_MIN = 10;
@@ -38,38 +38,38 @@ function validatePassword(raw: string): string | null {
     else if (/[0-9]/.test(c)) hasDigit = true;
     if (hasLetter && hasDigit) break;
   }
-  if (!hasLetter || !hasDigit) return "A senha deve conter letras e numeros.";
+  if (!hasLetter || !hasDigit) return 'A senha deve conter letras e numeros.';
   return null;
 }
 
 function mapAcceptError(err: unknown): string {
   if (!(err instanceof ApiRequestError)) {
-    return "Erro ao aceitar o convite. Tente novamente.";
+    return 'Erro ao aceitar o convite. Tente novamente.';
   }
   switch (err.status) {
     case 404:
-      return "Convite nao encontrado ou link invalido.";
+      return 'Convite nao encontrado ou link invalido.';
     case 409:
-      return "Este convite ja foi aceito.";
+      return 'Este convite ja foi aceito.';
     case 410:
-      return "Convite expirou. Solicite um novo ao administrador.";
+      return 'Convite expirou. Solicite um novo ao administrador.';
     case 422:
-      return err.payload?.message ?? "Dados invalidos.";
+      return err.payload?.message ?? 'Dados invalidos.';
     case 403:
-      return "Acesso negado.";
+      return 'Acesso negado.';
     default:
-      return "Erro ao aceitar o convite. Tente novamente.";
+      return 'Erro ao aceitar o convite. Tente novamente.';
   }
 }
 
 export default function AcceptInvitePage() {
   const params = useParams<{ token: string }>();
   const router = useRouter();
-  const token = typeof params?.token === "string" ? params.token : "";
+  const token = typeof params?.token === 'string' ? params.token : '';
 
-  const [displayName, setDisplayName] = useState("");
-  const [password, setPassword] = useState("");
-  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [displayName, setDisplayName] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -78,7 +78,7 @@ export default function AcceptInvitePage() {
     setError(null);
 
     if (!token) {
-      setError("Convite nao encontrado ou link invalido.");
+      setError('Convite nao encontrado ou link invalido.');
       return;
     }
 
@@ -94,7 +94,7 @@ export default function AcceptInvitePage() {
       return;
     }
     if (password !== passwordConfirm) {
-      setError("As senhas nao coincidem.");
+      setError('As senhas nao coincidem.');
       return;
     }
 
@@ -105,7 +105,6 @@ export default function AcceptInvitePage() {
         ...(trimmedName.length > 0 ? { displayName: trimmedName } : {}),
       });
       setSession(
-        resp.accessToken,
         {
           userId: resp.userId,
           tenantId: resp.tenantId,
@@ -114,7 +113,7 @@ export default function AcceptInvitePage() {
         },
         resp.expiresInSeconds,
       );
-      router.push("/dashboard");
+      router.push('/dashboard');
       router.refresh();
     } catch (err) {
       setError(mapAcceptError(err));
@@ -127,9 +126,7 @@ export default function AcceptInvitePage() {
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
       <div className="space-y-1">
         <h2 className="text-lg font-medium text-slate-800">Aceitar convite</h2>
-        <p className="text-sm text-slate-500">
-          Crie sua senha para acessar o tenant.
-        </p>
+        <p className="text-sm text-slate-500">Crie sua senha para acessar o tenant.</p>
       </div>
 
       <div className="space-y-1.5">
@@ -204,7 +201,7 @@ export default function AcceptInvitePage() {
         disabled={loading}
         className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
       >
-        {loading ? "Aceitando..." : "Aceitar convite"}
+        {loading ? 'Aceitando...' : 'Aceitar convite'}
       </button>
     </form>
   );

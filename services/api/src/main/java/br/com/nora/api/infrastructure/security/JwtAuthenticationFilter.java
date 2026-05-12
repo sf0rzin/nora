@@ -1,8 +1,10 @@
 package br.com.nora.api.infrastructure.security;
 
+import br.com.nora.api.api.security.AuthCookies;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -13,7 +15,17 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** Le o header Authorization: Bearer <jwt> e popula o SecurityContext quando valido. */
+/**
+ * Le credencial de acesso de duas fontes (ordem de prioridade):
+ *
+ * <ol>
+ *   <li>Header {@code Authorization: Bearer <jwt>} — back-compat com clientes antigos e CLI/MCP.
+ *   <li>Cookie httpOnly {@value AuthCookies#ACCESS_COOKIE} — fluxo novo do web (Round 2 / 1.3 A).
+ * </ol>
+ *
+ * <p>Aceitar ambos durante a migracao do web evita janela quebrada e nao baixa a barra de
+ * seguranca: o cookie e {@code HttpOnly+SameSite}, e o header continua exigindo posse.
+ */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -30,20 +42,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(
             HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
-        String header = req.getHeader(HEADER);
-        if (header != null && header.startsWith(PREFIX)) {
-            String token = header.substring(PREFIX.length()).trim();
+        String token = extractBearer(req);
+        if (token == null) {
+            token = extractAccessCookie(req);
+        }
+        if (token != null && !token.isBlank()) {
             try {
                 AuthenticatedPrincipal principal = jwtIssuer.parse(token);
                 List<SimpleGrantedAuthority> authorities =
                         principal.roles().stream()
                                 .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
                                 .toList();
+                final String credential = token;
                 AbstractAuthenticationToken auth =
                         new AbstractAuthenticationToken(authorities) {
                             @Override
                             public Object getCredentials() {
-                                return token;
+                                return credential;
                             }
 
                             @Override
@@ -60,5 +75,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
         chain.doFilter(req, res);
+    }
+
+    private static String extractBearer(HttpServletRequest req) {
+        String header = req.getHeader(HEADER);
+        if (header != null && header.startsWith(PREFIX)) {
+            return header.substring(PREFIX.length()).trim();
+        }
+        return null;
+    }
+
+    private static String extractAccessCookie(HttpServletRequest req) {
+        Cookie[] all = req.getCookies();
+        if (all == null) {
+            return null;
+        }
+        for (Cookie c : all) {
+            if (AuthCookies.ACCESS_COOKIE.equals(c.getName())) {
+                return c.getValue();
+            }
+        }
+        return null;
     }
 }
