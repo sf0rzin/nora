@@ -30,7 +30,11 @@ export function LoginPage() {
       setAuthUser(user);
     } catch (err: unknown) {
       console.error("Login error:", err);
-      const msg = err instanceof Error ? err.message : JSON.stringify(err);
+      const msg =
+        err instanceof Error
+          ? err.message
+          : (err as Record<string, unknown>)?.message?.toString() ||
+            JSON.stringify(err);
       setError(msg || "Erro ao fazer login.");
     } finally {
       setLoading(false);
