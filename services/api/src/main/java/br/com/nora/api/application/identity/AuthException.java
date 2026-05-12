@@ -6,6 +6,7 @@ public sealed class AuthException extends RuntimeException
                 AuthException.InvalidCredentials,
                 AuthException.EmailNotVerified,
                 AuthException.TokenInvalid,
+                AuthException.RefreshTokenInvalid,
                 AuthException.UserDisabled {
 
     private final String code;
@@ -40,6 +41,17 @@ public sealed class AuthException extends RuntimeException
     public static final class TokenInvalid extends AuthException {
         public TokenInvalid() {
             super("TOKEN_INVALID", "Token is invalid, expired or already used.");
+        }
+    }
+
+    /**
+     * Refresh token nao encontrado, expirado ou revogado. Distinto de {@link TokenInvalid} (usado
+     * pra one-time tokens de e-mail/reset) porque dispara um fluxo de logout no client, nao um 400
+     * com retry humano.
+     */
+    public static final class RefreshTokenInvalid extends AuthException {
+        public RefreshTokenInvalid() {
+            super("REFRESH_TOKEN_INVALID", "Refresh token is invalid, expired or revoked.");
         }
     }
 

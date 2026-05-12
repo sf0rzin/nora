@@ -8,6 +8,7 @@ import br.com.nora.api.application.ports.IamRepository;
 import br.com.nora.api.application.ports.InvitationRepository;
 import br.com.nora.api.application.ports.JwtIssuer;
 import br.com.nora.api.application.ports.PasswordHasher;
+import br.com.nora.api.application.ports.RefreshTokenRepository;
 import br.com.nora.api.application.ports.SecureTokenGenerator;
 import br.com.nora.api.application.ports.TenantRepository;
 import br.com.nora.api.application.ports.UserRepository;
@@ -23,8 +24,10 @@ public class InvitationConfig {
     @Bean
     public InvitationSettings invitationSettings(
             @Value("${nora.frontend.base-url:http://localhost:3000}") String frontendBaseUrl,
-            @Value("${nora.security.jwt.expires-seconds:3600}") long jwtTtl) {
-        return new InvitationSettings(frontendBaseUrl, Duration.ofSeconds(jwtTtl));
+            @Value("${nora.security.jwt.expires-seconds:900}") long jwtTtl,
+            @Value("${nora.security.refresh-token.expires-seconds:2592000}") long refreshTtl) {
+        return new InvitationSettings(
+                frontendBaseUrl, Duration.ofSeconds(jwtTtl), Duration.ofSeconds(refreshTtl));
     }
 
     @Bean
@@ -37,6 +40,7 @@ public class InvitationConfig {
             PasswordHasher passwordHasher,
             EmailSender emailSender,
             JwtIssuer jwtIssuer,
+            RefreshTokenRepository refreshTokenRepository,
             Clock clock,
             InvitationSettings settings) {
         return new InvitationService(
@@ -48,6 +52,7 @@ public class InvitationConfig {
                 passwordHasher,
                 emailSender,
                 jwtIssuer,
+                refreshTokenRepository,
                 clock,
                 settings);
     }
