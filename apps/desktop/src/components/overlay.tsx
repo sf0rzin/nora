@@ -1,7 +1,6 @@
 import { useLiveHighlights } from "@/hooks/use-live-highlights";
 import { listen } from "@tauri-apps/api/event";
 import { useState, useEffect } from "react";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 function formatTimeAgo(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -103,6 +102,18 @@ function TaskSection({
 
 export function OverlayPage() {
   const { highlights, lastUpdatedAt, lastLatencyMs, isAnalyzing } = useLiveHighlights();
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-tauri-drag-region]")) {
+        console.log("[overlay-debug] mousedown on drag region", e.clientX, e.clientY);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    console.log("[overlay-debug] mounted, window.__TAURI__?", !!(window as any).__TAURI__);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
   const [recordingStatus, setRecordingStatus] = useState<{
     isRecording: boolean;
   } | null>(null);
@@ -145,10 +156,7 @@ export function OverlayPage() {
       className="h-screen flex flex-col bg-zinc-900/95 backdrop-blur-sm text-zinc-100 select-none overflow-hidden rounded-xl border border-zinc-700/50"
     >
       <div
-        onMouseDown={async () => {
-          const overlay = await WebviewWindow.getByLabel("overlay");
-          overlay?.startDragging().catch(() => {});
-        }}
+        data-tauri-drag-region
         className="flex items-center justify-between px-3 py-2 bg-zinc-900 border-b border-zinc-800 cursor-move"
       >
         <div className="flex items-center gap-2 text-xs font-medium">
