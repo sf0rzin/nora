@@ -50,6 +50,8 @@ public class SecurityConfig {
         "/auth/login",
         "/auth/password/reset/request",
         "/auth/password/reset/confirm",
+        // US06: aceite de convite usa o token como credencial — endpoint publico por design.
+        "/iam/invites/*/accept",
         "/v3/api-docs/**",
         "/swagger-ui/**",
         "/swagger-ui.html"

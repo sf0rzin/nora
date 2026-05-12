@@ -74,6 +74,19 @@ public class ResendEmailSender implements EmailSender {
                         .formatted(escape(displayName), resetLink, btnStyle));
     }
 
+    @Override
+    public void sendInvitation(
+            String toEmail,
+            String tenantName,
+            String invitedByName,
+            String acceptUrl,
+            int expiresInDays) {
+        String body =
+                br.com.nora.api.application.iam.InviteEmailTemplate.render(
+                        tenantName, invitedByName, toEmail, acceptUrl, expiresInDays);
+        send(toEmail, "Convite NORA - " + tenantName, body);
+    }
+
     private void send(String to, String subject, String html) {
         Map<String, Object> body =
                 Map.of("from", fromAddress, "to", to, "subject", subject, "html", html);
