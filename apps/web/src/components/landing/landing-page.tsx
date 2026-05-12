@@ -7,6 +7,9 @@ import { HeroLiveDemo } from "./hero-live-demo";
 import { ProblemSection } from "./problem-section";
 import { SurfacesSection } from "./surfaces-section";
 import { ProductContextSection } from "./product-context-section";
+import { HealthScoreSection } from "./health-score-section";
+import { IAMSection } from "./iam-section";
+import { CTASection } from "./cta-section";
 import { LandingFooter } from "./landing-footer";
 import styles from "./landing.module.css";
 
@@ -15,8 +18,8 @@ import styles from "./landing.module.css";
  * (linhas 967-983). Wrapper client porque executa useReveal/useMagnetic
  * (DOM queries via IntersectionObserver e mousemove listeners).
  *
- * Seções restantes (HealthScore, IAM, CTA) são adicionadas em commits
- * subsequentes.
+ * Ordem: Nav · Hero · hr · Problem · hr · Surfaces · hr · ProductContext
+ *      · hr · HealthScore · hr · IAM · CTA · Footer.
  */
 export function LandingPage() {
   useReveal();
@@ -38,6 +41,17 @@ export function LandingPage() {
         <hr className="hr container" />
         <div className="reveal">
           <ProductContextSection />
+        </div>
+        <hr className="hr container" />
+        <div className="reveal">
+          <HealthScoreSection />
+        </div>
+        <hr className="hr container" />
+        <div className="reveal">
+          <IAMSection />
+        </div>
+        <div className="reveal">
+          <CTASection />
         </div>
       </main>
       <LandingFooter />
