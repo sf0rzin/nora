@@ -7,6 +7,7 @@ import br.com.nora.api.application.ports.IamRepository;
 import br.com.nora.api.application.ports.InvitationRepository;
 import br.com.nora.api.application.ports.JwtIssuer;
 import br.com.nora.api.application.ports.PasswordHasher;
+import br.com.nora.api.application.ports.RefreshTokenRepository;
 import br.com.nora.api.application.ports.SecureTokenGenerator;
 import br.com.nora.api.application.ports.SecureTokenGenerator.GeneratedToken;
 import br.com.nora.api.application.ports.TenantRepository;
@@ -16,6 +17,7 @@ import br.com.nora.api.domain.iam.IamInvitation;
 import br.com.nora.api.domain.iam.InvitationStatus;
 import br.com.nora.api.domain.identity.Email;
 import br.com.nora.api.domain.identity.PasswordPolicy;
+import br.com.nora.api.domain.identity.RefreshToken;
 import br.com.nora.api.domain.identity.User;
 import br.com.nora.api.domain.tenant.Tenant;
 import java.time.Duration;
@@ -61,6 +63,7 @@ public class InvitationService {
     private final PasswordHasher passwordHasher;
     private final EmailSender emailSender;
     private final JwtIssuer jwtIssuer;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final Clock clock;
     private final InvitationSettings settings;
 
@@ -73,6 +76,7 @@ public class InvitationService {
             PasswordHasher passwordHasher,
             EmailSender emailSender,
             JwtIssuer jwtIssuer,
+            RefreshTokenRepository refreshTokenRepository,
             Clock clock,
             InvitationSettings settings) {
         this.invitations = invitations;
@@ -83,6 +87,7 @@ public class InvitationService {
         this.passwordHasher = passwordHasher;
         this.emailSender = emailSender;
         this.jwtIssuer = jwtIssuer;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.clock = clock;
         this.settings = settings;
     }
@@ -257,10 +262,24 @@ public class InvitationService {
                 accepted.id(),
                 auditPayload);
 
-        // Emite JWT (mesmo formato de AuthController.login). Roles default: vazia — IAM via
-        // policies.
+        // Emite par access+refresh (Round 2 / Subfase 1.3 A): mesmo formato de AuthService.login.
+        // Roles default: vazia — IAM via policies.
         String jwt = jwtIssuer.issue(savedUser, List.of(), settings.jwtTtl());
-        return new AcceptResult(savedUser, jwt, settings.jwtTtl().toSeconds());
+        GeneratedToken refresh = tokenGenerator.generate();
+        refreshTokenRepository.save(
+                RefreshToken.issue(
+                        UUID.randomUUID(),
+                        savedUser.id(),
+                        savedUser.tenantId(),
+                        refresh.hash(),
+                        now,
+                        now.plus(settings.refreshTokenTtl())));
+        return new AcceptResult(
+                savedUser,
+                jwt,
+                settings.jwtTtl().toSeconds(),
+                refresh.rawToken(),
+                settings.refreshTokenTtl().toSeconds());
     }
 
     /**
@@ -356,9 +375,23 @@ public class InvitationService {
         return users.findById(userId).map(User::displayName).orElse("Administrador");
     }
 
-    /** Resultado do aceite: principal + token + ttl. */
-    public record AcceptResult(User user, String accessToken, long expiresInSeconds) {}
+    /**
+     * Resultado do aceite: principal + par access(JWT)+refresh(opaque) + TTLs. O refresh em {@code
+     * refreshTokenPlain} so existe na resposta inicial e no cookie httpOnly que o controller seta;
+     * em DB persiste apenas o hash.
+     */
+    public record AcceptResult(
+            User user,
+            String accessToken,
+            long expiresInSeconds,
+            String refreshTokenPlain,
+            long refreshExpiresInSeconds) {}
 
-    /** Configuracao injetada (mantem o servico free of Spring). */
-    public record InvitationSettings(String frontendBaseUrl, Duration jwtTtl) {}
+    /**
+     * Configuracao injetada (mantem o servico free of Spring). Round 2 / Subfase 1.3 A adiciona
+     * {@code refreshTokenTtl} para alinhar a janela do refresh emitido no aceite com a do login
+     * regular.
+     */
+    public record InvitationSettings(
+            String frontendBaseUrl, Duration jwtTtl, Duration refreshTokenTtl) {}
 }
