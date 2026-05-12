@@ -21,6 +21,7 @@ import {
   removeGroupMember,
 } from "@/lib/api/client";
 import PolicyEditor from "@/components/policy-editor";
+import CorporateDomainCard from "@/components/corporate-domain-card";
 
 const POLICY_PLACEHOLDER = `{
   "version": "2026-05-07",
@@ -100,6 +101,9 @@ export default function IamPage() {
           {error}
         </p>
       )}
+
+      {/* ===== Corporate Domain (US32) ===== */}
+      <CorporateDomainCard />
 
       {/* ===== Groups ===== */}
       <section className="space-y-3">
