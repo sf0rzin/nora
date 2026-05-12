@@ -1,0 +1,84 @@
+Reunião: QBR Q1/2026 — Northwind × Plataforma Saúde Conectada
+Data: 2026-04-22
+Horário: 11:00 — 12:08
+Participantes: Camila Rondon (Northwind — CSM Sênior), Vinícius Sotero (Saúde Conectada — CTO), Luísa Vergara (Saúde Conectada — Diretora Financeira), Rafael Tavares (Northwind — Key Account)
+
+Camila: Bom dia pessoal. Obrigada pela disponibilidade. Esse é nosso primeiro QBR do ano, então deixa eu rapidamente alinhar a pauta. A ideia é fazer review do Q1, olhar para frente o Q2, ouvir o que tá funcionando e o que não tá, e alinhar ações pros próximos 90 dias. Vinícius, Luísa, faz sentido?
+
+Vinícius: Faz total sentido. Bom dia.
+
+Luísa: Bom dia Camila, Rafael. Pode mandar.
+
+Camila: Beleza. Começo pelos números. Vocês fecharam Q1 com TPV de R$ 38.500.000,00, o que tá 12% acima da meta que a gente combinou em janeiro, que era R$ 34.500.000,00. Parabéns.
+
+Vinícius: Valeu. Foi um trimestre forte. A campanha de adesão no SUS particular puxou bastante.
+
+Camila: Excelente. Do lado de uso do Reconcile, vocês conciliaram automaticamente 96,8% das transações, com 1.247 casos em revisão manual no trimestre. Comparando com a média de mercado de 89%, vocês tão bem acima.
+
+Luísa: Isso ajuda a defender o investimento internamente, Camila. Tem como você me mandar esse benchmark depois?
+
+Camila: Mando. Vou anexar no e-mail de follow-up junto com os outros números.
+
+Rafael: Camila, posso completar uma coisa? Luísa, dos 1.247 casos de revisão manual, a gente analisou aqui e 78% foram concentrados em duas adquirentes específicas, a Aqua e a Brisa. Tem um padrão de inconsistência no callback delas que a gente já reportou pra elas. Vou te mandar separado.
+
+Luísa: Boa, isso me ajuda a saber se cobramos crédito com elas.
+
+Camila: Continuando. Chargebacks. Vocês tiveram 84 chargebacks no Q1, totalizando R$ 412.000,00. Desses, 67 foram contestados via Northwind Risk dentro do SLA de 4 horas, e 41 foram revertidos. Isso recuperou R$ 198.000,00 pra vocês no trimestre.
+
+Vinícius: 41 revertidos de 67 é uma taxa boa. A gente teve revertido melhor que isso?
+
+Camila: Em Q4/2025 vocês tiveram 49% de reversão. Q1 ficou em 61%. Subiu por causa das regras novas de antifraude que a Marcela implementou em fevereiro.
+
+Vinícius: Boa. Vou levar pra ela.
+
+Camila: Ok, indo pros pontos de atenção do trimestre. A gente teve um incidente em 14/03/2026 onde o roteamento de cartão ficou degradado por 47 minutos, das 11h13 às 12h00. Impacto pra vocês foi de aproximadamente R$ 78.000,00 em tentativas com fallback bem-sucedido e R$ 12.000,00 em transações realmente perdidas.
+
+Luísa: Lembro disso. Vocês mandaram o post-mortem em 18/03. Pediram desconto?
+
+Camila: Aplicamos crédito de R$ 12.000,00 no faturamento de abril, que é o valor da perda direta. Sem custo de SLA, foi gesto de boa-fé.
+
+Luísa: Vi, obrigada.
+
+Camila: Agora olhando pra frente, Q2 e Q3. Vocês comunicaram em janeiro que iam expandir pra três novos estados em junho. Como tá esse plano?
+
+Vinícius: Tá de pé. A gente vai abrir Bahia, Pernambuco e Ceará em 01/06/2026. Projeção é adicionar R$ 8 a R$ 12 milhões de TPV mensal até dezembro.
+
+Camila: Excelente. Do lado nosso, a gente precisa preparar duas coisas. Primeira, capacidade de processamento, mas isso é transparente pra vocês, a gente só atualiza limites no backend. Segunda, vocês vão querer adquirentes regionais, tipo a Sertão Pay e a Calmaria, que tem boa penetração no Nordeste. A gente já tem integração com a Sertão, e com a Calmaria a gente tá em homologação, fica pronta em maio.
+
+Vinícius: Sertão a gente já tinha mapeado. Calmaria também. Se ficar pronta em maio, vocês cobrem nossa expansão.
+
+Rafael: Vai cobrir. Eu te mando o cronograma de homologação Calmaria depois.
+
+Camila: Outra coisa pro Q2. Vocês mencionaram em fevereiro interesse em explorar o Northwind Risk com regras customizadas pelo segmento de saúde. Quer falar disso agora ou agendamos separado?
+
+Vinícius: Posso falar agora rápido. A dor é: a gente vê fraude crescendo em telessaúde, principalmente em emissão de receita digital paga. Tem um padrão que o nosso time identifica, mas o sistema atual não consegue expressar a regra sem custom code.
+
+Camila: O Risk tem editor de regras sem código justamente pra isso. Você pode definir, sei lá, "se origem é telessaúde, valor abaixo de R$ 200,00, e cliente tem menos de 30 dias de cadastro, então escore +40". Coisas assim, encadeáveis.
+
+Vinícius: Isso resolveria.
+
+Camila: Ok. Eu marco com a Marcela, sua tech lead, uma sessão técnica do Risk pra próxima semana. Ela pode validar se faz sentido.
+
+Vinícius: Pode.
+
+Luísa: Camila, do lado comercial. A gente tá no segundo ano de contrato, vence em 31/12/2026. A gente já pode começar a conversa de renovação?
+
+Rafael: Pode, e agradeço você puxar agora. Eu sugiro a gente fazer uma proposta de renovação até 30/06/2026, com base no TPV atual e na projeção de crescimento que o Vinícius compartilhou. Aí vocês têm seis meses pra avaliar com calma.
+
+Luísa: Perfeito.
+
+Camila: Tem mais algum ponto que vocês querem trazer? Algo que tá ruim e que ninguém mencionou?
+
+Vinícius: Uma coisa. A documentação da API de webhook tá um pouco desatualizada. Tem um endpoint novo de retry inteligente que ninguém do meu time achou na doc. Achei só pelo Slack do parceiro.
+
+Camila: Anotado. Vou levar pro time de DevRel essa semana. Você consegue me apontar qual endpoint?
+
+Vinícius: Mando depois. É o de exponential backoff configurável.
+
+Camila: Anotado. Resumindo as ações então. Um, eu mando benchmark de mercado de conciliação pra Luísa essa semana. Dois, Rafael manda cronograma de homologação Calmaria. Três, agendamos sessão técnica de Risk com a Marcela na próxima semana. Quatro, Rafael envia proposta de renovação até 30/06. Cinco, eu levo pro DevRel o problema da doc de webhook. Próximo QBR em 22/07/2026?
+
+Vinícius: Combinado.
+
+Luísa: Combinado. Obrigada pessoal.
+
+Camila: Até.

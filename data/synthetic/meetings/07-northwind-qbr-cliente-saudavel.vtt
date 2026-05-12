@@ -1,0 +1,166 @@
+WEBVTT
+NOTE
+Reunião: QBR Q1/2026 — Northwind × Plataforma Saúde Conectada
+Data: 2026-04-22
+Horário: 11:00 — 12:08
+Participantes: Camila Rondon (Northwind — CSM Sênior), Vinícius Sotero (Saúde Conectada — CTO), Luísa Vergara (Saúde Conectada — Diretora Financeira), Rafael Tavares (Northwind — Key Account)
+
+1
+00:00:01.500 --> 00:00:23.700
+<v Camila>Bom dia pessoal. Obrigada pela disponibilidade. Esse é nosso primeiro QBR do ano, então deixa eu rapidamente alinhar a pauta. A ideia é fazer review do Q1, olhar para frente o Q2, ouvir o que tá funcionando e o que não tá, e alinhar ações pros próximos 90 dias. Vinícius, Luísa, faz sentido?
+
+2
+00:00:24.200 --> 00:00:27.500
+<v Vinícius>Faz total sentido. Bom dia.
+
+3
+00:00:28.000 --> 00:00:33.400
+<v Luísa>Bom dia Camila, Rafael. Pode mandar.
+
+4
+00:00:33.900 --> 00:00:52.800
+<v Camila>Beleza. Começo pelos números. Vocês fecharam Q1 com TPV de R$ 38.500.000,00, o que tá 12% acima da meta que a gente combinou em janeiro, que era R$ 34.500.000,00. Parabéns.
+
+5
+00:00:53.300 --> 00:01:02.700
+<v Vinícius>Valeu. Foi um trimestre forte. A campanha de adesão no SUS particular puxou bastante.
+
+6
+00:01:03.200 --> 00:01:21.900
+<v Camila>Excelente. Do lado de uso do Reconcile, vocês conciliaram automaticamente 96,8% das transações, com 1.247 casos em revisão manual no trimestre. Comparando com a média de mercado de 89%, vocês tão bem acima.
+
+7
+00:01:22.400 --> 00:01:34.700
+<v Luísa>Isso ajuda a defender o investimento internamente, Camila. Tem como você me mandar esse benchmark depois?
+
+8
+00:01:35.200 --> 00:01:44.500
+<v Camila>Mando. Vou anexar no e-mail de follow-up junto com os outros números.
+
+9
+00:01:45.000 --> 00:02:09.800
+<v Rafael>Camila, posso completar uma coisa? Luísa, dos 1.247 casos de revisão manual, a gente analisou aqui e 78% foram concentrados em duas adquirentes específicas, a Aqua e a Brisa. Tem um padrão de inconsistência no callback delas que a gente já reportou pra elas. Vou te mandar separado.
+
+10
+00:02:10.300 --> 00:02:16.700
+<v Luísa>Boa, isso me ajuda a saber se cobramos crédito com elas.
+
+11
+00:02:17.200 --> 00:02:42.300
+<v Camila>Continuando. Chargebacks. Vocês tiveram 84 chargebacks no Q1, totalizando R$ 412.000,00. Desses, 67 foram contestados via Northwind Risk dentro do SLA de 4 horas, e 41 foram revertidos. Isso recuperou R$ 198.000,00 pra vocês no trimestre.
+
+12
+00:02:42.800 --> 00:02:52.200
+<v Vinícius>41 revertidos de 67 é uma taxa boa. A gente teve revertido melhor que isso?
+
+13
+00:02:52.700 --> 00:03:09.500
+<v Camila>Em Q4/2025 vocês tiveram 49% de reversão. Q1 ficou em 61%. Subiu por causa das regras novas de antifraude que a Marcela implementou em fevereiro.
+
+14
+00:03:10.000 --> 00:03:13.400
+<v Vinícius>Boa. Vou levar pra ela.
+
+15
+00:03:13.900 --> 00:03:39.200
+<v Camila>Ok, indo pros pontos de atenção do trimestre. A gente teve um incidente em 14/03/2026 onde o roteamento de cartão ficou degradado por 47 minutos, das 11h13 às 12h00. Impacto pra vocês foi de aproximadamente R$ 78.000,00 em tentativas com fallback bem-sucedido e R$ 12.000,00 em transações realmente perdidas.
+
+16
+00:03:39.700 --> 00:03:48.500
+<v Luísa>Lembro disso. Vocês mandaram o post-mortem em 18/03. Pediram desconto?
+
+17
+00:03:49.000 --> 00:04:04.700
+<v Camila>Aplicamos crédito de R$ 12.000,00 no faturamento de abril, que é o valor da perda direta. Sem custo de SLA, foi gesto de boa-fé.
+
+18
+00:04:05.200 --> 00:04:09.300
+<v Luísa>Vi, obrigada.
+
+19
+00:04:09.800 --> 00:04:25.800
+<v Camila>Agora olhando pra frente, Q2 e Q3. Vocês comunicaram em janeiro que iam expandir pra três novos estados em junho. Como tá esse plano?
+
+20
+00:04:26.300 --> 00:04:42.400
+<v Vinícius>Tá de pé. A gente vai abrir Bahia, Pernambuco e Ceará em 01/06/2026. Projeção é adicionar R$ 8 a R$ 12 milhões de TPV mensal até dezembro.
+
+21
+00:04:42.900 --> 00:05:13.700
+<v Camila>Excelente. Do lado nosso, a gente precisa preparar duas coisas. Primeira, capacidade de processamento, mas isso é transparente pra vocês, a gente só atualiza limites no backend. Segunda, vocês vão querer adquirentes regionais, tipo a Sertão Pay e a Calmaria, que tem boa penetração no Nordeste. A gente já tem integração com a Sertão, e com a Calmaria a gente tá em homologação, fica pronta em maio.
+
+22
+00:05:14.200 --> 00:05:25.300
+<v Vinícius>Sertão a gente já tinha mapeado. Calmaria também. Se ficar pronta em maio, vocês cobrem nossa expansão.
+
+23
+00:05:25.800 --> 00:05:32.500
+<v Rafael>Vai cobrir. Eu te mando o cronograma de homologação Calmaria depois.
+
+24
+00:05:33.000 --> 00:05:52.700
+<v Camila>Outra coisa pro Q2. Vocês mencionaram em fevereiro interesse em explorar o Northwind Risk com regras customizadas pelo segmento de saúde. Quer falar disso agora ou agendamos separado?
+
+25
+00:05:53.200 --> 00:06:14.500
+<v Vinícius>Posso falar agora rápido. A dor é: a gente vê fraude crescendo em telessaúde, principalmente em emissão de receita digital paga. Tem um padrão que o nosso time identifica, mas o sistema atual não consegue expressar a regra sem custom code.
+
+26
+00:06:15.000 --> 00:06:37.800
+<v Camila>O Risk tem editor de regras sem código justamente pra isso. Você pode definir, sei lá, "se origem é telessaúde, valor abaixo de R$ 200,00, e cliente tem menos de 30 dias de cadastro, então escore +40". Coisas assim, encadeáveis.
+
+27
+00:06:38.300 --> 00:06:41.500
+<v Vinícius>Isso resolveria.
+
+28
+00:06:42.000 --> 00:06:56.300
+<v Camila>Ok. Eu marco com a Marcela, sua tech lead, uma sessão técnica do Risk pra próxima semana. Ela pode validar se faz sentido.
+
+29
+00:06:56.800 --> 00:06:58.500
+<v Vinícius>Pode.
+
+30
+00:06:59.000 --> 00:07:14.700
+<v Luísa>Camila, do lado comercial. A gente tá no segundo ano de contrato, vence em 31/12/2026. A gente já pode começar a conversa de renovação?
+
+31
+00:07:15.200 --> 00:07:35.400
+<v Rafael>Pode, e agradeço você puxar agora. Eu sugiro a gente fazer uma proposta de renovação até 30/06/2026, com base no TPV atual e na projeção de crescimento que o Vinícius compartilhou. Aí vocês têm seis meses pra avaliar com calma.
+
+32
+00:07:35.900 --> 00:07:37.700
+<v Luísa>Perfeito.
+
+33
+00:07:38.200 --> 00:07:51.300
+<v Camila>Tem mais algum ponto que vocês querem trazer? Algo que tá ruim e que ninguém mencionou?
+
+34
+00:07:51.800 --> 00:08:11.400
+<v Vinícius>Uma coisa. A documentação da API de webhook tá um pouco desatualizada. Tem um endpoint novo de retry inteligente que ninguém do meu time achou na doc. Achei só pelo Slack do parceiro.
+
+35
+00:08:11.900 --> 00:08:25.300
+<v Camila>Anotado. Vou levar pro time de DevRel essa semana. Você consegue me apontar qual endpoint?
+
+36
+00:08:25.800 --> 00:08:33.700
+<v Vinícius>Mando depois. É o de exponential backoff configurável.
+
+37
+00:08:34.200 --> 00:09:11.800
+<v Camila>Anotado. Resumindo as ações então. Um, eu mando benchmark de mercado de conciliação pra Luísa essa semana. Dois, Rafael manda cronograma de homologação Calmaria. Três, agendamos sessão técnica de Risk com a Marcela na próxima semana. Quatro, Rafael envia proposta de renovação até 30/06. Cinco, eu levo pro DevRel o problema da doc de webhook. Próximo QBR em 22/07/2026?
+
+38
+00:09:12.300 --> 00:09:14.500
+<v Vinícius>Combinado.
+
+39
+00:09:15.000 --> 00:09:18.700
+<v Luísa>Combinado. Obrigada pessoal.
+
+40
+00:09:19.200 --> 00:09:20.500
+<v Camila>Até.

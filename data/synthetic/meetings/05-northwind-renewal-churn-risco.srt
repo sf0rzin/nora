@@ -1,0 +1,123 @@
+1
+00:00:01,500 --> 00:00:14,800
+Rafael: Bom dia Pedro, bom dia Cíntia. Valeu pelo tempo. A ideia hoje é discutir a renovação do contrato do Northwind Reconcile, que vence em 31/07/2026.
+
+2
+00:00:15,300 --> 00:00:35,700
+Pedro: Bom dia Rafael. Olha, vou ser direto contigo, porque a gente se conhece há dois anos. A diretoria pediu corte de 20% no custo de fornecedores SaaS pra 2026. Se a gente não chegar nesse número, sinceramente, provavelmente vamos olhar o PayMatch.
+
+3
+00:00:36,200 --> 00:00:56,800
+Rafael: Entendi Pedro. Agradeço a franqueza, sempre. Antes de falar de número, posso te perguntar uma coisa? Como tá o uso do Reconcile hoje? Sei que vocês contrataram pra um TPV de 8 milhões e o último mês fechou em 6.2 milhões.
+
+4
+00:00:57,300 --> 00:01:17,500
+Pedro: É, caímos um pouco. O marketplace tá em transição de categoria, parou de vender material de construção pesado e migrou pra acabamento. Vai voltar a crescer no segundo semestre, mas pra esse trimestre o número tá em baixa.
+
+5
+00:01:18,000 --> 00:01:38,700
+Cíntia: E pra ser justa, Rafael, o sistema atende bem. A conciliação tá funcionando, o relatório fiscal pro SPED Contribuições saiu sem problema no fechamento de março. Mas custo é custo, e a diretoria tá olhando linha por linha.
+
+6
+00:01:39,200 --> 00:02:09,500
+Rafael: Entendi, e agradeço o feedback positivo no produto. Posso propor um modelo? A gente ajusta o pacote pra 6 milhões de TPV agora, com gatilho automático pra subir caso ultrapasse 7 milhões em qualquer mês corrido. Isso reduz o custo fixo e segue cobrindo o crescimento esperado pro segundo semestre.
+
+7
+00:02:10,000 --> 00:02:19,700
+Pedro: Isso ajuda, mas o ajuste de TPV sozinho tira quanto da fatura?
+
+8
+00:02:20,200 --> 00:02:38,500
+Rafael: Sai uns 12%. Pra chegar nos 20% que você precisa, eu posso oferecer mais 10% de desconto se fecharem comprometimento de 24 meses no lugar de 12.
+
+9
+00:02:39,000 --> 00:02:53,700
+Pedro: 24 meses é demais pra gente nesse momento. A diretoria não fecha nada acima de 12, regra dura.
+
+10
+00:02:54,200 --> 00:03:14,500
+Rafael: Entendo. Posso levar internamente uma proposta de 18 meses com desconto de 12% sobre o pacote ajustado, mais o gatilho de TPV. Eu te trago resposta até quarta dia 06/05.
+
+11
+00:03:15,000 --> 00:03:43,800
+Pedro: Beleza. Mas Rafael, sendo bem honesto contigo: se a gente não chegar perto dos 20% até 15/05/2026, eu vou ter que abrir conversa formal com o PayMatch. E o PayMatch já me mandou uma proposta inicial em 14/04. Eles fizeram 22% abaixo do que pago hoje.
+
+12
+00:03:44,300 --> 00:03:59,700
+Rafael: Pedro, posso te perguntar o que eles cobrem no escopo? Porque número sem escopo é difícil comparar.
+
+13
+00:04:00,200 --> 00:04:14,500
+Pedro: É, eles cobrem conciliação multi-adquirente, relatório fiscal e suporte. Sem split de pagamento, porque a gente não usa hoje.
+
+14
+00:04:15,000 --> 00:04:53,800
+Rafael: Ok. Duas coisas pra você considerar antes de avançar com eles. Um, o PayMatch cobre 6 adquirentes hoje, a gente cobre 14. Pra vocês, que usam quatro hoje, talvez não importe agora, mas se quiserem adicionar um novo adquirente no segundo semestre, pode virar custo de integração de uns R$ 35.000,00. Dois, o SLA deles pra chargeback é de 48 horas, o nosso é de 4 horas. Esse ponto a gente já discutiu em fevereiro, quando vocês tiveram aquele pico de chargeback no Carnaval.
+
+15
+00:04:54,300 --> 00:05:12,500
+Pedro: Lembro. Foi uma das coisas que salvou a gente. Foram R$ 380.000,00 em chargeback identificados em quatro horas, deu pra atuar rápido.
+
+16
+00:05:13,000 --> 00:05:32,700
+Cíntia: Pedro, esse ponto eu acho que vale levar pra diretoria também. O custo só de chargeback respondido fora de prazo no PayMatch pode comer parte do desconto.
+
+17
+00:05:33,200 --> 00:05:57,500
+Pedro: Justo. Rafael, traz a proposta de 18 meses com 12% de desconto. Se vier acompanhada de uma comparação de TCO contra o PayMatch incluindo chargeback e adquirentes, ajuda muito a defender internamente.
+
+18
+00:05:58,000 --> 00:06:19,300
+Rafael: Combinado. Mando até dia 06/05, com TCO comparativo de 36 meses. Vou usar dados reais de vocês: o pico de chargeback do Carnaval e a projeção de crescimento do TPV pro semestre.
+
+19
+00:06:19,800 --> 00:06:21,500
+Cíntia: Boa.
+
+20
+00:06:22,000 --> 00:06:43,500
+Pedro: Outra coisa Rafael. Independente da renovação, eu preciso de uma reunião de saúde da conta com vocês a cada três meses a partir de agora. Hoje a gente conversa só quando tem reajuste ou problema. Eu quero proatividade.
+
+21
+00:06:44,000 --> 00:07:06,700
+Rafael: Concordo cem por cento. Posso programar QBR trimestral começando em agosto, depois da renovação? E nesse meio tempo, eu posso te mandar um relatório mensal de uso e benchmark de mercado, pra você acompanhar.
+
+22
+00:07:07,200 --> 00:07:13,500
+Pedro: Perfeito. Já era pra ter, mas ok.
+
+23
+00:07:14,000 --> 00:07:35,700
+Rafael: Anotado e merecido o puxão de orelha. Última pergunta: a Cíntia consegue ficar comigo trinta minutos quinta dia 30/04 pra eu entender melhor o uso operacional do Reconcile? Quero garantir que a proposta nova reflete o que vocês realmente usam.
+
+24
+00:07:36,200 --> 00:07:43,500
+Cíntia: Pode marcar. Quinta às 14h pode?
+
+25
+00:07:44,000 --> 00:08:08,700
+Rafael: Pode. Mando convite. Pedro, sendo bem honesto contigo: se eu não conseguir aprovar 18 meses com 12% internamente, eu volto pra negociar. Não vou deixar morrer por orgulho de margem.
+
+26
+00:08:09,200 --> 00:08:15,500
+Pedro: Agradeço, Rafael. Vamos esperar quarta.
+
+27
+00:08:16,000 --> 00:08:46,700
+Rafael: Combinado então: dia 30/04 reunião operacional com a Cíntia. Dia 06/05 proposta nova e TCO comparativo. Decisão até 15/05, se não chegar, vocês avançam com PayMatch. QBR trimestral programado pós-renovação. Resumi certo?
+
+28
+00:08:47,200 --> 00:08:49,500
+Pedro: Certinho.
+
+29
+00:08:50,000 --> 00:08:54,300
+Rafael: Valeu pessoal. Até quarta.
+
+30
+00:08:54,800 --> 00:08:56,500
+Pedro: Até.
+
+31
+00:08:57,000 --> 00:08:58,500
+Cíntia: Até.

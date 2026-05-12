@@ -1,0 +1,80 @@
+Reunião: Conversa de Expansão — Acme × Plásticos Itacolomy
+Data: 2026-04-28
+Horário: 14:00 — 14:42
+Participantes: Lucas Andrade (Acme — AE), Marina Cardoso (Itacolomy — Diretora de Operações), Felipe Brandão (Itacolomy — Gerente de TI)
+
+Lucas: Boa tarde Marina, boa tarde Felipe. Obrigado pelo tempo. A ideia hoje é entender como vocês estão usando o Acme ERP Core, que está rodando desde 2024 com vocês, e pensar juntos a renovação e possíveis expansões pra 2026.
+
+Marina: Boa tarde Lucas. Olha, do Core a gente tá bem feliz. A parte de NF-e e SPED tá redonda. O time fiscal parou de fazer hora extra desde a implantação, foi o que mais mudou. E a conciliação bancária funcionou direto, sem ajuste fino.
+
+Lucas: Ótimo ouvir isso. E do lado financeiro, como está? A gente conversou no início do ano sobre o Financeiro Pro, vocês chegaram a avaliar?
+
+Marina: Esse é exatamente o ponto. O fluxo de caixa hoje é planilha. O CFO pediu pra resolver isso ainda em 2026, e eu queria entender se o Financeiro Pro entrega previsão de caixa de verdade ou se é só dashboard bonito.
+
+Lucas: Entrega de verdade. Posso te explicar rápido como funciona? A previsão é baseada em três sinais: histórico real de 24 meses, contratos ativos no sistema, e padrões sazonais detectados automaticamente. A gente acerta em média 92% no horizonte de 90 dias e 78% no horizonte de 12 meses.
+
+Marina: Hum, isso é melhor do que eu esperava. Mas eu preciso ver funcionando.
+
+Lucas: Posso agendar uma demo técnica do Financeiro Pro com o time da Carla na semana que vem. Ela vai mostrar com dados anonimizados de um cliente de tamanho parecido com o de vocês.
+
+Marina: Pode marcar. Dia 12, terça-feira, de manhã.
+
+Lucas: Dia 12/05, terça, às 10h. Anotado. Felipe, da parte técnica, alguma preocupação?
+
+Felipe: Duas. Primeira, se o Financeiro Pro exige migração de dados ou roda em cima do Core que já existe.
+
+Lucas: Roda em cima do Core. Não tem migração, é módulo que ativa.
+
+Felipe: Boa. Segunda, se tem impacto na performance da base atual. A gente teve um ponto de lentidão em março, em alguns relatórios de receita.
+
+Lucas: Esse ponto de março eu vou levar pro nosso time de produto pra investigar separado. Mas a resposta direta: o Financeiro Pro tem queries dedicadas que não disputam recurso com o Core. Sem impacto perceptível.
+
+Felipe: Ok.
+
+Marina: Lucas, antes de você continuar, preciso ser transparente com você sobre uma coisa.
+
+Lucas: Pode falar.
+
+Marina: O pessoal da TotalSys chegou aqui semana passada com uma proposta agressiva. Uns 15% abaixo do que pagamos hoje pelo Core, e eles incluem o financeiro deles no pacote, sem custo adicional. O comercial deles, é, ele veio bem preparado, falou de cliente parecido com a gente que migrou.
+
+Lucas: Agradeço a transparência, Marina. Sério. Posso te perguntar duas coisas?
+
+Marina: Pode.
+
+Lucas: Um, eles falaram em quanto tempo de implantação? E dois, eles cobrem migração de dados?
+
+Marina: Implantação eles falaram em 120 dias. Migração eles cobram à parte, uns R$ 85.000,00.
+
+Lucas: Anotado. A gente compete em valor, não em preço, mas posso preparar uma proposta cheia incluindo o Financeiro Pro pra você comparar de forma justa. Inclui também migração se vocês adicionarem o Manufatura.
+
+Marina: Como assim Manufatura?
+
+Lucas: Bom, é, foi isso que eu queria conversar. Você mencionou no e-mail da semana passada que a Itacolomy vai abrir uma planta nova em Goiânia em julho. Faz sentido a gente já incluir o Acme Manufatura nesse projeto?
+
+Marina: Faz total sentido. A planta de Goiânia vai ser focada em PET reciclado, vai ter MRP, controle de qualidade e rastreabilidade de lote. Hoje a gente faz isso em Excel e ERPzinho da fábrica antiga, e não funciona.
+
+Lucas: Perfeito. O Acme Manufatura tem MRP em tempo real, apontamento mobile no chão de fábrica, e rastreabilidade por lote completa. Funciona pra indústria regulamentada, e tem caso de cliente PET reciclado em Sumaré, posso te apresentar.
+
+Felipe: Espera. MRP em tempo real, como assim? A nossa frequência hoje é diária.
+
+Lucas: Em tempo real significa que conforme entra pedido ou consome estoque, o cálculo de necessidades é refeito. Você consegue ver impacto na próxima ordem de produção em menos de cinco minutos, sem rodar processo noturno.
+
+Felipe: Caramba. Isso muda nosso jogo.
+
+Marina: Lucas, coloca uma estimativa separada pro Manufatura na proposta, com cronograma compatível com inauguração da planta de Goiânia em 15/07/2026. Mas mantém a renovação do Core e o Financeiro Pro como bloco principal, que é o que o conselho aprova.
+
+Lucas: Combinado. Última coisa, contrato atual vence em 30/06/2026, então a gente precisa fechar antes disso pra não ter gap. Eu vou alinhar internamente pra termos a versão final aprovada até 20/05.
+
+Marina: Combinado. Ah, e Lucas, uma coisa sobre a TotalSys. Eu fui transparente com você porque a gente quer continuar com o Acme. Mas se o número ficar muito longe, o CFO vai me cobrar.
+
+Lucas: Entendido. Vou trabalhar o número, sem perder margem. Tá com prazo de fechar até quando, na sua cabeça?
+
+Marina: 20/05 é teto. Mas se você me passar uma minuta na próxima sexta, dia 09/05, eu consigo trabalhar internamente.
+
+Lucas: Fechado. Mando minuta sexta dia 09/05 incluindo: renovação Core, Financeiro Pro, e Manufatura como projeto separado pra Goiânia. Demo do Financeiro Pro dia 12/05 às 10h com a Carla. Decisão final até 20/05.
+
+Marina: Combinado. Obrigada Lucas.
+
+Lucas: Eu que agradeço, Marina. Felipe, valeu também. Até a demo dia 12.
+
+Felipe: Até.

@@ -1,0 +1,158 @@
+WEBVTT
+NOTE
+Reunião: Conversa de Expansão — Acme × Plásticos Itacolomy
+Data: 2026-04-28
+Horário: 14:00 — 14:42
+Participantes: Lucas Andrade (Acme — AE), Marina Cardoso (Itacolomy — Diretora de Operações), Felipe Brandão (Itacolomy — Gerente de TI)
+
+1
+00:00:02.100 --> 00:00:14.500
+<v Lucas>Boa tarde Marina, boa tarde Felipe. Obrigado pelo tempo. A ideia hoje é entender como vocês estão usando o Acme ERP Core, que está rodando desde 2024 com vocês, e pensar juntos a renovação e possíveis expansões pra 2026.
+
+2
+00:00:15.020 --> 00:00:28.880
+<v Marina>Boa tarde Lucas. Olha, do Core a gente tá bem feliz. A parte de NF-e e SPED tá redonda. O time fiscal parou de fazer hora extra desde a implantação, foi o que mais mudou. E a conciliação bancária funcionou direto, sem ajuste fino.
+
+3
+00:00:29.400 --> 00:00:42.150
+<v Lucas>Ótimo ouvir isso. E do lado financeiro, como está? A gente conversou no início do ano sobre o Financeiro Pro, vocês chegaram a avaliar?
+
+4
+00:00:42.700 --> 00:00:57.300
+<v Marina>Esse é exatamente o ponto. O fluxo de caixa hoje é planilha. O CFO pediu pra resolver isso ainda em 2026, e eu queria entender se o Financeiro Pro entrega previsão de caixa de verdade ou se é só dashboard bonito.
+
+5
+00:00:57.800 --> 00:01:14.900
+<v Lucas>Entrega de verdade. Posso te explicar rápido como funciona? A previsão é baseada em três sinais: histórico real de 24 meses, contratos ativos no sistema, e padrões sazonais detectados automaticamente. A gente acerta em média 92% no horizonte de 90 dias e 78% no horizonte de 12 meses.
+
+6
+00:01:15.500 --> 00:01:22.300
+<v Marina>Hum, isso é melhor do que eu esperava. Mas eu preciso ver funcionando.
+
+7
+00:01:22.900 --> 00:01:34.500
+<v Lucas>Posso agendar uma demo técnica do Financeiro Pro com o time da Carla na semana que vem. Ela vai mostrar com dados anonimizados de um cliente de tamanho parecido com o de vocês.
+
+8
+00:01:35.000 --> 00:01:42.100
+<v Marina>Pode marcar. Dia 12, terça-feira, de manhã.
+
+9
+00:01:42.600 --> 00:01:51.700
+<v Lucas>Dia 12/05, terça, às 10h. Anotado. Felipe, da parte técnica, alguma preocupação?
+
+10
+00:01:52.200 --> 00:01:59.300
+<v Felipe>Duas. Primeira, se o Financeiro Pro exige migração de dados ou roda em cima do Core que já existe.
+
+11
+00:01:59.800 --> 00:02:04.900
+<v Lucas>Roda em cima do Core. Não tem migração, é módulo que ativa.
+
+12
+00:02:05.400 --> 00:02:16.200
+<v Felipe>Boa. Segunda, se tem impacto na performance da base atual. A gente teve um ponto de lentidão em março, em alguns relatórios de receita.
+
+13
+00:02:16.700 --> 00:02:30.500
+<v Lucas>Esse ponto de março eu vou levar pro nosso time de produto pra investigar separado. Mas a resposta direta: o Financeiro Pro tem queries dedicadas que não disputam recurso com o Core. Sem impacto perceptível.
+
+14
+00:02:31.000 --> 00:02:33.500
+<v Felipe>Ok.
+
+15
+00:02:34.000 --> 00:02:39.700
+<v Marina>Lucas, antes de você continuar, preciso ser transparente com você sobre uma coisa.
+
+16
+00:02:40.200 --> 00:02:42.500
+<v Lucas>Pode falar.
+
+17
+00:02:43.000 --> 00:03:02.800
+<v Marina>O pessoal da TotalSys chegou aqui semana passada com uma proposta agressiva. Uns 15% abaixo do que pagamos hoje pelo Core, e eles incluem o financeiro deles no pacote, sem custo adicional. O comercial deles, é, ele veio bem preparado, falou de cliente parecido com a gente que migrou.
+
+18
+00:03:03.300 --> 00:03:08.900
+<v Lucas>Agradeço a transparência, Marina. Sério. Posso te perguntar duas coisas?
+
+19
+00:03:09.400 --> 00:03:11.800
+<v Marina>Pode.
+
+20
+00:03:12.300 --> 00:03:21.700
+<v Lucas>Um, eles falaram em quanto tempo de implantação? E dois, eles cobrem migração de dados?
+
+21
+00:03:22.200 --> 00:03:32.400
+<v Marina>Implantação eles falaram em 120 dias. Migração eles cobram à parte, uns R$ 85.000,00.
+
+22
+00:03:33.000 --> 00:03:48.700
+<v Lucas>Anotado. A gente compete em valor, não em preço, mas posso preparar uma proposta cheia incluindo o Financeiro Pro pra você comparar de forma justa. Inclui também migração se vocês adicionarem o Manufatura.
+
+23
+00:03:49.200 --> 00:03:51.700
+<v Marina>Como assim Manufatura?
+
+24
+00:03:52.200 --> 00:04:10.100
+<v Lucas>Bom, é, foi isso que eu queria conversar. Você mencionou no e-mail da semana passada que a Itacolomy vai abrir uma planta nova em Goiânia em julho. Faz sentido a gente já incluir o Acme Manufatura nesse projeto?
+
+25
+00:04:10.600 --> 00:04:28.500
+<v Marina>Faz total sentido. A planta de Goiânia vai ser focada em PET reciclado, vai ter MRP, controle de qualidade e rastreabilidade de lote. Hoje a gente faz isso em Excel e ERPzinho da fábrica antiga, e não funciona.
+
+26
+00:04:29.000 --> 00:04:46.300
+<v Lucas>Perfeito. O Acme Manufatura tem MRP em tempo real, apontamento mobile no chão de fábrica, e rastreabilidade por lote completa. Funciona pra indústria regulamentada, e tem caso de cliente PET reciclado em Sumaré, posso te apresentar.
+
+27
+00:04:46.800 --> 00:04:55.400
+<v Felipe>Espera. MRP em tempo real, como assim? A nossa frequência hoje é diária.
+
+28
+00:04:55.900 --> 00:05:13.700
+<v Lucas>Em tempo real significa que conforme entra pedido ou consome estoque, o cálculo de necessidades é refeito. Você consegue ver impacto na próxima ordem de produção em menos de cinco minutos, sem rodar processo noturno.
+
+29
+00:05:14.200 --> 00:05:17.000
+<v Felipe>Caramba. Isso muda nosso jogo.
+
+30
+00:05:17.500 --> 00:05:40.200
+<v Marina>Lucas, coloca uma estimativa separada pro Manufatura na proposta, com cronograma compatível com inauguração da planta de Goiânia em 15/07/2026. Mas mantém a renovação do Core e o Financeiro Pro como bloco principal, que é o que o conselho aprova.
+
+31
+00:05:40.700 --> 00:05:58.800
+<v Lucas>Combinado. Última coisa, contrato atual vence em 30/06/2026, então a gente precisa fechar antes disso pra não ter gap. Eu vou alinhar internamente pra termos a versão final aprovada até 20/05.
+
+32
+00:05:59.300 --> 00:06:13.700
+<v Marina>Combinado. Ah, e Lucas, uma coisa sobre a TotalSys. Eu fui transparente com você porque a gente quer continuar com o Acme. Mas se o número ficar muito longe, o CFO vai me cobrar.
+
+33
+00:06:14.200 --> 00:06:24.600
+<v Lucas>Entendido. Vou trabalhar o número, sem perder margem. Tá com prazo de fechar até quando, na sua cabeça?
+
+34
+00:06:25.100 --> 00:06:35.400
+<v Marina>20/05 é teto. Mas se você me passar uma minuta na próxima sexta, dia 09/05, eu consigo trabalhar internamente.
+
+35
+00:06:35.900 --> 00:06:54.700
+<v Lucas>Fechado. Mando minuta sexta dia 09/05 incluindo: renovação Core, Financeiro Pro, e Manufatura como projeto separado pra Goiânia. Demo do Financeiro Pro dia 12/05 às 10h com a Carla. Decisão final até 20/05.
+
+36
+00:06:55.200 --> 00:06:58.100
+<v Marina>Combinado. Obrigada Lucas.
+
+37
+00:06:58.600 --> 00:07:05.800
+<v Lucas>Eu que agradeço, Marina. Felipe, valeu também. Até a demo dia 12.
+
+38
+00:07:06.300 --> 00:07:07.900
+<v Felipe>Até.
