@@ -155,6 +155,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
       }, 1000);
 
       clearHighlights();
+      invoke("clear_live_highlights").catch(() => {});
       resetTrigger();
       invoke("toggle_overlay", { show: true }).catch((e) =>
         console.error("[recording] failed to open overlay:", e),
