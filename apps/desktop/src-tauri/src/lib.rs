@@ -36,6 +36,13 @@ pub fn run() {
         .manage(sidecar_state)
         .manage(live_state)
         .manage(http_proxy::ApiBaseUrl(base_url))
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if window.label() == "main" {
+                    window.app_handle().exit(0);
+                }
+            }
+        })
         .setup(|app| {
             let config_dir = app
                 .path()

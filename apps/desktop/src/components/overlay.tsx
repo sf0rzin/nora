@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 function formatTimeAgo(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   if (seconds < 5) return "agora";
-  if (seconds < 60) return `${seconds}s atr\u00e1s`;
+  if (seconds < 60) return `${seconds}s atrás`;
   const minutes = Math.floor(seconds / 60);
   return `${minutes}min atr\u00e1s`;
 }
@@ -189,18 +189,18 @@ export function OverlayPage() {
 
         {!hasContent && !isAnalyzing && (
           <div className="flex items-center justify-center py-12 text-xs text-zinc-600">
-            Aguardando transcri\u00e7\u00e3o...
+            Aguardando transcrição...
           </div>
         )}
 
         {hasContent && (
           <div className="divide-y divide-zinc-800/50">
-            <HighlightSection title="Decis\u00f5es" items={highlights.decisions} />
+            <HighlightSection title="Decisões" items={highlights.decisions} />
             <HighlightSection
-              title="Pr\u00f3ximos Passos"
+              title="Próximos Passos"
               items={highlights.nextSteps}
             />
-            <HighlightSection title="Observa\u00e7\u00f5es" items={highlights.observations} />
+            <HighlightSection title="Observações" items={highlights.observations} />
             <TaskSection tasks={highlights.tasks} />
           </div>
         )}
