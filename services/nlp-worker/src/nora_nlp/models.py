@@ -97,6 +97,21 @@ class Participant(BaseModel):
     mention_count: Annotated[int, Field(ge=1, alias="mentionCount")]
 
 
+class BaselineTerm(BaseModel):
+    """Termo extraido pelo baseline TF-IDF (pre-LLM, interpretavel).
+
+    Espelha o resultado de ``nlp_baseline.TfidfBaseline.top_terms_per_doc`` --- o
+    ``score`` eh o valor TF-IDF normalizado pelo proprio sklearn (sub-linear TF
+    com norma L2 por documento), entao costuma ficar no intervalo [0, 1]. Vide
+    decisao em ADR 0010.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    term: Annotated[str, Field(min_length=1, max_length=120)]
+    score: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
 class MeetingAnalysisV1(BaseModel):
     """Espelho de docs/api/llm-schemas/meeting-analysis-v1.schema.json."""
 
@@ -112,6 +127,13 @@ class MeetingAnalysisV1(BaseModel):
         default_factory=list, max_length=12
     )
     participants: list[Participant] = Field(default_factory=list, max_length=30)
+    # Termos do baseline TF-IDF. Opcional --- preenchido pelo worker apos PII
+    # redaction e antes do LLM. Default vazio mantem o contrato existente: o
+    # LLM continua sendo a fonte de todos os outros campos e nao precisa
+    # produzir este. Vide ADR 0010.
+    baseline_terms: list[BaselineTerm] = Field(
+        default_factory=list, alias="baselineTerms", max_length=50
+    )
 
 
 # ---------- PII Redaction v1 ----------
@@ -151,7 +173,7 @@ class TenantProduct(BaseModel):
 
     name: str
     description: str | None = None
-    key_features: list[str] = Field(default_factory=list, alias="keyFeatures")
+    key_differentiators: list[str] = Field(default_factory=list, alias="keyDifferentiators")
 
 
 class GlossaryEntry(BaseModel):
@@ -172,7 +194,7 @@ class TenantContext(BaseModel):
     products: list[TenantProduct] = Field(default_factory=list)
     competitors: list[str] = Field(default_factory=list)
     ideal_customer_profile: str | None = Field(default=None, alias="idealCustomerProfile")
-    commercial_playbook: list[str] = Field(default_factory=list, alias="commercialPlaybook")
+    objection_handling: list[str] = Field(default_factory=list, alias="objectionHandling")
     glossary: list[GlossaryEntry] = Field(default_factory=list)
 
 

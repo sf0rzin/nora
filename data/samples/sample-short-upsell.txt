@@ -1,0 +1,13 @@
+Reunião: Conversa Comercial Curta — Acme × Cliente Indústria
+Data: 2026-05-03
+Participantes: Lucas (Acme — AE), Marina (Cliente — Diretora de TI)
+
+Lucas: Marina, sobre a expansão pra planta nova de Goiânia em julho. Faz sentido a gente já incluir o Acme Manufatura nesse projeto?
+
+Marina: Faz total sentido. A planta vai ser focada em PET reciclado, vai precisar de MRP, controle de qualidade e rastreabilidade. Hoje a gente faz isso em Excel e não funciona.
+
+Lucas: Perfeito. Posso colocar uma estimativa separada do Manufatura na proposta, com cronograma compatível com inauguração em 15/07/2026?
+
+Marina: Pode. Manda junto com a renovação do Core, que vence em 30/06/2026.
+
+Lucas: Combinado. Minuta na sexta dia 09/05.
