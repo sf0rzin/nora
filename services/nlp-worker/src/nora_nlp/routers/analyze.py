@@ -83,6 +83,7 @@ def analyze_live(
 
     if settings.use_llm_stub:
         from ..services.stub_live_analyzer import analyze as stub_live
+
         return stub_live(safe_req, pii_redactions_applied=len(redaction.redactions))
 
     try:

@@ -99,27 +99,19 @@ def analyze(req: LiveAnalyzeRequest, *, pii_redactions_applied: int = 0) -> Live
         ):
             confidence = 0.85 if ("data" in n or "ate " in n) else 0.7
             decisions.append(
-                LiveHighlightItem(
-                    text=s[:500], confidence=confidence, sourceQuote=s[:500]
-                )
+                LiveHighlightItem(text=s[:500], confidence=confidence, sourceQuote=s[:500])
             )
 
         if any(h in n for h in _NEXT_STEP_HINTS) and not _is_duplicate(
             s, existing_next + next_steps
         ):
-            next_steps.append(
-                LiveHighlightItem(
-                    text=s[:500], confidence=0.65, sourceQuote=s[:500]
-                )
-            )
+            next_steps.append(LiveHighlightItem(text=s[:500], confidence=0.65, sourceQuote=s[:500]))
 
         if any(h in n for h in _OBSERVATION_HINTS) and not _is_duplicate(
             s, existing_obs + observations
         ):
             observations.append(
-                LiveHighlightItem(
-                    text=s[:500], confidence=0.6, sourceQuote=s[:500]
-                )
+                LiveHighlightItem(text=s[:500], confidence=0.6, sourceQuote=s[:500])
             )
 
         for pat in _TASK_PATTERNS:
