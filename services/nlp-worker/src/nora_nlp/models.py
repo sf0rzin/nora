@@ -173,7 +173,7 @@ class TenantProduct(BaseModel):
 
     name: str
     description: str | None = None
-    key_features: list[str] = Field(default_factory=list, alias="keyFeatures")
+    key_differentiators: list[str] = Field(default_factory=list, alias="keyDifferentiators")
 
 
 class GlossaryEntry(BaseModel):
@@ -194,7 +194,7 @@ class TenantContext(BaseModel):
     products: list[TenantProduct] = Field(default_factory=list)
     competitors: list[str] = Field(default_factory=list)
     ideal_customer_profile: str | None = Field(default=None, alias="idealCustomerProfile")
-    commercial_playbook: list[str] = Field(default_factory=list, alias="commercialPlaybook")
+    objection_handling: list[str] = Field(default_factory=list, alias="objectionHandling")
     glossary: list[GlossaryEntry] = Field(default_factory=list)
 
 
