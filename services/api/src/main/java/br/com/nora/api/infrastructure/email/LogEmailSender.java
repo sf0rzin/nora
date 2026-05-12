@@ -38,6 +38,22 @@ public class LogEmailSender implements EmailSender {
                 resetLink);
     }
 
+    @Override
+    public void sendInvitation(
+            String toEmail,
+            String tenantName,
+            String invitedByName,
+            String acceptUrl,
+            int expiresInDays) {
+        // Token presente no acceptUrl: nao logamos a URL completa para nao expor PII em logs.
+        LOG.info(
+                "[email/dev] invitation -> to={} tenant={} invitedBy={} expiresInDays={}",
+                toEmail,
+                tenantName,
+                invitedByName,
+                expiresInDays);
+    }
+
     /** Marker para Spring carregar o pacote. */
     @Configuration
     static class Marker {}
