@@ -177,6 +177,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
     setRecordingState(false, "", 0);
 
     invoke("toggle_overlay", { show: false }).catch(() => {});
+    clearHighlights();
+    invoke("clear_live_highlights").catch(() => {});
     resetTrigger();
   }, []);
 

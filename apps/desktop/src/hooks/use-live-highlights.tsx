@@ -56,6 +56,15 @@ export function LiveHighlightsProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [chunkSeq, setChunkSeq] = useState(0);
 
+  const clearHighlights = useCallback(() => {
+    setHighlights(emptyHighlights);
+    setIsAnalyzing(false);
+    setLastUpdatedAt(null);
+    setLastLatencyMs(null);
+    setError(null);
+    setChunkSeq(0);
+  }, []);
+
   useEffect(() => {
     const unlisten = listen<LiveHighlights>("live-analysis", (event) => {
       const { highlights: newHighlights, chunkSeq: seq } = event.payload as unknown as {
@@ -74,20 +83,16 @@ export function LiveHighlightsProvider({ children }: { children: ReactNode }) {
       setLastLatencyMs(t.latencyMs);
     });
 
+    const unlistenClear = listen("clear-highlights", () => {
+      clearHighlights();
+    });
+
     return () => {
       unlisten.then((fn) => fn());
       unlistenTelemetry.then((fn) => fn());
+      unlistenClear.then((fn) => fn());
     };
-  }, []);
-
-  const clearHighlights = useCallback(() => {
-    setHighlights(emptyHighlights);
-    setIsAnalyzing(false);
-    setLastUpdatedAt(null);
-    setLastLatencyMs(null);
-    setError(null);
-    setChunkSeq(0);
-  }, []);
+  }, [clearHighlights]);
 
   return (
     <LiveHighlightsContext.Provider

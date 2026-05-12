@@ -103,17 +103,6 @@ function TaskSection({
 export function OverlayPage() {
   const { highlights, lastUpdatedAt, lastLatencyMs, isAnalyzing } = useLiveHighlights();
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.closest("[data-tauri-drag-region]")) {
-        console.log("[overlay-debug] mousedown on drag region", e.clientX, e.clientY);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    console.log("[overlay-debug] mounted, window.__TAURI__?", !!(window as any).__TAURI__);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
   const [recordingStatus, setRecordingStatus] = useState<{
     isRecording: boolean;
   } | null>(null);

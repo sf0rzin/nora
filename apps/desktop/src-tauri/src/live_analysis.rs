@@ -238,6 +238,19 @@ pub fn get_live_highlights_snapshot(
 }
 
 #[tauri::command]
+pub fn clear_live_highlights(
+    app_handle: AppHandle,
+    state: State<'_, LiveHighlightsState>,
+) -> Result<(), String> {
+    {
+        let mut s = state.lock().map_err(|e| e.to_string())?;
+        *s = None;
+    }
+    let _ = app_handle.emit("clear-highlights", ());
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_overlay_position(app_handle: AppHandle) -> Result<(i32, i32), String> {
     if let Some(window) = app_handle.get_webview_window("overlay") {
         let pos = window.outer_position().map_err(|e| e.to_string())?;
