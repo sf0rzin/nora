@@ -1,0 +1,78 @@
+Reunião: Prospect Inicial — Northwind × Marketplace Insumos Aço Brasil
+Data: 2026-05-01
+Horário: 15:00 — 15:46
+Participantes: Rafael Tavares (Northwind — Key Account), Beatriz Almeida (Aço Brasil — Diretora de Operações), André Saldanha (Aço Brasil — Head de Engenharia)
+
+Rafael: Boa tarde Beatriz, boa tarde André. Obrigado pela disponibilidade. Pelo que vi no formulário que vocês preencheram, a Aço Brasil é um marketplace B2B de insumos industriais com TPV mensal de uns 12 milhões. Tá correto?
+
+Beatriz: Isso mesmo Rafael. Fechamos abril em R$ 11.800.000,00 de TPV, com projeção de R$ 14.500.000,00 pra julho. A gente cresceu 80% ano contra ano.
+
+Rafael: Caramba, parabéns. Conta um pouquinho do contexto operacional. O que motivou vocês a procurar a gente?
+
+Beatriz: Hoje a gente usa o gateway nativo do banco onde a gente tem a conta principal. A taxa é até razoável, mas a conciliação tá virando um inferno. Cinco pessoas no time financeiro só fazem isso, e mesmo assim a gente fechou março com R$ 220.000,00 de receita em conciliação pendente.
+
+André: E do meu lado, técnico, tô preocupado com o pico de junho. A gente vai abrir vendas pro segmento de aço estrutural, que tem ticket médio dez vezes maior. Volume vai subir, e o gateway atual não tem split nativo, então a gente faz pagamento manual pros fornecedores depois. Não escala.
+
+Rafael: Ok, entendi os dois pontos. Conciliação que tá manual e dolorida, e split que vai virar gargalo com o crescimento. Esse é exatamente o cenário em que o Northwind entrega ROI rápido. Posso explicar rápido?
+
+Beatriz: Pode.
+
+Rafael: Pro lado da conciliação, o Northwind Reconcile conversa com 14 adquirentes e 8 bancos via API direto. A gente reduz tipicamente o esforço operacional em 70% no primeiro trimestre. Pra um time de cinco pessoas, isso vira tipo, duas pessoas ainda envolvidas, e três realocadas pra controladoria ou novos projetos.
+
+Beatriz: Hum. R$ 220.000,00 em pendente esse mês, isso some?
+
+Rafael: Some quase tudo. A gente vê em média 92% de conciliação automática no primeiro mês, sobe pra 97% no terceiro. Os 3% restantes são casos que precisam de análise humana, mas com a UI nossa fica simples.
+
+André: Ok. E pro lado do split?
+
+Rafael: O Northwind Payments tem split nativo. Você cadastra o fornecedor, configura a regra de split, e na hora que o pagamento entra, divide automático na liquidação. Sem batch, sem cron, sem manual.
+
+André: Quantos fornecedores a gente consegue ter no split?
+
+Rafael: Sem limite técnico que importe pra vocês. Tenho cliente com 4.000 fornecedores ativos.
+
+André: Beleza.
+
+Beatriz: O que precisamos pra começar uma PoC?
+
+Rafael: Geralmente a gente faz PoC de 30 dias com um adquirente de cada lado, mais um conjunto de fornecedores limitado pro split, e a gente entrega relatório fiscal completo no final. Sem custo. Você libera acesso de leitura ao extrato e a gente monta o ambiente.
+
+Beatriz: Adorei. Vamos avançar. Quem precisa estar do lado de vocês?
+
+Rafael: Do lado de vocês, ideal ter o André e uma pessoa do financeiro que entenda da operação atual. Do lado nosso, eu, o time de Solutions Engineering, e o gerente de implantação.
+
+André: Posso envolver a Marcela, que é minha tech lead de payments, e a Heloísa, que é gerente de conciliação. Dá pra discutir acessos amanhã, dia 02/05?
+
+Rafael: Pode. Quem é o ponto focal de TI?
+
+André: Vou te conectar com a Marcela hoje no fim do dia.
+
+Rafael: Perfeito. Outra coisa, vocês trabalham com split de pagamento entre fornecedores manualmente hoje? Porque se sim, o Northwind Payments também faz sentido olhar em paralelo com o Reconcile.
+
+Beatriz: Trabalhamos sim, e isso hoje é manual e mata o pessoal. Mas Rafael, vamos focar primeiro na conciliação, que é a dor número um. Eu pauto split pra próxima reunião. Posso assumir que se a PoC do Reconcile rolar bem, vocês têm como entrar com Payments rápido?
+
+Rafael: Sim. O Payments tem ativação de 15 dias quando o cliente já tá com a gente. Sem reintegração de zero.
+
+Beatriz: Ótimo.
+
+Rafael: Combinado então. Hoje à tarde eu mando o termo de PoC pra você assinar. Vai cobrir conciliação multi-adquirente em sandbox, com dados reais de leitura, e relatório fiscal SPED Contribuições no fim. Sem compromisso de compra.
+
+Beatriz: Beleza.
+
+Rafael: Na quarta dia 06/05 a gente alinha kickoff técnico com o André, a Marcela e a Heloísa. Em paralelo, eu mando proposta comercial preliminar pra você ter visibilidade do investimento, sem prazo de aceitação.
+
+Beatriz: Top. Faixa de preço, você consegue me dar?
+
+Rafael: Consigo. Pra TPV na faixa de R$ 12M a R$ 15M com Reconcile e Payments completo, fica entre R$ 18.000,00 e R$ 28.000,00 por mês, dependendo do volume de transações e do mix de adquirentes. Em escala anual com desconto, fica entre R$ 195.000,00 e R$ 305.000,00 ao ano.
+
+Beatriz: Dentro da faixa que eu projetei. Tá no game.
+
+Rafael: Ótimo. Última pergunta: vocês têm prazo de decisão?
+
+Beatriz: A gente quer fechar fornecedor até 15/06/2026, pra virar a chave em 01/08/2026, antes do segundo semestre.
+
+Rafael: Vai dar tempo confortavelmente. Obrigado de novo Beatriz, André. Até quarta.
+
+Beatriz: Obrigada Rafael.
+
+André: Até.

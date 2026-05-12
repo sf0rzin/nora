@@ -1,0 +1,70 @@
+Reunião: Reunião de Crise — Acme × Distribuidora Sul Atlântica
+Data: 2026-05-05
+Horário: 16:00 — 16:51
+Participantes: Lucas Andrade (Acme — AE), Carolina Steffen (Sul Atlântica — Diretora Financeira), Henrique Pavan (Sul Atlântica — Gerente de TI), Rafaela Bittencourt (Acme — Customer Success Manager)
+
+Lucas: Boa tarde Carolina, boa tarde Henrique. Eu trouxe a Rafaela, que é a CSM responsável pela conta de vocês, pra essa conversa. A gente recebeu o e-mail seu de quinta-feira, Carolina, e a gente reconhece a gravidade.
+
+Carolina: Boa tarde Lucas, boa tarde Rafaela. Olha, vou ser bem direta: a gente tá considerando seriamente sair do Acme. E a razão não é uma coisa só, é um acúmulo. Eu preciso que vocês entendam o que tá acontecendo do lado de cá antes de propor solução.
+
+Lucas: Pode falar. Quero ouvir tudo.
+
+Carolina: Primeira coisa: performance. Desde janeiro a gente vem reclamando de lentidão no fechamento de mês. Em janeiro, o relatório de DRE consolidado demorou seis horas pra rodar. Em fevereiro, oito horas. Em março, deu timeout e a gente teve que rodar em pedaços. Abril foi a pior, dez horas pra finalizar, e atrasou o reporte pro acionista em dois dias.
+
+Henrique: E tem o ponto técnico que eu venho batendo desde fevereiro. A gente abriu chamado 38291 sobre uma query lenta no módulo fiscal. Demorou três semanas pra ter primeira resposta técnica, e quando veio era uma sugestão genérica, "considere arquivar dados antigos". A gente arquivou tudo de 2023 pra trás, não resolveu nada.
+
+Lucas: Henrique, posso anotar esse número de chamado? 38291.
+
+Henrique: Isso. E tem outros três abertos. 38445, 38678, 38901. Todos relacionados a performance e todos com SLA estourado.
+
+Rafaela: Henrique, eu sinto muito por isso. Não é o nosso padrão de atendimento. Posso garantir que os quatro chamados vão pra fila de escalação do nosso time sênior ainda hoje.
+
+Carolina: Rafaela, eu agradeço, mas escalação eu já ouvi três vezes. Em janeiro escalaram, em março escalaram, e em abril eu liguei pro Lucas e ele disse que ia escalar. Aqui, ó, eu tô olhando o e-mail. Não mudou nada.
+
+Lucas: Carolina, eu tô vendo isso aqui também. E peço desculpa de verdade. O que aconteceu foi falha nossa de processo. Continua.
+
+Carolina: Segundo ponto. Suporte. A gente tem suporte premium pago, R$ 9.800,00 por mês, com SLA de quatro horas pra crítico e oito horas pra alto. Em abril, das nove ocorrências críticas que a gente abriu, três foram respondidas dentro de SLA. As outras seis variaram entre 12 e 36 horas pra primeira resposta.
+
+Rafaela: Você tem o detalhamento? Quero levar pra revisão interna.
+
+Carolina: Tenho. Eu mando depois da reunião. Mas o ponto não é o número, é o padrão. Toda vez é a mesma coisa: a gente abre o chamado, ninguém responde dentro do prazo, eu ligo pro Lucas, o Lucas escala, vem alguém, resolve mais ou menos, e na próxima volta tudo igual.
+
+Lucas: Entendi. Continua.
+
+Carolina: Terceiro ponto, e talvez o mais grave. A reunião do dia 18/03/2026, vocês prometeram um patch de performance no módulo fiscal pra abril. Não veio. Eu cobrei dia 22/04. Disseram que ia ser maio. Olha o calendário, maio. Nada ainda.
+
+Rafaela: O patch tá em homologação interna. Posso te garantir essa semana, sexta dia 09/05, a gente libera.
+
+Carolina: Rafaela, sem ofensa, mas eu já ouvi isso. Eu vou acreditar quando rodar na nossa base. E é exatamente por isso que a gente abriu conversa formal com o OmniBusiness Cloud na semana passada.
+
+Lucas: Carolina, sei que a confiança tá abalada. Mas antes de vocês fecharem com OmniBusiness, posso pedir uma coisa?
+
+Carolina: Pode pedir.
+
+Lucas: Trinta dias. Eu quero trinta dias pra entregar três coisas concretas, com prova. Um, o patch de performance instalado e validado por vocês, com benchmark de DRE rodando em menos de duas horas. Dois, novo modelo de suporte com SLA assistido pelo nosso time de produto, sem custo adicional, por 90 dias. Três, war room semanal toda quinta às 15h comigo, a Rafaela, e o Henrique, até a coisa estabilizar.
+
+Henrique: Lucas, eu tô cansado de promessa.
+
+Lucas: Eu entendo. E é por isso que eu vou propor uma cláusula contratual: se em 30 dias a gente não entregar o patch validado, vocês têm direito de rescisão sem multa, com devolução proporcional do pago em 2026. Eu coloco isso por escrito amanhã.
+
+Carolina: Sem multa nenhuma?
+
+Lucas: Sem multa nenhuma. E vou subir hoje à noite a aprovação interna pra ter o documento pronto até amanhã 18h.
+
+Carolina: Tá. E sobre o suporte, esses 90 dias de SLA assistido, como funciona?
+
+Rafaela: Funciona assim: você abre chamado normal. Em paralelo, todo chamado entra numa fila Slack interna onde dois engenheiros sêniores nossos olham toda hora. SLA real, não contratual, fica em quatro horas pra qualquer severidade. Eu te mando o documento de processo amanhã.
+
+Carolina: Ok. Eu quero ver. Mas Lucas, eu vou continuar a conversa com a OmniBusiness em paralelo. Não é briga, é proteção.
+
+Lucas: Entendido e respeitado. Compromisso então: documento de rescisão proporcional sem multa amanhã, dia 06/05, até 18h. Patch de performance em produção até 09/05. War room semanal toda quinta 15h começando dia 08/05. Revisão geral em 30 dias, dia 05/06. Combinado?
+
+Carolina: Combinado. Mas Lucas, sendo bem honesta, a chance de a gente renovar 2027 hoje tá em uns 30%. Vocês têm 30 dias pra mudar isso.
+
+Lucas: Mensagem clara. Vou fazer minha parte. Henrique, obrigado pela paciência, sei que tá pesado pro seu time.
+
+Henrique: Pesado. Mas vamos ver.
+
+Lucas: Até quinta dia 08/05. Obrigado pessoal.
+
+Carolina: Até.

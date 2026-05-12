@@ -1,0 +1,82 @@
+Reunião: Discovery Call — Acme Software × Construtora Vértice
+Data: 2026-04-15
+Horário: 10:00 — 10:48
+Participantes: Lucas Andrade (Acme — AE), Patrícia Vasconcelos (Vértice — CFO), Eduardo Magalhães (Vértice — Controller)
+
+Lucas: Bom dia Patrícia, bom dia Eduardo. Obrigado por separarem essa primeira janela com a gente. Vocês conseguem me ouvir bem?
+
+Patrícia: Bom dia Lucas. Tudo certo aqui, áudio bom.
+
+Eduardo: Bom dia, ouvindo perfeitamente.
+
+Lucas: Ótimo. Então, antes de qualquer coisa, eu queria entender um pouco mais de vocês. Eu li o que a Patrícia preencheu no formulário, mas... é, queria ouvir na voz de vocês. Patrícia, conta um pouco do momento da Vértice agora.
+
+Patrícia: Claro. A Vértice é uma construtora de médio porte, faturamos uns R$ 180.000.000,00 ano passado, temos hoje 320 colaboradores, três canteiros ativos em São Paulo e um em Campinas. A gente cresceu rápido nos últimos três anos, tipo, dobramos de tamanho, e o nosso ERP atual, que é um sistema legado de 2014, não tá acompanhando.
+
+Lucas: Entendi. Quando você diz "não tá acompanhando", você consegue me dar um exemplo concreto?
+
+Patrícia: Ah, vários. Mas o mais doloroso é o fiscal. A gente teve duas autuações em 2025 por inconsistência de SPED. Não foi nada gigante, foi tipo R$ 47.000,00 de multa no total, mas o problema é o tempo que o Eduardo gastou pra resolver. Eduardo, fala você.
+
+Eduardo: É, eu acabei... olha, eu acabei tirando dois meses praticamente full time pra reconciliar a base e responder a Receita. E o time fiscal, que são quatro pessoas, fez hora extra todo dia em janeiro e fevereiro pra fechar a EFD Contribuições.
+
+Lucas: Caramba. E quanto custa essa hora extra pra vocês, em média mensal?
+
+Eduardo: É... assim, somando o time fiscal e contábil, no pico chegou a uns R$ 28.000,00 por mês. Hoje tá em R$ 12.000,00 mais ou menos, porque tem um ritmo mais normal.
+
+Lucas: Ok. Isso é exatamente o tipo de dor que a gente resolve. Antes de eu falar do Acme, deixa eu confirmar o cenário todo. Vocês usam o sistema legado pra financeiro, fiscal, contábil. Vocês têm algum outro sistema rodando em paralelo?
+
+Patrícia: Sim. A obra usa um sistema próprio pra cronograma e medição, que é o ConstrutechPro. E a gente tem o RH num outro fornecedor, que é o SênPeople. Esses dois a gente não quer mexer agora.
+
+Lucas: Ok, anotado. Então o escopo seria substituir o legado por algo que faça fiscal, contábil e financeiro de verdade, com integração pro ConstrutechPro e pro SênPeople.
+
+Patrícia: Exato.
+
+Lucas: Perfeito. Deixa eu te contar rápido o que é o Acme. A gente tem três módulos principais que fazem sentido pra vocês: o Acme ERP Core, que é o núcleo financeiro e fiscal; o Acme Financeiro Pro, que adiciona tesouraria e fluxo de caixa preditivo; e o Acme Manufatura, que pra construtora a gente customiza... bom, na verdade pra vocês o Manufatura não se aplica, é mais o Core e o Financeiro Pro.
+
+Eduardo: Tá. E como funciona a parte fiscal? Porque o nosso problema número um é esse.
+
+Lucas: Boa pergunta. O ERP Core tem um validador fiscal nativo que conversa com a SEFAZ antes de transmitir. A gente tem uma estatística interna: clientes que migram pro Acme reduzem rejeição de NF-e em até 90% nos três primeiros meses. E o SPED a gente gera direto da base, sem retrabalho.
+
+Patrícia: Hum. E quanto tempo demora a implantação?
+
+Lucas: A nossa implantação padrão pra Core e Financeiro Pro é de 60 a 90 dias. A gente tem um pacote chamado Onboarding Express, que entrega em 45 dias se o cliente topar um cronograma mais agressivo. Mas, é, depende de como a base atual de vocês tá.
+
+Patrícia: Lucas, vou ser bem honesta com você. A gente tá conversando com mais dois fornecedores também. O TotalSys passou aqui semana passada e o OmniBusiness Cloud manda proposta sexta. Então não é uma negociação fechada com vocês.
+
+Lucas: Agradeço a transparência, Patrícia. Sério. E pode contar comigo pra te ajudar a comparar de forma justa. O que eu sugiro é o seguinte: a gente faz uma demo técnica focada no fiscal, com o time da Carla, que é a nossa engenheira de pré-vendas. Ela mostra a base real, gera SPED, mostra a rejeição zero. E vocês conseguem comparar de igual pra igual com os outros dois.
+
+Eduardo: Isso ajuda. Quando seria?
+
+Lucas: Posso reservar com a Carla pro dia 22/04, próxima quarta-feira, das 14h às 16h. Topa?
+
+Eduardo: Pode marcar.
+
+Patrícia: Beleza. E o orçamento? Você consegue me dar uma faixa hoje?
+
+Lucas: Faixa eu consigo. Pra Core e Financeiro Pro, num cenário de 100 a 150 usuários, fica entre R$ 380.000,00 e R$ 520.000,00 ano. Implantação inclusa no Onboarding Express. Mas isso é faixa, hein, a proposta firme sai depois da demo.
+
+Patrícia: Ok. Tá dentro do que eu esperava, na faixa de cima. O que eu preciso ver pra fechar?
+
+Lucas: Honestamente? Três coisas. Um, comparativo de TCO de 36 meses contra TotalSys e OmniBusiness. Dois, prova fiscal real na demo. Três, garantia contratual de zero rejeição nos primeiros 12 meses, que a gente faz isso pra clientes selecionados.
+
+Patrícia: Boa. Quando você manda esse TCO?
+
+Lucas: Até dia 24/04, sexta, no fim do dia. E vou alinhar com a Carla pra demo dia 22. Fechado?
+
+Patrícia: Fechado. Eduardo, alguma coisa que faltou?
+
+Eduardo: Só uma. Migração de dados, quem faz?
+
+Lucas: Migração é nossa. Time interno. A gente faz extração do legado, normalização e carga, e tem dois ciclos de validação com o cliente antes de virar a chave.
+
+Eduardo: Perfeito. Sem dúvidas.
+
+Lucas: Ótimo. Então combinado: dia 22 demo, dia 24 TCO, dia 30 conversa de proposta. Vocês têm prazo de decisão?
+
+Patrícia: A gente quer fechar fornecedor até 15/05, pra começar implantação em junho.
+
+Lucas: Anotado. Vai dar tempo. Obrigado de novo Patrícia, Eduardo. Até dia 22.
+
+Patrícia: Obrigada Lucas. Até.
+
+Eduardo: Até.

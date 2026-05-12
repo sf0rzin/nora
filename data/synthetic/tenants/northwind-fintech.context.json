@@ -1,28 +1,47 @@
 {
   "companyName": "Northwind Fintech",
-  "industry": "Pagamentos B2B",
-  "valueProposition": "Infraestrutura de pagamentos e conciliação para marketplaces e plataformas SaaS no Brasil.",
+  "industry": "Fintech — Pagamentos e Conciliação B2B",
+  "valueProposition": "Infraestrutura de pagamentos e conciliação automatizada para marketplaces, plataformas SaaS e fintechs no Brasil, com cobertura multi-adquirente e relatórios fiscais prontos.",
+  "idealCustomerProfile": "Marketplaces e plataformas SaaS B2B brasileiras com TPV mensal acima de R$ 5.000.000,00, operação multi-adquirente e necessidade de relatórios fiscais consolidados.",
   "products": [
     {
       "name": "Northwind Payments",
-      "description": "Gateway de pagamentos com Pix, boleto e cartão.",
-      "keyFeatures": ["Pix", "Boleto", "Cartão", "Split de pagamento"]
+      "description": "Gateway de pagamentos com Pix, boleto, cartão e split nativo entre fornecedores.",
+      "keyDifferentiators": [
+        "Split de pagamento on-us sem custo adicional por recebedor",
+        "Roteamento inteligente de cartão com fallback automático em 3 adquirentes",
+        "Taxa de aprovação média de 94% em cartão de crédito"
+      ]
     },
     {
       "name": "Northwind Reconcile",
-      "description": "Conciliação automatizada com adquirentes e bancos.",
-      "keyFeatures": ["Conciliação multi-adquirente", "Relatórios fiscais", "API de extratos"]
+      "description": "Conciliação automatizada multi-adquirente com extratos consolidados e relatórios fiscais.",
+      "keyDifferentiators": [
+        "Conciliação automática com 14 adquirentes e 8 bancos via API",
+        "Detecção de chargeback em até 4 horas após registro do adquirente",
+        "Relatório fiscal pronto para SPED Contribuições"
+      ]
+    },
+    {
+      "name": "Northwind Risk",
+      "description": "Antifraude e análise de risco transacional em tempo real para B2B.",
+      "keyDifferentiators": [
+        "Score de risco transacional em menos de 200 milissegundos",
+        "Regras customizáveis por segmento sem código",
+        "Integração com bureaus Serasa, Boa Vista e SPC"
+      ]
     }
   ],
-  "competitors": ["PayMatch", "ConciliaJá"],
-  "idealCustomerProfile": "Marketplaces e plataformas SaaS B2B com TPV mensal acima de R$ 5M.",
-  "commercialPlaybook": [
-    "Renovação começa 90 dias antes do vencimento.",
-    "Objeção de preço responder com benchmark de TCO da conciliação manual.",
-    "Sempre revisar volume real vs. contratado antes da reunião."
+  "competitors": [
+    "PayMatch",
+    "ConciliaJá",
+    "Banco Plural Pagamentos"
   ],
-  "glossary": [
-    { "term": "TPV", "meaning": "Total Payment Volume processado por mês." },
-    { "term": "Split", "meaning": "Divisão automática do pagamento entre múltiplos recebedores." }
+  "objectionHandling": [
+    "Quando o cliente pedir desconto agressivo: oferecer modelo híbrido de TPV ajustado com gatilho de crescimento, em vez de reduzir a tarifa base.",
+    "Quando o cliente mencionar o PayMatch: lembrar que o Northwind cobre 14 adquirentes contra 6 do concorrente e tem SLA de chargeback de 4 horas.",
+    "Quando o cliente pedir contrato mensal: oferecer 18 meses com desconto progressivo no lugar de 24, que normalmente é o desejado internamente.",
+    "Quando o cliente alegar dificuldade de integração técnica: oferecer time de Solutions Engineering por 30 dias incluso no kickoff.",
+    "Quando o cliente questionar conformidade fiscal: mostrar relatório SPED Contribuições gerado em sandbox com dados reais dele em 24 horas."
   ]
 }
