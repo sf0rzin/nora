@@ -3,6 +3,7 @@ import type { Route } from "next";
 import { notFound } from "next/navigation";
 import { getMeeting } from "@/lib/api/client";
 import { formatDateTime } from "@/lib/utils";
+import { MarkdownContent } from "@/components/markdown-content";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,13 @@ export default async function MeetingDetailPage({
       {a && (
         <>
           <Section title="Resumo">
-            <p className="text-sm leading-relaxed">{a.summary}</p>
+            {a.summary && a.summary.trim().length > 0 ? (
+              <MarkdownContent className="text-sm text-slate-700">
+                {a.summary}
+              </MarkdownContent>
+            ) : (
+              <p className="text-sm text-slate-400">Resumo nao disponivel.</p>
+            )}
           </Section>
 
           <Section title={`Decisões (${a.decisions.length})`}>
