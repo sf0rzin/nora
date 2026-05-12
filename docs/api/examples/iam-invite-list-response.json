@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "id": "i-7f3c8a2e-4b1d-4e8f-9a3b-1c2d3e4f5a6b",
+      "email": "carlos@acme.com",
+      "status": "PENDING",
+      "invitedBy": "u-camila-root",
+      "invitedAt": "2026-05-11T14:32:00Z",
+      "expiresAt": "2026-05-18T14:32:00Z",
+      "groupIds": ["g-vendas-sp"],
+      "acceptedAt": null,
+      "acceptedUserId": null
+    },
+    {
+      "id": "i-8a4d9b3f-5c2e-4f9a-0b4c-2d3e4f5a6b7c",
+      "email": "marina@acme.com",
+      "status": "ACCEPTED",
+      "invitedBy": "u-camila-root",
+      "invitedAt": "2026-05-10T09:15:00Z",
+      "expiresAt": "2026-05-17T09:15:00Z",
+      "groupIds": ["g-vendas-sp", "g-engenharia"],
+      "acceptedAt": "2026-05-10T11:42:00Z",
+      "acceptedUserId": "u-marina"
+    },
+    {
+      "id": "i-9b5e0c4f-6d3f-5g0b-1c5d-3e4f5a6b7c8d",
+      "email": "antigo@acme.com",
+      "status": "EXPIRED",
+      "invitedBy": "u-camila-root",
+      "invitedAt": "2026-04-15T10:00:00Z",
+      "expiresAt": "2026-04-22T10:00:00Z",
+      "groupIds": [],
+      "acceptedAt": null,
+      "acceptedUserId": null
+    }
+  ],
+  "total": 3,
+  "page": 1,
+  "size": 20
+}
