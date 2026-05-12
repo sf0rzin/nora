@@ -57,6 +57,8 @@ worker-setup: ## Cria venv do worker e instala dependencias (idempotente)
 		cd services/nlp-worker && $(PYTHON) -m venv .venv; \
 		WORKER_PY=$$($(WORKER_PYTHON_RESOLVE)); \
 		"$$WORKER_PY" -m pip install -q --upgrade pip; \
+		echo ">> instalando package local nlp-baseline (ADR 0010)..."; \
+		"$$WORKER_PY" -m pip install -q -e "$(CURDIR)/packages/nlp-baseline"; \
 		"$$WORKER_PY" -m pip install -q -e ".[dev]"; \
 		echo ">> venv do worker pronto."; \
 	fi
