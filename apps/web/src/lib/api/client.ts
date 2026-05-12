@@ -15,6 +15,16 @@ import type {
   MeetingDetail,
   MeetingsListResponse,
 } from "./types";
+
+// Re-export para componentes consumirem direto de @/lib/api/client (parity
+// com GroupDto/PolicyDto etc., que sao declarados localmente neste modulo).
+export type {
+  AcceptInviteRequest,
+  Invite,
+  InviteListResponse,
+  InviteStatus,
+  InviteUserRequest,
+};
 import meetingsListFixture from "@/fixtures/meetings-list-response.json";
 import meetingDetailFixture from "@/fixtures/meeting-detail-response.json";
 import { getToken } from "@/lib/auth";
