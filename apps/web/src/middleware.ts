@@ -8,6 +8,15 @@ export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get("nora_token")?.value;
 
+  // Landing publica: visitantes podem ver, mas usuarios logados
+  // sao redirecionados direto pro dashboard (evita fricao de re-entrar
+  // pela home pra chegar no produto).
+  if (pathname === "/" && token) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   if (isProtected && !token) {
     const url = req.nextUrl.clone();
@@ -37,5 +46,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/meetings/:path*", "/settings/:path*", "/auth/:path*"],
+  matcher: ["/", "/dashboard/:path*", "/meetings/:path*", "/settings/:path*", "/auth/:path*"],
 };

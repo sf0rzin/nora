@@ -1,0 +1,76 @@
+/* NORA design tokens — paleta clara editorial.
+ *
+ * Estas vars são usadas pelas páginas de marketing (landing) e auth (login)
+ * para um visual editorial. O app interno (dashboard, settings, etc) continua
+ * usando os tokens shadcn-like em globals.css (compat com componentes existentes).
+ *
+ * --font-sans, --font-display e --font-mono são setadas via next/font em layout.tsx.
+ */
+
+:root {
+  /* Surface — off-white morno editorial */
+  --paper: #F4F1EC;
+  --paper-2: #ECE7DD;
+  --paper-3: #E2DCCF;
+
+  /* Ink — texto e linhas */
+  --ink: #14110D;
+  --ink-2: #3A332C;
+  --mute: #847B70;
+  --mute-2: #B5AC9F;
+
+  /* Hairlines */
+  --hair: rgba(20, 17, 13, 0.08);
+  --hair-strong: rgba(20, 17, 13, 0.16);
+
+  /* Brand — azul TOTVS refinado, usado como acento único disciplinado */
+  --brand: #2347FF;
+  --brand-bright: #4B6BFF;
+  --brand-soft: rgba(35, 71, 255, 0.08);
+
+  /* Sinal cores (insights, status) */
+  --warm: #C97B3F;
+  --green: #4F7A4A;
+  --red: #B85450;
+
+  /* Fonte body conveniência — espelha --font-sans pra contextos onde queremos
+   * o nome semântico "body" (Inter via next/font está em --font-sans). */
+  --font-body: var(--font-sans);
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  /* Easings — calm intelligence motion */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-brand: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Reservado pra dark mode futuro.
+ * Sem UI toggle no momento — esta sub-fase entrega só o tema claro.
+ * Quando adotar dark, criar componente <ThemeToggle> e aplicar
+ * `data-theme="dark"` no <html>. */
+[data-theme="dark"] {
+  --paper: #14110D;
+  --paper-2: #1c1814;
+  --paper-3: #25201a;
+  --ink: #F4F1EC;
+  --ink-2: #B5AC9F;
+  --mute: #847B70;
+  --mute-2: #5a5247;
+  --hair: rgba(244, 241, 236, 0.08);
+  --hair-strong: rgba(244, 241, 236, 0.16);
+  --brand-soft: rgba(35, 71, 255, 0.16);
+}
+
+/* Respeitar preferência de redução de movimento (acessibilidade) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
