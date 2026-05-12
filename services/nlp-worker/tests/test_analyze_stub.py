@@ -63,11 +63,13 @@ def test_analyze_returns_valid_response(transcript: str, tenant: str):
 
 def test_analyze_acme_detects_competition_risk():
     payload = _load_request(
-        "01-acme-discovery-lead-novo.txt", "acme-software", "00000000-0000-4000-8000-000000000aaa"
+        "03-acme-upsell-manufatura-concorrente.txt",
+        "acme-software",
+        "00000000-0000-4000-8000-000000000aaa",
     )
     resp = client.post("/analyze", json=payload)
     body = resp.json()
     categories = {r["category"] for r in body["risks"]}
-    # A reuniao menciona TotalSys e proposta abaixo; esperamos pelo menos 1 risco
+    # A reuniao menciona concorrente; esperamos pelo menos 1 risco identificado.
     assert body["risks"], "Esperava ao menos 1 risco identificado."
     assert categories & {"COMPETITION", "PRICE"}
