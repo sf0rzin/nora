@@ -153,15 +153,15 @@ export function OverlayPage() {
             return;
           }
 
-          const mouseStart = { x: e.clientX, y: e.clientY };
+          const mouseStart = { x: e.screenX, y: e.screenY };
           const isDragging = { current: true };
           let rafId: number | null = null;
           let pendingPos: { x: number; y: number } | null = null;
 
           const handleMouseMove = (ev: MouseEvent) => {
             if (!isDragging.current) return;
-            const newX = winPos.x + (ev.clientX - mouseStart.x);
-            const newY = winPos.y + (ev.clientY - mouseStart.y);
+            const newX = winPos.x + (ev.screenX - mouseStart.x);
+            const newY = winPos.y + (ev.screenY - mouseStart.y);
             pendingPos = { x: newX, y: newY };
 
             if (rafId === null) {
