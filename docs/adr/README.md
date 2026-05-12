@@ -44,3 +44,4 @@ Sequencial, 4 dígitos, kebab-case: `0001-monorepo.md`, `0002-multi-tenancy.md`.
 | 0009 | Estratégia de credenciais Azure Speech | aceito |
 | 0010 | Package compartilhado `nlp-baseline` para TF-IDF PT-BR | aceito |
 | 0011 | Invite-based onboarding com restrição opcional de corporate domain | aceito |
+| 0012 | PII PERSON_NAME: estratégia regional BR no MVP, upgrade NER quando internacionalizar | aceito |
