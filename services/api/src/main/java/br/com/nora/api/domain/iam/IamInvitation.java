@@ -9,14 +9,14 @@ import java.util.UUID;
  * Convite de usuario para um tenant (US06, ADR 0011).
  *
  * <p>Agregado imutavel — toda transicao de estado retorna nova instancia. As regras de negocio
- * ficam aqui: state transitions sao validas apenas quando o status atual permite, e a expiracao
- * e determinada pelo tempo do relogio fornecido pela camada de aplicacao.
+ * ficam aqui: state transitions sao validas apenas quando o status atual permite, e a expiracao e
+ * determinada pelo tempo do relogio fornecido pela camada de aplicacao.
  *
  * <p>O {@code token} e tratado como secret: nunca deve ser devolvido em respostas de listagem e
  * jamais logado em producao. Ele e a credencial do convidado para o endpoint publico de aceite.
  *
- * <p>{@code groupIds} pode estar vazio quando o invite nao anexa o user a nenhum grupo no
- * aceite. {@code acceptedAt} e {@code acceptedUserId} sao preenchidos apenas no aceite.
+ * <p>{@code groupIds} pode estar vazio quando o invite nao anexa o user a nenhum grupo no aceite.
+ * {@code acceptedAt} e {@code acceptedUserId} sao preenchidos apenas no aceite.
  */
 public record IamInvitation(
         UUID id,
@@ -49,8 +49,8 @@ public record IamInvitation(
     }
 
     /**
-     * Marca o convite como aceito retornando uma nova instancia. So permitido a partir de
-     * {@code PENDING}.
+     * Marca o convite como aceito retornando uma nova instancia. So permitido a partir de {@code
+     * PENDING}.
      */
     public IamInvitation accept(UUID userId, Instant acceptedAt) {
         if (status != InvitationStatus.PENDING) {
@@ -74,9 +74,9 @@ public record IamInvitation(
     }
 
     /**
-     * Marca o convite como revogado retornando uma nova instancia. So permitido a partir de
-     * {@code PENDING} — revogacao apos aceite/expiracao e no-op semantica e fica como erro de
-     * aplicacao para clarificar intencao.
+     * Marca o convite como revogado retornando uma nova instancia. So permitido a partir de {@code
+     * PENDING} — revogacao apos aceite/expiracao e no-op semantica e fica como erro de aplicacao
+     * para clarificar intencao.
      */
     public IamInvitation revoke() {
         if (status != InvitationStatus.PENDING) {
