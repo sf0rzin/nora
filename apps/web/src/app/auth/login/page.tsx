@@ -52,12 +52,12 @@ function LoginForm() {
 
   return (
     <div className={styles.shell}>
-      {/* ── LEFT: art panel (dark) ── */}
+      {/* ── LEFT: art panel (paleta clara editorial) ── */}
       <aside className={styles.art}>
         <div className={styles.artGrid} aria-hidden="true" />
 
         <div className={styles.artLogo}>
-          <NoraLogo size={28} variant="paper" />
+          <NoraLogo size={28} variant="brand" />
         </div>
 
         <OrbAnimation>
