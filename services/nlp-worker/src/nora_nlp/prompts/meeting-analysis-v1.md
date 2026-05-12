@@ -23,6 +23,7 @@ Regras invioláveis:
 10. Sentimento global considera o tom predominante da reunião, não a soma aritmética.
 11. Limite-se a no máximo 12 tópicos. Tópicos são substantivos curtos (1–3 palavras).
 12. **Participantes**: identifique todas as pessoas mencionadas ou que falaram na reunião. Para cada uma, informe `name`, `role` (cargo/função se mencionado, senão null) e `mentionCount` (quantas vezes a pessoa participou/falou). Nomes que aparecem como PII placeholders devem ser registrados com o placeholder como nome.
+13. **Productivity Score (opt-in, ADR 0005)**: o campo `productivity` é **opcional**. Quando o usuário declarou um objetivo para a reunião (informado abaixo na seção "Objetivo declarado"), você DEVE emitir `productivity` populado com `score` (0-100), `band` (LOW/<40, MEDIUM/40-69, HIGH/>=70), `coverage` (status ADDRESSED/PARTIAL/MISSED por outcome esperado com `evidence` textual), `offTopicRatio` e `decisionDensity` (floats 0-1, null se não estimável) e `rationale`. **Quando NÃO houver objetivo declarado, emita `productivity` = null.** Nunca invente score sem gabarito.
 
 ## USER
 
@@ -31,6 +32,10 @@ Contexto do tenant:
 ```json
 {{tenant_context_json}}
 ```
+
+Objetivo declarado para esta reunião:
+
+{{goal_section}}
 
 Transcrição da reunião (ID `{{meeting_id}}`, idioma `{{language}}`):
 
