@@ -29,11 +29,15 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 DATA_DIR = REPO_ROOT / "data" / "synthetic"
 
 
+def _read_meeting(name: str) -> str:
+    return (DATA_DIR / "meetings" / name).read_text(encoding="utf-8")
+
+
 # ---------- Unitarios de extract_baseline_terms ----------
 
 
 def test_extract_returns_list_of_baseline_term_for_real_transcript() -> None:
-    transcript = (DATA_DIR / "meetings" / "01-acme-discovery-lead-novo.txt").read_text(encoding="utf-8")
+    transcript = _read_meeting("01-acme-discovery-lead-novo.txt")
     result = extract_baseline_terms(transcript, top_n=10)
     assert result, "Esperava lista nao-vazia para transcript PT-BR real."
     for item in result:
@@ -41,7 +45,7 @@ def test_extract_returns_list_of_baseline_term_for_real_transcript() -> None:
 
 
 def test_extract_terms_have_positive_score() -> None:
-    transcript = (DATA_DIR / "meetings" / "01-acme-discovery-lead-novo.txt").read_text(encoding="utf-8")
+    transcript = _read_meeting("01-acme-discovery-lead-novo.txt")
     result = extract_baseline_terms(transcript, top_n=10)
     assert result
     for item in result:
@@ -50,7 +54,7 @@ def test_extract_terms_have_positive_score() -> None:
 
 def test_extract_scores_are_in_valid_range() -> None:
     """Schema constraint: score em [0, 1]."""
-    transcript = (DATA_DIR / "meetings" / "05-northwind-renewal-churn-risco.txt").read_text(encoding="utf-8")
+    transcript = _read_meeting("05-northwind-renewal-churn-risco.txt")
     result = extract_baseline_terms(transcript, top_n=20)
     assert result
     for item in result:
@@ -58,13 +62,13 @@ def test_extract_scores_are_in_valid_range() -> None:
 
 
 def test_extract_respects_top_n_limit() -> None:
-    transcript = (DATA_DIR / "meetings" / "01-acme-discovery-lead-novo.txt").read_text(encoding="utf-8")
+    transcript = _read_meeting("01-acme-discovery-lead-novo.txt")
     result = extract_baseline_terms(transcript, top_n=5)
     assert len(result) <= 5
 
 
 def test_extract_returns_terms_sorted_descending() -> None:
-    transcript = (DATA_DIR / "meetings" / "01-acme-discovery-lead-novo.txt").read_text(encoding="utf-8")
+    transcript = _read_meeting("01-acme-discovery-lead-novo.txt")
     result = extract_baseline_terms(transcript, top_n=10)
     scores = [t.score for t in result]
     assert scores == sorted(scores, reverse=True)
@@ -76,7 +80,7 @@ def test_extract_handles_empty_transcript() -> None:
 
 
 def test_extract_handles_top_n_zero() -> None:
-    transcript = (DATA_DIR / "meetings" / "01-acme-discovery-lead-novo.txt").read_text(encoding="utf-8")
+    transcript = _read_meeting("01-acme-discovery-lead-novo.txt")
     assert extract_baseline_terms(transcript, top_n=0) == []
 
 
