@@ -34,6 +34,7 @@ public class TenantRepositoryAdapter implements TenantRepository {
                         tenant.slug(),
                         tenant.status(),
                         tenant.plan(),
+                        tenant.allowedEmailDomain(),
                         tenant.createdAt(),
                         tenant.updatedAt());
         TenantJpaEntity saved = jpa.save(entity);
@@ -47,6 +48,7 @@ public class TenantRepositoryAdapter implements TenantRepository {
                 e.getSlug(),
                 e.getStatus(),
                 e.getPlan(),
+                e.getAllowedEmailDomain(),
                 e.getCreatedAt(),
                 e.getUpdatedAt());
     }
