@@ -22,6 +22,7 @@ import {
 } from "@/lib/api/client";
 import PolicyEditor from "@/components/policy-editor";
 import CorporateDomainCard from "@/components/corporate-domain-card";
+import InvitationCard from "@/components/invitation-card";
 
 const POLICY_PLACEHOLDER = `{
   "version": "2026-05-07",
@@ -104,6 +105,9 @@ export default function IamPage() {
 
       {/* ===== Corporate Domain (US32) ===== */}
       <CorporateDomainCard />
+
+      {/* ===== Invitations (US06) ===== */}
+      <InvitationCard />
 
       {/* ===== Groups ===== */}
       <section className="space-y-3">

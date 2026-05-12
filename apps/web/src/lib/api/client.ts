@@ -5,7 +5,26 @@
  * faz fetch real contra NEXT_PUBLIC_API_BASE_URL e injeta o JWT do cookie.
  */
 
-import type { MeetingDetail, MeetingsListResponse, ApiError } from "./types";
+import type {
+  AcceptInviteRequest,
+  ApiError,
+  Invite,
+  InviteListResponse,
+  InviteStatus,
+  InviteUserRequest,
+  MeetingDetail,
+  MeetingsListResponse,
+} from "./types";
+
+// Re-export para componentes consumirem direto de @/lib/api/client (parity
+// com GroupDto/PolicyDto etc., que sao declarados localmente neste modulo).
+export type {
+  AcceptInviteRequest,
+  Invite,
+  InviteListResponse,
+  InviteStatus,
+  InviteUserRequest,
+};
 import meetingsListFixture from "@/fixtures/meetings-list-response.json";
 import meetingDetailFixture from "@/fixtures/meeting-detail-response.json";
 import { getToken } from "@/lib/auth";
@@ -23,8 +42,15 @@ export class ApiRequestError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
+interface RequestOptions extends RequestInit {
+  /**
+   * Quando `true`, nao injeta o Bearer JWT — usado em endpoints publicos
+   * cujo path/payload contem a credencial (ex.: aceite de invite).
+   */
+  skipAuth?: boolean;
+}
+
+async function request<T>(path: string, init?: RequestOptions): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...((init?.headers as Record<string, string>) ?? {}),
@@ -32,7 +58,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (init?.body && !(init.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (!init?.skipAuth) {
+    const token = getToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
 
   const resp = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -385,4 +414,41 @@ export async function detachPolicyFromUser(policyId: string, userId: string): Pr
 
 export async function listAuditEvents(limit = 50): Promise<AuditEventDto[]> {
   return request<AuditEventDto[]>(`/iam/audit?limit=${limit}`);
+}
+
+// ---------- IAM Invitations (US06, ADR 0011) ----------
+
+/** Cria um convite. Exige IAM `iam:user:invite`. */
+export async function inviteUser(req: InviteUserRequest): Promise<Invite> {
+  return request<Invite>(`/iam/users/invite`, {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+/** Lista convites do tenant atual; filtra por status quando informado. */
+export async function listInvites(status?: InviteStatus): Promise<InviteListResponse> {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return request<InviteListResponse>(`/iam/invites${qs}`);
+}
+
+/**
+ * Aceita um convite. **Endpoint publico**: o `token` na URL e a credencial,
+ * portanto nao enviamos Bearer JWT (mesmo se o navegador tiver sessao de outro
+ * tenant). Backend cria user, persiste senha e devolve `LoginResponse`.
+ */
+export async function acceptInvite(
+  token: string,
+  req: AcceptInviteRequest,
+): Promise<LoginResponse> {
+  return request<LoginResponse>(`/iam/invites/${encodeURIComponent(token)}/accept`, {
+    method: "POST",
+    body: JSON.stringify(req),
+    skipAuth: true,
+  });
+}
+
+/** Revoga um convite PENDING. Exige IAM `iam:invite:revoke`. */
+export async function revokeInvite(id: string): Promise<void> {
+  return request<void>(`/iam/invites/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
