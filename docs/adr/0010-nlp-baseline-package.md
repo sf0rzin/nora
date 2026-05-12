@@ -1,8 +1,8 @@
 # 0010 — Package compartilhado `nlp-baseline` para TF-IDF PT-BR
 
-- Status: proposto
+- Status: aceito
 - Data: 2026-05-11
-- Decisores: Time NORA
+- Decisores: Anthony Sforzin (PO) + Claude Opus 4.7 (Tech Lead)
 
 ## Contexto
 
