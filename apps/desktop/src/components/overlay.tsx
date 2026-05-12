@@ -144,21 +144,47 @@ export function OverlayPage() {
       className="h-screen flex flex-col bg-zinc-900/95 backdrop-blur-sm text-zinc-100 select-none overflow-hidden rounded-xl border border-zinc-700/50"
     >
       <div
-        onMouseDown={(e) => {
-          const isDraggingRef = { current: true };
-          const startPosRef = { current: { x: e.clientX, y: e.clientY } };
+        onMouseDown={async (e) => {
+          let winPos: { x: number; y: number };
+          try {
+            const [wx, wy] = (await invoke("get_overlay_position")) as [number, number];
+            winPos = { x: wx, y: wy };
+          } catch {
+            return;
+          }
+
+          const mouseStart = { x: e.clientX, y: e.clientY };
+          const isDragging = { current: true };
+          let rafId: number | null = null;
+          let pendingPos: { x: number; y: number } | null = null;
+
           const handleMouseMove = (ev: MouseEvent) => {
-            if (!isDraggingRef.current) return;
-            const deltaX = ev.clientX - startPosRef.current.x;
-            const deltaY = ev.clientY - startPosRef.current.y;
-            invoke("move_overlay_window", { deltaX, deltaY }).catch(() => {});
-            startPosRef.current = { x: ev.clientX, y: ev.clientY };
+            if (!isDragging.current) return;
+            const newX = winPos.x + (ev.clientX - mouseStart.x);
+            const newY = winPos.y + (ev.clientY - mouseStart.y);
+            pendingPos = { x: newX, y: newY };
+
+            if (rafId === null) {
+              rafId = requestAnimationFrame(() => {
+                rafId = null;
+                if (pendingPos && isDragging.current) {
+                  invoke("set_overlay_position", pendingPos).catch(() => {});
+                  pendingPos = null;
+                }
+              });
+            }
           };
+
           const handleMouseUp = () => {
-            isDraggingRef.current = false;
+            isDragging.current = false;
+            if (rafId !== null) {
+              cancelAnimationFrame(rafId);
+              rafId = null;
+            }
             window.removeEventListener("mousemove", handleMouseMove);
             window.removeEventListener("mouseup", handleMouseUp);
           };
+
           window.addEventListener("mousemove", handleMouseMove);
           window.addEventListener("mouseup", handleMouseUp);
         }}

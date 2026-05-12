@@ -238,13 +238,20 @@ pub fn get_live_highlights_snapshot(
 }
 
 #[tauri::command]
-pub fn move_overlay_window(app_handle: AppHandle, delta_x: f64, delta_y: f64) -> Result<(), String> {
+pub fn get_overlay_position(app_handle: AppHandle) -> Result<(i32, i32), String> {
     if let Some(window) = app_handle.get_webview_window("overlay") {
         let pos = window.outer_position().map_err(|e| e.to_string())?;
-        let new_x = (pos.x as f64 + delta_x) as i32;
-        let new_y = (pos.y as f64 + delta_y) as i32;
+        Ok((pos.x, pos.y))
+    } else {
+        Err("Overlay window not found".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn set_overlay_position(app_handle: AppHandle, x: i32, y: i32) -> Result<(), String> {
+    if let Some(window) = app_handle.get_webview_window("overlay") {
         window
-            .set_position(tauri::Position::Physical(tauri::PhysicalPosition { x: new_x, y: new_y }))
+            .set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))
             .map_err(|e| e.to_string())
     } else {
         Err("Overlay window not found".to_string())
