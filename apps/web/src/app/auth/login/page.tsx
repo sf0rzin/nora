@@ -92,7 +92,13 @@ function LoginForm() {
           </div>
 
           <div className={styles.sso}>
-            <button type="button" className={styles.ssoBtn}>
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              title="Em breve — SSO corporativo (Entra ID/SAML) chega pós-MVP"
+              className={`${styles.ssoBtn} ${styles.ssoBtnDisabled}`}
+            >
               <svg
                 className={styles.ssoIcon}
                 viewBox="0 0 23 23"
@@ -105,6 +111,7 @@ function LoginForm() {
                 <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
               </svg>
               Continuar com Microsoft
+              <span className={styles.ssoBadge}>Em breve</span>
             </button>
           </div>
 
