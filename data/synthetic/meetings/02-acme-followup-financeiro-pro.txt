@@ -1,0 +1,72 @@
+Reunião: Follow-up Proposta — Acme × Indústria Metalúrgica Pampa
+Data: 2026-05-09
+Horário: 10:00 — 10:32
+Participantes: Lucas Andrade (Acme — AE), Marina Cardoso (Pampa — Diretora de TI), Roberto Lins (Pampa — CFO)
+
+Lucas: Bom dia Marina, bom dia Roberto. Marina, eu te mandei a proposta revisada ontem à noite. Conseguiu olhar?
+
+Marina: Bom dia Lucas. Olhei sim. O Roberto também tá aqui justamente pra discutir os números. Roberto, fala você.
+
+Roberto: Bom dia Lucas. Então, eu li a proposta com calma. O escopo do Acme Financeiro Pro tá bem alinhado com o que a gente conversou na reunião do dia 02/05. A previsão de fluxo de caixa de 12 meses é exatamente o que a gente precisa pro Q3 e Q4. Mas, é, o valor anual ficou 8% acima do que a gente tinha como teto interno.
+
+Lucas: Entendi Roberto. Qual é o teto interno?
+
+Roberto: O teto que eu levei pro conselho foi R$ 420.000,00 ano, incluindo Core e Financeiro Pro. A proposta veio em R$ 454.000,00.
+
+Lucas: Ok. A diferença vem basicamente do módulo de tesouraria, que a gente colocou de fábrica no Financeiro Pro. É uma feature que a maioria dos clientes acaba ativando depois, mas se quiser eu posso desmembrar e deixar a tesouraria como opcional contratável separado.
+
+Marina: Quanto fica sem tesouraria?
+
+Lucas: Tira uns R$ 38.000,00 do anual. Aí ficaria em R$ 416.000,00. Dentro do teto.
+
+Roberto: Hum. E o que a tesouraria entrega que o módulo financeiro do Core não entrega?
+
+Lucas: Boa. A tesouraria tem três coisas que o Core não tem. Um, integração com 18 bancos via Open Finance pra extrato em tempo real. Dois, gestão de aplicações financeiras com marcação a mercado. Três, simulação de hedge cambial. Como vocês importam matéria-prima, é, eu acho que o hedge tem ROI rápido pra vocês.
+
+Roberto: Importamos sim, uns 35% do COGS vem em dólar. O hedge faz sentido. Mas pra começar...
+
+Marina: Roberto, deixa eu sugerir uma coisa. A gente fecha sem tesouraria agora, dentro do teto, e em seis meses, depois que o Core e o Financeiro Pro estiverem rodando, a gente avalia tesouraria com base no que economizou.
+
+Roberto: Concordo. Lucas, isso é viável?
+
+Lucas: É viável e a gente tem cláusula pra isso, chamamos de upgrade contratado, com preço travado por 12 meses se acionar dentro do período. Posso colocar isso na proposta.
+
+Roberto: Perfeito. Mete na proposta.
+
+Marina: Outra preocupação. O nosso time de TI tá em janela de congelamento de mudanças até 15/06/2026. Implantação tem que começar antes disso ou só pode subir depois do dia 15/06.
+
+Lucas: Entendi. Quando vocês querem que o sistema esteja produtivo?
+
+Marina: Idealmente em 01/09/2026, pra fechar o terceiro trimestre já no Acme.
+
+Lucas: Ok. Pra subir em 01/09, o Onboarding Express precisa começar no máximo até 15/07. Como vocês tão em congelamento até 15/06, a gente tem duas opções. Um: começar projeto em 16/06, exatamente depois do congelamento, em 60 dias úteis. Apertado mas dá. Dois: começar em 01/07 e ir até 30/09, perdendo o Q3.
+
+Roberto: Se passar de setembro o conselho vai questionar. Eu prefiro apertar.
+
+Marina: Eu também. Mas Lucas, se a gente subir em 16/06, eu preciso ter a equipe de implantação de vocês confirmada na primeira semana sem atraso. Senão vira bola de neve.
+
+Lucas: Compromisso registrado. Eu vou subir uma reunião com a Carla, que é a head de implantação, e o gerente de projeto que vai cuidar da conta de vocês, ainda essa semana. Pra travar cronograma.
+
+Marina: Quando?
+
+Lucas: Posso oferecer quinta-feira 14/05, 14h, com a Carla, o Mateus que vai ser o PM, eu, e quem vocês quiserem trazer.
+
+Marina: Eu, o Eduardo do meu time, e o pessoal de fiscal. Pode mandar invite.
+
+Lucas: Mandado. Resumindo então as decisões: a proposta revisada vai sair hoje à tarde sem tesouraria, dentro do teto de R$ 420.000,00. A cláusula de upgrade contratado da tesouraria fica disponível por 12 meses com preço travado. Reunião de cronograma quinta dia 14/05 às 14h. Implantação começa 16/06 com meta de produção em 01/09. Decisão final do contrato até quando?
+
+Roberto: Até 20/05. Eu preciso levar pro conselho dia 22.
+
+Lucas: Anotado. Mando proposta revisada hoje. Mais alguma coisa?
+
+Marina: Só uma. Treinamento de usuários, tá incluído ou é à parte?
+
+Lucas: Incluído. A gente faz três turmas: usuários-chave, usuários gerais, e administradores. Total 40 horas distribuídas em quatro semanas. Inclui ambiente de homologação dedicado.
+
+Marina: Beleza. Sem mais perguntas do meu lado.
+
+Roberto: Do meu também. Obrigado Lucas.
+
+Lucas: Eu que agradeço, pessoal. Até quinta.
+
+Marina: Até.

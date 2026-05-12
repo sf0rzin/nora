@@ -1,19 +1,27 @@
 {
   "companyName": "Solo Launch",
-  "industry": "Software / Startup",
-  "valueProposition": "Plataforma SaaS de automação de marketing para criadores de conteúdo solo.",
+  "industry": "Software — Startup / Creator Tools",
+  "valueProposition": "Suite SaaS para criadores de conteúdo solo e pequenos times automatizarem agendamento, analytics e engajamento em múltiplas redes sociais.",
+  "idealCustomerProfile": "Criadores de conteúdo solo ou times até 5 pessoas, entre 10.000 e 500.000 seguidores combinados, ativos em pelo menos 2 redes sociais, com necessidade de agendamento e análise consolidada.",
   "products": [
     {
       "name": "Solo Suite",
-      "description": "Suite única com agendamento, analytics e automação.",
-      "keyFeatures": ["Agendamento multi-rede", "Analytics", "Automação de respostas"]
+      "description": "Plataforma única com agendamento multi-rede, analytics consolidado e automação de respostas a comentários.",
+      "keyDifferentiators": [
+        "Agendamento nativo para Instagram, LinkedIn, X e YouTube Shorts sem precisar de Buffer",
+        "Analytics unificado que mostra engajamento ponderado por rede",
+        "Automação de respostas com sugestões geradas por IA respeitando o tom da marca"
+      ]
     }
   ],
-  "competitors": ["CreatorHub", "PostMate"],
-  "idealCustomerProfile": "Criadores de conteúdo solo entre 10k e 500k seguidores.",
-  "commercialPlaybook": [
-    "Onboarding self-service.",
-    "Plano único, sem desconto."
+  "competitors": [
+    "CreatorHub",
+    "PostMate",
+    "Buffer Essentials"
   ],
-  "glossary": []
+  "objectionHandling": [
+    "Quando o usuário comparar preço com Buffer: enfatizar que o Solo Suite inclui analytics premium e automação de respostas sem upgrade adicional.",
+    "Quando o usuário pedir TikTok: explicar que TikTok está na roadmap Q4 e oferecer integração via Zapier no curto prazo.",
+    "Quando o usuário reclamar de onboarding: direcionar para o novo fluxo self-service em desenvolvimento, com video tutorial de 5 minutos."
+  ]
 }

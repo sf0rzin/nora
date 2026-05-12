@@ -1,0 +1,23 @@
+1
+00:00:01,000 --> 00:00:09,500
+Carolina: Lucas, vou ser direta. A gente tá considerando seriamente sair do Acme.
+
+2
+00:00:10,000 --> 00:00:13,300
+Lucas: Pode falar. Quero ouvir tudo.
+
+3
+00:00:13,800 --> 00:00:35,500
+Carolina: O relatório de DRE de abril demorou dez horas pra finalizar. Atrasou nosso reporte pro acionista em dois dias. E o chamado 38291 sobre query lenta no fiscal tá aberto há três semanas sem resposta técnica.
+
+4
+00:00:36,000 --> 00:00:59,700
+Lucas: Carolina, entendo a gravidade. Posso propor trinta dias com patch de performance validado, war room semanal, e cláusula de rescisão sem multa se não entregarmos?
+
+5
+00:01:00,200 --> 00:01:11,500
+Carolina: Tá. Mas vou continuar conversa com OmniBusiness em paralelo. Não é briga, é proteção.
+
+6
+00:01:12,000 --> 00:01:18,500
+Lucas: Entendido e respeitado. Documento amanhã dia 06/05 até 18h.
