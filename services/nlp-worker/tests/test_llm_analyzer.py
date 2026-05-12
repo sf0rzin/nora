@@ -35,7 +35,7 @@ def _make_settings() -> Settings:
 
 
 def _make_request(
-    transcript_file: str = "01-acme-discovery.txt",
+    transcript_file: str = "01-acme-discovery-lead-novo.txt",
     tenant: str = "acme-software",
 ) -> AnalyzeRequest:
     transcript = (DATA_DIR / "meetings" / transcript_file).read_text(encoding="utf-8")

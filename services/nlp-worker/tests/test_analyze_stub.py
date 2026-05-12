@@ -38,9 +38,9 @@ def _load_request(transcript_file: str, tenant_slug: str, meeting_id: str) -> di
 @pytest.mark.parametrize(
     "transcript,tenant",
     [
-        ("01-acme-discovery.txt", "acme-software"),
-        ("03-northwind-renewal.txt", "northwind-fintech"),
-        ("06-solo-product.txt", "solo-launch"),
+        ("01-acme-discovery-lead-novo.txt", "acme-software"),
+        ("05-northwind-renewal-churn-risco.txt", "northwind-fintech"),
+        ("11-solo-roadmap-concorrente.txt", "solo-launch"),
     ],
 )
 def test_analyze_returns_valid_response(transcript: str, tenant: str):
@@ -63,7 +63,7 @@ def test_analyze_returns_valid_response(transcript: str, tenant: str):
 
 def test_analyze_acme_detects_competition_risk():
     payload = _load_request(
-        "01-acme-discovery.txt", "acme-software", "00000000-0000-4000-8000-000000000aaa"
+        "01-acme-discovery-lead-novo.txt", "acme-software", "00000000-0000-4000-8000-000000000aaa"
     )
     resp = client.post("/analyze", json=payload)
     body = resp.json()
