@@ -191,6 +191,41 @@ export async function upsertTenantContext(payload: Omit<TenantContextDto, "tenan
   });
 }
 
+// ---------- Tenant Domain (US32) ----------
+
+/** Estado atual do dominio corporativo do tenant (GET /tenant/domain). */
+export interface TenantDomain {
+  tenantId: string;
+  /** Dominio normalizado (ex: "acme.com"). `null` quando nao ha restricao. */
+  allowedEmailDomain: string | null;
+}
+
+/** Resposta da atualizacao de dominio (PUT /tenant/domain). Inclui auditoria leve. */
+export interface TenantDomainUpdateResponse {
+  tenantId: string;
+  allowedEmailDomain: string | null;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+/** Payload do PUT /tenant/domain. `null` remove a restricao. */
+export interface TenantDomainUpdateRequest {
+  allowedEmailDomain: string | null;
+}
+
+export async function getTenantDomain(): Promise<TenantDomain> {
+  return request<TenantDomain>(`/tenant/domain`);
+}
+
+export async function updateTenantDomain(
+  req: TenantDomainUpdateRequest,
+): Promise<TenantDomainUpdateResponse> {
+  return request<TenantDomainUpdateResponse>(`/tenant/domain`, {
+    method: "PUT",
+    body: JSON.stringify(req),
+  });
+}
+
 // ---------- Tasks ----------
 
 export type TaskStatus = "OPEN" | "IN_PROGRESS" | "DONE";
