@@ -59,7 +59,7 @@ pub fn run() {
             live_analysis::analyze_live,
             live_analysis::toggle_overlay,
             live_analysis::get_live_highlights_snapshot,
-            live_analysis::start_overlay_drag,
+            live_analysis::move_overlay_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

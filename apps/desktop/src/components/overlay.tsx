@@ -141,15 +141,30 @@ export function OverlayPage() {
 
   return (
     <div
-      data-tauri-drag-region
       className="h-screen flex flex-col bg-zinc-900/95 backdrop-blur-sm text-zinc-100 select-none overflow-hidden rounded-xl border border-zinc-700/50"
     >
       <div
-        data-tauri-drag-region
-        onMouseDown={() => invoke("start_overlay_drag").catch(() => {})}
+        onMouseDown={(e) => {
+          const isDraggingRef = { current: true };
+          const startPosRef = { current: { x: e.clientX, y: e.clientY } };
+          const handleMouseMove = (ev: MouseEvent) => {
+            if (!isDraggingRef.current) return;
+            const deltaX = ev.clientX - startPosRef.current.x;
+            const deltaY = ev.clientY - startPosRef.current.y;
+            invoke("move_overlay_window", { deltaX, deltaY }).catch(() => {});
+            startPosRef.current = { x: ev.clientX, y: ev.clientY };
+          };
+          const handleMouseUp = () => {
+            isDraggingRef.current = false;
+            window.removeEventListener("mousemove", handleMouseMove);
+            window.removeEventListener("mouseup", handleMouseUp);
+          };
+          window.addEventListener("mousemove", handleMouseMove);
+          window.addEventListener("mouseup", handleMouseUp);
+        }}
         className="flex items-center justify-between px-3 py-2 bg-zinc-900 border-b border-zinc-800 cursor-move"
       >
-        <div className="flex items-center gap-2 text-xs font-medium" data-tauri-drag-region>
+        <div className="flex items-center gap-2 text-xs font-medium">
           {recordingStatus?.isRecording ? (
             <>
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
