@@ -1,0 +1,34 @@
+# Repo-root .dockerignore — usado quando build context = raiz (ex.: worker)
+.git
+.github
+.claude
+.idea
+.vscode
+.settings
+
+# Apps que não fazem parte do worker build
+apps/desktop
+apps/web
+
+# Outros services
+services/api
+
+# Tudo do worker que NÃO é src ou pyproject
+services/nlp-worker/.venv
+services/nlp-worker/__pycache__
+services/nlp-worker/.pytest_cache
+services/nlp-worker/.ruff_cache
+services/nlp-worker/tests
+
+# Misc
+docs
+infra
+notebooks
+data
+**/*.log
+**/.DS_Store
+**/node_modules
+**/target
+**/dist
+**/build
+**/.next
