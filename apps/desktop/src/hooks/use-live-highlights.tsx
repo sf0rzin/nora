@@ -113,7 +113,7 @@ export function useLiveAnalysisTrigger() {
   const chunkSeqRef = useRef(0);
 
   const triggerAnalysis = useCallback(
-    async (transcriptLines: { text: string }[], currentHighlights: LiveHighlights) => {
+    async (transcriptLines: { text: string }[], currentHighlights: LiveHighlights, force = false) => {
       if (isAnalyzingRef.current) return;
       if (transcriptLines.length === 0) return;
 
@@ -123,12 +123,15 @@ export function useLiveAnalysisTrigger() {
         .slice(lastAnalyzedCountRef.current)
         .reduce((acc, l) => acc + l.text.length, 0);
 
-      if (newLines < 3 && newChars < 100 && timeSinceLastAnalysis < 15000) {
+      if (!force && newLines < 3 && newChars < 100 && timeSinceLastAnalysis < 15000) {
         console.log("[live-trigger] skipped:", { newLines, newChars, timeSinceLastAnalysis });
         return;
       }
 
-      const transcriptChunk = transcriptLines.map((l) => l.text).join("\n");
+      const transcriptChunk = transcriptLines
+        .slice(lastAnalyzedCountRef.current)
+        .map((l) => l.text)
+        .join("\n");
       if (transcriptChunk.length < 30) {
         console.log("[live-trigger] chunk too short:", transcriptChunk.length, "chars");
         return;

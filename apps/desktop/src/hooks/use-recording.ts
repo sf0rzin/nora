@@ -42,6 +42,17 @@ export function useRecording(options: UseRecordingOptions = {}) {
   const { clearHighlights, highlights } = useLiveHighlights();
   const { triggerAnalysis, resetTrigger } = useLiveAnalysisTrigger();
 
+  const transcriptLinesRef = useRef(transcriptLines);
+  const highlightsRef = useRef(highlights);
+
+  useEffect(() => {
+    transcriptLinesRef.current = transcriptLines;
+  }, [transcriptLines]);
+
+  useEffect(() => {
+    highlightsRef.current = highlights;
+  }, [highlights]);
+
   useEffect(() => {
     const unlisten = listen<unknown>("transcript", (event) => {
       console.log("[transcript event]", event.payload);
@@ -97,19 +108,19 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
   useEffect(() => {
     if (!isRecording || transcriptLines.length === 0) return;
-    triggerAnalysis(transcriptLines, highlights);
+    triggerAnalysis(transcriptLines, highlightsRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transcriptLines.length, isRecording, triggerAnalysis]);
+  }, [transcriptLines.length, isRecording]);
 
   useEffect(() => {
-    if (!isRecording || transcriptLines.length === 0) return;
+    if (!isRecording) return;
     const interval = setInterval(() => {
-      triggerAnalysis(transcriptLines, highlights);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      if (transcriptLinesRef.current.length > 0) {
+        triggerAnalysis(transcriptLinesRef.current, highlightsRef.current, true);
+      }
     }, 15000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRecording, transcriptLines.length, triggerAnalysis]);
+  }, [isRecording, triggerAnalysis]);
 
   const loadDevices = useCallback(async () => {
     try {
