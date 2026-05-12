@@ -7,7 +7,7 @@ function formatTimeAgo(ms: number): string {
   if (seconds < 5) return "agora";
   if (seconds < 60) return `${seconds}s atrás`;
   const minutes = Math.floor(seconds / 60);
-  return `${minutes}min atr\u00e1s`;
+  return `${minutes}min atrás`;
 }
 
 const priorityColors: Record<string, string> = {
@@ -35,7 +35,7 @@ function HighlightSection({
         className="w-full px-3 py-2 flex items-center justify-between text-xs font-medium text-zinc-300 hover:bg-zinc-800/50 transition-colors"
       >
         <span className="flex items-center gap-2">
-          <span>{open ? "\u25BC" : "\u25B6"}</span>
+          <span>{open ? "▼" : "▶"}</span>
           {title}
           <span className="bg-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded-full text-[10px]">
             {items.length}
@@ -73,7 +73,7 @@ function TaskSection({
         className="w-full px-3 py-2 flex items-center justify-between text-xs font-medium text-zinc-300 hover:bg-zinc-800/50 transition-colors"
       >
         <span className="flex items-center gap-2">
-          <span>{open ? "\u25BC" : "\u25B6"}</span>
+          <span>{open ? "▼" : "▶"}</span>
           Tarefas
           <span className="bg-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded-full text-[10px]">
             {tasks.length}
@@ -173,7 +173,7 @@ export function OverlayPage() {
           onClick={() => invoke("toggle_overlay", { show: false })}
           className="w-5 h-5 flex items-center justify-center rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors text-xs"
         >
-          {"\u2715"}
+          {"×"}
         </button>
       </div>
 
