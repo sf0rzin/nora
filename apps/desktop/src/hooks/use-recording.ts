@@ -98,7 +98,18 @@ export function useRecording(options: UseRecordingOptions = {}) {
   useEffect(() => {
     if (!isRecording || transcriptLines.length === 0) return;
     triggerAnalysis(transcriptLines, highlights);
-  }, [transcriptLines.length, isRecording, triggerAnalysis, highlights]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transcriptLines.length, isRecording, triggerAnalysis]);
+
+  useEffect(() => {
+    if (!isRecording || transcriptLines.length === 0) return;
+    const interval = setInterval(() => {
+      triggerAnalysis(transcriptLines, highlights);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRecording, transcriptLines.length, triggerAnalysis]);
 
   const loadDevices = useCallback(async () => {
     try {

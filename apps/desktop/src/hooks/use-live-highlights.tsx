@@ -123,7 +123,7 @@ export function useLiveAnalysisTrigger() {
         .slice(lastAnalyzedCountRef.current)
         .reduce((acc, l) => acc + l.text.length, 0);
 
-      if (newLines < 8 && newChars < 200 && timeSinceLastAnalysis < 30000) {
+      if (newLines < 3 && newChars < 100 && timeSinceLastAnalysis < 15000) {
         console.log("[live-trigger] skipped:", { newLines, newChars, timeSinceLastAnalysis });
         return;
       }
