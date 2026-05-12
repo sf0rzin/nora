@@ -30,6 +30,9 @@ public class TenantJpaEntity {
     @Column(nullable = false)
     private Tenant.Plan plan;
 
+    @Column(name = "allowed_email_domain")
+    private String allowedEmailDomain;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -44,6 +47,7 @@ public class TenantJpaEntity {
             String slug,
             Tenant.Status status,
             Tenant.Plan plan,
+            String allowedEmailDomain,
             Instant createdAt,
             Instant updatedAt) {
         this.id = id;
@@ -51,6 +55,7 @@ public class TenantJpaEntity {
         this.slug = slug;
         this.status = status;
         this.plan = plan;
+        this.allowedEmailDomain = allowedEmailDomain;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -73,6 +78,10 @@ public class TenantJpaEntity {
 
     public Tenant.Plan getPlan() {
         return plan;
+    }
+
+    public String getAllowedEmailDomain() {
+        return allowedEmailDomain;
     }
 
     public Instant getCreatedAt() {
