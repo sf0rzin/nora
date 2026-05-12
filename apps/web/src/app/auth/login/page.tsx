@@ -1,15 +1,15 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import type { Route } from "next";
-import { Suspense, useState } from "react";
-import { login, ApiRequestError } from "@/lib/api/client";
-import { setSession } from "@/lib/auth";
-import { NoraLogo } from "@/components/brand/nora-logo";
-import { OrbAnimation } from "@/components/login/orb-animation";
-import { SoundwaveBars } from "@/components/login/soundwave-bars";
-import styles from "./login.module.css";
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import type { Route } from 'next';
+import { Suspense, useState } from 'react';
+import { login, ApiRequestError } from '@/lib/api/client';
+import { setSession } from '@/lib/auth';
+import { NoraLogo } from '@/components/brand/nora-logo';
+import { OrbAnimation } from '@/components/login/orb-animation';
+import { SoundwaveBars } from '@/components/login/soundwave-bars';
+import styles from './login.module.css';
 
 export default function LoginPage() {
   return (
@@ -22,9 +22,9 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = (params.get("next") ?? "/dashboard") as Route;
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const next = (params.get('next') ?? '/dashboard') as Route;
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -36,14 +36,13 @@ function LoginForm() {
     try {
       const r = await login(email, password);
       setSession(
-        r.accessToken,
         { userId: r.userId, tenantId: r.tenantId, email: r.email, displayName: r.displayName },
         r.expiresInSeconds,
       );
       router.replace(next);
       router.refresh();
     } catch (err) {
-      const msg = err instanceof ApiRequestError ? err.message : "Falha ao entrar";
+      const msg = err instanceof ApiRequestError ? err.message : 'Falha ao entrar';
       setError(msg);
     } finally {
       setLoading(false);
@@ -145,7 +144,7 @@ function LoginForm() {
                 <input
                   id="login-password"
                   className={`${styles.fieldInput} ${styles.fieldInputWithIcon}`}
-                  type={showPassword ? "text" : "password"}
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   placeholder="••••••••"
                   required
@@ -155,7 +154,7 @@ function LoginForm() {
                 <button
                   type="button"
                   className={styles.fieldToggle}
-                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                   aria-pressed={showPassword}
                   onClick={() => setShowPassword((v) => !v)}
                 >
@@ -199,7 +198,7 @@ function LoginForm() {
           )}
 
           <button type="submit" disabled={loading} className={styles.submit}>
-            {loading ? "Entrando…" : "Entrar"}
+            {loading ? 'Entrando…' : 'Entrar'}
             {!loading && (
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
                 <path

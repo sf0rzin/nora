@@ -2,8 +2,10 @@ package br.com.nora.api.application.identity;
 
 import br.com.nora.api.application.ports.Clock;
 import br.com.nora.api.application.ports.EmailSender;
+import br.com.nora.api.application.ports.JwtIssuer;
 import br.com.nora.api.application.ports.OneTimeTokenRepository;
 import br.com.nora.api.application.ports.PasswordHasher;
+import br.com.nora.api.application.ports.RefreshTokenRepository;
 import br.com.nora.api.application.ports.SecureTokenGenerator;
 import br.com.nora.api.application.ports.SecureTokenGenerator.GeneratedToken;
 import br.com.nora.api.application.ports.TenantRepository;
@@ -12,15 +14,20 @@ import br.com.nora.api.domain.identity.Email;
 import br.com.nora.api.domain.identity.OneTimeToken;
 import br.com.nora.api.domain.identity.OneTimeToken.Purpose;
 import br.com.nora.api.domain.identity.PasswordPolicy;
+import br.com.nora.api.domain.identity.RefreshToken;
 import br.com.nora.api.domain.identity.User;
 import br.com.nora.api.domain.tenant.Tenant;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
  * Servico de aplicacao para o fluxo completo de identidade do MVP: signup, verificacao de e-mail,
  * login, reset de senha. Stories: US01-US04 do backlog.
+ *
+ * <p>Round 2 / Subfase 1.3 A adiciona refresh token stateful + emissao de par
+ * access(JWT)+refresh(opaque) no login. Ver tambem {@link RefreshToken}.
  *
  * <p>Decisao de design (US01): cada signup Core cria um tenant pessoal proprio. O usuario fica como
  * primeiro membro desse tenant. Convite a tenant existente (US06) e Enterprise e tratado em outra
@@ -28,11 +35,16 @@ import java.util.UUID;
  */
 public class AuthService {
 
+    /** Default roles do MVP. Movido para ca pra ser reusavel pelo refresh. */
+    private static final List<String> DEFAULT_ROLES = List.of("ADMIN");
+
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
     private final OneTimeTokenRepository tokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordHasher passwordHasher;
     private final SecureTokenGenerator tokenGenerator;
+    private final JwtIssuer jwtIssuer;
     private final EmailSender emailSender;
     private final Clock clock;
     private final AuthSettings settings;
@@ -41,16 +53,20 @@ public class AuthService {
             TenantRepository tenantRepository,
             UserRepository userRepository,
             OneTimeTokenRepository tokenRepository,
+            RefreshTokenRepository refreshTokenRepository,
             PasswordHasher passwordHasher,
             SecureTokenGenerator tokenGenerator,
+            JwtIssuer jwtIssuer,
             EmailSender emailSender,
             Clock clock,
             AuthSettings settings) {
         this.tenantRepository = tenantRepository;
         this.userRepository = userRepository;
         this.tokenRepository = tokenRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.passwordHasher = passwordHasher;
         this.tokenGenerator = tokenGenerator;
+        this.jwtIssuer = jwtIssuer;
         this.emailSender = emailSender;
         this.clock = clock;
         this.settings = settings;
@@ -162,11 +178,23 @@ public class AuthService {
 
     public record LoginCommand(String email, String password) {}
 
-    public record LoginResult(User user) {}
+    /**
+     * Resultado do login: par access(JWT)+refresh(opaque). O refresh cru ({@code
+     * refreshTokenPlain}) so existe nesta resposta e no cookie httpOnly que o controller seta. O
+     * hash do refresh fica em {@code refresh_tokens}.
+     */
+    public record LoginResult(
+            User user,
+            String accessToken,
+            long accessExpiresInSeconds,
+            String refreshTokenPlain,
+            long refreshExpiresInSeconds) {}
 
     /**
-     * US03: valida credenciais e retorna o usuario. A emissao do JWT e responsabilidade da camada
-     * de API (que pode anexar metadados de transporte). Mantem o servico testavel sem JJWT.
+     * US03: valida credenciais e emite par access + refresh.
+     *
+     * <p>O access token e um JWT HS256 (curta vida, 15min default) com claims minimas. O refresh e
+     * um opaque token de alta entropia (256 bits), persistido como hash SHA-256.
      */
     public LoginResult login(LoginCommand cmd) {
         Email email;
@@ -192,7 +220,99 @@ public class AuthService {
         if (!user.isEmailVerified()) {
             throw new AuthException.EmailNotVerified();
         }
-        return new LoginResult(user);
+        return issueTokens(user);
+    }
+
+    /**
+     * Emite par access+refresh para um usuario ja autenticado (chamado por login interno e tambem
+     * pelo aceite de convite, que ja validou credenciais propriamente).
+     */
+    public LoginResult issueTokens(User user) {
+        Instant now = clock.now();
+        String access = jwtIssuer.issue(user, DEFAULT_ROLES, settings.jwtTtl());
+        GeneratedToken refresh = tokenGenerator.generate();
+        refreshTokenRepository.save(
+                RefreshToken.issue(
+                        UUID.randomUUID(),
+                        user.id(),
+                        user.tenantId(),
+                        refresh.hash(),
+                        now,
+                        now.plus(settings.refreshTokenTtl())));
+        return new LoginResult(
+                user,
+                access,
+                settings.jwtTtl().toSeconds(),
+                refresh.rawToken(),
+                settings.refreshTokenTtl().toSeconds());
+    }
+
+    // ----- Round 2 / 1.3 A: refresh + logout -----
+
+    /**
+     * Resultado de refresh: novo access (JWT curto) + nova janela de expiracao. O refresh em si nao
+     * e rotacionado nesta fatia (vide brief — rotacao fica pra futuro), portanto continua valido no
+     * cookie httpOnly do cliente.
+     */
+    public record RefreshResult(User user, String accessToken, long accessExpiresInSeconds) {}
+
+    /**
+     * Valida o refresh token cru contra o hash em DB, atualiza {@code last_used_at} e emite um
+     * access JWT novo. Sem rotacao: o refresh em si continua valido ate {@code expires_at}.
+     */
+    public RefreshResult refresh(String refreshTokenPlain) {
+        if (refreshTokenPlain == null || refreshTokenPlain.isBlank()) {
+            throw new AuthException.RefreshTokenInvalid();
+        }
+        String hash = tokenGenerator.hash(refreshTokenPlain);
+        RefreshToken token =
+                refreshTokenRepository
+                        .findByTokenHash(hash)
+                        .orElseThrow(AuthException.RefreshTokenInvalid::new);
+        Instant now = clock.now();
+        if (!token.isActive(now)) {
+            throw new AuthException.RefreshTokenInvalid();
+        }
+        User user =
+                userRepository
+                        .findById(token.userId())
+                        .orElseThrow(AuthException.RefreshTokenInvalid::new);
+        if (user.status() == br.com.nora.api.domain.identity.UserStatus.DISABLED) {
+            // Usuario desativado depois do login: refresh nao deve renovar.
+            throw new AuthException.RefreshTokenInvalid();
+        }
+        token.markUsed(now);
+        refreshTokenRepository.save(token);
+        String access = jwtIssuer.issue(user, DEFAULT_ROLES, settings.jwtTtl());
+        return new RefreshResult(user, access, settings.jwtTtl().toSeconds());
+    }
+
+    /**
+     * Logout pontual: revoga apenas o refresh token usado. Idempotente — token ausente ou ja
+     * revogado e tratado como sucesso (no-op).
+     */
+    public void logout(String refreshTokenPlain) {
+        if (refreshTokenPlain == null || refreshTokenPlain.isBlank()) {
+            return;
+        }
+        String hash = tokenGenerator.hash(refreshTokenPlain);
+        refreshTokenRepository
+                .findByTokenHash(hash)
+                .ifPresent(
+                        t -> {
+                            if (!t.isRevoked()) {
+                                t.revoke(clock.now());
+                                refreshTokenRepository.save(t);
+                            }
+                        });
+    }
+
+    /** Logout total: revoga todos os refresh tokens ativos do usuario (ex: "sair de tudo"). */
+    public int logoutAllSessions(UUID userId) {
+        if (userId == null) {
+            return 0;
+        }
+        return refreshTokenRepository.revokeAllByUserId(userId, clock.now());
     }
 
     // ----- US04: reset de senha -----
@@ -282,5 +402,6 @@ public class AuthService {
             Duration emailVerificationTtl,
             Duration passwordResetTtl,
             Duration jwtTtl,
+            Duration refreshTokenTtl,
             boolean exposeDevTokens) {}
 }
