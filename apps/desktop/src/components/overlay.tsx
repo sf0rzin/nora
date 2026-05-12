@@ -155,32 +155,22 @@ export function OverlayPage() {
 
           const mouseStart = { x: e.screenX, y: e.screenY };
           const isDragging = { current: true };
-          let rafId: number | null = null;
-          let pendingPos: { x: number; y: number } | null = null;
+          const lastSent = { x: winPos.x, y: winPos.y };
 
           const handleMouseMove = (ev: MouseEvent) => {
             if (!isDragging.current) return;
             const newX = winPos.x + (ev.screenX - mouseStart.x);
             const newY = winPos.y + (ev.screenY - mouseStart.y);
-            pendingPos = { x: newX, y: newY };
 
-            if (rafId === null) {
-              rafId = requestAnimationFrame(() => {
-                rafId = null;
-                if (pendingPos && isDragging.current) {
-                  invoke("set_overlay_position", pendingPos).catch(() => {});
-                  pendingPos = null;
-                }
-              });
+            if (newX !== lastSent.x || newY !== lastSent.y) {
+              lastSent.x = newX;
+              lastSent.y = newY;
+              invoke("set_overlay_position", { x: newX, y: newY }).catch(() => {});
             }
           };
 
           const handleMouseUp = () => {
             isDragging.current = false;
-            if (rafId !== null) {
-              cancelAnimationFrame(rafId);
-              rafId = null;
-            }
             window.removeEventListener("mousemove", handleMouseMove);
             window.removeEventListener("mouseup", handleMouseUp);
           };
