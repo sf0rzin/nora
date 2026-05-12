@@ -1,7 +1,7 @@
 import { useLiveHighlights } from "@/hooks/use-live-highlights";
 import { listen } from "@tauri-apps/api/event";
 import { useState, useEffect } from "react";
-import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 function formatTimeAgo(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -145,28 +145,9 @@ export function OverlayPage() {
       className="h-screen flex flex-col bg-zinc-900/95 backdrop-blur-sm text-zinc-100 select-none overflow-hidden rounded-xl border border-zinc-700/50"
     >
       <div
-        onMouseDown={async (e) => {
-          const overlayWindow = getCurrentWindow();
-          const pos = await overlayWindow.outerPosition();
-          const mouseStart = { x: e.screenX, y: e.screenY };
-          const winStart = { x: pos.x, y: pos.y };
-          const isDragging = { current: true };
-
-          const handleMouseMove = (ev: MouseEvent) => {
-            if (!isDragging.current) return;
-            const newX = winStart.x + (ev.screenX - mouseStart.x);
-            const newY = winStart.y + (ev.screenY - mouseStart.y);
-            overlayWindow.setPosition(new LogicalPosition(newX, newY)).catch(() => {});
-          };
-
-          const handleMouseUp = () => {
-            isDragging.current = false;
-            window.removeEventListener("mousemove", handleMouseMove);
-            window.removeEventListener("mouseup", handleMouseUp);
-          };
-
-          window.addEventListener("mousemove", handleMouseMove);
-          window.addEventListener("mouseup", handleMouseUp);
+        onMouseDown={async () => {
+          const overlay = await WebviewWindow.getByLabel("overlay");
+          overlay?.startDragging().catch(() => {});
         }}
         className="flex items-center justify-between px-3 py-2 bg-zinc-900 border-b border-zinc-800 cursor-move"
       >
