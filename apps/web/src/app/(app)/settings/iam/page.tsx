@@ -20,6 +20,9 @@ import {
   listPolicies,
   removeGroupMember,
 } from "@/lib/api/client";
+import PolicyEditor from "@/components/policy-editor";
+import CorporateDomainCard from "@/components/corporate-domain-card";
+import InvitationCard from "@/components/invitation-card";
 
 const POLICY_PLACEHOLDER = `{
   "version": "2026-05-07",
@@ -44,6 +47,7 @@ export default function IamPage() {
   const [groupDesc, setGroupDesc] = useState("");
   const [policyName, setPolicyName] = useState("");
   const [policyDoc, setPolicyDoc] = useState(POLICY_PLACEHOLDER);
+  const [policyDocValid, setPolicyDocValid] = useState(true);
   const [attachPolicyId, setAttachPolicyId] = useState("");
   const [attachGroupId, setAttachGroupId] = useState("");
   const [attachUserId, setAttachUserId] = useState("");
@@ -98,6 +102,12 @@ export default function IamPage() {
           {error}
         </p>
       )}
+
+      {/* ===== Corporate Domain (US32) ===== */}
+      <CorporateDomainCard />
+
+      {/* ===== Invitations (US06) ===== */}
+      <InvitationCard />
 
       {/* ===== Groups ===== */}
       <section className="space-y-3">
@@ -212,6 +222,8 @@ export default function IamPage() {
           onSubmit={(e) => {
             e.preventDefault();
             if (!policyName.trim()) return;
+            // Defesa em profundidade: o botao ja é desabilitado quando invalido,
+            // mas ainda assim re-parseamos antes de enviar — UX > backend round-trip.
             let parsed: unknown;
             try {
               parsed = JSON.parse(policyDoc);
@@ -223,6 +235,7 @@ export default function IamPage() {
               await createPolicy(policyName.trim(), parsed);
               setPolicyName("");
               setPolicyDoc(POLICY_PLACEHOLDER);
+              setPolicyDocValid(true);
             });
           }}
         >
@@ -232,16 +245,18 @@ export default function IamPage() {
             placeholder="nome da policy (ex: meeting-readonly)"
             className="w-full rounded-md border border-slate-300 px-3 py-1.5"
           />
-          <textarea
+          <PolicyEditor
             value={policyDoc}
-            onChange={(e) => setPolicyDoc(e.target.value)}
-            rows={10}
-            spellCheck={false}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
+            onChange={(next, isValid) => {
+              setPolicyDoc(next);
+              setPolicyDocValid(isValid);
+            }}
+            height={400}
           />
           <button
             type="submit"
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-white hover:bg-slate-800"
+            disabled={!policyName.trim() || !policyDocValid}
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
           >
             Criar policy
           </button>

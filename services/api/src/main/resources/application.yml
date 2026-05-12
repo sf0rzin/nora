@@ -50,6 +50,8 @@ nora:
     expose-dev-tokens: ${EXPOSE_DEV_TOKENS:false}
   app:
     public-base-url: ${NORA_APP_PUBLIC_BASE_URL:http://localhost:3000}
+  frontend:
+    base-url: ${NORA_FRONTEND_BASE_URL:http://localhost:3000}
   email:
     from: ${NORA_EMAIL_FROM:NORA <onboarding@resend.dev>}
     resend:
