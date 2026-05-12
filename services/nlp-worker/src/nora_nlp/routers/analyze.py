@@ -40,9 +40,7 @@ def analyze(req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> 
     baseline_terms = baseline.extract_baseline_terms(redaction.redacted_text, top_n=10)
 
     if settings.use_llm_stub:
-        response = stub_analyzer.analyze(
-            safe_req, pii_redactions_applied=len(redaction.redactions)
-        )
+        response = stub_analyzer.analyze(safe_req, pii_redactions_applied=len(redaction.redactions))
         return response.model_copy(update={"baseline_terms": baseline_terms})
 
     try:

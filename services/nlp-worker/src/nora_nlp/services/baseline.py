@@ -53,9 +53,7 @@ def _chunk_transcript(transcript: str) -> list[str]:
         return []
 
     # 1) Turnos --- linhas que casam ``Nome: ...`` ou ``[timestamp] Nome: ...``
-    speaker_re = re.compile(
-        r"^(?:\[[^\]]+\]\s*)?[A-Z][\wáéíóúãâêôç ]{0,40}:\s*", re.MULTILINE
-    )
+    speaker_re = re.compile(r"^(?:\[[^\]]+\]\s*)?[A-Z][\wáéíóúãâêôç ]{0,40}:\s*", re.MULTILINE)
     turns_by_speaker: list[str] = []
     matches = list(speaker_re.finditer(transcript))
     if len(matches) >= 2:
@@ -109,9 +107,7 @@ def _coalesce(parts: list[str], *, target: int) -> list[str]:
     return grouped
 
 
-def extract_baseline_terms(
-    transcript: str, *, top_n: int = 10
-) -> list[BaselineTerm]:
+def extract_baseline_terms(transcript: str, *, top_n: int = 10) -> list[BaselineTerm]:
     """Extrai os ``top_n`` termos TF-IDF mais relevantes do transcript.
 
     Args:
