@@ -146,6 +146,7 @@ export function OverlayPage() {
     >
       <div
         data-tauri-drag-region
+        onMouseDown={() => invoke("start_overlay_drag").catch(() => {})}
         className="flex items-center justify-between px-3 py-2 bg-zinc-900 border-b border-zinc-800 cursor-move"
       >
         <div className="flex items-center gap-2 text-xs font-medium" data-tauri-drag-region>

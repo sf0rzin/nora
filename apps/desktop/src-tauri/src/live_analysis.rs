@@ -236,3 +236,12 @@ pub fn get_live_highlights_snapshot(
     let snapshot = state.lock().map_err(|e| e.to_string())?;
     Ok(snapshot.clone())
 }
+
+#[tauri::command]
+pub fn start_overlay_drag(app_handle: AppHandle) -> Result<(), String> {
+    if let Some(window) = app_handle.get_webview_window("overlay") {
+        window.start_dragging().map_err(|e| e.to_string())
+    } else {
+        Err("Overlay window not found".to_string())
+    }
+}
