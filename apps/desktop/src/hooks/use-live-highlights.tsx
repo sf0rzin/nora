@@ -109,7 +109,7 @@ export function useLiveHighlights() {
 export function useLiveAnalysisTrigger() {
   const isAnalyzingRef = useRef(false);
   const lastAnalyzedCountRef = useRef(0);
-  const lastAnalyzedTimeRef = useRef(0);
+  const lastAnalyzedTimeRef = useRef(Date.now());
   const chunkSeqRef = useRef(0);
 
   const triggerAnalysis = useCallback(
@@ -123,14 +123,23 @@ export function useLiveAnalysisTrigger() {
         .slice(lastAnalyzedCountRef.current)
         .reduce((acc, l) => acc + l.text.length, 0);
 
-      if (newLines < 8 && newChars < 200 && timeSinceLastAnalysis < 30000) return;
+      if (newLines < 8 && newChars < 200 && timeSinceLastAnalysis < 30000) {
+        console.log("[live-trigger] skipped:", { newLines, newChars, timeSinceLastAnalysis });
+        return;
+      }
+
+      const transcriptChunk = transcriptLines.map((l) => l.text).join("\n");
+      if (transcriptChunk.length < 30) {
+        console.log("[live-trigger] chunk too short:", transcriptChunk.length, "chars");
+        return;
+      }
+
+      console.log("[live-trigger] firing:", { newLines, newChars, timeSinceLastAnalysis, chunkLen: transcriptChunk.length, seq: chunkSeqRef.current + 1 });
 
       isAnalyzingRef.current = true;
       lastAnalyzedCountRef.current = transcriptLines.length;
       lastAnalyzedTimeRef.current = Date.now();
       chunkSeqRef.current += 1;
-
-      const transcriptChunk = transcriptLines.map((l) => l.text).join("\n");
 
       try {
         await invoke("analyze_live", {
@@ -152,7 +161,7 @@ export function useLiveAnalysisTrigger() {
 
   const resetTrigger = useCallback(() => {
     lastAnalyzedCountRef.current = 0;
-    lastAnalyzedTimeRef.current = 0;
+    lastAnalyzedTimeRef.current = Date.now();
     chunkSeqRef.current = 0;
     isAnalyzingRef.current = false;
   }, []);
