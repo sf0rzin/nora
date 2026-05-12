@@ -19,6 +19,8 @@ import br.com.nora.api.domain.meeting.productivity.OutcomeCoverage;
 import br.com.nora.api.domain.meeting.productivity.ProductivityAssessment;
 import br.com.nora.api.domain.meeting.productivity.ProductivityBand;
 import br.com.nora.api.domain.tenant.TenantContext;
+import br.com.nora.api.infrastructure.nlp.WorkerDtos.LiveAnalyzeResponse;
+import br.com.nora.api.infrastructure.nlp.WorkerDtos.LiveHighlights;
 import io.netty.channel.ChannelOption;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.handler.timeout.WriteTimeoutHandler;
@@ -48,6 +50,7 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
     private static final String DEFAULT_COMPANY_NAME = "(empresa nao configurada)";
 
     private final WebClient client;
+    private final WebClient liveClient;
     private final NlpWorkerProperties props;
 
     public HttpNlpWorkerClient(WebClient.Builder builder, NlpWorkerProperties props) {
@@ -70,6 +73,20 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
         this.client =
                 builder.baseUrl(props.getBaseUrl())
                         .clientConnector(new ReactorClientHttpConnector(http))
+                        .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                        .build();
+        long liveTimeoutMs = Math.max(1_000L, Math.min(15_000L, props.getTimeoutMillis()));
+        HttpClient liveHttp =
+                HttpClient.create()
+                        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) Math.min(liveTimeoutMs, 5_000L))
+                        .responseTimeout(Duration.ofMillis(liveTimeoutMs))
+                        .doOnConnected(
+                                conn ->
+                                        conn.addHandlerLast(new ReadTimeoutHandler(liveTimeoutMs, TimeUnit.MILLISECONDS))
+                                                .addHandlerLast(new WriteTimeoutHandler(liveTimeoutMs, TimeUnit.MILLISECONDS)));
+        this.liveClient =
+                builder.baseUrl(props.getBaseUrl())
+                        .clientConnector(new ReactorClientHttpConnector(liveHttp))
                         .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                         .build();
     }
@@ -124,6 +141,37 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
             return AnalysisResult.of(analysis, productivity);
         } catch (RuntimeException ex) {
             throw new AnalysisException.InvalidWorkerResponse(ex.getMessage(), ex);
+        }
+    }
+
+    @Override
+    public LiveAnalyzeResponse analyzeLive(
+            String transcriptChunk, String language, LiveHighlights previousHighlights) {
+        WorkerDtos.LiveAnalyzeRequest body =
+                new WorkerDtos.LiveAnalyzeRequest(
+                        transcriptChunk,
+                        previousHighlights,
+                        language == null || language.isBlank() ? "pt-BR" : language);
+
+        try {
+            LiveAnalyzeResponse response =
+                    liveClient.post()
+                            .uri("/analyze-live")
+                            .bodyValue(body)
+                            .retrieve()
+                            .bodyToMono(LiveAnalyzeResponse.class)
+                            .block(Duration.ofSeconds(15));
+            if (response == null) {
+                throw new AnalysisException.WorkerUnavailable("live: empty response", null);
+            }
+            return response;
+        } catch (WebClientResponseException ex) {
+            LOG.error("NLP worker live respondeu erro status={} body={}",
+                    ex.getStatusCode(), ex.getResponseBodyAsString());
+            throw new AnalysisException.WorkerUnavailable("live: status " + ex.getStatusCode(), ex);
+        } catch (RuntimeException ex) {
+            LOG.error("Falha na chamada ao NLP worker (live)", ex);
+            throw new AnalysisException.WorkerUnavailable("live: " + ex.getMessage(), ex);
         }
     }
 

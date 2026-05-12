@@ -4,6 +4,8 @@ import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.meeting.productivity.MeetingGoal;
 import br.com.nora.api.domain.meeting.productivity.ProductivityAssessment;
 import br.com.nora.api.domain.tenant.TenantContext;
+import br.com.nora.api.infrastructure.nlp.WorkerDtos;
+import br.com.nora.api.infrastructure.nlp.WorkerDtos.LiveAnalyzeResponse;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -33,6 +35,9 @@ public interface NlpWorkerClient {
             String transcript,
             Optional<TenantContext> tenantContext,
             Optional<MeetingGoal> goal);
+
+    LiveAnalyzeResponse analyzeLive(
+            String transcriptChunk, String language, WorkerDtos.LiveHighlights previousHighlights);
 
     /**
      * Resultado combinado: analise sempre presente, productivity opcional (so quando goal foi
