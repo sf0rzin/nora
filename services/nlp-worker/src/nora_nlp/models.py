@@ -324,7 +324,9 @@ class LiveHighlightsV1(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     decisions: list[LiveHighlightItem] = Field(default_factory=list, max_length=20)
-    next_steps: list[LiveHighlightItem] = Field(default_factory=list, alias="nextSteps", max_length=20)
+    next_steps: list[LiveHighlightItem] = Field(
+        default_factory=list, alias="nextSteps", max_length=20
+    )
     observations: list[LiveHighlightItem] = Field(default_factory=list, max_length=20)
     tasks: list[LiveTaskItem] = Field(default_factory=list, max_length=30)
 

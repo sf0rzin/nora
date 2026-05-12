@@ -69,7 +69,9 @@ def analyze(req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> 
 
 
 @router.post("/analyze-live", response_model=LiveAnalyzeResponse, response_model_by_alias=True)
-def analyze_live(req: LiveAnalyzeRequest, settings: Settings = Depends(get_settings)) -> LiveAnalyzeResponse:
+def analyze_live(
+    req: LiveAnalyzeRequest, settings: Settings = Depends(get_settings)
+) -> LiveAnalyzeResponse:
     """Analise em tempo real de trechos parciais de reunioes.
 
     Pipeline: PII Shield → LLM (schema leve, 4 categorias).

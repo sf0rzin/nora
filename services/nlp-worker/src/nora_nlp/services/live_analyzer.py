@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 from ..clients.llm import LlmClient
-from ..models import LiveAnalyzeRequest, LiveAnalyzeResponse, LiveAnalyzeMetadata, LiveHighlightsV1
+from ..models import LiveAnalyzeRequest, LiveAnalyzeResponse, LiveHighlightsV1
 from ..settings import Settings
 
 logger = logging.getLogger(__name__)

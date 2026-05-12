@@ -331,7 +331,8 @@ public class MeetingsController {
                 meetingResource(principal.tenantId(), null));
 
         WorkerDtos.LiveHighlights previous = toWorkerHighlights(req.previousHighlights());
-        String language = req.language() == null || req.language().isBlank() ? "pt-BR" : req.language();
+        String language =
+                req.language() == null || req.language().isBlank() ? "pt-BR" : req.language();
 
         try {
             WorkerDtos.LiveAnalyzeResponse response =
@@ -355,7 +356,10 @@ public class MeetingsController {
             List<LiveAnalyzeDtos.LiveHighlightItemDto> items) {
         if (items == null) return null;
         return items.stream()
-                .map(i -> new WorkerDtos.LiveHighlightItem(i.text(), i.confidence(), i.sourceQuote()))
+                .map(
+                        i ->
+                                new WorkerDtos.LiveHighlightItem(
+                                        i.text(), i.confidence(), i.sourceQuote()))
                 .toList();
     }
 
@@ -363,29 +367,38 @@ public class MeetingsController {
             List<LiveAnalyzeDtos.LiveTaskItemDto> items) {
         if (items == null) return null;
         return items.stream()
-                .map(i -> new WorkerDtos.LiveTaskItem(i.title(), i.assignee(), i.priority(), i.sourceQuote()))
+                .map(
+                        i ->
+                                new WorkerDtos.LiveTaskItem(
+                                        i.title(), i.assignee(), i.priority(), i.sourceQuote()))
                 .toList();
     }
 
-    private LiveAnalyzeDtos.LiveAnalyzeResponse toApiLiveResponse(WorkerDtos.LiveAnalyzeResponse r) {
-        WorkerDtos.LiveMetadata md = r.metadata() != null
-                ? r.metadata()
-                : new WorkerDtos.LiveMetadata(0, 0, 0, 0, "");
+    private LiveAnalyzeDtos.LiveAnalyzeResponse toApiLiveResponse(
+            WorkerDtos.LiveAnalyzeResponse r) {
+        WorkerDtos.LiveMetadata md =
+                r.metadata() != null ? r.metadata() : new WorkerDtos.LiveMetadata(0, 0, 0, 0, "");
         return new LiveAnalyzeDtos.LiveAnalyzeResponse(
                 toApiHighlightItems(r.decisions()),
                 toApiHighlightItems(r.nextSteps()),
                 toApiHighlightItems(r.observations()),
                 toApiLiveTaskItems(r.tasks()),
                 new LiveAnalyzeDtos.LiveAnalyzeMetadataDto(
-                        md.processingMillis(), md.tokensInput(), md.tokensOutput(),
-                        md.piiRedactionsApplied(), md.modelVersion()));
+                        md.processingMillis(),
+                        md.tokensInput(),
+                        md.tokensOutput(),
+                        md.piiRedactionsApplied(),
+                        md.modelVersion()));
     }
 
     private List<LiveAnalyzeDtos.LiveHighlightItemDto> toApiHighlightItems(
             List<WorkerDtos.LiveHighlightItem> items) {
         if (items == null) return List.of();
         return items.stream()
-                .map(i -> new LiveAnalyzeDtos.LiveHighlightItemDto(i.text(), i.confidence(), i.sourceQuote()))
+                .map(
+                        i ->
+                                new LiveAnalyzeDtos.LiveHighlightItemDto(
+                                        i.text(), i.confidence(), i.sourceQuote()))
                 .toList();
     }
 
@@ -393,7 +406,10 @@ public class MeetingsController {
             List<WorkerDtos.LiveTaskItem> items) {
         if (items == null) return List.of();
         return items.stream()
-                .map(i -> new LiveAnalyzeDtos.LiveTaskItemDto(i.title(), i.assignee(), i.priority(), i.sourceQuote()))
+                .map(
+                        i ->
+                                new LiveAnalyzeDtos.LiveTaskItemDto(
+                                        i.title(), i.assignee(), i.priority(), i.sourceQuote()))
                 .toList();
     }
 

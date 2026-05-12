@@ -78,12 +78,20 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
         long liveTimeoutMs = Math.max(1_000L, Math.min(15_000L, props.getTimeoutMillis()));
         HttpClient liveHttp =
                 HttpClient.create()
-                        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) Math.min(liveTimeoutMs, 5_000L))
+                        .option(
+                                ChannelOption.CONNECT_TIMEOUT_MILLIS,
+                                (int) Math.min(liveTimeoutMs, 5_000L))
                         .responseTimeout(Duration.ofMillis(liveTimeoutMs))
                         .doOnConnected(
                                 conn ->
-                                        conn.addHandlerLast(new ReadTimeoutHandler(liveTimeoutMs, TimeUnit.MILLISECONDS))
-                                                .addHandlerLast(new WriteTimeoutHandler(liveTimeoutMs, TimeUnit.MILLISECONDS)));
+                                        conn.addHandlerLast(
+                                                        new ReadTimeoutHandler(
+                                                                liveTimeoutMs,
+                                                                TimeUnit.MILLISECONDS))
+                                                .addHandlerLast(
+                                                        new WriteTimeoutHandler(
+                                                                liveTimeoutMs,
+                                                                TimeUnit.MILLISECONDS)));
         this.liveClient =
                 builder.baseUrl(props.getBaseUrl())
                         .clientConnector(new ReactorClientHttpConnector(liveHttp))
@@ -155,7 +163,8 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
 
         try {
             LiveAnalyzeResponse response =
-                    liveClient.post()
+                    liveClient
+                            .post()
                             .uri("/analyze-live")
                             .bodyValue(body)
                             .retrieve()
@@ -166,8 +175,10 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
             }
             return response;
         } catch (WebClientResponseException ex) {
-            LOG.error("NLP worker live respondeu erro status={} body={}",
-                    ex.getStatusCode(), ex.getResponseBodyAsString());
+            LOG.error(
+                    "NLP worker live respondeu erro status={} body={}",
+                    ex.getStatusCode(),
+                    ex.getResponseBodyAsString());
             throw new AnalysisException.WorkerUnavailable("live: status " + ex.getStatusCode(), ex);
         } catch (RuntimeException ex) {
             LOG.error("Falha na chamada ao NLP worker (live)", ex);

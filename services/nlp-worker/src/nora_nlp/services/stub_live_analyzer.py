@@ -13,9 +13,7 @@ import time
 from ..models import (
     LiveAnalyzeRequest,
     LiveAnalyzeResponse,
-    LiveAnalyzeMetadata,
     LiveHighlightItem,
-    LiveHighlightsV1,
     LiveTaskItem,
     Priority,
 )
@@ -51,7 +49,12 @@ def _split_sentences(text: str) -> list[str]:
     sentences: list[str] = []
     for line in lines:
         stripped = re.sub(r"^\[[^\]]+\]\s*", "", line)
-        stripped = re.sub(r"^[A-Z][\w\u00e1\u00e9\u00ed\u00f3\u00fa\u00e3\u00e2\u00ea\u00f4\u00e7 ]{0,40}:\s*", "", stripped)
+        speaker_prefix = (
+            r"^[A-Z]"
+            r"[\w\u00e1\u00e9\u00ed\u00f3\u00fa\u00e3\u00e2\u00ea\u00f4\u00e7 ]{0,40}"
+            r":\s*"
+        )
+        stripped = re.sub(speaker_prefix, "", stripped)
         sentences.extend(p.strip() for p in re.split(r"(?<=[.!?])\s+", stripped) if p.strip())
     return sentences
 
@@ -91,18 +94,33 @@ def analyze(req: LiveAnalyzeRequest, *, pii_redactions_applied: int = 0) -> Live
         if not s or len(s) < 5:
             continue
 
-        if any(h in n for h in _DECISION_HINTS):
-            if not _is_duplicate(s, existing_decisions + decisions):
-                confidence = 0.85 if ("data" in n or "ate " in n) else 0.7
-                decisions.append(LiveHighlightItem(text=s[:500], confidence=confidence, sourceQuote=s[:500]))
+        if any(h in n for h in _DECISION_HINTS) and not _is_duplicate(
+            s, existing_decisions + decisions
+        ):
+            confidence = 0.85 if ("data" in n or "ate " in n) else 0.7
+            decisions.append(
+                LiveHighlightItem(
+                    text=s[:500], confidence=confidence, sourceQuote=s[:500]
+                )
+            )
 
-        if any(h in n for h in _NEXT_STEP_HINTS):
-            if not _is_duplicate(s, existing_next + next_steps):
-                next_steps.append(LiveHighlightItem(text=s[:500], confidence=0.65, sourceQuote=s[:500]))
+        if any(h in n for h in _NEXT_STEP_HINTS) and not _is_duplicate(
+            s, existing_next + next_steps
+        ):
+            next_steps.append(
+                LiveHighlightItem(
+                    text=s[:500], confidence=0.65, sourceQuote=s[:500]
+                )
+            )
 
-        if any(h in n for h in _OBSERVATION_HINTS):
-            if not _is_duplicate(s, existing_obs + observations):
-                observations.append(LiveHighlightItem(text=s[:500], confidence=0.6, sourceQuote=s[:500]))
+        if any(h in n for h in _OBSERVATION_HINTS) and not _is_duplicate(
+            s, existing_obs + observations
+        ):
+            observations.append(
+                LiveHighlightItem(
+                    text=s[:500], confidence=0.6, sourceQuote=s[:500]
+                )
+            )
 
         for pat in _TASK_PATTERNS:
             m = pat.search(s)
@@ -110,7 +128,14 @@ def analyze(req: LiveAnalyzeRequest, *, pii_redactions_applied: int = 0) -> Live
                 title = m.group(1).strip()[:240]
                 is_urgent = "ate " in n or "hoje" in n or "amanha" in n
                 priority = Priority.HIGH if is_urgent else Priority.MEDIUM
-                tasks.append(LiveTaskItem(title=title, assignee=None, priority=priority, sourceQuote=s[:500]))
+                tasks.append(
+                    LiveTaskItem(
+                        title=title,
+                        assignee=None,
+                        priority=priority,
+                        sourceQuote=s[:500],
+                    )
+                )
                 break
 
     elapsed_ms = int((time.monotonic() - started) * 1000)

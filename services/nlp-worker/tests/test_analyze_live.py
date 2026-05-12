@@ -1,6 +1,5 @@
 import os
 
-import pytest
 from fastapi.testclient import TestClient
 
 os.environ["USE_LLM_STUB"] = "true"
@@ -50,7 +49,10 @@ def test_analyze_live_detects_decision():
     resp = client.post("/analyze-live", json=payload)
     body = resp.json()
     assert len(body["decisions"]) >= 1
-    assert any("fechar" in d["text"].lower() or "fornecedor" in d["text"].lower() for d in body["decisions"])
+    assert any(
+        "fechar" in d["text"].lower() or "fornecedor" in d["text"].lower()
+        for d in body["decisions"]
+    )
 
 
 def test_analyze_live_detects_task():
@@ -69,13 +71,20 @@ def test_analyze_live_detects_observation():
 
 def test_analyze_live_with_previous_highlights_dedup():
     previous = {
-        "decisions": [{"text": "Migrar ERP para a nuvem ate o final do Q3", "confidence": 0.85, "sourceQuote": "vamos migrar"}],
+        "decisions": [
+            {
+                "text": "Migrar ERP para a nuvem ate o final do Q3",
+                "confidence": 0.85,
+                "sourceQuote": "vamos migrar",
+            }
+        ],
         "nextSteps": [],
         "observations": [],
         "tasks": [],
     }
     payload = _make_request(
-        "[Speaker_1] Entao decidimos que vamos migrar o ERP para a nuvem ate o final do Q3.\n[Speaker_2] Certo.",
+        "[Speaker_1] Entao decidimos que vamos migrar o ERP para a nuvem "
+        "ate o final do Q3.\n[Speaker_2] Certo.",
         previous=previous,
     )
     resp = client.post("/analyze-live", json=payload)
