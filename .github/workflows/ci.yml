@@ -18,6 +18,7 @@ jobs:
       worker: ${{ steps.filter.outputs.worker }}
       web: ${{ steps.filter.outputs.web }}
       docs: ${{ steps.filter.outputs.docs }}
+      infra: ${{ steps.filter.outputs.infra }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -41,6 +42,8 @@ jobs:
               - '**/*.md'
             desktop:
               - 'apps/desktop/**'
+            infra:
+              - 'infra/bicep/**'
 
   api:
     needs: changes
@@ -225,3 +228,29 @@ jobs:
                   ok = False
           sys.exit(0 if ok else 1)
           PY
+
+  infra:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Azure CLI + Bicep
+        run: |
+          az bicep install
+          az bicep version
+      - name: Bicep build (main.bicep)
+        working-directory: infra/bicep
+        run: |
+          mkdir -p .bicep-out
+          az bicep build --file main.bicep --outdir .bicep-out
+          echo "Compiled main.json bytes: $(wc -c < .bicep-out/main.json)"
+      - name: Bicep lint (todos os módulos)
+        working-directory: infra/bicep
+        run: |
+          set -e
+          for f in modules/*.bicep; do
+            echo "::group::Linting $f"
+            az bicep build --file "$f" --outdir .bicep-out
+            echo "::endgroup::"
+          done
