@@ -3,6 +3,7 @@
 import { useReveal } from "./use-reveal";
 import { useMagnetic } from "./use-magnetic";
 import { LandingNav } from "./landing-nav";
+import { HeroLiveDemo } from "./hero-live-demo";
 import { LandingFooter } from "./landing-footer";
 import styles from "./landing.module.css";
 
@@ -11,9 +12,8 @@ import styles from "./landing.module.css";
  * (linhas 967-983). Wrapper client porque executa useReveal/useMagnetic
  * (DOM queries via IntersectionObserver e mousemove listeners).
  *
- * As seções (Hero, Problem, Surfaces, ProductContext, HealthScore, IAM, CTA)
- * são adicionadas em commits subsequentes — este commit estabelece apenas a
- * estrutura base.
+ * Seções restantes (Problem, Surfaces, ProductContext, HealthScore, IAM, CTA)
+ * são adicionadas em commits subsequentes.
  */
 export function LandingPage() {
   useReveal();
@@ -22,7 +22,9 @@ export function LandingPage() {
   return (
     <div className={styles.page}>
       <LandingNav />
-      <main />
+      <main>
+        <HeroLiveDemo />
+      </main>
       <LandingFooter />
     </div>
   );
