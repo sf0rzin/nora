@@ -1,0 +1,12 @@
+{
+  "id": "i-7f3c8a2e-4b1d-4e8f-9a3b-1c2d3e4f5a6b",
+  "tenantId": "t-acme",
+  "email": "carlos@acme.com",
+  "status": "PENDING",
+  "invitedBy": "u-camila-root",
+  "invitedAt": "2026-05-11T14:32:00Z",
+  "expiresAt": "2026-05-18T14:32:00Z",
+  "groupIds": ["g-vendas-sp"],
+  "acceptedAt": null,
+  "acceptedUserId": null
+}

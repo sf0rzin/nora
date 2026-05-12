@@ -224,6 +224,16 @@ class AuthServiceTest {
             lastResetTo = to;
             lastResetLink = link;
         }
+
+        @Override
+        public void sendInvitation(
+                String toEmail,
+                String tenantName,
+                String invitedByName,
+                String acceptUrl,
+                int expiresInDays) {
+            // AuthService nao usa invite; no-op aqui.
+        }
     }
 
     static class FakeTokenGenerator implements SecureTokenGenerator {

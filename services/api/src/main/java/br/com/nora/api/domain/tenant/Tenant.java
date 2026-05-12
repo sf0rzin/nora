@@ -26,11 +26,22 @@ public final class Tenant {
 
     private static final Pattern SLUG_PATTERN = Pattern.compile("^[a-z0-9][a-z0-9-]{0,62}$");
 
+    /**
+     * Regex de dominio corporativo (US32). Aceita {@code acme.com}, {@code sub.acme.com.br}, {@code
+     * a-b.io}. Rejeita inicio/fim com hifen, falta de TLD ({@code acme}), prefixo {@code @}, sufixo
+     * {@code .}, caracteres invalidos. Validacao espera o input ja normalizado (lowercase + trim)
+     * na camada de aplicacao.
+     */
+    private static final Pattern EMAIL_DOMAIN_PATTERN =
+            Pattern.compile(
+                    "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$");
+
     private final UUID id;
     private final String name;
     private final String slug;
     private final Status status;
     private final Plan plan;
+    private final String allowedEmailDomain;
     private final Instant createdAt;
     private final Instant updatedAt;
 
@@ -40,6 +51,7 @@ public final class Tenant {
             String slug,
             Status status,
             Plan plan,
+            String allowedEmailDomain,
             Instant createdAt,
             Instant updatedAt) {
         this.id = Objects.requireNonNull(id);
@@ -47,8 +59,21 @@ public final class Tenant {
         this.slug = requireValidSlug(slug);
         this.status = Objects.requireNonNull(status);
         this.plan = Objects.requireNonNull(plan);
+        this.allowedEmailDomain = allowedEmailDomain;
         this.createdAt = Objects.requireNonNull(createdAt);
         this.updatedAt = Objects.requireNonNull(updatedAt);
+    }
+
+    /** Construtor legado mantido para chamadas que ainda nao conhecem o campo opcional. */
+    public Tenant(
+            UUID id,
+            String name,
+            String slug,
+            Status status,
+            Plan plan,
+            Instant createdAt,
+            Instant updatedAt) {
+        this(id, name, slug, status, plan, null, createdAt, updatedAt);
     }
 
     public static String slugify(String raw) {
@@ -62,6 +87,29 @@ public final class Tenant {
             throw new IllegalArgumentException("cannot slugify empty value");
         }
         return s.length() > 63 ? s.substring(0, 63) : s;
+    }
+
+    /**
+     * Normaliza um dominio corporativo: trim + lowercase. Retorna {@code null} quando o input for
+     * {@code null} ou em branco apos normalizacao.
+     */
+    public static String normalizeEmailDomain(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String normalized = raw.trim().toLowerCase(Locale.ROOT);
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    /**
+     * Valida um dominio corporativo ja normalizado. Retorna {@code true} se o input for {@code
+     * null} (sem restricao) ou casar o regex; {@code false} caso contrario.
+     */
+    public static boolean isValidEmailDomain(String normalized) {
+        if (normalized == null) {
+            return true;
+        }
+        return EMAIL_DOMAIN_PATTERN.matcher(normalized).matches();
     }
 
     private static String requireValidSlug(String slug) {
@@ -98,11 +146,33 @@ public final class Tenant {
         return plan;
     }
 
+    public String allowedEmailDomain() {
+        return allowedEmailDomain;
+    }
+
     public Instant createdAt() {
         return createdAt;
     }
 
     public Instant updatedAt() {
         return updatedAt;
+    }
+
+    /**
+     * Retorna uma nova instancia com o dominio corporativo atualizado, preservando os demais
+     * campos. {@code newDomain} pode ser {@code null} para limpar a restricao. O caller e
+     * responsavel por gravar via {@link
+     * br.com.nora.api.application.ports.TenantRepository#save(Tenant)}.
+     */
+    public Tenant withAllowedEmailDomain(String newDomain, Instant updatedAt) {
+        return new Tenant(
+                this.id,
+                this.name,
+                this.slug,
+                this.status,
+                this.plan,
+                newDomain,
+                this.createdAt,
+                Objects.requireNonNull(updatedAt, "updatedAt"));
     }
 }

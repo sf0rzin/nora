@@ -17,12 +17,16 @@ export function middleware(req: NextRequest) {
   }
 
   // Usuario logado abrindo /auth/* -> redireciona pro dashboard.
+  // Excecoes: paginas com token na URL que precisam abrir mesmo com sessao
+  // ativa (ex: convidado pode ter sessao de outro tenant e estar aceitando
+  // um convite via link de e-mail).
   const isAuthPage = AUTH_PREFIXES.some((p) => pathname.startsWith(p));
   if (
     isAuthPage &&
     token &&
     pathname !== "/auth/verify-email" &&
-    pathname !== "/auth/password/reset/confirm"
+    pathname !== "/auth/password/reset/confirm" &&
+    !pathname.startsWith("/auth/invites/accept/")
   ) {
     const url = req.nextUrl.clone();
     url.pathname = "/dashboard";

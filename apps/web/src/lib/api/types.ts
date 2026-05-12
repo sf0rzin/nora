@@ -111,3 +111,39 @@ export interface ApiError {
   timestamp?: string;
   details?: { field: string; issue: string }[];
 }
+
+// ---------- IAM Invitations (US06, ADR 0011) ----------
+
+export type InviteStatus = "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
+
+export interface Invite {
+  id: string;
+  tenantId: string;
+  email: string;
+  status: InviteStatus;
+  invitedBy: string;
+  invitedAt: string;
+  expiresAt: string;
+  groupIds: string[];
+  acceptedAt: string | null;
+  acceptedUserId: string | null;
+}
+
+export interface InviteUserRequest {
+  email: string;
+  groupIds: string[];
+  expiresInDays?: number;
+}
+
+export interface AcceptInviteRequest {
+  /** Opcional — backend usa local-part do e-mail se omitido. Max 120 chars. */
+  displayName?: string;
+  password: string;
+}
+
+export interface InviteListResponse {
+  items: Invite[];
+  total: number;
+  page: number;
+  size: number;
+}
