@@ -1,0 +1,102 @@
+Reunião: Expansão de Produto — Northwind × Marketplace Vetor Têxtil
+Data: 2026-05-04
+Horário: 09:00 — 09:51
+Participantes: Rafael Tavares (Northwind — Key Account), Daniela Mascarenhas (Vetor — Diretora Financeira), Caio Gonçalves (Vetor — Head de Operações)
+
+Rafael: Bom dia Daniela, bom dia Caio. A gente combinou essa janela pra olhar a expansão do contrato de vocês, que tá com Reconcile rodando desde julho de 2025. Daniela, antes da gente entrar em produto novo, conta como tá o sentimento geral.
+
+Daniela: Bom dia Rafael. Sentimento ótimo, com franqueza. O Reconcile mudou nossa operação. Eu tinha quatro pessoas full time em conciliação no ano passado, hoje tô com uma e meia, e elas tão fazendo análise mais estratégica, não operacional. ROI no primeiro semestre foi nítido.
+
+Rafael: Maravilha de ouvir. E do lado operacional, Caio?
+
+Caio: Funciona. Tive umas dúvidas em outubro sobre relatório fiscal, mas o suporte de vocês resolveu em duas horas. Sem atrito.
+
+Rafael: Que bom. Então, o motivo dessa conversa: vocês mandaram em abril pedindo discussão sobre split de pagamento e antifraude. Querem começar por qual?
+
+Daniela: Comecemos por split. Hoje a gente repassa pra 480 fornecedores manualmente. É processo de seis dias úteis depois do fechamento, total trabalhoso, com cinco pessoas. Erro recorrente: em março a gente repassou R$ 38.000,00 pro fornecedor errado, demoramos quatro dias pra rastrear e devolver.
+
+Rafael: Ok. Esse é o caso clássico do Northwind Payments com split nativo. Posso explicar como funciona?
+
+Daniela: Pode.
+
+Rafael: Você cadastra cada fornecedor como recipient no Payments, configura a regra de split por venda ou por categoria, e na hora que a transação é aprovada, a liquidação já cai dividida nas contas dos fornecedores. Sem batch, sem cron, sem manual. A nossa garantia é zero erro de repasse contanto que o cadastro do recipient esteja correto.
+
+Daniela: 480 fornecedores, dá pra cadastrar em massa?
+
+Rafael: Dá. A gente tem importador CSV, batch via API, e também tem self-service onde o fornecedor cadastra os próprios dados num link assinado.
+
+Caio: Self-service é interessante. Hoje a gente perde muito tempo correndo atrás de fornecedor pra atualizar dado bancário.
+
+Rafael: Pois é. E tem mais. O Payments emite extrato fiscal individualizado por fornecedor com retenção de impostos calculada automaticamente. Vocês param de gerar 480 extratos no Excel.
+
+Daniela: Caramba. Quanto isso custa?
+
+Rafael: O Payments tem dois modelos. Modelo um, MDR padrão por transação, sem mensalidade. Modelo dois, MDR menor com mensalidade fixa. Pra vocês, que tão na faixa de R$ 18 milhões mês de TPV, o modelo dois sai mais barato. Fica em torno de R$ 14.500,00 mensalidade, mais 0,15% por transação, contra 0,42% que vocês pagam hoje no gateway atual.
+
+Daniela: Hum, fiz a conta rápida aqui. Saímos de uns R$ 75.000,00 mês pra uns R$ 41.000,00 mês.
+
+Rafael: Aproximadamente isso. Economia anual da ordem de R$ 400.000,00, mais o tempo das cinco pessoas que vocês liberam do operacional.
+
+Daniela: Tô interessada. Quanto tempo de implantação?
+
+Rafael: Pra clientes que já tão no Reconcile, ativação do Payments leva 15 dias. Sem reintegração nova, é módulo que liga.
+
+Daniela: Sério, 15 dias?
+
+Rafael: Sério. O Bruno, que é nosso SE, faz kickoff técnico, cadastra recipients em batch, e em duas semanas tá em produção. A gente faz primeiro mês com monitoramento dedicado.
+
+Caio: Eu topo. Quando começa?
+
+Rafael: Posso colocar kickoff pra dia 19/05/2026, segunda-feira. Vocês precisam de aprovação interna antes?
+
+Daniela: A faixa de valor que você passou, eu fecho sem subir pro conselho. Mas eu preciso de proposta formal. Você manda quando?
+
+Rafael: Até quarta dia 07/05.
+
+Daniela: Combinado.
+
+Rafael: Agora vamos pro segundo ponto. Antifraude.
+
+Caio: Esse aqui é mais complicado pra mim. A gente teve em fevereiro um pico de chargeback de R$ 290.000,00 num evento de Black Friday meio fora de época que a gente fez. Aconteceu que entrou um esquema de cartões clonados, e a gente só percebeu três dias depois.
+
+Rafael: O Northwind Risk faria escore em tempo real na hora da transação, em menos de 200 milissegundos. Você consegue criar regras customizadas tipo "se valor acima de R$ 800,00, cliente novo, e cartão emitido há menos de 60 dias, escore +60". Aí qualquer transação acima de um escore que você define, vai pra revisão manual ou bloqueia direto.
+
+Caio: E como funciona a integração?
+
+Rafael: Vocês chamam um endpoint /risk/score antes de submeter pra autorização. A gente devolve o escore, vocês decidem se autoriza, manda pra desafio 3DS, ou bloqueia.
+
+Caio: Performance é crítica. 200 milissegundos é pico ou média?
+
+Rafael: P95. P50 fica em 80 milissegundos. P99 em 320.
+
+Caio: Ok. E quanto custa?
+
+Rafael: R$ 0,18 por chamada de score. Vocês fazem hoje uns 850.000 transações mês, então seriam uns R$ 153.000,00 mês de Risk. Mas considerando o chargeback de fevereiro, R$ 290.000,00 num mês, o ROI tá em dois meses se eu evitar 30% dos chargebacks futuros.
+
+Caio: Hum.
+
+Daniela: R$ 153.000,00 mês é bastante. Posso testar com um subconjunto antes?
+
+Rafael: Pode. A gente liga em modo shadow, onde o Risk roda mas não bloqueia, só registra o escore. Vocês veem por 30 dias o que teria sido bloqueado e tomam decisão depois.
+
+Daniela: Adorei. Shadow mode entra no PoC?
+
+Rafael: Sem custo durante shadow.
+
+Daniela: Combinado. Quero shadow no mesmo kickoff de 19/05.
+
+Rafael: Anotado. Resumindo. Quarta dia 07/05 mando proposta formal de Payments com modelo de mensalidade fixa, mais Risk em shadow mode por 30 dias. Kickoff dia 19/05 pra ambos. Decisão final sobre Risk após shadow, em meados de junho. Combinado?
+
+Daniela: Combinado.
+
+Caio: Combinado.
+
+Rafael: Daniela, última pergunta. Tem mais alguém do lado de vocês que precisa estar nessa conversa antes da decisão? Algum stakeholder técnico ou de compliance?
+
+Daniela: O Felipe, que é nosso jurídico, vai querer revisar a parte contratual. Eu chamo ele junto pro próximo encontro.
+
+Rafael: Perfeito. Obrigado pessoal. Até quarta com a proposta.
+
+Daniela: Obrigada Rafael. Até.
+
+Caio: Até.

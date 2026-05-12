@@ -1,0 +1,99 @@
+Reunião: Sprint Planning — Solo Launch (Sprint 24)
+Data: 2026-05-04
+Horário: 09:30 — 10:38
+Participantes: Camila Reis (Solo — Engineering Manager), Bruno Sampaio (Solo — Backend), Lia Tavora (Solo — Frontend & Design), Diogo Falcão (Solo — DevOps & Infra)
+
+Camila: Bom dia time. Sprint planning da 24. Duração de duas semanas, de 04/05/2026 a 17/05/2026. Capacidade hoje: Bruno 80 horas, Lia 80 horas, Diogo 60 horas, eu 30 horas. Total 250 horas comprometidas. Diogo voltou de férias ontem, então o ramp-up dele é menor essa sprint, ok?
+
+Diogo: Bom dia. Confirmado, 60 horas pra mim. Quero pegar coisa de infra principalmente.
+
+Camila: Beleza. Antes da gente listar histórias, alinhamento rápido. O hotfix do agendamento subiu sexta dia 01/05, tá batendo verde em produção sem regressão até agora?
+
+Bruno: Verde. Métrica de race condition zerou nas 72 horas. Considero resolvido. Ainda tô monitorando até quinta dia 07/05 pra fechar definitivamente.
+
+Camila: Excelente. Histórias do backlog. Bruno, mostra o que tá no topo.
+
+Bruno: Top do backlog ordenado: US-127 implementar Stripe Checkout pro fluxo de assinatura nova, estimativa 13 pontos. US-131 corrigir cálculo de fuso horário no agendamento de post pra usuários fora do Brasil, 5 pontos. US-104 expor métrica de uso de tokens da API de IA no painel admin, 3 pontos. SPIKE-009 investigação do novo OAuth do LinkedIn, 5 pontos.
+
+Camila: Vamos um por um. US-127 Stripe Checkout, decisão já tomada no planning passado. Bruno, quanto disso entra essa sprint?
+
+Bruno: Eu consigo entregar 8 pontos dos 13 nessa sprint. A parte de checkout client side e webhook de confirmação. O fluxo de upgrade de plano vai pra próxima.
+
+Camila: Ok. US-131 fuso horário. Esse é bug ou feature?
+
+Bruno: Bug. Tem usuários do Japão e dos EUA reclamando que post agendado pras 9h da manhã sai 9h do horário do Brasil. Vai ter que fazer migração de dados, porque a coluna de schedule_at hoje tá em UTC mas sem tracking do timezone do usuário.
+
+Diogo: Backup completo antes de rodar a migração?
+
+Bruno: Sim, vou coordenar com você.
+
+Camila: Lia, US-104 painel de tokens, isso requer frontend?
+
+Lia: Pouco. Componente de tabela com 4 colunas, um gráfico simples de consumo por dia. Estimo 1 ponto de frontend. Bruno, o endpoint tá pronto?
+
+Bruno: Endpoint pronto desde a sprint passada. Doc da API tá atualizada.
+
+Lia: Perfeito.
+
+Camila: SPIKE-009 OAuth do LinkedIn. Quem pega?
+
+Bruno: Pego eu. 5 pontos é teto, vou dividir em duas tarefas de 2 e 3 pontos.
+
+Camila: Ok. Lia, o que você puxa do design system pra essa sprint?
+
+Lia: Mocks finais do onboarding self-service, que entrego até 15/05 conforme combinado no roadmap meeting. Mais polimento de dois componentes pequenos: nova variant de botão pra fluxo de cadastro, e padrão de toast de confirmação. Total estimo 18 pontos.
+
+Camila: 18 pontos de design dentro de 80 horas. Tá apertado pra você.
+
+Lia: Tá apertado. Sou consciente, e se eu não conseguir entregar polimento, recoloco na 25.
+
+Camila: Combinado. Diogo, o que você prevê?
+
+Diogo: Três coisas. Um, finalizar migração do banco de produção pro RDS multi-AZ. Tá com snapshot pronto, falta janela de manutenção. Janela combinada pro sábado 10/05 às 2h da manhã, duração estimada 90 minutos. Dois, reduzir custo de Cloudfront em 30% através de cache TTL revisado nas rotas estáticas. Três, terminar setup de monitoramento Datadog pros workers, que tá faltando dashboard.
+
+Camila: 30% de redução de Cloudfront, isso vale quanto?
+
+Diogo: Hoje a gente gasta R$ 4.200,00 mês em CDN. 30% economiza R$ 1.260,00 mês, R$ 15.120,00 ano. Trabalho de 6 horas pra fazer.
+
+Camila: ROI ridículo de alto. Faz primeiro essa.
+
+Diogo: Combinado.
+
+Camila: Resumindo backlog desta sprint:
+- US-127 Stripe Checkout fase 1 (Bruno, 8 pontos)
+- US-131 fuso horário (Bruno, 5 pontos)
+- US-104 painel de tokens (Lia 1 ponto, Bruno endpoint feito)
+- SPIKE-009 LinkedIn OAuth (Bruno, 5 pontos)
+- Mocks onboarding self-service (Lia, 10 pontos)
+- Polimento design system (Lia, 8 pontos)
+- Migração RDS multi-AZ (Diogo, 4 pontos)
+- Cloudfront cache TTL (Diogo, 3 pontos)
+- Dashboard Datadog workers (Diogo, 5 pontos)
+
+Total comprometido: 49 pontos. Capacidade histórica do time: 52 pontos. Margem ok.
+
+Bruno: Cobertura de teste pro Stripe Checkout? Que cobertura mínima eu trago?
+
+Camila: Pra rota nova, 90% mínimo. Pro código alterado, 75%. Stripe Checkout tem mock library boa, então 90% é factível.
+
+Bruno: Combinado.
+
+Lia: Camila, posso? Eu queria deixar registrado um pequeno risco. Se eu errar na estimativa do polimento e atrasar mocks do onboarding, isso impacta o roadmap Q3 inteiro porque o Bruno começa código em 01/07.
+
+Camila: Anotado. Você tem buffer até 31/05 antes de bater na cadeia crítica. Se virar risco real, comunica em 22/05.
+
+Lia: Combinado.
+
+Diogo: Camila, sobre a migração RDS de sábado, eu vou precisar de Bruno na bancada. Tem migration de dados rolando junto pelo US-131.
+
+Bruno: Tô em sábado dia 10/05 às 2h. Levo dois energéticos.
+
+Diogo: Valeu.
+
+Camila: Reunião encerrada. Daily às 10h todo dia útil, demo final dia 17/05 às 16h, retro dia 18/05 às 10h. Bom trabalho time.
+
+Lia: Bom trabalho.
+
+Bruno: Bom trabalho.
+
+Diogo: Até.

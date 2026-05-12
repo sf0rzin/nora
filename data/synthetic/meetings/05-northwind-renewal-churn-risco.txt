@@ -1,0 +1,66 @@
+Reunião: Renovação de Contrato — Northwind × Marketplace Boa Compra
+Data: 2026-04-28
+Horário: 09:30 — 10:18
+Participantes: Rafael Tavares (Northwind — Key Account), Pedro Solano (Boa Compra — Diretor Financeiro), Cíntia Wolf (Boa Compra — Gerente Financeiro)
+
+Rafael: Bom dia Pedro, bom dia Cíntia. Valeu pelo tempo. A ideia hoje é discutir a renovação do contrato do Northwind Reconcile, que vence em 31/07/2026.
+
+Pedro: Bom dia Rafael. Olha, vou ser direto contigo, porque a gente se conhece há dois anos. A diretoria pediu corte de 20% no custo de fornecedores SaaS pra 2026. Se a gente não chegar nesse número, sinceramente, provavelmente vamos olhar o PayMatch.
+
+Rafael: Entendi Pedro. Agradeço a franqueza, sempre. Antes de falar de número, posso te perguntar uma coisa? Como tá o uso do Reconcile hoje? Sei que vocês contrataram pra um TPV de 8 milhões e o último mês fechou em 6.2 milhões.
+
+Pedro: É, caímos um pouco. O marketplace tá em transição de categoria, parou de vender material de construção pesado e migrou pra acabamento. Vai voltar a crescer no segundo semestre, mas pra esse trimestre o número tá em baixa.
+
+Cíntia: E pra ser justa, Rafael, o sistema atende bem. A conciliação tá funcionando, o relatório fiscal pro SPED Contribuições saiu sem problema no fechamento de março. Mas custo é custo, e a diretoria tá olhando linha por linha.
+
+Rafael: Entendi, e agradeço o feedback positivo no produto. Posso propor um modelo? A gente ajusta o pacote pra 6 milhões de TPV agora, com gatilho automático pra subir caso ultrapasse 7 milhões em qualquer mês corrido. Isso reduz o custo fixo e segue cobrindo o crescimento esperado pro segundo semestre.
+
+Pedro: Isso ajuda, mas o ajuste de TPV sozinho tira quanto da fatura?
+
+Rafael: Sai uns 12%. Pra chegar nos 20% que você precisa, eu posso oferecer mais 10% de desconto se fecharem comprometimento de 24 meses no lugar de 12.
+
+Pedro: 24 meses é demais pra gente nesse momento. A diretoria não fecha nada acima de 12, regra dura.
+
+Rafael: Entendo. Posso levar internamente uma proposta de 18 meses com desconto de 12% sobre o pacote ajustado, mais o gatilho de TPV. Eu te trago resposta até quarta dia 06/05.
+
+Pedro: Beleza. Mas Rafael, sendo bem honesto contigo: se a gente não chegar perto dos 20% até 15/05/2026, eu vou ter que abrir conversa formal com o PayMatch. E o PayMatch já me mandou uma proposta inicial em 14/04. Eles fizeram 22% abaixo do que pago hoje.
+
+Rafael: Pedro, posso te perguntar o que eles cobrem no escopo? Porque número sem escopo é difícil comparar.
+
+Pedro: É, eles cobrem conciliação multi-adquirente, relatório fiscal e suporte. Sem split de pagamento, porque a gente não usa hoje.
+
+Rafael: Ok. Duas coisas pra você considerar antes de avançar com eles. Um, o PayMatch cobre 6 adquirentes hoje, a gente cobre 14. Pra vocês, que usam quatro hoje, talvez não importe agora, mas se quiserem adicionar um novo adquirente no segundo semestre, pode virar custo de integração de uns R$ 35.000,00. Dois, o SLA deles pra chargeback é de 48 horas, o nosso é de 4 horas. Esse ponto a gente já discutiu em fevereiro, quando vocês tiveram aquele pico de chargeback no Carnaval.
+
+Pedro: Lembro. Foi uma das coisas que salvou a gente. Foram R$ 380.000,00 em chargeback identificados em quatro horas, deu pra atuar rápido.
+
+Cíntia: Pedro, esse ponto eu acho que vale levar pra diretoria também. O custo só de chargeback respondido fora de prazo no PayMatch pode comer parte do desconto.
+
+Pedro: Justo. Rafael, traz a proposta de 18 meses com 12% de desconto. Se vier acompanhada de uma comparação de TCO contra o PayMatch incluindo chargeback e adquirentes, ajuda muito a defender internamente.
+
+Rafael: Combinado. Mando até dia 06/05, com TCO comparativo de 36 meses. Vou usar dados reais de vocês: o pico de chargeback do Carnaval e a projeção de crescimento do TPV pro semestre.
+
+Cíntia: Boa.
+
+Pedro: Outra coisa Rafael. Independente da renovação, eu preciso de uma reunião de saúde da conta com vocês a cada três meses a partir de agora. Hoje a gente conversa só quando tem reajuste ou problema. Eu quero proatividade.
+
+Rafael: Concordo cem por cento. Posso programar QBR trimestral começando em agosto, depois da renovação? E nesse meio tempo, eu posso te mandar um relatório mensal de uso e benchmark de mercado, pra você acompanhar.
+
+Pedro: Perfeito. Já era pra ter, mas ok.
+
+Rafael: Anotado e merecido o puxão de orelha. Última pergunta: a Cíntia consegue ficar comigo trinta minutos quinta dia 30/04 pra eu entender melhor o uso operacional do Reconcile? Quero garantir que a proposta nova reflete o que vocês realmente usam.
+
+Cíntia: Pode marcar. Quinta às 14h pode?
+
+Rafael: Pode. Mando convite. Pedro, sendo bem honesto contigo: se eu não conseguir aprovar 18 meses com 12% internamente, eu volto pra negociar. Não vou deixar morrer por orgulho de margem.
+
+Pedro: Agradeço, Rafael. Vamos esperar quarta.
+
+Rafael: Combinado então: dia 30/04 reunião operacional com a Cíntia. Dia 06/05 proposta nova e TCO comparativo. Decisão até 15/05, se não chegar, vocês avançam com PayMatch. QBR trimestral programado pós-renovação. Resumi certo?
+
+Pedro: Certinho.
+
+Rafael: Valeu pessoal. Até quarta.
+
+Pedro: Até.
+
+Cíntia: Até.
