@@ -1,0 +1,13 @@
+Reunião: Decisão Rápida — Time Solo Launch
+Data: 2026-05-06
+Participantes: Camila (EM), Bruno (Backend)
+
+Camila: Bruno, decisão rápida. A gente vai com Stripe Checkout ou mantém integração custom?
+
+Bruno: Stripe Checkout. Pagar.me Light tinha limite que ia me forçar a refazer se a gente expandir pra fora do Brasil em 2027.
+
+Camila: Decisão tomada. Stripe Checkout. Abre issue e atribui pra você. Quanto tempo de implementação?
+
+Bruno: Uma semana. Começo depois do hotfix do agendamento, que sobe amanhã.
+
+Camila: Combinado. Reunião encerrada.

@@ -1,0 +1,100 @@
+Reunião: Objeção Técnica — Northwind × Plataforma EduPay
+Data: 2026-05-06
+Horário: 16:00 — 16:54
+Participantes: Rafael Tavares (Northwind — Key Account), Bruno Coutinho (Northwind — Solutions Engineer), Thiago Ramos (EduPay — CTO), Manuela Espíndola (EduPay — Diretora de Produto)
+
+Rafael: Boa tarde Thiago, boa tarde Manuela. Trouxe o Bruno, nosso Solutions Engineer, pra essa conversa, porque pelo que ficou no e-mail vocês tão com preocupações técnicas concretas. Antes da gente entrar, posso entender o status?
+
+Thiago: Boa tarde Rafael, Bruno. Olha, vou direto ao ponto. A gente recebeu a proposta na sexta dia 02/05. Comercialmente, faz sentido. Mas, é, do lado técnico, eu não consigo aprovar do jeito que tá. Três problemas.
+
+Bruno: Pode mandar Thiago.
+
+Thiago: Primeiro: o webhook de transação enviado por vocês não tem assinatura HMAC. A gente tem política interna que diz que webhook recebido sem assinatura criptográfica não passa.
+
+Bruno: Thiago, posso esclarecer? A gente tem HMAC opcional desde fevereiro. Você configura no painel admin, opção "Webhook Security Mode", liga HMAC-SHA256. Ele assina o body com sua secret key, e você valida do seu lado.
+
+Thiago: Hum. Eu não vi essa opção. Onde tá exatamente?
+
+Bruno: É, então, ela tá em Configurações > Integrações > Webhooks > Modo de Segurança. Talvez a sua conta de prospect ainda não tenha essa feature liberada. Eu garanto pra hoje à noite.
+
+Thiago: Pode mandar print quando liberar, por favor.
+
+Bruno: Mando.
+
+Thiago: Segundo problema. A documentação de retry. Quando o webhook falha do meu lado, qual a política de retry de vocês?
+
+Bruno: Exponential backoff com seis tentativas. 30 segundos, 2 minutos, 10 minutos, 1 hora, 6 horas, 24 horas. Depois disso, marca como falho e manda alerta. Tá no endpoint /webhooks/policy da API, mas é, eu reconheço que na doc pública tá meio escondido.
+
+Thiago: Tá. E vocês têm webhook idempotency key?
+
+Bruno: Cada evento tem ID único e cabeçalho X-Northwind-Idempotency-Key. Você guarda esse ID, e se chegar duas vezes, descarta. É garantido único pelo backend.
+
+Thiago: Ok, isso resolve. Terceiro problema, e é o pior. Vocês não têm sandbox com dados de produção parcial. O sandbox de vocês tá vazio, eu testei na sexta. Como eu valido integração end-to-end?
+
+Bruno: Boa pergunta. A gente tem dois ambientes. O sandbox público, que é vazio, e o sandbox dedicado, que a gente provisiona pra cliente em PoC com dados sintéticos volumosos, tipo 50.000 transações pré-cadastradas com chargebacks, retries, splits, todos os cenários. Você não tem acesso ao dedicado porque ainda não tem PoC formalizada.
+
+Thiago: Hum. Mas a proposta já não é PoC?
+
+Rafael: Thiago, a proposta é comercial. A PoC é um documento separado que define escopo técnico e duração. Posso assinar a PoC contigo hoje e o Bruno provisiona o sandbox dedicado amanhã.
+
+Thiago: Tá. E quanto tempo o sandbox dedicado fica disponível?
+
+Bruno: 60 dias no padrão, podemos estender pra 90 sob pedido.
+
+Thiago: Faz sentido. Quarto problema, e esse aqui me incomoda mais.
+
+Rafael: Pode falar.
+
+Thiago: A gente já tá em produção há quatro anos com Banco Plural Pagamentos. Migração de gateway de pagamento é caro e arriscado. Quanto tempo de implantação vocês falam de verdade, com testes, paralelo, e cutover?
+
+Bruno: Thiago, depende do volume e do escopo. Pra EduPay, com TPV de R$ 22 milhões mês, três adquirentes, e split entre escolas e plataforma, a gente tá olhando: 30 dias de integração técnica, 30 dias de paralelo com Banco Plural, e cutover programado em janela. Total: 60 a 75 dias. A gente tem time de Solutions Engineering dedicado por 30 dias pós-kickoff sem custo.
+
+Thiago: 60 dias é mais agressivo do que eu esperava. Mas paralelo de só 30 dias me preocupa. E se a gente precisar de mais tempo?
+
+Bruno: Estendemos. A gente tem cliente que ficou 90 dias em paralelo. Sem custo adicional, contanto que a gente tenha visibilidade do motivo.
+
+Manuela: Bruno, do lado de produto, eu queria entender uma coisa. O split de vocês permite escola receber em conta digital diferente da nossa? Hoje a gente tem 3.200 escolas cadastradas, cada uma com banco diferente.
+
+Bruno: Permite. Cada destinatário do split tem dados bancários próprios, e a liquidação cai direto. Sem trânsito pela conta de vocês.
+
+Manuela: E se a escola troca de conta? Hoje a gente atualiza manualmente.
+
+Bruno: Vocês podem atualizar via API. A gente tem endpoint /recipients/{id} com PATCH. Auditoria registrada. Vocês podem inclusive deixar a escola atualizar direto via app de vocês, expondo o endpoint pra usuário final autenticado.
+
+Manuela: Caramba, isso já resolve metade do meu suporte. Quanto custa cada destinatário?
+
+Bruno: Sem custo por destinatário. Cobrança é só por transação processada com sucesso.
+
+Manuela: Sério?
+
+Bruno: Sério.
+
+Manuela: Hum.
+
+Thiago: Tá. Voltando ao meu Banco Plural. Vocês têm caso de cliente que migrou de Banco Plural pra Northwind? Eu queria conversar com alguém.
+
+Rafael: Tenho dois. Pago Educa em Belo Horizonte e Aulaslab em Curitiba. Posso fazer apresentação contigo nessa semana?
+
+Thiago: Pode. Prefiro Aulaslab, que é maior. Manuela, você topa entrar nessa ligação?
+
+Manuela: Topo.
+
+Rafael: Combinado. Posso agendar pra sexta dia 09/05, 14h.
+
+Thiago: Pode.
+
+Bruno: Thiago, e aproveitando, vou te mandar um Postman Collection com todos os endpoints que vocês vão usar. Você consegue testar a API direto antes mesmo de subir o sandbox dedicado.
+
+Thiago: Boa.
+
+Rafael: Resumindo. Hoje à noite o Bruno libera HMAC na conta de prospect e manda print. Amanhã ele provisiona sandbox dedicado. Sexta dia 09/05 às 14h conversa com Aulaslab. Em paralelo eu mando PoC formal pra assinatura ainda hoje. Combinado?
+
+Thiago: Combinado. Mas Rafael, te falo direto: enquanto eu não validar o sandbox e ouvir a Aulaslab, não vou aprovar a parte técnica. A objeção tá viva.
+
+Rafael: Anotado. Apreço a honestidade. Bruno, do seu lado tudo certo?
+
+Bruno: Tudo certo. Vou colocar como prioridade essa semana.
+
+Manuela: Pessoal, valeu. Até sexta.
+
+Thiago: Até.

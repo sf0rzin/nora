@@ -5,6 +5,12 @@ Thumbs.db
 .vscode/
 *.iml
 
+# --- IDE / Eclipse ---
+.settings/
+.project
+.classpath
+.factorypath
+
 # --- Ambientes ---
 .env
 .env.local

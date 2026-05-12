@@ -1,33 +1,56 @@
 {
-  "companyName": "Acme Software",
+  "companyName": "Acme Software Solutions",
   "industry": "B2B SaaS — ERP",
-  "valueProposition": "Plataforma ERP para indústrias de médio porte com foco em automação fiscal brasileira.",
+  "valueProposition": "Plataforma ERP modular para indústrias de médio porte no Brasil, com foco em automação fiscal (NF-e, SPED) e previsibilidade financeira.",
+  "idealCustomerProfile": "Indústrias de transformação e distribuição com faturamento entre R$ 50.000.000,00 e R$ 500.000.000,00, 100 a 1000 colaboradores, com obrigações fiscais brasileiras complexas e operação multi-planta.",
   "products": [
     {
       "name": "Acme ERP Core",
-      "description": "Núcleo financeiro, fiscal e contábil.",
-      "keyFeatures": ["NF-e", "SPED", "Contas a Pagar/Receber", "Conciliação bancária"]
-    },
-    {
-      "name": "Acme Manufatura",
-      "description": "Módulo de chão de fábrica integrado ao ERP Core.",
-      "keyFeatures": ["MRP", "Apontamento de produção", "Controle de qualidade"]
+      "description": "Núcleo financeiro, fiscal e contábil com NF-e, SPED, contas a pagar/receber e conciliação bancária automatizada.",
+      "keyDifferentiators": [
+        "Validador fiscal nativo SEFAZ que reduz rejeições em até 90%",
+        "Conciliação bancária com matching automático por OFX e CNAB 240/400",
+        "Workflow de aprovação configurável por alçada"
+      ]
     },
     {
       "name": "Acme Financeiro Pro",
-      "description": "Módulo financeiro avançado com tesouraria e fluxo de caixa preditivo.",
-      "keyFeatures": ["Fluxo de caixa", "Tesouraria", "Conciliação avançada"]
+      "description": "Módulo financeiro avançado com tesouraria, fluxo de caixa preditivo e gestão de risco cambial.",
+      "keyDifferentiators": [
+        "Previsão de fluxo de caixa com horizonte de 12 meses baseada em histórico",
+        "Tesouraria integrada com 18 bancos via Open Finance",
+        "Simulação de cenários de hedge para exposição cambial"
+      ]
+    },
+    {
+      "name": "Acme Manufatura",
+      "description": "Módulo de chão de fábrica integrado ao ERP Core, com MRP, apontamento de produção e controle de qualidade.",
+      "keyDifferentiators": [
+        "MRP com cálculo de necessidades em tempo real",
+        "Apontamento mobile no chão de fábrica via app Android",
+        "Rastreabilidade por lote para indústrias regulamentadas"
+      ]
+    },
+    {
+      "name": "Acme Vendas",
+      "description": "Força de vendas B2B integrada com catálogo, pricing dinâmico e pedido recorrente.",
+      "keyDifferentiators": [
+        "Pricing dinâmico por mix, volume e prazo",
+        "Catálogo offline para representantes em campo",
+        "Integração nativa com Acme ERP Core sem middleware"
+      ]
     }
   ],
-  "competitors": ["TotalSys", "FlexERP"],
-  "idealCustomerProfile": "Indústria de médio porte (R$ 50M–R$ 500M) no Brasil.",
-  "commercialPlaybook": [
-    "Discovery foca em dor fiscal e perdas operacionais.",
-    "Toda proposta inclui PoC de 30 dias.",
-    "Descontos acima de 10% exigem aprovação Manager."
+  "competitors": [
+    "TotalSys ERP",
+    "FlexERP",
+    "OmniBusiness Cloud"
   ],
-  "glossary": [
-    { "term": "Núcleo", "meaning": "Conjunto de módulos financeiros base." },
-    { "term": "Onboarding Pro", "meaning": "Pacote de implementação acelerada de 60 dias." }
+  "objectionHandling": [
+    "Quando o cliente alegar preço: comparar TCO de 36 meses, não mensalidade. O Acme inclui suporte premium e implantação sem custo adicional.",
+    "Quando o cliente comparar com TotalSys: enfatizar que o Acme tem migração assistida em 60 dias e zero rejeição fiscal nos primeiros 12 meses garantida em contrato.",
+    "Quando o cliente questionar tempo de implantação: oferecer o pacote Onboarding Express de 45 dias para módulos Core.",
+    "Quando o cliente disser que o sistema atual atende: investigar tempo do time fiscal, custo de horas extras e quantidade de retificações de SPED no último ano.",
+    "Quando o cliente mencionar congelamento de mudanças de TI: propor implantação em janela específica acordada e fases independentes."
   ]
 }
