@@ -79,7 +79,8 @@ public class GlobalExceptionHandler {
         HttpStatus status =
                 switch (ex.code()) {
                     case "EMAIL_ALREADY_TAKEN" -> HttpStatus.CONFLICT;
-                    case "INVALID_CREDENTIALS", "EMAIL_NOT_VERIFIED" -> HttpStatus.UNAUTHORIZED;
+                    case "INVALID_CREDENTIALS", "EMAIL_NOT_VERIFIED", "REFRESH_TOKEN_INVALID" ->
+                            HttpStatus.UNAUTHORIZED;
                     case "USER_DISABLED" -> HttpStatus.FORBIDDEN;
                     case "TOKEN_INVALID" -> HttpStatus.BAD_REQUEST;
                     default -> HttpStatus.BAD_REQUEST;
