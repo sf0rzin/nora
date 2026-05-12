@@ -1,0 +1,78 @@
+Reunião: Stand-up Diário — Solo Launch (Engenharia)
+Data: 2026-04-30
+Horário: 10:00 — 10:21
+Participantes: Camila Reis (Solo — Engineering Manager), Bruno Sampaio (Solo — Backend), Lia Tavora (Solo — Frontend), João Pessoa (Solo — Marketing & Growth)
+
+Camila: Bom dia pessoal. Pauta rápida do stand-up: revisar o sprint atual, decidir o que fica pra próxima, destravar o bug do agendamento, e o João trouxe uma novidade pra falar no fim. Vai ser quinze minutos no máximo. Bruno, começa por você.
+
+Bruno: Bom dia. Sobre o bug, a gente finalmente identificou ontem à noite. É race condition na fila do worker quando o usuário agenda dois posts pro mesmo segundo. Acontece em uns 0,3% dos agendamentos, mas dá perda de dado, então tá crítico.
+
+Camila: Como você vai resolver?
+
+Bruno: Vou subir um lock otimista com versionamento na tabela post_schedule. Se duas escritas baterem no mesmo registro, a segunda falha e refaz. Mais simples e mais robusto que filar tudo.
+
+Camila: Beleza. Quanto tempo?
+
+Bruno: Até amanhã 18h. Hotfix em produção sexta dia 01/05.
+
+Camila: Decidido então. Hotfix sai amanhã 01/05. Bruno, quem revisa o PR?
+
+Bruno: Lia revisa parte de frontend, e o Diogo, que tá de férias mas tá disponível remoto, revisa parte de backend. Combinei com ele ontem.
+
+Camila: Ok. Lia, sua vez.
+
+Lia: Sobre o sprint, a gente não vai conseguir entregar a feature de analytics de hashtags. Faltou integração com a API nova do Instagram Graph, que mudou autenticação em abril. Eu subestimei o impacto.
+
+Camila: Quanto falta?
+
+Lia: É, então, eu já fiz a parte de OAuth nova, falta refazer toda camada de fetch de métricas e os componentes do dashboard. Realisticamente, mais 8 dias de trabalho.
+
+Camila: Tá. Move pra próxima sprint, com aviso pro time de produto. E adiciona uma task pra investigar se a API nova tem rate limit que justifique cache nosso. Já vi gente reclamando do limite novo em fórum.
+
+Lia: Anotado. Crio a task ainda hoje no Linear.
+
+Bruno: Risco que eu quero deixar registrado. Se o lock otimista não resolver o bug do agendamento, a gente vai precisar repensar arquitetura da fila do worker inteira. Isso pode estourar a sprint que vem também, não só essa.
+
+Camila: Quanto risco você dá disso, em probabilidade?
+
+Bruno: Uns 20%. O lock otimista é padrão de mercado pra esse caso, mas a gente nunca aplicou nessa parte do código. Pode ter aresta.
+
+Camila: Combinado. Se até quinta dia 07/05 o hotfix não tiver batido verde no staging com bateria de testes de carga, a gente reúne de novo sexta de manhã pra plano B. Anotado por escrito no docs.
+
+Lia: Última coisa do meu lado. Tô finalizando o redesign do fluxo de cadastro. Mocks ficam prontos quinta dia 07/05 pra revisão. Implementação depende de a gente fechar Stripe Checkout, e o Bruno tem essa decisão pendente da reunião passada.
+
+Camila: Bruno, decidiu Stripe Checkout ou Pagar.me Light?
+
+Bruno: Decidi Stripe Checkout. Pagar.me Light tinha limite de currency que ia me forçar a recriar essa camada se a gente expandir pra Espanha em 2027.
+
+Camila: Decisão tomada então. Stripe Checkout. Bruno, abre issue e atribui pra você. Quanto tempo de implementação?
+
+Bruno: Uma semana. Começo depois do hotfix do agendamento.
+
+Camila: Combinado. João, tua vez.
+
+João: Bom dia gente. Notícia boa: o Solo Suite passou de 10 mil contas ativas ontem à noite. Foi 23 horas e 47 minutos do dia 29/04/2026. Marketing quer postar nas redes hoje.
+
+Bruno: Caraca, parabéns time.
+
+Lia: Boa.
+
+Camila: Adoro. Pede pro Renato postar com print do dashboard interno, mas sem dado de cliente. Nenhum nome, nenhum username, nada. Só os números agregados.
+
+João: Combinado. Posta hoje à tarde 15h, em Instagram, LinkedIn e X.
+
+Camila: Beleza. Mais alguém com bloqueio ou tópico?
+
+Lia: Eu tô bloqueada de design system pra criar variant nova de botão pro fluxo de cadastro. Mas é menor, eu desbloqueio sozinha conversando com a Patricia hoje.
+
+Camila: Beleza, se travar mesmo me chama.
+
+Bruno: Nada do meu lado.
+
+Camila: Reunião encerrada. Resumindo: Bruno entrega hotfix do agendamento até amanhã 18h, decisão tomada de Stripe Checkout, sprint de hashtags movida pra próxima, post de 10k contas hoje 15h, e a gente se reúne de novo se até quinta dia 07/05 o hotfix não bater verde no staging. Bom dia pessoal.
+
+Lia: Bom dia.
+
+João: Bom dia.
+
+Bruno: Até.

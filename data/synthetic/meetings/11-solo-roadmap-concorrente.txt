@@ -1,0 +1,78 @@
+Reunião: Roadmap Q3/2026 — Solo Launch (Produto)
+Data: 2026-05-02
+Horário: 11:00 — 12:14
+Participantes: Camila Reis (Solo — Engineering Manager), Lia Tavora (Solo — Frontend & Design), Bruno Sampaio (Solo — Backend), João Pessoa (Solo — Marketing & Growth)
+
+Camila: Bom dia time. A pauta de hoje é o roadmap do Q3, que começa em 01/07/2026. Três temas concorrendo por prioridade: analytics de hashtags, integração com TikTok, e onboarding self-service. A gente vai discutir, decidir, e sair daqui com prioridades claras. Lia, comeca pelo que a pesquisa trouxe.
+
+Lia: Bom dia. Então, eu rodei pesquisa com 30 usuários ativos entre 15 e 27 de abril. Mistura de criadores entre 10 e 80 mil seguidores, e três usuários acima de 200 mil. Três pontos principais saíram. Um: onboarding é o maior atrito. 6 em cada 10 usuários novos desistem antes de agendar o primeiro post. Dois: analytics de hashtags é desejada por usuários ativos mas não bloqueia adoção. Três: TikTok é a feature mais pedida, mas, é, é um pedido aspiracional, não uma urgência.
+
+Bruno: Quando você diz que TikTok é aspiracional, como você sabe?
+
+Lia: Porque eu fiz follow-up pergunta. "Se a Solo tivesse TikTok hoje, você usaria pra que?" Respostas vagas, tipo "agendar mais postagem, ter mais alcance". Não vi caso de uso forte. Em comparação, quando eu perguntei sobre onboarding, as pessoas descreviam exatamente onde travaram, qual tela, qual passo.
+
+Camila: Sinal forte. Decisão: onboarding self-service vira prioridade 1 do Q3.
+
+Bruno: Isso bloqueia o trabalho do TikTok?
+
+Camila: Bloqueia. TikTok empurra pra Q4.
+
+Lia: Risco que preciso levantar. Dois concorrentes, o CreatorHub e o PostMate, anunciaram TikTok pra Q3. CreatorHub fez post oficial em 28/04 dizendo que entrega em julho. PostMate anunciou em fórum, sem data, mas o pessoal lá indica agosto.
+
+Camila: Hum. Anotado, mas onboarding tem ROI mais claro agora. Vamos priorizar e revisitar TikTok no fim do Q3.
+
+João: Camila, posso? Do lado de growth, eu confirmo o que a Lia disse. Custo de aquisição tá em R$ 38,00 por trial, e a conversão de trial pra pago tá em 11%. Se a gente subir conversão pra 18%, que é o que onboarding self-service entrega em casos análogos que eu pesquisei, o ROI mensal sobe absurdamente.
+
+Bruno: Quanto, em número?
+
+João: A gente faz hoje uns R$ 84.000,00 mês em MRR novo. Indo de 11% pra 18% sobe pra R$ 137.000,00. Diferença de R$ 53.000,00 mês recorrente. Em escala anualizada, R$ 636.000,00 ano.
+
+Camila: Esse número se confirmar, paga vários trimestres de engenheiro. Decisão reforçada: onboarding é P1.
+
+Lia: Outro ponto da pesquisa. 17 dos 30 mencionaram que migrariam do Buffer pra gente se onboarding fosse mais fácil. Buffer é o que mais aparece como concorrente real, mais até que CreatorHub.
+
+Bruno: Buffer Essentials, certo? Não o Buffer original?
+
+Lia: Buffer Essentials.
+
+Camila: Bom dado. João, vale tratar Buffer Essentials como concorrente focal na campanha de Q3?
+
+João: Vale. Vou ajustar a página de comparação.
+
+Camila: Combinado. Bruno, pra onboarding self-service, qual é a decisão técnica que tá parada?
+
+Bruno: Eu preciso definir até semana que vem se a gente usa Stripe Checkout ou mantém integração custom com gateway atual. A gente já discutiu no stand-up, mas vou retomar aqui porque impacta diretamente o onboarding.
+
+Camila: Vamos com Stripe Checkout. Decisão tomada. Bruno, abre a issue e atribui pra você. Quanto tempo total pra onboarding completo no Stripe?
+
+Bruno: Onboarding self-service ponta a ponta, com Stripe Checkout integrado, signup com OAuth Google e LinkedIn, conexão das contas sociais e primeiro post agendado guiado: estimativa de 6 semanas de engenharia, mais 2 semanas de QA e ajuste de UX baseado em teste com usuário. Total 8 semanas, dá pra entregar até final de agosto se a gente começar em 01/07.
+
+Camila: Time crítico, sem buffer. Tem risco?
+
+Bruno: Maior risco é integração com a API do LinkedIn pra OAuth. Eles mudaram fluxo recentemente. Se travar lá, perco 2 semanas.
+
+Camila: Coloca um spike de 3 dias no início do trimestre pra validar a integração antes de comprometer. Se travar, a gente tira LinkedIn do MVP e libera depois.
+
+Bruno: Combinado.
+
+Lia: Eu cuido do redesign do fluxo de cadastro. Entrego mocks finais até 15/05, validados com 5 usuários da nossa base de pesquisa. Implementação pode começar em 01/06 pra ficar adiantada quando o Bruno começar backend em 01/07.
+
+Camila: Perfeito.
+
+João: Pergunta. Quando a gente comunica TikTok como adiado pra Q4? Tem usuário que tá esperando. Se a gente segura, vai vazar de outra forma e dá imagem ruim.
+
+Camila: Comunica em changelog público dia 15/06, junto com o anúncio oficial do Q3 roadmap. Mensagem positiva: prioridade é o que mais usuário pediu, que é onboarding, e TikTok vem logo depois.
+
+João: Combinado. Escrevo o post.
+
+Lia: Última coisa. A gente tinha um experimento rodando de notificação push pra engajamento. Os números fecharam ontem. Aumento de 31% em sessão por usuário ativo. Eu vou levar pro próximo planning um pequeno trabalho de polimento pra estabilizar isso, fora do escopo do Q3.
+
+Camila: Excelente. Anota como item de manutenção contínua, fora dos três grandes blocos.
+
+Camila: Resumo final. Q3/2026: onboarding self-service prioridade 1, com Stripe Checkout. TikTok adiado pra Q4. Analytics de hashtags terminado em maio mas sem novo investimento no Q3. Lia entrega mocks finais até 15/05. Bruno inicia spike de LinkedIn OAuth em 01/07. João prepara comunicado de TikTok pra 15/06. Reunião encerrada.
+
+Lia: Combinado.
+
+Bruno: Combinado.
+
+João: Combinado. Valeu pessoal.
