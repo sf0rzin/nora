@@ -3,6 +3,7 @@ package br.com.nora.api.api.exception;
 import br.com.nora.api.api.dto.ErrorResponse;
 import br.com.nora.api.application.analysis.AnalysisException;
 import br.com.nora.api.application.iam.IamException;
+import br.com.nora.api.application.iam.InvitationException;
 import br.com.nora.api.application.identity.AuthException;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.speech.SpeechException;
@@ -166,6 +167,23 @@ public class GlobalExceptionHandler {
                     case "IAM_GROUP_NOT_FOUND", "IAM_POLICY_NOT_FOUND" -> HttpStatus.NOT_FOUND;
                     case "IAM_NAME_TAKEN" -> HttpStatus.CONFLICT;
                     case "IAM_FORBIDDEN" -> HttpStatus.FORBIDDEN;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
+    @ExceptionHandler(InvitationException.class)
+    public ResponseEntity<ErrorResponse> handleInvitation(InvitationException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "EMAIL_DOMAIN_NOT_ALLOWED" -> HttpStatus.UNPROCESSABLE_ENTITY;
+                    case "INVITE_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+                    case "INVITE_ALREADY_ACCEPTED", "INVITE_DUPLICATE_PENDING" ->
+                            HttpStatus.CONFLICT;
+                    case "INVITE_EXPIRED" -> HttpStatus.GONE;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)
