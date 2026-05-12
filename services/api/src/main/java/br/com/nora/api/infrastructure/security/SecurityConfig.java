@@ -48,6 +48,10 @@ public class SecurityConfig {
         "/auth/signup",
         "/auth/verify-email",
         "/auth/login",
+        // Round 2 / Subfase 1.3 A: refresh nao tem JWT valido quando chega (esse e o ponto);
+        // logout e idempotente — sem token = no-op em vez de 401.
+        "/auth/refresh",
+        "/auth/logout",
         "/auth/password/reset/request",
         "/auth/password/reset/confirm",
         // US06: aceite de convite usa o token como credencial — endpoint publico por design.

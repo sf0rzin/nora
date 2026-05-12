@@ -5,6 +5,7 @@ import br.com.nora.api.api.dto.iam.AcceptInviteRequest;
 import br.com.nora.api.api.dto.iam.InviteListResponse;
 import br.com.nora.api.api.dto.iam.InviteResponse;
 import br.com.nora.api.api.dto.iam.InviteUserRequest;
+import br.com.nora.api.api.security.AuthCookies;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.iam.AuthorizationService;
 import br.com.nora.api.application.iam.InvitationService;
@@ -13,11 +14,13 @@ import br.com.nora.api.domain.iam.IamInvitation;
 import br.com.nora.api.domain.iam.InvitationStatus;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import jakarta.validation.Valid;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -49,10 +52,13 @@ public class InvitationController {
 
     private final InvitationService service;
     private final AuthorizationService authz;
+    private final AuthCookies cookies;
 
-    public InvitationController(InvitationService service, AuthorizationService authz) {
+    public InvitationController(
+            InvitationService service, AuthorizationService authz, AuthCookies cookies) {
         this.service = service;
         this.authz = authz;
+        this.cookies = cookies;
     }
 
     @PostMapping("/users/invite")
@@ -88,7 +94,17 @@ public class InvitationController {
                         result.user().tenantId(),
                         result.user().email().value(),
                         result.user().displayName());
-        return ResponseEntity.ok(resp);
+        HttpHeaders headers = new HttpHeaders();
+        AuthCookies.appendSetCookie(
+                headers,
+                cookies.buildAccessCookie(
+                        result.accessToken(), Duration.ofSeconds(result.expiresInSeconds())));
+        AuthCookies.appendSetCookie(
+                headers,
+                cookies.buildRefreshCookie(
+                        result.refreshTokenPlain(),
+                        Duration.ofSeconds(result.refreshExpiresInSeconds())));
+        return ResponseEntity.ok().headers(headers).body(resp);
     }
 
     @GetMapping("/invites")
