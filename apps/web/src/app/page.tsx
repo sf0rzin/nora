@@ -4,7 +4,7 @@ import { LandingPage } from "@/components/landing/landing-page";
 export const metadata: Metadata = {
   title: "NORA — Conversas viram inteligência",
   description:
-    "Plataforma de inteligência conversacional que transforma reuniões em decisões, ações e receita — com contexto do seu negócio.",
+    "A NORA escuta, transcreve e extrai oportunidades, riscos e próximos passos das suas reuniões — calibrada ao catálogo da sua empresa, não a um genérico.",
 };
 
 /**
