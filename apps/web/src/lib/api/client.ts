@@ -2,7 +2,14 @@
  * Cliente HTTP minimalista para a API do NORA.
  *
  * Por padrao em modo dev usa fixtures (NEXT_PUBLIC_USE_MOCKS=true). Quando false,
- * faz fetch real contra NEXT_PUBLIC_API_BASE_URL e injeta o JWT do cookie.
+ * faz fetch real contra NEXT_PUBLIC_API_BASE_URL.
+ *
+ * Round 2 / Subfase 1.3 A:
+ * - Auth e enviada via cookies httpOnly (`nora_access`, `nora_refresh`)
+ *   setados pelo backend no /auth/login. `credentials: include` no fetch
+ *   garante que sao enviados. Frontend nao precisa (nem consegue) ler.
+ * - Interceptor 401: tenta `POST /auth/refresh` uma vez; se sucesso, repete
+ *   a request original; se falhar, redireciona para /auth/login.
  */
 
 import type {
@@ -14,23 +21,17 @@ import type {
   InviteUserRequest,
   MeetingDetail,
   MeetingsListResponse,
-} from "./types";
+} from './types';
 
 // Re-export para componentes consumirem direto de @/lib/api/client (parity
 // com GroupDto/PolicyDto etc., que sao declarados localmente neste modulo).
-export type {
-  AcceptInviteRequest,
-  Invite,
-  InviteListResponse,
-  InviteStatus,
-  InviteUserRequest,
-};
-import meetingsListFixture from "@/fixtures/meetings-list-response.json";
-import meetingDetailFixture from "@/fixtures/meeting-detail-response.json";
-import { getToken } from "@/lib/auth";
+export type { AcceptInviteRequest, Invite, InviteListResponse, InviteStatus, InviteUserRequest };
+import meetingsListFixture from '@/fixtures/meetings-list-response.json';
+import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
+import { handleSessionExpired, scheduleRefresh } from '@/lib/auth';
 
-const USE_MOCKS = (process.env.NEXT_PUBLIC_USE_MOCKS ?? "true") !== "false";
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+const USE_MOCKS = (process.env.NEXT_PUBLIC_USE_MOCKS ?? 'true') !== 'false';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
 
 export class ApiRequestError extends Error {
   readonly status: number;
@@ -44,30 +45,78 @@ export class ApiRequestError extends Error {
 
 interface RequestOptions extends RequestInit {
   /**
-   * Quando `true`, nao injeta o Bearer JWT — usado em endpoints publicos
-   * cujo path/payload contem a credencial (ex.: aceite de invite).
+   * Quando `true`, nao tenta refresh+retry em 401 — usado em endpoints
+   * publicos onde 401 e um erro semantico (login com senha errada, refresh
+   * invalido etc).
    */
   skipAuth?: boolean;
+  /** Marcador interno: evita loop quando a propria call e a tentativa de retry. */
+  _isRetry?: boolean;
+}
+
+/**
+ * Promise compartilhada de refresh em andamento. Quando varias requests
+ * batem 401 simultaneamente, todas aguardam o mesmo /auth/refresh em vez
+ * de disparar N requests redundantes.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function performRefresh(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const resp = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (!resp.ok) return false;
+      const data = (await resp.json().catch(() => ({}))) as {
+        expiresInSeconds?: number;
+      };
+      if (typeof data.expiresInSeconds === 'number' && data.expiresInSeconds > 0) {
+        scheduleRefresh(data.expiresInSeconds);
+      }
+      return true;
+    } catch {
+      return false;
+    } finally {
+      // Limpa apos completar — proxima chamada cria nova promise se precisar.
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
 }
 
 async function request<T>(path: string, init?: RequestOptions): Promise<T> {
   const headers: Record<string, string> = {
-    Accept: "application/json",
+    Accept: 'application/json',
     ...((init?.headers as Record<string, string>) ?? {}),
   };
-  if (init?.body && !(init.body instanceof FormData) && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
-  }
-  if (!init?.skipAuth) {
-    const token = getToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (init?.body && !(init.body instanceof FormData) && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
   }
 
   const resp = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers,
-    cache: "no-store",
+    credentials: 'include',
+    cache: 'no-store',
   });
+
+  // Interceptor 401: 1 tentativa de refresh + retry. Pulado em endpoints
+  // publicos (skipAuth) e em retries (evita loop infinito).
+  if (resp.status === 401 && !init?.skipAuth && !init?._isRetry) {
+    const refreshed = await performRefresh();
+    if (refreshed) {
+      return request<T>(path, { ...init, _isRetry: true });
+    }
+    // Refresh tambem falhou: limpa estado e redireciona. handleSessionExpired
+    // chama window.location.href entao a Promise abaixo na pratica nunca
+    // resolve antes do unload. Mantemos o throw pra fluxo SSR e testes.
+    await handleSessionExpired();
+  }
+
   if (!resp.ok) {
     let payload: ApiError | undefined;
     try {
@@ -91,7 +140,7 @@ export interface ListMeetingsParams {
   page?: number;
   size?: number;
   search?: string;
-  status?: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+  status?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
   from?: string; // ISO-8601
   to?: string; // ISO-8601
 }
@@ -99,12 +148,12 @@ export interface ListMeetingsParams {
 export async function listMeetings(params?: ListMeetingsParams): Promise<MeetingsListResponse> {
   if (USE_MOCKS) return meetingsListFixture as unknown as MeetingsListResponse;
   const qs = new URLSearchParams();
-  qs.set("page", String(params?.page ?? 0));
-  qs.set("size", String(params?.size ?? 20));
-  if (params?.search) qs.set("search", params.search);
-  if (params?.status) qs.set("status", params.status);
-  if (params?.from) qs.set("from", params.from);
-  if (params?.to) qs.set("to", params.to);
+  qs.set('page', String(params?.page ?? 0));
+  qs.set('size', String(params?.size ?? 20));
+  if (params?.search) qs.set('search', params.search);
+  if (params?.status) qs.set('status', params.status);
+  if (params?.from) qs.set('from', params.from);
+  if (params?.to) qs.set('to', params.to);
   return request<MeetingsListResponse>(`/meetings?${qs.toString()}`);
 }
 
@@ -116,7 +165,7 @@ export async function getMeeting(id: string): Promise<MeetingDetail> {
 export interface UploadMeetingInput {
   title: string;
   language: string;
-  transcriptFormat: "TXT" | "VTT" | "SRT";
+  transcriptFormat: 'TXT' | 'VTT' | 'SRT';
   startedAt?: string;
   endedAt?: string;
   participants?: { displayName: string; email?: string; isInternal?: boolean }[];
@@ -135,10 +184,10 @@ export async function uploadMeeting(input: UploadMeetingInput) {
     participants: input.participants ?? [],
     tags: input.tags ?? [],
   };
-  fd.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-  fd.append("file", input.file);
+  fd.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  fd.append('file', input.file);
   return request<{ id: string; processingStatus: string }>(`/meetings`, {
-    method: "POST",
+    method: 'POST',
     body: fd,
   });
 }
@@ -157,7 +206,7 @@ export interface LoginResponse {
 
 export async function login(email: string, password: string) {
   return request<LoginResponse>(`/auth/login`, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify({ email, password }),
   });
 }
@@ -170,27 +219,27 @@ export async function signup(input: {
 }) {
   return request<{ userId: string; tenantId: string; verificationRequired: boolean }>(
     `/auth/signup`,
-    { method: "POST", body: JSON.stringify(input) },
+    { method: 'POST', body: JSON.stringify(input) },
   );
 }
 
 export async function verifyEmail(token: string) {
   return request<{ verified: boolean }>(`/auth/verify-email`, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify({ token }),
   });
 }
 
 export async function requestPasswordReset(email: string) {
   return request<{ requested: boolean }>(`/auth/password/reset/request`, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify({ email }),
   });
 }
 
 export async function confirmPasswordReset(token: string, newPassword: string) {
   return request<{ reset: boolean }>(`/auth/password/reset/confirm`, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify({ token, newPassword }),
   });
 }
@@ -213,9 +262,11 @@ export async function getTenantContext() {
   return request<TenantContextDto>(`/tenant/context`);
 }
 
-export async function upsertTenantContext(payload: Omit<TenantContextDto, "tenantId" | "updatedAt">) {
+export async function upsertTenantContext(
+  payload: Omit<TenantContextDto, 'tenantId' | 'updatedAt'>,
+) {
   return request<TenantContextDto>(`/tenant/context`, {
-    method: "PUT",
+    method: 'PUT',
     body: JSON.stringify(payload),
   });
 }
@@ -250,15 +301,15 @@ export async function updateTenantDomain(
   req: TenantDomainUpdateRequest,
 ): Promise<TenantDomainUpdateResponse> {
   return request<TenantDomainUpdateResponse>(`/tenant/domain`, {
-    method: "PUT",
+    method: 'PUT',
     body: JSON.stringify(req),
   });
 }
 
 // ---------- Tasks ----------
 
-export type TaskStatus = "OPEN" | "IN_PROGRESS" | "DONE";
-export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
+export type TaskStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE';
+export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface TaskListItemDto {
   id: string;
@@ -278,7 +329,7 @@ export interface TaskListResponse {
 
 export async function listTasks(status?: TaskStatus): Promise<TaskListResponse> {
   const qs = new URLSearchParams();
-  if (status) qs.set("status", status);
+  if (status) qs.set('status', status);
   const path = qs.toString().length > 0 ? `/tasks?${qs.toString()}` : `/tasks`;
   return request<TaskListResponse>(path);
 }
@@ -288,7 +339,7 @@ export async function updateTask(
   patch: { status?: TaskStatus; title?: string },
 ): Promise<TaskListItemDto> {
   return request<TaskListItemDto>(`/tasks/${encodeURIComponent(id)}`, {
-    method: "PATCH",
+    method: 'PATCH',
     body: JSON.stringify(patch),
   });
 }
@@ -331,13 +382,13 @@ export async function listGroups(): Promise<GroupDto[]> {
 
 export async function createGroup(name: string, description?: string): Promise<GroupDto> {
   return request<GroupDto>(`/iam/groups`, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify({ name, description: description ?? null }),
   });
 }
 
 export async function deleteGroup(id: string): Promise<void> {
-  return request<void>(`/iam/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return request<void>(`/iam/groups/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export async function listGroupMembers(id: string): Promise<string[]> {
@@ -347,14 +398,14 @@ export async function listGroupMembers(id: string): Promise<string[]> {
 export async function addGroupMember(groupId: string, userId: string): Promise<void> {
   return request<void>(
     `/iam/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
-    { method: "POST" },
+    { method: 'POST' },
   );
 }
 
 export async function removeGroupMember(groupId: string, userId: string): Promise<void> {
   return request<void>(
     `/iam/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
-    { method: "DELETE" },
+    { method: 'DELETE' },
   );
 }
 
@@ -368,47 +419,47 @@ export async function createPolicy(
   description?: string,
 ): Promise<PolicyDto> {
   return request<PolicyDto>(`/iam/policies`, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify({ name, description: description ?? null, document }),
   });
 }
 
 export async function updatePolicyDocument(id: string, document: unknown): Promise<PolicyDto> {
   return request<PolicyDto>(`/iam/policies/${encodeURIComponent(id)}`, {
-    method: "PUT",
+    method: 'PUT',
     body: JSON.stringify({ document }),
   });
 }
 
 export async function deletePolicy(id: string): Promise<void> {
-  return request<void>(`/iam/policies/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return request<void>(`/iam/policies/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export async function attachPolicyToGroup(policyId: string, groupId: string): Promise<void> {
   return request<void>(
     `/iam/groups/${encodeURIComponent(groupId)}/policies/${encodeURIComponent(policyId)}`,
-    { method: "POST" },
+    { method: 'POST' },
   );
 }
 
 export async function detachPolicyFromGroup(policyId: string, groupId: string): Promise<void> {
   return request<void>(
     `/iam/groups/${encodeURIComponent(groupId)}/policies/${encodeURIComponent(policyId)}`,
-    { method: "DELETE" },
+    { method: 'DELETE' },
   );
 }
 
 export async function attachPolicyToUser(policyId: string, userId: string): Promise<void> {
   return request<void>(
     `/iam/users/${encodeURIComponent(userId)}/policies/${encodeURIComponent(policyId)}`,
-    { method: "POST" },
+    { method: 'POST' },
   );
 }
 
 export async function detachPolicyFromUser(policyId: string, userId: string): Promise<void> {
   return request<void>(
     `/iam/users/${encodeURIComponent(userId)}/policies/${encodeURIComponent(policyId)}`,
-    { method: "DELETE" },
+    { method: 'DELETE' },
   );
 }
 
@@ -421,14 +472,14 @@ export async function listAuditEvents(limit = 50): Promise<AuditEventDto[]> {
 /** Cria um convite. Exige IAM `iam:user:invite`. */
 export async function inviteUser(req: InviteUserRequest): Promise<Invite> {
   return request<Invite>(`/iam/users/invite`, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify(req),
   });
 }
 
 /** Lista convites do tenant atual; filtra por status quando informado. */
 export async function listInvites(status?: InviteStatus): Promise<InviteListResponse> {
-  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  const qs = status ? `?status=${encodeURIComponent(status)}` : '';
   return request<InviteListResponse>(`/iam/invites${qs}`);
 }
 
@@ -442,7 +493,7 @@ export async function acceptInvite(
   req: AcceptInviteRequest,
 ): Promise<LoginResponse> {
   return request<LoginResponse>(`/iam/invites/${encodeURIComponent(token)}/accept`, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify(req),
     skipAuth: true,
   });
@@ -450,5 +501,5 @@ export async function acceptInvite(
 
 /** Revoga um convite PENDING. Exige IAM `iam:invite:revoke`. */
 export async function revokeInvite(id: string): Promise<void> {
-  return request<void>(`/iam/invites/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return request<void>(`/iam/invites/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
