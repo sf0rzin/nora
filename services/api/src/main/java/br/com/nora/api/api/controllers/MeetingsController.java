@@ -2,6 +2,7 @@ package br.com.nora.api.api.controllers;
 
 import br.com.nora.api.api.dto.analysis.AnalysisResponse;
 import br.com.nora.api.api.dto.analysis.AnalysisResponseMapper;
+import br.com.nora.api.api.dto.meeting.LiveAnalyzeDtos;
 import br.com.nora.api.api.dto.meeting.MeetingDetailResponse;
 import br.com.nora.api.api.dto.meeting.MeetingGoalRequest;
 import br.com.nora.api.api.dto.meeting.MeetingGoalResponse;
@@ -12,7 +13,9 @@ import br.com.nora.api.api.dto.meeting.MeetingUploadMetadata;
 import br.com.nora.api.api.dto.meeting.MeetingUploadResponse;
 import br.com.nora.api.api.dto.meeting.ProductivityAssessmentResponse;
 import br.com.nora.api.api.security.CurrentUser;
+import br.com.nora.api.application.analysis.AnalysisException;
 import br.com.nora.api.application.analysis.AnalysisService;
+import br.com.nora.api.application.analysis.LiveAnalysisService;
 import br.com.nora.api.application.iam.AuthorizationService;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.meeting.MeetingGoalService;
@@ -23,6 +26,7 @@ import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
+import br.com.nora.api.infrastructure.nlp.WorkerDtos;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
@@ -65,6 +69,7 @@ public class MeetingsController {
     private final MeetingService meetings;
     private final AnalysisService analyses;
     private final MeetingGoalService meetingGoals;
+    private final LiveAnalysisService liveAnalysis;
     private final ObjectMapper objectMapper;
     private final Validator validator;
     private final AuthorizationService authz;
@@ -73,12 +78,14 @@ public class MeetingsController {
             MeetingService meetings,
             AnalysisService analyses,
             MeetingGoalService meetingGoals,
+            LiveAnalysisService liveAnalysis,
             ObjectMapper objectMapper,
             Validator validator,
             AuthorizationService authz) {
         this.meetings = meetings;
         this.analyses = analyses;
         this.meetingGoals = meetingGoals;
+        this.liveAnalysis = liveAnalysis;
         this.objectMapper = objectMapper;
         this.validator = validator;
         this.authz = authz;
@@ -311,6 +318,109 @@ public class MeetingsController {
                         updated.processingStatus().name(),
                         updated.createdAt());
         return ResponseEntity.accepted().body(body);
+    }
+
+    @PostMapping("/live-analyze")
+    public LiveAnalyzeDtos.LiveAnalyzeResponse liveAnalyze(
+            @Valid @RequestBody LiveAnalyzeDtos.LiveAnalyzeRequest req) {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        authz.require(
+                principal.userId(),
+                principal.tenantId(),
+                "meeting:analyze:live",
+                meetingResource(principal.tenantId(), null));
+
+        WorkerDtos.LiveHighlights previous = toWorkerHighlights(req.previousHighlights());
+        String language =
+                req.language() == null || req.language().isBlank() ? "pt-BR" : req.language();
+
+        try {
+            WorkerDtos.LiveAnalyzeResponse response =
+                    liveAnalysis.analyze(req.transcriptChunk(), language, previous);
+            return toApiLiveResponse(response);
+        } catch (AnalysisException.WorkerUnavailable ex) {
+            throw ex;
+        }
+    }
+
+    private WorkerDtos.LiveHighlights toWorkerHighlights(LiveAnalyzeDtos.LiveHighlightsDto dto) {
+        if (dto == null) {
+            return null;
+        }
+        return new WorkerDtos.LiveHighlights(
+                toWorkerHighlightItems(dto.decisions()),
+                toWorkerHighlightItems(dto.nextSteps()),
+                toWorkerHighlightItems(dto.observations()),
+                toWorkerLiveTaskItems(dto.tasks()));
+    }
+
+    private List<WorkerDtos.LiveHighlightItem> toWorkerHighlightItems(
+            List<LiveAnalyzeDtos.LiveHighlightItemDto> items) {
+        if (items == null) {
+            return null;
+        }
+        return items.stream()
+                .map(
+                        i ->
+                                new WorkerDtos.LiveHighlightItem(
+                                        i.text(), i.confidence(), i.sourceQuote()))
+                .toList();
+    }
+
+    private List<WorkerDtos.LiveTaskItem> toWorkerLiveTaskItems(
+            List<LiveAnalyzeDtos.LiveTaskItemDto> items) {
+        if (items == null) {
+            return null;
+        }
+        return items.stream()
+                .map(
+                        i ->
+                                new WorkerDtos.LiveTaskItem(
+                                        i.title(), i.assignee(), i.priority(), i.sourceQuote()))
+                .toList();
+    }
+
+    private LiveAnalyzeDtos.LiveAnalyzeResponse toApiLiveResponse(
+            WorkerDtos.LiveAnalyzeResponse r) {
+        WorkerDtos.LiveMetadata md =
+                r.metadata() != null ? r.metadata() : new WorkerDtos.LiveMetadata(0, 0, 0, 0, "");
+        return new LiveAnalyzeDtos.LiveAnalyzeResponse(
+                toApiHighlightItems(r.decisions()),
+                toApiHighlightItems(r.nextSteps()),
+                toApiHighlightItems(r.observations()),
+                toApiLiveTaskItems(r.tasks()),
+                new LiveAnalyzeDtos.LiveAnalyzeMetadataDto(
+                        md.processingMillis(),
+                        md.tokensInput(),
+                        md.tokensOutput(),
+                        md.piiRedactionsApplied(),
+                        md.modelVersion()));
+    }
+
+    private List<LiveAnalyzeDtos.LiveHighlightItemDto> toApiHighlightItems(
+            List<WorkerDtos.LiveHighlightItem> items) {
+        if (items == null) {
+            return List.of();
+        }
+        return items.stream()
+                .map(
+                        i ->
+                                new LiveAnalyzeDtos.LiveHighlightItemDto(
+                                        i.text(), i.confidence(), i.sourceQuote()))
+                .toList();
+    }
+
+    private List<LiveAnalyzeDtos.LiveTaskItemDto> toApiLiveTaskItems(
+            List<WorkerDtos.LiveTaskItem> items) {
+        if (items == null) {
+            return List.of();
+        }
+        return items.stream()
+                .map(
+                        i ->
+                                new LiveAnalyzeDtos.LiveTaskItemDto(
+                                        i.title(), i.assignee(), i.priority(), i.sourceQuote()))
+                .toList();
     }
 
     private MeetingUploadMetadata parseMetadata(String json) {

@@ -12,6 +12,14 @@ export default defineConfig(async () => ({
     },
   },
   clearScreen: false,
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        overlay: path.resolve(__dirname, "overlay.html"),
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,

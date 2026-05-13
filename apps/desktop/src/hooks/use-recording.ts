@@ -5,6 +5,7 @@ import type { RecordingStatus } from "@/lib/recording-types";
 import { uploadTranscript } from "@/lib/meetings";
 import { savePendingMeeting, removePendingMeeting, getPendingMeetings } from "@/lib/pending-meetings";
 import { useRecordingContext } from "./use-recording-context";
+import { useLiveHighlights, useLiveAnalysisTrigger } from "./use-live-highlights";
 
 interface UseRecordingOptions {
   language?: string;
@@ -38,6 +39,20 @@ export function useRecording(options: UseRecordingOptions = {}) {
   const startTimeRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const { clearHighlights, highlights } = useLiveHighlights();
+  const { triggerAnalysis, resetTrigger } = useLiveAnalysisTrigger();
+
+  const transcriptLinesRef = useRef(transcriptLines);
+  const highlightsRef = useRef(highlights);
+
+  useEffect(() => {
+    transcriptLinesRef.current = transcriptLines;
+  }, [transcriptLines]);
+
+  useEffect(() => {
+    highlightsRef.current = highlights;
+  }, [highlights]);
+
   useEffect(() => {
     const unlisten = listen<unknown>("transcript", (event) => {
       console.log("[transcript event]", event.payload);
@@ -50,7 +65,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
       };
 
       if (payload.isFinal) {
-        addTranscriptLine({
+        const newLine = {
           id: crypto.randomUUID(),
           text: payload.text,
           isFinal: true,
@@ -58,7 +73,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
           speakerId: payload.speakerId,
           track: payload.track,
           timestamp: Date.now(),
-        });
+        };
+        addTranscriptLine(newLine);
         setContextPartialText("");
       } else {
         setContextPartialText(payload.text);
@@ -70,7 +86,6 @@ export function useRecording(options: UseRecordingOptions = {}) {
       setRecordingState(s.isRecording, s.micDevice, s.sampleRate);
     });
 
-    // Check recording status on mount
     const checkStatus = async () => {
       try {
         const status = await invoke<RecordingStatus>("get_recording_status");
@@ -90,6 +105,22 @@ export function useRecording(options: UseRecordingOptions = {}) {
       unlistenStatus.then((fn) => fn());
     };
   }, []);
+
+  useEffect(() => {
+    if (!isRecording || transcriptLines.length === 0) return;
+    triggerAnalysis(transcriptLines, highlightsRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transcriptLines.length, isRecording]);
+
+  useEffect(() => {
+    if (!isRecording) return;
+    const interval = setInterval(() => {
+      if (transcriptLinesRef.current.length > 0) {
+        triggerAnalysis(transcriptLinesRef.current, highlightsRef.current, true);
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [isRecording, triggerAnalysis]);
 
   const loadDevices = useCallback(async () => {
     try {
@@ -122,6 +153,13 @@ export function useRecording(options: UseRecordingOptions = {}) {
           setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
         }
       }, 1000);
+
+      clearHighlights();
+      invoke("clear_live_highlights").catch(() => {});
+      resetTrigger();
+      invoke("toggle_overlay", { show: true }).catch((e) =>
+        console.error("[recording] failed to open overlay:", e),
+      );
     } catch (e) {
       console.error("[recording] start_recording FAILED:", e);
       setError(String(e));
@@ -138,6 +176,11 @@ export function useRecording(options: UseRecordingOptions = {}) {
     }
     if (timerRef.current) clearInterval(timerRef.current);
     setRecordingState(false, "", 0);
+
+    invoke("toggle_overlay", { show: false }).catch(() => {});
+    clearHighlights();
+    invoke("clear_live_highlights").catch(() => {});
+    resetTrigger();
   }, []);
 
   const renameSpeaker = useCallback((speakerId: string, newName: string) => {

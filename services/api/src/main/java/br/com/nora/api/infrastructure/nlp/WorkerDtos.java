@@ -111,4 +111,44 @@ public final class WorkerDtos {
             @JsonProperty("tokensOutput") Integer tokensOutput,
             @JsonProperty("processingMillis") Integer processingMillis,
             @JsonProperty("piiRedactionsApplied") Integer piiRedactionsApplied) {}
+
+    // ---------- Live Analyze (analise em tempo real durante reuniao) ----------
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record LiveAnalyzeRequest(
+            @JsonProperty("transcriptChunk") String transcriptChunk,
+            @JsonProperty("previousHighlights") LiveHighlights previousHighlights,
+            @JsonProperty("language") String language) {}
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record LiveHighlights(
+            @JsonProperty("decisions") List<LiveHighlightItem> decisions,
+            @JsonProperty("nextSteps") List<LiveHighlightItem> nextSteps,
+            @JsonProperty("observations") List<LiveHighlightItem> observations,
+            @JsonProperty("tasks") List<LiveTaskItem> tasks) {}
+
+    public record LiveHighlightItem(
+            @JsonProperty("text") String text,
+            @JsonProperty("confidence") Double confidence,
+            @JsonProperty("sourceQuote") String sourceQuote) {}
+
+    public record LiveTaskItem(
+            @JsonProperty("title") String title,
+            @JsonProperty("assignee") String assignee,
+            @JsonProperty("priority") String priority,
+            @JsonProperty("sourceQuote") String sourceQuote) {}
+
+    public record LiveAnalyzeResponse(
+            @JsonProperty("decisions") List<LiveHighlightItem> decisions,
+            @JsonProperty("nextSteps") List<LiveHighlightItem> nextSteps,
+            @JsonProperty("observations") List<LiveHighlightItem> observations,
+            @JsonProperty("tasks") List<LiveTaskItem> tasks,
+            @JsonProperty("metadata") LiveMetadata metadata) {}
+
+    public record LiveMetadata(
+            @JsonProperty("processingMillis") Integer processingMillis,
+            @JsonProperty("tokensInput") Integer tokensInput,
+            @JsonProperty("tokensOutput") Integer tokensOutput,
+            @JsonProperty("piiRedactionsApplied") Integer piiRedactionsApplied,
+            @JsonProperty("modelVersion") String modelVersion) {}
 }
