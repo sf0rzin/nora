@@ -55,6 +55,33 @@ def _render_template(template: str, **variables: str) -> str:
     return result
 
 
+def _build_goal_section(req: AnalyzeRequest) -> str:
+    """Renderiza secao do prompt com goal do usuario (ADR 0005).
+
+    Sem goal, retorna instrucao explicita ao LLM pra emitir productivity=null.
+    """
+    if req.goal is None:
+        return "Nenhum objetivo foi declarado para esta reuniao. DEVE emitir `productivity` = null."
+
+    outcomes_md = "\n".join(f"- {o}" for o in req.goal.expected_outcomes)
+    if req.goal.project_state_snapshot:
+        snap = req.goal.project_state_snapshot
+        state_block = f"\n\nEstado atual do projeto (informado pelo usuario):\n```\n{snap}\n```"
+    else:
+        state_block = ""
+    return (
+        f"O usuario declarou objetivo para esta reuniao. Avalie produtividade "
+        f"comparando o que foi discutido com o que era esperado.\n\n"
+        f"Proposito declarado: {req.goal.purpose}\n\n"
+        f"Outcomes esperados:\n{outcomes_md}{state_block}\n\n"
+        f"Para cada outcome esperado, classifique como ADDRESSED, PARTIAL ou MISSED "
+        f"e cite evidencia textual da transcricao. Calcule o score (0-100) priorizando "
+        f"cobertura de outcomes; bandas: LOW (<40), MEDIUM (40-69), HIGH (>=70). "
+        f"Inclua offTopicRatio e decisionDensity como floats 0-1 (ou null se nao puder estimar). "
+        f"DEVE emitir o campo `productivity` populado (nao null)."
+    )
+
+
 def analyze(
     req: AnalyzeRequest,
     settings: Settings,
@@ -78,6 +105,7 @@ def analyze(
         meeting_id=req.meeting_id,
         language=req.language,
         transcript=req.transcript,
+        goal_section=_build_goal_section(req),
     )
 
     json_schema = build_json_schema_for_analysis()

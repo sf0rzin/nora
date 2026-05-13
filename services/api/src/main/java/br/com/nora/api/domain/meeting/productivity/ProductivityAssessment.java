@@ -1,0 +1,152 @@
+package br.com.nora.api.domain.meeting.productivity;
+
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Avaliacao de produtividade gerada pelo worker (ADR 0005). 1-1 com {@code Meeting}. Imutavel.
+ *
+ * <p>Apenas existe quando o usuario declarou um {@link MeetingGoal} para a reuniao. Sem goal, o
+ * worker nao emite e o backend nao persiste.
+ */
+public final class ProductivityAssessment {
+
+    private static final int SCORE_MIN = 0;
+    private static final int SCORE_MAX = 100;
+    private static final int RATIONALE_MIN = 10;
+    private static final int RATIONALE_MAX = 1000;
+
+    private final UUID id;
+    private final UUID tenantId;
+    private final UUID meetingId;
+    private final int score;
+    private final ProductivityBand band;
+    private final List<OutcomeCoverage> coverage;
+    private final Double offTopicRatio;
+    private final Double decisionDensity;
+    private final String rationale;
+    private final OffsetDateTime createdAt;
+
+    public ProductivityAssessment(
+            UUID id,
+            UUID tenantId,
+            UUID meetingId,
+            int score,
+            ProductivityBand band,
+            List<OutcomeCoverage> coverage,
+            Double offTopicRatio,
+            Double decisionDensity,
+            String rationale,
+            OffsetDateTime createdAt) {
+        if (id == null) {
+            throw new IllegalArgumentException("id is required");
+        }
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId is required");
+        }
+        if (meetingId == null) {
+            throw new IllegalArgumentException("meetingId is required");
+        }
+        if (score < SCORE_MIN || score > SCORE_MAX) {
+            throw new IllegalArgumentException(
+                    "score must be between " + SCORE_MIN + " and " + SCORE_MAX);
+        }
+        if (band == null) {
+            throw new IllegalArgumentException("band is required");
+        }
+        if (rationale == null || rationale.isBlank()) {
+            throw new IllegalArgumentException("rationale is required");
+        }
+        String trimmedRationale = rationale.trim();
+        if (trimmedRationale.length() < RATIONALE_MIN
+                || trimmedRationale.length() > RATIONALE_MAX) {
+            throw new IllegalArgumentException(
+                    "rationale length must be between " + RATIONALE_MIN + " and " + RATIONALE_MAX);
+        }
+        if (offTopicRatio != null && (offTopicRatio < 0.0 || offTopicRatio > 1.0)) {
+            throw new IllegalArgumentException("offTopicRatio must be in [0,1]");
+        }
+        if (decisionDensity != null && (decisionDensity < 0.0 || decisionDensity > 1.0)) {
+            throw new IllegalArgumentException("decisionDensity must be in [0,1]");
+        }
+        this.id = id;
+        this.tenantId = tenantId;
+        this.meetingId = meetingId;
+        this.score = score;
+        this.band = band;
+        this.coverage =
+                coverage == null
+                        ? List.of()
+                        : Collections.unmodifiableList(new ArrayList<>(coverage));
+        this.offTopicRatio = offTopicRatio;
+        this.decisionDensity = decisionDensity;
+        this.rationale = trimmedRationale;
+        this.createdAt = createdAt == null ? OffsetDateTime.now() : createdAt;
+    }
+
+    /** Factory para criar uma avaliacao nova (id gerado, createdAt = now). */
+    public static ProductivityAssessment newAssessment(
+            UUID tenantId,
+            UUID meetingId,
+            int score,
+            ProductivityBand band,
+            List<OutcomeCoverage> coverage,
+            Double offTopicRatio,
+            Double decisionDensity,
+            String rationale) {
+        return new ProductivityAssessment(
+                UUID.randomUUID(),
+                tenantId,
+                meetingId,
+                score,
+                band,
+                coverage,
+                offTopicRatio,
+                decisionDensity,
+                rationale,
+                OffsetDateTime.now());
+    }
+
+    public UUID id() {
+        return id;
+    }
+
+    public UUID tenantId() {
+        return tenantId;
+    }
+
+    public UUID meetingId() {
+        return meetingId;
+    }
+
+    public int score() {
+        return score;
+    }
+
+    public ProductivityBand band() {
+        return band;
+    }
+
+    public List<OutcomeCoverage> coverage() {
+        return coverage;
+    }
+
+    public Double offTopicRatio() {
+        return offTopicRatio;
+    }
+
+    public Double decisionDensity() {
+        return decisionDensity;
+    }
+
+    public String rationale() {
+        return rationale;
+    }
+
+    public OffsetDateTime createdAt() {
+        return createdAt;
+    }
+}
