@@ -58,6 +58,9 @@ param allowAzureServices bool = true
 @description('Lista de IPs pra firewall (cada item: { name, startIpAddress, endIpAddress }).')
 param firewallRules array = []
 
+@description('Extensions Postgres a serem allow-listed via parameter `azure.extensions`. Azure Flexible Server bloqueia CREATE EXTENSION por padrao; precisa allow-list explicita por nome em UPPERCASE separado por virgula. Default cobre as extensoes do schema NORA.')
+param allowedExtensions string = 'PGCRYPTO,CITEXT'
+
 resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   name: name
   location: location
@@ -119,6 +122,18 @@ resource customFirewallRules 'Microsoft.DBforPostgreSQL/flexibleServers/firewall
     }
   }
 ]
+
+// Allow-list de extensions Postgres. Sem isso, CREATE EXTENSION falha com
+// 'extension X is not allow-listed for users in Azure Database for PostgreSQL'.
+// Pgcrypto + citext sao usadas pelo schema NORA (gen_random_uuid + email case-insensitive).
+resource extensionsConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = {
+  parent: server
+  name: 'azure.extensions'
+  properties: {
+    value: allowedExtensions
+    source: 'user-override'
+  }
+}
 
 output id string = server.id
 output name string = server.name
