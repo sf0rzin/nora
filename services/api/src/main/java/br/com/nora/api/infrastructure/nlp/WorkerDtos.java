@@ -20,7 +20,14 @@ public final class WorkerDtos {
             @JsonProperty("language") String language,
             @JsonProperty("transcript") String transcript,
             @JsonProperty("tenantContext") TenantContext tenantContext,
-            @JsonProperty("options") Options options) {}
+            @JsonProperty("options") Options options,
+            @JsonProperty("goal") Goal goal) {}
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Goal(
+            @JsonProperty("purpose") String purpose,
+            @JsonProperty("expectedOutcomes") List<String> expectedOutcomes,
+            @JsonProperty("projectStateSnapshot") String projectStateSnapshot) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record TenantContext(
@@ -59,7 +66,21 @@ public final class WorkerDtos {
             @JsonProperty("actionItems") List<ActionItemDto> actionItems,
             @JsonProperty("risks") List<RiskDto> risks,
             @JsonProperty("opportunities") List<OpportunityDto> opportunities,
+            @JsonProperty("productivity") ProductivityDto productivity,
             @JsonProperty("metadata") Metadata metadata) {}
+
+    public record ProductivityDto(
+            @JsonProperty("score") Integer score,
+            @JsonProperty("band") String band,
+            @JsonProperty("coverage") List<CoverageDto> coverage,
+            @JsonProperty("offTopicRatio") Double offTopicRatio,
+            @JsonProperty("decisionDensity") Double decisionDensity,
+            @JsonProperty("rationale") String rationale) {}
+
+    public record CoverageDto(
+            @JsonProperty("expectedOutcome") String expectedOutcome,
+            @JsonProperty("status") String status,
+            @JsonProperty("evidence") String evidence) {}
 
     public record DecisionDto(
             @JsonProperty("text") String text, @JsonProperty("confidence") Double confidence) {}
