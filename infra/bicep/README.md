@@ -35,7 +35,12 @@ az account set --subscription "Azure for Students"
 
 Resource Group já existe: `rg-nora-dev` (criado em `brazilsouth` antes da descoberta da policy).
 
-> **NOTA — region policy do Azure for Students**: a subscription tem `sys.regionrestriction` que permite apenas `mexicocentral`, `northcentralus`, `eastus`, `centralus`, `canadacentral`. Brazil South **não** é permitido pra recursos. O RG pode ficar em `brazilsouth` (RGs em si não são bloqueados), mas Bicep deployа recursos em `eastus` (default no bicepparam).
+> **NOTA — restrições do Azure for Students (2 camadas)**:
+>
+> 1. **Policy de region (`sys.regionrestriction`)** permite apenas: `mexicocentral`, `northcentralus`, `eastus`, `centralus`, `canadacentral`. Brazil South **não** é permitido pra recursos. RGs em si podem ficar em brazilsouth.
+> 2. **Offer restriction por serviço**: `eastus` permite Storage/KV/LA/AI mas REJEITA Postgres Flexible Server com `LocationIsOfferRestricted`. Testado 13/05/2026: `centralus`, `northcentralus`, `canadacentral`, `mexicocentral` aceitam Postgres B1ms.
+>
+> **Bicep deployа recursos em `centralus`** (default). Resource providers críticos (`Microsoft.OperationalInsights`, `Microsoft.DBforPostgreSQL`, `Microsoft.App`) precisam de registro explícito (`az provider register --namespace <ns>`) — Students não auto-registra.
 
 ## Deploy
 
