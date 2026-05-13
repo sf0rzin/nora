@@ -793,102 +793,12 @@ export function HeroLiveDemo() {
           border-radius: 2px;
         }
 
-        .ts-line {
-          display: grid;
-          grid-template-columns: 32px 1fr;
-          gap: 12px;
-          animation: lineIn 400ms var(--ease-out-expo);
-        }
-        .ts-avatar {
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 0.02em;
-          color: var(--bg);
-          box-shadow: 0 0 0 1px color-mix(in oklab, var(--fg) 8%, transparent);
-          flex-shrink: 0;
-        }
-        .ts-content {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          min-width: 0;
-        }
-        @keyframes lineIn {
-          from {
-            opacity: 0;
-            transform: translateY(6px);
-          }
-          to {
-            opacity: 1;
-            transform: none;
-          }
-        }
-        .ts-meta {
-          display: flex;
-          align-items: baseline;
-          gap: 8px;
-          font-size: 12px;
-        }
-        .ts-speaker {
-          font-weight: 600;
-          color: var(--fg);
-          letter-spacing: -0.005em;
-        }
-        .ts-role {
-          color: var(--fg-dim);
-          font-size: 10.5px;
-        }
-        .ts-time {
-          color: var(--fg-dim);
-          font-size: 10.5px;
-          font-variant-numeric: tabular-nums;
-          margin-left: auto;
-        }
-        .ts-text {
-          font-size: 15px;
-          line-height: 1.6;
-          letter-spacing: -0.005em;
-        }
-        .ts-mark {
-          padding: 1px 4px;
-          border-radius: 3px;
-          margin: 0 -2px;
-          transition: all 240ms var(--ease);
-        }
-        .ts-mark.is-complete {
-          animation: markFlash 1200ms var(--ease) 1;
-        }
-        @keyframes markFlash {
-          0% {
-            box-shadow: 0 0 0 0 currentColor;
-          }
-          50% {
-            box-shadow: 0 0 0 3px color-mix(in oklab, currentColor 28%, transparent);
-          }
-          100% {
-            box-shadow: 0 0 0 0 transparent;
-          }
-        }
-        .ts-caret {
-          display: inline-block;
-          width: 2px;
-          height: 1em;
-          background: var(--accent);
-          margin-left: 2px;
-          vertical-align: text-bottom;
-          animation: caret 0.9s steps(2) infinite;
-        }
-        @keyframes caret {
-          50% {
-            opacity: 0;
-          }
-        }
+        /* NOTA: regras .ts-* moveram para o bloco style jsx global
+         * abaixo porque TranscriptLine e sub-componente. Sem global,
+         * o hash jsx-XXX nao e propagado para o JSX retornado pelo
+         * sub-componente e os seletores nunca casam (avatar vira barra,
+         * meta gruda, etc.). Animations lineIn/markFlash/caret tambem
+         * precisam ser globais porque sao referenciadas dentro do filho. */
 
         .hd-side {
           padding: 24px 24px;
@@ -1063,6 +973,111 @@ export function HeroLiveDemo() {
           }
           .hd-actions {
             display: none;
+          }
+        }
+      `}</style>
+      {/* Bloco global: estilos para <TranscriptLine> (sub-componente).
+       * styled-jsx so injeta a class hash jsx-XXX no JSX do componente que
+       * possui o <style jsx>. O JSX retornado por sub-componentes (mesmo
+       * declarados no mesmo arquivo) nao recebe a hash, entao seletores
+       * scoped como `.ts-avatar` nao casam. Marcar `global` aqui faz com
+       * que as regras se apliquem por nome puro de classe — exatamente o
+       * que queremos para .ts-line/.ts-avatar/.ts-meta/etc. */}
+      <style jsx global>{`
+        .ts-line {
+          display: grid;
+          grid-template-columns: 32px 1fr;
+          gap: 12px;
+          animation: lineIn 400ms var(--ease-out-expo);
+        }
+        .ts-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.02em;
+          color: var(--bg);
+          box-shadow: 0 0 0 1px color-mix(in oklab, var(--fg) 8%, transparent);
+          flex-shrink: 0;
+        }
+        .ts-content {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          min-width: 0;
+        }
+        @keyframes lineIn {
+          from {
+            opacity: 0;
+            transform: translateY(6px);
+          }
+          to {
+            opacity: 1;
+            transform: none;
+          }
+        }
+        .ts-meta {
+          display: flex;
+          align-items: baseline;
+          gap: 8px;
+          font-size: 12px;
+        }
+        .ts-speaker {
+          font-weight: 600;
+          color: var(--fg);
+          letter-spacing: -0.005em;
+        }
+        .ts-role {
+          color: var(--fg-dim);
+          font-size: 10.5px;
+        }
+        .ts-time {
+          color: var(--fg-dim);
+          font-size: 10.5px;
+          font-variant-numeric: tabular-nums;
+          margin-left: auto;
+        }
+        .ts-text {
+          font-size: 15px;
+          line-height: 1.6;
+          letter-spacing: -0.005em;
+        }
+        .ts-mark {
+          padding: 1px 4px;
+          border-radius: 3px;
+          margin: 0 -2px;
+          transition: all 240ms var(--ease);
+        }
+        .ts-mark.is-complete {
+          animation: markFlash 1200ms var(--ease) 1;
+        }
+        @keyframes markFlash {
+          0% {
+            box-shadow: 0 0 0 0 currentColor;
+          }
+          50% {
+            box-shadow: 0 0 0 3px color-mix(in oklab, currentColor 28%, transparent);
+          }
+          100% {
+            box-shadow: 0 0 0 0 transparent;
+          }
+        }
+        .ts-caret {
+          display: inline-block;
+          width: 2px;
+          height: 1em;
+          background: var(--accent);
+          margin-left: 2px;
+          vertical-align: text-bottom;
+          animation: caret 0.9s steps(2) infinite;
+        }
+        @keyframes caret {
+          50% {
+            opacity: 0;
           }
         }
       `}</style>

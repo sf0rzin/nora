@@ -78,16 +78,21 @@ function RAGDiagram() {
         <div className="rag-doc">Glossário · processos</div>
       </div>
 
-      <svg className="rag-arrows" viewBox="0 0 200 240" preserveAspectRatio="none" aria-hidden="true">
+      {/* ViewBox 80x240 casa com a coluna real (.rag-arrows: 80x240px).
+       * Antes era 200x240 + preserveAspectRatio="none", o que distorcia
+       * as curvas horizontalmente em telas largas e quebrava o gradient.
+       * Agora paths recalculados pra 80 unidades em x: catalog (esquerda)
+       * → engine (direita), com 3 curvas convergindo no meio vertical. */}
+      <svg className="rag-arrows" viewBox="0 0 80 240" aria-hidden="true">
         <defs>
           <linearGradient id="ragLine" x1="0" x2="1">
             <stop offset="0%" stopColor="oklch(0.30 0.012 250)" />
             <stop offset="100%" stopColor="oklch(0.70 0.17 248)" />
           </linearGradient>
         </defs>
-        <path d="M0 30 C 80 30, 120 100, 200 100" stroke="url(#ragLine)" strokeWidth="1.2" fill="none" />
-        <path d="M0 120 L 200 120" stroke="url(#ragLine)" strokeWidth="1.2" fill="none" />
-        <path d="M0 210 C 80 210, 120 140, 200 140" stroke="url(#ragLine)" strokeWidth="1.2" fill="none" />
+        <path d="M0 30 C 32 30, 48 100, 80 100" stroke="url(#ragLine)" strokeWidth="1.4" fill="none" />
+        <path d="M0 120 L 80 120" stroke="url(#ragLine)" strokeWidth="1.4" fill="none" />
+        <path d="M0 210 C 32 210, 48 140, 80 140" stroke="url(#ragLine)" strokeWidth="1.4" fill="none" />
       </svg>
 
       <div className="rag-col rag-col--engine">
@@ -99,8 +104,10 @@ function RAGDiagram() {
         </div>
       </div>
 
-      <svg className="rag-arrows" viewBox="0 0 200 240" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M0 120 L 200 120" stroke="url(#ragLine)" strokeWidth="1.2" fill="none" />
+      {/* Linha unica engine → output (centro vertical). ViewBox alinhado
+       * com a coluna 80x240. Reusa o gradient #ragLine definido acima. */}
+      <svg className="rag-arrows" viewBox="0 0 80 240" aria-hidden="true">
+        <path d="M0 120 L 80 120" stroke="url(#ragLine)" strokeWidth="1.4" fill="none" />
       </svg>
 
       <div className="rag-col rag-col--output">
