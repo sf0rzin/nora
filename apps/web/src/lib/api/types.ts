@@ -88,6 +88,31 @@ export interface Participant {
   isInternal?: boolean;
 }
 
+// Productivity Score (ADR 0005) — opt-in por reunião
+export type ProductivityBand = 'LOW' | 'MEDIUM' | 'HIGH';
+export type CoverageStatus = 'ADDRESSED' | 'PARTIAL' | 'MISSED';
+
+export interface ProductivityCoverage {
+  expectedOutcome: string;
+  status: CoverageStatus;
+  evidence: string | null;
+}
+
+export interface ProductivityAssessment {
+  score: number;
+  band: ProductivityBand;
+  coverage: ProductivityCoverage[];
+  offTopicRatio: number | null;
+  decisionDensity: number | null;
+  rationale: string;
+}
+
+export interface MeetingGoal {
+  purpose: string;
+  expectedOutcomes: string[];
+  projectStateSnapshot: string | null;
+}
+
 export interface MeetingDetail {
   id: string;
   tenantId: string;
@@ -100,6 +125,8 @@ export interface MeetingDetail {
   participants: Participant[];
   processingStatus: ProcessingStatus;
   analysis?: MeetingAnalysis;
+  goal?: MeetingGoal | null;
+  productivity?: ProductivityAssessment | null;
   createdAt: string;
   updatedAt: string;
 }
