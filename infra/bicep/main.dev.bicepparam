@@ -14,11 +14,17 @@
 using './main.bicep'
 
 param env = 'dev'
-// Azure for Students restringe regiões via policy "sys.regionrestriction".
-// Permitidas: mexicocentral, northcentralus, eastus, centralus, canadacentral.
-// Brazil South NÃO está permitido. Usamos eastus pra melhor maturidade de serviços
-// (~110ms do Brasil — aceitável pra dev/pitch).
-param location = 'eastus'
+// Azure for Students restringe regiões via 2 camadas:
+//   1. Policy "sys.regionrestriction" na subscription — permite só:
+//      mexicocentral, northcentralus, eastus, centralus, canadacentral.
+//   2. Offer restriction por serviço — eastus permite Storage/KV/LA/AI mas
+//      REJEITA Postgres Flexible Server com `LocationIsOfferRestricted`.
+//      Testado em 13/05: centralus, northcentralus, canadacentral e
+//      mexicocentral aceitam Postgres B1ms. Eastus rejeita.
+//
+// Escolha: centralus — alinha com nora-speech existente, ~110ms do Brasil,
+// maturidade alta de SKUs. nora-speech do Anthony pode coexistir (RG novo).
+param location = 'centralus'
 param namePrefix = 'nora'
 param tags = {
   project: 'nora'
