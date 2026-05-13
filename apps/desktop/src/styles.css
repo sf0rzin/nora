@@ -32,3 +32,18 @@ select option {
   background: #27272a;
   color: #e4e4e7;
 }
+
+/* Drag region nativa da webview para janelas sem decorações (overlay) */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] a,
+[data-tauri-drag-region] input,
+[data-tauri-drag-region] select,
+[data-tauri-drag-region] textarea {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}

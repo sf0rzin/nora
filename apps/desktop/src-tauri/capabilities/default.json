@@ -1,9 +1,10 @@
 {
   "identifier": "default",
   "description": "Default capability for NORA Desktop",
-  "windows": ["main"],
+  "windows": ["main", "overlay"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "shell:allow-open",
     {
       "identifier": "shell:allow-execute",
