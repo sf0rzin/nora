@@ -14,7 +14,11 @@
 using './main.bicep'
 
 param env = 'dev'
-param location = 'brazilsouth'
+// Azure for Students restringe regiões via policy "sys.regionrestriction".
+// Permitidas: mexicocentral, northcentralus, eastus, centralus, canadacentral.
+// Brazil South NÃO está permitido. Usamos eastus pra melhor maturidade de serviços
+// (~110ms do Brasil — aceitável pra dev/pitch).
+param location = 'eastus'
 param namePrefix = 'nora'
 param tags = {
   project: 'nora'
