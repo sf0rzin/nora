@@ -2,14 +2,19 @@ package br.com.nora.api.application.analysis;
 
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.ports.MeetingAnalysisRepository;
+import br.com.nora.api.application.ports.MeetingGoalRepository;
 import br.com.nora.api.application.ports.MeetingRepository;
 import br.com.nora.api.application.ports.NlpWorkerClient;
+import br.com.nora.api.application.ports.NlpWorkerClient.AnalysisResult;
+import br.com.nora.api.application.ports.ProductivityAssessmentRepository;
 import br.com.nora.api.application.ports.TenantContextRepository;
 import br.com.nora.api.application.ports.TranscriptRepository;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
 import br.com.nora.api.domain.meeting.Transcript;
+import br.com.nora.api.domain.meeting.productivity.MeetingGoal;
+import br.com.nora.api.domain.meeting.productivity.ProductivityAssessment;
 import br.com.nora.api.domain.tenant.TenantContext;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,8 +25,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Orquestra o pipeline de analise: carrega transcricao + contexto, chama o worker, persiste a
- * analise e atualiza o processingStatus do Meeting.
+ * Orquestra o pipeline de analise: carrega transcricao + contexto + goal opcional, chama o worker,
+ * persiste a analise (e o productivity assessment quando ha goal) e atualiza o processingStatus do
+ * Meeting.
  *
  * <p>{@link #runAsync(UUID, UUID)} e disparado depois do upload (fire-and-forget) e roda em uma
  * thread separada via @Async. Cada etapa muda o status do meeting (PROCESSING -> COMPLETED |
@@ -36,6 +42,8 @@ public class AnalysisService {
     private final TranscriptRepository transcripts;
     private final TenantContextRepository tenantContexts;
     private final MeetingAnalysisRepository analyses;
+    private final MeetingGoalRepository goals;
+    private final ProductivityAssessmentRepository assessments;
     private final NlpWorkerClient worker;
 
     public AnalysisService(
@@ -43,11 +51,15 @@ public class AnalysisService {
             TranscriptRepository transcripts,
             TenantContextRepository tenantContexts,
             MeetingAnalysisRepository analyses,
+            MeetingGoalRepository goals,
+            ProductivityAssessmentRepository assessments,
             NlpWorkerClient worker) {
         this.meetings = meetings;
         this.transcripts = transcripts;
         this.tenantContexts = tenantContexts;
         this.analyses = analyses;
+        this.goals = goals;
+        this.assessments = assessments;
         this.worker = worker;
     }
 
@@ -78,10 +90,16 @@ public class AnalysisService {
 
         Transcript transcript = loadTranscript(meetingId, tenantId);
         Optional<TenantContext> ctx = tenantContexts.findByTenantId(tenantId);
+        Optional<MeetingGoal> goal = goals.findByMeetingId(meetingId, tenantId);
 
-        MeetingAnalysis result =
-                worker.analyze(meetingId, tenantId, meeting.language(), transcript.rawText(), ctx);
-        MeetingAnalysis saved = analyses.save(result);
+        AnalysisResult result =
+                worker.analyze(
+                        meetingId, tenantId, meeting.language(), transcript.rawText(), ctx, goal);
+        MeetingAnalysis saved = analyses.save(result.analysis());
+        result.productivity()
+                .ifPresentOrElse(
+                        p -> assessments.save(p),
+                        () -> assessments.deleteByMeetingId(meetingId, tenantId));
         markStatusAndSnippet(meeting, ProcessingStatus.COMPLETED, saved.summarySnippet());
         return saved;
     }
@@ -120,5 +138,12 @@ public class AnalysisService {
         // Garante escopo: meeting precisa existir no tenant.
         meetings.findByIdAndTenant(meetingId, tenantId).orElseThrow(MeetingException.NotFound::new);
         return analyses.findByMeetingId(meetingId, tenantId);
+    }
+
+    /** Recupera o productivity persistido (opt-in). Vazio quando nao ha. */
+    @Transactional(readOnly = true)
+    public Optional<ProductivityAssessment> findProductivity(UUID meetingId, UUID tenantId) {
+        meetings.findByIdAndTenant(meetingId, tenantId).orElseThrow(MeetingException.NotFound::new);
+        return assessments.findByMeetingId(meetingId, tenantId);
     }
 }
