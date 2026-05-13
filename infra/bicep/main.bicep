@@ -341,6 +341,14 @@ module searchService 'modules/search.bicep' = if (enableSearch) {
 // keyVaultUrl + identity (UAI resource ID). ARM faz fetch on revision create.
 var kvUri = keyVault.outputs.uri
 
+// FQDNs deterministicos do Container Apps Environment.
+// Construidos antes das apps pra evitar ciclo (apiApp -> webApp.fqdn e webApp -> apiApp.fqdn).
+// Pattern: {appName}.{envDefaultDomain}
+var apiPublicFqdn = '${apiName}.${containerAppsEnv.outputs.defaultDomain}'
+var webPublicFqdn = '${webName}.${containerAppsEnv.outputs.defaultDomain}'
+var apiPublicUrl = 'https://${apiPublicFqdn}'
+var webPublicUrl = 'https://${webPublicFqdn}'
+
 // ---- Worker NLP (internal ingress; api fala com ele) ----
 
 var workerBaseEnv = [
@@ -471,24 +479,26 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'NORA_ENV'
         value: env
       }
+      // Datasource — Spring espera DATASOURCE_* (nao DATABASE_*)
       {
-        name: 'DATABASE_URL'
+        name: 'DATASOURCE_URL'
         value: postgres.outputs.jdbcUrl
       }
       {
-        name: 'DATABASE_USER'
+        name: 'DATASOURCE_USERNAME'
         value: postgresAdminLogin
       }
       {
-        name: 'DATABASE_PASSWORD'
+        name: 'DATASOURCE_PASSWORD'
         secretRef: 'postgres-password'
       }
       {
         name: 'JWT_SECRET'
         secretRef: 'jwt-secret'
       }
+      // Worker NLP base URL — Spring espera NLP_WORKER_BASE_URL
       {
-        name: 'WORKER_URL'
+        name: 'NLP_WORKER_BASE_URL'
         value: 'https://${workerApp.outputs.fqdn}'
       }
       {
@@ -514,6 +524,25 @@ module apiApp 'modules/container-app.bicep' = {
       {
         name: 'AZURE_SPEECH_ENDPOINT'
         value: speech.outputs.endpoint
+      }
+      // CORS + URLs publicas (apontam pro web Container App)
+      // FQDNs construidos via env.defaultDomain pra evitar ciclo apiApp <-> webApp
+      {
+        name: 'CORS_ALLOWED_ORIGINS'
+        value: webPublicUrl
+      }
+      {
+        name: 'NORA_APP_PUBLIC_BASE_URL'
+        value: webPublicUrl
+      }
+      {
+        name: 'NORA_FRONTEND_BASE_URL'
+        value: webPublicUrl
+      }
+      // Forca cookie auth seguro (HTTPS-only) — prod stack so usa HTTPS
+      {
+        name: 'AUTH_COOKIE_SECURE'
+        value: 'true'
       }
     ]
     secretsObject: apiSecrets
@@ -551,7 +580,7 @@ module webApp 'modules/container-app.bicep' = {
     envVars: [
       {
         name: 'NEXT_PUBLIC_API_URL'
-        value: 'https://${apiApp.outputs.fqdn}'
+        value: apiPublicUrl
       }
       {
         name: 'NEXT_PUBLIC_USE_MOCKS'
@@ -576,8 +605,8 @@ module webApp 'modules/container-app.bicep' = {
 // OUTPUTS
 // ============================================================
 
-output webUrl string = 'https://${webApp.outputs.fqdn}'
-output apiUrl string = 'https://${apiApp.outputs.fqdn}'
+output webUrl string = webPublicUrl
+output apiUrl string = apiPublicUrl
 output workerInternalFqdn string = workerApp.outputs.fqdn
 output postgresFqdn string = postgres.outputs.fqdn
 output postgresJdbcUrl string = postgres.outputs.jdbcUrl
