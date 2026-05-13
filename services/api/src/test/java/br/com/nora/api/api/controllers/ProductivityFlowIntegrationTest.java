@@ -12,6 +12,7 @@ import br.com.nora.api.domain.meeting.productivity.OutcomeCoverage;
 import br.com.nora.api.domain.meeting.productivity.ProductivityAssessment;
 import br.com.nora.api.domain.meeting.productivity.ProductivityBand;
 import br.com.nora.api.domain.tenant.TenantContext;
+import br.com.nora.api.infrastructure.nlp.WorkerDtos;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
@@ -375,6 +376,19 @@ class ProductivityFlowIntegrationTest {
                                     0.4,
                                     "rationale gerada pelo stub para teste integrado");
                     return AnalysisResult.of(analysis, productivity);
+                }
+
+                @Override
+                public WorkerDtos.LiveAnalyzeResponse analyzeLive(
+                        String transcriptChunk,
+                        String language,
+                        WorkerDtos.LiveHighlights previousHighlights) {
+                    return new WorkerDtos.LiveAnalyzeResponse(
+                            List.of(),
+                            List.of(),
+                            List.of(),
+                            List.of(),
+                            new WorkerDtos.LiveMetadata(0, 0, 0, 0, "stub-live"));
                 }
             };
         }
