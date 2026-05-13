@@ -36,7 +36,8 @@ resource speech 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
     publicNetworkAccess: 'Enabled'
     networkAcls: {
       defaultAction: 'Allow'
-      bypass: 'AzureServices'
+      // bypass NAO eh suportado pra kind 'SpeechServices' (apesar de outros
+      // Cognitive Services kinds aceitarem 'AzureServices'). Sem bypass aqui.
     }
     disableLocalAuth: false // backend usa key auth pra emitir token efemero
   }
