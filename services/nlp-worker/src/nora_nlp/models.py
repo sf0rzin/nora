@@ -298,3 +298,58 @@ class AnalyzeResponse(MeetingAnalysisV1):
 
     meeting_id: str = Field(alias="meetingId")
     metadata: AnalyzeMetadata
+
+
+# ---------- Live Highlights (analise em tempo real durante a reuniao) ----------
+
+
+class LiveHighlightItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    text: Annotated[str, Field(min_length=3, max_length=500)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)] = 0.0
+    source_quote: Annotated[str, Field(min_length=3, max_length=500, alias="sourceQuote")]
+
+
+class LiveTaskItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    title: Annotated[str, Field(min_length=3, max_length=240)]
+    assignee: str | None = Field(default=None, max_length=120)
+    priority: Priority = Priority.MEDIUM
+    source_quote: Annotated[str, Field(min_length=3, max_length=500, alias="sourceQuote")]
+
+
+class LiveHighlightsV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    decisions: list[LiveHighlightItem] = Field(default_factory=list, max_length=20)
+    next_steps: list[LiveHighlightItem] = Field(
+        default_factory=list, alias="nextSteps", max_length=20
+    )
+    observations: list[LiveHighlightItem] = Field(default_factory=list, max_length=20)
+    tasks: list[LiveTaskItem] = Field(default_factory=list, max_length=30)
+
+
+class LiveAnalyzeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    transcript_chunk: Annotated[str, Field(min_length=20, alias="transcriptChunk")]
+    previous_highlights: LiveHighlightsV1 | None = Field(default=None, alias="previousHighlights")
+    language: str = "pt-BR"
+
+
+class LiveAnalyzeMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    processing_millis: int = Field(default=0, alias="processingMillis")
+    tokens_input: int = Field(default=0, alias="tokensInput")
+    tokens_output: int = Field(default=0, alias="tokensOutput")
+    pii_redactions_applied: int = Field(default=0, alias="piiRedactionsApplied")
+    model_version: str = Field(default="", alias="modelVersion")
+
+
+class LiveAnalyzeResponse(LiveHighlightsV1):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    metadata: LiveAnalyzeMetadata
