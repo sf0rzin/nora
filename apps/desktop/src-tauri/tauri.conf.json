@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "NORA Desktop",
         "width": 1200,
         "height": 800,
@@ -20,6 +21,22 @@
         "resizable": true,
         "fullscreen": false,
         "backgroundColor": "#18181b"
+      },
+      {
+        "label": "overlay",
+        "url": "overlay.html",
+        "title": "NORA Live",
+        "width": 360,
+        "height": 520,
+        "minWidth": 280,
+        "minHeight": 200,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "resizable": true,
+        "skipTaskbar": true,
+        "contentProtected": true
       }
     ],
     "security": {
