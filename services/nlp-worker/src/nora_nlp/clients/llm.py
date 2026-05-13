@@ -219,6 +219,43 @@ def build_json_schema_for_analysis() -> dict[str, Any]:
                     "additionalProperties": False,
                 },
             },
+            # Productivity opcional (ADR 0005). Quando o usuario nao declarou goal,
+            # o prompt deve instruir o LLM a emitir productivity = null.
+            "productivity": {
+                "type": ["object", "null"],
+                "properties": {
+                    "score": {"type": "integer"},
+                    "band": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"]},
+                    "coverage": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "expectedOutcome": {"type": "string"},
+                                "status": {
+                                    "type": "string",
+                                    "enum": ["ADDRESSED", "PARTIAL", "MISSED"],
+                                },
+                                "evidence": {"type": ["string", "null"]},
+                            },
+                            "required": ["expectedOutcome", "status", "evidence"],
+                            "additionalProperties": False,
+                        },
+                    },
+                    "offTopicRatio": {"type": ["number", "null"]},
+                    "decisionDensity": {"type": ["number", "null"]},
+                    "rationale": {"type": "string"},
+                },
+                "required": [
+                    "score",
+                    "band",
+                    "coverage",
+                    "offTopicRatio",
+                    "decisionDensity",
+                    "rationale",
+                ],
+                "additionalProperties": False,
+            },
         },
         "required": [
             "summary",
@@ -229,6 +266,7 @@ def build_json_schema_for_analysis() -> dict[str, Any]:
             "sentimentOverall",
             "topics",
             "participants",
+            "productivity",
         ],
         "additionalProperties": False,
     }

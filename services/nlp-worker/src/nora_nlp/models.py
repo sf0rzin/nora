@@ -51,6 +51,18 @@ class Sentiment(str, Enum):
     MIXED = "MIXED"
 
 
+class ProductivityBand(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+
+class CoverageStatus(str, Enum):
+    ADDRESSED = "ADDRESSED"
+    PARTIAL = "PARTIAL"
+    MISSED = "MISSED"
+
+
 # ---------- Meeting Analysis v1 ----------
 
 
@@ -97,6 +109,29 @@ class Participant(BaseModel):
     mention_count: Annotated[int, Field(ge=1, alias="mentionCount")]
 
 
+class ProductivityCoverage(BaseModel):
+    """Status de cobertura de um outcome esperado pela reunião."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    expected_outcome: Annotated[str, Field(min_length=3, max_length=240, alias="expectedOutcome")]
+    status: CoverageStatus
+    evidence: str | None = Field(default=None, max_length=500)
+
+
+class ProductivityAssessment(BaseModel):
+    """Productivity Score da reunião (ADR 0005). Opt-in por reunião."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    score: Annotated[int, Field(ge=0, le=100)]
+    band: ProductivityBand
+    coverage: list[ProductivityCoverage] = Field(default_factory=list)
+    off_topic_ratio: float | None = Field(default=None, ge=0.0, le=1.0, alias="offTopicRatio")
+    decision_density: float | None = Field(default=None, ge=0.0, le=1.0, alias="decisionDensity")
+    rationale: Annotated[str, Field(min_length=10, max_length=1000)]
+
+
 class BaselineTerm(BaseModel):
     """Termo extraido pelo baseline TF-IDF (pre-LLM, interpretavel).
 
@@ -134,6 +169,10 @@ class MeetingAnalysisV1(BaseModel):
     baseline_terms: list[BaselineTerm] = Field(
         default_factory=list, alias="baselineTerms", max_length=50
     )
+    # Productivity Score opt-in (ADR 0005). None quando o usuario nao declarou
+    # objetivo/outcomes esperados. Quando presente, eh gerado pelo LLM com base
+    # no goal injetado no prompt.
+    productivity: ProductivityAssessment | None = Field(default=None)
 
 
 # ---------- PII Redaction v1 ----------
@@ -207,6 +246,27 @@ class AnalyzeOptions(BaseModel):
     prompt_version: str = Field(default="meeting-analysis-v1", alias="promptVersion")
 
 
+class MeetingGoal(BaseModel):
+    """Input opt-in declarado pelo usuario pra calculo do Productivity Score (ADR 0005).
+
+    Sem MeetingGoal no request, o productivity da resposta vem None.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    purpose: Annotated[str, Field(min_length=3, max_length=500)]
+    expected_outcomes: list[Annotated[str, Field(min_length=3, max_length=240)]] = Field(
+        alias="expectedOutcomes",
+        min_length=1,
+        max_length=10,
+    )
+    project_state_snapshot: str | None = Field(
+        default=None,
+        max_length=2000,
+        alias="projectStateSnapshot",
+    )
+
+
 class AnalyzeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -216,6 +276,8 @@ class AnalyzeRequest(BaseModel):
     transcript: Annotated[str, Field(min_length=1)]
     tenant_context: TenantContext = Field(alias="tenantContext")
     options: AnalyzeOptions = Field(default_factory=AnalyzeOptions)
+    # Goal opt-in pra Productivity Score. None desabilita o calculo.
+    goal: MeetingGoal | None = Field(default=None)
 
 
 class AnalyzeMetadata(BaseModel):
