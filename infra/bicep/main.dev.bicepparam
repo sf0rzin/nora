@@ -39,11 +39,12 @@ param jwtSecret = readEnvironmentVariable('JWT_SECRET')
 param openAiApiKey = readEnvironmentVariable('OPENAI_API_KEY', '')
 
 // ---- Imagens ----
-// Default = placeholder Microsoft. Substituir pelas imagens reais quando o pipeline de build/push estiver no ar.
-// Sugestão: ghcr.io/sys0xff/nora-{api,worker,web}:<sha-curto>
-param apiImage = 'mcr.microsoft.com/k8se/quickstart:latest'
-param workerImage = 'mcr.microsoft.com/k8se/quickstart:latest'
-param webImage = 'mcr.microsoft.com/k8se/quickstart:latest'
+// Imagens reais publicadas pelo workflow `build-images.yml` no GHCR público.
+// Packages marcados como Public em github.com/users/sys0xff/packages.
+// Tag `latest` é atualizada a cada push em main que toca services/{api,worker,nlp-worker} ou apps/web.
+param apiImage = 'ghcr.io/sys0xff/nora-api:latest'
+param workerImage = 'ghcr.io/sys0xff/nora-worker:latest'
+param webImage = 'ghcr.io/sys0xff/nora-web:latest'
 
 // ---- Registry (vazio = imagens públicas) ----
 param registryServer = ''
