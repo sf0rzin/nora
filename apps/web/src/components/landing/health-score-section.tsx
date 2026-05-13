@@ -119,7 +119,7 @@ export function HealthScoreSection() {
             <span>25</span>
             <span>0</span>
           </div>
-          <svg viewBox={`0 0 ${W} ${H + 40}`} className="hs-chart" preserveAspectRatio="none">
+          <svg viewBox={`0 0 ${W} ${H + 40}`} className="hs-chart">
             <defs>
               <linearGradient id="hsFill" x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" stopColor="oklch(0.70 0.17 248)" stopOpacity="0.35" />
@@ -289,7 +289,11 @@ export function HealthScoreSection() {
         }
         .hs-chart {
           width: 100%;
-          height: 320px;
+          /* Aspect-ratio mantem proporcao viewBox 800x320 sem distorcer.
+           * Antes: height: 320px fixo + preserveAspectRatio="none" no SVG
+           * esticava horizontalmente em telas largas. */
+          aspect-ratio: 800 / 320;
+          height: auto;
           display: block;
           overflow: visible;
         }
