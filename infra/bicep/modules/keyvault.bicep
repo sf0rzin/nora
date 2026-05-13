@@ -1,13 +1,13 @@
 // Key Vault (Standard com RBAC)
 // Armazena: postgres admin password, JWT signing key, Azure Speech key, OpenAI key.
-// Acesso via Managed Identity das Container Apps + role assignment.
+// Acesso via Managed Identity das Container Apps + role assignment Key Vault Secrets User.
 
-@description('Nome do Key Vault (3-24 chars, alfanumérico + hífen).')
+@description('Nome do Key Vault (3-24 chars, alfanumerico + hifen).')
 @minLength(3)
 @maxLength(24)
 param name string
 
-@description('Região do recurso.')
+@description('Regiao do recurso.')
 param location string = resourceGroup().location
 
 @description('Tags aplicadas ao recurso.')
@@ -16,11 +16,24 @@ param tags object = {}
 @description('Tenant ID do Azure AD.')
 param tenantId string = subscription().tenantId
 
-@description('Object IDs (Entra) que recebem role Key Vault Secrets User. Vazio em MVP — adicionar SP do CI/CD depois.')
+@description('Object IDs (Entra) que recebem role Key Vault Secrets User (read-only em secrets).')
 param secretsUserPrincipalIds array = []
 
-@description('Habilitar purge protection. Em dev manter false pra permitir teardown rápido; em prod virar true.')
+@description('Tipo do principal nos role assignments. ServicePrincipal pra SPs e Managed Identities.')
+@allowed([
+  'ServicePrincipal'
+  'User'
+  'Group'
+])
+param principalType string = 'ServicePrincipal'
+
+@description('Habilitar purge protection. Em dev manter false pra permitir teardown rapido; em prod virar true.')
 param enablePurgeProtection bool = false
+
+@description('Lista de secrets a serem criados/atualizados no KV. Formato: [{ name, value }]. Values sao secure por contrato.')
+@secure()
+#disable-next-line secure-parameter-default
+param secrets object = { items: [] }
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: name
@@ -34,8 +47,8 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     tenantId: tenantId
     enableRbacAuthorization: true
     enableSoftDelete: true
-    softDeleteRetentionInDays: 7 // mínimo permitido
-    enablePurgeProtection: enablePurgeProtection ? true : null // null = desabilitado; campo não pode ser false explicitamente
+    softDeleteRetentionInDays: 7 // minimo permitido
+    enablePurgeProtection: enablePurgeProtection ? true : null // null = desabilitado; campo nao pode ser false explicitamente
     publicNetworkAccess: 'Enabled'
     networkAcls: {
       bypass: 'AzureServices'
@@ -58,7 +71,22 @@ resource secretsUserRoleAssignments 'Microsoft.Authorization/roleAssignments@202
     properties: {
       roleDefinitionId: secretsUserRoleId
       principalId: principalId
-      principalType: 'ServicePrincipal'
+      principalType: principalType
+    }
+  }
+]
+
+// Cria/atualiza secrets no KV. Bicep nao tem array tipado fortemente entao usamos
+// `secrets.items` como array de objetos { name, value }.
+resource vaultSecrets 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = [
+  for s in (secrets.?items ?? []): {
+    parent: keyVault
+    name: s.name
+    properties: {
+      value: s.value
+      attributes: {
+        enabled: true
+      }
     }
   }
 ]
