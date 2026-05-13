@@ -33,7 +33,9 @@ az login
 az account set --subscription "Azure for Students"
 ```
 
-Resource Group já existe: `rg-nora-dev` em `brazilsouth`.
+Resource Group já existe: `rg-nora-dev` (criado em `brazilsouth` antes da descoberta da policy).
+
+> **NOTA — region policy do Azure for Students**: a subscription tem `sys.regionrestriction` que permite apenas `mexicocentral`, `northcentralus`, `eastus`, `centralus`, `canadacentral`. Brazil South **não** é permitido pra recursos. O RG pode ficar em `brazilsouth` (RGs em si não são bloqueados), mas Bicep deployа recursos em `eastus` (default no bicepparam).
 
 ## Deploy
 
