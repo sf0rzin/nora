@@ -1,13 +1,17 @@
-// Container App (template reusável)
-// Usado pra api, worker e web. Cada chamada do main.bicep passa parâmetros específicos.
-// Identity SystemAssigned habilitada — usar `output principalId` pra role assignments no chamador.
+// Container App (template reusavel)
+// Usado pra api, worker e web. Cada chamada do main.bicep passa parametros especificos.
+//
+// Identity: aceita User-Assigned MI (passada via userAssignedIdentityId) ou
+// SystemAssigned (default quando UAI vazio). Pra integrar com Key Vault references
+// preferir UAI — permite role assignment ANTES da app ser criada, evitando o
+// ciclo de SystemAssigned (identity so existe pos-criacao, role so apos isso).
 
-@description('Nome da Container App (2-32 chars, lowercase + hífen).')
+@description('Nome da Container App (2-32 chars, lowercase + hifen).')
 @minLength(2)
 @maxLength(32)
 param name string
 
-@description('Região do recurso.')
+@description('Regiao do recurso.')
 param location string = resourceGroup().location
 
 @description('Tags aplicadas ao recurso.')
@@ -25,7 +29,7 @@ param containerName string = 'app'
 @description('Porta interna que o container escuta.')
 param targetPort int = 8080
 
-@description('Tipo de ingress. external = público, internal = só dentro do env, none = sem HTTP.')
+@description('Tipo de ingress. external = publico, internal = so dentro do env, none = sem HTTP.')
 @allowed([
   'external'
   'internal'
@@ -33,32 +37,35 @@ param targetPort int = 8080
 ])
 param ingress string = 'external'
 
-@description('Permitir tráfego inseguro (HTTP). Default false força HTTPS.')
+@description('Permitir trafego inseguro (HTTP). Default false forca HTTPS.')
 param allowInsecure bool = false
 
-@description('CPU em cores. 0.25/0.5/0.75/1.0/etc. Consumption suporta múltiplos de 0.25.')
+@description('CPU em cores. 0.25/0.5/0.75/1.0/etc. Consumption suporta multiplos de 0.25.')
 param cpu string = '0.25'
 
-@description('Memória em Gi. Ratio CPU:Memory permitido: 0.25 → 0.5Gi, 0.5 → 1Gi, etc.')
+@description('Memoria em Gi. Ratio CPU:Memory permitido: 0.25 -> 0.5Gi, 0.5 -> 1Gi, etc.')
 param memory string = '0.5Gi'
 
-@description('Número mínimo de réplicas. 0 = scale-to-zero (paga só quando há requests).')
+@description('Numero minimo de replicas. 0 = scale-to-zero (paga so quando ha requests).')
 @minValue(0)
 @maxValue(25)
 param minReplicas int = 0
 
-@description('Número máximo de réplicas.')
+@description('Numero maximo de replicas.')
 @minValue(1)
 @maxValue(25)
 param maxReplicas int = 3
 
-@description('Variáveis de ambiente. Formato: [{ name, value } | { name, secretRef }].')
+@description('Variaveis de ambiente. Formato: [{ name, value } | { name, secretRef }].')
 param envVars array = []
 
-@description('Secrets da Container App. Formato: { items: [{ name, value }] }. Values são secure por contrato com o chamador.')
+@description('Secrets da Container App. Formato: { items: [{ name, value } | { name, keyVaultUrl, identity }] }. Values sao secure por contrato com o chamador.')
 @secure()
 #disable-next-line secure-parameter-default
 param secretsObject object = { items: [] }
+
+@description('Resource ID da User-Assigned Managed Identity. Vazio = SystemAssigned.')
+param userAssignedIdentityId string = ''
 
 @description('Registro de container (caso imagem seja privada). Formato: { server, username, passwordSecretRef }.')
 param registry object = {}
@@ -70,6 +77,8 @@ param command array = []
 param args array = []
 
 var hasRegistry = !empty(registry)
+var hasUai = !empty(userAssignedIdentityId)
+
 var ingressConfig = ingress == 'none' ? null : {
   external: ingress == 'external'
   targetPort: targetPort
@@ -83,13 +92,20 @@ var ingressConfig = ingress == 'none' ? null : {
   ]
 }
 
+var identityConfig = hasUai ? {
+  type: 'UserAssigned'
+  userAssignedIdentities: {
+    '${userAssignedIdentityId}': {}
+  }
+} : {
+  type: 'SystemAssigned'
+}
+
 resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
   name: name
   location: location
   tags: tags
-  identity: {
-    type: 'SystemAssigned'
-  }
+  identity: identityConfig
   properties: {
     environmentId: environmentId
     workloadProfileName: 'Consumption'
@@ -139,6 +155,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
 
 output id string = containerApp.id
 output name string = containerApp.name
-output principalId string = containerApp.identity.principalId
+// principalId: pra SystemAssigned vem do containerApp; pra UAI o chamador ja tem do UAI module
+output principalId string = hasUai ? '' : containerApp.identity.principalId
 output fqdn string = ingress == 'none' ? '' : containerApp.properties.configuration.ingress.fqdn
 output latestRevisionName string = containerApp.properties.latestRevisionName
