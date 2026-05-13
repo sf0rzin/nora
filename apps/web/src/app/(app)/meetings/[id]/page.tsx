@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getMeeting } from "@/lib/api/client";
 import { formatDateTime } from "@/lib/utils";
 import { MarkdownContent } from "@/components/markdown-content";
+import MeetingProductivitySection from "@/components/meeting-productivity-section";
 
 export const dynamic = "force-dynamic";
 
@@ -168,6 +169,12 @@ export default async function MeetingDetailPage({
           )}
         </>
       )}
+
+      <MeetingProductivitySection
+        meetingId={meeting.id}
+        goal={meeting.goal ?? null}
+        productivity={meeting.productivity ?? null}
+      />
     </div>
   );
 }

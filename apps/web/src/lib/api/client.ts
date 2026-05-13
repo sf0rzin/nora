@@ -20,6 +20,7 @@ import type {
   InviteStatus,
   InviteUserRequest,
   MeetingDetail,
+  MeetingGoal,
   MeetingsListResponse,
 } from './types';
 
@@ -160,6 +161,23 @@ export async function listMeetings(params?: ListMeetingsParams): Promise<Meeting
 export async function getMeeting(id: string): Promise<MeetingDetail> {
   if (USE_MOCKS) return meetingDetailFixture as unknown as MeetingDetail;
   return request<MeetingDetail>(`/meetings/${encodeURIComponent(id)}`);
+}
+
+// Productivity Score opt-in (ADR 0005)
+export async function setMeetingGoal(
+  meetingId: string,
+  goal: MeetingGoal,
+): Promise<MeetingGoal> {
+  return request<MeetingGoal>(`/meetings/${encodeURIComponent(meetingId)}/goal`, {
+    method: 'PUT',
+    body: JSON.stringify(goal),
+  });
+}
+
+export async function deleteMeetingGoal(meetingId: string): Promise<void> {
+  return request<void>(`/meetings/${encodeURIComponent(meetingId)}/goal`, {
+    method: 'DELETE',
+  });
 }
 
 export interface UploadMeetingInput {

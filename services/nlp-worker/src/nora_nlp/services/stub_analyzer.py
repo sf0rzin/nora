@@ -17,11 +17,15 @@ from ..models import (
     ActionItem,
     AnalyzeRequest,
     AnalyzeResponse,
+    CoverageStatus,
     Decision,
     Opportunity,
     OpportunityCategory,
     Participant,
     Priority,
+    ProductivityAssessment,
+    ProductivityBand,
+    ProductivityCoverage,
     Risk,
     RiskCategory,
     Sentiment,
@@ -228,6 +232,98 @@ def _opportunities(sentences: list[str]) -> list[Opportunity]:
     return out
 
 
+def _productivity_coverage(outcome: str, sentences: list[str]) -> tuple[CoverageStatus, str | None]:
+    """Retorna (status, evidence) baseado em quantos tokens (>=4 chars) do outcome
+    aparecem na sentence de maior overlap. Heuristica determinista pro stub.
+    """
+    outcome_norm = _normalize(outcome)
+    tokens = [t for t in re.split(r"\W+", outcome_norm) if len(t) >= 4]
+    if not tokens:
+        return CoverageStatus.MISSED, None
+
+    best_match: str | None = None
+    best_score = 0
+    for s in sentences:
+        s_norm = _normalize(s)
+        hits = sum(1 for t in tokens if t in s_norm)
+        if hits > best_score:
+            best_score = hits
+            best_match = s
+
+    ratio = best_score / len(tokens)
+    if ratio >= 0.7:
+        return CoverageStatus.ADDRESSED, (best_match or "")[:500] or None
+    if ratio >= 0.3:
+        return CoverageStatus.PARTIAL, (best_match or "")[:500] or None
+    return CoverageStatus.MISSED, None
+
+
+def _productivity(
+    req: AnalyzeRequest,
+    sentences: list[str],
+    decisions: list[Decision],
+) -> ProductivityAssessment | None:
+    """Calcula productivity quando ha goal declarado. Sem goal, retorna None (ADR 0005)."""
+    if req.goal is None:
+        return None
+
+    coverage_list: list[ProductivityCoverage] = []
+    addressed = 0
+    partial = 0
+    for outcome in req.goal.expected_outcomes:
+        status, evidence = _productivity_coverage(outcome, sentences)
+        coverage_list.append(
+            ProductivityCoverage.model_validate(
+                {
+                    "expectedOutcome": outcome,
+                    "status": status.value,
+                    "evidence": evidence,
+                }
+            )
+        )
+        if status == CoverageStatus.ADDRESSED:
+            addressed += 1
+        elif status == CoverageStatus.PARTIAL:
+            partial += 1
+
+    total = len(coverage_list)
+    coverage_ratio = (addressed + 0.5 * partial) / total if total else 0.0
+
+    # Densidade normalizada: 5+ decisoes = 100%
+    decision_density = min(1.0, len(decisions) / 5.0)
+
+    # Off-topic heuristico: poucas frases = foco; muitas = mais ruido
+    off_topic_ratio = 0.2 if len(sentences) < 30 else min(0.5, 0.2 + (len(sentences) - 30) / 100)
+
+    # Score 0-100: cobertura domina (70%), density (20%), foco (10%)
+    score = int(coverage_ratio * 70 + decision_density * 20 + (1 - off_topic_ratio) * 10)
+    score = max(0, min(100, score))
+
+    if score >= 70:
+        band = ProductivityBand.HIGH
+    elif score >= 40:
+        band = ProductivityBand.MEDIUM
+    else:
+        band = ProductivityBand.LOW
+
+    rationale = (
+        f"Stub deterministico: {addressed}/{total} outcomes ADDRESSED, "
+        f"{partial} PARTIAL. Densidade de decisoes: {decision_density:.2f}. "
+        f"Off-topic estimado: {off_topic_ratio:.2f}."
+    )
+
+    return ProductivityAssessment.model_validate(
+        {
+            "score": score,
+            "band": band.value,
+            "coverage": [c.model_dump(by_alias=True) for c in coverage_list],
+            "offTopicRatio": off_topic_ratio,
+            "decisionDensity": decision_density,
+            "rationale": rationale,
+        }
+    )
+
+
 _SPEAKER_RE = re.compile(r"^[A-Z][\wáéíóúãâêôç ]{0,40}:\s*")
 
 
@@ -256,17 +352,21 @@ def analyze(req: AnalyzeRequest, *, pii_redactions_applied: int = 0) -> AnalyzeR
         + [g.term for g in req.tenant_context.glossary]
     )
 
+    decisions = _decisions(sentences)
+    productivity = _productivity(req, sentences, decisions)
+
     response = AnalyzeResponse.model_validate(
         {
             "meetingId": req.meeting_id,
             "summary": _make_summary(req, sentences),
-            "decisions": _decisions(sentences),
+            "decisions": decisions,
             "actionItems": _action_items(sentences, req.options.max_action_items),
             "risks": _risks(sentences) if req.options.include_risks else [],
             "opportunities": _opportunities(sentences) if req.options.include_opportunities else [],
             "sentimentOverall": _sentiment(req.transcript),
             "topics": _topics(req.transcript, ctx_terms),
             "participants": _participants(req.transcript),
+            "productivity": productivity.model_dump(by_alias=True) if productivity else None,
             "metadata": {
                 "modelVersion": "stub-deterministic-v1",
                 "promptVersion": req.options.prompt_version,

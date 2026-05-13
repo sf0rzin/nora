@@ -12,6 +12,12 @@ import br.com.nora.api.domain.analysis.Risk;
 import br.com.nora.api.domain.analysis.RiskCategory;
 import br.com.nora.api.domain.analysis.Sentiment;
 import br.com.nora.api.domain.analysis.Severity;
+import br.com.nora.api.domain.meeting.productivity.CoverageStatus;
+import br.com.nora.api.domain.meeting.productivity.ExpectedOutcome;
+import br.com.nora.api.domain.meeting.productivity.MeetingGoal;
+import br.com.nora.api.domain.meeting.productivity.OutcomeCoverage;
+import br.com.nora.api.domain.meeting.productivity.ProductivityAssessment;
+import br.com.nora.api.domain.meeting.productivity.ProductivityBand;
 import br.com.nora.api.domain.tenant.TenantContext;
 import io.netty.channel.ChannelOption;
 import io.netty.handler.timeout.ReadTimeoutHandler;
@@ -69,12 +75,13 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
     }
 
     @Override
-    public MeetingAnalysis analyze(
+    public AnalysisResult analyze(
             UUID meetingId,
             UUID tenantId,
             String language,
             String transcript,
-            Optional<TenantContext> tenantContext) {
+            Optional<TenantContext> tenantContext,
+            Optional<MeetingGoal> goal) {
         WorkerDtos.AnalyzeRequest body =
                 new WorkerDtos.AnalyzeRequest(
                         meetingId.toString(),
@@ -82,7 +89,8 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
                         language == null || language.isBlank() ? "pt-BR" : language,
                         transcript,
                         toWorkerContext(tenantContext),
-                        new WorkerDtos.Options(true, true, 20, "meeting-analysis-v1"));
+                        new WorkerDtos.Options(true, true, 20, "meeting-analysis-v1"),
+                        toWorkerGoal(goal));
 
         WorkerDtos.AnalyzeResponse response;
         try {
@@ -108,7 +116,12 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
         }
 
         try {
-            return toDomain(meetingId, tenantId, response);
+            MeetingAnalysis analysis = toDomain(meetingId, tenantId, response);
+            ProductivityAssessment productivity =
+                    response.productivity() == null
+                            ? null
+                            : toProductivity(tenantId, meetingId, response.productivity());
+            return AnalysisResult.of(analysis, productivity);
         } catch (RuntimeException ex) {
             throw new AnalysisException.InvalidWorkerResponse(ex.getMessage(), ex);
         }
@@ -145,6 +158,17 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
                 c.idealCustomerProfile(),
                 c.objectionHandling(),
                 List.of());
+    }
+
+    private WorkerDtos.Goal toWorkerGoal(Optional<MeetingGoal> goal) {
+        if (goal.isEmpty()) {
+            return null;
+        }
+        MeetingGoal g = goal.get();
+        return new WorkerDtos.Goal(
+                g.purpose(),
+                g.expectedOutcomes().stream().map(ExpectedOutcome::text).toList(),
+                g.projectStateSnapshot());
     }
 
     private MeetingAnalysis toDomain(UUID meetingId, UUID tenantId, WorkerDtos.AnalyzeResponse r) {
@@ -207,6 +231,32 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
                 md.tokensOutput() == null ? 0 : md.tokensOutput(),
                 md.processingMillis() == null ? 0 : md.processingMillis(),
                 md.piiRedactionsApplied() == null ? 0 : md.piiRedactionsApplied());
+    }
+
+    private ProductivityAssessment toProductivity(
+            UUID tenantId, UUID meetingId, WorkerDtos.ProductivityDto p) {
+        List<WorkerDtos.CoverageDto> rawCoverage = safe(p.coverage());
+        List<OutcomeCoverage> coverage =
+                java.util.stream.IntStream.range(0, rawCoverage.size())
+                        .mapToObj(
+                                i -> {
+                                    WorkerDtos.CoverageDto c = rawCoverage.get(i);
+                                    return new OutcomeCoverage(
+                                            c.expectedOutcome(),
+                                            CoverageStatus.valueOf(c.status()),
+                                            c.evidence(),
+                                            i);
+                                })
+                        .toList();
+        return ProductivityAssessment.newAssessment(
+                tenantId,
+                meetingId,
+                p.score() == null ? 0 : p.score(),
+                ProductivityBand.valueOf(p.band()),
+                coverage,
+                p.offTopicRatio(),
+                p.decisionDensity(),
+                p.rationale());
     }
 
     private static <T> List<T> safe(List<T> in) {
