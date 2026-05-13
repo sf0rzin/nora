@@ -63,8 +63,17 @@ worker-setup: ## Cria venv do worker e instala dependencias (idempotente)
 		echo ">> venv do worker pronto."; \
 	fi
 
+.PHONY: web-setup
+web-setup: ## Instala dependencias do web (idempotente)
+	@if [ ! -d "apps/web/node_modules" ]; then \
+		echo ">> instalando dependencias do web (npm)..."; \
+		cd apps/web && npm install; \
+	else \
+		echo ">> web: node_modules ja existe (npm install pulado)"; \
+	fi
+
 .PHONY: dev
-dev: worker-setup ## Sobe DB + worker + API + web (tudo em background, logs em .logs/)
+dev: worker-setup web-setup ## Sobe DB + worker + API + web (tudo em background, logs em .logs/)
 	@mkdir -p "$(DEV_RUN_DIR)" "$(DEV_LOG_DIR)"
 	@echo ">> [1/4] subindo Postgres + Adminer (docker compose)..."
 	@$(COMPOSE) up -d
@@ -80,7 +89,7 @@ dev: worker-setup ## Sobe DB + worker + API + web (tudo em background, logs em .
 		echo $$! > "$(DEV_RUN_DIR)/api.pid"
 	@echo ">> [4/4] subindo Web (Next.js :3000)..."
 	@cd apps/web && \
-		nohup pnpm dev \
+		nohup npm run dev \
 			> "$(DEV_LOG_DIR)/web.log" 2>&1 & \
 		echo $$! > "$(DEV_RUN_DIR)/web.pid"
 	@echo ""
@@ -142,23 +151,23 @@ worker-test: worker-setup ## Roda os testes do worker
 
 .PHONY: web-dev
 web-dev: ## Roda o frontend Next.js em modo dev
-	cd apps/web && pnpm dev
+	cd apps/web && npm run dev
 
 .PHONY: web-test
 web-test: ## Roda os testes do web
-	cd apps/web && pnpm test
+	cd apps/web && npm test
 
 # --- Qualidade ---
 
 .PHONY: lint
 lint: ## Roda lint em todos os pacotes
-	cd apps/web && pnpm lint || true
+	cd apps/web && npm run lint || true
 	cd services/nlp-worker && ruff check . || true
 	cd services/api && mvn spotless:check || true
 
 .PHONY: format
 format: ## Formata todos os pacotes
-	cd apps/web && pnpm format || true
+	cd apps/web && npm run format || true
 	cd services/nlp-worker && ruff format . || true
 	cd services/api && mvn spotless:apply || true
 
