@@ -1,5 +1,16 @@
 // main.bicep — NORA infra orquestrador
-// Deploya: Log Analytics → App Insights → Storage → Key Vault → Postgres → Container Apps Env → api/worker/web → (opcional) Search
+//
+// Ordem de deploy:
+//   1. Log Analytics + App Insights (observabilidade)
+//   2. Storage Account
+//   3. Azure Speech (Cognitive Services) — emite key1 que vai pro KV
+//   4. User-Assigned Managed Identities (api, worker, web) — criadas ANTES do KV
+//      pra que role assignment + KV references nao tenham problema de ciclo de SystemAssigned
+//   5. Key Vault — com role assignments pras UAIs + secrets (postgres pwd, JWT, openai key, speech key)
+//   6. Postgres Flexible Server
+//   7. Container Apps Environment (compartilhado)
+//   8. (opcional) Azure AI Search
+//   9. Container Apps (worker, api, web) — usam UAI + secret refs pro Key Vault
 //
 // Uso:
 //   az deployment group create \
@@ -15,7 +26,7 @@ targetScope = 'resourceGroup'
 // PARAMS — top level
 // ============================================================
 
-@description('Ambiente lógico. Usado em naming e tags. dev | staging | prod.')
+@description('Ambiente logico. Usado em naming e tags. dev | staging | prod.')
 @allowed([
   'dev'
   'staging'
@@ -23,10 +34,10 @@ targetScope = 'resourceGroup'
 ])
 param env string = 'dev'
 
-@description('Região azure pra todos os recursos.')
+@description('Regiao azure pra todos os recursos.')
 param location string = resourceGroup().location
 
-@description('Prefixo de naming. Mantém consistência entre recursos.')
+@description('Prefixo de naming. Mantem consistencia entre recursos.')
 @minLength(2)
 @maxLength(6)
 param namePrefix string = 'nora'
@@ -42,20 +53,20 @@ param tags object = {
 // PARAMS — secrets (injetar via bicepparam ou --parameters CLI)
 // ============================================================
 
-@description('Usuário admin do Postgres.')
+@description('Usuario admin do Postgres.')
 param postgresAdminLogin string = 'nora_admin'
 
-@description('Senha admin do Postgres. Injetar via env var ou Key Vault reference.')
+@description('Senha admin do Postgres. Vai pro KV (secret postgres-password).')
 @secure()
 @minLength(12)
 param postgresAdminPassword string
 
-@description('Secret HMAC pra assinar JWT no backend. Mínimo 32 chars.')
+@description('Secret HMAC pra assinar JWT no backend. Minimo 32 chars. Vai pro KV (secret jwt-secret).')
 @secure()
 @minLength(32)
 param jwtSecret string
 
-@description('OpenAI API Key. Se vazio, worker roda em modo stub.')
+@description('OpenAI API Key. Se vazio, worker roda em modo stub. Vai pro KV (secret openai-api-key).')
 @secure()
 param openAiApiKey string = ''
 
@@ -66,7 +77,7 @@ param openAiModel string = 'gpt-4o-mini'
 // PARAMS — imagens
 // ============================================================
 
-@description('Imagem da API Spring Boot. Default = placeholder Microsoft pra deploy de skeleton.')
+@description('Imagem da API Spring Boot.')
 param apiImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 
 @description('Imagem do worker NLP Python.')
@@ -75,15 +86,26 @@ param workerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 @description('Imagem do frontend Next.js.')
 param webImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 
-@description('Registry server (ex.: ghcr.io). Vazio = imagens públicas.')
+@description('Registry server (ex.: ghcr.io). Vazio = imagens publicas.')
 param registryServer string = ''
 
 @description('Username pro registry.')
 param registryUsername string = ''
 
-@description('Password pro registry.')
+@description('Password pro registry. Inline no Container App (operacional, nao vai pro KV).')
 @secure()
 param registryPassword string = ''
+
+// ============================================================
+// PARAMS — Azure Speech
+// ============================================================
+
+@description('SKU do Speech. S0 = paid (~$1/h de audio). F0 = free tier (limitado, nao recomendado pra demo).')
+@allowed([
+  'F0'
+  'S0'
+])
+param speechSku string = 'S0'
 
 // ============================================================
 // PARAMS — Azure AI Search (opcional)
@@ -92,7 +114,7 @@ param registryPassword string = ''
 @description('Habilita Azure AI Search Basic. Cobra ~R$13-15/dia enquanto provisionado. Manter false durante dev; ligar ~14 dias antes do pitch.')
 param enableSearch bool = false
 
-@description('SKU do Search. basic = ~$73 USD/mês.')
+@description('SKU do Search.')
 @allowed([
   'free'
   'basic'
@@ -108,7 +130,7 @@ param searchSku string = 'basic'
 param postgresFirewallRules array = []
 
 // ============================================================
-// NAMING — determinístico + único onde precisa
+// NAMING — deterministico + unico onde precisa
 // ============================================================
 
 var nameSuffix = take(uniqueString(resourceGroup().id), 6)
@@ -124,6 +146,10 @@ var apiName = '${namePrefix}-api-${env}'
 var workerName = '${namePrefix}-worker-${env}'
 var webName = '${namePrefix}-web-${env}'
 var searchName = '${namePrefix}-search-${env}-${nameSuffix}'
+var speechName = '${namePrefix}-speech-${env}-${nameSuffix}'
+var uaiApiName = '${namePrefix}-uai-api-${env}'
+var uaiWorkerName = '${namePrefix}-uai-worker-${env}'
+var uaiWebName = '${namePrefix}-uai-web-${env}'
 
 var registry = empty(registryServer) ? {} : {
   server: registryServer
@@ -156,7 +182,7 @@ module appInsights 'modules/appinsights.bicep' = {
 }
 
 // ============================================================
-// MODULES — storage + secrets
+// MODULES — storage
 // ============================================================
 
 module storage 'modules/storage.bicep' = {
@@ -169,13 +195,92 @@ module storage 'modules/storage.bicep' = {
   }
 }
 
+// ============================================================
+// MODULES — Azure Speech (ADR 0009)
+// ============================================================
+
+module speech 'modules/speech.bicep' = {
+  name: 'speech'
+  params: {
+    name: speechName
+    location: location
+    tags: tags
+    sku: speechSku
+  }
+}
+
+// ============================================================
+// MODULES — User-Assigned Managed Identities
+// (criadas antes do KV pra resolver ciclo de role assignment)
+// ============================================================
+
+module uaiApi 'modules/user-assigned-identity.bicep' = {
+  name: 'uaiApi'
+  params: {
+    name: uaiApiName
+    location: location
+    tags: tags
+  }
+}
+
+module uaiWorker 'modules/user-assigned-identity.bicep' = {
+  name: 'uaiWorker'
+  params: {
+    name: uaiWorkerName
+    location: location
+    tags: tags
+  }
+}
+
+module uaiWeb 'modules/user-assigned-identity.bicep' = {
+  name: 'uaiWeb'
+  params: {
+    name: uaiWebName
+    location: location
+    tags: tags
+  }
+}
+
+// ============================================================
+// MODULES — Key Vault (com role assignments pras UAIs + secrets)
+// ============================================================
+
+var keyVaultSecrets = {
+  items: concat(
+    [
+      {
+        name: 'postgres-password'
+        value: postgresAdminPassword
+      }
+      {
+        name: 'jwt-secret'
+        value: jwtSecret
+      }
+      {
+        name: 'openai-api-key'
+        value: empty(openAiApiKey) ? 'unset' : openAiApiKey
+      }
+      {
+        name: 'azure-speech-key'
+        value: speech.outputs.key1
+      }
+    ]
+  )
+}
+
 module keyVault 'modules/keyvault.bicep' = {
   name: 'keyVault'
   params: {
     name: kvName
     location: location
     tags: tags
-    enablePurgeProtection: false // dev — permite teardown rápido
+    enablePurgeProtection: false // dev — permite teardown rapido
+    secretsUserPrincipalIds: [
+      uaiApi.outputs.principalId
+      uaiWorker.outputs.principalId
+      uaiWeb.outputs.principalId
+    ]
+    secrets: keyVaultSecrets
   }
 }
 
@@ -232,6 +337,10 @@ module searchService 'modules/search.bicep' = if (enableSearch) {
   }
 }
 
+// Helper: KV reference pra um secret. Container App referencia secret do KV via
+// keyVaultUrl + identity (UAI resource ID). ARM faz fetch on revision create.
+var kvUri = keyVault.outputs.uri
+
 // ---- Worker NLP (internal ingress; api fala com ele) ----
 
 var workerBaseEnv = [
@@ -273,7 +382,8 @@ var workerSecrets = {
     [
       {
         name: 'openai-api-key'
-        value: empty(openAiApiKey) ? 'unset' : openAiApiKey
+        keyVaultUrl: '${kvUri}secrets/openai-api-key'
+        identity: uaiWorker.outputs.id
       }
     ],
     empty(registryServer) ? [] : [
@@ -294,7 +404,7 @@ module workerApp 'modules/container-app.bicep' = {
     environmentId: containerAppsEnv.outputs.id
     image: workerImage
     containerName: 'worker'
-    targetPort: 8000
+    targetPort: 8001
     ingress: 'internal'
     cpu: '0.5'
     memory: '1Gi'
@@ -302,6 +412,7 @@ module workerApp 'modules/container-app.bicep' = {
     maxReplicas: 3
     envVars: concat(workerBaseEnv, workerSearchEnv)
     secretsObject: workerSecrets
+    userAssignedIdentityId: uaiWorker.outputs.id
     registry: registry
   }
 }
@@ -313,11 +424,18 @@ var apiSecrets = {
     [
       {
         name: 'postgres-password'
-        value: postgresAdminPassword
+        keyVaultUrl: '${kvUri}secrets/postgres-password'
+        identity: uaiApi.outputs.id
       }
       {
         name: 'jwt-secret'
-        value: jwtSecret
+        keyVaultUrl: '${kvUri}secrets/jwt-secret'
+        identity: uaiApi.outputs.id
+      }
+      {
+        name: 'azure-speech-key'
+        keyVaultUrl: '${kvUri}secrets/azure-speech-key'
+        identity: uaiApi.outputs.id
       }
     ],
     empty(registryServer) ? [] : [
@@ -342,7 +460,7 @@ module apiApp 'modules/container-app.bicep' = {
     ingress: 'external'
     cpu: '0.5'
     memory: '1Gi'
-    minReplicas: 1 // sempre pelo menos 1 — API é caminho crítico
+    minReplicas: 1 // sempre pelo menos 1 — API e caminho critico
     maxReplicas: 3
     envVars: [
       {
@@ -385,8 +503,21 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'KEY_VAULT_URI'
         value: keyVault.outputs.uri
       }
+      {
+        name: 'AZURE_SPEECH_KEY'
+        secretRef: 'azure-speech-key'
+      }
+      {
+        name: 'AZURE_SPEECH_REGION'
+        value: speech.outputs.region
+      }
+      {
+        name: 'AZURE_SPEECH_ENDPOINT'
+        value: speech.outputs.endpoint
+      }
     ]
     secretsObject: apiSecrets
+    userAssignedIdentityId: uaiApi.outputs.id
     registry: registry
   }
 }
@@ -436,6 +567,7 @@ module webApp 'modules/container-app.bicep' = {
       }
     ]
     secretsObject: webSecrets
+    userAssignedIdentityId: uaiWeb.outputs.id
     registry: registry
   }
 }
@@ -451,11 +583,13 @@ output postgresFqdn string = postgres.outputs.fqdn
 output postgresJdbcUrl string = postgres.outputs.jdbcUrl
 output keyVaultUri string = keyVault.outputs.uri
 output storageAccountName string = storage.outputs.name
-output appInsightsName string = appInsights.outputs.name // connection string fica no recurso; consultar via `az monitor app-insights component show`
+output appInsightsName string = appInsights.outputs.name
 output logAnalyticsWorkspaceId string = logAnalytics.outputs.id
 output searchEndpoint string = enableSearch ? (searchService.?outputs.endpoint ?? '') : ''
+output speechEndpoint string = speech.outputs.endpoint
+output speechRegion string = speech.outputs.region
 
-// IDs pra futuros role assignments (managed identities das Container Apps)
-output apiPrincipalId string = apiApp.outputs.principalId
-output workerPrincipalId string = workerApp.outputs.principalId
-output webPrincipalId string = webApp.outputs.principalId
+// UAI principal IDs (uteis pra debug ou role assignments extras)
+output apiUaiPrincipalId string = uaiApi.outputs.principalId
+output workerUaiPrincipalId string = uaiWorker.outputs.principalId
+output webUaiPrincipalId string = uaiWeb.outputs.principalId
