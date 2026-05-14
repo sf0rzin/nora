@@ -1,4 +1,14 @@
-# Plano de Execução — NORA
+# Plano de Execução — NORA (ARQUIVADO / HISTÓRICO)
+
+> **⚠️ DOCUMENTO DESCONTINUADO em 2026-05-14.**
+>
+> Este arquivo é mantido apenas como **referência histórica**. Descrevia divisão hipotética semana-a-semana entre dois desenvolvedores — modelo que **não corresponde ao fluxo real**. Hoje a equipe **Stratfy** executa o NORA via Claude Code com subagentes paralelos em worktrees.
+>
+> **Fonte de verdade atual:** [`docs/product/roadmap.md`](roadmap.md) (histórico das 11 Sub-fases 1.0-1.10 + próximas 1.11+).
+>
+> As referências abaixo a "Anthony" e "Colega" são as designações originais do plano hipotético; reflitam-se como "Stratfy" e "colaborador externo" no contexto atual.
+
+---
 
 > Passo a passo para começar o desenvolvimento e dividir trabalho entre Anthony e um colega usando IA.
 
