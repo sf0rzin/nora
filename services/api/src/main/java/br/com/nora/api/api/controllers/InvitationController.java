@@ -88,6 +88,7 @@ public class InvitationController {
         LoginResponse resp =
                 new LoginResponse(
                         result.accessToken(),
+                        result.refreshTokenPlain(),
                         "Bearer",
                         result.expiresInSeconds(),
                         result.user().id(),
