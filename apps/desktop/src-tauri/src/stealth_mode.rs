@@ -50,8 +50,16 @@ pub fn set_stealth_mode(
         eprintln!("[stealth_mode] overlay window error: {}", e);
     }
 
+    // Overlay pode não ter handle nativo disponível se ainda não foi renderizada
+    // (está hidden). Isso não é um erro fatal — aplicamos quando ela for mostrada.
+    let overlay_is_handle_missing = overlay_result.as_ref().err()
+        .map(|e| e.contains("underlying handle is not available"))
+        .unwrap_or(false);
+
     main_result?;
-    overlay_result?;
+    if !overlay_is_handle_missing {
+        overlay_result?;
+    }
 
     #[cfg(debug_assertions)]
     eprintln!("[stealth_mode] set_stealth_mode completed successfully");
@@ -66,7 +74,7 @@ pub fn get_stealth_mode(state: tauri::State<'_, StealthModeState>) -> Result<boo
     Ok(*s)
 }
 
-fn set_stealth_for_window(window: &WebviewWindow, enabled: bool) -> Result<(), String> {
+pub fn set_stealth_for_window(window: &WebviewWindow, enabled: bool) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         set_stealth_windows(window, enabled)
