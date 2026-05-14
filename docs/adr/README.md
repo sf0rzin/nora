@@ -29,6 +29,16 @@ Sequencial, 4 dígitos, kebab-case: `0001-monorepo.md`, `0002-multi-tenancy.md`.
 - Decisão que vai surpreender quem chegar depois.
 - Decisão tomada após descartar pelo menos uma alternativa real.
 
+## Imutabilidade
+
+**ADRs aceitos são imutáveis.** Se uma decisão fica obsoleta:
+
+1. Crie um ADR sucessor (`NNNN-<slug>.md`) com `Status: substitui XXXX`
+2. Atualize o ADR original: `Status: substituído por NNNN`
+3. Mantenha o original intacto — ele é histórico de uma decisão tomada
+
+Decisões parcialmente substituídas: ADR sucessor pode marcar `Substitui parcialmente XXXX` (ver ADR 0015 substituindo parcialmente ADR 0006).
+
 ## Índice
 
 | ID | Título | Status |
@@ -38,10 +48,16 @@ Sequencial, 4 dígitos, kebab-case: `0001-monorepo.md`, `0002-multi-tenancy.md`.
 | 0003 | Saída do LLM via JSON Schema obrigatório | aceito |
 | 0004 | Estratégia de Provider de LLM (agnóstica, OpenAI como default) | aceito |
 | 0005 | Productivity Score da reunião (opt-in, baseado em objetivo declarado) | aceito |
-| 0006 | Customer Confidence (por reunião) e Account Health (agregado) | aceito |
+| 0006 | Customer Confidence (por reunião) e Account Health (agregado) | aceito (parcialmente substituído por 0015) |
 | 0007 | IAM estilo AWS (Root + Users + Groups + Policies) | aceito |
 | 0008 | Desktop App com Tauri 2 + Sidecar Python | aceito |
 | 0009 | Estratégia de credenciais Azure Speech | aceito |
 | 0010 | Package compartilhado `nlp-baseline` para TF-IDF PT-BR | aceito |
 | 0011 | Invite-based onboarding com restrição opcional de corporate domain | aceito |
 | 0012 | PII PERSON_NAME: estratégia regional BR no MVP, upgrade NER quando internacionalizar | aceito |
+| 0013 | Estratégia de CSS frontend (Tailwind cru, sem shadcn, tokens OKLCH) | proposto (Design refina) |
+| 0014 | Defer post-MVP commercial gate (14 US adiadas com critério de reativação) | aceito |
+| 0015 | Customer Confidence — persistência mínima viável na Sub-fase 1.11 | aceito (substitui parcialmente 0006) |
+| 0016 | Production-readiness checklist e separação `rg-nora-prod` | proposto (aceita na 1.12) |
+| 0017 | License: AGPL-3.0 | aceito |
+| 0018 | Test coverage targets por área crítica | aceito |
