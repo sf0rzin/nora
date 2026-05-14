@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { secrets } from "@/lib/secrets";
+import { invoke } from "@tauri-apps/api/core";
 
 export function SettingsPage() {
   const { user } = useAuth();
   const [cleanupDone, setCleanupDone] = useState(false);
+  const [stealthMode, setStealthMode] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -21,11 +23,24 @@ export function SettingsPage() {
           console.log("[settings] migrated: removed old azure-region");
         }
         setCleanupDone(true);
+
+        // Load stealth mode state
+        const saved = await invoke<boolean>("get_stealth_mode");
+        setStealthMode(saved);
       } catch (e) {
-        console.error("[settings] failed to cleanup old secrets:", e);
+        console.error("[settings] failed to initialize settings:", e);
       }
     })();
   }, []);
+
+  const handleStealthToggle = async (enabled: boolean) => {
+    try {
+      await invoke("set_stealth_mode", { enabled });
+      setStealthMode(enabled);
+    } catch (e) {
+      console.error("[settings] failed to set stealth mode:", e);
+    }
+  };
 
   return (
     <div className="flex-1 overflow-auto p-6">
@@ -51,6 +66,31 @@ export function SettingsPage() {
               <span className="text-zinc-400">Roles</span>
               <span>{user?.roles?.join(", ")}</span>
             </div>
+          </div>
+        </section>
+
+        <section className="mb-8">
+          <h2 className="text-sm font-semibold text-zinc-400 uppercase mb-4">
+            Privacidade
+          </h2>
+          <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={stealthMode}
+                onChange={(e) => handleStealthToggle(e.target.checked)}
+                className="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-blue-500 focus:ring-blue-500/20"
+              />
+              <div>
+                <span className="text-sm text-zinc-200 font-medium block">
+                  Modo Stealth
+                </span>
+                <span className="text-xs text-zinc-400">
+                  Oculta o NORA Desktop e a overlay de capturas de tela, OBS e compartilhamento de tela.
+                  No Windows usa proteção nativa do sistema; no Linux aplica flags de janela para reduzir visibilidade.
+                </span>
+              </div>
+            </label>
           </div>
         </section>
 

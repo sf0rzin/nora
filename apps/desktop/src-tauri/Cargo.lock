@@ -2137,6 +2137,7 @@ dependencies = [
  "cpal",
  "futures",
  "libc",
+ "raw-window-handle",
  "reqwest 0.12.28",
  "rubato",
  "serde",
@@ -2150,6 +2151,7 @@ dependencies = [
  "urlencoding",
  "uuid",
  "windows 0.62.2",
+ "x11",
 ]
 
 [[package]]
