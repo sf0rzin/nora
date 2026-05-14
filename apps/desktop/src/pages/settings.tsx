@@ -99,7 +99,7 @@ export function SettingsPage() {
                   Modo Stealth
                   {!isSupported && (
                     <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-700 text-zinc-400 border border-zinc-600">
-                      Windows only
+                      {platform === "macos" ? "Em breve" : "Indisponível"}
                     </span>
                   )}
                 </span>
@@ -108,11 +108,16 @@ export function SettingsPage() {
                     Oculta o NORA Desktop e a overlay de capturas de tela, OBS e compartilhamento de tela.
                     Usa a API nativa do Windows (<code>SetWindowDisplayAffinity</code>).
                   </span>
+                ) : platform === "macos" ? (
+                  <span className="text-xs text-zinc-500">
+                    Disponível no Windows. Implementação para macOS via <code>setSharingType(.none)</code> do NSWindow
+                    está planejada para uma versão futura.
+                  </span>
                 ) : (
                   <span className="text-xs text-zinc-500">
-                    O modo Stealth usa uma API exclusiva do Windows (<code>SetWindowDisplayAffinity</code>).
-                    No Linux e macOS, o display server não oferece um mecanismo padronizado para uma aplicação
-                    se auto-excluir de capturas de tela. Alternativa: minimize a janela do NORA durante o compartilhamento.
+                    Indisponível no Linux. O display server (X11/Wayland) não oferece um mecanismo
+                    padronizado para uma aplicação se auto-excluir de capturas de tela.
+                    Alternativa: minimize a janela do NORA durante o compartilhamento.
                   </span>
                 )}
               </label>
