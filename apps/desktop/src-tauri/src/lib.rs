@@ -23,10 +23,15 @@ pub type SidecarState = Arc<Mutex<Vec<stt_sidecar::SidecarHandle>>>;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Carrega .env.local (prioridade) e .env (fallback) para o backend Rust
-    // ver as mesmas variáveis que o frontend Vite vê.
-    dotenvy::from_filename(".env.local").ok();
-    dotenvy::dotenv().ok();
+    // Carrega .env.local (prioridade) e .env (fallback) a partir do
+    // diretório do projeto desktop (um nível acima de src-tauri).
+    if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
+        let project_root = std::path::Path::new(&manifest)
+            .parent()
+            .unwrap_or(std::path::Path::new("."));
+        dotenvy::from_filename(project_root.join(".env.local")).ok();
+        dotenvy::from_filename(project_root.join(".env")).ok();
+    }
 
     let capture_state: CaptureState = Arc::new(Mutex::new(audio_capture::AudioCapture::new()));
     let sidecar_state: SidecarState = Arc::new(Mutex::new(Vec::new()));
