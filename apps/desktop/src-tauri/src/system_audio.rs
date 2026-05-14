@@ -169,12 +169,17 @@ mod platform {
         AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, WAVEFORMATEX,
         WAVEFORMATEXTENSIBLE,
     };
-    use windows::Win32::Media::Multimedia::{WAVE_FORMAT_EXTENSIBLE, WAVE_FORMAT_IEEE_FLOAT, WAVE_FORMAT_PCM};
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize,
         CLSCTX_ALL, COINIT_MULTITHREADED,
     };
     use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
+
+    // Constantes WAVE_FORMAT_* — definidas manualmente pois não estão exportadas
+    // pelo windows crate v0.62
+    const WAVE_FORMAT_PCM: u32 = 0x0001;
+    const WAVE_FORMAT_IEEE_FLOAT: u32 = 0x0003;
+    const WAVE_FORMAT_EXTENSIBLE: u32 = 0xFFFE;
 
     // KSDATAFORMAT_SUBTYPE_IEEE_FLOAT — definido manualmente pois não está exportado
     // diretamente pelo windows crate v0.62
@@ -240,7 +245,7 @@ mod platform {
         let enumerator: IMMDeviceEnumerator =
             CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
         let device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole)?;
-        let audio_client: IAudioClient = device.Activate(CLSCTX_ALL)?;
+        let audio_client: IAudioClient = device.Activate(CLSCTX_ALL, None)?;
 
         let mix_format_ptr = audio_client.GetMixFormat()?;
         let mix_format = &*mix_format_ptr;

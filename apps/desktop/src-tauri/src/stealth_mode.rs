@@ -1,6 +1,12 @@
 use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
 
+#[cfg(target_os = "windows")]
+use tauri::Manager;
+
+#[cfg(target_os = "windows")]
+use tauri::WebviewWindow;
+
 pub type StealthModeState = Arc<Mutex<bool>>;
 
 #[tauri::command]
@@ -22,8 +28,6 @@ pub fn set_stealth_mode(
 
     #[cfg(target_os = "windows")]
     {
-        use tauri::{Manager, WebviewWindow};
-
         #[cfg(debug_assertions)]
         eprintln!("[stealth_mode] set_stealth_mode called, enabled={}", enabled);
 
