@@ -2,7 +2,14 @@
 
 ## Status
 
-Proposto
+Aceito
+
+## Histórico de status
+
+| Data | Status | Notas |
+|---|---|---|
+| 2026-05-07 (criação) | Proposto | Esboço inicial |
+| 2026-05-12 | Aceito | Implementado via PR #29 (`SpeechController` + `AzureSpeechTokenBroker`); rate limit Bucket4j; `docs/adr/README.md` índice já marcava como aceito. Atualização desta linha trazida pela Sub-fase 1.10 (Docs Refresh) que reconciliou divergência menor entre status do doc e do índice |
 
 ## Contexto
 
