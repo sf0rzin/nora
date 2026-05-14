@@ -52,10 +52,6 @@ nora/
 ├── packages/
 │   ├── nlp-baseline/           # TF-IDF PT-BR reaproveitável (ADR 0010)
 │   └── shared-contracts/       # placeholder, pouco usado no MVP
-├── mcp/
-│   ├── calendar/               # pós-MVP (pasta vazia)
-│   ├── tasks/                  # pós-MVP
-│   └── crm/                    # pós-MVP
 ├── infra/
 │   ├── bicep/                  # Infra Azure (main.bicep + 9 módulos)
 │   └── docker/                 # Compose local, Dockerfiles auxiliares
@@ -64,12 +60,13 @@ nora/
 │   └── samples/                # pequenos exemplos
 ├── notebooks/                  # Entregas Data Science FIAP
 ├── docs/
-│   ├── adr/                    # 12 ADRs (0001–0012) + README
-│   ├── engineering/            # este doc, architecture.md, data-model.md, data-model-oracle.md
-│   ├── operations/             # azure-deploy.md, runbooks (a popular)
-│   ├── product/                # visão, personas, backlog
-│   ├── api/                    # OpenAPI + JSON Schemas LLM
-│   └── *.md                    # outros (PROJECT.md, plano-execução etc.)
+│   ├── product/                # vision, backlog (status real), roadmap, glossary
+│   ├── engineering/            # architecture, standards (este doc), data-model, data-model-oracle
+│   ├── operations/             # azure-deploy (runbook + 8 pegadinhas), production-readiness-gaps
+│   ├── challenge/              # FIAP Challenge 2026 (personas, casos de uso, README, fiap-challenge-2026)
+│   ├── security/               # em construção (Sub-fase 1.12 — threat model, LGPD operacional)
+│   ├── api/                    # OpenAPI + JSON Schemas LLM + exemplos
+│   └── adr/                    # 18 ADRs (0001-0018) + README
 ├── scripts/                    # automação local
 ├── .github/                    # workflows + templates
 ├── CLAUDE.md                   # contexto para Claude Code
@@ -80,7 +77,7 @@ nora/
 
 - **Não existe `apps/web/src/features/`** (a versão anterior do doc previa). O frontend usa `src/components/` flat + `src/app/` (App Router).
 - **`packages/shared-contracts/`** é praticamente um placeholder no MVP (só `.gitkeep`); contratos vivem em `docs/api/`.
-- **`mcp/{calendar,tasks,crm}`** existem como pastas vazias (ADR 0001 prevê), implementação é pós-MVP.
+- **MCPs (calendar, tasks, crm)** foram deferidos pós-MVP via ADR 0014 (defer commercial gate). Pastas vazias removidas do monorepo na Sub-fase 1.10. ADR 0001 (monorepo) menciona estrutura prevista; reativação condicional ao primeiro tenant pagante pedir integração.
 
 ---
 
@@ -88,16 +85,19 @@ nora/
 
 | Informação | Local |
 |---|---|
-| Visão, arquitetura macro, roadmap | `docs/PROJECT.md`, `docs/engineering/architecture.md` |
-| Visão Agile, É/Não É, Faz/Não Faz | `docs/visao-do-produto.md` |
-| Personas e mapa de empatia | `docs/personas-e-mapa-de-empatia.md` |
-| Backlog, user stories, critérios | `docs/backlog-mvp.md` |
-| Casos de uso | `docs/diagrama-casos-de-uso.md` |
+| Visão de produto (É/Não É, Faz/Não Faz, Geoffrey Moore) | `docs/product/vision.md` |
+| Backlog priorizado (MoSCoW + status real DONE/PARTIAL/MISSING) | `docs/product/backlog.md` |
+| Roadmap vivo (histórico sub-fases 1.0–1.10 + futuro 1.11+) | `docs/product/roadmap.md` |
+| Glossário NORA (termos canônicos: Productivity Score, Customer Confidence, IAM Policy, etc.) | `docs/product/glossary.md` |
+| Plano histórico (descontinuado — só referência) | `docs/product/plano-de-execucao-archive.md` |
+| Arquitetura técnica (DDD layers, fluxos end-to-end, stack rationale) | `docs/engineering/architecture.md` |
 | Padrões técnicos (este doc) | `docs/engineering/standards.md` |
 | Modelo de dados Postgres | `docs/engineering/data-model.md` |
-| Modelo de dados Oracle (FIAP) | `docs/engineering/data-model-oracle.md` |
-| Plano de execução e divisão | `docs/plano-de-execucao.md` |
-| Decisões arquiteturais duráveis | `docs/adr/NNNN-titulo.md` |
+| Modelo de dados Oracle (entrega FIAP DB) | `docs/engineering/data-model-oracle.md` |
+| Runbook deploy Azure + 8 pegadinhas (Sub-fase 1.9) | `docs/operations/azure-deploy.md` |
+| Production-readiness gaps (alvo Sub-fase 1.12) | `docs/operations/production-readiness-gaps.md` |
+| Material acadêmico FIAP Challenge 2026 (personas, casos de uso, rubrica) | `docs/challenge/` |
+| Decisões arquiteturais duráveis (18 ADRs) | `docs/adr/NNNN-titulo.md` (índice em `docs/adr/README.md`) |
 | Contratos HTTP | `docs/api/openapi.yaml` (a gerar) ou via springdoc-openapi |
 | Exemplos de payload | `docs/api/examples/*.json` |
 | Schemas LLM | `docs/api/llm-schemas/*.schema.json` |

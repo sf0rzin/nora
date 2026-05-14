@@ -345,14 +345,16 @@ A UI (e qualquer export futuro) **deve** exibir: *"Indicador da reunião, não d
 - Endpoints: nenhum.
 - UI: a landing menciona Customer Health visualmente (HealthScoreSection) mas o app não persiste nem mostra.
 
-### Decisão pendente
+### Decisão tomada — ADR 0015 (aceito, 2026-05-14)
 
-ADR 0015 (a ser criado na Sub-fase 1.10/1.11): decisão entre:
+Sub-fase 1.10 produziu **ADR 0015 — Customer Confidence: persistência mínima viável** (substitui parcialmente ADR 0006). Voto Anthony (PO) em bloco: **opção (a)** — implementar mínimo na Sub-fase 1.11:
 
-- **A**: implementar o mínimo na Sub-fase 1.11 (1 tabela + endpoint + UI básica) para honrar a promessa visual da landing.
-- **B**: remover Customer Health da landing até que persistência exista (evita demo gap).
+- **Migration V013** com 5 tabelas (`customer_accounts`, `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections`)
+- Endpoint read-only `GET /meetings/{id}` expande retorno com `customerConfidence` quando presente
+- UI `CustomerConfidenceCard` no MeetingDetail (escopo Arquiteto Design)
+- Account Health agregado (US50-US51) **continua deferido** via ADR 0014
 
-O custo de credibilidade ("vejo na landing, não vejo no app") é alto para Plano A (pitch TOTVS) — audit §6 marca como severity Alta.
+Alternativa (B) — remover Customer Health da landing — foi rejeitada: credibilidade da demo > esforço economizado. Audit §6 marcou severity Alta. Detalhes em `docs/adr/0015-customer-confidence-minimal-persistence.md`.
 
 ---
 
@@ -486,11 +488,11 @@ Service Principal: `sp-nora-github-deploy` (audit §7), com 3 federated credenti
 
 ## Próximos refactors arquiteturais
 
-Débitos técnicos catalogados, priorização e ADRs sucessores planejados ficam em **`docs/operations/production-readiness-gaps.md`** (a ser escrito na Sub-fase 1.12 — Production Hardening). Resumo dos principais:
+Débitos técnicos catalogados, priorização e ADRs sucessores planejados ficam em **`docs/operations/production-readiness-gaps.md`** (escrito na Sub-fase 1.10; implementação ataca-se na Sub-fase 1.12 — Production Hardening, formalizada via ADR 0016). Resumo dos principais:
 
-- **AUTH_FILTER_HARD_CAP refactor** (`MeetingsController.java:54`): empurrar predicado IAM para SQL via `meetings.attributes @>` JSONB + GIN (V008 já tem o índice).
-- **PolicyEvaluator** ganhar `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (cobre 90% das policies reais).
-- **RLS Postgres** habilitado em produção (ADR 0002).
-- **`tenant_contexts.version`** (US31): coluna ausente; sem histórico de versão do contexto.
-- **`audit_events` global** (não só IAM): incluir LOGIN, MEETING_UPLOAD, CONTEXT_UPDATE.
-- **Customer Confidence**: decisão de implementação em ADR 0015 (a criar na 1.10).
+- **AUTH_FILTER_HARD_CAP refactor** (`MeetingsController.java:54`): empurrar predicado IAM para SQL via `meetings.attributes @>` JSONB + GIN (V008 já tem o índice). Alvo Sub-fase 1.11.
+- **PolicyEvaluator** ganhar `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (cobre 90% das policies reais). Alvo Sub-fase 1.11.
+- **RLS Postgres** habilitado em produção (ADR 0002). Alvo Sub-fase 1.12.
+- **`tenant_contexts.version`** (US31): coluna ausente; sem histórico de versão do contexto. Alvo Sub-fase 1.12.
+- **`audit_events` global** (não só IAM): incluir LOGIN, MEETING_UPLOAD, CONTEXT_UPDATE. Alvo Sub-fase 1.12.
+- **Customer Confidence**: ADR 0015 aceito — voto (a) implementa mínimo na Sub-fase 1.11. Ver `docs/adr/0015-customer-confidence-minimal-persistence.md`.
