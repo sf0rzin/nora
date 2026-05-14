@@ -87,6 +87,7 @@ public class AuthController {
         LoginResponse body =
                 new LoginResponse(
                         result.accessToken(),
+                        result.refreshTokenPlain(),
                         "Bearer",
                         result.accessExpiresInSeconds(),
                         result.user().id(),
@@ -114,6 +115,12 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<RefreshResponse> refresh(HttpServletRequest req) {
         String refresh = readCookie(req, AuthCookies.REFRESH_COOKIE);
+        if (refresh == null || refresh.isBlank()) {
+            String bearer = req.getHeader("Authorization");
+            if (bearer != null && bearer.startsWith("Bearer ")) {
+                refresh = bearer.substring(7);
+            }
+        }
         RefreshResult result = authService.refresh(refresh);
 
         HttpHeaders headers = new HttpHeaders();

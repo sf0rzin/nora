@@ -101,6 +101,32 @@ class RefreshFlowIntegrationTest {
     }
 
     @Test
+    void refreshWithAuthorizationHeaderReturns200() throws Exception {
+        String email = "hdr@nora.dev";
+        registerAndVerify(email);
+        ResponseEntity<String> login = postJson("/auth/login", basicAuth(email));
+        assertThat(login.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        // Desktop nao usa cookie; le refreshToken do body.
+        JsonNode loginBody = mapper.readTree(login.getBody());
+        String refreshToken = loginBody.get("refreshToken").asText();
+        assertThat(refreshToken).isNotBlank();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(refreshToken);
+        HttpEntity<String> entity = new HttpEntity<>("", headers);
+        ResponseEntity<String> r =
+                rest.exchange("/auth/refresh", HttpMethod.POST, entity, String.class);
+
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode body = mapper.readTree(r.getBody());
+        assertThat(body.get("tokenType").asText()).isEqualTo("Bearer");
+        assertThat(body.get("expiresInSeconds").asLong()).isGreaterThan(0);
+        // Tambem seta novo cookie de access (back-compat com web).
+        assertThat(findCookie(setCookieHeaders(r), "nora_access")).isPresent();
+    }
+
+    @Test
     void refreshRotatesAccessButKeepsRefreshValid() throws Exception {
         String email = "rt@nora.dev";
         registerAndVerify(email);
