@@ -9,24 +9,60 @@ pub fn set_stealth_mode(
     state: tauri::State<'_, StealthModeState>,
     enabled: bool,
 ) -> Result<(), String> {
+    #[cfg(debug_assertions)]
+    eprintln!("[stealth_mode] set_stealth_mode called, enabled={}", enabled);
+
     {
-        let mut s = state.lock().map_err(|e| e.to_string())?;
+        let mut s = state.lock().map_err(|e| {
+            #[cfg(debug_assertions)]
+            eprintln!("[stealth_mode] failed to lock state: {}", e);
+            e.to_string()
+        })?;
         *s = enabled;
     }
 
-    if let Some(main) = app_handle.get_webview_window("main") {
-        set_stealth_for_window(&main, enabled)?;
+    let main_result = if let Some(main) = app_handle.get_webview_window("main") {
+        #[cfg(debug_assertions)]
+        eprintln!("[stealth_mode] applying to main window");
+        set_stealth_for_window(&main, enabled)
+    } else {
+        #[cfg(debug_assertions)]
+        eprintln!("[stealth_mode] main window not found");
+        Ok(())
+    };
+
+    let overlay_result = if let Some(overlay) = app_handle.get_webview_window("overlay") {
+        #[cfg(debug_assertions)]
+        eprintln!("[stealth_mode] applying to overlay window");
+        set_stealth_for_window(&overlay, enabled)
+    } else {
+        #[cfg(debug_assertions)]
+        eprintln!("[stealth_mode] overlay window not found (may be hidden)");
+        Ok(())
+    };
+
+    if let Err(e) = &main_result {
+        #[cfg(debug_assertions)]
+        eprintln!("[stealth_mode] main window error: {}", e);
     }
-    if let Some(overlay) = app_handle.get_webview_window("overlay") {
-        set_stealth_for_window(&overlay, enabled)?;
+    if let Err(e) = &overlay_result {
+        #[cfg(debug_assertions)]
+        eprintln!("[stealth_mode] overlay window error: {}", e);
     }
 
+    main_result?;
+    overlay_result?;
+
+    #[cfg(debug_assertions)]
+    eprintln!("[stealth_mode] set_stealth_mode completed successfully");
     Ok(())
 }
 
 #[tauri::command]
 pub fn get_stealth_mode(state: tauri::State<'_, StealthModeState>) -> Result<bool, String> {
     let s = state.lock().map_err(|e| e.to_string())?;
+    #[cfg(debug_assertions)]
+    eprintln!("[stealth_mode] get_stealth_mode returning {}", *s);
     Ok(*s)
 }
 
@@ -43,8 +79,8 @@ fn set_stealth_for_window(window: &WebviewWindow, enabled: bool) -> Result<(), S
 
     #[cfg(target_os = "macos")]
     {
-        // Stealth mode não implementado para macOS no MVP.
-        // A janela continua visível normalmente.
+        #[cfg(debug_assertions)]
+        eprintln!("[stealth_mode] macOS stealth mode is a no-op in MVP");
         Ok(())
     }
 }
@@ -55,7 +91,18 @@ fn set_stealth_windows(window: &WebviewWindow, enabled: bool) -> Result<(), Stri
         SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
     };
 
-    let hwnd = window.hwnd().map_err(|e| format!("Failed to get HWND: {}", e))?;
+    #[cfg(debug_assertions)]
+    eprintln!("[stealth_mode] Windows: getting HWND...");
+
+    let hwnd = window.hwnd().map_err(|e| {
+        let msg = format!("Failed to get HWND: {}", e);
+        #[cfg(debug_assertions)]
+        eprintln!("[stealth_mode] {}", msg);
+        msg
+    })?;
+
+    #[cfg(debug_assertions)]
+    eprintln!("[stealth_mode] Windows: calling SetWindowDisplayAffinity(enabled={})", enabled);
 
     unsafe {
         SetWindowDisplayAffinity(
@@ -66,9 +113,16 @@ fn set_stealth_windows(window: &WebviewWindow, enabled: bool) -> Result<(), Stri
                 WDA_NONE
             },
         )
-        .map_err(|e| format!("SetWindowDisplayAffinity failed: {:?}", e))?;
+        .map_err(|e| {
+            let msg = format!("SetWindowDisplayAffinity failed: {:?}", e);
+            #[cfg(debug_assertions)]
+            eprintln!("[stealth_mode] {}", msg);
+            msg
+        })?;
     }
 
+    #[cfg(debug_assertions)]
+    eprintln!("[stealth_mode] Windows: SetWindowDisplayAffinity OK");
     Ok(())
 }
 
@@ -80,20 +134,48 @@ fn set_stealth_linux(window: &WebviewWindow, enabled: bool) -> Result<(), String
         PropModeReplace, XA_ATOM, XChangeProperty, XFlush, XInternAtom, XOpenDisplay,
     };
 
-    let handle = window
-        .window_handle()
-        .map_err(|e| format!("Failed to get window handle: {}", e))?;
+    #[cfg(debug_assertions)]
+    eprintln!("[stealth_mode] Linux: getting window handle...");
+
+    let handle = window.window_handle().map_err(|e| {
+        let msg = format!("Failed to get window handle: {}", e);
+        #[cfg(debug_assertions)]
+        eprintln!("[stealth_mode] {}", msg);
+        msg
+    })?;
 
     let x11_window = match handle.as_raw() {
-        RawWindowHandle::Xlib(xlib) => xlib.window,
-        RawWindowHandle::Xcb(xcb) => xcb.window.get() as u64,
-        _ => return Err("Unsupported Linux display server".to_string()),
+        RawWindowHandle::Xlib(xlib) => {
+            #[cfg(debug_assertions)]
+            eprintln!("[stealth_mode] Linux: Xlib window id={}", xlib.window);
+            xlib.window
+        }
+        RawWindowHandle::Xcb(xcb) => {
+            #[cfg(debug_assertions)]
+            eprintln!("[stealth_mode] Linux: XCB window id={}", xcb.window.get());
+            xcb.window.get() as u64
+        }
+        RawWindowHandle::Wayland(_) => {
+            let msg = "Wayland display server detected. Stealth mode is not supported on Wayland because there is no standard API for a window to exclude itself from screen captures. Use X11 or run with GDK_BACKEND=x11.".to_string();
+            #[cfg(debug_assertions)]
+            eprintln!("[stealth_mode] {}", msg);
+            return Err(msg);
+        }
+        other => {
+            let msg = format!("Unsupported Linux display server: {:?}", other);
+            #[cfg(debug_assertions)]
+            eprintln!("[stealth_mode] {}", msg);
+            return Err(msg);
+        }
     };
 
     unsafe {
         let display = XOpenDisplay(std::ptr::null());
         if display.is_null() {
-            return Err("Failed to open X11 display".to_string());
+            let msg = "Failed to open X11 display".to_string();
+            #[cfg(debug_assertions)]
+            eprintln!("[stealth_mode] {}", msg);
+            return Err(msg);
         }
 
         let net_wm_state = XInternAtom(
@@ -118,6 +200,12 @@ fn set_stealth_linux(window: &WebviewWindow, enabled: bool) -> Result<(), String
             vec![]
         };
 
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "[stealth_mode] Linux: XChangeProperty(window={}, atoms={:?})",
+            x11_window, atoms
+        );
+
         XChangeProperty(
             display,
             x11_window,
@@ -132,5 +220,7 @@ fn set_stealth_linux(window: &WebviewWindow, enabled: bool) -> Result<(), String
         XFlush(display);
     }
 
+    #[cfg(debug_assertions)]
+    eprintln!("[stealth_mode] Linux: X11 property set OK");
     Ok(())
 }
