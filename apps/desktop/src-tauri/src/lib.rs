@@ -23,6 +23,11 @@ pub type SidecarState = Arc<Mutex<Vec<stt_sidecar::SidecarHandle>>>;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Carrega .env.local (prioridade) e .env (fallback) para o backend Rust
+    // ver as mesmas variáveis que o frontend Vite vê.
+    dotenvy::from_filename(".env.local").ok();
+    dotenvy::dotenv().ok();
+
     let capture_state: CaptureState = Arc::new(Mutex::new(audio_capture::AudioCapture::new()));
     let sidecar_state: SidecarState = Arc::new(Mutex::new(Vec::new()));
     let live_state: LiveHighlightsState = Arc::new(Mutex::new(None));
@@ -30,6 +35,8 @@ pub fn run() {
 
     let api_base_url = std::env::var("NORA_API_BASE_URL")
         .unwrap_or_else(|_| "http://localhost:8080".to_string());
+    #[cfg(debug_assertions)]
+    eprintln!("[nora] NORA_API_BASE_URL={}", api_base_url);
     let base_url = url::Url::parse(&api_base_url)
         .expect("Invalid NORA_API_BASE_URL");
 
