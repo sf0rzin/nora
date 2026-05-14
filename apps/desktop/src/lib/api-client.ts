@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { secrets } from "./secrets";
+
+import { refreshAccessToken, logout } from "./auth";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 
@@ -21,6 +22,13 @@ class ApiClient {
   private baseUrl: string;
   private onUnauthorized: (() => void) | null = null;
   private cachedUser: unknown = null;
+  private refreshing = false;
+  private refreshQueue: Array<{
+    resolve: (value: unknown) => void;
+    reject: (reason?: unknown) => void;
+    path: string;
+    options: RequestOptions;
+  }> = [];
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
@@ -58,13 +66,17 @@ class ApiClient {
 
     console.log("[api] response:", response.status, response.body);
 
+    // Se 401 e autenticado, tenta refreshar e retry
     if (response.status === 401 && auth) {
-      console.warn("[api] 401 unauthorized — token expired");
-      await secrets.delete("access-token");
-      await secrets.delete("current-user");
-      this.cachedUser = null;
+      const retry = await this.attemptRefreshAndRetry<T>(path, options);
+      if (retry) {
+        return retry;
+      }
+
+      // Refresh falhou — desloga
+      console.warn("[api] 401 unauthorized — token expired and refresh failed");
+      await logout();
       this.onUnauthorized?.();
-      window.location.hash = "#/login";
       throw new Error("Sessão expirada. Faça login novamente.");
     }
 
@@ -73,6 +85,54 @@ class ApiClient {
     }
 
     return response.body as T;
+  }
+
+  private async attemptRefreshAndRetry<T>(
+    path: string,
+    options: RequestOptions
+  ): Promise<T | null> {
+    // Se já estamos refreshando, espera na fila
+    if (this.refreshing) {
+      return new Promise<T>((resolve, reject) => {
+        this.refreshQueue.push({
+          resolve: resolve as (value: unknown) => void,
+          reject,
+          path,
+          options,
+        });
+      });
+    }
+
+    this.refreshing = true;
+    try {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        // Retry a requisição original com novo token
+        const retry = await this.request<T>(path, options);
+        // Processa fila com sucesso
+        this.drainQueue(true);
+        return retry;
+      }
+    } catch (err) {
+      console.error("[api] refresh failed during retry:", err);
+    } finally {
+      this.refreshing = false;
+    }
+    // Refresh falhou — rejeita fila
+    this.drainQueue(false);
+    return null;
+  }
+
+  private drainQueue(success: boolean) {
+    const queue = this.refreshQueue;
+    this.refreshQueue = [];
+    for (const item of queue) {
+      if (success) {
+        this.request(item.path, item.options).then(item.resolve).catch(item.reject);
+      } else {
+        item.reject(new Error("Sessão expirada. Faça login novamente."));
+      }
+    }
   }
 
   setCachedUser(user: unknown): void {

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import type { SessionUser } from "@/lib/types";
-import { bootstrapSession, logout as doLogout } from "@/lib/auth";
+import { bootstrapSession, logout as doLogout, stopTokenRefreshLoop } from "@/lib/auth";
 import { apiClient } from "@/lib/api-client";
 
 interface AuthState {
@@ -31,6 +31,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setLoading(false);
     });
+
+    return () => {
+      stopTokenRefreshLoop();
+    };
   }, []);
 
   const handleLogin = (u: SessionUser) => {
@@ -46,6 +50,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     apiClient.on401(logout);
+  }, []);
+
+  // Ouve evento auth-expired vindo do loop de refresh
+  useEffect(() => {
+    const handler = () => {
+      doLogout();
+      setUser(null);
+      window.location.hash = "#/login";
+    };
+    window.addEventListener("auth-expired", handler);
+    return () => window.removeEventListener("auth-expired", handler);
   }, []);
 
   return (
