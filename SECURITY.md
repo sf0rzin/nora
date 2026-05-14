@@ -65,12 +65,12 @@ NORA é licenciado sob **AGPL-3.0** (ver `LICENSE`). Pesquisadores que descobrem
 
 ## DPO / Encarregado LGPD
 
-**Encarregado de Proteção de Dados:**
+**Encarregado de Proteção de Dados** (LGPD exige indicação de pessoa física):
 
-- **Nome:** Anthony Sforzin
+- **Nome:** Anthony Sforzin (membro da equipe Stratfy designado como Encarregado)
 - **Contato:** axonogenesis@gmail.com (com prefixo `[LGPD-NORA]`)
 
-NORA é solo-operado durante MVP/Pilot. Em GA com >10 tenants, DPO formal contratado ou role designado.
+NORA é operado pela equipe Stratfy durante MVP/Pilot. Em GA com >10 tenants, DPO formal contratado ou role designado.
 
 ## Tooling de segurança ativo
 

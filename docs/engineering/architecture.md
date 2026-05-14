@@ -347,7 +347,7 @@ A UI (e qualquer export futuro) **deve** exibir: *"Indicador da reunião, não d
 
 ### Decisão tomada — ADR 0015 (aceito, 2026-05-14)
 
-Sub-fase 1.10 produziu **ADR 0015 — Customer Confidence: persistência mínima viável** (substitui parcialmente ADR 0006). Voto Anthony (PO) em bloco: **opção (a)** — implementar mínimo na Sub-fase 1.11:
+Sub-fase 1.10 produziu **ADR 0015 — Customer Confidence: persistência mínima viável** (substitui parcialmente ADR 0006). Voto Stratfy (PO) em bloco: **opção (a)** — implementar mínimo na Sub-fase 1.11:
 
 - **Migration V013** com 5 tabelas (`customer_accounts`, `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections`)
 - Endpoint read-only `GET /meetings/{id}` expande retorno com `customerConfidence` quando presente

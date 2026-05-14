@@ -5,7 +5,7 @@
 > Use este doc quando:
 > - Você é novo no projeto (humano ou Claude) e bate em termo desconhecido
 > - Está escrevendo doc/ADR/spec e precisa de termo canônico
-> - Está discutindo com Anthony/Arquitetos e quer alinhar vocabulário
+> - Está discutindo com a Stratfy (PO) / Arquitetos e quer alinhar vocabulário
 
 ---
 
@@ -110,7 +110,7 @@ Submetido via `PUT /meetings/{id}/goal`. ADR 0005.
 
 Internal-only — só backend Spring fala com ele. Hosted em `nora-worker-dev` (Container App internal).
 
-**Negative list** — Lista de termos que **não** devem ser redigidos pelo PII Shield mesmo que pareçam nomes (e.g., "Anthony" é nome próprio mas no contexto técnico do código não redige; "Apolo" também tá na lista negative). ~80 termos catalogados pra reduzir false positives. ADR 0012.
+**Negative list** — Lista de termos que **não** devem ser redigidos pelo PII Shield mesmo que pareçam nomes (e.g., "Apolo" parece nome próprio mas é referência mitológica/comum no contexto técnico; nomes próprios de membros da equipe que aparecem em commits e comentários idem). ~80 termos catalogados pra reduzir false positives. ADR 0012.
 
 ## O
 

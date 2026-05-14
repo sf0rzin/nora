@@ -84,7 +84,7 @@ ADR 0016 documenta a escolha.
 
 **Plano (Sub-fase 1.12):**
 
-1. **Alertas críticos** (Azure Monitor) wired pra email do Anthony (e webhook Slack futuro):
+1. **Alertas críticos** (Azure Monitor) wired pra email do contato técnico da Stratfy (e webhook Slack futuro):
    - API Container App: `/actuator/health` non-200 por >2min
    - Postgres: connection failures >10/min ou CPU >80% sustained 5min
    - Container Apps: scale-up failed (replica retries >3)
@@ -108,7 +108,7 @@ ADR 0016 documenta a escolha.
 
 - **Não há política formalizada** de data retention (quanto tempo guarda meeting transcripts? Análises?)
 - **Não há endpoint** "Direito ao esquecimento" (DELETE cascade por user_id ou tenant_id)
-- **Não há DPO designado** (mesmo que seja Anthony, precisa estar declarado)
+- **Não há DPO declarado formalmente** (mesmo que seja um membro da Stratfy, precisa estar declarado em `SECURITY.md` — LGPD exige pessoa física identificável)
 - **Não há `docs/security/lgpd-operations.md`** com runbook de incidente
 
 **Gap:** sem isso, NORA não pode operar comercialmente atendendo clientes Enterprise no Brasil (TOTVS, etc.) — LGPD requer.
@@ -163,7 +163,7 @@ ADR 0016 documenta a escolha.
 - `postgres-password` — gerado random na criação do SP
 - `jwt-secret` — gerado random
 - `openai-api-key` — vazio (worker em modo stub default)
-- `azure-speech-key` — vindo de `speech.listKeys().key1` (mudaria se Anthony rotacionar manualmente)
+- `azure-speech-key` — vindo de `speech.listKeys().key1` (mudaria se membro da Stratfy rotacionar manualmente)
 
 **Gap:** nenhum dos 4 tem **schedule de rotação** automatizado. Em prod, isso é exigência mínima de segurança.
 
@@ -173,7 +173,7 @@ ADR 0016 documenta a escolha.
 |---|---|---|
 | `postgres-password` | A cada 90 dias | Script: gera new password, `ALTER USER ... PASSWORD`, atualiza KV secret, força Container Apps a puxar nova versão (revision restart) |
 | `jwt-secret` | A cada 180 dias | Atualiza KV secret + grace period 24h pra refresh tokens válidos persistirem (precisa logic de "JWT secret rotation com keyId" — design futuro) |
-| `openai-api-key` | Quando Anthony rotacionar manualmente no OpenAI dashboard | Atualiza KV secret + restart api/worker |
+| `openai-api-key` | Quando rotacionada manualmente no OpenAI dashboard pela Stratfy | Atualiza KV secret + restart api/worker |
 | `azure-speech-key` | A cada 90 dias | `az cognitiveservices account keys regenerate` + atualiza KV secret + restart api |
 
 Workflow dedicado `.github/workflows/rotate-secrets.yml` com cron mensal pode automatizar parte.

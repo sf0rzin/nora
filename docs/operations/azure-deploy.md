@@ -363,7 +363,7 @@ az keyvault secret list --vault-name nora-kv-dev-wgl3a3
 az keyvault secret show --vault-name nora-kv-dev-wgl3a3 --name postgres-password --query value -o tsv
 ```
 
-Requer role `Key Vault Secrets Officer` (CRUD) ou `Key Vault Secrets User` (read-only). Anthony já tem Officer.
+Requer role `Key Vault Secrets Officer` (CRUD) ou `Key Vault Secrets User` (read-only). O Service Principal da Stratfy (`sp-nora-github-deploy`) já tem Officer.
 
 ### Conectar Postgres
 

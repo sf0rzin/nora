@@ -2,7 +2,7 @@
 
 - Status: aceito
 - Data: 2026-05-12
-- Decisores: Anthony Sforzin (PO) + Claude Opus 4.7 (Tech Lead)
+- Decisores: Stratfy (PO) + Claude Opus 4.7 (Tech Lead)
 
 ## Contexto
 
@@ -124,4 +124,4 @@ Quando trigger condition for atingida:
 
 | Data | Decisor | Mudança |
 |---|---|---|
-| 2026-05-12 | Anthony + Claude | ADR criado e aceito |
+| 2026-05-12 | Stratfy + Claude | ADR criado e aceito |

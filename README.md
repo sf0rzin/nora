@@ -128,7 +128,7 @@ make help
 
 ## Como Contribuir
 
-NORA é projeto **operado por Anthony Sforzin (PO) + múltiplos arquitetos Claude**. Colaboração externa é bem-vinda dentro do escopo declarado (ver `docs/product/roadmap.md`).
+NORA é projeto **operado pela equipe Stratfy (PO) + múltiplos arquitetos Claude**. Colaboração externa é bem-vinda dentro do escopo declarado (ver `docs/product/roadmap.md`).
 
 1. Leia o ADR relacionado em `docs/adr/` antes de propor mudança arquitetural
 2. Branches: `feat/sub-X.Y-<slug>` (sub-fase do roadmap), `feat/usZZ-<slug>` (user story), `fix/<slug>` (hotfix), `docs/<slug>` (doc-only), `chore/<slug>` (limpeza)
@@ -148,4 +148,4 @@ Reporte vulnerabilidades via e-mail (não issue público). Detalhes em [`SECURIT
 
 [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0) — ver ADR 0017.
 
-Anthony Sforzin mantém copyright. Dual-licensing comercial disponível mediante contato.
+A equipe Stratfy mantém copyright (atribuído individualmente aos membros conforme git history). Dual-licensing comercial disponível mediante contato.

@@ -2,7 +2,7 @@
 
 - Status: aceito
 - Data: 2026-05-14
-- Decisores: Anthony Sforzin (PO), Tech Lead, Arquiteto Design
+- Decisores: Stratfy (PO), Tech Lead, Arquiteto Design
 - Substitui parcialmente: ADR 0006 (Customer Confidence + Account Health) — escopo Account Health adiado
 
 ## Contexto
@@ -93,4 +93,4 @@ Sub-fase 1.11 (Demo Polish Plano A), branch `feat/sub-1.11-customer-confidence-m
 
 | Data | Decisor | Mudança |
 |---|---|---|
-| 2026-05-14 | Joint (PO + Tech Lead + Arquiteto Design) | ADR criado. Voto Tech Lead + Design pra (a) implementa mínimo; Anthony confirmou em bloco |
+| 2026-05-14 | Joint (PO + Tech Lead + Arquiteto Design) | ADR criado. Voto Tech Lead + Design pra (a) implementa mínimo; Stratfy (PO) confirmou em bloco |

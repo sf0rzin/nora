@@ -2,9 +2,9 @@
 
 ## Contexto
 
-NORA é o projeto desenvolvido por **Anthony Sforzin** (matriculado no curso de Engenharia de Software na FIAP) no contexto do **FIAP Challenge 2026**, em parceria com a TOTVS S.A.
+NORA é o projeto desenvolvido pela equipe **Stratfy** (matriculada no curso de Engenharia de Software na FIAP) no contexto do **FIAP Challenge 2026**, em parceria com a TOTVS S.A.
 
-**Diferencial deste projeto:** NORA é construído como **produto comercial real**, não apenas como entrega acadêmica. A rubrica FIAP é tratada como **um dos múltiplos compromissos** que o produto cumpre — paralelo à possibilidade de entrega comercial via TOTVS (Plano A do PO) e à eventual operação como SaaS independente (Plano B).
+**Diferencial deste projeto:** NORA é construído como **produto comercial real**, não apenas como entrega acadêmica. A rubrica FIAP é tratada como **um dos múltiplos compromissos** que o produto cumpre — paralelo à possibilidade de entrega comercial via TOTVS (Plano A da Stratfy) e à eventual operação como SaaS independente (Plano B).
 
 Esta página documenta:
 
@@ -55,21 +55,21 @@ NORA entrega elementos que vão além da rubrica acadêmica típica:
 | **Pitch FIAP / NEXT 2026** | **2026-06-12** | **Sub-fase 1.11 (Demo Polish) entrega o material** |
 | Entrega final FIAP | ?? não conferido | Sub-fases 1.11 + 1.12 cobrem |
 
-## Equipe
+## Equipe Stratfy
 
-- **Anthony Sforzin (sys0xFF)** — desenvolvimento solo + arquitetura + PO
-- **Gabriel Maciel (@pollotherunner)** — colaborador externo no Desktop app (Tauri + sidecar Python)
-- **Múltiplos Claude rodando skill `arquiteto-nora`** — assistentes técnicos (Tech Lead, Arquiteto Design) operando sob direção do Anthony
+- **Stratfy** — equipe responsável pelo NORA (PO + arquitetura técnica + operação). Coordenação via GitHub organização/handle `sys0xFF`. Membros listados como contribuidores no git history.
+- **Gabriel Maciel (@pollotherunner)** — colaborador externo no Desktop app (Tauri + sidecar Python). Escopo isolado, fora do core SaaS.
+- **Múltiplos Claude rodando skill `arquiteto-nora`** — assistentes técnicos (Tech Lead, Arquiteto Design) operando sob direção da equipe Stratfy.
 
-> Para detalhes sobre a divisão e coordenação multi-arquiteto Claude, ver `Claude/50-coordenacao-arquitetos/00-papeis.md` no vault Obsidian privado do PO.
+> Para detalhes sobre a divisão e coordenação multi-arquiteto Claude, ver `Claude/50-coordenacao-arquitetos/00-papeis.md` no vault Obsidian privado da equipe.
 
 ## Por que NORA é mais que um trabalho acadêmico
 
-Anthony tem **3 planos de carreira** explicitamente declarados:
+A Stratfy trabalha com **3 cenários estratégicos pra NORA pós-pitch**:
 
-- **Plano A** — TOTVS contrata vendo NORA na demo (parceria FIAP × TOTVS, NORA passa de portfolio a oferta concreta de emprego)
-- **Plano B** — SaaS comercial (longo prazo, com co-founder de negócio)
-- **Plano C** — LinkedIn / portfolio técnico (material já existe agora, pronto pra publicação)
+- **Plano A** — TOTVS contrata vendo NORA na demo (parceria FIAP × TOTVS, NORA passa de portfolio a oferta concreta de contratação/parceria institucional)
+- **Plano B** — SaaS comercial operado pela própria Stratfy (longo prazo, com co-founder de negócio se necessário)
+- **Plano C** — Portfolio técnico / posicionamento profissional dos membros (material já existe agora, pronto pra publicação)
 
 A rubrica FIAP é a **camada acadêmica visível**; o produto comercial roda em paralelo como código real, deployado, monetizável.
 

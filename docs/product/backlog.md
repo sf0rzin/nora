@@ -187,7 +187,7 @@ Trabalho que não estava no MoSCoW original mas entrou via sub-fases ou decisão
 
 ## 5. Decisão "Deferir Pós-MVP" — ADR 0014
 
-> Aprovada em bloco por Anthony em 2026-05-14. Esta decisão fecha 14 US como **Won't Have v1** com critério de reativação documentado.
+> Aprovada em bloco pela Stratfy em 2026-05-14. Esta decisão fecha 14 US como **Won't Have v1** com critério de reativação documentado.
 
 **Critério geral:** as 14 US abaixo são adiadas pra liberar foco em Sub-fase 1.11 (Demo Polish Plano A) e 1.12 (Production Hardening). Nenhuma bloqueia o pitch FIAP × TOTVS (12/06/2026) nem o Plano A imediato.
 

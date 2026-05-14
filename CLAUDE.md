@@ -34,9 +34,9 @@ Pra contexto acadêmico (FIAP Challenge):
 
 ## Operating multiple architects
 
-NORA is operated by **Anthony (PO) + multiple Claude instances** running the `arquiteto-nora` skill. Each architect has a declared specialization (Tech Lead, Design, etc.) and a dedicated folder in the Obsidian vault.
+NORA is operated by the **Stratfy team (PO) + multiple Claude instances** running the `arquiteto-nora` skill. Each architect has a declared specialization (Tech Lead, Design, etc.) and a dedicated folder in the Obsidian vault.
 
-Cross-architect coordination happens **async via the Obsidian vault** at `Claude/50-coordenacao-arquitetos/`. Anthony is always CC.
+Cross-architect coordination happens **async via the Obsidian vault** at `Claude/50-coordenacao-arquitetos/`. The Stratfy team (PO) is always CC.
 
 See `Claude/50-coordenacao-arquitetos/00-papeis.md` (Obsidian vault) for current roles and `Claude/50-coordenacao-arquitetos/CURRENT-STATE.md` for active PRs / blockers.
 
@@ -102,7 +102,7 @@ Pra tarefas grandes, divida em fatias implementáveis paralelas. Use a skill `ar
 1. **Entender** (ler `MEMORY.md` + `CURRENT-STATE.md` + docs relevantes)
 2. **Decidir** (apresentar 1-3 abordagens + recomendar)
 3. **Quebrar** em fatias despacháveis (independentes ou sequenciais declaradas)
-4. **Pedir autorização** ao Anthony antes de dispatchar subagent que escreve código
+4. **Pedir autorização** à Stratfy (PO) antes de dispatchar subagent que escreve código
 5. **Dispatchar** com brief autocontido (`Agent` tool)
 6. **Revisar** o diff (não confiar no resumo)
 7. **Documentar** no Obsidian + atualizar memory + sugerir ADR se decisão durável faltou registro

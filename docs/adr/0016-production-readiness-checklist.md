@@ -2,7 +2,7 @@
 
 - Status: proposto (aceita formalmente na Sub-fase 1.12 quando implementação começa)
 - Data: 2026-05-14
-- Decisores: Tech Lead (Anthony aprova plano antes de execução em 1.12)
+- Decisores: Tech Lead (Stratfy aprova plano antes de execução em 1.12)
 
 ## Contexto
 
@@ -40,7 +40,7 @@ Escolha entre 3 estratégias (decidida na 1.12):
 - Drill 1x/trimestre em ambiente espelho, documentado em `docs/operations/disaster-recovery-runbook.md`
 
 ### Gap 4 — Monitoring + alerting wired
-- **Alertas Azure Monitor → email Anthony + Slack futuro:**
+- **Alertas Azure Monitor → email do contato técnico da Stratfy + Slack futuro:**
   - API `/actuator/health` non-200 por >2min
   - Postgres connection failures >10/min ou CPU >80% sustained 5min
   - Container Apps scale-up failed
