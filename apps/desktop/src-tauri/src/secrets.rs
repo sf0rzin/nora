@@ -6,6 +6,7 @@ use tauri::State;
 
 const ALLOWED_KEYS: &[&str] = &[
     "access-token",
+    "refresh-token",
     "current-user",
 ];
 
