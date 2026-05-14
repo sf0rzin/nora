@@ -2,8 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { refreshAccessToken, logout } from "./auth";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
-
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
 interface ProxyResponse {
@@ -19,7 +17,6 @@ interface RequestOptions {
 }
 
 class ApiClient {
-  private baseUrl: string;
   private onUnauthorized: (() => void) | null = null;
   private cachedUser: unknown = null;
   private refreshing = false;
@@ -29,10 +26,6 @@ class ApiClient {
     path: string;
     options: RequestOptions;
   }> = [];
-
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl;
-  }
 
   on401(callback: () => void) {
     this.onUnauthorized = callback;
@@ -47,7 +40,7 @@ class ApiClient {
     };
 
     const payload = {
-      url: `${this.baseUrl}${path}`,
+      path,
       method,
       headers: allHeaders,
       body: body ?? null,
@@ -144,4 +137,4 @@ class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient(API_BASE_URL);
+export const apiClient = new ApiClient();
