@@ -161,20 +161,29 @@ mod platform {
 mod platform {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
-    use windows::core::{Interface, GUID};
-    use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
+    use windows::core::GUID;
+    use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
     use windows::Win32::Media::Audio::{
-        eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator,
+        eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDevice, IMMDeviceEnumerator,
         MMDeviceEnumerator, AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED,
         AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, WAVEFORMATEX,
-        WAVEFORMATEXTENSIBLE, WAVE_FORMAT_EXTENSIBLE, WAVE_FORMAT_IEEE_FLOAT,
-        WAVE_FORMAT_PCM,
+        WAVEFORMATEXTENSIBLE,
     };
+    use windows::Win32::Media::Multimedia::{WAVE_FORMAT_EXTENSIBLE, WAVE_FORMAT_IEEE_FLOAT, WAVE_FORMAT_PCM};
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize,
         CLSCTX_ALL, COINIT_MULTITHREADED,
     };
     use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
+
+    // KSDATAFORMAT_SUBTYPE_IEEE_FLOAT — definido manualmente pois não está exportado
+    // diretamente pelo windows crate v0.62
+    const KSDATAFORMAT_SUBTYPE_IEEE_FLOAT: GUID = GUID::from_values(
+        0x00000003,
+        0x0000,
+        0x0010,
+        [0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71],
+    );
 
     pub fn find_system_audio_source() -> Option<String> {
         Some("wasapi_loopback".to_string())
@@ -231,7 +240,7 @@ mod platform {
         let enumerator: IMMDeviceEnumerator =
             CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
         let device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole)?;
-        let audio_client: IAudioClient = device.Activate(CLSCTX_ALL, None)?;
+        let audio_client: IAudioClient = device.Activate(CLSCTX_ALL)?;
 
         let mix_format_ptr = audio_client.GetMixFormat()?;
         let mix_format = &*mix_format_ptr;

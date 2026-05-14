@@ -22,6 +22,8 @@ pub fn set_stealth_mode(
 
     #[cfg(target_os = "windows")]
     {
+        use tauri::{Manager, WebviewWindow};
+
         #[cfg(debug_assertions)]
         eprintln!("[stealth_mode] set_stealth_mode called, enabled={}", enabled);
 
