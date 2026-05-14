@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::secrets::SecretStore;
-use crate::stealth_mode::{set_stealth_for_window, StealthModeState};
 
 pub type LiveHighlightsState = Arc<Mutex<Option<LiveHighlights>>>;
 
@@ -216,28 +215,11 @@ fn parse_highlights_from_response(value: &serde_json::Value) -> LiveHighlights {
 }
 
 #[tauri::command]
-pub fn toggle_overlay(
-    app_handle: AppHandle,
-    stealth_state: State<'_, StealthModeState>,
-    show: bool,
-) -> Result<(), String> {
+pub fn toggle_overlay(app_handle: AppHandle, show: bool) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("overlay") {
         if show {
             let _ = window.show();
             let _ = window.set_focus();
-
-            // Aplica stealth mode na overlay se estiver ativo,
-            // pois a overlay pode não ter tido handle nativo disponível
-            // quando o stealth foi ativado (estava hidden).
-            let stealth_enabled = stealth_state.lock().map_err(|e| e.to_string())?;
-            if *stealth_enabled {
-                #[cfg(debug_assertions)]
-                eprintln!("[toggle_overlay] applying stealth mode to overlay after show");
-                if let Err(e) = set_stealth_for_window(&window, true) {
-                    #[cfg(debug_assertions)]
-                    eprintln!("[toggle_overlay] failed to apply stealth to overlay: {}", e);
-                }
-            }
         } else {
             let _ = window.hide();
         }

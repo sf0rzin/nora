@@ -7,8 +7,10 @@ export function SettingsPage() {
   const { user } = useAuth();
   const [cleanupDone, setCleanupDone] = useState(false);
   const [stealthMode, setStealthMode] = useState(false);
-  const [stealthError, setStealthError] = useState<string | null>(null);
-  const [isApplyingStealth, setIsApplyingStealth] = useState(false);
+  const [platform, setPlatform] = useState<string | null>(null);
+
+  const isWindows = platform === "windows";
+  const isSupported = isWindows;
 
   useEffect(() => {
     (async () => {
@@ -26,11 +28,15 @@ export function SettingsPage() {
         }
         setCleanupDone(true);
 
-        // Load stealth mode state
-        console.log("[settings] loading stealth mode state...");
-        const saved = await invoke<boolean>("get_stealth_mode");
-        console.log("[settings] stealth mode loaded:", saved);
-        setStealthMode(saved);
+        // Detect platform
+        const prereq = await invoke<{ platform: string }>("check_system_audio_prerequisites");
+        setPlatform(prereq.platform);
+
+        // Load stealth mode state (only relevant on Windows)
+        if (prereq.platform === "windows") {
+          const saved = await invoke<boolean>("get_stealth_mode");
+          setStealthMode(saved);
+        }
       } catch (e) {
         console.error("[settings] failed to initialize settings:", e);
       }
@@ -38,24 +44,12 @@ export function SettingsPage() {
   }, []);
 
   const handleStealthToggle = async (enabled: boolean) => {
-    console.log("[settings] handleStealthToggle called, enabled=", enabled);
-    setStealthError(null);
-    setIsApplyingStealth(true);
-
-    // Optimistic update — checkbox muda imediatamente na UI
-    setStealthMode(enabled);
-
+    if (!isSupported) return;
     try {
       await invoke("set_stealth_mode", { enabled });
-      console.log("[settings] set_stealth_mode succeeded");
+      setStealthMode(enabled);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error("[settings] failed to set stealth mode:", msg);
-      setStealthError(msg);
-      // Reverte o estado otimista em caso de erro
-      setStealthMode(!enabled);
-    } finally {
-      setIsApplyingStealth(false);
+      console.error("[settings] failed to set stealth mode:", e);
     }
   };
 
@@ -96,27 +90,29 @@ export function SettingsPage() {
                 id="stealth-mode-checkbox"
                 type="checkbox"
                 checked={stealthMode}
-                disabled={isApplyingStealth}
-                onChange={(e) => {
-                  console.log("[settings] onChange fired, checked=", e.target.checked);
-                  handleStealthToggle(e.target.checked);
-                }}
+                disabled={!isSupported}
+                onChange={(e) => handleStealthToggle(e.target.checked)}
                 className="w-4 h-4 mt-0.5 rounded border-zinc-600 bg-zinc-700 text-blue-500 focus:ring-blue-500/20 disabled:opacity-50"
               />
-              <label htmlFor="stealth-mode-checkbox" className="flex-1 cursor-pointer">
+              <label htmlFor="stealth-mode-checkbox" className="flex-1">
                 <span className="text-sm text-zinc-200 font-medium block">
                   Modo Stealth
-                  {isApplyingStealth && (
-                    <span className="ml-2 inline-block w-3 h-3 border-2 border-zinc-500 border-t-zinc-300 rounded-full animate-spin align-middle" />
+                  {!isSupported && (
+                    <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-700 text-zinc-400 border border-zinc-600">
+                      Windows only
+                    </span>
                   )}
                 </span>
-                <span className="text-xs text-zinc-400">
-                  Oculta o NORA Desktop e a overlay de capturas de tela, OBS e compartilhamento de tela.
-                  No Windows usa proteção nativa do sistema; no Linux aplica flags de janela para reduzir visibilidade.
-                </span>
-                {stealthError && (
-                  <span className="text-xs text-red-400 mt-1 block">
-                    Erro: {stealthError}
+                {isSupported ? (
+                  <span className="text-xs text-zinc-400">
+                    Oculta o NORA Desktop e a overlay de capturas de tela, OBS e compartilhamento de tela.
+                    Usa a API nativa do Windows (<code>SetWindowDisplayAffinity</code>).
+                  </span>
+                ) : (
+                  <span className="text-xs text-zinc-500">
+                    O modo Stealth usa uma API exclusiva do Windows (<code>SetWindowDisplayAffinity</code>).
+                    No Linux e macOS, o display server não oferece um mecanismo padronizado para uma aplicação
+                    se auto-excluir de capturas de tela. Alternativa: minimize a janela do NORA durante o compartilhamento.
                   </span>
                 )}
               </label>
