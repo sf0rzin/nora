@@ -84,7 +84,10 @@ pub fn set_stealth_for_window(window: &WebviewWindow, enabled: bool) -> Result<(
         SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
     };
 
-    let hwnd = window.hwnd().map_err(|e| format!("Failed to get HWND: {}", e))?;
+    let hwnd_raw = window.hwnd().map_err(|e| format!("Failed to get HWND: {}", e))?;
+    // Tauri depende do windows 0.61; nosso Cargo.toml usa 0.62.
+    // Reconstruímos o HWND da versão correta a partir do ponteiro bruto.
+    let hwnd = windows::Win32::Foundation::HWND(hwnd_raw.0);
 
     unsafe {
         SetWindowDisplayAffinity(

@@ -164,7 +164,7 @@ mod platform {
     use windows::core::GUID;
     use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
     use windows::Win32::Media::Audio::{
-        eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDevice, IMMDeviceEnumerator,
+        eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator,
         MMDeviceEnumerator, AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED,
         AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, WAVEFORMATEX,
         WAVEFORMATEXTENSIBLE,
@@ -310,7 +310,9 @@ mod platform {
         if fmt.wFormatTag as u32 == WAVE_FORMAT_IEEE_FLOAT { return true; }
         if fmt.wFormatTag as u32 == WAVE_FORMAT_EXTENSIBLE && fmt.cbSize >= 22 {
             let ext = &*(fmt as *const _ as *const WAVEFORMATEXTENSIBLE);
-            return ext.SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+            // WAVEFORMATEXTENSIBLE é packed; acesso a SubFormat precisa ser unaligned
+            let subformat = std::ptr::addr_of!(ext.SubFormat).read_unaligned();
+            return subformat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
         }
         false
     }
