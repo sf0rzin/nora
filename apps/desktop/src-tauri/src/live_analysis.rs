@@ -70,8 +70,7 @@ pub async fn analyze_live(
         .map_err(|e| format!("Failed to get access token: {}", e))?
         .ok_or("Not authenticated. Please login first.")?;
 
-    let backend_url = std::env::var("NORA_API_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let backend_url = crate::api_base_url();
 
     let mut body = serde_json::json!({
         "transcriptChunk": request.transcript_chunk,

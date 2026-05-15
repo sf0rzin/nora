@@ -16,34 +16,42 @@ mod system_audio;
 use commands::CaptureState;
 use live_analysis::LiveHighlightsState;
 use stealth_mode::StealthModeState;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::Manager;
 
 pub type SidecarState = Arc<Mutex<Vec<stt_sidecar::SidecarHandle>>>;
 
+/// Lê a URL base da API do tauri.conf.json (compile-time).
+/// O campo deve estar em `plugins.nora.apiBaseUrl`.
+pub fn api_base_url() -> String {
+    static URL: OnceLock<String> = OnceLock::new();
+    URL.get_or_init(|| {
+        const CONFIG_JSON: &str = include_str!("../tauri.conf.json");
+        let config: serde_json::Value =
+            serde_json::from_str(CONFIG_JSON).expect("invalid tauri.conf.json");
+        config
+            .get("plugins")
+            .and_then(|p| p.get("nora"))
+            .and_then(|n| n.get("apiBaseUrl"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("http://localhost:8080")
+            .to_string()
+    })
+    .clone()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Carrega .env.local (prioridade) e .env (fallback) a partir do
-    // diretório do projeto desktop (um nível acima de src-tauri).
-    if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
-        let project_root = std::path::Path::new(&manifest)
-            .parent()
-            .unwrap_or(std::path::Path::new("."));
-        dotenvy::from_filename(project_root.join(".env.local")).ok();
-        dotenvy::from_filename(project_root.join(".env")).ok();
-    }
-
     let capture_state: CaptureState = Arc::new(Mutex::new(audio_capture::AudioCapture::new()));
     let sidecar_state: SidecarState = Arc::new(Mutex::new(Vec::new()));
     let live_state: LiveHighlightsState = Arc::new(Mutex::new(None));
     let stealth_state: StealthModeState = Arc::new(Mutex::new(false));
 
-    let api_base_url = std::env::var("NORA_API_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let api_base_url = api_base_url();
     #[cfg(debug_assertions)]
-    eprintln!("[nora] NORA_API_BASE_URL={}", api_base_url);
+    eprintln!("[nora] api_base_url={}", api_base_url);
     let base_url = url::Url::parse(&api_base_url)
-        .expect("Invalid NORA_API_BASE_URL");
+        .expect("Invalid apiBaseUrl in tauri.conf.json");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
