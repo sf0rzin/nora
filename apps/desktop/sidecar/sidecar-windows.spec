@@ -15,7 +15,7 @@ project_root = Path(SPECPATH).parent
 src_path = project_root / "src"
 sys.path.insert(0, str(src_path))
 
-from PyInstaller.utils.hooks import collect_dynamic_libs, collect_data_files
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_data_files, collect_all
 
 # Collect all native libraries from azure-cognitiveservices.speech
 azure_binaries = collect_dynamic_libs('azure.cognitiveservices.speech')
@@ -23,13 +23,22 @@ azure_binaries = collect_dynamic_libs('azure.cognitiveservices.speech')
 # Collect data files if any
 azure_datas = collect_data_files('azure.cognitiveservices.speech')
 
+# Collect entire pydantic/pydantic_core packages (C extensions + submodules)
+pydantic_binaries, pydantic_datas, pydantic_hiddenimports = collect_all('pydantic')
+pydantic_core_binaries, pydantic_core_datas, pydantic_core_hiddenimports = collect_all('pydantic_core')
+
+# Merge collected assets
+all_binaries = azure_binaries + pydantic_binaries + pydantic_core_binaries
+all_datas = azure_datas + pydantic_datas + pydantic_core_datas
+all_hiddenimports = pydantic_hiddenimports + pydantic_core_hiddenimports
+
 block_cipher = None
 
 a = Analysis(
     ['src/nora_stt_sidecar/__main__.py'],
     pathex=[str(src_path)],
-    binaries=azure_binaries,
-    datas=azure_datas,
+    binaries=all_binaries,
+    datas=all_datas,
     hiddenimports=[
         'nora_stt_sidecar.logging_setup',
         'nora_stt_sidecar.protocol',
@@ -40,12 +49,7 @@ a = Analysis(
         'azure.cognitiveservices.speech.audio',
         'azure.cognitiveservices.speech.transcription',
         'azure.cognitiveservices.speech.interop',
-        'pydantic',
-        'pydantic_core',
-        'pydantic.deprecated.decorator',
-        'typing_extensions',
-        'annotated_types',
-    ],
+    ] + all_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
