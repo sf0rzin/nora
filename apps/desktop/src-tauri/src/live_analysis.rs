@@ -82,8 +82,15 @@ pub async fn analyze_live(
     });
 
     if let Some(prev) = &request.previous_highlights {
-        body.as_object_mut()
-            .map(|o| o.insert("previousHighlights".to_string(), serde_json::to_value(prev).unwrap()));
+        match serde_json::to_value(prev) {
+            Ok(value) => {
+                body.as_object_mut()
+                    .map(|o| o.insert("previousHighlights".to_string(), value));
+            }
+            Err(e) => {
+                eprintln!("[live_analysis] failed to serialize previousHighlights: {}", e);
+            }
+        }
     }
 
     let start = std::time::Instant::now();

@@ -27,8 +27,13 @@ pub fn api_base_url() -> String {
     static URL: OnceLock<String> = OnceLock::new();
     URL.get_or_init(|| {
         const CONFIG_JSON: &str = include_str!("../tauri.conf.json");
-        let config: serde_json::Value =
-            serde_json::from_str(CONFIG_JSON).expect("invalid tauri.conf.json");
+        let config: serde_json::Value = match serde_json::from_str(CONFIG_JSON) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[nora] failed to parse tauri.conf.json: {}, using default", e);
+                return "http://localhost:8080".to_string();
+            }
+        };
         config
             .get("plugins")
             .and_then(|p| p.get("nora"))
