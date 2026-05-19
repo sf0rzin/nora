@@ -9,6 +9,19 @@ pub struct SpeechTokenResponse {
     pub expires_at: String,
 }
 
+impl SpeechTokenResponse {
+    /// Calcula quantos segundos faltam até a expiração, com buffer de 60s de segurança.
+    /// Retorna None se não conseguir parsear expires_at.
+    pub fn ttl_seconds(&self) -> Option<u64> {
+        let expires = chrono::DateTime::parse_from_rfc3339(&self.expires_at).ok()?;
+        let now = chrono::Utc::now();
+        let diff = expires.with_timezone(&chrono::Utc) - now;
+        let secs = diff.num_seconds().max(0) as u64;
+        // Buffer de 60s para evitar race condition
+        Some(secs.saturating_sub(60))
+    }
+}
+
 pub async fn fetch_speech_token(
     backend_base_url: &str,
     access_token: &str,

@@ -48,7 +48,13 @@ impl MonoResampler {
         let mut out = Vec::new();
         while self.leftover.len() >= chunk {
             let block: Vec<f32> = self.leftover.drain(..chunk).collect();
-            let input_buf = InterleavedOwned::new_from(block, 1, chunk).unwrap();
+            let input_buf = match InterleavedOwned::new_from(block, 1, chunk) {
+                Ok(buf) => buf,
+                Err(e) => {
+                    eprintln!("[audio_resample] InterleavedOwned::new_from failed: {}", e);
+                    break;
+                }
+            };
             let mut output_buf = InterleavedOwned::new(0.0f32, 1, resampler.output_frames_next());
             match resampler.process_into_buffer(
                 &input_buf,
