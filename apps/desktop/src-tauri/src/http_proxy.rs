@@ -25,7 +25,7 @@ fn http_client() -> &'static Client {
 
 #[derive(Deserialize)]
 pub struct ProxyRequest {
-    pub url: String,
+    pub path: String,
     pub method: Option<String>,
     pub headers: Option<HashMap<String, String>>,
     pub body: Option<serde_json::Value>,
@@ -44,18 +44,15 @@ pub async fn http_proxy(
     base_url: tauri::State<'_, ApiBaseUrl>,
     secrets: tauri::State<'_, SecretStore>,
 ) -> Result<ProxyResponse, String> {
+    let target = base_url.0.join(&req.path)
+        .map_err(|e| format!("invalid path: {}", e))?;
+
     #[cfg(debug_assertions)]
-    eprintln!("[http_proxy] {} {}", req.method.as_deref().unwrap_or("GET"), req.url);
-
-    let target = url::Url::parse(&req.url)
-        .map_err(|e| format!("invalid url: {}", e))?;
-
-    if target.scheme() != base_url.0.scheme()
-        || target.host_str() != base_url.0.host_str()
-        || target.port_or_known_default() != base_url.0.port_or_known_default()
-    {
-        return Err("URL não permitida pelo proxy".into());
-    }
+    eprintln!(
+        "[http_proxy] {} {}",
+        req.method.as_deref().unwrap_or("GET"),
+        target
+    );
 
     let mut clean_headers: HashMap<String, String> = HashMap::new();
     for (k, v) in req.headers.unwrap_or_default() {
