@@ -10,31 +10,55 @@ mod speech_token;
 mod stt_sidecar;
 #[cfg(test)]
 mod stt_sidecar_test;
+mod stealth_mode;
 mod system_audio;
 
 use commands::CaptureState;
 use live_analysis::LiveHighlightsState;
-use std::sync::{Arc, Mutex};
+use stealth_mode::StealthModeState;
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::Manager;
 
 pub type SidecarState = Arc<Mutex<Vec<stt_sidecar::SidecarHandle>>>;
+
+/// Lê a URL base da API do tauri.conf.json (compile-time).
+/// O campo deve estar em `plugins.nora.apiBaseUrl`.
+pub fn api_base_url() -> String {
+    static URL: OnceLock<String> = OnceLock::new();
+    URL.get_or_init(|| {
+        const CONFIG_JSON: &str = include_str!("../tauri.conf.json");
+        let config: serde_json::Value =
+            serde_json::from_str(CONFIG_JSON).expect("invalid tauri.conf.json");
+        config
+            .get("plugins")
+            .and_then(|p| p.get("nora"))
+            .and_then(|n| n.get("apiBaseUrl"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("http://localhost:8080")
+            .to_string()
+    })
+    .clone()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let capture_state: CaptureState = Arc::new(Mutex::new(audio_capture::AudioCapture::new()));
     let sidecar_state: SidecarState = Arc::new(Mutex::new(Vec::new()));
     let live_state: LiveHighlightsState = Arc::new(Mutex::new(None));
+    let stealth_state: StealthModeState = Arc::new(Mutex::new(false));
 
-    let api_base_url = std::env::var("NORA_API_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let api_base_url = api_base_url();
+    #[cfg(debug_assertions)]
+    eprintln!("[nora] api_base_url={}", api_base_url);
     let base_url = url::Url::parse(&api_base_url)
-        .expect("Invalid NORA_API_BASE_URL");
+        .expect("Invalid apiBaseUrl in tauri.conf.json");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(capture_state)
         .manage(sidecar_state)
         .manage(live_state)
+        .manage(stealth_state)
         .manage(http_proxy::ApiBaseUrl(base_url))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
@@ -69,6 +93,8 @@ pub fn run() {
             live_analysis::clear_live_highlights,
             live_analysis::get_overlay_position,
             live_analysis::set_overlay_position,
+            stealth_mode::set_stealth_mode,
+            stealth_mode::get_stealth_mode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
