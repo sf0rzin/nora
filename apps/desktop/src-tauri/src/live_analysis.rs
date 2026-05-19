@@ -3,6 +3,10 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::secrets::SecretStore;
+use crate::stealth_mode::StealthModeState;
+
+#[cfg(target_os = "windows")]
+use crate::stealth_mode::set_stealth_for_window;
 
 pub type LiveHighlightsState = Arc<Mutex<Option<LiveHighlights>>>;
 
@@ -70,8 +74,7 @@ pub async fn analyze_live(
         .map_err(|e| format!("Failed to get access token: {}", e))?
         .ok_or("Not authenticated. Please login first.")?;
 
-    let backend_url = std::env::var("NORA_API_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let backend_url = crate::api_base_url();
 
     let mut body = serde_json::json!({
         "transcriptChunk": request.transcript_chunk,
@@ -215,11 +218,27 @@ fn parse_highlights_from_response(value: &serde_json::Value) -> LiveHighlights {
 }
 
 #[tauri::command]
-pub fn toggle_overlay(app_handle: AppHandle, show: bool) -> Result<(), String> {
+#[allow(unused_variables)]
+pub fn toggle_overlay(
+    app_handle: AppHandle,
+    state: State<'_, StealthModeState>,
+    show: bool,
+) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("overlay") {
         if show {
             let _ = window.show();
             let _ = window.set_focus();
+
+            // Se stealth mode estiver ativo, aplicar na overlay agora que ela ficou visível
+            #[cfg(target_os = "windows")]
+            {
+                let stealth_enabled = state.lock().map_err(|e| e.to_string())?;
+                if *stealth_enabled {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[toggle_overlay] applying stealth to newly visible overlay");
+                    let _ = set_stealth_for_window(&window, true);
+                }
+            }
         } else {
             let _ = window.hide();
         }
