@@ -161,34 +161,22 @@ mod platform {
 mod platform {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
-    use windows::core::GUID;
     use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
     use windows::Win32::Media::Audio::{
         eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator,
         MMDeviceEnumerator, AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED,
         AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, WAVEFORMATEX,
-        WAVEFORMATEXTENSIBLE,
+        WAVEFORMATEXTENSIBLE, WAVE_FORMAT_PCM,
+    };
+    use windows::Win32::Media::KernelStreaming::WAVE_FORMAT_EXTENSIBLE;
+    use windows::Win32::Media::Multimedia::{
+        KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, WAVE_FORMAT_IEEE_FLOAT,
     };
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize,
         CLSCTX_ALL, COINIT_MULTITHREADED,
     };
     use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
-
-    // Constantes WAVE_FORMAT_* — definidas manualmente pois não estão exportadas
-    // pelo windows crate v0.62
-    const WAVE_FORMAT_PCM: u32 = 0x0001;
-    const WAVE_FORMAT_IEEE_FLOAT: u32 = 0x0003;
-    const WAVE_FORMAT_EXTENSIBLE: u32 = 0xFFFE;
-
-    // KSDATAFORMAT_SUBTYPE_IEEE_FLOAT — definido manualmente pois não está exportado
-    // diretamente pelo windows crate v0.62
-    const KSDATAFORMAT_SUBTYPE_IEEE_FLOAT: GUID = GUID::from_values(
-        0x00000003,
-        0x0000,
-        0x0010,
-        [0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71],
-    );
 
     pub fn find_system_audio_source() -> Option<String> {
         Some("wasapi_loopback".to_string())
