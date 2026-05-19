@@ -36,19 +36,68 @@ impl Drop for SidecarHandle {
     }
 }
 
-fn sidecar_binary_name() -> String {
+fn sidecar_binary_name() -> Option<String> {
     let arch = std::env::consts::ARCH; // x86_64, aarch64, etc.
-    if cfg!(target_os = "windows") {
-        format!("nora-stt-sidecar-{}-pc-windows-msvc.exe", arch)
-    } else if cfg!(target_os = "macos") {
-        format!("nora-stt-sidecar-{}-apple-darwin", arch)
-    } else {
-        format!("nora-stt-sidecar-{}-unknown-linux-gnu", arch)
+    let os = std::env::consts::OS;     // windows, macos, linux
+    let ext = if cfg!(target_os = "windows") { ".exe" } else { "" };
+    
+    // Tenta nomes conhecidos (msvc, gnu, darwin, musl)
+    let candidates: Vec<String> = match os {
+        "windows" => vec![
+            format!("nora-stt-sidecar-{}-pc-windows-msvc{}", arch, ext),
+            format!("nora-stt-sidecar-{}-pc-windows-gnu{}", arch, ext),
+        ],
+        "macos" => vec![
+            format!("nora-stt-sidecar-{}-apple-darwin{}", arch, ext),
+        ],
+        _ => vec![
+            format!("nora-stt-sidecar-{}-unknown-linux-gnu{}", arch, ext),
+            format!("nora-stt-sidecar-{}-unknown-linux-musl{}", arch, ext),
+        ],
+    };
+    
+    // 1. Check NORA_SIDECAR_PATH env var (highest priority)
+    if let Ok(path) = std::env::var("NORA_SIDECAR_PATH") {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return Some(p.file_name()?.to_string_lossy().to_string());
+        }
     }
+    
+    // 2. Relative to executable (packaged app)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let binaries_dir = exe_dir.join("binaries");
+            if let Ok(entries) = std::fs::read_dir(&binaries_dir) {
+                for entry in entries.flatten() {
+                    let fname = entry.file_name().to_string_lossy().to_string();
+                    if fname.starts_with("nora-stt-sidecar-") && fname.ends_with(ext) {
+                        return Some(fname);
+                    }
+                }
+            }
+        }
+    }
+    
+    // 3. Relative to Rust source tree (dev mode)
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let binaries_dir = PathBuf::from(&manifest_dir).join("binaries");
+        if let Ok(entries) = std::fs::read_dir(&binaries_dir) {
+            for entry in entries.flatten() {
+                let fname = entry.file_name().to_string_lossy().to_string();
+                if fname.starts_with("nora-stt-sidecar-") && fname.ends_with(ext) {
+                    return Some(fname);
+                }
+            }
+        }
+    }
+    
+    // Fallback: primeiro nome da lista de candidatos (mesmo que não exista ainda)
+    candidates.into_iter().next()
 }
 
 fn resolve_sidecar_binary() -> Option<PathBuf> {
-    let name = sidecar_binary_name();
+    let name = sidecar_binary_name()?;
 
     // 1. Check NORA_SIDECAR_PATH env var (highest priority)
     if let Ok(path) = std::env::var("NORA_SIDECAR_PATH") {
@@ -171,10 +220,16 @@ async fn spawn_refresh_loop(
     access_token: String,
     region: String,
     mut cancel_rx: oneshot::Receiver<()>,
+    initial_ttl_secs: Option<u64>,
 ) {
-    // Refresh every 5 minutes (300 seconds)
-    // Azure tokens last 10 minutes, we refresh at 5 to have a 5-minute buffer
-    let refresh_interval = tokio::time::Duration::from_secs(300);
+    // Calcula intervalo de refresh baseado no TTL do token.
+    // Azure tokens duram ~10 min; usamos min(TTL - 60s_buffer, 300s_max).
+    // Se não soubermos o TTL, fallback para 5 minutos.
+    let compute_interval = |ttl: Option<u64>| -> tokio::time::Duration {
+        let secs = ttl.map(|t| t.min(300)).unwrap_or(300);
+        tokio::time::Duration::from_secs(secs.max(30)) // mínimo 30s para não spammar
+    };
+    let mut refresh_interval = compute_interval(initial_ttl_secs);
     
     #[cfg(debug_assertions)]
     eprintln!("[stt_sidecar] refresh loop started for session {}", session_id);
@@ -197,6 +252,12 @@ async fn spawn_refresh_loop(
                 loop {
                     match fetch_speech_token(&backend_url, &access_token, Some(&region)).await {
                         Ok(token_response) => {
+                            // Atualiza intervalo de refresh baseado no TTL real do token
+                            let new_ttl = token_response.ttl_seconds();
+                            refresh_interval = compute_interval(new_ttl);
+                            #[cfg(debug_assertions)]
+                            eprintln!("[stt_sidecar] next refresh in {:?} (TTL: {:?})", refresh_interval, new_ttl);
+
                             let refresh_msg = serde_json::json!({
                                 "v": 1,
                                 "type": "refresh_token",
@@ -312,6 +373,7 @@ async fn run_sidecar(
         access_token,
         region.clone(),
         refresh_cancel_rx,
+        None, // TTL inicial desconhecido; será calculado no primeiro refresh
     ));
 
     // Writer task
