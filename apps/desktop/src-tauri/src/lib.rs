@@ -73,11 +73,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let config_dir = app
-                .path()
-                .app_config_dir()
-                .expect("failed to resolve app config dir");
-            app.manage(secrets::SecretStore::new(config_dir));
+            app.manage(secrets::SecretStore::new());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
