@@ -74,7 +74,7 @@ O NORA não está mais em fase de scaffolding nem de Sprint 1+2 puro de document
 - Pipeline LLM agnóstico (ADR 0004): default OpenAI `gpt-4o-mini`, schema strict via `response_format=json_schema`
 - Cobertura: worker NLP 87% (54 testes), backend Spring 67% (174 testes), web Next.js 0% (sem runner — débito pra 1.12)
 
-12 ADRs aceitos (0001–0012) documentam as decisões duráveis. **Customer Confidence (ADR 0006) tem schema LLM completo mas ainda não tem persistência nem endpoint** — decisão de implementar mínimo pra demo TOTVS está pendente (ADR 0015 a criar na Sub-fase 1.11).
+18 ADRs (0001–0018; ADRs 0013 e 0016 ainda em estado *Proposto* aguardando refino de design / Sub-fase 1.12) documentam as decisões duráveis. **Customer Confidence (ADR 0006) tem schema LLM completo mas ainda não tem persistência nem endpoint** — decisão de implementar mínimo pra Sub-fase 1.11 formalizada em **ADR 0015** (aceito 2026-05-14).
 
 Pra entender o estado anterior (Sprint 1+2 documentação) consulte o histórico do documento no fim deste arquivo e o `docs/product/roadmap.md`.
 

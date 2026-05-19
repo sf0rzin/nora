@@ -91,6 +91,7 @@ public class GlobalExceptionHandler {
                             HttpStatus.UNAUTHORIZED;
                     case "USER_DISABLED" -> HttpStatus.FORBIDDEN;
                     case "TOKEN_INVALID" -> HttpStatus.BAD_REQUEST;
+                    case "RATE_LIMITED" -> HttpStatus.TOO_MANY_REQUESTS;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)
