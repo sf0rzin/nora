@@ -314,6 +314,35 @@ class AuthServiceTest {
     }
 
     @Test
+    void resetPasswordRevokesAllActiveRefreshTokens() {
+        // Regression: confirmPasswordReset DEVE invalidar todos os refresh tokens ativos.
+        // Sem isso, atacante com refresh roubado mantem sessao por 30 dias apos a vitima
+        // resetar a senha. OWASP recommendation.
+        SignupResult sr =
+                service.signup(new SignupCommand("revoke@nora.dev", "SenhaForte123", "Revoke"));
+        service.verifyEmail(sr.emailVerificationDevToken());
+
+        var loginA = service.login(new LoginCommand("revoke@nora.dev", "SenhaForte123"));
+        var loginB = service.login(new LoginCommand("revoke@nora.dev", "SenhaForte123"));
+
+        // Ambas sessoes funcionam antes do reset.
+        var r1 = service.refresh(loginA.refreshTokenPlain());
+        var r2 = service.refresh(loginB.refreshTokenPlain());
+        assertThat(r1.user().id()).isEqualTo(sr.userId());
+        assertThat(r2.user().id()).isEqualTo(sr.userId());
+
+        var req = service.requestPasswordReset(new RequestPasswordResetCommand("revoke@nora.dev"));
+        service.confirmPasswordReset(
+                new ConfirmPasswordResetCommand(req.devToken(), "NovaSenha456"));
+
+        // Refresh tokens antigos deixam de funcionar.
+        assertThatThrownBy(() -> service.refresh(loginA.refreshTokenPlain()))
+                .isInstanceOf(AuthException.RefreshTokenInvalid.class);
+        assertThatThrownBy(() -> service.refresh(loginB.refreshTokenPlain()))
+                .isInstanceOf(AuthException.RefreshTokenInvalid.class);
+    }
+
+    @Test
     void requestingNewResetInvalidatesPreviousTokens() {
         SignupResult sr = service.signup(new SignupCommand("two@nora.dev", "SenhaForte123", "TW"));
         service.verifyEmail(sr.emailVerificationDevToken());
