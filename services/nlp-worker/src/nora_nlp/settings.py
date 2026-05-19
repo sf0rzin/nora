@@ -7,6 +7,8 @@ Chat Completions da OpenAI funciona apontando ``LLM_BASE_URL``. Default no MVP
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -19,6 +21,10 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        # populate_by_name=True permite instanciar Settings(llm_provider="x")
+        # alem de Settings(LLM_PROVIDER="x"). Sem isso, kwargs lower_snake_case
+        # eram silenciosamente ignorados (defaults coincidiam por sorte).
+        populate_by_name=True,
     )
 
     worker_port: int = Field(default=8001, alias="WORKER_PORT")
@@ -34,6 +40,12 @@ class Settings(BaseSettings):
     use_llm_stub: bool = Field(default=True, alias="USE_LLM_STUB")
 
 
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Factory para uso em dependency injection do FastAPI."""
+    """Factory cacheada para dependency injection do FastAPI.
+
+    `@lru_cache` evita re-parsing do .env a cada request (sem cache, era I/O
+    em todo `Depends(get_settings)`). Em tests, chamar `get_settings.cache_clear()`
+    apos mutar env vars.
+    """
     return Settings()

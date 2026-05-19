@@ -27,12 +27,21 @@ logger = logging.getLogger(__name__)
 class LlmClient:
     """Wrapper sobre a SDK OpenAI com base_url plugável."""
 
+    # Timeout total para uma chamada LLM. SDK default e 600s (10min) — em
+    # provider lento isso pendurava o worker por 10 minutos por request.
+    # 60s cobre p99 de gpt-4o-mini com prompts de ate ~10K tokens.
+    _LLM_TIMEOUT_SECONDS = 60.0
+
     def __init__(self, settings: Settings) -> None:
         if not settings.llm_api_key:
             raise ValueError("LLM_API_KEY é obrigatória quando USE_LLM_STUB=false.")
         self._client = OpenAI(
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,
+            timeout=self._LLM_TIMEOUT_SECONDS,
+            # max_retries=2 cobre falhas transitorias (429/5xx) com backoff
+            # exponencial da SDK. Caller continua tratando excecao final.
+            max_retries=2,
         )
         self._model = settings.llm_model
         self._provider = settings.llm_provider
