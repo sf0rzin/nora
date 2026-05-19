@@ -37,6 +37,9 @@ param postgresAdminLogin = 'nora_admin'
 param postgresAdminPassword = readEnvironmentVariable('PG_ADMIN_PASSWORD')
 param jwtSecret = readEnvironmentVariable('JWT_SECRET')
 param openAiApiKey = readEnvironmentVariable('OPENAI_API_KEY', '')
+// Se vazio, backend usa LogEmailSender em dev (logs em vez de email real).
+param resendApiKey = readEnvironmentVariable('RESEND_API_KEY', '')
+param noraEmailFrom = readEnvironmentVariable('NORA_EMAIL_FROM', 'NORA <onboarding@resend.dev>')
 
 // ---- Imagens ----
 // Imagens reais publicadas pelo workflow `build-images.yml` no GHCR público.
