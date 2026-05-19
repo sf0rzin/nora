@@ -10,8 +10,9 @@ COMPOSE := docker compose -f infra/docker/docker-compose.yml --env-file .env.loc
 # (Windows usa .venv/Scripts/python.exe; Unix usa .venv/bin/python).
 WORKER_VENV := $(CURDIR)/services/nlp-worker/.venv
 WORKER_PYTHON_RESOLVE := if [ -x "$(WORKER_VENV)/Scripts/python.exe" ]; then echo "$(WORKER_VENV)/Scripts/python.exe"; else echo "$(WORKER_VENV)/bin/python"; fi
-# Python do sistema usado para criar o venv (override: make ... PYTHON=python3.12)
-PYTHON ?= python
+# Python do sistema usado para criar o venv. Default `python3` (Ubuntu 22+/macOS 14+
+# nao tem mais o symlink `python`). Override: `make ... PYTHON=python3.12`.
+PYTHON ?= python3
 
 .PHONY: help
 help: ## Lista os comandos disponíveis
@@ -25,6 +26,7 @@ env: ## Cria .env.local em raiz e em cada serviço a partir dos exemplos
 	@[ -f services/api/.env.local ] || cp services/api/.env.example services/api/.env.local
 	@[ -f services/nlp-worker/.env.local ] || cp services/nlp-worker/.env.example services/nlp-worker/.env.local
 	@[ -f apps/web/.env.local ] || cp apps/web/.env.example apps/web/.env.local
+	@[ -f apps/desktop/.env.local ] || cp apps/desktop/.env.example apps/desktop/.env.local
 	@echo "OK — .env.local criados (revisar antes de usar em produção)."
 
 # --- Infra local ---
@@ -160,16 +162,16 @@ web-test: ## Roda os testes do web
 # --- Qualidade ---
 
 .PHONY: lint
-lint: ## Roda lint em todos os pacotes
-	cd apps/web && npm run lint || true
-	cd services/nlp-worker && ruff check . || true
-	cd services/api && mvn spotless:check || true
+lint: ## Roda lint em todos os pacotes (falha se algum lintar com erros)
+	cd apps/web && npm run lint
+	cd services/nlp-worker && ruff check .
+	cd services/api && mvn spotless:check
 
 .PHONY: format
-format: ## Formata todos os pacotes
-	cd apps/web && npm run format || true
-	cd services/nlp-worker && ruff format . || true
-	cd services/api && mvn spotless:apply || true
+format: ## Formata todos os pacotes (modifica arquivos)
+	cd apps/web && npm run format
+	cd services/nlp-worker && ruff format .
+	cd services/api && mvn spotless:apply
 
 .PHONY: test
 test: api-test worker-test web-test ## Roda toda a bateria de testes

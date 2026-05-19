@@ -6,12 +6,14 @@ Use these instructions for all coding work in this repository.
 
 NORA is a production-minded FIAP Challenge 2026 project: a conversational intelligence SaaS that transforms meeting transcripts into summaries, decisions, action items and business insights using tenant-specific product/company context.
 
-Always read and respect:
+Always read and respect (estrutura nova pós-Sub-fase 1.10):
 
 - `CLAUDE.md`
-- `docs/PROJECT.md`
-- `docs/development-standards.md`
-- `docs/backlog-mvp.md`
+- `docs/product/vision.md` (produto + fronteiras)
+- `docs/product/backlog.md` (US tracking + MoSCoW)
+- `docs/engineering/architecture.md` (arquitetura end-to-end)
+- `docs/engineering/standards.md` (convenções de código)
+- `docs/adr/` (decisões duráveis — imutáveis)
 
 ## MVP Boundary
 
@@ -32,8 +34,8 @@ Treat Desktop real-time capture, SSO, full MCP integrations, audio/video upload 
 
 ## Documentation Rules
 
-- Product decisions go in `docs/PROJECT.md`.
-- Engineering standards go in `docs/development-standards.md`.
-- Durable architecture decisions go in `docs/adr/` when that folder exists.
-- Backlog/user-story changes go in `docs/backlog-mvp.md`.
+- Product decisions go in `docs/product/vision.md`.
+- Engineering standards go in `docs/engineering/standards.md`.
+- Durable architecture decisions go in `docs/adr/` (immutable once accepted — create successor ADR to amend).
+- Backlog/user-story changes go in `docs/product/backlog.md`.
 - Prompt templates belong inside the NLP worker source tree, not scattered in docs.
