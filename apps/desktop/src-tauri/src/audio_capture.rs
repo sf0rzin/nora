@@ -138,21 +138,50 @@ impl AudioCapture {
                 let device_name = device_name.clone();
                 move || {
                     let host = cpal::default_host();
+
                     let device = match &device_name {
                         Some(name) => {
-                            host.input_devices()
-                                .unwrap()
-                                .find(|d| d.name().map(|n| &n == name).unwrap_or(false))
-                                .unwrap()
+                            let mut devices = match host.input_devices() {
+                                Ok(d) => d,
+                                Err(e) => {
+                                    eprintln!("[audio] failed to list input devices: {}", e);
+                                    return;
+                                }
+                            };
+                            match devices.find(|d| d.name().map(|n| &n == name).unwrap_or(false)) {
+                                Some(d) => d,
+                                None => {
+                                    eprintln!("[audio] input device '{}' not found", name);
+                                    return;
+                                }
+                            }
                         }
-                        None => host.default_input_device().unwrap(),
+                        None => match host.default_input_device() {
+                            Some(d) => d,
+                            None => {
+                                eprintln!("[audio] no default input device available");
+                                return;
+                            }
+                        },
                     };
 
-                    let config = AudioCapture::find_best_config(&device).unwrap();
+                    let config = match AudioCapture::find_best_config(&device) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("[audio] failed to find best config: {}", e);
+                            return;
+                        }
+                    };
                     let sr = config.sample_rate.0;
                     let ch = config.channels;
 
-                    let mut resampler = MonoResampler::new(sr, 16000).unwrap();
+                    let mut resampler = match MonoResampler::new(sr, 16000) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            eprintln!("[audio] failed to create resampler: {}", e);
+                            return;
+                        }
+                    };
 
                     let chunk_size = (sr as usize / 10) * ch as usize;
                     let mic_buf: Arc<Mutex<Vec<f32>>> =
@@ -160,33 +189,40 @@ impl AudioCapture {
                     let mic_buf_clone = mic_buf.clone();
 
                     let stop_flag_stream = stop_flag_thread.clone();
-                    let stream = device
-                        .build_input_stream(
-                            &config,
-                            move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                                if !stop_flag_stream.load(Ordering::SeqCst) {
-                                    return;
+                    let stream = match device.build_input_stream(
+                        &config,
+                        move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                            if !stop_flag_stream.load(Ordering::SeqCst) {
+                                return;
+                            }
+                            if let Ok(mut b) = mic_buf_clone.lock() {
+                                b.extend_from_slice(data);
+                                if b.len() >= chunk_size {
+                                    let chunk: Vec<f32> = b.drain(..chunk_size).collect();
+                                    let mono = downmix_to_mono(&chunk, ch as usize);
+                                    let resampled = resampler.process(&mono);
+                                    let i16_samples = f32_to_i16(&resampled);
+                                    let _ = mic_tx.try_send(i16_samples);
                                 }
-                                if let Ok(mut b) = mic_buf_clone.lock() {
-                                    b.extend_from_slice(data);
-                                    if b.len() >= chunk_size {
-                                        let chunk: Vec<f32> = b.drain(..chunk_size).collect();
-                                        let mono = downmix_to_mono(&chunk, ch as usize);
-                                        let resampled = resampler.process(&mono);
-                                        let i16_samples = f32_to_i16(&resampled);
-                                        let _ = mic_tx.try_send(i16_samples);
-                                    }
-                                }
-                            },
-                            |err| {
-                                #[cfg(debug_assertions)]
-                                eprintln!("[audio] mic stream error: {}", err)
-                            },
-                            None,
-                        )
-                        .unwrap();
+                            }
+                        },
+                        |err| {
+                            #[cfg(debug_assertions)]
+                            eprintln!("[audio] mic stream error: {}", err)
+                        },
+                        None,
+                    ) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("[audio] failed to build input stream: {}", e);
+                            return;
+                        }
+                    };
 
-                    stream.play().unwrap();
+                    if let Err(e) = stream.play() {
+                        eprintln!("[audio] failed to start stream: {}", e);
+                        return;
+                    }
 
                     // Keep thread alive until stop flag is set
                     while stop_flag_thread.load(Ordering::SeqCst) {
