@@ -61,7 +61,10 @@ pub async fn http_proxy(
         }
         clean_headers.insert(k, v);
     }
-    clean_headers.insert("Content-Type".into(), "application/json".into());
+    // Só força Content-Type se o frontend não enviou um
+    if !clean_headers.contains_key("Content-Type") {
+        clean_headers.insert("Content-Type".into(), "application/json".into());
+    }
 
     if req.auth.unwrap_or(true) {
         if let Ok(Some(token)) = secrets.get("access-token") {

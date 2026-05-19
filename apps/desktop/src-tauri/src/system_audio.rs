@@ -599,10 +599,4 @@ pub fn is_blackhole_installed() -> bool {
     platform::find_system_audio_source().is_some()
 }
 
-/// Sempre retorna false em plataformas não-macOS.
-#[cfg(not(target_os = "macos"))]
-pub fn is_blackhole_installed() -> bool {
-    false
-}
-
 pub use platform::{find_system_audio_source, SystemAudioCapture};
