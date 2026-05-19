@@ -19,17 +19,32 @@ import sys
 from pathlib import Path
 
 
+def _normalize_machine(machine: str) -> str:
+    """Mapeia platform.machine() → triple usado pelo Rust/Tauri."""
+    m = machine.lower()
+    if m in ("amd64", "x86_64"):
+        return "x86_64"
+    if m in ("arm64", "aarch64"):
+        return "aarch64"
+    return m
+
+
 def detect_target() -> tuple[str, str]:
-    """Detecta sistema e target triple do Tauri."""
+    """Detecta sistema e target triple do Tauri.
+
+    Sai com o nome batendo com o que `apps/desktop/src-tauri/src/stt_sidecar.rs`
+    constroi via `std::env::consts::ARCH` + `OS`. CI runners do GitHub Actions
+    em macos-latest sao ARM (aarch64) — o build NAO pode mais hardcodar x86_64.
+    """
     system = platform.system().lower()
-    machine = platform.machine().lower()
+    arch = _normalize_machine(platform.machine())
 
     if system == "linux":
-        return "linux", f"nora-stt-sidecar-{machine}-unknown-linux-gnu"
+        return "linux", f"nora-stt-sidecar-{arch}-unknown-linux-gnu"
     elif system == "windows":
-        return "windows", "nora-stt-sidecar-x86_64-pc-windows-msvc"
+        return "windows", f"nora-stt-sidecar-{arch}-pc-windows-msvc"
     elif system == "darwin":
-        return "macos", "nora-stt-sidecar-x86_64-apple-darwin"
+        return "macos", f"nora-stt-sidecar-{arch}-apple-darwin"
     else:
         raise RuntimeError(f"Sistema não suportado: {system}")
 

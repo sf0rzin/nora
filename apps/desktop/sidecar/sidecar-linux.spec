@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-PyInstaller spec file for NORA STT Sidecar (Windows).
+PyInstaller spec file for NORA STT Sidecar.
 
 This spec ensures all native libraries from azure-cognitiveservices-speech
 are properly bundled into the executable.
@@ -18,33 +18,32 @@ sys.path.insert(0, str(src_path))
 from PyInstaller.utils.hooks import collect_dynamic_libs, collect_data_files, collect_all
 import platform
 
-# Triple do Tauri/Rust (windows-latest pode evoluir pra ARM no futuro).
-_arch_map = {'x86_64': 'x86_64', 'amd64': 'x86_64', 'aarch64': 'aarch64', 'arm64': 'aarch64'}
-_arch = _arch_map.get(platform.machine().lower(), platform.machine().lower())
-_exe_name = f'nora-stt-sidecar-{_arch}-pc-windows-msvc'
-
-# Collect all native libraries from azure-cognitiveservices.speech
+# Collect all native libraries from azure-cognitiveservices-speech
 azure_binaries = collect_dynamic_libs('azure.cognitiveservices.speech')
 
 # Collect data files if any
 azure_datas = collect_data_files('azure.cognitiveservices.speech')
 
-# Collect entire pydantic/pydantic_core packages (C extensions + submodules)
-pydantic_binaries, pydantic_datas, pydantic_hiddenimports = collect_all('pydantic')
-pydantic_core_binaries, pydantic_core_datas, pydantic_core_hiddenimports = collect_all('pydantic_core')
+# Pydantic 2 tem pydantic_core como C extension. Sem collect_all, runtime quebra
+# com ModuleNotFoundError: pydantic_core._pydantic_core.
+pydantic_datas, pydantic_binaries, pydantic_hiddenimports = collect_all('pydantic')
+pydantic_core_datas, pydantic_core_binaries, pydantic_core_hiddenimports = collect_all('pydantic_core')
 
-# Merge collected assets
-all_binaries = azure_binaries + pydantic_binaries + pydantic_core_binaries
-all_datas = azure_datas + pydantic_datas + pydantic_core_datas
-all_hiddenimports = pydantic_hiddenimports + pydantic_core_hiddenimports
+bundled_binaries = azure_binaries + pydantic_binaries + pydantic_core_binaries
+bundled_datas = azure_datas + pydantic_datas + pydantic_core_datas
+
+# Triple do Tauri/Rust (alinhado com std::env::consts::ARCH/OS).
+_arch_map = {'x86_64': 'x86_64', 'amd64': 'x86_64', 'aarch64': 'aarch64', 'arm64': 'aarch64'}
+_arch = _arch_map.get(platform.machine().lower(), platform.machine().lower())
+_exe_name = f'nora-stt-sidecar-{_arch}-unknown-linux-gnu'
 
 block_cipher = None
 
 a = Analysis(
     ['src/nora_stt_sidecar/__main__.py'],
     pathex=[str(src_path)],
-    binaries=all_binaries,
-    datas=all_datas,
+    binaries=bundled_binaries,
+    datas=bundled_datas,
     hiddenimports=[
         'nora_stt_sidecar.logging_setup',
         'nora_stt_sidecar.protocol',
@@ -55,7 +54,7 @@ a = Analysis(
         'azure.cognitiveservices.speech.audio',
         'azure.cognitiveservices.speech.transcription',
         'azure.cognitiveservices.speech.interop',
-    ] + all_hiddenimports,
+    ] + pydantic_hiddenimports + pydantic_core_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

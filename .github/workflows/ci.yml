@@ -10,6 +10,11 @@ permissions:
   contents: read
   pull-requests: read
 
+# Cancela rodadas anteriores do mesmo PR/branch quando um novo commit chega.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -19,6 +24,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       docs: ${{ steps.filter.outputs.docs }}
       infra: ${{ steps.filter.outputs.infra }}
+      desktop: ${{ steps.filter.outputs.desktop }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -49,6 +55,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -67,6 +74,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.worker == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -97,6 +105,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -126,6 +135,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.desktop == 'true'
     strategy:
+      fail-fast: false
       matrix:
         include:
           - platform: ubuntu-latest
@@ -138,6 +148,7 @@ jobs:
             args: "--target aarch64-apple-darwin"
             sidecar_target: aarch64-apple-darwin
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -154,6 +165,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/desktop/sidecar/pyproject.toml
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -189,7 +202,7 @@ jobs:
         working-directory: apps/desktop/sidecar
         run: |
           python -m pip install pyinstaller
-          python build/build_sidecar.py
+          python build_sidecar.py
 
       - name: Build Tauri app
         working-directory: apps/desktop
@@ -213,6 +226,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: Validar JSON examples
@@ -233,6 +247,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Install Azure CLI + Bicep
