@@ -161,14 +161,16 @@ mod platform {
 mod platform {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
-    use windows::core::{Interface, GUID};
-    use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
+    use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
     use windows::Win32::Media::Audio::{
         eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator,
         MMDeviceEnumerator, AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED,
         AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, WAVEFORMATEX,
-        WAVEFORMATEXTENSIBLE, WAVE_FORMAT_EXTENSIBLE, WAVE_FORMAT_IEEE_FLOAT,
-        WAVE_FORMAT_PCM,
+        WAVEFORMATEXTENSIBLE, WAVE_FORMAT_PCM,
+    };
+    use windows::Win32::Media::KernelStreaming::WAVE_FORMAT_EXTENSIBLE;
+    use windows::Win32::Media::Multimedia::{
+        KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, WAVE_FORMAT_IEEE_FLOAT,
     };
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize,
@@ -296,7 +298,9 @@ mod platform {
         if fmt.wFormatTag as u32 == WAVE_FORMAT_IEEE_FLOAT { return true; }
         if fmt.wFormatTag as u32 == WAVE_FORMAT_EXTENSIBLE && fmt.cbSize >= 22 {
             let ext = &*(fmt as *const _ as *const WAVEFORMATEXTENSIBLE);
-            return ext.SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+            // WAVEFORMATEXTENSIBLE é packed; acesso a SubFormat precisa ser unaligned
+            let subformat = std::ptr::addr_of!(ext.SubFormat).read_unaligned();
+            return subformat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
         }
         false
     }

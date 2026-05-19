@@ -36,7 +36,20 @@ impl Drop for SidecarHandle {
     }
 }
 
+fn sidecar_binary_name() -> String {
+    let arch = std::env::consts::ARCH; // x86_64, aarch64, etc.
+    if cfg!(target_os = "windows") {
+        format!("nora-stt-sidecar-{}-pc-windows-msvc.exe", arch)
+    } else if cfg!(target_os = "macos") {
+        format!("nora-stt-sidecar-{}-apple-darwin", arch)
+    } else {
+        format!("nora-stt-sidecar-{}-unknown-linux-gnu", arch)
+    }
+}
+
 fn resolve_sidecar_binary() -> Option<PathBuf> {
+    let name = sidecar_binary_name();
+
     // 1. Check NORA_SIDECAR_PATH env var (highest priority)
     if let Ok(path) = std::env::var("NORA_SIDECAR_PATH") {
         let p = PathBuf::from(path);
@@ -46,13 +59,12 @@ fn resolve_sidecar_binary() -> Option<PathBuf> {
     }
 
     // 2. Relative to executable (packaged app):
-    //    <app-dir>/binaries/nora-stt-sidecar-x86_64-unknown-linux-gnu
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
             let candidates = [
-                exe_dir.join("binaries/nora-stt-sidecar-x86_64-unknown-linux-gnu"),
-                exe_dir.join("../binaries/nora-stt-sidecar-x86_64-unknown-linux-gnu"),
-                exe_dir.join("../../binaries/nora-stt-sidecar-x86_64-unknown-linux-gnu"),
+                exe_dir.join(format!("binaries/{}", &name)),
+                exe_dir.join(format!("../binaries/{}", &name)),
+                exe_dir.join(format!("../../binaries/{}", &name)),
             ];
             for candidate in candidates {
                 if candidate.exists() {
@@ -63,10 +75,9 @@ fn resolve_sidecar_binary() -> Option<PathBuf> {
     }
 
     // 3. Relative to the Rust source tree (dev mode):
-    //    src-tauri/binaries/nora-stt-sidecar-x86_64-unknown-linux-gnu
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
         let dev_binary = PathBuf::from(&manifest_dir)
-            .join("binaries/nora-stt-sidecar-x86_64-unknown-linux-gnu");
+            .join(format!("binaries/{}", &name));
         if dev_binary.exists() {
             return Some(dev_binary);
         }
