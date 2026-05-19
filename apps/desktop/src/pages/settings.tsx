@@ -14,8 +14,21 @@ export function SettingsPage() {
 
   useEffect(() => {
     (async () => {
+      // BLOCO 1: Detecção de plataforma + stealth mode (crítico)
       try {
-        // Migration: remove old azure-speech-key if exists
+        const prereq = await invoke<{ platform: string }>("check_system_audio_prerequisites");
+        setPlatform(prereq.platform);
+
+        if (prereq.platform === "windows") {
+          const saved = await invoke<boolean>("get_stealth_mode");
+          setStealthMode(saved);
+        }
+      } catch (e) {
+        console.error("[settings] platform detection failed:", e);
+      }
+
+      // BLOCO 2: Migração de secrets antigos (opcional — não quebra o app)
+      try {
         const hasOldKey = await secrets.has("azure-speech-key");
         if (hasOldKey) {
           await secrets.delete("azure-speech-key");
@@ -27,18 +40,9 @@ export function SettingsPage() {
           console.log("[settings] migrated: removed old azure-region");
         }
         setCleanupDone(true);
-
-        // Detect platform
-        const prereq = await invoke<{ platform: string }>("check_system_audio_prerequisites");
-        setPlatform(prereq.platform);
-
-        // Load stealth mode state (only relevant on Windows)
-        if (prereq.platform === "windows") {
-          const saved = await invoke<boolean>("get_stealth_mode");
-          setStealthMode(saved);
-        }
       } catch (e) {
-        console.error("[settings] failed to initialize settings:", e);
+        console.error("[settings] secret migration failed:", e);
+        setCleanupDone(true);
       }
     })();
   }, []);
