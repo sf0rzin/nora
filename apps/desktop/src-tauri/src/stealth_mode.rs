@@ -46,12 +46,26 @@ pub fn set_stealth_mode(
             set_stealth_for_window(&main, enabled)?;
         }
         if let Some(overlay) = app_handle.get_webview_window("overlay") {
-            #[cfg(debug_assertions)]
-            eprintln!("[stealth_mode] applying to overlay window");
-            // Overlay hidden pode não ter handle nativo ainda — ignoramos erro específico
-            if let Err(e) = set_stealth_for_window(&overlay, enabled) {
-                #[cfg(debug_assertions)]
-                eprintln!("[stealth_mode] overlay window error: {}", e);
+            // Só aplicamos stealth na overlay se ela estiver visível.
+            // Se estiver hidden, o hwnd() força criação do handle nativo e a janela
+            // aparece branca (bug reportado na VM Windows).
+            match overlay.is_visible() {
+                Ok(true) => {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[stealth_mode] applying to visible overlay window");
+                    if let Err(e) = set_stealth_for_window(&overlay, enabled) {
+                        #[cfg(debug_assertions)]
+                        eprintln!("[stealth_mode] overlay window error: {}", e);
+                    }
+                }
+                Ok(false) => {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[stealth_mode] overlay is hidden, skipping stealth apply");
+                }
+                Err(e) => {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[stealth_mode] failed to check overlay visibility: {}", e);
+                }
             }
         }
 
