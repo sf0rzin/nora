@@ -164,11 +164,51 @@ function useTranscriptPlayback(): PlaybackState {
   });
 
   useEffect(() => {
+    // Respeitar prefers-reduced-motion: usuario com sensibilidade vestibular ou
+    // monitor de baixa performance nao deve ver typing JS-driven. Renderiza
+    // estado final estatico (todas as deteccoes processadas) e retorna.
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) {
+      const detected: Detected[] = [];
+      let confidence = 0;
+      TRANSCRIPT.forEach((line, li) => {
+        line.marks.forEach((m) => {
+          detected.push({
+            id: `${li}-${m.match}`,
+            kind: m.kind,
+            match: m.match,
+            label: m.label,
+            line: li,
+          });
+          const delta =
+            m.kind === "buying"
+              ? 0.18
+              : m.kind === "objection" || m.kind === "competitor"
+                ? -0.1
+                : m.kind === "context"
+                  ? 0.08
+                  : -0.05;
+          confidence = Math.min(0.92, Math.max(0.3, confidence + delta));
+        });
+      });
+      const lastLine = TRANSCRIPT.length - 1;
+      setState({
+        lineIdx: lastLine,
+        charIdx: TRANSCRIPT[lastLine]?.text.length ?? 0,
+        detected,
+        confidence,
+      });
+      return;
+    }
+
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
 
     const wait = (ms: number): Promise<void> =>
       new Promise((resolve) => {
+        if (timeout) clearTimeout(timeout);
         timeout = setTimeout(resolve, ms);
       });
 
