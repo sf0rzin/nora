@@ -170,6 +170,11 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
           provenance: false
+          # NEXT_PUBLIC_* sao baked in build-time. Setar via NEXT_PUBLIC_API_BASE_URL aqui
+          # (override por workflow vars/secrets se for build pra ambiente diferente).
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'https://api.nora.app' }}
+            NEXT_PUBLIC_USE_MOCKS=false
 
   summary:
     needs: [api, worker, web]

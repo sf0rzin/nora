@@ -1,0 +1,22 @@
+# Defaults endurecidos para o profile prod. Bicep injeta SPRING_PROFILES_ACTIVE=prod.
+# Mantemos config aqui para que producao tenha defaults seguros mesmo se uma env var
+# falhar (fail-closed). JjwtJwtIssuer.java rejeita o placeholder publico de JWT_SECRET
+# fora dos profiles local/test.
+
+spring:
+  jpa:
+    show-sql: false
+    properties:
+      hibernate.format_sql: false
+
+nora:
+  security:
+    expose-dev-tokens: false
+  auth:
+    cookie-secure: true
+
+logging:
+  level:
+    root: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
