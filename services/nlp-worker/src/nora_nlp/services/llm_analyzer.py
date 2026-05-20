@@ -146,7 +146,7 @@ def analyze(
     glossary = ctx_dict.get("glossary") or []
     for g in glossary:
         if isinstance(g, dict):
-            for k in ("term", "definition"):
+            for k in ("term", "meaning"):
                 v = g.get(k)
                 if isinstance(v, str) and v:
                     g[k] = _shield_field(v, extra_redactions)
