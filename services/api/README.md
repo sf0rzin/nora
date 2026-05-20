@@ -35,7 +35,7 @@ src/main/java/br/com/nora/api/
   infrastructure/      # persistencia, seguranca, clients externos
 ```
 
-Regras detalhadas em `docs/development-standards.md`.
+Regras detalhadas em `docs/engineering/standards.md`.
 
 ## Endpoints disponiveis no esqueleto
 
@@ -45,4 +45,4 @@ Regras detalhadas em `docs/development-standards.md`.
 
 ## Multi-tenancy
 
-Toda nova entidade tenant-bound deve incluir `tenant_id`. Ver `docs/adr/0002-multi-tenancy.md` e `docs/data-model.md`.
+Toda nova entidade tenant-bound deve incluir `tenant_id`. Ver `docs/adr/0002-multi-tenancy.md` e `docs/engineering/data-model.md`.

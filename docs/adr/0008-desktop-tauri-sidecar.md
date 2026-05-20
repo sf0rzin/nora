@@ -1,7 +1,7 @@
 # 0008 — Desktop App com Tauri 2 + Sidecar Python
 
 - Status: aceito
-- Data: 2025-05-07
+- Data: 2026-05-07
 - Decisores: NORA Team
 
 ## Contexto

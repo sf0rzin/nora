@@ -6,7 +6,7 @@ Package Python compartilhado com baseline TF-IDF interpretavel para PT-BR.
 
 Implementacao unica do baseline NLP exigido por:
 
-- Plano academico (`docs/PROJECT.md` secao 5 — "Baseline interpretavel do worker NLP")
+- Plano academico (FIAP Challenge — `docs/challenge/fiap-challenge-2026.md` + ADR 0010)
 - Worker NLP em producao como step do pipeline pre-LLM
 
 Mesma logica, mesma lista de stopwords, mesmos hiperparametros — o numero

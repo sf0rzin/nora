@@ -74,9 +74,10 @@ NORA é operado pela equipe Stratfy durante MVP/Pilot. Em GA com >10 tenants, DP
 
 ## Tooling de segurança ativo
 
-- **Dependabot** habilitado pra dependências upstream (Java, Python, Node)
-- **JaCoCo + áreas IAM/Auth/PII >85% coverage** (ADR 0018) — regressões em segurança bloqueiam merge
+- **Dependabot** habilitado via `.github/dependabot.yml` — updates semanais agrupados por ecosystem (Maven, pip, npm, Cargo, GitHub Actions). Alerts via Security tab.
+- **JaCoCo + áreas IAM/Auth/PII** — meta ADR 0018 de >85% coverage. Hoje rodada manualmente; gate de CI bloqueando regressão está na Sub-fase 1.12 (ADR 0016 — production readiness).
 - **GitHub Secret Scanning** habilitado (default em repos públicos)
+- **GitHub Push Protection** — bloqueia commits com chaves detectadas (default em repos públicos com Secret Scanning).
 - **PII Shield** no worker como último gate antes de LLM (ADR 0012)
 
 ## Histórico
