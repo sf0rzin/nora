@@ -164,11 +164,15 @@ pub async fn start_recording(
         }
     }
 
-    // Bridge tasks are now owned by the async runtime and will keep running
-    // They will be dropped when the channels close (when recording stops)
-    tokio::spawn(mic_bridge);
+    // Bridge tasks ja foram spawnadas acima (mic_bridge / system_bridge sao
+    // JoinHandle de tokio::spawn). NAO chamamos `tokio::spawn(mic_bridge)` de
+    // novo — isso criaria uma segunda task que apenas faz await do JoinHandle
+    // e termina assim que o bridge termina, sem beneficio funcional.
+    // Mantemos os handles em escopo soltando-os via `let _ =` pra indicar
+    // intenco de fire-and-forget.
+    let _ = mic_bridge;
     if let Some(bridge) = system_bridge {
-        tokio::spawn(bridge);
+        let _ = bridge;
     }
 
     #[cfg(debug_assertions)]
