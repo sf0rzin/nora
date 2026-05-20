@@ -73,6 +73,13 @@ param openAiApiKey string = ''
 @description('Modelo OpenAI default usado pelo worker.')
 param openAiModel string = 'gpt-4o-mini'
 
+@description('Resend API Key. Se vazio, backend cai em LogEmailSender (dev). Vai pro KV (secret resend-api-key).')
+@secure()
+param resendApiKey string = ''
+
+@description('Email From usado pelo Resend (`Nome <email@dominio>`).')
+param noraEmailFrom string = 'NORA <onboarding@resend.dev>'
+
 // ============================================================
 // PARAMS — imagens
 // ============================================================
@@ -264,6 +271,10 @@ var keyVaultSecrets = {
         name: 'azure-speech-key'
         value: speech.outputs.key1
       }
+      {
+        name: 'resend-api-key'
+        value: empty(resendApiKey) ? 'unset' : resendApiKey
+      }
     ]
   )
 }
@@ -351,17 +362,23 @@ var webPublicUrl = 'https://${webPublicFqdn}'
 
 // ---- Worker NLP (internal ingress; api fala com ele) ----
 
+// Worker NLP consome LLM_* (ADR 0004). Bicep mantem secretRef chamado openai-api-key
+// para nao quebrar KV existente, mas a env exposta ao processo Python e LLM_API_KEY.
 var workerBaseEnv = [
   {
     name: 'USE_LLM_STUB'
     value: empty(openAiApiKey) ? 'true' : 'false'
   }
   {
-    name: 'OPENAI_API_KEY'
+    name: 'LLM_PROVIDER'
+    value: 'openai'
+  }
+  {
+    name: 'LLM_API_KEY'
     secretRef: 'openai-api-key'
   }
   {
-    name: 'OPENAI_MODEL'
+    name: 'LLM_MODEL'
     value: openAiModel
   }
   {
@@ -443,6 +460,11 @@ var apiSecrets = {
       {
         name: 'azure-speech-key'
         keyVaultUrl: '${kvUri}secrets/azure-speech-key'
+        identity: uaiApi.outputs.id
+      }
+      {
+        name: 'resend-api-key'
+        keyVaultUrl: '${kvUri}secrets/resend-api-key'
         identity: uaiApi.outputs.id
       }
     ],
@@ -544,6 +566,21 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'AUTH_COOKIE_SECURE'
         value: 'true'
       }
+      // Bloqueia signup/reset retornar tokens crus em prod
+      {
+        name: 'EXPOSE_DEV_TOKENS'
+        value: 'false'
+      }
+      // Email Resend — se RESEND_API_KEY estiver vazio, app cai em LogEmailSender.
+      // Em prod queremos o sender real; KV mantem o secret quando setado via bicepparam.
+      {
+        name: 'RESEND_API_KEY'
+        secretRef: 'resend-api-key'
+      }
+      {
+        name: 'NORA_EMAIL_FROM'
+        value: noraEmailFrom
+      }
     ]
     secretsObject: apiSecrets
     userAssignedIdentityId: uaiApi.outputs.id
@@ -578,8 +615,13 @@ module webApp 'modules/container-app.bicep' = {
     minReplicas: 0
     maxReplicas: 3
     envVars: [
+      // NOTA: NEXT_PUBLIC_* sao baked in build-time no bundle Next. O Dockerfile do web
+      // ja hardcoda NEXT_PUBLIC_USE_MOCKS=false. Aqui injetamos a URL em runtime apenas
+      // para casos onde o build receba a variavel como build-arg ARG no Dockerfile
+      // (necessario para que o bundle final aponte pra prod). Nome do contrato e
+      // NEXT_PUBLIC_API_BASE_URL (alinhado com apps/web/src/lib/api/client.ts).
       {
-        name: 'NEXT_PUBLIC_API_URL'
+        name: 'NEXT_PUBLIC_API_BASE_URL'
         value: apiPublicUrl
       }
       {
