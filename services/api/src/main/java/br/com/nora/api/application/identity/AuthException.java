@@ -7,7 +7,8 @@ public sealed class AuthException extends RuntimeException
                 AuthException.EmailNotVerified,
                 AuthException.TokenInvalid,
                 AuthException.RefreshTokenInvalid,
-                AuthException.UserDisabled {
+                AuthException.UserDisabled,
+                AuthException.RateLimited {
 
     private final String code;
 
@@ -59,5 +60,15 @@ public sealed class AuthException extends RuntimeException
         public UserDisabled() {
             super("USER_DISABLED", "User account is disabled.");
         }
+    }
+
+    public static final class RateLimited extends AuthException {
+        public RateLimited() {
+            super("RATE_LIMITED", "Too many requests. Try again in a few minutes.");
+        }
+    }
+
+    public static AuthException rateLimited() {
+        return new RateLimited();
     }
 }
