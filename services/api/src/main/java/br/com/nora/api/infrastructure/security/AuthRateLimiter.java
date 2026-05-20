@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -17,7 +18,9 @@ import org.springframework.stereotype.Component;
  * scale-out cap real = N×instances. Bom o suficiente pra MVP; migrar pra Redis quando rodar com
  * mais de 1 réplica permanente.
  *
- * <p>Limites baseados em postura padrão OWASP:
+ * <p>Limites baseados em postura padrão OWASP, configuráveis via properties para que testes
+ * integração (que rodam dezenas de logins do mesmo loopback no mesmo JVM) possam relaxar sem afetar
+ * produção.
  *
  * <ul>
  *   <li>Login: 10 / minuto por IP (humanidade real raramente erra 10x/min)
@@ -32,12 +35,27 @@ public class AuthRateLimiter {
     private final Map<String, Bucket> resetBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> signupBuckets = new ConcurrentHashMap<>();
 
+    private final long loginPerMinute;
+    private final long signupPerMinute;
+    private final long resetPer10Minutes;
+
+    public AuthRateLimiter(
+            @Value("${nora.security.rate-limit.login-per-minute:10}") long loginPerMinute,
+            @Value("${nora.security.rate-limit.signup-per-minute:5}") long signupPerMinute,
+            @Value("${nora.security.rate-limit.reset-per-10-minutes:3}") long resetPer10Minutes) {
+        this.loginPerMinute = loginPerMinute;
+        this.signupPerMinute = signupPerMinute;
+        this.resetPer10Minutes = resetPer10Minutes;
+    }
+
     public boolean allowLogin(HttpServletRequest request) {
-        return bucketFor(loginBuckets, clientKey(request), 10, Duration.ofMinutes(1)).tryConsume(1);
+        return bucketFor(loginBuckets, clientKey(request), loginPerMinute, Duration.ofMinutes(1))
+                .tryConsume(1);
     }
 
     public boolean allowSignup(HttpServletRequest request) {
-        return bucketFor(signupBuckets, clientKey(request), 5, Duration.ofMinutes(1)).tryConsume(1);
+        return bucketFor(signupBuckets, clientKey(request), signupPerMinute, Duration.ofMinutes(1))
+                .tryConsume(1);
     }
 
     public boolean allowPasswordReset(String email) {
@@ -45,7 +63,8 @@ public class AuthRateLimiter {
             return false;
         }
         String key = email.trim().toLowerCase(Locale.ROOT);
-        return bucketFor(resetBuckets, key, 3, Duration.ofMinutes(10)).tryConsume(1);
+        return bucketFor(resetBuckets, key, resetPer10Minutes, Duration.ofMinutes(10))
+                .tryConsume(1);
     }
 
     private Bucket bucketFor(
