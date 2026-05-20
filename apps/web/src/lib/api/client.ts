@@ -31,8 +31,36 @@ import meetingsListFixture from '@/fixtures/meetings-list-response.json';
 import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
 import { handleSessionExpired, scheduleRefresh } from '@/lib/auth';
 
-const USE_MOCKS = (process.env.NEXT_PUBLIC_USE_MOCKS ?? 'true') !== 'false';
+// Default deve ser 'false' em prod. Antes era 'true' → se a build esquecesse de
+// setar NEXT_PUBLIC_USE_MOCKS, prod servia fixtures hardcoded. Agora qualquer
+// build sem setar explicitamente vai contra a API real (que falha rápido se
+// estiver mal configurada — preferível a servir lixo).
+const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === 'true';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
+
+/**
+ * Em Server Components / Route Handlers, `fetch` NÃO propaga cookies httpOnly
+ * do browser automaticamente. Sem isso, qualquer fetch RSC (dashboard,
+ * meeting detail) vai sem auth → 401 → notFound() → 404 visível pro user.
+ *
+ * Este helper detecta SSR (typeof window === 'undefined') e usa `next/headers`
+ * dinamicamente para anexar o header `Cookie`. Em client, retorna {} (browser
+ * envia automaticamente com `credentials: 'include'`).
+ */
+async function serverCookieHeader(): Promise<Record<string, string>> {
+  if (typeof window !== 'undefined') return {};
+  try {
+    // Import dinâmico evita carregar next/headers em client bundles.
+    const { cookies } = await import('next/headers');
+    const all = cookies().getAll();
+    if (all.length === 0) return {};
+    const cookieStr = all.map((c) => `${c.name}=${c.value}`).join('; ');
+    return { Cookie: cookieStr };
+  } catch {
+    // Fora de contexto de request (build, scripts) — sem cookies.
+    return {};
+  }
+}
 
 export class ApiRequestError extends Error {
   readonly status: number;
@@ -90,8 +118,10 @@ async function performRefresh(): Promise<boolean> {
 }
 
 async function request<T>(path: string, init?: RequestOptions): Promise<T> {
+  const cookieHeader = await serverCookieHeader();
   const headers: Record<string, string> = {
     Accept: 'application/json',
+    ...cookieHeader,
     ...((init?.headers as Record<string, string>) ?? {}),
   };
   if (init?.body && !(init.body instanceof FormData) && !headers['Content-Type']) {
