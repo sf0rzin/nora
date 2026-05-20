@@ -1,5 +1,6 @@
 package br.com.nora.api.application.identity;
 
+import br.com.nora.api.application.ports.AuditPort;
 import br.com.nora.api.application.ports.Clock;
 import br.com.nora.api.application.ports.EmailSender;
 import br.com.nora.api.application.ports.JwtIssuer;
@@ -19,7 +20,9 @@ import br.com.nora.api.domain.identity.User;
 import br.com.nora.api.domain.tenant.Tenant;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,6 +54,7 @@ public class AuthService {
     private final SecureTokenGenerator tokenGenerator;
     private final JwtIssuer jwtIssuer;
     private final EmailSender emailSender;
+    private final AuditPort audit;
     private final Clock clock;
     private final AuthSettings settings;
 
@@ -63,6 +67,7 @@ public class AuthService {
             SecureTokenGenerator tokenGenerator,
             JwtIssuer jwtIssuer,
             EmailSender emailSender,
+            AuditPort audit,
             Clock clock,
             AuthSettings settings) {
         this.tenantRepository = tenantRepository;
@@ -73,6 +78,7 @@ public class AuthService {
         this.tokenGenerator = tokenGenerator;
         this.jwtIssuer = jwtIssuer;
         this.emailSender = emailSender;
+        this.audit = audit;
         this.clock = clock;
         this.settings = settings;
     }
@@ -138,6 +144,17 @@ public class AuthService {
         String link = settings.publicBaseUrl() + "/auth/verify-email?token=" + token.rawToken();
         emailSender.sendEmailVerification(email.value(), displayName, link);
 
+        Map<String, Object> auditPayload = new HashMap<>();
+        auditPayload.put("email", email.value());
+        auditPayload.put("flow", "signup-personal");
+        audit.record(
+                savedUser.tenantId(),
+                savedUser.id(),
+                "auth.user.signup",
+                "USER",
+                savedUser.id(),
+                auditPayload);
+
         return new SignupResult(
                 savedUser.id(),
                 savedUser.tenantId(),
@@ -179,6 +196,13 @@ public class AuthService {
         Instant now = clock.now();
         user.markEmailVerified(now);
         userRepository.save(user);
+        audit.record(
+                user.tenantId(),
+                user.id(),
+                "auth.email.verified",
+                "USER",
+                user.id(),
+                Map.of("email", user.email().value()));
     }
 
     // ----- US03: login -----
@@ -228,7 +252,15 @@ public class AuthService {
         if (!user.isEmailVerified()) {
             throw new AuthException.EmailNotVerified();
         }
-        return issueTokens(user);
+        LoginResult result = issueTokens(user);
+        audit.record(
+                user.tenantId(),
+                user.id(),
+                "auth.user.login",
+                "USER",
+                user.id(),
+                Map.of("email", user.email().value()));
+        return result;
     }
 
     /**
@@ -417,6 +449,14 @@ public class AuthService {
                 settings.publicBaseUrl() + "/auth/password/reset/confirm?token=" + token.rawToken();
         emailSender.sendPasswordReset(email.value(), user.displayName(), link);
 
+        audit.record(
+                user.tenantId(),
+                user.id(),
+                "auth.password.reset.requested",
+                "USER",
+                user.id(),
+                Map.of("email", user.email().value()));
+
         return new RequestPasswordResetResult(settings.exposeDevTokens() ? token.rawToken() : null);
     }
 
@@ -443,7 +483,14 @@ public class AuthService {
         userRepository.save(user);
         // Revoga todos os refresh tokens ativos: invalida sessoes em qualquer device
         // (vide docstring acima).
-        refreshTokenRepository.revokeAllByUserId(user.id(), now);
+        int revokedSessions = refreshTokenRepository.revokeAllByUserId(user.id(), now);
+        audit.record(
+                user.tenantId(),
+                user.id(),
+                "auth.password.reset",
+                "USER",
+                user.id(),
+                Map.of("email", user.email().value(), "revokedSessions", revokedSessions));
     }
 
     // ----- helpers -----
