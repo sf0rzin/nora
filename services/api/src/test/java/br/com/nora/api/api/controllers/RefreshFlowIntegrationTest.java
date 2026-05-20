@@ -127,27 +127,37 @@ class RefreshFlowIntegrationTest {
     }
 
     @Test
-    void refreshRotatesAccessButKeepsRefreshValid() throws Exception {
+    void refreshRotatesIssuingNewRefreshAndRevokingPrevious() throws Exception {
+        // Audit follow-up #3: cada /auth/refresh rotaciona o cookie. O cookie velho fica
+        // revogado (reuse detection); apenas o novo, retornado pelo Set-Cookie do response,
+        // continua valido.
         String email = "rt@nora.dev";
         registerAndVerify(email);
         ResponseEntity<String> login = postJson("/auth/login", basicAuth(email));
         List<String> loginCookies = setCookieHeaders(login);
-        String refreshCookieValue = extractCookieValue(loginCookies, "nora_refresh");
+        String oldRefresh = extractCookieValue(loginCookies, "nora_refresh");
 
         // Primeira chamada de refresh
         ResponseEntity<String> r1 =
-                postWithCookies("/auth/refresh", List.of("nora_refresh=" + refreshCookieValue));
+                postWithCookies("/auth/refresh", List.of("nora_refresh=" + oldRefresh));
         assertThat(r1.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode body1 = mapper.readTree(r1.getBody());
         assertThat(body1.get("tokenType").asText()).isEqualTo("Bearer");
         assertThat(body1.get("expiresInSeconds").asLong()).isGreaterThan(0);
-        // Setou um novo cookie de access
+        // Setou um novo cookie de access E um novo cookie de refresh (rotation).
         List<String> r1Cookies = setCookieHeaders(r1);
         assertThat(findCookie(r1Cookies, "nora_access")).isPresent();
+        String newRefresh = extractCookieValue(r1Cookies, "nora_refresh");
+        assertThat(newRefresh).isNotBlank().isNotEqualTo(oldRefresh);
 
-        // Segunda chamada com o MESMO refresh tem que continuar funcionando (sem rotacao).
+        // Reapresentar o refresh velho (revogado) dispara reuse detection => 401.
+        ResponseEntity<String> reuse =
+                postWithCookies("/auth/refresh", List.of("nora_refresh=" + oldRefresh));
+        assertThat(reuse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        // O refresh novo continua valido na proxima rotacao.
         ResponseEntity<String> r2 =
-                postWithCookies("/auth/refresh", List.of("nora_refresh=" + refreshCookieValue));
+                postWithCookies("/auth/refresh", List.of("nora_refresh=" + newRefresh));
         assertThat(r2.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
