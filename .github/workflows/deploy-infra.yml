@@ -9,11 +9,17 @@ name: deploy-infra
 #   - PG_ADMIN_PASSWORD       gerado random na Subfase 1.7
 #   - JWT_SECRET              gerado random na Subfase 1.7
 #   - OPENAI_API_KEY          opcional (vazio = worker em modo stub)
+#   - RESEND_API_KEY          opcional (vazio = backend cai em LogEmailSender)
+#
+# Variaveis (Variables tab > Environment dev):
+#   - NORA_EMAIL_FROM         opcional (default 'NORA <onboarding@resend.dev>')
 #
 # Service Principal escopado: role Contributor em rg-nora-dev (não na subscription).
 # Federated credentials:
 #   - github-main-branch     (subject: repo:sys0xFF/nora:ref:refs/heads/main)
 #   - github-pull-requests   (subject: repo:sys0xFF/nora:pull_request)
+#   - github-environment-dev (subject: repo:sys0xFF/nora:environment:dev)
+#       Obrigatorio porque o job `deploy` usa `environment: dev`.
 #
 # Fluxo:
 #   - PR pra main com mudança em infra/bicep/**: roda 'az deployment group what-if' (preview)
@@ -34,16 +40,21 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write    # obrigatório pra OIDC com azure/login
   contents: read
+
+# Previne deploys concorrentes no mesmo RG. Sem isso, dois pushes simultaneos disparam
+# duas Container App revisions em paralelo, causando race no rollout.
+concurrency:
+  group: deploy-infra-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   AZURE_RG: rg-nora-dev
-  AZURE_LOCATION: brazilsouth
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       can-deploy: ${{ steps.check.outputs.can-deploy }}
     steps:
@@ -69,6 +80,11 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: validate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -83,6 +99,8 @@ jobs:
           PG_ADMIN_PASSWORD: ${{ secrets.PG_ADMIN_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NORA_EMAIL_FROM: ${{ vars.NORA_EMAIL_FROM }}
         run: |
           az deployment group what-if \
             --resource-group ${{ env.AZURE_RG }} \
@@ -102,7 +120,11 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: validate
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: dev   # GitHub environment. Permite adicionar approval rule via UI futuramente.
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -118,6 +140,8 @@ jobs:
           PG_ADMIN_PASSWORD: ${{ secrets.PG_ADMIN_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NORA_EMAIL_FROM: ${{ vars.NORA_EMAIL_FROM }}
         run: |
           DEPLOY_NAME="deploy-$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
           az deployment group create \
@@ -149,10 +173,37 @@ jobs:
           echo "| Key Vault URI | $KV_URI |" >> $GITHUB_STEP_SUMMARY
           echo "| Search Endpoint | ${SEARCH_ENDPOINT:-_(off)_} |" >> $GITHUB_STEP_SUMMARY
 
+      - name: Post-deploy health check
+        run: |
+          API_URL=$(jq -r '.apiUrl.value' outputs.json)
+          WEB_URL=$(jq -r '.webUrl.value' outputs.json)
+          echo "Aguardando API ficar healthy em $API_URL/actuator/health ..."
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null "$API_URL/actuator/health"; then
+              echo "API healthy apos ${i}x5s"
+              break
+            fi
+            if [ "$i" = "30" ]; then
+              echo "::error::API nao ficou healthy em 150s"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "Aguardando web ficar healthy em $WEB_URL ..."
+          for i in $(seq 1 12); do
+            if curl -fsS -o /dev/null "$WEB_URL"; then
+              echo "Web healthy apos ${i}x5s"
+              break
+            fi
+            sleep 5
+          done
+
       - name: Upload outputs as artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: deployment-outputs-${{ github.sha }}
           path: outputs.json
-          retention-days: 30
+          # Outputs contem JDBC URL, KV URI, App Insights name etc. 7 dias e suficiente
+          # pra debug imediato sem manter mapa de infra indefinidamente.
+          retention-days: 7

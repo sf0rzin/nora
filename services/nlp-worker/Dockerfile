@@ -26,6 +26,8 @@ EXPOSE 8001
 ENV PYTHONPATH=/app/src
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=3)" || exit 1
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/healthz', timeout=3)" || exit 1
 
-CMD ["uvicorn", "nora_nlp.main:app", "--host", "0.0.0.0", "--port", "8001"]
+# --workers 2 desbloqueia a scale rule (50 concurrent/replica) que com 1 worker
+# python serializaria todas as requisicoes. 2 workers x 3 replicas max = 6 paralelos.
+CMD ["uvicorn", "nora_nlp.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]
