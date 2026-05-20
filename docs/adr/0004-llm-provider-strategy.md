@@ -23,7 +23,7 @@ Portanto, faz sentido tornar o worker **agnóstico de provider** e escolher o pr
 1. O worker NLP fala com **qualquer provider compatível com a API Chat Completions da OpenAI** (mesma SDK, mesmo formato de request/response). Isso cobre OpenAI direto, Azure OpenAI, Groq, OpenRouter, Together AI, Ollama local e quaisquer outros que sigam o padrão de fato.
 2. O **provider default no MVP é OpenAI direto** com o modelo `gpt-4o-mini`.
 3. As variáveis de ambiente do worker são generalizadas:
-   - `LLM_PROVIDER` (rótulo informativo: `openai`, `azure`, `groq`, `openrouter`, `ollama`, `openrouter`, etc.)
+   - `LLM_PROVIDER` (rótulo informativo: `openai`, `azure`, `groq`, `openrouter`, `ollama`, `together`, etc.)
    - `LLM_BASE_URL`
    - `LLM_API_KEY`
    - `LLM_MODEL`
