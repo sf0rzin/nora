@@ -385,6 +385,11 @@ var workerBaseEnv = [
     name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
     value: appInsights.outputs.connectionString
   }
+  // Role name diferencia api/worker/web no Application Map.
+  {
+    name: 'OTEL_SERVICE_NAME'
+    value: 'nora-worker'
+  }
   {
     name: 'NORA_ENV'
     value: env
@@ -526,6 +531,11 @@ module apiApp 'modules/container-app.bicep' = {
       {
         name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
         value: appInsights.outputs.connectionString
+      }
+      // Role name diferencia api/worker/web no Application Map.
+      {
+        name: 'APPLICATIONINSIGHTS_ROLE_NAME'
+        value: 'nora-api'
       }
       {
         name: 'STORAGE_ACCOUNT_NAME'
