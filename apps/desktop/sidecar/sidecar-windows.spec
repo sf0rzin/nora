@@ -29,9 +29,10 @@ azure_binaries = collect_dynamic_libs('azure.cognitiveservices.speech')
 # Collect data files if any
 azure_datas = collect_data_files('azure.cognitiveservices.speech')
 
-# Collect entire pydantic/pydantic_core packages (C extensions + submodules)
-pydantic_binaries, pydantic_datas, pydantic_hiddenimports = collect_all('pydantic')
-pydantic_core_binaries, pydantic_core_datas, pydantic_core_hiddenimports = collect_all('pydantic_core')
+# Collect entire pydantic/pydantic_core packages (C extensions + submodules).
+# IMPORTANTE: collect_all retorna (datas, binaries, hiddenimports) nessa ordem.
+pydantic_datas, pydantic_binaries, pydantic_hiddenimports = collect_all('pydantic')
+pydantic_core_datas, pydantic_core_binaries, pydantic_core_hiddenimports = collect_all('pydantic_core')
 
 # Merge collected assets
 all_binaries = azure_binaries + pydantic_binaries + pydantic_core_binaries

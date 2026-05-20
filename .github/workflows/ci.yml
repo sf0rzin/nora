@@ -196,22 +196,38 @@ jobs:
 
       - name: Run sidecar tests
         working-directory: apps/desktop/sidecar
-        run: pytest
+        run: pytest -v
 
-      - name: Build sidecar
+      - name: Frontend typecheck (sanity, sem build pesado)
+        working-directory: apps/desktop
+        run: pnpm exec tsc -b --noEmit
+
+      - name: Cargo check (sanity, sem build pesado)
+        working-directory: apps/desktop/src-tauri
+        run: cargo check --release
+
+      # Build completo do sidecar (PyInstaller) + bundle Tauri sao reservados para
+      # push em main (via build-images.yml ou release workflow dedicado). PR
+      # validation cobre tests + typecheck + cargo check, o suficiente pra pegar
+      # regressao funcional sem gastar 15-20min por PR em build de bundles que
+      # nao sao consumidos.
+      - name: Build sidecar (push only)
+        if: github.event_name == 'push'
         working-directory: apps/desktop/sidecar
         run: |
           python -m pip install pyinstaller
           python build_sidecar.py
 
-      - name: Build Tauri app
+      - name: Build Tauri app (push only)
+        if: github.event_name == 'push'
         working-directory: apps/desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         run: pnpm tauri build ${{ matrix.args }}
 
-      - name: Upload artifacts
+      - name: Upload artifacts (push only)
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: nora-desktop-${{ matrix.sidecar_target }}
