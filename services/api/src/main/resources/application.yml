@@ -54,9 +54,18 @@ management:
 nora:
   security:
     jwt:
+      # HS256 (default, simetrico, secret compartilhado) ou RS256 (assimetrico, RSA com JWKS).
+      # Em RS256 e obrigatorio JWT_RS256_PRIVATE_KEY_PEM. Ver RsaJwtIssuer + JwksController.
+      algorithm: ${JWT_ALGORITHM:HS256}
       secret: ${JWT_SECRET:change-me-please-min-32-chars-long-aaaa}
       # Access JWT curto (15 minutos). Renovado proativamente pelo cliente via /auth/refresh.
       expires-seconds: ${JWT_EXPIRES_SECONDS:900}
+      rsa:
+        # PKCS#8 PEM (envelope -----BEGIN PRIVATE KEY----- ou base64 puro). Obrigatorio
+        # quando algorithm=RS256. Em Azure, populado via Key Vault secret + Bicep.
+        private-key-pem: ${JWT_RS256_PRIVATE_KEY_PEM:}
+        # Identificador da chave (kid header do JWT + JWKS). Use rotation suffix tipo "nora-2026q2".
+        kid: ${JWT_RS256_KID:nora-key-1}
     refresh-token:
       # Refresh token longo (30 dias). Stateful em refresh_tokens.
       expires-seconds: ${REFRESH_TOKEN_EXPIRES_SECONDS:2592000}
