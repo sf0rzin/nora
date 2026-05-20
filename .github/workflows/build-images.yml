@@ -90,7 +90,7 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=ref,event=branch
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: services/api
           file: services/api/Dockerfile
@@ -125,7 +125,7 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=ref,event=branch
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .  # repo root — Dockerfile do worker precisa de packages/nlp-baseline
           file: services/nlp-worker/Dockerfile
@@ -160,7 +160,7 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=ref,event=branch
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: apps/web
           file: apps/web/Dockerfile
