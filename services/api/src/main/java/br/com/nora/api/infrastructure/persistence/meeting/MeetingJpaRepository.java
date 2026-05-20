@@ -11,6 +11,13 @@ import org.springframework.data.repository.query.Param;
 
 public interface MeetingJpaRepository extends JpaRepository<MeetingJpaEntity, UUID> {
 
+    // Resolucao de N+1 fica no nivel da entidade via @BatchSize(participants, tags),
+    // nao no repository. Tentar @EntityGraph(attributePaths={"participants","tags"})
+    // dispara MultipleBagFetchException no Hibernate 6 porque participants e tags
+    // sao List sem @OrderColumn (sao "bags") e Hibernate nao pode JOIN FETCH duas bags
+    // simultaneamente. @BatchSize agrupa a carga em ~N+1/batchSize queries — bom
+    // suficiente em listagens com paginacao tipica.
+
     Optional<MeetingJpaEntity> findByIdAndTenantId(UUID id, UUID tenantId);
 
     @Query(
