@@ -22,20 +22,24 @@ public class LogEmailSender implements EmailSender {
 
     @Override
     public void sendEmailVerification(String toEmail, String displayName, String verificationLink) {
+        // Token presente em verificationLink: nao logamos a URL completa para nao expor credenciais
+        // em logs centralizados (Application Insights / Log Analytics). LGPD + ADR 0012.
         LOG.info(
-                "[email/dev] verification -> to={} name={} link={}",
+                "[email/dev] verification -> to={} name={} (link suprimido; setar RESEND_API_KEY"
+                        + " para envio real)",
                 toEmail,
-                displayName,
-                verificationLink);
+                displayName);
     }
 
     @Override
     public void sendPasswordReset(String toEmail, String displayName, String resetLink) {
+        // Token presente em resetLink: nao logamos a URL completa para nao expor credenciais em
+        // logs centralizados (Application Insights / Log Analytics). LGPD + ADR 0012.
         LOG.info(
-                "[email/dev] password-reset -> to={} name={} link={}",
+                "[email/dev] password-reset -> to={} name={} (link suprimido; setar"
+                        + " RESEND_API_KEY para envio real)",
                 toEmail,
-                displayName,
-                resetLink);
+                displayName);
     }
 
     @Override

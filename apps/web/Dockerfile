@@ -13,8 +13,13 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# NEXT_PUBLIC_USE_MOCKS=false pra build em produção (API real). Override no deploy se precisar.
-ENV NEXT_PUBLIC_USE_MOCKS=false
+# NEXT_PUBLIC_* sao baked in pelo bundle do Next no build-time. Setar via env var no
+# Container App em runtime NAO funciona. Use --build-arg no docker build / build-images.yml
+# (ou o default abaixo, que aponta para a URL injetada no Container App envVar).
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_USE_MOCKS=false
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+ENV NEXT_PUBLIC_USE_MOCKS=${NEXT_PUBLIC_USE_MOCKS}
 RUN npm run build
 
 # --- runtime ---

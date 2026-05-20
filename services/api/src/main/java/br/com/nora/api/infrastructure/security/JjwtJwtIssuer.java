@@ -27,10 +27,28 @@ public class JjwtJwtIssuer implements JwtIssuer {
     private final SecretKey key;
     private final String issuer;
 
-    public JjwtJwtIssuer(@Value("${nora.security.jwt.secret}") String secret) {
+    /**
+     * Placeholder publico que NUNCA deve aparecer em runtime fora de teste/local. Mantido em
+     * sincronia com o default declarado em application.yml e .env.example apenas para que a
+     * validacao a seguir consiga rejeita-lo explicitamente.
+     */
+    private static final String INSECURE_DEFAULT_SECRET = "change-me-please-min-32-chars-long-aaaa";
+
+    public JjwtJwtIssuer(
+            @Value("${nora.security.jwt.secret}") String secret,
+            @Value("${spring.profiles.active:default}") String activeProfile) {
         if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
             throw new IllegalStateException(
                     "nora.security.jwt.secret must be at least 32 bytes (256 bits)");
+        }
+        boolean isLocalOrTest =
+                activeProfile != null
+                        && (activeProfile.contains("local") || activeProfile.contains("test"));
+        if (INSECURE_DEFAULT_SECRET.equals(secret) && !isLocalOrTest) {
+            throw new IllegalStateException(
+                    "nora.security.jwt.secret esta com o valor placeholder padrao; defina"
+                            + " JWT_SECRET com um segredo gerado por SecureRandom (>=32 bytes) antes de"
+                            + " subir fora do profile local/test.");
         }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.issuer = "nora-api";
