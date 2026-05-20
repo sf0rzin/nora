@@ -20,19 +20,91 @@ from ..models import PiiRedactionV1, PiiType, Redaction
 # Padroes deterministicos: e-mail, CPF, CNPJ, cartao, telefone
 # --------------------------------------------------------------------------- #
 
-_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
+# Email com (?<!\w) ancorando a esquerda evita catastrophic backtracking em
+# inputs grandes (medido empiricamente: 100KB de input era ~10s; com a ancora
+# bate microsegundos). Pre-filtro `'@' in text` acelera em entradas sem email.
+_EMAIL_RE = re.compile(r"(?<![\w@])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b")
+
+# Telefones BR: com DDD obrigatorio (8 ou 9 digitos apos DDD). Conservador
+# de proposito: telefone sem DDD (98765-4321) e pequeno demais pra distinguir
+# de codigos/protocolos numericos sem falso-positivo massivo.
 _PHONE_RE = re.compile(r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?[\s.\-]?\d{4,5}[\s.\-]?\d{4}(?!\d)")
+
+# CPF mascarado.
 _CPF_RE = re.compile(r"(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)")
+# CPF raw (11 digitos sem mascara). Validacao de DV no `_validate_cpf` filtra
+# falsos positivos (ex.: 12345678900 nao passa).
+_CPF_RAW_RE = re.compile(r"(?<!\d)\d{11}(?!\d)")
+# CPF parcialmente mascarado (so com hifen, sem pontos): "12345678-09".
+_CPF_PARTIAL_RE = re.compile(r"(?<!\d)\d{8}-\d{2}(?!\d)")
+
+# CNPJ mascarado.
 _CNPJ_RE = re.compile(r"(?<!\d)\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}(?!\d)")
+# CNPJ raw (14 digitos sem mascara). Validacao de DV filtra falsos positivos.
+_CNPJ_RAW_RE = re.compile(r"(?<!\d)\d{14}(?!\d)")
+
+# Cartoes — Amex tem 15 digitos com prefixo 34/37; demais tem 16 com 4x4.
+_CARD_AMEX_RE = re.compile(r"(?<!\d)3[47]\d{2}[\s\-]?\d{6}[\s\-]?\d{5}(?!\d)")
 _CARD_RE = re.compile(r"(?<!\d)(?:\d{4}[\s\-]?){3}\d{4}(?!\d)")
 
+
+def _validate_cpf(digits: str) -> bool:
+    """Valida CPF de 11 digitos via DV. Rejeita sequencias triviais (000.000.000-00 etc.)."""
+    if len(digits) != 11 or not digits.isdigit():
+        return False
+    if digits == digits[0] * 11:  # 000... ate 999... — invalidos
+        return False
+    for j in (9, 10):
+        s = sum(int(digits[i]) * (j + 1 - i) for i in range(j))
+        d = (s * 10) % 11
+        if d == 10:
+            d = 0
+        if d != int(digits[j]):
+            return False
+    return True
+
+
+def _validate_cnpj(digits: str) -> bool:
+    """Valida CNPJ de 14 digitos via DV."""
+    if len(digits) != 14 or not digits.isdigit():
+        return False
+    if digits == digits[0] * 14:
+        return False
+    weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    for j, weights in ((12, weights1), (13, weights2)):
+        s = sum(int(digits[i]) * weights[i] for i in range(j))
+        d = s % 11
+        d = 0 if d < 2 else 11 - d
+        if d != int(digits[j]):
+            return False
+    return True
+
+
+# Ordem importa: mascarados/cartoes primeiro (regex mais especifico), depois raw
+# com DV check (CPF/CNPJ raw), por ultimo telefone (mais ambiguo). Sem essa ordem,
+# PHONE_RE consome 11 digitos antes do CPF_RAW_RE poder identificar — tipo errado
+# no placeholder mas mesmo grau de protecao.
+#
+# `_apply_basic_patterns` filtra raw via `_validate_cpf` / `_validate_cnpj`.
+# Cartao Amex (15 digitos) vem ANTES do _CARD_RE generico (16 digitos com 4x4).
 _BASIC_PATTERNS: list[tuple[PiiType, re.Pattern[str]]] = [
     (PiiType.EMAIL, _EMAIL_RE),
     (PiiType.CPF, _CPF_RE),
+    (PiiType.CPF, _CPF_PARTIAL_RE),
     (PiiType.CNPJ, _CNPJ_RE),
+    (PiiType.CREDIT_CARD, _CARD_AMEX_RE),
     (PiiType.CREDIT_CARD, _CARD_RE),
+    (PiiType.CNPJ, _CNPJ_RAW_RE),  # raw com DV — antes de PHONE pra ganhar prioridade
+    (PiiType.CPF, _CPF_RAW_RE),
     (PiiType.PHONE, _PHONE_RE),
 ]
+
+# Patterns que exigem validacao de DV para serem aceitos.
+_VALIDATORS: dict[int, callable] = {
+    id(_CPF_RAW_RE): _validate_cpf,
+    id(_CNPJ_RAW_RE): _validate_cnpj,
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -381,7 +453,7 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
         "Docker",
         "Kubernetes",
         "Jenkins",
-        # Stack tecnica
+        # Stack tecnica (Oracle ja listado em "ERP/CRM concorrentes" acima)
         "Python",
         "Java",
         "Spring",
@@ -393,7 +465,6 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
         "Tauri",
         "Pydantic",
         "Postgres",
-        "Oracle",
         "MySQL",
         "Redis",
         "Kafka",
@@ -427,28 +498,41 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
 )
 
 
-# Prefixo (pronomes de tratamento) seguido de 1-4 palavras Title Case.
-# Captura "Dr. Carlos Silva", "Sra. Marina Alves", "Profa. Ana", etc.
-# O grupo inteiro (incluindo o prefixo) eh o match.
+# Prefixo (pronomes de tratamento + cargos) seguido de 1-5 palavras Title Case,
+# suportando conectivos PT-BR (`da`, `de`, `do`, `das`, `dos`, `e`).
+# Captura "Dr. Carlos Silva", "Sra. Marina Alves", "Profa. Ana de Souza",
+# "Sr. Jose da Silva Pereira", "Eng. Joao", "Diretor Carlos da Silva", etc.
 _NAME_PREFIX_RE = re.compile(
-    r"\b(?:Sr|Sra|Srta|Dr|Dra|Prof|Profa)\.\s+"
+    r"\b(?:Sr|Sra|Srta|Dr|Dra|Prof|Profa|Eng|Engenheiro|Engenheira|"
+    r"Cap|Sgt|Gen|Pe|Padre|Diretor|Diretora|Coordenador|Coordenadora|"
+    r"Gerente|Pres|Presidente)\.?\s+"
     r"[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+"
-    r"(?:\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+){0,3}"
+    r"(?:\s+(?:d[aeo]s?|e)\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+"
+    r"|\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+){0,4}"
 )
 
-# 2-4 palavras Title Case consecutivas. Cada palavra precisa comecar com letra
-# maiuscula (incluindo acentuadas) seguida de >=1 letra minuscula. Tokens em
+# 2-5 palavras Title Case consecutivas, com suporte a conectivos PT-BR
+# (`da`, `de`, `do`, `das`, `dos`, `e`) entre tokens. "Jose da Silva Pereira"
+# casa como um unico nome composto em vez de dois separados. Tokens em
 # all-caps ("TOTVS", "RM") sao ignorados por nao terem lowercase no final --
 # evita capturar acronimos como parte de um nome composto.
 _NAME_SEQUENCE_RE = re.compile(
     r"\b[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+"
-    r"(?:\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+){1,3}\b"
+    r"(?:\s+(?:d[aeo]s?|e)\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+"
+    r"|\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+){1,4}\b"
 )
 
-# Primeiro nome BR isolado: \b<palavra>\b, case-insensitive, comparado contra
-# `_BR_TOP_NAMES`. Construir um regex enorme com alternancias e custoso --
-# preferimos varrer todas as palavras alfabeticas e checar contra o set.
+# Token alfabetico generico (usado por `_tokenize` para a negative list — pode
+# ser case-insensitive porque so checamos contra negative list que tambem usa
+# casefold).
 _WORD_RE = re.compile(r"\b[A-Za-zÁÉÍÓÚÂÊÔÀÃÕÇáéíóúâêôàãõç]+\b")
+
+# Primeiro nome BR isolado: SO casa Title Case (`Joao`, `Marina`). Casar
+# minusculas (`joao`, `rosa`, `clara`) gera falso-positivo massivo em
+# substantivos comuns do PT-BR. Em transcricoes corporativas reais, primeiros
+# nomes sempre aparecem Title Case (capitalizacao automatica do dicador) ou
+# all-caps no contexto formal (que sao filtrados por `_PERSON_NAME_NEGATIVE_LIST`).
+_NAME_TOKEN_RE = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+\b")
 
 
 # --------------------------------------------------------------------------- #
@@ -490,8 +574,15 @@ def _apply_basic_patterns(
     """
     matches: list[_Match] = []
     for pii_type, pattern in _BASIC_PATTERNS:
+        validator = _VALIDATORS.get(id(pattern))
         for m in pattern.finditer(text):
-            matches.append(_Match(type=pii_type, start=m.start(), end=m.end(), value=m.group(0)))
+            raw = m.group(0)
+            # Pattern raw (CPF/CNPJ sem mascara): exige DV valido para evitar
+            # false positives em codigos numericos genericos (ID de pedido,
+            # rastreio, NFE etc.).
+            if validator is not None and not validator(raw):
+                continue
+            matches.append(_Match(type=pii_type, start=m.start(), end=m.end(), value=raw))
 
     matches.sort(key=lambda x: x.start)
 
@@ -558,8 +649,11 @@ def _redact_person_names(
             continue
         _claim(m.start(), m.end(), m.group(0))
 
-    # Padrao 3: primeiro nome BR isolado
-    for m in _WORD_RE.finditer(text):
+    # Padrao 3: primeiro nome BR isolado (Title Case, contra lista hardcoded).
+    # _NAME_TOKEN_RE (Title Case only) evita falso-positivo em substantivos
+    # comuns do PT-BR ("rosa", "clara", "vera" — todos no _BR_TOP_NAMES como
+    # nomes femininos mas tambem palavras genericas em minuscula).
+    for m in _NAME_TOKEN_RE.finditer(text):
         if _is_covered(m.start(), m.end()):
             continue
         token = m.group(0)
