@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
+import br.com.nora.api.application.ports.AuditPort;
 import br.com.nora.api.application.ports.MeetingRepository;
 import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
 import br.com.nora.api.application.ports.TranscriptRepository;
@@ -34,8 +35,10 @@ class MeetingServiceTest {
     void setUp() {
         meetingRepo = new InMemoryMeetingRepo();
         transcriptRepo = new InMemoryTranscriptRepo();
+        AuditPort noOpAudit = (a, b, c, d, e, f) -> {};
         service =
-                new MeetingService(meetingRepo, transcriptRepo, new NullAnalysisProvider(), false);
+                new MeetingService(
+                        meetingRepo, transcriptRepo, new NullAnalysisProvider(), noOpAudit, false);
     }
 
     @Test
