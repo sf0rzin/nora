@@ -64,7 +64,11 @@ class MeetingGoalServiceTest {
 
     @Test
     void saveOnCompletedMeetingMarksForReprocessAndClearsAssessment() {
-        Meeting m = pendingMeeting(tenant).withStatus(ProcessingStatus.COMPLETED);
+        // Caminho realista pelo state machine: PENDING -> PROCESSING -> COMPLETED.
+        Meeting m =
+                pendingMeeting(tenant)
+                        .withStatus(ProcessingStatus.PROCESSING)
+                        .withStatus(ProcessingStatus.COMPLETED);
         meetingRepo.save(m);
         // Simula assessment ja persistido de um goal anterior.
         assessmentRepo.save(

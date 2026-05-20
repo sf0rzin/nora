@@ -86,7 +86,12 @@ public class AnalysisService {
      */
     public MeetingAnalysis run(UUID meetingId, UUID tenantId) {
         Meeting meeting = loadMeeting(meetingId, tenantId);
-        markStatus(meeting, ProcessingStatus.PROCESSING);
+        // `markStatus` persiste com novo status mas a referencia local `meeting`
+        // continua no estado antigo. Reatribuir o retorno garante que o
+        // `markStatusAndSnippet` abaixo encontre uma transicao valida na
+        // state machine (PROCESSING -> COMPLETED) em vez do antigo
+        // PENDING -> COMPLETED que seria rejeitado.
+        meeting = markStatus(meeting, ProcessingStatus.PROCESSING);
 
         Transcript transcript = loadTranscript(meetingId, tenantId);
         Optional<TenantContext> ctx = tenantContexts.findByTenantId(tenantId);
@@ -116,9 +121,9 @@ public class AnalysisService {
     }
 
     @Transactional
-    void markStatus(Meeting meeting, ProcessingStatus status) {
+    Meeting markStatus(Meeting meeting, ProcessingStatus status) {
         Meeting updated = meeting.withStatus(status);
-        meetings.save(updated);
+        return meetings.save(updated);
     }
 
     @Transactional
