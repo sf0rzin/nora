@@ -35,6 +35,12 @@ public class RefreshTokenJpaEntity {
     @Column(name = "last_used_at")
     private Instant lastUsedAt;
 
+    @Column(name = "family_id", nullable = false)
+    private UUID familyId;
+
+    @Column(name = "replaced_by_id")
+    private UUID replacedById;
+
     protected RefreshTokenJpaEntity() {}
 
     public RefreshTokenJpaEntity(
@@ -45,7 +51,9 @@ public class RefreshTokenJpaEntity {
             Instant expiresAt,
             Instant revokedAt,
             Instant createdAt,
-            Instant lastUsedAt) {
+            Instant lastUsedAt,
+            UUID familyId,
+            UUID replacedById) {
         this.id = id;
         this.userId = userId;
         this.tenantId = tenantId;
@@ -54,6 +62,8 @@ public class RefreshTokenJpaEntity {
         this.revokedAt = revokedAt;
         this.createdAt = createdAt;
         this.lastUsedAt = lastUsedAt;
+        this.familyId = familyId;
+        this.replacedById = replacedById;
     }
 
     public UUID getId() {
@@ -94,5 +104,17 @@ public class RefreshTokenJpaEntity {
 
     public void setLastUsedAt(Instant lastUsedAt) {
         this.lastUsedAt = lastUsedAt;
+    }
+
+    public UUID getFamilyId() {
+        return familyId;
+    }
+
+    public UUID getReplacedById() {
+        return replacedById;
+    }
+
+    public void setReplacedById(UUID replacedById) {
+        this.replacedById = replacedById;
     }
 }

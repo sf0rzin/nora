@@ -188,23 +188,51 @@ class AuthServiceTest {
     // ---------- Round 2: refresh + logout ----------
 
     @Test
-    void refreshIssuesNewAccessTokenWithoutRotatingRefresh() {
+    void refreshRotatesIssuingNewPairAndRevokingPrevious() {
         SignupResult sr = service.signup(new SignupCommand("rf@nora.dev", "SenhaForte123", "RF"));
         service.verifyEmail(sr.emailVerificationDevToken());
         LoginResult login = service.login(new LoginCommand("rf@nora.dev", "SenhaForte123"));
 
-        // Avanca alguns minutos para garantir um JWT diferente.
         clock.advance(Duration.ofMinutes(1));
         RefreshResult refresh = service.refresh(login.refreshTokenPlain());
 
         assertThat(refresh.accessToken()).isNotBlank().isNotEqualTo(login.accessToken());
-        assertThat(refresh.accessExpiresInSeconds()).isEqualTo(900L);
-        // O refresh em DB ainda existe (nao rotacionado) e marcou last_used_at.
-        assertThat(refreshRepo.all).hasSize(1);
-        assertThat(refreshRepo.all.get(0).lastUsedAt()).isEqualTo(clock.now);
-        // Pode ser usado de novo (sem rotacao).
-        RefreshResult again = service.refresh(login.refreshTokenPlain());
+        assertThat(refresh.refreshTokenPlain())
+                .isNotBlank()
+                .isNotEqualTo(login.refreshTokenPlain());
+        // 2 registros: pai revogado + filho ativo, ambos na mesma family.
+        assertThat(refreshRepo.all).hasSize(2);
+        RefreshToken parent =
+                refreshRepo.all.stream().filter(RefreshToken::isRevoked).findFirst().orElseThrow();
+        RefreshToken child =
+                refreshRepo.all.stream().filter(t -> !t.isRevoked()).findFirst().orElseThrow();
+        assertThat(parent.familyId()).isEqualTo(child.familyId());
+        assertThat(parent.replacedById()).isEqualTo(child.id());
+
+        // O novo refresh funciona; o anterior ja revogado dispara reuse detection.
+        RefreshResult again = service.refresh(refresh.refreshTokenPlain());
         assertThat(again.accessToken()).isNotBlank();
+        assertThatThrownBy(() -> service.refresh(login.refreshTokenPlain()))
+                .isInstanceOf(AuthException.RefreshTokenInvalid.class);
+    }
+
+    @Test
+    void refreshReuseOfRevokedTokenRevokesEntireFamily() {
+        SignupResult sr = service.signup(new SignupCommand("ru@nora.dev", "SenhaForte123", "RU"));
+        service.verifyEmail(sr.emailVerificationDevToken());
+        LoginResult login = service.login(new LoginCommand("ru@nora.dev", "SenhaForte123"));
+
+        // Rotaciona uma vez. Atacante recupera o token velho.
+        RefreshResult rotated = service.refresh(login.refreshTokenPlain());
+
+        // Atacante reapresenta o token velho (revogado) → reuse detection revoga family.
+        assertThatThrownBy(() -> service.refresh(login.refreshTokenPlain()))
+                .isInstanceOf(AuthException.RefreshTokenInvalid.class);
+
+        // Apos reuse, o token rotacionado (que era valido) tambem foi invalidado.
+        assertThatThrownBy(() -> service.refresh(rotated.refreshTokenPlain()))
+                .isInstanceOf(AuthException.RefreshTokenInvalid.class);
+        assertThat(refreshRepo.all).allMatch(RefreshToken::isRevoked);
     }
 
     @Test
@@ -254,7 +282,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void logoutRevokesOnlyOwnSessionNotAllUserSessions() {
+    void logoutRevokesOnlyOwnFamilyNotAllUserSessions() {
         SignupResult sr = service.signup(new SignupCommand("mu@nora.dev", "SenhaForte123", "MU"));
         service.verifyEmail(sr.emailVerificationDevToken());
         LoginResult first = service.login(new LoginCommand("mu@nora.dev", "SenhaForte123"));
@@ -262,10 +290,10 @@ class AuthServiceTest {
 
         service.logout(first.refreshTokenPlain());
 
-        // Primeiro foi revogado.
+        // Primeira family foi revogada (logout).
         assertThatThrownBy(() -> service.refresh(first.refreshTokenPlain()))
                 .isInstanceOf(AuthException.RefreshTokenInvalid.class);
-        // Segundo continua valido.
+        // Segunda family continua valida.
         RefreshResult ok = service.refresh(second.refreshTokenPlain());
         assertThat(ok.accessToken()).isNotBlank();
     }
@@ -325,7 +353,7 @@ class AuthServiceTest {
         var loginA = service.login(new LoginCommand("revoke@nora.dev", "SenhaForte123"));
         var loginB = service.login(new LoginCommand("revoke@nora.dev", "SenhaForte123"));
 
-        // Ambas sessoes funcionam antes do reset.
+        // Ambas sessoes funcionam antes do reset; rotacionam pra um novo refresh ativo.
         var r1 = service.refresh(loginA.refreshTokenPlain());
         var r2 = service.refresh(loginB.refreshTokenPlain());
         assertThat(r1.user().id()).isEqualTo(sr.userId());
@@ -335,10 +363,10 @@ class AuthServiceTest {
         service.confirmPasswordReset(
                 new ConfirmPasswordResetCommand(req.devToken(), "NovaSenha456"));
 
-        // Refresh tokens antigos deixam de funcionar.
-        assertThatThrownBy(() -> service.refresh(loginA.refreshTokenPlain()))
+        // Os refresh ativos pos-rotation tambem deixam de funcionar.
+        assertThatThrownBy(() -> service.refresh(r1.refreshTokenPlain()))
                 .isInstanceOf(AuthException.RefreshTokenInvalid.class);
-        assertThatThrownBy(() -> service.refresh(loginB.refreshTokenPlain()))
+        assertThatThrownBy(() -> service.refresh(r2.refreshTokenPlain()))
                 .isInstanceOf(AuthException.RefreshTokenInvalid.class);
     }
 
@@ -560,6 +588,18 @@ class AuthServiceTest {
             int count = 0;
             for (RefreshToken t : all) {
                 if (t.userId().equals(userId) && !t.isRevoked()) {
+                    t.revoke(now);
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        @Override
+        public int revokeAllByFamilyId(UUID familyId, Instant now) {
+            int count = 0;
+            for (RefreshToken t : all) {
+                if (t.familyId().equals(familyId) && !t.isRevoked()) {
                     t.revoke(now);
                     count++;
                 }
