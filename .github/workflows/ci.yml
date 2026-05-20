@@ -10,6 +10,11 @@ permissions:
   contents: read
   pull-requests: read
 
+# Cancela rodadas anteriores do mesmo PR/branch quando um novo commit chega.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -19,6 +24,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       docs: ${{ steps.filter.outputs.docs }}
       infra: ${{ steps.filter.outputs.infra }}
+      desktop: ${{ steps.filter.outputs.desktop }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -49,6 +55,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -67,6 +74,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.worker == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -97,6 +105,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -122,10 +131,38 @@ jobs:
           NEXT_PUBLIC_USE_MOCKS: 'true'
         run: pnpm build
 
-  desktop:
+  # Job leve em PR: só sidecar tests (mais barato) + Python sanity check.
+  # O sidecar é a única parte com lógica de domínio testável fora do Tauri/Rust;
+  # o resto (TypeScript + Rust) é validado em release/main pela build full.
+  desktop-sidecar:
     needs: changes
     if: needs.changes.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/desktop/sidecar/pyproject.toml
+
+      - name: Install sidecar deps + tests
+        working-directory: apps/desktop/sidecar
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pytest -v
+
+  # Build full do desktop (sidecar PyInstaller + Tauri bundle msi/dmg/deb/AppImage)
+  # roda APENAS em push em main, gerando artifacts publicáveis. Em PR validation
+  # esse build é overkill (15-20min cold-cache + fragil em 3 plataformas).
+  desktop-bundle:
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true' && github.event_name == 'push'
     strategy:
+      fail-fast: false
       matrix:
         include:
           - platform: ubuntu-latest
@@ -138,22 +175,21 @@ jobs:
             args: "--target aarch64-apple-darwin"
             sidecar_target: aarch64-apple-darwin
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: pnpm
-          cache-dependency-path: apps/desktop/package.json
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/desktop/sidecar/pyproject.toml
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -173,30 +209,25 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: apps/desktop
-        run: pnpm install --no-frozen-lockfile
+        run: npm ci
 
-      - name: Install sidecar dependencies
+      - name: Install sidecar deps
         working-directory: apps/desktop/sidecar
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-
-      - name: Run sidecar tests
-        working-directory: apps/desktop/sidecar
-        run: pytest
+          python -m pip install pyinstaller
 
       - name: Build sidecar
         working-directory: apps/desktop/sidecar
-        run: |
-          python -m pip install pyinstaller
-          python build/build_sidecar.py
+        run: python build_sidecar.py
 
       - name: Build Tauri app
         working-directory: apps/desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-        run: pnpm tauri build ${{ matrix.args }}
+        run: npx tauri build ${{ matrix.args }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -213,6 +244,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: Validar JSON examples
@@ -233,6 +265,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Install Azure CLI + Bicep

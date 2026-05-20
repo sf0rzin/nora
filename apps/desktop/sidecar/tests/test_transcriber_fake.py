@@ -53,7 +53,7 @@ class TestTranscriber:
         transcriber = LiveTranscriber(
             session_id="test",
             region="eastus",
-            key="test-key",
+            auth_token="ey.jwt.fake",
             on_event=on_event,
         )
         
@@ -89,7 +89,7 @@ class TestTranscriber:
         transcriber = LiveTranscriber(
             session_id="test",
             region="eastus",
-            key="test-key",
+            auth_token="ey.jwt.fake",
             on_event=on_event,
         )
         
@@ -137,7 +137,7 @@ class TestTranscriber:
         transcriber = LiveTranscriber(
             session_id="test",
             region="eastus",
-            key="test-key",
+            auth_token="ey.jwt.fake",
             on_event=on_event,
         )
         
@@ -186,7 +186,7 @@ class TestTranscriber:
         transcriber = LiveTranscriber(
             session_id="test",
             region="eastus",
-            key="test-key",
+            auth_token="ey.jwt.fake",
             on_event=on_event,
         )
         

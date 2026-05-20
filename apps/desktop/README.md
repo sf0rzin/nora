@@ -45,8 +45,8 @@ pnpm install
 
 # Build do sidecar (necessário antes de rodar o app)
 cd sidecar
-pip install -r requirements.txt
-python build/build_sidecar.py
+pip install -e ".[dev]"
+python build_sidecar.py
 cd ..
 
 # Rodar em modo dev
@@ -57,7 +57,7 @@ pnpm tauri dev
 
 ```bash
 # Linux
-cd sidecar && python build/build_sidecar.py && cd ..
+cd sidecar && python build_sidecar.py && cd ..
 pnpm tauri build
 
 # Windows (cross-compile não suportado)
@@ -88,11 +88,15 @@ apps/desktop/
 │   └── Cargo.toml
 └── sidecar/               # Sidecar Python
     ├── src/
-    │   ├── transcriber.py        # Azure Speech SDK
-    │   ├── protocol.py           # Protocolo JSON Lines
-    │   └── audio_pipe.py         # Pipe de áudio
-    └── build/
-        └── build_sidecar.py      # Script PyInstaller
+    │   └── nora_stt_sidecar/
+    │       ├── transcriber.py    # Azure Speech SDK
+    │       ├── protocol.py       # Protocolo JSON Lines
+    │       └── audio_pipe.py     # Pipe de áudio
+    ├── tests/                    # pytest
+    ├── build_sidecar.py          # Script PyInstaller (cross-platform)
+    ├── sidecar-linux.spec        # PyInstaller spec (Linux)
+    ├── sidecar-macos.spec        # PyInstaller spec (macOS)
+    └── sidecar-windows.spec      # PyInstaller spec (Windows)
 ```
 
 ## Arquitetura
@@ -167,9 +171,15 @@ o driver virtual **BlackHole**:
 ### Sidecar não encontrado
 
 O sidecar deve estar em `src-tauri/binaries/` com o nome correto:
-- Linux: `nora-stt-sidecar-x86_64-unknown-linux-gnu`
-- Windows: `nora-stt-sidecar-x86_64-pc-windows-msvc.exe`
-- macOS: `nora-stt-sidecar-aarch64-apple-darwin`
+- Linux x86_64: `nora-stt-sidecar-x86_64-unknown-linux-gnu`
+- Linux ARM64: `nora-stt-sidecar-aarch64-unknown-linux-gnu`
+- Windows x86_64: `nora-stt-sidecar-x86_64-pc-windows-msvc.exe`
+- macOS Intel: `nora-stt-sidecar-x86_64-apple-darwin`
+- macOS Apple Silicon: `nora-stt-sidecar-aarch64-apple-darwin`
+
+O `build_sidecar.py` detecta a plataforma automaticamente e gera o binário com o nome
+correto baseado em `platform.system()` + `platform.machine()`. Os specs PyInstaller
+correspondentes são `sidecar-linux.spec`, `sidecar-macos.spec` e `sidecar-windows.spec`.
 
 ### Build falha no Linux
 
