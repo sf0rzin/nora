@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-PyInstaller spec file for NORA STT Sidecar.
+PyInstaller spec file for NORA STT Sidecar — macOS.
 
-This spec ensures all native libraries from azure-cognitiveservices-speech
-are properly bundled into the executable.
+Equivalente ao sidecar-linux.spec mas com target triple Darwin (x86_64 ou aarch64).
 """
 
 import sys
@@ -15,21 +14,32 @@ project_root = Path(SPECPATH).parent
 src_path = project_root / "src"
 sys.path.insert(0, str(src_path))
 
-from PyInstaller.utils.hooks import collect_dynamic_libs, collect_data_files
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_data_files, collect_all
+import platform
 
-# Collect all native libraries from azure-cognitiveservices-speech
+# Native libs do Azure Speech SDK.
 azure_binaries = collect_dynamic_libs('azure.cognitiveservices.speech')
-
-# Collect data files if any
 azure_datas = collect_data_files('azure.cognitiveservices.speech')
+
+# Pydantic 2 com C extension.
+pydantic_datas, pydantic_binaries, pydantic_hiddenimports = collect_all('pydantic')
+pydantic_core_datas, pydantic_core_binaries, pydantic_core_hiddenimports = collect_all('pydantic_core')
+
+bundled_binaries = azure_binaries + pydantic_binaries + pydantic_core_binaries
+bundled_datas = azure_datas + pydantic_datas + pydantic_core_datas
+
+# Triple do Tauri/Rust. macos-latest no GitHub Actions e ARM (M-series).
+_arch_map = {'x86_64': 'x86_64', 'amd64': 'x86_64', 'aarch64': 'aarch64', 'arm64': 'aarch64'}
+_arch = _arch_map.get(platform.machine().lower(), platform.machine().lower())
+_exe_name = f'nora-stt-sidecar-{_arch}-apple-darwin'
 
 block_cipher = None
 
 a = Analysis(
     ['src/nora_stt_sidecar/__main__.py'],
     pathex=[str(src_path)],
-    binaries=azure_binaries,
-    datas=azure_datas,
+    binaries=bundled_binaries,
+    datas=bundled_datas,
     hiddenimports=[
         'nora_stt_sidecar.logging_setup',
         'nora_stt_sidecar.protocol',
@@ -40,7 +50,7 @@ a = Analysis(
         'azure.cognitiveservices.speech.audio',
         'azure.cognitiveservices.speech.transcription',
         'azure.cognitiveservices.speech.interop',
-    ],
+    ] + pydantic_hiddenimports + pydantic_core_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -68,11 +78,13 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='nora-stt-sidecar-x86_64-unknown-linux-gnu',
+    name=_exe_name,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX em binários PyInstaller no macOS frequentemente confunde notarization
+    # e antivirus. Mantemos False aqui (override do default Linux/Windows).
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
