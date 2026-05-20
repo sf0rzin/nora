@@ -1,6 +1,7 @@
 package br.com.nora.api.application.meeting;
 
 import br.com.nora.api.application.analysis.AnalysisService;
+import br.com.nora.api.application.ports.AuditPort;
 import br.com.nora.api.application.ports.MeetingRepository;
 import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
 import br.com.nora.api.application.ports.MeetingRepository.PagedMeetings;
@@ -11,6 +12,7 @@ import br.com.nora.api.domain.meeting.ProcessingStatus;
 import br.com.nora.api.domain.meeting.Transcript;
 import br.com.nora.api.domain.meeting.TranscriptFormat;
 import java.time.OffsetDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -38,16 +40,19 @@ public class MeetingService {
     private final MeetingRepository meetings;
     private final TranscriptRepository transcripts;
     private final ObjectProvider<AnalysisService> analysisServiceProvider;
+    private final AuditPort audit;
     private final boolean autoDispatchAnalysis;
 
     public MeetingService(
             MeetingRepository meetings,
             TranscriptRepository transcripts,
             ObjectProvider<AnalysisService> analysisServiceProvider,
+            AuditPort audit,
             @Value("${nora.analysis.auto-dispatch:true}") boolean autoDispatchAnalysis) {
         this.meetings = meetings;
         this.transcripts = transcripts;
         this.analysisServiceProvider = analysisServiceProvider;
+        this.audit = audit;
         this.autoDispatchAnalysis = autoDispatchAnalysis;
     }
 
@@ -82,6 +87,20 @@ public class MeetingService {
         Transcript transcript =
                 Transcript.create(saved.id(), saved.tenantId(), format, cmd.rawTranscript());
         transcripts.save(transcript);
+
+        Map<String, Object> auditPayload = new HashMap<>();
+        auditPayload.put("title", saved.title());
+        auditPayload.put("transcriptLength", cmd.rawTranscript().length());
+        auditPayload.put("format", format.name());
+        auditPayload.put(
+                "participantCount", cmd.participants() == null ? 0 : cmd.participants().size());
+        audit.record(
+                saved.tenantId(),
+                saved.ownerUserId(),
+                "meeting.uploaded",
+                "MEETING",
+                saved.id(),
+                auditPayload);
 
         scheduleAnalysisAfterCommit(saved.id(), saved.tenantId());
         return saved;
@@ -161,6 +180,13 @@ public class MeetingService {
         }
         Meeting updated = meeting.withStatus(ProcessingStatus.PENDING);
         meetings.save(updated);
+        audit.record(
+                tenantId,
+                meeting.ownerUserId(),
+                "meeting.reprocessed",
+                "MEETING",
+                meetingId,
+                Map.of("previousStatus", "FAILED"));
         scheduleAnalysisAfterCommit(meetingId, tenantId);
         return updated;
     }

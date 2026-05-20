@@ -3,6 +3,7 @@ package br.com.nora.api.infrastructure.config;
 import br.com.nora.api.api.security.AuthCookies;
 import br.com.nora.api.application.identity.AuthService;
 import br.com.nora.api.application.identity.AuthService.AuthSettings;
+import br.com.nora.api.application.ports.AuditPort;
 import br.com.nora.api.application.ports.Clock;
 import br.com.nora.api.application.ports.EmailSender;
 import br.com.nora.api.application.ports.JwtIssuer;
@@ -54,6 +55,7 @@ public class AuthConfig {
             SecureTokenGenerator tokenGenerator,
             JwtIssuer jwtIssuer,
             EmailSender emailSender,
+            AuditPort audit,
             Clock clock,
             AuthSettings settings) {
         return new AuthService(
@@ -65,6 +67,7 @@ public class AuthConfig {
                 tokenGenerator,
                 jwtIssuer,
                 emailSender,
+                audit,
                 clock,
                 settings);
     }
