@@ -189,9 +189,7 @@ def analyze(
 
     system_prompt, user_template = _load_prompt()
 
-    previous_section, prev_redactions = _build_previous_highlights_section(
-        req.previous_highlights
-    )
+    previous_section, prev_redactions = _build_previous_highlights_section(req.previous_highlights)
     pii_redactions_applied = pii_redactions_applied + prev_redactions
 
     user_prompt = _render_template(

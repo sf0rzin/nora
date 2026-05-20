@@ -153,8 +153,7 @@ def analyze(
     competitors = ctx_dict.get("competitors") or []
     if isinstance(competitors, list):
         ctx_dict["competitors"] = [
-            _shield_field(c, extra_redactions) if isinstance(c, str) else c
-            for c in competitors
+            _shield_field(c, extra_redactions) if isinstance(c, str) else c for c in competitors
         ]
 
     tenant_ctx_json = json.dumps(ctx_dict, ensure_ascii=False, indent=2)

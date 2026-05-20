@@ -532,9 +532,7 @@ _WORD_RE = re.compile(r"\b[A-Za-zÁÉÍÓÚÂÊÔÀÃÕÇáéíóúâêôàãõ�
 # substantivos comuns do PT-BR. Em transcricoes corporativas reais, primeiros
 # nomes sempre aparecem Title Case (capitalizacao automatica do dicador) ou
 # all-caps no contexto formal (que sao filtrados por `_PERSON_NAME_NEGATIVE_LIST`).
-_NAME_TOKEN_RE = re.compile(
-    r"\b[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+\b"
-)
+_NAME_TOKEN_RE = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+\b")
 
 
 # --------------------------------------------------------------------------- #
@@ -579,12 +577,11 @@ def _apply_basic_patterns(
         validator = _VALIDATORS.get(id(pattern))
         for m in pattern.finditer(text):
             raw = m.group(0)
-            if validator is not None:
-                # Pattern raw (CPF/CNPJ sem mascara): exige DV valido para evitar
-                # false positives em codigos numericos genericos (ID de pedido,
-                # rastreio, NFE etc.).
-                if not validator(raw):
-                    continue
+            # Pattern raw (CPF/CNPJ sem mascara): exige DV valido para evitar
+            # false positives em codigos numericos genericos (ID de pedido,
+            # rastreio, NFE etc.).
+            if validator is not None and not validator(raw):
+                continue
             matches.append(_Match(type=pii_type, start=m.start(), end=m.end(), value=raw))
 
     matches.sort(key=lambda x: x.start)
