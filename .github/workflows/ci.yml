@@ -131,9 +131,36 @@ jobs:
           NEXT_PUBLIC_USE_MOCKS: 'true'
         run: pnpm build
 
-  desktop:
+  # Job leve em PR: só sidecar tests (mais barato) + Python sanity check.
+  # O sidecar é a única parte com lógica de domínio testável fora do Tauri/Rust;
+  # o resto (TypeScript + Rust) é validado em release/main pela build full.
+  desktop-sidecar:
     needs: changes
     if: needs.changes.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/desktop/sidecar/pyproject.toml
+
+      - name: Install sidecar deps + tests
+        working-directory: apps/desktop/sidecar
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pytest -v
+
+  # Build full do desktop (sidecar PyInstaller + Tauri bundle msi/dmg/deb/AppImage)
+  # roda APENAS em push em main, gerando artifacts publicáveis. Em PR validation
+  # esse build é overkill (15-20min cold-cache + fragil em 3 plataformas).
+  desktop-bundle:
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true' && github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
@@ -152,15 +179,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: pnpm
-          cache-dependency-path: apps/desktop/package.json
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
 
       - uses: actions/setup-python@v5
         with:
@@ -186,48 +209,27 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: apps/desktop
-        run: pnpm install --no-frozen-lockfile
+        run: npm ci
 
-      - name: Install sidecar dependencies
+      - name: Install sidecar deps
         working-directory: apps/desktop/sidecar
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-
-      - name: Run sidecar tests
-        working-directory: apps/desktop/sidecar
-        run: pytest -v
-
-      - name: Frontend typecheck (sanity, sem build pesado)
-        working-directory: apps/desktop
-        run: pnpm exec tsc -b --noEmit
-
-      - name: Cargo check (sanity, sem build pesado)
-        working-directory: apps/desktop/src-tauri
-        run: cargo check --release
-
-      # Build completo do sidecar (PyInstaller) + bundle Tauri sao reservados para
-      # push em main (via build-images.yml ou release workflow dedicado). PR
-      # validation cobre tests + typecheck + cargo check, o suficiente pra pegar
-      # regressao funcional sem gastar 15-20min por PR em build de bundles que
-      # nao sao consumidos.
-      - name: Build sidecar (push only)
-        if: github.event_name == 'push'
-        working-directory: apps/desktop/sidecar
-        run: |
           python -m pip install pyinstaller
-          python build_sidecar.py
 
-      - name: Build Tauri app (push only)
-        if: github.event_name == 'push'
+      - name: Build sidecar
+        working-directory: apps/desktop/sidecar
+        run: python build_sidecar.py
+
+      - name: Build Tauri app
         working-directory: apps/desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-        run: pnpm tauri build ${{ matrix.args }}
+        run: npx tauri build ${{ matrix.args }}
 
-      - name: Upload artifacts (push only)
-        if: github.event_name == 'push'
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nora-desktop-${{ matrix.sidecar_target }}
