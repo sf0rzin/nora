@@ -441,12 +441,73 @@ public class MeetingsController {
         }
     }
 
+    // Cap defensivo de tamanho do arquivo: 10MB. Aligned com max-file-size do
+    // application.yml. Em prod, Spring rejeita antes via MaxUploadSizeExceededException
+    // (handler em GlobalExceptionHandler retorna 413).
+    private static final int MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+    // Extensoes aceitas alinhadas com TranscriptFormat (TXT, VTT, SRT).
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(".txt", ".vtt", ".srt");
+    // Content-Types validos para texto puro / legendas.
+    private static final Set<String> ALLOWED_CONTENT_TYPES =
+            Set.of(
+                    "text/plain",
+                    "text/vtt",
+                    "application/x-subrip",
+                    "text/srt",
+                    "application/octet-stream"); // alguns clientes mandam isso pra .vtt/.srt
+
     private String readFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new MeetingException.EmptyTranscript();
         }
+        if (file.getSize() > MAX_UPLOAD_BYTES) {
+            throw new IllegalArgumentException("uploaded file exceeds maximum allowed size (10MB)");
+        }
+        // Filename safety: rejeitar nomes com path traversal ou caracteres
+        // perigosos (ex.: "../../etc/passwd", null bytes).
+        String filename = file.getOriginalFilename();
+        if (filename != null) {
+            if (filename.contains("/") || filename.contains("\\") || filename.contains("\0")) {
+                throw new IllegalArgumentException("invalid filename");
+            }
+            String lower = filename.toLowerCase(java.util.Locale.ROOT);
+            int dot = lower.lastIndexOf('.');
+            String ext = dot >= 0 ? lower.substring(dot) : "";
+            if (!ALLOWED_EXTENSIONS.contains(ext)) {
+                throw new IllegalArgumentException(
+                        "unsupported file extension; allowed: " + ALLOWED_EXTENSIONS);
+            }
+        }
+        // Content-Type check (defesa em profundidade — cliente pode mentir).
+        String ct = file.getContentType();
+        if (ct != null) {
+            String ctLower = ct.toLowerCase(java.util.Locale.ROOT);
+            // text/* generico aceito alem da whitelist (clientes variam muito).
+            if (!ctLower.startsWith("text/") && !ALLOWED_CONTENT_TYPES.contains(ctLower)) {
+                throw new IllegalArgumentException("unsupported content-type: " + ct);
+            }
+        }
         try {
             byte[] bytes = file.getBytes();
+            // Validacao de magic bytes: rejeita binarios disfarcados de .txt.
+            // PE (.exe Win): "MZ" (0x4D 0x5A). ELF (.so/.bin Linux): 0x7F 0x45 0x4C 0x46.
+            // ZIP/PDF/etc: 0x50 0x4B (PK), 0x25 0x50 0x44 0x46 (PDF).
+            if (bytes.length >= 4) {
+                int b0 = bytes[0] & 0xFF;
+                int b1 = bytes[1] & 0xFF;
+                int b2 = bytes[2] & 0xFF;
+                int b3 = bytes[3] & 0xFF;
+                boolean looksLikeBinary =
+                        (b0 == 0x4D && b1 == 0x5A) // MZ (PE)
+                                || (b0 == 0x7F && b1 == 0x45 && b2 == 0x4C && b3 == 0x46) // ELF
+                                || (b0 == 0x50 && b1 == 0x4B) // PK (ZIP/JAR/DOCX)
+                                || (b0 == 0x25 && b1 == 0x50 && b2 == 0x44 && b3 == 0x46) // %PDF
+                                || (b0 == 0x89 && b1 == 0x50 && b2 == 0x4E && b3 == 0x47); // PNG
+                if (looksLikeBinary) {
+                    throw new IllegalArgumentException(
+                            "uploaded file appears to be a binary blob, not a text transcript");
+                }
+            }
             return new String(bytes, StandardCharsets.UTF_8);
         } catch (IOException ex) {
             throw new IllegalArgumentException("could not read uploaded file");
