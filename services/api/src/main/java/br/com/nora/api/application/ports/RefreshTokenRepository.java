@@ -27,4 +27,11 @@ public interface RefreshTokenRepository {
      * senha). Retorna o numero de tokens efetivamente revogados.
      */
     int revokeAllByUserId(UUID userId, java.time.Instant now);
+
+    /**
+     * Revoga em lote todos os tokens da family (cadeia de rotacao). Usado quando reuse e detectado:
+     * um token revogado da family foi apresentado, indicando comprometimento provavel da cadeia.
+     * Retorna o numero de tokens efetivamente revogados.
+     */
+    int revokeAllByFamilyId(UUID familyId, java.time.Instant now);
 }

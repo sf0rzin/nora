@@ -21,6 +21,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -35,6 +37,8 @@ import org.springframework.transaction.annotation.Transactional;
  * story.
  */
 public class AuthService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AuthService.class);
 
     /** Default roles do MVP. Movido para ca pra ser reusavel pelo refresh. */
     private static final List<String> DEFAULT_ROLES = List.of("ADMIN");
@@ -237,7 +241,7 @@ public class AuthService {
         String access = jwtIssuer.issue(user, DEFAULT_ROLES, settings.jwtTtl());
         GeneratedToken refresh = tokenGenerator.generate();
         refreshTokenRepository.save(
-                RefreshToken.issue(
+                RefreshToken.issueRoot(
                         UUID.randomUUID(),
                         user.id(),
                         user.tenantId(),
@@ -252,18 +256,28 @@ public class AuthService {
                 settings.refreshTokenTtl().toSeconds());
     }
 
-    // ----- Round 2 / 1.3 A: refresh + logout -----
+    // ----- Round 2 / 1.3 A: refresh + logout (com rotation + reuse detection) -----
 
     /**
-     * Resultado de refresh: novo access (JWT curto) + nova janela de expiracao. O refresh em si nao
-     * e rotacionado nesta fatia (vide brief — rotacao fica pra futuro), portanto continua valido no
-     * cookie httpOnly do cliente.
+     * Resultado de refresh: novo par access+refresh. O refresh anterior foi revogado nesta mesma
+     * transacao; cliente deve atualizar o cookie httpOnly com {@code refreshTokenPlain} retornado.
      */
-    public record RefreshResult(User user, String accessToken, long accessExpiresInSeconds) {}
+    public record RefreshResult(
+            User user,
+            String accessToken,
+            long accessExpiresInSeconds,
+            String refreshTokenPlain,
+            long refreshExpiresInSeconds) {}
 
     /**
-     * Valida o refresh token cru contra o hash em DB, atualiza {@code last_used_at} e emite um
-     * access JWT novo. Sem rotacao: o refresh em si continua valido ate {@code expires_at}.
+     * Refresh com rotacao + reuse detection (audit follow-up #3 / OAuth2 best practice).
+     *
+     * <p>Caminho feliz: valida o token apresentado, revoga ele, emite um filho na mesma family,
+     * retorna o novo refresh raw pro cliente.
+     *
+     * <p>Reuse detection: se o token apresentado ja esta revogado (e ainda dentro do TTL),
+     * assumimos cadeia comprometida (atacante exfiltrou o cookie e usou um token velho). Revogamos
+     * a family inteira e logamos WARN.
      */
     @Transactional
     public RefreshResult refresh(String refreshTokenPlain) {
@@ -276,6 +290,18 @@ public class AuthService {
                         .findByTokenHash(hash)
                         .orElseThrow(AuthException.RefreshTokenInvalid::new);
         Instant now = clock.now();
+
+        if (token.isRevoked() && !token.isExpired(now)) {
+            // Reuse de token revogado e ainda nao expirado: cadeia comprometida. Revoga toda
+            // a family pra deslogar atacante + vitima simultaneamente.
+            int revoked = refreshTokenRepository.revokeAllByFamilyId(token.familyId(), now);
+            LOG.warn(
+                    "Refresh token reuse detected family={} userId={} tokensRevoked={}",
+                    token.familyId(),
+                    token.userId(),
+                    revoked);
+            throw new AuthException.RefreshTokenInvalid();
+        }
         if (!token.isActive(now)) {
             throw new AuthException.RefreshTokenInvalid();
         }
@@ -287,10 +313,33 @@ public class AuthService {
             // Usuario desativado depois do login: refresh nao deve renovar.
             throw new AuthException.RefreshTokenInvalid();
         }
+
+        // Rotacao: emite filho na mesma family, marca pai como replaced_by_id, revoga pai.
+        GeneratedToken next = tokenGenerator.generate();
+        UUID childId = UUID.randomUUID();
+        RefreshToken child =
+                RefreshToken.issueChild(
+                        childId,
+                        user.id(),
+                        user.tenantId(),
+                        next.hash(),
+                        now,
+                        now.plus(settings.refreshTokenTtl()),
+                        token.familyId());
+        refreshTokenRepository.save(child);
+
         token.markUsed(now);
+        token.markReplacedBy(childId);
+        token.revoke(now);
         refreshTokenRepository.save(token);
+
         String access = jwtIssuer.issue(user, DEFAULT_ROLES, settings.jwtTtl());
-        return new RefreshResult(user, access, settings.jwtTtl().toSeconds());
+        return new RefreshResult(
+                user,
+                access,
+                settings.jwtTtl().toSeconds(),
+                next.rawToken(),
+                settings.refreshTokenTtl().toSeconds());
     }
 
     /**

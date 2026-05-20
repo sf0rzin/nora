@@ -869,5 +869,17 @@ class InvitationServiceTest {
             }
             return count;
         }
+
+        @Override
+        public int revokeAllByFamilyId(UUID familyId, Instant now) {
+            int count = 0;
+            for (RefreshToken t : all) {
+                if (t.familyId().equals(familyId) && !t.isRevoked()) {
+                    t.revoke(now);
+                    count++;
+                }
+            }
+            return count;
+        }
     }
 }
