@@ -53,6 +53,13 @@ management:
 
 nora:
   security:
+    # Row Level Security Postgres (ADR 0002 defense in depth).
+    # V016 cria as policies. Quando enforce=true, TenantRlsAspect executa
+    # SET LOCAL nora.current_tenant_id no inicio de cada @Transactional.
+    # Default off porque exige que app rode com role Postgres sem BYPASSRLS
+    # (ver V016 comments pra operacao de ativacao).
+    rls:
+      enforce: ${NORA_RLS_ENFORCE:false}
     jwt:
       # HS256 (default, simetrico, secret compartilhado) ou RS256 (assimetrico, RSA com JWKS).
       # Em RS256 e obrigatorio JWT_RS256_PRIVATE_KEY_PEM. Ver RsaJwtIssuer + JwksController.

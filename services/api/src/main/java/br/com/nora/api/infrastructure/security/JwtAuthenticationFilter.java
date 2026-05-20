@@ -68,13 +68,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         };
                 auth.setAuthenticated(true);
                 SecurityContextHolder.getContext().setAuthentication(auth);
+                // Popula o holder pra RLS aspect ler. Limpamos no finally pra nao vazar entre
+                // requests reusando a mesma thread (Tomcat pool).
+                TenantContextHolder.set(principal.tenantId());
             } catch (Exception ex) {
                 // Token invalido => nao popula contexto. Resposta 401 sai do entry point quando
                 // a rota exige autenticacao.
                 SecurityContextHolder.clearContext();
+                TenantContextHolder.clear();
             }
         }
-        chain.doFilter(req, res);
+        try {
+            chain.doFilter(req, res);
+        } finally {
+            TenantContextHolder.clear();
+        }
     }
 
     private static String extractBearer(HttpServletRequest req) {
