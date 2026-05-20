@@ -24,7 +24,7 @@
         <spotless.version>2.43.0</spotless.version>
         <checkstyle.version>3.5.0</checkstyle.version>
         <jacoco.version>0.8.12</jacoco.version>
-        <testcontainers.version>1.21.0</testcontainers.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
         <springdotenv.version>5.1.0</springdotenv.version>
         <!--
           docker.host: default tcp://localhost:2375 (Docker Desktop com "Expose daemon on tcp"
