@@ -6,8 +6,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-nora}
       POSTGRES_USER: ${POSTGRES_USER:-nora}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nora_dev}
+    # Bind explicito a 127.0.0.1: bd dev nao deve escutar na LAN da maquina.
+    # Override com `POSTGRES_BIND=0.0.0.0` em .env.local se precisar acessar de
+    # outro host (ex: testar a partir do telefone).
     ports:
-      - "5432:5432"
+      - "${POSTGRES_BIND:-127.0.0.1}:5432:5432"
     volumes:
       - nora_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -15,15 +18,20 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+    mem_limit: 512m
 
   adminer:
-    image: adminer:4
+    # Pinado em versao especifica (4 generico tinha CVEs).
+    image: adminer:4.8.1
     container_name: nora-adminer
     ports:
-      - "8090:8080"
+      - "${ADMINER_BIND:-127.0.0.1}:8090:8080"
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 256m
 
 volumes:
   nora_pgdata:
