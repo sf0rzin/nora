@@ -23,6 +23,7 @@ from pathlib import Path
 from ..clients.llm import LlmClient
 from ..models import LiveAnalyzeRequest, LiveAnalyzeResponse, LiveHighlightsV1
 from ..settings import Settings
+from .pii_shield import redact as pii_redact
 
 logger = logging.getLogger(__name__)
 
@@ -45,26 +46,69 @@ def _load_prompt() -> tuple[str, str]:
     return system_match.group(1).strip(), user_match.group(1).strip()
 
 
+def _escape_placeholders(value: str) -> str:
+    """Neutraliza placeholders `{{x}}` vindos do usuario (anti prompt-template
+    injection)."""
+    if "{{" not in value:
+        return value
+    return value.replace("{{", "{ {").replace("}}", "} }")
+
+
 def _render_template(template: str, **variables: str) -> str:
     result = template
     for key, value in variables.items():
-        result = result.replace(f"{{{{{key}}}}}", value)
+        result = result.replace(f"{{{{{key}}}}}", _escape_placeholders(value))
     return result
 
 
-def _build_previous_highlights_section(previous: LiveHighlightsV1 | None) -> str:
+_TEXT_FIELDS_HIGHLIGHTS = {
+    "decisions": ("text", "sourceQuote"),
+    "nextSteps": ("text", "sourceQuote"),
+    "observations": ("text", "sourceQuote"),
+    "tasks": ("title", "assignee", "sourceQuote"),
+}
+
+
+def _redact_highlights_dict(data: dict) -> tuple[dict, int]:
+    """Aplica PII Shield em todos os campos de texto livre de `data`.
+
+    `previous_highlights` vem do cliente (backend repassa, mas o conteudo
+    original foi gerado pelo LLM da rodada anterior — pode conter PII que
+    escapou do primeiro shield, especialmente em campos like `sourceQuote`
+    que ecoam o transcript). Re-aplicar shield aqui evita amplificacao a cada
+    iteracao. ADR 0012.
+    """
+    extra_redactions = 0
+    for collection_key, text_fields in _TEXT_FIELDS_HIGHLIGHTS.items():
+        items = data.get(collection_key) or []
+        for item in items:
+            for field in text_fields:
+                value = item.get(field)
+                if isinstance(value, str) and value:
+                    result = pii_redact(value)
+                    if result.redactions:
+                        item[field] = result.redacted_text
+                        extra_redactions += len(result.redactions)
+    return data, extra_redactions
+
+
+def _build_previous_highlights_section(
+    previous: LiveHighlightsV1 | None,
+) -> tuple[str, int]:
     if previous is None:
-        return ""
+        return "", 0
     data = previous.model_dump(by_alias=True)
+    data, extra = _redact_highlights_dict(data)
     has_any = any(data.get(k) for k in ("decisions", "nextSteps", "observations", "tasks"))
     if not has_any:
-        return ""
-    return (
+        return "", extra
+    section = (
         "Destaques ja identificados anteriormente (NAO duplique):\n"
         "```json\n"
         f"{json.dumps(data, ensure_ascii=False, indent=2)}\n"
         "```\n"
     )
+    return section, extra
 
 
 def _build_json_schema_for_live() -> dict:
@@ -145,7 +189,8 @@ def analyze(
 
     system_prompt, user_template = _load_prompt()
 
-    previous_section = _build_previous_highlights_section(req.previous_highlights)
+    previous_section, prev_redactions = _build_previous_highlights_section(req.previous_highlights)
+    pii_redactions_applied = pii_redactions_applied + prev_redactions
 
     user_prompt = _render_template(
         user_template,
@@ -174,7 +219,8 @@ def analyze(
             max_tokens=2048,
         )
 
-    logger.debug("Live LLM raw response (first 300 chars): %s", raw_json[:300])
+    # NAO logar raw_json: ADR 0012 (PII never logged).
+    logger.debug("Live LLM raw response: %d chars", len(raw_json))
 
     parsed = json.loads(raw_json)
     highlights = LiveHighlightsV1.model_validate(parsed)
