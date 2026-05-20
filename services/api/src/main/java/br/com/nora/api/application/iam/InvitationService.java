@@ -267,7 +267,7 @@ public class InvitationService {
         String jwt = jwtIssuer.issue(savedUser, List.of(), settings.jwtTtl());
         GeneratedToken refresh = tokenGenerator.generate();
         refreshTokenRepository.save(
-                RefreshToken.issue(
+                RefreshToken.issueRoot(
                         UUID.randomUUID(),
                         savedUser.id(),
                         savedUser.tenantId(),

@@ -27,6 +27,7 @@ public class RefreshTokenRepositoryAdapter implements RefreshTokenRepository {
                                 existing -> {
                                     existing.setRevokedAt(token.revokedAt());
                                     existing.setLastUsedAt(token.lastUsedAt());
+                                    existing.setReplacedById(token.replacedById());
                                     return existing;
                                 })
                         .orElseGet(
@@ -39,7 +40,9 @@ public class RefreshTokenRepositoryAdapter implements RefreshTokenRepository {
                                                 token.expiresAt(),
                                                 token.revokedAt(),
                                                 token.createdAt(),
-                                                token.lastUsedAt()));
+                                                token.lastUsedAt(),
+                                                token.familyId(),
+                                                token.replacedById()));
         return toDomain(jpa.save(entity));
     }
 
@@ -63,6 +66,12 @@ public class RefreshTokenRepositoryAdapter implements RefreshTokenRepository {
         return jpa.revokeAllForUser(userId, now);
     }
 
+    @Override
+    @Transactional
+    public int revokeAllByFamilyId(UUID familyId, Instant now) {
+        return jpa.revokeAllForFamily(familyId, now);
+    }
+
     private static RefreshToken toDomain(RefreshTokenJpaEntity e) {
         return new RefreshToken(
                 e.getId(),
@@ -72,6 +81,8 @@ public class RefreshTokenRepositoryAdapter implements RefreshTokenRepository {
                 e.getExpiresAt(),
                 e.getRevokedAt(),
                 e.getCreatedAt(),
-                e.getLastUsedAt());
+                e.getLastUsedAt(),
+                e.getFamilyId(),
+                e.getReplacedById());
     }
 }

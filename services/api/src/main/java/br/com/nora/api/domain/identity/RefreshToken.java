@@ -5,7 +5,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Refresh token stateful (Round 2 / Subfase 1.3 A).
+ * Refresh token stateful com rotation + reuse detection (audit follow-up #3).
  *
  * <p>Token cru existe apenas no cookie httpOnly do navegador e em memoria efemera durante o login.
  * Persistencia armazena somente o SHA-256 hex ({@code tokenHash}). Vazamento do banco nao permite
@@ -14,14 +14,14 @@ import java.util.UUID;
  * <p>Estado:
  *
  * <ul>
- *   <li>{@code revokedAt} != null -> revogado (logout ou rotacao futura) e nunca mais valido.
+ *   <li>{@code revokedAt} != null -> revogado e nunca mais valido.
  *   <li>{@code expiresAt} no passado -> expirado pelo TTL longo (30 dias por padrao).
- *   <li>{@code lastUsedAt} marca o ultimo refresh; util pra observabilidade e revogar sessoes
- *       ociosas no futuro.
+ *   <li>{@code lastUsedAt} marca o ultimo refresh.
+ *   <li>{@code familyId} agrupa tokens da mesma cadeia de rotacao. Em /auth/refresh, geramos um
+ *       filho com mesma family e revogamos o pai. Se um token revogado e reapresentado, revogamos a
+ *       family inteira (reuse detection).
+ *   <li>{@code replacedById} aponta para o sucessor quando o token e rotacionado (audit).
  * </ul>
- *
- * <p>Diferentemente de {@link OneTimeToken}, refresh nao e "consumido": pode ser usado varias vezes
- * dentro do TTL ate ser explicitamente revogado.
  */
 public final class RefreshToken {
 
@@ -33,6 +33,8 @@ public final class RefreshToken {
     private Instant revokedAt;
     private final Instant createdAt;
     private Instant lastUsedAt;
+    private final UUID familyId;
+    private UUID replacedById;
 
     public RefreshToken(
             UUID id,
@@ -42,7 +44,9 @@ public final class RefreshToken {
             Instant expiresAt,
             Instant revokedAt,
             Instant createdAt,
-            Instant lastUsedAt) {
+            Instant lastUsedAt,
+            UUID familyId,
+            UUID replacedById) {
         this.id = Objects.requireNonNull(id);
         this.userId = Objects.requireNonNull(userId);
         this.tenantId = Objects.requireNonNull(tenantId);
@@ -51,17 +55,36 @@ public final class RefreshToken {
         this.revokedAt = revokedAt;
         this.createdAt = Objects.requireNonNull(createdAt);
         this.lastUsedAt = lastUsedAt;
+        this.familyId = Objects.requireNonNull(familyId);
+        this.replacedById = replacedById;
     }
 
-    /** Cria um refresh novinho com {@code revokedAt} e {@code lastUsedAt} nulos. */
-    public static RefreshToken issue(
+    /** Cria um refresh raiz: {@code familyId} = {@code id} (cada login comeca uma cadeia nova). */
+    public static RefreshToken issueRoot(
             UUID id,
             UUID userId,
             UUID tenantId,
             String tokenHash,
             Instant createdAt,
             Instant expiresAt) {
-        return new RefreshToken(id, userId, tenantId, tokenHash, expiresAt, null, createdAt, null);
+        return new RefreshToken(
+                id, userId, tenantId, tokenHash, expiresAt, null, createdAt, null, id, null);
+    }
+
+    /**
+     * Cria um filho na mesma cadeia: {@code familyId} herdado, {@code replacedById} parent->child
+     * deve ser setado externamente apos a criacao.
+     */
+    public static RefreshToken issueChild(
+            UUID id,
+            UUID userId,
+            UUID tenantId,
+            String tokenHash,
+            Instant createdAt,
+            Instant expiresAt,
+            UUID familyId) {
+        return new RefreshToken(
+                id, userId, tenantId, tokenHash, expiresAt, null, createdAt, null, familyId, null);
     }
 
     public boolean isRevoked() {
@@ -85,6 +108,10 @@ public final class RefreshToken {
 
     public void markUsed(Instant now) {
         this.lastUsedAt = Objects.requireNonNull(now);
+    }
+
+    public void markReplacedBy(UUID childId) {
+        this.replacedById = Objects.requireNonNull(childId);
     }
 
     public UUID id() {
@@ -117,5 +144,13 @@ public final class RefreshToken {
 
     public Instant lastUsedAt() {
         return lastUsedAt;
+    }
+
+    public UUID familyId() {
+        return familyId;
+    }
+
+    public UUID replacedById() {
+        return replacedById;
     }
 }
