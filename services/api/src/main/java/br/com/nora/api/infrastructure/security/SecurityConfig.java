@@ -99,6 +99,9 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        // OWASP 2023+ recomenda strength >= 12 para BCrypt. Default da SpringSec e 10.
+        // Strength 12 ~ 250ms por hash em hw moderno; aceitavel para login esporadico
+        // mas defesa real contra password cracking offline em caso de dump do DB.
+        return new BCryptPasswordEncoder(12);
     }
 }

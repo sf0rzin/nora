@@ -16,13 +16,21 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.NoHandlerFoundException;
 
 /** Tradutor central de excecoes para o formato de erro padrao. */
 @RestControllerAdvice
@@ -210,12 +218,122 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+        // NAO vazamos ex.getMessage() — pode conter detalhes internos. traceId no log basta.
+        String trace = traceId();
+        LOG.warn("IllegalArgument traceId={} message={}", trace, ex.getMessage());
         return ResponseEntity.badRequest()
                 .body(
                         new ErrorResponse(
                                 "VALIDATION_FAILED",
-                                ex.getMessage(),
+                                "Invalid request.",
+                                trace,
+                                Instant.now(),
+                                List.of()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(
+                        new ErrorResponse(
+                                "PAYLOAD_TOO_LARGE",
+                                "Upload exceeds maximum allowed size.",
                                 traceId(),
+                                Instant.now(),
+                                List.of()));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleNotReadable(HttpMessageNotReadableException ex) {
+        return ResponseEntity.badRequest()
+                .body(
+                        new ErrorResponse(
+                                "MALFORMED_REQUEST",
+                                "Request body is malformed or missing.",
+                                traceId(),
+                                Instant.now(),
+                                List.of()));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotAllowed(
+            HttpRequestMethodNotSupportedException ex) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(
+                        new ErrorResponse(
+                                "METHOD_NOT_ALLOWED",
+                                "HTTP method not allowed for this endpoint.",
+                                traceId(),
+                                Instant.now(),
+                                List.of()));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleUnsupportedMedia(
+            HttpMediaTypeNotSupportedException ex) {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(
+                        new ErrorResponse(
+                                "UNSUPPORTED_MEDIA_TYPE",
+                                "Unsupported media type.",
+                                traceId(),
+                                Instant.now(),
+                                List.of()));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(
+            MethodArgumentTypeMismatchException ex) {
+        // Tipico: UUID invalido em @PathVariable.
+        return ResponseEntity.badRequest()
+                .body(
+                        new ErrorResponse(
+                                "VALIDATION_FAILED",
+                                "Invalid parameter type.",
+                                traceId(),
+                                Instant.now(),
+                                List.of(
+                                        new ErrorResponse.FieldIssue(
+                                                ex.getName(), "invalid value"))));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingParam(
+            MissingServletRequestParameterException ex) {
+        return ResponseEntity.badRequest()
+                .body(
+                        new ErrorResponse(
+                                "VALIDATION_FAILED",
+                                "Missing required parameter.",
+                                traceId(),
+                                Instant.now(),
+                                List.of(
+                                        new ErrorResponse.FieldIssue(
+                                                ex.getParameterName(), "required"))));
+    }
+
+    @ExceptionHandler(NoHandlerFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNotFound(NoHandlerFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(
+                        new ErrorResponse(
+                                "NOT_FOUND",
+                                "Endpoint not found.",
+                                traceId(),
+                                Instant.now(),
+                                List.of()));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrity(DataIntegrityViolationException ex) {
+        String trace = traceId();
+        LOG.warn("DataIntegrityViolation traceId={} root={}", trace, ex.getMostSpecificCause());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(
+                        new ErrorResponse(
+                                "CONFLICT",
+                                "Resource conflict (duplicate or violates a constraint).",
+                                trace,
                                 Instant.now(),
                                 List.of()));
     }

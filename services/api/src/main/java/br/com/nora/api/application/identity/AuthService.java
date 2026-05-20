@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Servico de aplicacao para o fluxo completo de identidade do MVP: signup, verificacao de e-mail,
@@ -85,6 +86,7 @@ public class AuthService {
      * apenas quando {@link AuthSettings#exposeDevTokens()} e {@code true}. Em producao esse campo
      * vem null.
      */
+    @Transactional
     public SignupResult signup(SignupCommand cmd) {
         Email email = Email.of(cmd.email());
         PasswordPolicy.validate(cmd.password());
@@ -163,6 +165,7 @@ public class AuthService {
 
     // ----- US02: verificacao de e-mail -----
 
+    @Transactional
     public void verifyEmail(String rawToken) {
         OneTimeToken token = consumeToken(rawToken, Purpose.EMAIL_VERIFICATION);
         User user =
@@ -196,6 +199,7 @@ public class AuthService {
      * <p>O access token e um JWT HS256 (curta vida, 15min default) com claims minimas. O refresh e
      * um opaque token de alta entropia (256 bits), persistido como hash SHA-256.
      */
+    @Transactional
     public LoginResult login(LoginCommand cmd) {
         Email email;
         try {
@@ -227,6 +231,7 @@ public class AuthService {
      * Emite par access+refresh para um usuario ja autenticado (chamado por login interno e tambem
      * pelo aceite de convite, que ja validou credenciais propriamente).
      */
+    @Transactional
     public LoginResult issueTokens(User user) {
         Instant now = clock.now();
         String access = jwtIssuer.issue(user, DEFAULT_ROLES, settings.jwtTtl());
@@ -260,6 +265,7 @@ public class AuthService {
      * Valida o refresh token cru contra o hash em DB, atualiza {@code last_used_at} e emite um
      * access JWT novo. Sem rotacao: o refresh em si continua valido ate {@code expires_at}.
      */
+    @Transactional
     public RefreshResult refresh(String refreshTokenPlain) {
         if (refreshTokenPlain == null || refreshTokenPlain.isBlank()) {
             throw new AuthException.RefreshTokenInvalid();
@@ -291,6 +297,7 @@ public class AuthService {
      * Logout pontual: revoga apenas o refresh token usado. Idempotente — token ausente ou ja
      * revogado e tratado como sucesso (no-op).
      */
+    @Transactional
     public void logout(String refreshTokenPlain) {
         if (refreshTokenPlain == null || refreshTokenPlain.isBlank()) {
             return;
@@ -308,6 +315,7 @@ public class AuthService {
     }
 
     /** Logout total: revoga todos os refresh tokens ativos do usuario (ex: "sair de tudo"). */
+    @Transactional
     public int logoutAllSessions(UUID userId) {
         if (userId == null) {
             return 0;
@@ -325,6 +333,7 @@ public class AuthService {
      * US04 step 1: gera token de reset e dispara e-mail. Por seguranca, e-mails nao cadastrados
      * sofrem o mesmo fluxo silenciosamente (mesma latencia, sem revelar existencia da conta).
      */
+    @Transactional
     public RequestPasswordResetResult requestPasswordReset(RequestPasswordResetCommand cmd) {
         Email email;
         try {
@@ -364,6 +373,15 @@ public class AuthService {
 
     public record ConfirmPasswordResetCommand(String token, String newPassword) {}
 
+    /**
+     * US04 step 2: troca senha + invalida tokens ativos + revoga TODAS as sessoes ativas (refresh
+     * tokens) do usuario.
+     *
+     * <p>Revogar refresh tokens em reset e essencial: se um atacante roubou um refresh
+     * anteriormente e a vitima esta resetando a senha por suspeita, manter a sessao do atacante
+     * ativa por 30 dias (refresh TTL) anularia o efeito da reset. Padrao OWASP.
+     */
+    @Transactional
     public void confirmPasswordReset(ConfirmPasswordResetCommand cmd) {
         PasswordPolicy.validate(cmd.newPassword());
         OneTimeToken token = consumeToken(cmd.token(), Purpose.PASSWORD_RESET);
@@ -374,6 +392,9 @@ public class AuthService {
         Instant now = clock.now();
         user.changePasswordHash(passwordHasher.hash(cmd.newPassword()), now);
         userRepository.save(user);
+        // Revoga todos os refresh tokens ativos: invalida sessoes em qualquer device
+        // (vide docstring acima).
+        refreshTokenRepository.revokeAllByUserId(user.id(), now);
     }
 
     // ----- helpers -----
