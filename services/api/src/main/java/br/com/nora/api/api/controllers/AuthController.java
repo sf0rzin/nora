@@ -10,6 +10,7 @@ import br.com.nora.api.api.dto.auth.SignupRequest;
 import br.com.nora.api.api.dto.auth.SignupResponse;
 import br.com.nora.api.api.dto.auth.VerifyEmailRequest;
 import br.com.nora.api.api.security.AuthCookies;
+import br.com.nora.api.application.identity.AuthException;
 import br.com.nora.api.application.identity.AuthService;
 import br.com.nora.api.application.identity.AuthService.ConfirmPasswordResetCommand;
 import br.com.nora.api.application.identity.AuthService.LoginCommand;
@@ -19,10 +20,13 @@ import br.com.nora.api.application.identity.AuthService.RequestPasswordResetComm
 import br.com.nora.api.application.identity.AuthService.RequestPasswordResetResult;
 import br.com.nora.api.application.identity.AuthService.SignupCommand;
 import br.com.nora.api.application.identity.AuthService.SignupResult;
+import br.com.nora.api.infrastructure.security.AuthRateLimiter;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.Duration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -52,16 +56,25 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/auth")
 public class AuthController {
 
+    private static final Logger LOG = LoggerFactory.getLogger(AuthController.class);
+
     private final AuthService authService;
     private final AuthCookies cookies;
+    private final AuthRateLimiter rateLimiter;
 
-    public AuthController(AuthService authService, AuthCookies cookies) {
+    public AuthController(
+            AuthService authService, AuthCookies cookies, AuthRateLimiter rateLimiter) {
         this.authService = authService;
         this.cookies = cookies;
+        this.rateLimiter = rateLimiter;
     }
 
     @PostMapping("/signup")
-    public ResponseEntity<SignupResponse> signup(@Valid @RequestBody SignupRequest req) {
+    public ResponseEntity<SignupResponse> signup(
+            @Valid @RequestBody SignupRequest req, HttpServletRequest httpReq) {
+        if (!rateLimiter.allowSignup(httpReq)) {
+            throw AuthException.rateLimited();
+        }
         SignupResult result =
                 authService.signup(
                         new SignupCommand(req.email(), req.password(), req.displayName()));
@@ -81,7 +94,11 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
+    public ResponseEntity<LoginResponse> login(
+            @Valid @RequestBody LoginRequest req, HttpServletRequest httpReq) {
+        if (!rateLimiter.allowLogin(httpReq)) {
+            throw AuthException.rateLimited();
+        }
         LoginResult result = authService.login(new LoginCommand(req.email(), req.password()));
 
         LoginResponse body =
@@ -150,6 +167,22 @@ public class AuthController {
     @PostMapping("/password/reset/request")
     public ResponseEntity<RequestPasswordResetResponse> requestPasswordReset(
             @Valid @RequestBody RequestPasswordResetRequest req) {
+        // Limita por email (em vez de IP) — spammer que muda IP nao consegue inundar
+        // o inbox da vitima. Em silencio se exceder (retorna a mesma 202 indistinguivel)
+        // pra nao vazar quais emails existem.
+        if (!rateLimiter.allowPasswordReset(req.email())) {
+            // Reply 202 indistinguivel pra nao vazar quais emails existem, mas WARN
+            // pra que ops veja o sinal — sem isso, ataque ficaria silencioso em prod.
+            LOG.warn(
+                    "Password reset rate-limited for email-hash={}",
+                    Integer.toHexString(req.email().toLowerCase(java.util.Locale.ROOT).hashCode()));
+            return ResponseEntity.accepted()
+                    .body(
+                            new RequestPasswordResetResponse(
+                                    "Se houver uma conta para este e-mail, enviaremos"
+                                            + " instrucoes.",
+                                    null));
+        }
         RequestPasswordResetResult result =
                 authService.requestPasswordReset(new RequestPasswordResetCommand(req.email()));
         return ResponseEntity.accepted()

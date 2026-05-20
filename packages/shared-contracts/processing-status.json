@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nora.app/contracts/processing-status/v1",
+  "title": "Meeting Processing Status — NORA",
+  "description": "Estados do ciclo de vida de processamento de uma reunião. Web/Desktop filtram por estes valores no listing. Source of truth: services/api/src/main/java/br/com/nora/api/domain/meeting/ProcessingStatus.java.",
+  "type": "string",
+  "enum": ["PENDING", "PROCESSING", "COMPLETED", "FAILED"],
+  "x-state-machine": {
+    "PENDING": ["PROCESSING", "FAILED"],
+    "PROCESSING": ["COMPLETED", "FAILED"],
+    "COMPLETED": ["PENDING", "PROCESSING"],
+    "FAILED": ["PENDING", "PROCESSING"]
+  },
+  "x-notes": {
+    "PENDING": "Upload terminou; análise NLP ainda não começou. Goal saved on COMPLETED meeting volta pra PENDING pra reprocess.",
+    "PROCESSING": "Worker NLP rodando. Bloqueia novo upload/edit.",
+    "COMPLETED": "Análise pronta. summarySnippet preenchido.",
+    "FAILED": "Worker falhou. UI mostra botão reprocess (POST /meetings/{id}/reprocess)."
+  }
+}
