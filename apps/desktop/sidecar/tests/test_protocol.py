@@ -17,12 +17,14 @@ class TestProtocol:
     """Test protocol message parsing and serialization."""
     
     def test_parse_start_message(self):
+        # ADR 0009: Token Broker — desktop nunca tem azure_key. Recebe auth_token JWT
+        # do backend NORA, que faz o broker para o Azure Speech STS.
         data = {
             "v": 1,
             "type": "start",
             "session_id": "test-session",
             "azure_region": "eastus",
-            "azure_key": "test-key",
+            "auth_token": "ey.jwt.fake",
             "language": "pt-BR",
             "sample_rate": 16000,
             "channels": 1,
@@ -32,7 +34,19 @@ class TestProtocol:
         assert isinstance(msg, StartMessage)
         assert msg.session_id == "test-session"
         assert msg.azure_region == "eastus"
+        assert msg.auth_token == "ey.jwt.fake"
         assert msg.language == "pt-BR"
+
+    def test_parse_refresh_token_message(self):
+        data = {
+            "v": 1,
+            "type": "refresh_token",
+            "session_id": "test-session",
+            "auth_token": "ey.jwt.refreshed",
+        }
+        msg = parse_inbound(data)
+        assert msg.auth_token == "ey.jwt.refreshed"
+        assert msg.type == "refresh_token"
     
     def test_parse_audio_message(self):
         data = {
