@@ -42,9 +42,7 @@ class JjwtJwtIssuerTest {
 
     @Test
     void acceptsStrongSecretInAnyProfile() {
-        assertThatCode(() -> new JjwtJwtIssuer(GOOD_SECRET, "prod"))
-                .doesNotThrowAnyException();
-        assertThatCode(() -> new JjwtJwtIssuer(GOOD_SECRET, "local"))
-                .doesNotThrowAnyException();
+        assertThatCode(() -> new JjwtJwtIssuer(GOOD_SECRET, "prod")).doesNotThrowAnyException();
+        assertThatCode(() -> new JjwtJwtIssuer(GOOD_SECRET, "local")).doesNotThrowAnyException();
     }
 }

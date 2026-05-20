@@ -32,8 +32,7 @@ public class JjwtJwtIssuer implements JwtIssuer {
      * sincronia com o default declarado em application.yml e .env.example apenas para que a
      * validacao a seguir consiga rejeita-lo explicitamente.
      */
-    private static final String INSECURE_DEFAULT_SECRET =
-            "change-me-please-min-32-chars-long-aaaa";
+    private static final String INSECURE_DEFAULT_SECRET = "change-me-please-min-32-chars-long-aaaa";
 
     public JjwtJwtIssuer(
             @Value("${nora.security.jwt.secret}") String secret,
@@ -48,8 +47,8 @@ public class JjwtJwtIssuer implements JwtIssuer {
         if (INSECURE_DEFAULT_SECRET.equals(secret) && !isLocalOrTest) {
             throw new IllegalStateException(
                     "nora.security.jwt.secret esta com o valor placeholder padrao; defina"
-                        + " JWT_SECRET com um segredo gerado por SecureRandom (>=32 bytes) antes de"
-                        + " subir fora do profile local/test.");
+                            + " JWT_SECRET com um segredo gerado por SecureRandom (>=32 bytes) antes de"
+                            + " subir fora do profile local/test.");
         }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.issuer = "nora-api";
