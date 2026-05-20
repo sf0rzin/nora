@@ -101,7 +101,48 @@ var identityConfig = hasUai ? {
   type: 'SystemAssigned'
 }
 
-resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
+// Probes que o Container Apps reconhece (HEALTHCHECK do Dockerfile e ignorado pela
+// plataforma). API Spring Boot expoe /actuator/health; worker e web expoem /healthz.
+var probePath = ingress == 'none' ? '' : (containerName == 'api' ? '/actuator/health' : '/healthz')
+
+var probes = ingress == 'none' ? [] : [
+  {
+    type: 'Liveness'
+    httpGet: {
+      path: probePath
+      port: targetPort
+    }
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  }
+  {
+    type: 'Readiness'
+    httpGet: {
+      path: probePath
+      port: targetPort
+    }
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  }
+  {
+    type: 'Startup'
+    httpGet: {
+      path: probePath
+      port: targetPort
+    }
+    // API Spring Boot leva ~30s. Damos ate 60s ate marcar failure (12*5s).
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 12
+  }
+]
+
+resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
   location: location
   tags: tags
@@ -133,6 +174,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             memory: memory
           }
           env: envVars
+          probes: probes
         }
       ]
       scale: {

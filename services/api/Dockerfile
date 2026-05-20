@@ -14,4 +14,10 @@ RUN addgroup -S nora && adduser -S nora -G nora
 COPY --from=build /workspace/target/*.jar /app/app.jar
 USER nora
 EXPOSE 8080
+# Container Apps default = 1Gi memory. JVM default heap em container = ~25% (250MB).
+# Spring Boot 3 + Hibernate + Tomcat estoura OOM em load com esse default. Subimos pra
+# 75% (~750MB heap). G1GC e ergonomia padrao de container do JDK 21 cobrem o resto.
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:8080/actuator/health || exit 1
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
