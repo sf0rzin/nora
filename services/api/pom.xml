@@ -121,6 +121,13 @@
             <artifactId>caffeine</artifactId>
         </dependency>
 
+        <!-- AOP — Spring usa proxies internamente, mas AspectJ annotations precisam do starter
+             explicito. Usado pelo TenantRlsAspect (RLS Postgres). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
