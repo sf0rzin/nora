@@ -246,13 +246,33 @@ public final class Meeting {
         return java.time.Duration.between(startedAt, endedAt).toSeconds();
     }
 
-    /** Devolve copia com novo status (e updatedAt = now). */
+    /**
+     * Devolve copia com novo status (e updatedAt = now), validando a transicao.
+     *
+     * <p>State machine permitida:
+     *
+     * <pre>
+     *   PENDING    → PROCESSING, FAILED, PENDING (idem)
+     *   PROCESSING → COMPLETED, FAILED, PROCESSING (idem)
+     *   COMPLETED  → PENDING (reprocess de goal), PROCESSING (reprocess direto)
+     *   FAILED     → PENDING (reprocess)
+     * </pre>
+     *
+     * <p>Sem state machine, qualquer thread/race podia mover meeting de COMPLETED→PROCESSING
+     * silenciosamente — quebrava listing/UI sem trace.
+     */
     public Meeting withStatus(ProcessingStatus newStatus) {
         if (newStatus == null) {
             throw new IllegalArgumentException("status is required");
         }
         if (newStatus == this.processingStatus) {
             return this;
+        }
+        if (!isValidTransition(this.processingStatus, newStatus)) {
+            throw new IllegalStateException(
+                    String.format(
+                            "invalid meeting status transition: %s -> %s",
+                            this.processingStatus, newStatus));
         }
         return new Meeting(
                 id,
@@ -270,6 +290,15 @@ public final class Meeting {
                 attributes,
                 createdAt,
                 OffsetDateTime.now());
+    }
+
+    private static boolean isValidTransition(ProcessingStatus from, ProcessingStatus to) {
+        return switch (from) {
+            case PENDING -> to == ProcessingStatus.PROCESSING || to == ProcessingStatus.FAILED;
+            case PROCESSING -> to == ProcessingStatus.COMPLETED || to == ProcessingStatus.FAILED;
+            case COMPLETED, FAILED ->
+                    to == ProcessingStatus.PENDING || to == ProcessingStatus.PROCESSING;
+        };
     }
 
     /** Devolve copia com novo snippet (e updatedAt = now). Trunca em SUMMARY_SNIPPET_MAX. */
