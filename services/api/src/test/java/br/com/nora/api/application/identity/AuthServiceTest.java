@@ -51,6 +51,7 @@ class AuthServiceTest {
     private InMemoryTokenRepo tokenRepo;
     private InMemoryRefreshTokenRepo refreshRepo;
     private FakeJwtIssuer jwts;
+    private RecordingAuditPort audit;
     private AuthService service;
 
     @BeforeEach
@@ -63,6 +64,7 @@ class AuthServiceTest {
         tokenRepo = new InMemoryTokenRepo();
         refreshRepo = new InMemoryRefreshTokenRepo();
         jwts = new FakeJwtIssuer();
+        audit = new RecordingAuditPort();
         service =
                 new AuthService(
                         tenants,
@@ -73,6 +75,7 @@ class AuthServiceTest {
                         tokens,
                         jwts,
                         mail,
+                        audit,
                         clock,
                         new AuthSettings(
                                 "http://localhost:3000",
@@ -605,6 +608,21 @@ class AuthServiceTest {
                 }
             }
             return count;
+        }
+    }
+
+    static class RecordingAuditPort implements br.com.nora.api.application.ports.AuditPort {
+        final List<String> actions = new ArrayList<>();
+
+        @Override
+        public void record(
+                UUID tenantId,
+                UUID actorUserId,
+                String action,
+                String targetType,
+                UUID targetId,
+                java.util.Map<String, Object> payload) {
+            actions.add(action);
         }
     }
 }
