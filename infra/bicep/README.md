@@ -174,11 +174,15 @@ Pra deploy automatizado (Subfase futura): criar Service Principal escopado ao RG
 
 ## Limitações conhecidas
 
-- **Public access no Postgres**: simplifica MVP mas expõe banco. Migrar pra VNet integration em prod.
+- **Public access no Postgres**: simplifica MVP mas expõe banco (com firewall por IP + AllowAzureServices). Migrar pra VNet integration em prod.
 - **Container Apps sem ACR**: usar imagem pública (ghcr.io). Pra prod, criar ACR no Bicep.
-- **Sem managed identity → Key Vault wiring**: secrets vão direto como `secretsObject` no Container App. Pra prod, usar Key Vault references com role assignment.
-- **Sem custom domain / certificado**: usa FQDN default do Container Apps (`*.brazilsouth.azurecontainerapps.io`).
+- **Sem custom domain / certificado**: usa FQDN default do Container Apps. Recursos atuais estão em **centralus** (`*.centralus.azurecontainerapps.io`).
 - **Sem WAF / Front Door**: pra prod, adicionar.
+- **Container Apps sem zone-redundancy**: aceitável MVP, ligar em prod (`zoneRedundant: true`).
+
+### Já endereçado na Sub-fase 1.9+
+- ✅ **Managed Identity → Key Vault wiring**: 3 UAIs (api/worker/web) com role `Key Vault Secrets User` + Container App secrets como `keyVaultUrl + identity` (vide `main.bicep:430-490`).
+- ✅ **Probes (liveness/readiness/startup)**: declarados em `container-app.bicep` — Container Apps platform ignora `HEALTHCHECK` do Dockerfile.
 
 Tudo isso é deliberado pro MVP. Documentado pra revisitar pós-pitch.
 
