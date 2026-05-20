@@ -24,6 +24,11 @@ updates:
         patterns:
           - "org.hibernate*"
           - "jakarta.persistence*"
+    ignore:
+      # Spring Boot 4 = Spring Framework 7 + Jakarta EE 11 + Hibernate 7.
+      # Stack pina 3.3.5 (ver CLAUDE.md). Avaliamos manualmente.
+      - dependency-name: org.springframework.boot:spring-boot-starter-parent
+        update-types: ["version-update:semver-major"]
 
   # Python / pip (worker + baseline)
   - package-ecosystem: pip
@@ -60,6 +65,29 @@ updates:
       # Next 16 e breaking — avaliamos manualmente
       - dependency-name: next
         update-types: ["version-update:semver-major"]
+      # React 19 incompativel com Next 14 (precisa Next 15)
+      - dependency-name: react
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react-dom
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
+      # TypeScript 6 ainda nao GA stable pro stack atual
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # TS-ESLint 8 requer ESLint 9 + flat config migration
+      - dependency-name: "@typescript-eslint/eslint-plugin"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@typescript-eslint/parser"
+        update-types: ["version-update:semver-major"]
+      # eslint-config-next 16 requer Next 16 (que tambem ignoramos)
+      - dependency-name: eslint-config-next
+        update-types: ["version-update:semver-major"]
+      # Monaco 0.55 breaking API changes (worker loader)
+      - dependency-name: monaco-editor
+        versions: [">=0.55.0"]
 
   - package-ecosystem: npm
     directory: /apps/desktop
@@ -70,6 +98,24 @@ updates:
     labels:
       - dependencies
       - desktop
+    ignore:
+      # Tailwind 4 breaks PostCSS/config; ADR 0013 pina Tailwind cru 3.x
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
+      # React 19 + react-router 7 (Remix merge) breaking
+      - dependency-name: react
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react-dom
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react-router-dom
+        update-types: ["version-update:semver-major"]
+      # Vite plugin v6 requer Vite 6 (estamos em Vite 5)
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: pip
     directory: /apps/desktop/sidecar
@@ -91,6 +137,10 @@ updates:
     labels:
       - dependencies
       - desktop
+    ignore:
+      # cpal 0.17 quebra API de audio (sidecar Azure Speech depende)
+      - dependency-name: cpal
+        versions: [">=0.16.0"]
 
   # GitHub Actions (supply chain)
   - package-ecosystem: github-actions
@@ -102,3 +152,7 @@ updates:
     labels:
       - dependencies
       - ci
+    ignore:
+      # upload-artifact v5+ mudou semantica de merge (PR caminhos quebram)
+      - dependency-name: actions/upload-artifact
+        update-types: ["version-update:semver-major"]
