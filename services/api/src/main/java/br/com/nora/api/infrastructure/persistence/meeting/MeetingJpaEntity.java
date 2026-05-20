@@ -14,11 +14,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "meetings")
+@SQLDelete(sql = "UPDATE meetings SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?")
+@SQLRestriction("deleted_at IS NULL")
 public class MeetingJpaEntity {
 
     @Id private UUID id;
@@ -64,11 +69,13 @@ public class MeetingJpaEntity {
             mappedBy = "meeting",
             cascade = CascadeType.ALL,
             orphanRemoval = true,
-            fetch = FetchType.EAGER)
+            fetch = FetchType.LAZY)
+    @BatchSize(size = 32)
     private List<MeetingParticipantJpaEntity> participants = new ArrayList<>();
 
-    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JoinColumn(name = "meeting_id")
+    @BatchSize(size = 32)
     private List<MeetingTagJpaEntity> tags = new ArrayList<>();
 
     public UUID getId() {
