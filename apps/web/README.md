@@ -54,8 +54,12 @@ pnpm format       # prettier write
 pnpm typecheck    # tsc --noEmit
 ```
 
-## Nota sobre shadcn/ui
+## Estrategia CSS (ADR 0013)
 
-A `tailwind.config.ts` ja inclui as variaveis de tema usadas pelo shadcn/ui, mas
-nenhum componente foi pre-instalado (a CLI e interativa). Para adicionar componentes
-depois: `npx shadcn@latest add button card ...`.
+Projeto usa **Tailwind cru + CSS Modules** — `shadcn/ui` foi **descartado** via ADR 0013.
+Razões: editorial palette OKLCH, controle total sobre tokens, monorepo policy que
+proíbe deps que disparem npx interativo. Não rode `npx shadcn add`.
+
+Aliases legacy (`background`, `foreground`, `primary`, `muted`, `border`) ainda
+existem em `tailwind.config.ts` por compatibilidade com a página de detalhes de
+meeting que usa `text-muted-foreground` — em remoção gradual.
