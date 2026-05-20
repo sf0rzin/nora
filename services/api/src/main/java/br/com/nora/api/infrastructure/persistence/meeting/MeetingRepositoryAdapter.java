@@ -15,8 +15,16 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
-/** Adapter entre {@link MeetingJpaRepository} e a porta de dominio. */
+/**
+ * Adapter entre {@link MeetingJpaRepository} e a porta de dominio.
+ *
+ * <p>Os metodos sao {@code @Transactional} porque {@link #toDomain} acessa as colecoes {@code
+ * participants} e {@code tags} (ambas LAZY). Sem a sessao aberta aqui, callers que chamam o adapter
+ * fora de um {@code @Transactional} caller (ex.: {@code AnalysisService.run}) sofreriam {@code
+ * LazyInitializationException}.
+ */
 @Repository
 public class MeetingRepositoryAdapter implements MeetingRepository {
 
@@ -27,6 +35,7 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
     }
 
     @Override
+    @Transactional
     public Meeting save(Meeting meeting) {
         MeetingJpaEntity entity = toEntity(meeting);
         MeetingJpaEntity saved = jpa.save(entity);
@@ -34,11 +43,13 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<Meeting> findByIdAndTenant(UUID id, UUID tenantId) {
         return jpa.findByIdAndTenantId(id, tenantId).map(this::toDomain);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size) {
         MeetingFilter f = filter == null ? MeetingFilter.empty() : filter;
         String search = (f.search() == null || f.search().isBlank()) ? null : f.search().trim();
