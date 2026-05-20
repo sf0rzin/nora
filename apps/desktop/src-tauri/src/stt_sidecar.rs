@@ -32,6 +32,14 @@ pub struct SidecarHandle {
 
 impl Drop for SidecarHandle {
     fn drop(&mut self) {
+        // Defesa contra leak de subprocess: se o `Vec<SidecarHandle>` for limpo sem
+        // passar por `stop()` (panic, logout, app close abrupto), o `stop_tx.take()`
+        // garante o sinal de cancelamento. Sem isso, o sidecar Python continua rodando
+        // ate o app fechar — quota Azure/CPU desperdicada.
+        if let Some(tx) = self.stop_tx.take() {
+            let _ = tx.send(());
+        }
+        #[cfg(debug_assertions)]
         eprintln!("[SidecarHandle] DROPPED session_id={}", self.session_id);
     }
 }

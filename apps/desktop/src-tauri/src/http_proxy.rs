@@ -5,8 +5,16 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 const FORBIDDEN_HEADERS: &[&str] = &[
-    "host", "origin", "cookie",
-    "x-forwarded-for", "x-real-ip",
+    "host",
+    "origin",
+    "cookie",
+    "x-forwarded-for",
+    "x-real-ip",
+    // O proxy sempre injeta Authorization a partir do SecretStore. Sem este filtro,
+    // o renderer poderia mandar `authorization: ...` no payload e o `clean_headers`
+    // posterior usaria o injetado, mas o sentinel evita confusao se o codigo de
+    // injecao for refatorado.
+    "authorization",
 ];
 
 const MAX_BODY_BYTES: usize = 1024 * 1024;
@@ -44,8 +52,20 @@ pub async fn http_proxy(
     base_url: tauri::State<'_, ApiBaseUrl>,
     secrets: tauri::State<'_, SecretStore>,
 ) -> Result<ProxyResponse, String> {
-    let target = base_url.0.join(&req.path)
+    // SSRF defense: `url::Url::join` aceita URL absoluta no `path` (RFC 3986 §5.3).
+    // Sem validar, atacante mandando `path: "https://evil.com/x"` faz o desktop
+    // emitir request com Bearer NORA pra qualquer URL. Forcamos que (1) o path
+    // comece com '/' e (2) a URL final tenha mesma origin do base_url.
+    if !req.path.starts_with('/') || req.path.starts_with("//") {
+        return Err("path deve comecar com '/' e nao ser protocol-relative".into());
+    }
+    let target = base_url
+        .0
+        .join(&req.path)
         .map_err(|e| format!("invalid path: {}", e))?;
+    if target.origin() != base_url.0.origin() {
+        return Err("path fora do origin permitido (SSRF blocked)".into());
+    }
 
     #[cfg(debug_assertions)]
     eprintln!(
