@@ -404,7 +404,7 @@ Forneça ao agente:
 
 ```text
 Você está no projeto NORA. Leia CLAUDE.md e docs/engineering/standards.md.
-Implemente a US## do docs/backlog-mvp.md apenas no service X.
+Implemente a US## do docs/product/backlog.md apenas no service X.
 Não altere escopo fora dessa story.
 Adicione testes e explique como validar.
 Ancore cada afirmação técnica em path:linha ou ADR.
@@ -421,7 +421,7 @@ Ancore cada afirmação técnica em path:linha ou ADR.
 
 Decisões arquiteturais duráveis ficam em `docs/adr/NNNN-titulo.md`. Toda nova feature que tome decisão de difícil reversão (banco, framework, modelo de tenancy, formato de IA) **deve** criar ADR.
 
-ADRs aceitos (estado em 2026-05-13):
+ADRs (estado em 2026-05-19, pós-Sub-fase 1.10):
 
 | ID | Decisão | Status |
 |---|---|---|
@@ -430,13 +430,19 @@ ADRs aceitos (estado em 2026-05-13):
 | 0003 | Saída do LLM via JSON Schema strict obrigatório | aceito |
 | 0004 | Estratégia de provider LLM (agnóstica) | aceito |
 | 0005 | Productivity Score (opt-in por reunião) | aceito |
-| 0006 | Customer Confidence + Account Health | aceito (persistência pendente) |
+| 0006 | Customer Confidence + Account Health | aceito (persistência: ADR 0015) |
 | 0007 | IAM AWS-style (Root + Users + Groups + Policies) | aceito |
 | 0008 | Desktop com Tauri 2 + sidecar Python | aceito |
 | 0009 | Speech Token Broker (Azure Speech credenciais) | aceito |
 | 0010 | Package `nlp-baseline` para TF-IDF PT-BR | aceito |
 | 0011 | Invite flow + corporate domain | aceito |
 | 0012 | PII PERSON_NAME (BR no MVP, NER pós) | aceito |
+| 0013 | Frontend CSS strategy (Tailwind cru, sem shadcn) | proposto (Design refina) |
+| 0014 | Defer post-MVP scope (US deferidas explicitamente) | aceito |
+| 0015 | Customer Confidence persistência mínima na Sub-fase 1.11 | aceito |
+| 0016 | Production-readiness backlog (Sub-fase 1.12) | proposto |
+| 0017 | License AGPL-3.0 | aceito |
+| 0018 | Test coverage targets por área crítica | aceito |
 
 Quando criar ADR:
 
@@ -466,7 +472,7 @@ Login emite dois cookies HttpOnly:
 ### Productivity Score & Customer Confidence
 
 - **Productivity Score (ADR 0005, Sub-fase 1.8)**: persistido (V012). Opt-in por reunião via `MeetingGoal`. UI renderiza `ProductivityScoreCard` apenas quando `productivity` está presente.
-- **Customer Confidence (ADR 0006)**: **schema LLM completo** em `meeting-analysis-v1.schema.json:117-167`, mas **sem tabelas Postgres** e sem endpoint. Decisão de implementação em ADR 0015 (a ser escrito).
+- **Customer Confidence (ADR 0006)**: **schema LLM completo** em `meeting-analysis-v1.schema.json:117-167`, mas **sem tabelas Postgres** e sem endpoint. Implementação mínima formalizada em **ADR 0015** (aceito 2026-05-14) — migration V013 + endpoint READ planejados pra Sub-fase 1.11.
 
 ### Speech Token Broker (ADR 0009)
 

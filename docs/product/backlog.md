@@ -170,10 +170,10 @@ Trabalho que não estava no MoSCoW original mas entrou via sub-fases ou decisão
 | MoSCoW | Total | DONE | PARTIAL | MISSING |
 |---|---|---|---|---|
 | **Must Have (M)** | 31 | **27** | **2** (US48, US49) | **2** (US05*, US08*) |
-| **Should Have (S)** | 14 | **6** | **2** (US13, US42) | **6** (US15, US25, US31, US33, US34, US41, US43) |
+| **Should Have (S)** | 15 | **6** | **2** (US13, US42) | **7** (US15, US25, US31, US33, US34, US41, US43) |
 | **Could Have (C)** | 5 | — | **1** (US26) | **4** (US21, US44, etc) |
 | **Won't Have v1 (W)** | 7 | **1** (US09) | — | **6** |
-| **Total** | **57** | **34** | **5** | **18** |
+| **Total** | **58** | **34** | **5** | **19** |
 
 > *US05 e US08 são `M` no MoSCoW original mas foram **rebatizadas como W via decisão de escopo** (CLAUDE.md + PROJECT.md). Aqui contam como MISSING/W na prática.
 
