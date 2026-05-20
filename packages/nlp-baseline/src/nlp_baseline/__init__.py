@@ -2,8 +2,9 @@
 
 Decisao registrada na ADR 0010. O proposito do package eh fornecer uma
 implementacao unica e auditavel do baseline interpretavel exigido pelo plano
-academico (`docs/PROJECT.md` secao 5) reutilizavel em producao como step do
-pipeline do worker (`services/nlp-worker/src/nora_nlp/services/baseline.py`).
+academico (FIAP Challenge — `docs/challenge/fiap-challenge-2026.md`)
+reutilizavel em producao como step do pipeline do worker
+(`services/nlp-worker/src/nora_nlp/services/baseline.py`).
 
 Uso minimo:
 

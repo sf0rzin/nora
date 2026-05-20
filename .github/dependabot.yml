@@ -1,0 +1,104 @@
+version: 2
+
+# Dependabot scans dependencies and opens PRs for security/version updates.
+# Mantemos updates SEMANALMENTE em grupos por ecosystem para reduzir ruido —
+# patches críticos sao surfacados em alerts (Security tab) independente.
+
+updates:
+  # Java / Maven (backend)
+  - package-ecosystem: maven
+    directory: /services/api
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - backend
+    groups:
+      spring:
+        patterns:
+          - "org.springframework.*"
+          - "org.springframework.boot:*"
+      hibernate:
+        patterns:
+          - "org.hibernate*"
+          - "jakarta.persistence*"
+
+  # Python / pip (worker + baseline)
+  - package-ecosystem: pip
+    directory: /services/nlp-worker
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - worker
+
+  - package-ecosystem: pip
+    directory: /packages/nlp-baseline
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - baseline
+
+  # Node / npm (web + desktop)
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - web
+    ignore:
+      # Next 16 e breaking — avaliamos manualmente
+      - dependency-name: next
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: /apps/desktop
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - desktop
+
+  - package-ecosystem: pip
+    directory: /apps/desktop/sidecar
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - desktop
+
+  # Rust / Cargo (Tauri backend)
+  - package-ecosystem: cargo
+    directory: /apps/desktop/src-tauri
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - desktop
+
+  # GitHub Actions (supply chain)
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: wednesday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci

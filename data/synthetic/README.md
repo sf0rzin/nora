@@ -76,4 +76,4 @@ Todos os dados aqui são fictícios. Nomes, empresas, CNPJs e valores são ilust
 
 ## Política de Hardcode
 
-Nenhum tenant referencia a TOTVS ou outros parceiros reais. NORA é horizontal por design (ver `docs/PROJECT.md` seção 2.2 — Product Context System). TOTVS aparece como caso de uso futuro no roadmap, não como tenant de demo.
+Nenhum tenant referencia a TOTVS ou outros parceiros reais. NORA é horizontal por design (ver `docs/product/vision.md` — Tenant Context System). TOTVS aparece como caso de uso futuro no roadmap, não como tenant de demo.

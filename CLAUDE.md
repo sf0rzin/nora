@@ -82,7 +82,7 @@ Ver `docs/engineering/architecture.md` §1 pra tabela completa com onde verifica
 - **DDD layers no backend**: `domain` não conhece Spring/HTTP/SDK. `application` orquestra. `infrastructure` adapta. `api` é fino
 - **Sem TOTVS hardcoded** no código de produto. Tenant context é configurável
 - **ADRs são imutáveis** uma vez aceitos. Decisão obsoleta? Cria ADR sucessor (ver `docs/adr/README.md`)
-- **Defer scope creep**: ADR 0014 declara v1 fechada. 14 US deferidas explicitamente — sem adicionar novo escopo até pitch FIAP (12/06/2026)
+- **Defer scope creep**: ADR 0014 declara v1 fechada. 13 US deferidas explicitamente (+ US48/US49 endereçadas via ADR 0015) — sem adicionar novo escopo até pitch FIAP (12/06/2026)
 - **Tests**: áreas críticas (IAM, Auth, PII) >85% coverage sustained (ADR 0018)
 - **Não comitar secrets**. Use `.env.example` pra nomes de variáveis
 

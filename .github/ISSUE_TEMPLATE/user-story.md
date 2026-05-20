@@ -9,7 +9,7 @@ labels: [mvp]
 
 Como **<persona>**, eu quero **<ação>** para **<benefício>**.
 
-> Backlog ID: `US-XX` — ver `docs/backlog-mvp.md`
+> Backlog ID: `US-XX` — ver `docs/product/backlog.md`
 
 ## Critérios de Aceite
 

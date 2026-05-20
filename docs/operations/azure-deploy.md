@@ -191,7 +191,7 @@ az role assignment create \
 
 ### Pegadinha 8 — Postgres bloqueia `CREATE EXTENSION` por default
 
-**Sintoma:** API container app crashоoп (CrashLoopBackOff) com:
+**Sintoma:** API container app entra em CrashLoopBackOff com:
 
 ```
 ERROR: extension "pgcrypto" is not allow-listed for users in Azure Database for PostgreSQL
