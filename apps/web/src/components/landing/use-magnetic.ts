@@ -36,5 +36,7 @@ export function useMagnetic(): void {
         el.removeEventListener("mouseleave", h.onLeave);
       });
     };
-  });
+    // Dep array vazia: setup é one-shot no mount. Sem isso, o effect re-rodava
+    // a cada render do consumer, recriando listeners e gerando race com cleanup.
+  }, []);
 }

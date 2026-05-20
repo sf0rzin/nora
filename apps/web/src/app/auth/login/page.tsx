@@ -19,10 +19,23 @@ export default function LoginPage() {
   );
 }
 
+/**
+ * Aceita apenas paths internos (`/x...`) e rejeita protocol-relative (`//evil.com`)
+ * e URLs absolutas. `as Route` é compile-time only — sem validação runtime, atacante
+ * monta `?next=https://evil.com` e router.replace redireciona pra fora do app.
+ */
+function safeNextPath(raw: string | null): Route {
+  if (!raw) return '/dashboard' as Route;
+  if (!raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) {
+    return '/dashboard' as Route;
+  }
+  return raw as Route;
+}
+
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = (params.get('next') ?? '/dashboard') as Route;
+  const next = safeNextPath(params.get('next'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
