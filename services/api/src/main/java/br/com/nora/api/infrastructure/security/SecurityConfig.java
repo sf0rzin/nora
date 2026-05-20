@@ -56,6 +56,9 @@ public class SecurityConfig {
         "/auth/password/reset/confirm",
         // US06: aceite de convite usa o token como credencial — endpoint publico por design.
         "/iam/invites/*/accept",
+        // JWKS publico (RFC 7517): validators externos buscam aqui a chave publica RSA.
+        // Ativo so quando algorithm=RS256 (bean condicional); em HS256 retorna 404 natural.
+        "/.well-known/jwks.json",
         "/v3/api-docs/**",
         "/swagger-ui/**",
         "/swagger-ui.html"
