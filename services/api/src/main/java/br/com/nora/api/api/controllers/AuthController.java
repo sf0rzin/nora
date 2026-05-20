@@ -29,7 +29,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -140,11 +139,19 @@ public class AuthController {
         }
         RefreshResult result = authService.refresh(refresh);
 
+        // Refresh rotation: cliente recebe um novo refresh cookie (o anterior foi revogado
+        // server-side). Sem reescrever o cookie, o cliente continuaria mandando o velho
+        // e bateria em reuse detection na proxima chamada.
         HttpHeaders headers = new HttpHeaders();
-        ResponseCookie access =
+        AuthCookies.appendSetCookie(
+                headers,
                 cookies.buildAccessCookie(
-                        result.accessToken(), Duration.ofSeconds(result.accessExpiresInSeconds()));
-        AuthCookies.appendSetCookie(headers, access);
+                        result.accessToken(), Duration.ofSeconds(result.accessExpiresInSeconds())));
+        AuthCookies.appendSetCookie(
+                headers,
+                cookies.buildRefreshCookie(
+                        result.refreshTokenPlain(),
+                        Duration.ofSeconds(result.refreshExpiresInSeconds())));
         return ResponseEntity.ok()
                 .headers(headers)
                 .body(new RefreshResponse("Bearer", result.accessExpiresInSeconds()));
