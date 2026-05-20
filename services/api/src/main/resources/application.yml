@@ -38,6 +38,10 @@ server:
     include-stacktrace: never
   forward-headers-strategy: framework
 
+spring.servlet.multipart:
+  max-file-size: 10MB
+  max-request-size: 12MB
+
 management:
   endpoints:
     web:
