@@ -16,8 +16,17 @@ import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-/** Emite e valida JWTs HS256 com chave compartilhada (nora.security.jwt.secret). */
+/**
+ * Emite e valida JWTs HS256 com chave compartilhada (nora.security.jwt.secret).
+ *
+ * <p>Bean ativo quando {@code nora.security.jwt.algorithm} = HS256 (default). Para RS256 com chave
+ * RSA + JWKS endpoint, ver {@link RsaJwtIssuer}.
+ */
 @Component
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "nora.security.jwt.algorithm",
+        havingValue = "HS256",
+        matchIfMissing = true)
 public class JjwtJwtIssuer implements JwtIssuer {
 
     private static final String CLAIM_TENANT = "tenantId";
