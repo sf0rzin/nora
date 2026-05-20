@@ -17,6 +17,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -94,10 +95,12 @@ public class GlobalExceptionHandler {
                     case "RATE_LIMITED" -> HttpStatus.TOO_MANY_REQUESTS;
                     default -> HttpStatus.BAD_REQUEST;
                 };
-        return ResponseEntity.status(status)
-                .body(
-                        new ErrorResponse(
-                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(status);
+        if (status == HttpStatus.TOO_MANY_REQUESTS) {
+            builder.header(HttpHeaders.RETRY_AFTER, "60");
+        }
+        return builder.body(
+                new ErrorResponse(ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
     }
 
     @ExceptionHandler(MeetingException.class)
@@ -211,10 +214,12 @@ public class GlobalExceptionHandler {
                     case "BROKER_ERROR" -> HttpStatus.BAD_GATEWAY;
                     default -> HttpStatus.BAD_REQUEST;
                 };
-        return ResponseEntity.status(status)
-                .body(
-                        new ErrorResponse(
-                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(status);
+        if (status == HttpStatus.TOO_MANY_REQUESTS) {
+            builder.header(HttpHeaders.RETRY_AFTER, "60");
+        }
+        return builder.body(
+                new ErrorResponse(ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

@@ -25,6 +25,8 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.Duration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -53,6 +55,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AuthController.class);
 
     private final AuthService authService;
     private final AuthCookies cookies;
@@ -167,6 +171,11 @@ public class AuthController {
         // o inbox da vitima. Em silencio se exceder (retorna a mesma 202 indistinguivel)
         // pra nao vazar quais emails existem.
         if (!rateLimiter.allowPasswordReset(req.email())) {
+            // Reply 202 indistinguivel pra nao vazar quais emails existem, mas WARN
+            // pra que ops veja o sinal — sem isso, ataque ficaria silencioso em prod.
+            LOG.warn(
+                    "Password reset rate-limited for email-hash={}",
+                    Integer.toHexString(req.email().toLowerCase(java.util.Locale.ROOT).hashCode()));
             return ResponseEntity.accepted()
                     .body(
                             new RequestPasswordResetResponse(

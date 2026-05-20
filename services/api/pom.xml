@@ -108,11 +108,17 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Rate limiting (Speech Token Broker) -->
+        <!-- Rate limiting (Speech Token Broker, Auth) -->
         <dependency>
             <groupId>com.bucket4j</groupId>
             <artifactId>bucket4j-core</artifactId>
             <version>8.10.1</version>
+        </dependency>
+
+        <!-- Cache com TTL + maximumSize para bounded eviction (AuthRateLimiter). -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
         </dependency>
 
         <!-- Test -->
