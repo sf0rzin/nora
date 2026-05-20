@@ -88,6 +88,15 @@ updates:
       # Monaco 0.55 breaking API changes (worker loader)
       - dependency-name: monaco-editor
         versions: [">=0.55.0"]
+      # @types/node ahead da LTS Node 20 que usamos
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # eslint-config-prettier 10 requer ESLint 9 + flat config
+      - dependency-name: eslint-config-prettier
+        update-types: ["version-update:semver-major"]
+      # tailwind-merge 3 e sync com tailwindcss 4 (que ignoramos)
+      - dependency-name: tailwind-merge
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /apps/desktop
