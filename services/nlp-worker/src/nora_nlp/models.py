@@ -273,7 +273,9 @@ class AnalyzeRequest(BaseModel):
     meeting_id: str = Field(alias="meetingId")
     tenant_id: str = Field(alias="tenantId")
     language: str = "pt-BR"
-    transcript: Annotated[str, Field(min_length=1)]
+    # Cap defensivo: 1MB de texto (~250k tokens) — alem do context window do
+    # gpt-4o-mini (128k tokens). Reuniao de 8h transcrita cabe folgado.
+    transcript: Annotated[str, Field(min_length=1, max_length=1_000_000)]
     tenant_context: TenantContext = Field(alias="tenantContext")
     options: AnalyzeOptions = Field(default_factory=AnalyzeOptions)
     # Goal opt-in pra Productivity Score. None desabilita o calculo.
@@ -334,7 +336,12 @@ class LiveHighlightsV1(BaseModel):
 class LiveAnalyzeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    transcript_chunk: Annotated[str, Field(min_length=20, alias="transcriptChunk")]
+    # Cap em 500KB de chunk: chunks live sao tipicamente 1-2min de fala
+    # transcrita (~3-5KB). 500KB cobre cenarios extremos sem virar vetor de
+    # custo LLM via prompt gigante.
+    transcript_chunk: Annotated[
+        str, Field(min_length=20, max_length=500_000, alias="transcriptChunk")
+    ]
     previous_highlights: LiveHighlightsV1 | None = Field(default=None, alias="previousHighlights")
     language: str = "pt-BR"
 

@@ -215,6 +215,47 @@ def test_analyze_falls_back_to_json_mode(MockClient):
 
 
 @patch("nora_nlp.services.llm_analyzer.LlmClient")
+def test_analyze_sanitizes_pii_in_tenant_context_glossary(MockClient):
+    """Regressao: campo `meaning` do glossario era ignorado (codigo iterava sobre
+    `definition`, que nao existe no modelo). PII colado pelo tenant chegava cru ao
+    LLM via glossary, violando ADR 0012.
+    """
+    mock_instance = MagicMock()
+    mock_instance.chat_structured.return_value = (json.dumps(_FAKE_LLM_RESPONSE), 100, 50)
+    MockClient.return_value = mock_instance
+
+    transcript = (DATA_DIR / "meetings" / "01-acme-discovery-lead-novo.txt").read_text(
+        encoding="utf-8"
+    )
+    tenant_ctx = json.loads(
+        (DATA_DIR / "tenants" / "acme-software.context.json").read_text(encoding="utf-8")
+    )
+    tenant_ctx["glossary"] = [
+        {
+            "term": "Conta-mae",
+            "meaning": (
+                "Conta unificadora de Joao da Silva com CPF 111.444.777-35 usada "
+                "para conciliacao bancaria."
+            ),
+        }
+    ]
+    req = AnalyzeRequest(
+        meetingId="test-meeting-glossary",
+        tenantId="00000000-0000-4000-8000-000000000001",
+        language="pt-BR",
+        transcript=transcript,
+        tenantContext=tenant_ctx,
+    )
+
+    analyze(req, _make_settings())
+
+    user_prompt = mock_instance.chat_structured.call_args.kwargs["user_prompt"]
+    assert "111.444.777-35" not in user_prompt
+    assert "Joao da Silva" not in user_prompt
+    assert "[[CPF_1]]" in user_prompt or "[[PERSON_NAME_1]]" in user_prompt
+
+
+@patch("nora_nlp.services.llm_analyzer.LlmClient")
 def test_analyze_handles_minimal_llm_response(MockClient):
     minimal_response = {
         "summary": (
