@@ -7,15 +7,19 @@ import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "tenant_contexts")
+@SQLDelete(sql = "UPDATE tenant_contexts SET deleted_at = NOW(), updated_at = NOW() WHERE id = ?")
+@SQLRestriction("deleted_at IS NULL")
 public class TenantContextJpaEntity {
 
     @Id private UUID id;
 
-    @Column(name = "tenant_id", nullable = false, unique = true)
+    @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
     /** Documento JSON serializado (companyName, products, competitors, etc.). */
