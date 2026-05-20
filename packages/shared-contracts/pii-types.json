@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nora.app/contracts/pii-types/v1",
+  "title": "PII Types — NORA",
+  "description": "Tipos canônicos de PII detectados/redacted pelo PII Shield (ADR 0012). Todo cliente que renderize redactions DEVE conhecer este enum. Source of truth: services/nlp-worker/src/nora_nlp/models.py:PiiType.",
+  "type": "string",
+  "enum": [
+    "EMAIL",
+    "PHONE",
+    "CPF",
+    "CNPJ",
+    "CREDIT_CARD",
+    "PERSON_NAME",
+    "ADDRESS",
+    "OTHER"
+  ],
+  "x-implementations": {
+    "java": "services/api/src/main/java/br/com/nora/api/domain/... (não usado hoje; backend não persiste PII type direto)",
+    "python": "services/nlp-worker/src/nora_nlp/models.py:PiiType",
+    "typescript": "apps/web/src/lib/api/types.ts (espelhado quando necessário em DetailResponse)"
+  },
+  "x-notes": {
+    "ADDRESS": "Listado pra forward-compat; implementação atual do worker NÃO emite (débito ADR 0012 — NER pra endereços).",
+    "OTHER": "Catch-all pra futuras extensões; cliente deve renderizar como tipo genérico."
+  }
+}

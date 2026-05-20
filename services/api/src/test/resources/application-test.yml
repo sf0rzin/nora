@@ -9,6 +9,13 @@ nora:
       secret: test-secret-with-at-least-32-chars-aaaa
       expires-seconds: 3600
     expose-dev-tokens: true
+    # Rate limit altíssimo em test profile: dezenas de ITs rodam no mesmo JVM
+    # contra o mesmo loopback (127.0.0.1), e cap padrão de 10 login/min estoura.
+    # Defesa anti brute-force fica testada via unit test do AuthRateLimiter próprio.
+    rate-limit:
+      login-per-minute: 100000
+      signup-per-minute: 100000
+      reset-per-10-minutes: 100000
   app:
     public-base-url: http://localhost:3000
   analysis:
