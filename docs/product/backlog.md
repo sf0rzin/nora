@@ -165,7 +165,7 @@ Trabalho que não estava no MoSCoW original mas entrou via sub-fases ou decisão
 
 ### Onda de hardening pós-1.10 (audit follow-ups #114–#138)
 
-Frente de segurança/infra que entrou após a Sub-fase 1.10, rotulada "audit follow-up #N". **Nenhum item tem ADR dedicado — débito a criar** (auditoria 2026-05-21).
+Frente de segurança/infra que entrou após a Sub-fase 1.10, rotulada "audit follow-up #N". Documentada retroativamente em **ADR 0019** (RLS + FK composta), **ADR 0020** (token rotation) e **ADR 0021** (soft-delete) na auditoria 2026-05-21.
 
 | Item | PR | Migration | Status |
 |---|---|---|---|

@@ -61,3 +61,6 @@ Decisões parcialmente substituídas: ADR sucessor pode marcar `Substitui parcia
 | 0016 | Production-readiness checklist e separação `rg-nora-prod` | proposto (aceita na 1.12) |
 | 0017 | License: AGPL-3.0 | aceito |
 | 0018 | Test coverage targets por área crítica | aceito |
+| 0019 | Tenant isolation em profundidade: RLS Postgres + FK composta | aceito |
+| 0020 | Rotação de refresh token + detecção de reuso (token families) | aceito |
+| 0021 | Estratégia de soft-delete em entidades tenant-owned | aceito |
