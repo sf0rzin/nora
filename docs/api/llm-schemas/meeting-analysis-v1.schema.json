@@ -87,6 +87,35 @@
       "maxItems": 12,
       "items": { "type": "string", "minLength": 2, "maxLength": 60 }
     },
+    "participants": {
+      "type": "array",
+      "maxItems": 30,
+      "description": "Participantes mencionados na transcrição (US13). Default vazio.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "mentionCount"],
+        "properties": {
+          "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+          "role": { "type": ["string", "null"], "maxLength": 120 },
+          "mentionCount": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "baselineTerms": {
+      "type": "array",
+      "maxItems": 50,
+      "description": "Termos TF-IDF extraídos pelo nlp-baseline ANTES do LLM (interpretável, ADR 0010). Preenchido pelo worker pós-redação PII; não é gerado pelo LLM. Default vazio.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["term", "score"],
+        "properties": {
+          "term": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "score": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
     "productivity": {
       "type": ["object", "null"],
       "description": "Avaliação de produtividade da reunião. Presente apenas quando o usuário ativou o recurso e declarou objetivo/outcomes esperados.",
@@ -116,7 +145,7 @@
     },
     "customerConfidence": {
       "type": ["object", "null"],
-      "description": "Confianca do cliente/lead na nossa empresa, derivada de sentimento, sinais de compra e objecoes. Enterprise-only; null para reunioes internas. Complementa (nao substitui) o Account Health Score temporal.",
+      "description": "RESERVADO / AINDA NÃO EMITIDO PELO WORKER (2026-05-21). Bloco desenhado em ADR 0006; persistência mínima aceita em ADR 0015 mas NÃO implementada (worker Pydantic MeetingAnalysisV1 não inclui este campo; nenhuma migration/endpoint existe). Mantido aqui como contrato-alvo. Quando implementado: confiança do cliente/lead na nossa empresa, derivada de sentimento, sinais de compra e objeções. Enterprise-only; null para reuniões internas. Complementa (não substitui) o Account Health Score temporal.",
       "additionalProperties": false,
       "required": ["score", "band", "rationale"],
       "properties": {

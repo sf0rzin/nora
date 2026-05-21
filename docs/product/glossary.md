@@ -17,7 +17,7 @@
 
 **ADR** — Architecture Decision Record. Decisão técnica durável + contexto + alternativas consideradas. **Imutável** uma vez aceita — sucessor cria novo ADR, não edita o antigo. Formato MADR enxuto (Status / Data / Decisores / Contexto / Decisão / Consequências / Alternativas). Em `docs/adr/`. Índice: `docs/adr/README.md`.
 
-**AUTH_FILTER_HARD_CAP** — Constante `500` em `MeetingsController.java:54` que limita quantas reuniões são carregadas em memória antes da filtragem IAM. Débito conhecido: tenants com >500 reuniões têm páginas vazias e `totalItems` truncado. Fix planejado pra Sub-fase 1.11 via empurrar predicado IAM pra SQL (JSONB GIN em `meeting_attributes`).
+**AUTH_FILTER_HARD_CAP** — Constante `500` em `MeetingsController.java:67` que limita quantas reuniões são carregadas em memória antes da filtragem IAM. Débito conhecido **ainda aberto** (2026-05-21): tenants com >500 reuniões têm páginas vazias e `totalItems` truncado. Fix era alvo da Sub-fase 1.11 (não iniciada) via empurrar predicado IAM pra SQL (JSONB GIN em `meeting_attributes`).
 
 ## B
 
@@ -98,7 +98,7 @@ Submetido via `PUT /meetings/{id}/goal`. ADR 0005.
 
 **MoSCoW** — Acrônimo de priorização: **M**ust have / **S**hould have / **C**ould have / **W**on't have (v1). Usado no backlog (`docs/product/backlog.md`). 31 Must, 14 Should, 5 Could, 7 Won't no MVP original.
 
-**Multi-tenancy** — Isolamento de dados entre clientes (tenants) do NORA. **No MVP**: `tenant_id` em toda tabela tenant-owned + filtro no application layer (Spring). **Em prod (Sub-fase 1.12)**: RLS Postgres habilitado adicionalmente. ADR 0002.
+**Multi-tenancy** — Isolamento de dados entre clientes (tenants) do NORA. **No MVP**: `tenant_id` em toda tabela tenant-owned + filtro no application layer (Spring). **Defesa em profundidade**: RLS Postgres (V016, enforce opt-in) + FK composta de isolamento (V015). ADR 0002.
 
 ## N
 
@@ -140,7 +140,7 @@ Internal-only — só backend Spring fala com ele. Hosted em `nora-worker-dev` (
 
 **rg-nora-prod** — Resource Group Azure de produção. **Ainda não existe** — criação planejada pra Sub-fase 1.12 (Production Hardening). Isolamento total do dev.
 
-**RLS** — Row-Level Security. Recurso do Postgres que filtra rows por policy SQL — usuário do app só vê rows que satisfazem a policy `tenant_id = current_setting('app.tenant_id')`. **Ainda não habilitado em prod** — débito catalogado pra Sub-fase 1.12. Hoje, isolamento por filtro na app layer (Spring).
+**RLS** — Row-Level Security. Recurso do Postgres que filtra rows por policy SQL. **Entregue no schema em V016** (`tenant_isolation` em 10 tabelas; predicado `tenant_id = nora.current_tenant_id()`, lendo o GUC `nora.current_tenant_id` setado pelo `TenantRlsAspect`). **Enforcement opt-in:** owner/admin bypassa por default (dev/testes inertes); em prod, ativar via role `nora_app` (`NOBYPASSRLS`) + flag `nora.security.rls.enforce`. Defesa em profundidade do filtro de app (ADR 0002). (Nota: o GUC real é `nora.current_tenant_id`, não `app.tenant_id` como o ADR 0002 esboçou.)
 
 ## S
 
@@ -170,7 +170,7 @@ Internal-only — só backend Spring fala com ele. Hosted em `nora-worker-dev` (
 
 ## V
 
-**V001 - V012** — Migrations Flyway atuais (até 2026-05-14). Cada uma idempotente e imutável. Numeração sequencial. Próxima a entrar: V013 (Customer Confidence persistence) ou V014 (`tenant_contexts.version`) — depende de ADR 0015.
+**V001 - V016** — Migrations Flyway atuais (até 2026-05-21). Cada uma idempotente e imutável, numeração sequencial. V013 = soft-delete, V014 = refresh-token rotation, V015 = composite FK de isolamento, V016 = Row-Level Security. **Nota:** o ADR 0015 reservara "V013" para Customer Confidence, mas o slot virou soft-delete e a persistência de Customer Confidence segue inexistente.
 
 ## W
 
