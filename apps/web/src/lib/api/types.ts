@@ -113,6 +113,36 @@ export interface MeetingGoal {
   projectStateSnapshot: string | null;
 }
 
+// Customer Confidence (ADR 0015) — presente só em reuniões externas
+// (conversa com cliente/lead); null para reuniões internas.
+export type ConfidenceBand = 'LOW' | 'MEDIUM' | 'HIGH';
+export type ConfidenceTrend = 'IMPROVING' | 'STABLE' | 'DECLINING';
+
+export interface BuyingSignal {
+  type: string;
+  quote: string;
+  weight?: number | null;
+}
+
+export interface Objection {
+  type: string;
+  quote: string;
+  severity: Severity;
+  competitor?: string | null;
+}
+
+export interface CustomerConfidence {
+  score: number;
+  band: ConfidenceBand;
+  /** Valor autoritativo server-side; null na primeira reunião da conta. */
+  trend: ConfidenceTrend | null;
+  /** Nome da conta resolvida via get-or-create; pode ser null. */
+  accountName: string | null;
+  rationale: string;
+  buyingSignals: BuyingSignal[];
+  objections: Objection[];
+}
+
 export interface MeetingDetail {
   id: string;
   tenantId: string;
@@ -127,6 +157,7 @@ export interface MeetingDetail {
   analysis?: MeetingAnalysis;
   goal?: MeetingGoal | null;
   productivity?: ProductivityAssessment | null;
+  customerConfidence?: CustomerConfidence | null;
   createdAt: string;
   updatedAt: string;
 }
