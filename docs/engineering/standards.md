@@ -480,9 +480,11 @@ Login emite dois cookies HttpOnly:
 
 Desktop chama `POST /speech/token` (autenticado JWT) e recebe token efêmero (~9 min) emitido pelo backend usando `AZURE_SPEECH_KEY` do Key Vault. Desktop **nunca** vê a key. Rate limit 6 tokens/min/user (Bucket4j).
 
-### Drift CI conhecido — `pnpm` vs `npm` (NÃO resolvido)
+### CI web: alinhado em `npm` (resolvido 2026-05-21)
 
-Estado real (verificado 2026-05-21): o job `web` do `.github/workflows/ci.yml` usa **`pnpm`** (`pnpm/action-setup@v4`, `pnpm install/lint/typecheck/build`), enquanto o `Makefile` (`web-setup`, `web-dev`, `lint`) usa **`npm`**. A versão anterior deste doc afirmava que "PR #73 unificou" para npm — **isso é falso** (não há PR #73 no histórico e o job segue em pnpm). **Débito de severity Alta**, ainda aberto — uniformizar para `npm` (ou documentar o split como intencional) antes que o artifact de deploy divirja do que o CI validou. *Nota: alinhar o `ci.yml` é mudança de comportamento — fica como PR próprio, fora da reconciliação de docs.*
+O job `web` do `.github/workflows/ci.yml` usa **`npm ci`** (cache npm via `package-lock.json`), consistente com o `apps/web/Dockerfile` (`npm ci` → imagem deployada), o `Makefile` e o `package-lock.json` commitado. `apps/web` é projeto **npm** (não há `pnpm-lock.yaml` nem campo `packageManager`).
+
+Histórico: até 2026-05-21 o job usava `pnpm install --no-frozen-lockfile`, que **ignorava** o `package-lock.json` e resolvia uma árvore de dependências própria — ou seja, o CI validava algo potencialmente diferente do artifact que o Dockerfile builda e deploya. A doc anterior afirmava falsamente que "PR #73 unificou" para npm. Corrigido alinhando o CI ao npm.
 
 ---
 
