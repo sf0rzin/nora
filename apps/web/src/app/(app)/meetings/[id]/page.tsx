@@ -5,6 +5,7 @@ import { getMeeting } from "@/lib/api/client";
 import { formatDateTime } from "@/lib/utils";
 import { MarkdownContent } from "@/components/markdown-content";
 import MeetingProductivitySection from "@/components/meeting-productivity-section";
+import CustomerConfidenceCard from "@/components/customer-confidence-card";
 
 export const dynamic = "force-dynamic";
 
@@ -168,6 +169,18 @@ export default async function MeetingDetailPage({
             </Section>
           )}
         </>
+      )}
+
+      {meeting.customerConfidence && (
+        <section className="space-y-3" aria-labelledby="customer-confidence-heading">
+          <h2
+            id="customer-confidence-heading"
+            className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            Confiança do cliente
+          </h2>
+          <CustomerConfidenceCard confidence={meeting.customerConfidence ?? null} />
+        </section>
       )}
 
       <MeetingProductivitySection

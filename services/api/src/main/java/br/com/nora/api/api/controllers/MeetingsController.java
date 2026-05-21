@@ -2,6 +2,7 @@ package br.com.nora.api.api.controllers;
 
 import br.com.nora.api.api.dto.analysis.AnalysisResponse;
 import br.com.nora.api.api.dto.analysis.AnalysisResponseMapper;
+import br.com.nora.api.api.dto.meeting.CustomerConfidenceResponse;
 import br.com.nora.api.api.dto.meeting.LiveAnalyzeDtos;
 import br.com.nora.api.api.dto.meeting.MeetingDetailResponse;
 import br.com.nora.api.api.dto.meeting.MeetingGoalRequest;
@@ -16,6 +17,7 @@ import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.analysis.AnalysisException;
 import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.analysis.LiveAnalysisService;
+import br.com.nora.api.application.customer.CustomerConfidenceService;
 import br.com.nora.api.application.iam.AuthorizationService;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.meeting.MeetingGoalService;
@@ -23,6 +25,7 @@ import br.com.nora.api.application.meeting.MeetingService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
 import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
+import br.com.nora.api.domain.customer.CustomerConfidenceAssessment;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
@@ -70,6 +73,7 @@ public class MeetingsController {
     private final AnalysisService analyses;
     private final MeetingGoalService meetingGoals;
     private final LiveAnalysisService liveAnalysis;
+    private final CustomerConfidenceService customerConfidence;
     private final ObjectMapper objectMapper;
     private final Validator validator;
     private final AuthorizationService authz;
@@ -79,6 +83,7 @@ public class MeetingsController {
             AnalysisService analyses,
             MeetingGoalService meetingGoals,
             LiveAnalysisService liveAnalysis,
+            CustomerConfidenceService customerConfidence,
             ObjectMapper objectMapper,
             Validator validator,
             AuthorizationService authz) {
@@ -86,6 +91,7 @@ public class MeetingsController {
         this.analyses = analyses;
         this.meetingGoals = meetingGoals;
         this.liveAnalysis = liveAnalysis;
+        this.customerConfidence = customerConfidence;
         this.objectMapper = objectMapper;
         this.validator = validator;
         this.authz = authz;
@@ -227,6 +233,13 @@ public class MeetingsController {
                         .findAssessment(m.id(), principal.tenantId())
                         .map(MeetingGoalResponseMapper::from)
                         .orElse(null);
+        // Customer Confidence (ADR 0015): no maximo um assessment por conta; o detalhe expoe o
+        // primeiro (uma reuniao tipicamente toca uma conta). Null para reunioes internas.
+        CustomerConfidenceResponse confidenceDto =
+                customerConfidence.findViewByMeetingId(m.id(), principal.tenantId()).stream()
+                        .findFirst()
+                        .map(MeetingsController::toConfidenceResponse)
+                        .orElse(null);
         return new MeetingDetailResponse(
                 m.id(),
                 m.tenantId(),
@@ -247,6 +260,7 @@ public class MeetingsController {
                 analysisDto,
                 goalDto,
                 productivityDto,
+                confidenceDto,
                 m.createdAt(),
                 m.updatedAt());
     }
@@ -421,6 +435,32 @@ public class MeetingsController {
                                 new LiveAnalyzeDtos.LiveTaskItemDto(
                                         i.title(), i.assignee(), i.priority(), i.sourceQuote()))
                 .toList();
+    }
+
+    private static CustomerConfidenceResponse toConfidenceResponse(
+            CustomerConfidenceService.ConfidenceView view) {
+        CustomerConfidenceAssessment a = view.assessment();
+        return new CustomerConfidenceResponse(
+                a.score(),
+                a.band().name(),
+                a.trend() == null ? null : a.trend().name(),
+                view.accountName(),
+                a.rationale(),
+                a.buyingSignals().stream()
+                        .map(
+                                s ->
+                                        new CustomerConfidenceResponse.BuyingSignalResponse(
+                                                s.type().name(), s.quote(), s.weight()))
+                        .toList(),
+                a.objections().stream()
+                        .map(
+                                o ->
+                                        new CustomerConfidenceResponse.ObjectionResponse(
+                                                o.type().name(),
+                                                o.quote(),
+                                                o.severity().name(),
+                                                o.competitor()))
+                        .toList());
     }
 
     private MeetingUploadMetadata parseMetadata(String json) {

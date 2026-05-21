@@ -1,5 +1,6 @@
 package br.com.nora.api.application.analysis;
 
+import br.com.nora.api.application.customer.CustomerConfidenceService;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.ports.MeetingAnalysisRepository;
 import br.com.nora.api.application.ports.MeetingGoalRepository;
@@ -45,6 +46,7 @@ public class AnalysisService {
     private final MeetingGoalRepository goals;
     private final ProductivityAssessmentRepository assessments;
     private final NlpWorkerClient worker;
+    private final CustomerConfidenceService customerConfidence;
 
     public AnalysisService(
             MeetingRepository meetings,
@@ -53,7 +55,8 @@ public class AnalysisService {
             MeetingAnalysisRepository analyses,
             MeetingGoalRepository goals,
             ProductivityAssessmentRepository assessments,
-            NlpWorkerClient worker) {
+            NlpWorkerClient worker,
+            CustomerConfidenceService customerConfidence) {
         this.meetings = meetings;
         this.transcripts = transcripts;
         this.tenantContexts = tenantContexts;
@@ -61,6 +64,7 @@ public class AnalysisService {
         this.goals = goals;
         this.assessments = assessments;
         this.worker = worker;
+        this.customerConfidence = customerConfidence;
     }
 
     /**
@@ -105,8 +109,30 @@ public class AnalysisService {
                 .ifPresentOrElse(
                         p -> assessments.save(p),
                         () -> assessments.deleteByMeetingId(meetingId, tenantId));
+        persistCustomerConfidence(meetingId, tenantId, result);
         markStatusAndSnippet(meeting, ProcessingStatus.COMPLETED, saved.summarySnippet());
         return saved;
+    }
+
+    /**
+     * Persiste o Customer Confidence opt-in (ADR 0015) quando o worker emitiu o bloco. Resiliente:
+     * uma falha aqui nao derruba a analise — a {@link MeetingAnalysis} ja foi gravada e o meeting
+     * ainda transiciona para COMPLETED (log + continua, igual a tolerancia do productivity).
+     */
+    private void persistCustomerConfidence(UUID meetingId, UUID tenantId, AnalysisResult result) {
+        if (result.customerConfidence().isEmpty()) {
+            return;
+        }
+        try {
+            customerConfidence.persist(tenantId, meetingId, result.customerConfidence().get());
+        } catch (RuntimeException ex) {
+            // PII-safe: nao logar accountName nem quotes, apenas ids e a causa.
+            LOG.warn(
+                    "Falha ao persistir customer confidence meetingId={} tenantId={} cause={}",
+                    meetingId,
+                    tenantId,
+                    ex.getMessage());
+        }
     }
 
     private Meeting loadMeeting(UUID meetingId, UUID tenantId) {

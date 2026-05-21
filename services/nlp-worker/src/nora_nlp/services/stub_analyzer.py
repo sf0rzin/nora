@@ -17,8 +17,14 @@ from ..models import (
     ActionItem,
     AnalyzeRequest,
     AnalyzeResponse,
+    BuyingSignal,
+    BuyingSignalType,
+    ConfidenceBand,
     CoverageStatus,
+    CustomerConfidence,
     Decision,
+    Objection,
+    ObjectionType,
     Opportunity,
     OpportunityCategory,
     Participant,
@@ -324,6 +330,115 @@ def _productivity(
     )
 
 
+# Cues que sinalizam conversa com cliente/lead (vs. reuniao interna). Heuristica
+# determinista do stub; o LLM real decide com semantica.
+_BUYING_SIGNAL_HINTS: dict[str, BuyingSignalType] = {
+    "orcamento": BuyingSignalType.BUDGET_DISCUSSED,
+    "budget": BuyingSignalType.BUDGET_DISCUSSED,
+    "investimento": BuyingSignalType.BUDGET_DISCUSSED,
+    "prazo": BuyingSignalType.TIMELINE_DISCUSSED,
+    "cronograma": BuyingSignalType.TIMELINE_DISCUSSED,
+    "diretor": BuyingSignalType.STAKEHOLDER_INVOLVED,
+    "decisor": BuyingSignalType.STAKEHOLDER_INVOLVED,
+    "proximo passo": BuyingSignalType.NEXT_STEP_REQUESTED,
+    "proximos passos": BuyingSignalType.NEXT_STEP_REQUESTED,
+    "referencia": BuyingSignalType.REFERENCE_REQUESTED,
+    "case": BuyingSignalType.REFERENCE_REQUESTED,
+    "proposta": BuyingSignalType.PROPOSAL_REQUESTED,
+}
+_OBJECTION_HINTS: dict[str, ObjectionType] = {
+    "caro": ObjectionType.PRICE,
+    "preco": ObjectionType.PRICE,
+    "barato": ObjectionType.PRICE,
+    "abaixo": ObjectionType.PRICE,
+    "demora": ObjectionType.TIMELINE,
+    "atraso": ObjectionType.TIMELINE,
+    "concorrente": ObjectionType.COMPETITOR_MENTION,
+    "concorrencia": ObjectionType.COMPETITOR_MENTION,
+    "confianca": ObjectionType.TRUST,
+    "seguranca": ObjectionType.TRUST,
+    "falta": ObjectionType.FEATURE_GAP,
+}
+
+
+def _customer_confidence(
+    req: AnalyzeRequest,
+    sentences: list[str],
+) -> CustomerConfidence | None:
+    """Detecta Customer Confidence de forma determinista (ADR 0006).
+
+    Retorna None quando a transcricao nao tem cues de conversa com cliente/lead
+    (default de reuniao interna); caso contrario, emite um objeto pequeno com
+    sinais/objecoes citados. O LLM real toma essa decisao com semantica; aqui e
+    so uma heuristica pra manter o contrato e exercitar o modelo.
+    """
+    buying_signals: list[BuyingSignal] = []
+    seen_signal_types: set[BuyingSignalType] = set()
+    objections: list[Objection] = []
+    seen_objection_types: set[ObjectionType] = set()
+
+    for s in sentences:
+        n = _normalize(s)
+        for hint, sig_type in _BUYING_SIGNAL_HINTS.items():
+            if hint in n and sig_type not in seen_signal_types:
+                seen_signal_types.add(sig_type)
+                buying_signals.append(BuyingSignal(type=sig_type, quote=s[:500], weight=0.5))
+        for hint, obj_type in _OBJECTION_HINTS.items():
+            if hint in n and obj_type not in seen_objection_types:
+                seen_objection_types.add(obj_type)
+                competitor = None
+                if obj_type == ObjectionType.COMPETITOR_MENTION:
+                    competitor = next(
+                        (c for c in req.tenant_context.competitors if c and _normalize(c) in n),
+                        None,
+                    )
+                severity = Severity.HIGH if competitor or "perder" in n else Severity.MEDIUM
+                objections.append(
+                    Objection.model_validate(
+                        {
+                            "type": obj_type.value,
+                            "quote": s[:500],
+                            "severity": severity.value,
+                            "competitor": competitor,
+                        }
+                    )
+                )
+
+    # Sem nenhum cue de venda (sinal de compra ou objecao), tratamos como
+    # reuniao interna -> None. O LLM real decide com semantica; aqui e cue-based.
+    if not buying_signals and not objections:
+        return None
+
+    # Score: sinais positivos sobem, objecoes descem. Heuristica determinista.
+    raw = 50 + len(buying_signals) * 12 - len(objections) * 10
+    score = max(0, min(100, raw))
+    if score >= 70:
+        band = ConfidenceBand.HIGH
+    elif score >= 40:
+        band = ConfidenceBand.MEDIUM
+    else:
+        band = ConfidenceBand.LOW
+
+    rationale = (
+        f"Stub deterministico: {len(buying_signals)} sinal(is) de compra, "
+        f"{len(objections)} objecao(oes) detectada(s). Score derivado das cues "
+        f"de conversa com cliente/lead."
+    )
+
+    return CustomerConfidence.model_validate(
+        {
+            "score": score,
+            "band": band.value,
+            "trend": None,
+            # Stub nao parseia nome do cliente; o LLM real preenche. Mantemos null.
+            "accountName": None,
+            "buyingSignals": [b.model_dump(by_alias=True) for b in buying_signals],
+            "objections": [o.model_dump(by_alias=True) for o in objections],
+            "rationale": rationale,
+        }
+    )
+
+
 _SPEAKER_RE = re.compile(r"^[A-Z][\wáéíóúãâêôç ]{0,40}:\s*")
 
 
@@ -354,6 +469,7 @@ def analyze(req: AnalyzeRequest, *, pii_redactions_applied: int = 0) -> AnalyzeR
 
     decisions = _decisions(sentences)
     productivity = _productivity(req, sentences, decisions)
+    customer_confidence = _customer_confidence(req, sentences)
 
     response = AnalyzeResponse.model_validate(
         {
@@ -367,6 +483,9 @@ def analyze(req: AnalyzeRequest, *, pii_redactions_applied: int = 0) -> AnalyzeR
             "topics": _topics(req.transcript, ctx_terms),
             "participants": _participants(req.transcript),
             "productivity": productivity.model_dump(by_alias=True) if productivity else None,
+            "customerConfidence": (
+                customer_confidence.model_dump(by_alias=True) if customer_confidence else None
+            ),
             "metadata": {
                 "modelVersion": "stub-deterministic-v1",
                 "promptVersion": req.options.prompt_version,
