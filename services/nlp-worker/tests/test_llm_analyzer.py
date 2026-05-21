@@ -286,3 +286,75 @@ def test_analyze_handles_minimal_llm_response(MockClient):
     assert response.action_items == []
     assert response.participants == []
     assert response.sentiment_overall.value == "NEUTRAL"
+    # Sem o bloco no payload, o default nullable mantem o contrato (ADR 0006).
+    assert response.customer_confidence is None
+
+
+# ---------- Customer Confidence (ADR 0006) ----------
+
+_FAKE_LLM_RESPONSE_WITH_CONFIDENCE = {
+    **_FAKE_LLM_RESPONSE,
+    "customerConfidence": {
+        "score": 72,
+        "band": "HIGH",
+        "trend": "IMPROVING",
+        "accountName": "ACME Manufatura S.A.",
+        "buyingSignals": [
+            {
+                "type": "PROPOSAL_REQUESTED",
+                "quote": "Podem enviar a proposta comercial ainda esta semana?",
+                "weight": 0.8,
+            },
+            {
+                "type": "STAKEHOLDER_INVOLVED",
+                "quote": "Vou trazer nossa diretora financeira para a proxima call.",
+                "weight": None,
+            },
+        ],
+        "objections": [
+            {
+                "type": "COMPETITOR_MENTION",
+                "quote": "O TotalSys ofereceu um preco bem abaixo do de voces.",
+                "severity": "HIGH",
+                "competitor": "TotalSys",
+            }
+        ],
+        "rationale": (
+            "Cliente pediu proposta e envolveu decisora, mas comparou preco com "
+            "concorrente; confianca alta com ressalva comercial."
+        ),
+    },
+}
+
+
+@patch("nora_nlp.services.llm_analyzer.LlmClient")
+def test_analyze_parses_customer_confidence(MockClient):
+    """LLM emite customerConfidence -> Pydantic valida e o accountName detectado sobrevive."""
+    mock_instance = MagicMock()
+    mock_instance.chat_structured.return_value = (
+        json.dumps(_FAKE_LLM_RESPONSE_WITH_CONFIDENCE),
+        1600,
+        900,
+    )
+    MockClient.return_value = mock_instance
+
+    response = analyze(_make_request(), _make_settings())
+
+    cc = response.customer_confidence
+    assert cc is not None
+    assert cc.score == 72
+    assert cc.band.value == "HIGH"
+    assert cc.trend is not None and cc.trend.value == "IMPROVING"
+    assert cc.account_name == "ACME Manufatura S.A."
+    assert len(cc.buying_signals) == 2
+    assert cc.buying_signals[0].type.value == "PROPOSAL_REQUESTED"
+    assert cc.buying_signals[0].weight == 0.8
+    assert cc.buying_signals[1].weight is None
+    assert len(cc.objections) == 1
+    assert cc.objections[0].type.value == "COMPETITOR_MENTION"
+    assert cc.objections[0].competitor == "TotalSys"
+    assert cc.objections[0].severity.value == "HIGH"
+    # Serializa de volta com aliases camelCase (contrato do backend).
+    dumped = response.model_dump(by_alias=True)
+    assert dumped["customerConfidence"]["accountName"] == "ACME Manufatura S.A."
+    assert dumped["customerConfidence"]["buyingSignals"][0]["type"] == "PROPOSAL_REQUESTED"

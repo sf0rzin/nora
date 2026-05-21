@@ -2,6 +2,7 @@ package br.com.nora.api.infrastructure.nlp;
 
 import br.com.nora.api.application.analysis.AnalysisException;
 import br.com.nora.api.application.ports.NlpWorkerClient;
+import br.com.nora.api.application.ports.NlpWorkerClient.CustomerConfidenceCarrier;
 import br.com.nora.api.domain.analysis.ActionItem;
 import br.com.nora.api.domain.analysis.Decision;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
@@ -12,6 +13,13 @@ import br.com.nora.api.domain.analysis.Risk;
 import br.com.nora.api.domain.analysis.RiskCategory;
 import br.com.nora.api.domain.analysis.Sentiment;
 import br.com.nora.api.domain.analysis.Severity;
+import br.com.nora.api.domain.customer.BuyingSignal;
+import br.com.nora.api.domain.customer.BuyingSignalType;
+import br.com.nora.api.domain.customer.ConfidenceBand;
+import br.com.nora.api.domain.customer.ConfidenceTrend;
+import br.com.nora.api.domain.customer.Objection;
+import br.com.nora.api.domain.customer.ObjectionSeverity;
+import br.com.nora.api.domain.customer.ObjectionType;
 import br.com.nora.api.domain.meeting.productivity.CoverageStatus;
 import br.com.nora.api.domain.meeting.productivity.ExpectedOutcome;
 import br.com.nora.api.domain.meeting.productivity.MeetingGoal;
@@ -146,7 +154,11 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
                     response.productivity() == null
                             ? null
                             : toProductivity(tenantId, meetingId, response.productivity());
-            return AnalysisResult.of(analysis, productivity);
+            CustomerConfidenceCarrier confidence =
+                    response.customerConfidence() == null
+                            ? null
+                            : toCustomerConfidence(response.customerConfidence());
+            return AnalysisResult.of(analysis, productivity, confidence);
         } catch (RuntimeException ex) {
             throw new AnalysisException.InvalidWorkerResponse(ex.getMessage(), ex);
         }
@@ -316,6 +328,52 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
                 p.offTopicRatio(),
                 p.decisionDensity(),
                 p.rationale());
+    }
+
+    /**
+     * Mapeia o bloco {@code customerConfidence} do worker para o carrier de aplicacao (ADR 0015). A
+     * conta ({@code customerAccountId}) ainda nao existe aqui — o {@code CustomerConfidenceService}
+     * resolve via get-or-create a partir de {@code accountName}. {@code trend} e parseado como
+     * palpite do worker mas o backend o ignora (recalculo server-side).
+     */
+    private CustomerConfidenceCarrier toCustomerConfidence(WorkerDtos.CustomerConfidenceDto c) {
+        List<WorkerDtos.BuyingSignalDto> rawSignals = safe(c.buyingSignals());
+        List<BuyingSignal> signals =
+                java.util.stream.IntStream.range(0, rawSignals.size())
+                        .mapToObj(
+                                i -> {
+                                    WorkerDtos.BuyingSignalDto s = rawSignals.get(i);
+                                    return new BuyingSignal(
+                                            BuyingSignalType.valueOf(s.type()),
+                                            s.quote(),
+                                            s.weight(),
+                                            i);
+                                })
+                        .toList();
+        List<WorkerDtos.ObjectionDto> rawObjections = safe(c.objections());
+        List<Objection> objections =
+                java.util.stream.IntStream.range(0, rawObjections.size())
+                        .mapToObj(
+                                i -> {
+                                    WorkerDtos.ObjectionDto o = rawObjections.get(i);
+                                    return new Objection(
+                                            ObjectionType.valueOf(o.type()),
+                                            o.quote(),
+                                            ObjectionSeverity.valueOf(o.severity()),
+                                            o.competitor(),
+                                            i);
+                                })
+                        .toList();
+        return new CustomerConfidenceCarrier(
+                c.accountName(),
+                c.score() == null ? 0 : c.score(),
+                ConfidenceBand.valueOf(c.band()),
+                c.trend() == null || c.trend().isBlank()
+                        ? null
+                        : ConfidenceTrend.valueOf(c.trend()),
+                signals,
+                objections,
+                c.rationale());
     }
 
     private static <T> List<T> safe(List<T> in) {
