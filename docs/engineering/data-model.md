@@ -1,6 +1,6 @@
 # Modelo de Dados — NORA (Postgres 16)
 
-> Estado real do schema, alinhado com **migrations V001–V016** em `services/api/src/main/resources/db/migration/`.
+> Estado real do schema, alinhado com **migrations V001–V017** em `services/api/src/main/resources/db/migration/`.
 > Cada tabela é mapeada para a migration de origem. Quando há **drift** entre o que estava documentado e o que está no banco, está marcado explicitamente.
 > Multi-tenancy: coluna `tenant_id` em toda tabela tenant-bound (ADR 0002). **RLS habilitado no schema em V016** (enforcement opt-in via role `nora_app` + flag `nora.security.rls.enforce`; ver §RLS).
 > **Soft-delete** (V013): tabelas `tenants`, `users`, `tenant_contexts`, `meetings` têm `deleted_at`; queries Spring Data filtram `deleted_at IS NULL` via `@SQLRestriction`; UNIQUEs totais viraram parciais (ver §4).
@@ -613,23 +613,109 @@ Formato esperado de `document`:
 
 ---
 
+### 2.29 `customer_accounts` — V017
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | `UUID PK DEFAULT gen_random_uuid()` | |
+| `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` | |
+| `name` | `TEXT NOT NULL` | nome da conta/lead |
+| `owner_user_id` | `UUID REFERENCES users(id) ON DELETE SET NULL` | dono (CRM-lite), opcional |
+| `stage` | `TEXT` | estágio do funil, opcional |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+**Indexes**: `idx_customer_accounts_tenant(tenant_id)`; **UNIQUE** `idx_customer_accounts_tenant_name(tenant_id, LOWER(name))` — dedup case-insensitive para get-or-create.
+
+> Tenant-owned: RLS `tenant_isolation` habilitada em V017 (segue V016).
+
+---
+
+### 2.30 `meeting_account_links` — V017
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `meeting_id` | `UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE` | |
+| `customer_account_id` | `UUID NOT NULL REFERENCES customer_accounts(id) ON DELETE CASCADE` | |
+| `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` | |
+
+**PK composta**: `(meeting_id, customer_account_id)` — vínculo N:N reunião ↔ conta.
+
+**Indexes**: `idx_meeting_account_links_tenant(tenant_id)`, `idx_meeting_account_links_account(customer_account_id)`.
+
+> Tenant-owned: RLS `tenant_isolation` habilitada em V017.
+
+---
+
+### 2.31 `customer_confidence_assessments` — V017
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | `UUID PK DEFAULT gen_random_uuid()` | |
+| `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` | |
+| `meeting_id` | `UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE` | |
+| `customer_account_id` | `UUID NOT NULL REFERENCES customer_accounts(id) ON DELETE CASCADE` | |
+| `score` | `INTEGER NOT NULL CHECK (BETWEEN 0 AND 100)` | |
+| `band` | `VARCHAR(10) NOT NULL` | CHECK: `LOW`, `MEDIUM`, `HIGH` |
+| `trend` | `VARCHAR(10)` | NULL ⇒ 1ª reunião da conta; CHECK: `IMPROVING`, `STABLE`, `DECLINING` |
+| `rationale` | `TEXT NOT NULL` | justificativa do LLM |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+**UNIQUE**: `(meeting_id, customer_account_id)` — 1:1 por par (uma reunião pode tocar várias contas, no máximo um assessment por conta).
+
+**Indexes**: `idx_customer_confidence_tenant(tenant_id)`.
+
+> Tenant-owned: RLS `tenant_isolation` habilitada em V017. **Foundation only**: o worker ainda não emite o bloco `customerConfidence`; nenhum wiring no `AnalysisService` (slice futuro).
+
+---
+
+### 2.32 `customer_buying_signals` — V017
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | `UUID PK DEFAULT gen_random_uuid()` | |
+| `assessment_id` | `UUID NOT NULL REFERENCES customer_confidence_assessments(id) ON DELETE CASCADE` | |
+| `type` | `VARCHAR(30) NOT NULL` | CHECK: `BUDGET_DISCUSSED`, `TIMELINE_DISCUSSED`, `STAKEHOLDER_INVOLVED`, `NEXT_STEP_REQUESTED`, `REFERENCE_REQUESTED`, `PROPOSAL_REQUESTED`, `OTHER` |
+| `quote` | `TEXT NOT NULL` | citação que sustenta o sinal |
+| `weight` | `NUMERIC(4,3)` | 0.000–1.000, opcional |
+| `position` | `INTEGER NOT NULL CHECK (>= 0)` | |
+
+**Indexes**: `idx_customer_buying_signals_assessment(assessment_id)`.
+
+> Nota: sem `tenant_id` próprio (cascade via `assessment_id`); sem policy RLS (igual `meeting_outcome_coverage`).
+
+---
+
+### 2.33 `customer_objections` — V017
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | `UUID PK DEFAULT gen_random_uuid()` | |
+| `assessment_id` | `UUID NOT NULL REFERENCES customer_confidence_assessments(id) ON DELETE CASCADE` | |
+| `type` | `VARCHAR(30) NOT NULL` | CHECK: `PRICE`, `TIMELINE`, `AUTHORITY`, `NEED`, `COMPETITOR_MENTION`, `TRUST`, `FEATURE_GAP`, `OTHER` |
+| `quote` | `TEXT NOT NULL` | citação que sustenta a objeção |
+| `severity` | `VARCHAR(10) NOT NULL` | CHECK: `LOW`, `MEDIUM`, `HIGH` |
+| `competitor` | `TEXT` | concorrente citado, opcional |
+| `position` | `INTEGER NOT NULL CHECK (>= 0)` | |
+
+**Indexes**: `idx_customer_objections_assessment(assessment_id)`.
+
+> Nota: sem `tenant_id` próprio (cascade via `assessment_id`); sem policy RLS (igual `meeting_outcome_coverage`).
+
+---
+
 ## 3. Tabelas planejadas mas **não migradas**
 
-Listadas em ADR 0006 e/ou `data-model.md` antigo, mas **sem migration correspondente** (V001–V016 não cobrem). Persistência é débito conhecido (audit §6, severity Alta para a narrativa Plano A).
+Listadas em ADR 0006 e/ou `data-model.md` antigo, mas **sem migration correspondente** (V001–V017 não cobrem). Persistência é débito conhecido (audit §6, severity Alta para a narrativa Plano A).
 
-> **Nota (2026-05-21):** o ADR 0015 reservou "V013" para `customer_confidence_persistence`, mas o slot **V013 foi usado para `add_soft_delete`** e V014–V016 para rotation / composite FK / RLS. **Customer Confidence continua sem migration alguma** — recomenda-se ADR sucessor de 0015 registrando que a persistência não foi entregue (ADRs são imutáveis).
+> **Nota (2026-05-21):** o ADR 0015 reservou "V013" para `customer_confidence_persistence`, mas o slot **V013 foi usado para `add_soft_delete`** e V014–V016 para rotation / composite FK / RLS. A **fundação de persistência do Customer Confidence foi entregue em V017** (Sub-fase 1.11): `customer_accounts`, `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections` (ver §2.29–§2.33). Ainda **sem wiring no pipeline** (o worker não emite `customerConfidence` e o `AnalysisService` não escreve — slices futuros).
 
 | Tabela | Origem | Status |
 |---|---|---|
-| `customer_accounts` | ADR 0006 | sem migration |
-| `customer_confidence_assessments` | ADR 0006 | sem migration |
-| `customer_buying_signals` | ADR 0006 | sem migration |
-| `customer_objections` | ADR 0006 | sem migration |
-| `meeting_account_links` | ADR 0006 | sem migration |
 | `account_health_snapshots` | ADR 0006 | sem migration |
 | `audit_events` (global) | data-model antigo | sem migration; só `iam_audit_events` existe |
 
-O bloco LLM para Customer Confidence **existe no schema documental** (`meeting-analysis-v1.schema.json`), mas o worker **não o emite** (Pydantic `MeetingAnalysisV1` não inclui `customerConfidence`) e **nenhuma persistência/endpoint/UI existe**. **ADR 0015** (aceito 2026-05-14, voto "a" = implementar mínimo na 1.11) **não foi implementado** — a dívida narrativa da landing segue aberta. Decisão de produto pendente (escalada ao PO na auditoria 2026-05-21).
+O bloco LLM para Customer Confidence **existe no schema documental** (`meeting-analysis-v1.schema.json`); a **persistência-alvo já existe** (V017, §2.29–§2.33), mas o worker **ainda não o emite** (Pydantic `MeetingAnalysisV1` não inclui `customerConfidence`) e **nenhum endpoint/UI consome** os dados. **ADR 0015** (aceito 2026-05-14, voto "a" = implementar mínimo na 1.11) está sendo implementado em fatias: V017 é a fatia de fundação de backend (Slice 1).
 
 ---
 
@@ -679,6 +765,7 @@ ADR 0002 prometia RLS em produção; **V016 entrega no schema** (não mais "pend
 | **V014** | refresh token rotation: `refresh_tokens.family_id` + `replaced_by_id` + `idx_refresh_tokens_family` (reuse-detection) |
 | **V015** | composite FK: `users` UNIQUE `(tenant_id, id)` + `meetings.(tenant_id, owner_user_id)` → `users(tenant_id, id)` (defesa anti cross-tenant) |
 | **V016** | Row-Level Security: schema `nora` + `nora.current_tenant_id()` + policies `tenant_isolation` + `ENABLE RLS` em 10 tabelas tenant-owned (enforce opt-in) |
+| **V017** | Customer Confidence (fundação, ADR 0015): `customer_accounts` (UNIQUE `(tenant_id, LOWER(name))`), `meeting_account_links`, `customer_confidence_assessments` (UNIQUE `(meeting_id, customer_account_id)`), `customer_buying_signals`, `customer_objections`; RLS `tenant_isolation` nas 3 tabelas tenant-owned |
 
 ---
 

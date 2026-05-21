@@ -145,7 +145,7 @@
     },
     "customerConfidence": {
       "type": ["object", "null"],
-      "description": "RESERVADO / AINDA NÃO EMITIDO PELO WORKER (2026-05-21). Bloco desenhado em ADR 0006; persistência mínima aceita em ADR 0015 mas NÃO implementada (worker Pydantic MeetingAnalysisV1 não inclui este campo; nenhuma migration/endpoint existe). Mantido aqui como contrato-alvo. Quando implementado: confiança do cliente/lead na nossa empresa, derivada de sentimento, sinais de compra e objeções. Enterprise-only; null para reuniões internas. Complementa (não substitui) o Account Health Score temporal.",
+      "description": "Confiança do cliente/lead na nossa empresa, derivada de sentimento, sinais de compra e objeções (ADR 0006; persistência mínima ADR 0015). EMITIDO pelo worker para reuniões externas (conversa com cliente/lead/venda); null para reuniões internas — o LLM decide com base no conteúdo da transcrição. Complementa (não substitui) o Account Health Score temporal.",
       "additionalProperties": false,
       "required": ["score", "band", "rationale"],
       "properties": {
@@ -155,6 +155,11 @@
           "type": ["string", "null"],
           "enum": ["IMPROVING", "STABLE", "DECLINING", null],
           "description": "Comparacao com a ultima reuniao da mesma conta; null se for a primeira reuniao da conta."
+        },
+        "accountName": {
+          "type": ["string", "null"],
+          "maxLength": 120,
+          "description": "Nome do cliente/empresa detectado pelo LLM na transcrição quando a reunião é uma conversa com cliente/lead. null quando não identificável."
         },
         "buyingSignals": {
           "type": "array",

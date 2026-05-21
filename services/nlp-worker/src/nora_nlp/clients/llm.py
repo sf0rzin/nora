@@ -265,6 +265,85 @@ def build_json_schema_for_analysis() -> dict[str, Any]:
                 ],
                 "additionalProperties": False,
             },
+            # Customer Confidence opcional (ADR 0006 / ADR 0015). O prompt instrui
+            # o LLM a emitir o objeto apenas para conversas com cliente/lead/venda
+            # e null para reunioes internas (gating decidido pelo LLM).
+            "customerConfidence": {
+                "type": ["object", "null"],
+                "properties": {
+                    "score": {"type": "integer"},
+                    "band": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"]},
+                    "trend": {
+                        "type": ["string", "null"],
+                        "enum": ["IMPROVING", "STABLE", "DECLINING", None],
+                    },
+                    "accountName": {"type": ["string", "null"]},
+                    "buyingSignals": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "enum": [
+                                        "BUDGET_DISCUSSED",
+                                        "TIMELINE_DISCUSSED",
+                                        "STAKEHOLDER_INVOLVED",
+                                        "NEXT_STEP_REQUESTED",
+                                        "REFERENCE_REQUESTED",
+                                        "PROPOSAL_REQUESTED",
+                                        "OTHER",
+                                    ],
+                                },
+                                "quote": {"type": "string"},
+                                "weight": {"type": ["number", "null"]},
+                            },
+                            "required": ["type", "quote", "weight"],
+                            "additionalProperties": False,
+                        },
+                    },
+                    "objections": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "enum": [
+                                        "PRICE",
+                                        "TIMELINE",
+                                        "AUTHORITY",
+                                        "NEED",
+                                        "COMPETITOR_MENTION",
+                                        "TRUST",
+                                        "FEATURE_GAP",
+                                        "OTHER",
+                                    ],
+                                },
+                                "quote": {"type": "string"},
+                                "severity": {
+                                    "type": "string",
+                                    "enum": ["LOW", "MEDIUM", "HIGH"],
+                                },
+                                "competitor": {"type": ["string", "null"]},
+                            },
+                            "required": ["type", "quote", "severity", "competitor"],
+                            "additionalProperties": False,
+                        },
+                    },
+                    "rationale": {"type": "string"},
+                },
+                "required": [
+                    "score",
+                    "band",
+                    "trend",
+                    "accountName",
+                    "buyingSignals",
+                    "objections",
+                    "rationale",
+                ],
+                "additionalProperties": False,
+            },
         },
         "required": [
             "summary",
@@ -276,6 +355,7 @@ def build_json_schema_for_analysis() -> dict[str, Any]:
             "topics",
             "participants",
             "productivity",
+            "customerConfidence",
         ],
         "additionalProperties": False,
     }
