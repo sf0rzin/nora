@@ -490,7 +490,7 @@ Service Principal: `sp-nora-github-deploy` (audit §7), com 3 federated credenti
 
 ## §13. Hardening de segurança entregue (audit follow-ups, pós-1.10)
 
-Uma onda de hardening (PRs ~#114–#138, rotulados "audit follow-up #N") entrou em `main` após a Sub-fase 1.10. **Não tem ADR dedicado** — recomenda-se registrar (ver "Próximos refactors"):
+Uma onda de hardening (PRs ~#114–#138, rotulados "audit follow-up #N") entrou em `main` após a Sub-fase 1.10. Documentada retroativamente em **ADR 0019** (RLS + FK composta), **ADR 0020** (token rotation) e **ADR 0021** (soft-delete):
 
 - **RLS Postgres (V016)** — ver §3. Schema-level pronto; enforce opt-in (`nora_app` + flag).
 - **Soft-delete (V013)** — `deleted_at` + `@SQLRestriction` em `tenants/users/tenant_contexts/meetings`; UNIQUEs viraram parciais. Hard-delete fica para LGPD/retenção.
@@ -511,4 +511,4 @@ Débitos técnicos catalogados, priorização e ADRs sucessores planejados ficam
 - **`tenant_contexts.version`** (US31): coluna ausente; sem histórico de versão do contexto. Alvo Sub-fase 1.12.
 - **`audit_events` global** (não só IAM): auth já tem log próprio (§13); falta consolidar MEETING_UPLOAD, CONTEXT_UPDATE numa trilha única. Alvo Sub-fase 1.12.
 - **Customer Confidence**: ADR 0015 aceito mas **não implementado** (worker não emite `customerConfidence`; sem migration/endpoint/UI). Dívida narrativa aberta — decisão de produto pendente (PO). Ver `docs/adr/0015-customer-confidence-minimal-persistence.md`.
-- **ADRs faltantes**: RLS/composite-FK, soft-delete, refresh-token rotation entraram sem ADR — criar (recomendado pela auditoria 2026-05-21).
+- **ADRs do hardening**: documentados retroativamente em ADR 0019 (RLS + FK composta), 0020 (refresh-token rotation), 0021 (soft-delete). Resta avaliar ADR para JWT RS256/JWKS (candidato).
