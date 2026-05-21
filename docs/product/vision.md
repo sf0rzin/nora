@@ -61,7 +61,7 @@ O NORA é uma plataforma com dois planos que compartilham o mesmo motor de IA e 
 
 ---
 
-## 3. Estado Atual (2026-05-14)
+## 3. Estado Atual (2026-05-21)
 
 O NORA não está mais em fase de scaffolding nem de Sprint 1+2 puro de documentação. **Está deployado em Azure** e operacional ponta-a-ponta nos fluxos centrais do MVP:
 
@@ -74,7 +74,7 @@ O NORA não está mais em fase de scaffolding nem de Sprint 1+2 puro de document
 - Pipeline LLM agnóstico (ADR 0004): default OpenAI `gpt-4o-mini`, schema strict via `response_format=json_schema`
 - Cobertura: worker NLP 87% (54 testes), backend Spring 67% (174 testes), web Next.js 0% (sem runner — débito pra 1.12)
 
-18 ADRs (0001–0018; ADRs 0013 e 0016 ainda em estado *Proposto* aguardando refino de design / Sub-fase 1.12) documentam as decisões duráveis. **Customer Confidence (ADR 0006) tem schema LLM mas ainda não tem persistência nem endpoint** — o **ADR 0015** (aceito 2026-05-14) decidiu implementar o mínimo na Sub-fase 1.11, mas **a 1.11 não foi iniciada e Customer Confidence segue não implementado** (auditoria 2026-05-21). Já uma onda de hardening pós-1.10 (#114–#138) entregou RLS (V016), soft-delete (V013), refresh-token rotation (V014) e FK composta de isolamento (V015) — documentados em ADR 0019/0020/0021.
+21 ADRs (0001–0021; ADRs 0013 e 0016 ainda em estado *Proposto* aguardando refino de design / Sub-fase 1.12) documentam as decisões duráveis. **Customer Confidence foi implementado full-stack** em **PR #148 (2026-05-21)** via ADR 0015: migration V017 (5 tabelas), worker emite o bloco `customerConfidence`, backend persiste no pipeline com trend autoritativo por conta, `GET /meetings/{id}` retorna o bloco e o `CustomerConfidenceCard` aparece no detalhe da reunião — resolvendo a dívida narrativa da landing. Account Health **agregado** (US50-51) segue deferido (ADR 0014). Já uma onda de hardening pós-1.10 (#114–#138) entregou RLS (V016), soft-delete (V013), refresh-token rotation (V014) e FK composta de isolamento (V015) — documentados em ADR 0019/0020/0021.
 
 Pra entender o estado anterior (Sprint 1+2 documentação) consulte o histórico do documento no fim deste arquivo e o `docs/product/roadmap.md`.
 
@@ -113,7 +113,7 @@ Pra entender o estado anterior (Sprint 1+2 documentação) consulte o histórico
 | **Core — Projetos** | **Mantém rastreabilidade de projetos** ao longo do tempo sem preenchimento manual; usa attributes do tenant ou tags da reunião | Não é um gerenciador de projetos — envia dados para Jira/Linear via MCP (pós-MVP) |
 | **Core — MCPs** | **Integra via MCP** com Calendar/Outlook, Linear/Jira, GitHub e Salesforce/HubSpot — todas pós-MVP | Não requer uso de todas as integrações — cada MCP é opcional e independente |
 | **Enterprise — Product Context** | **Aprende o negócio do cliente**: admin configura catálogo de produtos, concorrentes, glossário e stakeholders; IA usa esse contexto via RAG/injection em toda análise | Não usa conhecimento genérico ou hardcoded de nenhum vendor — o contexto é sempre do tenant. RAG full com Azure AI Search está pós-MVP (US15) |
-| **Enterprise — Customer Confidence** | **Schema do LLM** existe (`meeting-analysis-v1.schema.json`) cobrindo score 0–100 + sinais de compra + objeções + tendência (ADR 0006) | **Persistência e endpoint ainda não existem** (decisão a tomar via ADR 0015 na Sub-fase 1.11 — implementar mínimo vs remover da landing) |
+| **Enterprise — Customer Confidence** | **Implementado full-stack** (ADR 0015, PR #148): worker emite score 0–100 + banda + tendência + sinais de compra + objeções + `accountName`; backend persiste (V017) com trend autoritativo por conta; `GET /meetings/{id}` retorna o bloco; UI `CustomerConfidenceCard` no detalhe da reunião | Account Health **agregado** (score temporal por conta + alertas, US50-51) segue deferido (ADR 0014) — exige volume de pilot |
 | **Enterprise — Account Health** | Schema previsto (ADR 0006): bandas `AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`, agregado por conta, com tendência | **Não implementado** — adiado via ADR 0014 (defer post-MVP commercial gate) |
 | **Enterprise — Next Action** | **Recomenda Next Best Action** nas próximas 48–72h com base no padrão da conversa | Não cria automaticamente tarefas no CRM — envia via MCP ou webhook (pós-MVP) |
 | **IAM — Modelo** | **IAM granular estilo AWS**: Root + Users + Groups + Policies (Effect/Action/Resource/Condition) criados pelo próprio tenant. Versionamento imutável de policies + audit log. (ADR 0007) | Não impõe hierarquia de roles fixas (sem Manager/Analyst/Viewer pré-definidos) |

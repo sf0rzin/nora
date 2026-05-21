@@ -36,7 +36,7 @@ docs/
 ├── security/           # (em construção) Threat model, checklists LGPD/OWASP
 ├── challenge/          # Material acadêmico FIAP Challenge 2026
 ├── api/                # OpenAPI + schemas LLM + exemplos
-└── adr/                # 18 ADRs com decisões arquiteturais imutáveis
+└── adr/                # 21 ADRs com decisões arquiteturais imutáveis
 ```
 
 **Ordem de leitura sugerida (~30min):**

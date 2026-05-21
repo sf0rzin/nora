@@ -23,10 +23,10 @@ Esta página documenta:
 | **Personas e mapa de empatia** | [`personas-e-mapa-de-empatia.md`](personas-e-mapa-de-empatia.md) — 3 personas (Lucas Almeida, Camila Souza, Rafael Costa) |
 | **Diagrama de casos de uso (UML)** | [`diagrama-casos-de-uso.md`](diagrama-casos-de-uso.md) — mermaid com 20+ casos de uso |
 | **Backlog priorizado (MoSCoW)** | [`../product/backlog.md`](../product/backlog.md) — US01-US51 com status real DONE/PARTIAL/MISSING |
-| **Modelo de dados relacional (Postgres)** | [`../engineering/data-model.md`](../engineering/data-model.md) — 24+ tabelas, 12 migrations Flyway aplicadas |
+| **Modelo de dados relacional (Postgres)** | [`../engineering/data-model.md`](../engineering/data-model.md) — 35 tabelas, 17 migrations Flyway aplicadas |
 | **Modelo de dados Oracle (entrega DB)** | [`../engineering/data-model-oracle.md`](../engineering/data-model-oracle.md) — DDL Oracle 19c+ equivalente ao schema Postgres |
 | **Arquitetura técnica (diagramas, fluxos)** | [`../engineering/architecture.md`](../engineering/architecture.md) — DDD layers, IAM flow, RAG pipeline, multi-tenancy |
-| **Decisões arquiteturais documentadas** | [`../adr/`](../adr/) — 18 ADRs (decisões durables com contexto + alternativas) |
+| **Decisões arquiteturais documentadas** | [`../adr/`](../adr/) — 21 ADRs (decisões durables com contexto + alternativas) |
 | **Validação técnica (testes)** | Test coverage real medido (worker 87%, backend 67%) — ver ADR 0018 |
 | **Demonstração funcional (deploy)** | NORA deployado em Azure: `https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io` |
 | **Pitch / apresentação final** | Sub-fase 1.11 cria roteiro de demo de 15-20min |
