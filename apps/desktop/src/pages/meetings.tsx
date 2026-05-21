@@ -10,22 +10,27 @@ export function MeetingsPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    loadMeetings();
+    let mounted = true;
+    const load = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const page = await listMeetings({ size: 50 });
+        if (mounted) setMeetings(page.items);
+      } catch (err: unknown) {
+        if (!mounted) return;
+        const apiErr = err as ApiError;
+        setError(apiErr?.message || "Erro ao carregar reuniões");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      // Evita setState após unmount quando a página é trocada rápido.
+      mounted = false;
+    };
   }, []);
-
-  const loadMeetings = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const page = await listMeetings({ size: 50 });
-      setMeetings(page.items);
-    } catch (err: unknown) {
-      const apiErr = err as ApiError;
-      setError(apiErr?.message || "Erro ao carregar reuniões");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const statusColor = (status: string) => {
     switch (status) {

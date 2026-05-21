@@ -1,4 +1,5 @@
 import { useLiveHighlights } from "@/hooks/use-live-highlights";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useState, useEffect } from "react";
 
@@ -214,7 +215,3 @@ export function OverlayPage() {
   );
 }
 
-async function invoke(cmd: string, args?: Record<string, unknown>) {
-  const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
-  return tauriInvoke(cmd, args);
-}

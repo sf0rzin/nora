@@ -54,8 +54,9 @@ export function useRecording(options: UseRecordingOptions = {}) {
   }, [highlights]);
 
   useEffect(() => {
+    let mounted = true;
     const unlisten = listen<unknown>("transcript", (event) => {
-      console.log("[transcript event]", event.payload);
+      if (!mounted) return;
       const payload = event.payload as {
         text: string;
         isFinal: boolean;
@@ -82,6 +83,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     });
 
     const unlistenStatus = listen<RecordingStatus>("recording-status", (event) => {
+      if (!mounted) return;
       const s = event.payload;
       setRecordingState(s.isRecording, s.micDevice, s.sampleRate);
     });
@@ -89,10 +91,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
     const checkStatus = async () => {
       try {
         const status = await invoke<RecordingStatus>("get_recording_status");
-        console.log("[recording] status check:", status);
-        if (status.isRecording) {
+        if (mounted && status.isRecording) {
           setRecordingState(true, status.micDevice, status.sampleRate);
-          console.log("[recording] restored recording state");
         }
       } catch (e) {
         console.error("[recording] failed to get status:", e);
@@ -101,9 +101,12 @@ export function useRecording(options: UseRecordingOptions = {}) {
     checkStatus();
 
     return () => {
-      unlisten.then((fn) => fn());
-      unlistenStatus.then((fn) => fn());
+      mounted = false;
+      unlisten.then((fn) => fn()).catch(() => {});
+      unlistenStatus.then((fn) => fn()).catch(() => {});
     };
+    // setters do contexto e addTranscriptLine são estáveis (vêm do useRecordingContext)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -222,15 +225,26 @@ export function useRecording(options: UseRecordingOptions = {}) {
       displayName: name || id,
     }));
 
-    const meetingId = crypto.randomUUID();
+    // Idempotency key estável. Antes era gerada *apenas no fallback offline*,
+    // então retries pós-erro de rede criavam outro UUID = reunião duplicada
+    // no backend. Agora a chave vive na request desde o primeiro POST.
+    const clientId = crypto.randomUUID();
+    // Nome de arquivo seguro para FSs Windows: ':' e outros caracteres reservados
+    // do ISO timestamp não podem aparecer em FAT/NTFS.
+    const safeStamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .replace(/[^A-Za-z0-9_-]/g, "_");
+    const safeTitle = (title || "reuniao").replace(/[^A-Za-z0-9 _-]/g, "_").trim() || "reuniao";
     const payload = {
       title: title || "Reunião sem título",
       startedAt,
       transcriptFormat: "TXT" as const,
       fileContent: transcript,
-      fileName: `${title || "reuniao"}_${new Date().toISOString()}.txt`,
+      fileName: `${safeTitle}_${safeStamp}.txt`,
       endedAt: new Date().toISOString(),
       participants: participants.length > 0 ? participants : undefined,
+      clientId,
     };
 
     try {
@@ -242,7 +256,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
       const msg = e instanceof Error ? e.message : String(e);
       setSaveError(msg);
       savePendingMeeting({
-        id: meetingId,
+        id: clientId,
         status: "pending",
         payload,
         createdAt: new Date().toISOString(),
@@ -256,21 +270,34 @@ export function useRecording(options: UseRecordingOptions = {}) {
     }
   }, [transcriptLines, speakerMap, duration, getSpeakerName]);
 
+  // Set de uploads em voo: antes o interval disparava `uploadTranscript` em
+  // paralelo a cada 30s para a mesma reunião, sem mutex. Em rede ruim isso
+  // gerava N requests simultâneos do mesmo payload. Agora cada meeting só
+  // permite UMA tentativa em voo por vez (dedup local + Idempotency-Key no payload).
+  const inFlightRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     loadDevices().catch((e) => {
       console.error("[recording] failed to load devices on mount:", e);
       setError("Falha ao carregar dispositivos de áudio");
     });
 
-    // Update pending count on mount
     setPendingCount(getPendingMeetings().filter((m) => m.status === "pending").length);
 
-    // Retry worker: attempts to send pending meetings every 30 seconds
     const retryInterval = setInterval(() => {
-      const pending = getPendingMeetings().filter((m) => m.status === "pending" && m.retryCount < 10);
+      const inFlight = inFlightRef.current;
+      const pending = getPendingMeetings().filter(
+        (m) => m.status === "pending" && m.retryCount < 10 && !inFlight.has(m.id),
+      );
       pending.forEach(async (meeting) => {
+        inFlight.add(meeting.id);
         try {
-          await uploadTranscript(meeting.payload);
+          // Garante clientId presente no retry (versões antigas no localStorage podem
+          // não ter — usamos o id do envelope como fallback).
+          const payload = meeting.payload.clientId
+            ? meeting.payload
+            : { ...meeting.payload, clientId: meeting.id };
+          await uploadTranscript(payload);
           removePendingMeeting(meeting.id);
           setPendingCount(getPendingMeetings().filter((m) => m.status === "pending").length);
           console.log("[recording] queued meeting sent successfully:", meeting.id);
@@ -281,6 +308,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
             retryCount: meeting.retryCount + 1,
             lastError: e instanceof Error ? e.message : String(e),
           });
+        } finally {
+          inFlight.delete(meeting.id);
         }
       });
     }, 30000);

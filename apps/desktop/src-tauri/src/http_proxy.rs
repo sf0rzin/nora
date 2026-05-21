@@ -19,7 +19,10 @@ const FORBIDDEN_HEADERS: &[&str] = &[
 
 const MAX_BODY_BYTES: usize = 1024 * 1024;
 
-fn http_client() -> &'static Client {
+/// Cliente HTTP compartilhado (timeout + pool). Reutilizado pelo proxy e por
+/// callers diretos (upload_meeting, live-analysis) pra evitar abrir um pool
+/// novo por chamada — o que acontecia antes com `reqwest::Client::new()`.
+pub fn http_client() -> &'static Client {
     static CLIENT: OnceLock<Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
@@ -67,6 +70,23 @@ pub async fn http_proxy(
         return Err("path fora do origin permitido (SSRF blocked)".into());
     }
 
+    // Defesa em profundidade: em release builds rejeita HTTP plain para hosts não-loopback.
+    // Em dev (debug_assertions) o backend Spring local roda em http://localhost:8080 sem TLS,
+    // por isso o relaxamento só vale lá. Em prod, JWT *nunca* deve viajar em claro.
+    #[cfg(not(debug_assertions))]
+    {
+        if target.scheme() == "http" {
+            let host = target.host_str().unwrap_or("");
+            let is_loopback = matches!(host, "localhost" | "127.0.0.1" | "::1");
+            if !is_loopback {
+                return Err(format!(
+                    "HTTP plain bloqueado em release para host '{}': use HTTPS",
+                    host
+                ));
+            }
+        }
+    }
+
     #[cfg(debug_assertions)]
     eprintln!(
         "[http_proxy] {} {}",
@@ -78,6 +98,14 @@ pub async fn http_proxy(
     for (k, v) in req.headers.unwrap_or_default() {
         if FORBIDDEN_HEADERS.contains(&k.to_ascii_lowercase().as_str()) {
             continue;
+        }
+        // Bloqueia header injection via CRLF / NUL / chars não-ASCII em chaves.
+        // reqwest tipicamente rejeita, mas a validação aqui produz erro nítido.
+        if k.is_empty()
+            || !k.bytes().all(|b| b.is_ascii_graphic() && b != b':')
+            || v.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0)
+        {
+            return Err(format!("header inválido: {}", k));
         }
         clean_headers.insert(k, v);
     }
@@ -99,7 +127,10 @@ pub async fn http_proxy(
         "GET" => client.get(target),
         "POST" => client.post(target),
         "PUT" => client.put(target),
+        "PATCH" => client.patch(target),
         "DELETE" => client.delete(target),
+        "HEAD" => client.head(target),
+        "OPTIONS" => client.request(reqwest::Method::OPTIONS, target),
         other => return Err(format!("método não permitido: {}", other)),
     };
 

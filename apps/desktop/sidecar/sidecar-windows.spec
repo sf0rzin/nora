@@ -88,7 +88,10 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX é frequentemente flagado por Windows Defender como malware
+    # (heurística genérica para binaries empacotados). Os specs de Linux e
+    # macOS já usam upx=False — Windows ficou diferente por omissão.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,

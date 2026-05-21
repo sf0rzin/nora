@@ -23,6 +23,25 @@ pub struct StartRecordingRequest {
     pub system_audio_device: Option<String>,
 }
 
+/// Redaciona nomes de dispositivos de áudio antes de logar: alguns sistemas
+/// codificam o nome do usuário (ex: "USB Headset of John Doe"), que é PII.
+/// Mantemos o prefixo até o primeiro " of ", " de " ou os 8 primeiros chars.
+fn redact_device_name(name: &Option<String>) -> String {
+    match name {
+        None => "<default>".to_string(),
+        Some(s) => {
+            let lower = s.to_ascii_lowercase();
+            for sep in [" of ", " de ", "(", "-"] {
+                if let Some(idx) = lower.find(sep) {
+                    return format!("{}***", &s[..idx]);
+                }
+            }
+            let cutoff = s.char_indices().nth(8).map(|(i, _)| i).unwrap_or(s.len());
+            format!("{}***", &s[..cutoff])
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn start_recording(
     app_handle: AppHandle,
@@ -34,10 +53,13 @@ pub async fn start_recording(
     #[cfg(debug_assertions)]
     {
         eprintln!("[commands] start_recording called");
-        eprintln!("[commands] device_name: {:?}", request.device_name);
+        eprintln!("[commands] device_name: {}", redact_device_name(&request.device_name));
         eprintln!("[commands] language: {:?}", request.language);
         eprintln!("[commands] capture_system_audio: {:?}", request.capture_system_audio);
-        eprintln!("[commands] system_audio_device: {:?}", request.system_audio_device);
+        eprintln!(
+            "[commands] system_audio_device: {}",
+            redact_device_name(&request.system_audio_device)
+        );
     }
 
     let access_token = secrets
@@ -151,8 +173,10 @@ pub async fn start_recording(
 
     #[cfg(debug_assertions)]
     eprintln!(
-        "[commands] capture started ok - mic: {}, system: {:?}, sr: {}",
-        status.mic_device, status.system_audio_device, status.sample_rate
+        "[commands] capture started ok - mic: {}, system: {}, sr: {}",
+        redact_device_name(&Some(status.mic_device.clone())),
+        redact_device_name(&status.system_audio_device),
+        status.sample_rate
     );
 
     // Store sidecars in app state so they stay alive
@@ -224,6 +248,10 @@ pub struct UploadMeetingRequest {
     pub participants: Option<Vec<UploadParticipant>>,
     pub file_content: String,
     pub file_name: String,
+    /// Idempotency key emitida pelo cliente (UUID v4). Propagada como
+    /// `Idempotency-Key` HTTP header — backend pode ignorar (best-effort
+    /// dedup) sem efeitos colaterais. Ver `apps/desktop/src/lib/meetings.ts`.
+    pub client_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -270,21 +298,50 @@ pub async fn upload_meeting(
     let metadata_bytes = serde_json::to_vec(&metadata)
         .map_err(|e| format!("Failed to serialize metadata: {}", e))?;
 
+    // Limite de 25 MiB no transcript: protege a memória do desktop e do backend
+    // (50 MB de texto cabem em 6h de reunião razoável a 4kbps).
+    const MAX_TRANSCRIPT_BYTES: usize = 25 * 1024 * 1024;
+    if request.file_content.len() > MAX_TRANSCRIPT_BYTES {
+        return Err(format!(
+            "Transcript acima do limite ({} bytes; max {})",
+            request.file_content.len(),
+            MAX_TRANSCRIPT_BYTES
+        ));
+    }
     let file_bytes = request.file_content.into_bytes();
+
+    // file_name é controlado pelo frontend; sanitize para evitar CRLF
+    // header injection no `file_name=` do Content-Disposition.
+    let safe_file_name: String = request
+        .file_name
+        .chars()
+        .filter(|c| !matches!(c, '\r' | '\n' | '\0' | '"'))
+        .collect();
 
     let form = reqwest::multipart::Form::new()
         .part("metadata", reqwest::multipart::Part::bytes(metadata_bytes)
             .mime_str("application/json")
             .map_err(|e| e.to_string())?)
         .part("file", reqwest::multipart::Part::bytes(file_bytes)
-            .file_name(request.file_name)
+            .file_name(safe_file_name)
             .mime_str("text/plain")
             .map_err(|e| e.to_string())?);
 
-    let client = reqwest::Client::new();
-    let response = client
+    let client = crate::http_proxy::http_client();
+    let mut req = client
         .post(format!("{}/meetings", backend_url))
-        .header("Authorization", format!("Bearer {}", access_token))
+        .header("Authorization", format!("Bearer {}", access_token));
+    if let Some(ref cid) = request.client_id {
+        // Sanitize: idempotency keys são UUIDs; rejeita controle/CRLF.
+        let safe = cid
+            .chars()
+            .filter(|c| c.is_ascii_graphic())
+            .collect::<String>();
+        if !safe.is_empty() {
+            req = req.header("Idempotency-Key", safe);
+        }
+    }
+    let response = req
         .multipart(form)
         .send()
         .await

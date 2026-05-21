@@ -24,7 +24,7 @@ pub struct CaptureSinks {
 }
 
 struct MicStream {
-    stop_flag: Arc<AtomicBool>,
+    running: Arc<AtomicBool>,
     join: std::thread::JoinHandle<()>,
 }
 
@@ -119,7 +119,7 @@ impl AudioCapture {
 
         let actual_name = device.name().unwrap_or_else(|_| "Unknown".into());
         #[cfg(debug_assertions)]
-        eprintln!("[audio] mic device: {}", actual_name);
+        eprintln!("[audio] mic device len={}", actual_name.len());
 
         let config = Self::find_best_config(&device)?;
         let sample_rate = config.sample_rate.0;
@@ -127,16 +127,25 @@ impl AudioCapture {
         #[cfg(debug_assertions)]
         eprintln!("[audio] mic config: sr={}, ch={}", sample_rate, channels);
 
-        // Spawn mic thread
-        let stop_flag = Arc::new(AtomicBool::new(true));
+        // Spawn mic thread. `running` (não confundir com nome anterior `stop_flag`):
+        // true = thread está rodando; setar false sinaliza shutdown.
+        // O canal `armed_tx` reporta sucesso/erro do setup DENTRO da thread; o caller
+        // só retorna `Ok(status)` depois de receber `Ok(())`, evitando o caso anterior
+        // em que start_recording retornava Ok mas a thread morria silenciosamente.
+        let running = Arc::new(AtomicBool::new(true));
         let mic_tx = sinks.mic_tx;
+        let (armed_tx, armed_rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
 
         let join = std::thread::Builder::new()
             .name("nora-mic".into())
             .spawn({
-                let stop_flag_thread = stop_flag.clone();
+                let running_thread = running.clone();
                 let device_name = device_name.clone();
                 move || {
+                    let report = |r: Result<(), String>| {
+                        let _ = armed_tx.send(r);
+                    };
+
                     let host = cpal::default_host();
 
                     let device = match &device_name {
@@ -144,14 +153,14 @@ impl AudioCapture {
                             let mut devices = match host.input_devices() {
                                 Ok(d) => d,
                                 Err(e) => {
-                                    eprintln!("[audio] failed to list input devices: {}", e);
+                                    report(Err(format!("list input devices: {}", e)));
                                     return;
                                 }
                             };
                             match devices.find(|d| d.name().map(|n| &n == name).unwrap_or(false)) {
                                 Some(d) => d,
                                 None => {
-                                    eprintln!("[audio] input device '{}' not found", name);
+                                    report(Err(format!("input device '{}' not found", name)));
                                     return;
                                 }
                             }
@@ -159,7 +168,7 @@ impl AudioCapture {
                         None => match host.default_input_device() {
                             Some(d) => d,
                             None => {
-                                eprintln!("[audio] no default input device available");
+                                report(Err("no default input device available".to_string()));
                                 return;
                             }
                         },
@@ -168,7 +177,7 @@ impl AudioCapture {
                     let config = match AudioCapture::find_best_config(&device) {
                         Ok(c) => c,
                         Err(e) => {
-                            eprintln!("[audio] failed to find best config: {}", e);
+                            report(Err(format!("find best config: {}", e)));
                             return;
                         }
                     };
@@ -178,21 +187,23 @@ impl AudioCapture {
                     let mut resampler = match MonoResampler::new(sr, 16000) {
                         Ok(r) => r,
                         Err(e) => {
-                            eprintln!("[audio] failed to create resampler: {}", e);
+                            report(Err(format!("create resampler: {}", e)));
                             return;
                         }
                     };
 
+                    // chunk_size = ~100ms de áudio (sr/10 frames × channels). Vamos drenar
+                    // o buffer assim que ele atingir esse tamanho.
                     let chunk_size = (sr as usize / 10) * ch as usize;
                     let mic_buf: Arc<Mutex<Vec<f32>>> =
                         Arc::new(Mutex::new(Vec::with_capacity(chunk_size * 2)));
                     let mic_buf_clone = mic_buf.clone();
 
-                    let stop_flag_stream = stop_flag_thread.clone();
+                    let running_stream = running_thread.clone();
                     let stream = match device.build_input_stream(
                         &config,
                         move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                            if !stop_flag_stream.load(Ordering::SeqCst) {
+                            if !running_stream.load(Ordering::SeqCst) {
                                 return;
                             }
                             if let Ok(mut b) = mic_buf_clone.lock() {
@@ -214,29 +225,46 @@ impl AudioCapture {
                     ) {
                         Ok(s) => s,
                         Err(e) => {
-                            eprintln!("[audio] failed to build input stream: {}", e);
+                            report(Err(format!("build input stream: {}", e)));
                             return;
                         }
                     };
 
                     if let Err(e) = stream.play() {
-                        eprintln!("[audio] failed to start stream: {}", e);
+                        report(Err(format!("start stream: {}", e)));
                         return;
                     }
 
-                    // Keep thread alive until stop flag is set
-                    while stop_flag_thread.load(Ordering::SeqCst) {
+                    // A partir daqui o pipeline está armed; reporta sucesso ao caller.
+                    report(Ok(()));
+
+                    while running_thread.load(Ordering::SeqCst) {
                         std::thread::sleep(std::time::Duration::from_millis(100));
                     }
 
-                    // Stream is dropped here, stopping ALSA device
                     drop(stream);
                 }
             })
             .map_err(|e| format!("spawn mic thread: {}", e))?;
 
+        // Aguarda o setup da thread (até 5s). Se falhar, sinaliza shutdown e propaga
+        // o erro — assim `start_recording` não retorna Ok com uma thread morta.
+        match armed_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                running.store(false, Ordering::SeqCst);
+                let _ = join.join();
+                return Err(format!("mic thread failed to arm: {}", e));
+            }
+            Err(_) => {
+                running.store(false, Ordering::SeqCst);
+                let _ = join.join();
+                return Err("mic thread arm timeout (5s)".to_string());
+            }
+        }
+
         let mic_stream = MicStream {
-            stop_flag,
+            running,
             join,
         };
 
@@ -252,14 +280,27 @@ impl AudioCapture {
                 .as_deref()
                 .map(|name| {
                     #[cfg(debug_assertions)]
-                    eprintln!("[audio] using explicit system audio device: {}", name);
+                    eprintln!(
+                        "[audio] using explicit system audio device (len={})",
+                        name.len()
+                    );
                     name.to_string()
                 })
                 .or_else(system_audio::find_system_audio_source);
 
+            // Se o caller pediu system audio mas esqueceu de prover o sink, falha cedo
+            // em vez de panicar dentro do unwrap.
+            let system_tx = match sinks.system_tx {
+                Some(tx) => tx,
+                None => {
+                    return Err(
+                        "capture_system_audio=true mas sinks.system_tx ausente".to_string(),
+                    );
+                }
+            };
+
             if let Some(source) = source {
                 let flag = Arc::new(AtomicBool::new(true));
-                let system_tx = sinks.system_tx.unwrap();
 
                 match system_audio::SystemAudioCapture::start(
                     &source,
@@ -320,7 +361,7 @@ impl AudioCapture {
         // Stop mic thread
         if let Ok(mut guard) = self.mic.lock() {
             if let Some(mic) = guard.take() {
-                mic.stop_flag.store(false, Ordering::SeqCst);
+                mic.running.store(false, Ordering::SeqCst);
                 let _ = mic.join.join();
             }
         }

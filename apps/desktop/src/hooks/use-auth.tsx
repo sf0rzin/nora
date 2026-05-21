@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useState, useEffect, type ReactNode } from "react";
 import type { SessionUser } from "@/lib/types";
 import { bootstrapSession, logout as doLogout, stopTokenRefreshLoop } from "@/lib/auth";
 import { apiClient } from "@/lib/api-client";
@@ -24,7 +24,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
     bootstrapSession().then((stored) => {
+      if (!mounted) return;
       if (stored) {
         apiClient.setCachedUser(stored);
         setUser(stored);
@@ -33,29 +35,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      mounted = false;
       stopTokenRefreshLoop();
     };
   }, []);
 
-  const handleLogin = (u: SessionUser) => {
+  const handleLogin = useCallback((u: SessionUser) => {
     apiClient.setCachedUser(u);
     setUser(u);
     setLoading(false);
-  };
+  }, []);
 
-  const logout = () => {
-    doLogout();
+  const logout = useCallback(() => {
+    void doLogout();
     setUser(null);
-  };
+  }, []);
 
+  // Antes `apiClient.on401(logout)` rodava sem cleanup e a referência ficava
+  // stale após HMR/remount do Provider (StrictMode roda effects 2x).
   useEffect(() => {
     apiClient.on401(logout);
-  }, []);
+    // O ApiClient não tem off401; registrar `() => {}` no unmount evita que o
+    // callback antigo dispare em uma instância morta do Provider.
+    return () => {
+      apiClient.on401(() => {});
+    };
+  }, [logout]);
 
   // Ouve evento auth-expired vindo do loop de refresh
   useEffect(() => {
     const handler = () => {
-      doLogout();
+      void doLogout();
       setUser(null);
       window.location.hash = "#/login";
     };

@@ -257,7 +257,14 @@ mod platform {
         let src_ch = mix_format.nChannels as usize;
         let is_float = is_ieee_float(mix_format);
 
-        let mut resampler = crate::audio_resample::MonoResampler::new(src_sr, 16000).unwrap();
+        // Não podemos propagar `String` via `windows::core::Result`. Em caso de falha
+        // (sample rate exótico, init Fft), retornamos um erro Win32 mapeado em vez de
+        // panicar dentro de `unsafe fn` com COM iniciado — que corromperia estado COM.
+        let mut resampler = crate::audio_resample::MonoResampler::new(src_sr, 16000)
+            .map_err(|e| {
+                eprintln!("[system_audio] WASAPI resampler init failed: {}", e);
+                windows::core::Error::from(windows::Win32::Foundation::E_FAIL)
+            })?;
 
         while flag.load(Ordering::SeqCst) {
             let wait = WaitForSingleObject(event, 100);

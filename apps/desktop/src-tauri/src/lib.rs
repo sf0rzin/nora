@@ -55,8 +55,13 @@ pub fn run() {
     let api_base_url = api_base_url();
     #[cfg(debug_assertions)]
     eprintln!("[nora] api_base_url={}", api_base_url);
-    let base_url = url::Url::parse(&api_base_url)
-        .expect("Invalid apiBaseUrl in tauri.conf.json");
+    let base_url = url::Url::parse(&api_base_url).unwrap_or_else(|e| {
+        eprintln!(
+            "[nora] invalid apiBaseUrl '{}' ({}); falling back to http://localhost:8080",
+            api_base_url, e
+        );
+        url::Url::parse("http://localhost:8080").expect("static fallback URL is always valid")
+    });
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -98,5 +103,8 @@ pub fn run() {
             stealth_mode::get_stealth_mode,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| {
+            eprintln!("[nora] fatal: tauri runtime exited with error: {}", e);
+            std::process::exit(1);
+        });
 }

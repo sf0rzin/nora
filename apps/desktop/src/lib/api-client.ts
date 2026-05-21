@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { refreshAccessToken, logout } from "./auth";
 
-type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 interface ProxyResponse {
   status: number;
@@ -14,25 +14,38 @@ interface RequestOptions {
   body?: unknown;
   headers?: Record<string, string>;
   auth?: boolean;
+  /**
+   * Sentinel interno: marca requests que já são o retry pós-refresh.
+   * Evita a recursão infinita do design anterior (attemptRefreshAndRetry
+   * chamava `this.request(...)` que podia bater 401 de novo, reentrava na
+   * fila que só drenava no `finally` do refresh original — deadlock).
+   */
+  _isRefreshRetry?: boolean;
 }
+
+const isDev = import.meta.env?.DEV === true;
 
 class ApiClient {
   private onUnauthorized: (() => void) | null = null;
   private cachedUser: unknown = null;
-  private refreshing = false;
-  private refreshQueue: Array<{
-    resolve: (value: unknown) => void;
-    reject: (reason?: unknown) => void;
-    path: string;
-    options: RequestOptions;
-  }> = [];
+  /**
+   * Promise compartilhada do refresh em voo. Múltiplos requests que recebem
+   * 401 ao mesmo tempo esperam na MESMA promise — sem fila manual, sem recursão.
+   */
+  private refreshPromise: Promise<string | null> | null = null;
 
   on401(callback: () => void) {
     this.onUnauthorized = callback;
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const { method = "GET", body, headers = {}, auth = true } = options;
+    const {
+      method = "GET",
+      body,
+      headers = {},
+      auth = true,
+      _isRefreshRetry = false,
+    } = options;
 
     const allHeaders: Record<string, string> = {
       "Content-Type": "application/json",
@@ -47,7 +60,9 @@ class ApiClient {
       auth,
     };
 
-    console.log("[api] invoking http_proxy:", method, path);
+    if (isDev) {
+      console.log("[api] invoking http_proxy:", method, path);
+    }
 
     let response: ProxyResponse;
     try {
@@ -57,17 +72,19 @@ class ApiClient {
       throw err;
     }
 
-    console.log("[api] response:", response.status, response.body);
+    if (isDev) {
+      console.log("[api] response status:", response.status);
+    }
 
-    // Se 401 e autenticado, tenta refreshar e retry
-    if (response.status === 401 && auth) {
-      const retry = await this.attemptRefreshAndRetry<T>(path, options);
-      if (retry) {
-        return retry;
+    // Se 401 e autenticado, tenta refreshar UMA vez. Se o retry também receber
+    // 401 (`_isRefreshRetry`), aceitamos e propagamos — sem recursar.
+    if (response.status === 401 && auth && !_isRefreshRetry) {
+      const newToken = await this.refreshOnce();
+      if (newToken) {
+        return this.request<T>(path, { ...options, _isRefreshRetry: true });
       }
 
-      // Refresh falhou — desloga
-      console.warn("[api] 401 unauthorized — token expired and refresh failed");
+      console.warn("[api] 401 — refresh failed; logging out");
       await logout();
       this.onUnauthorized?.();
       throw new Error("Sessão expirada. Faça login novamente.");
@@ -80,52 +97,22 @@ class ApiClient {
     return response.body as T;
   }
 
-  private async attemptRefreshAndRetry<T>(
-    path: string,
-    options: RequestOptions
-  ): Promise<T | null> {
-    // Se já estamos refreshando, espera na fila
-    if (this.refreshing) {
-      return new Promise<T>((resolve, reject) => {
-        this.refreshQueue.push({
-          resolve: resolve as (value: unknown) => void,
-          reject,
-          path,
-          options,
-        });
-      });
+  /**
+   * Garante que um único refresh está em voo a qualquer momento. Chamadas
+   * concorrentes recebem a MESMA promise — quando ela resolve, todas avançam.
+   */
+  private refreshOnce(): Promise<string | null> {
+    if (!this.refreshPromise) {
+      this.refreshPromise = refreshAccessToken()
+        .catch((err) => {
+          console.error("[api] refresh failed:", err);
+          return null;
+        })
+        .finally(() => {
+          this.refreshPromise = null;
+        }) as Promise<string | null>;
     }
-
-    this.refreshing = true;
-    try {
-      const newToken = await refreshAccessToken();
-      if (newToken) {
-        // Retry a requisição original com novo token
-        const retry = await this.request<T>(path, options);
-        // Processa fila com sucesso
-        this.drainQueue(true);
-        return retry;
-      }
-    } catch (err) {
-      console.error("[api] refresh failed during retry:", err);
-    } finally {
-      this.refreshing = false;
-    }
-    // Refresh falhou — rejeita fila
-    this.drainQueue(false);
-    return null;
-  }
-
-  private drainQueue(success: boolean) {
-    const queue = this.refreshQueue;
-    this.refreshQueue = [];
-    for (const item of queue) {
-      if (success) {
-        this.request(item.path, item.options).then(item.resolve).catch(item.reject);
-      } else {
-        item.reject(new Error("Sessão expirada. Faça login novamente."));
-      }
-    }
+    return this.refreshPromise;
   }
 
   setCachedUser(user: unknown): void {

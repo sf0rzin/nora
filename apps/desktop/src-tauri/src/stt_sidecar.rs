@@ -1,13 +1,23 @@
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot};
 use base64::Engine;
 
 use crate::speech_token::fetch_speech_token;
+
+/// Idle timeout no stdout reader. Se o sidecar não emitir NADA (ready/partial/final/stopped)
+/// por 10 minutos, consideramos zumbi (Python travou em GIL, Azure WS pendurou) e abortamos
+/// — antes esse loop esperava indefinidamente.
+const SIDECAR_IDLE_TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(600);
+
+/// Capacidade do canal de escrita pro stdin do sidecar. Cobre rajadas de áudio
+/// (até ~20 chunks de 100ms) sem bloquear o produtor.
+const STDIN_QUEUE_CAPACITY: usize = 32;
 
 #[derive(Debug, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -219,11 +229,13 @@ impl SidecarHandle {
 }
 
 /// Spawn a background task that refreshes the auth token every 5 minutes.
-/// Sends `{"type":"refresh_token",...}` to the sidecar via stdin.
-/// Retries with exponential backoff on transient failures.
+/// Envia `{"type":"refresh_token",...}` pra fila única do stdin writer.
+/// Antes isso usava `Arc<Mutex<ChildStdin>>` — qualquer write bloqueado (pipe cheio)
+/// segurava o lock indefinidamente e travava todas as outras escritas, incluindo
+/// o próprio refresh. Agora todas as escritas passam por um único produtor-consumidor.
 async fn spawn_refresh_loop(
     session_id: String,
-    stdin: Arc<Mutex<tokio::process::ChildStdin>>,
+    stdin_tx: mpsc::Sender<String>,
     backend_url: String,
     access_token: String,
     region: String,
@@ -238,7 +250,7 @@ async fn spawn_refresh_loop(
         tokio::time::Duration::from_secs(secs.max(30)) // mínimo 30s para não spammar
     };
     let mut refresh_interval = compute_interval(initial_ttl_secs);
-    
+
     #[cfg(debug_assertions)]
     eprintln!("[stt_sidecar] refresh loop started for session {}", session_id);
 
@@ -252,15 +264,14 @@ async fn spawn_refresh_loop(
             _ = tokio::time::sleep(refresh_interval) => {
                 #[cfg(debug_assertions)]
                 eprintln!("[stt_sidecar] refreshing token for session {}", session_id);
-                
+
                 // Retry with exponential backoff: 1s, 2s, 4s, 8s, 16s, then every 30s
                 let mut retry_delay = tokio::time::Duration::from_secs(1);
                 const MAX_RETRY_DELAY: tokio::time::Duration = tokio::time::Duration::from_secs(30);
-                
+
                 loop {
                     match fetch_speech_token(&backend_url, &access_token, Some(&region)).await {
                         Ok(token_response) => {
-                            // Atualiza intervalo de refresh baseado no TTL real do token
                             let new_ttl = token_response.ttl_seconds();
                             refresh_interval = compute_interval(new_ttl);
                             #[cfg(debug_assertions)]
@@ -272,20 +283,16 @@ async fn spawn_refresh_loop(
                                 "session_id": session_id,
                                 "auth_token": token_response.token,
                             });
-                            
+
                             let line = format!("{}\n", refresh_msg);
-                            let mut stdin_guard = stdin.lock().await;
-                            if let Err(e) = stdin_guard.write_all(line.as_bytes()).await {
-                                eprintln!("[stt_sidecar] failed to write refresh_token: {}", e);
-                                break;
-                            }
-                            if let Err(e) = stdin_guard.flush().await {
-                                eprintln!("[stt_sidecar] failed to flush refresh_token: {}", e);
-                                break;
+                            if stdin_tx.send(line).await.is_err() {
+                                #[cfg(debug_assertions)]
+                                eprintln!("[stt_sidecar] stdin writer closed; refresh loop exiting");
+                                return;
                             }
                             #[cfg(debug_assertions)]
-                            eprintln!("[stt_sidecar] token refreshed successfully for session {}", session_id);
-                            break; // Success, exit retry loop
+                            eprintln!("[stt_sidecar] refresh_token enqueued for session {}", session_id);
+                            break;
                         }
                         Err(e) => {
                             eprintln!("[stt_sidecar] failed to refresh token (retry in {:?}): {}", retry_delay, e);
@@ -293,7 +300,7 @@ async fn spawn_refresh_loop(
                                 _ = &mut cancel_rx => {
                                     #[cfg(debug_assertions)]
                                     eprintln!("[stt_sidecar] refresh loop cancelled during retry");
-                                    break;
+                                    return;
                                 }
                                 _ = tokio::time::sleep(retry_delay) => {}
                             }
@@ -330,13 +337,14 @@ async fn run_sidecar(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .kill_on_drop(true)
         .spawn()
         .map_err(|e| format!("failed to spawn sidecar: {}", e))?;
 
-    let stdin = Arc::new(Mutex::new(child
+    let mut child_stdin = child
         .stdin
         .take()
-        .ok_or("failed to get stdin")?));
+        .ok_or("failed to get stdin")?;
     let stdout = child
         .stdout
         .take()
@@ -349,7 +357,14 @@ async fn run_sidecar(
     #[cfg(debug_assertions)]
     eprintln!("[stt_sidecar] spawned sidecar for session {}", session_id);
 
-    // Send start message
+    // Canal único pra tudo que escreve no stdin do sidecar. Antes usávamos
+    // `Arc<Mutex<ChildStdin>>` e cada task (writer, refresh, stop) competia pelo lock;
+    // se o pipe enchesse, o `write_all` bloqueava SEGURANDO o Mutex e travava todo
+    // o resto. Agora um único stdin_writer consome o canal serialmente, e os produtores
+    // (audio writer + refresh loop) só esperam no canal (não no I/O bloqueante).
+    let (stdin_tx, mut stdin_rx) = mpsc::channel::<String>(STDIN_QUEUE_CAPACITY);
+
+    // start message: vai no início do canal
     let start_msg = serde_json::json!({
         "v": 1,
         "type": "start",
@@ -361,32 +376,45 @@ async fn run_sidecar(
         "channels": 1,
         "speakers_hint": 2,
     });
+    stdin_tx
+        .send(format!("{}\n", start_msg))
+        .await
+        .map_err(|_| "failed to enqueue start message")?;
 
-    {
-        let mut stdin_guard = stdin.lock().await;
-        let start_line = format!("{}\n", start_msg);
-        stdin_guard
-            .write_all(start_line.as_bytes())
-            .await
-            .map_err(|e| format!("failed to write start: {}", e))?;
-        stdin_guard.flush().await.map_err(|e| format!("failed to flush: {}", e))?;
-    }
+    // stdin writer task: único dono do ChildStdin
+    let stdin_writer = tokio::spawn(async move {
+        while let Some(line) = stdin_rx.recv().await {
+            if let Err(e) = child_stdin.write_all(line.as_bytes()).await {
+                #[cfg(debug_assertions)]
+                eprintln!("[stt_sidecar] stdin write error: {}", e);
+                break;
+            }
+            if let Err(e) = child_stdin.flush().await {
+                #[cfg(debug_assertions)]
+                eprintln!("[stt_sidecar] stdin flush error: {}", e);
+                break;
+            }
+        }
+    });
 
     // Spawn refresh loop
     let (refresh_cancel_tx, refresh_cancel_rx) = oneshot::channel::<()>();
     let refresh_handle = tokio::spawn(spawn_refresh_loop(
         session_id.clone(),
-        Arc::clone(&stdin),
+        stdin_tx.clone(),
         backend_url,
         access_token,
         region.clone(),
         refresh_cancel_rx,
-        None, // TTL inicial desconhecido; será calculado no primeiro refresh
+        None,
     ));
 
-    // Writer task
+    // Audio writer: converte chunks PCM em mensagens NDJSON e enfileira.
+    // dropped_audio_count: chunks descartados quando a fila enche (rajada extrema).
+    let dropped_audio_count = Arc::new(AtomicU64::new(0));
     let writer_session = session_id.clone();
-    let writer_stdin = Arc::clone(&stdin);
+    let writer_stdin_tx = stdin_tx.clone();
+    let writer_dropped = Arc::clone(&dropped_audio_count);
     let writer = tokio::spawn(async move {
         let mut seq = 0u64;
         while let Some(samples) = audio_rx.recv().await {
@@ -406,36 +434,57 @@ async fn run_sidecar(
             seq += 1;
 
             let line = format!("{}\n", audio_msg);
-            let mut stdin_guard = writer_stdin.lock().await;
-            if let Err(e) = stdin_guard.write_all(line.as_bytes()).await {
-                #[cfg(debug_assertions)]
-                eprintln!("[stt_sidecar] write error: {}", e);
-                break;
-            }
-            if let Err(e) = stdin_guard.flush().await {
-                #[cfg(debug_assertions)]
-                eprintln!("[stt_sidecar] flush error: {}", e);
-                break;
+            // Tenta sem bloquear. Em Full, conta drop (rajada extrema não pode
+            // comer todo o backlog). Em Closed, sidecar morreu.
+            // BUG ANTERIOR: usava `if let Err(Full)=try_send else if send(line).await`.
+            // Quando try_send retornava Ok(()), o `else if` entrava e fazia send(line).await,
+            // ENVIANDO A MESMA LINHA DE NOVO — o Python via cada `seq` duplicado e
+            // emitia SEQUENCE_GAP em loop.
+            match writer_stdin_tx.try_send(line) {
+                Ok(()) => {}
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    let n = writer_dropped.fetch_add(1, Ordering::Relaxed) + 1;
+                    if n.is_power_of_two() {
+                        eprintln!(
+                            "[stt_sidecar] WARN: dropped {} audio chunks (fila cheia) sess={}",
+                            n, writer_session
+                        );
+                    }
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    // Sidecar fechou stdin; sai do loop.
+                    break;
+                }
             }
         }
 
-        // Send stop message
         let stop_msg = serde_json::json!({
             "v": 1,
             "type": "stop",
             "session_id": writer_session,
         });
-        let mut stdin_guard = writer_stdin.lock().await;
-        let _ = stdin_guard.write_all(format!("{}\n", stop_msg).as_bytes()).await;
-        let _ = stdin_guard.flush().await;
+        let _ = writer_stdin_tx.send(format!("{}\n", stop_msg)).await;
     });
 
-    // Stderr reader
+    // Stderr reader: trunca linhas a 512 bytes e nunca eprintln! direto sem prefixo
+    // — em prod o stderr do sidecar é redirecionado pra logs e pode conter mensagens
+    // de erro do Azure SDK com payload sensível.
     let stderr_handle = tokio::spawn(async move {
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            eprintln!("[sidecar stderr] {}", line.trim());
+            let trimmed = line.trim();
+            let truncated: String = if trimmed.len() > 512 {
+                format!("{}…[+{}b]", &trimmed[..512], trimmed.len() - 512)
+            } else {
+                trimmed.to_string()
+            };
+            #[cfg(debug_assertions)]
+            eprintln!("[sidecar stderr] {}", truncated);
+            #[cfg(not(debug_assertions))]
+            {
+                let _ = truncated;
+            }
         }
     });
 
@@ -448,10 +497,21 @@ async fn run_sidecar(
 
     loop {
         tokio::select! {
-            line_result = lines.next_line() => {
+            line_result = tokio::time::timeout(SIDECAR_IDLE_TIMEOUT, lines.next_line()) => {
+                let line_result = match line_result {
+                    Ok(r) => r,
+                    Err(_) => {
+                        eprintln!(
+                            "[stt_sidecar] idle timeout ({}s) sem mensagens do sidecar — assumindo zumbi",
+                            SIDECAR_IDLE_TIMEOUT.as_secs()
+                        );
+                        break;
+                    }
+                };
                 match line_result {
                     Ok(Some(line)) => {
-                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                        let parsed: Result<serde_json::Value, _> = serde_json::from_str(&line);
+                        if let Ok(json) = parsed {
                             let msg_type = json.get("type").and_then(|v| v.as_str());
 
                             match msg_type {
@@ -495,6 +555,11 @@ async fn run_sidecar(
                                 }
                                 _ => {}
                             }
+                        } else {
+                            // Linha não-JSON no stdout do sidecar (provavelmente traceback Python).
+                            // Antes era ignorada em silêncio; agora logamos para diagnóstico.
+                            #[cfg(debug_assertions)]
+                            eprintln!("[stt_sidecar] stdout non-JSON line: {}", line.trim());
                         }
                     }
                     Ok(None) => {
@@ -514,12 +579,31 @@ async fn run_sidecar(
         }
     }
 
-    // Cancel refresh loop
+    // Cancel refresh loop primeiro pra que ele não tente enfileirar mais nada
     let _ = refresh_cancel_tx.send(());
     refresh_handle.abort();
-    
+
+    // Encerra produtores do canal stdin (audio writer). Quando todos os senders
+    // forem dropados, stdin_writer sai do recv() naturalmente. Damos 2s pra
+    // o stop message escoar antes de matar o child.
     writer.abort();
+    drop(stdin_tx);
+    let _ = tokio::time::timeout(
+        tokio::time::Duration::from_secs(2),
+        stdin_writer,
+    )
+    .await;
+
     stderr_handle.abort();
     let _ = child.kill().await;
+    let _ = child.wait().await; // reap zombie
+    let drops = dropped_audio_count.load(Ordering::Relaxed);
+    if drops > 0 {
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "[stt_sidecar] session ended with {} dropped audio chunks",
+            drops
+        );
+    }
     Ok(())
 }

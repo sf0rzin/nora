@@ -1,0 +1,9 @@
+{
+  "identifier": "overlay-restricted",
+  "description": "Restricted capability for the live overlay window. Removes shell:* to prevent the always-on-top transparent overlay from opening arbitrary URLs or spawning the sidecar.",
+  "windows": ["overlay"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging"
+  ]
+}

@@ -95,7 +95,9 @@ pub async fn analyze_live(
 
     let start = std::time::Instant::now();
 
-    let client = reqwest::Client::new();
+    // Reusa o cliente global (connection pool + timeouts default).
+    // O override de timeout aqui (15s) ainda vence o default de 30s.
+    let client = crate::http_proxy::http_client();
     let result = client
         .post(format!("{}/meetings/live-analyze", backend_url))
         .header("Authorization", format!("Bearer {}", access_token))

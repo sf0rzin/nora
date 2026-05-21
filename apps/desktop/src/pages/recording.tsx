@@ -20,18 +20,23 @@ export function RecordingPage() {
   const [meetingTitle, setMeetingTitle] = useState("");
   const [captureSystemAudio, setCaptureSystemAudio] = useState(true);
   const [systemAudioDevice, setSystemAudioDevice] = useState<string | null>(null);
-  const [, setAudioPrereqs] = useState<AudioPrerequisites | null>(null);
   const [showBlackHoleWizard, setShowBlackHoleWizard] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+    // Antes salvávamos o objeto inteiro em `_, setAudioPrereqs` sem nunca ler — dead state.
+    // Só precisamos do `platform === "macos" && !available` pra decidir o wizard.
     invoke<AudioPrerequisites>("check_system_audio_prerequisites")
       .then((result) => {
-        setAudioPrereqs(result);
+        if (!mounted) return;
         if (result.platform === "macos" && !result.available) {
           setShowBlackHoleWizard(true);
         }
       })
       .catch((e) => console.error("[recording] failed to check audio prerequisites:", e));
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const {

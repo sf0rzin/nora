@@ -10,6 +10,8 @@ export interface PendingMeeting {
     fileName: string;
     participants?: { displayName: string; email?: string }[];
     tags?: string[];
+    /** Idempotency key — quando presente, o retry usa essa chave para evitar dup. */
+    clientId?: string;
   };
   createdAt: string;
   retryCount: number;

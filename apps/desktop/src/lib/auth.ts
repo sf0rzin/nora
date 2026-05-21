@@ -7,6 +7,12 @@ const JWT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
 
 let refreshIntervalId: ReturnType<typeof setInterval> | null = null;
 
+/**
+ * Decodifica o payload de um JWT **sem** verificar a assinatura. Use APENAS
+ * para hints de UI (mostrar nome, decidir se o token está prestes a expirar).
+ * NUNCA use os claims daqui para decisões de autorização — qualquer JWT
+ * forjado seria aceito. A autorização real acontece no backend.
+ */
 function parseJwtPayload(token: string): Record<string, unknown> | null {
   try {
     return JSON.parse(atob(token.split(".")[1]));

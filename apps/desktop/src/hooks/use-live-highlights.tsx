@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
 export interface LiveHighlightItem {
@@ -66,11 +66,22 @@ export function LiveHighlightsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const unlisten = listen<LiveHighlights>("live-analysis", (event) => {
+    // Cleanup defensivo: se o componente desmonta antes da promise `listen()` resolver,
+    // guardamos o "alreadyUnmounted" flag para impedir o `fn()` em cleanup já tardio.
+    let mounted = true;
+    const handles: Array<Promise<() => void>> = [];
+
+    const subscribe = <T,>(event: string, cb: (e: { payload: T }) => void) => {
+      const h = listen<T>(event, cb);
+      handles.push(h as Promise<() => void>);
+    };
+
+    subscribe<LiveHighlights>("live-analysis", (event) => {
       const { highlights: newHighlights, chunkSeq: seq } = event.payload as unknown as {
         highlights: LiveHighlights;
         chunkSeq: number;
       };
+      if (!mounted) return;
       setHighlights((prev) => mergeHighlights(prev, newHighlights));
       setLastUpdatedAt(Date.now());
       setChunkSeq(seq);
@@ -78,19 +89,27 @@ export function LiveHighlightsProvider({ children }: { children: ReactNode }) {
       setError(null);
     });
 
-    const unlistenTelemetry = listen<LiveAnalysisTelemetry>("live-analysis-telemetry", (event) => {
-      const t = event.payload;
-      setLastLatencyMs(t.latencyMs);
+    subscribe<LiveAnalysisTelemetry>("live-analysis-telemetry", (event) => {
+      if (!mounted) return;
+      setLastLatencyMs(event.payload.latencyMs);
     });
 
-    const unlistenClear = listen("clear-highlights", () => {
-      clearHighlights();
+    subscribe("clear-highlights", () => {
+      if (mounted) clearHighlights();
+    });
+
+    // Eventos Tauri (cross-window) emitidos pelo `triggerAnalysis` para acender
+    // o spinner também na janela overlay — DOM CustomEvent não atravessa janelas.
+    subscribe("live-analysis-start", () => {
+      if (mounted) setIsAnalyzing(true);
+    });
+    subscribe("live-analysis-end", () => {
+      if (mounted) setIsAnalyzing(false);
     });
 
     return () => {
-      unlisten.then((fn) => fn());
-      unlistenTelemetry.then((fn) => fn());
-      unlistenClear.then((fn) => fn());
+      mounted = false;
+      handles.forEach((h) => h.then((fn) => fn()).catch(() => {}));
     };
   }, [clearHighlights]);
 
@@ -117,6 +136,9 @@ export function useLiveAnalysisTrigger() {
   const lastAnalyzedTimeRef = useRef(Date.now());
   const chunkSeqRef = useRef(0);
 
+  // setIsAnalyzing precisa ser exposto pelo Provider (não é). Em vez de prop-drill,
+  // disparamos um custom event que o Provider escuta. Antes `setIsAnalyzing(true)`
+  // nunca era chamado em lugar nenhum → spinner do overlay nunca aparecia.
   const triggerAnalysis = useCallback(
     async (transcriptLines: { text: string }[], currentHighlights: LiveHighlights, force = false) => {
       if (isAnalyzingRef.current) return;
@@ -129,39 +151,50 @@ export function useLiveAnalysisTrigger() {
         .reduce((acc, l) => acc + l.text.length, 0);
 
       if (!force && newLines < 3 && newChars < 100 && timeSinceLastAnalysis < 15000) {
-        console.log("[live-trigger] skipped:", { newLines, newChars, timeSinceLastAnalysis });
         return;
       }
 
+      const snapshotLen = transcriptLines.length;
       const transcriptChunk = transcriptLines
         .slice(lastAnalyzedCountRef.current)
         .map((l) => l.text)
         .join("\n");
       if (transcriptChunk.length < 30) {
-        console.log("[live-trigger] chunk too short:", transcriptChunk.length, "chars");
         return;
       }
 
-      console.log("[live-trigger] firing:", { newLines, newChars, timeSinceLastAnalysis, chunkLen: transcriptChunk.length, seq: chunkSeqRef.current + 1 });
-
       isAnalyzingRef.current = true;
-      lastAnalyzedCountRef.current = transcriptLines.length;
+      // Comunica ao Provider: spinner do overlay liga.
+      // Usamos Tauri `emit` (não window.dispatchEvent) para que o evento atravesse
+      // janelas — DOM CustomEvent só dispara na window que chamou dispatchEvent,
+      // então a janela overlay (separada da main) jamais recebia.
+      void emit("live-analysis-start");
+      const nextSeq = chunkSeqRef.current + 1;
+      chunkSeqRef.current = nextSeq;
       lastAnalyzedTimeRef.current = Date.now();
-      chunkSeqRef.current += 1;
 
+      let ok = false;
       try {
         await invoke("analyze_live", {
           request: {
             transcriptChunk,
-            chunkSeq: chunkSeqRef.current,
+            chunkSeq: nextSeq,
             previousHighlights: hasAnyItem(currentHighlights) ? currentHighlights : null,
             language: "pt-BR",
           },
         });
+        ok = true;
       } catch (e) {
         console.error("[live-analysis] trigger failed:", e);
       } finally {
         isAnalyzingRef.current = false;
+        if (ok) {
+          // Só avança o cursor em caso de sucesso — falha transitória NÃO
+          // faz o sistema "pular" os trechos não analisados.
+          lastAnalyzedCountRef.current = snapshotLen;
+        } else {
+          void emit("live-analysis-end");
+        }
       }
     },
     [],

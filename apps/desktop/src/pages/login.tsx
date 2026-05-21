@@ -151,11 +151,14 @@ export function LoginPage() {
             </p>
           </div>
 
-          {/* SSO */}
+          {/* SSO — em breve (sem handler ainda; desabilitado pra evitar click morto) */}
           <div className="flex flex-col gap-2">
             <button
               type="button"
-              className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 bg-[oklch(0.20_0.014_250)] border border-[oklch(0.30_0.012_250)] rounded-[10px] text-[oklch(0.97_0.005_250)] text-[13.5px] font-medium transition-all duration-180 hover:border-[oklch(0.40_0.014_250)] hover:bg-[oklch(0.24_0.014_250)]"
+              disabled
+              aria-disabled
+              title="SSO Microsoft em breve"
+              className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 bg-[oklch(0.20_0.014_250)] border border-[oklch(0.30_0.012_250)] rounded-[10px] text-[oklch(0.97_0.005_250)] text-[13.5px] font-medium transition-all duration-180 opacity-50 cursor-not-allowed"
             >
               <svg className="w-4 h-4 shrink-0" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg">
                 <rect x="1" y="1" width="10" height="10" fill="#F25022"/>
@@ -164,6 +167,7 @@ export function LoginPage() {
                 <rect x="12" y="12" width="10" height="10" fill="#FFB900"/>
               </svg>
               Continuar com Microsoft
+              <span className="ml-1 text-[10px] text-[oklch(0.55_0.012_250)]">(em breve)</span>
             </button>
           </div>
 
@@ -196,7 +200,13 @@ export function LoginPage() {
                 <label className="text-[12.5px] font-medium text-[oklch(0.72_0.012_250)]" htmlFor="password">
                   Senha
                 </label>
-                <button type="button" className="text-xs text-[oklch(0.78_0.16_248)] hover:underline">
+                <button
+                  type="button"
+                  disabled
+                  aria-disabled
+                  title="Recuperação de senha em breve"
+                  className="text-xs text-[oklch(0.78_0.16_248)] opacity-50 cursor-not-allowed"
+                >
                   Esqueci minha senha
                 </button>
               </div>
@@ -249,7 +259,13 @@ export function LoginPage() {
           <div className="flex justify-between items-center text-[12.5px] text-[oklch(0.55_0.012_250)]">
             <span>
               Não tem conta?{" "}
-              <button type="button" className="text-[oklch(0.72_0.012_250)] hover:text-[oklch(0.97_0.005_250)] transition-colors">
+              <button
+                type="button"
+                disabled
+                aria-disabled
+                title="Em breve"
+                className="text-[oklch(0.72_0.012_250)] opacity-50 cursor-not-allowed transition-colors"
+              >
                 Falar com vendas
               </button>
             </span>

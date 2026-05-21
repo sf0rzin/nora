@@ -31,6 +31,13 @@ export interface UploadTranscriptRequest {
   endedAt?: string;
   tags?: string[];
   participants?: { displayName: string; email?: string }[];
+  /**
+   * Chave de idempotência estável (UUID v4): gerada uma vez por reunião
+   * pelo cliente. Permite que o retry após network drop não duplique o
+   * meeting no backend. O backend (ainda) pode ignorar — neste caso o
+   * dedup é só local via Set de in-flight no retry worker.
+   */
+  clientId?: string;
 }
 
 export interface UploadTranscriptOptions {
@@ -76,6 +83,7 @@ export async function uploadTranscript(
             participants: data.participants ?? [],
             fileContent: data.fileContent,
             fileName: data.fileName,
+            clientId: data.clientId,
           },
         }
       );
