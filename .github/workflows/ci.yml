@@ -108,28 +108,25 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
-          cache: pnpm
-          cache-dependency-path: apps/web/package.json
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
       - name: Install
         working-directory: apps/web
-        run: pnpm install --no-frozen-lockfile
+        run: npm ci
       - name: Lint
         working-directory: apps/web
-        run: pnpm lint
+        run: npm run lint
       - name: Typecheck
         working-directory: apps/web
-        run: pnpm typecheck
+        run: npm run typecheck
       - name: Build
         working-directory: apps/web
         env:
           NEXT_PUBLIC_USE_MOCKS: 'true'
-        run: pnpm build
+        run: npm run build
 
   # Job leve em PR: só sidecar tests (mais barato) + Python sanity check.
   # O sidecar é a única parte com lógica de domínio testável fora do Tauri/Rust;
