@@ -12,6 +12,7 @@ import br.com.nora.api.domain.customer.ObjectionType;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +50,18 @@ public class CustomerConfidenceAssessmentRepositoryAdapter
         return jpa.findByMeetingIdAndTenantId(meetingId, tenantId).stream()
                 .map(this::toDomain)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<CustomerConfidenceAssessment> findLatestByAccountId(
+            UUID accountId, UUID excludeMeetingId, UUID tenantId) {
+        return jpa
+                .findByCustomerAccountIdAndTenantIdAndMeetingIdNotOrderByCreatedAtDesc(
+                        accountId, tenantId, excludeMeetingId)
+                .stream()
+                .findFirst()
+                .map(this::toDomain);
     }
 
     private CustomerConfidenceAssessmentJpaEntity toEntity(CustomerConfidenceAssessment a) {

@@ -67,7 +67,34 @@ public final class WorkerDtos {
             @JsonProperty("risks") List<RiskDto> risks,
             @JsonProperty("opportunities") List<OpportunityDto> opportunities,
             @JsonProperty("productivity") ProductivityDto productivity,
+            @JsonProperty("customerConfidence") CustomerConfidenceDto customerConfidence,
             @JsonProperty("metadata") Metadata metadata) {}
+
+    /**
+     * Bloco {@code customerConfidence} (ADR 0006/0015). Emitido pelo worker apenas para reunioes
+     * externas (conversa com cliente/lead); null para reunioes internas. {@code trend} vem como
+     * palpite do worker mas e ignorado no backend — a tendencia e recalculada server-side com base
+     * no historico da conta (backend e autoritativo).
+     */
+    public record CustomerConfidenceDto(
+            @JsonProperty("score") Integer score,
+            @JsonProperty("band") String band,
+            @JsonProperty("trend") String trend,
+            @JsonProperty("accountName") String accountName,
+            @JsonProperty("buyingSignals") List<BuyingSignalDto> buyingSignals,
+            @JsonProperty("objections") List<ObjectionDto> objections,
+            @JsonProperty("rationale") String rationale) {}
+
+    public record BuyingSignalDto(
+            @JsonProperty("type") String type,
+            @JsonProperty("quote") String quote,
+            @JsonProperty("weight") Double weight) {}
+
+    public record ObjectionDto(
+            @JsonProperty("type") String type,
+            @JsonProperty("quote") String quote,
+            @JsonProperty("severity") String severity,
+            @JsonProperty("competitor") String competitor) {}
 
     public record ProductivityDto(
             @JsonProperty("score") Integer score,

@@ -2,6 +2,8 @@ package br.com.nora.api.infrastructure.persistence.customer;
 
 import br.com.nora.api.application.ports.CustomerAccountRepository;
 import br.com.nora.api.domain.customer.CustomerAccount;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
@@ -11,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class CustomerAccountRepositoryAdapter implements CustomerAccountRepository {
 
     private final CustomerAccountJpaRepository jpa;
+
+    @PersistenceContext private EntityManager em;
 
     public CustomerAccountRepositoryAdapter(CustomerAccountJpaRepository jpa) {
         this.jpa = jpa;
@@ -33,6 +37,20 @@ public class CustomerAccountRepositoryAdapter implements CustomerAccountReposito
     @Transactional(readOnly = true)
     public Optional<CustomerAccount> findById(UUID id, UUID tenantId) {
         return jpa.findByIdAndTenantId(id, tenantId).map(this::toDomain);
+    }
+
+    @Override
+    @Transactional
+    public void linkMeeting(UUID meetingId, UUID accountId, UUID tenantId) {
+        // Idempotente: PK composta (meeting_id, customer_account_id). ON CONFLICT DO NOTHING evita
+        // erro em re-link (ex.: reprocessamento da mesma reuniao).
+        em.createNativeQuery(
+                        "INSERT INTO meeting_account_links (meeting_id, customer_account_id, "
+                                + "tenant_id) VALUES (:m, :a, :t) ON CONFLICT DO NOTHING")
+                .setParameter("m", meetingId)
+                .setParameter("a", accountId)
+                .setParameter("t", tenantId)
+                .executeUpdate();
     }
 
     private CustomerAccountJpaEntity toEntity(CustomerAccount a) {
