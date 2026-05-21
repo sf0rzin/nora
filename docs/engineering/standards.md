@@ -423,7 +423,7 @@ Ancore cada afirmação técnica em path:linha ou ADR.
 
 Decisões arquiteturais duráveis ficam em `docs/adr/NNNN-titulo.md`. Toda nova feature que tome decisão de difícil reversão (banco, framework, modelo de tenancy, formato de IA) **deve** criar ADR.
 
-ADRs (estado em 2026-05-19, pós-Sub-fase 1.10):
+ADRs (estado em 2026-05-21, pós-auditoria doc×código):
 
 | ID | Decisão | Status |
 |---|---|---|
@@ -445,6 +445,9 @@ ADRs (estado em 2026-05-19, pós-Sub-fase 1.10):
 | 0016 | Production-readiness backlog (Sub-fase 1.12) | proposto |
 | 0017 | License AGPL-3.0 | aceito |
 | 0018 | Test coverage targets por área crítica | aceito |
+| 0019 | Tenant isolation defense-in-depth (RLS + FK composta) | aceito |
+| 0020 | Refresh-token rotation + reuse detection | aceito |
+| 0021 | Soft-delete em entidades tenant-owned | aceito |
 
 Quando criar ADR:
 
