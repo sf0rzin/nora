@@ -73,7 +73,7 @@ api/            <- controllers REST, DTOs, exception handlers
 | `MeetingService` (`application/meeting/MeetingService.java`) | application | Upload, listagem, reprocessamento via repos |
 | `JjwtJwtIssuer` (`infrastructure/security/JjwtJwtIssuer.java`) | infrastructure | Implementa `JwtIssuer` (porta) com a lib JJWT |
 | `AzureSpeechTokenBroker` (`infrastructure/speech/AzureSpeechTokenBroker.java`) | infrastructure | Adapter HTTP para `/issueToken` Azure |
-| `MeetingsController` (`api/controllers/MeetingsController.java:51`) | api | Thin controller que delega a `MeetingService` |
+| `MeetingsController` (`api/controllers/MeetingsController.java:64`) | api | Thin controller que delega a `MeetingService` |
 
 ### Por que DDD em camadas estritas
 
@@ -107,15 +107,17 @@ Toda tabela tenant-bound carrega `tenant_id UUID NOT NULL` (V001–V012). Confer
 O JWT emitido em `JjwtJwtIssuer` carrega `tenantId` no claim. Em cada request autenticado:
 
 1. `JwtAuthenticationFilter` valida o token e popula `CurrentUser` com `AuthenticatedPrincipal(userId, tenantId, ...)`.
-2. Cada controller obtém o principal via `CurrentUser.require()` (exemplo: `MeetingsController.java:82`).
+2. Cada controller obtém o principal via `CurrentUser.require()` (exemplo: `MeetingsController.java:101`).
 3. Toda chamada a `MeetingService`, `AnalysisService`, `IamService` etc. recebe `tenantId` explicitamente; nunca há lookup global por `id`.
 4. `AuthorizationService.isAllowed(userId, tenantId, action, resource)` (`application/iam/AuthorizationService.java:27`) injeta o `tenantId` no `PolicyEvaluator`.
 
 Em SQL, isso vira `WHERE tenant_id = :tenantId AND id = :id` — nunca apenas `WHERE id = :id`. Tentativas de acesso fora do escopo retornam 403 (ou 404, conforme risco de enumeração; ver `GlobalExceptionHandler`).
 
-### Migração planejada para RLS
+### RLS — implementado no schema (V016)
 
-ADR 0002 prevê habilitar Row-Level Security do Postgres em produção. **Não habilitado no MVP** — débito documentado no audit §5. Quando habilitado, vira uma camada de defesa em profundidade: mesmo que um query `WHERE tenant_id` seja esquecido, o RLS bloqueia.
+ADR 0002 prometia Row-Level Security em produção. **Entregue no schema em `V016__row_level_security.sql`** (não é mais "débito pendente"): policies `tenant_isolation` + `ENABLE ROW LEVEL SECURITY` em 10 tabelas tenant-owned, predicado `tenant_id = nora.current_tenant_id()` (lê o GUC de sessão `nora.current_tenant_id`). O `infrastructure/security/TenantRlsAspect` faz `SET LOCAL` por `@Transactional`.
+
+**Enforcement é opt-in:** owner/admin Postgres bypassa RLS por default (dev/Testcontainers ficam inertes — testes intocados). Em prod, ativar via role dedicado `nora_app` (`NOBYPASSRLS`) + flag `nora.security.rls.enforce=true`. É defesa em profundidade: mesmo que uma query esqueça o `WHERE tenant_id`, o RLS bloqueia. Ver `data-model.md §4`.
 
 ---
 
@@ -222,7 +224,7 @@ Fluxo de análise de reunião — disparado quando um upload chega ou via `POST 
 
 1. **PII Shield** (`services/nlp-worker/src/nora_nlp/services/pii_shield.py`): redige email, phone, CPF, CNPJ, cartão e nomes próprios BR antes de qualquer chamada externa. Ver §6.
 2. **TF-IDF baseline** (`packages/nlp-baseline/src/nlp_baseline/`, ADR 0010): extrai termos top-N do texto pra interpretabilidade acadêmica e enriquecimento do prompt.
-3. **LLM call** (`services/nlp-worker/src/nora_nlp/services/llm_analyzer.py:58`): `analyze()` carrega prompt versionado de `prompts/{version}.md`, monta system+user prompts, chama o cliente LLM agnóstico (`clients/llm.py`) com `response_format=json_schema` (modo strict — ADR 0003).
+3. **LLM call** (`services/nlp-worker/src/nora_nlp/services/llm_analyzer.py:117`): `analyze()` carrega prompt versionado de `prompts/{version}.md`, monta system+user prompts, chama o cliente LLM agnóstico (`clients/llm.py`) com `response_format=json_schema` (modo strict — ADR 0003).
 4. **Validação Pydantic** (`models.py`, `MeetingAnalysisV1`): cada campo da resposta passa por validação estrita — score 0-100, enum bands, tamanhos, etc. Falha de schema é erro controlado, não stack trace exposto.
 
 ### Provider agnóstico (ADR 0004)
@@ -401,7 +403,7 @@ sequenceDiagram
 Passo a passo verbal:
 
 1. **Login** (`POST /auth/login`): autentica usuário, emite `nora_access` (JWT 15 min) e `nora_refresh` (UUID 30d, persistido em `refresh_tokens` — V011). Ambos cookies HttpOnly. Ver `AuthController.login`.
-2. **Upload** (`POST /meetings`, multipart): aceita `.txt`, `.vtt`, `.srt` (`MeetingsController.java:53`). Cria meeting `PENDING` e dispara processamento assíncrono.
+2. **Upload** (`POST /meetings`, multipart): aceita `.txt`, `.vtt`, `.srt` (`ALLOWED_FORMATS` em `MeetingsController.java:66`). Cria meeting `PENDING` e dispara processamento assíncrono.
 3. **Backend → Worker** (`MeetingService.processAsync` → `AnalysisService.requestAnalysis`): monta `AnalyzeRequest` com transcript + tenant_context + opções.
 4. **Worker** (`/analyze`): PII Shield → TF-IDF baseline → LLM strict → Pydantic validate → retorna `AnalyzeResponse`.
 5. **Persistência**: backend salva `meeting_analyses` + filhos (`meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities`) + opcionalmente `meeting_productivity_assessments` + `meeting_outcome_coverage`. Atualiza `meetings.processing_status = COMPLETED`.
@@ -486,13 +488,27 @@ Service Principal: `sp-nora-github-deploy` (audit §7), com 3 federated credenti
 
 ---
 
+## §13. Hardening de segurança entregue (audit follow-ups, pós-1.10)
+
+Uma onda de hardening (PRs ~#114–#138, rotulados "audit follow-up #N") entrou em `main` após a Sub-fase 1.10. **Não tem ADR dedicado** — recomenda-se registrar (ver "Próximos refactors"):
+
+- **RLS Postgres (V016)** — ver §3. Schema-level pronto; enforce opt-in (`nora_app` + flag).
+- **Soft-delete (V013)** — `deleted_at` + `@SQLRestriction` em `tenants/users/tenant_contexts/meetings`; UNIQUEs viraram parciais. Hard-delete fica para LGPD/retenção.
+- **Refresh-token rotation + reuse-detection (V014)** — `refresh_tokens.family_id`/`replaced_by_id`; cada `/auth/refresh` rotaciona; apresentar token revogado revoga a family inteira.
+- **Composite FK de isolamento (V015)** — `meetings.(tenant_id, owner_user_id) → users(tenant_id, id)`: bloqueia owner forjado de outro tenant no nível do schema (defesa em profundidade do ADR 0002).
+- **JWT RS256 + JWKS** — assinatura assimétrica; chave pública exposta em `GET /.well-known/jwks.json` (modo RSA).
+- **Audit log de auth expandido** — eventos de login/refresh/logout além do `iam_audit_events` (que era IAM-only).
+- **App Insights Java agent** — instrumentação wired no `services/api/Dockerfile`.
+- **Upload hardening** — checagem de magic-byte/extensão/path-traversal em `MeetingsController` antes de persistir transcript.
+
 ## Próximos refactors arquiteturais
 
-Débitos técnicos catalogados, priorização e ADRs sucessores planejados ficam em **`docs/operations/production-readiness-gaps.md`** (escrito na Sub-fase 1.10; implementação ataca-se na Sub-fase 1.12 — Production Hardening, formalizada via ADR 0016). Resumo dos principais:
+Débitos técnicos catalogados, priorização e ADRs sucessores planejados ficam em **`docs/operations/production-readiness-gaps.md`** (escrito na Sub-fase 1.10; implementação ataca-se na Sub-fase 1.12 — Production Hardening, formalizada via ADR 0016). Resumo dos principais (estado em 2026-05-21):
 
-- **AUTH_FILTER_HARD_CAP refactor** (`MeetingsController.java:54`): empurrar predicado IAM para SQL via `meetings.attributes @>` JSONB + GIN (V008 já tem o índice). Alvo Sub-fase 1.11.
-- **PolicyEvaluator** ganhar `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (cobre 90% das policies reais). Alvo Sub-fase 1.11.
-- **RLS Postgres** habilitado em produção (ADR 0002). Alvo Sub-fase 1.12.
+- **AUTH_FILTER_HARD_CAP refactor** (`MeetingsController.java:67`): **ainda pendente** — cap de `500` em memória; empurrar predicado IAM para SQL via `meetings.attributes @>` JSONB + GIN (V008 já tem o índice). Era alvo da Sub-fase 1.11 (não iniciada).
+- **PolicyEvaluator** ganhar `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan`: **ainda pendente** — `SUPPORTED_CONDITION_OPERATORS` em `PolicyEvaluator.java:37` segue só `StringEquals`. Era alvo da Sub-fase 1.11.
+- **RLS Postgres**: ✅ **entregue no schema (V016)** — falta só ativar enforcement em prod (role `nora_app` + flag). Ver §3/§13.
 - **`tenant_contexts.version`** (US31): coluna ausente; sem histórico de versão do contexto. Alvo Sub-fase 1.12.
-- **`audit_events` global** (não só IAM): incluir LOGIN, MEETING_UPLOAD, CONTEXT_UPDATE. Alvo Sub-fase 1.12.
-- **Customer Confidence**: ADR 0015 aceito — voto (a) implementa mínimo na Sub-fase 1.11. Ver `docs/adr/0015-customer-confidence-minimal-persistence.md`.
+- **`audit_events` global** (não só IAM): auth já tem log próprio (§13); falta consolidar MEETING_UPLOAD, CONTEXT_UPDATE numa trilha única. Alvo Sub-fase 1.12.
+- **Customer Confidence**: ADR 0015 aceito mas **não implementado** (worker não emite `customerConfidence`; sem migration/endpoint/UI). Dívida narrativa aberta — decisão de produto pendente (PO). Ver `docs/adr/0015-customer-confidence-minimal-persistence.md`.
+- **ADRs faltantes**: RLS/composite-FK, soft-delete, refresh-token rotation entraram sem ADR — criar (recomendado pela auditoria 2026-05-21).
