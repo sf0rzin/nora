@@ -66,6 +66,33 @@
     "promptVersion": "meeting-analysis-v1",
     "generatedAt": "2026-05-02T14:51:30Z"
   },
+  "customerConfidence": {
+    "score": 68,
+    "band": "MEDIUM",
+    "trend": "STABLE",
+    "accountName": "Acme",
+    "rationale": "Cliente demonstra intenção clara de renovar e expandir escopo, com compromisso de receber a proposta até 09/05. A confiança fica em patamar médio pela objeção ativa de preço e menção a concorrente, que ainda não foi neutralizada.",
+    "buyingSignals": [
+      {
+        "type": "Compromisso de próximo passo",
+        "quote": "Lucas: fechado, mando a proposta até sexta com o financeiro incluso.",
+        "weight": 0.8
+      },
+      {
+        "type": "Interesse em expansão de escopo",
+        "quote": "Marina: se o financeiro entregar isso, faz sentido investir mais.",
+        "weight": 0.6
+      }
+    ],
+    "objections": [
+      {
+        "type": "Preço / orçamento",
+        "quote": "Marina: o pessoal do X chegou com 15% a menos.",
+        "severity": "HIGH",
+        "competitor": "Concorrente X"
+      }
+    ]
+  },
   "createdAt": "2026-05-02T14:50:12Z",
   "updatedAt": "2026-05-02T14:51:30Z"
 }
