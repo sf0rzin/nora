@@ -146,3 +146,92 @@ def test_productivity_band_threshold_consistency():
         assert band == "MEDIUM"
     else:
         assert band == "HIGH"
+
+
+# ---------- Customer Confidence (ADR 0006) ----------
+
+_BUYING_SIGNAL_TYPES = {
+    "BUDGET_DISCUSSED",
+    "TIMELINE_DISCUSSED",
+    "STAKEHOLDER_INVOLVED",
+    "NEXT_STEP_REQUESTED",
+    "REFERENCE_REQUESTED",
+    "PROPOSAL_REQUESTED",
+    "OTHER",
+}
+_OBJECTION_TYPES = {
+    "PRICE",
+    "TIMELINE",
+    "AUTHORITY",
+    "NEED",
+    "COMPETITOR_MENTION",
+    "TRUST",
+    "FEATURE_GAP",
+    "OTHER",
+}
+
+
+@pytest.mark.parametrize(
+    "transcript,tenant",
+    [
+        ("01-acme-discovery-lead-novo.txt", "acme-software"),
+        ("06-northwind-prospect-poc.txt", "northwind-fintech"),
+        ("08-northwind-objecao-integracao-tecnica.txt", "northwind-fintech"),
+    ],
+)
+def test_customer_confidence_present_for_sales_conversation(transcript: str, tenant: str):
+    """Conversas com cliente/lead emitem customerConfidence com schema completo (ADR 0006)."""
+    payload = _load_request(transcript, tenant, "00000000-0000-4000-8000-000000000aaa")
+    resp = client.post("/analyze", json=payload)
+    assert resp.status_code == 200, resp.text
+    cc = resp.json()["customerConfidence"]
+
+    assert cc is not None, "Esperava customerConfidence emitido para conversa de venda."
+    assert 0 <= cc["score"] <= 100
+    assert cc["band"] in {"LOW", "MEDIUM", "HIGH"}
+    assert cc["trend"] in {"IMPROVING", "STABLE", "DECLINING", None}
+    # accountName e nullable (LLM detecta; stub nao parseia nome -> null).
+    assert cc["accountName"] is None or isinstance(cc["accountName"], str)
+    assert isinstance(cc["rationale"], str) and len(cc["rationale"]) >= 10
+    # Banda derivada do score respeita limites do ADR (LOW<40, MEDIUM 40-69, HIGH>=70).
+    score, band = cc["score"], cc["band"]
+    if score < 40:
+        assert band == "LOW"
+    elif score < 70:
+        assert band == "MEDIUM"
+    else:
+        assert band == "HIGH"
+    # Todo buyingSignal/objection precisa de quote + enum valido (regra do prompt).
+    assert isinstance(cc["buyingSignals"], list)
+    for sig in cc["buyingSignals"]:
+        assert sig["type"] in _BUYING_SIGNAL_TYPES
+        assert isinstance(sig["quote"], str) and len(sig["quote"]) >= 5
+    assert isinstance(cc["objections"], list)
+    for obj in cc["objections"]:
+        assert obj["type"] in _OBJECTION_TYPES
+        assert isinstance(obj["quote"], str) and len(obj["quote"]) >= 5
+        assert obj["severity"] in {"LOW", "MEDIUM", "HIGH"}
+
+
+def test_customer_confidence_null_for_internal_meeting():
+    """Reuniao interna sem cues de venda emite customerConfidence = null (ADR 0006).
+
+    Gating decidido pelo conteudo (LLM no real; cue-based no stub): sem sinal de
+    compra nem objecao, o campo vem null — comprovando o contrato nullable.
+    """
+    payload = _load_request(
+        "01-acme-discovery-lead-novo.txt",
+        "acme-software",
+        "00000000-0000-4000-8000-000000000aaa",
+    )
+    # Substitui a transcricao por um alinhamento interno cue-free (daily de time).
+    payload["transcript"] = (
+        "[Ana] Bom dia time, vamos revisar o andamento das tarefas de hoje.\n"
+        "[Bruno] Terminei o ajuste no layout da tela inicial ontem a noite.\n"
+        "[Ana] Otimo. Alguem travado em algo?\n"
+        "[Bruno] Nada por aqui, fluindo bem.\n"
+        "[Ana] Entao seguimos. Bom trabalho a todos."
+    )
+    resp = client.post("/analyze", json=payload)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["customerConfidence"] is None
