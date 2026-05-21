@@ -1,8 +1,9 @@
 # Modelo de Dados — NORA (Postgres 16)
 
-> Estado real do schema, alinhado com **migrations V001–V012** em `services/api/src/main/resources/db/migration/`.
+> Estado real do schema, alinhado com **migrations V001–V016** em `services/api/src/main/resources/db/migration/`.
 > Cada tabela é mapeada para a migration de origem. Quando há **drift** entre o que estava documentado e o que está no banco, está marcado explicitamente.
-> Multi-tenancy: coluna `tenant_id` em toda tabela tenant-bound (ADR 0002). RLS habilitado em produção é débito pendente.
+> Multi-tenancy: coluna `tenant_id` em toda tabela tenant-bound (ADR 0002). **RLS habilitado no schema em V016** (enforcement opt-in via role `nora_app` + flag `nora.security.rls.enforce`; ver §RLS).
+> **Soft-delete** (V013): tabelas `tenants`, `users`, `tenant_contexts`, `meetings` têm `deleted_at`; queries Spring Data filtram `deleted_at IS NULL` via `@SQLRestriction`; UNIQUEs totais viraram parciais (ver §4).
 
 ---
 
@@ -55,16 +56,17 @@ erDiagram
 |---|---|---|
 | `id` | `UUID PK DEFAULT gen_random_uuid()` | extensão `pgcrypto` |
 | `name` | `TEXT NOT NULL` | |
-| `slug` | `TEXT NOT NULL UNIQUE` | usado em URLs |
+| `slug` | `TEXT NOT NULL` | usado em URLs. **V013**: UNIQUE total trocada por índice parcial `WHERE deleted_at IS NULL` |
 | `status` | `TEXT NOT NULL DEFAULT 'ACTIVE'` | CHECK: `ACTIVE`, `SUSPENDED` |
 | `plan` | `TEXT NOT NULL DEFAULT 'FREE'` | CHECK: `FREE`, `PRO`, `ENTERPRISE` |
 | `allowed_email_domain` | `VARCHAR(255)` | **V009** — domínio corporativo. NULL = sem restrição |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `deleted_at` | `TIMESTAMPTZ` | **V013** — soft-delete. NULL = ativo |
 
-**Indexes**: `idx_tenants_status(status)`.
+**Indexes**: `idx_tenants_status(status)`, `tenants_slug_uk UNIQUE (slug) WHERE deleted_at IS NULL` (V013 — partial), `tenants_deleted_at_idx(deleted_at)` (V013).
 
-**Propósito**: raiz de tudo. Toda tabela tenant-bound referencia `tenants(id)`. `allowed_email_domain` adicionada em V009 (US32, ADR 0011) para restringir convites a um domínio corporativo.
+**Propósito**: raiz de tudo. Toda tabela tenant-bound referencia `tenants(id)`. `allowed_email_domain` adicionada em V009 (US32, ADR 0011) para restringir convites a um domínio corporativo. Soft-delete (V013): preferir `status = SUSPENDED` + `deleted_at` a hard-delete.
 
 ---
 
@@ -74,7 +76,7 @@ erDiagram
 |---|---|---|
 | `id` | `UUID PK DEFAULT gen_random_uuid()` | |
 | `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT` | |
-| `email` | `CITEXT NOT NULL` | extensão `citext` (case-insensitive); UNIQUE por `(tenant_id, email)` |
+| `email` | `CITEXT NOT NULL` | extensão `citext` (case-insensitive); **V013**: UNIQUE `(tenant_id, email)` virou índice parcial `WHERE deleted_at IS NULL` |
 | `password_hash` | `TEXT NOT NULL` | bcrypt/argon2 |
 | `display_name` | `TEXT NOT NULL` | |
 | `status` | `TEXT NOT NULL DEFAULT 'ACTIVE'` | CHECK: `ACTIVE`, `INVITED`, `DISABLED` |
@@ -82,10 +84,11 @@ erDiagram
 | `is_root` | `BOOLEAN NOT NULL DEFAULT FALSE` | **V006**. Exatamente um por tenant (índice parcial UNIQUE) |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `deleted_at` | `TIMESTAMPTZ` | **V013** — soft-delete. NULL = ativo |
 
-**Indexes**: `idx_users_tenant(tenant_id)`, `uq_users_root_per_tenant ON users(tenant_id) WHERE is_root = TRUE` (V006:26-27 — garante 1 Root por tenant).
+**Indexes**: `idx_users_tenant(tenant_id)`, `uq_users_root_per_tenant ON users(tenant_id) WHERE is_root = TRUE` (V006:26-27 — garante 1 Root por tenant), `users_email_uk ON users(tenant_id, email) WHERE deleted_at IS NULL` (V013 — partial), `users_deleted_at_idx(deleted_at)` (V013), **`users_tenant_id_uk UNIQUE (tenant_id, id)`** (V015 — alvo da FK composta de `meetings`, ver §2.6).
 
-**Propósito**: identidade. Root tem bypass total em `AuthorizationService:41`.
+**Propósito**: identidade. Root tem bypass total em `AuthorizationService:41`. O UNIQUE composto `(tenant_id, id)` (V015) existe só para suportar a FK composta de `meetings.owner_user_id` (defesa anti cross-tenant; `id` continua PK simples).
 
 ---
 
@@ -146,7 +149,7 @@ Status: **órfãs**. Comentário em `V006:7-9` indica "remoção em migration fu
 |---|---|---|
 | `id` | `UUID PK DEFAULT gen_random_uuid()` | |
 | `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` | |
-| `owner_user_id` | `UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT` | |
+| `owner_user_id` | `UUID NOT NULL` | **V015**: FK trocada de `REFERENCES users(id)` para FK **composta** `(tenant_id, owner_user_id) REFERENCES users(tenant_id, id) ON DELETE RESTRICT` — bloqueia owner de outro tenant (defesa anti cross-tenant, ADR 0002) |
 | `title` | `TEXT NOT NULL` | |
 | `started_at` | `TIMESTAMPTZ` | |
 | `ended_at` | `TIMESTAMPTZ` | |
@@ -157,12 +160,14 @@ Status: **órfãs**. Comentário em `V006:7-9` indica "remoção em migration fu
 | `attributes` | `JSONB NOT NULL DEFAULT '{}'::jsonb` | **V007**. Pares chave/valor arbitrários (`department`, `region`, etc.) usados em IAM conditions (ADR 0007) |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `deleted_at` | `TIMESTAMPTZ` | **V013** — soft-delete. NULL = ativo |
 
 **Indexes**:
 - `idx_meetings_tenant_created(tenant_id, created_at DESC)`
 - `idx_meetings_owner(owner_user_id)`
 - `idx_meetings_status(tenant_id, processing_status)`
 - `idx_meetings_attributes_gin USING GIN (attributes jsonb_path_ops)` — **V008**, acelera `attributes @>` para conditions IAM.
+- `meetings_deleted_at_idx(deleted_at)` — **V013**, apoia o filtro `@SQLRestriction`.
 
 **Propósito**: reunião. `attributes` permite scoping fino sem schema rígido (ex.: `{"department":"Vendas"}` casa com condition `StringEquals nora:Department=Vendas`).
 
@@ -226,13 +231,14 @@ Status: **órfãs**. Comentário em `V006:7-9` indica "remoção em migration fu
 | Coluna | Tipo | Notas |
 |---|---|---|
 | `id` | `UUID PK DEFAULT gen_random_uuid()` | |
-| `tenant_id` | `UUID NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE` | 1:1 |
+| `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` | 1:1. **V013**: UNIQUE total trocada por índice parcial `WHERE deleted_at IS NULL` |
 | `document` | `JSONB NOT NULL` | normalizado; validação estrutural fica no domain/Pydantic |
 | `updated_by` | `UUID REFERENCES users(id) ON DELETE SET NULL` | |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `deleted_at` | `TIMESTAMPTZ` | **V013** — soft-delete. NULL = ativo |
 
-**Indexes**: `idx_tenant_contexts_tenant(tenant_id)`.
+**Indexes**: `idx_tenant_contexts_tenant(tenant_id)`, `tenant_contexts_tenant_id_uk ON tenant_contexts(tenant_id) WHERE deleted_at IS NULL` (V013 — partial), `tenant_contexts_deleted_at_idx(deleted_at)` (V013).
 
 > **Débito (US31)**: o doc antigo previa coluna `version INTEGER NOT NULL` para versionamento de contexto. **Não existe na realidade.** Hoje só `updated_at` permite ver "quando mudou", sem histórico. Migration V014+ trivial resolveria.
 
@@ -521,12 +527,15 @@ Formato esperado de `document`:
 | `revoked_at` | `TIMESTAMPTZ` | NULL = ativo |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 | `last_used_at` | `TIMESTAMPTZ` | atualizado em cada `/auth/refresh` |
+| `family_id` | `UUID NOT NULL` | **V014** — rotação. Tokens da mesma cadeia compartilham `family_id` (backfill: `family_id = id` nos existentes) |
+| `replaced_by_id` | `UUID REFERENCES refresh_tokens(id)` | **V014** — aponta para o token sucessor após rotação. NULL = token ativo da cadeia ou revogado sem sucessor |
 
 **Indexes**:
 - `idx_refresh_tokens_user(user_id) WHERE revoked_at IS NULL` (lookup de ativos)
 - `idx_refresh_tokens_hash(token_hash)` (validação em refresh)
+- `idx_refresh_tokens_family(family_id)` — **V014**, revoga a family inteira em reuse-detection.
 
-**Propósito**: Sub-fase 1.3 (PR #59). Access JWT curto (15min) + refresh stateful (30 dias) revogável. Plain só existe no cookie `nora_refresh` httpOnly.
+**Propósito**: Sub-fase 1.3 (PR #59). Access JWT curto (15min) + refresh stateful (30 dias) revogável. Plain só existe no cookie `nora_refresh` httpOnly. **Rotação + reuse-detection (V014):** cada `/auth/refresh` emite novo token na mesma `family_id` e revoga o anterior; apresentar um token já revogado é tratado como comprometimento → **revoga a family inteira** (atacante e vítima deslogados).
 
 ---
 
@@ -606,7 +615,9 @@ Formato esperado de `document`:
 
 ## 3. Tabelas planejadas mas **não migradas**
 
-Listadas em ADR 0006 e/ou `data-model.md` antigo, mas **sem migration correspondente** (V001–V012 não cobrem). Persistência é débito conhecido (audit §6, severity Alta para a narrativa Plano A).
+Listadas em ADR 0006 e/ou `data-model.md` antigo, mas **sem migration correspondente** (V001–V016 não cobrem). Persistência é débito conhecido (audit §6, severity Alta para a narrativa Plano A).
+
+> **Nota (2026-05-21):** o ADR 0015 reservou "V013" para `customer_confidence_persistence`, mas o slot **V013 foi usado para `add_soft_delete`** e V014–V016 para rotation / composite FK / RLS. **Customer Confidence continua sem migration alguma** — recomenda-se ADR sucessor de 0015 registrando que a persistência não foi entregue (ADRs são imutáveis).
 
 | Tabela | Origem | Status |
 |---|---|---|
@@ -618,10 +629,7 @@ Listadas em ADR 0006 e/ou `data-model.md` antigo, mas **sem migration correspond
 | `account_health_snapshots` | ADR 0006 | sem migration |
 | `audit_events` (global) | data-model antigo | sem migration; só `iam_audit_events` existe |
 
-O schema LLM para Customer Confidence **já existe** (`meeting-analysis-v1.schema.json:117-167`), mas a persistência foi adiada. **ADR 0015** (a ser criado na Sub-fase 1.10/1.11) decide entre:
-
-- **A** implementar mínimo na 1.11 (1 tabela `customer_confidence_assessments` + endpoint + UI básica)
-- **B** remover Customer Health da landing até existir persistência
+O bloco LLM para Customer Confidence **existe no schema documental** (`meeting-analysis-v1.schema.json`), mas o worker **não o emite** (Pydantic `MeetingAnalysisV1` não inclui `customerConfidence`) e **nenhuma persistência/endpoint/UI existe**. **ADR 0015** (aceito 2026-05-14, voto "a" = implementar mínimo na 1.11) **não foi implementado** — a dívida narrativa da landing segue aberta. Decisão de produto pendente (escalada ao PO na auditoria 2026-05-21).
 
 ---
 
@@ -633,6 +641,21 @@ O schema LLM para Customer Confidence **já existe** (`meeting-analysis-v1.schem
 - Deletar `tenant` em prod é proibido — usar `status = SUSPENDED`.
 - Tokens (`email_verification_tokens`, `password_reset_tokens`, `refresh_tokens`) cascateiam por user.
 - Convites cascateiam por tenant.
+
+### Soft-delete (V013)
+
+- `tenants`, `users`, `tenant_contexts`, `meetings` têm `deleted_at TIMESTAMPTZ NULL`. Spring Data aplica `@SQLDelete` (UPDATE seta `deleted_at`) + `@SQLRestriction("deleted_at IS NULL")` (queries default ignoram deletados).
+- UNIQUEs afetados (`tenants.slug`, `users(tenant_id,email)`, `tenant_contexts.tenant_id`) viraram **índices parciais `WHERE deleted_at IS NULL`** — permite reusar slug/email após soft-delete (senão um user deletado bloquearia novo signup com mesmo email para sempre).
+- **Hard-delete** continua possível via native query (LGPD direito ao esquecimento / retenção).
+
+### RLS — Row-Level Security (V016)
+
+ADR 0002 prometia RLS em produção; **V016 entrega no schema** (não mais "pendente"):
+
+- `CREATE POLICY tenant_isolation` + `ENABLE ROW LEVEL SECURITY` nas tabelas tenant-owned: `meetings`, `tenants`, `tenant_contexts`, `users`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses`, `meeting_participants`.
+- Predicado: `tenant_id = nora.current_tenant_id()` (em `tenants`, `id = ...`). A função lê o GUC de sessão `nora.current_tenant_id` (NULL ⇒ fail-closed: 0 rows para role sem BYPASSRLS).
+- `infrastructure/security/TenantRlsAspect` faz `SET LOCAL nora.current_tenant_id = '<uuid>'` no início de cada `@Transactional` (GUC local, auto-reset no commit).
+- **Enforcement é opt-in:** owner/admin Postgres bypassa RLS (default em dev/Testcontainers — testes seguem inertes). Em prod, ativar via role dedicado `nora_app` (`NOBYPASSRLS`) + flag `nora.security.rls.enforce=true`.
 
 ---
 
@@ -652,6 +675,10 @@ O schema LLM para Customer Confidence **já existe** (`meeting-analysis-v1.schem
 | **V010** | `iam_user_invitations`, `iam_invitation_groups` |
 | **V011** | `refresh_tokens` |
 | **V012** | `meeting_goals`, `meeting_goal_expected_outcomes`, `meeting_productivity_assessments`, `meeting_outcome_coverage` |
+| **V013** | soft-delete: `deleted_at` em `tenants`/`users`/`tenant_contexts`/`meetings`; UNIQUEs totais → parciais `WHERE deleted_at IS NULL`; índices `*_deleted_at_idx` |
+| **V014** | refresh token rotation: `refresh_tokens.family_id` + `replaced_by_id` + `idx_refresh_tokens_family` (reuse-detection) |
+| **V015** | composite FK: `users` UNIQUE `(tenant_id, id)` + `meetings.(tenant_id, owner_user_id)` → `users(tenant_id, id)` (defesa anti cross-tenant) |
+| **V016** | Row-Level Security: schema `nora` + `nora.current_tenant_id()` + policies `tenant_isolation` + `ENABLE RLS` em 10 tabelas tenant-owned (enforce opt-in) |
 
 ---
 

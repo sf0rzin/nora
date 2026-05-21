@@ -132,8 +132,8 @@
 
 | ID | Título | MoSCoW | Status | Evidência | Débito conhecido |
 |---|---|---|---|---|---|
-| US48 | Customer Confidence Score 0-100 com sinais e objeções | M | **PARTIAL** | Schema em `docs/api/llm-schemas/meeting-analysis-v1.schema.json:117-167` · ADR 0006 aceito · **sem migration, sem endpoint, sem UI funcional (landing apenas)** | **Decisão crítica pendente** — ADR 0015 (a criar na 1.11) escolhe entre implementar mínimo viável vs remover da landing. Deferido condicional via ADR 0014 |
-| US49 | Trend `IMPROVING`/`STABLE`/`DECLINING` | M | **PARTIAL** | Depende de US48 estar persistido | Mesma decisão da US48 |
+| US48 | Customer Confidence Score 0-100 com sinais e objeções | M | **PARTIAL** | Bloco no schema documental (`meeting-analysis-v1.schema.json`) · ADR 0006 aceito · **worker NÃO emite `customerConfidence` (Pydantic não inclui); sem migration, sem endpoint, sem UI (landing apenas)** | **ADR 0015 aceito (voto "a") mas NÃO implementado** (auditoria 2026-05-21). O slot V013 que lhe fora reservado virou soft-delete. Dívida narrativa aberta — decisão de produto pendente (PO) |
+| US49 | Trend `IMPROVING`/`STABLE`/`DECLINING` | M | **PARTIAL** | Depende de US48 estar persistido | Mesma situação da US48 — ADR 0015 não implementado |
 | US50 | Account Health Score agregado por conta | S | MISSING | `docs/data-model.md:437-453` prevê `account_health_snapshots` mas sem migration | Deferido em bloco via ADR 0014. Reativar pós-pilot quando 3+ tenants tiverem dados suficientes pra agregar |
 | US51 | Alerta quando Account Health muda de banda | S | MISSING | Sem código | Deferido em bloco via ADR 0014. Reativar junto com US50 |
 
@@ -162,6 +162,20 @@ Trabalho que não estava no MoSCoW original mas entrou via sub-fases ou decisão
 | Reprocessamento de reuniões | #46 | — | DONE (`POST /meetings/{id}/reprocess`) |
 | CORS configurável por env | #42 | — | DONE (`CORS_ALLOWED_ORIGINS` em `application.yml`) |
 | Skill `arquiteto-nora` para Claude Code | #53 | — | DONE (em `.claude/skills/`) |
+
+### Onda de hardening pós-1.10 (audit follow-ups #114–#138)
+
+Frente de segurança/infra que entrou após a Sub-fase 1.10, rotulada "audit follow-up #N". **Nenhum item tem ADR dedicado — débito a criar** (auditoria 2026-05-21).
+
+| Item | PR | Migration | Status |
+|---|---|---|---|
+| Soft-delete (`deleted_at` + `@SQLRestriction` + UNIQUEs parciais) | #114 | V013 | DONE |
+| Refresh-token rotation + reuse-detection (token families) | #116 | V014 | DONE |
+| JWT RS256 + endpoint JWKS (`/.well-known/jwks.json`) | #117 | — | DONE |
+| Audit log de auth expandido (login/refresh/logout) | #118 | — | DONE |
+| App Insights Java Agent + role names | #136 | — | DONE |
+| Composite FK isolamento `meetings.(tenant_id,owner_user_id)→users` | #137 | V015 | DONE |
+| **Row-Level Security** (`tenant_isolation` + `TenantRlsAspect`) | #138 | V016 | DONE (enforce opt-in; era item da 1.12) |
 
 ---
 

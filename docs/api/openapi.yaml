@@ -1,27 +1,116 @@
 openapi: 3.1.0
 info:
   title: NORA API
-  version: 0.1.0
+  version: 0.2.0
   description: |
-    API REST do backend NORA. Cobre o MVP: autenticação, tenants, contexto comercial,
-    upload de transcrições, listagem/consulta de reuniões com escopo Enterprise.
+    API REST do backend NORA (Spring Boot 3 / Java 21). Cobre autenticacao com cookies httpOnly,
+    IAM estilo AWS (grupos + policies + attachments + audit), convites por e-mail, contexto comercial
+    do tenant, dominio corporativo, upload/listagem/detalhe de reunioes, gestao de tarefas extraidas,
+    analise ao vivo e emissao de token efemero para Azure Speech.
+
+    ## Autenticacao
+    A maioria dos endpoints exige um JWT. Ha dois modos de transporte equivalentes:
+
+    - **Bearer** — header `Authorization: Bearer <accessToken>` (esquema `bearerAuth`).
+    - **Cookie httpOnly** — `POST /auth/login` (e `POST /iam/invites/{token}/accept`) define
+      `Set-Cookie: nora_access` (`Path=/`, `SameSite=Lax`, `HttpOnly`) e `Set-Cookie: nora_refresh`
+      (`Path=/auth`, `SameSite=Strict`, `HttpOnly`). O navegador reenvia `nora_access` automaticamente.
+      `nora_refresh` so chega nas rotas sob `/auth` (refresh/logout). A flag `Secure` e ligada em prod
+      via `nora.auth.cookie-secure`.
+
+    O campo `accessToken` continua presente no corpo JSON do login por compat com clientes legados;
+    novos clientes devem confiar nos cookies.
+
+    ## Autorizacao IAM (ADR 0007)
+    NAO existem papeis fixos. A autorizacao e baseada em **policies IAM** (estilo AWS) avaliadas por
+    `(action, resource)`. Cada endpoint protegido declara na descricao a action IAM exigida
+    (ex.: `meeting:read`, `iam:group:create`). O Root do tenant tem bypass. Negacao retorna
+    `403 IAM_FORBIDDEN`.
+
+    ## Formato de erro
+    Todos os erros usam o schema `Error` (`code`, `message`, `traceId`, `timestamp`, `details`).
+    `code` e a fonte da verdade para a UI. Ver `packages/shared-contracts/error-codes.md`.
 servers:
   - url: http://localhost:8080
     description: Local dev
 security:
   - bearerAuth: []
+  - cookieAuth: []
 tags:
   - name: Auth
-  - name: Tenants
+    description: Signup, verificacao de e-mail, login, refresh, logout e reset de senha.
+  - name: IAM
+    description: Grupos, policies, attachments e audit (estilo AWS, ADR 0007).
+  - name: Invitations
+    description: Convite de usuarios por e-mail e aceite (US06, ADR 0011).
+  - name: Tenant
+    description: Contexto comercial e dominio corporativo do tenant.
   - name: Meetings
+    description: Upload, listagem, detalhe, objetivo, reprocessamento e analise ao vivo.
   - name: Tasks
+    description: Listagem e atualizacao de tarefas extraidas.
   - name: Speech
+    description: Token efemero para Azure Speech.
+  - name: System
+    description: Health check e JWKS.
+
 paths:
+  # ----------------------------------------------------------------------------
+  # Auth
+  # ----------------------------------------------------------------------------
+  /auth/signup:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Cria conta (e tenant) e dispara verificacao de e-mail
+      description: |
+        Publico. Rate-limited por IP (`429 RATE_LIMITED`, header `Retry-After`). Cria o usuario e o
+        tenant associado. Em ambientes nao-produtivos o token de verificacao volta em
+        `emailVerificationDevToken` para facilitar testes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignupRequest' }
+      responses:
+        '201':
+          description: Conta criada (pendente de verificacao)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignupResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Confirma o e-mail a partir do token de verificacao
+      description: Publico. Token invalido/usado/expirado retorna `400 TOKEN_INVALID`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VerifyEmailRequest' }
+      responses:
+        '204': { description: E-mail verificado }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
   /auth/login:
     post:
       tags: [Auth]
       security: []
       summary: Login com e-mail e senha
+      description: |
+        Publico. Rate-limited por IP. Em caso de sucesso, alem do corpo `LoginResponse`, responde com
+        dois headers `Set-Cookie`:
+
+        - `nora_access` — JWT de acesso curto. `Path=/`, `SameSite=Lax`, `HttpOnly`.
+        - `nora_refresh` — refresh opaco de longa duracao. `Path=/auth`, `SameSite=Strict`, `HttpOnly`.
+
+        Credenciais invalidas retornam `401 INVALID_CREDENTIALS`; e-mail nao verificado
+        `401 EMAIL_NOT_VERIFIED`; conta desativada `403 USER_DISABLED`.
       requestBody:
         required: true
         content:
@@ -29,29 +118,478 @@ paths:
             schema: { $ref: '#/components/schemas/LoginRequest' }
       responses:
         '200':
-          description: OK
+          description: Autenticado. Define cookies `nora_access` e `nora_refresh`.
+          headers:
+            Set-Cookie:
+              description: Cookies httpOnly `nora_access` (Path=/) e `nora_refresh` (Path=/auth).
+              schema: { type: string }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Renova o access token (rotaciona o refresh)
+      description: |
+        Le o refresh do cookie `nora_refresh` (Path=/auth); se ausente, aceita `Authorization: Bearer
+        <refresh>`. Faz rotacao: revoga o refresh anterior e reescreve ambos os cookies
+        (`nora_access` + `nora_refresh`). O novo access token sai apenas no cookie; o corpo traz
+        somente metadados. Ausente/expirado/revogado retorna `401 REFRESH_TOKEN_INVALID`.
+      responses:
+        '200':
+          description: Tokens renovados. Reescreve cookies `nora_access` e `nora_refresh`.
+          headers:
+            Set-Cookie:
+              description: Novos cookies httpOnly `nora_access` e `nora_refresh`.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RefreshResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
-  /tenants/{tenantId}/context:
+  /auth/logout:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Logout idempotente
+      description: |
+        Revoga o refresh presente no cookie `nora_refresh` (se houver) e limpa ambos os cookies
+        (`Max-Age=0`). Sem credencial e no-op (`204`), nunca `401`.
+      responses:
+        '204':
+          description: Sessao encerrada. Limpa cookies `nora_access` e `nora_refresh`.
+          headers:
+            Set-Cookie:
+              description: Cookies de limpeza (`Max-Age=0`).
+              schema: { type: string }
+
+  /auth/password/reset/request:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Solicita reset de senha
+      description: |
+        Publico. Rate-limited por e-mail. Responde sempre `202` com mensagem indistinguivel para nao
+        vazar quais e-mails existem. Em ambientes nao-produtivos o token volta em
+        `passwordResetDevToken`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RequestPasswordResetRequest' }
+      responses:
+        '202':
+          description: Aceito (resposta indistinguivel exista ou nao a conta)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RequestPasswordResetResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /auth/password/reset/confirm:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Confirma o reset de senha com o token
+      description: Publico. Token invalido/usado/expirado retorna `400 TOKEN_INVALID`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfirmPasswordResetRequest' }
+      responses:
+        '204': { description: Senha redefinida }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  # ----------------------------------------------------------------------------
+  # IAM — groups
+  # ----------------------------------------------------------------------------
+  /iam/groups:
     get:
-      tags: [Tenants]
-      summary: Obter contexto comercial/produto do tenant
-      parameters: [{ $ref: '#/components/parameters/TenantId' }]
+      tags: [IAM]
+      summary: Lista grupos do tenant
+      description: 'Action IAM: `iam:group:read`.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/IamGroup' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [IAM]
+      summary: Cria um grupo
+      description: 'Action IAM: `iam:group:create`. Nome duplicado retorna `409 IAM_NAME_TAKEN`.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateGroupRequest' }
+      responses:
+        '201':
+          description: Criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IamGroup' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /iam/groups/{id}:
+    delete:
+      tags: [IAM]
+      summary: Remove um grupo
+      description: 'Action IAM: `iam:group:delete`.'
+      parameters: [{ $ref: '#/components/parameters/GroupId' }]
+      responses:
+        '204': { description: Removido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /iam/groups/{id}/members:
+    get:
+      tags: [IAM]
+      summary: Lista IDs dos membros do grupo
+      description: 'Action IAM: `iam:group:read`.'
+      parameters: [{ $ref: '#/components/parameters/GroupId' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string, format: uuid }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /iam/groups/{id}/members/{userId}:
+    post:
+      tags: [IAM]
+      summary: Adiciona usuario ao grupo
+      description: 'Action IAM: `iam:group:add-member`.'
+      parameters:
+        - { $ref: '#/components/parameters/GroupId' }
+        - { $ref: '#/components/parameters/UserId' }
+      responses:
+        '204': { description: Adicionado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [IAM]
+      summary: Remove usuario do grupo
+      description: 'Action IAM: `iam:group:remove-member`.'
+      parameters:
+        - { $ref: '#/components/parameters/GroupId' }
+        - { $ref: '#/components/parameters/UserId' }
+      responses:
+        '204': { description: Removido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ----------------------------------------------------------------------------
+  # IAM — policies
+  # ----------------------------------------------------------------------------
+  /iam/policies:
+    get:
+      tags: [IAM]
+      summary: Lista policies do tenant
+      description: 'Action IAM: `iam:policy:read`.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/IamPolicy' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [IAM]
+      summary: Cria uma policy
+      description: |
+        Action IAM: `iam:policy:create`. `document` e um documento de policy estilo AWS
+        (statements com `effect`/`action`/`resource`). Documento invalido retorna `400`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePolicyRequest' }
+      responses:
+        '201':
+          description: Criada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IamPolicy' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /iam/policies/{id}:
+    get:
+      tags: [IAM]
+      summary: Detalha uma policy
+      description: 'Action IAM: `iam:policy:read`.'
+      parameters: [{ $ref: '#/components/parameters/PolicyId' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IamPolicy' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [IAM]
+      summary: Atualiza o documento de uma policy
+      description: |
+        Action IAM: `iam:policy:update`. Substitui o `document` e incrementa `currentVersion`.
+        Documento ausente retorna `400`.
+      parameters: [{ $ref: '#/components/parameters/PolicyId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdatePolicyRequest' }
+      responses:
+        '200':
+          description: Atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IamPolicy' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [IAM]
+      summary: Remove uma policy
+      description: 'Action IAM: `iam:policy:delete`.'
+      parameters: [{ $ref: '#/components/parameters/PolicyId' }]
+      responses:
+        '204': { description: Removida }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ----------------------------------------------------------------------------
+  # IAM — attachments
+  # ----------------------------------------------------------------------------
+  /iam/groups/{groupId}/policies/{policyId}:
+    post:
+      tags: [IAM]
+      summary: Anexa policy a um grupo
+      description: 'Action IAM: `iam:attachment:create`.'
+      parameters:
+        - { $ref: '#/components/parameters/GroupIdPath' }
+        - { $ref: '#/components/parameters/PolicyIdPath' }
+      responses:
+        '204': { description: Anexada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [IAM]
+      summary: Desanexa policy de um grupo
+      description: 'Action IAM: `iam:attachment:delete`.'
+      parameters:
+        - { $ref: '#/components/parameters/GroupIdPath' }
+        - { $ref: '#/components/parameters/PolicyIdPath' }
+      responses:
+        '204': { description: Desanexada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /iam/users/{userId}/policies/{policyId}:
+    post:
+      tags: [IAM]
+      summary: Anexa policy a um usuario
+      description: 'Action IAM: `iam:attachment:create`.'
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { $ref: '#/components/parameters/PolicyIdPath' }
+      responses:
+        '204': { description: Anexada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [IAM]
+      summary: Desanexa policy de um usuario
+      description: 'Action IAM: `iam:attachment:delete`.'
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { $ref: '#/components/parameters/PolicyIdPath' }
+      responses:
+        '204': { description: Desanexada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ----------------------------------------------------------------------------
+  # IAM — audit
+  # ----------------------------------------------------------------------------
+  /iam/audit:
+    get:
+      tags: [IAM]
+      summary: Lista eventos de auditoria IAM
+      description: 'Action IAM: `iam:audit:read`.'
+      parameters:
+        - in: query
+          name: since
+          required: false
+          description: Filtra eventos a partir deste instante (ISO-8601).
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, default: 50 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AuditEvent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ----------------------------------------------------------------------------
+  # Invitations
+  # ----------------------------------------------------------------------------
+  /iam/users/invite:
+    post:
+      tags: [Invitations]
+      summary: Convida um usuario por e-mail
+      description: |
+        Action IAM: `iam:user:invite`. O `token` do convite NUNCA e devolvido na resposta. E-mail
+        fora do dominio permitido retorna `422 EMAIL_DOMAIN_NOT_ALLOWED`; convite pendente duplicado
+        `409 INVITE_DUPLICATE_PENDING`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteUserRequest' }
+      responses:
+        '201':
+          description: Convite criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invitation' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /iam/invites/{token}/accept:
+    post:
+      tags: [Invitations]
+      security: []
+      summary: Aceita um convite e cria a conta
+      description: |
+        Publico — o `token` da URL e a credencial. Cria o usuario, anexa aos grupos do convite e
+        autentica: retorna `LoginResponse` e define os cookies `nora_access` e `nora_refresh`
+        (igual ao login). Convite inexistente `404 INVITE_NOT_FOUND`, ja aceito
+        `409 INVITE_ALREADY_ACCEPTED`, expirado `410 INVITE_EXPIRED`.
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcceptInviteRequest' }
+      responses:
+        '200':
+          description: Conta criada e autenticada. Define cookies `nora_access` e `nora_refresh`.
+          headers:
+            Set-Cookie:
+              description: Cookies httpOnly `nora_access` e `nora_refresh`.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '410': { $ref: '#/components/responses/Gone' }
+
+  /iam/invites:
+    get:
+      tags: [Invitations]
+      summary: Lista convites do tenant
+      description: 'Action IAM: `iam:invite:read`. Filtro opcional por status. Paginacao no MVP e client-side.'
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema: { $ref: '#/components/schemas/InvitationStatus' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InviteListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /iam/invites/{id}:
+    delete:
+      tags: [Invitations]
+      summary: Revoga um convite pendente
+      description: 'Action IAM: `iam:invite:revoke`.'
+      parameters: [{ $ref: '#/components/parameters/InviteId' }]
+      responses:
+        '204': { description: Revogado }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ----------------------------------------------------------------------------
+  # Tenant — contexto comercial + dominio
+  # ----------------------------------------------------------------------------
+  /tenant/context:
+    get:
+      tags: [Tenant]
+      summary: Obtem o contexto comercial/produto do tenant
+      description: |
+        Action IAM: `tenant:context:read`. 1-1 com o tenant do JWT (sem path param). Ausente retorna
+        `404 TENANT_CONTEXT_NOT_FOUND`.
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TenantContext' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     put:
-      tags: [Tenants]
-      summary: Atualizar contexto comercial/produto do tenant (Admin/Manager)
-      parameters: [{ $ref: '#/components/parameters/TenantId' }]
+      tags: [Tenant]
+      summary: Cria ou atualiza o contexto comercial/produto do tenant
+      description: |
+        Action IAM: `tenant:context:write`. Upsert do contexto injetado no prompt da LLM
+        (companyName, valueProposition, products, objectionHandling).
       requestBody:
         required: true
         content:
@@ -59,59 +597,98 @@ paths:
             schema: { $ref: '#/components/schemas/TenantContextInput' }
       responses:
         '200':
-          description: Atualizado
+          description: Salvo
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TenantContext' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /speech/token:
-    post:
-      tags: [Speech]
-      summary: Emite token de autorização efêmero para Azure Speech
-      parameters:
-        - in: query
-          name: region
-          required: false
-          schema: { type: string, example: brazilsouth }
+  /tenant/domain:
+    get:
+      tags: [Tenant]
+      summary: Obtem o dominio de e-mail permitido do tenant
+      description: 'Action IAM: `tenant:domain:read`.'
       responses:
         '200':
-          description: Token emitido
+          description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/SpeechTokenResponse' }
+              schema: { $ref: '#/components/schemas/TenantDomain' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '429': { $ref: '#/components/responses/RateLimited' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Tenant]
+      summary: Atualiza o dominio de e-mail permitido do tenant
+      description: |
+        Action IAM: `tenant:domain:write`. `allowedEmailDomain` pode ser `null` para remover a
+        restricao. Dominio invalido retorna `422 TENANT_DOMAIN_INVALID`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TenantDomainUpdateRequest' }
+      responses:
+        '200':
+          description: Atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantDomainUpdateResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
+  # ----------------------------------------------------------------------------
+  # Meetings
+  # ----------------------------------------------------------------------------
   /meetings:
     get:
       tags: [Meetings]
-      summary: Listar reuniões dentro do escopo do usuário
+      summary: Lista reunioes visiveis ao usuario
+      description: |
+        Action IAM: `meeting:read` (pre-check no tenant + filtragem fina por reuniao). Paginacao
+        baseada em `page`/`size`; filtros opcionais `search`, `status`, `from`, `to`.
       parameters:
         - in: query
           name: page
-          schema: { type: integer, default: 0 }
+          schema: { type: integer, default: 0, minimum: 0 }
         - in: query
           name: size
-          schema: { type: integer, default: 20, maximum: 100 }
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
         - in: query
-          name: sort
-          schema: { type: string, default: 'startedAt,desc' }
-        - in: query
-          name: q
+          name: search
+          description: Busca textual (titulo).
           schema: { type: string }
         - in: query
-          name: tag
-          schema: { type: string }
+          name: status
+          schema: { $ref: '#/components/schemas/ProcessingStatus' }
+        - in: query
+          name: from
+          description: Limite inferior de `startedAt` (ISO-8601).
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          description: Limite superior de `startedAt` (ISO-8601).
+          schema: { type: string, format: date-time }
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MeetingsPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [Meetings]
-      summary: Upload de uma reunião (multipart com arquivo + metadata JSON)
+      summary: Faz upload de uma reuniao (multipart) e enfileira processamento
+      description: |
+        Action IAM: `meeting:upload`. `multipart/form-data` com a parte `file` (TXT/VTT/SRT, max 10MB)
+        e a parte `metadata` (JSON string `MeetingUploadMetadata`). Retorna `202` enquanto o worker
+        NLP processa de forma assincrona. Arquivo binario/extensao invalida retorna `400`;
+        excesso de tamanho `413 PAYLOAD_TOO_LARGE`.
       requestBody:
         required: true
         content:
@@ -123,20 +700,32 @@ paths:
                 file:
                   type: string
                   format: binary
+                  description: Transcricao TXT/VTT/SRT (UTF-8, max 10MB).
                 metadata:
-                  $ref: '#/components/schemas/MeetingUploadRequest'
+                  type: string
+                  description: JSON serializado de `MeetingUploadMetadata`.
+            encoding:
+              metadata:
+                contentType: application/json
       responses:
-        '201':
-          description: Criada
+        '202':
+          description: Aceita; processamento enfileirado
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/MeetingSummary' }
+              schema: { $ref: '#/components/schemas/MeetingUploadResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
 
-  /meetings/{meetingId}:
+  /meetings/{id}:
     get:
       tags: [Meetings]
-      summary: Detalhe de uma reunião com análise e tarefas
+      summary: Detalha uma reuniao com analise, objetivo e productivity
+      description: |
+        Action IAM: `meeting:read`. Resolve por tenant (404 se de outro tenant). Os campos `analysis`,
+        `goal` e `productivity` podem vir `null` quando ainda nao disponiveis.
       parameters: [{ $ref: '#/components/parameters/MeetingId' }]
       responses:
         '200':
@@ -144,28 +733,193 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MeetingDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /meetings/{id}/goal:
+    put:
+      tags: [Meetings]
+      summary: Define ou atualiza o objetivo declarado da reuniao
+      description: |
+        Action IAM: `meeting:update` (ADR 0005). Se a reuniao ja foi analisada, o status volta a
+        `PENDING` para reprocessamento posterior.
+      parameters: [{ $ref: '#/components/parameters/MeetingId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MeetingGoalRequest' }
+      responses:
+        '200':
+          description: Objetivo salvo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingGoal' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Meetings]
+      summary: Remove o objetivo (e productivity) da reuniao
+      description: 'Action IAM: `meeting:update` (ADR 0005). Idempotente.'
+      parameters: [{ $ref: '#/components/parameters/MeetingId' }]
+      responses:
+        '204': { description: Removido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /meetings/{id}/reprocess:
+    post:
+      tags: [Meetings]
+      summary: Reprocessa a analise de uma reuniao
+      description: 'Action IAM: `meeting:reprocess`. Reenfileira o processamento; retorna `202`.'
+      parameters: [{ $ref: '#/components/parameters/MeetingId' }]
+      responses:
+        '202':
+          description: Reprocessamento enfileirado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingUploadResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /meetings/live-analyze:
+    post:
+      tags: [Meetings]
+      summary: Analisa um trecho de transcricao ao vivo
+      description: |
+        Action IAM: `meeting:analyze:live`. Recebe um chunk de transcricao (e opcionalmente os
+        highlights anteriores) e devolve highlights incrementais. Worker NLP indisponivel retorna
+        `502 ANALYSIS_WORKER_UNAVAILABLE`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LiveAnalyzeRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LiveAnalyzeResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+
+  # ----------------------------------------------------------------------------
+  # Tasks
+  # ----------------------------------------------------------------------------
   /tasks:
     get:
       tags: [Tasks]
-      summary: Listar tarefas extraídas das reuniões dentro do escopo do usuário
+      summary: Lista tarefas extraidas das reunioes do tenant
+      description: 'Action IAM: `task:read`. Filtro opcional por `status`.'
       parameters:
         - in: query
           name: status
-          schema: { type: string, enum: [OPEN, IN_PROGRESS, DONE, CANCELLED] }
+          schema: { $ref: '#/components/schemas/ActionItemStatus' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tasks/{id}:
+    patch:
+      tags: [Tasks]
+      summary: Atualiza status e/ou titulo de uma tarefa
+      description: |
+        Action IAM: `task:write`. Pelo menos um de `status`/`title` deve vir preenchido. Tarefa
+        inexistente retorna `404 TASK_NOT_FOUND`.
+      parameters: [{ $ref: '#/components/parameters/TaskId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskUpdateRequest' }
+      responses:
+        '200':
+          description: Atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ----------------------------------------------------------------------------
+  # Speech
+  # ----------------------------------------------------------------------------
+  /speech/token:
+    post:
+      tags: [Speech]
+      summary: Emite token de autorizacao efemero para Azure Speech
+      description: |
+        Autenticado (qualquer usuario do tenant). Rate-limited (`429 RATE_LIMIT_EXCEEDED`). Regiao
+        invalida retorna `400 INVALID_REGION`; falha no broker `502 BROKER_ERROR`.
+      parameters:
         - in: query
-          name: assignee
-          schema: { type: string }
+          name: region
+          required: false
+          schema: { type: string, example: brazilsouth }
+      responses:
+        '200':
+          description: Token emitido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SpeechTokenResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+
+  # ----------------------------------------------------------------------------
+  # System
+  # ----------------------------------------------------------------------------
+  /healthz:
+    get:
+      tags: [System]
+      security: []
+      summary: Health check
+      description: Publico. Mantido separado do actuator para resposta estavel.
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: '#/components/schemas/ActionItem' }
+                type: object
+                required: [service, status, timestamp]
+                properties:
+                  service: { type: string, example: nora-api }
+                  status: { type: string, example: ok }
+                  timestamp: { type: string, format: date-time }
+
+  /.well-known/jwks.json:
+    get:
+      tags: [System]
+      security: []
+      summary: JSON Web Key Set (RFC 7517)
+      description: |
+        Publico. Expoe a chave publica RSA usada para validar JWTs. Disponivel APENAS em modo RS256;
+        em HS256 o controller nao e registrado e a rota retorna 404.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Jwks' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
 components:
   securitySchemes:
@@ -173,44 +927,115 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: nora_access
+      description: |
+        Cookie httpOnly definido por `POST /auth/login` (e por `POST /iam/invites/{token}/accept`).
+        Equivalente ao Bearer; o navegador o reenvia automaticamente. Renovado via `POST /auth/refresh`.
+
   parameters:
-    TenantId:
-      in: path
-      name: tenantId
-      required: true
-      schema: { type: string, format: uuid }
     MeetingId:
       in: path
-      name: meetingId
+      name: id
       required: true
       schema: { type: string, format: uuid }
+    TaskId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+    GroupId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+    PolicyId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+    InviteId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+    UserId:
+      in: path
+      name: userId
+      required: true
+      schema: { type: string, format: uuid }
+    GroupIdPath:
+      in: path
+      name: groupId
+      required: true
+      schema: { type: string, format: uuid }
+    PolicyIdPath:
+      in: path
+      name: policyId
+      required: true
+      schema: { type: string, format: uuid }
+
   responses:
     BadRequest:
-      description: Requisição inválida
+      description: Requisicao invalida (`VALIDATION_FAILED`, `MALFORMED_REQUEST`, `TOKEN_INVALID`, ...)
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     Unauthorized:
-      description: Não autenticado
+      description: Nao autenticado (`UNAUTHENTICATED`, `INVALID_CREDENTIALS`, `REFRESH_TOKEN_INVALID`, ...)
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     Forbidden:
-      description: Sem permissão
+      description: Sem permissao (`FORBIDDEN`, `IAM_FORBIDDEN`, `USER_DISABLED`)
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     NotFound:
-      description: Não encontrado
+      description: Recurso nao encontrado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Conflito (`EMAIL_ALREADY_TAKEN`, `IAM_NAME_TAKEN`, `INVITE_ALREADY_ACCEPTED`, ...)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Gone:
+      description: Recurso expirado (`INVITE_EXPIRED`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    PayloadTooLarge:
+      description: Upload excede o limite (`PAYLOAD_TOO_LARGE`, `TRANSCRIPT_TOO_LARGE`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    UnsupportedMediaType:
+      description: Media type nao suportado (`UNSUPPORTED_MEDIA_TYPE`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    UnprocessableEntity:
+      description: Entidade nao processavel (`EMAIL_DOMAIN_NOT_ALLOWED`, `TENANT_DOMAIN_INVALID`)
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     RateLimited:
-      description: Rate limit excedido
+      description: Rate limit excedido (`RATE_LIMITED`, `RATE_LIMIT_EXCEEDED`). Header `Retry-After`.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+    BadGateway:
+      description: Dependencia upstream falhou (`ANALYSIS_WORKER_UNAVAILABLE`, `BROKER_ERROR`, ...)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
   schemas:
+    # ---- erro ----
     Error:
       type: object
       required: [code, message, traceId, timestamp]
@@ -226,170 +1051,413 @@ components:
             properties:
               field: { type: string }
               issue: { type: string }
+
+    # ---- enums compartilhados ----
+    ProcessingStatus:
+      type: string
+      enum: [PENDING, PROCESSING, COMPLETED, FAILED]
+    ActionItemStatus:
+      type: string
+      enum: [OPEN, IN_PROGRESS, DONE]
+    Priority:
+      type: string
+      enum: [LOW, MEDIUM, HIGH]
+    InvitationStatus:
+      type: string
+      enum: [PENDING, ACCEPTED, EXPIRED, REVOKED]
+
+    # ---- auth ----
+    SignupRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 10, maxLength: 128 }
+        displayName: { type: string, maxLength: 120 }
+    SignupResponse:
+      type: object
+      required: [userId, tenantId, message]
+      properties:
+        userId: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        message: { type: string }
+        emailVerificationDevToken:
+          type: string
+          description: Presente apenas em ambientes nao-produtivos.
+    VerifyEmailRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string }
     LoginRequest:
       type: object
       required: [email, password]
       properties:
-        email: { type: string, format: email }
-        password: { type: string, minLength: 8 }
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, maxLength: 128 }
     LoginResponse:
       type: object
-      required: [accessToken, tokenType, expiresIn, user]
+      required: [accessToken, refreshToken, tokenType, expiresInSeconds, userId, tenantId, email, displayName]
+      description: |
+        Corpo do login (e do aceite de convite). Tambem acompanha headers `Set-Cookie`
+        (`nora_access`, `nora_refresh`). `accessToken`/`refreshToken` no corpo existem por compat
+        legada; novos clientes devem confiar nos cookies httpOnly.
       properties:
         accessToken: { type: string }
-        tokenType: { type: string, enum: [Bearer] }
-        expiresIn: { type: integer }
-        user: { $ref: '#/components/schemas/SessionUser' }
-    SessionUser:
-      type: object
-      required: [id, email, displayName, tenantId, roles, scope]
-      properties:
-        id: { type: string, format: uuid }
+        refreshToken: { type: string }
+        tokenType: { type: string, example: Bearer }
+        expiresInSeconds: { type: integer, format: int64, description: TTL do access token em segundos. }
+        userId: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
         email: { type: string, format: email }
         displayName: { type: string }
-        tenantId: { type: string, format: uuid }
-        roles:
-          type: array
-          items: { type: string, enum: [ROOT, ADMIN, MANAGER, ANALYST, VIEWER] }
-        scope: { $ref: '#/components/schemas/AccessScope' }
-    AccessScope:
+    RefreshResponse:
       type: object
-      required: [type]
+      required: [tokenType, expiresInSeconds]
+      description: |
+        O novo access token sai no cookie `nora_access`; o corpo traz apenas metadados para o cliente
+        agendar o proximo refresh.
       properties:
-        type: { type: string, enum: [ALL_TENANT, OWN_MEETINGS, TEAMS, REGIONS] }
-        teamIds: { type: array, items: { type: string, format: uuid } }
-        regionIds: { type: array, items: { type: string, format: uuid } }
+        tokenType: { type: string, example: Bearer }
+        expiresInSeconds: { type: integer, format: int64 }
+    RequestPasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+    RequestPasswordResetResponse:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+        passwordResetDevToken:
+          type: string
+          description: Presente apenas em ambientes nao-produtivos.
+    ConfirmPasswordResetRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token: { type: string }
+        newPassword: { type: string, minLength: 10, maxLength: 128 }
+
+    # ---- IAM ----
+    IamGroup:
+      type: object
+      required: [id, name, createdBy, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateGroupRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+    IamPolicy:
+      type: object
+      required: [id, name, document, currentVersion, createdBy, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        document:
+          $ref: '#/components/schemas/PolicyDocument'
+        currentVersion: { type: integer }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreatePolicyRequest:
+      type: object
+      required: [name, document]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        document: { $ref: '#/components/schemas/PolicyDocument' }
+    UpdatePolicyRequest:
+      type: object
+      required: [document]
+      properties:
+        document: { $ref: '#/components/schemas/PolicyDocument' }
+    PolicyDocument:
+      type: object
+      description: |
+        Documento de policy estilo AWS. Lista de statements avaliados por `(action, resource)`.
+        Aceito/retornado como JSON livre; a forma canonica abaixo e ilustrativa.
+      properties:
+        version: { type: string, example: '2025-01-01' }
+        statements:
+          type: array
+          items:
+            type: object
+            properties:
+              effect: { type: string, enum: [ALLOW, DENY] }
+              action:
+                type: array
+                items: { type: string, example: 'meeting:read' }
+              resource:
+                type: array
+                items: { type: string, example: 'nora:tenant/{tenantId}:meeting/*' }
+      additionalProperties: true
+    AuditEvent:
+      type: object
+      required: [id, actorUserId, action, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        actorUserId: { type: string, format: uuid }
+        action: { type: string, example: 'iam:policy:create' }
+        targetType: { type: [string, 'null'], example: POLICY }
+        targetId: { type: [string, 'null'], format: uuid }
+        payload:
+          type: [object, 'null']
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+
+    # ---- invitations ----
+    InviteUserRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        groupIds:
+          type: array
+          items: { type: string, format: uuid }
+        expiresInDays: { type: [integer, 'null'] }
+    AcceptInviteRequest:
+      type: object
+      required: [password]
+      properties:
+        displayName:
+          type: string
+          maxLength: 120
+          description: Opcional; se omitido usa o local-part do e-mail.
+        password: { type: string, minLength: 10, maxLength: 128 }
+    Invitation:
+      type: object
+      required: [id, tenantId, email, status, invitedBy, invitedAt, expiresAt, groupIds]
+      description: O token do convite NUNCA e devolvido.
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        status: { $ref: '#/components/schemas/InvitationStatus' }
+        invitedBy: { type: string, format: uuid }
+        invitedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        groupIds:
+          type: array
+          items: { type: string, format: uuid }
+        acceptedAt: { type: [string, 'null'], format: date-time }
+        acceptedUserId: { type: [string, 'null'], format: uuid }
+    InviteListResponse:
+      type: object
+      required: [items, total, page, size]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Invitation' }
+        total: { type: integer }
+        page: { type: integer }
+        size: { type: integer }
+
+    # ---- tenant context ----
     TenantContextInput:
       type: object
-      required: [companyName, valueProposition]
+      required: [companyName]
       properties:
+        companyName: { type: string, maxLength: 200 }
+        industry: { type: string, maxLength: 200 }
+        valueProposition: { type: string, maxLength: 2000 }
+        idealCustomerProfile: { type: string, maxLength: 2000 }
+        products:
+          type: array
+          items: { $ref: '#/components/schemas/Product' }
+        competitors:
+          type: array
+          items: { type: string, maxLength: 200 }
+        objectionHandling:
+          type: array
+          items: { type: string, maxLength: 500 }
+    TenantContext:
+      type: object
+      required: [tenantId, companyName]
+      properties:
+        tenantId: { type: string, format: uuid }
         companyName: { type: string }
-        industry: { type: string }
-        valueProposition: { type: string }
+        industry: { type: [string, 'null'] }
+        valueProposition: { type: [string, 'null'] }
+        idealCustomerProfile: { type: [string, 'null'] }
         products:
           type: array
           items: { $ref: '#/components/schemas/Product' }
         competitors:
           type: array
           items: { type: string }
-        idealCustomerProfile: { type: string }
-        commercialPlaybook:
+        objectionHandling:
           type: array
           items: { type: string }
-        glossary:
-          type: array
-          items:
-            type: object
-            properties:
-              term: { type: string }
-              meaning: { type: string }
-    TenantContext:
-      allOf:
-        - $ref: '#/components/schemas/TenantContextInput'
-        - type: object
-          required: [tenantId, version, updatedAt]
-          properties:
-            tenantId: { type: string, format: uuid }
-            version: { type: integer }
-            updatedAt: { type: string, format: date-time }
-            updatedBy:
-              type: object
-              properties:
-                id: { type: string, format: uuid }
-                displayName: { type: string }
+        updatedAt: { type: string, format: date-time }
     Product:
       type: object
       required: [name]
       properties:
-        name: { type: string }
-        description: { type: string }
-        keyFeatures:
+        name: { type: string, maxLength: 200 }
+        description: { type: string, maxLength: 1000 }
+        keyDifferentiators:
           type: array
-          items: { type: string }
-    MeetingUploadRequest:
+          items: { type: string, maxLength: 200 }
+
+    # ---- tenant domain ----
+    TenantDomain:
       type: object
-      required: [title, startedAt, transcriptFormat]
+      required: [tenantId]
       properties:
-        title: { type: string }
+        tenantId: { type: string, format: uuid }
+        allowedEmailDomain:
+          type: [string, 'null']
+          description: '`null` quando nao ha restricao de dominio.'
+    TenantDomainUpdateRequest:
+      type: object
+      properties:
+        allowedEmailDomain:
+          type: [string, 'null']
+          maxLength: 255
+          description: '`null` para remover a restricao.'
+    TenantDomainUpdateResponse:
+      type: object
+      required: [tenantId, updatedAt, updatedBy]
+      properties:
+        tenantId: { type: string, format: uuid }
+        allowedEmailDomain: { type: [string, 'null'] }
+        updatedAt: { type: string, format: date-time }
+        updatedBy: { type: string, format: uuid }
+
+    # ---- meetings ----
+    MeetingUploadMetadata:
+      type: object
+      required: [title, transcriptFormat]
+      properties:
+        title: { type: string, maxLength: 200 }
         startedAt: { type: string, format: date-time }
         endedAt: { type: string, format: date-time }
+        language: { type: string, example: pt-BR }
+        transcriptFormat: { type: string, enum: [TXT, VTT, SRT] }
         participants:
           type: array
           items: { $ref: '#/components/schemas/Participant' }
-        language: { type: string, default: pt-BR }
-        transcriptFormat: { type: string, enum: [TXT, VTT, SRT] }
         tags:
           type: array
           items: { type: string }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+          description: 'Atributos livres (max 20) usados na filtragem fina por IAM.'
     Participant:
       type: object
       required: [displayName]
       properties:
         displayName: { type: string }
-        email: { type: string, format: email }
+        email: { type: [string, 'null'], format: email }
         isInternal: { type: boolean }
-    MeetingSummary:
+    MeetingUploadResponse:
       type: object
-      required: [id, tenantId, title, startedAt, processingStatus]
+      required: [id, tenantId, title, ownerId, processingStatus, createdAt]
       properties:
         id: { type: string, format: uuid }
         tenantId: { type: string, format: uuid }
         title: { type: string }
-        startedAt: { type: string, format: date-time }
-        endedAt: { type: string, format: date-time }
-        durationSeconds: { type: integer }
-        ownerName: { type: string }
+        startedAt: { type: [string, 'null'], format: date-time }
+        endedAt: { type: [string, 'null'], format: date-time }
         ownerId: { type: string, format: uuid }
-        processingStatus:
-          type: string
-          enum: [PENDING, PROCESSING, COMPLETED, FAILED]
-        summarySnippet: { type: string }
+        processingStatus: { $ref: '#/components/schemas/ProcessingStatus' }
+        createdAt: { type: string, format: date-time }
+    MeetingListItem:
+      type: object
+      required: [id, title, processingStatus, actionItemCount, riskCount, opportunityCount]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        startedAt: { type: [string, 'null'], format: date-time }
+        durationSeconds: { type: [integer, 'null'], format: int64 }
+        ownerName: { type: [string, 'null'] }
+        processingStatus: { $ref: '#/components/schemas/ProcessingStatus' }
+        summarySnippet: { type: [string, 'null'] }
         actionItemCount: { type: integer }
         riskCount: { type: integer }
         opportunityCount: { type: integer }
         tags:
           type: array
           items: { type: string }
-        createdAt: { type: string, format: date-time }
     MeetingsPage:
       type: object
       required: [items, page, size, totalItems, totalPages]
       properties:
         items:
           type: array
-          items: { $ref: '#/components/schemas/MeetingSummary' }
+          items: { $ref: '#/components/schemas/MeetingListItem' }
         page: { type: integer }
         size: { type: integer }
-        totalItems: { type: integer }
+        totalItems: { type: integer, format: int64 }
         totalPages: { type: integer }
     MeetingDetail:
-      allOf:
-        - $ref: '#/components/schemas/MeetingSummary'
-        - type: object
-          properties:
-            language: { type: string }
-            participants:
-              type: array
-              items: { $ref: '#/components/schemas/Participant' }
-            owner:
-              type: object
-              properties:
-                id: { type: string, format: uuid }
-                displayName: { type: string }
-            analysis: { $ref: '#/components/schemas/MeetingAnalysis' }
-            updatedAt: { type: string, format: date-time }
-    MeetingAnalysis:
       type: object
-      required: [id, summary, generatedAt]
+      required: [id, tenantId, title, processingStatus, createdAt]
       properties:
         id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        title: { type: string }
+        startedAt: { type: [string, 'null'], format: date-time }
+        endedAt: { type: [string, 'null'], format: date-time }
+        durationSeconds: { type: [integer, 'null'], format: int64 }
+        language: { type: [string, 'null'] }
+        owner:
+          type: [object, 'null']
+          properties:
+            id: { type: string, format: uuid }
+            displayName: { type: [string, 'null'] }
+        participants:
+          type: array
+          items: { $ref: '#/components/schemas/Participant' }
+        tags:
+          type: array
+          items: { type: string }
+        processingStatus: { $ref: '#/components/schemas/ProcessingStatus' }
+        analysis:
+          oneOf:
+            - { $ref: '#/components/schemas/MeetingAnalysis' }
+            - { type: 'null' }
+        goal:
+          oneOf:
+            - { $ref: '#/components/schemas/MeetingGoal' }
+            - { type: 'null' }
+        productivity:
+          oneOf:
+            - { $ref: '#/components/schemas/ProductivityAssessment' }
+            - { type: 'null' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: [string, 'null'], format: date-time }
+    MeetingAnalysis:
+      type: object
+      required: [id, meetingId, summary, generatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        meetingId: { type: string, format: uuid }
         summary: { type: string }
+        sentimentOverall:
+          type: string
+          enum: [POSITIVE, NEUTRAL, NEGATIVE, MIXED]
+        topics:
+          type: array
+          items: { type: string }
         decisions:
           type: array
           items:
             type: object
+            required: [text, confidence]
             properties:
-              id: { type: string }
               text: { type: string }
               confidence: { type: number, minimum: 0, maximum: 1 }
         actionItems:
@@ -401,66 +1469,201 @@ components:
         opportunities:
           type: array
           items: { $ref: '#/components/schemas/Opportunity' }
-        sentimentOverall:
-          type: string
-          enum: [POSITIVE, NEUTRAL, NEGATIVE, MIXED]
-        topics:
-          type: array
-          items: { type: string }
-        modelVersion: { type: string }
-        promptVersion: { type: string }
+        metadata:
+          type: object
+          properties:
+            modelVersion: { type: string }
+            promptVersion: { type: string }
+            tokensInput: { type: integer }
+            tokensOutput: { type: integer }
+            processingMillis: { type: integer }
+            piiRedactionsApplied: { type: integer }
         generatedAt: { type: string, format: date-time }
     ActionItem:
       type: object
       required: [title]
       properties:
-        id: { type: string }
         title: { type: string }
-        assignee: { type: string }
-        dueDate: { type: string, format: date }
-        priority:
-          type: string
-          enum: [LOW, MEDIUM, HIGH]
-        status:
-          type: string
-          enum: [OPEN, IN_PROGRESS, DONE, CANCELLED]
-        sourceQuote: { type: string }
+        assignee: { type: [string, 'null'] }
+        dueDate: { type: [string, 'null'], format: date }
+        priority: { $ref: '#/components/schemas/Priority' }
+        sourceQuote: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/ActionItemStatus' }
     Risk:
       type: object
       required: [text, severity]
       properties:
-        id: { type: string }
         text: { type: string }
-        severity:
-          type: string
-          enum: [LOW, MEDIUM, HIGH]
+        severity: { $ref: '#/components/schemas/Priority' }
         category:
           type: string
           enum: [COMPETITION, PRICE, CHURN, TIMELINE, TECHNICAL, COMPLIANCE, OTHER]
-        sourceQuote: { type: string }
+        sourceQuote: { type: [string, 'null'] }
     Opportunity:
       type: object
       required: [text]
       properties:
-        id: { type: string }
         text: { type: string }
-        estimatedValue:
-          type: string
-          enum: [LOW, MEDIUM, HIGH]
+        estimatedValue: { $ref: '#/components/schemas/Priority' }
         category:
           type: string
           enum: [UPSELL, CROSS_SELL, REFERRAL, EXPANSION, OTHER]
-        sourceQuote: { type: string }
+        sourceQuote: { type: [string, 'null'] }
+    MeetingGoalRequest:
+      type: object
+      required: [purpose, expectedOutcomes]
+      properties:
+        purpose: { type: string, minLength: 3, maxLength: 500 }
+        expectedOutcomes:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items: { type: string, minLength: 3, maxLength: 240 }
+        projectStateSnapshot: { type: [string, 'null'], maxLength: 2000 }
+    MeetingGoal:
+      type: object
+      required: [id, meetingId, purpose, expectedOutcomes]
+      properties:
+        id: { type: string, format: uuid }
+        meetingId: { type: string, format: uuid }
+        purpose: { type: string }
+        expectedOutcomes:
+          type: array
+          items: { type: string }
+        projectStateSnapshot: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ProductivityAssessment:
+      type: object
+      required: [score, band, coverage]
+      description: Productivity Score persistido (ADR 0005).
+      properties:
+        score: { type: integer, minimum: 0, maximum: 100 }
+        band:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+        coverage:
+          type: array
+          items:
+            type: object
+            required: [expectedOutcome, status]
+            properties:
+              expectedOutcome: { type: string }
+              status:
+                type: string
+                enum: [ADDRESSED, PARTIAL, MISSED]
+              evidence: { type: [string, 'null'] }
+        offTopicRatio: { type: [number, 'null'] }
+        decisionDensity: { type: [number, 'null'] }
+        rationale: { type: [string, 'null'] }
+    LiveAnalyzeRequest:
+      type: object
+      required: [transcriptChunk]
+      properties:
+        transcriptChunk: { type: string, minLength: 20, maxLength: 500000 }
+        previousHighlights:
+          oneOf:
+            - { $ref: '#/components/schemas/LiveHighlights' }
+            - { type: 'null' }
+        language: { type: string, example: pt-BR }
+    LiveAnalyzeResponse:
+      allOf:
+        - $ref: '#/components/schemas/LiveHighlights'
+        - type: object
+          properties:
+            metadata:
+              type: object
+              properties:
+                processingMillis: { type: integer }
+                tokensInput: { type: integer }
+                tokensOutput: { type: integer }
+                piiRedactionsApplied: { type: integer }
+                modelVersion: { type: string }
+    LiveHighlights:
+      type: object
+      properties:
+        decisions:
+          type: array
+          items: { $ref: '#/components/schemas/LiveHighlightItem' }
+        nextSteps:
+          type: array
+          items: { $ref: '#/components/schemas/LiveHighlightItem' }
+        observations:
+          type: array
+          items: { $ref: '#/components/schemas/LiveHighlightItem' }
+        tasks:
+          type: array
+          items: { $ref: '#/components/schemas/LiveTaskItem' }
+    LiveHighlightItem:
+      type: object
+      properties:
+        text: { type: string }
+        confidence: { type: [number, 'null'] }
+        sourceQuote: { type: [string, 'null'] }
+    LiveTaskItem:
+      type: object
+      properties:
+        title: { type: string }
+        assignee: { type: [string, 'null'] }
+        priority: { type: [string, 'null'] }
+        sourceQuote: { type: [string, 'null'] }
+
+    # ---- tasks ----
+    Task:
+      type: object
+      required: [id, title, status, priority]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        assignee: { type: [string, 'null'] }
+        dueDate: { type: [string, 'null'], format: date }
+        priority: { $ref: '#/components/schemas/Priority' }
+        status: { $ref: '#/components/schemas/ActionItemStatus' }
+        meetingId: { type: string, format: uuid }
+        meetingTitle: { type: [string, 'null'] }
+        updatedAt: { type: string, format: date-time }
+    TaskListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Task' }
+    TaskUpdateRequest:
+      type: object
+      description: Pelo menos um de `status`/`title` deve vir preenchido.
+      properties:
+        status: { $ref: '#/components/schemas/ActionItemStatus' }
+        title: { type: string }
+
+    # ---- speech ----
     SpeechTokenResponse:
       type: object
       required: [token, region, expiresAt]
       properties:
         token:
           type: string
-          description: JWT efêmero (≤ 10 min)
+          description: Token efemero (<= 10 min).
         region:
           type: string
           example: brazilsouth
         expiresAt:
           type: string
           format: date-time
+
+    # ---- system ----
+    Jwks:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            properties:
+              kty: { type: string, example: RSA }
+              use: { type: string, example: sig }
+              alg: { type: string, example: RS256 }
+              kid: { type: string }
+              n: { type: string, description: Modulo base64url (sem padding). }
+              e: { type: string, description: Expoente base64url (sem padding). }
