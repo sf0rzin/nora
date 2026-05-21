@@ -63,6 +63,39 @@ class CoverageStatus(str, Enum):
     MISSED = "MISSED"
 
 
+class ConfidenceBand(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+
+class ConfidenceTrend(str, Enum):
+    IMPROVING = "IMPROVING"
+    STABLE = "STABLE"
+    DECLINING = "DECLINING"
+
+
+class BuyingSignalType(str, Enum):
+    BUDGET_DISCUSSED = "BUDGET_DISCUSSED"
+    TIMELINE_DISCUSSED = "TIMELINE_DISCUSSED"
+    STAKEHOLDER_INVOLVED = "STAKEHOLDER_INVOLVED"
+    NEXT_STEP_REQUESTED = "NEXT_STEP_REQUESTED"
+    REFERENCE_REQUESTED = "REFERENCE_REQUESTED"
+    PROPOSAL_REQUESTED = "PROPOSAL_REQUESTED"
+    OTHER = "OTHER"
+
+
+class ObjectionType(str, Enum):
+    PRICE = "PRICE"
+    TIMELINE = "TIMELINE"
+    AUTHORITY = "AUTHORITY"
+    NEED = "NEED"
+    COMPETITOR_MENTION = "COMPETITOR_MENTION"
+    TRUST = "TRUST"
+    FEATURE_GAP = "FEATURE_GAP"
+    OTHER = "OTHER"
+
+
 # ---------- Meeting Analysis v1 ----------
 
 
@@ -132,6 +165,45 @@ class ProductivityAssessment(BaseModel):
     rationale: Annotated[str, Field(min_length=10, max_length=1000)]
 
 
+class BuyingSignal(BaseModel):
+    """Sinal de compra detectado na conversa com cliente/lead (ADR 0006)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    type: BuyingSignalType
+    quote: Annotated[str, Field(min_length=5, max_length=500)]
+    weight: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class Objection(BaseModel):
+    """Objeção levantada pelo cliente/lead na conversa (ADR 0006)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    type: ObjectionType
+    quote: Annotated[str, Field(min_length=5, max_length=500)]
+    severity: Severity
+    competitor: str | None = Field(default=None, max_length=120)
+
+
+class CustomerConfidence(BaseModel):
+    """Customer Confidence da reunião (ADR 0006). LLM emite apenas para
+    conversas externas (cliente/lead/venda); None para reuniões internas.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    score: Annotated[int, Field(ge=0, le=100)]
+    band: ConfidenceBand
+    trend: ConfidenceTrend | None = Field(default=None)
+    account_name: str | None = Field(default=None, max_length=120, alias="accountName")
+    buying_signals: list[BuyingSignal] = Field(
+        default_factory=list, alias="buyingSignals", max_length=20
+    )
+    objections: list[Objection] = Field(default_factory=list, max_length=20)
+    rationale: Annotated[str, Field(min_length=10, max_length=1000)]
+
+
 class BaselineTerm(BaseModel):
     """Termo extraido pelo baseline TF-IDF (pre-LLM, interpretavel).
 
@@ -173,6 +245,11 @@ class MeetingAnalysisV1(BaseModel):
     # objetivo/outcomes esperados. Quando presente, eh gerado pelo LLM com base
     # no goal injetado no prompt.
     productivity: ProductivityAssessment | None = Field(default=None)
+    # Customer Confidence (ADR 0006 / ADR 0015). None para reunioes internas;
+    # populado pelo LLM quando a reuniao e uma conversa com cliente/lead/venda.
+    # A decisao de emitir vs null e do proprio LLM (sem gating Python-side); o
+    # accountName e o nome do cliente/empresa detectado na transcricao.
+    customer_confidence: CustomerConfidence | None = Field(default=None, alias="customerConfidence")
 
 
 # ---------- PII Redaction v1 ----------
