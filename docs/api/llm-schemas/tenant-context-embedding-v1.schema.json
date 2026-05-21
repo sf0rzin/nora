@@ -22,7 +22,7 @@
     "embedding": {
       "type": "array",
       "items": { "type": "number" },
-      "description": "Vetor de embedding text-embedding-3-large (3072 dimensões)."
+      "description": "Vetor de embedding. MVP usa text-embedding-3-small (1536 dimensões) conforme ADR 0004 §5; modelo final da fatia RAG ainda TBD (US15 deferido)."
     },
     "version": { "type": "integer", "minimum": 1 },
     "updatedAt": { "type": "string", "format": "date-time" }
