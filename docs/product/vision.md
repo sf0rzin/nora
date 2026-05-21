@@ -74,7 +74,7 @@ O NORA não está mais em fase de scaffolding nem de Sprint 1+2 puro de document
 - Pipeline LLM agnóstico (ADR 0004): default OpenAI `gpt-4o-mini`, schema strict via `response_format=json_schema`
 - Cobertura: worker NLP 87% (54 testes), backend Spring 67% (174 testes), web Next.js 0% (sem runner — débito pra 1.12)
 
-18 ADRs (0001–0018; ADRs 0013 e 0016 ainda em estado *Proposto* aguardando refino de design / Sub-fase 1.12) documentam as decisões duráveis. **Customer Confidence (ADR 0006) tem schema LLM mas ainda não tem persistência nem endpoint** — o **ADR 0015** (aceito 2026-05-14) decidiu implementar o mínimo na Sub-fase 1.11, mas **a 1.11 não foi iniciada e Customer Confidence segue não implementado** (auditoria 2026-05-21). Já uma onda de hardening pós-1.10 (#114–#138) entregou RLS (V016), soft-delete (V013), refresh-token rotation (V014) e FK composta de isolamento (V015) — sem ADR dedicado (débito).
+18 ADRs (0001–0018; ADRs 0013 e 0016 ainda em estado *Proposto* aguardando refino de design / Sub-fase 1.12) documentam as decisões duráveis. **Customer Confidence (ADR 0006) tem schema LLM mas ainda não tem persistência nem endpoint** — o **ADR 0015** (aceito 2026-05-14) decidiu implementar o mínimo na Sub-fase 1.11, mas **a 1.11 não foi iniciada e Customer Confidence segue não implementado** (auditoria 2026-05-21). Já uma onda de hardening pós-1.10 (#114–#138) entregou RLS (V016), soft-delete (V013), refresh-token rotation (V014) e FK composta de isolamento (V015) — documentados em ADR 0019/0020/0021.
 
 Pra entender o estado anterior (Sprint 1+2 documentação) consulte o histórico do documento no fim deste arquivo e o `docs/product/roadmap.md`.
 
