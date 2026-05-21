@@ -66,7 +66,7 @@ O NORA é uma plataforma com dois planos que compartilham o mesmo motor de IA e 
 O NORA não está mais em fase de scaffolding nem de Sprint 1+2 puro de documentação. **Está deployado em Azure** e operacional ponta-a-ponta nos fluxos centrais do MVP:
 
 - Web em produção dev: <https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io>
-- 14 recursos Azure provisionados no `rg-nora-dev` (centralus): Container Apps Env, 3 Container Apps (web + api + worker), Postgres Flexible, Key Vault, Storage Account, App Insights, Log Analytics, Azure Speech, 2 User-Assigned Identities, e federated credentials no SP `sp-nora-github-deploy`
+- 14 recursos Azure provisionados no `rg-nora-dev` (centralus): Container Apps Env, 3 Container Apps (web + api + worker), Postgres Flexible, Key Vault, Storage Account, App Insights, Log Analytics, Azure Speech, 3 User-Assigned Identities (api/worker/web), e federated credentials no SP `sp-nora-github-deploy`
 - Pipeline `build-images.yml` publicando 3 imagens reais no GHCR (`ghcr.io/sys0xff/nora-{api,worker,web}`); deploy via `deploy-infra.yml` com OIDC
 - IAM AWS-style operacional: Users + Groups + Policies + audit log com versionamento imutável de policies. PolicyEvaluator avalia `StringEquals` em produção; expansão para `StringIn`/`StringLike`/`DateGreaterThan` planejada pra Sub-fase 1.11
 - Productivity Score full-stack (ADR 0005): backend Spring + worker NLP + web 3 componentes (`MeetingGoalForm`, `MeetingProductivitySection`, `ProductivityScoreCard`)
@@ -74,7 +74,7 @@ O NORA não está mais em fase de scaffolding nem de Sprint 1+2 puro de document
 - Pipeline LLM agnóstico (ADR 0004): default OpenAI `gpt-4o-mini`, schema strict via `response_format=json_schema`
 - Cobertura: worker NLP 87% (54 testes), backend Spring 67% (174 testes), web Next.js 0% (sem runner — débito pra 1.12)
 
-18 ADRs (0001–0018; ADRs 0013 e 0016 ainda em estado *Proposto* aguardando refino de design / Sub-fase 1.12) documentam as decisões duráveis. **Customer Confidence (ADR 0006) tem schema LLM completo mas ainda não tem persistência nem endpoint** — decisão de implementar mínimo pra Sub-fase 1.11 formalizada em **ADR 0015** (aceito 2026-05-14).
+18 ADRs (0001–0018; ADRs 0013 e 0016 ainda em estado *Proposto* aguardando refino de design / Sub-fase 1.12) documentam as decisões duráveis. **Customer Confidence (ADR 0006) tem schema LLM mas ainda não tem persistência nem endpoint** — o **ADR 0015** (aceito 2026-05-14) decidiu implementar o mínimo na Sub-fase 1.11, mas **a 1.11 não foi iniciada e Customer Confidence segue não implementado** (auditoria 2026-05-21). Já uma onda de hardening pós-1.10 (#114–#138) entregou RLS (V016), soft-delete (V013), refresh-token rotation (V014) e FK composta de isolamento (V015) — sem ADR dedicado (débito).
 
 Pra entender o estado anterior (Sprint 1+2 documentação) consulte o histórico do documento no fim deste arquivo e o `docs/product/roadmap.md`.
 
@@ -119,7 +119,7 @@ Pra entender o estado anterior (Sprint 1+2 documentação) consulte o histórico
 | **IAM — Modelo** | **IAM granular estilo AWS**: Root + Users + Groups + Policies (Effect/Action/Resource/Condition) criados pelo próprio tenant. Versionamento imutável de policies + audit log. (ADR 0007) | Não impõe hierarquia de roles fixas (sem Manager/Analyst/Viewer pré-definidos) |
 | **IAM — Conditions** | **Conditions estilo AWS** por atributos definidos pelo tenant: `Department`, `Project`, `Account` etc. PolicyEvaluator suporta `StringEquals` hoje | **Operadores `StringIn`/`StringLike`/`DateGreaterThan` planejados pra Sub-fase 1.11**. Operadores não-suportados resultam em `Deny` (fail-closed) |
 | **Desktop** | **App Tauri 2** (Rust + sidecar Python) com captura de áudio do sistema. **Windows via WASAPI** (oficial v1) · **macOS via BlackHole** (driver de áudio virtual; ScreenCaptureKit nativo está em débito como nice-to-have) · **Linux via PulseAudio** | Não é plugin de videoconferência. Não roda em mobile no MVP |
-| **Multi-tenancy** | **Isolamento por organização** via `tenant_id` em todas as tabelas + filtro de aplicação no MVP (ADR 0002). Bicep IaC reprodutível | RLS Postgres habilitado em produção é débito pra Sub-fase 1.12 (Production Hardening). Não oferece instalação on-premises no MVP |
+| **Multi-tenancy** | **Isolamento por organização** via `tenant_id` em todas as tabelas + filtro de aplicação (ADR 0002), com **RLS Postgres (V016)** e **FK composta de isolamento (V015)** como defesa em profundidade. Bicep IaC reprodutível | RLS tem enforcement **opt-in** — ativar em prod (role `nora_app` + flag) é o que falta. Não oferece instalação on-premises no MVP |
 | **Conformidade** | **LGPD by design**: consentimento, registro auditado, direito ao esquecimento (modelo) | Não realiza DPIAs automaticamente — ação manual do DPO do cliente. Tabela `audit_events` global é débito pra 1.12+ |
 
 ---

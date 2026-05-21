@@ -202,7 +202,7 @@ updated_at timestamptz not null default now()
 ### Multi-tenancy
 
 - MVP: filtro obrigatório no backend + testes de isolamento (`IamScopingIntegrationTest`).
-- Produção: Postgres RLS habilitado (ADR 0002, **ainda pendente**).
+- Produção: Postgres RLS — **schema entregue em V016** (`tenant_isolation` + `TenantRlsAspect`); enforcement opt-in (role `nora_app` `NOBYPASSRLS` + flag `nora.security.rls.enforce`). Defesa em profundidade do filtro de app (ADR 0002).
 - Nunca buscar entidade tenant-bound só por `id`; sempre `(tenant_id, id)`.
 - Acesso fora do escopo retorna `403` ou `404` conforme risco de enumeração.
 
@@ -211,7 +211,7 @@ updated_at timestamptz not null default now()
 - Flyway no backend.
 - Nome: `V001__create_tenants.sql`, `V002__create_users_and_roles.sql`, etc.
 - **Migration nunca é editada depois de aplicada** — sempre criar nova versão (forward-only).
-- Ver `docs/engineering/data-model.md` para mapa completo V001–V012.
+- Ver `docs/engineering/data-model.md` para mapa completo V001–V016 (V013 soft-delete, V014 refresh rotation, V015 composite FK, V016 RLS).
 
 ---
 
@@ -346,6 +346,8 @@ apps/web/src/
 - Backend Spring: **67%** linha / **53%** branch (174 tests). Áreas críticas já passam de 90% (`InvitationService` 98.1%, `PolicyEvaluator` 95.8%, `AuthService` 93.2%, `AuthorizationService` 89.9%).
 - Web: 0% (sem runner).
 
+> **Caveat (2026-05-21):** números medidos em 2026-05-13, **antes** da onda de hardening #114–#138 (RLS aspect, token rotation, RS256/JWKS, composite FK, auth audit) que tocou áreas críticas de Auth/IAM. **Re-medir** (`mvn verify` + `pytest`) antes de citar no pitch; o worker ainda não declara `pytest-cov` (adicionar — ADR 0018).
+
 ### Definition of Done
 
 Uma story só é DONE quando:
@@ -478,9 +480,9 @@ Login emite dois cookies HttpOnly:
 
 Desktop chama `POST /speech/token` (autenticado JWT) e recebe token efêmero (~9 min) emitido pelo backend usando `AZURE_SPEECH_KEY` do Key Vault. Desktop **nunca** vê a key. Rate limit 6 tokens/min/user (Bucket4j).
 
-### Drift CI conhecido (Sub-fase 1.10 fix)
+### Drift CI conhecido — `pnpm` vs `npm` (NÃO resolvido)
 
-`ci.yml` (job `web`) ainda usa `pnpm`; o Makefile e demais workflows usam `npm` (PR #73 unificou). **Débito de severity Alta** — uniformizar antes que artifacts de deploy divirjam do que foi validado no PR.
+Estado real (verificado 2026-05-21): o job `web` do `.github/workflows/ci.yml` usa **`pnpm`** (`pnpm/action-setup@v4`, `pnpm install/lint/typecheck/build`), enquanto o `Makefile` (`web-setup`, `web-dev`, `lint`) usa **`npm`**. A versão anterior deste doc afirmava que "PR #73 unificou" para npm — **isso é falso** (não há PR #73 no histórico e o job segue em pnpm). **Débito de severity Alta**, ainda aberto — uniformizar para `npm` (ou documentar o split como intencional) antes que o artifact de deploy divirja do que o CI validou. *Nota: alinhar o `ci.yml` é mudança de comportamento — fica como PR próprio, fora da reconciliação de docs.*
 
 ---
 
