@@ -117,7 +117,7 @@ Pra entender o estado anterior (Sprint 1+2 documentação) consulte o histórico
 | **Enterprise — Account Health** | Schema previsto (ADR 0006): bandas `AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`, agregado por conta, com tendência | **Não implementado** — adiado via ADR 0014 (defer post-MVP commercial gate) |
 | **Enterprise — Next Action** | **Recomenda Next Best Action** nas próximas 48–72h com base no padrão da conversa | Não cria automaticamente tarefas no CRM — envia via MCP ou webhook (pós-MVP) |
 | **IAM — Modelo** | **IAM granular estilo AWS**: Root + Users + Groups + Policies (Effect/Action/Resource/Condition) criados pelo próprio tenant. Versionamento imutável de policies + audit log. (ADR 0007) | Não impõe hierarquia de roles fixas (sem Manager/Analyst/Viewer pré-definidos) |
-| **IAM — Conditions** | **Conditions estilo AWS** por atributos definidos pelo tenant: `Department`, `Project`, `Account` etc. PolicyEvaluator suporta `StringEquals` hoje | **Operadores `StringIn`/`StringLike`/`DateGreaterThan` planejados pra Sub-fase 1.11**. Operadores não-suportados resultam em `Deny` (fail-closed) |
+| **IAM — Conditions** | **Conditions estilo AWS** por atributos definidos pelo tenant: `Department`, `Project`, `Account` etc. PolicyEvaluator suporta `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` | Operadores fora dessa lista (e atributos ausentes no contexto) resultam em `Deny` (fail-closed) |
 | **Desktop** | **App Tauri 2** (Rust + sidecar Python) com captura de áudio do sistema. **Windows via WASAPI** (oficial v1) · **macOS via BlackHole** (driver de áudio virtual; ScreenCaptureKit nativo está em débito como nice-to-have) · **Linux via PulseAudio** | Não é plugin de videoconferência. Não roda em mobile no MVP |
 | **Multi-tenancy** | **Isolamento por organização** via `tenant_id` em todas as tabelas + filtro de aplicação (ADR 0002), com **RLS Postgres (V016)** e **FK composta de isolamento (V015)** como defesa em profundidade. Bicep IaC reprodutível | RLS tem enforcement **opt-in** — ativar em prod (role `nora_app` + flag) é o que falta. Não oferece instalação on-premises no MVP |
 | **Conformidade** | **LGPD by design**: consentimento, registro auditado, direito ao esquecimento (modelo) | Não realiza DPIAs automaticamente — ação manual do DPO do cliente. Tabela `audit_events` global é débito pra 1.12+ |
@@ -217,7 +217,7 @@ Detalhes completos, mapas de empatia, dores e ganhos: `docs/challenge/personas-e
 
 Detalhes em `docs/product/roadmap.md`. Resumo:
 
-- **1.11 — Demo Polish Plano A** (em curso): Customer Confidence mínimo via ADR 0015 + AUTH_FILTER_HARD_CAP fix via JSONB GIN + expansão `PolicyEvaluator` pra `StringIn`/`StringLike`/`DateGreaterThan` + UX interna polida + dataset sintético TOTVS realista + roteiro de demo
+- **1.11 — Demo Polish Plano A** (em curso): ✅ Customer Confidence (#148), ✅ AUTH_FILTER_HARD_CAP fix (teto silencioso removido) e ✅ expansão `PolicyEvaluator` (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`) entregues; restam UX interna polida + dataset sintético + roteiro de demo
 - **1.12 — Production Hardening**: RG dedicado de produção (`rg-nora-prod`) + RLS Postgres + monitoring alerts + LGPD operacional + DR runbook + secrets rotation + test coverage targets (ADR 0018 a criar)
 - **1.13+** — Pós-pitch TOTVS (12/06+): depende do desfecho do Plano A. Cenários: dossier de pitch / due-diligence (Plano A) · Plano C content + Plano B pivô comercial
 
