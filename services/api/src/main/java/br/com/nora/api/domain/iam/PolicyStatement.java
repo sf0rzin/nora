@@ -8,9 +8,9 @@ import java.util.Objects;
 /**
  * Statement IAM estilo AWS.
  *
- * <p>O campo {@code condition} e armazenado integralmente mas <b>nao avaliado</b> no MVP do
- * PolicyEvaluator (apenas Action+Resource sao testados). Quando avaliacao de conditions for
- * implementada, esta classe ja carrega o mapa.
+ * <p>O campo {@code condition} mapeia operador -&gt; ({@code chave} -&gt; valor esperado). O {@link
+ * PolicyEvaluator} avalia {@code StringEquals}, {@code StringIn}, {@code StringLike}, {@code
+ * DateGreaterThan} e {@code DateLessThan}; operadores fora dessa lista sao fail-closed.
  */
 public record PolicyStatement(
         Effect effect,

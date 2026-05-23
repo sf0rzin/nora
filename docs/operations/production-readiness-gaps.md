@@ -194,7 +194,7 @@ Workflow dedicado `.github/workflows/rotate-secrets.yml` com cron mensal pode au
 
 **Estimativa total Sub-fase 1.12 — Production Hardening: ~1-2 semanas agentic.**
 
-Pré-requisitos: Sub-fase 1.11 (Demo Polish Plano A) fechada com Customer Confidence implementado, AUTH_FILTER fix, PolicyEvaluator stringIn+stringLike — pois fix de 1.11 entra em prod junto com 1.12.
+Pré-requisitos: itens de **código** da Sub-fase 1.11 já entregues — Customer Confidence (#148), AUTH_FILTER fix (teto silencioso de 500 removido via scan em lotes) e PolicyEvaluator (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`). Restam (e) seed e (f) roteiro de demo, que não bloqueiam 1.12.
 
 ---
 
