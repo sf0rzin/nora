@@ -41,11 +41,12 @@ export function NoraLogo({
     return () => clearTimeout(t);
   }, [animate]);
 
-  // Alturas (% do size) — assimetria orgânica de waveform
-  const heights = [40, 70, 100, 60, 90, 50, 30];
+  // Alturas (% do size) — soundwave simétrica (variante A do Claude Design).
+  const heights = [42, 74, 100, 74, 42];
 
-  const barColor = variant === "paper" ? "var(--paper)" : "var(--brand)";
-  const wordColor = variant === "paper" ? "var(--paper)" : "var(--ink)";
+  // Rebrand v3: barras pretas (--ink). "paper" = barras claras p/ fundo escuro.
+  const barColor = variant === "paper" ? "var(--canvas)" : "var(--ink)";
+  const wordColor = variant === "paper" ? "var(--canvas)" : "var(--ink)";
 
   const barWidth = Math.max(2, Math.round(size * 0.105));
   const barGap = Math.max(2, Math.round(size * 0.105));
@@ -87,10 +88,10 @@ export function NoraLogo({
       {showWordmark && (
         <span
           style={{
-            fontFamily: "var(--font-sans), Inter, system-ui, sans-serif",
-            fontWeight: 700,
+            fontFamily: "var(--font-sans), system-ui, sans-serif",
+            fontWeight: 600,
             fontSize: wordmarkSize,
-            letterSpacing: "-0.04em",
+            letterSpacing: "-0.01em",
             color: wordColor,
             lineHeight: 1,
             opacity: mounted ? 1 : 0,
