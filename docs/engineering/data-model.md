@@ -665,7 +665,7 @@ Formato esperado de `document`:
 
 **Indexes**: `idx_customer_confidence_tenant(tenant_id)`.
 
-> Tenant-owned: RLS `tenant_isolation` habilitada em V017. **Foundation only**: o worker ainda não emite o bloco `customerConfidence`; nenhum wiring no `AnalysisService` (slice futuro).
+> Tenant-owned: RLS `tenant_isolation` habilitada em V017. **Wired (pós-#148):** `AnalysisService.java:127` → `CustomerConfidenceService.persist` grava aqui (trend server-side com banda ±5, get-or-create de conta por `LOWER(name)`); o worker emite `customerConfidence` em conversas com cliente/lead.
 
 ---
 
@@ -708,14 +708,14 @@ Formato esperado de `document`:
 
 Listadas em ADR 0006 e/ou `data-model.md` antigo, mas **sem migration correspondente** (V001–V017 não cobrem). Persistência é débito conhecido (audit §6, severity Alta para a narrativa Plano A).
 
-> **Nota (2026-05-21):** o ADR 0015 reservou "V013" para `customer_confidence_persistence`, mas o slot **V013 foi usado para `add_soft_delete`** e V014–V016 para rotation / composite FK / RLS. A **fundação de persistência do Customer Confidence foi entregue em V017** (Sub-fase 1.11): `customer_accounts`, `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections` (ver §2.29–§2.33). Ainda **sem wiring no pipeline** (o worker não emite `customerConfidence` e o `AnalysisService` não escreve — slices futuros).
+> **Nota (2026-05-21, reconciliada pós-#148):** o ADR 0015 reservou "V013" para `customer_confidence_persistence`, mas o slot **V013 foi usado para `add_soft_delete`** e V014–V016 para rotation / composite FK / RLS. O Customer Confidence foi entregue em **V017** (`customer_accounts`, `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections` — ver §2.29–§2.33) e **totalmente wired em #148**: o worker emite `customerConfidence` e o `AnalysisService` persiste no pipeline. Só `account_health_snapshots` (US50-51) segue não migrada.
 
 | Tabela | Origem | Status |
 |---|---|---|
 | `account_health_snapshots` | ADR 0006 | sem migration |
 | `audit_events` (global) | data-model antigo | sem migration; só `iam_audit_events` existe |
 
-O bloco LLM para Customer Confidence **existe no schema documental** (`meeting-analysis-v1.schema.json`); a **persistência-alvo já existe** (V017, §2.29–§2.33), mas o worker **ainda não o emite** (Pydantic `MeetingAnalysisV1` não inclui `customerConfidence`) e **nenhum endpoint/UI consome** os dados. **ADR 0015** (aceito 2026-05-14, voto "a" = implementar mínimo na 1.11) está sendo implementado em fatias: V017 é a fatia de fundação de backend (Slice 1).
+O bloco LLM para Customer Confidence existe no schema (`meeting-analysis-v1.schema.json`), a persistência existe (V017, §2.29–§2.33), o worker **emite** (`MeetingAnalysisV1.customer_confidence`), o `AnalysisService` **persiste** no pipeline e `GET /meetings/{id}` + `CustomerConfidenceCard` **consomem**. **ADR 0015** (aceito 2026-05-14, voto "a") foi implementado em 4 slices, todos mergeados em **#148** (2026-05-21).
 
 ---
 
