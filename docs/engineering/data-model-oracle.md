@@ -3,7 +3,7 @@
 > Espelho do schema Postgres em sintaxe **Oracle 19c+ (PL/SQL DDL)**.
 > NORA roda **em Postgres em produção** (ver `data-model.md`). Este documento é entrega acadêmica para a disciplina de Database Design da FIAP, que exige modelagem Oracle.
 > Cada tabela corresponde 1:1 ao schema documentado em `data-model.md`, com as adaptações de tipo e sintaxe descritas em §15.
-> Cobre as migrations **V001–V016** (inclui soft-delete V013, refresh token rotation V014, FK composta V015 e Row-Level Security V016 — ver §18 para a equivalência Oracle do RLS via VPD/DBMS_RLS). Inventário completo em §17.
+> Cobre as migrations **V001–V016** (inclui soft-delete V013, refresh token rotation V014, FK composta V015 e Row-Level Security V016 — ver §18 para a equivalência Oracle do RLS via VPD/DBMS_RLS). Inventário completo em §17. **Nota (2026-05-21):** a migration **V017 (Customer Confidence)** ainda não foi mapeada para Oracle — débito deste doc (as 5 tabelas estão em `data-model.md §2.29-2.33`).
 
 ---
 
