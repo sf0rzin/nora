@@ -1,8 +1,14 @@
 package br.com.nora.api.domain.iam;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -22,19 +28,27 @@ import java.util.regex.Pattern;
  * <p>Wildcards: {@code *} (zero ou mais caracteres) e {@code ?} (um caractere) sao suportados em
  * {@code action} e {@code resource}.
  *
- * <p>Conditions suportadas no MVP: {@code StringEquals}. Formato esperado dentro do statement:
+ * <p>Conditions suportadas: {@code StringEquals}, {@code StringIn}, {@code StringLike}, {@code
+ * DateGreaterThan}, {@code DateLessThan}. Formato esperado dentro do statement:
  *
- * <pre>{@code "condition": {"StringEquals": {"chave": "valor_esperado"}}}</pre>
+ * <pre>{@code
+ * "condition": {"StringEquals":    {"chave": "valor"}}
+ * "condition": {"StringIn":        {"chave": ["v1", "v2"]}}
+ * "condition": {"StringLike":      {"chave": "prefixo-*"}}
+ * "condition": {"DateGreaterThan": {"chave": "2026-01-01T00:00:00Z"}}
+ * "condition": {"DateLessThan":    {"chave": "2026-12-31"}}
+ * }</pre>
  *
  * <p>A {@code chave} eh resolvida no {@code requestContext} passado pelo chamador (atributos do
  * recurso, do usuario, do request, etc.). Statements sem condition sao avaliados como sempre
- * satisfeitos. Operadores nao suportados (ex.: StringNotEquals, DateGreaterThan) fazem o statement
- * NAO casar (fail-closed) — qualquer Allow com operador desconhecido eh ignorado em vez de ser
- * tratado como satisfeito.
+ * satisfeitos. Operadores nao suportados (ex.: StringNotEquals) e atributos ausentes no contexto
+ * fazem o statement NAO casar (fail-closed) — qualquer Allow com operador/atributo desconhecido eh
+ * ignorado em vez de ser tratado como satisfeito.
  */
 public final class PolicyEvaluator {
 
-    private static final Set<String> SUPPORTED_CONDITION_OPERATORS = Set.of("StringEquals");
+    private static final Set<String> SUPPORTED_CONDITION_OPERATORS =
+            Set.of("StringEquals", "StringIn", "StringLike", "DateGreaterThan", "DateLessThan");
 
     private PolicyEvaluator() {}
 
@@ -116,9 +130,8 @@ public final class PolicyEvaluator {
 
     /**
      * Avalia as conditions do statement. Retorna true sse TODOS os blocos forem satisfeitos.
-     * Suporta apenas {@code StringEquals} no MVP. Operadores nao suportados causam o statement a
-     * NAO casar (return false) — fail-closed para evitar privilege escalation com policies que usem
-     * operadores ainda nao implementados.
+     * Operadores nao suportados, valores mal-formados ou atributos ausentes no contexto causam o
+     * statement a NAO casar (return false) — fail-closed para evitar privilege escalation.
      */
     private static boolean matchesCondition(PolicyStatement s, Map<String, String> ctx) {
         Map<String, Object> condition = s.condition();
@@ -135,14 +148,76 @@ public final class PolicyEvaluator {
             }
             for (Map.Entry<?, ?> entry : requirements.entrySet()) {
                 String key = String.valueOf(entry.getKey());
-                String expected = String.valueOf(entry.getValue());
-                String actual = ctx.get(key);
-                if (actual == null || !expected.equals(actual)) {
+                if (!matchesOperator(operator, ctx.get(key), entry.getValue())) {
                     return false;
                 }
             }
         }
         return true;
+    }
+
+    /**
+     * Avalia um unico requisito (valor do contexto vs valor esperado) para o operador dado.
+     * Atributo ausente ({@code actual == null}) nunca casa. Datas nao-parseaveis tambem nao casam.
+     */
+    private static boolean matchesOperator(String operator, String actual, Object expected) {
+        if (actual == null) {
+            return false;
+        }
+        return switch (operator) {
+            case "StringEquals" -> actual.equals(String.valueOf(expected));
+            case "StringIn" -> matchesAnyOf(actual, expected);
+            case "StringLike" -> matches(String.valueOf(expected), actual);
+            case "DateGreaterThan" ->
+                    compareAsInstant(actual, expected).map(c -> c > 0).orElse(false);
+            case "DateLessThan" -> compareAsInstant(actual, expected).map(c -> c < 0).orElse(false);
+            default -> false;
+        };
+    }
+
+    /** {@code StringIn}: casa se {@code actual} for igual a qualquer elemento da lista esperada. */
+    private static boolean matchesAnyOf(String actual, Object expected) {
+        if (expected instanceof Iterable<?> values) {
+            for (Object v : values) {
+                if (actual.equals(String.valueOf(v))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        // Valor unico (nao-lista) eh tolerado como igualdade simples.
+        return actual.equals(String.valueOf(expected));
+    }
+
+    /**
+     * Compara {@code actual} e {@code expected} como instantes ISO-8601. Aceita offset (ex.: {@code
+     * 2026-01-01T00:00:00Z}) ou data simples ({@code 2026-01-01}, meia-noite UTC). Retorna vazio se
+     * qualquer lado nao parsear — o caller trata como nao-casa (fail-closed).
+     */
+    private static Optional<Integer> compareAsInstant(String actual, Object expected) {
+        Instant a = parseInstant(actual);
+        Instant b = parseInstant(String.valueOf(expected));
+        if (a == null || b == null) {
+            return Optional.empty();
+        }
+        return Optional.of(a.compareTo(b));
+    }
+
+    private static Instant parseInstant(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String v = value.trim();
+        try {
+            return OffsetDateTime.parse(v).toInstant();
+        } catch (DateTimeParseException ignored) {
+            // nao eh offset-datetime; tenta data simples (yyyy-MM-dd) abaixo
+        }
+        try {
+            return LocalDate.parse(v).atStartOfDay(ZoneOffset.UTC).toInstant();
+        } catch (DateTimeParseException ignored) {
+            return null;
+        }
     }
 
     private static boolean matches(String pattern, String value) {
