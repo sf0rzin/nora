@@ -94,3 +94,4 @@ Sub-fase 1.11 (Demo Polish Plano A), branch `feat/sub-1.11-customer-confidence-m
 | Data | Decisor | Mudança |
 |---|---|---|
 | 2026-05-14 | Joint (PO + Tech Lead + Arquiteto Design) | ADR criado. Voto Tech Lead + Design pra (a) implementa mínimo; Stratfy (PO) confirmou em bloco |
+| 2026-05-21 | Stratfy (Anthony) | **Aplicado em PR #148** (aceito → implementado). Divergências do plano: a migration shipou como **V017** (o slot V013 foi usado por soft-delete em #114) e a entrega veio em 1 PR (não na branch `feat/sub-1.11-...`). Trend é **autoritativo no servidor** (`CustomerConfidenceService.computeTrend`, banda ±5), não o palpite do worker. CI verde c/ Testcontainers. |
