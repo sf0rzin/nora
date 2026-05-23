@@ -12,6 +12,7 @@ import br.com.nora.api.domain.meeting.ProcessingStatus;
 import br.com.nora.api.domain.meeting.Transcript;
 import br.com.nora.api.domain.meeting.TranscriptFormat;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  */
 @Service
 public class MeetingService {
+
+    /** Tamanho do lote ao varrer todas as meetings de um tenant para filtro IAM in-memory. */
+    private static final int LIST_SCAN_BATCH = 200;
 
     private final MeetingRepository meetings;
     private final TranscriptRepository transcripts;
@@ -136,18 +140,30 @@ public class MeetingService {
     }
 
     /**
-     * Variante para uso do controller quando a listagem precisa ser filtrada por IAM com conditions
-     * por item antes de paginar. Devolve ate {@code hardCap} meetings em ordem (created_at desc) —
-     * o controller eh responsavel por aplicar o filtro IAM e depois paginar in-memory. Fase 1 deve
-     * substituir por uma query que ja considere os attributes no SQL.
+     * Variante para o controller quando a listagem precisa de filtro IAM com conditions por item
+     * antes de paginar. Devolve <b>todas</b> as meetings do tenant que casam os filtros baratos
+     * (search/status/data ja resolvidos no SQL), em ordem created_at desc, varrendo o banco em
+     * lotes — o controller aplica o filtro IAM e pagina in-memory.
+     *
+     * <p>Sem teto silencioso: o cap antigo (500) descartava reunioes alem do limite, escondendo do
+     * usuario meetings que ele teria permissao de ver (tenant com &gt;500 reunioes). Otimizacao
+     * futura (performance, nao correcao): empurrar o predicado de attributes para o SQL via {@code
+     * meeting_attributes @>} + indice GIN (V008) quando algum tenant atingir escala.
      */
     @Transactional(readOnly = true)
-    public List<Meeting> listForAuthFilter(UUID tenantId, MeetingFilter filter, int hardCap) {
-        int safeCap = Math.min(Math.max(1, hardCap), 1000);
-        PagedMeetings paged =
-                meetings.listByTenant(
-                        tenantId, filter == null ? MeetingFilter.empty() : filter, 0, safeCap);
-        return paged.items();
+    public List<Meeting> listAllForAuthFilter(UUID tenantId, MeetingFilter filter) {
+        MeetingFilter f = filter == null ? MeetingFilter.empty() : filter;
+        List<Meeting> all = new ArrayList<>();
+        int page = 0;
+        while (true) {
+            PagedMeetings paged = meetings.listByTenant(tenantId, f, page, LIST_SCAN_BATCH);
+            all.addAll(paged.items());
+            if (paged.items().isEmpty() || all.size() >= paged.totalItems()) {
+                break;
+            }
+            page++;
+        }
+        return all;
     }
 
     @Transactional(readOnly = true)
