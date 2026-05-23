@@ -4,6 +4,8 @@
 >
 > Documento substitui `docs/backlog-mvp.md` (movido pra cá). Fonte de verdade dos status: PRs mergeados em `main`, migrations `services/api/src/main/resources/db/migration/V*.sql`, audit retro-ativo.
 >
+> **Reconciliado 2026-05-21 (pós-PR #148):** Customer Confidence (US48-49) passou de PARTIAL → **DONE** full-stack. O audit `2026-05-13` (e a reconciliação doc×código de 2026-05-21 que o precedeu no mesmo dia) foram escritos **antes** do #148 mergear; este doc reflete o estado pós-merge.
+>
 > Pra entender o histórico de execução das sub-fases que entregaram cada status, ver `docs/product/roadmap.md`.
 
 ---
@@ -132,8 +134,8 @@
 
 | ID | Título | MoSCoW | Status | Evidência | Débito conhecido |
 |---|---|---|---|---|---|
-| US48 | Customer Confidence Score 0-100 com sinais e objeções | M | **PARTIAL** | Bloco no schema documental (`meeting-analysis-v1.schema.json`) · ADR 0006 aceito · **worker NÃO emite `customerConfidence` (Pydantic não inclui); sem migration, sem endpoint, sem UI (landing apenas)** | **ADR 0015 aceito (voto "a") mas NÃO implementado** (auditoria 2026-05-21). O slot V013 que lhe fora reservado virou soft-delete. Dívida narrativa aberta — decisão de produto pendente (PO) |
-| US49 | Trend `IMPROVING`/`STABLE`/`DECLINING` | M | **PARTIAL** | Depende de US48 estar persistido | Mesma situação da US48 — ADR 0015 não implementado |
+| US48 | Customer Confidence Score 0-100 com sinais e objeções | M | **DONE** | Migration `V017__create_customer_confidence.sql` (5 tabelas + RLS) · worker emite `customerConfidence` (`models.py:252` + stub + prompt) · persistido no pipeline (`AnalysisService.java:127` → `CustomerConfidenceService.persist`) · `GET /meetings/{id}` retorna `customerConfidence` (`MeetingDetailResponse`) · UI `CustomerConfidenceCard` (`meetings/[id]/page.tsx:182`) · **PR #148 (2026-05-21)** | Shipou como **V017** (o slot V013 do ADR 0015 acabou em soft-delete, #114). Account Health **agregado** (US50-51) segue deferido (ADR 0014) |
+| US49 | Trend `IMPROVING`/`STABLE`/`DECLINING` | M | **DONE** | Trend **autoritativo no servidor**: `CustomerConfidenceService.computeTrend` compara com a avaliação anterior da conta (banda morta ±5 pts), persistido em `customer_confidence_assessments.trend` · PR #148 | Palpite de trend do worker é ignorado (backend é fonte da verdade) |
 | US50 | Account Health Score agregado por conta | S | MISSING | `docs/data-model.md:437-453` prevê `account_health_snapshots` mas sem migration | Deferido em bloco via ADR 0014. Reativar pós-pilot quando 3+ tenants tiverem dados suficientes pra agregar |
 | US51 | Alerta quando Account Health muda de banda | S | MISSING | Sem código | Deferido em bloco via ADR 0014. Reativar junto com US50 |
 
@@ -157,7 +159,8 @@ Trabalho que não estava no MoSCoW original mas entrou via sub-fases ou decisão
 | Bicep IaC completo (9 módulos + main + bicepparam) | #62 | — | DONE |
 | Build/push GHCR pipeline (3 imagens) | #63 | — | DONE |
 | Deploy Azure via OIDC (`deploy-infra.yml`) | #64 | — | DONE |
-| Customer Confidence schema LLM (sem persistência) | #25 | ADR 0006 | PARTIAL (ver US48) |
+| Customer Confidence schema LLM | #25 | ADR 0006 | DONE (schema) |
+| Customer Confidence full-stack (persistência + worker emit + endpoint + UI) | #148 | ADR 0015 | DONE (V017 + `AnalysisService` wiring + trend server-side + `CustomerConfidenceCard`) |
 | `meeting_attributes` JSONB + índice GIN | V007 + V008 | ADR 0007 | DONE (atributos arbitrários pra IAM conditions) |
 | Reprocessamento de reuniões | #46 | — | DONE (`POST /meetings/{id}/reprocess`) |
 | CORS configurável por env | #42 | — | DONE (`CORS_ALLOWED_ORIGINS` em `application.yml`) |
@@ -183,16 +186,16 @@ Frente de segurança/infra que entrou após a Sub-fase 1.10, rotulada "audit fol
 
 | MoSCoW | Total | DONE | PARTIAL | MISSING |
 |---|---|---|---|---|
-| **Must Have (M)** | 31 | **27** | **2** (US48, US49) | **2** (US05*, US08*) |
+| **Must Have (M)** | 31 | **29** | **0** | **2** (US05*, US08*) |
 | **Should Have (S)** | 15 | **6** | **2** (US13, US42) | **7** (US15, US25, US31, US33, US34, US41, US43) |
 | **Could Have (C)** | 5 | — | **1** (US26) | **4** (US21, US44, etc) |
 | **Won't Have v1 (W)** | 7 | **1** (US09) | — | **6** |
-| **Total** | **58** | **34** | **5** | **19** |
+| **Total** | **58** | **36** | **3** | **19** |
 
 > *US05 e US08 são `M` no MoSCoW original mas foram **rebatizadas como W via decisão de escopo** (CLAUDE.md + PROJECT.md). Aqui contam como MISSING/W na prática.
 
 **Cobertura efetiva do MVP** (M + S desejáveis pra demo):
-- Must Have entregue ou parcial em via custo escopo: **29 de 31** (94%) — só US48 + US49 (Customer Confidence) ainda PARTIAL
+- Must Have entregue: **29 de 31** (94%) — Customer Confidence (US48-49) shipou full-stack em #148; restam só US05/US08 (rebatizadas W)
 - Should Have entregue: **8 de 14** (57%) — gap principal é exportação, métricas tenant, simulator de policy
 
 **Frentes que destacam o produto além do MoSCoW** (12 itens): Productivity Score full-stack, PII PERSON_NAME, Bicep IaC, deploy real Azure, dataset sintético + notebook DS, refresh tokens, Live analysis, redesign visual.
@@ -219,7 +222,7 @@ Frente de segurança/infra que entrou após a Sub-fase 1.10, rotulada "audit fol
 | US43 | Simulador de policy | **Antes** do primeiro pilot pago — sem isso, debug de policies é cego. Probabilidade alta de subir na 1.11 |
 | US44 | Permission boundaries | Quando hierarquia organizacional + delegação de IAM virar necessidade real (Pilot+1) |
 | US47 | MCP project state | Quando primeiro tenant pedir integração Jira/Linear pra Productivity Score |
-| **US48-51** | **Customer Confidence completo** (condicional) | **ADR 0015 (Sub-fase 1.11) escolhe entre implementar mínimo viável (chart na landing + persistir score + endpoint read-only) ou remover da landing**. Critério de reativação do conjunto completo: pós-pilot quando 3+ tenants tiverem >10 reuniões pra agregar Account Health |
+| **US50-51** | **Account Health agregado + alertas** | US48-49 (Customer Confidence por reunião) shipou em #148 via ADR 0015. O conjunto **agregado** (Account Health Score temporal + alertas de banda) segue deferido: pós-pilot quando 3+ tenants tiverem >10 reuniões pra agregar |
 
 > Critério de reativação por US é descritivo, não bloqueante. Sub-fase 1.13+ pode pegar qualquer um se contexto justificar.
 
