@@ -67,7 +67,6 @@ import org.springframework.web.multipart.MultipartFile;
 public class MeetingsController {
 
     private static final Set<String> ALLOWED_FORMATS = Set.of("TXT", "VTT", "SRT");
-    private static final int AUTH_FILTER_HARD_CAP = 500;
 
     private final MeetingService meetings;
     private final AnalysisService analyses;
@@ -162,12 +161,9 @@ public class MeetingsController {
         int safePage = Math.max(0, page);
         int safeSize = Math.min(100, Math.max(1, size));
         MeetingFilter filter = buildFilter(search, status, from, to);
-        // Carrega ate AUTH_FILTER_HARD_CAP meetings, filtra por IAM e pagina apos.
-        // Necessario para que totalItems reflita o conjunto que o usuario pode realmente ver
-        // (caso contrario paginas podem chegar vazias com totalItems > 0). Fase 1: empurrar o
-        // predicado de attributes para o SQL.
-        List<Meeting> candidates =
-                meetings.listForAuthFilter(principal.tenantId(), filter, AUTH_FILTER_HARD_CAP);
+        // Carrega todas as meetings do tenant que casam os filtros baratos, filtra por IAM
+        // (conditions por item) e pagina apos — totalItems reflete o conjunto realmente visivel.
+        List<Meeting> candidates = meetings.listAllForAuthFilter(principal.tenantId(), filter);
         List<Meeting> visible =
                 candidates.stream()
                         .filter(
