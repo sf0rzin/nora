@@ -12,7 +12,7 @@ import java.util.UUID;
  *
  * <p>Enterprise-only: derivada de sentimento, sinais de compra e objecoes. Complementa (nao
  * substitui) o Account Health Score temporal. So existe quando o worker emite o bloco {@code
- * customerConfidence} (ainda nao emitido em 2026-05-21).
+ * customerConfidence} (reunioes com cliente/lead; reunioes internas => null).
  */
 public final class CustomerConfidenceAssessment {
 
