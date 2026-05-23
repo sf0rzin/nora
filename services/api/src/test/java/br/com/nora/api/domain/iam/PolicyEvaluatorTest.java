@@ -25,6 +25,16 @@ class PolicyEvaluatorTest {
                 Map.of("StringEquals", Map.of(key, expected)));
     }
 
+    /** Allow meeting:read no tenant t1 com uma unica condition {operator: {key: expected}}. */
+    private static PolicyStatement allowWithCondition(
+            String operator, String key, Object expected) {
+        return new PolicyStatement(
+                Effect.ALLOW,
+                List.of("meeting:read"),
+                List.of("nora:tenant/t1:meeting/*"),
+                Map.of(operator, Map.of(key, expected)));
+    }
+
     @Test
     void allowsExactMatch() {
         var stmts = List.of(allow("meeting:read", "nora:tenant/t1:meeting/*"));
@@ -137,20 +147,106 @@ class PolicyEvaluatorTest {
 
     @Test
     void unknownConditionOperatorIsFailClosed() {
-        // Allow com operador nao suportado (DateGreaterThan) NAO deve conceder acesso —
+        // Allow com operador nao suportado (StringNotEquals) NAO deve conceder acesso —
         // fail-closed evita privilege escalation com policies que usem operadores futuros.
+        // (O contexto satisfaria a intencao do operador, isolando que o false vem do operador
+        // desconhecido e nao de atributo ausente.)
         var stmt =
                 new PolicyStatement(
                         Effect.ALLOW,
                         List.of("meeting:read"),
                         List.of("nora:tenant/t1:meeting/*"),
-                        Map.of("DateGreaterThan", Map.of("aws:CurrentTime", "2020-01-01")));
+                        Map.of("StringNotEquals", Map.of("department", "Suporte")));
         assertThat(
                         PolicyEvaluator.isAllowed(
                                 List.of(stmt),
                                 "meeting:read",
                                 "nora:tenant/t1:meeting/abc",
-                                Map.of()))
+                                Map.of("department", "Vendas")))
+                .isFalse();
+    }
+
+    @Test
+    void stringInConditionMatchesAnyValueInList() {
+        var stmts =
+                List.of(
+                        allowWithCondition(
+                                "StringIn", "department", List.of("Vendas", "Marketing")));
+        assertThat(
+                        PolicyEvaluator.isAllowed(
+                                stmts,
+                                "meeting:read",
+                                "nora:tenant/t1:meeting/abc",
+                                Map.of("department", "Marketing")))
+                .isTrue();
+        assertThat(
+                        PolicyEvaluator.isAllowed(
+                                stmts,
+                                "meeting:read",
+                                "nora:tenant/t1:meeting/abc",
+                                Map.of("department", "Suporte")))
+                .isFalse();
+    }
+
+    @Test
+    void stringLikeConditionSupportsWildcards() {
+        var stmts = List.of(allowWithCondition("StringLike", "project", "acme-*"));
+        assertThat(
+                        PolicyEvaluator.isAllowed(
+                                stmts,
+                                "meeting:read",
+                                "nora:tenant/t1:meeting/abc",
+                                Map.of("project", "acme-manufatura")))
+                .isTrue();
+        assertThat(
+                        PolicyEvaluator.isAllowed(
+                                stmts,
+                                "meeting:read",
+                                "nora:tenant/t1:meeting/abc",
+                                Map.of("project", "northwind-payments")))
+                .isFalse();
+    }
+
+    @Test
+    void dateGreaterThanConditionComparesInstants() {
+        var stmts =
+                List.of(
+                        allowWithCondition(
+                                "DateGreaterThan", "meetingDate", "2026-01-01T00:00:00Z"));
+        assertThat(
+                        PolicyEvaluator.isAllowed(
+                                stmts,
+                                "meeting:read",
+                                "nora:tenant/t1:meeting/abc",
+                                Map.of("meetingDate", "2026-06-01T10:00:00Z")))
+                .isTrue();
+        assertThat(
+                        PolicyEvaluator.isAllowed(
+                                stmts,
+                                "meeting:read",
+                                "nora:tenant/t1:meeting/abc",
+                                Map.of("meetingDate", "2025-12-31T23:59:59Z")))
+                .isFalse();
+    }
+
+    @Test
+    void dateLessThanAcceptsPlainDateAndIsFailClosedOnUnparseable() {
+        var stmts = List.of(allowWithCondition("DateLessThan", "meetingDate", "2026-01-01"));
+        // Data simples (yyyy-MM-dd) interpretada como meia-noite UTC.
+        assertThat(
+                        PolicyEvaluator.isAllowed(
+                                stmts,
+                                "meeting:read",
+                                "nora:tenant/t1:meeting/abc",
+                                Map.of("meetingDate", "2025-06-01")))
+                .isTrue();
+        // Valor nao-parseavel => fail-closed (nao casa).
+        assertThat(
+                        PolicyEvaluator.isAllowed(
+                                stmts,
+                                "meeting:read",
+                                "nora:tenant/t1:meeting/abc",
+                                Map.of("meetingDate", "ontem")))
                 .isFalse();
     }
 

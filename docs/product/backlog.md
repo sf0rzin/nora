@@ -75,7 +75,7 @@
 | US16 | Painel cronológico de reuniões | M | DONE | `MeetingsController.list` · `apps/web/src/app/(app)/dashboard/page.tsx` | — |
 | US17 | Detalhe de uma reunião | M | DONE | `MeetingsController.get` · `apps/web/src/app/(app)/meetings/[id]/page.tsx` | — |
 | US18 | Busca por palavra-chave/período | M | DONE | `list` aceita `search`, `from`, `to` (`MeetingsController.java:140-145`) | — |
-| US19 | Visibilidade escopo-restrita por IAM | M | DONE | `AuthorizationService.isAllowed` + `IamScopingIntegrationTest` · PR #35 | `PolicyEvaluator` suporta hoje só `StringEquals`. Operadores adicionais planejados pra 1.11 (ver Débitos) |
+| US19 | Visibilidade escopo-restrita por IAM | M | DONE | `AuthorizationService.isAllowed` + `IamScopingIntegrationTest` · PR #35 | `PolicyEvaluator` suporta `StringEquals`/`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan` (Sub-fase 1.11c) |
 | US20 | Root vê tudo do tenant | M | DONE | Bypass em `AuthorizationService` · `PolicyEvaluator.java:14` | — |
 | US21 | Painel de tendências (temas + carga tarefas) | C | MISSING | Sem endpoint nem componente | Deferido em bloco via ADR 0014. Reativar quando US15 ligada (depende de embeddings/análise temporal) |
 
@@ -112,7 +112,7 @@
 | ID | Título | MoSCoW | Status | Evidência | Débito conhecido |
 |---|---|---|---|---|---|
 | US35 | Criar grupos IAM | M | DONE | `IamController.createGroup` · migration V006 · PR #35 | — |
-| US36 | Criar e versionar policies JSON | M | DONE | `createPolicy`/`updatePolicy` · tabela `iam_policy_versions` em V006 | Conditions: só `StringEquals` implementado (ver Débitos) |
+| US36 | Criar e versionar policies JSON | M | DONE | `createPolicy`/`updatePolicy` · tabela `iam_policy_versions` em V006 | Conditions: `StringEquals`/`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan` (Sub-fase 1.11c) |
 | US37 | Anexar/desanexar policies a grupos e users | M | DONE | `attachToGroup`/`attachToUser` etc | — |
 | US38 | Adicionar/remover users de grupos | M | DONE | `addMember`/`removeMember` | — |
 | US39 | HTTP 403 claro fora do escopo | M | DONE | `GlobalExceptionHandler` | Detalhe da mensagem de erro estável não conferido em detalhe |
@@ -313,4 +313,4 @@ O MVP da NORA v1.0 contempla exclusivamente as stories classificadas como **Must
 - Cada alteração cria nova versão em `iam_policy_versions` (histórico imutável).
 - A avaliação segue ordem: Root → Allow; senão, **Deny** explícito vence; senão, exigir pelo menos um Allow aplicável; default Deny.
 - Wildcards (`*`) são suportados em `action` e `resource`.
-- Conditions usam operadores estilo AWS. **Hoje suporta `StringEquals`. `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` planejados pra Sub-fase 1.11**.
+- Conditions usam operadores estilo AWS: `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (Sub-fase 1.11c). Operadores fora dessa lista são fail-closed.

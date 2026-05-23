@@ -139,6 +139,32 @@ class MeetingServiceTest {
         assertThat(paged.totalItems()).isEqualTo(2);
     }
 
+    @Test
+    void listAllForAuthFilterReturnsEveryMeetingAcrossBatches() {
+        // > LIST_SCAN_BATCH (200) para forcar mais de uma pagina e provar que nada eh truncado
+        // (o antigo AUTH_FILTER_HARD_CAP descartava silenciosamente meetings alem do teto).
+        int count = 250;
+        for (int i = 0; i < count; i++) {
+            service.upload(
+                    new UploadCommand(
+                            tenant,
+                            owner,
+                            "m" + i,
+                            null,
+                            null,
+                            null,
+                            "TXT",
+                            List.of(),
+                            List.of(),
+                            "linha " + i));
+        }
+
+        List<Meeting> all = service.listAllForAuthFilter(tenant, MeetingFilter.empty());
+
+        assertThat(all).hasSize(count);
+        assertThat(all.stream().map(Meeting::tenantId).distinct().toList()).containsExactly(tenant);
+    }
+
     /* ---------- in-memory fakes ---------- */
 
     static final class InMemoryMeetingRepo implements MeetingRepository {
