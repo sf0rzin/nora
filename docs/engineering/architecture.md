@@ -157,9 +157,9 @@ Aplicáveis em `action` e `resource`. Exemplo: `meeting:*` casa `meeting:read`, 
 
 ### Conditions — fail-closed
 
-`PolicyEvaluator.java:130-131`: operadores **não suportados** fazem o statement **não casar** (`return false`). Isso é fail-closed combinado com Default Deny — uma policy com `DateGreaterThan` ainda não implementado **nega acesso**, não escala privilégio.
+`PolicyEvaluator` (`matchesCondition`): operadores **não suportados** fazem o statement **não casar** (`return false`). Isso é fail-closed combinado com Default Deny — uma policy com operador ainda não implementado (ex.: `StringNotEquals`) **nega acesso**, não escala privilégio. Atributo ausente no contexto também é fail-closed.
 
-Operadores suportados no MVP: apenas `StringEquals` (`SUPPORTED_CONDITION_OPERATORS`, linha 37). Débito conhecido: implementar `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (audit §6). 90% das policies reais usam esses 5 operadores.
+Operadores suportados: `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (`SUPPORTED_CONDITION_OPERATORS` em `PolicyEvaluator.java`). Cobrem ~90% das policies reais. `StringIn` casa contra lista; `StringLike` usa wildcards `*`/`?`; os operadores de data parseiam ISO-8601 (offset ou data simples `yyyy-MM-dd`).
 
 ### Pré-check de list-endpoints (`PolicyEvaluator.hasAnyAllow`, linhas 53-71)
 
@@ -507,8 +507,8 @@ Uma onda de hardening (PRs ~#114–#138, rotulados "audit follow-up #N") entrou 
 
 Débitos técnicos catalogados, priorização e ADRs sucessores planejados ficam em **`docs/operations/production-readiness-gaps.md`** (escrito na Sub-fase 1.10; implementação ataca-se na Sub-fase 1.12 — Production Hardening, formalizada via ADR 0016). Resumo dos principais (estado em 2026-05-21):
 
-- **AUTH_FILTER_HARD_CAP refactor** (`MeetingsController.java:67`): **ainda pendente** — cap de `500` em memória; empurrar predicado IAM para SQL via `meetings.attributes @>` JSONB + GIN (V008 já tem o índice). Era alvo da Sub-fase 1.11 (não iniciada).
-- **PolicyEvaluator** ganhar `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan`: **ainda pendente** — `SUPPORTED_CONDITION_OPERATORS` em `PolicyEvaluator.java:37` segue só `StringEquals`. Era alvo da Sub-fase 1.11.
+- **AUTH_FILTER_HARD_CAP**: ✅ **resolvido** (Sub-fase 1.11b) — teto silencioso de `500` removido; `MeetingService.listAllForAuthFilter` varre todas as meetings do tenant em lotes antes do filtro IAM in-memory. Pushdown SQL via `meeting_attributes @>` + GIN (V008) fica como otimização **de performance** futura (não correção), quando algum tenant atingir escala.
+- **PolicyEvaluator** operadores: ✅ **resolvido** (Sub-fase 1.11c) — `SUPPORTED_CONDITION_OPERATORS` agora cobre `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (fail-closed mantido para operador desconhecido e atributo ausente).
 - **RLS Postgres**: ✅ **entregue no schema (V016)** — falta só ativar enforcement em prod (role `nora_app` + flag). Ver §3/§13.
 - **`tenant_contexts.version`** (US31): coluna ausente; sem histórico de versão do contexto. Alvo Sub-fase 1.12.
 - **`audit_events` global** (não só IAM): auth já tem log próprio (§13); falta consolidar MEETING_UPLOAD, CONTEXT_UPDATE numa trilha única. Alvo Sub-fase 1.12.
