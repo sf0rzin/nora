@@ -66,7 +66,7 @@ nora/
 │   ├── challenge/              # FIAP Challenge 2026 (personas, casos de uso, README, fiap-challenge-2026)
 │   ├── security/               # em construção (Sub-fase 1.12 — threat model, LGPD operacional)
 │   ├── api/                    # OpenAPI + JSON Schemas LLM + exemplos
-│   └── adr/                    # 18 ADRs (0001-0018) + README
+│   └── adr/                    # 21 ADRs (0001-0021) + README
 ├── scripts/                    # automação local
 ├── .github/                    # workflows + templates
 ├── CLAUDE.md                   # contexto para Claude Code
@@ -97,7 +97,7 @@ nora/
 | Runbook deploy Azure + 8 pegadinhas (Sub-fase 1.9) | `docs/operations/azure-deploy.md` |
 | Production-readiness gaps (alvo Sub-fase 1.12) | `docs/operations/production-readiness-gaps.md` |
 | Material acadêmico FIAP Challenge 2026 (personas, casos de uso, rubrica) | `docs/challenge/` |
-| Decisões arquiteturais duráveis (18 ADRs) | `docs/adr/NNNN-titulo.md` (índice em `docs/adr/README.md`) |
+| Decisões arquiteturais duráveis (21 ADRs) | `docs/adr/NNNN-titulo.md` (índice em `docs/adr/README.md`) |
 | Contratos HTTP | `docs/api/openapi.yaml` (a gerar) ou via springdoc-openapi |
 | Exemplos de payload | `docs/api/examples/*.json` |
 | Schemas LLM | `docs/api/llm-schemas/*.schema.json` |
@@ -211,7 +211,7 @@ updated_at timestamptz not null default now()
 - Flyway no backend.
 - Nome: `V001__create_tenants.sql`, `V002__create_users_and_roles.sql`, etc.
 - **Migration nunca é editada depois de aplicada** — sempre criar nova versão (forward-only).
-- Ver `docs/engineering/data-model.md` para mapa completo V001–V016 (V013 soft-delete, V014 refresh rotation, V015 composite FK, V016 RLS).
+- Ver `docs/engineering/data-model.md` para mapa completo V001–V017 (V013 soft-delete, V014 refresh rotation, V015 composite FK, V016 RLS, V017 Customer Confidence).
 
 ---
 
@@ -261,7 +261,7 @@ Schema canônico em `docs/api/llm-schemas/meeting-analysis-v1.schema.json`. Incl
 - `opportunities[]` (estimatedValue, category, sourceQuote)
 - `topics[]`, `sentimentOverall`
 - `productivity` (opcional, ADR 0005)
-- `customerConfidence` (opcional, ADR 0006 — schema existe, persistência pendente)
+- `customerConfidence` (opcional, ADR 0006/0015 — persistido full-stack desde #148; emitido só em conversas com cliente/lead)
 - `baselineTerms[]` (TF-IDF)
 - `piiRedactionApplied`
 
@@ -477,7 +477,7 @@ Login emite dois cookies HttpOnly:
 ### Productivity Score & Customer Confidence
 
 - **Productivity Score (ADR 0005, Sub-fase 1.8)**: persistido (V012). Opt-in por reunião via `MeetingGoal`. UI renderiza `ProductivityScoreCard` apenas quando `productivity` está presente.
-- **Customer Confidence (ADR 0006)**: **schema LLM completo** em `meeting-analysis-v1.schema.json:117-167`, mas **sem tabelas Postgres** e sem endpoint. Implementação mínima formalizada em **ADR 0015** (aceito 2026-05-14) — migration V013 + endpoint READ planejados pra Sub-fase 1.11.
+- **Customer Confidence (ADR 0006/0015)**: **implementado full-stack** em **#148** (2026-05-21). Worker emite o bloco; backend persiste (V017) com trend autoritativo por conta (`CustomerConfidenceService`); `GET /meetings/{id}` retorna `customerConfidence`; UI `CustomerConfidenceCard` no MeetingDetail. Account Health agregado (US50-51) segue deferido (ADR 0014).
 
 ### Speech Token Broker (ADR 0009)
 
