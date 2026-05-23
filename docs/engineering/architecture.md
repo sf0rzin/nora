@@ -115,7 +115,7 @@ Em SQL, isso vira `WHERE tenant_id = :tenantId AND id = :id` — nunca apenas `W
 
 ### RLS — implementado no schema (V016)
 
-ADR 0002 prometia Row-Level Security em produção. **Entregue no schema em `V016__row_level_security.sql`** (não é mais "débito pendente"): policies `tenant_isolation` + `ENABLE ROW LEVEL SECURITY` em 10 tabelas tenant-owned, predicado `tenant_id = nora.current_tenant_id()` (lê o GUC de sessão `nora.current_tenant_id`). O `infrastructure/security/TenantRlsAspect` faz `SET LOCAL` por `@Transactional`.
+ADR 0002 prometia Row-Level Security em produção. **Entregue no schema em `V016__row_level_security.sql`** (não é mais "débito pendente"): policies `tenant_isolation` + `ENABLE ROW LEVEL SECURITY` em 10 tabelas tenant-owned (mais as 3 de V017: `customer_accounts`, `meeting_account_links`, `customer_confidence_assessments` → 13 no total), predicado `tenant_id = nora.current_tenant_id()` (lê o GUC de sessão `nora.current_tenant_id`). O `infrastructure/security/TenantRlsAspect` faz `SET LOCAL` por `@Transactional`.
 
 **Enforcement é opt-in:** owner/admin Postgres bypassa RLS por default (dev/Testcontainers ficam inertes — testes intocados). Em prod, ativar via role dedicado `nora_app` (`NOBYPASSRLS`) + flag `nora.security.rls.enforce=true`. É defesa em profundidade: mesmo que uma query esqueça o `WHERE tenant_id`, o RLS bloqueia. Ver `data-model.md §4`.
 
@@ -327,9 +327,9 @@ A UI (e qualquer export futuro) **deve** exibir: *"Indicador da reunião, não d
 
 ---
 
-## §9. Customer Confidence (ADR 0006) — schema existe, persistência pendente
+## §9. Customer Confidence (ADR 0006 + ADR 0015) — implementado full-stack (#148)
 
-**Status atual: PARCIAL.** O schema LLM está completo e estável; a persistência foi adiada.
+**Status atual: IMPLEMENTADO.** Shipou em PR #148 (2026-05-21) via ADR 0015: schema LLM → worker emite → backend persiste no pipeline → endpoint read → UI. Account Health **agregado** (US50-51) segue deferido (ADR 0014).
 
 ### O que existe hoje
 
@@ -341,22 +341,24 @@ A UI (e qualquer export futuro) **deve** exibir: *"Indicador da reunião, não d
   - `rationale`
 - ADR 0006 aceito; o LLM já emite o bloco quando o tenant é Enterprise (e a reunião é externa).
 
-### O que não existe
+### O que existe agora (pós-PR #148, 2026-05-21)
 
-- Tabelas Postgres: `customer_accounts`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections`, `meeting_account_links`, `account_health_snapshots` (todas em `data-model.md §2.22-2.27` mas **não migradas** — fora de V001–V012).
-- Endpoints: nenhum.
-- UI: a landing menciona Customer Health visualmente (HealthScoreSection) mas o app não persiste nem mostra.
+- **Tabelas Postgres (V017)**: `customer_accounts` (dedup por `LOWER(name)`), `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections` — todas tenant-owned com RLS (ver `data-model.md §2.29-2.33`). `account_health_snapshots` segue **não migrada** (US50-51 deferida via ADR 0014).
+- **Worker emite**: Pydantic `MeetingAnalysisV1.customer_confidence` (`models.py:252`) + stub + prompt + JSON Schema strict; emite só em conversas com cliente/lead (reunião interna → `null`).
+- **Persistência no pipeline**: `AnalysisService.java:127` → `CustomerConfidenceService.persist` faz get-or-create da conta (dedup case-insensitive), link idempotente reunião↔conta, calcula **trend server-side** (compara com a avaliação anterior da conta, banda morta ±5) e grava assessment + signals + objections. Escopado por tenant.
+- **Endpoint**: `GET /meetings/{id}` (`MeetingsController:239` → `findViewByMeetingId`) expande `MeetingDetailResponse` com `customerConfidence` quando presente.
+- **UI**: `CustomerConfidenceCard` renderizado em `meetings/[id]/page.tsx:182`.
 
-### Decisão tomada — ADR 0015 (aceito, 2026-05-14)
+> **Comentários stale (frozen):** o header de `V017__create_customer_confidence.sql` e o Javadoc de `CustomerConfidenceAssessment` foram escritos no Slice 1 do #148 e ainda dizem "worker não emite / sem wiring". O do `.sql` é **intencionalmente intocado** (migration é forward-only/imutável — `standards.md §6`); a realidade é o wiring acima.
 
-Sub-fase 1.10 produziu **ADR 0015 — Customer Confidence: persistência mínima viável** (substitui parcialmente ADR 0006). Voto Stratfy (PO) em bloco: **opção (a)** — implementar mínimo na Sub-fase 1.11:
+### Decisão aplicada — ADR 0015 (aceito 2026-05-14, **aplicado em #148** 2026-05-21)
 
-- **Migration V013** com 5 tabelas (`customer_accounts`, `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections`)
-- Endpoint read-only `GET /meetings/{id}` expande retorno com `customerConfidence` quando presente
-- UI `CustomerConfidenceCard` no MeetingDetail (escopo Arquiteto Design)
-- Account Health agregado (US50-US51) **continua deferido** via ADR 0014
+**ADR 0015 — Customer Confidence: persistência mínima viável** (substitui parcialmente ADR 0006). Voto Stratfy (PO) em bloco: **opção (a)** — implementar mínimo. Entregue em #148, com duas divergências do plano original:
 
-Alternativa (B) — remover Customer Health da landing — foi rejeitada: credibilidade da demo > esforço economizado. Audit §6 marcou severity Alta. Detalhes em `docs/adr/0015-customer-confidence-minimal-persistence.md`.
+- A migration shipou como **V017** (o slot V013 planejado foi usado por soft-delete em #114).
+- Veio em 1 PR (não na branch dedicada `feat/sub-1.11-...` planejada).
+
+Account Health agregado (US50-US51) **continua deferido** via ADR 0014. Alternativa (B) — remover Customer Health da landing — foi rejeitada: credibilidade da demo > esforço economizado. Detalhes em `docs/adr/0015-customer-confidence-minimal-persistence.md`.
 
 ---
 
@@ -510,5 +512,5 @@ Débitos técnicos catalogados, priorização e ADRs sucessores planejados ficam
 - **RLS Postgres**: ✅ **entregue no schema (V016)** — falta só ativar enforcement em prod (role `nora_app` + flag). Ver §3/§13.
 - **`tenant_contexts.version`** (US31): coluna ausente; sem histórico de versão do contexto. Alvo Sub-fase 1.12.
 - **`audit_events` global** (não só IAM): auth já tem log próprio (§13); falta consolidar MEETING_UPLOAD, CONTEXT_UPDATE numa trilha única. Alvo Sub-fase 1.12.
-- **Customer Confidence**: ADR 0015 aceito mas **não implementado** (worker não emite `customerConfidence`; sem migration/endpoint/UI). Dívida narrativa aberta — decisão de produto pendente (PO). Ver `docs/adr/0015-customer-confidence-minimal-persistence.md`.
+- **Customer Confidence**: ✅ **implementado full-stack** (PR #148, 2026-05-21) — V017 + worker emit + `AnalysisService` wiring (trend server-side) + `GET /meetings/{id}` + `CustomerConfidenceCard`. Dívida narrativa resolvida. Account Health **agregado** (US50-51) segue deferido (ADR 0014). Ver `docs/adr/0015-customer-confidence-minimal-persistence.md`.
 - **ADRs do hardening**: documentados retroativamente em ADR 0019 (RLS + FK composta), 0020 (refresh-token rotation), 0021 (soft-delete). Resta avaliar ADR para JWT RS256/JWKS (candidato).
