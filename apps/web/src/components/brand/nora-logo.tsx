@@ -49,8 +49,8 @@ export function NoraLogo({
   const barColor = variant === "paper" ? "var(--canvas)" : "var(--ink)";
   const wordColor = variant === "paper" ? "var(--canvas)" : "var(--ink)";
 
-  const barWidth = Math.max(3, Math.round(size * 0.16));
-  const barGap = Math.max(2, Math.round(size * 0.13));
+  const barWidth = Math.max(2, Math.round(size * 0.12));
+  const barGap = Math.max(2, Math.round(size * 0.1));
   const wordmarkGap = Math.round(size * 0.4);
   const wordmarkSize = Math.round(size * 0.95);
   const wordmarkDelayMs = heights.length * 60 + 80;
