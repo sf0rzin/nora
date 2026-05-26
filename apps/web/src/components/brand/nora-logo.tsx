@@ -41,15 +41,16 @@ export function NoraLogo({
     return () => clearTimeout(t);
   }, [animate]);
 
-  // Alturas (% do size) — soundwave simétrica, suave (variante A do Claude Design).
-  const heights = [44, 66, 82, 66, 44];
+  // Alturas (% do size) — soundwave simétrica com passos UNIFORMES até o pico
+  // central; todas as barras com a mesma espessura (pill). Ref. do PO.
+  const heights = [50, 75, 100, 75, 50];
 
   // Rebrand v3: barras pretas (--ink). "paper" = barras claras p/ fundo escuro.
   const barColor = variant === "paper" ? "var(--canvas)" : "var(--ink)";
   const wordColor = variant === "paper" ? "var(--canvas)" : "var(--ink)";
 
-  const barWidth = Math.max(2, Math.round(size * 0.14));
-  const barGap = Math.max(2, Math.round(size * 0.105));
+  const barWidth = Math.max(3, Math.round(size * 0.16));
+  const barGap = Math.max(2, Math.round(size * 0.13));
   const wordmarkGap = Math.round(size * 0.4);
   const wordmarkSize = Math.round(size * 0.95);
   const wordmarkDelayMs = heights.length * 60 + 80;
