@@ -58,14 +58,14 @@ For up-to-date status of each backlog story, see `docs/product/backlog.md` (DONE
 | Componente | Versão |
 |---|---|
 | Java | 21 |
-| Spring Boot | 3.3.5 |
+| Spring Boot | 3.5.14 |
 | Postgres | 16 (Flexible Server B1ms Burstable) |
-| Flyway | herdada de Spring Boot 3.3.5 |
+| Flyway | herdada de Spring Boot 3.5.14 |
 | Python (worker) | >= 3.12 |
 | FastAPI | >= 0.115 |
 | Pydantic | >= 2.9 |
 | OpenAI SDK | >= 1.50 |
-| Next.js | 14.2.15 |
+| Next.js | 14.2.35 |
 | TypeScript | ^5.6 |
 | Tailwind CSS | ^3.4 |
 | Tauri (desktop) | 2 |

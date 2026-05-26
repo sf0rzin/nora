@@ -10,8 +10,8 @@
 
 | Componente | Versão | Propósito | ADR / Origem |
 |---|---|---|---|
-| **Backend** Java | 21 | Spring Boot 3.3.5 + DDD + JPA | `services/api/pom.xml:11,21` |
-| Spring Boot | 3.3.5 | Framework do backend | `services/api/pom.xml:11` |
+| **Backend** Java | 21 | Spring Boot 3.5.14 + DDD + JPA | `services/api/pom.xml:11,21` |
+| Spring Boot | 3.5.14 | Framework do backend | `services/api/pom.xml:11` |
 | Flyway | herdada do Spring Boot | Migrações versionadas Postgres | `services/api/pom.xml:60-66` |
 | Postgres | 16 | Banco transacional, multi-tenant | ADR 0002 |
 | JJWT | 0.12.6 | Emissão e parsing de JWT | `services/api/pom.xml:80-95` |
@@ -25,7 +25,7 @@
 | OpenAI SDK | ≥1.50 | Cliente LLM (provider agnóstico) | `services/nlp-worker/pyproject.toml:20`, ADR 0004 |
 | nlp-baseline | 0.1.0 (path local) | Package TF-IDF PT-BR reaproveitável | `packages/nlp-baseline/`, ADR 0010 |
 | scikit-learn | ≥1.4 | TF-IDF baseline | `packages/nlp-baseline/pyproject.toml:11` |
-| **Web** Next.js | 14.2.15 | App Router + RSC | `apps/web/package.json:18` |
+| **Web** Next.js | 14.2.35 | App Router + RSC | `apps/web/package.json:18` |
 | React | 18.3.1 | UI | `apps/web/package.json:19-20` |
 | TypeScript | ^5.6.3 | Tipagem estrita no frontend | `apps/web/package.json:39` |
 | Tailwind CSS | ^3.4.13 | Estilos. **Sem shadcn, sem MUI** | `apps/web/package.json:38` |

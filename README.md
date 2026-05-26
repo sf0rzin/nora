@@ -82,7 +82,7 @@ docs/                 # Documentação canônica (ver acima)
 | Camada | Tecnologia |
 |---|---|
 | Frontend | Next.js 14.2 + TypeScript 5.6 + Tailwind 3.4 (sem shadcn — ADR 0013) |
-| Backend | Java 21 + Spring Boot 3.3.5 + DDD + JPA + Flyway |
+| Backend | Java 21 + Spring Boot 3.5.14 + DDD + JPA + Flyway |
 | Database | Postgres 16 (Flexible Server B1ms em Azure; modelo Oracle espelhado em `docs/engineering/data-model-oracle.md` para FIAP DB) |
 | NLP Worker | Python 3.12 + FastAPI 0.115 + Pydantic 2.9 + OpenAI SDK 1.50 |
 | Desktop | Tauri 2 + Rust + sidecar Python (Azure Speech) |
