@@ -1,46 +1,49 @@
-/* NORA — design tokens.
+/* NORA — design tokens (v3 · rebrand DM Sans / Claude Design bundle).
  *
- * Naming alinhado com o bundle do Claude Design (nora-app.jsx,
- * nora-sections.jsx, nora-sections-2.jsx). Paleta CLARA por default;
- * vars `[data-theme="dark"]` reservadas mas sem UI toggle no MVP.
+ * Paleta CLARA cool-neutral ("OpenAI feel"). Os nomes primários abaixo
+ * (--canvas, --sidebar, --chip, --ink, --muted, --accent-ink, --accent-soft)
+ * vêm direto do bundle do Claude Design e são usados pela landing v3 + telas
+ * novas (login, core). Os nomes antigos (--bg, --surface, --fg, --paper, --brand…)
+ * permanecem como ALIASES apontando pros novos, pra não quebrar telas já
+ * implementadas (dashboard, meetings, IAM, settings).
  *
- * --font-sans, --font-display e --font-mono são setadas via next/font
- * em layout.tsx (Inter / Instrument Serif / JetBrains Mono).
- *
- * --font-serif é usado pra `<em>` editorial nas seções (Hero, Context,
- * IAM) — apontamos pro Instrument Serif via --font-display.
- *
- * Aliases (`--paper`, `--ink`, `--brand`, etc) preservam compat com
- * componentes anteriores (CorporateDomainCard, InvitationCard, NoraLogo).
+ * Fontes: --font-sans / --font-mono são setadas via next/font em layout.tsx
+ * (DM Sans / JetBrains Mono). --display e --sans são aliases pro DM Sans.
  */
 
 :root {
-  /* ── Surface (light default) ── */
-  --bg: oklch(0.985 0.003 250);
-  --bg-deep: oklch(0.965 0.005 250);
-  --surface: oklch(1.00 0 0);
-  --surface-2: oklch(0.96 0.005 250);
-  --border: oklch(0.90 0.008 250);
-  --border-strong: oklch(0.78 0.010 250);
+  /* ── Surface (light) — tokens primários do design ── */
+  --canvas: #fdfdfc;
+  --sidebar: #f7f7f5;
+  --chip: #f0f0ee;
+  --border: #e7e7e3;
+  --border-strong: #d8d8d2;
 
   /* ── Foreground ── */
-  --fg: oklch(0.18 0.012 250);
-  --fg-muted: oklch(0.42 0.012 250);
-  --fg-dim: oklch(0.58 0.010 250);
+  --ink: #15171a;
+  --muted: #6e7178;
 
-  /* ── Accent (azul TOTVS refinado pra paleta clara) ── */
-  --accent: oklch(0.55 0.20 250);
-  --accent-bright: oklch(0.50 0.21 250);
-  --accent-dim: oklch(0.70 0.12 250);
-  --accent-glow: oklch(0.55 0.20 250 / 0.10);
+  /* ── Accent (azul saturado, menos pastel) ── */
+  --accent: oklch(0.58 0.16 248);
+  --accent-ink: oklch(0.48 0.18 248);
+  --accent-soft: oklch(0.95 0.04 248);
+  --accent-glow: oklch(0.58 0.16 248 / 0.22);
+  --accent-dim: oklch(0.7 0.12 248);
 
   /* ── Sinal cores ── */
   --success: oklch(0.55 0.16 155);
   --warn: oklch(0.65 0.16 70);
-  --danger: oklch(0.55 0.20 25);
+  --danger: oklch(0.55 0.2 25);
 
   /* ── Fonts ── */
-  --font-serif: var(--font-display);
+  --sans: var(--font-sans);
+  --display: var(--font-sans);
+  --mono: var(--font-mono);
+  --serif: var(--font-sans);
+
+  /* ── Landing layout ── */
+  --max-width: 1180px;
+  --gutter: 32px;
 
   /* ── Density ── */
   --section-y: clamp(96px, 14vh, 180px);
@@ -59,43 +62,48 @@
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-brand: cubic-bezier(0.2, 0.7, 0.2, 1);
 
-  /* ── Aliases pra back-compat (Subfase 1.2 components) ── */
-  --paper: var(--bg);
-  --paper-2: var(--bg-deep);
-  --paper-3: var(--surface-2);
-  --ink: var(--fg);
-  --ink-2: var(--fg-muted);
-  --mute: var(--fg-dim);
+  /* ── Aliases de back-compat (telas pré-rebrand) ── */
+  --bg: var(--canvas);
+  --bg-deep: var(--sidebar);
+  --surface: #ffffff;
+  --surface-2: var(--chip);
+  --fg: var(--ink);
+  --fg-muted: var(--muted);
+  --fg-dim: var(--muted);
+  --accent-bright: var(--accent-ink);
+  --paper: var(--canvas);
+  --paper-2: var(--sidebar);
+  --paper-3: var(--chip);
+  --ink-2: var(--muted);
+  --mute: var(--muted);
   --mute-2: var(--border-strong);
   --hair: var(--border);
   --hair-strong: var(--border-strong);
   --brand: var(--accent);
-  --brand-bright: var(--accent-bright);
-  --brand-soft: var(--accent-glow);
+  --brand-bright: var(--accent-ink);
+  --brand-soft: var(--accent-soft);
   --green: var(--success);
   --warm: var(--warn);
   --red: var(--danger);
   --font-body: var(--font-sans);
+  --font-display: var(--font-sans);
+  --font-serif: var(--font-sans);
 }
 
 /* ── Dark theme reservado (sem UI toggle no MVP) ── */
 [data-theme="dark"] {
-  --bg: oklch(0.16 0.012 250);
-  --bg-deep: oklch(0.13 0.012 250);
-  --surface: oklch(0.20 0.014 250);
-  --surface-2: oklch(0.24 0.014 250);
-  --border: oklch(0.30 0.012 250);
-  --border-strong: oklch(0.40 0.014 250);
-  --fg: oklch(0.97 0.005 250);
-  --fg-muted: oklch(0.72 0.012 250);
-  --fg-dim: oklch(0.55 0.012 250);
-  --accent: oklch(0.70 0.17 248);
-  --accent-bright: oklch(0.78 0.16 248);
-  --accent-dim: oklch(0.50 0.14 250);
-  --accent-glow: oklch(0.70 0.17 248 / 0.18);
-  --success: oklch(0.72 0.16 155);
-  --warn: oklch(0.78 0.16 70);
-  --danger: oklch(0.68 0.20 25);
+  --canvas: oklch(0.16 0.012 250);
+  --sidebar: oklch(0.13 0.012 250);
+  --chip: oklch(0.24 0.014 250);
+  --border: oklch(0.3 0.012 250);
+  --border-strong: oklch(0.4 0.014 250);
+  --ink: oklch(0.97 0.005 250);
+  --muted: oklch(0.72 0.012 250);
+  --accent: oklch(0.7 0.17 248);
+  --accent-ink: oklch(0.78 0.16 248);
+  --accent-soft: oklch(0.3 0.06 248);
+  --accent-glow: oklch(0.7 0.17 248 / 0.18);
+  --surface: oklch(0.2 0.014 250);
 }
 
 /* ── Density modifiers ── */
@@ -113,7 +121,9 @@
 
 /* ── Acessibilidade: reduzir movimento ── */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
