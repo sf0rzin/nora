@@ -1,0 +1,759 @@
+/* NORA Auth v3 — login + signup multi-step (port do bundle Claude Design /auth).
+ *
+ * Global, mas TODO seletor é escopado sob `.nora-auth` para não vazar pro app.
+ * Tokens em styles/tokens.css. Painel esquerdo = variante "ambient" (transcrição
+ * ao vivo). Resets globais e :root do protótipo removidos. Logo = NoraLogo da marca.
+ */
+
+.nora-auth {
+  --danger: #c97766;
+  --danger-ink: #a04c3e;
+
+  /* Overlay full-viewport: cobre o card do auth/layout.tsx (compartilhado com
+   * verify-email/reset). Login+signup são split-screen, não cabem no card. */
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  overflow-y: auto;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--sans);
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.nora-auth a {
+  color: inherit;
+  text-decoration: none;
+}
+.nora-auth ::selection {
+  background: var(--accent-soft);
+}
+
+/* ── Shell — split ── */
+.nora-auth .shell {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* ── Left panel (ambient / live transcription) ── */
+.nora-auth .left {
+  position: relative;
+  padding: 36px 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  background: var(--canvas);
+}
+.nora-auth .left-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: auto;
+  position: relative;
+  z-index: 6;
+  padding: 0 48px;
+}
+.nora-auth .back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  transition: color 140ms ease;
+}
+.nora-auth .back-link:hover {
+  color: var(--ink);
+}
+.nora-auth .left-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 32px;
+  position: relative;
+  z-index: 6;
+  padding: 0 48px;
+}
+.nora-auth .left-foot .links {
+  display: flex;
+  gap: 18px;
+}
+.nora-auth .left-foot a:hover {
+  color: var(--ink);
+}
+
+/* Transcription animation */
+.nora-auth .transcript-anim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.nora-auth .transcript-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 50% 40% at 30% 30%, oklch(0.94 0.045 248) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 70% 70%, oklch(0.95 0.035 218) 0%, transparent 70%),
+    linear-gradient(180deg, var(--canvas) 0%, oklch(0.985 0.012 248) 50%, var(--canvas) 100%);
+}
+.nora-auth .transcript-fade-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 22%;
+  background: linear-gradient(to bottom, var(--canvas) 0%, var(--canvas) 40%, transparent 100%);
+  z-index: 4;
+  pointer-events: none;
+}
+.nora-auth .transcript-fade-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 18%;
+  background: linear-gradient(to top, var(--canvas) 0%, var(--canvas) 30%, transparent 100%);
+  z-index: 4;
+  pointer-events: none;
+}
+.nora-auth .transcript-stream {
+  position: absolute;
+  top: 96px;
+  bottom: 76px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  padding: 0 48px;
+}
+.nora-auth .transcript-stream-inner {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.nora-auth .t-line {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: tLineCycle var(--total-duration) ease-in-out infinite;
+  animation-delay: var(--line-delay);
+}
+@keyframes tLineCycle {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  6% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  88% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+.nora-auth .t-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.nora-auth .t-speaker {
+  font-weight: 500;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: -0.005em;
+  font-size: 12px;
+}
+.nora-auth .t-time {
+  font-variant-numeric: tabular-nums;
+}
+.nora-auth .t-text {
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  letter-spacing: -0.005em;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.nora-auth .t-text > span:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.nora-auth .t-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  opacity: 0;
+  transform: scale(0.85) translateY(2px);
+  animation: tTagPop var(--total-duration) ease-out infinite;
+  animation-delay: var(--tag-delay);
+  white-space: nowrap;
+}
+@keyframes tTagPop {
+  0%,
+  8% {
+    opacity: 0;
+    transform: scale(0.85) translateY(2px);
+  }
+  12% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  78% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  88% {
+    opacity: 0;
+    transform: scale(0.95) translateY(-2px);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.nora-auth .t-tag-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+.nora-auth .t-tag-decision {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.nora-auth .t-tag-decision .t-tag-dot {
+  background: var(--accent-ink);
+}
+.nora-auth .t-tag-action {
+  background: rgba(98, 181, 133, 0.16);
+  color: #3f8a5e;
+}
+.nora-auth .t-tag-action .t-tag-dot {
+  background: #3f8a5e;
+}
+.nora-auth .t-tag-pii {
+  background: rgba(201, 119, 102, 0.16);
+  color: #a04c3e;
+}
+.nora-auth .t-tag-pii .t-tag-dot {
+  background: #a04c3e;
+}
+.nora-auth .transcript-badge {
+  position: absolute;
+  top: 78px;
+  left: 48px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 8px;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: -0.005em;
+  z-index: 5;
+  box-shadow: 0 4px 14px -8px rgba(15, 23, 42, 0.15);
+  opacity: 0;
+  animation: badgeFadeIn 1s ease 0.5s forwards;
+}
+@keyframes badgeFadeIn {
+  to {
+    opacity: 1;
+  }
+}
+.nora-auth .transcript-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  animation: dotPulse 1.4s ease-in-out infinite;
+}
+@keyframes dotPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* ── Right panel — form ── */
+.nora-auth .right {
+  display: flex;
+  flex-direction: column;
+  padding: 36px 48px;
+  overflow-y: auto;
+  min-height: 100vh;
+}
+.nora-auth .right-inner {
+  width: 100%;
+  max-width: 380px;
+  margin: auto;
+}
+.nora-auth .head {
+  margin-bottom: 28px;
+}
+.nora-auth .head h2 {
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  margin: 0 0 6px;
+  color: var(--ink);
+  text-wrap: balance;
+}
+.nora-auth .head p {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.55;
+}
+
+/* Stepper */
+.nora-auth .stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.nora-auth .stepper-pip {
+  flex: 1;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--chip);
+  transition: background 220ms ease;
+}
+.nora-auth .stepper-pip.is-current {
+  background: var(--accent);
+}
+.nora-auth .stepper-pip.is-done {
+  background: var(--ink);
+}
+.nora-auth .stepper-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.nora-auth .stepper-meta strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* Fields */
+.nora-auth .field {
+  margin-bottom: 14px;
+}
+.nora-auth .field-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12.5px;
+  color: var(--ink);
+  font-weight: 500;
+  margin-bottom: 6px;
+  letter-spacing: -0.005em;
+}
+.nora-auth .field-label a {
+  font-size: 12px;
+  color: var(--accent-ink);
+  font-weight: 400;
+}
+.nora-auth .field-label a:hover {
+  text-decoration: underline;
+}
+.nora-auth .field-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.nora-auth .field-input {
+  width: 100%;
+  padding: 10px 14px;
+  font-family: var(--sans);
+  font-size: 14px;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--ink);
+  outline: none;
+  letter-spacing: -0.005em;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+.nora-auth .field-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.nora-auth .field-input::placeholder {
+  color: var(--muted);
+}
+.nora-auth .field-input.with-icon {
+  padding-right: 38px;
+}
+.nora-auth .field-toggle {
+  position: absolute;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.nora-auth .field-toggle:hover {
+  color: var(--ink);
+  background: var(--chip);
+}
+.nora-auth .field-helper {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.45;
+}
+.nora-auth .field-helper.is-err {
+  color: var(--danger-ink);
+}
+
+/* Password strength */
+.nora-auth .pw-strength {
+  margin-top: 8px;
+}
+.nora-auth .pw-bars {
+  display: flex;
+  gap: 3px;
+}
+.nora-auth .pw-bars span {
+  flex: 1;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--chip);
+  transition: background 200ms ease;
+}
+.nora-auth .pw-bars.s1 span:nth-child(-n + 1) {
+  background: var(--danger);
+}
+.nora-auth .pw-bars.s2 span:nth-child(-n + 2) {
+  background: #d4a04c;
+}
+.nora-auth .pw-bars.s3 span:nth-child(-n + 3) {
+  background: #c4b86e;
+}
+.nora-auth .pw-bars.s4 span:nth-child(-n + 4) {
+  background: #62b585;
+}
+.nora-auth .pw-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* SSO */
+.nora-auth .sso-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.nora-auth .sso-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+.nora-auth .sso-btn:hover {
+  background: var(--sidebar);
+  border-color: var(--muted);
+}
+.nora-auth .divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 18px 0;
+}
+.nora-auth .divider::before,
+.nora-auth .divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Workspace step */
+.nora-auth .role-options {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.nora-auth .role-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--canvas);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--sans);
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+.nora-auth .role-opt:hover {
+  background: var(--sidebar);
+}
+.nora-auth .role-opt.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.nora-auth .role-radio {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  flex-shrink: 0;
+  margin-top: 2px;
+  position: relative;
+}
+.nora-auth .role-opt.is-selected .role-radio {
+  border-color: var(--accent);
+}
+.nora-auth .role-opt.is-selected .role-radio::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.nora-auth .role-content {
+  flex: 1;
+  min-width: 0;
+}
+.nora-auth .role-title {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.nora-auth .role-sub {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+/* Terms */
+.nora-auth .terms {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 18px 0 4px;
+  line-height: 1.5;
+}
+.nora-auth .terms input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+.nora-auth .terms a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+}
+.nora-auth .terms a:hover {
+  text-decoration-color: var(--accent);
+}
+
+/* Buttons */
+.nora-auth .submit-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 22px;
+}
+.nora-auth .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 11px 16px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+.nora-auth .btn-primary {
+  background: var(--ink);
+  color: var(--canvas);
+}
+.nora-auth .btn-primary:hover:not(:disabled) {
+  background: #000;
+}
+.nora-auth .btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.nora-auth .btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--border);
+}
+.nora-auth .btn-ghost:hover:not(:disabled) {
+  background: var(--sidebar);
+}
+.nora-auth .btn-full {
+  width: 100%;
+}
+
+.nora-auth .error-banner {
+  font-size: 12.5px;
+  color: var(--danger-ink);
+  padding: 10px 12px;
+  background: rgba(201, 119, 102, 0.1);
+  border: 1px solid rgba(201, 119, 102, 0.25);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  line-height: 1.45;
+}
+.nora-auth .foot {
+  margin-top: 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  color: var(--muted);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.nora-auth .foot a {
+  color: var(--ink);
+}
+.nora-auth .foot a:hover {
+  color: var(--accent-ink);
+}
+.nora-auth .foot button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+}
+.nora-auth .foot button:hover {
+  color: var(--accent-ink);
+}
+
+/* Done step */
+.nora-auth .done-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 0;
+}
+.nora-auth .done-check {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(98, 181, 133, 0.14);
+  color: #3f8a5e;
+  display: grid;
+  place-items: center;
+  margin-bottom: 22px;
+}
+.nora-auth .done-state h3 {
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.022em;
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+.nora-auth .done-state p {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0 0 22px;
+  max-width: 320px;
+}
+
+/* Responsive */
+@media (max-width: 880px) {
+  .nora-auth .shell {
+    grid-template-columns: 1fr;
+  }
+  .nora-auth .left {
+    display: none;
+  }
+  .nora-auth .right {
+    padding: 28px 24px;
+    min-height: 100vh;
+  }
+  .nora-auth .right-inner {
+    max-width: 420px;
+  }
+}
