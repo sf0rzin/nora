@@ -164,3 +164,65 @@ def test_full_pii_mix():
     assert PiiType.CPF in types
     assert PiiType.PHONE in types
     assert PiiType.EMAIL in types
+
+
+# --------------------------------------------------------------------------- #
+# PHONE -- sem DDD (com separador). Over-redaction no ultimo gate (ADR 0012).
+# --------------------------------------------------------------------------- #
+
+
+def test_redacts_mobile_without_ddd():
+    text = "Me liga no 98765-4321 amanha"
+    result = pii_shield.redact(text)
+    assert "98765-4321" not in result.redacted_text
+    assert any(r.type == PiiType.PHONE for r in result.redactions)
+
+
+def test_redacts_landline_without_ddd():
+    text = "O fixo e 3333-4444 mesmo"
+    result = pii_shield.redact(text)
+    assert "3333-4444" not in result.redacted_text
+    assert any(r.type == PiiType.PHONE for r in result.redactions)
+
+
+def test_bare_digit_code_without_separator_not_phone():
+    """Sequencia de digitos sem separador nao vira telefone (ex.: codigo/pedido)."""
+    text = "Pedido 12345678 confirmado"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == text
+    assert not any(r.type == PiiType.PHONE for r in result.redactions)
+
+
+# --------------------------------------------------------------------------- #
+# PERSON_NAME -- rotulo de locutor em CAIXA ALTA (diarizacao)
+# --------------------------------------------------------------------------- #
+
+
+def test_redacts_allcaps_speaker_full_name():
+    """Padrao 0: 'JOAO SILVA:' em inicio de linha vira PERSON_NAME (o ':' fica)."""
+    text = "JOAO SILVA: vamos fechar o contrato"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == "[[PERSON_NAME_1]]: vamos fechar o contrato"
+    assert any(r.type == PiiType.PERSON_NAME for r in result.redactions)
+
+
+def test_redacts_allcaps_single_speaker():
+    text = "MARINA: aprovado"
+    result = pii_shield.redact(text)
+    assert "MARINA" not in result.redacted_text
+    assert "[[PERSON_NAME_1]]:" in result.redacted_text
+
+
+def test_allcaps_section_label_not_redacted():
+    """'RESUMO:' e rotulo de secao (negative list), nao locutor."""
+    text = "RESUMO: pontos principais da call"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == text
+    assert not any(r.type == PiiType.PERSON_NAME for r in result.redactions)
+
+
+def test_allcaps_section_label_multiword_not_redacted():
+    text = "RESUMO EXECUTIVO: contexto"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == text
+    assert not any(r.type == PiiType.PERSON_NAME for r in result.redactions)

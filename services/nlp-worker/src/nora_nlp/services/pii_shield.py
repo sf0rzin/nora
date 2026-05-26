@@ -25,10 +25,20 @@ from ..models import PiiRedactionV1, PiiType, Redaction
 # bate microsegundos). Pre-filtro `'@' in text` acelera em entradas sem email.
 _EMAIL_RE = re.compile(r"(?<![\w@])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b")
 
-# Telefones BR: com DDD obrigatorio (8 ou 9 digitos apos DDD). Conservador
-# de proposito: telefone sem DDD (98765-4321) e pequeno demais pra distinguir
-# de codigos/protocolos numericos sem falso-positivo massivo.
-_PHONE_RE = re.compile(r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?[\s.\-]?\d{4,5}[\s.\-]?\d{4}(?!\d)")
+# Telefones BR. Duas formas:
+#   1. Com DDD (e/ou +55): "(11) 98888-7777", "+55 11 3333-4444", "1133334444".
+#   2. SEM DDD, mas com separador: "98765-4321", "3333-4444". Como este e o
+#      ULTIMO gate de PII (ADR 0012), assumimos over-redaction: o separador
+#      obrigatorio corta a maioria dos falsos-positivos, mas faixas numericas
+#      tipo "2020-2024" podem ser redigidas como telefone (tradeoff aceito --
+#      vazar um telefone e pior que mascarar um intervalo). Numeros sem DDD E
+#      sem separador (ex.: "987654321") seguem fora (indistinguiveis de codigos).
+_PHONE_RE = re.compile(
+    r"(?<!\d)(?:"
+    r"(?:\+?55\s?)?\(?\d{2}\)?[\s.\-]?\d{4,5}[\s.\-]?\d{4}"  # com DDD / +55
+    r"|\d{4,5}[\s.\-]\d{4}"  # sem DDD (separador obrigatorio)
+    r")(?!\d)"
+)
 
 # CPF mascarado.
 _CPF_RE = re.compile(r"(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)")
@@ -494,6 +504,41 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
         "LGPD",
         "SOC",
         "ISO",
+        # Rotulos de secao/meta que aparecem como "LABEL:" em atas/transcricoes
+        # (inclusive em CAIXA ALTA) e NAO sao locutores -- evita falso-positivo
+        # do padrao de locutor all-caps. (Nenhum destes e primeiro nome BR.)
+        "Resumo",
+        "Resumos",
+        "Nota",
+        "Notas",
+        "Decisao",
+        "Decisão",
+        "Decisoes",
+        "Decisões",
+        "Acao",
+        "Ação",
+        "Acoes",
+        "Ações",
+        "Agenda",
+        "Pauta",
+        "Ata",
+        "Obs",
+        "Observacao",
+        "Observação",
+        "Todo",
+        "Importante",
+        "Assunto",
+        "Data",
+        "Hora",
+        "Local",
+        "Participantes",
+        "Presentes",
+        "Ausentes",
+        "Objetivo",
+        "Contexto",
+        "Tarefas",
+        "Topicos",
+        "Tópicos",
     )
 )
 
@@ -533,6 +578,17 @@ _WORD_RE = re.compile(r"\b[A-Za-zÁÉÍÓÚÂÊÔÀÃÕÇáéíóúâêôàãõ�
 # nomes sempre aparecem Title Case (capitalizacao automatica do dicador) ou
 # all-caps no contexto formal (que sao filtrados por `_PERSON_NAME_NEGATIVE_LIST`).
 _NAME_TOKEN_RE = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+\b")
+
+# Rotulo de locutor em CAIXA ALTA seguido de dois-pontos, comum em transcricao
+# com diarizacao: "JOAO SILVA:", "MARINA:", "JOÃO:". Ancorado no inicio da linha
+# (?m) pra nao capturar acronimos inline (SAP, RM) -- esses nao tem ":" depois e
+# nao estao em inicio de linha. So o nome e capturado (group 1); o ":" fica. A
+# negative list filtra rotulos de secao/meta ("RESUMO:", "PAUTA:").
+_NAME_SPEAKER_CAPS_RE = re.compile(
+    r"(?m)^[ \t]*"
+    r"([A-ZÁÉÍÓÚÂÊÔÀÃÕÇ]{2,}(?:\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ]{2,}){0,3})"
+    r"(?=\s*:)"
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -613,8 +669,9 @@ def _redact_person_names(
 ) -> tuple[str, list[Redaction]]:
     """Detecta e redige nomes proprios sobre `text` (ja parcialmente redigido).
 
-    Aplica em ordem tres heuristicas, sempre pulando ranges ja cobertos:
+    Aplica em ordem quatro heuristicas, sempre pulando ranges ja cobertos:
 
+    0. Rotulo de locutor em CAIXA ALTA + dois-pontos (`JOAO SILVA:`).
     1. Prefixo + Title Case (`Dr. Carlos Silva`).
     2. 2-4 palavras Title Case consecutivas (`Marina Alves`).
     3. Primeiro nome BR isolado contra a lista hardcoded (`Lucas`, `Marina`).
@@ -632,6 +689,15 @@ def _redact_person_names(
     def _claim(start: int, end: int, value: str) -> None:
         person_matches.append(_Match(type=PiiType.PERSON_NAME, start=start, end=end, value=value))
         covered.append((start, end))
+
+    # Padrao 0: rotulo de locutor em CAIXA ALTA ("JOAO SILVA:"). So o nome
+    # (group 1) e reivindicado; o ":" e o espaco a esquerda ficam intactos.
+    for m in _NAME_SPEAKER_CAPS_RE.finditer(text):
+        if _is_covered(m.start(1), m.end(1)):
+            continue
+        if _is_negative(m.group(1)):
+            continue
+        _claim(m.start(1), m.end(1), m.group(1))
 
     # Padrao 1: prefixo
     for m in _NAME_PREFIX_RE.finditer(text):
