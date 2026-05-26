@@ -167,17 +167,17 @@
   z-index: 3;
 }
 .nora-landing .hero-content {
-  max-width: 680px;
+  max-width: 620px;
   position: relative;
   z-index: 3;
 }
 .nora-landing .hero-claude h1 {
   font-family: var(--display);
-  font-size: clamp(44px, 5.4vw, 76px);
+  font-size: clamp(36px, 4.4vw, 60px);
   font-weight: 500;
   letter-spacing: -0.038em;
-  line-height: 1;
-  margin: 0 0 36px;
+  line-height: 1.02;
+  margin: 0 0 28px;
   color: var(--ink);
   text-wrap: balance;
 }
@@ -193,11 +193,11 @@
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  max-width: 560px;
-  padding: 14px 14px 14px 20px;
+  max-width: 520px;
+  padding: 12px 12px 12px 18px;
   background: var(--canvas);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 14px;
   box-shadow:
     0 12px 32px -16px rgba(15, 23, 42, 0.12),
     0 1px 0 rgba(255, 255, 255, 0.6) inset;
@@ -215,7 +215,7 @@
   outline: none;
   resize: none;
   font-family: var(--sans);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.5;
   background: transparent;
   color: var(--ink);
@@ -257,7 +257,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  max-width: 560px;
+  max-width: 520px;
   position: relative;
   z-index: 3;
 }
@@ -346,7 +346,7 @@
   position: relative;
   z-index: 3;
   background: var(--canvas);
-  margin-top: 0;
+  margin-top: clamp(24px, 5vh, 56px);
   padding: 36px 0 12px;
   display: flex;
   align-items: center;
@@ -376,7 +376,7 @@
 /* Scroll hint */
 .nora-landing .hero-scroll-hint {
   position: absolute;
-  bottom: 40px;
+  bottom: 96px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -1705,7 +1705,7 @@
     min-height: auto;
   }
   .nora-landing .hero-claude h1 {
-    font-size: clamp(36px, 8vw, 48px);
+    font-size: clamp(30px, 7vw, 44px);
     margin-bottom: 24px;
   }
   .nora-landing .hero-soundwave {
