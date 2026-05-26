@@ -1,18 +1,13 @@
 import type { Metadata } from "next";
-import { Inter, Instrument_Serif, JetBrains_Mono } from "next/font/google";
+import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+// Design system v3 (Claude Design rebrand): DM Sans é a única família de UI
+// (sans + display). JetBrains Mono fica reservada só para contextos de código
+// (ex.: editor de policies). Ver docs/engineering/standards.md §8.
+const dmSans = DM_Sans({
   subsets: ["latin"],
   variable: "--font-sans",
-  display: "swap",
-});
-
-const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
-  variable: "--font-display",
   display: "swap",
 });
 
@@ -30,10 +25,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="pt-BR"
-      className={`${inter.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable}`}
-    >
+    <html lang="pt-BR" className={`${dmSans.variable} ${jetbrainsMono.variable}`}>
       <body>{children}</body>
     </html>
   );

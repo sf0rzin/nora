@@ -1,58 +1,38 @@
-"use client";
+import "./landing-v2.css";
 
-import { useReveal } from "./use-reveal";
-import { useMagnetic } from "./use-magnetic";
+import { LandingDemo } from "./landing-demo";
+import { LandingFeatures } from "./landing-feature-anims";
 import { LandingNav } from "./landing-nav";
-import { HeroLiveDemo } from "./hero-live-demo";
-import { ProblemSection } from "./problem-section";
-import { SurfacesSection } from "./surfaces-section";
-import { ProductContextSection } from "./product-context-section";
-import { HealthScoreSection } from "./health-score-section";
-import { IAMSection } from "./iam-section";
-import { CTASection } from "./cta-section";
-import { LandingFooter } from "./landing-footer";
-import styles from "./landing.module.css";
+import { LandingHero } from "./landing-hero";
+import {
+  LandingFAQ,
+  LandingFinalCTA,
+  LandingFooter,
+  LandingHowItWorks,
+  LandingPricing,
+  LandingPrivacy,
+} from "./landing-content";
 
 /**
- * Composição final da landing v2 — espelha App() de nora-app.jsx
- * (linhas 967-983). Wrapper client porque executa useReveal/useMagnetic
- * (DOM queries via IntersectionObserver e mousemove listeners).
+ * Landing pública v3 — port do bundle do Claude Design.
  *
- * Ordem: Nav · Hero · hr · Problem · hr · Surfaces · hr · ProductContext
- *      · hr · HealthScore · hr · IAM · CTA · Footer.
+ * Ordem das seções espelha `landing/app.jsx` do bundle: Nav · Hero · HowItWorks
+ * · Features · Demo · Privacidade · Planos · FAQ · CTA · Footer. Estilos em
+ * `landing-v2.css` (escopados sob `.nora-landing`); tokens em styles/tokens.css.
  */
 export function LandingPage() {
-  useReveal();
-  useMagnetic();
-
   return (
-    <div className={styles.page}>
+    <div className="nora-landing">
       <LandingNav />
       <main>
-        <HeroLiveDemo />
-        <hr className="hr container" />
-        <div className="reveal">
-          <ProblemSection />
-        </div>
-        <hr className="hr container" />
-        <div className="reveal">
-          <SurfacesSection />
-        </div>
-        <hr className="hr container" />
-        <div className="reveal">
-          <ProductContextSection />
-        </div>
-        <hr className="hr container" />
-        <div className="reveal">
-          <HealthScoreSection />
-        </div>
-        <hr className="hr container" />
-        <div className="reveal">
-          <IAMSection />
-        </div>
-        <div className="reveal">
-          <CTASection />
-        </div>
+        <LandingHero />
+        <LandingHowItWorks />
+        <LandingFeatures />
+        <LandingDemo />
+        <LandingPrivacy />
+        <LandingPricing />
+        <LandingFAQ />
+        <LandingFinalCTA />
       </main>
       <LandingFooter />
     </div>
