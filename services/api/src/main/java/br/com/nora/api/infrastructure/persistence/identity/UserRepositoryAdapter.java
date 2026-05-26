@@ -37,6 +37,7 @@ public class UserRepositoryAdapter implements UserRepository {
                 jpa.findById(user.id())
                         .map(
                                 e -> {
+                                    e.setDisplayName(user.displayName());
                                     e.setPasswordHash(user.passwordHash());
                                     e.setStatus(user.status());
                                     e.setEmailVerifiedAt(user.emailVerifiedAt());
