@@ -9,12 +9,7 @@
   --danger: #c97766;
   --danger-ink: #a04c3e;
 
-  /* Overlay full-viewport: cobre o card do auth/layout.tsx (compartilhado com
-   * verify-email/reset). Login+signup são split-screen, não cabem no card. */
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  overflow-y: auto;
+  min-height: 100vh;
   background: var(--canvas);
   color: var(--ink);
   font-family: var(--sans);
