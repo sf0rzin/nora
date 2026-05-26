@@ -32,7 +32,7 @@ env: ## Cria .env.local em raiz e em cada serviço a partir dos exemplos
 # --- Infra local ---
 
 .PHONY: db-up
-db-up: ## Sobe Postgres + Adminer
+db-up: env ## Sobe Postgres + Adminer
 	$(COMPOSE) up -d
 
 .PHONY: db-down
@@ -40,7 +40,7 @@ db-down: ## Para Postgres + Adminer
 	$(COMPOSE) down
 
 .PHONY: db-reset
-db-reset: ## Apaga volume e sobe banco do zero
+db-reset: env ## Apaga volume e sobe banco do zero
 	$(COMPOSE) down -v
 	$(COMPOSE) up -d
 
@@ -53,15 +53,22 @@ DEV_LOG_DIR := $(CURDIR)/.logs
 
 .PHONY: worker-setup
 worker-setup: ## Cria venv do worker e instala dependencias (idempotente)
-	@WORKER_PY=$$($(WORKER_PYTHON_RESOLVE)); \
-	if [ ! -x "$$WORKER_PY" ]; then \
+	@set -e; \
+	if [ ! -f "$(WORKER_VENV)/.deps-installed" ]; then \
 		echo ">> criando venv do worker em $(WORKER_VENV)..."; \
 		cd services/nlp-worker && $(PYTHON) -m venv .venv; \
 		WORKER_PY=$$($(WORKER_PYTHON_RESOLVE)); \
+		if [ ! -x "$$WORKER_PY" ]; then \
+			echo "ERRO: o venv nao gerou um Python executavel ($$WORKER_PY)."; \
+			echo "      No Windows, 'python3' costuma ser o stub da Microsoft Store."; \
+			echo "      Instale o Python 3.12 real e rode: make worker-setup PYTHON=py"; \
+			exit 1; \
+		fi; \
 		"$$WORKER_PY" -m pip install -q --upgrade pip; \
 		echo ">> instalando package local nlp-baseline (ADR 0010)..."; \
 		"$$WORKER_PY" -m pip install -q -e "$(CURDIR)/packages/nlp-baseline"; \
 		"$$WORKER_PY" -m pip install -q -e ".[dev]"; \
+		touch "$(WORKER_VENV)/.deps-installed"; \
 		echo ">> venv do worker pronto."; \
 	fi
 
@@ -74,8 +81,12 @@ web-setup: ## Instala dependencias do web (idempotente)
 		echo ">> web: node_modules ja existe (npm install pulado)"; \
 	fi
 
+# `make dev` e orientado a Unix/macOS: sobe tudo em background (nohup &) e grava PIDs.
+# No WINDOWS/Git Bash o backgrounding morre quando o make sai -- use os alvos
+# foreground em terminais separados: `make api-dev` / `make web-dev` / `make worker-dev`
+# (o Postgres sobe via Docker e sobrevive de qualquer jeito).
 .PHONY: dev
-dev: worker-setup web-setup ## Sobe DB + worker + API + web (tudo em background, logs em .logs/)
+dev: env worker-setup web-setup ## Sobe DB + worker + API + web em background (Unix/macOS; ver nota p/ Windows)
 	@mkdir -p "$(DEV_RUN_DIR)" "$(DEV_LOG_DIR)"
 	@echo ">> [1/4] subindo Postgres + Adminer (docker compose)..."
 	@$(COMPOSE) up -d
