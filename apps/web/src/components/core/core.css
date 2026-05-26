@@ -1,0 +1,83 @@
+/* NORA Core v3 — shell + inbox (port do bundle Claude Design /app + /home).
+ *
+ * Global, mas todo seletor de ESTILO é escopado sob `.nora-core` para não
+ * vazar pro resto do app (mesmo padrão de auth.css / landing-v2.css). Os
+ * tokens (--canvas, --ink, --accent…) vêm de styles/tokens.css. O grosso do
+ * visual mora em inline styles nos componentes; aqui ficam só keyframes
+ * (globais — não dá pra escopar) e a estilização de scrollbar/foco.
+ *
+ * Keyframes levam prefixo `nora` pra não colidir com os da landing (que já
+ * declara um `orbPulse` próprio, com curva diferente).
+ */
+
+.nora-core {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--sans);
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.nora-core ::selection {
+  background: var(--accent-soft);
+}
+.nora-core input:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
+}
+
+/* Scrollbars discretas dentro do Core */
+.nora-core ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.nora-core ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+}
+.nora-core ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.16);
+}
+.nora-core ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes noraPanelIn {
+  from {
+    opacity: 0;
+    transform: translateX(-6px) scaleX(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scaleX(1);
+  }
+}
+@keyframes noraOrbPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 0.85;
+  }
+}
+@keyframes noraPaletteFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes noraPaletteSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
