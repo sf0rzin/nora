@@ -41,14 +41,16 @@ export function NoraLogo({
     return () => clearTimeout(t);
   }, [animate]);
 
-  // Alturas (% do size) — assimetria orgânica de waveform
-  const heights = [40, 70, 100, 60, 90, 50, 30];
+  // Alturas (% do size) — soundwave simétrica com passos UNIFORMES até o pico
+  // central; todas as barras com a mesma espessura (pill). Ref. do PO.
+  const heights = [50, 75, 100, 75, 50];
 
-  const barColor = variant === "paper" ? "var(--paper)" : "var(--brand)";
-  const wordColor = variant === "paper" ? "var(--paper)" : "var(--ink)";
+  // Rebrand v3: barras pretas (--ink). "paper" = barras claras p/ fundo escuro.
+  const barColor = variant === "paper" ? "var(--canvas)" : "var(--ink)";
+  const wordColor = variant === "paper" ? "var(--canvas)" : "var(--ink)";
 
-  const barWidth = Math.max(2, Math.round(size * 0.105));
-  const barGap = Math.max(2, Math.round(size * 0.105));
+  const barWidth = Math.max(2, Math.round(size * 0.12));
+  const barGap = Math.max(2, Math.round(size * 0.1));
   const wordmarkGap = Math.round(size * 0.4);
   const wordmarkSize = Math.round(size * 0.95);
   const wordmarkDelayMs = heights.length * 60 + 80;
@@ -87,10 +89,10 @@ export function NoraLogo({
       {showWordmark && (
         <span
           style={{
-            fontFamily: "var(--font-sans), Inter, system-ui, sans-serif",
-            fontWeight: 700,
+            fontFamily: "var(--font-sans), system-ui, sans-serif",
+            fontWeight: 600,
             fontSize: wordmarkSize,
-            letterSpacing: "-0.04em",
+            letterSpacing: "-0.01em",
             color: wordColor,
             lineHeight: 1,
             opacity: mounted ? 1 : 0,
