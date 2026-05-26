@@ -37,8 +37,11 @@ target/
 *.class
 *.jar
 *.war
-.mvn/
+.mvn/*
+!.mvn/wrapper/
+.mvn/wrapper/*
 !.mvn/wrapper/maven-wrapper.jar
+!.mvn/wrapper/maven-wrapper.properties
 HELP.md
 
 # --- Python / Worker ---

@@ -86,7 +86,7 @@ dev: worker-setup web-setup ## Sobe DB + worker + API + web (tudo em background,
 		echo $$! > "$(DEV_RUN_DIR)/worker.pid"
 	@echo ">> [3/4] subindo API (Spring Boot :8080)..."
 	@cd services/api && \
-		nohup mvn -q spring-boot:run \
+		nohup ./mvnw -q spring-boot:run \
 			> "$(DEV_LOG_DIR)/api.log" 2>&1 & \
 		echo $$! > "$(DEV_RUN_DIR)/api.pid"
 	@echo ">> [4/4] subindo Web (Next.js :3000)..."
@@ -133,11 +133,11 @@ dev-status: ## Mostra status dos PIDs registrados
 
 .PHONY: api-dev
 api-dev: ## Roda o backend Spring Boot em modo dev
-	cd services/api && mvn spring-boot:run
+	cd services/api && ./mvnw spring-boot:run
 
 .PHONY: api-test
 api-test: ## Roda os testes do backend
-	cd services/api && mvn test
+	cd services/api && ./mvnw test
 
 # --- Worker NLP ---
 
@@ -165,13 +165,13 @@ web-test: ## Roda os testes do web
 lint: ## Roda lint em todos os pacotes (falha se algum lintar com erros)
 	cd apps/web && npm run lint
 	cd services/nlp-worker && ruff check .
-	cd services/api && mvn spotless:check
+	cd services/api && ./mvnw spotless:check
 
 .PHONY: format
 format: ## Formata todos os pacotes (modifica arquivos)
 	cd apps/web && npm run format
 	cd services/nlp-worker && ruff format .
-	cd services/api && mvn spotless:apply
+	cd services/api && ./mvnw spotless:apply
 
 .PHONY: test
 test: api-test worker-test web-test ## Roda toda a bateria de testes
