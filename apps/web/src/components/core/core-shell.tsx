@@ -314,32 +314,50 @@ function Sidebar({
           marginTop: 4,
         }}
       >
-        <Avatar name={user?.displayName ?? "?"} size={28} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 12.5,
-              color: "var(--ink)",
-              letterSpacing: "-0.005em",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {user?.displayName ?? "—"}
+        <Link
+          href={"/account" as Route}
+          title="Conta"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flex: 1,
+            minWidth: 0,
+            textDecoration: "none",
+            borderRadius: 7,
+            margin: "-4px",
+            padding: "4px",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.03)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        >
+          <Avatar name={user?.displayName ?? "?"} size={28} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 12.5,
+                color: "var(--ink)",
+                letterSpacing: "-0.005em",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {user?.displayName ?? "—"}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--muted)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {user?.email ?? ""}
+            </div>
           </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--muted)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {user?.email ?? ""}
-          </div>
-        </div>
+        </Link>
         {isEnterprise && (
           <Link
             href={"/settings/context" as Route}
@@ -622,31 +640,49 @@ function MobileNav() {
                 gap: 8,
               }}
             >
-              <Avatar name={user?.displayName ?? "?"} size={28} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 12.5,
-                    color: "var(--ink)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {user?.displayName ?? "—"}
+              <Link
+                href={"/account" as Route}
+                title="Conta"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flex: 1,
+                  minWidth: 0,
+                  textDecoration: "none",
+                  borderRadius: 7,
+                  margin: "-4px",
+                  padding: "4px",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.03)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <Avatar name={user?.displayName ?? "?"} size={28} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      color: "var(--ink)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {user?.displayName ?? "—"}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "var(--muted)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {user?.email ?? ""}
+                  </div>
                 </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--muted)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {user?.email ?? ""}
-                </div>
-              </div>
+              </Link>
               <button
                 onClick={handleSignOut}
                 disabled={signingOut}
