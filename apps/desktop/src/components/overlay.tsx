@@ -552,14 +552,248 @@ function HighlightsColumn() {
   );
 }
 
+// ── Audio config section ──────────────────────────────────────────────
+interface AudioPrerequisites {
+  platform: string;
+  available: boolean;
+  missingDriver: string | null;
+}
+
+function AudioConfigSection({
+  currentMic,
+  currentSysAudio,
+}: {
+  currentMic: string;
+  currentSysAudio: string | null;
+}) {
+  const [devices, setDevices] = useState<string[]>([]);
+  const [mic, setMic] = useState<string>(currentMic || "");
+  const [sysEnabled, setSysEnabled] = useState<boolean>(currentSysAudio !== null);
+  const [sysDevice, setSysDevice] = useState<string>(currentSysAudio ?? "");
+  const [platform, setPlatform] = useState<string | null>(null);
+  const [needsBlackHole, setNeedsBlackHole] = useState(false);
+  const [applying, setApplying] = useState(false);
+
+  useEffect(() => {
+    invoke<string[]>("list_audio_devices")
+      .then(setDevices)
+      .catch((e) => console.error("[overlay] list_audio_devices:", e));
+    invoke<AudioPrerequisites>("check_system_audio_prerequisites")
+      .then((p) => {
+        setPlatform(p.platform);
+        if (p.platform === "macos" && !p.available) setNeedsBlackHole(true);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Re-sync local state when the recording status changes
+  useEffect(() => {
+    setMic(currentMic || "");
+  }, [currentMic]);
+  useEffect(() => {
+    setSysDevice(currentSysAudio ?? "");
+    setSysEnabled(currentSysAudio !== null);
+  }, [currentSysAudio]);
+
+  const dirty =
+    (mic || null) !== (currentMic || null) ||
+    sysEnabled !== (currentSysAudio !== null) ||
+    (sysEnabled && (sysDevice || null) !== (currentSysAudio || null));
+
+  const apply = async () => {
+    if (!dirty || applying) return;
+    setApplying(true);
+    try {
+      await emit("nora://restart-recording", {
+        deviceName: mic || null,
+        captureSystemAudio: sysEnabled,
+        systemAudioDevice: sysEnabled ? sysDevice || null : null,
+      });
+    } catch (e) {
+      console.error("[overlay] emit restart failed:", e);
+    } finally {
+      // Wait for status events to ripple back before clearing
+      setTimeout(() => setApplying(false), 600);
+    }
+  };
+
+  const selectStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "5px 26px 5px 9px",
+    fontSize: 12,
+    background: "var(--canvas)",
+    border: "1px solid var(--border)",
+    borderRadius: 7,
+    color: "var(--ink)",
+    outline: "none",
+    letterSpacing: "-0.005em",
+    appearance: "none",
+    backgroundImage:
+      'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'10\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%236E7178\' stroke-width=\'2\' stroke-linecap=\'round\'><polyline points=\'6 9 12 15 18 9\'/></svg>")',
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 8px center",
+    fontFamily: "var(--sans)",
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h3
+          style={{
+            fontSize: 10.5,
+            fontWeight: 500,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--muted)",
+            margin: 0,
+          }}
+        >
+          Áudio
+        </h3>
+        {dirty && (
+          <button
+            type="button"
+            onClick={apply}
+            disabled={applying}
+            className="inline-flex items-center gap-1.5"
+            style={{
+              padding: "3px 10px",
+              background: "var(--ink)",
+              color: "var(--canvas)",
+              border: "none",
+              borderRadius: 6,
+              fontSize: 10.5,
+              fontWeight: 500,
+              letterSpacing: "-0.005em",
+              cursor: applying ? "default" : "pointer",
+              opacity: applying ? 0.55 : 1,
+              fontFamily: "var(--sans)",
+            }}
+          >
+            {applying ? (
+              <>
+                <span
+                  style={{
+                    width: 9,
+                    height: 9,
+                    border: "1.5px solid rgba(253,253,252,0.4)",
+                    borderTopColor: "var(--canvas)",
+                    borderRadius: "50%",
+                    animation: "nora-spin 0.9s linear infinite",
+                  }}
+                />
+                Reiniciando…
+              </>
+            ) : (
+              "Aplicar e reiniciar"
+            )}
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <label className="flex flex-col gap-1">
+          <span style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+            Microfone
+          </span>
+          <select
+            value={mic}
+            onChange={(e) => setMic(e.target.value)}
+            style={selectStyle}
+          >
+            <option value="">Padrão do sistema</option>
+            {devices.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+            Áudio do sistema
+          </span>
+          {sysEnabled ? (
+            <select
+              value={sysDevice}
+              onChange={(e) => setSysDevice(e.target.value)}
+              style={selectStyle}
+            >
+              <option value="">Auto-detectar monitor</option>
+              {devices.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div
+              style={{
+                ...selectStyle,
+                color: "var(--muted)",
+                background: "var(--sidebar)",
+                cursor: "default",
+                backgroundImage: "none",
+                padding: "5px 9px",
+              }}
+            >
+              Desativado
+            </div>
+          )}
+        </label>
+      </div>
+      <label className="flex items-center gap-2 cursor-pointer" style={{ fontSize: 11.5 }}>
+        <input
+          type="checkbox"
+          checked={sysEnabled}
+          onChange={(e) => setSysEnabled(e.target.checked)}
+          style={{ accentColor: "var(--accent)" }}
+        />
+        <span style={{ color: "var(--ink)" }}>Capturar áudio do sistema</span>
+      </label>
+      {needsBlackHole && platform === "macos" && (
+        <div
+          className="mt-2"
+          style={{
+            padding: "7px 10px",
+            background: "var(--accent-soft)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            fontSize: 11.5,
+            color: "var(--accent-ink)",
+            lineHeight: 1.5,
+          }}
+        >
+          No macOS, instale{" "}
+          <a
+            href="https://existential.audio/blackhole/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: "var(--accent-ink)",
+              textDecoration: "underline",
+            }}
+          >
+            BlackHole
+          </a>{" "}
+          pra capturar áudio do sistema.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Drawer (config) ────────────────────────────────────────────────────
 function ConfigDrawer({
+  currentMic,
+  currentSysAudio,
   detectedSpeakers,
   overrides,
   onRename,
   dockVisible,
   onToggleDock,
 }: {
+  currentMic: string;
+  currentSysAudio: string | null;
   detectedSpeakers: { speakerId: string; fallback: string }[];
   overrides: SpeakerMap;
   onRename: (id: string, name: string) => void;
@@ -573,13 +807,19 @@ function ConfigDrawer({
         background: "rgba(247, 247, 245, 0.92)",
         borderBottom: "1px solid var(--border)",
         padding: "12px 18px",
-        maxHeight: 220,
+        maxHeight: 280,
         animation: "overlayDrawerIn 180ms cubic-bezier(.2,.8,.2,1)",
         display: "flex",
         flexDirection: "column",
         gap: 14,
       }}
     >
+      {/* Áudio */}
+      <AudioConfigSection
+        currentMic={currentMic}
+        currentSysAudio={currentSysAudio}
+      />
+
       {/* Janelas */}
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -757,6 +997,8 @@ export function OverlayPage() {
     isRecording,
     startedAt,
     duration,
+    micDevice,
+    systemAudioDevice,
   } = useLiveTranscript();
 
   const [overrides, setOverrides] = useState<SpeakerMap>(loadOverrides);
@@ -1045,6 +1287,8 @@ export function OverlayPage() {
       {/* Drawer */}
       {drawerOpen && (
         <ConfigDrawer
+          currentMic={micDevice}
+          currentSysAudio={systemAudioDevice}
           detectedSpeakers={detectedSpeakers}
           overrides={overrides}
           onRename={renameSpeaker}

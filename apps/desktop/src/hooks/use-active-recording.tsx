@@ -180,6 +180,33 @@ export function ActiveRecordingProvider({ children }: { children: ReactNode }) {
     };
   }, [recording]);
 
+  // Listen for "restart with new audio devices" from overlay drawer
+  useEffect(() => {
+    const unlisten = listen<{
+      deviceName: string | null;
+      captureSystemAudio: boolean;
+      systemAudioDevice: string | null;
+    }>("nora://restart-recording", async (e) => {
+      const opts = e.payload;
+      if (!opts) return;
+      try {
+        // Stop current capture, give events a tick to flush, then restart.
+        await invoke("stop_recording").catch(() => {});
+        await new Promise((r) => setTimeout(r, 120));
+        await recording.startRecording({
+          deviceName: opts.deviceName,
+          captureSystemAudio: opts.captureSystemAudio,
+          systemAudioDevice: opts.systemAudioDevice,
+        });
+      } catch (err) {
+        console.error("[active-recording] restart failed:", err);
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn()).catch(() => {});
+    };
+  }, [recording]);
+
   const value: ActiveRecordingState = useMemo(
     () => ({
       isRecording: recording.isRecording,

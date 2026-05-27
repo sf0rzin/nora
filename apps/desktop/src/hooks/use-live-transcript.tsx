@@ -24,6 +24,7 @@ interface State {
   isRecording: boolean;
   startedAt: number | null;
   micDevice: string;
+  systemAudioDevice: string | null;
   sampleRate: number;
 }
 
@@ -39,6 +40,7 @@ export function useLiveTranscript() {
     isRecording: false,
     startedAt: null,
     micDevice: "",
+    systemAudioDevice: null,
     sampleRate: 0,
   });
   const wasRecordingRef = useRef(false);
@@ -85,6 +87,7 @@ export function useLiveTranscript() {
             isRecording: true,
             startedAt: Date.now(),
             micDevice: s.micDevice || "",
+            systemAudioDevice: s.systemAudioDevice ?? null,
             sampleRate: s.sampleRate || 0,
           };
         }
@@ -93,7 +96,12 @@ export function useLiveTranscript() {
           wasRecordingRef.current = false;
           return { ...prev, isRecording: false, partial: "" };
         }
-        return { ...prev, isRecording: !!s.isRecording };
+        return {
+          ...prev,
+          isRecording: !!s.isRecording,
+          micDevice: s.micDevice ?? prev.micDevice,
+          systemAudioDevice: s.systemAudioDevice ?? prev.systemAudioDevice,
+        };
       });
     });
 
@@ -107,6 +115,7 @@ export function useLiveTranscript() {
             isRecording: true,
             startedAt: prev.startedAt ?? Date.now(),
             micDevice: s.micDevice || "",
+            systemAudioDevice: s.systemAudioDevice ?? null,
             sampleRate: s.sampleRate || 0,
           }));
         }
@@ -139,6 +148,7 @@ export function useLiveTranscript() {
     startedAt: state.startedAt,
     duration,
     micDevice: state.micDevice,
+    systemAudioDevice: state.systemAudioDevice,
     sampleRate: state.sampleRate,
   };
 }
