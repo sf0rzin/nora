@@ -81,3 +81,153 @@
     transform: translateY(0) scale(1);
   }
 }
+
+/* ── Editorial UI kit (components/core/ui.tsx) — usado pelas páginas internas ──
+ * Escopado em .nora-core (as páginas renderizam dentro do shell). Substitui o
+ * visual legado slate/shadcn por tokens editoriais. */
+.nora-core .nora-h1 {
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0;
+}
+.nora-core .nora-sub {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+.nora-core .nora-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+.nora-core .nora-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.nora-core .nora-label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+.nora-core .nora-input,
+.nora-core .nora-textarea,
+.nora-core .nora-select {
+  width: 100%;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  color: var(--ink);
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 11px;
+  outline: none;
+  transition:
+    border-color 120ms,
+    box-shadow 120ms;
+}
+.nora-core .nora-textarea {
+  resize: vertical;
+  min-height: 64px;
+  line-height: 1.5;
+}
+.nora-core .nora-input:focus,
+.nora-core .nora-textarea:focus,
+.nora-core .nora-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.nora-core .nora-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background 120ms,
+    border-color 120ms,
+    opacity 120ms;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nora-core .nora-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.nora-core .nora-btn--primary {
+  background: var(--ink);
+  color: var(--canvas);
+}
+.nora-core .nora-btn--primary:hover:not(:disabled) {
+  background: #000;
+}
+.nora-core .nora-btn--ghost {
+  background: var(--canvas);
+  color: var(--ink);
+  border-color: var(--border);
+}
+.nora-core .nora-btn--ghost:hover:not(:disabled) {
+  background: var(--sidebar);
+}
+.nora-core .nora-btn--danger {
+  background: transparent;
+  color: var(--danger);
+}
+.nora-core .nora-btn--danger:hover:not(:disabled) {
+  background: oklch(0.95 0.04 25);
+}
+.nora-core .nora-btn--sm {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+.nora-core .nora-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--chip);
+  color: var(--ink);
+}
+.nora-core .nora-empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.nora-core .nora-banner {
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.nora-core .nora-banner--error {
+  border: 1px solid oklch(0.85 0.06 25);
+  background: oklch(0.96 0.03 25);
+  color: var(--danger);
+}
+.nora-core .nora-banner--ok {
+  border: 1px solid oklch(0.85 0.07 155);
+  background: oklch(0.96 0.04 155);
+  color: var(--success);
+}
