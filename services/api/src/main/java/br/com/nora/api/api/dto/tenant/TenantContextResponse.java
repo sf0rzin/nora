@@ -13,6 +13,7 @@ public record TenantContextResponse(
         List<ProductPayload> products,
         List<String> competitors,
         List<String> objectionHandling,
+        int version,
         OffsetDateTime updatedAt) {
 
     public record ProductPayload(

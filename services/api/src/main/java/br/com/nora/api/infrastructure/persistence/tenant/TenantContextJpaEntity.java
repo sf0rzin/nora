@@ -30,6 +30,10 @@ public class TenantContextJpaEntity {
     @Column(name = "updated_by")
     private UUID updatedBy;
 
+    /** Contador de versao do contexto (US31). 1 = criacao, +1 a cada save. */
+    @Column(name = "version", nullable = false)
+    private int version;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -66,6 +70,14 @@ public class TenantContextJpaEntity {
 
     public void setUpdatedBy(UUID updatedBy) {
         this.updatedBy = updatedBy;
+    }
+
+    public int getVersion() {
+        return version;
+    }
+
+    public void setVersion(int version) {
+        this.version = version;
     }
 
     public OffsetDateTime getCreatedAt() {

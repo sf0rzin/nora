@@ -34,6 +34,7 @@ public class TenantContextRepositoryAdapter implements TenantContextRepository {
         entity.setTenantId(context.tenantId());
         entity.setDocument(serialize(context));
         entity.setUpdatedBy(context.updatedBy());
+        entity.setVersion(context.version());
         entity.setUpdatedAt(context.updatedAt());
         TenantContextJpaEntity saved = jpa.save(entity);
         return toDomain(saved);
@@ -98,6 +99,7 @@ public class TenantContextRepositoryAdapter implements TenantContextRepository {
                 doc.competitors(),
                 doc.objectionHandling(),
                 e.getUpdatedBy(),
+                e.getVersion(),
                 e.getCreatedAt(),
                 e.getUpdatedAt());
     }

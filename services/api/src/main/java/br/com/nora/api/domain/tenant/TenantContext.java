@@ -24,6 +24,7 @@ public final class TenantContext {
     private final List<String> competitors;
     private final List<String> objectionHandling;
     private final UUID updatedBy;
+    private final int version;
     private final OffsetDateTime createdAt;
     private final OffsetDateTime updatedAt;
 
@@ -38,6 +39,7 @@ public final class TenantContext {
             List<String> competitors,
             List<String> objectionHandling,
             UUID updatedBy,
+            int version,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt) {
         if (id == null) {
@@ -49,6 +51,10 @@ public final class TenantContext {
         if (companyName == null || companyName.isBlank()) {
             throw new IllegalArgumentException("companyName is required");
         }
+        if (version < 1) {
+            throw new IllegalArgumentException("version must be >= 1");
+        }
+        this.version = version;
         this.id = id;
         this.tenantId = tenantId;
         this.companyName = companyName.trim();
@@ -85,11 +91,15 @@ public final class TenantContext {
                 competitors,
                 objectionHandling,
                 updatedBy,
+                1,
                 now,
                 now);
     }
 
-    /** Cria nova instancia com mesmos id/tenant/createdAt mas conteudo atualizado. */
+    /**
+     * Cria nova instancia com mesmos id/tenant/createdAt mas conteudo atualizado. A cada update o
+     * contador de versao (US31) sobe 1.
+     */
     public TenantContext withUpdates(
             String companyName,
             String industry,
@@ -110,6 +120,7 @@ public final class TenantContext {
                 competitors,
                 objectionHandling,
                 updatedBy,
+                this.version + 1,
                 this.createdAt,
                 OffsetDateTime.now());
     }
@@ -160,6 +171,10 @@ public final class TenantContext {
 
     public UUID updatedBy() {
         return updatedBy;
+    }
+
+    public int version() {
+        return version;
     }
 
     public OffsetDateTime createdAt() {
