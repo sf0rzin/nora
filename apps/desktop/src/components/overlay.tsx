@@ -1093,6 +1093,22 @@ export function OverlayPage() {
     if (isRecording && lines.length === 0) setSaveError(null);
   }, [isRecording, lines.length]);
 
+  // Sync dock visibility when changed by another window (dock's own X button)
+  useEffect(() => {
+    const unlisten = listen<{ visible: boolean }>(
+      "nora://dock-visibility-changed",
+      (e) => {
+        if (typeof e.payload?.visible === "boolean") {
+          setDockVisible(e.payload.visible);
+          saveDockPref(e.payload.visible);
+        }
+      },
+    );
+    return () => {
+      unlisten.then((fn) => fn()).catch(() => {});
+    };
+  }, []);
+
   const renameSpeaker = (speakerId: string, name: string) => {
     setOverrides((prev) => {
       const next = { ...prev, [speakerId]: name };
