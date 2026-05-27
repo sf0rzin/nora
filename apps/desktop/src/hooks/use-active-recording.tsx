@@ -10,6 +10,7 @@ import {
 } from "react";
 import { emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useRecording } from "./use-recording";
 import { useTauriListener } from "./use-tauri-listener";
 
@@ -160,16 +161,25 @@ export function ActiveRecordingProvider({ children }: { children: ReactNode }) {
     invoke("toggle_overlay", { show: false }).catch(() => {});
   }, [persistMeta, recording]);
 
-  // When a save succeeds, navigate the main window to the new meeting and clear meta
+  // When a save succeeds (incluindo retries que rodam fora do stopAndSave —
+  // ex.: retry-worker, save manual), garante navegação + cleanup. O
+  // stopAndSave path principal já faz tudo isso explicitamente, mas como
+  // saveMeeting pode ser invocado por outros caminhos (worker, retry-save
+  // listener), este effect cobre os outros casos. As ops são idempotentes:
+  // persistMeta(null) sobre null é no-op; setIsFinishing(false) sobre false
+  // idem; navegação é a mesma URL.
+  //
+  // Window detection via getCurrentWebviewWindow().label em vez de
+  // window.location.pathname — pathname pode variar entre dev/prod ou se a
+  // entrada da janela main muda (ex: /index.html vs /).
   useEffect(() => {
-    if (recording.savedMeetingId) {
-      // Only on main window — overlay shouldn't change hash
-      if (typeof window !== "undefined" && window.location.pathname === "/") {
-        window.location.hash = `#/meetings/${recording.savedMeetingId}`;
-      }
-      persistMeta(null);
-      setIsFinishing(false);
+    if (!recording.savedMeetingId) return;
+    const win = getCurrentWebviewWindow();
+    if (win.label === "main") {
+      window.location.hash = `#/meetings/${recording.savedMeetingId}`;
     }
+    persistMeta(null);
+    setIsFinishing(false);
   }, [recording.savedMeetingId, persistMeta]);
 
   // Listen for stop signal from overlay
