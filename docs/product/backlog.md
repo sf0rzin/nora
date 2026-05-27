@@ -6,6 +6,8 @@
 >
 > **Reconciliado 2026-05-21 (pós-PR #148):** Customer Confidence (US48-49) passou de PARTIAL → **DONE** full-stack. O audit `2026-05-13` (e a reconciliação doc×código de 2026-05-21 que o precedeu no mesmo dia) foram escritos **antes** do #148 mergear; este doc reflete o estado pós-merge.
 >
+> **Reconciliado 2026-05-27 (Sub-fase Solidify, branch `claude/dev-solidify`):** US25, US31 (V018), US33, US34 e US43 passaram de MISSING → **DONE**; US18 ganhou busca server-side no command palette. **ADR 0022** reverteu o defer do ADR 0014 (§5) — o escopo documentado completo voltou a ser ativo. Migration mais recente é **V018**. Honestidade de UI + identidade/RBAC (`/auth/me`, `/iam/users`, UC17, gating de nav admin) catalogados na §3.
+>
 > Pra entender o histórico de execução das sub-fases que entregaram cada status, ver `docs/product/roadmap.md`.
 
 ---
@@ -74,7 +76,7 @@
 |---|---|---|---|---|---|
 | US16 | Painel cronológico de reuniões | M | DONE | `MeetingsController.list` · `apps/web/src/app/(app)/dashboard/page.tsx` | — |
 | US17 | Detalhe de uma reunião | M | DONE | `MeetingsController.get` · `apps/web/src/app/(app)/meetings/[id]/page.tsx` | — |
-| US18 | Busca por palavra-chave/período | M | DONE | `list` aceita `search`, `from`, `to` (`MeetingsController.java:140-145`) | — |
+| US18 | Busca por palavra-chave/período | M | DONE | `list` aceita `search`, `from`, `to` (`MeetingsController.java:140-145`). Busca server-side ligada ao command palette do shell Core (`apps/web/src/components/core/core-shell.tsx`) — Sub-fase Solidify (2026-05-27) | — |
 | US19 | Visibilidade escopo-restrita por IAM | M | DONE | `AuthorizationService.isAllowed` + `IamScopingIntegrationTest` · PR #35 | `PolicyEvaluator` suporta `StringEquals`/`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan` (Sub-fase 1.11c) |
 | US20 | Root vê tudo do tenant | M | DONE | Bypass em `AuthorizationService` · `PolicyEvaluator.java:14` | — |
 | US21 | Painel de tendências (temas + carga tarefas) | C | MISSING | Sem endpoint nem componente | Deferido em bloco via ADR 0014. Reativar quando US15 ligada (depende de embeddings/análise temporal) |
@@ -86,7 +88,7 @@
 | US22 | Lista consolidada de tarefas | M | DONE | `TasksController.list` · `apps/web/src/app/(app)/tasks/page.tsx` | — |
 | US23 | Marcar tarefa como concluída | M | DONE | `TasksController.update` (linha 53-77) | — |
 | US24 | Editar texto de tarefa | S | DONE | `update` aceita `title` | — |
-| US25 | Exportar tarefas em CSV/MD | S | MISSING | Sem endpoint | Deferido em bloco via ADR 0014. Reativar quando feedback de pilots indicar uso fora do app |
+| US25 | Exportar tarefas em CSV/MD | S | DONE | Export client-side (CSV + Markdown) em `apps/web/src/app/(app)/tasks/page.tsx` · Sub-fase Solidify (2026-05-27) — desbloqueado por ADR 0022 | — |
 | US26 | Data limite em tarefa | C | **PARTIAL** | Coluna `due_date` em migration V005:82 | UI de seleção de data não inspecionada (PARTIAL conservador) |
 
 ### E6 — Integrações MCP
@@ -102,10 +104,10 @@
 | ID | Título | MoSCoW | Status | Evidência | Débito conhecido |
 |---|---|---|---|---|---|
 | US30 | Configurar contexto da empresa | M | DONE | `TenantContextController` · migration V005 · PR #33 | — |
-| US31 | Histórico de versões do contexto da empresa | S | MISSING | V005 só tem `created_at`/`updated_at`. `data-model.md` previu coluna `version` mas migration não inclui | Débito: migration V014 trivial (S). Deferido em bloco via ADR 0014. Reativar antes de prod GA (compliance LGPD precisa) |
+| US31 | Histórico de versões do contexto da empresa | S | DONE | Migration **V018** adiciona coluna `version` (contador incremental, +1 por save) em `tenant_contexts` + UI · Sub-fase Solidify (2026-05-27) — desbloqueado por ADR 0022 | Contador de versão (não histórico completo de diffs). Audit trail granular fica pra prod GA se LGPD exigir |
 | US32 | Domínio corporativo do tenant | M | DONE | `TenantController.updateDomain` · migration V009 · ADR 0011 · PR #55 | — |
-| US33 | Métricas de uso do tenant | S | MISSING | Sem endpoint | Deferido em bloco via ADR 0014. Reativar quando 5+ tenants ativos em pilot pagar pra ver ROI |
-| US34 | Export relatório consolidado do período | S | MISSING | Sem endpoint | Deferido em bloco via ADR 0014. Reativar quando US33 entregue (dependência de agregações) |
+| US33 | Métricas de uso do tenant | S | DONE | `GET /tenant/metrics` (`TenantController.java:47` + `MetricsService`) · strip de métricas no dashboard · Sub-fase Solidify (2026-05-27) — desbloqueado por ADR 0022 | — |
+| US34 | Export relatório consolidado do período | S | DONE | Export do relatório da reunião em Markdown client-side (`apps/web/src/app/(app)/meetings/[id]/ExportReportButton.tsx`) · Sub-fase Solidify (2026-05-27) — desbloqueado por ADR 0022 | Export do relatório por reunião (não agregação consolidada multi-reunião do período) |
 
 ### E8 — IAM Enterprise (estilo AWS)
 
@@ -119,7 +121,7 @@
 | US40 | Audit log IAM | M | DONE | `IamController.listAudit` · tabela `iam_audit_events` em V006 | Audit log de auth (login/logout/refresh) ausente — pattern atual é IAM-only |
 | US41 | Templates de policy | S | MISSING | Sem endpoint. Coluna `is_template` não em V006 | Deferido em bloco via ADR 0014. Reativar quando >3 tenants pedirem onboarding rápido |
 | US42 | Editor visual de policy (form-based) | S | **PARTIAL** | Monaco JSON em `apps/web/src/components/.../policy-editor.tsx` (PR #55). É JSON com syntax highlighting + schema validation, não form-based | Reativar form-based quando US43 (simulator) estiver online — usabilidade aumenta junto |
-| US43 | Simulador de policy ("pode user X fazer Y em Z?") | S | MISSING | Sem endpoint | Deferido em bloco via ADR 0014. Reativar antes do primeiro pilot pago — sem isso, debug de policies é cego |
+| US43 | Simulador de policy ("pode user X fazer Y em Z?") | S | DONE | `POST /iam/policies/simulate` (`IamController.java:181` → `SimulateRequest`/`SimulateResponse`) · Sub-fase Solidify (2026-05-27) — desbloqueado por ADR 0022 | — |
 | US44 | Permission boundaries | C | MISSING | Sem código | Deferido em bloco via ADR 0014. Reativar quando hierarquia organizacional + delegação de IAM virar necessidade (provavelmente Pilot+1) |
 
 ### E9 — Produtividade da Reunião
@@ -180,51 +182,68 @@ Frente de segurança/infra que entrou após a Sub-fase 1.10, rotulada "audit fol
 | Composite FK isolamento `meetings.(tenant_id,owner_user_id)→users` | #137 | V015 | DONE |
 | **Row-Level Security** (`tenant_isolation` + `TenantRlsAspect`) | #138 | V016 | DONE (enforce opt-in; era item da 1.12) |
 
+### Sub-fase Solidify (2026-05-27) — honestidade de UI + identidade/RBAC
+
+Varredura de solidez sobre `claude/dev-solidify`: alinhar a UI ao que de fato existe e fechar US `S` baratas que estavam só esperando o defer cair. **ADR 0022** reverteu o defer do ADR 0014 (escopo documentado volta a ser ativo); os itens abaixo são os efetivamente **construídos** nesta varredura — o restante do escopo do 0014 segue pendente (ver §5).
+
+| Item | Migration | Status |
+|---|---|---|
+| Honestidade da landing/auth: remoção de botões SSO mortos, logos de clientes falsos, seletor de papel morto e links de footer mortos; páginas reais `/legal/termos` + `/legal/privacidade`; política de senha unificada (mín. 10 + letra + dígito); `NEXT_PUBLIC_USE_MOCKS=false` default; MCP marcado "Em breve" | — | DONE |
+| Identidade: `GET /auth/me` (retorna `isRoot`, `tenantName`, `plan`); `isRoot` no `LoginResponse`; shell web restringe nav admin (IAM, Contexto) só pro Root; badge "Core" enganoso removido | — | DONE |
+| `GET /iam/users` (lista usuários do tenant) — base do UC17 | — | DONE |
+| UC17 gestão de usuários: página IAM lista usuários + dropdowns de seleção (fim do paste de UUIDs) | — | DONE |
+| Auto-refresh do detalhe da reunião enquanto processa + botão "Reprocessar"; nav mobile pro shell Core | — | DONE |
+| Editorial UI kit (`apps/web/src/components/core/ui.tsx`) + todas as páginas internas portadas do legacy slate/shadcn pra ele | — | DONE |
+| `infra/AZURE-PROVISIONING.md` (setup flag-gated de SSO/pgvector-search/áudio) | — | DONE |
+| **ADR 0022** criado (substitui ADR 0014 — desfaz o defer do escopo documentado completo) | — | DONE |
+
+> US fechadas nesta varredura (refletidas na §2): US25, US31 (V018), US33, US34, US43. US18 ganhou busca server-side no command palette.
+
 ---
 
-## 4. Resumo do Estado (2026-05-14)
+## 4. Resumo do Estado (atualizado 2026-05-27, pós Sub-fase Solidify)
 
 | MoSCoW | Total | DONE | PARTIAL | MISSING |
 |---|---|---|---|---|
 | **Must Have (M)** | 31 | **29** | **0** | **2** (US05*, US08*) |
-| **Should Have (S)** | 15 | **6** | **2** (US13, US42) | **7** (US15, US25, US31, US33, US34, US41, US43) |
+| **Should Have (S)** | 15 | **11** | **2** (US13, US42) | **2** (US15, US41) |
 | **Could Have (C)** | 5 | — | **1** (US26) | **4** (US21, US44, etc) |
 | **Won't Have v1 (W)** | 7 | **1** (US09) | — | **6** |
-| **Total** | **58** | **36** | **3** | **19** |
+| **Total** | **58** | **41** | **3** | **14** |
 
-> *US05 e US08 são `M` no MoSCoW original mas foram **rebatizadas como W via decisão de escopo** (CLAUDE.md + PROJECT.md). Aqui contam como MISSING/W na prática.
+> *US05 e US08 são `M` no MoSCoW original mas foram **rebatizadas como W via decisão de escopo** (CLAUDE.md). Seguem **MISSING** na prática — ADR 0022 reativou-as como escopo, mas ainda não foram construídas.
 
 **Cobertura efetiva do MVP** (M + S desejáveis pra demo):
-- Must Have entregue: **29 de 31** (94%) — Customer Confidence (US48-49) shipou full-stack em #148; restam só US05/US08 (rebatizadas W)
-- Should Have entregue: **8 de 14** (57%) — gap principal é exportação, métricas tenant, simulator de policy
+- Must Have entregue: **29 de 31** (94%) — Customer Confidence (US48-49) shipou full-stack em #148; restam só US05/US08 (rebatizadas W, ainda não construídas)
+- Should Have entregue: **13 de 15** (87%) — Sub-fase Solidify (2026-05-27) fechou US25 (export tarefas), US31 (versão de contexto), US33 (métricas tenant), US34 (export relatório) e US43 (policy simulator). Restam US15 (busca semântica) e US41 (templates de policy)
 
 **Frentes que destacam o produto além do MoSCoW** (12 itens): Productivity Score full-stack, PII PERSON_NAME, Bicep IaC, deploy real Azure, dataset sintético + notebook DS, refresh tokens, Live analysis, redesign visual.
 
 ---
 
-## 5. Decisão "Deferir Pós-MVP" — ADR 0014
+## 5. Decisão "Deferir Pós-MVP" — ADR 0014 (**revertida por ADR 0022 em 2026-05-27**)
 
-> Aprovada em bloco pela Stratfy em 2026-05-14. Esta decisão fecha 14 US como **Won't Have v1** com critério de reativação documentado.
+> **⚠️ Atualização (2026-05-27):** o **ADR 0022** reverteu o defer do ADR 0014. As US abaixo voltaram a ser **escopo ativo** (construir de verdade, em fatias sólidas, respeitando o orçamento Azure for Students). Os critérios de reativação abaixo viraram **histórico**. Coluna "Construída?" reflete o que já saiu na Sub-fase Solidify (2026-05-27); o resto segue **pendente** (a construir, não mais deferido).
+>
+> *Texto original (2026-05-14):* Aprovada em bloco pela Stratfy em 2026-05-14, esta decisão fechava 14 US como **Won't Have v1** pra liberar foco em Sub-fase 1.11 (Demo Polish) e 1.12 (Production Hardening).
 
-**Critério geral:** as 14 US abaixo são adiadas pra liberar foco em Sub-fase 1.11 (Demo Polish Plano A) e 1.12 (Production Hardening). Nenhuma bloqueia o pitch FIAP × TOTVS (12/06/2026) nem o Plano A imediato.
+| US | Título | Construída? | Critério de reativação (histórico, ADR 0014) |
+|---|---|---|---|
+| US05 | SSO Entra ID/SAML | ❌ pendente | Quando primeiro tenant Enterprise pago exigir explicitamente (sinal comercial concreto) |
+| US08 | Upload de áudio/vídeo | ❌ pendente | Quando demanda repetida em pilot indicar (>30% dos uploads são áudio) ou Azure Speech batch ficar barato (R$5/h) |
+| US15 | Busca semântica por embeddings (condicional) | ❌ pendente | Quando volume por tenant >500 reuniões e usuários reclamarem que keyword search não encontra. Strategy "ligar AI Search 14 dias antes do pitch" continua válida |
+| US21 | Painel de tendências (temas + carga tarefas) | ❌ pendente | Depois de US15 ligada. Sem embeddings/análise temporal o painel é raso |
+| US25 | Export CSV/MD de tarefas | ✅ Solidify (2026-05-27) | Quando feedback de pilot indicar uso fora do app (>2 tenants pedindo) |
+| US31 | Histórico de versões do contexto da empresa | ✅ Solidify (V018) | Antes de prod GA — compliance LGPD precisa de audit trail no contexto |
+| US33 | Métricas de uso por tenant | ✅ Solidify (2026-05-27) | Quando 5+ tenants pagantes em pilot — sem dados de base não vale construir |
+| US34 | Export relatório consolidado | ✅ Solidify (2026-05-27) | Junto com US33 (dependência de agregações) |
+| US41 | Templates de policy | ❌ pendente | Quando >3 tenants pedirem onboarding rápido com policies pré-feitas |
+| US43 | Simulador de policy | ✅ Solidify (2026-05-27) | **Antes** do primeiro pilot pago — sem isso, debug de policies é cego |
+| US44 | Permission boundaries | ❌ pendente | Quando hierarquia organizacional + delegação de IAM virar necessidade real (Pilot+1) |
+| US47 | MCP project state | ❌ pendente | Quando primeiro tenant pedir integração Jira/Linear pra Productivity Score |
+| **US50-51** | **Account Health agregado + alertas** | ❌ pendente | US48-49 (Customer Confidence por reunião) shipou em #148 via ADR 0015. O conjunto **agregado** (Account Health Score temporal + alertas de banda) ainda não construído |
 
-| US | Título | Critério de reativação |
-|---|---|---|
-| US05 | SSO Entra ID/SAML | Quando primeiro tenant Enterprise pago exigir explicitamente (sinal comercial concreto) |
-| US08 | Upload de áudio/vídeo | Quando demanda repetida em pilot indicar (>30% dos uploads são áudio) ou Azure Speech batch ficar barato (R$5/h) |
-| US15 | Busca semântica por embeddings (condicional) | Quando volume por tenant >500 reuniões e usuários reclamarem que keyword search não encontra. Strategy "ligar AI Search 14 dias antes do pitch" continua válida |
-| US21 | Painel de tendências (temas + carga tarefas) | Depois de US15 ligada. Sem embeddings/análise temporal o painel é raso |
-| US25 | Export CSV/MD de tarefas | Quando feedback de pilot indicar uso fora do app (>2 tenants pedindo) |
-| US31 | Histórico de versões do contexto da empresa | Antes de prod GA — compliance LGPD precisa de audit trail no contexto. Migration trivial (V014) |
-| US33 | Métricas de uso por tenant | Quando 5+ tenants pagantes em pilot — sem dados de base não vale construir |
-| US34 | Export relatório consolidado | Junto com US33 (dependência de agregações) |
-| US41 | Templates de policy | Quando >3 tenants pedirem onboarding rápido com policies pré-feitas |
-| US43 | Simulador de policy | **Antes** do primeiro pilot pago — sem isso, debug de policies é cego. Probabilidade alta de subir na 1.11 |
-| US44 | Permission boundaries | Quando hierarquia organizacional + delegação de IAM virar necessidade real (Pilot+1) |
-| US47 | MCP project state | Quando primeiro tenant pedir integração Jira/Linear pra Productivity Score |
-| **US50-51** | **Account Health agregado + alertas** | US48-49 (Customer Confidence por reunião) shipou em #148 via ADR 0015. O conjunto **agregado** (Account Health Score temporal + alertas de banda) segue deferido: pós-pilot quando 3+ tenants tiverem >10 reuniões pra agregar |
-
-> Critério de reativação por US é descritivo, não bloqueante. Sub-fase 1.13+ pode pegar qualquer um se contexto justificar.
+> Pós-ADR 0022, os critérios viraram histórico: as US pendentes são priorizadas por valor de demo × viabilidade × dependências, não mais por gate comercial.
 
 ---
 

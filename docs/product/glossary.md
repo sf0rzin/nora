@@ -11,13 +11,15 @@
 
 ## A
 
+**/auth/me** — Endpoint `GET /auth/me` (Sub-fase Solidify, 2026-05-27) que retorna a identidade autoritativa do usuário autenticado: `isRoot`, `tenantName` e `plan`. Fonte de verdade pro front decidir o que mostrar (ex.: o shell web restringe a nav admin — IAM, Contexto — só pro Root). DTO `MeResponse` (`services/api/.../api/dto/auth/MeResponse.java`); lógica em `AuthService`. Complementa o `isRoot` agora também presente no `LoginResponse`.
+
 **Account Health Score** — Score agregado por **conta** (não por reunião), expressando saúde temporal do relacionamento com cliente/lead Enterprise. Escala 0-100 com bandas `AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`. Calculado a partir de Customer Confidence + riscos + oportunidades. ADR 0006 aceito; implementação adiada via ADR 0014 (defer post-MVP). Reativação: pós-pilot com 3+ tenants tendo >10 reuniões por conta.
 
 **Action Item** — Tarefa extraída automaticamente de reunião pelo LLM. Campos: `title`, `assignee` (opcional), `dueDate` (opcional), `priority` (`LOW`/`MEDIUM`/`HIGH`), `sourceQuote` (citação textual da fonte). Mostrada no painel `tasks/` e no detalhe da reunião. Editável pelo usuário (US24).
 
 **ADR** — Architecture Decision Record. Decisão técnica durável + contexto + alternativas consideradas. **Imutável** uma vez aceita — sucessor cria novo ADR, não edita o antigo. Formato MADR enxuto (Status / Data / Decisores / Contexto / Decisão / Consequências / Alternativas). Em `docs/adr/`. Índice: `docs/adr/README.md`.
 
-**AUTH_FILTER_HARD_CAP** — Constante `500` em `MeetingsController.java:67` que limita quantas reuniões são carregadas em memória antes da filtragem IAM. Débito conhecido **ainda aberto** (2026-05-21): tenants com >500 reuniões têm páginas vazias e `totalItems` truncado. Fix era alvo da Sub-fase 1.11 (não iniciada) via empurrar predicado IAM pra SQL (JSONB GIN em `meeting_attributes`).
+**AUTH_FILTER_HARD_CAP** — (Histórico) constante `500` que limitava quantas reuniões eram carregadas em memória antes da filtragem IAM. **Resolvido** na Sub-fase 1.11b (2026-05-23): o teto silencioso foi removido — `MeetingService.listAllForAuthFilter` varre em lotes antes do filtro IAM, então tenants com >500 reuniões não têm mais páginas vazias nem `totalItems` truncado. Pushdown do predicado IAM pra SQL (JSONB GIN em `meeting_attributes`) fica como otimização de performance futura.
 
 ## B
 
@@ -33,11 +35,11 @@
 
 **Container Apps** — Serviço Azure usado pra hospedar `nora-api-dev`, `nora-worker-dev` e `nora-web-dev`. Ambiente único `nora-cae-dev`. Worker é internal-only (não exposto ingressante).
 
-**Conditions** — Em IAM Policy, regras opcionais que restringem quando um statement Allow/Deny aplica. Formato AWS-style: `{ "stringEquals": { "nora:Department": "sales" } }`. PolicyEvaluator atual suporta só `StringEquals`; `StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan` planejados pra Sub-fase 1.11. Operadores não-suportados resultam em `false` (fail-closed).
+**Conditions** — Em IAM Policy, regras opcionais que restringem quando um statement Allow/Deny aplica. Formato AWS-style: `{ "stringEquals": { "nora:Department": "sales" } }`. PolicyEvaluator suporta `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan` e `DateLessThan` (expandido na Sub-fase 1.11c, 2026-05-23). Operadores não-suportados (e atributos ausentes no contexto) resultam em `false` (fail-closed).
 
 **Coverage** — (1) Em **Productivity Score**, status de cada `expectedOutcome` declarado pelo usuário: `ADDRESSED` (cobriu integralmente) / `PARTIAL` (cobriu parcialmente) / `MISSED` (não cobriu). Cada um com evidência textual (`sourceQuote`). (2) Em **testes**, percentual de código exercitado pelos testes — worker NLP 87%, backend Spring 67%, web 0% (sem runner).
 
-**Customer Confidence** — Score 0-100 da **confiança do cliente/lead na NORA do tenant** (não a nossa confiança no cliente). Por reunião. Combina sentimento + sinais de compra (`buyingSignals`) + objeções (`objections`) + tendência em relação à última reunião da mesma conta. Banda `LOW`/`MEDIUM`/`HIGH`. Tendência `IMPROVING`/`STABLE`/`DECLINING`. ADR 0006 aceito; schema LLM existe; persistência adiada (US48-49 PARTIAL); ADR 0015 (Sub-fase 1.11) decide entre implementar mínimo viável vs remover da landing.
+**Customer Confidence** — Score 0-100 da **confiança do cliente/lead na NORA do tenant** (não a nossa confiança no cliente). Por reunião. Combina sentimento + sinais de compra (`buyingSignals`) + objeções (`objections`) + tendência em relação à última reunião da mesma conta. Banda `LOW`/`MEDIUM`/`HIGH`. Tendência `IMPROVING`/`STABLE`/`DECLINING`. **Implementado full-stack** (US48-49 DONE) em PR #148 via ADR 0015: migration V017 (5 tabelas com RLS) + worker emite `customerConfidence` + backend persiste com trend autoritativo por conta + `GET /meetings/{id}` retorna o bloco + `CustomerConfidenceCard` no detalhe. Account Health **agregado** (US50-51) segue pendente.
 
 ## D
 
@@ -59,7 +61,7 @@
 
 **Federated Credential** — Mecanismo OIDC do Azure pra autenticar GitHub Actions sem armazenar client secret. Service Principal `sp-nora-github-deploy` tem 3 credenciais federadas separadas: (main) / (pull_request) / (environment:dev). Lição: precisa fed cred por par (branch, environment).
 
-**Flyway** — Ferramenta de migrations SQL versionadas. Migrations em `services/api/src/main/resources/db/migration/V001__*.sql` até V012 (em 2026-05-14). Cada migration é imutável após mergeada em main.
+**Flyway** — Ferramenta de migrations SQL versionadas. Migrations em `services/api/src/main/resources/db/migration/V001__*.sql` até **V018** (em 2026-05-27). Cada migration é imutável após mergeada em main.
 
 ## G
 
@@ -126,7 +128,9 @@ Internal-only — só backend Spring fala com ele. Hosted em `nora-worker-dev` (
 
 **PII Shield** — Sistema do worker NLP que detecta e redige PII **antes** de mandar texto pra LLM externo. Substitui por placeholders `[[TIPO_N]]` (e.g., `[[EMAIL_1]]`, `[[CPF_2]]`). Pós-LLM o backend pode unredact se autorizado. ADR 0012. Implementação em `services/nlp-worker/src/.../pii_shield.py` (95% coverage).
 
-**PolicyEvaluator** — Componente Spring em `services/api/src/main/java/.../PolicyEvaluator.java` que recebe um conjunto de policies + contexto (user, action, resource, attributes) e retorna `Allow` / `Deny`. Implementa Deny-first eval. Operador suportado hoje: `StringEquals`. Operadores planejados pra 1.11: `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan`. Cobertura 95.8% instr / 84% branches.
+**Policy Simulator** — Endpoint `POST /iam/policies/simulate` (`IamController.java:181`, Sub-fase Solidify 2026-05-27, US43) que responde "pode o user X fazer a action Y no recurso Z?" sem aplicar nada — roda o `PolicyEvaluator` sobre as policies efetivas do principal e devolve `Allow`/`Deny` (DTOs `SimulateRequest`/`SimulateResponse`). Ferramenta de debug de policies antes do primeiro pilot.
+
+**PolicyEvaluator** — Componente Spring em `services/api/src/main/java/.../PolicyEvaluator.java` que recebe um conjunto de policies + contexto (user, action, resource, attributes) e retorna `Allow` / `Deny`. Implementa Deny-first eval. Operadores de condition suportados: `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (expandido na Sub-fase 1.11c). Operador desconhecido e atributo ausente são fail-closed. Cobertura 95.8% instr / 84% branches.
 
 **Productivity Score** — Score 0-100 da **reunião contra o objetivo declarado** pelo próprio usuário (não benchmark externo). **Opt-in** por reunião — sem `MeetingGoal` não calcula. Banda `LOW`/`MEDIUM`/`HIGH`. ADR 0005. Implementação full-stack: V012 + worker (model + stub + LLM) + backend Spring + web (`MeetingGoalForm`, `MeetingProductivitySection`, `ProductivityScoreCard`).
 
@@ -158,7 +162,7 @@ Internal-only — só backend Spring fala com ele. Hosted em `nora-worker-dev` (
 
 **Tenant** — Cliente/organização que usa o NORA. Isolamento total garantido por `tenant_id` em todas as tabelas tenant-owned. Cada tenant tem seus próprios Users, Meetings, Tasks, IAM Policies, Tenant Context, Refresh Tokens, Audit Events.
 
-**Tenant Context** — Configuração por tenant que ensina o NORA o "vocabulário da empresa". Campos: nome da empresa, produtos, glossário, concorrentes, stakeholders. Injetado no prompt do LLM em toda análise. Editado via `TenantContextController`. Migration V005. US31 (histórico de versões) ainda MISSING.
+**Tenant Context** — Configuração por tenant que ensina o NORA o "vocabulário da empresa". Campos: nome da empresa, produtos, glossário, concorrentes, stakeholders. Injetado no prompt do LLM em toda análise. Editado via `TenantContextController`. Migration V005. US31 (contador de versão, +1 por save) entregue na Sub-fase Solidify via migration V018.
 
 **TF-IDF baseline** — Term Frequency × Inverse Document Frequency. Algoritmo clássico de NLP que extrai termos importantes de um documento comparando frequência local vs corpus. Package `packages/nlp-baseline/` extrai termos relevantes pré-LLM (interpretável e barato). ADR 0010.
 
@@ -170,7 +174,7 @@ Internal-only — só backend Spring fala com ele. Hosted em `nora-worker-dev` (
 
 ## V
 
-**V001 - V016** — Migrations Flyway atuais (até 2026-05-21). Cada uma idempotente e imutável, numeração sequencial. V013 = soft-delete, V014 = refresh-token rotation, V015 = composite FK de isolamento, V016 = Row-Level Security. **Nota:** o ADR 0015 reservara "V013" para Customer Confidence, mas o slot virou soft-delete e a persistência de Customer Confidence segue inexistente.
+**V001 - V018** — Migrations Flyway atuais (até 2026-05-27). Cada uma idempotente e imutável, numeração sequencial. V013 = soft-delete, V014 = refresh-token rotation, V015 = composite FK de isolamento, V016 = Row-Level Security, V017 = Customer Confidence (5 tabelas), V018 = contador de versão do contexto do tenant (US31). **Nota:** o ADR 0015 reservara "V013" para Customer Confidence, mas o slot virou soft-delete e a persistência de Customer Confidence acabou shipando como **V017** (PR #148).
 
 ## W
 
@@ -192,3 +196,4 @@ Implementado em PolicyEvaluator com glob-style matching.
 | Versão | Data | Descrição |
 |---|---|---|
 | 1.0 | 2026-05-14 | **Criação inicial**. Glossário canônico cobrindo termos de produto (Customer Confidence, Productivity Score, Account Health, MoSCoW, Tenant), arquitetura (DDD, RAG, JSON Schema strict, Multi-tenancy, RLS), IAM (IAM AWS-style, Effect, Conditions, Wildcard, Deny-first eval, PolicyEvaluator), infra Azure (Container Apps, Key Vault, UAI, OIDC, Soft-delete, Service Principal, rg-nora-dev), implementação (NlpWorker, PII Shield, TF-IDF baseline, packages/nlp-baseline, Speech Token Broker, Refresh token), e processo (ADR, Sub-fase, Flyway/V001-V012, BlackHole, AUTH_FILTER_HARD_CAP). 50+ termos no total |
+| 1.1 | 2026-05-27 | **Sub-fase Solidify.** Correções de notas obsoletas: AUTH_FILTER_HARD_CAP resolvido (1.11b), Conditions/PolicyEvaluator expandidos pra `StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan` (1.11c), Customer Confidence agora DONE full-stack (#148), migrations atualizadas pra V001-V018, Tenant Context com contador de versão (V018). Novos termos: `/auth/me`, Policy Simulator |

@@ -61,20 +61,22 @@ O NORA é uma plataforma com dois planos que compartilham o mesmo motor de IA e 
 
 ---
 
-## 3. Estado Atual (2026-05-21)
+## 3. Estado Atual (2026-05-27)
 
 O NORA não está mais em fase de scaffolding nem de Sprint 1+2 puro de documentação. **Está deployado em Azure** e operacional ponta-a-ponta nos fluxos centrais do MVP:
 
 - Web em produção dev: <https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io>
 - 14 recursos Azure provisionados no `rg-nora-dev` (centralus): Container Apps Env, 3 Container Apps (web + api + worker), Postgres Flexible, Key Vault, Storage Account, App Insights, Log Analytics, Azure Speech, 3 User-Assigned Identities (api/worker/web), e federated credentials no SP `sp-nora-github-deploy`
 - Pipeline `build-images.yml` publicando 3 imagens reais no GHCR (`ghcr.io/sys0xff/nora-{api,worker,web}`); deploy via `deploy-infra.yml` com OIDC
-- IAM AWS-style operacional: Users + Groups + Policies + audit log com versionamento imutável de policies. PolicyEvaluator avalia `StringEquals` em produção; expansão para `StringIn`/`StringLike`/`DateGreaterThan` planejada pra Sub-fase 1.11
+- IAM AWS-style operacional: Users + Groups + Policies + audit log com versionamento imutável de policies. PolicyEvaluator avalia `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan` e `DateLessThan` (expandido na Sub-fase 1.11c); simulador de policy via `POST /iam/policies/simulate` (US43)
 - Productivity Score full-stack (ADR 0005): backend Spring + worker NLP + web 3 componentes (`MeetingGoalForm`, `MeetingProductivitySection`, `ProductivityScoreCard`)
 - PII Shield expandido: além de email/CPF/CNPJ/phone/credit card, cobre **PERSON_NAME (BR)** com lista de ~270 nomes brasileiros + negative list (ADR 0012)
 - Pipeline LLM agnóstico (ADR 0004): default OpenAI `gpt-4o-mini`, schema strict via `response_format=json_schema`
 - Cobertura: worker NLP 87% (54 testes), backend Spring 67% (174 testes), web Next.js 0% (sem runner — débito pra 1.12)
 
-21 ADRs (0001–0021; ADRs 0013 e 0016 ainda em estado *Proposto* aguardando refino de design / Sub-fase 1.12) documentam as decisões duráveis. **Customer Confidence foi implementado full-stack** em **PR #148 (2026-05-21)** via ADR 0015: migration V017 (5 tabelas), worker emite o bloco `customerConfidence`, backend persiste no pipeline com trend autoritativo por conta, `GET /meetings/{id}` retorna o bloco e o `CustomerConfidenceCard` aparece no detalhe da reunião — resolvendo a dívida narrativa da landing. Account Health **agregado** (US50-51) segue deferido (ADR 0014). Já uma onda de hardening pós-1.10 (#114–#138) entregou RLS (V016), soft-delete (V013), refresh-token rotation (V014) e FK composta de isolamento (V015) — documentados em ADR 0019/0020/0021.
+22 ADRs (0001–0022; ADRs 0013 e 0016 ainda em estado *Proposto* aguardando refino de design / Sub-fase 1.12) documentam as decisões duráveis. **Customer Confidence foi implementado full-stack** em **PR #148 (2026-05-21)** via ADR 0015: migration V017 (5 tabelas), worker emite o bloco `customerConfidence`, backend persiste no pipeline com trend autoritativo por conta, `GET /meetings/{id}` retorna o bloco e o `CustomerConfidenceCard` aparece no detalhe da reunião — resolvendo a dívida narrativa da landing. Account Health **agregado** (US50-51) segue pendente (a construir). Já uma onda de hardening pós-1.10 (#114–#138) entregou RLS (V016), soft-delete (V013), refresh-token rotation (V014) e FK composta de isolamento (V015) — documentados em ADR 0019/0020/0021.
+
+Na **Sub-fase Solidify (2026-05-27)** a landing/auth deixou de prometer o que não existia (removidos botões SSO mortos, logos falsos, seletor de papel e links de footer mortos; MCP marcado "Em breve") e o **ADR 0022** reverteu o defer do ADR 0014, reabrindo o escopo documentado completo como ativo (sob a restrição "viável no Azure for Students"). A própria varredura já entregou de verdade: identidade `GET /auth/me` (`isRoot`/`tenantName`/`plan`) + gating de nav admin ao Root, UC17 (gestão de usuários), US18 (busca server-side no command palette), US25/US34 (exports), US33 (métricas tenant), US43 (policy simulator) e US31 (versão do contexto, V018). Segue pendente (reaberto, a construir): SSO US05, Account Health US50-51, busca semântica US15, upload de áudio US08, MCP US27-29/US47, templates de policy US41, permission boundaries US44, painel de tendências US21, dedup de participantes US13.
 
 Pra entender o estado anterior (Sprint 1+2 documentação) consulte o histórico do documento no fim deste arquivo e o `docs/product/roadmap.md`.
 
@@ -114,7 +116,7 @@ Pra entender o estado anterior (Sprint 1+2 documentação) consulte o histórico
 | **Core — MCPs** | **Integra via MCP** com Calendar/Outlook, Linear/Jira, GitHub e Salesforce/HubSpot — todas pós-MVP | Não requer uso de todas as integrações — cada MCP é opcional e independente |
 | **Enterprise — Product Context** | **Aprende o negócio do cliente**: admin configura catálogo de produtos, concorrentes, glossário e stakeholders; IA usa esse contexto via RAG/injection em toda análise | Não usa conhecimento genérico ou hardcoded de nenhum vendor — o contexto é sempre do tenant. RAG full com Azure AI Search está pós-MVP (US15) |
 | **Enterprise — Customer Confidence** | **Implementado full-stack** (ADR 0015, PR #148): worker emite score 0–100 + banda + tendência + sinais de compra + objeções + `accountName`; backend persiste (V017) com trend autoritativo por conta; `GET /meetings/{id}` retorna o bloco; UI `CustomerConfidenceCard` no detalhe da reunião | Account Health **agregado** (score temporal por conta + alertas, US50-51) segue deferido (ADR 0014) — exige volume de pilot |
-| **Enterprise — Account Health** | Schema previsto (ADR 0006): bandas `AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`, agregado por conta, com tendência | **Não implementado** — adiado via ADR 0014 (defer post-MVP commercial gate) |
+| **Enterprise — Account Health** | Schema previsto (ADR 0006): bandas `AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`, agregado por conta, com tendência | **Não implementado** — escopo reaberto pelo ADR 0022 (a construir), exige volume de pilot pra agregar |
 | **Enterprise — Next Action** | **Recomenda Next Best Action** nas próximas 48–72h com base no padrão da conversa | Não cria automaticamente tarefas no CRM — envia via MCP ou webhook (pós-MVP) |
 | **IAM — Modelo** | **IAM granular estilo AWS**: Root + Users + Groups + Policies (Effect/Action/Resource/Condition) criados pelo próprio tenant. Versionamento imutável de policies + audit log. (ADR 0007) | Não impõe hierarquia de roles fixas (sem Manager/Analyst/Viewer pré-definidos) |
 | **IAM — Conditions** | **Conditions estilo AWS** por atributos definidos pelo tenant: `Department`, `Project`, `Account` etc. PolicyEvaluator suporta `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` | Operadores fora dessa lista (e atributos ausentes no contexto) resultam em `Deny` (fail-closed) |
@@ -217,6 +219,7 @@ Detalhes completos, mapas de empatia, dores e ganhos: `docs/challenge/personas-e
 
 Detalhes em `docs/product/roadmap.md`. Resumo:
 
+- **Solidify (2026-05-27)** (entregue): honestidade de UI + identidade/RBAC (`/auth/me`, gating de nav admin, UC17) + fechamento de US `S` (US18, US25, US31/V018, US33, US34, US43). **ADR 0022** reabriu o escopo documentado completo (reverte o defer do ADR 0014)
 - **1.11 — Demo Polish Plano A** (em curso): ✅ Customer Confidence (#148), ✅ AUTH_FILTER_HARD_CAP fix (teto silencioso removido) e ✅ expansão `PolicyEvaluator` (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`) entregues; restam UX interna polida + dataset sintético + roteiro de demo
 - **1.12 — Production Hardening**: RG dedicado de produção (`rg-nora-prod`) + RLS Postgres + monitoring alerts + LGPD operacional + DR runbook + secrets rotation + test coverage targets (ADR 0018 a criar)
 - **1.13+** — Pós-pitch TOTVS (12/06+): depende do desfecho do Plano A. Cenários: dossier de pitch / due-diligence (Plano A) · Plano C content + Plano B pivô comercial
@@ -232,3 +235,4 @@ Detalhes em `docs/product/roadmap.md`. Resumo:
 | 0.3 | 2026-05-02 | Plataforma horizontal (qualquer empresa, não só TOTVS) + Desktop real-time (Tauri) + IAM RBAC+ABAC + três superfícies + Product Context via RAG |
 | 0.4 | 2026-05-02 | Alinhamento de MVP: SSO e Desktop como pós-MVP; áudio com armazenamento temporário por TTL |
 | **1.0** | **2026-05-14** | **Reescrita pós-deploy Azure real (Sub-fase 1.9). Corrige drift: Desktop suporta macOS via BlackHole (PR #37 — não é mais "Não suporta macOS no MVP"). Adiciona seção "Estado Atual" com endpoints reais + IAM operacional + Productivity Score full-stack + cobertura de testes. Adiciona seção "Próximas Sub-fases" com link pro roadmap. Substitui o doc anterior `docs/visao-do-produto.md` (deslocado pra `docs/product/vision.md`).** |
+| 1.1 | 2026-05-27 | **Sub-fase Solidify.** Estado Atual atualizado (ADR 0022 reabre escopo via reverte 0014; PolicyEvaluator com operadores expandidos + policy simulator; honestidade de landing/auth + identidade `/auth/me`). Corrige "Faz/Não Faz" do Account Health (ADR 0014 → 0022). Solidify adicionada em "Próximas Sub-fases". Light touch — fronteiras de produto inalteradas |
