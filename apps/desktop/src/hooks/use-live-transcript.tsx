@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
 export interface LiveTranscriptLine {
@@ -46,8 +46,17 @@ export function useLiveTranscript() {
   const wasRecordingRef = useRef(false);
 
   useEffect(() => {
+    let cancelled = false;
+    const stored: UnlistenFn[] = [];
+    const attach = (p: Promise<UnlistenFn>) => {
+      p.then((fn) => {
+        if (cancelled) fn();
+        else stored.push(fn);
+      }).catch(() => {});
+    };
+
     // Transcript stream
-    const unTranscript = listen<unknown>("transcript", (event) => {
+    attach(listen<unknown>("transcript", (event) => {
       const payload = event.payload as {
         text: string;
         isFinal: boolean;
@@ -72,10 +81,10 @@ export function useLiveTranscript() {
       } else {
         setState((prev) => ({ ...prev, partial: payload.text }));
       }
-    });
+    }));
 
     // Recording status
-    const unStatus = listen<RecordingStatus>("recording-status", (event) => {
+    attach(listen<RecordingStatus>("recording-status", (event) => {
       const s = event.payload;
       setState((prev) => {
         // Started: capture startedAt and clear stale transcript from previous run
@@ -103,7 +112,7 @@ export function useLiveTranscript() {
           systemAudioDevice: s.systemAudioDevice ?? prev.systemAudioDevice,
         };
       });
-    });
+    }));
 
     // Pull initial status in case we mounted mid-recording
     invoke<RecordingStatus>("get_recording_status")
@@ -123,8 +132,8 @@ export function useLiveTranscript() {
       .catch(() => {});
 
     return () => {
-      unTranscript.then((fn) => fn()).catch(() => {});
-      unStatus.then((fn) => fn()).catch(() => {});
+      cancelled = true;
+      stored.forEach((fn) => fn());
     };
   }, []);
 

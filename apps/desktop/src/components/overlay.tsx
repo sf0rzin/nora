@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { emit, listen } from "@tauri-apps/api/event";
+import { emit } from "@tauri-apps/api/event";
 import { useLiveTranscript, type LiveTranscriptLine } from "@/hooks/use-live-transcript";
 import { useLiveHighlights, type LiveHighlightItem, type LiveTaskItem } from "@/hooks/use-live-highlights";
+import { useTauriListener } from "@/hooks/use-tauri-listener";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { Avatar } from "@/components/brand/avatar";
 import { NoraBars } from "@/components/brand/nora-bars";
@@ -1117,22 +1118,17 @@ export function OverlayPage() {
   }, [isRecording, lines.length]);
 
   // Listen for save flow result from main window
-  useEffect(() => {
-    const unlisten = listen<{ ok: boolean; error?: string; meetingId?: string }>(
-      "nora://save-result",
-      (e) => {
-        setStopping(false);
-        if (!e.payload?.ok) {
-          setSaveError(e.payload?.error || "Falha ao salvar a reunião.");
-        } else {
-          setSaveError(null);
-        }
-      },
-    );
-    return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
-    };
-  }, []);
+  useTauriListener<{ ok: boolean; error?: string; meetingId?: string }>(
+    "nora://save-result",
+    (e) => {
+      setStopping(false);
+      if (!e.payload?.ok) {
+        setSaveError(e.payload?.error || "Falha ao salvar a reunião.");
+      } else {
+        setSaveError(null);
+      }
+    },
+  );
 
   // Clear save-error when a fresh recording starts
   useEffect(() => {
@@ -1140,28 +1136,24 @@ export function OverlayPage() {
   }, [isRecording, lines.length]);
 
   // Sync dock visibility when changed by another window (dock's own X button)
-  useEffect(() => {
-    const unlisten = listen<{ visible: boolean }>(
-      "nora://dock-visibility-changed",
-      (e) => {
-        if (typeof e.payload?.visible !== "boolean") return;
-        const visible = e.payload.visible;
-        setDockVisible(visible);
-        saveDockPref(visible);
-        if (!visible) {
-          pushNotification({
-            variant: "info",
-            title: "Dock escondido",
-            body: "Você pode trazer de volta no toggle do drawer.",
-            duration: 5000,
-          });
-        }
-      },
-    );
-    return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
-    };
-  }, [pushNotification]);
+  useTauriListener<{ visible: boolean }>(
+    "nora://dock-visibility-changed",
+    (e) => {
+      if (typeof e.payload?.visible !== "boolean") return;
+      const visible = e.payload.visible;
+      setDockVisible(visible);
+      saveDockPref(visible);
+      if (!visible) {
+        pushNotification({
+          variant: "info",
+          title: "Dock escondido",
+          body: "Você pode trazer de volta no toggle do drawer.",
+          duration: 5000,
+        });
+      }
+    },
+    [pushNotification],
+  );
 
   const renameSpeaker = (speakerId: string, name: string) => {
     setOverrides((prev) => {

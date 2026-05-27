@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { emit, listen } from "@tauri-apps/api/event";
+import { emit } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { NoraBars } from "@/components/brand/nora-bars";
+import { useTauriListener } from "@/hooks/use-tauri-listener";
 
 const DOCK_STORAGE_KEY = "nora.dock.visible";
 
@@ -62,18 +63,20 @@ export function DockBar() {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [, forceTick] = useState(0);
 
-  useEffect(() => {
-    const unStatus = listen<RecordingStatus>("recording-status", (e) => {
-      const s = e.payload;
-      setIsRecording((wasRec) => {
-        if (s.isRecording && !wasRec) {
-          setStartedAt(Date.now());
-        } else if (!s.isRecording && wasRec) {
-          setStartedAt(null);
-        }
-        return !!s.isRecording;
-      });
+  useTauriListener<RecordingStatus>("recording-status", (e) => {
+    const s = e.payload;
+    setIsRecording((wasRec) => {
+      if (s.isRecording && !wasRec) {
+        setStartedAt(Date.now());
+      } else if (!s.isRecording && wasRec) {
+        setStartedAt(null);
+      }
+      return !!s.isRecording;
     });
+  });
+
+  useEffect(() => {
+    // Pull initial status in case the dock mounts after a recording started
     invoke<RecordingStatus>("get_recording_status")
       .then((s) => {
         if (s.isRecording) {
@@ -82,9 +85,6 @@ export function DockBar() {
         }
       })
       .catch(() => {});
-    return () => {
-      unStatus.then((fn) => fn()).catch(() => {});
-    };
   }, []);
 
   useEffect(() => {

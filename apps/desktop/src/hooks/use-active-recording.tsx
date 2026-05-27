@@ -8,9 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { emit, listen } from "@tauri-apps/api/event";
+import { emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useRecording } from "./use-recording";
+import { useTauriListener } from "./use-tauri-listener";
 
 const META_STORAGE_KEY = "nora.active-recording.meta";
 const DOCK_STORAGE_KEY = "nora.dock.visible";
@@ -172,28 +173,15 @@ export function ActiveRecordingProvider({ children }: { children: ReactNode }) {
   }, [recording.savedMeetingId, persistMeta]);
 
   // Listen for stop signal from overlay
-  useEffect(() => {
-    const unlisten = listen("nora://stop-and-save", () => {
-      stopAndSave();
-    });
-    return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
-    };
-  }, [stopAndSave]);
+  useTauriListener("nora://stop-and-save", () => stopAndSave(), [stopAndSave]);
 
   // Listen for cancel signal from overlay
-  useEffect(() => {
-    const unlisten = listen("nora://cancel-recording", () => {
-      cancel();
-    });
-    return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
-    };
-  }, [cancel]);
+  useTauriListener("nora://cancel-recording", () => cancel(), [cancel]);
 
   // Listen for "retry save" — usuário clicou em Tentar de novo após falha
-  useEffect(() => {
-    const unlisten = listen("nora://retry-save", async () => {
+  useTauriListener(
+    "nora://retry-save",
+    async () => {
       const m = metaRef.current;
       if (!m) {
         await emit("nora://save-result", {
@@ -223,37 +211,31 @@ export function ActiveRecordingProvider({ children }: { children: ReactNode }) {
       } finally {
         setIsFinishing(false);
       }
-    });
-    return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
-    };
-  }, [recording]);
+    },
+    [recording],
+  );
 
   // Listen for speaker rename from overlay drawer
-  useEffect(() => {
-    const unlisten = listen<{ speakerId: string; name: string }>(
-      "nora://rename-speaker",
-      (e) => {
-        if (!e.payload?.speakerId) return;
-        recording.renameSpeaker(e.payload.speakerId, e.payload.name || "");
-      },
-    );
-    return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
-    };
-  }, [recording]);
+  useTauriListener<{ speakerId: string; name: string }>(
+    "nora://rename-speaker",
+    (e) => {
+      if (!e.payload?.speakerId) return;
+      recording.renameSpeaker(e.payload.speakerId, e.payload.name || "");
+    },
+    [recording],
+  );
 
   // Listen for "restart with new audio devices" from overlay drawer
-  useEffect(() => {
-    const unlisten = listen<{
-      deviceName: string | null;
-      captureSystemAudio: boolean;
-      systemAudioDevice: string | null;
-    }>("nora://restart-recording", async (e) => {
+  useTauriListener<{
+    deviceName: string | null;
+    captureSystemAudio: boolean;
+    systemAudioDevice: string | null;
+  }>(
+    "nora://restart-recording",
+    async (e) => {
       const opts = e.payload;
       if (!opts) return;
       try {
-        // Stop current capture, give events a tick to flush, then restart.
         await invoke("stop_recording").catch(() => {});
         await new Promise((r) => setTimeout(r, 120));
         await recording.startRecording({
@@ -264,11 +246,9 @@ export function ActiveRecordingProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         console.error("[active-recording] restart failed:", err);
       }
-    });
-    return () => {
-      unlisten.then((fn) => fn()).catch(() => {});
-    };
-  }, [recording]);
+    },
+    [recording],
+  );
 
   const value: ActiveRecordingState = useMemo(
     () => ({

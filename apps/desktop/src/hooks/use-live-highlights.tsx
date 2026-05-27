@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
 export interface LiveHighlightItem {
@@ -66,31 +66,43 @@ export function LiveHighlightsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const unlisten = listen<LiveHighlights>("live-analysis", (event) => {
-      const { highlights: newHighlights, chunkSeq: seq } = event.payload as unknown as {
-        highlights: LiveHighlights;
-        chunkSeq: number;
-      };
-      setHighlights((prev) => mergeHighlights(prev, newHighlights));
-      setLastUpdatedAt(Date.now());
-      setChunkSeq(seq);
-      setIsAnalyzing(false);
-      setError(null);
-    });
+    let cancelled = false;
+    const stored: UnlistenFn[] = [];
 
-    const unlistenTelemetry = listen<LiveAnalysisTelemetry>("live-analysis-telemetry", (event) => {
-      const t = event.payload;
-      setLastLatencyMs(t.latencyMs);
-    });
+    const attach = (p: Promise<UnlistenFn>) => {
+      p.then((fn) => {
+        if (cancelled) fn();
+        else stored.push(fn);
+      }).catch(() => {});
+    };
 
-    const unlistenClear = listen("clear-highlights", () => {
-      clearHighlights();
-    });
+    attach(
+      listen<LiveHighlights>("live-analysis", (event) => {
+        const { highlights: newHighlights, chunkSeq: seq } = event.payload as unknown as {
+          highlights: LiveHighlights;
+          chunkSeq: number;
+        };
+        setHighlights((prev) => mergeHighlights(prev, newHighlights));
+        setLastUpdatedAt(Date.now());
+        setChunkSeq(seq);
+        setIsAnalyzing(false);
+        setError(null);
+      }),
+    );
+    attach(
+      listen<LiveAnalysisTelemetry>("live-analysis-telemetry", (event) => {
+        setLastLatencyMs(event.payload.latencyMs);
+      }),
+    );
+    attach(
+      listen("clear-highlights", () => {
+        clearHighlights();
+      }),
+    );
 
     return () => {
-      unlisten.then((fn) => fn());
-      unlistenTelemetry.then((fn) => fn());
-      unlistenClear.then((fn) => fn());
+      cancelled = true;
+      stored.forEach((fn) => fn());
     };
   }, [clearHighlights]);
 

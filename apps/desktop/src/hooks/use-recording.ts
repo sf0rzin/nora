@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { RecordingStatus } from "@/lib/recording-types";
 import { uploadTranscript } from "@/lib/meetings";
 import { savePendingMeeting, removePendingMeeting, getPendingMeetings } from "@/lib/pending-meetings";
@@ -54,37 +54,50 @@ export function useRecording(options: UseRecordingOptions = {}) {
   }, [highlights]);
 
   useEffect(() => {
-    const unlisten = listen<unknown>("transcript", (event) => {
-      console.log("[transcript event]", event.payload);
-      const payload = event.payload as {
-        text: string;
-        isFinal: boolean;
-        speaker: string | null;
-        speakerId: string | null;
-        track: string;
-      };
+    let cancelled = false;
+    const stored: UnlistenFn[] = [];
+    const attach = (p: Promise<UnlistenFn>) => {
+      p.then((fn) => {
+        if (cancelled) fn();
+        else stored.push(fn);
+      }).catch(() => {});
+    };
 
-      if (payload.isFinal) {
-        const newLine = {
-          id: crypto.randomUUID(),
-          text: payload.text,
-          isFinal: true,
-          speaker: payload.speaker,
-          speakerId: payload.speakerId,
-          track: payload.track,
-          timestamp: Date.now(),
+    attach(
+      listen<unknown>("transcript", (event) => {
+        console.log("[transcript event]", event.payload);
+        const payload = event.payload as {
+          text: string;
+          isFinal: boolean;
+          speaker: string | null;
+          speakerId: string | null;
+          track: string;
         };
-        addTranscriptLine(newLine);
-        setContextPartialText("");
-      } else {
-        setContextPartialText(payload.text);
-      }
-    });
 
-    const unlistenStatus = listen<RecordingStatus>("recording-status", (event) => {
-      const s = event.payload;
-      setRecordingState(s.isRecording, s.micDevice, s.sampleRate);
-    });
+        if (payload.isFinal) {
+          const newLine = {
+            id: crypto.randomUUID(),
+            text: payload.text,
+            isFinal: true,
+            speaker: payload.speaker,
+            speakerId: payload.speakerId,
+            track: payload.track,
+            timestamp: Date.now(),
+          };
+          addTranscriptLine(newLine);
+          setContextPartialText("");
+        } else {
+          setContextPartialText(payload.text);
+        }
+      }),
+    );
+
+    attach(
+      listen<RecordingStatus>("recording-status", (event) => {
+        const s = event.payload;
+        setRecordingState(s.isRecording, s.micDevice, s.sampleRate);
+      }),
+    );
 
     const checkStatus = async () => {
       try {
@@ -101,8 +114,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
     checkStatus();
 
     return () => {
-      unlisten.then((fn) => fn());
-      unlistenStatus.then((fn) => fn());
+      cancelled = true;
+      stored.forEach((fn) => fn());
     };
   }, []);
 
@@ -279,10 +292,22 @@ export function useRecording(options: UseRecordingOptions = {}) {
     // Update pending count on mount
     setPendingCount(getPendingMeetings().filter((m) => m.status === "pending").length);
 
-    // Retry worker: attempts to send pending meetings every 30 seconds
+    // Retry worker: attempts to send pending meetings every 30 seconds.
+    // inFlightIds garante que o mesmo meeting não dispara 2x se um upload
+    // demora mais que o intervalo de retry (uploadTranscript já tem backoff
+    // interno até ~7.5s + um timeout do reqwest que pode passar de 30s).
+    // Sem isso, gerava reuniões duplicadas no backend quando o segundo tick
+    // disparava o mesmo payload enquanto o primeiro ainda processava.
+    const inFlightIds = new Set<string>();
     const retryInterval = setInterval(() => {
-      const pending = getPendingMeetings().filter((m) => m.status === "pending" && m.retryCount < 10);
+      const pending = getPendingMeetings().filter(
+        (m) =>
+          m.status === "pending" &&
+          m.retryCount < 10 &&
+          !inFlightIds.has(m.id),
+      );
       pending.forEach(async (meeting) => {
+        inFlightIds.add(meeting.id);
         try {
           await uploadTranscript(meeting.payload);
           removePendingMeeting(meeting.id);
@@ -295,6 +320,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
             retryCount: meeting.retryCount + 1,
             lastError: e instanceof Error ? e.message : String(e),
           });
+        } finally {
+          inFlightIds.delete(meeting.id);
         }
       });
     }, 30000);
