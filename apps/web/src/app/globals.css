@@ -137,3 +137,11 @@
     transform: translateY(-2px);
   }
 }
+
+/* ── Início: linha de reunião (hover) ── */
+.nora-row {
+  transition: background 120ms ease;
+}
+.nora-row:hover {
+  background: var(--sidebar);
+}

@@ -159,6 +159,15 @@ export async function POST(req: Request): Promise<Response> {
     });
   }
 
+  // Exige sessão: evita uso anônimo do orçamento de IA. O contexto do workspace
+  // também depende dos cookies da sessão.
+  if (!cookies().get("nora_access")?.value) {
+    return new Response(JSON.stringify({ error: "Não autenticado." }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   let body: { messages?: ChatMessage[] };
   try {
     body = (await req.json()) as { messages?: ChatMessage[] };
