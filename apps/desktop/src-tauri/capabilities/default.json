@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capability for NORA Desktop",
-  "windows": ["main", "overlay"],
+  "windows": ["main", "overlay", "dock"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",

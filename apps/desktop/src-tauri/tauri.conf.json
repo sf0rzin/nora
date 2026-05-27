@@ -36,6 +36,24 @@
         "visible": false,
         "resizable": true,
         "skipTaskbar": true
+      },
+      {
+        "label": "dock",
+        "url": "dock.html",
+        "title": "NORA Dock",
+        "width": 320,
+        "height": 60,
+        "minWidth": 320,
+        "minHeight": 60,
+        "maxWidth": 320,
+        "maxHeight": 60,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "focus": false
       }
     ],
     "security": {
