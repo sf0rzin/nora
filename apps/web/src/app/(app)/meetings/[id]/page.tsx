@@ -14,6 +14,7 @@ import {
   Section,
 } from "@/components/core/ui";
 import MeetingLiveStatus from "./MeetingLiveStatus";
+import ExportReportButton from "./ExportReportButton";
 
 export const dynamic = "force-dynamic";
 
@@ -42,10 +43,19 @@ export default async function MeetingDetailPage({
 
   return (
     <div>
-      <div style={{ marginBottom: 16 }}>
+      <div
+        style={{
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
         <ButtonLink href={"/dashboard" as Route} variant="ghost" size="sm">
           ← Voltar para reuniões
         </ButtonLink>
+        {a && <ExportReportButton meeting={meeting} />}
       </div>
 
       <PageHeader title={meeting.title} subtitle={metaParts.join("  ·  ")} />
