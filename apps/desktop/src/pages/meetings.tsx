@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { listMeetings } from "@/lib/meetings";
 import type { MeetingSummary, ApiError } from "@/lib/types";
 import { ShaderOrb } from "@/components/brand/shader-orb";
+import { openNewMeetingModal } from "@/App";
 
 type Group = "Hoje" | "Ontem" | "Esta semana" | "Mais antigas";
 const GROUP_ORDER: Group[] = ["Hoje", "Ontem", "Esta semana", "Mais antigas"];
@@ -473,8 +474,9 @@ export function MeetingsPage() {
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <a
-              href="#/recording"
+            <button
+              type="button"
+              onClick={openNewMeetingModal}
               className="inline-flex items-center gap-2"
               style={{
                 padding: "8px 14px",
@@ -484,6 +486,9 @@ export function MeetingsPage() {
                 fontSize: 13,
                 fontWeight: 500,
                 letterSpacing: "-0.005em",
+                border: "none",
+                cursor: "pointer",
+                fontFamily: "var(--sans)",
               }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "#000")}
               onMouseLeave={(e) =>
@@ -494,7 +499,7 @@ export function MeetingsPage() {
                 <path d="M12 5v14M5 12h14" />
               </svg>
               Nova reunião
-            </a>
+            </button>
           </div>
         </header>
 
@@ -634,8 +639,9 @@ export function MeetingsPage() {
                   action items.
                 </p>
               </div>
-              <a
-                href="#/recording"
+              <button
+                type="button"
+                onClick={openNewMeetingModal}
                 className="inline-flex items-center gap-2"
                 style={{
                   padding: "10px 18px",
@@ -644,10 +650,13 @@ export function MeetingsPage() {
                   borderRadius: 9,
                   fontSize: 13,
                   fontWeight: 500,
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: "var(--sans)",
                 }}
               >
                 Começar a gravar
-              </a>
+              </button>
             </div>
           )
         )}

@@ -22,14 +22,6 @@ const ICON_MEETINGS = (
   </svg>
 );
 
-const ICON_RECORDING = (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="9" y="2" width="6" height="12" rx="3" />
-    <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
-    <line x1="12" y1="19" x2="12" y2="22" />
-  </svg>
-);
-
 const ICON_GEAR = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
@@ -48,7 +40,6 @@ const ICON_SIGNOUT = (
 const NAV_ITEMS: NavItem[] = [
   { label: "Conversar", hash: "#/chat", icon: ICON_CHAT },
   { label: "Reuniões", hash: "#/meetings", icon: ICON_MEETINGS },
-  { label: "Gravar", hash: "#/recording", icon: ICON_RECORDING },
 ];
 
 export function Sidebar() {

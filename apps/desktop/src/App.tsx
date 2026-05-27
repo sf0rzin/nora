@@ -1,24 +1,58 @@
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { RecordingProvider } from "@/hooks/use-recording-context";
 import { LiveHighlightsProvider } from "@/hooks/use-live-highlights";
+import { ActiveRecordingProvider } from "@/hooks/use-active-recording";
 import { Sidebar } from "@/components/sidebar";
+import { NewMeetingModal } from "@/components/new-meeting-modal";
 import { LoginPage } from "@/pages/login";
 import { MeetingsPage } from "@/pages/meetings";
 import { MeetingDetailPage } from "@/pages/meeting-detail";
-import { RecordingPage } from "@/pages/recording";
 import { SettingsPage } from "@/pages/settings";
 import { ChatPage } from "@/pages/chat";
 import { useState, useEffect } from "react";
 
+const MODAL_EVENT = "nora-new-meeting";
+
+export function openNewMeetingModal() {
+  window.dispatchEvent(new CustomEvent(MODAL_EVENT));
+}
+
 function Router() {
   const { authenticated, loading } = useAuth();
   const [route, setRoute] = useState(window.location.hash);
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     const handler = () => setRoute(window.location.hash);
     window.addEventListener("hashchange", handler);
     return () => window.removeEventListener("hashchange", handler);
   }, []);
+
+  useEffect(() => {
+    const open = () => setModalOpen(true);
+    window.addEventListener(MODAL_EVENT, open);
+    return () => window.removeEventListener(MODAL_EVENT, open);
+  }, []);
+
+  // Global "N" shortcut to open the new meeting modal
+  useEffect(() => {
+    if (!authenticated) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      if (typing) return;
+      if ((e.key === "n" || e.key === "N") && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setModalOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [authenticated]);
 
   if (loading) {
     return (
@@ -51,7 +85,6 @@ function Router() {
 
   const renderPage = () => {
     if (route === "#/chat") return <ChatPage />;
-    if (route === "#/recording") return <RecordingPage />;
     if (route === "#/settings") return <SettingsPage />;
     const detailMatch = route?.match(/^#\/meetings\/([\w-]+)$/);
     if (detailMatch) return <MeetingDetailPage meetingId={detailMatch[1]} />;
@@ -61,10 +94,13 @@ function Router() {
   return (
     <RecordingProvider>
       <LiveHighlightsProvider>
-        <div className="flex h-full">
-          <Sidebar />
-          {renderPage()}
-        </div>
+        <ActiveRecordingProvider>
+          <div className="flex h-full">
+            <Sidebar />
+            {renderPage()}
+          </div>
+          <NewMeetingModal open={modalOpen} onClose={() => setModalOpen(false)} />
+        </ActiveRecordingProvider>
       </LiveHighlightsProvider>
     </RecordingProvider>
   );

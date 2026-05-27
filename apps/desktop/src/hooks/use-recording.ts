@@ -131,16 +131,25 @@ export function useRecording(options: UseRecordingOptions = {}) {
     }
   }, []);
 
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (overrides?: {
+    deviceName?: string | null;
+    captureSystemAudio?: boolean;
+    systemAudioDevice?: string | null;
+    language?: string;
+  }) => {
     setError(null);
     clearTranscript();
     setDuration(0);
+    setSavedMeetingId(null);
+    setSaveError(null);
 
     const req = {
-      deviceName: selectedDevice,
-      language: options.language || "pt-BR",
-      captureSystemAudio: options.captureSystemAudio ?? false,
-      systemAudioDevice: options.systemAudioDevice ?? null,
+      deviceName: overrides?.deviceName ?? selectedDevice,
+      language: overrides?.language ?? options.language ?? "pt-BR",
+      captureSystemAudio:
+        overrides?.captureSystemAudio ?? options.captureSystemAudio ?? false,
+      systemAudioDevice:
+        overrides?.systemAudioDevice ?? options.systemAudioDevice ?? null,
     };
 
     try {
