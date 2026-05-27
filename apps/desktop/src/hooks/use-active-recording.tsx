@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useRecording } from "./use-recording";
 
@@ -118,20 +118,45 @@ export function ActiveRecordingProvider({ children }: { children: ReactNode }) {
       const m = metaRef.current;
       // Give the transcript context a tick to settle final partials
       await new Promise((r) => setTimeout(r, 120));
-      if (m) {
-        await recording.saveMeeting(m.title);
+      if (!m) {
+        await emit("nora://save-result", {
+          ok: false,
+          error: "Sem metadados da reunião — abra uma nova pelo modal.",
+        }).catch(() => {});
+        return;
       }
+      const result = await recording.saveMeeting(m.title);
+      if (result.ok) {
+        await emit("nora://save-result", {
+          ok: true,
+          meetingId: result.meetingId,
+        }).catch(() => {});
+        // Success: close the overlay so user is back in the main window
+        // with the meeting detail already navigated to.
+        invoke("toggle_overlay", { show: false }).catch(() => {});
+      } else {
+        await emit("nora://save-result", {
+          ok: false,
+          error: result.error,
+        }).catch(() => {});
+        // Save failed: keep overlay open so user can retry or discard.
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await emit("nora://save-result", { ok: false, error: msg }).catch(() => {});
     } finally {
-      // Always close the dock when finishing
+      // Reset finishing in ALL paths so the overlay button never gets stuck.
+      setIsFinishing(false);
       invoke("toggle_dock", { show: false }).catch(() => {});
     }
   }, [isFinishing, recording]);
 
   const cancel = useCallback(async () => {
     setIsFinishing(false);
-    await recording.stopRecording();
+    await recording.stopRecording().catch(() => {});
     persistMeta(null);
     invoke("toggle_dock", { show: false }).catch(() => {});
+    invoke("toggle_overlay", { show: false }).catch(() => {});
   }, [persistMeta, recording]);
 
   // When a save succeeds, navigate the main window to the new meeting and clear meta
@@ -165,6 +190,44 @@ export function ActiveRecordingProvider({ children }: { children: ReactNode }) {
       unlisten.then((fn) => fn()).catch(() => {});
     };
   }, [cancel]);
+
+  // Listen for "retry save" — usuário clicou em Tentar de novo após falha
+  useEffect(() => {
+    const unlisten = listen("nora://retry-save", async () => {
+      const m = metaRef.current;
+      if (!m) {
+        await emit("nora://save-result", {
+          ok: false,
+          error: "Sem metadados da reunião.",
+        }).catch(() => {});
+        return;
+      }
+      setIsFinishing(true);
+      try {
+        const result = await recording.saveMeeting(m.title);
+        if (result.ok) {
+          await emit("nora://save-result", {
+            ok: true,
+            meetingId: result.meetingId,
+          }).catch(() => {});
+          invoke("toggle_overlay", { show: false }).catch(() => {});
+        } else {
+          await emit("nora://save-result", {
+            ok: false,
+            error: result.error,
+          }).catch(() => {});
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        await emit("nora://save-result", { ok: false, error: msg }).catch(() => {});
+      } finally {
+        setIsFinishing(false);
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn()).catch(() => {});
+    };
+  }, [recording]);
 
   // Listen for speaker rename from overlay drawer
   useEffect(() => {

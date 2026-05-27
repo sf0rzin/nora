@@ -206,10 +206,13 @@ export function useRecording(options: UseRecordingOptions = {}) {
     return speakerMap[speakerId] || speakerId;
   }, [speakerMap]);
 
-  const saveMeeting = useCallback(async (title: string) => {
+  const saveMeeting = useCallback(async (title: string): Promise<
+    { ok: true; meetingId: string } | { ok: false; error: string }
+  > => {
     if (transcriptLines.length === 0) {
-      setError("Nenhuma transcrição para salvar");
-      return;
+      const msg = "Nenhuma transcrição para salvar";
+      setError(msg);
+      return { ok: false, error: msg };
     }
 
     setIsSaving(true);
@@ -246,6 +249,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
       const result = await uploadTranscript(payload);
       setSavedMeetingId(result.meetingId);
       setSaveError(null);
+      return { ok: true, meetingId: result.meetingId };
     } catch (e) {
       console.error("[recording] save meeting FAILED, queueing locally:", e);
       const msg = e instanceof Error ? e.message : String(e);
@@ -260,6 +264,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
       });
       setPendingCount(getPendingMeetings().filter((m) => m.status === "pending").length);
       setError("Falha ao salvar — reunião armazenada localmente. Tentaremos enviar automaticamente.");
+      return { ok: false, error: msg };
     } finally {
       setIsSaving(false);
     }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { useLiveTranscript, type LiveTranscriptLine } from "@/hooks/use-live-transcript";
 import { useLiveHighlights, type LiveHighlightItem, type LiveTaskItem } from "@/hooks/use-live-highlights";
 import { ShaderOrb } from "@/components/brand/shader-orb";
@@ -1054,6 +1054,7 @@ export function OverlayPage() {
     loadHighlightsPref,
   );
   const [stopping, setStopping] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const toggleHighlights = (next: boolean) => {
     setHighlightsVisible(next);
@@ -1066,6 +1067,29 @@ export function OverlayPage() {
       setOverrides({});
       saveOverrides({});
     }
+  }, [isRecording, lines.length]);
+
+  // Listen for save flow result from main window
+  useEffect(() => {
+    const unlisten = listen<{ ok: boolean; error?: string; meetingId?: string }>(
+      "nora://save-result",
+      (e) => {
+        setStopping(false);
+        if (!e.payload?.ok) {
+          setSaveError(e.payload?.error || "Falha ao salvar a reunião.");
+        } else {
+          setSaveError(null);
+        }
+      },
+    );
+    return () => {
+      unlisten.then((fn) => fn()).catch(() => {});
+    };
+  }, []);
+
+  // Clear save-error when a fresh recording starts
+  useEffect(() => {
+    if (isRecording && lines.length === 0) setSaveError(null);
   }, [isRecording, lines.length]);
 
   const renameSpeaker = (speakerId: string, name: string) => {
@@ -1350,6 +1374,89 @@ export function OverlayPage() {
           dockVisible={dockVisible}
           onToggleDock={toggleDock}
         />
+      )}
+
+      {/* Save error banner */}
+      {saveError && (
+        <div
+          className="shrink-0 flex items-start gap-3"
+          style={{
+            padding: "10px 14px",
+            background: "rgba(201, 119, 102, 0.10)",
+            borderBottom: "1px solid rgba(201, 119, 102, 0.30)",
+          }}
+        >
+          <svg
+            className="shrink-0 mt-0.5"
+            width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="var(--danger-ink)" strokeWidth="1.7"
+            strokeLinecap="round" strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                color: "var(--danger-ink)",
+                letterSpacing: "-0.005em",
+                marginBottom: 2,
+              }}
+            >
+              Falha ao salvar a reunião
+            </div>
+            <div style={{ fontSize: 11, color: "var(--ink)", lineHeight: 1.5 }}>
+              {saveError} · Salvamos uma cópia local — vamos retentar a cada 30s.
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => {
+                setStopping(true);
+                setSaveError(null);
+                emit("nora://retry-save").catch(() => {
+                  setStopping(false);
+                });
+              }}
+              disabled={stopping}
+              style={{
+                padding: "4px 10px",
+                fontSize: 11,
+                background: "var(--ink)",
+                color: "var(--canvas)",
+                border: "1px solid var(--ink)",
+                borderRadius: 7,
+                cursor: stopping ? "default" : "pointer",
+                letterSpacing: "-0.005em",
+                fontWeight: 500,
+                fontFamily: "var(--sans)",
+                opacity: stopping ? 0.55 : 1,
+              }}
+            >
+              {stopping ? "Tentando…" : "Tentar de novo"}
+            </button>
+            <button
+              onClick={() => setSaveError(null)}
+              style={{
+                padding: "4px 10px",
+                fontSize: 11,
+                background: "transparent",
+                border: "1px solid var(--border)",
+                borderRadius: 7,
+                color: "var(--muted)",
+                cursor: "pointer",
+                letterSpacing: "-0.005em",
+                fontWeight: 500,
+                fontFamily: "var(--sans)",
+              }}
+            >
+              Esconder
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Body: chat (left) + highlights (right, collapsible) */}
