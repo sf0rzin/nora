@@ -40,12 +40,16 @@ export default function PasswordResetRequestPage() {
     <form onSubmit={onSubmit} className="space-y-4">
       <h2 className="text-lg font-medium text-slate-800">Esqueci a senha</h2>
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-slate-700">E-mail</label>
+        <label htmlFor="reset-email" className="text-sm font-medium text-slate-700">
+          E-mail
+        </label>
         <input
+          id="reset-email"
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email"
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
         />
       </div>

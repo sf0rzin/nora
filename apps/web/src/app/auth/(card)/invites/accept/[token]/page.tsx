@@ -21,26 +21,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { ApiRequestError, acceptInvite } from '@/lib/api/client';
 import { setSession } from '@/lib/auth';
+import { validatePassword, PASSWORD_MIN, PASSWORD_MAX } from '@/lib/password-policy';
 
-// Espelha br.com.nora.api.domain.identity.PasswordPolicy.
-const PASSWORD_MIN = 10;
-const PASSWORD_MAX = 128;
 const DISPLAY_NAME_MAX = 120;
-
-function validatePassword(raw: string): string | null {
-  if (raw.length < PASSWORD_MIN || raw.length > PASSWORD_MAX) {
-    return `A senha deve ter entre ${PASSWORD_MIN} e ${PASSWORD_MAX} caracteres.`;
-  }
-  let hasLetter = false;
-  let hasDigit = false;
-  for (const c of raw) {
-    if (/[A-Za-z]/.test(c)) hasLetter = true;
-    else if (/[0-9]/.test(c)) hasDigit = true;
-    if (hasLetter && hasDigit) break;
-  }
-  if (!hasLetter || !hasDigit) return 'A senha deve conter letras e numeros.';
-  return null;
-}
 
 function mapAcceptError(err: unknown): string {
   if (!(err instanceof ApiRequestError)) {

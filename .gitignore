@@ -76,3 +76,6 @@ src-tauri/gen/
 *.pem
 *.key
 *.p12
+
+# --- Claude working memory (internal; never committed to main) ---
+.claude-work/

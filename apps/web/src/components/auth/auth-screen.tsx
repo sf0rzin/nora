@@ -8,6 +8,7 @@ import { useState, type CSSProperties, type FormEvent } from "react";
 import { NoraLogo } from "@/components/brand/nora-logo";
 import { ApiRequestError, login, signup } from "@/lib/api/client";
 import { setSession } from "@/lib/auth";
+import { isPasswordValid, PASSWORD_MIN } from "@/lib/password-policy";
 
 import "./auth.css";
 
@@ -35,7 +36,7 @@ const TRANSCRIPT_LINES: TLine[] = [
     t: 0,
     speaker: "Camila",
     time: "14:30",
-    text: "O DPO levantou três regras adicionais de PII pra fechar com a TOTVS.",
+    text: "O DPO levantou três regras adicionais de PII pra fechar com a Meridian.",
     tag: { kind: "decision", label: "Decisão" },
   },
   {
@@ -49,7 +50,7 @@ const TRANSCRIPT_LINES: TLine[] = [
     t: 7,
     speaker: "Bruno",
     time: "14:33",
-    text: "Conector Protheus pode ser read-only no MVP.",
+    text: "Conector do ERP deles pode ser read-only no MVP.",
     tag: { kind: "decision", label: "Decisão" },
   },
   {
@@ -146,9 +147,8 @@ function LeftPanel() {
       <div className="left-foot">
         <span>© 2026 NORA</span>
         <div className="links">
-          <a href="#">Privacidade</a>
-          <a href="#">Termos</a>
-          <a href="#">Status</a>
+          <Link href={"/legal/privacidade" as Route}>Privacidade</Link>
+          <Link href={"/legal/termos" as Route}>Termos</Link>
         </div>
       </div>
     </div>
@@ -190,16 +190,6 @@ function ArrowLeftIcon() {
     </svg>
   );
 }
-function MicrosoftIcon() {
-  return (
-    <svg viewBox="0 0 23 23" width="16" height="16" aria-hidden="true">
-      <rect x="1" y="1" width="10" height="10" fill="#F25022" />
-      <rect x="12" y="1" width="10" height="10" fill="#7FBA00" />
-      <rect x="1" y="12" width="10" height="10" fill="#00A4EF" />
-      <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
-    </svg>
-  );
-}
 function EyeIcon({ shown }: { shown: boolean }) {
   return shown ? (
     <svg
@@ -232,9 +222,6 @@ function EyeIcon({ shown }: { shown: boolean }) {
     </svg>
   );
 }
-
-// SSO ainda não conectado (Entra ID) — botão ativo por design; back-end é issue à parte.
-const SSO_NOTICE = "Login com Microsoft ainda não está disponível — em integração.";
 
 // ── Login ──
 function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; next: Route }) {
@@ -269,15 +256,6 @@ function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; n
         <h2>Bem-vindo de volta.</h2>
         <p>Entre na sua conta NORA pra continuar.</p>
       </div>
-
-      <div className="sso-row">
-        <button type="button" className="sso-btn" onClick={() => setErr(SSO_NOTICE)}>
-          <MicrosoftIcon />
-          Continuar com Microsoft
-        </button>
-      </div>
-
-      <div className="divider">ou</div>
 
       {err && <div className="error-banner">{err}</div>}
 
@@ -339,7 +317,6 @@ function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; n
               Criar agora
             </button>
           </span>
-          <span style={{ fontSize: 11, letterSpacing: "0.04em" }}>SSO · SAML</span>
         </div>
       </form>
     </div>
@@ -370,7 +347,6 @@ type SignupData = {
   password: string;
   confirm: string;
   workspaceName: string;
-  role: "individual" | "team" | "company";
   agreed: boolean;
 };
 
@@ -382,7 +358,6 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
     password: "",
     confirm: "",
     workspaceName: "",
-    role: "individual",
     agreed: false,
   });
   const [showPw, setShowPw] = useState(false);
@@ -399,7 +374,7 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
     step.id === "email"
       ? data.email.includes("@") && data.fullName.trim().length > 1
       : step.id === "password"
-        ? data.password.length >= 8 && data.password === data.confirm
+        ? isPasswordValid(data.password) && data.password === data.confirm
         : data.workspaceName.trim().length > 1 && data.agreed;
 
   async function submit(e?: FormEvent) {
@@ -412,7 +387,6 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
     }
     setBusy(true);
     try {
-      // `role` é coletado mas ainda não enviado — wiring p/ métricas é issue à parte.
       await signup({
         email: data.email,
         password: data.password,
@@ -489,7 +463,7 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
         {step.id === "password" && (
           <>
             <h2>Escolha uma senha forte.</h2>
-            <p>Mínimo 8 caracteres. Recomendamos número + símbolo.</p>
+            <p>Mínimo {PASSWORD_MIN} caracteres, com pelo menos uma letra e um número.</p>
           </>
         )}
         {step.id === "workspace" && (
@@ -505,13 +479,6 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
       <form onSubmit={submit}>
         {step.id === "email" && (
           <>
-            <div className="sso-row">
-              <button type="button" className="sso-btn" onClick={() => setErr(SSO_NOTICE)}>
-                <MicrosoftIcon />
-                Cadastrar com Microsoft
-              </button>
-            </div>
-            <div className="divider">ou com e-mail</div>
             <div className="field">
               <label className="field-label" htmlFor="su-name">
                 Nome completo
@@ -629,43 +596,6 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
               />
               <div className="field-helper">Você pode renomear depois nas configurações.</div>
             </div>
-            <div className="field">
-              <label className="field-label">Como você vai usar?</label>
-              <div className="role-options">
-                {(
-                  [
-                    {
-                      id: "individual",
-                      title: "Pra mim mesmo",
-                      sub: "Copiloto pessoal de reuniões. Plano Core.",
-                    },
-                    {
-                      id: "team",
-                      title: "Pra um time pequeno",
-                      sub: "Convido colegas depois. Continua no Core até precisar de Enterprise.",
-                    },
-                    {
-                      id: "company",
-                      title: "Pra empresa toda",
-                      sub: "Quero avaliar Enterprise. Falo com vendas.",
-                    },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    className={`role-opt ${data.role === opt.id ? "is-selected" : ""}`}
-                    onClick={() => update({ role: opt.id })}
-                  >
-                    <span className="role-radio" />
-                    <span className="role-content">
-                      <span className="role-title">{opt.title}</span>
-                      <span className="role-sub">{opt.sub}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
             <label className="terms">
               <input
                 type="checkbox"
@@ -673,9 +603,16 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
                 onChange={(e) => update({ agreed: e.target.checked })}
               />
               <span>
-                Li e aceito os <a href="#">Termos de Uso</a> e a{" "}
-                <a href="#">Política de Privacidade</a>. Entendo que NORA é LGPD-compliant e que
-                posso solicitar exclusão dos meus dados a qualquer momento.
+                Li e aceito os{" "}
+                <Link href={"/legal/termos" as Route} target="_blank">
+                  Termos de Uso
+                </Link>{" "}
+                e a{" "}
+                <Link href={"/legal/privacidade" as Route} target="_blank">
+                  Política de Privacidade
+                </Link>
+                . Entendo que NORA é LGPD-compliant e que posso solicitar exclusão dos meus dados a
+                qualquer momento.
               </span>
             </label>
           </>

@@ -123,15 +123,15 @@ export function LandingHero() {
               ref={taRef}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Pergunte qualquer coisa sobre suas reuniões…"
+              placeholder="Cole uma transcrição ou descreva sua próxima reunião…"
               rows={1}
             />
             <Link
-              href={{ pathname: "/auth/signup", query: trimmed ? { q: prompt } : {} }}
+              href="/auth/signup"
               className={`hero-composer-send ${trimmed ? "is-active" : ""}`}
-              aria-label="Perguntar NORA"
+              aria-label="Começar grátis"
             >
-              Perguntar NORA
+              Começar grátis
               <svg
                 width="13"
                 height="13"
@@ -154,20 +154,6 @@ export function LandingHero() {
                 <span>{s.label}</span>
               </Link>
             ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="container">
-        <div className="logos-strip">
-          <span className="lead">Usado por times em:</span>
-          <div className="row">
-            <span className="fake-logo">veridian</span>
-            <span className="fake-logo">Lattice·BR</span>
-            <span className="fake-logo">CAMPO×</span>
-            <span className="fake-logo">norte sul</span>
-            <span className="fake-logo">Praxe</span>
-            <span className="fake-logo">FIAP</span>
           </div>
         </div>
       </div>

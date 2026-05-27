@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Route } from "next";
 
 import { NoraLogo } from "@/components/brand/nora-logo";
 import { ShaderOrb } from "@/components/brand/shader-orb";
@@ -58,7 +59,7 @@ export function LandingHowItWorks() {
                     <polyline points="14 2 14 8 20 8" />
                   </svg>
                 </div>
-                <span className="mock-file-name">discovery-totvs-14mai.vtt</span>
+                <span className="mock-file-name">discovery-meridian-14mai.vtt</span>
                 <span className="mock-file-size">42 KB</span>
               </div>
             </div>
@@ -88,7 +89,8 @@ export function LandingHowItWorks() {
             <span className="step-num">03 · Você recebe</span>
             <h3>Resumo navegável + integração.</h3>
             <p>
-              Resumo, decisões, tasks com prioridade. Empurre pra Linear, Jira ou Calendar via MCP.
+              Resumo, decisões e tasks com prioridade. Integração com Linear, Jira e Calendar via
+              MCP (em breve).
             </p>
             <div className="step-visual">
               <div className="mock-summary">
@@ -242,7 +244,7 @@ const CORE_FEATURES = [
   "Productivity Score opt-in",
   "PII Shield pessoal completo",
   "30 reuniões/mês · projetos ilimitados",
-  "Integrações MCP (Calendar, Linear, GitHub)",
+  "Integrações MCP (Calendar, Linear, GitHub) — em breve",
   "Desktop app (Windows, macOS, Linux)",
 ];
 
@@ -469,36 +471,27 @@ export function LandingFooter() {
             </ul>
           </div>
           <div className="footer-col">
-            <h4>Empresa</h4>
+            <h4>Conta</h4>
             <ul>
               <li>
-                <a href="#">Sobre</a>
+                <Link href="/auth/login">Entrar</Link>
               </li>
               <li>
-                <a href="#">Carreiras</a>
-              </li>
-              <li>
-                <a href="#">Blog</a>
-              </li>
-              <li>
-                <a href="#">Contato</a>
+                <Link href="/auth/signup">Criar conta</Link>
               </li>
             </ul>
           </div>
           <div className="footer-col">
-            <h4>Recursos</h4>
+            <h4>Legal</h4>
             <ul>
-              <li>
-                <a href="#">Documentação</a>
-              </li>
               <li>
                 <a href="#privacidade">Privacidade · LGPD</a>
               </li>
               <li>
-                <a href="#">Termos</a>
+                <Link href={"/legal/privacidade" as Route}>Política de Privacidade</Link>
               </li>
               <li>
-                <a href="#">Status</a>
+                <Link href={"/legal/termos" as Route}>Termos de Uso</Link>
               </li>
             </ul>
           </div>
