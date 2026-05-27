@@ -5,13 +5,15 @@ import type { MeetingsPage, MeetingDetail } from "./types";
 export async function listMeetings(params?: {
   page?: number;
   size?: number;
-  q?: string;
+  search?: string;
+  status?: string;
   tag?: string;
 }): Promise<MeetingsPage> {
   const searchParams = new URLSearchParams();
   if (params?.page !== undefined) searchParams.set("page", String(params.page));
   if (params?.size !== undefined) searchParams.set("size", String(params.size));
-  if (params?.q) searchParams.set("q", params.q);
+  if (params?.search) searchParams.set("search", params.search);
+  if (params?.status) searchParams.set("status", params.status);
   if (params?.tag) searchParams.set("tag", params.tag);
 
   const qs = searchParams.toString();

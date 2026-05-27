@@ -388,7 +388,7 @@ export function MeetingsPage() {
     if (isInitial) setLoading(true);
     else setSearching(true);
     setError("");
-    listMeetings({ size: 50, q: activeQuery || undefined })
+    listMeetings({ size: 50, search: activeQuery || undefined })
       .then((page) => alive && setMeetings(page.items))
       .catch((err: unknown) => {
         if (!alive) return;
