@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 interface RecordingStatus {
   isRecording: boolean;
@@ -133,6 +134,16 @@ export function DockBar() {
     invoke("toggle_dock", { show: false }).catch(() => {});
   };
 
+  // `-webkit-app-region: drag` não funciona no WebKitGTK Linux.
+  // Usamos `startDragging()` que é cross-platform (cobre x11/wayland/macos/windows).
+  const onDragMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    getCurrentWebviewWindow()
+      .startDragging()
+      .catch((err) => console.warn("[dock] startDragging failed:", err));
+  };
+
   return (
     <div
       className="flex items-center justify-center h-full w-full"
@@ -154,21 +165,30 @@ export function DockBar() {
           fontFamily: "var(--sans)",
         }}
       >
-        {/* drag handle — only this region is the drag area */}
+        {/* drag handle — usa startDragging() porque -webkit-app-region não
+            funciona no WebKitGTK Linux */}
         <span
-          data-tauri-drag-region
+          onMouseDown={onDragMouseDown}
           aria-hidden
           className="grid place-items-center shrink-0"
           style={{
-            width: 22,
-            height: 28,
-            cursor: "move",
+            width: 24,
+            height: 30,
+            cursor: "grab",
             color: "var(--muted)",
-            opacity: 0.55,
+            opacity: 0.6,
+            userSelect: "none",
+            WebkitUserSelect: "none",
           }}
           title="Arrastar"
         >
-          <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
+          <svg
+            width="10"
+            height="16"
+            viewBox="0 0 10 16"
+            fill="currentColor"
+            style={{ pointerEvents: "none" }}
+          >
             <circle cx="2" cy="3" r="1.1" />
             <circle cx="2" cy="8" r="1.1" />
             <circle cx="2" cy="13" r="1.1" />
