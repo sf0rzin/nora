@@ -10,6 +10,23 @@ type SpeakerMap = Record<string, string>;
 
 const SPEAKER_OVERRIDES_KEY = "nora.overlay.speaker-overrides";
 const DOCK_STORAGE_KEY = "nora.dock.visible";
+const HIGHLIGHTS_STORAGE_KEY = "nora.overlay.highlights-visible";
+
+function loadHighlightsPref(): boolean {
+  try {
+    const v = localStorage.getItem(HIGHLIGHTS_STORAGE_KEY);
+    return v == null ? true : v === "1";
+  } catch {
+    return true;
+  }
+}
+function saveHighlightsPref(v: boolean) {
+  try {
+    localStorage.setItem(HIGHLIGHTS_STORAGE_KEY, v ? "1" : "0");
+  } catch {
+    // ignore
+  }
+}
 
 function loadOverrides(): SpeakerMap {
   try {
@@ -416,7 +433,7 @@ function HighlightSection({
   );
 }
 
-function HighlightsColumn() {
+function HighlightsColumn({ onCollapse }: { onCollapse: () => void }) {
   const { highlights, isAnalyzing, lastUpdatedAt, lastLatencyMs } = useLiveHighlights();
   const total =
     highlights.decisions.length +
@@ -436,7 +453,7 @@ function HighlightsColumn() {
       <div
         className="flex items-center justify-between shrink-0"
         style={{
-          padding: "10px 14px",
+          padding: "8px 8px 8px 14px",
           borderBottom: "1px solid var(--border)",
         }}
       >
@@ -465,23 +482,52 @@ function HighlightsColumn() {
             {total}
           </span>
         </span>
-        {isAnalyzing && (
-          <span
-            className="inline-flex items-center gap-1"
-            style={{ fontSize: 10, color: "var(--accent-ink)" }}
-          >
+        <div className="flex items-center gap-1">
+          {isAnalyzing && (
             <span
-              style={{
-                width: 8,
-                height: 8,
-                border: "1.5px solid var(--accent-ink)",
-                borderTopColor: "transparent",
-                borderRadius: "50%",
-                animation: "nora-spin 0.9s linear infinite",
-              }}
-            />
-          </span>
-        )}
+              className="inline-flex items-center gap-1"
+              style={{ fontSize: 10, color: "var(--accent-ink)" }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  border: "1.5px solid var(--accent-ink)",
+                  borderTopColor: "transparent",
+                  borderRadius: "50%",
+                  animation: "nora-spin 0.9s linear infinite",
+                }}
+              />
+            </span>
+          )}
+          <button
+            onClick={onCollapse}
+            aria-label="Esconder painel de detecções"
+            title="Esconder painel"
+            className="grid place-items-center rounded-md transition-colors"
+            style={{
+              width: 22,
+              height: 22,
+              background: "transparent",
+              border: "none",
+              color: "var(--muted)",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "var(--chip)";
+              e.currentTarget.style.color = "var(--ink)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "var(--muted)";
+            }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="13 17 18 12 13 7" />
+              <polyline points="6 17 11 12 6 7" />
+            </svg>
+          </button>
+        </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto" style={{ padding: "10px 12px" }}>
         <HighlightSection
@@ -1004,7 +1050,15 @@ export function OverlayPage() {
   const [overrides, setOverrides] = useState<SpeakerMap>(loadOverrides);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dockVisible, setDockVisible] = useState<boolean>(loadDockPref);
+  const [highlightsVisible, setHighlightsVisible] = useState<boolean>(
+    loadHighlightsPref,
+  );
   const [stopping, setStopping] = useState(false);
+
+  const toggleHighlights = (next: boolean) => {
+    setHighlightsVisible(next);
+    saveHighlightsPref(next);
+  };
 
   // Reset overrides when a new recording session begins
   useEffect(() => {
@@ -1297,8 +1351,8 @@ export function OverlayPage() {
         />
       )}
 
-      {/* Body: chat (left) + highlights (right) */}
-      <div className="flex-1 min-h-0 flex">
+      {/* Body: chat (left) + highlights (right, collapsible) */}
+      <div className="flex-1 min-h-0 flex relative">
         <div
           ref={scrollRef}
           className="flex-1 min-w-0 overflow-y-auto"
@@ -1344,7 +1398,44 @@ export function OverlayPage() {
           )}
         </div>
 
-        <HighlightsColumn />
+        {highlightsVisible && (
+          <HighlightsColumn onCollapse={() => toggleHighlights(false)} />
+        )}
+
+        {!highlightsVisible && (
+          <button
+            onClick={() => toggleHighlights(true)}
+            aria-label="Mostrar painel de detecções"
+            title="Mostrar detecções"
+            className="absolute grid place-items-center transition-colors"
+            style={{
+              top: "50%",
+              right: 8,
+              transform: "translateY(-50%)",
+              width: 22,
+              height: 56,
+              borderRadius: 8,
+              background: "var(--canvas)",
+              border: "1px solid var(--border)",
+              color: "var(--muted)",
+              cursor: "pointer",
+              boxShadow: "0 4px 12px -8px rgba(15, 23, 42, 0.18)",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "var(--sidebar)";
+              e.currentTarget.style.color = "var(--ink)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--canvas)";
+              e.currentTarget.style.color = "var(--muted)";
+            }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="11 17 6 12 11 7" />
+              <polyline points="18 17 13 12 18 7" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );
