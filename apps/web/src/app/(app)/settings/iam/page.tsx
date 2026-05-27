@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ApiRequestError,
+  getMe,
   type AuditEventDto,
   type GroupDto,
   type PolicyDto,
@@ -52,6 +54,30 @@ const POLICY_PLACEHOLDER = `{
 }`;
 
 export default function IamPage() {
+  const router = useRouter();
+  // Enterprise route guard: IAM é uma feature Enterprise. Core (plan !== ENTERPRISE)
+  // é redirecionado pro dashboard antes de ver qualquer coisa. null = ainda checando.
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMe()
+      .then((m) => {
+        if (cancelled) return;
+        if (m.plan !== "ENTERPRISE") {
+          router.replace("/dashboard");
+        } else {
+          setAllowed(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) router.replace("/dashboard");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
   const [groups, setGroups] = useState<GroupDto[]>([]);
   const [policies, setPolicies] = useState<PolicyDto[]>([]);
   const [users, setUsers] = useState<TenantUserDto[]>([]);
@@ -110,6 +136,11 @@ export default function IamPage() {
     } catch (err) {
       setError(toMessage(err));
     }
+  }
+
+  // Bloqueia render enquanto o guard checa o plano (e durante o redirect do Core).
+  if (allowed === null) {
+    return <EmptyState>…</EmptyState>;
   }
 
   if (loading) {

@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ApiRequestError,
+  getMe,
   getTenantContext,
   upsertTenantContext,
   type TenantContextDto,
@@ -71,6 +73,30 @@ function splitLines(s: string): string[] {
 }
 
 export default function TenantContextPage() {
+  const router = useRouter();
+  // Enterprise route guard: Contexto do tenant é uma feature Enterprise. Core
+  // (plan !== ENTERPRISE) é redirecionado pro dashboard. null = ainda checando.
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMe()
+      .then((m) => {
+        if (cancelled) return;
+        if (m.plan !== "ENTERPRISE") {
+          router.replace("/dashboard");
+        } else {
+          setAllowed(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) router.replace("/dashboard");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [version, setVersion] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -151,6 +177,11 @@ export default function TenantContextPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // Bloqueia render enquanto o guard checa o plano (e durante o redirect do Core).
+  if (allowed === null) {
+    return <EmptyState>…</EmptyState>;
   }
 
   if (loading) {
