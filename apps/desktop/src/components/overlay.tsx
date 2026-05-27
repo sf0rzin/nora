@@ -5,6 +5,27 @@ import { useLiveTranscript, type LiveTranscriptLine } from "@/hooks/use-live-tra
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { Avatar } from "@/components/brand/avatar";
 
+type SpeakerMap = Record<string, string>;
+
+const SPEAKER_OVERRIDES_KEY = "nora.overlay.speaker-overrides";
+
+function loadOverrides(): SpeakerMap {
+  try {
+    const raw = localStorage.getItem(SPEAKER_OVERRIDES_KEY);
+    return raw ? (JSON.parse(raw) as SpeakerMap) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveOverrides(map: SpeakerMap) {
+  try {
+    localStorage.setItem(SPEAKER_OVERRIDES_KEY, JSON.stringify(map));
+  } catch {
+    // ignore
+  }
+}
+
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -19,8 +40,13 @@ function relTime(ms: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function getDisplayName(line: LiveTranscriptLine, isMe: boolean): string {
+function getDisplayName(
+  line: LiveTranscriptLine,
+  isMe: boolean,
+  overrides: SpeakerMap,
+): string {
   if (isMe) return "Você";
+  if (line.speakerId && overrides[line.speakerId]) return overrides[line.speakerId];
   if (line.speakerId === "UNKNOWN") return "Desconhecido";
   return line.speaker || line.speakerId || "Falante";
 }
@@ -34,13 +60,13 @@ interface ChatGroup {
   startTs: number;
 }
 
-function groupLines(lines: LiveTranscriptLine[]): ChatGroup[] {
+function groupLines(lines: LiveTranscriptLine[], overrides: SpeakerMap): ChatGroup[] {
   const groups: ChatGroup[] = [];
   let current: ChatGroup | null = null;
   const WINDOW = 12_000;
   for (const l of lines) {
     const isMe = l.track === "mic";
-    const speaker = getDisplayName(l, isMe);
+    const speaker = getDisplayName(l, isMe, overrides);
     const same =
       current &&
       current.isMe === isMe &&
@@ -257,7 +283,44 @@ export function OverlayPage() {
     micDevice,
   } = useLiveTranscript();
 
-  const groups = useMemo(() => groupLines(lines), [lines]);
+  const [overrides, setOverrides] = useState<SpeakerMap>(loadOverrides);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Reset overrides when a new recording session begins (transcript cleared)
+  useEffect(() => {
+    if (isRecording && lines.length === 0) {
+      setOverrides({});
+      saveOverrides({});
+    }
+  }, [isRecording, lines.length]);
+
+  const renameSpeaker = (speakerId: string, name: string) => {
+    setOverrides((prev) => {
+      const next = { ...prev, [speakerId]: name };
+      saveOverrides(next);
+      return next;
+    });
+    emit("nora://rename-speaker", { speakerId, name }).catch(() => {});
+  };
+
+  // Detected speakers (excluding mic) — ordered by first-appearance
+  const detectedSpeakers = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { speakerId: string; fallback: string }[] = [];
+    for (const l of lines) {
+      if (l.track === "mic") continue;
+      const id = l.speakerId || l.speaker;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push({
+        speakerId: id,
+        fallback: l.speaker || l.speakerId || "Falante",
+      });
+    }
+    return out;
+  }, [lines]);
+
+  const groups = useMemo(() => groupLines(lines, overrides), [lines, overrides]);
 
   // last partial speaker (use track of last line as a heuristic, fallback: not-me)
   const lastTrack = lines.length > 0 ? lines[lines.length - 1].track : "system";
@@ -449,6 +512,38 @@ export function OverlayPage() {
             </>
           )}
           <button
+            onClick={() => setDrawerOpen((v) => !v)}
+            aria-label="Configurações da overlay"
+            title="Configurações"
+            className="grid place-items-center rounded-md transition-colors"
+            style={{
+              width: 26,
+              height: 26,
+              background: drawerOpen ? "var(--chip)" : "transparent",
+              border: "none",
+              color: drawerOpen ? "var(--ink)" : "var(--muted)",
+              cursor: "pointer",
+              marginLeft: 4,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(0,0,0,0.05)";
+              e.currentTarget.style.color = "var(--ink)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = drawerOpen
+                ? "var(--chip)"
+                : "transparent";
+              e.currentTarget.style.color = drawerOpen
+                ? "var(--ink)"
+                : "var(--muted)";
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+          <button
             onClick={handleMinimize}
             aria-label="Esconder overlay"
             title="Esconder"
@@ -460,7 +555,6 @@ export function OverlayPage() {
               border: "none",
               color: "var(--muted)",
               cursor: "pointer",
-              marginLeft: 4,
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = "rgba(0,0,0,0.05)";
@@ -477,6 +571,95 @@ export function OverlayPage() {
           </button>
         </div>
       </div>
+
+      {/* Drawer (config) */}
+      {drawerOpen && (
+        <div
+          className="shrink-0"
+          style={{
+            background: "rgba(247, 247, 245, 0.85)",
+            borderBottom: "1px solid var(--border)",
+            padding: "12px 18px",
+            animation: "overlayDrawerIn 180ms cubic-bezier(.2,.8,.2,1)",
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <h3
+              style={{
+                fontSize: 10.5,
+                fontWeight: 500,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--muted)",
+                margin: 0,
+              }}
+            >
+              Falantes detectados
+            </h3>
+            <span style={{ fontSize: 11, color: "var(--muted)" }}>
+              {detectedSpeakers.length} {detectedSpeakers.length === 1 ? "pessoa" : "pessoas"}
+            </span>
+          </div>
+          {detectedSpeakers.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+              Ainda não detectei outros falantes. Conforme a conversa rolar, NORA
+              identifica cada voz — você pode renomear elas aqui em tempo real.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              {detectedSpeakers.map((s) => (
+                <div key={s.speakerId} className="flex items-center gap-2">
+                  <Avatar name={overrides[s.speakerId] || s.fallback} size={24} />
+                  <input
+                    type="text"
+                    value={overrides[s.speakerId] ?? ""}
+                    onChange={(e) =>
+                      renameSpeaker(s.speakerId, e.target.value)
+                    }
+                    placeholder={s.fallback}
+                    className="flex-1 outline-none"
+                    style={{
+                      padding: "5px 9px",
+                      background: "var(--canvas)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 7,
+                      fontSize: 12.5,
+                      color: "var(--ink)",
+                      letterSpacing: "-0.005em",
+                      fontFamily: "var(--sans)",
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = "var(--accent)";
+                      e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-soft)";
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = "var(--border)";
+                      e.currentTarget.style.boxShadow = "none";
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: "var(--muted)",
+                      fontVariantNumeric: "tabular-nums",
+                      minWidth: 56,
+                      textAlign: "right",
+                    }}
+                  >
+                    {s.speakerId}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <style>{`
+            @keyframes overlayDrawerIn {
+              from { opacity: 0; transform: translateY(-4px); }
+              to   { opacity: 1; transform: translateY(0); }
+            }
+          `}</style>
+        </div>
+      )}
 
       {/* Body */}
       <div

@@ -166,6 +166,20 @@ export function ActiveRecordingProvider({ children }: { children: ReactNode }) {
     };
   }, [cancel]);
 
+  // Listen for speaker rename from overlay drawer
+  useEffect(() => {
+    const unlisten = listen<{ speakerId: string; name: string }>(
+      "nora://rename-speaker",
+      (e) => {
+        if (!e.payload?.speakerId) return;
+        recording.renameSpeaker(e.payload.speakerId, e.payload.name || "");
+      },
+    );
+    return () => {
+      unlisten.then((fn) => fn()).catch(() => {});
+    };
+  }, [recording]);
+
   const value: ActiveRecordingState = useMemo(
     () => ({
       isRecording: recording.isRecording,
