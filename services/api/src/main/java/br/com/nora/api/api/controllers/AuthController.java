@@ -3,6 +3,7 @@ package br.com.nora.api.api.controllers;
 import br.com.nora.api.api.dto.auth.ConfirmPasswordResetRequest;
 import br.com.nora.api.api.dto.auth.LoginRequest;
 import br.com.nora.api.api.dto.auth.LoginResponse;
+import br.com.nora.api.api.dto.auth.MeResponse;
 import br.com.nora.api.api.dto.auth.RefreshResponse;
 import br.com.nora.api.api.dto.auth.RequestPasswordResetRequest;
 import br.com.nora.api.api.dto.auth.RequestPasswordResetResponse;
@@ -10,17 +11,20 @@ import br.com.nora.api.api.dto.auth.SignupRequest;
 import br.com.nora.api.api.dto.auth.SignupResponse;
 import br.com.nora.api.api.dto.auth.VerifyEmailRequest;
 import br.com.nora.api.api.security.AuthCookies;
+import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.identity.AuthException;
 import br.com.nora.api.application.identity.AuthService;
 import br.com.nora.api.application.identity.AuthService.ConfirmPasswordResetCommand;
 import br.com.nora.api.application.identity.AuthService.LoginCommand;
 import br.com.nora.api.application.identity.AuthService.LoginResult;
+import br.com.nora.api.application.identity.AuthService.MeView;
 import br.com.nora.api.application.identity.AuthService.RefreshResult;
 import br.com.nora.api.application.identity.AuthService.RequestPasswordResetCommand;
 import br.com.nora.api.application.identity.AuthService.RequestPasswordResetResult;
 import br.com.nora.api.application.identity.AuthService.SignupCommand;
 import br.com.nora.api.application.identity.AuthService.SignupResult;
 import br.com.nora.api.infrastructure.security.AuthRateLimiter;
+import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -30,6 +34,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -92,6 +97,25 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Identidade do usuario autenticado. Requer JWT valido (nao esta em PUBLIC_ENDPOINTS). Usado
+     * pelo front pra decisoes de UI autoritativas (ex.: mostrar nav de admin so pro Root).
+     */
+    @GetMapping("/me")
+    public MeResponse me() {
+        AuthenticatedPrincipal p = CurrentUser.require();
+        MeView m = authService.me(p.userId(), p.tenantId());
+        return new MeResponse(
+                m.userId(),
+                m.tenantId(),
+                m.email(),
+                m.displayName(),
+                m.isRoot(),
+                m.emailVerified(),
+                m.tenantName(),
+                m.tenantPlan());
+    }
+
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(
             @Valid @RequestBody LoginRequest req, HttpServletRequest httpReq) {
@@ -109,7 +133,8 @@ public class AuthController {
                         result.user().id(),
                         result.user().tenantId(),
                         result.user().email().value(),
-                        result.user().displayName());
+                        result.user().displayName(),
+                        result.isRoot());
 
         HttpHeaders headers = new HttpHeaders();
         AuthCookies.appendSetCookie(

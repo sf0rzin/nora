@@ -531,6 +531,22 @@ class AuthServiceTest {
             return u != null && u.tenantId().equals(tenantId) && rootIds.contains(userId);
         }
 
+        @Override
+        public List<TenantUserSummary> listByTenant(UUID tenantId) {
+            return byId.values().stream()
+                    .filter(u -> u.tenantId().equals(tenantId))
+                    .map(
+                            u ->
+                                    new TenantUserSummary(
+                                            u.id(),
+                                            u.email().value(),
+                                            u.displayName(),
+                                            rootIds.contains(u.id()),
+                                            u.status(),
+                                            u.createdAt()))
+                    .toList();
+        }
+
         Optional<User> byId(UUID id) {
             return findById(id);
         }

@@ -5,6 +5,7 @@ import br.com.nora.api.domain.identity.Email;
 import br.com.nora.api.domain.identity.User;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -96,5 +97,21 @@ public class UserRepositoryAdapter implements UserRepository {
                         .findFirst()
                         .orElse(Boolean.FALSE);
         return Boolean.TRUE.equals(result);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TenantUserSummary> listByTenant(UUID tenantId) {
+        return jpa.findByTenantIdOrderByCreatedAtAsc(tenantId).stream()
+                .map(
+                        e ->
+                                new TenantUserSummary(
+                                        e.getId(),
+                                        e.getEmail(),
+                                        e.getDisplayName(),
+                                        e.isRoot(),
+                                        e.getStatus(),
+                                        e.getCreatedAt()))
+                .toList();
     }
 }

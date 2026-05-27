@@ -94,7 +94,10 @@ public class InvitationController {
                         result.user().id(),
                         result.user().tenantId(),
                         result.user().email().value(),
-                        result.user().displayName());
+                        result.user().displayName(),
+                        // Convidado entra num tenant existente: nunca e Root (so o signup cria
+                        // Root).
+                        false);
         HttpHeaders headers = new HttpHeaders();
         AuthCookies.appendSetCookie(
                 headers,

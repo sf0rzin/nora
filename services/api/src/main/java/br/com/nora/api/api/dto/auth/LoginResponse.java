@@ -10,4 +10,5 @@ public record LoginResponse(
         UUID userId,
         UUID tenantId,
         String email,
-        String displayName) {}
+        String displayName,
+        boolean isRoot) {}

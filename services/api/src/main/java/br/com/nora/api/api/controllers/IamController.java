@@ -5,6 +5,7 @@ import br.com.nora.api.api.dto.iam.CreateGroupRequest;
 import br.com.nora.api.api.dto.iam.CreatePolicyRequest;
 import br.com.nora.api.api.dto.iam.GroupDto;
 import br.com.nora.api.api.dto.iam.PolicyDto;
+import br.com.nora.api.api.dto.iam.TenantUserDto;
 import br.com.nora.api.api.dto.iam.UpdatePolicyRequest;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.iam.AuthorizationService;
@@ -17,6 +18,7 @@ import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrinci
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -205,6 +207,25 @@ public class IamController {
         requireIam("iam:attachment:delete");
         AuthenticatedPrincipal p = CurrentUser.require();
         iam.detachPolicyFromUser(p.tenantId(), p.userId(), policyId, userId);
+    }
+
+    // ---------- users (directory) ----------
+
+    @GetMapping("/users")
+    public List<TenantUserDto> listUsers() {
+        requireIam("iam:user:read");
+        AuthenticatedPrincipal p = CurrentUser.require();
+        return iam.listTenantUsers(p.tenantId()).stream()
+                .map(
+                        u ->
+                                new TenantUserDto(
+                                        u.id(),
+                                        u.email(),
+                                        u.displayName(),
+                                        u.isRoot(),
+                                        u.status().name(),
+                                        OffsetDateTime.ofInstant(u.createdAt(), ZoneOffset.UTC)))
+                .toList();
     }
 
     // ---------- audit ----------

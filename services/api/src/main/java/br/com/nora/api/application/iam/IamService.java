@@ -1,6 +1,7 @@
 package br.com.nora.api.application.iam;
 
 import br.com.nora.api.application.ports.IamRepository;
+import br.com.nora.api.application.ports.UserRepository;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
@@ -22,9 +23,19 @@ import org.springframework.transaction.annotation.Transactional;
 public class IamService {
 
     private final IamRepository iam;
+    private final UserRepository users;
 
-    public IamService(IamRepository iam) {
+    public IamService(IamRepository iam, UserRepository users) {
         this.iam = iam;
+        this.users = users;
+    }
+
+    // ========== users (directory) ==========
+
+    /** Lista os usuarios do tenant para gestao IAM (pickers de membro / anexo de policy). */
+    @Transactional(readOnly = true)
+    public List<UserRepository.TenantUserSummary> listTenantUsers(UUID tenantId) {
+        return users.listByTenant(tenantId);
     }
 
     // ========== groups ==========

@@ -219,7 +219,8 @@ public class AuthService {
             String accessToken,
             long accessExpiresInSeconds,
             String refreshTokenPlain,
-            long refreshExpiresInSeconds) {}
+            long refreshExpiresInSeconds,
+            boolean isRoot) {}
 
     /**
      * US03: valida credenciais e emite par access + refresh.
@@ -270,6 +271,7 @@ public class AuthService {
     @Transactional
     public LoginResult issueTokens(User user) {
         Instant now = clock.now();
+        boolean isRoot = userRepository.isRoot(user.id(), user.tenantId());
         String access = jwtIssuer.issue(user, DEFAULT_ROLES, settings.jwtTtl());
         GeneratedToken refresh = tokenGenerator.generate();
         refreshTokenRepository.save(
@@ -285,7 +287,41 @@ public class AuthService {
                 access,
                 settings.jwtTtl().toSeconds(),
                 refresh.rawToken(),
-                settings.refreshTokenTtl().toSeconds());
+                settings.refreshTokenTtl().toSeconds(),
+                isRoot);
+    }
+
+    // ----- identidade: GET /auth/me -----
+
+    /** Visao de identidade do usuario autenticado, com flag de Root e dados do tenant. */
+    public record MeView(
+            UUID userId,
+            UUID tenantId,
+            String email,
+            String displayName,
+            boolean isRoot,
+            boolean emailVerified,
+            String tenantName,
+            String tenantPlan) {}
+
+    @Transactional(readOnly = true)
+    public MeView me(UUID userId, UUID tenantId) {
+        User user =
+                userRepository.findById(userId).orElseThrow(AuthException.InvalidCredentials::new);
+        boolean isRoot = userRepository.isRoot(userId, tenantId);
+        Tenant tenant =
+                tenantRepository
+                        .findById(tenantId)
+                        .orElseThrow(AuthException.InvalidCredentials::new);
+        return new MeView(
+                user.id(),
+                user.tenantId(),
+                user.email().value(),
+                user.displayName(),
+                isRoot,
+                user.isEmailVerified(),
+                tenant.name(),
+                tenant.plan().name());
     }
 
     // ----- Round 2 / 1.3 A: refresh + logout (com rotation + reuse detection) -----
