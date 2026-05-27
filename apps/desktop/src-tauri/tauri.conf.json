@@ -20,16 +20,16 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "backgroundColor": "#18181b"
+        "backgroundColor": "#FDFDFC"
       },
       {
         "label": "overlay",
         "url": "overlay.html",
         "title": "NORA Live",
-        "width": 360,
-        "height": 520,
-        "minWidth": 280,
-        "minHeight": 200,
+        "width": 960,
+        "height": 280,
+        "minWidth": 720,
+        "minHeight": 220,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

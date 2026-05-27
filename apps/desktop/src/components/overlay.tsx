@@ -10,103 +10,229 @@ function formatTimeAgo(ms: number): string {
   return `${minutes}min atrás`;
 }
 
-const priorityColors: Record<string, string> = {
-  HIGH: "bg-red-500/20 text-red-300 border-red-800",
-  MEDIUM: "bg-yellow-500/20 text-yellow-300 border-yellow-800",
-  LOW: "bg-zinc-500/20 text-zinc-300 border-zinc-700",
+type CategoryKey = "decisions" | "nextSteps" | "observations" | "tasks";
+
+interface CategoryDef {
+  key: CategoryKey;
+  label: string;
+  accent: string;
+  icon: JSX.Element;
+}
+
+const CATEGORIES: CategoryDef[] = [
+  {
+    key: "decisions",
+    label: "Decisões",
+    accent: "var(--accent-ink)",
+    icon: (
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+    ),
+  },
+  {
+    key: "nextSteps",
+    label: "Próximos passos",
+    accent: "#3f8a5e",
+    icon: (
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="5" y1="12" x2="19" y2="12" />
+        <polyline points="12 5 19 12 12 19" />
+      </svg>
+    ),
+  },
+  {
+    key: "observations",
+    label: "Observações",
+    accent: "var(--muted)",
+    icon: (
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="16" x2="12" y2="12" />
+        <line x1="12" y1="8" x2="12.01" y2="8" />
+      </svg>
+    ),
+  },
+  {
+    key: "tasks",
+    label: "Tarefas",
+    accent: "#a37528",
+    icon: (
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="9 11 12 14 22 4" />
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+      </svg>
+    ),
+  },
+];
+
+const PRIORITY: Record<string, { bg: string; fg: string; dot: string }> = {
+  HIGH: { bg: "rgba(201,119,102,0.16)", fg: "#a04c3e", dot: "#a04c3e" },
+  MEDIUM: { bg: "rgba(212,160,76,0.16)", fg: "#a37528", dot: "#a37528" },
+  LOW: { bg: "var(--chip)", fg: "var(--muted)", dot: "var(--muted)" },
 };
 
-function HighlightSection({
-  title,
-  items,
-  defaultOpen = true,
-}: {
-  title: string;
-  items: { text: string; confidence: number }[];
-  defaultOpen?: boolean;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  if (items.length === 0) return null;
-
+function OverlayBars({ active }: { active: boolean }) {
   return (
-    <div className="border-b border-zinc-800 last:border-b-0">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full px-3 py-2 flex items-center justify-between text-xs font-medium text-zinc-300 hover:bg-zinc-800/50 transition-colors"
-      >
-        <span className="flex items-center gap-2">
-          <span>{open ? "▼" : "▶"}</span>
-          {title}
-          <span className="bg-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded-full text-[10px]">
-            {items.length}
-          </span>
-        </span>
-      </button>
-      {open && (
-        <div className="px-3 pb-2 space-y-1">
-          {items.map((item, i) => (
-            <div
-              key={i}
-              className="text-xs text-zinc-300 leading-relaxed pl-2 border-l-2 border-zinc-700"
-            >
-              {item.text}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    <span className="inline-flex items-end gap-[2.5px]" style={{ height: 16 }}>
+      {[0.4, 0.7, 1.0, 0.65, 0.5].map((h, i) => (
+        <span
+          key={i}
+          style={{
+            display: "block",
+            width: 3,
+            height: `${h * 100}%`,
+            background: active ? "var(--danger)" : "var(--ink)",
+            borderRadius: 2,
+            animation: active ? `dotPulse 1.4s ease-in-out ${i * 0.12}s infinite` : undefined,
+          }}
+        />
+      ))}
+    </span>
   );
 }
 
-function TaskSection({
-  tasks,
+function Column({
+  cat,
+  items,
 }: {
-  tasks: { title: string; priority: string; assignee: string | null }[];
+  cat: CategoryDef;
+  items: { kind: "text" | "task"; text: string; priority?: string }[];
 }) {
-  const [open, setOpen] = useState(true);
-  if (tasks.length === 0) return null;
-
+  const count = items.length;
   return (
-    <div className="border-b border-zinc-800 last:border-b-0">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full px-3 py-2 flex items-center justify-between text-xs font-medium text-zinc-300 hover:bg-zinc-800/50 transition-colors"
+    <section
+      className="flex flex-col min-w-0"
+      style={{
+        flex: 1,
+        background: "rgba(253, 253, 252, 0.55)",
+        borderRadius: 10,
+        border: "1px solid var(--border)",
+        padding: 0,
+        minWidth: 0,
+        overflow: "hidden",
+      }}
+    >
+      <header
+        className="flex items-center justify-between shrink-0"
+        style={{
+          padding: "8px 11px",
+          background: "rgba(247, 247, 245, 0.55)",
+          borderBottom: "1px solid var(--border)",
+        }}
       >
-        <span className="flex items-center gap-2">
-          <span>{open ? "▼" : "▶"}</span>
-          Tarefas
-          <span className="bg-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded-full text-[10px]">
-            {tasks.length}
-          </span>
+        <span
+          className="inline-flex items-center gap-1.5"
+          style={{
+            fontSize: 10.5,
+            fontWeight: 500,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: cat.accent,
+          }}
+        >
+          {cat.icon}
+          {cat.label}
         </span>
-      </button>
-      {open && (
-        <div className="px-3 pb-2 space-y-1.5">
-          {tasks.map((task, i) => (
-            <div key={i} className="flex items-start gap-2 text-xs">
-              <span
-                className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium border ${
-                  priorityColors[task.priority] || priorityColors.MEDIUM
-                }`}
-              >
-                {task.priority}
-              </span>
-              <span className="text-zinc-300 leading-relaxed">{task.title}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+        <span
+          style={{
+            fontSize: 10,
+            color: "var(--muted)",
+            fontVariantNumeric: "tabular-nums",
+            padding: "1px 7px",
+            background: "var(--chip)",
+            borderRadius: 999,
+            fontWeight: 500,
+          }}
+        >
+          {count}
+        </span>
+      </header>
+      <div
+        className="overflow-y-auto"
+        style={{ padding: count === 0 ? "10px 12px" : "8px 4px 10px 4px", flex: 1, minHeight: 0 }}
+      >
+        {count === 0 ? (
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--muted)",
+              fontStyle: "italic",
+              lineHeight: 1.55,
+              opacity: 0.7,
+            }}
+          >
+            Aguardando…
+          </div>
+        ) : (
+          <div className="flex flex-col">
+            {items.map((it, i) => {
+              if (it.kind === "task") {
+                const c = PRIORITY[it.priority ?? "MEDIUM"] ?? PRIORITY.MEDIUM;
+                return (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2"
+                    style={{ padding: "6px 8px", borderRadius: 7 }}
+                  >
+                    <span
+                      className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap"
+                      style={{
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        background: c.bg,
+                        color: c.fg,
+                        fontSize: 9.5,
+                        fontWeight: 500,
+                        letterSpacing: "0.04em",
+                        marginTop: 1,
+                      }}
+                    >
+                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: c.dot }} />
+                      {it.priority}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "var(--ink)",
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {it.text}
+                    </span>
+                  </div>
+                );
+              }
+              return (
+                <div
+                  key={i}
+                  style={{
+                    padding: "6px 8px 6px 10px",
+                    borderRadius: 7,
+                    fontSize: 12,
+                    color: "var(--ink)",
+                    lineHeight: 1.5,
+                    borderLeft: `2px solid ${cat.accent}`,
+                    marginLeft: 4,
+                    background: "transparent",
+                  }}
+                >
+                  {it.text}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
 export function OverlayPage() {
   const { highlights, lastUpdatedAt, lastLatencyMs, isAnalyzing } = useLiveHighlights();
-
-  const [recordingStatus, setRecordingStatus] = useState<{
-    isRecording: boolean;
-  } | null>(null);
+  const [recordingStatus, setRecordingStatus] = useState<{ isRecording: boolean } | null>(null);
   const [timeAgo, setTimeAgo] = useState<string>("");
+
   const totalItems =
     highlights.decisions.length +
     highlights.nextSteps.length +
@@ -117,11 +243,9 @@ export function OverlayPage() {
     const unlisten = listen<{ isRecording: boolean }>("recording-status", (event) => {
       setRecordingStatus(event.payload);
     });
-
-    invoke("get_recording_status").then((status) => {
-      setRecordingStatus(status as { isRecording: boolean });
-    }).catch(() => {});
-
+    invokeOverlay("get_recording_status")
+      .then((status) => setRecordingStatus(status as { isRecording: boolean }))
+      .catch(() => {});
     return () => {
       unlisten.then((fn) => fn());
     };
@@ -139,82 +263,173 @@ export function OverlayPage() {
   }, [lastUpdatedAt]);
 
   const hasContent = totalItems > 0 || isAnalyzing;
+  const isRecording = recordingStatus?.isRecording ?? false;
+
+  const columnsData: { cat: CategoryDef; items: { kind: "text" | "task"; text: string; priority?: string }[] }[] = CATEGORIES.map((cat) => {
+    if (cat.key === "tasks") {
+      return {
+        cat,
+        items: highlights.tasks.map((t) => ({
+          kind: "task" as const,
+          text: t.title,
+          priority: t.priority,
+        })),
+      };
+    }
+    const arr =
+      cat.key === "decisions"
+        ? highlights.decisions
+        : cat.key === "nextSteps"
+          ? highlights.nextSteps
+          : highlights.observations;
+    return {
+      cat,
+      items: arr.map((it) => ({ kind: "text" as const, text: it.text })),
+    };
+  });
 
   return (
     <div
-      className="h-screen flex flex-col bg-zinc-900/95 backdrop-blur-sm text-zinc-100 select-none overflow-hidden rounded-xl border border-zinc-700/50"
+      className="h-screen w-screen flex flex-col select-none overflow-hidden"
+      style={{
+        background: "rgba(253, 253, 252, 0.92)",
+        WebkitBackdropFilter: "saturate(160%) blur(24px)",
+        backdropFilter: "saturate(160%) blur(24px)",
+        color: "var(--ink)",
+        borderRadius: 16,
+        border: "1px solid var(--border)",
+        boxShadow:
+          "0 24px 60px -28px rgba(15, 23, 42, 0.32), 0 6px 18px rgba(15, 23, 42, 0.06)",
+      }}
     >
+      {/* Header (drag region) */}
       <div
         data-tauri-drag-region
-        className="flex items-center justify-between px-3 py-2 bg-zinc-900 border-b border-zinc-800 cursor-move"
+        className="flex items-center justify-between shrink-0"
+        style={{
+          padding: "10px 14px",
+          background: "rgba(247, 247, 245, 0.5)",
+          borderBottom: "1px solid var(--border)",
+          cursor: "move",
+        }}
       >
-        <div className="flex items-center gap-2 text-xs font-medium">
-          {recordingStatus?.isRecording ? (
-            <>
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-red-400">GRAVANDO</span>
-            </>
-          ) : (
-            <span className="text-zinc-500">NORA Live</span>
+        <div className="flex items-center gap-3">
+          <OverlayBars active={isRecording} />
+          <span
+            style={{
+              fontSize: 11.5,
+              fontWeight: 500,
+              letterSpacing: "-0.005em",
+            }}
+          >
+            {isRecording ? (
+              <span style={{ color: "var(--danger-ink)" }}>NORA · gravando</span>
+            ) : (
+              <span style={{ color: "var(--muted)" }}>NORA Live</span>
+            )}
+          </span>
+          {totalItems > 0 && (
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--muted)",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              · {totalItems} {totalItems === 1 ? "destaque" : "destaques"}
+            </span>
           )}
         </div>
-        <button
-          onClick={() => invoke("toggle_overlay", { show: false })}
-          className="w-5 h-5 flex items-center justify-center rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors text-xs"
-        >
-          {"×"}
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto min-h-0">
-        {isAnalyzing && !hasContent && (
-          <div className="flex items-center justify-center py-8">
-            <div className="flex items-center gap-2 text-xs text-zinc-500">
-              <span className="w-3 h-3 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
-              Analisando...
-            </div>
-          </div>
-        )}
-
-        {!hasContent && !isAnalyzing && (
-          <div className="flex items-center justify-center py-12 text-xs text-zinc-600">
-            Aguardando transcrição...
-          </div>
-        )}
-
-        {hasContent && (
-          <div className="divide-y divide-zinc-800/50">
-            <HighlightSection title="Decisões" items={highlights.decisions} />
-            <HighlightSection
-              title="Próximos Passos"
-              items={highlights.nextSteps}
-            />
-            <HighlightSection title="Observações" items={highlights.observations} />
-            <TaskSection tasks={highlights.tasks} />
-          </div>
-        )}
-      </div>
-
-      <div className="px-3 py-1.5 border-t border-zinc-800 flex items-center justify-between text-[10px] text-zinc-600">
-        <span>
+        <div className="flex items-center gap-2.5">
           {isAnalyzing ? (
-            <span className="text-blue-400 flex items-center gap-1">
-              <span className="w-2 h-2 border border-blue-400 border-t-transparent rounded-full animate-spin" />
-              Analisando...
+            <span
+              className="inline-flex items-center gap-1.5"
+              style={{ fontSize: 10.5, color: "var(--accent-ink)" }}
+            >
+              <span
+                style={{
+                  width: 9,
+                  height: 9,
+                  border: "1.5px solid var(--accent-ink)",
+                  borderTopColor: "transparent",
+                  borderRadius: "50%",
+                  animation: "nora-spin 0.9s linear infinite",
+                }}
+              />
+              analisando
             </span>
           ) : timeAgo ? (
-            `Atualizado ${timeAgo}`
+            <span
+              style={{
+                fontSize: 10.5,
+                color: "var(--muted)",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {timeAgo}
+            </span>
           ) : null}
-        </span>
-        {lastLatencyMs !== null && (
-          <span>{lastLatencyMs}ms</span>
+          {lastLatencyMs !== null && (
+            <span
+              style={{
+                fontSize: 10,
+                color: "var(--muted)",
+                fontVariantNumeric: "tabular-nums",
+                opacity: 0.7,
+              }}
+            >
+              {lastLatencyMs}ms
+            </span>
+          )}
+          <button
+            onClick={() => invokeOverlay("toggle_overlay", { show: false })}
+            className="grid place-items-center rounded-md transition-colors"
+            aria-label="Fechar overlay"
+            style={{
+              width: 24,
+              height: 24,
+              background: "transparent",
+              border: "none",
+              color: "var(--muted)",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(0,0,0,0.05)";
+              e.currentTarget.style.color = "var(--ink)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "var(--muted)";
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 min-h-0 overflow-hidden" style={{ padding: 10 }}>
+        {!hasContent ? (
+          <div className="h-full grid grid-cols-4 gap-2.5">
+            {CATEGORIES.map((cat) => (
+              <Column key={cat.key} cat={cat} items={[]} />
+            ))}
+          </div>
+        ) : (
+          <div className="h-full grid grid-cols-4 gap-2.5">
+            {columnsData.map((c) => (
+              <Column key={c.cat.key} cat={c.cat} items={c.items} />
+            ))}
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-async function invoke(cmd: string, args?: Record<string, unknown>) {
-  const { invoke: tauriInvoke } = await import("@tauri-apps/api/core");
-  return tauriInvoke(cmd, args);
+async function invokeOverlay(cmd: string, args?: Record<string, unknown>) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke(cmd, args);
 }
