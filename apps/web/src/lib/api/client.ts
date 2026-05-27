@@ -327,6 +327,7 @@ export interface TenantContextDto {
   products: { name: string; description?: string; keyDifferentiators: string[] }[];
   competitors: string[];
   objectionHandling: string[];
+  version: number;
   updatedAt: string;
 }
 
@@ -335,7 +336,7 @@ export async function getTenantContext() {
 }
 
 export async function upsertTenantContext(
-  payload: Omit<TenantContextDto, 'tenantId' | 'updatedAt'>,
+  payload: Omit<TenantContextDto, 'tenantId' | 'version' | 'updatedAt'>,
 ) {
   return request<TenantContextDto>(`/tenant/context`, {
     method: 'PUT',

@@ -72,6 +72,7 @@ function splitLines(s: string): string[] {
 
 export default function TenantContextPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [version, setVersion] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -81,7 +82,10 @@ export default function TenantContextPage() {
     let cancelled = false;
     getTenantContext()
       .then((dto) => {
-        if (!cancelled) setForm(fromDto(dto));
+        if (!cancelled) {
+          setForm(fromDto(dto));
+          setVersion(dto.version);
+        }
       })
       .catch((err) => {
         if (cancelled) return;
@@ -140,6 +144,7 @@ export default function TenantContextPage() {
           })),
       });
       setForm(fromDto(saved));
+      setVersion(saved.version);
       setMessage("Contexto salvo com sucesso.");
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Falha ao salvar contexto.");
@@ -156,7 +161,11 @@ export default function TenantContextPage() {
     <div style={{ maxWidth: 768 }}>
       <PageHeader
         title="Contexto do tenant"
-        subtitle="Esses dados são enviados ao motor de NLP em toda análise de reunião."
+        subtitle={
+          version != null
+            ? `Esses dados são enviados ao motor de NLP em toda análise de reunião. · Versão ${version}`
+            : "Esses dados são enviados ao motor de NLP em toda análise de reunião."
+        }
       />
 
       <Card>
