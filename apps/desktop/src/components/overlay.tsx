@@ -5,6 +5,10 @@ import { useLiveTranscript, type LiveTranscriptLine } from "@/hooks/use-live-tra
 import { useLiveHighlights, type LiveHighlightItem, type LiveTaskItem } from "@/hooks/use-live-highlights";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { Avatar } from "@/components/brand/avatar";
+import {
+  NotificationStack,
+  useNotifications,
+} from "@/components/overlay-notifications";
 
 type SpeakerMap = Record<string, string>;
 
@@ -1057,6 +1061,9 @@ export function OverlayPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [closeConfirm, setCloseConfirm] = useState(false);
 
+  const { items: notifications, push: pushNotification, dismiss: dismissNotification } =
+    useNotifications();
+
   const toggleHighlights = (next: boolean) => {
     setHighlightsVisible(next);
     saveHighlightsPref(next);
@@ -1098,16 +1105,24 @@ export function OverlayPage() {
     const unlisten = listen<{ visible: boolean }>(
       "nora://dock-visibility-changed",
       (e) => {
-        if (typeof e.payload?.visible === "boolean") {
-          setDockVisible(e.payload.visible);
-          saveDockPref(e.payload.visible);
+        if (typeof e.payload?.visible !== "boolean") return;
+        const visible = e.payload.visible;
+        setDockVisible(visible);
+        saveDockPref(visible);
+        if (!visible) {
+          pushNotification({
+            variant: "info",
+            title: "Dock escondido",
+            body: "Você pode trazer de volta no toggle do drawer.",
+            duration: 5000,
+          });
         }
       },
     );
     return () => {
       unlisten.then((fn) => fn()).catch(() => {});
     };
-  }, []);
+  }, [pushNotification]);
 
   const renameSpeaker = (speakerId: string, name: string) => {
     setOverrides((prev) => {
@@ -1532,6 +1547,11 @@ export function OverlayPage() {
         {highlightsVisible && (
           <HighlightsColumn onCollapse={() => toggleHighlights(false)} />
         )}
+
+        <NotificationStack
+          items={notifications}
+          onDismiss={dismissNotification}
+        />
 
         {!highlightsVisible && (
           <button
