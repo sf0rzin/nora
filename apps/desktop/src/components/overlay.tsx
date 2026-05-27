@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { useLiveTranscript, type LiveTranscriptLine } from "@/hooks/use-live-transcript";
+import { useLiveHighlights, type LiveHighlightItem, type LiveTaskItem } from "@/hooks/use-live-highlights";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { Avatar } from "@/components/brand/avatar";
 
@@ -9,23 +10,6 @@ type SpeakerMap = Record<string, string>;
 
 const SPEAKER_OVERRIDES_KEY = "nora.overlay.speaker-overrides";
 const DOCK_STORAGE_KEY = "nora.dock.visible";
-
-function loadDockPref(): boolean {
-  try {
-    const v = localStorage.getItem(DOCK_STORAGE_KEY);
-    return v == null ? true : v === "1";
-  } catch {
-    return true;
-  }
-}
-
-function saveDockPref(v: boolean) {
-  try {
-    localStorage.setItem(DOCK_STORAGE_KEY, v ? "1" : "0");
-  } catch {
-    // ignore
-  }
-}
 
 function loadOverrides(): SpeakerMap {
   try {
@@ -35,10 +19,24 @@ function loadOverrides(): SpeakerMap {
     return {};
   }
 }
-
 function saveOverrides(map: SpeakerMap) {
   try {
     localStorage.setItem(SPEAKER_OVERRIDES_KEY, JSON.stringify(map));
+  } catch {
+    // ignore
+  }
+}
+function loadDockPref(): boolean {
+  try {
+    const v = localStorage.getItem(DOCK_STORAGE_KEY);
+    return v == null ? true : v === "1";
+  } catch {
+    return true;
+  }
+}
+function saveDockPref(v: boolean) {
+  try {
+    localStorage.setItem(DOCK_STORAGE_KEY, v ? "1" : "0");
   } catch {
     // ignore
   }
@@ -58,18 +56,14 @@ function relTime(ms: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function getDisplayName(
-  line: LiveTranscriptLine,
-  isMe: boolean,
-  overrides: SpeakerMap,
-): string {
+function getDisplayName(line: LiveTranscriptLine, isMe: boolean, overrides: SpeakerMap): string {
   if (isMe) return "Você";
   if (line.speakerId && overrides[line.speakerId]) return overrides[line.speakerId];
   if (line.speakerId === "UNKNOWN") return "Desconhecido";
   return line.speaker || line.speakerId || "Falante";
 }
 
-// Group consecutive lines from the same speaker (and within 12s) into one bubble
+// ── Group consecutive lines from same speaker (12s window) ─────────────
 interface ChatGroup {
   id: string;
   isMe: boolean;
@@ -106,6 +100,7 @@ function groupLines(lines: LiveTranscriptLine[], overrides: SpeakerMap): ChatGro
   return groups;
 }
 
+// ── Chat bubble ────────────────────────────────────────────────────────
 function ChatBubble({
   group,
   startedAt,
@@ -122,23 +117,23 @@ function ChatBubble({
     >
       {!isMe && (
         <div className="shrink-0" style={{ paddingBottom: 2 }}>
-          <Avatar name={group.speaker} size={26} />
+          <Avatar name={group.speaker} size={22} />
         </div>
       )}
       <div
         className="flex flex-col"
         style={{
-          maxWidth: "min(72%, 540px)",
+          maxWidth: "82%",
           alignItems: isMe ? "flex-end" : "flex-start",
         }}
       >
         <div
-          className="flex items-baseline gap-2"
-          style={{ marginBottom: 3, padding: "0 4px" }}
+          className="flex items-baseline gap-1.5"
+          style={{ marginBottom: 2, padding: "0 4px" }}
         >
           <span
             style={{
-              fontSize: 11,
+              fontSize: 10.5,
               fontWeight: 500,
               color: "var(--ink)",
               letterSpacing: "-0.005em",
@@ -149,7 +144,7 @@ function ChatBubble({
           {ts && (
             <span
               style={{
-                fontSize: 10,
+                fontSize: 9.5,
                 color: "var(--muted)",
                 fontVariantNumeric: "tabular-nums",
               }}
@@ -163,22 +158,22 @@ function ChatBubble({
             <div
               key={t.id}
               style={{
-                padding: "8px 13px",
+                padding: "7px 11px",
                 background: isMe ? "var(--ink)" : "var(--canvas)",
                 color: isMe ? "var(--canvas)" : "var(--ink)",
                 border: isMe ? "none" : "1px solid var(--border)",
-                borderRadius: 14,
-                borderTopRightRadius: isMe ? 6 : 14,
-                borderTopLeftRadius: isMe ? 14 : 6,
-                fontSize: 13.5,
+                borderRadius: 12,
+                borderTopRightRadius: isMe ? 5 : 12,
+                borderTopLeftRadius: isMe ? 12 : 5,
+                fontSize: 12.5,
                 lineHeight: 1.45,
                 letterSpacing: "-0.005em",
                 textAlign: "left",
                 whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
                 boxShadow: isMe
-                  ? "0 6px 16px -10px rgba(15, 23, 42, 0.40)"
-                  : "0 2px 8px -6px rgba(15, 23, 42, 0.12)",
+                  ? "0 4px 14px -10px rgba(15, 23, 42, 0.40)"
+                  : "0 2px 6px -4px rgba(15, 23, 42, 0.10)",
               }}
             >
               {t.text}
@@ -190,16 +185,15 @@ function ChatBubble({
         <div
           className="shrink-0 grid place-items-center"
           style={{
-            width: 26,
-            height: 26,
+            width: 22,
+            height: 22,
             borderRadius: "50%",
             overflow: "hidden",
             background: "var(--canvas)",
-            paddingBottom: 0,
             marginBottom: 2,
           }}
         >
-          <ShaderOrb size={26} speed={1} intensity={0.95} />
+          <ShaderOrb size={22} speed={1} intensity={0.95} />
         </div>
       )}
     </div>
@@ -213,39 +207,37 @@ function PartialBubble({ text, isMe }: { text: string; isMe: boolean }) {
       style={{ width: "100%", opacity: 0.55 }}
     >
       {!isMe && (
-        <div className="shrink-0">
-          <span
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: "50%",
-              background: "var(--chip)",
-              display: "block",
-            }}
-          />
-        </div>
+        <span
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: "50%",
+            background: "var(--chip)",
+            display: "block",
+          }}
+        />
       )}
       <div
         style={{
-          padding: "8px 13px",
+          padding: "7px 11px",
           background: isMe ? "var(--ink)" : "var(--canvas)",
           color: isMe ? "var(--canvas)" : "var(--ink)",
           border: isMe ? "none" : "1px solid var(--border)",
-          borderRadius: 14,
-          borderTopRightRadius: isMe ? 6 : 14,
-          borderTopLeftRadius: isMe ? 14 : 6,
-          fontSize: 13.5,
+          borderRadius: 12,
+          borderTopRightRadius: isMe ? 5 : 12,
+          borderTopLeftRadius: isMe ? 12 : 5,
+          fontSize: 12.5,
           lineHeight: 1.45,
           fontStyle: "italic",
-          maxWidth: "min(72%, 540px)",
+          maxWidth: "82%",
         }}
       >
         {text}
         <span
           style={{
             display: "inline-block",
-            width: 6,
-            height: 6,
+            width: 5,
+            height: 5,
             borderRadius: "50%",
             background: isMe ? "var(--canvas)" : "var(--muted)",
             marginLeft: 6,
@@ -257,8 +249,8 @@ function PartialBubble({ text, isMe }: { text: string; isMe: boolean }) {
       {isMe && (
         <span
           style={{
-            width: 26,
-            height: 26,
+            width: 22,
+            height: 22,
             borderRadius: "50%",
             background: "var(--chip)",
             display: "block",
@@ -271,7 +263,7 @@ function PartialBubble({ text, isMe }: { text: string; isMe: boolean }) {
 
 function BrandBars({ active }: { active: boolean }) {
   return (
-    <span className="inline-flex items-end gap-[2.5px]" style={{ height: 18 }}>
+    <span className="inline-flex items-end gap-[2.5px]" style={{ height: 16 }}>
       {[0.4, 0.7, 1.0, 0.65, 0.5].map((h, i) => (
         <span
           key={i}
@@ -291,6 +283,473 @@ function BrandBars({ active }: { active: boolean }) {
   );
 }
 
+// ── Highlights column (right panel) ────────────────────────────────────
+const PRIORITY: Record<string, { bg: string; fg: string; dot: string }> = {
+  HIGH: { bg: "rgba(201,119,102,0.16)", fg: "#a04c3e", dot: "#a04c3e" },
+  MEDIUM: { bg: "rgba(212,160,76,0.16)", fg: "#a37528", dot: "#a37528" },
+  LOW: { bg: "var(--chip)", fg: "var(--muted)", dot: "var(--muted)" },
+};
+
+function HighlightItem({
+  text,
+  accent,
+}: {
+  text: string;
+  accent: string;
+}) {
+  return (
+    <div
+      style={{
+        fontSize: 11.5,
+        color: "var(--ink)",
+        lineHeight: 1.4,
+        padding: "5px 8px 5px 9px",
+        borderLeft: `2px solid ${accent}`,
+        marginTop: 3,
+        letterSpacing: "-0.005em",
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function TaskItem({ task }: { task: LiveTaskItem }) {
+  const c = PRIORITY[task.priority] ?? PRIORITY.MEDIUM;
+  return (
+    <div
+      className="flex items-start gap-2"
+      style={{ marginTop: 4, padding: "5px 8px", fontSize: 11.5 }}
+    >
+      <span
+        className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap"
+        style={{
+          padding: "1px 6px",
+          borderRadius: 999,
+          background: c.bg,
+          color: c.fg,
+          fontSize: 9.5,
+          fontWeight: 500,
+          letterSpacing: "0.04em",
+          marginTop: 1,
+        }}
+      >
+        <span style={{ width: 4, height: 4, borderRadius: "50%", background: c.dot }} />
+        {task.priority}
+      </span>
+      <span style={{ color: "var(--ink)", lineHeight: 1.4 }}>{task.title}</span>
+    </div>
+  );
+}
+
+function HighlightSection({
+  title,
+  count,
+  accent,
+  empty,
+  children,
+}: {
+  title: string;
+  count: number;
+  accent: string;
+  empty?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      style={{
+        marginBottom: 10,
+      }}
+    >
+      <div
+        className="flex items-center justify-between"
+        style={{
+          padding: "0 4px",
+          marginBottom: 4,
+        }}
+      >
+        <span
+          className="inline-flex items-center gap-1.5"
+          style={{
+            fontSize: 9.5,
+            fontWeight: 500,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: accent,
+          }}
+        >
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: accent }} />
+          {title}
+        </span>
+        <span
+          style={{
+            fontSize: 10,
+            color: "var(--muted)",
+            fontVariantNumeric: "tabular-nums",
+            padding: "0 6px",
+            background: "var(--chip)",
+            borderRadius: 999,
+            fontWeight: 500,
+          }}
+        >
+          {count}
+        </span>
+      </div>
+      {empty ? (
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--muted)",
+            fontStyle: "italic",
+            opacity: 0.7,
+            padding: "2px 8px 4px 9px",
+            borderLeft: `2px solid var(--border)`,
+            marginTop: 3,
+          }}
+        >
+          Aguardando…
+        </div>
+      ) : (
+        children
+      )}
+    </section>
+  );
+}
+
+function HighlightsColumn() {
+  const { highlights, isAnalyzing, lastUpdatedAt, lastLatencyMs } = useLiveHighlights();
+  const total =
+    highlights.decisions.length +
+    highlights.nextSteps.length +
+    highlights.observations.length +
+    highlights.tasks.length;
+
+  return (
+    <aside
+      className="flex flex-col shrink-0 min-h-0"
+      style={{
+        width: 264,
+        borderLeft: "1px solid var(--border)",
+        background: "rgba(247, 247, 245, 0.5)",
+      }}
+    >
+      <div
+        className="flex items-center justify-between shrink-0"
+        style={{
+          padding: "10px 14px",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <span
+          className="inline-flex items-center gap-2"
+          style={{
+            fontSize: 10.5,
+            fontWeight: 500,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--muted)",
+          }}
+        >
+          NORA detectou
+          <span
+            style={{
+              padding: "0 7px",
+              background: "var(--chip)",
+              color: "var(--ink)",
+              borderRadius: 999,
+              fontSize: 10,
+              fontWeight: 500,
+              letterSpacing: 0,
+            }}
+          >
+            {total}
+          </span>
+        </span>
+        {isAnalyzing && (
+          <span
+            className="inline-flex items-center gap-1"
+            style={{ fontSize: 10, color: "var(--accent-ink)" }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                border: "1.5px solid var(--accent-ink)",
+                borderTopColor: "transparent",
+                borderRadius: "50%",
+                animation: "nora-spin 0.9s linear infinite",
+              }}
+            />
+          </span>
+        )}
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto" style={{ padding: "10px 12px" }}>
+        <HighlightSection
+          title="Decisões"
+          count={highlights.decisions.length}
+          accent="var(--accent-ink)"
+          empty={highlights.decisions.length === 0}
+        >
+          {highlights.decisions.map((d: LiveHighlightItem, i: number) => (
+            <HighlightItem key={i} text={d.text} accent="var(--accent-ink)" />
+          ))}
+        </HighlightSection>
+        <HighlightSection
+          title="Próximos passos"
+          count={highlights.nextSteps.length}
+          accent="#3f8a5e"
+          empty={highlights.nextSteps.length === 0}
+        >
+          {highlights.nextSteps.map((d: LiveHighlightItem, i: number) => (
+            <HighlightItem key={i} text={d.text} accent="#3f8a5e" />
+          ))}
+        </HighlightSection>
+        <HighlightSection
+          title="Observações"
+          count={highlights.observations.length}
+          accent="var(--muted)"
+          empty={highlights.observations.length === 0}
+        >
+          {highlights.observations.map((d: LiveHighlightItem, i: number) => (
+            <HighlightItem key={i} text={d.text} accent="var(--muted)" />
+          ))}
+        </HighlightSection>
+        <HighlightSection
+          title="Tarefas"
+          count={highlights.tasks.length}
+          accent="#a37528"
+          empty={highlights.tasks.length === 0}
+        >
+          {highlights.tasks.map((t, i) => (
+            <TaskItem key={i} task={t} />
+          ))}
+        </HighlightSection>
+      </div>
+      <div
+        className="flex items-center justify-between shrink-0"
+        style={{
+          padding: "6px 12px",
+          borderTop: "1px solid var(--border)",
+          fontSize: 9.5,
+          color: "var(--muted)",
+          letterSpacing: "0.02em",
+        }}
+      >
+        <span>
+          {lastUpdatedAt
+            ? `há ${Math.max(1, Math.floor((Date.now() - lastUpdatedAt) / 1000))}s`
+            : isAnalyzing
+              ? "analisando…"
+              : "aguardando"}
+        </span>
+        {lastLatencyMs !== null && (
+          <span style={{ fontVariantNumeric: "tabular-nums", opacity: 0.7 }}>
+            {lastLatencyMs}ms
+          </span>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+// ── Drawer (config) ────────────────────────────────────────────────────
+function ConfigDrawer({
+  detectedSpeakers,
+  overrides,
+  onRename,
+  dockVisible,
+  onToggleDock,
+}: {
+  detectedSpeakers: { speakerId: string; fallback: string }[];
+  overrides: SpeakerMap;
+  onRename: (id: string, name: string) => void;
+  dockVisible: boolean;
+  onToggleDock: (v: boolean) => void;
+}) {
+  return (
+    <div
+      className="shrink-0 overflow-y-auto"
+      style={{
+        background: "rgba(247, 247, 245, 0.92)",
+        borderBottom: "1px solid var(--border)",
+        padding: "12px 18px",
+        maxHeight: 220,
+        animation: "overlayDrawerIn 180ms cubic-bezier(.2,.8,.2,1)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+      }}
+    >
+      {/* Janelas */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3
+            style={{
+              fontSize: 10.5,
+              fontWeight: 500,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--muted)",
+              margin: 0,
+            }}
+          >
+            Janelas
+          </h3>
+        </div>
+        <label
+          className="flex items-start justify-between gap-3 cursor-pointer"
+          style={{
+            padding: "8px 12px",
+            background: "var(--canvas)",
+            border: "1px solid var(--border)",
+            borderRadius: 9,
+          }}
+        >
+          <div className="flex-1 min-w-0">
+            <div
+              style={{
+                fontSize: 12.5,
+                color: "var(--ink)",
+                fontWeight: 500,
+                letterSpacing: "-0.005em",
+              }}
+            >
+              Mostrar dock no rodapé
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--muted)",
+                marginTop: 3,
+                lineHeight: 1.5,
+              }}
+            >
+              Barra flutuante com atalhos pra alternar entre NORA Desktop e a overlay.
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={dockVisible}
+            onClick={() => onToggleDock(!dockVisible)}
+            style={{
+              width: 34,
+              height: 20,
+              borderRadius: 999,
+              background: dockVisible ? "var(--accent)" : "var(--chip)",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              position: "relative",
+              flexShrink: 0,
+              marginTop: 2,
+              transition: "background 160ms ease",
+            }}
+          >
+            <span
+              style={{
+                position: "absolute",
+                top: 2,
+                left: dockVisible ? 16 : 2,
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                background: "white",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.18)",
+                transition: "left 160ms ease",
+              }}
+            />
+          </button>
+        </label>
+      </div>
+
+      {/* Falantes */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3
+            style={{
+              fontSize: 10.5,
+              fontWeight: 500,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--muted)",
+              margin: 0,
+            }}
+          >
+            Falantes detectados
+          </h3>
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>
+            {detectedSpeakers.length}{" "}
+            {detectedSpeakers.length === 1 ? "pessoa" : "pessoas"}
+          </span>
+        </div>
+        {detectedSpeakers.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+            Ainda não detectei outros falantes. Você pode renomear cada voz aqui
+            em tempo real.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {detectedSpeakers.map((s) => (
+              <div key={s.speakerId} className="flex items-center gap-2">
+                <Avatar
+                  name={overrides[s.speakerId] || s.fallback}
+                  size={22}
+                />
+                <input
+                  type="text"
+                  value={overrides[s.speakerId] ?? ""}
+                  onChange={(e) => onRename(s.speakerId, e.target.value)}
+                  placeholder={s.fallback}
+                  className="flex-1 outline-none"
+                  style={{
+                    padding: "5px 9px",
+                    background: "var(--canvas)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 7,
+                    fontSize: 12,
+                    color: "var(--ink)",
+                    letterSpacing: "-0.005em",
+                    fontFamily: "var(--sans)",
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = "var(--accent)";
+                    e.currentTarget.style.boxShadow =
+                      "0 0 0 3px var(--accent-soft)";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = "var(--border)";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: "var(--muted)",
+                    fontVariantNumeric: "tabular-nums",
+                    minWidth: 50,
+                    textAlign: "right",
+                  }}
+                >
+                  {s.speakerId}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes overlayDrawerIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ── Main ───────────────────────────────────────────────────────────────
 export function OverlayPage() {
   const {
     lines,
@@ -298,20 +757,14 @@ export function OverlayPage() {
     isRecording,
     startedAt,
     duration,
-    micDevice,
   } = useLiveTranscript();
 
   const [overrides, setOverrides] = useState<SpeakerMap>(loadOverrides);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dockVisible, setDockVisible] = useState<boolean>(loadDockPref);
+  const [stopping, setStopping] = useState(false);
 
-  const toggleDock = (next: boolean) => {
-    setDockVisible(next);
-    saveDockPref(next);
-    invoke("toggle_dock", { show: next }).catch(() => {});
-  };
-
-  // Reset overrides when a new recording session begins (transcript cleared)
+  // Reset overrides when a new recording session begins
   useEffect(() => {
     if (isRecording && lines.length === 0) {
       setOverrides({});
@@ -328,7 +781,12 @@ export function OverlayPage() {
     emit("nora://rename-speaker", { speakerId, name }).catch(() => {});
   };
 
-  // Detected speakers (excluding mic) — ordered by first-appearance
+  const toggleDock = (next: boolean) => {
+    setDockVisible(next);
+    saveDockPref(next);
+    invoke("toggle_dock", { show: next }).catch(() => {});
+  };
+
   const detectedSpeakers = useMemo(() => {
     const seen = new Set<string>();
     const out: { speakerId: string; fallback: string }[] = [];
@@ -347,11 +805,9 @@ export function OverlayPage() {
 
   const groups = useMemo(() => groupLines(lines, overrides), [lines, overrides]);
 
-  // last partial speaker (use track of last line as a heuristic, fallback: not-me)
   const lastTrack = lines.length > 0 ? lines[lines.length - 1].track : "system";
   const partialIsMe = lastTrack === "mic";
 
-  // auto scroll
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = scrollRef.current;
@@ -359,7 +815,6 @@ export function OverlayPage() {
     el.scrollTop = el.scrollHeight;
   }, [groups.length, partial]);
 
-  const [stopping, setStopping] = useState(false);
   const handleStop = async () => {
     if (stopping) return;
     setStopping(true);
@@ -392,10 +847,10 @@ export function OverlayPage() {
         WebkitBackdropFilter: "saturate(160%) blur(28px)",
         backdropFilter: "saturate(160%) blur(28px)",
         color: "var(--ink)",
-        borderRadius: 16,
+        borderRadius: 14,
         border: "1px solid var(--border)",
         boxShadow:
-          "0 26px 60px -28px rgba(15, 23, 42, 0.34), 0 8px 20px rgba(15, 23, 42, 0.06)",
+          "0 22px 50px -24px rgba(15, 23, 42, 0.32), 0 6px 16px rgba(15, 23, 42, 0.06)",
       }}
     >
       {/* Header */}
@@ -403,18 +858,18 @@ export function OverlayPage() {
         data-tauri-drag-region
         className="flex items-center justify-between shrink-0"
         style={{
-          padding: "12px 16px",
+          padding: "9px 14px",
           borderBottom: "1px solid var(--border)",
           background: "rgba(247, 247, 245, 0.55)",
           cursor: "move",
         }}
       >
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0">
           <BrandBars active={isRecording} />
           <span
             className="truncate"
             style={{
-              fontSize: 12,
+              fontSize: 11.5,
               fontWeight: 500,
               letterSpacing: "-0.005em",
               color: isRecording ? "var(--danger-ink)" : "var(--muted)",
@@ -423,33 +878,20 @@ export function OverlayPage() {
             {isRecording ? "NORA · gravando" : "NORA Live"}
           </span>
           {isRecording && (
-            <>
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "var(--muted)",
-                  fontVariantNumeric: "tabular-nums",
-                  padding: "1px 8px",
-                  border: "1px solid var(--border)",
-                  borderRadius: 999,
-                  background: "var(--canvas)",
-                }}
-              >
-                {formatDuration(duration)}
-              </span>
-              {micDevice && (
-                <span
-                  className="truncate hidden md:inline"
-                  style={{
-                    fontSize: 11,
-                    color: "var(--muted)",
-                    letterSpacing: "-0.005em",
-                  }}
-                >
-                  {micDevice}
-                </span>
-              )}
-            </>
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--ink)",
+                fontVariantNumeric: "tabular-nums",
+                padding: "1px 8px",
+                border: "1px solid var(--border)",
+                borderRadius: 999,
+                background: "var(--canvas)",
+                fontWeight: 500,
+              }}
+            >
+              {formatDuration(duration)}
+            </span>
           )}
         </div>
         <div className="flex items-center gap-1.5">
@@ -458,18 +900,19 @@ export function OverlayPage() {
               <button
                 onClick={handleCancel}
                 disabled={stopping}
-                aria-label="Descartar gravação"
+                aria-label="Descartar"
                 title="Descartar"
-                className="inline-flex items-center gap-1.5 rounded-md transition-colors"
                 style={{
-                  padding: "5px 10px",
-                  fontSize: 11.5,
+                  padding: "4px 10px",
+                  fontSize: 11,
                   background: "transparent",
                   border: "1px solid var(--border)",
+                  borderRadius: 7,
                   color: "var(--muted)",
                   cursor: stopping ? "default" : "pointer",
                   letterSpacing: "-0.005em",
                   fontWeight: 500,
+                  fontFamily: "var(--sans)",
                 }}
                 onMouseEnter={(e) => {
                   if (!stopping) {
@@ -488,16 +931,18 @@ export function OverlayPage() {
                 onClick={handleStop}
                 disabled={stopping}
                 aria-label="Parar e salvar"
-                className="inline-flex items-center gap-1.5 rounded-md"
+                className="inline-flex items-center gap-1.5"
                 style={{
-                  padding: "5px 12px 5px 10px",
-                  fontSize: 11.5,
+                  padding: "4px 11px 4px 9px",
+                  fontSize: 11,
                   background: "var(--ink)",
                   color: "var(--canvas)",
                   border: "1px solid var(--ink)",
+                  borderRadius: 7,
                   cursor: stopping ? "default" : "pointer",
                   letterSpacing: "-0.005em",
                   fontWeight: 500,
+                  fontFamily: "var(--sans)",
                 }}
                 onMouseEnter={(e) => {
                   if (!stopping) e.currentTarget.style.background = "#000";
@@ -510,8 +955,8 @@ export function OverlayPage() {
                   <>
                     <span
                       style={{
-                        width: 10,
-                        height: 10,
+                        width: 9,
+                        height: 9,
                         border: "1.5px solid rgba(253,253,252,0.4)",
                         borderTopColor: "var(--canvas)",
                         borderRadius: "50%",
@@ -524,8 +969,8 @@ export function OverlayPage() {
                   <>
                     <span
                       style={{
-                        width: 8,
-                        height: 8,
+                        width: 7,
+                        height: 7,
                         background: "var(--canvas)",
                         borderRadius: 2,
                       }}
@@ -538,17 +983,17 @@ export function OverlayPage() {
           )}
           <button
             onClick={() => setDrawerOpen((v) => !v)}
-            aria-label="Configurações da overlay"
+            aria-label="Configurações"
             title="Configurações"
             className="grid place-items-center rounded-md transition-colors"
             style={{
-              width: 26,
-              height: 26,
+              width: 24,
+              height: 24,
               background: drawerOpen ? "var(--chip)" : "transparent",
               border: "none",
               color: drawerOpen ? "var(--ink)" : "var(--muted)",
               cursor: "pointer",
-              marginLeft: 4,
+              marginLeft: 2,
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = "rgba(0,0,0,0.05)";
@@ -563,19 +1008,19 @@ export function OverlayPage() {
                 : "var(--muted)";
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="3" />
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
           </button>
           <button
             onClick={handleMinimize}
-            aria-label="Esconder overlay"
+            aria-label="Esconder"
             title="Esconder"
             className="grid place-items-center rounded-md transition-colors"
             style={{
-              width: 26,
-              height: 26,
+              width: 24,
+              height: 24,
               background: "transparent",
               border: "none",
               color: "var(--muted)",
@@ -590,229 +1035,72 @@ export function OverlayPage() {
               e.currentTarget.style.color = "var(--muted)";
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
       </div>
 
-      {/* Drawer (config) */}
+      {/* Drawer */}
       {drawerOpen && (
-        <div
-          className="shrink-0"
-          style={{
-            background: "rgba(247, 247, 245, 0.85)",
-            borderBottom: "1px solid var(--border)",
-            padding: "12px 18px",
-            animation: "overlayDrawerIn 180ms cubic-bezier(.2,.8,.2,1)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-          }}
-        >
-          {/* Janelas / Dock */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h3
-                style={{
-                  fontSize: 10.5,
-                  fontWeight: 500,
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  color: "var(--muted)",
-                  margin: 0,
-                }}
-              >
-                Janelas
-              </h3>
-            </div>
-            <label
-              className="flex items-start justify-between gap-3 cursor-pointer"
-              style={{
-                padding: "8px 12px",
-                background: "var(--canvas)",
-                border: "1px solid var(--border)",
-                borderRadius: 9,
-              }}
-            >
-              <div className="flex-1 min-w-0">
-                <div
-                  style={{
-                    fontSize: 12.5,
-                    color: "var(--ink)",
-                    fontWeight: 500,
-                    letterSpacing: "-0.005em",
-                  }}
-                >
-                  Mostrar dock no rodapé
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--muted)",
-                    marginTop: 3,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Barra flutuante com timer e atalhos pra alternar entre NORA
-                  Desktop e a overlay.
-                </div>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={dockVisible}
-                onClick={() => toggleDock(!dockVisible)}
-                style={{
-                  width: 34,
-                  height: 20,
-                  borderRadius: 999,
-                  background: dockVisible ? "var(--accent)" : "var(--chip)",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 0,
-                  position: "relative",
-                  flexShrink: 0,
-                  marginTop: 2,
-                  transition: "background 160ms ease",
-                }}
-              >
-                <span
-                  style={{
-                    position: "absolute",
-                    top: 2,
-                    left: dockVisible ? 16 : 2,
-                    width: 16,
-                    height: 16,
-                    borderRadius: "50%",
-                    background: "white",
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.18)",
-                    transition: "left 160ms ease",
-                  }}
-                />
-              </button>
-            </label>
-          </div>
-
-          {/* Falantes */}
-          <div>
-          <div className="flex items-center justify-between mb-2">
-            <h3
-              style={{
-                fontSize: 10.5,
-                fontWeight: 500,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                color: "var(--muted)",
-                margin: 0,
-              }}
-            >
-              Falantes detectados
-            </h3>
-            <span style={{ fontSize: 11, color: "var(--muted)" }}>
-              {detectedSpeakers.length} {detectedSpeakers.length === 1 ? "pessoa" : "pessoas"}
-            </span>
-          </div>
-          {detectedSpeakers.length === 0 ? (
-            <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-              Ainda não detectei outros falantes. Conforme a conversa rolar, NORA
-              identifica cada voz — você pode renomear elas aqui em tempo real.
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {detectedSpeakers.map((s) => (
-                <div key={s.speakerId} className="flex items-center gap-2">
-                  <Avatar name={overrides[s.speakerId] || s.fallback} size={24} />
-                  <input
-                    type="text"
-                    value={overrides[s.speakerId] ?? ""}
-                    onChange={(e) =>
-                      renameSpeaker(s.speakerId, e.target.value)
-                    }
-                    placeholder={s.fallback}
-                    className="flex-1 outline-none"
-                    style={{
-                      padding: "5px 9px",
-                      background: "var(--canvas)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 7,
-                      fontSize: 12.5,
-                      color: "var(--ink)",
-                      letterSpacing: "-0.005em",
-                      fontFamily: "var(--sans)",
-                    }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = "var(--accent)";
-                      e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-soft)";
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = "var(--border)";
-                      e.currentTarget.style.boxShadow = "none";
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: "var(--muted)",
-                      fontVariantNumeric: "tabular-nums",
-                      minWidth: 56,
-                      textAlign: "right",
-                    }}
-                  >
-                    {s.speakerId}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          </div>
-
-          <style>{`
-            @keyframes overlayDrawerIn {
-              from { opacity: 0; transform: translateY(-4px); }
-              to   { opacity: 1; transform: translateY(0); }
-            }
-          `}</style>
-        </div>
+        <ConfigDrawer
+          detectedSpeakers={detectedSpeakers}
+          overrides={overrides}
+          onRename={renameSpeaker}
+          dockVisible={dockVisible}
+          onToggleDock={toggleDock}
+        />
       )}
 
-      {/* Body */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto"
-        style={{ padding: "16px 20px 18px" }}
-      >
-        {empty ? (
-          <div className="h-full flex flex-col items-center justify-center text-center gap-3">
-            <ShaderOrb size={48} speed={isRecording ? 1.4 : 0.6} intensity={isRecording ? 0.95 : 0.45} />
-            <div style={{ maxWidth: 380 }}>
+      {/* Body: chat (left) + highlights (right) */}
+      <div className="flex-1 min-h-0 flex">
+        <div
+          ref={scrollRef}
+          className="flex-1 min-w-0 overflow-y-auto"
+          style={{ padding: "14px 16px 16px" }}
+        >
+          {empty ? (
+            <div className="h-full flex flex-col items-center justify-center text-center gap-2">
+              <ShaderOrb
+                size={42}
+                speed={isRecording ? 1.4 : 0.6}
+                intensity={isRecording ? 0.95 : 0.45}
+              />
               <div
                 style={{
-                  fontSize: 13.5,
+                  fontSize: 12.5,
                   color: "var(--ink)",
                   fontWeight: 500,
                   letterSpacing: "-0.012em",
-                  marginBottom: 4,
                 }}
               >
                 {isRecording ? "Aguardando fala…" : "Inicie uma gravação"}
               </div>
-              <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--muted)",
+                  lineHeight: 1.5,
+                  maxWidth: 280,
+                }}
+              >
                 {isRecording
-                  ? "Cada fala vira uma bolha: suas mensagens à direita com a bolinha azul, as dos outros à esquerda."
-                  : "A overlay abre automaticamente quando você inicia uma nova reunião pelo NORA."}
+                  ? "Suas falas à direita com a bolinha azul, as dos outros à esquerda."
+                  : "A overlay abre automaticamente ao iniciar uma reunião."}
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {groups.map((g) => (
-              <ChatBubble key={g.id} group={g} startedAt={startedAt} />
-            ))}
-            {partial && <PartialBubble text={partial} isMe={partialIsMe} />}
-          </div>
-        )}
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {groups.map((g) => (
+                <ChatBubble key={g.id} group={g} startedAt={startedAt} />
+              ))}
+              {partial && <PartialBubble text={partial} isMe={partialIsMe} />}
+            </div>
+          )}
+        </div>
+
+        <HighlightsColumn />
       </div>
     </div>
   );
