@@ -8,6 +8,24 @@ import { Avatar } from "@/components/brand/avatar";
 type SpeakerMap = Record<string, string>;
 
 const SPEAKER_OVERRIDES_KEY = "nora.overlay.speaker-overrides";
+const DOCK_STORAGE_KEY = "nora.dock.visible";
+
+function loadDockPref(): boolean {
+  try {
+    const v = localStorage.getItem(DOCK_STORAGE_KEY);
+    return v == null ? true : v === "1";
+  } catch {
+    return true;
+  }
+}
+
+function saveDockPref(v: boolean) {
+  try {
+    localStorage.setItem(DOCK_STORAGE_KEY, v ? "1" : "0");
+  } catch {
+    // ignore
+  }
+}
 
 function loadOverrides(): SpeakerMap {
   try {
@@ -285,6 +303,13 @@ export function OverlayPage() {
 
   const [overrides, setOverrides] = useState<SpeakerMap>(loadOverrides);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [dockVisible, setDockVisible] = useState<boolean>(loadDockPref);
+
+  const toggleDock = (next: boolean) => {
+    setDockVisible(next);
+    saveDockPref(next);
+    invoke("toggle_dock", { show: next }).catch(() => {});
+  };
 
   // Reset overrides when a new recording session begins (transcript cleared)
   useEffect(() => {
@@ -581,8 +606,97 @@ export function OverlayPage() {
             borderBottom: "1px solid var(--border)",
             padding: "12px 18px",
             animation: "overlayDrawerIn 180ms cubic-bezier(.2,.8,.2,1)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
           }}
         >
+          {/* Janelas / Dock */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 500,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: "var(--muted)",
+                  margin: 0,
+                }}
+              >
+                Janelas
+              </h3>
+            </div>
+            <label
+              className="flex items-start justify-between gap-3 cursor-pointer"
+              style={{
+                padding: "8px 12px",
+                background: "var(--canvas)",
+                border: "1px solid var(--border)",
+                borderRadius: 9,
+              }}
+            >
+              <div className="flex-1 min-w-0">
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: "var(--ink)",
+                    fontWeight: 500,
+                    letterSpacing: "-0.005em",
+                  }}
+                >
+                  Mostrar dock no rodapé
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--muted)",
+                    marginTop: 3,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Barra flutuante com timer e atalhos pra alternar entre NORA
+                  Desktop e a overlay.
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={dockVisible}
+                onClick={() => toggleDock(!dockVisible)}
+                style={{
+                  width: 34,
+                  height: 20,
+                  borderRadius: 999,
+                  background: dockVisible ? "var(--accent)" : "var(--chip)",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
+                  position: "relative",
+                  flexShrink: 0,
+                  marginTop: 2,
+                  transition: "background 160ms ease",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 2,
+                    left: dockVisible ? 16 : 2,
+                    width: 16,
+                    height: 16,
+                    borderRadius: "50%",
+                    background: "white",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.18)",
+                    transition: "left 160ms ease",
+                  }}
+                />
+              </button>
+            </label>
+          </div>
+
+          {/* Falantes */}
+          <div>
           <div className="flex items-center justify-between mb-2">
             <h3
               style={{
@@ -652,6 +766,8 @@ export function OverlayPage() {
               ))}
             </div>
           )}
+          </div>
+
           <style>{`
             @keyframes overlayDrawerIn {
               from { opacity: 0; transform: translateY(-4px); }
