@@ -445,9 +445,9 @@ function HighlightsColumn({ onCollapse }: { onCollapse: () => void }) {
     <aside
       className="flex flex-col shrink-0 min-h-0"
       style={{
-        width: 264,
+        width: 244,
         borderLeft: "1px solid var(--border)",
-        background: "rgba(247, 247, 245, 0.5)",
+        background: "var(--sidebar)",
       }}
     >
       <div
@@ -850,7 +850,7 @@ function ConfigDrawer({
     <div
       className="shrink-0 overflow-y-auto"
       style={{
-        background: "rgba(247, 247, 245, 0.92)",
+        background: "var(--sidebar)",
         borderBottom: "1px solid var(--border)",
         padding: "12px 18px",
         maxHeight: 280,
@@ -1139,14 +1139,15 @@ export function OverlayPage() {
     <div
       className="h-screen w-screen flex flex-col select-none overflow-hidden"
       style={{
-        background: "rgba(253, 253, 252, 0.94)",
-        WebkitBackdropFilter: "saturate(160%) blur(28px)",
-        backdropFilter: "saturate(160%) blur(28px)",
+        // Sólido — sem rgba/backdrop-filter. WebKitGTK no Linux deixava
+        // pixels stale fora do raio dos cantos arredondados e blureava de
+        // forma inconsistente. Solid + box-shadow ainda dá o "flutuante".
+        background: "var(--canvas)",
         color: "var(--ink)",
-        borderRadius: 14,
+        borderRadius: 10,
         border: "1px solid var(--border)",
         boxShadow:
-          "0 22px 50px -24px rgba(15, 23, 42, 0.32), 0 6px 16px rgba(15, 23, 42, 0.06)",
+          "0 18px 42px -20px rgba(15, 23, 42, 0.28), 0 4px 12px rgba(15, 23, 42, 0.06)",
       }}
     >
       {/* Header */}
@@ -1156,7 +1157,7 @@ export function OverlayPage() {
         style={{
           padding: "9px 14px",
           borderBottom: "1px solid var(--border)",
-          background: "rgba(247, 247, 245, 0.55)",
+          background: "var(--sidebar)",
           cursor: "move",
         }}
       >

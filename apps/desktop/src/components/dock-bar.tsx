@@ -142,14 +142,15 @@ export function DockBar() {
         className="flex items-center gap-1"
         style={{
           padding: "6px 8px 6px 6px",
-          background: "rgba(253, 253, 252, 0.94)",
+          // Sólido — backdrop-filter blur causa artefatos no WebKitGTK Linux
+          // ("quadrados do nada" e flashes de conteúdo stale). Trocamos por
+          // canvas opaco + box-shadow forte pra manter o look flutuante.
+          background: "var(--canvas)",
           color: "var(--ink)",
           borderRadius: 999,
           border: "1px solid var(--border)",
           boxShadow:
             "0 14px 32px -12px rgba(15, 23, 42, 0.28), 0 4px 10px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255,255,255,0.5)",
-          backdropFilter: "saturate(160%) blur(22px)",
-          WebkitBackdropFilter: "saturate(160%) blur(22px)",
           fontFamily: "var(--sans)",
         }}
       >
