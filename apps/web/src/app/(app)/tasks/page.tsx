@@ -30,6 +30,57 @@ const PRIORITY_LABEL: Record<string, string> = {
   HIGH: "Alta",
 };
 
+// ---------- Export (US25) ----------
+
+function csvCell(v: string | undefined | null): string {
+  const s = (v ?? "").replace(/"/g, '""');
+  return /[",\n]/.test(s) ? `"${s}"` : s;
+}
+
+function buildTasksCsv(items: TaskListItemDto[]): string {
+  const header = ["Titulo", "Status", "Prioridade", "Responsavel", "Prazo", "Reuniao"];
+  const rows = items.map((t) =>
+    [
+      csvCell(t.title),
+      csvCell(STATUS_LABEL[t.status] ?? t.status),
+      csvCell(PRIORITY_LABEL[t.priority] ?? t.priority),
+      csvCell(t.assignee),
+      csvCell(t.dueDate),
+      csvCell(t.meetingTitle),
+    ].join(","),
+  );
+  return [header.join(","), ...rows].join("\r\n");
+}
+
+function buildTasksMarkdown(items: TaskListItemDto[]): string {
+  const lines = ["# Action items — NORA", ""];
+  for (const t of items) {
+    const box = t.status === "DONE" ? "[x]" : "[ ]";
+    const meta = [
+      PRIORITY_LABEL[t.priority] ?? t.priority,
+      t.assignee,
+      t.dueDate ? `vence ${t.dueDate}` : null,
+      t.meetingTitle,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    lines.push(`- ${box} ${t.title}${meta ? `  \n  _${meta}_` : ""}`);
+  }
+  return lines.join("\n");
+}
+
+function downloadText(filename: string, content: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function TasksPage() {
   const [items, setItems] = useState<TaskListItemDto[]>([]);
   const [filter, setFilter] = useState<TaskStatus | "ALL">("ALL");
@@ -101,6 +152,20 @@ export default function TasksPage() {
     }
   }
 
+  function exportTasks(format: "csv" | "md") {
+    if (items.length === 0) return;
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (format === "csv") {
+      downloadText(`action-items-${stamp}.csv`, buildTasksCsv(items), "text/csv;charset=utf-8");
+    } else {
+      downloadText(
+        `action-items-${stamp}.md`,
+        buildTasksMarkdown(items),
+        "text/markdown;charset=utf-8",
+      );
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -110,7 +175,7 @@ export default function TasksPage() {
             Action items extraídos das suas reuniões. Atualize o status conforme avança.
           </p>
         </div>
-        <div className="flex gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
           {STATUS_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -125,6 +190,25 @@ export default function TasksPage() {
               {opt.label}
             </button>
           ))}
+          <span className="mx-1 hidden h-4 w-px bg-slate-200 sm:block" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => exportTasks("csv")}
+            disabled={items.length === 0}
+            title="Exportar action items em CSV"
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+          >
+            CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => exportTasks("md")}
+            disabled={items.length === 0}
+            title="Exportar action items em Markdown"
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+          >
+            MD
+          </button>
         </div>
       </header>
 
