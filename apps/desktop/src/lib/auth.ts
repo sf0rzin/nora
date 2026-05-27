@@ -1,6 +1,11 @@
 import { apiClient } from "./api-client";
 import { secrets } from "./secrets";
-import type { LoginRequest, LoginResponse, SessionUser } from "./types";
+import type {
+  LoginRequest,
+  LoginResponse,
+  RefreshResponse,
+  SessionUser,
+} from "./types";
 
 const JWT_REFRESH_MARGIN_MS = 10 * 60 * 1000; // 10 minutos
 const JWT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
@@ -81,13 +86,22 @@ export async function refreshAccessToken(): Promise<string | null> {
   }
 
   try {
-    const response = await apiClient.request<LoginResponse>("/auth/refresh", {
+    const response = await apiClient.request<RefreshResponse>("/auth/refresh", {
       method: "POST",
       auth: false,
       headers: {
         Authorization: `Bearer ${refresh}`,
       },
     });
+
+    // Defesa: se backend responder no formato antigo (sem tokens no body), aborta
+    // antes de gravar `undefined` no keyring — daria 401 em tudo na sequência.
+    if (!response?.accessToken) {
+      console.error(
+        "[auth] refresh response missing accessToken — backend likely on older RefreshResponse shape",
+      );
+      return null;
+    }
 
     await secrets.set("access-token", response.accessToken);
     if (response.refreshToken) {
