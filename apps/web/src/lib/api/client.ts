@@ -210,6 +210,11 @@ export async function deleteMeetingGoal(meetingId: string): Promise<void> {
   });
 }
 
+/** Re-dispara a análise NLP da reunião (POST /meetings/{id}/reprocess). Exige meeting:reprocess. */
+export async function reprocessMeeting(id: string): Promise<void> {
+  return request<void>(`/meetings/${encodeURIComponent(id)}/reprocess`, { method: 'POST' });
+}
+
 export interface UploadMeetingInput {
   title: string;
   language: string;

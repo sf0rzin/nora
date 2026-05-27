@@ -6,6 +6,7 @@ import { formatDateTime } from "@/lib/utils";
 import { MarkdownContent } from "@/components/markdown-content";
 import MeetingProductivitySection from "@/components/meeting-productivity-section";
 import CustomerConfidenceCard from "@/components/customer-confidence-card";
+import MeetingLiveStatus from "./MeetingLiveStatus";
 
 export const dynamic = "force-dynamic";
 
@@ -41,12 +42,18 @@ export default async function MeetingDetailPage({
           <span>{formatDateTime(meeting.startedAt)}</span>
           <span>·</span>
           <span>Owner: {meeting.owner.displayName}</span>
-          <span>·</span>
-          <span>{meeting.participants.length} participantes</span>
+          {meeting.participants.length > 0 && (
+            <>
+              <span>·</span>
+              <span>{meeting.participants.length} participantes</span>
+            </>
+          )}
         </div>
       </header>
 
-      {!a && (
+      <MeetingLiveStatus meetingId={meeting.id} status={meeting.processingStatus} />
+
+      {!a && meeting.processingStatus !== "PENDING" && meeting.processingStatus !== "PROCESSING" && (
         <p className="rounded-md border border-border bg-muted/30 p-4 text-sm">
           Esta reunião ainda não foi analisada.
         </p>
