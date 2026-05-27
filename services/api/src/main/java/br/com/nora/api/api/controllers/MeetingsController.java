@@ -24,11 +24,13 @@ import br.com.nora.api.application.meeting.MeetingGoalService;
 import br.com.nora.api.application.meeting.MeetingService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
 import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
+import br.com.nora.api.application.project.ProjectService;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.customer.CustomerConfidenceAssessment;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
+import br.com.nora.api.domain.project.Project;
 import br.com.nora.api.infrastructure.nlp.WorkerDtos;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -73,6 +75,7 @@ public class MeetingsController {
     private final MeetingGoalService meetingGoals;
     private final LiveAnalysisService liveAnalysis;
     private final CustomerConfidenceService customerConfidence;
+    private final ProjectService projects;
     private final ObjectMapper objectMapper;
     private final Validator validator;
     private final AuthorizationService authz;
@@ -83,6 +86,7 @@ public class MeetingsController {
             MeetingGoalService meetingGoals,
             LiveAnalysisService liveAnalysis,
             CustomerConfidenceService customerConfidence,
+            ProjectService projects,
             ObjectMapper objectMapper,
             Validator validator,
             AuthorizationService authz) {
@@ -91,6 +95,7 @@ public class MeetingsController {
         this.meetingGoals = meetingGoals;
         this.liveAnalysis = liveAnalysis;
         this.customerConfidence = customerConfidence;
+        this.projects = projects;
         this.objectMapper = objectMapper;
         this.validator = validator;
         this.authz = authz;
@@ -236,6 +241,16 @@ public class MeetingsController {
                         .findFirst()
                         .map(MeetingsController::toConfidenceResponse)
                         .orElse(null);
+        // Project tracking: resolve o nome quando a meeting esta vinculada (lenient — projeto
+        // soft-deletado some da resolucao, entao projectName fica null mas o id permanece).
+        String projectName =
+                m.projectId() == null
+                        ? null
+                        : projects.list(principal.tenantId()).stream()
+                                .filter(pr -> pr.id().equals(m.projectId()))
+                                .map(Project::name)
+                                .findFirst()
+                                .orElse(null);
         return new MeetingDetailResponse(
                 m.id(),
                 m.tenantId(),
@@ -245,6 +260,8 @@ public class MeetingsController {
                 m.durationSeconds(),
                 m.language(),
                 new MeetingDetailResponse.OwnerSummary(m.ownerUserId(), null),
+                m.projectId(),
+                projectName,
                 m.participants().stream()
                         .map(
                                 p ->

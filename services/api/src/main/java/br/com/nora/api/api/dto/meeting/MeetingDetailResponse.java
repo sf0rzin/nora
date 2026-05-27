@@ -20,6 +20,8 @@ public record MeetingDetailResponse(
         Long durationSeconds,
         String language,
         OwnerSummary owner,
+        UUID projectId,
+        String projectName,
         List<ParticipantPayload> participants,
         List<String> tags,
         String processingStatus,

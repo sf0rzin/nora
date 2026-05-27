@@ -34,6 +34,9 @@ public class MeetingJpaEntity {
     @Column(name = "owner_user_id", nullable = false)
     private UUID ownerUserId;
 
+    @Column(name = "project_id")
+    private UUID projectId;
+
     @Column(nullable = false)
     private String title;
 
@@ -100,6 +103,14 @@ public class MeetingJpaEntity {
 
     public void setOwnerUserId(UUID ownerUserId) {
         this.ownerUserId = ownerUserId;
+    }
+
+    public UUID getProjectId() {
+        return projectId;
+    }
+
+    public void setProjectId(UUID projectId) {
+        this.projectId = projectId;
     }
 
     public String getTitle() {

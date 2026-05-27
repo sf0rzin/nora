@@ -23,6 +23,7 @@ public final class Meeting {
     private final UUID id;
     private final UUID tenantId;
     private final UUID ownerUserId;
+    private final UUID projectId;
     private final String title;
     private final OffsetDateTime startedAt;
     private final OffsetDateTime endedAt;
@@ -85,6 +86,43 @@ public final class Meeting {
             Map<String, String> attributes,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt) {
+        this(
+                id,
+                tenantId,
+                ownerUserId,
+                null,
+                title,
+                startedAt,
+                endedAt,
+                language,
+                transcriptFormat,
+                processingStatus,
+                summarySnippet,
+                participants,
+                tags,
+                attributes,
+                createdAt,
+                updatedAt);
+    }
+
+    /** Canonical constructor — inclui {@code projectId} (project tracking, nullable). */
+    public Meeting(
+            UUID id,
+            UUID tenantId,
+            UUID ownerUserId,
+            UUID projectId,
+            String title,
+            OffsetDateTime startedAt,
+            OffsetDateTime endedAt,
+            String language,
+            TranscriptFormat transcriptFormat,
+            ProcessingStatus processingStatus,
+            String summarySnippet,
+            List<Participant> participants,
+            List<String> tags,
+            Map<String, String> attributes,
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt) {
         if (id == null) {
             throw new IllegalArgumentException("meeting id is required");
         }
@@ -117,6 +155,7 @@ public final class Meeting {
         this.id = id;
         this.tenantId = tenantId;
         this.ownerUserId = ownerUserId;
+        this.projectId = projectId;
         this.title = trimmedTitle;
         this.startedAt = startedAt;
         this.endedAt = endedAt;
@@ -278,6 +317,7 @@ public final class Meeting {
                 id,
                 tenantId,
                 ownerUserId,
+                projectId,
                 title,
                 startedAt,
                 endedAt,
@@ -313,6 +353,7 @@ public final class Meeting {
                 id,
                 tenantId,
                 ownerUserId,
+                projectId,
                 title,
                 startedAt,
                 endedAt,
@@ -327,6 +368,35 @@ public final class Meeting {
                 OffsetDateTime.now());
     }
 
+    /**
+     * Devolve copia vinculada (ou desvinculada, quando {@code projectId} nulo) a um project. Nao
+     * altera updatedAt no dominio — o vinculo project e metadado de organizacao, nao muda o
+     * conteudo analisado da reuniao (e o estado de processamento). O timestamp do banco e
+     * atualizado pelo adapter no save.
+     */
+    public Meeting withProject(UUID newProjectId) {
+        if (java.util.Objects.equals(this.projectId, newProjectId)) {
+            return this;
+        }
+        return new Meeting(
+                id,
+                tenantId,
+                ownerUserId,
+                newProjectId,
+                title,
+                startedAt,
+                endedAt,
+                language,
+                transcriptFormat,
+                processingStatus,
+                summarySnippet,
+                participants,
+                tags,
+                attributes,
+                createdAt,
+                updatedAt);
+    }
+
     /** Apenas leitura — getters. */
     public UUID id() {
         return id;
@@ -338,6 +408,10 @@ public final class Meeting {
 
     public UUID ownerUserId() {
         return ownerUserId;
+    }
+
+    public UUID projectId() {
+        return projectId;
     }
 
     public String title() {

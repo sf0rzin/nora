@@ -6,6 +6,7 @@ import br.com.nora.api.application.iam.IamException;
 import br.com.nora.api.application.iam.InvitationException;
 import br.com.nora.api.application.identity.AuthException;
 import br.com.nora.api.application.meeting.MeetingException;
+import br.com.nora.api.application.project.ProjectException;
 import br.com.nora.api.application.speech.SpeechException;
 import br.com.nora.api.application.task.TaskException;
 import br.com.nora.api.application.tenant.TenantContextException;
@@ -109,6 +110,19 @@ public class GlobalExceptionHandler {
                 switch (ex.code()) {
                     case "MEETING_NOT_FOUND" -> HttpStatus.NOT_FOUND;
                     case "TRANSCRIPT_TOO_LARGE" -> HttpStatus.PAYLOAD_TOO_LARGE;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
+    @ExceptionHandler(ProjectException.class)
+    public ResponseEntity<ErrorResponse> handleProjectDomain(ProjectException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "PROJECT_NOT_FOUND" -> HttpStatus.NOT_FOUND;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)

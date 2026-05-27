@@ -83,6 +83,7 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
         e.setId(m.id());
         e.setTenantId(m.tenantId());
         e.setOwnerUserId(m.ownerUserId());
+        e.setProjectId(m.projectId());
         e.setTitle(m.title());
         e.setStartedAt(m.startedAt());
         e.setEndedAt(m.endedAt());
@@ -124,6 +125,7 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
                 e.getId(),
                 e.getTenantId(),
                 e.getOwnerUserId(),
+                e.getProjectId(),
                 e.getTitle(),
                 e.getStartedAt(),
                 e.getEndedAt(),
