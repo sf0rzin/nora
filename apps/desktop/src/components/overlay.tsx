@@ -1055,6 +1055,7 @@ export function OverlayPage() {
   );
   const [stopping, setStopping] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [closeConfirm, setCloseConfirm] = useState(false);
 
   const toggleHighlights = (next: boolean) => {
     setHighlightsVisible(next);
@@ -1153,8 +1154,14 @@ export function OverlayPage() {
       console.error("[overlay] failed to emit cancel:", e);
     }
   };
-  const handleMinimize = () => {
-    invoke("toggle_overlay", { show: false }).catch(() => {});
+  const handleCloseRequest = () => {
+    if (isRecording) {
+      // Tem gravação rodando — não dá pra só esconder, vai vazar áudio
+      // capturando pra sempre. Pede confirmação.
+      setCloseConfirm(true);
+    } else {
+      invoke("toggle_overlay", { show: false }).catch(() => {});
+    }
   };
 
   const empty = groups.length === 0 && !partial;
@@ -1335,9 +1342,9 @@ export function OverlayPage() {
             </svg>
           </button>
           <button
-            onClick={handleMinimize}
-            aria-label="Esconder"
-            title="Esconder"
+            onClick={handleCloseRequest}
+            aria-label="Fechar"
+            title={isRecording ? "Fechar (confirmação)" : "Fechar"}
             className="grid place-items-center rounded-md transition-colors"
             style={{
               width: 24,
@@ -1527,7 +1534,6 @@ export function OverlayPage() {
               border: "1px solid var(--border)",
               color: "var(--muted)",
               cursor: "pointer",
-              boxShadow: "0 4px 12px -8px rgba(15, 23, 42, 0.18)",
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = "var(--sidebar)";
@@ -1544,6 +1550,189 @@ export function OverlayPage() {
             </svg>
           </button>
         )}
+      </div>
+
+      {/* Close confirmation dialog */}
+      {closeConfirm && (
+        <CloseConfirmDialog
+          onContinue={() => setCloseConfirm(false)}
+          onStopAndSave={() => {
+            setCloseConfirm(false);
+            handleStop();
+          }}
+          onDiscard={() => {
+            setCloseConfirm(false);
+            handleCancel();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Close confirmation dialog ─────────────────────────────────────────
+function CloseConfirmDialog({
+  onContinue,
+  onStopAndSave,
+  onDiscard,
+}: {
+  onContinue: () => void;
+  onStopAndSave: () => void;
+  onDiscard: () => void;
+}) {
+  // Esc cancels (= continue recording, safest default)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onContinue();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onContinue]);
+
+  return (
+    <div
+      onClick={onContinue}
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "absolute",
+        inset: 0,
+        background: "rgba(20, 22, 26, 0.42)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 18,
+        zIndex: 20,
+        animation: "paletteFadeIn 160ms ease",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(380px, 100%)",
+          background: "var(--canvas)",
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          padding: "18px 18px 16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+          animation: "paletteSlideIn 200ms cubic-bezier(.2,.8,.2,1)",
+        }}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className="grid place-items-center shrink-0"
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 10,
+              background: "rgba(201, 119, 102, 0.16)",
+              color: "var(--danger-ink)",
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h3
+              style={{
+                fontFamily: "var(--display)",
+                fontSize: 15,
+                fontWeight: 500,
+                letterSpacing: "-0.012em",
+                color: "var(--ink)",
+                margin: 0,
+                lineHeight: 1.3,
+              }}
+            >
+              Encerrar gravação?
+            </h3>
+            <p
+              style={{
+                fontSize: 12.5,
+                color: "var(--muted)",
+                margin: "4px 0 0",
+                lineHeight: 1.5,
+              }}
+            >
+              A captura ainda está ativa. Se descartar agora, a transcrição em
+              andamento e os destaques detectados serão perdidos.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={onStopAndSave}
+            className="inline-flex items-center justify-center gap-2"
+            style={{
+              padding: "9px 14px",
+              background: "var(--ink)",
+              color: "var(--canvas)",
+              border: "1px solid var(--ink)",
+              borderRadius: 9,
+              fontSize: 13,
+              fontWeight: 500,
+              letterSpacing: "-0.005em",
+              cursor: "pointer",
+              fontFamily: "var(--sans)",
+            }}
+          >
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                background: "var(--canvas)",
+                borderRadius: 2,
+              }}
+            />
+            Parar e salvar
+          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onContinue}
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                background: "transparent",
+                border: "1px solid var(--border)",
+                borderRadius: 9,
+                fontSize: 12.5,
+                color: "var(--ink)",
+                cursor: "pointer",
+                fontFamily: "var(--sans)",
+                fontWeight: 500,
+                letterSpacing: "-0.005em",
+              }}
+            >
+              Continuar gravando
+            </button>
+            <button
+              type="button"
+              onClick={onDiscard}
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                background: "transparent",
+                border: "1px solid rgba(201, 119, 102, 0.4)",
+                borderRadius: 9,
+                fontSize: 12.5,
+                color: "var(--danger-ink)",
+                cursor: "pointer",
+                fontFamily: "var(--sans)",
+                fontWeight: 500,
+                letterSpacing: "-0.005em",
+              }}
+            >
+              Descartar
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
