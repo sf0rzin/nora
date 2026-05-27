@@ -17,11 +17,13 @@ const DOCK_STORAGE_KEY = "nora.dock.visible";
 const HIGHLIGHTS_STORAGE_KEY = "nora.overlay.highlights-visible";
 
 function loadHighlightsPref(): boolean {
+  // Default: minimizado. Highlights aparecem como toasts e o usuário expande
+  // o painel se quiser ver o histórico.
   try {
     const v = localStorage.getItem(HIGHLIGHTS_STORAGE_KEY);
-    return v == null ? true : v === "1";
+    return v == null ? false : v === "1";
   } catch {
-    return true;
+    return false;
   }
 }
 function saveHighlightsPref(v: boolean) {
@@ -1064,6 +1066,64 @@ export function OverlayPage() {
   const { items: notifications, push: pushNotification, dismiss: dismissNotification } =
     useNotifications();
 
+  // Listen to highlights and surface new items as toasts
+  const { highlights } = useLiveHighlights();
+  const prevHighlightCountsRef = useRef({
+    decisions: 0,
+    nextSteps: 0,
+    observations: 0,
+    tasks: 0,
+  });
+  const highlightsInitializedRef = useRef(false);
+
+  useEffect(() => {
+    const prev = prevHighlightCountsRef.current;
+    const current = {
+      decisions: highlights.decisions.length,
+      nextSteps: highlights.nextSteps.length,
+      observations: highlights.observations.length,
+      tasks: highlights.tasks.length,
+    };
+
+    // First mount or a session reset (counts went down) — capture baseline,
+    // don't notify retroactively.
+    if (
+      !highlightsInitializedRef.current ||
+      current.decisions < prev.decisions ||
+      current.nextSteps < prev.nextSteps ||
+      current.observations < prev.observations ||
+      current.tasks < prev.tasks
+    ) {
+      prevHighlightCountsRef.current = current;
+      highlightsInitializedRef.current = true;
+      return;
+    }
+
+    const newDecisions = highlights.decisions.slice(prev.decisions);
+    const newNextSteps = highlights.nextSteps.slice(prev.nextSteps);
+    const newObservations = highlights.observations.slice(prev.observations);
+    const newTasks = highlights.tasks.slice(prev.tasks);
+
+    newDecisions.forEach((d) =>
+      pushNotification({ variant: "decision", title: d.text }),
+    );
+    newNextSteps.forEach((n) =>
+      pushNotification({ variant: "action", title: n.text }),
+    );
+    newObservations.forEach((o) =>
+      pushNotification({ variant: "observation", title: o.text }),
+    );
+    newTasks.forEach((t) =>
+      pushNotification({
+        variant: "task",
+        title: t.title,
+        body: t.assignee ? `Atribuído a ${t.assignee}` : undefined,
+      }),
+    );
+
+    prevHighlightCountsRef.current = current;
+  }, [highlights, pushNotification]);
+
   const toggleHighlights = (next: boolean) => {
     setHighlightsVisible(next);
     saveHighlightsPref(next);
@@ -1137,6 +1197,9 @@ export function OverlayPage() {
     setDockVisible(next);
     saveDockPref(next);
     invoke("toggle_dock", { show: next }).catch(() => {});
+    // Espelha pelo event bus pra qualquer outra janela aberta (e pra ativar
+    // o toast de "Dock escondido" via o mesmo listener que cobre o X do dock).
+    emit("nora://dock-visibility-changed", { visible: next }).catch(() => {});
   };
 
   const detectedSpeakers = useMemo(() => {
