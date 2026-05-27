@@ -20,6 +20,8 @@ import {
   listIamUsers,
   listPolicies,
   removeGroupMember,
+  simulatePolicy,
+  type SimulateResult,
   type TenantUserDto,
 } from "@/lib/api/client";
 import PolicyEditor from "@/components/policy-editor";
@@ -68,6 +70,12 @@ export default function IamPage() {
   const [attachUserId, setAttachUserId] = useState("");
   const [memberGroupId, setMemberGroupId] = useState("");
   const [memberUserId, setMemberUserId] = useState("");
+
+  // simulador de acesso (US43)
+  const [simUserId, setSimUserId] = useState("");
+  const [simAction, setSimAction] = useState("");
+  const [simResource, setSimResource] = useState("");
+  const [simResult, setSimResult] = useState<SimulateResult | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -501,6 +509,103 @@ export default function IamPage() {
             ))}
           </div>
         )}
+      </Section>
+
+      {/* ===== Simulador de acesso (US43) ===== */}
+      <Section title="Simulador de acesso">
+        <Card>
+          <form
+            style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 10 }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!simUserId || !simAction.trim() || !simResource.trim()) return;
+              setError(null);
+              simulatePolicy({
+                userId: simUserId,
+                action: simAction.trim(),
+                resource: simResource.trim(),
+              })
+                .then((res) => setSimResult(res))
+                .catch((err) => {
+                  setSimResult(null);
+                  setError(toMessage(err));
+                });
+            }}
+          >
+            <div style={{ minWidth: 200, flex: 1 }}>
+              <Field label="Usuário" htmlFor="sim-user-id">
+                <Select
+                  id="sim-user-id"
+                  value={simUserId}
+                  onChange={(e) => setSimUserId(e.target.value)}
+                >
+                  <option value="">Selecione um usuário…</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.displayName} · {u.email}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div style={{ minWidth: 180, flex: 1 }}>
+              <Field label="Ação" htmlFor="sim-action">
+                <Input
+                  id="sim-action"
+                  value={simAction}
+                  onChange={(e) => setSimAction(e.target.value)}
+                  placeholder="meeting:read"
+                />
+              </Field>
+            </div>
+            <div style={{ minWidth: 220, flex: 2 }}>
+              <Field label="Recurso" htmlFor="sim-resource">
+                <Input
+                  id="sim-resource"
+                  value={simResource}
+                  onChange={(e) => setSimResource(e.target.value)}
+                  placeholder="nora:tenant/<id>:meeting/*"
+                />
+              </Field>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={!simUserId || !simAction.trim() || !simResource.trim()}
+              >
+                Simular
+              </Button>
+            </div>
+          </form>
+
+          {simResult && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 10,
+                marginTop: 4,
+              }}
+            >
+              {simResult.allowed ? (
+                <Badge tone="success">PERMITIDO</Badge>
+              ) : (
+                <Badge tone="danger">NEGADO</Badge>
+              )}
+              <span style={{ fontSize: 13, color: "var(--muted)" }}>
+                <span style={{ fontFamily: "var(--mono)", color: "var(--ink)" }}>
+                  {simResult.action}
+                </span>{" "}
+                em{" "}
+                <span style={{ fontFamily: "var(--mono)", color: "var(--ink)" }}>
+                  {simResult.resource}
+                </span>
+              </span>
+            </div>
+          )}
+        </Card>
       </Section>
 
       {/* ===== Attachments ===== */}

@@ -553,6 +553,30 @@ export async function listIamUsers(): Promise<TenantUserDto[]> {
   return request<TenantUserDto[]>(`/iam/users`);
 }
 
+// ---------- IAM Policy Simulator (US43) ----------
+
+export interface SimulateResult {
+  userId: string;
+  action: string;
+  resource: string;
+  allowed: boolean;
+}
+
+/**
+ * Avalia "o usuario X pode executar action Y no resource Z?" sem tentativa-e-erro
+ * (POST /iam/policies/simulate). Exige iam:policy:read; sempre dentro do tenant atual.
+ */
+export async function simulatePolicy(req: {
+  userId: string;
+  action: string;
+  resource: string;
+}): Promise<SimulateResult> {
+  return request<SimulateResult>('/iam/policies/simulate', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  });
+}
+
 // ---------- IAM Invitations (US06, ADR 0011) ----------
 
 /** Cria um convite. Exige IAM `iam:user:invite`. */

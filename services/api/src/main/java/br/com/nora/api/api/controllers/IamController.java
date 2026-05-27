@@ -5,6 +5,8 @@ import br.com.nora.api.api.dto.iam.CreateGroupRequest;
 import br.com.nora.api.api.dto.iam.CreatePolicyRequest;
 import br.com.nora.api.api.dto.iam.GroupDto;
 import br.com.nora.api.api.dto.iam.PolicyDto;
+import br.com.nora.api.api.dto.iam.SimulateRequest;
+import br.com.nora.api.api.dto.iam.SimulateResponse;
 import br.com.nora.api.api.dto.iam.TenantUserDto;
 import br.com.nora.api.api.dto.iam.UpdatePolicyRequest;
 import br.com.nora.api.api.security.CurrentUser;
@@ -169,6 +171,29 @@ public class IamController {
         requireIam("iam:policy:delete");
         AuthenticatedPrincipal p = CurrentUser.require();
         iam.deletePolicy(p.tenantId(), p.userId(), id);
+    }
+
+    /**
+     * Policy Simulator (US43): avalia "o usuario X pode executar action Y no resource Z?" sem
+     * tentativa-e-erro. Sempre dentro do tenant do solicitante (nunca cross-tenant). Reusa o {@link
+     * AuthorizationService} (inclui bypass de Root).
+     */
+    @PostMapping("/policies/simulate")
+    public SimulateResponse simulate(@RequestBody SimulateRequest body) {
+        requireIam("iam:policy:read");
+        if (body.userId() == null) {
+            throw new IllegalArgumentException("userId is required");
+        }
+        if (body.action() == null || body.action().isBlank()) {
+            throw new IllegalArgumentException("action is required");
+        }
+        if (body.resource() == null || body.resource().isBlank()) {
+            throw new IllegalArgumentException("resource is required");
+        }
+        AuthenticatedPrincipal p = CurrentUser.require();
+        boolean allowed =
+                authz.isAllowed(body.userId(), p.tenantId(), body.action(), body.resource());
+        return new SimulateResponse(body.userId(), body.action(), body.resource(), allowed);
     }
 
     // ---------- attachments ----------
