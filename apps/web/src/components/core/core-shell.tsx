@@ -134,6 +134,7 @@ export default function CoreShell({ children }: { children: React.ReactNode }) {
         )}
 
         <main style={{ flex: 1, height: "100vh", overflowY: "auto", background: "var(--canvas)" }}>
+          <MobileNav />
           <div className="mx-auto w-full max-w-6xl p-6 md:p-10">{children}</div>
         </main>
       </div>
@@ -423,6 +424,253 @@ function SideNav({ item, active }: { item: NavItem; active: boolean }) {
         </span>
       )}
     </Link>
+  );
+}
+
+// ---------- Mobile nav (top bar + drawer; <md only) ----------
+
+function MobileNav() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { openPalette } = useCoreShell();
+  const [open, setOpen] = useState(false);
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [isRoot, setIsRoot] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    const cached = getCurrentUser();
+    setUser(cached);
+    setIsRoot(cached?.isRoot ?? false);
+    getMe()
+      .then((m) => {
+        setIsRoot(m.isRoot);
+        setUser({
+          userId: m.userId,
+          tenantId: m.tenantId,
+          email: m.email,
+          displayName: m.displayName,
+          isRoot: m.isRoot,
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  // Fecha o drawer ao trocar de rota.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    await clearSession();
+    router.replace("/auth/login");
+    router.refresh();
+  }
+
+  return (
+    <>
+      <div
+        className="md:hidden"
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 6,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          padding: "10px 14px",
+          background: "var(--canvas)",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Abrir menu"
+          style={{ ...iconBtn, color: "var(--ink)" }}
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          >
+            <path d="M3 6h18M3 12h18M3 18h18" />
+          </svg>
+        </button>
+        <Link
+          href={"/dashboard" as Route}
+          aria-label="Início"
+          style={{ display: "flex", alignItems: "center" }}
+        >
+          <NoraLogo size={20} animate={false} />
+        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <button
+            onClick={openPalette}
+            aria-label="Buscar"
+            style={{ ...iconBtn, color: "var(--muted)" }}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+          </button>
+          <Link
+            href={"/meetings/upload" as Route}
+            aria-label="Nova reunião"
+            style={{ ...iconBtn, color: "var(--muted)" }}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </Link>
+        </div>
+      </div>
+
+      {open && (
+        <div
+          className="md:hidden"
+          onClick={() => setOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 40,
+            background: "rgba(20, 22, 26, 0.28)",
+            backdropFilter: "blur(2px)",
+            animation: "noraPaletteFadeIn 150ms ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: "min(280px, 82vw)",
+              background: "var(--sidebar)",
+              borderRight: "1px solid var(--border)",
+              display: "flex",
+              flexDirection: "column",
+              padding: "16px 14px",
+              gap: 14,
+              animation: "noraPanelIn 200ms cubic-bezier(.2,.8,.2,1)",
+              transformOrigin: "left center",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0 4px",
+              }}
+            >
+              <NoraLogo size={20} animate={false} />
+              <button onClick={() => setOpen(false)} aria-label="Fechar menu" style={iconBtn}>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <nav style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {NAV.filter((item) => !item.adminOnly || isRoot).map((item) => (
+                <SideNav key={item.href} item={item} active={isActive(pathname, item.href)} />
+              ))}
+            </nav>
+            <div style={{ flex: 1 }} />
+            <div
+              style={{
+                borderTop: "1px solid var(--border)",
+                paddingTop: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <Avatar name={user?.displayName ?? "?"} size={28} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: "var(--ink)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {user?.displayName ?? "—"}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--muted)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {user?.email ?? ""}
+                </div>
+              </div>
+              <button
+                onClick={handleSignOut}
+                disabled={signingOut}
+                aria-label="Sair"
+                title="Sair"
+                style={{ ...iconBtn, opacity: signingOut ? 0.5 : 1 }}
+              >
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
