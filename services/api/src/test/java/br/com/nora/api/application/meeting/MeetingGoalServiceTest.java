@@ -14,6 +14,7 @@ import br.com.nora.api.domain.meeting.productivity.MeetingGoal;
 import br.com.nora.api.domain.meeting.productivity.OutcomeCoverage;
 import br.com.nora.api.domain.meeting.productivity.ProductivityAssessment;
 import br.com.nora.api.domain.meeting.productivity.ProductivityBand;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -207,6 +208,25 @@ class MeetingGoalServiceTest {
                 }
             }
             return new PagedMeetings(visible, visible.size(), page, size);
+        }
+
+        @Override
+        public long countByTenant(UUID tenantId) {
+            return store.values().stream().filter(m -> m.tenantId().equals(tenantId)).count();
+        }
+
+        @Override
+        public long countByTenantAndStatus(UUID tenantId, ProcessingStatus status) {
+            return store.values().stream()
+                    .filter(m -> m.tenantId().equals(tenantId) && m.processingStatus() == status)
+                    .count();
+        }
+
+        @Override
+        public long countByTenantCreatedSince(UUID tenantId, OffsetDateTime from) {
+            return store.values().stream()
+                    .filter(m -> m.tenantId().equals(tenantId) && !m.createdAt().isBefore(from))
+                    .count();
         }
     }
 

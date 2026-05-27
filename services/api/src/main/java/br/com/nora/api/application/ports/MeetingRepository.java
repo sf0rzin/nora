@@ -17,6 +17,15 @@ public interface MeetingRepository {
     /** Lista paginada por tenant ordenada por created_at desc. Page e size sao 0-based. */
     PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size);
 
+    /** Total de reunioes do tenant (US33 metrics). */
+    long countByTenant(UUID tenantId);
+
+    /** Total de reunioes do tenant em um status de processamento (US33 metrics). */
+    long countByTenantAndStatus(UUID tenantId, ProcessingStatus status);
+
+    /** Total de reunioes do tenant criadas em ou apos {@code from} (US33 "este mes"). */
+    long countByTenantCreatedSince(UUID tenantId, OffsetDateTime from);
+
     /**
      * Filtros opcionais para a listagem. Qualquer campo nulo significa "sem restricao". O search
      * casa por substring case-insensitive sobre o titulo.

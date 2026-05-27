@@ -13,6 +13,7 @@ import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
 import br.com.nora.api.domain.meeting.Transcript;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -194,6 +195,25 @@ class MeetingServiceTest {
             int from = Math.min(page * size, all.size());
             int to = Math.min(from + size, all.size());
             return new PagedMeetings(all.subList(from, to), all.size(), page, size);
+        }
+
+        @Override
+        public long countByTenant(UUID tenantId) {
+            return store.values().stream().filter(m -> m.tenantId().equals(tenantId)).count();
+        }
+
+        @Override
+        public long countByTenantAndStatus(UUID tenantId, ProcessingStatus status) {
+            return store.values().stream()
+                    .filter(m -> m.tenantId().equals(tenantId) && m.processingStatus() == status)
+                    .count();
+        }
+
+        @Override
+        public long countByTenantCreatedSince(UUID tenantId, OffsetDateTime from) {
+            return store.values().stream()
+                    .filter(m -> m.tenantId().equals(tenantId) && !m.createdAt().isBefore(from))
+                    .count();
         }
     }
 

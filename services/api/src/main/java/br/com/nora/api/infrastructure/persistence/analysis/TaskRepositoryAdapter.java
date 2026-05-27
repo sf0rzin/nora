@@ -97,6 +97,31 @@ public class TaskRepositoryAdapter implements TaskRepository {
                 .executeUpdate();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public long countByTenant(UUID tenantId) {
+        Object n =
+                em.createNativeQuery(
+                                "SELECT COUNT(*) FROM meeting_action_items WHERE tenant_id ="
+                                        + " :tenantId")
+                        .setParameter("tenantId", tenantId)
+                        .getSingleResult();
+        return ((Number) n).longValue();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countByTenantAndStatus(UUID tenantId, ActionItemStatus status) {
+        Object n =
+                em.createNativeQuery(
+                                "SELECT COUNT(*) FROM meeting_action_items "
+                                        + "WHERE tenant_id = :tenantId AND status = :status")
+                        .setParameter("tenantId", tenantId)
+                        .setParameter("status", status.name())
+                        .getSingleResult();
+        return ((Number) n).longValue();
+    }
+
     private TaskRow toRow(Object[] r) {
         UUID id = (UUID) r[0];
         String title = (String) r[1];

@@ -32,4 +32,10 @@ public interface TaskRepository {
     void updateStatus(UUID id, UUID tenantId, ActionItemStatus newStatus);
 
     void updateTitle(UUID id, UUID tenantId, String newTitle);
+
+    /** Total de action items do tenant (US33 metrics). */
+    long countByTenant(UUID tenantId);
+
+    /** Total de action items do tenant em um status (US33 metrics; usado p/ OPEN). */
+    long countByTenantAndStatus(UUID tenantId, ActionItemStatus status);
 }

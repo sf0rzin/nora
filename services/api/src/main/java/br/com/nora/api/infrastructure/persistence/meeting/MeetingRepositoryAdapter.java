@@ -60,6 +60,24 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
         return new PagedMeetings(items, result.getTotalElements(), page, size);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public long countByTenant(UUID tenantId) {
+        return jpa.countByTenantId(tenantId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countByTenantAndStatus(UUID tenantId, ProcessingStatus status) {
+        return jpa.countByTenantIdAndProcessingStatus(tenantId, status.name());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countByTenantCreatedSince(UUID tenantId, OffsetDateTime from) {
+        return jpa.countByTenantIdAndCreatedAtGreaterThanEqual(tenantId, from);
+    }
+
     private MeetingJpaEntity toEntity(Meeting m) {
         MeetingJpaEntity e = new MeetingJpaEntity();
         e.setId(m.id());

@@ -378,6 +378,24 @@ export async function updateTenantDomain(
   });
 }
 
+// ---------- Tenant Metrics (US33) ----------
+
+/** Visao rapida de atividade do tenant (GET /tenant/metrics). Sempre escopado ao tenant atual. */
+export interface TenantMetrics {
+  totalMeetings: number;
+  meetingsThisMonth: number;
+  completed: number;
+  processing: number;
+  pending: number;
+  failed: number;
+  totalActionItems: number;
+  openActionItems: number;
+}
+
+export async function getTenantMetrics(): Promise<TenantMetrics> {
+  return request<TenantMetrics>('/tenant/metrics');
+}
+
 // ---------- Tasks ----------
 
 export type TaskStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE';

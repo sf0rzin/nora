@@ -3,8 +3,11 @@ package br.com.nora.api.api.controllers;
 import br.com.nora.api.api.dto.tenant.TenantDomainResponse;
 import br.com.nora.api.api.dto.tenant.TenantDomainUpdateRequest;
 import br.com.nora.api.api.dto.tenant.TenantDomainUpdateResponse;
+import br.com.nora.api.api.dto.tenant.TenantMetricsResponse;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.iam.AuthorizationService;
+import br.com.nora.api.application.tenant.MetricsService;
+import br.com.nora.api.application.tenant.MetricsService.TenantMetrics;
 import br.com.nora.api.application.tenant.TenantService;
 import br.com.nora.api.domain.tenant.Tenant;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
@@ -27,11 +30,34 @@ import org.springframework.web.bind.annotation.RestController;
 public class TenantController {
 
     private final TenantService tenants;
+    private final MetricsService metrics;
     private final AuthorizationService authz;
 
-    public TenantController(TenantService tenants, AuthorizationService authz) {
+    public TenantController(
+            TenantService tenants, MetricsService metrics, AuthorizationService authz) {
         this.tenants = tenants;
+        this.metrics = metrics;
         this.authz = authz;
+    }
+
+    /**
+     * Visao rapida de atividade do tenant (US33). Escopado ao tenant do principal autenticado — o
+     * tenantId nunca vem do cliente. Reusa a permissao de leitura {@code meeting:read}.
+     */
+    @GetMapping("/metrics")
+    public TenantMetricsResponse getMetrics() {
+        AuthenticatedPrincipal p = CurrentUser.require();
+        authz.require(p.userId(), p.tenantId(), "meeting:read", resource(p));
+        TenantMetrics m = metrics.forTenant(p.tenantId());
+        return new TenantMetricsResponse(
+                m.totalMeetings(),
+                m.meetingsThisMonth(),
+                m.completed(),
+                m.processing(),
+                m.pending(),
+                m.failed(),
+                m.totalActionItems(),
+                m.openActionItems());
     }
 
     @GetMapping("/domain")

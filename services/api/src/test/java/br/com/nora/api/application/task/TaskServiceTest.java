@@ -157,6 +157,18 @@ class TaskServiceTest {
             }
         }
 
+        @Override
+        public long countByTenant(UUID tenantId) {
+            return store.values().stream().filter(r -> belongsToTenant(r, tenantId)).count();
+        }
+
+        @Override
+        public long countByTenantAndStatus(UUID tenantId, ActionItemStatus status) {
+            return store.values().stream()
+                    .filter(r -> belongsToTenant(r, tenantId) && r.status() == status)
+                    .count();
+        }
+
         private boolean belongsToTenant(TaskRow r, UUID tenantId) {
             return tenantId.equals(tenantOf.get(r.id()));
         }

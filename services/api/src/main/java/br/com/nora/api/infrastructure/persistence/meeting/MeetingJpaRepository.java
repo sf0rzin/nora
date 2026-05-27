@@ -20,6 +20,12 @@ public interface MeetingJpaRepository extends JpaRepository<MeetingJpaEntity, UU
 
     Optional<MeetingJpaEntity> findByIdAndTenantId(UUID id, UUID tenantId);
 
+    long countByTenantId(UUID tenantId);
+
+    long countByTenantIdAndProcessingStatus(UUID tenantId, String processingStatus);
+
+    long countByTenantIdAndCreatedAtGreaterThanEqual(UUID tenantId, OffsetDateTime createdAt);
+
     @Query(
             "SELECT m FROM MeetingJpaEntity m "
                     + "WHERE m.tenantId = :tenantId "
