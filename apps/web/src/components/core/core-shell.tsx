@@ -166,16 +166,16 @@ interface NavItem {
   label: string;
   href: Route;
   plus?: boolean;
-  /** Itens de administração do tenant — só aparecem pro Root. */
-  adminOnly?: boolean;
+  /** Itens Enterprise — só aparecem quando plan === 'ENTERPRISE'. Escondidos pro Core. */
+  enterpriseOnly?: boolean;
 }
 
 const NAV: NavItem[] = [
   { label: "Início", href: "/dashboard" as Route },
   { label: "Nova reunião", href: "/meetings/upload" as Route, plus: true },
   { label: "Action items", href: "/tasks" as Route },
-  { label: "Contexto", href: "/settings/context" as Route, adminOnly: true },
-  { label: "IAM", href: "/settings/iam" as Route, adminOnly: true },
+  { label: "Contexto", href: "/settings/context" as Route, enterpriseOnly: true },
+  { label: "IAM", href: "/settings/iam" as Route, enterpriseOnly: true },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -198,20 +198,22 @@ function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [isRoot, setIsRoot] = useState(false);
+  // Enterprise gate: itens Contexto/IAM e a engrenagem só aparecem pro plano
+  // ENTERPRISE. Core (FREE/PRO/etc.) vê apenas Início, Nova reunião e Action items.
+  // (isRoot continua disponível em SessionUser via setUser, mas não gateia a nav.)
+  const [isEnterprise, setIsEnterprise] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   // getCurrentUser lê cookie via document.cookie → client-only. Setar após
   // mount evita mismatch de hidratação (SSR não tem o cookie do browser).
-  // Em seguida, getMe() traz a identidade autoritativa (isRoot vem do backend,
-  // não do cookie de display que o usuário poderia forjar).
+  // Em seguida, getMe() traz a identidade autoritativa (isRoot e plan vêm do
+  // backend, não do cookie de display que o usuário poderia forjar).
   useEffect(() => {
     const cached = getCurrentUser();
     setUser(cached);
-    setIsRoot(cached?.isRoot ?? false);
     getMe()
       .then((m) => {
-        setIsRoot(m.isRoot);
+        setIsEnterprise(m.plan === "ENTERPRISE");
         setUser({
           userId: m.userId,
           tenantId: m.tenantId,
@@ -293,7 +295,7 @@ function Sidebar({
       </div>
 
       <nav style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 4 }}>
-        {NAV.filter((item) => !item.adminOnly || isRoot).map((item) => (
+        {NAV.filter((item) => !item.enterpriseOnly || isEnterprise).map((item) => (
           <SideNav key={item.href} item={item} active={isActive(pathname, item.href)} />
         ))}
       </nav>
@@ -337,7 +339,7 @@ function Sidebar({
             {user?.email ?? ""}
           </div>
         </div>
-        {isRoot && (
+        {isEnterprise && (
           <Link
             href={"/settings/context" as Route}
             style={{
@@ -435,16 +437,16 @@ function MobileNav() {
   const { openPalette } = useCoreShell();
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [isRoot, setIsRoot] = useState(false);
+  // Mesmo gate Enterprise da Sidebar (ver comentário lá). Core não vê Contexto/IAM.
+  const [isEnterprise, setIsEnterprise] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     const cached = getCurrentUser();
     setUser(cached);
-    setIsRoot(cached?.isRoot ?? false);
     getMe()
       .then((m) => {
-        setIsRoot(m.isRoot);
+        setIsEnterprise(m.plan === "ENTERPRISE");
         setUser({
           userId: m.userId,
           tenantId: m.tenantId,
@@ -605,7 +607,7 @@ function MobileNav() {
               </button>
             </div>
             <nav style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {NAV.filter((item) => !item.adminOnly || isRoot).map((item) => (
+              {NAV.filter((item) => !item.enterpriseOnly || isEnterprise).map((item) => (
                 <SideNav key={item.href} item={item} active={isActive(pathname, item.href)} />
               ))}
             </nav>
