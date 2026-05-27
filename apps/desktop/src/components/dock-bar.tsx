@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { NoraBars } from "@/components/brand/nora-bars";
 
 const DOCK_STORAGE_KEY = "nora.dock.visible";
 
@@ -15,36 +16,6 @@ function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-// NORA soundwave (same DNA as sidebar/login logos)
-function NoraBars({ active }: { active: boolean }) {
-  return (
-    <span
-      className="inline-flex items-center justify-center"
-      style={{
-        gap: 2,
-        height: 16,
-        width: 22,
-      }}
-    >
-      {[0.42, 0.78, 1.0, 0.66, 0.52].map((h, i) => (
-        <span
-          key={i}
-          style={{
-            display: "block",
-            width: 2.5,
-            height: `${h * 100}%`,
-            background: active ? "var(--danger)" : "var(--ink)",
-            borderRadius: 2,
-            animation: active
-              ? `dotPulse 1.4s ease-in-out ${i * 0.12}s infinite`
-              : undefined,
-          }}
-        />
-      ))}
-    </span>
-  );
 }
 
 function DockButton({
@@ -225,7 +196,7 @@ export function DockBar() {
             fontVariantNumeric: "tabular-nums",
           }}
         >
-          <NoraBars active={isRecording} />
+          <NoraBars size={14} active={isRecording} animate />
           <span
             style={{
               fontFamily: "var(--display)",

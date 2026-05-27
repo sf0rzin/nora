@@ -5,6 +5,7 @@ import { useLiveTranscript, type LiveTranscriptLine } from "@/hooks/use-live-tra
 import { useLiveHighlights, type LiveHighlightItem, type LiveTaskItem } from "@/hooks/use-live-highlights";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { Avatar } from "@/components/brand/avatar";
+import { NoraBars } from "@/components/brand/nora-bars";
 import {
   NotificationStack,
   useNotifications,
@@ -281,28 +282,6 @@ function PartialBubble({ text, isMe }: { text: string; isMe: boolean }) {
         />
       )}
     </div>
-  );
-}
-
-function BrandBars({ active }: { active: boolean }) {
-  return (
-    <span className="inline-flex items-end gap-[2.5px]" style={{ height: 16 }}>
-      {[0.4, 0.7, 1.0, 0.65, 0.5].map((h, i) => (
-        <span
-          key={i}
-          style={{
-            display: "block",
-            width: 3,
-            height: `${h * 100}%`,
-            background: active ? "var(--danger)" : "var(--ink)",
-            borderRadius: 2,
-            animation: active
-              ? `dotPulse 1.4s ease-in-out ${i * 0.12}s infinite`
-              : undefined,
-          }}
-        />
-      ))}
-    </span>
   );
 }
 
@@ -1287,7 +1266,7 @@ export function OverlayPage() {
         }}
       >
         <div className="flex items-center gap-2.5 min-w-0">
-          <BrandBars active={isRecording} />
+          <NoraBars size={16} active={isRecording} animate />
           <span
             className="truncate"
             style={{
