@@ -209,6 +209,9 @@ function isDuplicate(newText: string, existing: LiveHighlightItem[]): boolean {
 
   for (const item of existing) {
     const normOld = normalizeText(item.text);
+    // Skip vazios — `"qualquer".includes("")` é sempre true e travaria
+    // todo highlight subsequente como "duplicado".
+    if (!normOld) continue;
     if (normNew === normOld) return true;
     if (normNew.includes(normOld) || normOld.includes(normNew)) return true;
     const oldTokens = new Set(normOld.split(/\s+/).filter(Boolean));
@@ -221,9 +224,16 @@ function isDuplicate(newText: string, existing: LiveHighlightItem[]): boolean {
   return false;
 }
 
+function hasContent(text: string | null | undefined): boolean {
+  return typeof text === "string" && text.trim().length > 0;
+}
+
 function mergeItems(existing: LiveHighlightItem[], incoming: LiveHighlightItem[]): LiveHighlightItem[] {
   const result = [...existing];
   for (const item of incoming) {
+    // Filtra antes — items sem texto não devem entrar no array, senão poluem
+    // a dedup subsequente (qualquer string include "" → tudo é "duplicado").
+    if (!hasContent(item.text)) continue;
     if (!isDuplicate(item.text, result)) {
       result.push(item);
     }
@@ -234,9 +244,11 @@ function mergeItems(existing: LiveHighlightItem[], incoming: LiveHighlightItem[]
 function mergeTasks(existing: LiveTaskItem[], incoming: LiveTaskItem[]): LiveTaskItem[] {
   const result = [...existing];
   for (const task of incoming) {
+    if (!hasContent(task.title)) continue;
     const normNew = normalizeText(task.title);
     const isDup = result.some((t) => {
       const normOld = normalizeText(t.title);
+      if (!normOld) return false;
       if (normNew === normOld) return true;
       const newTokens = new Set(normNew.split(/\s+/).filter(Boolean));
       const oldTokens = new Set(normOld.split(/\s+/).filter(Boolean));
