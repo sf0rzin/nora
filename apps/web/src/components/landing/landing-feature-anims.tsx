@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 // ── 1 · PII Shield ──
 function PIIShieldAnim() {
@@ -374,7 +374,14 @@ function PTBRAnim() {
   );
 }
 
-const FEATURES = [
+type Feature = {
+  anim: ReactNode;
+  title: string;
+  body: string;
+  soon?: boolean;
+};
+
+const FEATURES: Feature[] = [
   {
     anim: <PIIShieldAnim />,
     title: "PII Shield",
@@ -394,6 +401,7 @@ const FEATURES = [
     anim: <MCPAnim />,
     title: "Integração via MCP",
     body: "Empurre tasks pro Linear/Jira, registre resumo no Calendar, sincronize com Salesforce — tudo via Model Context Protocol.",
+    soon: true,
   },
   {
     anim: <DesktopAnim />,
@@ -424,7 +432,28 @@ export function LandingFeatures() {
             <div className="feature-v2" key={f.title}>
               <div className="feature-v2-stage">{f.anim}</div>
               <div className="feature-v2-meta">
-                <h3>{f.title}</h3>
+                <h3>
+                  {f.title}
+                  {f.soon && (
+                    <span
+                      style={{
+                        marginLeft: 8,
+                        verticalAlign: "middle",
+                        fontFamily: "var(--sans)",
+                        fontSize: 10.5,
+                        fontWeight: 500,
+                        letterSpacing: "0.02em",
+                        textTransform: "uppercase",
+                        color: "var(--accent-ink)",
+                        background: "var(--accent-soft)",
+                        borderRadius: 999,
+                        padding: "2px 8px",
+                      }}
+                    >
+                      Em breve
+                    </span>
+                  )}
+                </h3>
                 <p>{f.body}</p>
               </div>
             </div>

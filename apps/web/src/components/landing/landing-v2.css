@@ -341,38 +341,6 @@
   }
 }
 
-/* logos strip */
-.nora-landing .logos-strip {
-  position: relative;
-  z-index: 3;
-  background: var(--canvas);
-  margin-top: clamp(24px, 5vh, 56px);
-  padding: 36px 0 12px;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  flex-wrap: wrap;
-  border-top: 1px solid var(--border);
-}
-.nora-landing .logos-strip .lead {
-  font-size: 12px;
-  color: var(--muted);
-}
-.nora-landing .logos-strip .row {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  flex-wrap: wrap;
-}
-.nora-landing .fake-logo {
-  font-family: var(--display);
-  font-weight: 500;
-  letter-spacing: -0.012em;
-  color: var(--muted);
-  font-size: 16px;
-  opacity: 0.65;
-}
-
 /* Scroll hint */
 .nora-landing .hero-scroll-hint {
   position: absolute;

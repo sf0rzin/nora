@@ -40,8 +40,22 @@ function WordSpotlight() {
               key={i}
               className="spot-tok"
               data-kind={t.kind}
+              role="button"
+              tabIndex={0}
+              aria-label={`${t.text} — ${meta.label}`}
+              aria-pressed={isActive}
               onMouseEnter={() => setActive(i)}
               onMouseLeave={() => setActive(null)}
+              onFocus={() => setActive(i)}
+              onBlur={() => setActive(null)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setActive((prev) => (prev === i ? null : i));
+                } else if (e.key === "Escape") {
+                  setActive(null);
+                }
+              }}
               style={{
                 background: isActive ? meta.bg : "transparent",
                 color: isActive ? meta.color : "var(--ink)",
