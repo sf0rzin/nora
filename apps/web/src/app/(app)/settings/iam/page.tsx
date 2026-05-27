@@ -17,8 +17,10 @@ import {
   detachPolicyFromUser,
   listAuditEvents,
   listGroups,
+  listIamUsers,
   listPolicies,
   removeGroupMember,
+  type TenantUserDto,
 } from "@/lib/api/client";
 import PolicyEditor from "@/components/policy-editor";
 import CorporateDomainCard from "@/components/corporate-domain-card";
@@ -33,6 +35,7 @@ import {
   Input,
   PageHeader,
   Section,
+  Select,
 } from "@/components/core/ui";
 
 const POLICY_PLACEHOLDER = `{
@@ -49,6 +52,7 @@ const POLICY_PLACEHOLDER = `{
 export default function IamPage() {
   const [groups, setGroups] = useState<GroupDto[]>([]);
   const [policies, setPolicies] = useState<PolicyDto[]>([]);
+  const [users, setUsers] = useState<TenantUserDto[]>([]);
   const [audit, setAudit] = useState<AuditEventDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,10 +73,16 @@ export default function IamPage() {
     setLoading(true);
     setError(null);
     try {
-      const [g, p, a] = await Promise.all([listGroups(), listPolicies(), listAuditEvents(50)]);
+      const [g, p, a, u] = await Promise.all([
+        listGroups(),
+        listPolicies(),
+        listAuditEvents(50),
+        listIamUsers(),
+      ]);
       setGroups(g);
       setPolicies(p);
       setAudit(a);
+      setUsers(u);
     } catch (err) {
       setError(toMessage(err));
     } finally {
@@ -124,6 +134,67 @@ export default function IamPage() {
 
       {/* ===== Invitations (US06) ===== */}
       <InvitationCard />
+
+      {/* ===== Users (UC17) ===== */}
+      <Section title="Usuários">
+        {users.length === 0 ? (
+          <EmptyState>Nenhum usuário ainda. Convide alguém acima.</EmptyState>
+        ) : (
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              overflow: "hidden",
+              background: "var(--surface)",
+            }}
+          >
+            {users.map((u, i) => (
+              <div
+                key={u.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "12px 16px",
+                  borderTop: i === 0 ? "none" : "1px solid var(--border)",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 500,
+                      color: "var(--ink)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    {u.displayName}
+                    {u.isRoot && <Badge tone="accent">Root</Badge>}
+                    {u.status !== "ACTIVE" && <Badge>{u.status}</Badge>}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{u.email}</div>
+                </div>
+                <span
+                  style={{
+                    fontFamily: "var(--mono)",
+                    fontSize: 11,
+                    color: "var(--muted)",
+                    background: "var(--chip)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "1px 6px",
+                  }}
+                  title={u.id}
+                >
+                  {u.id.slice(0, 8)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
 
       {/* ===== Groups ===== */}
       <Section title="Groups">
@@ -243,26 +314,36 @@ export default function IamPage() {
                 });
               }}
             >
-              <div style={{ minWidth: 200 }}>
-                <Field label="Group ID" htmlFor="member-group-id">
-                  <Input
+              <div style={{ minWidth: 200, flex: 1 }}>
+                <Field label="Grupo" htmlFor="member-group-id">
+                  <Select
                     id="member-group-id"
                     value={memberGroupId}
                     onChange={(e) => setMemberGroupId(e.target.value)}
-                    placeholder="group id"
-                    style={{ fontFamily: "var(--mono)" }}
-                  />
+                  >
+                    <option value="">Selecione um grupo…</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </Select>
                 </Field>
               </div>
-              <div style={{ minWidth: 200 }}>
-                <Field label="User ID" htmlFor="member-user-id">
-                  <Input
+              <div style={{ minWidth: 200, flex: 1 }}>
+                <Field label="Usuário" htmlFor="member-user-id">
+                  <Select
                     id="member-user-id"
                     value={memberUserId}
                     onChange={(e) => setMemberUserId(e.target.value)}
-                    placeholder="user id"
-                    style={{ fontFamily: "var(--mono)" }}
-                  />
+                  >
+                    <option value="">Selecione um usuário…</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.displayName} · {u.email}
+                      </option>
+                    ))}
+                  </Select>
                 </Field>
               </div>
               <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -435,23 +516,33 @@ export default function IamPage() {
             <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", margin: "0 0 14px" }}>
               A um grupo
             </h3>
-            <Field label="Policy ID" htmlFor="attach-group-policy-id">
-              <Input
+            <Field label="Policy" htmlFor="attach-group-policy-id">
+              <Select
                 id="attach-group-policy-id"
                 value={attachPolicyId}
                 onChange={(e) => setAttachPolicyId(e.target.value)}
-                placeholder="policy id"
-                style={{ fontFamily: "var(--mono)" }}
-              />
+              >
+                <option value="">Selecione uma policy…</option>
+                {policies.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
             </Field>
-            <Field label="Group ID" htmlFor="attach-group-id">
-              <Input
+            <Field label="Grupo" htmlFor="attach-group-id">
+              <Select
                 id="attach-group-id"
                 value={attachGroupId}
                 onChange={(e) => setAttachGroupId(e.target.value)}
-                placeholder="group id"
-                style={{ fontFamily: "var(--mono)" }}
-              />
+              >
+                <option value="">Selecione um grupo…</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <div style={{ display: "flex", gap: 8 }}>
               <Button
@@ -482,23 +573,33 @@ export default function IamPage() {
             <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", margin: "0 0 14px" }}>
               A um usuário
             </h3>
-            <Field label="Policy ID" htmlFor="attach-user-policy-id">
-              <Input
+            <Field label="Policy" htmlFor="attach-user-policy-id">
+              <Select
                 id="attach-user-policy-id"
                 value={attachPolicyId}
                 onChange={(e) => setAttachPolicyId(e.target.value)}
-                placeholder="policy id (mesmo campo acima)"
-                style={{ fontFamily: "var(--mono)" }}
-              />
+              >
+                <option value="">Selecione uma policy…</option>
+                {policies.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
             </Field>
-            <Field label="User ID" htmlFor="attach-user-id">
-              <Input
+            <Field label="Usuário" htmlFor="attach-user-id">
+              <Select
                 id="attach-user-id"
                 value={attachUserId}
                 onChange={(e) => setAttachUserId(e.target.value)}
-                placeholder="user id"
-                style={{ fontFamily: "var(--mono)" }}
-              />
+              >
+                <option value="">Selecione um usuário…</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.displayName} · {u.email}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <div style={{ display: "flex", gap: 8 }}>
               <Button
