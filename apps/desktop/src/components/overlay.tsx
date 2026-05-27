@@ -1,80 +1,233 @@
-import { useLiveHighlights } from "@/hooks/use-live-highlights";
-import { listen } from "@tauri-apps/api/event";
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
+import { useLiveTranscript, type LiveTranscriptLine } from "@/hooks/use-live-transcript";
+import { ShaderOrb } from "@/components/brand/shader-orb";
+import { Avatar } from "@/components/brand/avatar";
 
-function formatTimeAgo(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 5) return "agora";
-  if (seconds < 60) return `${seconds}s atrás`;
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}min atrás`;
+function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
 
-type CategoryKey = "decisions" | "nextSteps" | "observations" | "tasks";
-
-interface CategoryDef {
-  key: CategoryKey;
-  label: string;
-  accent: string;
-  icon: JSX.Element;
+function relTime(ms: number): string {
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms / 1000) % 60);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-const CATEGORIES: CategoryDef[] = [
-  {
-    key: "decisions",
-    label: "Decisões",
-    accent: "var(--accent-ink)",
-    icon: (
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-    ),
-  },
-  {
-    key: "nextSteps",
-    label: "Próximos passos",
-    accent: "#3f8a5e",
-    icon: (
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="5" y1="12" x2="19" y2="12" />
-        <polyline points="12 5 19 12 12 19" />
-      </svg>
-    ),
-  },
-  {
-    key: "observations",
-    label: "Observações",
-    accent: "var(--muted)",
-    icon: (
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="16" x2="12" y2="12" />
-        <line x1="12" y1="8" x2="12.01" y2="8" />
-      </svg>
-    ),
-  },
-  {
-    key: "tasks",
-    label: "Tarefas",
-    accent: "#a37528",
-    icon: (
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="9 11 12 14 22 4" />
-        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-      </svg>
-    ),
-  },
-];
+function getDisplayName(line: LiveTranscriptLine, isMe: boolean): string {
+  if (isMe) return "Você";
+  if (line.speakerId === "UNKNOWN") return "Desconhecido";
+  return line.speaker || line.speakerId || "Falante";
+}
 
-const PRIORITY: Record<string, { bg: string; fg: string; dot: string }> = {
-  HIGH: { bg: "rgba(201,119,102,0.16)", fg: "#a04c3e", dot: "#a04c3e" },
-  MEDIUM: { bg: "rgba(212,160,76,0.16)", fg: "#a37528", dot: "#a37528" },
-  LOW: { bg: "var(--chip)", fg: "var(--muted)", dot: "var(--muted)" },
-};
+// Group consecutive lines from the same speaker (and within 12s) into one bubble
+interface ChatGroup {
+  id: string;
+  isMe: boolean;
+  speaker: string;
+  texts: { id: string; text: string; ts: number }[];
+  startTs: number;
+}
 
-function OverlayBars({ active }: { active: boolean }) {
+function groupLines(lines: LiveTranscriptLine[]): ChatGroup[] {
+  const groups: ChatGroup[] = [];
+  let current: ChatGroup | null = null;
+  const WINDOW = 12_000;
+  for (const l of lines) {
+    const isMe = l.track === "mic";
+    const speaker = getDisplayName(l, isMe);
+    const same =
+      current &&
+      current.isMe === isMe &&
+      current.speaker === speaker &&
+      l.timestamp - current.texts[current.texts.length - 1].ts < WINDOW;
+    if (same && current) {
+      current.texts.push({ id: l.id, text: l.text, ts: l.timestamp });
+    } else {
+      current = {
+        id: l.id,
+        isMe,
+        speaker,
+        texts: [{ id: l.id, text: l.text, ts: l.timestamp }],
+        startTs: l.timestamp,
+      };
+      groups.push(current);
+    }
+  }
+  return groups;
+}
+
+function ChatBubble({
+  group,
+  startedAt,
+}: {
+  group: ChatGroup;
+  startedAt: number | null;
+}) {
+  const isMe = group.isMe;
+  const ts = startedAt ? relTime(group.startTs - startedAt) : "";
   return (
-    <span className="inline-flex items-end gap-[2.5px]" style={{ height: 16 }}>
+    <div
+      className={`flex items-end gap-2 ${isMe ? "justify-end" : "justify-start"}`}
+      style={{ width: "100%" }}
+    >
+      {!isMe && (
+        <div className="shrink-0" style={{ paddingBottom: 2 }}>
+          <Avatar name={group.speaker} size={26} />
+        </div>
+      )}
+      <div
+        className="flex flex-col"
+        style={{
+          maxWidth: "min(72%, 540px)",
+          alignItems: isMe ? "flex-end" : "flex-start",
+        }}
+      >
+        <div
+          className="flex items-baseline gap-2"
+          style={{ marginBottom: 3, padding: "0 4px" }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              color: "var(--ink)",
+              letterSpacing: "-0.005em",
+            }}
+          >
+            {group.speaker}
+          </span>
+          {ts && (
+            <span
+              style={{
+                fontSize: 10,
+                color: "var(--muted)",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {ts}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-col gap-1" style={{ alignSelf: "stretch" }}>
+          {group.texts.map((t) => (
+            <div
+              key={t.id}
+              style={{
+                padding: "8px 13px",
+                background: isMe ? "var(--ink)" : "var(--canvas)",
+                color: isMe ? "var(--canvas)" : "var(--ink)",
+                border: isMe ? "none" : "1px solid var(--border)",
+                borderRadius: 14,
+                borderTopRightRadius: isMe ? 6 : 14,
+                borderTopLeftRadius: isMe ? 14 : 6,
+                fontSize: 13.5,
+                lineHeight: 1.45,
+                letterSpacing: "-0.005em",
+                textAlign: "left",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                boxShadow: isMe
+                  ? "0 6px 16px -10px rgba(15, 23, 42, 0.40)"
+                  : "0 2px 8px -6px rgba(15, 23, 42, 0.12)",
+              }}
+            >
+              {t.text}
+            </div>
+          ))}
+        </div>
+      </div>
+      {isMe && (
+        <div
+          className="shrink-0 grid place-items-center"
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: "50%",
+            overflow: "hidden",
+            background: "var(--canvas)",
+            paddingBottom: 0,
+            marginBottom: 2,
+          }}
+        >
+          <ShaderOrb size={26} speed={1} intensity={0.95} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PartialBubble({ text, isMe }: { text: string; isMe: boolean }) {
+  return (
+    <div
+      className={`flex items-end gap-2 ${isMe ? "justify-end" : "justify-start"}`}
+      style={{ width: "100%", opacity: 0.55 }}
+    >
+      {!isMe && (
+        <div className="shrink-0">
+          <span
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: "50%",
+              background: "var(--chip)",
+              display: "block",
+            }}
+          />
+        </div>
+      )}
+      <div
+        style={{
+          padding: "8px 13px",
+          background: isMe ? "var(--ink)" : "var(--canvas)",
+          color: isMe ? "var(--canvas)" : "var(--ink)",
+          border: isMe ? "none" : "1px solid var(--border)",
+          borderRadius: 14,
+          borderTopRightRadius: isMe ? 6 : 14,
+          borderTopLeftRadius: isMe ? 14 : 6,
+          fontSize: 13.5,
+          lineHeight: 1.45,
+          fontStyle: "italic",
+          maxWidth: "min(72%, 540px)",
+        }}
+      >
+        {text}
+        <span
+          style={{
+            display: "inline-block",
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: isMe ? "var(--canvas)" : "var(--muted)",
+            marginLeft: 6,
+            verticalAlign: "middle",
+            animation: "dotPulse 1.0s ease-in-out infinite",
+          }}
+        />
+      </div>
+      {isMe && (
+        <span
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: "50%",
+            background: "var(--chip)",
+            display: "block",
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function BrandBars({ active }: { active: boolean }) {
+  return (
+    <span className="inline-flex items-end gap-[2.5px]" style={{ height: 18 }}>
       {[0.4, 0.7, 1.0, 0.65, 0.5].map((h, i) => (
         <span
           key={i}
@@ -84,7 +237,9 @@ function OverlayBars({ active }: { active: boolean }) {
             height: `${h * 100}%`,
             background: active ? "var(--danger)" : "var(--ink)",
             borderRadius: 2,
-            animation: active ? `dotPulse 1.4s ease-in-out ${i * 0.12}s infinite` : undefined,
+            animation: active
+              ? `dotPulse 1.4s ease-in-out ${i * 0.12}s infinite`
+              : undefined,
           }}
         />
       ))}
@@ -92,306 +247,220 @@ function OverlayBars({ active }: { active: boolean }) {
   );
 }
 
-function Column({
-  cat,
-  items,
-}: {
-  cat: CategoryDef;
-  items: { kind: "text" | "task"; text: string; priority?: string }[];
-}) {
-  const count = items.length;
-  return (
-    <section
-      className="flex flex-col min-w-0"
-      style={{
-        flex: 1,
-        background: "rgba(253, 253, 252, 0.55)",
-        borderRadius: 10,
-        border: "1px solid var(--border)",
-        padding: 0,
-        minWidth: 0,
-        overflow: "hidden",
-      }}
-    >
-      <header
-        className="flex items-center justify-between shrink-0"
-        style={{
-          padding: "8px 11px",
-          background: "rgba(247, 247, 245, 0.55)",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
-        <span
-          className="inline-flex items-center gap-1.5"
-          style={{
-            fontSize: 10.5,
-            fontWeight: 500,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: cat.accent,
-          }}
-        >
-          {cat.icon}
-          {cat.label}
-        </span>
-        <span
-          style={{
-            fontSize: 10,
-            color: "var(--muted)",
-            fontVariantNumeric: "tabular-nums",
-            padding: "1px 7px",
-            background: "var(--chip)",
-            borderRadius: 999,
-            fontWeight: 500,
-          }}
-        >
-          {count}
-        </span>
-      </header>
-      <div
-        className="overflow-y-auto"
-        style={{ padding: count === 0 ? "10px 12px" : "8px 4px 10px 4px", flex: 1, minHeight: 0 }}
-      >
-        {count === 0 ? (
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--muted)",
-              fontStyle: "italic",
-              lineHeight: 1.55,
-              opacity: 0.7,
-            }}
-          >
-            Aguardando…
-          </div>
-        ) : (
-          <div className="flex flex-col">
-            {items.map((it, i) => {
-              if (it.kind === "task") {
-                const c = PRIORITY[it.priority ?? "MEDIUM"] ?? PRIORITY.MEDIUM;
-                return (
-                  <div
-                    key={i}
-                    className="flex items-start gap-2"
-                    style={{ padding: "6px 8px", borderRadius: 7 }}
-                  >
-                    <span
-                      className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap"
-                      style={{
-                        padding: "1px 6px",
-                        borderRadius: 999,
-                        background: c.bg,
-                        color: c.fg,
-                        fontSize: 9.5,
-                        fontWeight: 500,
-                        letterSpacing: "0.04em",
-                        marginTop: 1,
-                      }}
-                    >
-                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: c.dot }} />
-                      {it.priority}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: "var(--ink)",
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      {it.text}
-                    </span>
-                  </div>
-                );
-              }
-              return (
-                <div
-                  key={i}
-                  style={{
-                    padding: "6px 8px 6px 10px",
-                    borderRadius: 7,
-                    fontSize: 12,
-                    color: "var(--ink)",
-                    lineHeight: 1.5,
-                    borderLeft: `2px solid ${cat.accent}`,
-                    marginLeft: 4,
-                    background: "transparent",
-                  }}
-                >
-                  {it.text}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
 export function OverlayPage() {
-  const { highlights, lastUpdatedAt, lastLatencyMs, isAnalyzing } = useLiveHighlights();
-  const [recordingStatus, setRecordingStatus] = useState<{ isRecording: boolean } | null>(null);
-  const [timeAgo, setTimeAgo] = useState<string>("");
+  const {
+    lines,
+    partial,
+    isRecording,
+    startedAt,
+    duration,
+    micDevice,
+  } = useLiveTranscript();
 
-  const totalItems =
-    highlights.decisions.length +
-    highlights.nextSteps.length +
-    highlights.observations.length +
-    highlights.tasks.length;
+  const groups = useMemo(() => groupLines(lines), [lines]);
 
+  // last partial speaker (use track of last line as a heuristic, fallback: not-me)
+  const lastTrack = lines.length > 0 ? lines[lines.length - 1].track : "system";
+  const partialIsMe = lastTrack === "mic";
+
+  // auto scroll
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    const unlisten = listen<{ isRecording: boolean }>("recording-status", (event) => {
-      setRecordingStatus(event.payload);
-    });
-    invokeOverlay("get_recording_status")
-      .then((status) => setRecordingStatus(status as { isRecording: boolean }))
-      .catch(() => {});
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [groups.length, partial]);
 
-  useEffect(() => {
-    if (!lastUpdatedAt) {
-      setTimeAgo("");
-      return;
+  const [stopping, setStopping] = useState(false);
+  const handleStop = async () => {
+    if (stopping) return;
+    setStopping(true);
+    try {
+      await emit("nora://stop-and-save");
+    } catch (e) {
+      console.error("[overlay] failed to emit stop:", e);
+      setStopping(false);
     }
-    const update = () => setTimeAgo(formatTimeAgo(Date.now() - lastUpdatedAt));
-    update();
-    const interval = setInterval(update, 5000);
-    return () => clearInterval(interval);
-  }, [lastUpdatedAt]);
-
-  const hasContent = totalItems > 0 || isAnalyzing;
-  const isRecording = recordingStatus?.isRecording ?? false;
-
-  const columnsData: { cat: CategoryDef; items: { kind: "text" | "task"; text: string; priority?: string }[] }[] = CATEGORIES.map((cat) => {
-    if (cat.key === "tasks") {
-      return {
-        cat,
-        items: highlights.tasks.map((t) => ({
-          kind: "task" as const,
-          text: t.title,
-          priority: t.priority,
-        })),
-      };
+  };
+  const handleCancel = async () => {
+    if (stopping) return;
+    try {
+      await emit("nora://cancel-recording");
+    } catch (e) {
+      console.error("[overlay] failed to emit cancel:", e);
     }
-    const arr =
-      cat.key === "decisions"
-        ? highlights.decisions
-        : cat.key === "nextSteps"
-          ? highlights.nextSteps
-          : highlights.observations;
-    return {
-      cat,
-      items: arr.map((it) => ({ kind: "text" as const, text: it.text })),
-    };
-  });
+  };
+  const handleMinimize = () => {
+    invoke("toggle_overlay", { show: false }).catch(() => {});
+  };
+
+  const empty = groups.length === 0 && !partial;
 
   return (
     <div
       className="h-screen w-screen flex flex-col select-none overflow-hidden"
       style={{
-        background: "rgba(253, 253, 252, 0.92)",
-        WebkitBackdropFilter: "saturate(160%) blur(24px)",
-        backdropFilter: "saturate(160%) blur(24px)",
+        background: "rgba(253, 253, 252, 0.94)",
+        WebkitBackdropFilter: "saturate(160%) blur(28px)",
+        backdropFilter: "saturate(160%) blur(28px)",
         color: "var(--ink)",
         borderRadius: 16,
         border: "1px solid var(--border)",
         boxShadow:
-          "0 24px 60px -28px rgba(15, 23, 42, 0.32), 0 6px 18px rgba(15, 23, 42, 0.06)",
+          "0 26px 60px -28px rgba(15, 23, 42, 0.34), 0 8px 20px rgba(15, 23, 42, 0.06)",
       }}
     >
-      {/* Header (drag region) */}
+      {/* Header */}
       <div
         data-tauri-drag-region
         className="flex items-center justify-between shrink-0"
         style={{
-          padding: "10px 14px",
-          background: "rgba(247, 247, 245, 0.5)",
+          padding: "12px 16px",
           borderBottom: "1px solid var(--border)",
+          background: "rgba(247, 247, 245, 0.55)",
           cursor: "move",
         }}
       >
-        <div className="flex items-center gap-3">
-          <OverlayBars active={isRecording} />
+        <div className="flex items-center gap-3 min-w-0">
+          <BrandBars active={isRecording} />
           <span
+            className="truncate"
             style={{
-              fontSize: 11.5,
+              fontSize: 12,
               fontWeight: 500,
               letterSpacing: "-0.005em",
+              color: isRecording ? "var(--danger-ink)" : "var(--muted)",
             }}
           >
-            {isRecording ? (
-              <span style={{ color: "var(--danger-ink)" }}>NORA · gravando</span>
-            ) : (
-              <span style={{ color: "var(--muted)" }}>NORA Live</span>
-            )}
+            {isRecording ? "NORA · gravando" : "NORA Live"}
           </span>
-          {totalItems > 0 && (
-            <span
-              style={{
-                fontSize: 11,
-                color: "var(--muted)",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              · {totalItems} {totalItems === 1 ? "destaque" : "destaques"}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2.5">
-          {isAnalyzing ? (
-            <span
-              className="inline-flex items-center gap-1.5"
-              style={{ fontSize: 10.5, color: "var(--accent-ink)" }}
-            >
+          {isRecording && (
+            <>
               <span
                 style={{
-                  width: 9,
-                  height: 9,
-                  border: "1.5px solid var(--accent-ink)",
-                  borderTopColor: "transparent",
-                  borderRadius: "50%",
-                  animation: "nora-spin 0.9s linear infinite",
+                  fontSize: 11,
+                  color: "var(--muted)",
+                  fontVariantNumeric: "tabular-nums",
+                  padding: "1px 8px",
+                  border: "1px solid var(--border)",
+                  borderRadius: 999,
+                  background: "var(--canvas)",
                 }}
-              />
-              analisando
-            </span>
-          ) : timeAgo ? (
-            <span
-              style={{
-                fontSize: 10.5,
-                color: "var(--muted)",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {timeAgo}
-            </span>
-          ) : null}
-          {lastLatencyMs !== null && (
-            <span
-              style={{
-                fontSize: 10,
-                color: "var(--muted)",
-                fontVariantNumeric: "tabular-nums",
-                opacity: 0.7,
-              }}
-            >
-              {lastLatencyMs}ms
-            </span>
+              >
+                {formatDuration(duration)}
+              </span>
+              {micDevice && (
+                <span
+                  className="truncate hidden md:inline"
+                  style={{
+                    fontSize: 11,
+                    color: "var(--muted)",
+                    letterSpacing: "-0.005em",
+                  }}
+                >
+                  {micDevice}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          {isRecording && (
+            <>
+              <button
+                onClick={handleCancel}
+                disabled={stopping}
+                aria-label="Descartar gravação"
+                title="Descartar"
+                className="inline-flex items-center gap-1.5 rounded-md transition-colors"
+                style={{
+                  padding: "5px 10px",
+                  fontSize: 11.5,
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  color: "var(--muted)",
+                  cursor: stopping ? "default" : "pointer",
+                  letterSpacing: "-0.005em",
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => {
+                  if (!stopping) {
+                    e.currentTarget.style.background = "var(--chip)";
+                    e.currentTarget.style.color = "var(--ink)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.color = "var(--muted)";
+                }}
+              >
+                Descartar
+              </button>
+              <button
+                onClick={handleStop}
+                disabled={stopping}
+                aria-label="Parar e salvar"
+                className="inline-flex items-center gap-1.5 rounded-md"
+                style={{
+                  padding: "5px 12px 5px 10px",
+                  fontSize: 11.5,
+                  background: "var(--ink)",
+                  color: "var(--canvas)",
+                  border: "1px solid var(--ink)",
+                  cursor: stopping ? "default" : "pointer",
+                  letterSpacing: "-0.005em",
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => {
+                  if (!stopping) e.currentTarget.style.background = "#000";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "var(--ink)";
+                }}
+              >
+                {stopping ? (
+                  <>
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        border: "1.5px solid rgba(253,253,252,0.4)",
+                        borderTopColor: "var(--canvas)",
+                        borderRadius: "50%",
+                        animation: "nora-spin 0.9s linear infinite",
+                      }}
+                    />
+                    Salvando…
+                  </>
+                ) : (
+                  <>
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        background: "var(--canvas)",
+                        borderRadius: 2,
+                      }}
+                    />
+                    Parar e salvar
+                  </>
+                )}
+              </button>
+            </>
           )}
           <button
-            onClick={() => invokeOverlay("toggle_overlay", { show: false })}
+            onClick={handleMinimize}
+            aria-label="Esconder overlay"
+            title="Esconder"
             className="grid place-items-center rounded-md transition-colors"
-            aria-label="Fechar overlay"
             style={{
-              width: 24,
-              height: 24,
+              width: 26,
+              height: 26,
               background: "transparent",
               border: "none",
               color: "var(--muted)",
               cursor: "pointer",
+              marginLeft: 4,
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = "rgba(0,0,0,0.05)";
@@ -410,26 +479,42 @@ export function OverlayPage() {
       </div>
 
       {/* Body */}
-      <div className="flex-1 min-h-0 overflow-hidden" style={{ padding: 10 }}>
-        {!hasContent ? (
-          <div className="h-full grid grid-cols-4 gap-2.5">
-            {CATEGORIES.map((cat) => (
-              <Column key={cat.key} cat={cat} items={[]} />
-            ))}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto"
+        style={{ padding: "16px 20px 18px" }}
+      >
+        {empty ? (
+          <div className="h-full flex flex-col items-center justify-center text-center gap-3">
+            <ShaderOrb size={48} speed={isRecording ? 1.4 : 0.6} intensity={isRecording ? 0.95 : 0.45} />
+            <div style={{ maxWidth: 380 }}>
+              <div
+                style={{
+                  fontSize: 13.5,
+                  color: "var(--ink)",
+                  fontWeight: 500,
+                  letterSpacing: "-0.012em",
+                  marginBottom: 4,
+                }}
+              >
+                {isRecording ? "Aguardando fala…" : "Inicie uma gravação"}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+                {isRecording
+                  ? "Cada fala vira uma bolha: suas mensagens à direita com a bolinha azul, as dos outros à esquerda."
+                  : "A overlay abre automaticamente quando você inicia uma nova reunião pelo NORA."}
+              </div>
+            </div>
           </div>
         ) : (
-          <div className="h-full grid grid-cols-4 gap-2.5">
-            {columnsData.map((c) => (
-              <Column key={c.cat.key} cat={c.cat} items={c.items} />
+          <div className="flex flex-col gap-3">
+            {groups.map((g) => (
+              <ChatBubble key={g.id} group={g} startedAt={startedAt} />
             ))}
+            {partial && <PartialBubble text={partial} isMe={partialIsMe} />}
           </div>
         )}
       </div>
     </div>
   );
-}
-
-async function invokeOverlay(cmd: string, args?: Record<string, unknown>) {
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke(cmd, args);
 }
