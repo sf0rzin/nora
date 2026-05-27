@@ -56,7 +56,7 @@ Decisões parcialmente substituídas: ADR sucessor pode marcar `Substitui parcia
 | 0011 | Invite-based onboarding com restrição opcional de corporate domain | aceito |
 | 0012 | PII PERSON_NAME: estratégia regional BR no MVP, upgrade NER quando internacionalizar | aceito |
 | 0013 | Estratégia de CSS frontend (Tailwind cru, sem shadcn, tokens OKLCH) | proposto (Design refina) |
-| 0014 | Defer post-MVP commercial gate (14 US adiadas com critério de reativação) | aceito |
+| 0014 | Defer post-MVP commercial gate (14 US adiadas com critério de reativação) | substituído por 0022 |
 | 0015 | Customer Confidence — persistência mínima viável na Sub-fase 1.11 | aceito (substitui parcialmente 0006) |
 | 0016 | Production-readiness checklist e separação `rg-nora-prod` | proposto (aceita na 1.12) |
 | 0017 | License: AGPL-3.0 | aceito |
@@ -64,3 +64,4 @@ Decisões parcialmente substituídas: ADR sucessor pode marcar `Substitui parcia
 | 0019 | Tenant isolation em profundidade: RLS Postgres + FK composta | aceito |
 | 0020 | Rotação de refresh token + detecção de reuso (token families) | aceito |
 | 0021 | Estratégia de soft-delete em entidades tenant-owned | aceito |
+| 0022 | Construir o escopo documentado completo (reverte o defer do 0014) | aceito (substitui 0014) |

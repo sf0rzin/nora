@@ -1,6 +1,6 @@
 # 0014 — Defer post-MVP commercial gate
 
-- Status: aceito
+- Status: substituído por 0022 (2026-05-27 — PO reverteu o defer; ver ADR 0022)
 - Data: 2026-05-14
 - Decisores: Stratfy (PO), Tech Lead, Arquiteto Design
 
