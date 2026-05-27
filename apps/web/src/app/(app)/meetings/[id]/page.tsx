@@ -14,6 +14,7 @@ import {
   Section,
 } from "@/components/core/ui";
 import MeetingLiveStatus from "./MeetingLiveStatus";
+import MeetingProjectPicker from "./MeetingProjectPicker";
 import ExportReportButton from "./ExportReportButton";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +62,12 @@ export default async function MeetingDetailPage({
       <PageHeader title={meeting.title} subtitle={metaParts.join("  ·  ")} />
 
       <MeetingLiveStatus meetingId={meeting.id} status={meeting.processingStatus} />
+
+      <MeetingProjectPicker
+        meetingId={meeting.id}
+        currentProjectId={meeting.projectId ?? null}
+        currentProjectName={meeting.projectName ?? null}
+      />
 
       {!a && meeting.processingStatus !== "PENDING" && meeting.processingStatus !== "PROCESSING" && (
         <div style={{ marginBottom: 28 }}>

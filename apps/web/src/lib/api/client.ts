@@ -435,6 +435,67 @@ export async function updateTask(
   });
 }
 
+// ---------- Projects (project tracking) ----------
+
+export type ProjectStatus = 'ACTIVE' | 'ARCHIVED';
+
+/** Espelha ProjectResponse do backend. `description` vem omitido quando nulo (JsonInclude NON_NULL). */
+export interface Project {
+  id: string;
+  tenantId: string;
+  name: string;
+  description?: string | null;
+  status: ProjectStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Resposta de GET /projects — backend embrulha em `{ items }`. */
+export interface ProjectListResponse {
+  items: Project[];
+}
+
+export async function listProjects(): Promise<Project[]> {
+  const res = await request<ProjectListResponse>('/projects');
+  return res.items;
+}
+
+export async function createProject(name: string, description?: string): Promise<Project> {
+  return request<Project>('/projects', {
+    method: 'POST',
+    body: JSON.stringify({ name, description: description ?? null }),
+  });
+}
+
+export async function updateProject(
+  id: string,
+  patch: { name?: string; description?: string | null; status?: ProjectStatus },
+): Promise<Project> {
+  return request<Project>(`/projects/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  return request<void>(`/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/**
+ * Vincula uma meeting a um project (PUT /meetings/{id}/project). `projectId` nulo
+ * desvincula — backend responde 204 (Project null) nesse caso, senão o Project.
+ */
+export async function assignMeetingToProject(
+  meetingId: string,
+  projectId: string | null,
+): Promise<Project | null> {
+  const res = await request<Project | undefined>(
+    `/meetings/${encodeURIComponent(meetingId)}/project`,
+    { method: 'PUT', body: JSON.stringify({ projectId }) },
+  );
+  return res ?? null;
+}
+
 // ---------- IAM (AWS-style) ----------
 
 export interface GroupDto {

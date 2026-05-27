@@ -152,6 +152,8 @@ export interface MeetingDetail {
   durationSeconds?: number;
   language?: string;
   owner: UserRef;
+  projectId?: string | null;
+  projectName?: string | null;
   participants: Participant[];
   processingStatus: ProcessingStatus;
   analysis?: MeetingAnalysis;

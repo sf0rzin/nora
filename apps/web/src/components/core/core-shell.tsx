@@ -174,6 +174,7 @@ const NAV: NavItem[] = [
   { label: "Início", href: "/dashboard" as Route },
   { label: "Nova reunião", href: "/meetings/upload" as Route, plus: true },
   { label: "Action items", href: "/tasks" as Route },
+  { label: "Projetos", href: "/projects" as Route },
   { label: "Contexto", href: "/settings/context" as Route, enterpriseOnly: true },
   { label: "IAM", href: "/settings/iam" as Route, enterpriseOnly: true },
 ];
