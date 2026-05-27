@@ -3,6 +3,7 @@ import type {
   ProductivityAssessment,
   ProductivityBand,
 } from "@/lib/api/types";
+import { Badge, Card } from "@/components/core/ui";
 
 const BAND_LABEL: Record<ProductivityBand, string> = {
   LOW: "Baixa",
@@ -10,10 +11,16 @@ const BAND_LABEL: Record<ProductivityBand, string> = {
   HIGH: "Alta",
 };
 
-const BAND_CLASSES: Record<ProductivityBand, string> = {
-  LOW: "bg-rose-100 text-rose-700",
-  MEDIUM: "bg-amber-100 text-amber-700",
-  HIGH: "bg-emerald-100 text-emerald-700",
+const BAND_TONE: Record<ProductivityBand, "success" | "warn" | "danger"> = {
+  LOW: "danger",
+  MEDIUM: "warn",
+  HIGH: "success",
+};
+
+const BAND_SCORE_COLOR: Record<ProductivityBand, string> = {
+  LOW: "var(--danger)",
+  MEDIUM: "var(--warn)",
+  HIGH: "var(--success)",
 };
 
 const STATUS_LABEL: Record<CoverageStatus, string> = {
@@ -22,38 +29,44 @@ const STATUS_LABEL: Record<CoverageStatus, string> = {
   MISSED: "Não tratado",
 };
 
-const STATUS_TEXT_CLASS: Record<CoverageStatus, string> = {
-  ADDRESSED: "text-emerald-700",
-  PARTIAL: "text-amber-700",
-  MISSED: "text-rose-700",
+const STATUS_COLOR: Record<CoverageStatus, string> = {
+  ADDRESSED: "var(--success)",
+  PARTIAL: "var(--warn)",
+  MISSED: "var(--danger)",
+};
+
+const STATUS_BG: Record<CoverageStatus, string> = {
+  ADDRESSED: "oklch(0.94 0.05 155)",
+  PARTIAL: "oklch(0.95 0.06 70)",
+  MISSED: "oklch(0.95 0.04 25)",
+};
+
+const STATUS_GLYPH: Record<CoverageStatus, string> = {
+  ADDRESSED: "✓",
+  PARTIAL: "~",
+  MISSED: "✗",
 };
 
 function StatusIcon({ status }: { status: CoverageStatus }) {
-  const common =
-    "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-semibold";
-  if (status === "ADDRESSED") {
-    return (
-      <span
-        aria-hidden="true"
-        className={`${common} bg-emerald-100 text-emerald-700`}
-      >
-        ✓
-      </span>
-    );
-  }
-  if (status === "PARTIAL") {
-    return (
-      <span
-        aria-hidden="true"
-        className={`${common} bg-amber-100 text-amber-700`}
-      >
-        ~
-      </span>
-    );
-  }
   return (
-    <span aria-hidden="true" className={`${common} bg-rose-100 text-rose-700`}>
-      ✗
+    <span
+      aria-hidden="true"
+      style={{
+        marginTop: 2,
+        display: "inline-flex",
+        height: 20,
+        width: 20,
+        flexShrink: 0,
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: "var(--radius-pill)",
+        fontSize: 12,
+        fontWeight: 600,
+        background: STATUS_BG[status],
+        color: STATUS_COLOR[status],
+      }}
+    >
+      {STATUS_GLYPH[status]}
     </span>
   );
 }
@@ -79,116 +92,159 @@ export default function ProductivityScoreCard({
   } = assessment;
 
   return (
-    <article
-      className="space-y-6 rounded-lg border border-slate-200 bg-white p-6"
-      aria-label="Avaliação de produtividade da reunião"
-    >
-      <header className="flex flex-wrap items-baseline gap-4">
-        <div className="flex items-baseline gap-3">
-          <span
-            className="text-6xl font-semibold tracking-tight text-slate-900"
-            aria-label={`Score ${score} de 100`}
-          >
-            {score}
-          </span>
-          <span className="text-base text-slate-500">/ 100</span>
-        </div>
-        <span
-          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${BAND_CLASSES[band]}`}
-        >
-          Produtividade {BAND_LABEL[band]}
-        </span>
-      </header>
+    <Card>
+      <div
+        style={{ display: "flex", flexDirection: "column", gap: 24 }}
+        aria-label="Avaliação de produtividade da reunião"
+      >
+        <header style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+            <span
+              style={{
+                fontFamily: "var(--display)",
+                fontSize: 56,
+                fontWeight: 600,
+                letterSpacing: "-0.02em",
+                lineHeight: 1,
+                color: BAND_SCORE_COLOR[band],
+              }}
+              aria-label={`Score ${score} de 100`}
+            >
+              {score}
+            </span>
+            <span style={{ fontSize: 16, color: "var(--muted)" }}>/ 100</span>
+          </div>
+          <Badge tone={BAND_TONE[band]}>Produtividade {BAND_LABEL[band]}</Badge>
+        </header>
 
-      <section className="space-y-3" aria-labelledby="coverage-heading">
-        <h3
-          id="coverage-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-        >
-          Cobertura dos outcomes
-        </h3>
-        {coverage.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            Nenhum outcome avaliado nesta análise.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {coverage.map((item, idx) => (
-              <li
-                key={`${item.expectedOutcome}-${idx}`}
-                className="flex items-start gap-3 rounded-md border border-slate-200 p-3"
-              >
-                <StatusIcon status={item.status} />
-                <div className="space-y-1">
-                  <p className="font-medium text-slate-900">
-                    {item.expectedOutcome}
-                  </p>
-                  <p
-                    className={`text-xs font-medium uppercase tracking-wide ${STATUS_TEXT_CLASS[item.status]}`}
-                  >
-                    {STATUS_LABEL[item.status]}
-                  </p>
-                  {item.evidence && (
-                    <blockquote className="border-l-2 border-slate-300 pl-3 text-xs italic text-slate-600">
-                      “{item.evidence}”
-                    </blockquote>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {(offTopicRatio !== null || decisionDensity !== null) && (
         <section
-          className="grid gap-3 sm:grid-cols-2"
-          aria-label="Métricas auxiliares"
+          style={{ display: "flex", flexDirection: "column", gap: 12 }}
+          aria-labelledby="coverage-heading"
         >
-          {offTopicRatio !== null && (
-            <div className="rounded-md border border-slate-200 p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Off-topic
-              </p>
-              <p className="mt-1 text-xl font-semibold text-slate-900">
-                {formatPercent(offTopicRatio)}
-              </p>
-              <p className="text-xs text-slate-500">
-                proporção do tempo fora do propósito declarado.
-              </p>
-            </div>
-          )}
-          {decisionDensity !== null && (
-            <div className="rounded-md border border-slate-200 p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Densidade de decisões
-              </p>
-              <p className="mt-1 text-xl font-semibold text-slate-900">
-                {formatPercent(decisionDensity)}
-              </p>
-              <p className="text-xs text-slate-500">
-                quanto a conversa converge em decisões objetivas.
-              </p>
-            </div>
+          <h3 id="coverage-heading" className="nora-section-title" style={{ marginBottom: 0 }}>
+            Cobertura dos outcomes
+          </h3>
+          {coverage.length === 0 ? (
+            <p style={{ fontSize: 13.5, color: "var(--muted)" }}>
+              Nenhum outcome avaliado nesta análise.
+            </p>
+          ) : (
+            <ul style={{ display: "flex", flexDirection: "column", gap: 12, margin: 0, padding: 0, listStyle: "none" }}>
+              {coverage.map((item, idx) => (
+                <li
+                  key={`${item.expectedOutcome}-${idx}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 12,
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: 12,
+                  }}
+                >
+                  <StatusIcon status={item.status} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <p style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)" }}>
+                      {item.expectedOutcome}
+                    </p>
+                    <p
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        color: STATUS_COLOR[item.status],
+                      }}
+                    >
+                      {STATUS_LABEL[item.status]}
+                    </p>
+                    {item.evidence && (
+                      <blockquote
+                        style={{
+                          borderLeft: "2px solid var(--border-strong)",
+                          paddingLeft: 12,
+                          fontSize: 12,
+                          fontStyle: "italic",
+                          color: "var(--muted)",
+                          margin: 0,
+                        }}
+                      >
+                        “{item.evidence}”
+                      </blockquote>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </section>
-      )}
 
-      <section className="space-y-2" aria-labelledby="rationale-heading">
-        <h3
-          id="rationale-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
+        {(offTopicRatio !== null || decisionDensity !== null) && (
+          <section
+            style={{
+              display: "grid",
+              gap: 12,
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            }}
+            aria-label="Métricas auxiliares"
+          >
+            {offTopicRatio !== null && (
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  padding: 12,
+                }}
+              >
+                <p className="nora-section-title" style={{ marginBottom: 0 }}>
+                  Off-topic
+                </p>
+                <p style={{ marginTop: 4, fontSize: 20, fontWeight: 600, color: "var(--ink)" }}>
+                  {formatPercent(offTopicRatio)}
+                </p>
+                <p style={{ fontSize: 12, color: "var(--muted)" }}>
+                  proporção do tempo fora do propósito declarado.
+                </p>
+              </div>
+            )}
+            {decisionDensity !== null && (
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  padding: 12,
+                }}
+              >
+                <p className="nora-section-title" style={{ marginBottom: 0 }}>
+                  Densidade de decisões
+                </p>
+                <p style={{ marginTop: 4, fontSize: 20, fontWeight: 600, color: "var(--ink)" }}>
+                  {formatPercent(decisionDensity)}
+                </p>
+                <p style={{ fontSize: 12, color: "var(--muted)" }}>
+                  quanto a conversa converge em decisões objetivas.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+
+        <section
+          style={{ display: "flex", flexDirection: "column", gap: 8 }}
+          aria-labelledby="rationale-heading"
         >
-          Justificativa
-        </h3>
-        <p className="text-sm leading-relaxed text-slate-600">{rationale}</p>
-      </section>
+          <h3 id="rationale-heading" className="nora-section-title" style={{ marginBottom: 0 }}>
+            Justificativa
+          </h3>
+          <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--muted)" }}>{rationale}</p>
+        </section>
 
-      <footer className="border-t border-slate-200 pt-3">
-        <p className="text-xs text-slate-500">
-          Indicador da reunião, não dos participantes.
-        </p>
-      </footer>
-    </article>
+        <footer style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+          <p style={{ fontSize: 12, color: "var(--muted)" }}>
+            Indicador da reunião, não dos participantes.
+          </p>
+        </footer>
+      </div>
+    </Card>
   );
 }

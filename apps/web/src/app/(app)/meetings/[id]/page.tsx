@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { Route } from "next";
 import { notFound } from "next/navigation";
 import { getMeeting } from "@/lib/api/client";
@@ -6,6 +5,14 @@ import { formatDateTime } from "@/lib/utils";
 import { MarkdownContent } from "@/components/markdown-content";
 import MeetingProductivitySection from "@/components/meeting-productivity-section";
 import CustomerConfidenceCard from "@/components/customer-confidence-card";
+import {
+  Badge,
+  ButtonLink,
+  Card,
+  EmptyState,
+  PageHeader,
+  Section,
+} from "@/components/core/ui";
 import MeetingLiveStatus from "./MeetingLiveStatus";
 
 export const dynamic = "force-dynamic";
@@ -25,152 +32,148 @@ export default async function MeetingDetailPage({
 
   const a = meeting.analysis;
 
+  const metaParts = [
+    formatDateTime(meeting.startedAt),
+    `Owner: ${meeting.owner.displayName}`,
+    meeting.participants.length > 0
+      ? `${meeting.participants.length} participantes`
+      : null,
+  ].filter(Boolean);
+
   return (
-    <div className="space-y-8">
-      <div>
-        <Link
-          href={"/dashboard" as Route}
-          className="text-sm text-muted-foreground hover:underline"
-        >
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <ButtonLink href={"/dashboard" as Route} variant="ghost" size="sm">
           ← Voltar para reuniões
-        </Link>
+        </ButtonLink>
       </div>
 
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{meeting.title}</h1>
-        <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-          <span>{formatDateTime(meeting.startedAt)}</span>
-          <span>·</span>
-          <span>Owner: {meeting.owner.displayName}</span>
-          {meeting.participants.length > 0 && (
-            <>
-              <span>·</span>
-              <span>{meeting.participants.length} participantes</span>
-            </>
-          )}
-        </div>
-      </header>
+      <PageHeader title={meeting.title} subtitle={metaParts.join("  ·  ")} />
 
       <MeetingLiveStatus meetingId={meeting.id} status={meeting.processingStatus} />
 
       {!a && meeting.processingStatus !== "PENDING" && meeting.processingStatus !== "PROCESSING" && (
-        <p className="rounded-md border border-border bg-muted/30 p-4 text-sm">
-          Esta reunião ainda não foi analisada.
-        </p>
+        <div style={{ marginBottom: 28 }}>
+          <EmptyState>Esta reunião ainda não foi analisada.</EmptyState>
+        </div>
       )}
 
       {a && (
         <>
           <Section title="Resumo">
             {a.summary && a.summary.trim().length > 0 ? (
-              <MarkdownContent className="text-sm text-slate-700">
-                {a.summary}
-              </MarkdownContent>
+              <Card>
+                <MarkdownContent>{a.summary}</MarkdownContent>
+              </Card>
             ) : (
-              <p className="text-sm text-slate-400">Resumo nao disponivel.</p>
+              <EmptyState>Resumo não disponível.</EmptyState>
             )}
           </Section>
 
           <Section title={`Decisões (${a.decisions.length})`}>
             {a.decisions.length === 0 ? (
-              <Empty />
+              <EmptyState>Nada identificado.</EmptyState>
             ) : (
-              <ul className="space-y-2">
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {a.decisions.map((d, i) => (
-                  <li
-                    key={d.id ?? i}
-                    className="rounded-md border border-border p-3 text-sm"
-                  >
-                    <div>{d.text}</div>
-                    <div className="text-xs text-muted-foreground mt-1">
+                  <Card key={d.id ?? i}>
+                    <div style={{ fontSize: 14, color: "var(--ink)" }}>{d.text}</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
                       Confiança: {(d.confidence * 100).toFixed(0)}%
                     </div>
-                  </li>
+                  </Card>
                 ))}
-              </ul>
+              </div>
             )}
           </Section>
 
           <Section title={`Tarefas (${a.actionItems.length})`}>
             {a.actionItems.length === 0 ? (
-              <Empty />
+              <EmptyState>Nada identificado.</EmptyState>
             ) : (
-              <ul className="space-y-2">
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {a.actionItems.map((t, i) => (
-                  <li
-                    key={t.id ?? i}
-                    className="rounded-md border border-border p-3 text-sm"
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="font-medium">{t.title}</span>
-                      <span className="text-xs uppercase text-muted-foreground">
-                        {t.priority}
+                  <Card key={t.id ?? i}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "baseline",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)" }}>
+                        {t.title}
                       </span>
+                      <Badge>{t.priority}</Badge>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
                       {t.assignee ?? "Sem responsável"} ·{" "}
                       {t.dueDate ?? "Sem prazo"}
                     </div>
-                  </li>
+                  </Card>
                 ))}
-              </ul>
+              </div>
             )}
           </Section>
 
           <Section title={`Riscos (${a.risks.length})`}>
             {a.risks.length === 0 ? (
-              <Empty />
+              <EmptyState>Nada identificado.</EmptyState>
             ) : (
-              <ul className="space-y-2">
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {a.risks.map((r, i) => (
-                  <li
-                    key={r.id ?? i}
-                    className="rounded-md border border-border p-3 text-sm"
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span>{r.text}</span>
-                      <span className="text-xs uppercase text-muted-foreground">
+                  <Card key={r.id ?? i}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "baseline",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, color: "var(--ink)" }}>{r.text}</span>
+                      <Badge tone="danger">
                         {r.severity} · {r.category}
-                      </span>
+                      </Badge>
                     </div>
-                  </li>
+                  </Card>
                 ))}
-              </ul>
+              </div>
             )}
           </Section>
 
           <Section title={`Oportunidades (${a.opportunities.length})`}>
             {a.opportunities.length === 0 ? (
-              <Empty />
+              <EmptyState>Nada identificado.</EmptyState>
             ) : (
-              <ul className="space-y-2">
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {a.opportunities.map((o, i) => (
-                  <li
-                    key={o.id ?? i}
-                    className="rounded-md border border-border p-3 text-sm"
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span>{o.text}</span>
-                      <span className="text-xs uppercase text-muted-foreground">
+                  <Card key={o.id ?? i}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "baseline",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, color: "var(--ink)" }}>{o.text}</span>
+                      <Badge tone="success">
                         {o.estimatedValue} · {o.category}
-                      </span>
+                      </Badge>
                     </div>
-                  </li>
+                  </Card>
                 ))}
-              </ul>
+              </div>
             )}
           </Section>
 
           {a.topics.length > 0 && (
             <Section title="Tópicos">
-              <div className="flex flex-wrap gap-2">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {a.topics.map((t) => (
-                  <span
-                    key={t}
-                    className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground"
-                  >
-                    {t}
-                  </span>
+                  <Badge key={t}>{t}</Badge>
                 ))}
               </div>
             </Section>
@@ -179,15 +182,9 @@ export default async function MeetingDetailPage({
       )}
 
       {meeting.customerConfidence && (
-        <section className="space-y-3" aria-labelledby="customer-confidence-heading">
-          <h2
-            id="customer-confidence-heading"
-            className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
-          >
-            Confiança do cliente
-          </h2>
+        <Section title="Confiança do cliente">
           <CustomerConfidenceCard confidence={meeting.customerConfidence ?? null} />
-        </section>
+        </Section>
       )}
 
       <MeetingProductivitySection
@@ -197,19 +194,4 @@ export default async function MeetingDetailPage({
       />
     </div>
   );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
-function Empty() {
-  return <p className="text-sm text-muted-foreground">Nada identificado.</p>;
 }

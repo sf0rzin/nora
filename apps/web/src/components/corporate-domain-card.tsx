@@ -24,6 +24,7 @@ import {
   updateTenantDomain,
   type TenantDomain,
 } from "@/lib/api/client";
+import { Banner, Button, Card, Field, Input, Section } from "@/components/core/ui";
 
 /**
  * Regex de dominio (case-insensitive). Aceita "acme.com", "sub.acme.com.br".
@@ -145,108 +146,99 @@ export default function CorporateDomainCard() {
   const hasDomain = Boolean(current?.allowedEmailDomain);
 
   return (
-    <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-5">
-      <header className="space-y-1">
-        <h2 className="text-lg font-medium">Dominio corporativo</h2>
-        <p className="text-sm text-slate-500">
-          Restringe convites futuros a e-mails desse dominio. Usuarios ja existentes
-          nao sao afetados. Deixe vazio (ou clique em &quot;Limpar restricao&quot;) para
-          permitir qualquer dominio.
+    <Section title="Dominio corporativo">
+      <Card>
+        <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 16px", lineHeight: 1.5 }}>
+          Restringe convites futuros a e-mails desse dominio. Usuarios ja existentes nao sao
+          afetados. Deixe vazio (ou clique em &quot;Limpar restricao&quot;) para permitir qualquer
+          dominio.
         </p>
-      </header>
 
-      {isLoading ? (
-        <div className="space-y-2" aria-busy="true" aria-live="polite">
-          <div className="h-9 w-full max-w-md animate-pulse rounded-md bg-slate-100" />
-          <div className="h-3 w-2/3 animate-pulse rounded bg-slate-100" />
-        </div>
-      ) : fetchError ? (
-        <div className="space-y-2">
-          <p
-            className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
-            role="alert"
+        {isLoading ? (
+          <div
+            aria-busy="true"
+            aria-live="polite"
+            style={{ display: "flex", flexDirection: "column", gap: 8 }}
           >
-            {fetchError}
-          </p>
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
-          >
-            Tentar novamente
-          </button>
-        </div>
-      ) : (
-        <form className="space-y-3" onSubmit={onSubmit} noValidate>
-          <div className="space-y-1">
-            <label htmlFor="allowed-email-domain" className="text-sm font-medium text-slate-700">
-              Dominio permitido
-            </label>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                id="allowed-email-domain"
-                name="allowedEmailDomain"
-                type="text"
-                value={input}
-                onChange={(e) => onInputChange(e.target.value)}
-                placeholder="acme.com"
-                autoComplete="off"
-                spellCheck={false}
-                disabled={isSaving}
-                aria-invalid={formError ? "true" : "false"}
-                aria-describedby={formError ? "domain-error" : undefined}
-                className="w-full max-w-sm rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-              />
-              <button
-                type="submit"
-                disabled={isSaving || !input.trim()}
-                className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-              >
-                {isSaving ? "Salvando..." : "Salvar"}
-              </button>
-              {hasDomain && (
-                <button
-                  type="button"
-                  onClick={onClearRestriction}
-                  disabled={isSaving}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Limpar restricao
-                </button>
-              )}
-            </div>
-            <p className="text-xs text-slate-500">
-              {hasDomain ? (
-                <>
-                  Atualmente:{" "}
-                  <span className="font-mono text-slate-700">{current?.allowedEmailDomain}</span>
-                </>
-              ) : (
-                <>Nenhuma restricao ativa.</>
-              )}
-            </p>
+            <div
+              style={{
+                height: 38,
+                maxWidth: 360,
+                borderRadius: "var(--radius-sm)",
+                background: "var(--chip)",
+              }}
+            />
+            <div
+              style={{ height: 12, width: "60%", borderRadius: 4, background: "var(--chip)" }}
+            />
           </div>
+        ) : fetchError ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 12 }}>
+            <Banner tone="error">{fetchError}</Banner>
+            <Button onClick={() => void load()}>Tentar novamente</Button>
+          </div>
+        ) : (
+          <form onSubmit={onSubmit} noValidate>
+            <Field label="Dominio permitido" htmlFor="allowed-email-domain">
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                <Input
+                  id="allowed-email-domain"
+                  name="allowedEmailDomain"
+                  type="text"
+                  value={input}
+                  onChange={(e) => onInputChange(e.target.value)}
+                  placeholder="acme.com"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={isSaving}
+                  aria-invalid={formError ? "true" : "false"}
+                  aria-describedby={formError ? "domain-error" : undefined}
+                  style={{ flex: 1, minWidth: 220, maxWidth: 360 }}
+                />
+                <Button type="submit" variant="primary" disabled={isSaving || !input.trim()}>
+                  {isSaving ? "Salvando..." : "Salvar"}
+                </Button>
+                {hasDomain && (
+                  <Button type="button" onClick={onClearRestriction} disabled={isSaving}>
+                    Limpar restricao
+                  </Button>
+                )}
+              </div>
+              <p style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 8 }}>
+                {hasDomain ? (
+                  <>
+                    Atualmente:{" "}
+                    <span
+                      style={{
+                        fontFamily: "var(--mono)",
+                        color: "var(--ink)",
+                        background: "var(--chip)",
+                        borderRadius: "var(--radius-sm)",
+                        padding: "1px 6px",
+                      }}
+                    >
+                      {current?.allowedEmailDomain}
+                    </span>
+                  </>
+                ) : (
+                  <>Nenhuma restricao ativa.</>
+                )}
+              </p>
+            </Field>
 
-          {formError && (
-            <p
-              id="domain-error"
-              role="alert"
-              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
-            >
-              {formError}
-            </p>
-          )}
-          {success && (
-            <p
-              role="status"
-              aria-live="polite"
-              className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
-            >
-              {success}
-            </p>
-          )}
-        </form>
-      )}
-    </section>
+            {formError && (
+              <div id="domain-error" style={{ marginTop: 4 }}>
+                <Banner tone="error">{formError}</Banner>
+              </div>
+            )}
+            {success && (
+              <div style={{ marginTop: 4 }}>
+                <Banner tone="ok">{success}</Banner>
+              </div>
+            )}
+          </form>
+        )}
+      </Card>
+    </Section>
   );
 }

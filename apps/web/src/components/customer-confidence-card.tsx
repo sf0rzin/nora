@@ -4,46 +4,46 @@ import type {
   CustomerConfidence,
   Severity,
 } from "@/lib/api/types";
+import { Badge, Card } from "@/components/core/ui";
 
-// Band → linguagem de cor danger/warning/success, espelhando o Health Score
-// da landing (--danger / --warn / --success) traduzida pra paleta Tailwind
-// do app (rose / amber / emerald), igual ao ProductivityScoreCard.
+// Band → linguagem de cor danger/warn/success via tokens editoriais, espelhando
+// o ProductivityScoreCard (--danger / --warn / --success).
 const BAND_LABEL: Record<ConfidenceBand, string> = {
   LOW: "Baixa",
   MEDIUM: "Média",
   HIGH: "Alta",
 };
 
-const BAND_CLASSES: Record<ConfidenceBand, string> = {
-  LOW: "bg-rose-100 text-rose-700",
-  MEDIUM: "bg-amber-100 text-amber-700",
-  HIGH: "bg-emerald-100 text-emerald-700",
+const BAND_TONE: Record<ConfidenceBand, "success" | "warn" | "danger"> = {
+  LOW: "danger",
+  MEDIUM: "warn",
+  HIGH: "success",
 };
 
-const SCORE_TEXT_CLASS: Record<ConfidenceBand, string> = {
-  LOW: "text-rose-600",
-  MEDIUM: "text-amber-600",
-  HIGH: "text-emerald-600",
+const BAND_SCORE_COLOR: Record<ConfidenceBand, string> = {
+  LOW: "var(--danger)",
+  MEDIUM: "var(--warn)",
+  HIGH: "var(--success)",
 };
 
 const TREND_META: Record<
   ConfidenceTrend,
-  { glyph: string; label: string; className: string }
+  { glyph: string; label: string; tone: "default" | "success" | "danger" }
 > = {
   IMPROVING: {
     glyph: "↑",
     label: "Confiança em melhora",
-    className: "bg-emerald-100 text-emerald-700",
+    tone: "success",
   },
   STABLE: {
     glyph: "→",
     label: "Confiança estável",
-    className: "bg-slate-100 text-slate-600",
+    tone: "default",
   },
   DECLINING: {
     glyph: "↓",
     label: "Confiança em queda",
-    className: "bg-rose-100 text-rose-700",
+    tone: "danger",
   },
 };
 
@@ -53,21 +53,19 @@ const SEVERITY_LABEL: Record<Severity, string> = {
   HIGH: "Alta",
 };
 
-const SEVERITY_TEXT_CLASS: Record<Severity, string> = {
-  LOW: "text-amber-700",
-  MEDIUM: "text-orange-700",
-  HIGH: "text-rose-700",
+const SEVERITY_COLOR: Record<Severity, string> = {
+  LOW: "var(--warn)",
+  MEDIUM: "var(--warn)",
+  HIGH: "var(--danger)",
 };
 
 function TrendBadge({ trend }: { trend: ConfidenceTrend }) {
   const meta = TREND_META[trend];
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${meta.className}`}
-    >
+    <Badge tone={meta.tone}>
       <span aria-hidden="true">{meta.glyph}</span>
       <span>{meta.label}</span>
-    </span>
+    </Badge>
   );
 }
 
@@ -92,138 +90,257 @@ export default function CustomerConfidenceCard({
   } = confidence;
 
   return (
-    <article
-      className="space-y-6 rounded-lg border border-slate-200 bg-white p-6"
-      aria-label="Sinal de confiança do cliente nesta reunião"
-    >
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Confiança do cliente
-          </p>
-          <p className="text-lg font-semibold text-slate-900">
-            {accountName ?? "Conta não identificada"}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-baseline gap-2">
-            <span
-              className={`text-5xl font-semibold tracking-tight ${SCORE_TEXT_CLASS[band]}`}
-              aria-label={`Score de confiança ${score} de 100`}
-            >
-              {score}
-            </span>
-            <span className="text-sm text-slate-500">/ 100</span>
+    <Card>
+      <div
+        style={{ display: "flex", flexDirection: "column", gap: 24 }}
+        aria-label="Sinal de confiança do cliente nesta reunião"
+      >
+        <header
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 16,
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <p className="nora-section-title" style={{ marginBottom: 0 }}>
+              Confiança do cliente
+            </p>
+            <p style={{ fontSize: 18, fontWeight: 600, color: "var(--ink)" }}>
+              {accountName ?? "Conta não identificada"}
+            </p>
           </div>
-          <span
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${BAND_CLASSES[band]}`}
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span
+                style={{
+                  fontFamily: "var(--display)",
+                  fontSize: 48,
+                  fontWeight: 600,
+                  letterSpacing: "-0.02em",
+                  lineHeight: 1,
+                  color: BAND_SCORE_COLOR[band],
+                }}
+                aria-label={`Score de confiança ${score} de 100`}
+              >
+                {score}
+              </span>
+              <span style={{ fontSize: 14, color: "var(--muted)" }}>/ 100</span>
+            </div>
+            <Badge tone={BAND_TONE[band]}>Confiança {BAND_LABEL[band]}</Badge>
+            {trend && <TrendBadge trend={trend} />}
+          </div>
+        </header>
+
+        <section
+          style={{ display: "flex", flexDirection: "column", gap: 12 }}
+          aria-labelledby="buying-signals-heading"
+        >
+          <h3
+            id="buying-signals-heading"
+            className="nora-section-title"
+            style={{ marginBottom: 0 }}
           >
-            Confiança {BAND_LABEL[band]}
-          </span>
-          {trend && <TrendBadge trend={trend} />}
-        </div>
-      </header>
-
-      <section className="space-y-3" aria-labelledby="buying-signals-heading">
-        <h3
-          id="buying-signals-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-        >
-          Sinais de compra ({buyingSignals.length})
-        </h3>
-        {buyingSignals.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            Nenhum sinal de compra detectado.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {buyingSignals.map((signal, idx) => (
-              <li
-                key={`${signal.type}-${idx}`}
-                className="flex items-start gap-3 rounded-md border border-slate-200 p-3"
-              >
-                <span
-                  aria-hidden="true"
-                  className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-semibold text-emerald-700"
+            Sinais de compra ({buyingSignals.length})
+          </h3>
+          {buyingSignals.length === 0 ? (
+            <p style={{ fontSize: 13.5, color: "var(--muted)" }}>
+              Nenhum sinal de compra detectado.
+            </p>
+          ) : (
+            <ul
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+                margin: 0,
+                padding: 0,
+                listStyle: "none",
+              }}
+            >
+              {buyingSignals.map((signal, idx) => (
+                <li
+                  key={`${signal.type}-${idx}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 12,
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: 12,
+                  }}
                 >
-                  ↑
-                </span>
-                <div className="space-y-1">
-                  <p className="font-medium text-slate-900">{signal.type}</p>
-                  <blockquote className="border-l-2 border-slate-300 pl-3 text-xs italic text-slate-600">
-                    “{signal.quote}”
-                  </blockquote>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="space-y-3" aria-labelledby="objections-heading">
-        <h3
-          id="objections-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-        >
-          Objeções ({objections.length})
-        </h3>
-        {objections.length === 0 ? (
-          <p className="text-sm text-slate-500">Nenhuma objeção registrada.</p>
-        ) : (
-          <ul className="space-y-3">
-            {objections.map((objection, idx) => (
-              <li
-                key={`${objection.type}-${idx}`}
-                className="flex items-start gap-3 rounded-md border border-slate-200 p-3"
-              >
-                <span
-                  aria-hidden="true"
-                  className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rose-100 text-xs font-semibold text-rose-700"
-                >
-                  !
-                </span>
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <p className="font-medium text-slate-900">
-                      {objection.type}
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      marginTop: 2,
+                      display: "inline-flex",
+                      height: 20,
+                      width: 20,
+                      flexShrink: 0,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: "var(--radius-pill)",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: "oklch(0.94 0.05 155)",
+                      color: "var(--success)",
+                    }}
+                  >
+                    ↑
+                  </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <p style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)" }}>
+                      {signal.type}
                     </p>
-                    <span
-                      className={`text-xs font-medium uppercase tracking-wide ${SEVERITY_TEXT_CLASS[objection.severity]}`}
+                    <blockquote
+                      style={{
+                        borderLeft: "2px solid var(--border-strong)",
+                        paddingLeft: 12,
+                        fontSize: 12,
+                        fontStyle: "italic",
+                        color: "var(--muted)",
+                        margin: 0,
+                      }}
                     >
-                      Severidade {SEVERITY_LABEL[objection.severity]}
-                    </span>
-                    {objection.competitor && (
-                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                        Concorrente: {objection.competitor}
-                      </span>
-                    )}
+                      “{signal.quote}”
+                    </blockquote>
                   </div>
-                  <blockquote className="border-l-2 border-slate-300 pl-3 text-xs italic text-slate-600">
-                    “{objection.quote}”
-                  </blockquote>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
-      <section className="space-y-2" aria-labelledby="confidence-rationale-heading">
-        <h3
-          id="confidence-rationale-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
+        <section
+          style={{ display: "flex", flexDirection: "column", gap: 12 }}
+          aria-labelledby="objections-heading"
         >
-          Justificativa
-        </h3>
-        <p className="text-sm leading-relaxed text-slate-600">{rationale}</p>
-      </section>
+          <h3
+            id="objections-heading"
+            className="nora-section-title"
+            style={{ marginBottom: 0 }}
+          >
+            Objeções ({objections.length})
+          </h3>
+          {objections.length === 0 ? (
+            <p style={{ fontSize: 13.5, color: "var(--muted)" }}>
+              Nenhuma objeção registrada.
+            </p>
+          ) : (
+            <ul
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+                margin: 0,
+                padding: 0,
+                listStyle: "none",
+              }}
+            >
+              {objections.map((objection, idx) => (
+                <li
+                  key={`${objection.type}-${idx}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 12,
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: 12,
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      marginTop: 2,
+                      display: "inline-flex",
+                      height: 20,
+                      width: 20,
+                      flexShrink: 0,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: "var(--radius-pill)",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: "oklch(0.95 0.04 25)",
+                      color: "var(--danger)",
+                    }}
+                  >
+                    !
+                  </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "baseline",
+                        columnGap: 12,
+                        rowGap: 4,
+                      }}
+                    >
+                      <p style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)" }}>
+                        {objection.type}
+                      </p>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          letterSpacing: "0.06em",
+                          textTransform: "uppercase",
+                          color: SEVERITY_COLOR[objection.severity],
+                        }}
+                      >
+                        Severidade {SEVERITY_LABEL[objection.severity]}
+                      </span>
+                      {objection.competitor && (
+                        <Badge>Concorrente: {objection.competitor}</Badge>
+                      )}
+                    </div>
+                    <blockquote
+                      style={{
+                        borderLeft: "2px solid var(--border-strong)",
+                        paddingLeft: 12,
+                        fontSize: 12,
+                        fontStyle: "italic",
+                        color: "var(--muted)",
+                        margin: 0,
+                      }}
+                    >
+                      “{objection.quote}”
+                    </blockquote>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
-      <footer className="border-t border-slate-200 pt-3">
-        <p className="text-xs text-slate-500">
-          Sinal de confiança por reunião — não usar isoladamente para avaliar o
-          vendedor.
-        </p>
-      </footer>
-    </article>
+        <section
+          style={{ display: "flex", flexDirection: "column", gap: 8 }}
+          aria-labelledby="confidence-rationale-heading"
+        >
+          <h3
+            id="confidence-rationale-heading"
+            className="nora-section-title"
+            style={{ marginBottom: 0 }}
+          >
+            Justificativa
+          </h3>
+          <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--muted)" }}>
+            {rationale}
+          </p>
+        </section>
+
+        <footer style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+          <p style={{ fontSize: 12, color: "var(--muted)" }}>
+            Sinal de confiança por reunião — não usar isoladamente para avaliar o
+            vendedor.
+          </p>
+        </footer>
+      </div>
+    </Card>
   );
 }

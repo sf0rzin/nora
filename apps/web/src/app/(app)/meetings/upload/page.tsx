@@ -33,6 +33,16 @@ import Link from "next/link";
 import type { Route } from "next";
 import { ApiRequestError, getMeeting, uploadMeeting } from "@/lib/api/client";
 import type { ProcessingStatus } from "@/lib/api/types";
+import {
+  Banner,
+  Button,
+  ButtonLink,
+  Card,
+  Field,
+  Input,
+  PageHeader,
+  Select,
+} from "@/components/core/ui";
 
 type Format = "TXT" | "VTT" | "SRT";
 
@@ -192,7 +202,7 @@ export default function UploadMeetingPage() {
 
   if (phase !== "form") {
     return (
-      <div className="max-w-2xl">
+      <div style={{ maxWidth: 640 }}>
         <StatusCard
           phase={phase}
           status={pollingStatus}
@@ -205,100 +215,96 @@ export default function UploadMeetingPage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Nova reunião</h1>
-        <p className="text-sm text-slate-500">
-          Suba uma transcrição (.txt, .vtt ou .srt) — a análise começa em segundo plano.
-        </p>
-      </header>
+    <div style={{ maxWidth: 640 }}>
+      <PageHeader
+        title="Nova reunião"
+        subtitle="Suba uma transcrição (.txt, .vtt ou .srt) — a análise começa em segundo plano."
+      />
 
-      <form
-        onSubmit={onSubmit}
-        className="space-y-4 rounded-lg border border-slate-200 bg-white p-6"
-      >
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Título</label>
-          <input
-            required
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-            placeholder="Discovery Acme – outubro/2025"
-          />
-        </div>
+      <Card>
+        <form onSubmit={onSubmit}>
+          <Field label="Título" htmlFor="meeting-title" required>
+            <Input
+              id="meeting-title"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Discovery Acme – outubro/2025"
+            />
+          </Field>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">Idioma</label>
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option value="pt-BR">Português (BR)</option>
-              <option value="en-US">Inglês (US)</option>
-              <option value="es-ES">Espanhol</option>
-            </select>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 16,
+            }}
+          >
+            <Field label="Idioma" htmlFor="meeting-language">
+              <Select
+                id="meeting-language"
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+              >
+                <option value="pt-BR">Português (BR)</option>
+                <option value="en-US">Inglês (US)</option>
+                <option value="es-ES">Espanhol</option>
+              </Select>
+            </Field>
+
+            <Field label="Formato" htmlFor="meeting-format">
+              <Select
+                id="meeting-format"
+                value={format}
+                onChange={(e) => setFormat(e.target.value as Format)}
+              >
+                <option value="TXT">TXT</option>
+                <option value="VTT">VTT</option>
+                <option value="SRT">SRT</option>
+              </Select>
+            </Field>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">Formato</label>
-            <select
-              value={format}
-              onChange={(e) => setFormat(e.target.value as Format)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            >
-              <option value="TXT">TXT</option>
-              <option value="VTT">VTT</option>
-              <option value="SRT">SRT</option>
-            </select>
-          </div>
-        </div>
+          <Field label="Tags (separadas por vírgula)" htmlFor="meeting-tags">
+            <Input
+              id="meeting-tags"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="discovery, renovacao"
+            />
+          </Field>
 
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Tags (separadas por vírgula)</label>
-          <input
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            placeholder="discovery, renovacao"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-          />
-        </div>
+          <Field label="Arquivo de transcrição" htmlFor="meeting-file">
+            <input
+              id="meeting-file"
+              type="file"
+              accept=".txt,.vtt,.srt,text/plain"
+              onChange={onFileChange}
+              style={{ display: "block", width: "100%", fontSize: 13, color: "var(--ink)" }}
+            />
+            {file && (
+              <p style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>
+                {file.name} · {(file.size / 1024).toFixed(1)} KB
+              </p>
+            )}
+          </Field>
 
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Arquivo de transcrição</label>
-          <input
-            type="file"
-            accept=".txt,.vtt,.srt,text/plain"
-            onChange={onFileChange}
-            className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-800"
-          />
-          {file && (
-            <p className="text-xs text-slate-500">
-              {file.name} · {(file.size / 1024).toFixed(1)} KB
-            </p>
+          {formError && (
+            <div style={{ marginBottom: 16 }}>
+              <Banner tone="error">{formError}</Banner>
+            </div>
           )}
-        </div>
 
-        {formError && <p className="text-sm text-red-600">{formError}</p>}
-
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-          >
-            Enviar e analisar
-          </button>
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            Cancelar
-          </button>
-        </div>
-      </form>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button type="submit" variant="primary">
+              Enviar e analisar
+            </Button>
+            <Button type="button" onClick={() => router.back()}>
+              Cancelar
+            </Button>
+          </div>
+        </form>
+      </Card>
     </div>
   );
 }
@@ -320,54 +326,86 @@ function StatusCard({ phase, status, meetingId, pollingError, onRetry }: StatusC
   const view = pickView(phase, status);
 
   return (
-    <section
-      role="status"
-      aria-live="polite"
-      className="rounded-lg border border-slate-200 bg-white p-8 text-center"
-    >
-      <div className="mx-auto flex max-w-sm flex-col items-center space-y-4">
-        <div className="flex h-14 w-14 items-center justify-center">{view.icon}</div>
-        <div className="space-y-1">
-          <h2 className="text-base font-medium text-slate-900">{view.title}</h2>
-          {view.subtitle && <p className="text-sm text-slate-500">{view.subtitle}</p>}
-        </div>
-
-        {pollingError && phase === "polling" && (
-          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            {pollingError}
-          </p>
-        )}
-
-        {phase === "failed" && (
-          <div className="flex flex-col items-stretch space-y-2 pt-2">
-            <button
-              type="button"
-              onClick={onRetry}
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              Tentar novamente
-            </button>
-            {meetingId && (
-              <Link
-                href={`/meetings/${meetingId}` as Route}
-                className="text-sm text-slate-600 hover:text-slate-900 hover:underline"
-              >
-                Ver detalhes da reunião
-              </Link>
+    <Card style={{ padding: 32, textAlign: "center" }}>
+      <section role="status" aria-live="polite">
+        <div
+          style={{
+            margin: "0 auto",
+            display: "flex",
+            maxWidth: 384,
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 16,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              height: 56,
+              width: 56,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {view.icon}
+          </div>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 500, color: "var(--ink)", margin: 0 }}>
+              {view.title}
+            </h2>
+            {view.subtitle && (
+              <p style={{ fontSize: 13.5, color: "var(--muted)", margin: "6px 0 0", lineHeight: 1.5 }}>
+                {view.subtitle}
+              </p>
             )}
           </div>
-        )}
 
-        {phase === "timeout" && meetingId && (
-          <Link
-            href={`/meetings/${meetingId}` as Route}
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Ver reunião
-          </Link>
-        )}
-      </div>
-    </section>
+          {pollingError && phase === "polling" && (
+            <p
+              style={{
+                border: "1px solid oklch(0.85 0.08 70)",
+                background: "oklch(0.96 0.05 70)",
+                color: "var(--warn)",
+                borderRadius: "var(--radius-sm)",
+                padding: "8px 12px",
+                fontSize: 11.5,
+                margin: 0,
+              }}
+            >
+              {pollingError}
+            </p>
+          )}
+
+          {phase === "failed" && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "stretch",
+                gap: 8,
+                paddingTop: 8,
+              }}
+            >
+              <Button type="button" variant="primary" onClick={onRetry}>
+                Tentar novamente
+              </Button>
+              {meetingId && (
+                <Link
+                  href={`/meetings/${meetingId}` as Route}
+                  style={{ fontSize: 13, color: "var(--accent-ink)", textDecoration: "none" }}
+                >
+                  Ver detalhes da reunião
+                </Link>
+              )}
+            </div>
+          )}
+
+          {phase === "timeout" && meetingId && (
+            <ButtonLink href={`/meetings/${meetingId}` as Route}>Ver reunião</ButtonLink>
+          )}
+        </div>
+      </section>
+    </Card>
   );
 }
 
@@ -425,27 +463,28 @@ function pickView(phase: Exclude<Phase, "form">, status: ProcessingStatus): View
 // ---------------------------------------------------------------------------
 
 function Spinner({ tone }: { tone: "slate" | "blue" }) {
-  const colorClass = tone === "blue" ? "text-blue-500" : "text-slate-400";
+  const color = tone === "blue" ? "var(--accent)" : "var(--muted)";
   return (
     <svg
-      className={`h-10 w-10 animate-spin ${colorClass}`}
+      className="animate-spin"
+      style={{ height: 40, width: 40, color }}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
       aria-hidden="true"
     >
       <circle
-        className="opacity-25"
         cx="12"
         cy="12"
         r="10"
         stroke="currentColor"
         strokeWidth="4"
+        style={{ opacity: 0.25 }}
       />
       <path
-        className="opacity-75"
         fill="currentColor"
         d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+        style={{ opacity: 0.75 }}
       />
     </svg>
   );
@@ -454,7 +493,7 @@ function Spinner({ tone }: { tone: "slate" | "blue" }) {
 function CheckIcon() {
   return (
     <svg
-      className="h-10 w-10 text-emerald-600"
+      style={{ height: 40, width: 40, color: "var(--success)" }}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
@@ -470,7 +509,7 @@ function CheckIcon() {
 function XIcon() {
   return (
     <svg
-      className="h-10 w-10 text-red-600"
+      style={{ height: 40, width: 40, color: "var(--danger)" }}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
@@ -486,7 +525,7 @@ function XIcon() {
 function AlertIcon() {
   return (
     <svg
-      className="h-10 w-10 text-amber-500"
+      style={{ height: 40, width: 40, color: "var(--warn)" }}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"

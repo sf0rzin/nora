@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiRequestError, getMeeting, reprocessMeeting } from "@/lib/api/client";
 import type { ProcessingStatus } from "@/lib/api/types";
+import { Button } from "@/components/core/ui";
 
 const POLL_MS = 2500;
 
@@ -68,24 +69,41 @@ export default function MeetingLiveStatus({
 
   if (active) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" aria-hidden="true" />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          borderRadius: "var(--radius-sm)",
+          border: "1px solid var(--accent-soft)",
+          background: "var(--accent-soft)",
+          color: "var(--accent-ink)",
+          padding: "10px 14px",
+          fontSize: 13,
+          marginBottom: 28,
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: "var(--accent)",
+            animation: "noraOrbPulse 1.6s ease-in-out infinite",
+          }}
+        />
         Analisando reunião… esta página atualiza sozinha quando terminar.
       </div>
     );
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <button
-        type="button"
-        onClick={onReprocess}
-        disabled={busy}
-        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-      >
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 28 }}>
+      <Button size="sm" onClick={onReprocess} disabled={busy}>
         {busy ? "Reprocessando…" : "Reprocessar análise"}
-      </button>
-      {err && <span className="text-sm text-red-600">{err}</span>}
+      </Button>
+      {err && <span style={{ fontSize: 13, color: "var(--danger)" }}>{err}</span>}
     </div>
   );
 }

@@ -106,9 +106,20 @@ const MonacoEditor = dynamic(
     ssr: false,
     loading: () => (
       <div
-        className="flex h-[400px] w-full items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-xs text-slate-500"
         role="status"
         aria-live="polite"
+        style={{
+          display: "flex",
+          height: 400,
+          width: "100%",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: "var(--radius-sm)",
+          border: "1px solid var(--border)",
+          background: "var(--chip)",
+          fontSize: 12,
+          color: "var(--muted)",
+        }}
       >
         Carregando editor…
       </div>
@@ -325,10 +336,22 @@ export default function PolicyEditor({
   // ------- Fallback: textarea cru se Monaco falhou -------
   if (monacoFailed) {
     return (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between rounded-t-md border border-b-0 border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800">
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            borderRadius: "var(--radius-sm)",
+            border: "1px solid oklch(0.85 0.07 70)",
+            background: "oklch(0.96 0.04 70)",
+            padding: "8px 12px",
+            fontSize: 12,
+            color: "var(--warn)",
+          }}
+        >
           <span>
-            Editor avançado indisponível — usando textarea simples. Salve mesmo assim, se necessario.
+            Editor avançado indisponível — usando textarea simples. Salve mesmo assim, se
+            necessario.
           </span>
         </div>
         <textarea
@@ -337,11 +360,12 @@ export default function PolicyEditor({
           rows={Math.max(12, Math.floor(height / 24))}
           readOnly={readOnly}
           spellCheck={false}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
+          className="nora-textarea"
+          style={{ fontFamily: "var(--mono)", fontSize: 12 }}
           aria-label="Documento de policy JSON"
         />
         {parseError && (
-          <p className="text-xs text-red-600" role="alert">
+          <p style={{ fontSize: 11.5, color: "var(--danger)", margin: 0 }} role="alert">
             {parseError}
           </p>
         )}
@@ -353,33 +377,57 @@ export default function PolicyEditor({
   const errorCount = markers.filter((m) => m.severity >= 8).length;
 
   return (
-    <div className="space-y-2">
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-md border border-b-0 border-slate-300 bg-slate-50 px-2 py-1.5 text-xs">
-        <div className="flex items-center gap-2">
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          borderRadius: "var(--radius-sm) var(--radius-sm) 0 0",
+          border: "1px solid var(--border)",
+          borderBottom: "none",
+          background: "var(--chip)",
+          padding: "8px 10px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button
             type="button"
             onClick={handleFormat}
             disabled={readOnly || !parseValid}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="nora-btn nora-btn--ghost nora-btn--sm"
           >
             Formatar
           </button>
-          <span className="text-slate-400">JSON · UTF-8</span>
+          <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--muted)" }}>
+            JSON · UTF-8
+          </span>
         </div>
-        <div
-          className={
-            isValid
-              ? "rounded-md bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700"
-              : "rounded-md bg-red-50 px-2 py-0.5 font-medium text-red-700"
-          }
+        <span
           aria-live="polite"
+          style={{
+            fontSize: 11.5,
+            fontWeight: 500,
+            borderRadius: "var(--radius-pill)",
+            padding: "2px 9px",
+            background: isValid ? "oklch(0.94 0.05 155)" : "oklch(0.95 0.04 25)",
+            color: isValid ? "var(--success)" : "var(--danger)",
+          }}
         >
           {isValid ? "✓ Válido" : `✗ ${errorCount || (parseValid ? 0 : 1)} erro(s)`}
-        </div>
+        </span>
       </div>
 
-      <div className="overflow-hidden rounded-b-md border border-slate-300">
+      <div
+        style={{
+          overflow: "hidden",
+          borderRadius: "0 0 var(--radius-sm) var(--radius-sm)",
+          border: "1px solid var(--border)",
+        }}
+      >
         <MonacoEditor
           height={`${height}px`}
           defaultLanguage="json"
@@ -407,12 +455,20 @@ export default function PolicyEditor({
 
       {/* Mensagem de erro abaixo */}
       {parseError && (
-        <p className="text-xs text-red-600" role="alert" id={errorRegionId}>
+        <p
+          style={{ fontSize: 11.5, color: "var(--danger)", margin: 0 }}
+          role="alert"
+          id={errorRegionId}
+        >
           JSON inválido: {parseError}
         </p>
       )}
       {!parseError && firstError && (
-        <p className="text-xs text-red-600" role="alert" id={errorRegionId}>
+        <p
+          style={{ fontSize: 11.5, color: "var(--danger)", margin: 0 }}
+          role="alert"
+          id={errorRegionId}
+        >
           Linha {firstError.line}, coluna {firstError.column}: {firstError.message}
           {errorCount > 1 && ` (e mais ${errorCount - 1})`}
         </p>

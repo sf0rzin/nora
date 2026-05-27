@@ -32,6 +32,19 @@ import {
   listInvites,
   revokeInvite,
 } from "@/lib/api/client";
+import {
+  Badge,
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  Section,
+  Select,
+} from "@/components/core/ui";
+
+type BadgeTone = "default" | "success" | "warn" | "danger" | "accent";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -50,11 +63,11 @@ const STATUS_LABEL: Record<InviteStatus, string> = {
   REVOKED: "Revogado",
 };
 
-const STATUS_CLASSES: Record<InviteStatus, string> = {
-  PENDING: "bg-amber-100 text-amber-800",
-  ACCEPTED: "bg-green-100 text-green-800",
-  EXPIRED: "bg-slate-100 text-slate-600",
-  REVOKED: "bg-red-100 text-red-700",
+const STATUS_TONE: Record<InviteStatus, BadgeTone> = {
+  PENDING: "warn",
+  ACCEPTED: "success",
+  EXPIRED: "default",
+  REVOKED: "danger",
 };
 
 const DATE_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
@@ -213,245 +226,276 @@ export default function InvitationCard() {
     }
   }
 
+  const thStyle: React.CSSProperties = {
+    padding: "8px 12px 8px 0",
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "var(--muted)",
+  };
+  const tdStyle: React.CSSProperties = {
+    padding: "10px 12px 10px 0",
+    fontSize: 13,
+    color: "var(--muted)",
+    verticalAlign: "top",
+  };
+
   return (
-    <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h2 className="text-lg font-medium">Convites</h2>
-          <p className="text-sm text-slate-500">
-            Convide usuarios por e-mail. O convidado recebe um link unico para
-            criar conta.
-          </p>
-        </div>
-        {!showForm && (
-          <button
-            type="button"
+    <Section
+      title="Convites"
+      action={
+        !showForm && (
+          <Button
+            variant="primary"
+            size="sm"
             onClick={() => {
               setShowForm(true);
               setSuccess(null);
               setError(null);
             }}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800"
           >
             Convidar usuario
-          </button>
+          </Button>
+        )
+      }
+    >
+      <Card>
+        <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 16px", lineHeight: 1.5 }}>
+          Convide usuarios por e-mail. O convidado recebe um link unico para criar conta.
+        </p>
+
+        {success && (
+          <div style={{ marginBottom: 16 }}>
+            <Banner tone="ok">{success}</Banner>
+          </div>
         )}
-      </header>
 
-      {success && (
-        <p
-          role="status"
-          aria-live="polite"
-          className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
-        >
-          {success}
-        </p>
-      )}
+        {showForm && (
+          <form
+            onSubmit={onSubmitInvite}
+            noValidate
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-sm)",
+              background: "var(--canvas)",
+              padding: 16,
+              marginBottom: 16,
+            }}
+          >
+            <Field label="E-mail" htmlFor="invite-email" required>
+              <Input
+                id="invite-email"
+                type="email"
+                required
+                value={formEmail}
+                onChange={(e) => setFormEmail(e.target.value)}
+                disabled={formSubmitting}
+                placeholder="pessoa@empresa.com"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </Field>
 
-      {showForm && (
-        <form
-          onSubmit={onSubmitInvite}
-          className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4"
-          noValidate
-        >
-          <div className="space-y-1.5">
-            <label htmlFor="invite-email" className="text-sm font-medium text-slate-700">
-              E-mail
-            </label>
-            <input
-              id="invite-email"
-              type="email"
-              required
-              value={formEmail}
-              onChange={(e) => setFormEmail(e.target.value)}
-              disabled={formSubmitting}
-              placeholder="pessoa@empresa.com"
-              autoComplete="off"
-              spellCheck={false}
-              className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </div>
+            <div style={{ marginBottom: 16 }}>
+              <span className="nora-label" style={{ display: "block" }}>
+                Grupos
+              </span>
+              {groups.length === 0 ? (
+                <p style={{ fontSize: 11.5, color: "var(--muted)", margin: 0 }}>
+                  Nenhum grupo disponivel. O convite sera criado sem grupos.
+                </p>
+              ) : (
+                <ul
+                  style={{
+                    listStyle: "none",
+                    margin: 0,
+                    padding: 6,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 2,
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    background: "var(--surface)",
+                  }}
+                >
+                  {groups.map((g) => {
+                    const checked = formGroupIds.includes(g.id);
+                    return (
+                      <li key={g.id}>
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            cursor: "pointer",
+                            borderRadius: "var(--radius-sm)",
+                            padding: "4px 6px",
+                            fontSize: 13,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={formSubmitting}
+                            onChange={() => toggleGroup(g.id)}
+                            style={{ width: 16, height: 16, accentColor: "var(--accent)" }}
+                          />
+                          <span style={{ fontWeight: 500, color: "var(--ink)" }}>{g.name}</span>
+                          {g.description && (
+                            <span style={{ fontSize: 11.5, color: "var(--muted)" }}>
+                              — {g.description}
+                            </span>
+                          )}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
 
-          <div className="space-y-1.5">
-            <span className="text-sm font-medium text-slate-700">Grupos</span>
-            {groups.length === 0 ? (
-              <p className="text-xs text-slate-500">
-                Nenhum grupo disponivel. O convite sera criado sem grupos.
-              </p>
-            ) : (
-              <ul className="space-y-1 rounded-md border border-slate-200 bg-white p-2 text-sm">
-                {groups.map((g) => {
-                  const checked = formGroupIds.includes(g.id);
-                  return (
-                    <li key={g.id}>
-                      <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-slate-50">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={formSubmitting}
-                          onChange={() => toggleGroup(g.id)}
-                          className="h-4 w-4"
-                        />
-                        <span className="font-medium">{g.name}</span>
-                        {g.description && (
-                          <span className="text-xs text-slate-500">— {g.description}</span>
-                        )}
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
+            <Field label="Expira em (dias)" htmlFor="invite-expires">
+              <Input
+                id="invite-expires"
+                type="number"
+                min={1}
+                max={30}
+                value={formExpiresInDays}
+                onChange={(e) => setFormExpiresInDays(Number(e.target.value))}
+                disabled={formSubmitting}
+                style={{ width: 128 }}
+              />
+            </Field>
+
+            {formError && (
+              <div style={{ marginBottom: 16 }}>
+                <Banner tone="error">{formError}</Banner>
+              </div>
             )}
-          </div>
 
-          <div className="space-y-1.5">
-            <label
-              htmlFor="invite-expires"
-              className="text-sm font-medium text-slate-700"
-            >
-              Expira em (dias)
-            </label>
-            <input
-              id="invite-expires"
-              type="number"
-              min={1}
-              max={30}
-              value={formExpiresInDays}
-              onChange={(e) => setFormExpiresInDays(Number(e.target.value))}
-              disabled={formSubmitting}
-              className="w-32 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button type="submit" variant="primary" disabled={formSubmitting}>
+                {formSubmitting ? "Enviando..." : "Enviar convite"}
+              </Button>
+              <Button type="button" onClick={onCloseForm} disabled={formSubmitting}>
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        )}
 
-          {formError && (
-            <p
-              role="alert"
-              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
-            >
-              {formError}
-            </p>
-          )}
-
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={formSubmitting}
-              className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-            >
-              {formSubmitting ? "Enviando..." : "Enviar convite"}
-            </button>
-            <button
-              type="button"
-              onClick={onCloseForm}
-              disabled={formSubmitting}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Cancelar
-            </button>
-          </div>
-        </form>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <label htmlFor="invite-status-filter" className="text-slate-600">
-          Filtrar por:
-        </label>
-        <select
-          id="invite-status-filter"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as InviteStatus | "ALL")}
-          className="rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-slate-500 focus:outline-none"
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 16,
+          }}
         >
-          {STATUS_FILTERS.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {error && (
-        <p
-          role="alert"
-          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
-        >
-          {error}
-        </p>
-      )}
-
-      {loading ? (
-        <div className="space-y-2" aria-busy="true">
-          <div className="h-8 w-full animate-pulse rounded bg-slate-100" />
-          <div className="h-8 w-full animate-pulse rounded bg-slate-100" />
-          <div className="h-8 w-3/4 animate-pulse rounded bg-slate-100" />
+          <label
+            htmlFor="invite-status-filter"
+            style={{ fontSize: 12.5, color: "var(--muted)" }}
+          >
+            Filtrar por:
+          </label>
+          <Select
+            id="invite-status-filter"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as InviteStatus | "ALL")}
+            style={{ width: "auto" }}
+          >
+            {STATUS_FILTERS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </Select>
         </div>
-      ) : invites.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          Nenhum convite com status{" "}
-          {STATUS_FILTERS.find((f) => f.value === statusFilter)?.label.toLowerCase() ?? statusFilter}.
-        </p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="py-2 pr-3 font-medium">E-mail</th>
-                <th className="py-2 pr-3 font-medium">Status</th>
-                <th className="py-2 pr-3 font-medium">Convidado em</th>
-                <th className="py-2 pr-3 font-medium">Expira em</th>
-                <th className="py-2 pr-3 font-medium">Grupos</th>
-                <th className="py-2 pr-3 font-medium text-right">Acoes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {invites.map((inv) => (
-                <tr key={inv.id} className="align-top">
-                  <td className="py-2 pr-3 font-medium text-slate-800">{inv.email}</td>
-                  <td className="py-2 pr-3">
-                    <span
-                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[inv.status]}`}
-                    >
-                      {STATUS_LABEL[inv.status]}
-                    </span>
-                  </td>
-                  <td className="py-2 pr-3 text-slate-600">{formatDate(inv.invitedAt)}</td>
-                  <td className="py-2 pr-3 text-slate-600">{formatDate(inv.expiresAt)}</td>
-                  <td className="py-2 pr-3">
-                    {inv.groupIds.length === 0 ? (
-                      <span className="text-xs text-slate-400">—</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {inv.groupIds.map((gid) => (
-                          <span
-                            key={gid}
-                            className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
-                            title={gid}
-                          >
-                            {groupNameById.get(gid) ?? gid}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="py-2 pr-3 text-right">
-                    {inv.status === "PENDING" ? (
-                      <button
-                        type="button"
-                        onClick={() => void onRevoke(inv)}
-                        className="text-xs text-red-600 hover:underline"
-                      >
-                        Revogar
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-400">—</span>
-                    )}
-                  </td>
+
+        {error && (
+          <div style={{ marginBottom: 16 }}>
+            <Banner tone="error">{error}</Banner>
+          </div>
+        )}
+
+        {loading ? (
+          <div aria-busy="true" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ height: 32, borderRadius: 4, background: "var(--chip)" }} />
+            <div style={{ height: 32, borderRadius: 4, background: "var(--chip)" }} />
+            <div style={{ height: 32, width: "75%", borderRadius: 4, background: "var(--chip)" }} />
+          </div>
+        ) : invites.length === 0 ? (
+          <EmptyState>
+            Nenhum convite com status{" "}
+            {STATUS_FILTERS.find((f) => f.value === statusFilter)?.label.toLowerCase() ??
+              statusFilter}
+            .
+          </EmptyState>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                  <th style={thStyle}>E-mail</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Convidado em</th>
+                  <th style={thStyle}>Expira em</th>
+                  <th style={thStyle}>Grupos</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Acoes</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
+              </thead>
+              <tbody>
+                {invites.map((inv) => (
+                  <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ ...tdStyle, fontWeight: 500, color: "var(--ink)" }}>
+                      {inv.email}
+                    </td>
+                    <td style={tdStyle}>
+                      <Badge tone={STATUS_TONE[inv.status]}>{STATUS_LABEL[inv.status]}</Badge>
+                    </td>
+                    <td style={tdStyle}>{formatDate(inv.invitedAt)}</td>
+                    <td style={tdStyle}>{formatDate(inv.expiresAt)}</td>
+                    <td style={tdStyle}>
+                      {inv.groupIds.length === 0 ? (
+                        <span style={{ color: "var(--muted)" }}>—</span>
+                      ) : (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {inv.groupIds.map((gid) => (
+                            <span
+                              key={gid}
+                              title={gid}
+                              style={{
+                                fontSize: 11,
+                                color: "var(--ink)",
+                                background: "var(--chip)",
+                                borderRadius: "var(--radius-pill)",
+                                padding: "2px 8px",
+                              }}
+                            >
+                              {groupNameById.get(gid) ?? gid}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      {inv.status === "PENDING" ? (
+                        <Button variant="danger" size="sm" onClick={() => void onRevoke(inv)}>
+                          Revogar
+                        </Button>
+                      ) : (
+                        <span style={{ color: "var(--muted)" }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </Section>
   );
 }

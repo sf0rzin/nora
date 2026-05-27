@@ -6,6 +6,7 @@ import {
   setMeetingGoal,
 } from "@/lib/api/client";
 import type { MeetingGoal } from "@/lib/api/types";
+import { Banner, Button, Field, Input, Textarea } from "@/components/core/ui";
 
 const PURPOSE_MIN = 3;
 const PURPOSE_MAX = 500;
@@ -147,17 +148,16 @@ export default function MeetingGoalForm({
   return (
     <form
       onSubmit={onSubmit}
-      className="space-y-5 rounded-lg border border-slate-200 bg-white p-6"
+      className="nora-card"
       aria-label="Formulário do objetivo da reunião"
     >
-      <div className="space-y-1.5">
-        <label
-          htmlFor="meeting-goal-purpose"
-          className="text-sm font-medium text-slate-700"
-        >
-          Propósito da reunião <span className="text-red-600">*</span>
-        </label>
-        <textarea
+      <Field
+        label="Propósito da reunião"
+        required
+        htmlFor="meeting-goal-purpose"
+        hint={`${form.purpose.trim().length}/${PURPOSE_MAX} caracteres`}
+      >
+        <Textarea
           id="meeting-goal-purpose"
           required
           rows={3}
@@ -165,99 +165,96 @@ export default function MeetingGoalForm({
           maxLength={PURPOSE_MAX}
           onChange={(e) => updatePurpose(e.target.value)}
           placeholder="Refinement do épico X, discovery com lead novo, etc."
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
         />
-        <p className="text-xs text-slate-500">
-          {form.purpose.trim().length}/{PURPOSE_MAX} caracteres
-        </p>
-      </div>
+      </Field>
 
-      <fieldset className="space-y-3">
-        <div className="flex items-center justify-between">
-          <legend className="text-sm font-medium text-slate-700">
-            Outcomes esperados <span className="text-red-600">*</span>
+      <fieldset style={{ border: "none", margin: 0, padding: 0, marginBottom: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+            marginBottom: 6,
+          }}
+        >
+          <legend className="nora-label" style={{ marginBottom: 0 }}>
+            Outcomes esperados <span style={{ color: "var(--danger)" }}>*</span>
           </legend>
-          <button
-            type="button"
+          <Button
+            size="sm"
             onClick={addOutcome}
             disabled={form.expectedOutcomes.length >= OUTCOMES_MAX}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
           >
             + outro outcome
-          </button>
+          </Button>
         </div>
-        <p className="text-xs text-slate-500">
+        <p style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 10 }}>
           Liste os pontos concretos que precisavam ser tratados ou decididos. Sem
           outcomes, a NORA não tenta gerar um score.
         </p>
-        <ul className="space-y-2">
+        <ul
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            margin: 0,
+            padding: 0,
+            listStyle: "none",
+          }}
+        >
           {form.expectedOutcomes.map((outcome, idx) => (
-            <li key={idx} className="flex items-start gap-2">
-              <input
+            <li key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <Input
                 aria-label={`Outcome esperado ${idx + 1}`}
                 value={outcome}
                 maxLength={OUTCOME_MAX}
                 onChange={(e) => updateOutcome(idx, e.target.value)}
                 placeholder="Ex: Definir critérios de aceite da feature X"
-                className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                style={{ flex: 1 }}
               />
-              <button
-                type="button"
+              <Button
+                variant="danger"
+                size="sm"
                 onClick={() => removeOutcome(idx)}
                 disabled={form.expectedOutcomes.length <= 1 && outcome === ""}
                 aria-label={`Remover outcome ${idx + 1}`}
-                className="rounded-md border border-slate-300 bg-white px-2 py-2 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
               >
                 Remover
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
       </fieldset>
 
-      <div className="space-y-1.5">
-        <label
-          htmlFor="meeting-goal-snapshot"
-          className="text-sm font-medium text-slate-700"
-        >
-          Snapshot do projeto (opcional)
-        </label>
-        <textarea
+      <Field
+        label="Snapshot do projeto (opcional)"
+        htmlFor="meeting-goal-snapshot"
+        hint={`${form.projectStateSnapshot.trim().length}/${SNAPSHOT_MAX} caracteres`}
+      >
+        <Textarea
           id="meeting-goal-snapshot"
           rows={4}
           value={form.projectStateSnapshot}
           maxLength={SNAPSHOT_MAX}
           onChange={(e) => updateSnapshot(e.target.value)}
           placeholder="Opcional: o que está feito do projeto, blockers atuais, etc."
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
         />
-        <p className="text-xs text-slate-500">
-          {form.projectStateSnapshot.trim().length}/{SNAPSHOT_MAX} caracteres
-        </p>
-      </div>
+      </Field>
 
       {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
+        <div style={{ marginBottom: 16 }}>
+          <Banner tone="error">{error}</Banner>
+        </div>
       )}
 
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-        >
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button type="submit" variant="primary" disabled={saving}>
           {saving ? "Salvando…" : "Salvar objetivo"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={saving}
-          className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-        >
+        </Button>
+        <Button type="button" onClick={onCancel} disabled={saving}>
           Cancelar
-        </button>
+        </Button>
       </div>
     </form>
   );

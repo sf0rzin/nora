@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import MeetingGoalForm from "@/components/meeting-goal-form";
 import ProductivityScoreCard from "@/components/productivity-score-card";
+import { Button, Card, Section } from "@/components/core/ui";
 import type {
   MeetingGoal,
   ProductivityAssessment,
@@ -38,13 +39,7 @@ export default function MeetingProductivitySection({
   // Caso A: sem goal e sem productivity → CTA pra avaliar produtividade
   if (!goal && !productivity) {
     return (
-      <section className="space-y-3" aria-labelledby="productivity-heading">
-        <h2
-          id="productivity-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-        >
-          Produtividade
-        </h2>
+      <Section title="Produtividade">
         {editing ? (
           <MeetingGoalForm
             meetingId={meetingId}
@@ -53,39 +48,30 @@ export default function MeetingProductivitySection({
             onCancel={handleCancel}
           />
         ) : (
-          <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-6">
-            <p className="text-sm text-slate-700">
+          <Card>
+            <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--ink)" }}>
               Quer entender o quão produtiva essa reunião foi? Declare o objetivo
               e os outcomes esperados e a NORA gera um indicador comparando o que
               aconteceu com o que era pra acontecer.
             </p>
-            <p className="text-xs text-slate-500">
+            <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
               Sem outcomes declarados, a NORA não tenta inventar um score.
             </p>
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              Avaliar produtividade desta reunião
-            </button>
-          </div>
+            <div style={{ marginTop: 16 }}>
+              <Button variant="primary" onClick={() => setEditing(true)}>
+                Avaliar produtividade desta reunião
+              </Button>
+            </div>
+          </Card>
         )}
-      </section>
+      </Section>
     );
   }
 
   // Caso B: goal definido, mas sem productivity → aguardando reprocessamento
   if (goal && !productivity) {
     return (
-      <section className="space-y-3" aria-labelledby="productivity-heading">
-        <h2
-          id="productivity-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-        >
-          Produtividade
-        </h2>
-
+      <Section title="Produtividade">
         {editing ? (
           <MeetingGoalForm
             meetingId={meetingId}
@@ -94,34 +80,36 @@ export default function MeetingProductivitySection({
             onCancel={handleCancel}
           />
         ) : (
-          <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-6">
-            <MeetingGoalSummary goal={goal} />
-            <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              Aguardando análise…
-            </p>
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-            >
-              Editar objetivo
-            </button>
-          </div>
+          <Card>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <MeetingGoalSummary goal={goal} />
+              <p
+                style={{
+                  border: "1px solid var(--border)",
+                  background: "var(--chip)",
+                  borderRadius: "var(--radius-sm)",
+                  padding: "8px 12px",
+                  fontSize: 13.5,
+                  color: "var(--ink)",
+                }}
+              >
+                Aguardando análise…
+              </p>
+              <div>
+                <Button size="sm" onClick={() => setEditing(true)}>
+                  Editar objetivo
+                </Button>
+              </div>
+            </div>
+          </Card>
         )}
-      </section>
+      </Section>
     );
   }
 
   // Caso C: productivity disponível
   return (
-    <section className="space-y-3" aria-labelledby="productivity-heading">
-      <h2
-        id="productivity-heading"
-        className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-      >
-        Produtividade
-      </h2>
-
+    <Section title="Produtividade">
       {editing ? (
         <MeetingGoalForm
           meetingId={meetingId}
@@ -130,47 +118,66 @@ export default function MeetingProductivitySection({
           onCancel={handleCancel}
         />
       ) : (
-        <div className="space-y-4">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {productivity && <ProductivityScoreCard assessment={productivity} />}
           {goal && (
-            <details className="rounded-lg border border-slate-200 bg-white p-4">
-              <summary className="cursor-pointer text-sm font-medium text-slate-700">
+            <details
+              className="nora-card"
+              style={{ padding: 16 }}
+            >
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontSize: 13.5,
+                  fontWeight: 500,
+                  color: "var(--ink)",
+                }}
+              >
                 Objetivo declarado
               </summary>
-              <div className="mt-3">
+              <div style={{ marginTop: 12 }}>
                 <MeetingGoalSummary goal={goal} />
               </div>
             </details>
           )}
           <div>
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-            >
+            <Button size="sm" onClick={() => setEditing(true)}>
               Editar objetivo
-            </button>
+            </Button>
           </div>
         </div>
       )}
-    </section>
+    </Section>
   );
 }
 
 function MeetingGoalSummary({ goal }: { goal: MeetingGoal }) {
   return (
-    <div className="space-y-3 text-sm">
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        <p className="nora-section-title" style={{ marginBottom: 0 }}>
           Propósito
         </p>
-        <p className="mt-1 text-slate-800">{goal.purpose}</p>
+        <p style={{ marginTop: 4, fontSize: 13.5, color: "var(--ink)" }}>
+          {goal.purpose}
+        </p>
       </div>
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        <p className="nora-section-title" style={{ marginBottom: 0 }}>
           Outcomes esperados ({goal.expectedOutcomes.length})
         </p>
-        <ul className="mt-1 list-disc space-y-1 pl-5 text-slate-800">
+        <ul
+          style={{
+            marginTop: 4,
+            paddingLeft: 20,
+            listStyle: "disc",
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            fontSize: 13.5,
+            color: "var(--ink)",
+          }}
+        >
           {goal.expectedOutcomes.map((outcome, idx) => (
             <li key={`${outcome}-${idx}`}>{outcome}</li>
           ))}
@@ -178,10 +185,17 @@ function MeetingGoalSummary({ goal }: { goal: MeetingGoal }) {
       </div>
       {goal.projectStateSnapshot && (
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          <p className="nora-section-title" style={{ marginBottom: 0 }}>
             Snapshot do projeto
           </p>
-          <p className="mt-1 whitespace-pre-line text-slate-700">
+          <p
+            style={{
+              marginTop: 4,
+              whiteSpace: "pre-line",
+              fontSize: 13.5,
+              color: "var(--muted)",
+            }}
+          >
             {goal.projectStateSnapshot}
           </p>
         </div>

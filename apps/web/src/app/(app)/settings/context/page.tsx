@@ -7,6 +7,17 @@ import {
   upsertTenantContext,
   type TenantContextDto,
 } from "@/lib/api/client";
+import {
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Section,
+  Textarea,
+} from "@/components/core/ui";
 
 interface ProductForm {
   name: string;
@@ -138,166 +149,163 @@ export default function TenantContextPage() {
   }
 
   if (loading) {
-    return <p className="text-sm text-slate-500">Carregando contexto…</p>;
+    return <EmptyState>Carregando contexto…</EmptyState>;
   }
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Contexto do tenant</h1>
-        <p className="text-sm text-slate-500">
-          Esses dados são enviados ao motor de NLP em toda análise de reunião.
-        </p>
-      </header>
+    <div style={{ maxWidth: 768 }}>
+      <PageHeader
+        title="Contexto do tenant"
+        subtitle="Esses dados são enviados ao motor de NLP em toda análise de reunião."
+      />
 
-      <form onSubmit={onSubmit} className="space-y-5 rounded-lg border border-slate-200 bg-white p-6">
-        <Field label="Nome da empresa" required>
-          <input
-            required
-            value={form.companyName}
-            onChange={(e) => update("companyName", e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-          />
-        </Field>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="Indústria">
-            <input
-              value={form.industry}
-              onChange={(e) => update("industry", e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              placeholder="ex: Software B2B"
+      <Card>
+        <form onSubmit={onSubmit}>
+          <Field label="Nome da empresa" htmlFor="ctx-company-name" required>
+            <Input
+              id="ctx-company-name"
+              required
+              value={form.companyName}
+              onChange={(e) => update("companyName", e.target.value)}
             />
           </Field>
-          <Field label="ICP (Ideal Customer Profile)">
-            <input
-              value={form.idealCustomerProfile}
-              onChange={(e) => update("idealCustomerProfile", e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              placeholder="ex: midmarket varejo no Brasil"
-            />
-          </Field>
-        </div>
 
-        <Field label="Proposta de valor">
-          <textarea
-            rows={3}
-            value={form.valueProposition}
-            onChange={(e) => update("valueProposition", e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-          />
-        </Field>
-
-        <Field
-          label="Concorrentes (um por linha)"
-          hint="Ex: Concorrente A&#10;Concorrente B"
-        >
-          <textarea
-            rows={3}
-            value={form.competitors}
-            onChange={(e) => update("competitors", e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-          />
-        </Field>
-
-        <Field label="Objection handling (um por linha)">
-          <textarea
-            rows={3}
-            value={form.objectionHandling}
-            onChange={(e) => update("objectionHandling", e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-          />
-        </Field>
-
-        <fieldset className="space-y-3">
-          <div className="flex items-center justify-between">
-            <legend className="text-sm font-medium text-slate-700">Produtos</legend>
-            <button
-              type="button"
-              onClick={addProduct}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50"
-            >
-              + Adicionar produto
-            </button>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 16,
+            }}
+          >
+            <Field label="Indústria" htmlFor="ctx-industry">
+              <Input
+                id="ctx-industry"
+                value={form.industry}
+                onChange={(e) => update("industry", e.target.value)}
+                placeholder="ex: Software B2B"
+              />
+            </Field>
+            <Field label="ICP (Ideal Customer Profile)" htmlFor="ctx-icp">
+              <Input
+                id="ctx-icp"
+                value={form.idealCustomerProfile}
+                onChange={(e) => update("idealCustomerProfile", e.target.value)}
+                placeholder="ex: midmarket varejo no Brasil"
+              />
+            </Field>
           </div>
 
-          {form.products.length === 0 && (
-            <p className="text-sm text-slate-500">Nenhum produto cadastrado.</p>
+          <Field label="Proposta de valor" htmlFor="ctx-value-proposition">
+            <Textarea
+              id="ctx-value-proposition"
+              rows={3}
+              value={form.valueProposition}
+              onChange={(e) => update("valueProposition", e.target.value)}
+            />
+          </Field>
+
+          <Field
+            label="Concorrentes (um por linha)"
+            htmlFor="ctx-competitors"
+            hint="Ex: Concorrente A&#10;Concorrente B"
+          >
+            <Textarea
+              id="ctx-competitors"
+              rows={3}
+              value={form.competitors}
+              onChange={(e) => update("competitors", e.target.value)}
+            />
+          </Field>
+
+          <Field label="Objection handling (um por linha)" htmlFor="ctx-objection-handling">
+            <Textarea
+              id="ctx-objection-handling"
+              rows={3}
+              value={form.objectionHandling}
+              onChange={(e) => update("objectionHandling", e.target.value)}
+            />
+          </Field>
+
+          <Section
+            title="Produtos"
+            action={
+              <Button size="sm" onClick={addProduct}>
+                + Adicionar produto
+              </Button>
+            }
+          >
+            {form.products.length === 0 && (
+              <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 0" }}>
+                Nenhum produto cadastrado.
+              </p>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+              {form.products.map((p, i) => (
+                <div
+                  key={i}
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: 12,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Input
+                      style={{ flex: 1 }}
+                      value={p.name}
+                      onChange={(e) => updateProduct(i, { name: e.target.value })}
+                      placeholder="Nome do produto"
+                      aria-label={`Nome do produto ${i + 1}`}
+                    />
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => removeProduct(i)}
+                    >
+                      Remover
+                    </Button>
+                  </div>
+                  <Textarea
+                    rows={2}
+                    value={p.description}
+                    onChange={(e) => updateProduct(i, { description: e.target.value })}
+                    placeholder="Descrição"
+                    aria-label={`Descrição do produto ${i + 1}`}
+                  />
+                  <Textarea
+                    rows={2}
+                    value={p.keyDifferentiators}
+                    onChange={(e) => updateProduct(i, { keyDifferentiators: e.target.value })}
+                    placeholder="Diferenciais (um por linha)"
+                    aria-label={`Diferenciais do produto ${i + 1}`}
+                  />
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          {error && (
+            <div style={{ marginBottom: 16 }}>
+              <Banner tone="error">{error}</Banner>
+            </div>
+          )}
+          {message && (
+            <div style={{ marginBottom: 16 }}>
+              <Banner tone="ok">{message}</Banner>
+            </div>
           )}
 
-          {form.products.map((p, i) => (
-            <div key={i} className="space-y-2 rounded-md border border-slate-200 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <input
-                  value={p.name}
-                  onChange={(e) => updateProduct(i, { name: e.target.value })}
-                  placeholder="Nome do produto"
-                  className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeProduct(i)}
-                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-red-600 hover:bg-red-50"
-                >
-                  Remover
-                </button>
-              </div>
-              <textarea
-                rows={2}
-                value={p.description}
-                onChange={(e) => updateProduct(i, { description: e.target.value })}
-                placeholder="Descrição"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              />
-              <textarea
-                rows={2}
-                value={p.keyDifferentiators}
-                onChange={(e) => updateProduct(i, { keyDifferentiators: e.target.value })}
-                placeholder="Diferenciais (um por linha)"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              />
-            </div>
-          ))}
-        </fieldset>
-
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {message && <p className="text-sm text-green-700">{message}</p>}
-
-        <div>
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-          >
-            {saving ? "Salvando…" : "Salvar contexto"}
-          </button>
-        </div>
-      </form>
-
-      
-    </div>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  required,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="text-sm font-medium text-slate-700">
-        {label}
-        {required && <span className="text-red-600"> *</span>}
-      </label>
-      {children}
-      {hint && <p className="text-xs text-slate-500 whitespace-pre-line">{hint}</p>}
+          <div>
+            <Button type="submit" variant="primary" disabled={saving}>
+              {saving ? "Salvando…" : "Salvar contexto"}
+            </Button>
+          </div>
+        </form>
+      </Card>
     </div>
   );
 }

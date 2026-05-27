@@ -17,7 +17,8 @@
  *   Markdown ali quebraria o layout das pills/badges e nao agrega valor.
  *
  * Estilos:
- * - Paleta slate (espelha CorporateDomainCard / o resto do app interno).
+ * - Paleta editorial via tokens (--ink / --muted / --accent-ink / --chip),
+ *   coerente com o kit de UID do Core. Layout/espaçamentos seguem Tailwind.
  * - Espacamentos compactos suficientes para inline em sections.
  */
 
@@ -32,34 +33,39 @@ type Props = {
 
 const components: Components = {
   h1: (props: ComponentPropsWithoutRef<"h1">) => (
-    <h1 className="mt-4 mb-2 text-xl font-semibold text-slate-900" {...props} />
+    <h1 className="mt-4 mb-2 text-xl font-semibold" style={{ color: "var(--ink)" }} {...props} />
   ),
   h2: (props: ComponentPropsWithoutRef<"h2">) => (
-    <h2 className="mt-3 mb-2 text-lg font-semibold text-slate-900" {...props} />
+    <h2 className="mt-3 mb-2 text-lg font-semibold" style={{ color: "var(--ink)" }} {...props} />
   ),
   h3: (props: ComponentPropsWithoutRef<"h3">) => (
-    <h3 className="mt-2 mb-1 text-base font-semibold text-slate-900" {...props} />
+    <h3 className="mt-2 mb-1 text-base font-semibold" style={{ color: "var(--ink)" }} {...props} />
   ),
   p: (props: ComponentPropsWithoutRef<"p">) => (
-    <p className="mb-2 leading-relaxed last:mb-0" {...props} />
+    <p className="mb-2 leading-relaxed last:mb-0" style={{ color: "var(--ink)" }} {...props} />
   ),
   ul: (props: ComponentPropsWithoutRef<"ul">) => (
-    <ul className="mb-2 list-disc space-y-1 pl-5 last:mb-0" {...props} />
+    <ul className="mb-2 list-disc space-y-1 pl-5 last:mb-0" style={{ color: "var(--ink)" }} {...props} />
   ),
   ol: (props: ComponentPropsWithoutRef<"ol">) => (
-    <ol className="mb-2 list-decimal space-y-1 pl-5 last:mb-0" {...props} />
+    <ol className="mb-2 list-decimal space-y-1 pl-5 last:mb-0" style={{ color: "var(--ink)" }} {...props} />
   ),
   li: (props: ComponentPropsWithoutRef<"li">) => <li className="leading-relaxed" {...props} />,
   strong: (props: ComponentPropsWithoutRef<"strong">) => (
-    <strong className="font-semibold text-slate-900" {...props} />
+    <strong className="font-semibold" style={{ color: "var(--ink)" }} {...props} />
   ),
   em: (props: ComponentPropsWithoutRef<"em">) => <em className="italic" {...props} />,
   code: (props: ComponentPropsWithoutRef<"code">) => (
-    <code className="rounded bg-slate-100 px-1 py-0.5 text-sm font-mono" {...props} />
+    <code
+      className="rounded px-1 py-0.5 text-sm font-mono"
+      style={{ background: "var(--chip)", color: "var(--ink)" }}
+      {...props}
+    />
   ),
   a: (props: ComponentPropsWithoutRef<"a">) => (
     <a
-      className="text-blue-600 underline-offset-2 hover:underline"
+      className="underline-offset-2 hover:underline"
+      style={{ color: "var(--accent-ink)" }}
       target="_blank"
       rel="noopener noreferrer"
       {...props}
@@ -67,12 +73,13 @@ const components: Components = {
   ),
   blockquote: (props: ComponentPropsWithoutRef<"blockquote">) => (
     <blockquote
-      className="my-2 border-l-2 border-slate-300 pl-3 italic text-slate-600"
+      className="my-2 border-l-2 pl-3 italic"
+      style={{ borderColor: "var(--border-strong)", color: "var(--muted)" }}
       {...props}
     />
   ),
   hr: (props: ComponentPropsWithoutRef<"hr">) => (
-    <hr className="my-4 border-slate-200" {...props} />
+    <hr className="my-4" style={{ borderColor: "var(--border)" }} {...props} />
   ),
   table: (props: ComponentPropsWithoutRef<"table">) => (
     <div className="my-2 overflow-x-auto">
@@ -81,12 +88,17 @@ const components: Components = {
   ),
   th: (props: ComponentPropsWithoutRef<"th">) => (
     <th
-      className="border border-slate-200 bg-slate-50 px-2 py-1 text-left font-semibold"
+      className="px-2 py-1 text-left font-semibold"
+      style={{ border: "1px solid var(--border)", background: "var(--chip)", color: "var(--ink)" }}
       {...props}
     />
   ),
   td: (props: ComponentPropsWithoutRef<"td">) => (
-    <td className="border border-slate-200 px-2 py-1 align-top" {...props} />
+    <td
+      className="px-2 py-1 align-top"
+      style={{ border: "1px solid var(--border)", color: "var(--ink)" }}
+      {...props}
+    />
   ),
 };
 

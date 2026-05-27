@@ -23,6 +23,17 @@ import {
 import PolicyEditor from "@/components/policy-editor";
 import CorporateDomainCard from "@/components/corporate-domain-card";
 import InvitationCard from "@/components/invitation-card";
+import {
+  Badge,
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Section,
+} from "@/components/core/ui";
 
 const POLICY_PLACEHOLDER = `{
   "version": "2026-05-07",
@@ -84,23 +95,28 @@ export default function IamPage() {
   }
 
   if (loading) {
-    return <p className="text-sm text-slate-500">Carregando IAM…</p>;
+    return (
+      <div>
+        <PageHeader
+          title="IAM"
+          subtitle="Identity & Access Management estilo AWS. Você é Root deste tenant; novas Users, Groups e Policies controlam o que cada pessoa pode fazer."
+        />
+        <EmptyState>Carregando IAM…</EmptyState>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-10">
-      <header>
-        <h1 className="text-2xl font-semibold">IAM</h1>
-        <p className="text-sm text-slate-500">
-          Identity & Access Management estilo AWS. Você é Root deste tenant; novas Users, Groups e
-          Policies controlam o que cada pessoa pode fazer.
-        </p>
-      </header>
+    <div>
+      <PageHeader
+        title="IAM"
+        subtitle="Identity & Access Management estilo AWS. Você é Root deste tenant; novas Users, Groups e Policies controlam o que cada pessoa pode fazer."
+      />
 
       {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
+        <div style={{ marginBottom: 20 }}>
+          <Banner tone="error">{error}</Banner>
+        </div>
       )}
 
       {/* ===== Corporate Domain (US32) ===== */}
@@ -110,216 +126,336 @@ export default function IamPage() {
       <InvitationCard />
 
       {/* ===== Groups ===== */}
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Groups</h2>
-        <form
-          className="flex flex-wrap gap-2 text-sm"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!groupName.trim()) return;
-            void handle(async () => {
-              await createGroup(groupName.trim(), groupDesc.trim() || undefined);
-              setGroupName("");
-              setGroupDesc("");
-            });
-          }}
-        >
-          <input
-            value={groupName}
-            onChange={(e) => setGroupName(e.target.value)}
-            placeholder="nome (ex: sales-team)"
-            className="rounded-md border border-slate-300 px-3 py-1.5"
-          />
-          <input
-            value={groupDesc}
-            onChange={(e) => setGroupDesc(e.target.value)}
-            placeholder="descrição"
-            className="rounded-md border border-slate-300 px-3 py-1.5 flex-1 min-w-[200px]"
-          />
-          <button
-            type="submit"
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-white hover:bg-slate-800"
+      <Section title="Groups">
+        <Card style={{ marginBottom: 16 }}>
+          <form
+            style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 10 }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!groupName.trim()) return;
+              void handle(async () => {
+                await createGroup(groupName.trim(), groupDesc.trim() || undefined);
+                setGroupName("");
+                setGroupDesc("");
+              });
+            }}
           >
-            Criar grupo
-          </button>
-        </form>
+            <div style={{ minWidth: 200 }}>
+              <Field label="Nome" htmlFor="group-name">
+                <Input
+                  id="group-name"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  placeholder="nome (ex: sales-team)"
+                />
+              </Field>
+            </div>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <Field label="Descrição" htmlFor="group-desc">
+                <Input
+                  id="group-desc"
+                  value={groupDesc}
+                  onChange={(e) => setGroupDesc(e.target.value)}
+                  placeholder="descrição"
+                />
+              </Field>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Button type="submit" variant="primary">
+                Criar grupo
+              </Button>
+            </div>
+          </form>
+        </Card>
 
         {groups.length === 0 ? (
-          <p className="text-sm text-slate-500">Nenhum grupo criado ainda.</p>
+          <EmptyState>Nenhum grupo criado ainda.</EmptyState>
         ) : (
-          <ul className="divide-y divide-slate-200 text-sm">
-            {groups.map((g) => (
-              <li key={g.id} className="flex items-start justify-between py-2">
-                <div>
-                  <div className="font-medium">{g.name}</div>
-                  {g.description && <div className="text-xs text-slate-500">{g.description}</div>}
-                  <div className="text-xs text-slate-400">{g.id}</div>
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              overflow: "hidden",
+              background: "var(--surface)",
+            }}
+          >
+            {groups.map((g, i) => (
+              <div
+                key={g.id}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "12px 16px",
+                  borderTop: i === 0 ? "none" : "1px solid var(--border)",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)" }}>{g.name}</div>
+                  {g.description && (
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                      {g.description}
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      fontFamily: "var(--mono)",
+                      fontSize: 11,
+                      color: "var(--muted)",
+                      background: "var(--chip)",
+                      borderRadius: "var(--radius-sm)",
+                      padding: "1px 6px",
+                      marginTop: 6,
+                      display: "inline-block",
+                    }}
+                  >
+                    {g.id}
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  className="text-xs text-red-600 hover:underline"
+                <Button
+                  variant="danger"
+                  size="sm"
                   onClick={() => {
                     void handle(() => deleteGroup(g.id));
                   }}
                 >
                   excluir
-                </button>
-              </li>
+                </Button>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
 
-        <details className="text-sm">
-          <summary className="cursor-pointer text-slate-600">Adicionar membro a um grupo</summary>
+        <details style={{ marginTop: 16 }}>
+          <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--muted)" }}>
+            Adicionar membro a um grupo
+          </summary>
+          <Card style={{ marginTop: 12 }}>
+            <form
+              style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 10 }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!memberGroupId || !memberUserId) return;
+                void handle(async () => {
+                  await addGroupMember(memberGroupId.trim(), memberUserId.trim());
+                  setMemberUserId("");
+                });
+              }}
+            >
+              <div style={{ minWidth: 200 }}>
+                <Field label="Group ID" htmlFor="member-group-id">
+                  <Input
+                    id="member-group-id"
+                    value={memberGroupId}
+                    onChange={(e) => setMemberGroupId(e.target.value)}
+                    placeholder="group id"
+                    style={{ fontFamily: "var(--mono)" }}
+                  />
+                </Field>
+              </div>
+              <div style={{ minWidth: 200 }}>
+                <Field label="User ID" htmlFor="member-user-id">
+                  <Input
+                    id="member-user-id"
+                    value={memberUserId}
+                    onChange={(e) => setMemberUserId(e.target.value)}
+                    placeholder="user id"
+                    style={{ fontFamily: "var(--mono)" }}
+                  />
+                </Field>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                <Button type="submit" variant="primary">
+                  Adicionar
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (!memberGroupId || !memberUserId) return;
+                    void handle(() => removeGroupMember(memberGroupId.trim(), memberUserId.trim()));
+                  }}
+                >
+                  Remover
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </details>
+      </Section>
+
+      {/* ===== Policies ===== */}
+      <Section title="Policies">
+        <Card style={{ marginBottom: 16 }}>
           <form
-            className="mt-2 flex flex-wrap gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!memberGroupId || !memberUserId) return;
+              if (!policyName.trim()) return;
+              // Defesa em profundidade: o botao ja é desabilitado quando invalido,
+              // mas ainda assim re-parseamos antes de enviar — UX > backend round-trip.
+              let parsed: unknown;
+              try {
+                parsed = JSON.parse(policyDoc);
+              } catch {
+                setError("Policy document deve ser um JSON válido.");
+                return;
+              }
               void handle(async () => {
-                await addGroupMember(memberGroupId.trim(), memberUserId.trim());
-                setMemberUserId("");
+                await createPolicy(policyName.trim(), parsed);
+                setPolicyName("");
+                setPolicyDoc(POLICY_PLACEHOLDER);
+                setPolicyDocValid(true);
               });
             }}
           >
-            <input
-              value={memberGroupId}
-              onChange={(e) => setMemberGroupId(e.target.value)}
-              placeholder="group id"
-              className="rounded-md border border-slate-300 px-3 py-1.5"
-            />
-            <input
-              value={memberUserId}
-              onChange={(e) => setMemberUserId(e.target.value)}
-              placeholder="user id"
-              className="rounded-md border border-slate-300 px-3 py-1.5"
-            />
-            <button
-              type="submit"
-              className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
-            >
-              Adicionar
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
-              onClick={() => {
-                if (!memberGroupId || !memberUserId) return;
-                void handle(() => removeGroupMember(memberGroupId.trim(), memberUserId.trim()));
-              }}
-            >
-              Remover
-            </button>
+            <Field label="Nome da policy" htmlFor="policy-name">
+              <Input
+                id="policy-name"
+                value={policyName}
+                onChange={(e) => setPolicyName(e.target.value)}
+                placeholder="nome da policy (ex: meeting-readonly)"
+              />
+            </Field>
+            <Field label="Documento (JSON)" htmlFor="policy-doc">
+              <PolicyEditor
+                value={policyDoc}
+                onChange={(next, isValid) => {
+                  setPolicyDoc(next);
+                  setPolicyDocValid(isValid);
+                }}
+                height={400}
+              />
+            </Field>
+            <Button type="submit" variant="primary" disabled={!policyName.trim() || !policyDocValid}>
+              Criar policy
+            </Button>
           </form>
-        </details>
-      </section>
-
-      {/* ===== Policies ===== */}
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Policies</h2>
-        <form
-          className="space-y-2 text-sm"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!policyName.trim()) return;
-            // Defesa em profundidade: o botao ja é desabilitado quando invalido,
-            // mas ainda assim re-parseamos antes de enviar — UX > backend round-trip.
-            let parsed: unknown;
-            try {
-              parsed = JSON.parse(policyDoc);
-            } catch {
-              setError("Policy document deve ser um JSON válido.");
-              return;
-            }
-            void handle(async () => {
-              await createPolicy(policyName.trim(), parsed);
-              setPolicyName("");
-              setPolicyDoc(POLICY_PLACEHOLDER);
-              setPolicyDocValid(true);
-            });
-          }}
-        >
-          <input
-            value={policyName}
-            onChange={(e) => setPolicyName(e.target.value)}
-            placeholder="nome da policy (ex: meeting-readonly)"
-            className="w-full rounded-md border border-slate-300 px-3 py-1.5"
-          />
-          <PolicyEditor
-            value={policyDoc}
-            onChange={(next, isValid) => {
-              setPolicyDoc(next);
-              setPolicyDocValid(isValid);
-            }}
-            height={400}
-          />
-          <button
-            type="submit"
-            disabled={!policyName.trim() || !policyDocValid}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            Criar policy
-          </button>
-        </form>
+        </Card>
 
         {policies.length === 0 ? (
-          <p className="text-sm text-slate-500">Nenhuma policy criada.</p>
+          <EmptyState>Nenhuma policy criada.</EmptyState>
         ) : (
-          <ul className="divide-y divide-slate-200 text-sm">
-            {policies.map((p) => (
-              <li key={p.id} className="py-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="font-medium">
-                      {p.name}{" "}
-                      <span className="text-xs text-slate-400">v{p.currentVersion}</span>
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              overflow: "hidden",
+              background: "var(--surface)",
+            }}
+          >
+            {policies.map((p, i) => (
+              <div
+                key={p.id}
+                style={{
+                  padding: "12px 16px",
+                  borderTop: i === 0 ? "none" : "1px solid var(--border)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 500,
+                        color: "var(--ink)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      {p.name}
+                      <Badge>v{p.currentVersion}</Badge>
                     </div>
                     {p.description && (
-                      <div className="text-xs text-slate-500">{p.description}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                        {p.description}
+                      </div>
                     )}
-                    <div className="text-xs text-slate-400">{p.id}</div>
+                    <div
+                      style={{
+                        fontFamily: "var(--mono)",
+                        fontSize: 11,
+                        color: "var(--muted)",
+                        background: "var(--chip)",
+                        borderRadius: "var(--radius-sm)",
+                        padding: "1px 6px",
+                        marginTop: 6,
+                        display: "inline-block",
+                      }}
+                    >
+                      {p.id}
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    className="text-xs text-red-600 hover:underline"
+                  <Button
+                    variant="danger"
+                    size="sm"
                     onClick={() => {
                       void handle(() => deletePolicy(p.id));
                     }}
                   >
                     excluir
-                  </button>
+                  </Button>
                 </div>
-                <pre className="mt-2 overflow-x-auto rounded-md bg-slate-50 p-2 text-xs">
+                <pre
+                  style={{
+                    marginTop: 10,
+                    overflowX: "auto",
+                    borderRadius: "var(--radius-sm)",
+                    background: "var(--chip)",
+                    padding: 10,
+                    fontFamily: "var(--mono)",
+                    fontSize: 12,
+                    color: "var(--ink)",
+                  }}
+                >
                   {JSON.stringify(p.document, null, 2)}
                 </pre>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
-      </section>
+      </Section>
 
       {/* ===== Attachments ===== */}
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Anexar policies</h2>
-        <div className="grid gap-4 text-sm md:grid-cols-2">
-          <div className="space-y-2 rounded-md border border-slate-200 p-3">
-            <h3 className="font-medium">A um grupo</h3>
-            <input
-              value={attachPolicyId}
-              onChange={(e) => setAttachPolicyId(e.target.value)}
-              placeholder="policy id"
-              className="w-full rounded-md border border-slate-300 px-3 py-1.5"
-            />
-            <input
-              value={attachGroupId}
-              onChange={(e) => setAttachGroupId(e.target.value)}
-              placeholder="group id"
-              className="w-full rounded-md border border-slate-300 px-3 py-1.5"
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
+      <Section title="Anexar policies">
+        <div
+          style={{
+            display: "grid",
+            gap: 16,
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          }}
+        >
+          <Card>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", margin: "0 0 14px" }}>
+              A um grupo
+            </h3>
+            <Field label="Policy ID" htmlFor="attach-group-policy-id">
+              <Input
+                id="attach-group-policy-id"
+                value={attachPolicyId}
+                onChange={(e) => setAttachPolicyId(e.target.value)}
+                placeholder="policy id"
+                style={{ fontFamily: "var(--mono)" }}
+              />
+            </Field>
+            <Field label="Group ID" htmlFor="attach-group-id">
+              <Input
+                id="attach-group-id"
+                value={attachGroupId}
+                onChange={(e) => setAttachGroupId(e.target.value)}
+                placeholder="group id"
+                style={{ fontFamily: "var(--mono)" }}
+              />
+            </Field>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button
+                variant="primary"
                 onClick={() => {
                   if (!attachPolicyId || !attachGroupId) return;
                   void handle(() =>
@@ -328,10 +464,8 @@ export default function IamPage() {
                 }}
               >
                 Anexar
-              </button>
-              <button
-                type="button"
-                className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
+              </Button>
+              <Button
                 onClick={() => {
                   if (!attachPolicyId || !attachGroupId) return;
                   void handle(() =>
@@ -340,40 +474,43 @@ export default function IamPage() {
                 }}
               >
                 Remover
-              </button>
+              </Button>
             </div>
-          </div>
+          </Card>
 
-          <div className="space-y-2 rounded-md border border-slate-200 p-3">
-            <h3 className="font-medium">A um usuário</h3>
-            <input
-              value={attachPolicyId}
-              onChange={(e) => setAttachPolicyId(e.target.value)}
-              placeholder="policy id (mesmo campo acima)"
-              className="w-full rounded-md border border-slate-300 px-3 py-1.5"
-            />
-            <input
-              value={attachUserId}
-              onChange={(e) => setAttachUserId(e.target.value)}
-              placeholder="user id"
-              className="w-full rounded-md border border-slate-300 px-3 py-1.5"
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
+          <Card>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", margin: "0 0 14px" }}>
+              A um usuário
+            </h3>
+            <Field label="Policy ID" htmlFor="attach-user-policy-id">
+              <Input
+                id="attach-user-policy-id"
+                value={attachPolicyId}
+                onChange={(e) => setAttachPolicyId(e.target.value)}
+                placeholder="policy id (mesmo campo acima)"
+                style={{ fontFamily: "var(--mono)" }}
+              />
+            </Field>
+            <Field label="User ID" htmlFor="attach-user-id">
+              <Input
+                id="attach-user-id"
+                value={attachUserId}
+                onChange={(e) => setAttachUserId(e.target.value)}
+                placeholder="user id"
+                style={{ fontFamily: "var(--mono)" }}
+              />
+            </Field>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button
+                variant="primary"
                 onClick={() => {
                   if (!attachPolicyId || !attachUserId) return;
-                  void handle(() =>
-                    attachPolicyToUser(attachPolicyId.trim(), attachUserId.trim()),
-                  );
+                  void handle(() => attachPolicyToUser(attachPolicyId.trim(), attachUserId.trim()));
                 }}
               >
                 Anexar
-              </button>
-              <button
-                type="button"
-                className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
+              </Button>
+              <Button
                 onClick={() => {
                   if (!attachPolicyId || !attachUserId) return;
                   void handle(() =>
@@ -382,43 +519,77 @@ export default function IamPage() {
                 }}
               >
                 Remover
-              </button>
+              </Button>
             </div>
-          </div>
+          </Card>
         </div>
-      </section>
+      </Section>
 
       {/* ===== Audit ===== */}
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Auditoria</h2>
+      <Section title="Auditoria">
         {audit.length === 0 ? (
-          <p className="text-sm text-slate-500">Sem eventos.</p>
+          <EmptyState>Sem eventos.</EmptyState>
         ) : (
-          <ul className="divide-y divide-slate-200 text-sm">
-            {audit.map((e) => (
-              <li key={e.id} className="py-2">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="font-mono text-xs text-slate-500">
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              overflow: "hidden",
+              background: "var(--surface)",
+            }}
+          >
+            {audit.map((e, i) => (
+              <div
+                key={e.id}
+                style={{
+                  padding: "12px 16px",
+                  borderTop: i === 0 ? "none" : "1px solid var(--border)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--muted)" }}>
                     {new Date(e.createdAt).toLocaleString()}
                   </span>
-                  <span className="text-xs text-slate-400">{e.actorUserId}</span>
+                  <span
+                    style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: "var(--muted)" }}
+                  >
+                    {e.actorUserId}
+                  </span>
                 </div>
-                <div className="text-sm">
-                  <span className="font-medium">{e.action}</span>{" "}
-                  <span className="text-slate-500">
+                <div style={{ fontSize: 13.5, marginTop: 3 }}>
+                  <span style={{ fontWeight: 500, color: "var(--ink)" }}>{e.action}</span>{" "}
+                  <span style={{ color: "var(--muted)" }}>
                     {e.targetType} {e.targetId}
                   </span>
                 </div>
                 {Object.keys(e.payload ?? {}).length > 0 && (
-                  <pre className="mt-1 overflow-x-auto rounded-md bg-slate-50 p-2 text-xs">
+                  <pre
+                    style={{
+                      marginTop: 8,
+                      overflowX: "auto",
+                      borderRadius: "var(--radius-sm)",
+                      background: "var(--chip)",
+                      padding: 10,
+                      fontFamily: "var(--mono)",
+                      fontSize: 12,
+                      color: "var(--ink)",
+                    }}
+                  >
                     {JSON.stringify(e.payload, null, 2)}
                   </pre>
                 )}
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
-      </section>
+      </Section>
     </div>
   );
 }
