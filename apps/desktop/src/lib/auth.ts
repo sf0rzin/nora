@@ -78,42 +78,56 @@ export async function logout(): Promise<void> {
   apiClient.setCachedUser(null);
 }
 
-export async function refreshAccessToken(): Promise<string | null> {
-  const refresh = await secrets.get("refresh-token");
-  if (!refresh) {
-    console.warn("[auth] no refresh token available");
-    return null;
-  }
+// Mutex único pro refresh — tanto o loop proativo (checkAndRefresh a cada 5min)
+// quanto o caminho reativo (api-client em 401) chamam refreshAccessToken().
+// Sem este mutex, ambos podem disparar /auth/refresh em paralelo com o mesmo
+// refresh token plain → backend detecta reuse e revoga a sessão.
+let inFlightRefresh: Promise<string | null> | null = null;
 
-  try {
-    const response = await apiClient.request<RefreshResponse>("/auth/refresh", {
-      method: "POST",
-      auth: false,
-      headers: {
-        Authorization: `Bearer ${refresh}`,
-      },
-    });
-
-    // Defesa: se backend responder no formato antigo (sem tokens no body), aborta
-    // antes de gravar `undefined` no keyring — daria 401 em tudo na sequência.
-    if (!response?.accessToken) {
-      console.error(
-        "[auth] refresh response missing accessToken — backend likely on older RefreshResponse shape",
-      );
+export function refreshAccessToken(): Promise<string | null> {
+  if (inFlightRefresh) return inFlightRefresh;
+  inFlightRefresh = (async (): Promise<string | null> => {
+    const refresh = await secrets.get("refresh-token");
+    if (!refresh) {
+      console.warn("[auth] no refresh token available");
       return null;
     }
 
-    await secrets.set("access-token", response.accessToken);
-    if (response.refreshToken) {
-      await secrets.set("refresh-token", response.refreshToken);
-    }
+    try {
+      const response = await apiClient.request<RefreshResponse>("/auth/refresh", {
+        method: "POST",
+        auth: false,
+        headers: {
+          Authorization: `Bearer ${refresh}`,
+        },
+      });
 
-    console.log("[auth] token refreshed successfully");
-    return response.accessToken;
-  } catch (err) {
-    console.error("[auth] failed to refresh token:", err);
-    return null;
-  }
+      // Defesa: se backend responder no formato antigo (sem tokens no body),
+      // aborta antes de gravar `undefined` no keyring.
+      if (!response?.accessToken) {
+        console.error(
+          "[auth] refresh response missing accessToken — backend likely on older RefreshResponse shape",
+        );
+        return null;
+      }
+
+      await secrets.set("access-token", response.accessToken);
+      if (response.refreshToken) {
+        await secrets.set("refresh-token", response.refreshToken);
+      }
+
+      console.log("[auth] token refreshed successfully");
+      return response.accessToken;
+    } catch (err) {
+      console.error("[auth] failed to refresh token:", err);
+      return null;
+    }
+  })();
+  // Limpa o slot SEMPRE — sucesso, falha ou exceção — pra evitar trava perpétua.
+  inFlightRefresh.finally(() => {
+    inFlightRefresh = null;
+  });
+  return inFlightRefresh;
 }
 
 export function startTokenRefreshLoop(): void {
