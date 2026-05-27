@@ -27,6 +27,8 @@ export interface SessionUser {
   tenantId: string;
   email: string;
   displayName: string;
+  /** Display-only hint; a fonte autoritativa é GET /auth/me (backend re-checa sempre). */
+  isRoot?: boolean;
 }
 
 let refreshTimerId: ReturnType<typeof setTimeout> | null = null;

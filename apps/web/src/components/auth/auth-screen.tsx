@@ -239,7 +239,13 @@ function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; n
     try {
       const r = await login(email, pw);
       setSession(
-        { userId: r.userId, tenantId: r.tenantId, email: r.email, displayName: r.displayName },
+        {
+          userId: r.userId,
+          tenantId: r.tenantId,
+          email: r.email,
+          displayName: r.displayName,
+          isRoot: r.isRoot,
+        },
         r.expiresInSeconds,
       );
       router.replace(next);

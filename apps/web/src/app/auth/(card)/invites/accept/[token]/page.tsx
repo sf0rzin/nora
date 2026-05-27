@@ -93,6 +93,7 @@ export default function AcceptInvitePage() {
           tenantId: resp.tenantId,
           email: resp.email,
           displayName: resp.displayName,
+          isRoot: resp.isRoot,
         },
         resp.expiresInSeconds,
       );

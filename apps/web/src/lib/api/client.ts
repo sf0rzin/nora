@@ -250,6 +250,7 @@ export interface LoginResponse {
   tenantId: string;
   email: string;
   displayName: string;
+  isRoot: boolean;
 }
 
 export async function login(email: string, password: string) {
@@ -290,6 +291,24 @@ export async function confirmPasswordReset(token: string, newPassword: string) {
     method: 'POST',
     body: JSON.stringify({ token, newPassword }),
   });
+}
+
+// ---------- Current user (GET /auth/me) ----------
+
+export interface MeResponse {
+  userId: string;
+  tenantId: string;
+  email: string;
+  displayName: string;
+  isRoot: boolean;
+  emailVerified: boolean;
+  tenantName: string;
+  plan: string;
+}
+
+/** Identidade autoritativa do usuario logado. Requer sessao (cookies httpOnly). */
+export async function getMe(): Promise<MeResponse> {
+  return request<MeResponse>(`/auth/me`);
 }
 
 // ---------- Tenant Context ----------
@@ -513,6 +532,20 @@ export async function detachPolicyFromUser(policyId: string, userId: string): Pr
 
 export async function listAuditEvents(limit = 50): Promise<AuditEventDto[]> {
   return request<AuditEventDto[]>(`/iam/audit?limit=${limit}`);
+}
+
+export interface TenantUserDto {
+  id: string;
+  email: string;
+  displayName: string;
+  isRoot: boolean;
+  status: string;
+  createdAt: string;
+}
+
+/** Lista usuarios do tenant (GET /iam/users). Exige iam:user:read; Root bypassa. */
+export async function listIamUsers(): Promise<TenantUserDto[]> {
+  return request<TenantUserDto[]>(`/iam/users`);
 }
 
 // ---------- IAM Invitations (US06, ADR 0011) ----------

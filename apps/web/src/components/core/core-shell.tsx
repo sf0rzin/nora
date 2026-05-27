@@ -25,7 +25,7 @@ import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
 
 import { NoraLogo } from "@/components/brand/nora-logo";
-import { listMeetings } from "@/lib/api/client";
+import { getMe, listMeetings } from "@/lib/api/client";
 import { clearSession, getCurrentUser, type SessionUser } from "@/lib/auth";
 import type { MeetingListItem } from "@/lib/api/types";
 
@@ -165,14 +165,16 @@ interface NavItem {
   label: string;
   href: Route;
   plus?: boolean;
+  /** Itens de administração do tenant — só aparecem pro Root. */
+  adminOnly?: boolean;
 }
 
 const NAV: NavItem[] = [
   { label: "Início", href: "/dashboard" as Route },
   { label: "Nova reunião", href: "/meetings/upload" as Route, plus: true },
   { label: "Action items", href: "/tasks" as Route },
-  { label: "Contexto", href: "/settings/context" as Route },
-  { label: "IAM", href: "/settings/iam" as Route },
+  { label: "Contexto", href: "/settings/context" as Route, adminOnly: true },
+  { label: "IAM", href: "/settings/iam" as Route, adminOnly: true },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -195,12 +197,31 @@ function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [isRoot, setIsRoot] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   // getCurrentUser lê cookie via document.cookie → client-only. Setar após
   // mount evita mismatch de hidratação (SSR não tem o cookie do browser).
+  // Em seguida, getMe() traz a identidade autoritativa (isRoot vem do backend,
+  // não do cookie de display que o usuário poderia forjar).
   useEffect(() => {
-    setUser(getCurrentUser());
+    const cached = getCurrentUser();
+    setUser(cached);
+    setIsRoot(cached?.isRoot ?? false);
+    getMe()
+      .then((m) => {
+        setIsRoot(m.isRoot);
+        setUser({
+          userId: m.userId,
+          tenantId: m.tenantId,
+          email: m.email,
+          displayName: m.displayName,
+          isRoot: m.isRoot,
+        });
+      })
+      .catch(() => {
+        /* mantém o cache do cookie se /auth/me falhar */
+      });
   }, []);
 
   async function handleSignOut() {
@@ -241,19 +262,6 @@ function Sidebar({
           title="Início"
         >
           <NoraLogo size={20} animate={false} />
-          <span
-            style={{
-              fontSize: 9.5,
-              padding: "2px 6px",
-              border: "1px solid var(--border)",
-              borderRadius: 4,
-              color: "var(--muted)",
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            Core
-          </span>
         </Link>
         <button
           data-history-toggle
@@ -284,7 +292,7 @@ function Sidebar({
       </div>
 
       <nav style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 4 }}>
-        {NAV.map((item) => (
+        {NAV.filter((item) => !item.adminOnly || isRoot).map((item) => (
           <SideNav key={item.href} item={item} active={isActive(pathname, item.href)} />
         ))}
       </nav>
@@ -328,29 +336,33 @@ function Sidebar({
             {user?.email ?? ""}
           </div>
         </div>
-        <Link
-          href={"/settings/context" as Route}
-          style={{
-            ...iconBtn,
-            color: isActive(pathname, "/settings/context") ? "var(--accent-ink)" : "var(--muted)",
-          }}
-          aria-label="Configurações"
-          title="Configurações"
-        >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        {isRoot && (
+          <Link
+            href={"/settings/context" as Route}
+            style={{
+              ...iconBtn,
+              color: isActive(pathname, "/settings/context")
+                ? "var(--accent-ink)"
+                : "var(--muted)",
+            }}
+            aria-label="Configurações"
+            title="Configurações"
           >
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </Link>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </Link>
+        )}
         <button
           onClick={handleSignOut}
           disabled={signingOut}
