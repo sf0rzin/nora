@@ -890,18 +890,46 @@ function CommandPalette({
   const router = useRouter();
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
+  const [serverResults, setServerResults] = useState<MeetingListItem[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setQ("");
       setIdx(0);
+      setServerResults(null);
       const t = setTimeout(() => inputRef.current?.focus(), 30);
       return () => clearTimeout(t);
     }
   }, [open]);
 
+  // Busca server-side (US18): cobre TODAS as reuniões do tenant, não só as
+  // carregadas no cache. Debounce 250ms; <2 chars cai no filtro local do cache.
+  useEffect(() => {
+    if (!open) return;
+    const needle = q.trim();
+    if (needle.length < 2) {
+      setServerResults(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      listMeetings({ search: needle, size: 20 })
+        .then((res) => {
+          if (!cancelled) setServerResults(res.items);
+        })
+        .catch(() => {
+          /* mantém o filtro local do cache se a busca falhar */
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [q, open]);
+
   const items = useMemo<PaletteAction[]>(() => {
+    const needle = q.trim().toLowerCase();
     const actions: PaletteAction[] = [
       {
         kind: "action",
@@ -923,7 +951,7 @@ function CommandPalette({
         },
       },
     ];
-    const meetingItems: PaletteAction[] = (meetings ?? []).map((m) => ({
+    const toItem = (m: MeetingListItem): PaletteAction => ({
       kind: "meeting",
       id: m.id,
       label: m.title,
@@ -932,12 +960,24 @@ function CommandPalette({
         router.push(`/meetings/${m.id}` as Route);
         onClose();
       },
-    }));
-    const all = [...actions, ...meetingItems];
-    if (!q.trim()) return all;
-    const needle = q.toLowerCase();
-    return all.filter((it) => (it.label + " " + (it.sub ?? "")).toLowerCase().includes(needle));
-  }, [q, meetings, router, onClose]);
+    });
+
+    // >=2 chars: resultados do servidor (todas as reuniões). 1 char: filtro local.
+    // vazio: recentes em cache.
+    let meetingSource: MeetingListItem[];
+    if (needle.length >= 2) {
+      meetingSource = serverResults ?? [];
+    } else if (needle.length === 1) {
+      meetingSource = (meetings ?? []).filter((m) => m.title.toLowerCase().includes(needle));
+    } else {
+      meetingSource = meetings ?? [];
+    }
+
+    const matchedActions = needle
+      ? actions.filter((a) => a.label.toLowerCase().includes(needle))
+      : actions;
+    return [...matchedActions, ...meetingSource.map(toItem)];
+  }, [q, meetings, serverResults, router, onClose]);
 
   useEffect(() => {
     if (!open) return;
