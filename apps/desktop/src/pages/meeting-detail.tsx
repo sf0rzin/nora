@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { getMeeting } from "@/lib/meetings";
+import { getMeeting, reprocessMeeting } from "@/lib/meetings";
 import type {
   MeetingDetail,
   ApiError,
@@ -193,22 +193,67 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
   const [meeting, setMeeting] = useState<MeetingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reprocessing, setReprocessing] = useState(false);
+  const [reprocessError, setReprocessError] = useState("");
+  const aliveRef = useRef(true);
 
   useEffect(() => {
-    let alive = true;
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
+  const refetch = useCallback(async () => {
+    try {
+      const d = await getMeeting(meetingId);
+      if (aliveRef.current) {
+        setMeeting(d);
+        setError("");
+      }
+    } catch (err: unknown) {
+      const apiErr = err as ApiError;
+      if (aliveRef.current) setError(apiErr?.message || "Erro ao carregar reunião");
+    }
+  }, [meetingId]);
+
+  useEffect(() => {
     setLoading(true);
     setError("");
-    getMeeting(meetingId)
-      .then((d) => alive && setMeeting(d))
-      .catch((err: unknown) => {
-        const apiErr = err as ApiError;
-        if (alive) setError(apiErr?.message || "Erro ao carregar reunião");
-      })
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
-  }, [meetingId]);
+    refetch().finally(() => {
+      if (aliveRef.current) setLoading(false);
+    });
+  }, [refetch]);
+
+  // Enquanto está PENDING/PROCESSING, faz polling pra refletir o resultado
+  // (sucesso OU falha) sem o usuário precisar sair e voltar. Para sozinho
+  // quando o status sai desses estados.
+  useEffect(() => {
+    const status = meeting?.processingStatus;
+    if (status !== "PENDING" && status !== "PROCESSING") return;
+    const id = setInterval(() => {
+      void refetch();
+    }, 4000);
+    return () => clearInterval(id);
+  }, [meeting?.processingStatus, refetch]);
+
+  const handleReprocess = useCallback(async () => {
+    if (reprocessing) return;
+    setReprocessing(true);
+    setReprocessError("");
+    try {
+      await reprocessMeeting(meetingId);
+      // Otimista: volta pra PENDING e o polling acima assume daqui.
+      setMeeting((m) => (m ? { ...m, processingStatus: "PENDING" } : m));
+      await refetch();
+    } catch (err: unknown) {
+      const apiErr = err as ApiError;
+      if (aliveRef.current)
+        setReprocessError(apiErr?.message || "Não foi possível reprocessar agora.");
+    } finally {
+      if (aliveRef.current) setReprocessing(false);
+    }
+  }, [meetingId, reprocessing, refetch]);
 
   if (loading) {
     return (
@@ -388,17 +433,73 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
 
         {isFailed && (
           <div
+            className="flex items-start justify-between gap-4"
             style={{
               padding: "16px 18px",
               background: "rgba(201,119,102,0.10)",
               border: "1px solid rgba(201,119,102,0.30)",
               borderRadius: 12,
-              fontSize: 13,
-              color: "var(--danger-ink)",
               marginBottom: 36,
             }}
           >
-            Falha no processamento. Você pode tentar reenviar a transcrição.
+            <div className="flex-1 min-w-0">
+              <div
+                style={{
+                  fontSize: 13.5,
+                  fontWeight: 500,
+                  color: "var(--danger-ink)",
+                  marginBottom: 3,
+                  letterSpacing: "-0.005em",
+                }}
+              >
+                Falha no processamento
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--danger-ink)", opacity: 0.85, lineHeight: 1.5 }}>
+                A NORA não conseguiu analisar essa transcrição. Ela já está salva —
+                você pode reprocessar agora.
+                {reprocessError && (
+                  <span style={{ display: "block", marginTop: 4, opacity: 0.95 }}>
+                    {reprocessError}
+                  </span>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={handleReprocess}
+              disabled={reprocessing}
+              className="inline-flex items-center gap-1.5 shrink-0"
+              style={{
+                padding: "7px 13px",
+                background: "var(--ink)",
+                color: "var(--canvas)",
+                border: "none",
+                borderRadius: 8,
+                fontSize: 12.5,
+                fontWeight: 500,
+                letterSpacing: "-0.005em",
+                cursor: reprocessing ? "default" : "pointer",
+                opacity: reprocessing ? 0.6 : 1,
+                fontFamily: "var(--sans)",
+              }}
+            >
+              {reprocessing ? (
+                <>
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      border: "1.5px solid rgba(253,253,252,0.4)",
+                      borderTopColor: "var(--canvas)",
+                      borderRadius: "50%",
+                      animation: "nora-spin 0.9s linear infinite",
+                    }}
+                  />
+                  Reprocessando…
+                </>
+              ) : (
+                "Reprocessar"
+              )}
+            </button>
           </div>
         )}
 

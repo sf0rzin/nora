@@ -24,6 +24,19 @@ export async function getMeeting(meetingId: string): Promise<MeetingDetail> {
   return apiClient.request<MeetingDetail>(`/meetings/${meetingId}`);
 }
 
+/**
+ * Reenfileira a análise NLP de uma reunião que falhou (processingStatus FAILED).
+ * Backend valida o estado, volta pra PENDING e re-dispara o pipeline async.
+ */
+export async function reprocessMeeting(
+  meetingId: string,
+): Promise<{ processingStatus: string }> {
+  return apiClient.request<{ processingStatus: string }>(
+    `/meetings/${meetingId}/reprocess`,
+    { method: "POST" },
+  );
+}
+
 export interface UploadTranscriptRequest {
   title: string;
   startedAt: string;
