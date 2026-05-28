@@ -3,6 +3,7 @@ import { RecordingProvider } from "@/hooks/use-recording-context";
 import { LiveHighlightsProvider } from "@/hooks/use-live-highlights";
 import { ActiveRecordingProvider } from "@/hooks/use-active-recording";
 import { Sidebar } from "@/components/sidebar";
+import { Titlebar } from "@/components/titlebar";
 import { NewMeetingModal } from "@/components/new-meeting-modal";
 import { LoginPage } from "@/pages/login";
 import { MeetingsPage } from "@/pages/meetings";
@@ -54,8 +55,17 @@ function Router() {
     return () => window.removeEventListener("keydown", onKey);
   }, [authenticated]);
 
+  const renderPage = () => {
+    if (route === "#/chat") return <ChatPage />;
+    if (route === "#/settings") return <SettingsPage />;
+    const detailMatch = route?.match(/^#\/meetings\/([\w-]+)$/);
+    if (detailMatch) return <MeetingDetailPage meetingId={detailMatch[1]} />;
+    return <MeetingsPage />;
+  };
+
+  let content: React.ReactNode;
   if (loading) {
-    return (
+    content = (
       <div className="flex flex-col items-center justify-center h-full gap-3.5">
         <span className="inline-flex items-end gap-[3px]" style={{ height: 28 }}>
           {[0.35, 0.65, 1, 0.6, 0.4].map((h, i) => (
@@ -77,32 +87,32 @@ function Router() {
         </small>
       </div>
     );
+  } else if (!authenticated) {
+    content = <LoginPage />;
+  } else {
+    content = (
+      <RecordingProvider>
+        <LiveHighlightsProvider>
+          <ActiveRecordingProvider>
+            <div className="flex h-full">
+              <Sidebar />
+              {renderPage()}
+            </div>
+            <NewMeetingModal open={modalOpen} onClose={() => setModalOpen(false)} />
+          </ActiveRecordingProvider>
+        </LiveHighlightsProvider>
+      </RecordingProvider>
+    );
   }
 
-  if (!authenticated) {
-    return <LoginPage />;
-  }
-
-  const renderPage = () => {
-    if (route === "#/chat") return <ChatPage />;
-    if (route === "#/settings") return <SettingsPage />;
-    const detailMatch = route?.match(/^#\/meetings\/([\w-]+)$/);
-    if (detailMatch) return <MeetingDetailPage meetingId={detailMatch[1]} />;
-    return <MeetingsPage />;
-  };
-
+  // Barra de título custom (janela sem decorações nativas) acima de TODA tela
+  // da janela principal — loading, login e app — já que sem ela não há como
+  // mover/fechar a janela.
   return (
-    <RecordingProvider>
-      <LiveHighlightsProvider>
-        <ActiveRecordingProvider>
-          <div className="flex h-full">
-            <Sidebar />
-            {renderPage()}
-          </div>
-          <NewMeetingModal open={modalOpen} onClose={() => setModalOpen(false)} />
-        </ActiveRecordingProvider>
-      </LiveHighlightsProvider>
-    </RecordingProvider>
+    <div className="flex flex-col h-full">
+      <Titlebar />
+      <div className="flex-1 min-h-0">{content}</div>
+    </div>
   );
 }
 
