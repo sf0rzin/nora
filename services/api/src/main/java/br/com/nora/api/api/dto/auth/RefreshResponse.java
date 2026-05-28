@@ -10,7 +10,4 @@ package br.com.nora.api.api.dto.auth;
  * cookies pode simplesmente ignorar os campos de token.
  */
 public record RefreshResponse(
-        String accessToken,
-        String refreshToken,
-        String tokenType,
-        long expiresInSeconds) {}
+        String accessToken, String refreshToken, String tokenType, long expiresInSeconds) {}
