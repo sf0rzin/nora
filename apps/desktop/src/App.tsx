@@ -119,7 +119,7 @@ function Router() {
   // mover/fechar a janela.
   return (
     <div className="flex flex-col h-full">
-      <Titlebar />
+      <Titlebar maximized={maximized} />
       <div className="flex-1 min-h-0">{content}</div>
       {/* Pegas de resize (janela sem borda nativa). Some quando maximizado. */}
       {!maximized && <ResizeHandles />}

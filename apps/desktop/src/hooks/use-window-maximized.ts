@@ -5,13 +5,15 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
  * Acompanha se a janela atual está maximizada.
  *
  * Usado pela Titlebar (ícone maximizar/restaurar), pelo App (achatar os cantos
- * arredondados quando maximizado) e pelos resize handles (esconder ao maximizar).
+ * arredondados quando maximizado) e pra esconder os resize handles.
  *
- * Detecção robusta: alguns WMs (KWin/X11) atualizam o estado de maximizado
- * DEPOIS de emitir o evento de resize/move, então um recheck único no resize
- * via vez não bastava — ao restaurar, a janela continuava "maximizada" e os
- * cantos ficavam retos. Aqui re-consultamos isMaximized() no resize, no move,
- * na mudança de foco E com um pequeno atraso, pra pegar o estado já assentado.
+ * Por que polling em vez de só eventos: em alguns WMs (KWin/X11) o flag de
+ * maximizado é atualizado DEPOIS do evento de resize, e com atraso variável —
+ * então consultar isMaximized() no onResized às vezes lia o estado velho e os
+ * cantos ficavam retos depois de restaurar ("às vezes volta, às vezes não").
+ * Um poll leve (isMaximized é uma chamada barata; setState só re-renderiza
+ * quando o booleano muda de fato) converge SEMPRE, independente do timing do WM.
+ * Os listeners de evento ficam só pra resposta imediata no caso comum.
  */
 export function useWindowMaximized(): boolean {
   const [maximized, setMaximized] = useState(false);
@@ -20,7 +22,6 @@ export function useWindowMaximized(): boolean {
     const win = getCurrentWebviewWindow();
     let cancelled = false;
     const unlisteners: Array<() => void> = [];
-    const timers: Array<ReturnType<typeof setTimeout>> = [];
 
     const sync = () => {
       win
@@ -31,14 +32,11 @@ export function useWindowMaximized(): boolean {
         .catch(() => {});
     };
 
-    // Recheck imediato + atrasado: o flag de maximizado pode só estabilizar
-    // depois do evento de geometria em alguns WMs.
-    const syncSoon = () => {
-      sync();
-      timers.push(setTimeout(sync, 120));
-    };
-
     sync();
+
+    // Backstop determinístico: reconcilia o estado a cada 200ms. Sem isso o
+    // restore às vezes não re-arredondava por causa do atraso do flag no WM.
+    const pollId = setInterval(sync, 200);
 
     const attach = (p: Promise<() => void>) => {
       p.then((fn) => {
@@ -47,13 +45,14 @@ export function useWindowMaximized(): boolean {
       }).catch(() => {});
     };
 
-    attach(win.onResized(syncSoon));
-    attach(win.onMoved(syncSoon));
+    // Resposta imediata no caso comum (quando o flag já está fresco).
+    attach(win.onResized(sync));
+    attach(win.onMoved(sync));
     attach(win.onFocusChanged(sync));
 
     return () => {
       cancelled = true;
-      timers.forEach((t) => clearTimeout(t));
+      clearInterval(pollId);
       unlisteners.forEach((fn) => fn());
     };
   }, []);
