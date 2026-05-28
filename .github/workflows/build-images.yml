@@ -172,8 +172,10 @@ jobs:
           provenance: false
           # NEXT_PUBLIC_* sao baked in build-time. Setar via NEXT_PUBLIC_API_BASE_URL aqui
           # (override por workflow vars/secrets se for build pra ambiente diferente).
+          # Fallback aponta pro Azure Container Apps do dev — quando subir custom domain,
+          # setar `vars.NEXT_PUBLIC_API_BASE_URL` no repo/environment pra sobrescrever.
           build-args: |
-            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'https://api.nora.app' }}
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'https://nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io' }}
             NEXT_PUBLIC_USE_MOCKS=false
 
   summary:
