@@ -173,7 +173,7 @@ export default async function DashboardPage({
         </Link>
       </header>
 
-      <DashboardFilters defaults={filters} />
+      {(data.items.length > 0 || hasFilters) && <DashboardFilters defaults={filters} />}
 
       {errorMessage && (
         <div style={{ marginTop: 16, padding: "10px 14px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--chip)", fontSize: 13, color: "var(--muted)" }}>
@@ -218,6 +218,27 @@ export default async function DashboardPage({
           ))}
         </div>
       )}
+
+      <div style={{ marginTop: 48, paddingTop: 18, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 16, fontSize: 11.5, color: "var(--muted)" }}>
+        <span>Atalhos:</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Kbd>N</Kbd> nova reunião
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Kbd>/</Kbd> buscar
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Kbd>⌘K</Kbd> comandos
+        </span>
+      </div>
     </div>
+  );
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd style={{ fontFamily: "var(--sans)", fontSize: 10.5, padding: "1px 6px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--canvas)", color: "var(--muted)", letterSpacing: "0.02em" }}>
+      {children}
+    </kbd>
   );
 }
