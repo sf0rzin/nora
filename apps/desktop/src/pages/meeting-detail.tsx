@@ -204,7 +204,7 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
     };
   }, []);
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (opts?: { silent?: boolean }) => {
     try {
       const d = await getMeeting(meetingId);
       if (aliveRef.current) {
@@ -212,8 +212,14 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
         setError("");
       }
     } catch (err: unknown) {
+      // Falha de polling em segundo plano NÃO derruba a tela já carregada.
+      // Só o load inicial (silent=false) seta o erro de página inteira — que é
+      // o que o gate `if (error || !meeting)` usa pra mostrar a tela de erro.
+      // Sem isso, um blip de rede / 401 durante o polling fazia a reunião
+      // sumir e voltar a cada 4s.
       const apiErr = err as ApiError;
-      if (aliveRef.current) setError(apiErr?.message || "Erro ao carregar reunião");
+      if (aliveRef.current && !opts?.silent)
+        setError(apiErr?.message || "Erro ao carregar reunião");
     }
   }, [meetingId]);
 
@@ -232,7 +238,7 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
     const status = meeting?.processingStatus;
     if (status !== "PENDING" && status !== "PROCESSING") return;
     const id = setInterval(() => {
-      void refetch();
+      void refetch({ silent: true });
     }, 4000);
     return () => clearInterval(id);
   }, [meeting?.processingStatus, refetch]);
@@ -245,7 +251,9 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
       await reprocessMeeting(meetingId);
       // Otimista: volta pra PENDING e o polling acima assume daqui.
       setMeeting((m) => (m ? { ...m, processingStatus: "PENDING" } : m));
-      await refetch();
+      // silent: um blip nesse refetch não deve derrubar a tela — o estado já
+      // está otimisticamente em PENDING e o polling reconcilia.
+      await refetch({ silent: true });
     } catch (err: unknown) {
       const apiErr = err as ApiError;
       if (aliveRef.current)
