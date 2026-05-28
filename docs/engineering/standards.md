@@ -89,8 +89,8 @@ nora/
 | Backlog priorizado (MoSCoW + status real DONE/PARTIAL/MISSING) | `docs/product/backlog.md` |
 | Roadmap vivo (histórico sub-fases 1.0–1.10 + futuro 1.11+) | `docs/product/roadmap.md` |
 | Glossário NORA (termos canônicos: Productivity Score, Customer Confidence, IAM Policy, etc.) | `docs/product/glossary.md` |
-| Plano histórico (descontinuado — só referência) | `docs/product/plano-de-execucao-archive.md` |
 | Arquitetura técnica (DDD layers, fluxos end-to-end, stack rationale) | `docs/engineering/architecture.md` |
+| Pipeline de Data Science das transcrições TOTVS (EDA + TF-IDF + LLM) | `notebooks/totvs_transcricoes_eda.py` |
 | Padrões técnicos (este doc) | `docs/engineering/standards.md` |
 | Modelo de dados Postgres | `docs/engineering/data-model.md` |
 | Modelo de dados Oracle (entrega FIAP DB) | `docs/engineering/data-model-oracle.md` |

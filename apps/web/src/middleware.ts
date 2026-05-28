@@ -1,7 +1,15 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const PROTECTED_PREFIXES = ['/dashboard', '/meetings', '/settings', '/tasks'];
+const PROTECTED_PREFIXES = [
+  '/dashboard',
+  '/meetings',
+  '/settings',
+  '/tasks',
+  '/chat',
+  '/projetos',
+  '/integracoes',
+];
 const AUTH_PREFIXES = ['/auth'];
 
 /**
@@ -57,6 +65,9 @@ export const config = {
     '/meetings/:path*',
     '/settings/:path*',
     '/tasks/:path*',
+    '/chat/:path*',
+    '/projetos/:path*',
+    '/integracoes/:path*',
     '/auth/:path*',
   ],
 };
