@@ -6,6 +6,8 @@ export interface LiveHighlightItem {
   text: string;
   confidence: number;
   sourceQuote: string;
+  /** Quando o item foi detectado (carimbado ao entrar no merge). Ordena o feed. */
+  receivedAt?: number;
 }
 
 export interface LiveTaskItem {
@@ -13,6 +15,7 @@ export interface LiveTaskItem {
   assignee: string | null;
   priority: string;
   sourceQuote: string;
+  receivedAt?: number;
 }
 
 export interface LiveHighlights {
@@ -235,7 +238,7 @@ function mergeItems(existing: LiveHighlightItem[], incoming: LiveHighlightItem[]
     // a dedup subsequente (qualquer string include "" → tudo é "duplicado").
     if (!hasContent(item.text)) continue;
     if (!isDuplicate(item.text, result)) {
-      result.push(item);
+      result.push({ ...item, receivedAt: item.receivedAt ?? Date.now() });
     }
   }
   return result;
@@ -256,7 +259,7 @@ function mergeTasks(existing: LiveTaskItem[], incoming: LiveTaskItem[]): LiveTas
       const overlap = [...newTokens].filter((tok) => oldTokens.has(tok)).length / Math.min(newTokens.size, oldTokens.size);
       return overlap >= 0.7;
     });
-    if (!isDup) result.push(task);
+    if (!isDup) result.push({ ...task, receivedAt: task.receivedAt ?? Date.now() });
   }
   return result;
 }

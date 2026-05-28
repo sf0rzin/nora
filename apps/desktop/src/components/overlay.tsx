@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { useLiveTranscript, type LiveTranscriptLine } from "@/hooks/use-live-transcript";
-import { useLiveHighlights, type LiveHighlightItem, type LiveTaskItem } from "@/hooks/use-live-highlights";
+import { useLiveHighlights, type LiveHighlights } from "@/hooks/use-live-highlights";
 import { useTauriListener } from "@/hooks/use-tauri-listener";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { Avatar } from "@/components/brand/avatar";
@@ -286,146 +286,172 @@ function PartialBubble({ text, isMe }: { text: string; isMe: boolean }) {
   );
 }
 
-// ── Highlights column (right panel) ────────────────────────────────────
-const PRIORITY: Record<string, { bg: string; fg: string; dot: string }> = {
-  HIGH: { bg: "rgba(201,119,102,0.16)", fg: "#a04c3e", dot: "#a04c3e" },
-  MEDIUM: { bg: "rgba(212,160,76,0.16)", fg: "#a37528", dot: "#a37528" },
-  LOW: { bg: "var(--chip)", fg: "var(--muted)", dot: "var(--muted)" },
+// ── Highlights feed (right panel) ──────────────────────────────────────
+// Um único feed cronológico, baixo em cor. Sem seções rígidas, sem blocos
+// coloridos por categoria: cada detecção é uma linha com um glifo monocromático
+// e um eyebrow do tipo. O azul de acento fica reservado só pro item mais
+// recente (cue de "acabou de detectar"), que esmaece ao chegar o próximo.
+type FeedKind = "decision" | "nextStep" | "observation" | "task";
+
+const KIND_META: Record<FeedKind, { label: string; icon: JSX.Element }> = {
+  decision: {
+    label: "Decisão",
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+    ),
+  },
+  nextStep: {
+    label: "Próximo passo",
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="5" y1="12" x2="19" y2="12" />
+        <polyline points="12 5 19 12 12 19" />
+      </svg>
+    ),
+  },
+  observation: {
+    label: "Observação",
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="16" x2="12" y2="12" />
+        <line x1="12" y1="8" x2="12.01" y2="8" />
+      </svg>
+    ),
+  },
+  task: {
+    label: "Tarefa",
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="9 11 12 14 22 4" />
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+      </svg>
+    ),
+  },
 };
 
-function HighlightItem({
-  text,
-  accent,
-}: {
+interface FeedRow {
+  id: string;
+  kind: FeedKind;
   text: string;
-  accent: string;
-}) {
-  return (
-    <div
-      style={{
-        fontSize: 11.5,
-        color: "var(--ink)",
-        lineHeight: 1.4,
-        padding: "5px 8px 5px 9px",
-        borderLeft: `2px solid ${accent}`,
-        marginTop: 3,
-        letterSpacing: "-0.005em",
-      }}
-    >
-      {text}
-    </div>
-  );
+  receivedAt: number;
+  priority?: string;
+  assignee?: string | null;
 }
 
-function TaskItem({ task }: { task: LiveTaskItem }) {
-  const c = PRIORITY[task.priority] ?? PRIORITY.MEDIUM;
+function buildFeed(h: LiveHighlights): FeedRow[] {
+  const rows: FeedRow[] = [];
+  const norm = (s: string) => s.toLowerCase().trim().slice(0, 80);
+  for (const d of h.decisions)
+    rows.push({ id: `decision-${norm(d.text)}`, kind: "decision", text: d.text, receivedAt: d.receivedAt ?? 0 });
+  for (const d of h.nextSteps)
+    rows.push({ id: `nextStep-${norm(d.text)}`, kind: "nextStep", text: d.text, receivedAt: d.receivedAt ?? 0 });
+  for (const d of h.observations)
+    rows.push({ id: `observation-${norm(d.text)}`, kind: "observation", text: d.text, receivedAt: d.receivedAt ?? 0 });
+  for (const t of h.tasks)
+    rows.push({
+      id: `task-${norm(t.title)}`,
+      kind: "task",
+      text: t.title,
+      receivedAt: t.receivedAt ?? 0,
+      priority: t.priority,
+      assignee: t.assignee,
+    });
+  // Mais recente no topo. Sort estável mantém ordem de inserção em empates
+  // (itens da mesma rodada de análise compartilham ~o mesmo receivedAt).
+  return rows.sort((a, b) => b.receivedAt - a.receivedAt);
+}
+
+function DetectionRow({ row, fresh }: { row: FeedRow; fresh: boolean }) {
+  const meta = KIND_META[row.kind];
+  const isHighTask = row.kind === "task" && row.priority === "HIGH";
   return (
     <div
-      className="flex items-start gap-2"
-      style={{ marginTop: 4, padding: "5px 8px", fontSize: 11.5 }}
+      className="flex items-start gap-2.5"
+      style={{
+        padding: "8px 9px",
+        borderRadius: 9,
+        background: fresh ? "var(--accent-soft)" : "transparent",
+        animation: "revealUp 220ms cubic-bezier(.2,.8,.2,1)",
+        transition: "background 700ms ease",
+      }}
     >
       <span
-        className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap"
+        className="grid place-items-center shrink-0"
         style={{
-          padding: "1px 6px",
-          borderRadius: 999,
-          background: c.bg,
-          color: c.fg,
-          fontSize: 9.5,
-          fontWeight: 500,
-          letterSpacing: "0.04em",
+          width: 20,
+          height: 20,
+          borderRadius: 6,
+          background: fresh ? "var(--canvas)" : "var(--chip)",
+          color: fresh ? "var(--accent-ink)" : "var(--muted)",
           marginTop: 1,
+          transition: "color 700ms ease, background 700ms ease",
         }}
       >
-        <span style={{ width: 4, height: 4, borderRadius: "50%", background: c.dot }} />
-        {task.priority}
+        {meta.icon}
       </span>
-      <span style={{ color: "var(--ink)", lineHeight: 1.4 }}>{task.title}</span>
-    </div>
-  );
-}
-
-function HighlightSection({
-  title,
-  count,
-  accent,
-  empty,
-  children,
-}: {
-  title: string;
-  count: number;
-  accent: string;
-  empty?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <section
-      style={{
-        marginBottom: 10,
-      }}
-    >
-      <div
-        className="flex items-center justify-between"
-        style={{
-          padding: "0 4px",
-          marginBottom: 4,
-        }}
-      >
-        <span
-          className="inline-flex items-center gap-1.5"
-          style={{
-            fontSize: 9.5,
-            fontWeight: 500,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: accent,
-          }}
-        >
-          <span style={{ width: 5, height: 5, borderRadius: "50%", background: accent }} />
-          {title}
-        </span>
-        <span
-          style={{
-            fontSize: 10,
-            color: "var(--muted)",
-            fontVariantNumeric: "tabular-nums",
-            padding: "0 6px",
-            background: "var(--chip)",
-            borderRadius: 999,
-            fontWeight: 500,
-          }}
-        >
-          {count}
-        </span>
-      </div>
-      {empty ? (
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5" style={{ marginBottom: 2 }}>
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 500,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: fresh ? "var(--accent-ink)" : "var(--muted)",
+              transition: "color 700ms ease",
+            }}
+          >
+            {meta.label}
+          </span>
+          {row.kind === "task" && row.priority && (
+            <span
+              className="inline-flex items-center gap-1"
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.04em",
+                color: isHighTask ? "var(--danger-ink)" : "var(--muted)",
+              }}
+            >
+              <span
+                style={{
+                  width: 3,
+                  height: 3,
+                  borderRadius: "50%",
+                  background: isHighTask ? "var(--danger-ink)" : "var(--muted)",
+                }}
+              />
+              {row.priority}
+            </span>
+          )}
+        </div>
         <div
           style={{
-            fontSize: 11,
-            color: "var(--muted)",
-            fontStyle: "italic",
-            opacity: 0.7,
-            padding: "2px 8px 4px 9px",
-            borderLeft: `2px solid var(--border)`,
-            marginTop: 3,
+            fontSize: 12,
+            color: "var(--ink)",
+            lineHeight: 1.4,
+            letterSpacing: "-0.005em",
           }}
         >
-          Aguardando…
+          {row.text}
         </div>
-      ) : (
-        children
-      )}
-    </section>
+        {row.kind === "task" && row.assignee && (
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
+            {row.assignee}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
 function HighlightsColumn({ onCollapse }: { onCollapse: () => void }) {
   const { highlights, isAnalyzing, lastUpdatedAt, lastLatencyMs } = useLiveHighlights();
-  const total =
-    highlights.decisions.length +
-    highlights.nextSteps.length +
-    highlights.observations.length +
-    highlights.tasks.length;
+  const feed = useMemo(() => buildFeed(highlights), [highlights]);
+  const total = feed.length;
+  const newestAt = total > 0 ? feed[0].receivedAt : 0;
 
   return (
     <aside
@@ -515,47 +541,30 @@ function HighlightsColumn({ onCollapse }: { onCollapse: () => void }) {
           </button>
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto" style={{ padding: "10px 12px" }}>
-        <HighlightSection
-          title="Decisões"
-          count={highlights.decisions.length}
-          accent="var(--accent-ink)"
-          empty={highlights.decisions.length === 0}
-        >
-          {highlights.decisions.map((d: LiveHighlightItem, i: number) => (
-            <HighlightItem key={i} text={d.text} accent="var(--accent-ink)" />
-          ))}
-        </HighlightSection>
-        <HighlightSection
-          title="Próximos passos"
-          count={highlights.nextSteps.length}
-          accent="#3f8a5e"
-          empty={highlights.nextSteps.length === 0}
-        >
-          {highlights.nextSteps.map((d: LiveHighlightItem, i: number) => (
-            <HighlightItem key={i} text={d.text} accent="#3f8a5e" />
-          ))}
-        </HighlightSection>
-        <HighlightSection
-          title="Observações"
-          count={highlights.observations.length}
-          accent="var(--muted)"
-          empty={highlights.observations.length === 0}
-        >
-          {highlights.observations.map((d: LiveHighlightItem, i: number) => (
-            <HighlightItem key={i} text={d.text} accent="var(--muted)" />
-          ))}
-        </HighlightSection>
-        <HighlightSection
-          title="Tarefas"
-          count={highlights.tasks.length}
-          accent="#a37528"
-          empty={highlights.tasks.length === 0}
-        >
-          {highlights.tasks.map((t, i) => (
-            <TaskItem key={i} task={t} />
-          ))}
-        </HighlightSection>
+      <div className="flex-1 min-h-0 overflow-y-auto" style={{ padding: "6px 8px" }}>
+        {total === 0 ? (
+          <div
+            className="h-full flex flex-col items-center justify-center text-center"
+            style={{ gap: 10, padding: "0 18px" }}
+          >
+            <NoraBars size={18} active={isAnalyzing} animate={isAnalyzing} />
+            <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5 }}>
+              {isAnalyzing
+                ? "Analisando a conversa…"
+                : "Decisões, tarefas e observações aparecem aqui conforme a NORA detecta."}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-px">
+            {feed.map((row) => (
+              <DetectionRow
+                key={row.id}
+                row={row}
+                fresh={row.receivedAt > 0 && row.receivedAt === newestAt}
+              />
+            ))}
+          </div>
+        )}
       </div>
       <div
         className="flex items-center justify-between shrink-0"
