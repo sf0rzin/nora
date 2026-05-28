@@ -1,0 +1,48 @@
+/* NORA — design tokens (compartilhados com apps/web · rebrand DM Sans).
+ * Cópia enxuta dos tokens primários do bundle do Claude Design pra manter
+ * o console do operador com a mesma identidade visual do app Core. */
+
+:root {
+  /* Surface (light) */
+  --canvas: #fdfdfc;
+  --sidebar: #f7f7f5;
+  --chip: #f0f0ee;
+  --border: #e7e7e3;
+  --border-strong: #d8d8d2;
+
+  /* Foreground */
+  --ink: #15171a;
+  --muted: #6e7178;
+
+  /* Accent */
+  --accent: oklch(0.58 0.16 248);
+  --accent-ink: oklch(0.48 0.18 248);
+  --accent-soft: oklch(0.95 0.04 248);
+
+  /* Sinais */
+  --success: oklch(0.55 0.16 155);
+  --warn: oklch(0.65 0.16 70);
+  --danger: oklch(0.55 0.2 25);
+
+  /* Fonts */
+  --sans: var(--font-sans);
+  --display: var(--font-sans);
+  --mono: var(--font-mono);
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
