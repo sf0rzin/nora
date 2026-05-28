@@ -52,6 +52,7 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       worker: ${{ steps.filter.outputs.worker }}
       web: ${{ steps.filter.outputs.web }}
+      admin: ${{ steps.filter.outputs.admin }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3
@@ -65,6 +66,8 @@ jobs:
               - 'packages/nlp-baseline/**'
             web:
               - 'apps/web/**'
+            admin:
+              - 'apps/admin/**'
 
   api:
     needs: changes
@@ -178,8 +181,43 @@ jobs:
             NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'https://nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io' }}
             NEXT_PUBLIC_USE_MOCKS=false
 
+  admin:
+    needs: changes
+    if: needs.changes.outputs.admin == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v6
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-admin
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: apps/admin
+          file: apps/admin/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=admin
+          cache-to: type=gha,scope=admin,mode=max
+          provenance: false
+
   summary:
-    needs: [api, worker, web]
+    needs: [api, worker, web, admin]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
@@ -192,5 +230,6 @@ jobs:
           echo "| api | ${{ needs.api.result }} | ghcr.io/${{ env.IMAGE_PREFIX }}-api:sha-${GITHUB_SHA::7} |" >> $GITHUB_STEP_SUMMARY
           echo "| worker | ${{ needs.worker.result }} | ghcr.io/${{ env.IMAGE_PREFIX }}-worker:sha-${GITHUB_SHA::7} |" >> $GITHUB_STEP_SUMMARY
           echo "| web | ${{ needs.web.result }} | ghcr.io/${{ env.IMAGE_PREFIX }}-web:sha-${GITHUB_SHA::7} |" >> $GITHUB_STEP_SUMMARY
+          echo "| admin | ${{ needs.admin.result }} | ghcr.io/${{ env.IMAGE_PREFIX }}-admin:sha-${GITHUB_SHA::7} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Pull com: \`docker pull ghcr.io/${{ env.IMAGE_PREFIX }}-<api|worker|web>:latest\`" >> $GITHUB_STEP_SUMMARY
