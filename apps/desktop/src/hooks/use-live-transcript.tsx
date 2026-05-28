@@ -20,7 +20,12 @@ interface RecordingStatus {
 
 interface State {
   lines: LiveTranscriptLine[];
-  partial: string;
+  /**
+   * Texto parcial ("digitando") por track. Cada sidecar (mic / system) emite
+   * seu próprio parcial concorrentemente — guardar uma string só fazia um
+   * sobrescrever o outro e a bolha aparecer no lado errado. Keyed por track.
+   */
+  partials: Record<string, string>;
   isRecording: boolean;
   startedAt: number | null;
   micDevice: string;
@@ -36,7 +41,7 @@ interface State {
 export function useLiveTranscript() {
   const [state, setState] = useState<State>({
     lines: [],
-    partial: "",
+    partials: {},
     isRecording: false,
     startedAt: null,
     micDevice: "",
@@ -64,6 +69,7 @@ export function useLiveTranscript() {
         speakerId: string | null;
         track: string;
       };
+      const track = payload.track || "mic";
       if (payload.isFinal) {
         const line: LiveTranscriptLine = {
           id: crypto.randomUUID(),
@@ -73,14 +79,27 @@ export function useLiveTranscript() {
           track: payload.track,
           timestamp: Date.now(),
         };
+        setState((prev) => {
+          // Limpa só o parcial DESTE track — o outro track pode ainda estar
+          // falando e seu "digitando" deve continuar visível.
+          const { [track]: _drop, ...partials } = prev.partials;
+          void _drop;
+          return { ...prev, lines: [...prev.lines, line], partials };
+        });
+      } else {
         setState((prev) => ({
           ...prev,
-          lines: [...prev.lines, line],
-          partial: "",
+          partials: { ...prev.partials, [track]: payload.text },
         }));
-      } else {
-        setState((prev) => ({ ...prev, partial: payload.text }));
       }
+    }));
+
+    // Limpa a transcrição quando uma sessão é descartada/salva/reiniciada.
+    // clear_live_highlights (Rust) emite 'clear-highlights' em todo
+    // stop/cancel/start — sem isso, reabrir a overlay mostrava o chat antigo.
+    attach(listen("clear-highlights", () => {
+      wasRecordingRef.current = false;
+      setState((prev) => ({ ...prev, lines: [], partials: {} }));
     }));
 
     // Recording status
@@ -92,7 +111,7 @@ export function useLiveTranscript() {
           wasRecordingRef.current = true;
           return {
             lines: [],
-            partial: "",
+            partials: {},
             isRecording: true,
             startedAt: Date.now(),
             micDevice: s.micDevice || "",
@@ -100,10 +119,10 @@ export function useLiveTranscript() {
             sampleRate: s.sampleRate || 0,
           };
         }
-        // Stopped: keep lines, drop partial
+        // Stopped: drop partials (lines são limpas via 'clear-highlights')
         if (!s.isRecording && wasRecordingRef.current) {
           wasRecordingRef.current = false;
-          return { ...prev, isRecording: false, partial: "" };
+          return { ...prev, isRecording: false, partials: {} };
         }
         return {
           ...prev,
@@ -152,7 +171,7 @@ export function useLiveTranscript() {
 
   return {
     lines: state.lines,
-    partial: state.partial,
+    partials: state.partials,
     isRecording: state.isRecording,
     startedAt: state.startedAt,
     duration,

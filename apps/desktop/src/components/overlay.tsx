@@ -1025,7 +1025,7 @@ function ConfigDrawer({
 export function OverlayPage() {
   const {
     lines,
-    partial,
+    partials,
     isRecording,
     startedAt,
     duration,
@@ -1191,15 +1191,23 @@ export function OverlayPage() {
 
   const groups = useMemo(() => groupLines(lines, overrides), [lines, overrides]);
 
-  const lastTrack = lines.length > 0 ? lines[lines.length - 1].track : "system";
-  const partialIsMe = lastTrack === "mic";
+  // Um "digitando" por track (mic = eu/direita, system = convidado/esquerda).
+  // Ordena convidado antes de mim, então minha bolha fica por último (embaixo),
+  // como num chat. Cada parcial usa o SEU track — não o do último final.
+  const partialBubbles = useMemo(() => {
+    return Object.entries(partials)
+      .filter(([, text]) => text && text.trim().length > 0)
+      .sort(([a], [b]) => (a === "mic" ? 1 : 0) - (b === "mic" ? 1 : 0))
+      .map(([track, text]) => ({ track, text, isMe: track === "mic" }));
+  }, [partials]);
+  const partialKey = partialBubbles.map((p) => `${p.track}:${p.text.length}`).join("|");
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [groups.length, partial]);
+  }, [groups.length, partialKey]);
 
   const handleStop = async () => {
     if (stopping) return;
@@ -1229,7 +1237,7 @@ export function OverlayPage() {
     }
   };
 
-  const empty = groups.length === 0 && !partial;
+  const empty = groups.length === 0 && partialBubbles.length === 0;
 
   return (
     <div
@@ -1573,7 +1581,9 @@ export function OverlayPage() {
               {groups.map((g) => (
                 <ChatBubble key={g.id} group={g} startedAt={startedAt} />
               ))}
-              {partial && <PartialBubble text={partial} isMe={partialIsMe} />}
+              {partialBubbles.map((p) => (
+                <PartialBubble key={p.track} text={p.text} isMe={p.isMe} />
+              ))}
             </div>
           )}
         </div>
