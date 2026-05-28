@@ -576,6 +576,15 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'AUTH_COOKIE_SECURE'
         value: 'true'
       }
+      // Domain do cookie de auth. Web e api estao em subdominios irmaos do mesmo
+      // Container Apps env (ex.: salmonbeach-X.centralus.azurecontainerapps.io). Sem
+      // Domain explicito, o cookie fica scoped na api e o middleware do Next no
+      // dominio web nao enxerga -> redirect infinito. Setando pro registrable domain
+      // do env, web e api ficam "same-site" e compartilham o cookie.
+      {
+        name: 'AUTH_COOKIE_DOMAIN'
+        value: containerAppsEnv.outputs.defaultDomain
+      }
       // Bloqueia signup/reset retornar tokens crus em prod
       {
         name: 'EXPOSE_DEV_TOKENS'
