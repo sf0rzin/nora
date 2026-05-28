@@ -41,8 +41,9 @@ public class AuthConfig {
 
     @Bean
     public AuthCookies authCookies(
-            @Value("${nora.auth.cookie-secure:false}") boolean cookieSecure) {
-        return new AuthCookies(cookieSecure);
+            @Value("${nora.auth.cookie-secure:false}") boolean cookieSecure,
+            @Value("${nora.auth.cookie-domain:}") String cookieDomain) {
+        return new AuthCookies(cookieSecure, cookieDomain);
     }
 
     @Bean
