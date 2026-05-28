@@ -103,17 +103,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     setUser(getCurrentUser());
   }, []);
-
-  // Fecha o drawer ao trocar de rota (mobile).
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
 
   const isActive = useMemo(
     () => (item: NavItem) => {
@@ -249,26 +243,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div style={{ display: "flex", height: "100dvh", background: "var(--canvas)", color: "var(--ink)" }}>
-      {/* Sidebar desktop */}
       <div className="hidden md:flex">{sidebar}</div>
 
-      {/* Topbar mobile */}
-      <div className="md:hidden" style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 30, display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "var(--sidebar)", borderBottom: "1px solid var(--border)" }}>
-        <button type="button" onClick={() => setMobileOpen(true)} aria-label="Abrir menu" style={{ width: 32, height: 32, display: "grid", placeItems: "center", borderRadius: 7, border: "1px solid var(--border)", background: "var(--canvas)", color: "var(--ink)" }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
-        </button>
-        <NoraLogo size={18} animate={false} />
-      </div>
-
-      {/* Drawer mobile */}
-      {mobileOpen && (
-        <div className="md:hidden" style={{ position: "fixed", inset: 0, zIndex: 40 }}>
-          <div onClick={() => setMobileOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(20,22,26,0.32)", backdropFilter: "blur(2px)" }} />
-          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0 }}>{sidebar}</div>
-        </div>
-      )}
-
-      <main style={{ flex: 1, minWidth: 0, height: "100dvh", overflowY: "auto" }} className="pt-[52px] md:pt-0">
+      <main style={{ flex: 1, minWidth: 0, height: "100dvh", overflowY: "auto" }}>
         {children}
       </main>
     </div>
