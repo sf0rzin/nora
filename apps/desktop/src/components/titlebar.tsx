@@ -107,8 +107,12 @@ export function Titlebar() {
         </span>
       </div>
 
-      {/* Controles de janela */}
-      <div className="flex items-center gap-0.5" style={{ padding: "0 6px 0 4px" }}>
+      {/* Controles de janela. position+zIndex acima das pegas de resize (z40)
+          pra que o clique em fechar/maximizar no canto não vire redimensionar. */}
+      <div
+        className="flex items-center gap-0.5"
+        style={{ padding: "0 6px 0 4px", position: "relative", zIndex: 50 }}
+      >
         <ControlButton onClick={() => win.minimize().catch(() => {})} title="Minimizar">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <line x1="5" y1="12" x2="19" y2="12" />

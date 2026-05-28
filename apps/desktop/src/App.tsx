@@ -4,6 +4,7 @@ import { LiveHighlightsProvider } from "@/hooks/use-live-highlights";
 import { ActiveRecordingProvider } from "@/hooks/use-active-recording";
 import { Sidebar } from "@/components/sidebar";
 import { Titlebar } from "@/components/titlebar";
+import { ResizeHandles } from "@/components/resize-handles";
 import { useWindowMaximized } from "@/hooks/use-window-maximized";
 import { NewMeetingModal } from "@/components/new-meeting-modal";
 import { LoginPage } from "@/pages/login";
@@ -120,6 +121,8 @@ function Router() {
     <div className="flex flex-col h-full">
       <Titlebar />
       <div className="flex-1 min-h-0">{content}</div>
+      {/* Pegas de resize (janela sem borda nativa). Some quando maximizado. */}
+      {!maximized && <ResizeHandles />}
     </div>
   );
 }
