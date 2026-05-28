@@ -1,0 +1,14 @@
+@import "../styles/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: var(--sans), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
