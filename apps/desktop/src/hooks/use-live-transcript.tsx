@@ -97,8 +97,11 @@ export function useLiveTranscript() {
     // Limpa a transcrição quando uma sessão é descartada/salva/reiniciada.
     // clear_live_highlights (Rust) emite 'clear-highlights' em todo
     // stop/cancel/start — sem isso, reabrir a overlay mostrava o chat antigo.
+    // NÃO mexe em wasRecordingRef: no START o 'clear-highlights' chega DEPOIS
+    // do 'recording-status' true, então resetar o ref aqui quebraria a detecção
+    // de transição start/stop. As branches de recording-status são as donas
+    // desse flag; aqui só zeramos o buffer visível.
     attach(listen("clear-highlights", () => {
-      wasRecordingRef.current = false;
       setState((prev) => ({ ...prev, lines: [], partials: {} }));
     }));
 
