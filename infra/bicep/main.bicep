@@ -601,12 +601,23 @@ module apiApp 'modules/container-app.bicep' = {
 // ---- Web Next.js (external ingress) ----
 
 var webSecrets = {
-  items: empty(registryServer) ? [] : [
-    {
-      name: 'registry-password'
-      value: registryPassword
-    }
-  ]
+  items: union(
+    [
+      // Chat IA do Core (BFF /api/chat) consome a chave LLM server-side.
+      // Reusa o MESMO secret do KV que o worker usa (openai-api-key).
+      {
+        name: 'openai-api-key'
+        keyVaultUrl: '${kvUri}secrets/openai-api-key'
+        identity: uaiWeb.outputs.id
+      }
+    ],
+    empty(registryServer) ? [] : [
+      {
+        name: 'registry-password'
+        value: registryPassword
+      }
+    ]
+  )
 }
 
 module webApp 'modules/container-app.bicep' = {
@@ -645,6 +656,21 @@ module webApp 'modules/container-app.bicep' = {
       {
         name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
         value: appInsights.outputs.connectionString
+      }
+      // Chat IA do Core (BFF /api/chat) — provider-agnostic (ADR 0004). A chave
+      // fica server-side (secretRef), nunca no bundle do browser. Se openAiApiKey
+      // estiver vazio no deploy, o secret vale 'unset' e o chat retorna 503.
+      {
+        name: 'LLM_API_KEY'
+        secretRef: 'openai-api-key'
+      }
+      {
+        name: 'LLM_BASE_URL'
+        value: 'https://api.openai.com/v1'
+      }
+      {
+        name: 'LLM_MODEL'
+        value: openAiModel
       }
     ]
     secretsObject: webSecrets
