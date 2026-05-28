@@ -2,43 +2,81 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Design tokens — NORA editorial palette (claro, OKLCH) ─────────── */
+:root {
+  --sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --display: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --canvas: #FDFDFC;
+  --sidebar: #F7F7F5;
+  --chip: #F0F0EE;
+  --border: #E7E7E3;
+
+  --ink: #15171A;
+  --muted: #6E7178;
+
+  --accent: oklch(0.58 0.16 248);
+  --accent-ink: oklch(0.48 0.18 248);
+  --accent-soft: oklch(0.95 0.04 248);
+  --accent-glow: oklch(0.58 0.16 248 / 0.22);
+
+  --success: #62b585;
+  --success-ink: #3f8a5e;
+  --warn: #d4a04c;
+  --warn-ink: #a37528;
+  --danger: #c97766;
+  --danger-ink: #a04c3e;
+}
+
 html,
 body,
-#root {
+#root,
+#overlay-root {
   height: 100%;
   margin: 0;
-  font-family:
-    system-ui,
-    -apple-system,
-    sans-serif;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
+/* O background do body fica nas entry-point HTMLs (index.html canvas /
+   overlay.html transparente). Aqui só definimos no #root pra cobrir a janela
+   principal sem afetar a overlay transparente. */
+#root {
+  background: var(--canvas);
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+
+body {
+  font-family: var(--sans);
+  color: var(--ink);
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
+
+@keyframes nora-spin {
+  to { transform: rotate(360deg); }
+}
+
+::selection { background: var(--accent-soft); }
+a { color: inherit; text-decoration: none; }
+
+/* Scrollbars discretas */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
-  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.08);
+  border-radius: 4px;
 }
+::-webkit-scrollbar-thumb:hover { background: rgba(15, 23, 42, 0.18); }
 
-select {
-  color-scheme: dark;
-}
+/* Selects herdam tema claro */
+select { color-scheme: light; }
+select option { background: var(--canvas); color: var(--ink); }
 
-select option {
-  background: #27272a;
-  color: #e4e4e7;
-}
-
-/* Drag region nativa da webview para janelas sem decorações (overlay) */
+/* Drag region Tauri pra janelas sem decorações (overlay) */
 [data-tauri-drag-region] {
   -webkit-app-region: drag;
   app-region: drag;
 }
-
 [data-tauri-drag-region] button,
 [data-tauri-drag-region] a,
 [data-tauri-drag-region] input,
@@ -46,4 +84,102 @@ select option {
 [data-tauri-drag-region] textarea {
   -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+
+/* ── Animações reutilizáveis ─────────────────────────────────────── */
+@keyframes panelIn {
+  from { opacity: 0; transform: translateX(-6px) scaleX(0.985); }
+  to   { opacity: 1; transform: translateX(0) scaleX(1); }
+}
+@keyframes orbPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.15); opacity: 0.85; }
+}
+@keyframes thinkBlink {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50%      { opacity: 1;    transform: translateY(-2px); }
+}
+@keyframes revealUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes recPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(201, 119, 102, 0.45); }
+  50%      { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(201, 119, 102, 0); }
+}
+
+/* Live transcription animation no login (variant C) */
+@keyframes tLineCycle {
+  0%   { opacity: 0; transform: translateY(8px); }
+  6%   { opacity: 1; transform: translateY(0); }
+  88%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-6px); }
+}
+@keyframes tTagPop {
+  0%, 8%   { opacity: 0; transform: scale(0.85) translateY(2px); }
+  12%      { opacity: 1; transform: scale(1) translateY(0); }
+  78%      { opacity: 1; transform: scale(1) translateY(0); }
+  88%      { opacity: 0; transform: scale(0.95) translateY(-2px); }
+  100%     { opacity: 0; }
+}
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+@keyframes badgeFadeIn {
+  to { opacity: 1; }
+}
+
+/* ── Prose overrides (Markdown no Meeting Detail) ─────────────────── */
+.nora-prose {
+  font-family: var(--sans);
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--ink);
+}
+.nora-prose p { margin: 0 0 12px; }
+.nora-prose p:last-child { margin-bottom: 0; }
+.nora-prose strong { font-weight: 500; color: var(--ink); }
+.nora-prose em { font-style: italic; color: var(--ink); }
+.nora-prose ul, .nora-prose ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nora-prose li::marker { color: var(--muted); }
+.nora-prose a { color: var(--accent-ink); text-decoration: underline; text-decoration-color: var(--border); }
+.nora-prose code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  background: var(--chip);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12.5px;
+}
+
+/* ── Brand logo (5 barras DM Sans) ────────────────────────────────── */
+.nora-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.nora-logo-bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 20px;
+}
+.nora-logo-bars span {
+  display: block;
+  width: 3px;
+  background: var(--ink);
+  border-radius: 2px;
+}
+.nora-logo-text {
+  font-family: var(--display);
+  font-size: 15.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
