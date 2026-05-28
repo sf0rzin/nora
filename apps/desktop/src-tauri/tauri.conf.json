@@ -20,22 +20,41 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "backgroundColor": "#18181b"
+        "decorations": false,
+        "backgroundColor": "#FDFDFC"
       },
       {
         "label": "overlay",
         "url": "overlay.html",
         "title": "NORA Live",
-        "width": 360,
-        "height": 520,
-        "minWidth": 280,
-        "minHeight": 200,
+        "width": 700,
+        "height": 600,
+        "minWidth": 520,
+        "minHeight": 280,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
         "visible": false,
         "resizable": true,
         "skipTaskbar": true
+      },
+      {
+        "label": "dock",
+        "url": "dock.html",
+        "title": "NORA Dock",
+        "width": 320,
+        "height": 60,
+        "minWidth": 320,
+        "minHeight": 60,
+        "maxWidth": 320,
+        "maxHeight": 60,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "focus": false
       }
     ],
     "security": {
