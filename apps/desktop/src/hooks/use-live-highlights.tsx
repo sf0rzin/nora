@@ -1,11 +1,13 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
 export interface LiveHighlightItem {
   text: string;
   confidence: number;
   sourceQuote: string;
+  /** Quando o item foi detectado (carimbado ao entrar no merge). Ordena o feed. */
+  receivedAt?: number;
 }
 
 export interface LiveTaskItem {
@@ -13,6 +15,7 @@ export interface LiveTaskItem {
   assignee: string | null;
   priority: string;
   sourceQuote: string;
+  receivedAt?: number;
 }
 
 export interface LiveHighlights {
@@ -66,31 +69,43 @@ export function LiveHighlightsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const unlisten = listen<LiveHighlights>("live-analysis", (event) => {
-      const { highlights: newHighlights, chunkSeq: seq } = event.payload as unknown as {
-        highlights: LiveHighlights;
-        chunkSeq: number;
-      };
-      setHighlights((prev) => mergeHighlights(prev, newHighlights));
-      setLastUpdatedAt(Date.now());
-      setChunkSeq(seq);
-      setIsAnalyzing(false);
-      setError(null);
-    });
+    let cancelled = false;
+    const stored: UnlistenFn[] = [];
 
-    const unlistenTelemetry = listen<LiveAnalysisTelemetry>("live-analysis-telemetry", (event) => {
-      const t = event.payload;
-      setLastLatencyMs(t.latencyMs);
-    });
+    const attach = (p: Promise<UnlistenFn>) => {
+      p.then((fn) => {
+        if (cancelled) fn();
+        else stored.push(fn);
+      }).catch(() => {});
+    };
 
-    const unlistenClear = listen("clear-highlights", () => {
-      clearHighlights();
-    });
+    attach(
+      listen<LiveHighlights>("live-analysis", (event) => {
+        const { highlights: newHighlights, chunkSeq: seq } = event.payload as unknown as {
+          highlights: LiveHighlights;
+          chunkSeq: number;
+        };
+        setHighlights((prev) => mergeHighlights(prev, newHighlights));
+        setLastUpdatedAt(Date.now());
+        setChunkSeq(seq);
+        setIsAnalyzing(false);
+        setError(null);
+      }),
+    );
+    attach(
+      listen<LiveAnalysisTelemetry>("live-analysis-telemetry", (event) => {
+        setLastLatencyMs(event.payload.latencyMs);
+      }),
+    );
+    attach(
+      listen("clear-highlights", () => {
+        clearHighlights();
+      }),
+    );
 
     return () => {
-      unlisten.then((fn) => fn());
-      unlistenTelemetry.then((fn) => fn());
-      unlistenClear.then((fn) => fn());
+      cancelled = true;
+      stored.forEach((fn) => fn());
     };
   }, [clearHighlights]);
 
@@ -197,6 +212,9 @@ function isDuplicate(newText: string, existing: LiveHighlightItem[]): boolean {
 
   for (const item of existing) {
     const normOld = normalizeText(item.text);
+    // Skip vazios — `"qualquer".includes("")` é sempre true e travaria
+    // todo highlight subsequente como "duplicado".
+    if (!normOld) continue;
     if (normNew === normOld) return true;
     if (normNew.includes(normOld) || normOld.includes(normNew)) return true;
     const oldTokens = new Set(normOld.split(/\s+/).filter(Boolean));
@@ -209,11 +227,18 @@ function isDuplicate(newText: string, existing: LiveHighlightItem[]): boolean {
   return false;
 }
 
+function hasContent(text: string | null | undefined): boolean {
+  return typeof text === "string" && text.trim().length > 0;
+}
+
 function mergeItems(existing: LiveHighlightItem[], incoming: LiveHighlightItem[]): LiveHighlightItem[] {
   const result = [...existing];
   for (const item of incoming) {
+    // Filtra antes — items sem texto não devem entrar no array, senão poluem
+    // a dedup subsequente (qualquer string include "" → tudo é "duplicado").
+    if (!hasContent(item.text)) continue;
     if (!isDuplicate(item.text, result)) {
-      result.push(item);
+      result.push({ ...item, receivedAt: item.receivedAt ?? Date.now() });
     }
   }
   return result;
@@ -222,9 +247,11 @@ function mergeItems(existing: LiveHighlightItem[], incoming: LiveHighlightItem[]
 function mergeTasks(existing: LiveTaskItem[], incoming: LiveTaskItem[]): LiveTaskItem[] {
   const result = [...existing];
   for (const task of incoming) {
+    if (!hasContent(task.title)) continue;
     const normNew = normalizeText(task.title);
     const isDup = result.some((t) => {
       const normOld = normalizeText(t.title);
+      if (!normOld) return false;
       if (normNew === normOld) return true;
       const newTokens = new Set(normNew.split(/\s+/).filter(Boolean));
       const oldTokens = new Set(normOld.split(/\s+/).filter(Boolean));
@@ -232,7 +259,7 @@ function mergeTasks(existing: LiveTaskItem[], incoming: LiveTaskItem[]): LiveTas
       const overlap = [...newTokens].filter((tok) => oldTokens.has(tok)).length / Math.min(newTokens.size, oldTokens.size);
       return overlap >= 0.7;
     });
-    if (!isDup) result.push(task);
+    if (!isDup) result.push({ ...task, receivedAt: task.receivedAt ?? Date.now() });
   }
   return result;
 }
