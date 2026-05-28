@@ -1,8 +1,13 @@
 package br.com.nora.api.api.dto.auth;
 
 /**
- * Resposta de {@code POST /auth/refresh}. O novo access token sai no cookie httpOnly {@code
- * nora_access}; o JSON traz somente os metadados necessarios para o cliente agendar o proximo
- * refresh proativo.
+ * Resposta de {@code POST /auth/refresh}.
+ *
+ * <p>Os tokens saem tanto nos cookies httpOnly {@code nora_access} / {@code nora_refresh} (pros
+ * clientes web que dependem do browser pra session storage) quanto no body JSON (pros clientes
+ * nativos como o desktop Tauri, que armazena tokens no keyring do OS via {@code SecretStore}).
+ * Espelha o formato do {@link LoginResponse} pra simplificar a integração — quem prefere usar
+ * cookies pode simplesmente ignorar os campos de token.
  */
-public record RefreshResponse(String tokenType, long expiresInSeconds) {}
+public record RefreshResponse(
+        String accessToken, String refreshToken, String tokenType, long expiresInSeconds) {}

@@ -12,6 +12,7 @@ mod stt_sidecar;
 mod stt_sidecar_test;
 mod stealth_mode;
 mod system_audio;
+mod windows;
 
 use commands::CaptureState;
 use live_analysis::LiveHighlightsState;
@@ -96,6 +97,9 @@ pub fn run() {
             live_analysis::set_overlay_position,
             stealth_mode::set_stealth_mode,
             stealth_mode::get_stealth_mode,
+            windows::toggle_dock,
+            windows::focus_main_window,
+            windows::focus_overlay_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
