@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import {
@@ -24,10 +24,18 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   DONE: "Concluída",
 };
 
-const PRIORITY_LABEL: Record<string, string> = {
-  LOW: "Baixa",
-  MEDIUM: "Média",
-  HIGH: "Alta",
+const PRIORITY_LABEL: Record<string, string> = { LOW: "Baixa", MEDIUM: "Média", HIGH: "Alta" };
+const PRIORITY_COLOR: Record<string, string> = { HIGH: "var(--danger)", MEDIUM: "var(--warn)", LOW: "var(--muted)" };
+
+const inputStyle: CSSProperties = {
+  fontFamily: "var(--sans)",
+  fontSize: 12.5,
+  color: "var(--ink)",
+  background: "var(--canvas)",
+  border: "1px solid var(--border)",
+  borderRadius: 7,
+  padding: "5px 9px",
+  outline: "none",
 };
 
 export default function TasksPage() {
@@ -48,8 +56,7 @@ export default function TasksPage() {
       })
       .catch((e) => {
         if (!active) return;
-        if (e instanceof ApiRequestError) setError(e.message);
-        else setError("Falha ao carregar tarefas.");
+        setError(e instanceof ApiRequestError ? e.message : "Falha ao carregar action items.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -67,8 +74,7 @@ export default function TasksPage() {
       setItems((curr) => curr.map((x) => (x.id === t.id ? updated : x)));
     } catch (e) {
       setItems(previous);
-      if (e instanceof ApiRequestError) setError(e.message);
-      else setError("Falha ao atualizar status.");
+      setError(e instanceof ApiRequestError ? e.message : "Falha ao atualizar status.");
     }
   }
 
@@ -76,12 +82,10 @@ export default function TasksPage() {
     setEditingId(t.id);
     setEditTitle(t.title);
   }
-
   function cancelEdit() {
     setEditingId(null);
     setEditTitle("");
   }
-
   async function saveEdit(t: TaskListItemDto) {
     const trimmed = editTitle.trim();
     if (!trimmed || trimmed === t.title) {
@@ -96,147 +100,142 @@ export default function TasksPage() {
       setItems((curr) => curr.map((x) => (x.id === t.id ? updated : x)));
     } catch (e) {
       setItems(previous);
-      if (e instanceof ApiRequestError) setError(e.message);
-      else setError("Falha ao atualizar título.");
+      setError(e instanceof ApiRequestError ? e.message : "Falha ao atualizar título.");
     }
   }
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Tarefas</h1>
-          <p className="text-sm text-slate-500">
-            Action items extraídos das suas reuniões. Atualize o status conforme avança.
-          </p>
-        </div>
-        <div className="flex gap-2 text-sm">
-          {STATUS_OPTIONS.map((opt) => (
+    <div style={{ maxWidth: 880, margin: "0 auto", padding: "56px 40px 80px" }}>
+      <header style={{ marginBottom: 22 }}>
+        <h1 style={{ fontFamily: "var(--display)", fontSize: 30, fontWeight: 500, letterSpacing: "-0.025em", color: "var(--ink)", margin: "0 0 8px" }}>
+          Action items
+        </h1>
+        <p style={{ fontSize: 14, color: "var(--muted)", margin: 0, lineHeight: 1.6 }}>
+          Tarefas extraídas das suas reuniões. Atualize o status conforme avança.
+        </p>
+      </header>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
+        {STATUS_OPTIONS.map((opt) => {
+          const active = filter === opt.value;
+          return (
             <button
               key={opt.value}
               type="button"
               onClick={() => setFilter(opt.value)}
-              className={
-                filter === opt.value
-                  ? "rounded-md bg-slate-900 px-3 py-1.5 text-white"
-                  : "rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
-              }
+              style={{
+                fontFamily: "var(--sans)",
+                fontSize: 12.5,
+                padding: "6px 13px",
+                borderRadius: 999,
+                cursor: "pointer",
+                border: "1px solid var(--border)",
+                background: active ? "var(--ink)" : "var(--canvas)",
+                color: active ? "var(--canvas)" : "var(--muted)",
+              }}
             >
               {opt.label}
             </button>
-          ))}
-        </div>
-      </header>
+          );
+        })}
+      </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--chip)", fontSize: 13, color: "var(--muted)" }}>
           {error}
         </div>
       )}
 
       {loading ? (
-        <div className="rounded-md border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
-          Carregando...
-        </div>
+        <div style={{ padding: "48px 24px", textAlign: "center", fontSize: 13, color: "var(--muted)" }}>Carregando…</div>
       ) : items.length === 0 ? (
-        <div className="rounded-md border border-dashed border-slate-300 bg-white p-12 text-center">
-          <p className="text-sm text-slate-600">Nenhuma tarefa encontrada.</p>
-          <p className="mt-1 text-xs text-slate-500">
-            Faça upload de uma reunião para que a NORA extraia os próximos passos.
+        <div style={{ border: "1px dashed var(--border-strong)", borderRadius: 14, padding: "48px 24px", textAlign: "center" }}>
+          <p style={{ fontSize: 14, color: "var(--ink)", margin: "0 0 4px" }}>Nenhum action item por aqui.</p>
+          <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0 }}>
+            Envie uma reunião pra NORA extrair os próximos passos automaticamente.
           </p>
         </div>
       ) : (
-        <ul className="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white">
-          {items.map((t) => (
-            <li key={t.id} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:gap-4">
+        <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "var(--canvas)" }}>
+          {items.map((t, idx) => (
+            <div
+              key={t.id}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
+                padding: "14px 16px",
+                borderTop: idx === 0 ? "none" : "1px solid var(--border)",
+              }}
+            >
               <input
                 type="checkbox"
                 checked={t.status === "DONE"}
                 onChange={(e) => changeStatus(t, e.target.checked ? "DONE" : "OPEN")}
-                className="h-4 w-4 rounded border-slate-300"
+                style={{ marginTop: 3, accentColor: "var(--accent)", width: 16, height: 16, flexShrink: 0 }}
                 aria-label={`Marcar "${t.title}" como ${t.status === "DONE" ? "aberta" : "concluída"}`}
               />
 
-              <div className="flex-1 min-w-0">
+              <div style={{ flex: 1, minWidth: 0 }}>
                 {editingId === t.id ? (
-                  <div className="flex flex-col gap-2 sm:flex-row">
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <input
                       autoFocus
                       value={editTitle}
                       onChange={(e) => setEditTitle(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") saveEdit(t);
+                        if (e.key === "Enter") void saveEdit(t);
                         if (e.key === "Escape") cancelEdit();
                       }}
-                      className="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
+                      style={{ ...inputStyle, flex: 1, minWidth: 200, fontSize: 14 }}
                     />
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => saveEdit(t)}
-                        className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800"
-                      >
-                        Salvar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelEdit}
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
+                    <button type="button" onClick={() => void saveEdit(t)} style={{ ...inputStyle, background: "var(--ink)", color: "var(--canvas)", border: "none", cursor: "pointer" }}>
+                      Salvar
+                    </button>
+                    <button type="button" onClick={cancelEdit} style={{ ...inputStyle, color: "var(--muted)", cursor: "pointer" }}>
+                      Cancelar
+                    </button>
                   </div>
                 ) : (
                   <>
                     <p
-                      className={
-                        t.status === "DONE"
-                          ? "text-sm font-medium text-slate-400 line-through"
-                          : "text-sm font-medium text-slate-900"
-                      }
+                      style={{
+                        fontSize: 14,
+                        margin: 0,
+                        lineHeight: 1.4,
+                        color: t.status === "DONE" ? "var(--muted)" : "var(--ink)",
+                        textDecoration: t.status === "DONE" ? "line-through" : "none",
+                      }}
                     >
                       {t.title}
                     </p>
-                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                      <Link
-                        href={`/meetings/${t.meetingId}` as Route}
-                        className="hover:underline"
-                      >
+                    <div style={{ marginTop: 5, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, fontSize: 11.5, color: "var(--muted)" }}>
+                      <Link href={`/meetings/${t.meetingId}` as Route} style={{ color: "var(--muted)", textDecoration: "underline", textUnderlineOffset: 2 }}>
                         {t.meetingTitle}
                       </Link>
-                      <span>· Prioridade {PRIORITY_LABEL[t.priority] ?? t.priority}</span>
-                      {t.assignee && <span>· {t.assignee}</span>}
-                      {t.dueDate && <span>· vence {t.dueDate}</span>}
+                      <span style={{ color: PRIORITY_COLOR[t.priority] ?? "var(--muted)" }}>{PRIORITY_LABEL[t.priority] ?? t.priority}</span>
+                      {t.assignee && <span>{t.assignee}</span>}
+                      {t.dueDate && <span>vence {t.dueDate}</span>}
                     </div>
                   </>
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
-                <select
-                  value={t.status}
-                  onChange={(e) => changeStatus(t, e.target.value as TaskStatus)}
-                  className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-500 focus:outline-none"
-                  aria-label="Alterar status"
-                >
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                <select value={t.status} onChange={(e) => changeStatus(t, e.target.value as TaskStatus)} style={inputStyle} aria-label="Alterar status">
                   <option value="OPEN">{STATUS_LABEL.OPEN}</option>
                   <option value="IN_PROGRESS">{STATUS_LABEL.IN_PROGRESS}</option>
                   <option value="DONE">{STATUS_LABEL.DONE}</option>
                 </select>
                 {editingId !== t.id && (
-                  <button
-                    type="button"
-                    onClick={() => beginEdit(t)}
-                    className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                  >
+                  <button type="button" onClick={() => beginEdit(t)} style={{ ...inputStyle, color: "var(--muted)", cursor: "pointer" }}>
                     Editar
                   </button>
                 )}
               </div>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
