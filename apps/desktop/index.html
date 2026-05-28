@@ -6,25 +6,10 @@
     <title>NORA Desktop</title>
     <style>
       /* Critical CSS — evita flash branco/escuro durante o boot */
-      html, body {
+      html, body, #root {
         height: 100%;
         margin: 0;
-        /* Janela transparente (decorations:false): o que está fora do raio do
-           #root mostra o desktop, dando os cantos arredondados. */
-        background-color: transparent;
-      }
-      #root {
-        height: 100%;
-        box-sizing: border-box;
         background-color: #FDFDFC;
-        border-radius: 12px;
-        overflow: hidden;
-        border: 1px solid #E7E7E3;
-      }
-      /* Maximizada → cantos retos (sem buraco transparente nos cantos da tela) */
-      html.win-maximized #root {
-        border-radius: 0;
-        border: none;
       }
       body {
         color: #15171A;

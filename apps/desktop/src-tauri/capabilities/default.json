@@ -10,7 +10,6 @@
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",
     "core:window:allow-toggle-maximize",
-    "core:window:allow-is-maximized",
     "core:window:allow-close",
     "shell:allow-open",
     {

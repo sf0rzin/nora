@@ -58,7 +58,7 @@ function ControlButton({
   );
 }
 
-export function Titlebar({ maximized }: { maximized: boolean }) {
+export function Titlebar() {
   const win = useMemo(() => getCurrentWebviewWindow(), []);
 
   // Arraste — só botão esquerdo. `e.detail > 1` (segundo clique de um
@@ -116,17 +116,10 @@ export function Titlebar({ maximized }: { maximized: boolean }) {
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </ControlButton>
-        <ControlButton onClick={onToggleMaximize} title={maximized ? "Restaurar" : "Maximizar"}>
-          {maximized ? (
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="8" y="8" width="11" height="11" rx="1.5" />
-              <path d="M5 16V6.5A1.5 1.5 0 0 1 6.5 5H16" />
-            </svg>
-          ) : (
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="5" y="5" width="14" height="14" rx="2" />
-            </svg>
-          )}
+        <ControlButton onClick={onToggleMaximize} title="Maximizar / restaurar">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="5" y="5" width="14" height="14" rx="2" />
+          </svg>
         </ControlButton>
         <ControlButton onClick={() => win.close().catch(() => {})} title="Fechar" danger>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

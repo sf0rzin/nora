@@ -5,7 +5,6 @@ import { ActiveRecordingProvider } from "@/hooks/use-active-recording";
 import { Sidebar } from "@/components/sidebar";
 import { Titlebar } from "@/components/titlebar";
 import { ResizeHandles } from "@/components/resize-handles";
-import { useWindowMaximized } from "@/hooks/use-window-maximized";
 import { NewMeetingModal } from "@/components/new-meeting-modal";
 import { LoginPage } from "@/pages/login";
 import { MeetingsPage } from "@/pages/meetings";
@@ -24,13 +23,6 @@ function Router() {
   const { authenticated, loading } = useAuth();
   const [route, setRoute] = useState(window.location.hash);
   const [modalOpen, setModalOpen] = useState(false);
-
-  // Achata os cantos arredondados quando a janela está maximizada (senão sobram
-  // buracos transparentes nos cantos da tela). A classe é lida pelo #root no CSS.
-  const maximized = useWindowMaximized();
-  useEffect(() => {
-    document.documentElement.classList.toggle("win-maximized", maximized);
-  }, [maximized]);
 
   useEffect(() => {
     const handler = () => setRoute(window.location.hash);
@@ -119,10 +111,10 @@ function Router() {
   // mover/fechar a janela.
   return (
     <div className="flex flex-col h-full">
-      <Titlebar maximized={maximized} />
+      <Titlebar />
       <div className="flex-1 min-h-0">{content}</div>
-      {/* Pegas de resize (janela sem borda nativa). Some quando maximizado. */}
-      {!maximized && <ResizeHandles />}
+      {/* Pegas de resize (janela sem borda nativa). */}
+      <ResizeHandles />
     </div>
   );
 }
