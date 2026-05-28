@@ -30,19 +30,38 @@ public final class AuthCookies {
     private static final String SAMESITE_STRICT = "Strict";
 
     private final boolean secure;
+    private final String domain;
 
     public AuthCookies(boolean secure) {
+        this(secure, null);
+    }
+
+    /**
+     * @param domain quando informado (ex.: {@code salmonbeach-X.centralus.azurecontainerapps.io}),
+     *     emite os cookies com {@code Domain=}, fazendo o navegador compartilhá-los entre os
+     *     subdomínios (web e api). Necessário no Container Apps quando web e api estão em hosts
+     *     irmãos do mesmo registrable domain — sem isso, o cookie fica scoped só na api e o
+     *     middleware do Next no domínio do web não enxerga, redirecionando pra login infinito.
+     */
+    public AuthCookies(boolean secure, String domain) {
         this.secure = secure;
+        this.domain = (domain == null || domain.isBlank()) ? null : domain;
+    }
+
+    private ResponseCookie.ResponseCookieBuilder applyDomain(
+            ResponseCookie.ResponseCookieBuilder b) {
+        return domain == null ? b : b.domain(domain);
     }
 
     /** Cookie do access JWT. Path raiz para ser enviado em qualquer chamada autenticada. */
     public ResponseCookie buildAccessCookie(String value, Duration ttl) {
-        return ResponseCookie.from(ACCESS_COOKIE, value)
-                .httpOnly(true)
-                .secure(secure)
-                .sameSite(SAMESITE_LAX)
-                .path(ROOT_PATH)
-                .maxAge(ttl)
+        return applyDomain(
+                        ResponseCookie.from(ACCESS_COOKIE, value)
+                                .httpOnly(true)
+                                .secure(secure)
+                                .sameSite(SAMESITE_LAX)
+                                .path(ROOT_PATH)
+                                .maxAge(ttl))
                 .build();
     }
 
@@ -51,34 +70,37 @@ public final class AuthCookies {
      * so vai pra rotas de refresh/logout/etc.
      */
     public ResponseCookie buildRefreshCookie(String value, Duration ttl) {
-        return ResponseCookie.from(REFRESH_COOKIE, value)
-                .httpOnly(true)
-                .secure(secure)
-                .sameSite(SAMESITE_STRICT)
-                .path(AUTH_PATH)
-                .maxAge(ttl)
+        return applyDomain(
+                        ResponseCookie.from(REFRESH_COOKIE, value)
+                                .httpOnly(true)
+                                .secure(secure)
+                                .sameSite(SAMESITE_STRICT)
+                                .path(AUTH_PATH)
+                                .maxAge(ttl))
                 .build();
     }
 
     /** Cookie de limpeza do access (Max-Age=0). */
     public ResponseCookie buildClearAccessCookie() {
-        return ResponseCookie.from(ACCESS_COOKIE, "")
-                .httpOnly(true)
-                .secure(secure)
-                .sameSite(SAMESITE_LAX)
-                .path(ROOT_PATH)
-                .maxAge(0)
+        return applyDomain(
+                        ResponseCookie.from(ACCESS_COOKIE, "")
+                                .httpOnly(true)
+                                .secure(secure)
+                                .sameSite(SAMESITE_LAX)
+                                .path(ROOT_PATH)
+                                .maxAge(0))
                 .build();
     }
 
     /** Cookie de limpeza do refresh (Max-Age=0, mesmo Path da emissao para casar o delete). */
     public ResponseCookie buildClearRefreshCookie() {
-        return ResponseCookie.from(REFRESH_COOKIE, "")
-                .httpOnly(true)
-                .secure(secure)
-                .sameSite(SAMESITE_STRICT)
-                .path(AUTH_PATH)
-                .maxAge(0)
+        return applyDomain(
+                        ResponseCookie.from(REFRESH_COOKIE, "")
+                                .httpOnly(true)
+                                .secure(secure)
+                                .sameSite(SAMESITE_STRICT)
+                                .path(AUTH_PATH)
+                                .maxAge(0))
                 .build();
     }
 
