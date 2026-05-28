@@ -10,9 +10,9 @@ Construído como **produto comercial real** atendendo a parceria **FIAP Challeng
 
 ---
 
-## Estado atual (2026-05-14)
+## Estado atual (2026-05-28)
 
-NORA está **deployado em Azure** com 14 recursos provisionados via Bicep IaC:
+NORA está **deployado em Azure** (14 recursos via Bicep IaC), com a vertical Web + API + Worker NLP + Desktop funcional:
 
 ```
 Web:    https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io
@@ -20,7 +20,9 @@ API:    https://nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.i
 Health: https://nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io/actuator/health
 ```
 
-Sub-fases 1.0 a 1.10 entregues. Próxima: **1.11 Demo Polish** (Customer Confidence persistência mínima + UX interna editorial + seed sintético TOTVS + roteiro de demo). Ver [`docs/product/roadmap.md`](docs/product/roadmap.md).
+O app **Core** é **chat-first**: você conversa com a NORA sobre reuniões, action items e projetos — **Chat IA com streaming** (OpenAI via ADR 0004, chave 100% server-side num BFF), além de inbox cronológico, detalhe da reunião (resumo, decisões, action items, riscos/oportunidades), Productivity Score e Customer Confidence. As transcrições reais da TOTVS são processadas por um pipeline de Data Science (parser do export + limpeza + TF-IDF + correlação linguagem×NPS) em [`notebooks/totvs_transcricoes_eda.py`](notebooks/totvs_transcricoes_eda.py).
+
+Ver [`docs/product/roadmap.md`](docs/product/roadmap.md).
 
 ---
 
@@ -33,7 +35,6 @@ docs/
 ├── product/            # Visão de produto, backlog, roadmap, glossário
 ├── engineering/        # Arquitetura, padrões, data model (Postgres + Oracle)
 ├── operations/         # Runbook deploy Azure, production-readiness gaps
-├── security/           # (em construção) Threat model, checklists LGPD/OWASP
 ├── challenge/          # Material acadêmico FIAP Challenge 2026
 ├── api/                # OpenAPI + schemas LLM + exemplos
 └── adr/                # 21 ADRs com decisões arquiteturais imutáveis
@@ -70,6 +71,7 @@ services/nlp-worker   # FastAPI + Pydantic + PII Shield + LLM agnóstico
 packages/nlp-baseline # TF-IDF baseline interpretável (ADR 0010)
 infra/bicep           # Bicep IaC pra Azure Container Apps + Postgres + KV + Speech
 data/synthetic        # Dataset sintético pra testes (12 transcripts + contextos)
+notebooks/            # Pipeline DS das transcrições TOTVS (parser + TF-IDF + EDA)
 docs/                 # Documentação canônica (ver acima)
 .github/              # CI workflows (ci.yml, build-images.yml, deploy-infra.yml)
 .claude/              # Skills + agents config pra Claude Code
