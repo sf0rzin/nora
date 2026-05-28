@@ -85,6 +85,11 @@ nora:
     # Secure flag dos cookies httpOnly. Default false em dev (cookies em http://localhost),
     # true em prod via env. Round 2 / Subfase 1.3 A.
     cookie-secure: ${AUTH_COOKIE_SECURE:false}
+    # Domain explicito p/ que web e api (subdomínios irmãos do mesmo Container Apps env,
+    # ex.: salmonbeach-X.centralus.azurecontainerapps.io) compartilhem o cookie. Sem isso,
+    # o cookie fica scoped só na api e o middleware do Next no domínio web redireciona infinito.
+    # Vazio = sem Domain (comportamento legacy, OK em localhost ou com custom domain).
+    cookie-domain: ${AUTH_COOKIE_DOMAIN:}
   app:
     public-base-url: ${NORA_APP_PUBLIC_BASE_URL:http://localhost:3000}
   frontend:
