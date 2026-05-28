@@ -1,6 +1,242 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { login } from "@/lib/auth";
+import { NoraLogo } from "@/components/brand/nora-logo";
+
+interface TranscriptLine {
+  delay: number;
+  speaker: string;
+  time: string;
+  text: string;
+  tag: { kind: "decision" | "action" | "pii"; label: string };
+}
+
+const TRANSCRIPT_LINES: TranscriptLine[] = [
+  {
+    delay: 0,
+    speaker: "Camila",
+    time: "14:30",
+    text: "O DPO levantou três regras adicionais de PII pra fechar com a TOTVS.",
+    tag: { kind: "decision", label: "Decisão" },
+  },
+  {
+    delay: 3.5,
+    speaker: "Rafael",
+    time: "14:31",
+    text: "Mando a proposta do piloto na segunda.",
+    tag: { kind: "action", label: "Action item" },
+  },
+  {
+    delay: 7,
+    speaker: "Bruno",
+    time: "14:33",
+    text: "Conector Protheus pode ser read-only no MVP.",
+    tag: { kind: "decision", label: "Decisão" },
+  },
+  {
+    delay: 10.5,
+    speaker: "Camila",
+    time: "14:34",
+    text: "Camila Rodrigues pediu retenção máxima de 30 dias.",
+    tag: { kind: "pii", label: "PII · nome" },
+  },
+  {
+    delay: 14,
+    speaker: "Bruno",
+    time: "14:36",
+    text: "Levo a data de go-live pro board.",
+    tag: { kind: "action", label: "Action item" },
+  },
+  {
+    delay: 17.5,
+    speaker: "Lucas",
+    time: "14:37",
+    text: "Combinado. Documentar tudo no ADR 0012.",
+    tag: { kind: "decision", label: "Decisão" },
+  },
+];
+
+const TRANSCRIPT_DURATION = 23;
+
+function TagPill({ kind, label, delay }: { kind: TranscriptLine["tag"]["kind"]; label: string; delay: number }) {
+  const palette: Record<typeof kind, { bg: string; fg: string; dot: string }> = {
+    decision: { bg: "var(--accent-soft)", fg: "var(--accent-ink)", dot: "var(--accent-ink)" },
+    action:   { bg: "rgba(98,181,133,0.16)", fg: "#3f8a5e", dot: "#3f8a5e" },
+    pii:      { bg: "rgba(201,119,102,0.16)", fg: "#a04c3e", dot: "#a04c3e" },
+  };
+  const c = palette[kind];
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full whitespace-nowrap"
+      style={{
+        fontSize: 10.5,
+        fontWeight: 500,
+        letterSpacing: "0.02em",
+        background: c.bg,
+        color: c.fg,
+        opacity: 0,
+        transform: "scale(0.85) translateY(2px)",
+        animation: `tTagPop ${TRANSCRIPT_DURATION}s ease-out infinite`,
+        animationDelay: `${delay}s`,
+      }}
+    >
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: c.dot }} />
+      {label}
+    </span>
+  );
+}
+
+function LiveTranscription() {
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden>
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse 50% 40% at 30% 30%, oklch(0.94 0.045 248) 0%, transparent 70%), " +
+            "radial-gradient(ellipse 60% 50% at 70% 70%, oklch(0.95 0.035 218) 0%, transparent 70%), " +
+            "linear-gradient(180deg, var(--canvas) 0%, oklch(0.985 0.012 248) 50%, var(--canvas) 100%)",
+        }}
+      />
+      {/* fade top */}
+      <div
+        className="absolute top-0 left-0 right-0"
+        style={{
+          height: "22%",
+          background:
+            "linear-gradient(to bottom, var(--canvas) 0%, var(--canvas) 40%, transparent 100%)",
+          zIndex: 4,
+        }}
+      />
+      {/* fade bottom */}
+      <div
+        className="absolute bottom-0 left-0 right-0"
+        style={{
+          height: "18%",
+          background:
+            "linear-gradient(to top, var(--canvas) 0%, var(--canvas) 30%, transparent 100%)",
+          zIndex: 4,
+        }}
+      />
+
+      {/* badge */}
+      <div
+        className="absolute inline-flex items-center gap-2"
+        style={{
+          top: 78,
+          left: 48,
+          padding: "5px 10px 5px 8px",
+          background: "var(--canvas)",
+          border: "1px solid var(--border)",
+          borderRadius: 999,
+          fontSize: 11,
+          color: "var(--muted)",
+          letterSpacing: "-0.005em",
+          zIndex: 5,
+          boxShadow: "0 4px 14px -8px rgba(15,23,42,0.15)",
+          opacity: 0,
+          animation: "badgeFadeIn 1s ease 0.5s forwards",
+        }}
+      >
+        <span
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: "50%",
+            background: "var(--accent)",
+            boxShadow: "0 0 0 3px var(--accent-soft)",
+            animation: "dotPulse 1.4s ease-in-out infinite",
+          }}
+        />
+        <span>NORA analisando…</span>
+      </div>
+
+      <div
+        className="absolute flex items-center justify-center"
+        style={{ top: 96, bottom: 76, left: 0, right: 0, zIndex: 2, padding: "0 48px" }}
+      >
+        <div className="w-full flex flex-col gap-[18px]" style={{ maxWidth: 420 }}>
+          {TRANSCRIPT_LINES.map((l, i) => (
+            <div
+              key={i}
+              style={{
+                opacity: 0,
+                transform: "translateY(8px)",
+                animation: `tLineCycle ${TRANSCRIPT_DURATION}s ease-in-out infinite`,
+                animationDelay: `${l.delay}s`,
+              }}
+            >
+              <div
+                className="flex items-center gap-2.5 mb-1.5"
+                style={{
+                  fontSize: 10.5,
+                  color: "var(--muted)",
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                }}
+              >
+                <span
+                  style={{
+                    fontWeight: 500,
+                    color: "var(--ink)",
+                    textTransform: "none",
+                    letterSpacing: "-0.005em",
+                    fontSize: 12,
+                  }}
+                >
+                  {l.speaker}
+                </span>
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>{l.time}</span>
+              </div>
+              <div
+                className="flex items-start gap-2 flex-wrap"
+                style={{ fontSize: 14.5, lineHeight: 1.5, color: "var(--ink)" }}
+              >
+                <span style={{ flex: 1, minWidth: 0 }}>{l.text}</span>
+                <TagPill kind={l.tag.kind} label={l.tag.label} delay={l.delay + 2.2} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MicrosoftIcon() {
+  return (
+    <svg className="w-4 h-4 shrink-0" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1" y="1" width="10" height="10" fill="#F25022" />
+      <rect x="12" y="1" width="10" height="10" fill="#7FBA00" />
+      <rect x="1" y="12" width="10" height="10" fill="#00A4EF" />
+      <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
+    </svg>
+  );
+}
+
+function ArrowRight() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="5" y1="12" x2="19" y2="12" />
+      <polyline points="12 5 19 12 12 19" />
+    </svg>
+  );
+}
+
+function EyeIcon({ shown }: { shown: boolean }) {
+  return shown ? (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3l18 18" />
+      <path d="M10.6 6.2A11 11 0 0 1 12 6c6.5 0 10 6 10 6a16 16 0 0 1-3 3.4M6.1 6.1A16 16 0 0 0 2 12s3.5 6 10 6a11 11 0 0 0 4.6-1" />
+      <path d="M14.1 14.1A3 3 0 0 1 9.9 9.9" />
+    </svg>
+  ) : (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
 
 export function LoginPage() {
   const { authenticated, login: setAuthUser } = useAuth();
@@ -11,25 +247,19 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (authenticated) {
-      window.location.hash = "#/meetings";
-    }
+    if (authenticated) window.location.hash = "#/meetings";
   }, [authenticated]);
 
-  if (authenticated) {
-    return null;
-  }
+  if (authenticated) return null;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-
     try {
       const user = await login({ email, password });
       setAuthUser(user);
     } catch (err: unknown) {
-      console.error("Login error:", err);
       const msg =
         err instanceof Error
           ? err.message
@@ -42,142 +272,132 @@ export function LoginPage() {
   };
 
   return (
-    <div className="h-full grid grid-cols-1 lg:grid-cols-2 bg-[oklch(0.16_0.012_250)]">
-      {/* LEFT: animated visual */}
-      <aside className="hidden lg:flex relative bg-[oklch(0.13_0.012_250)] border-r border-[oklch(0.30_0.012_250)] overflow-hidden flex-col">
-        {/* Dot grid */}
-        <div 
-          className="absolute inset-0 opacity-35"
+    <div
+      className="h-full w-full grid"
+      style={{
+        gridTemplateColumns: "1fr 1fr",
+        background: "var(--canvas)",
+      }}
+    >
+      {/* LEFT — live transcription panel */}
+      <aside
+        className="relative hidden lg:flex flex-col overflow-hidden"
+        style={{
+          background: "var(--canvas)",
+          borderRight: "1px solid var(--border)",
+          padding: "36px 0",
+        }}
+      >
+        <LiveTranscription />
+
+        <div
+          className="flex items-center justify-between relative z-10"
+          style={{ padding: "0 48px" }}
+        >
+          <NoraLogo animate />
+        </div>
+
+        <div className="flex-1" />
+
+        <div
+          className="flex items-center justify-between relative z-10"
           style={{
-            backgroundImage: 'radial-gradient(oklch(0.30 0.012 250) 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
-            maskImage: 'radial-gradient(ellipse 70% 60% at 50% 50%, black, transparent 80%)'
+            padding: "0 48px",
+            fontSize: 12,
+            color: "var(--muted)",
           }}
-        />
-        
-        {/* Logo */}
-        <div className="absolute top-8 left-10 z-10 font-semibold text-[22px] tracking-[-0.04em] text-[oklch(0.97_0.005_250)]">
-          NORA
-        </div>
-
-        {/* Orb stage */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          {/* Glow */}
-          <div 
-            className="absolute inset-0 opacity-70"
-            style={{
-              background: 'radial-gradient(closest-side, oklch(0.70 0.17 248 / 0.18), transparent 70%)'
-            }}
-          />
-          
-          {/* Orbs */}
-          <div 
-            className="absolute rounded-full border border-[oklch(0.70_0.17_248_/_0.4)]"
-            style={{
-              width: '380px', height: '380px',
-              background: 'radial-gradient(circle at 30% 30%, oklch(0.70 0.17 248 / 0.12), transparent 65%)',
-              animation: 'orbFloat1 14s ease-in-out infinite'
-            }}
-          />
-          <div 
-            className="absolute rounded-full border border-[oklch(0.70_0.17_248_/_0.25)]"
-            style={{
-              width: '260px', height: '260px',
-              background: 'radial-gradient(circle at 30% 30%, oklch(0.70 0.17 248 / 0.08), transparent 65%)',
-              animation: 'orbFloat2 18s ease-in-out infinite'
-            }}
-          />
-          <div 
-            className="absolute rounded-full border border-[oklch(0.70_0.17_248_/_0.15)]"
-            style={{
-              width: '520px', height: '520px',
-              background: 'radial-gradient(circle at 30% 30%, oklch(0.70 0.17 248 / 0.05), transparent 65%)',
-              animation: 'orbFloat3 22s ease-in-out infinite'
-            }}
-          />
-
-          {/* Soundwave */}
-          <div className="relative z-10 flex items-center justify-center gap-[6px] h-20">
-            {[...Array(13)].map((_, i) => (
-              <span
-                key={i}
-                className="block w-1 rounded-sm bg-[oklch(0.78_0.16_248)]"
-                style={{
-                  boxShadow: '0 0 12px oklch(0.70 0.17 248)',
-                  animation: `waveBeat 1.4s ease-in-out infinite`,
-                  animationDelay: `${Math.abs(i - 6) * 0.08}s`
-                }}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="absolute bottom-8 left-10 right-10 flex justify-between text-xs text-[oklch(0.55_0.012_250)] z-10">
+        >
           <span>Inteligência conversacional</span>
-          <span>v.1</span>
+          <span>v1 · LGPD-first</span>
         </div>
-
-        <style>{`
-          @keyframes orbFloat1 {
-            0%, 100% { transform: translate(0, 0); }
-            50% { transform: translate(40px, -30px); }
-          }
-          @keyframes orbFloat2 {
-            0%, 100% { transform: translate(0, 0); }
-            50% { transform: translate(-50px, 40px); }
-          }
-          @keyframes orbFloat3 {
-            0%, 100% { transform: translate(0, 0) scale(1); }
-            50% { transform: translate(20px, 20px) scale(1.04); }
-          }
-          @keyframes waveBeat {
-            0%, 100% { height: 14px; opacity: 0.5; }
-            50% { height: 70px; opacity: 1; }
-          }
-        `}</style>
       </aside>
 
-      {/* RIGHT: form */}
+      {/* RIGHT — form */}
       <main className="flex items-center justify-center p-8 overflow-y-auto">
-        <form onSubmit={handleSubmit} className="w-full max-w-[360px] flex flex-col gap-8">
-          {/* Header */}
+        <form
+          onSubmit={handleSubmit}
+          className="w-full flex flex-col gap-7"
+          style={{ maxWidth: 360 }}
+        >
           <div>
-            <h1 className="text-[28px] font-medium tracking-[-0.025em] text-[oklch(0.97_0.005_250)] mb-1.5">
-              Bem-vindo de volta
+            <h1
+              className="mb-1.5"
+              style={{
+                fontFamily: "var(--display)",
+                fontSize: 28,
+                fontWeight: 500,
+                letterSpacing: "-0.025em",
+                color: "var(--ink)",
+                lineHeight: 1.12,
+              }}
+            >
+              Bem-vindo de volta.
             </h1>
-            <p className="text-sm text-[oklch(0.72_0.012_250)] leading-relaxed">
-              Entre na sua conta para continuar.
+            <p
+              style={{
+                fontSize: 14,
+                color: "var(--muted)",
+                lineHeight: 1.55,
+              }}
+            >
+              Entre na sua conta NORA pra continuar.
             </p>
           </div>
 
-          {/* SSO */}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2.5">
             <button
               type="button"
-              className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 bg-[oklch(0.20_0.014_250)] border border-[oklch(0.30_0.012_250)] rounded-[10px] text-[oklch(0.97_0.005_250)] text-[13.5px] font-medium transition-all duration-180 hover:border-[oklch(0.40_0.014_250)] hover:bg-[oklch(0.24_0.014_250)]"
+              className="w-full inline-flex items-center justify-center gap-2.5 transition-colors"
+              style={{
+                padding: "10px 14px",
+                background: "var(--canvas)",
+                border: "1px solid var(--border)",
+                borderRadius: 9,
+                color: "var(--ink)",
+                fontSize: 13.5,
+                fontWeight: 500,
+                letterSpacing: "-0.005em",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--sidebar)";
+                e.currentTarget.style.borderColor = "var(--muted)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "var(--canvas)";
+                e.currentTarget.style.borderColor = "var(--border)";
+              }}
             >
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg">
-                <rect x="1" y="1" width="10" height="10" fill="#F25022"/>
-                <rect x="12" y="1" width="10" height="10" fill="#7FBA00"/>
-                <rect x="1" y="12" width="10" height="10" fill="#00A4EF"/>
-                <rect x="12" y="12" width="10" height="10" fill="#FFB900"/>
-              </svg>
+              <MicrosoftIcon />
               Continuar com Microsoft
             </button>
           </div>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 text-[11px] text-[oklch(0.55_0.012_250)]">
-            <div className="flex-1 h-px bg-[oklch(0.30_0.012_250)]" />
+          <div
+            className="flex items-center gap-3"
+            style={{
+              fontSize: 11,
+              color: "var(--muted)",
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+          >
+            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
             <span>ou</span>
-            <div className="flex-1 h-px bg-[oklch(0.30_0.012_250)]" />
+            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
           </div>
 
-          {/* Fields */}
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3.5">
             <div className="flex flex-col gap-1.5">
-              <label className="text-[12.5px] font-medium text-[oklch(0.72_0.012_250)]" htmlFor="email">
+              <label
+                htmlFor="email"
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  color: "var(--ink)",
+                  letterSpacing: "-0.005em",
+                }}
+              >
                 E-mail
               </label>
               <input
@@ -187,16 +407,45 @@ export function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="você@empresa.com"
                 required
-                className="w-full px-3.5 py-2.5 bg-[oklch(0.20_0.014_250)] border border-[oklch(0.30_0.012_250)] rounded-[10px] text-[oklch(0.97_0.005_250)] text-sm transition-all duration-180 outline-none placeholder:text-[oklch(0.55_0.012_250)] focus:border-[oklch(0.70_0.17_248)] focus:bg-[oklch(0.24_0.014_250)] focus:shadow-[0_0_0_4px_oklch(0.70_0.17_248_/_0.18)]"
+                className="w-full outline-none transition-all"
+                style={{
+                  padding: "10px 14px",
+                  background: "var(--canvas)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 9,
+                  color: "var(--ink)",
+                  fontSize: 14,
+                  letterSpacing: "-0.005em",
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--accent)";
+                  e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-soft)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "var(--border)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between items-center">
-                <label className="text-[12.5px] font-medium text-[oklch(0.72_0.012_250)]" htmlFor="password">
+              <div className="flex items-baseline justify-between">
+                <label
+                  htmlFor="password"
+                  style={{
+                    fontSize: 12.5,
+                    fontWeight: 500,
+                    color: "var(--ink)",
+                    letterSpacing: "-0.005em",
+                  }}
+                >
                   Senha
                 </label>
-                <button type="button" className="text-xs text-[oklch(0.78_0.16_248)] hover:underline">
+                <button
+                  type="button"
+                  style={{ fontSize: 12, color: "var(--accent-ink)" }}
+                  className="hover:underline"
+                >
                   Esqueci minha senha
                 </button>
               </div>
@@ -209,51 +458,102 @@ export function LoginPage() {
                   placeholder="••••••••"
                   required
                   minLength={8}
-                  className="w-full px-3.5 py-2.5 pr-10 bg-[oklch(0.20_0.014_250)] border border-[oklch(0.30_0.012_250)] rounded-[10px] text-[oklch(0.97_0.005_250)] text-sm transition-all duration-180 outline-none placeholder:text-[oklch(0.55_0.012_250)] focus:border-[oklch(0.70_0.17_248)] focus:bg-[oklch(0.24_0.014_250)] focus:shadow-[0_0_0_4px_oklch(0.70_0.17_248_/_0.18)]"
+                  className="w-full outline-none transition-all"
+                  style={{
+                    padding: "10px 38px 10px 14px",
+                    background: "var(--canvas)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 9,
+                    color: "var(--ink)",
+                    fontSize: 14,
+                    letterSpacing: "-0.005em",
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = "var(--accent)";
+                    e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-soft)";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = "var(--border)";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2 p-1.5 bg-transparent border-0 text-[oklch(0.55_0.012_250)] hover:text-[oklch(0.97_0.005_250)] rounded transition-colors"
                   aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  className="absolute right-2 grid place-items-center rounded transition-colors"
+                  style={{
+                    width: 26,
+                    height: 26,
+                    color: "var(--muted)",
+                    background: "transparent",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--chip)";
+                    e.currentTarget.style.color = "var(--ink)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "var(--muted)";
+                  }}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
+                  <EyeIcon shown={showPassword} />
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Error */}
           {error && (
-            <p className="text-sm text-red-400 bg-red-950/30 px-3 py-2 rounded-lg border border-red-900/40">
+            <p
+              style={{
+                fontSize: 12.5,
+                color: "var(--danger-ink)",
+                padding: "10px 12px",
+                background: "rgba(201, 119, 102, 0.10)",
+                border: "1px solid rgba(201, 119, 102, 0.25)",
+                borderRadius: 8,
+                lineHeight: 1.45,
+              }}
+            >
               {error}
             </p>
           )}
 
-          {/* Submit */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[oklch(0.97_0.005_250)] text-[oklch(0.16_0.012_250)] border-0 rounded-[10px] text-sm font-medium transition-all duration-180 hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0"
+            className="w-full inline-flex items-center justify-center gap-2 transition-all"
+            style={{
+              padding: "11px 16px",
+              background: "var(--ink)",
+              color: "var(--canvas)",
+              borderRadius: 9,
+              fontSize: 13.5,
+              fontWeight: 500,
+              letterSpacing: "-0.005em",
+              cursor: loading ? "default" : "pointer",
+              opacity: loading ? 0.55 : 1,
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) e.currentTarget.style.background = "#000";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--ink)";
+            }}
           >
-            {loading ? "Entrando..." : "Entrar"}
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M3 7h8M7 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            {loading ? "Entrando…" : "Entrar"}
+            {!loading && <ArrowRight />}
           </button>
 
-          {/* Footer */}
-          <div className="flex justify-between items-center text-[12.5px] text-[oklch(0.55_0.012_250)]">
+          <div
+            className="flex justify-between items-center"
+            style={{ fontSize: 12.5, color: "var(--muted)" }}
+          >
             <span>
               Não tem conta?{" "}
-              <button type="button" className="text-[oklch(0.72_0.012_250)] hover:text-[oklch(0.97_0.005_250)] transition-colors">
-                Falar com vendas
-              </button>
+              <span style={{ color: "var(--ink)" }}>Falar com vendas</span>
             </span>
-            <span>SSO · SAML</span>
+            <span style={{ letterSpacing: "0.04em" }}>SSO · SAML</span>
           </div>
         </form>
       </main>

@@ -14,25 +14,25 @@ interface RequestOptions {
   body?: unknown;
   headers?: Record<string, string>;
   auth?: boolean;
+  /**
+   * Quantas vezes essa request já tentou refresh+retry depois de um 401.
+   * Capado em 1 (1 refresh por request) pra impedir loops infinitos caso
+   * o token novo também volte 401 (token revogado, IAM rule estranha etc).
+   * Não use diretamente — o api-client maneja.
+   */
+  _retryDepth?: number;
 }
 
 class ApiClient {
   private onUnauthorized: (() => void) | null = null;
   private cachedUser: unknown = null;
-  private refreshing = false;
-  private refreshQueue: Array<{
-    resolve: (value: unknown) => void;
-    reject: (reason?: unknown) => void;
-    path: string;
-    options: RequestOptions;
-  }> = [];
 
   on401(callback: () => void) {
     this.onUnauthorized = callback;
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const { method = "GET", body, headers = {}, auth = true } = options;
+    const { method = "GET", body, headers = {}, auth = true, _retryDepth = 0 } = options;
 
     const allHeaders: Record<string, string> = {
       "Content-Type": "application/json",
@@ -59,15 +59,24 @@ class ApiClient {
 
     console.log("[api] response:", response.status, response.body);
 
-    // Se 401 e autenticado, tenta refreshar e retry
-    if (response.status === 401 && auth) {
-      const retry = await this.attemptRefreshAndRetry<T>(path, options);
-      if (retry) {
-        return retry;
+    if (response.status === 401 && auth && _retryDepth === 0) {
+      // Uma única tentativa de refresh+retry. refreshAccessToken() é idempotente
+      // (mutex interno), então múltiplas requests 401-ando em paralelo coalescem
+      // num único refresh.
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        return this.request<T>(path, { ...options, _retryDepth: 1 });
       }
 
-      // Refresh falhou — desloga
-      console.warn("[api] 401 unauthorized — token expired and refresh failed");
+      console.warn("[api] 401 — refresh falhou ou indisponível, encerrando sessão");
+      await logout();
+      this.onUnauthorized?.();
+      throw new Error("Sessão expirada. Faça login novamente.");
+    }
+
+    if (response.status === 401 && auth && _retryDepth > 0) {
+      // Já tentamos uma vez. Não entra em loop — derruba sessão.
+      console.warn("[api] 401 após refresh — token novo também recusado");
       await logout();
       this.onUnauthorized?.();
       throw new Error("Sessão expirada. Faça login novamente.");
@@ -78,54 +87,6 @@ class ApiClient {
     }
 
     return response.body as T;
-  }
-
-  private async attemptRefreshAndRetry<T>(
-    path: string,
-    options: RequestOptions
-  ): Promise<T | null> {
-    // Se já estamos refreshando, espera na fila
-    if (this.refreshing) {
-      return new Promise<T>((resolve, reject) => {
-        this.refreshQueue.push({
-          resolve: resolve as (value: unknown) => void,
-          reject,
-          path,
-          options,
-        });
-      });
-    }
-
-    this.refreshing = true;
-    try {
-      const newToken = await refreshAccessToken();
-      if (newToken) {
-        // Retry a requisição original com novo token
-        const retry = await this.request<T>(path, options);
-        // Processa fila com sucesso
-        this.drainQueue(true);
-        return retry;
-      }
-    } catch (err) {
-      console.error("[api] refresh failed during retry:", err);
-    } finally {
-      this.refreshing = false;
-    }
-    // Refresh falhou — rejeita fila
-    this.drainQueue(false);
-    return null;
-  }
-
-  private drainQueue(success: boolean) {
-    const queue = this.refreshQueue;
-    this.refreshQueue = [];
-    for (const item of queue) {
-      if (success) {
-        this.request(item.path, item.options).then(item.resolve).catch(item.reject);
-      } else {
-        item.reject(new Error("Sessão expirada. Faça login novamente."));
-      }
-    }
   }
 
   setCachedUser(user: unknown): void {

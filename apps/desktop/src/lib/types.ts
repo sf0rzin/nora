@@ -14,6 +14,17 @@ export interface LoginResponse {
   displayName: string;
 }
 
+/**
+ * Response shape de POST /auth/refresh. Mesmos campos de auth do LoginResponse,
+ * sem a parte de user (refresh não muda a identidade da sessão).
+ */
+export interface RefreshResponse {
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
+  expiresInSeconds: number;
+}
+
 export interface SessionUser {
   id: string;
   email: string;

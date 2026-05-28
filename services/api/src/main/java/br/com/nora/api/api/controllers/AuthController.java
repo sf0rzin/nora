@@ -154,7 +154,12 @@ public class AuthController {
                         Duration.ofSeconds(result.refreshExpiresInSeconds())));
         return ResponseEntity.ok()
                 .headers(headers)
-                .body(new RefreshResponse("Bearer", result.accessExpiresInSeconds()));
+                .body(
+                        new RefreshResponse(
+                                result.accessToken(),
+                                result.refreshTokenPlain(),
+                                "Bearer",
+                                result.accessExpiresInSeconds()));
     }
 
     /**
