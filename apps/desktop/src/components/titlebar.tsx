@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { useWindowMaximized } from "@/hooks/use-window-maximized";
 
 /**
  * Barra de título custom da janela principal.
@@ -60,28 +61,7 @@ function ControlButton({
 
 export function Titlebar() {
   const win = useMemo(() => getCurrentWebviewWindow(), []);
-  const [maximized, setMaximized] = useState(false);
-
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let cancelled = false;
-
-    win.isMaximized().then((m) => !cancelled && setMaximized(m)).catch(() => {});
-    win
-      .onResized(() => {
-        win.isMaximized().then((m) => !cancelled && setMaximized(m)).catch(() => {});
-      })
-      .then((fn) => {
-        if (cancelled) fn();
-        else unlisten = fn;
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [win]);
+  const maximized = useWindowMaximized();
 
   // Arraste — só botão esquerdo. `e.detail > 1` (segundo clique de um
   // duplo-clique) é ignorado pra não engolir o `onDoubleClick` que maximiza.

@@ -4,6 +4,7 @@ import { LiveHighlightsProvider } from "@/hooks/use-live-highlights";
 import { ActiveRecordingProvider } from "@/hooks/use-active-recording";
 import { Sidebar } from "@/components/sidebar";
 import { Titlebar } from "@/components/titlebar";
+import { useWindowMaximized } from "@/hooks/use-window-maximized";
 import { NewMeetingModal } from "@/components/new-meeting-modal";
 import { LoginPage } from "@/pages/login";
 import { MeetingsPage } from "@/pages/meetings";
@@ -22,6 +23,13 @@ function Router() {
   const { authenticated, loading } = useAuth();
   const [route, setRoute] = useState(window.location.hash);
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Achata os cantos arredondados quando a janela está maximizada (senão sobram
+  // buracos transparentes nos cantos da tela). A classe é lida pelo #root no CSS.
+  const maximized = useWindowMaximized();
+  useEffect(() => {
+    document.documentElement.classList.toggle("win-maximized", maximized);
+  }, [maximized]);
 
   useEffect(() => {
     const handler = () => setRoute(window.location.hash);

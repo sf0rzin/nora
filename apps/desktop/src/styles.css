@@ -36,11 +36,20 @@ body,
   margin: 0;
 }
 
-/* O background do body fica nas entry-point HTMLs (index.html canvas /
-   overlay.html transparente). Aqui só definimos no #root pra cobrir a janela
-   principal sem afetar a overlay transparente. */
+/* A janela main roda com transparent:true + decorations:false, então o #root é
+   um "card" arredondado: o que está fora do raio mostra o desktop. overflow
+   recorta o conteúdo nos cantos. A overlay tem seu próprio root e não é afetada. */
 #root {
   background: var(--canvas);
+  box-sizing: border-box;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+/* Maximizada → cantos retos (senão sobram buracos transparentes nos cantos). */
+html.win-maximized #root {
+  border-radius: 0;
+  border: none;
 }
 
 body {
