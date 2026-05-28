@@ -23,18 +23,56 @@ class ErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex items-center justify-center h-screen bg-zinc-900 text-zinc-100 p-6">
-          <div className="max-w-lg">
-            <h1 className="text-xl font-bold text-red-400 mb-4">Erro na aplicação</h1>
-            <p className="text-sm text-zinc-400 mb-4">
-              Ocorreu um erro ao carregar o NORA Desktop:
+        <div
+          className="flex items-center justify-center h-screen p-6"
+          style={{ background: "var(--canvas)", color: "var(--ink)" }}
+        >
+          <div className="max-w-lg w-full">
+            <h1
+              style={{
+                fontFamily: "var(--display)",
+                fontSize: 22,
+                fontWeight: 500,
+                letterSpacing: "-0.022em",
+                color: "var(--danger-ink)",
+                margin: "0 0 12px",
+              }}
+            >
+              Algo travou no NORA Desktop.
+            </h1>
+            <p style={{ fontSize: 13.5, color: "var(--muted)", lineHeight: 1.55, marginBottom: 14 }}>
+              O frontend não conseguiu inicializar. Detalhes técnicos abaixo —
+              copie e mande pro time se persistir.
             </p>
-            <pre className="text-xs bg-zinc-800 p-4 rounded overflow-auto text-red-300">
+            <pre
+              style={{
+                fontSize: 12,
+                fontFamily: "ui-monospace, SF Mono, Menlo, monospace",
+                background: "var(--sidebar)",
+                border: "1px solid var(--border)",
+                padding: 14,
+                borderRadius: 8,
+                color: "var(--danger-ink)",
+                overflow: "auto",
+                maxHeight: 240,
+              }}
+            >
               {this.state.error?.message}
             </pre>
             <button
               onClick={() => window.location.reload()}
-              className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+              style={{
+                marginTop: 16,
+                padding: "9px 14px",
+                background: "var(--ink)",
+                color: "var(--canvas)",
+                borderRadius: 8,
+                border: "none",
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 500,
+                letterSpacing: "-0.005em",
+              }}
             >
               Recarregar
             </button>
