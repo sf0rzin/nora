@@ -120,10 +120,10 @@ public class AnalysisService {
     }
 
     /**
-     * Emite telemetria de custo da análise in-process (ADR 0024). Usa o {@code metadata} que o worker
-     * já reporta (modelo + tokens + latência, persistidos no {@link MeetingAnalysis}). Tolerante:
-     * uma falha aqui NUNCA derruba o pipeline (o {@link UsageRecorder} é no-op quando o control plane
-     * está off e já é fail-soft quando on).
+     * Emite telemetria de custo da análise in-process (ADR 0024). Usa o {@code metadata} que o
+     * worker já reporta (modelo + tokens + latência, persistidos no {@link MeetingAnalysis}).
+     * Tolerante: uma falha aqui NUNCA derruba o pipeline (o {@link UsageRecorder} é no-op quando o
+     * control plane está off e já é fail-soft quando on).
      */
     private void emitUsage(UUID tenantId, MeetingAnalysis a) {
         try {

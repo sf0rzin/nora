@@ -18,14 +18,16 @@ public class CostTelemetryService {
     private final PlatformAvailability availability;
 
     public CostTelemetryService(
-            ObjectProvider<UsageEventRepository> eventsProvider, PlatformAvailability availability) {
+            ObjectProvider<UsageEventRepository> eventsProvider,
+            PlatformAvailability availability) {
         this.eventsProvider = eventsProvider;
         this.availability = availability;
     }
 
     public CostReport cost(OffsetDateTime from, OffsetDateTime to, String groupBy) {
         if (!availability.isUsable()) {
-            throw new PlatformUnavailableException("control plane indisponível (banco de plataforma)");
+            throw new PlatformUnavailableException(
+                    "control plane indisponível (banco de plataforma)");
         }
         String g = groupBy == null || groupBy.isBlank() ? "model" : groupBy.trim().toLowerCase();
         if (!GROUPS.contains(g)) {

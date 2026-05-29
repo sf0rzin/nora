@@ -14,14 +14,14 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Chains de segurança do control plane (ADR 0023), separadas por path e com precedência sobre a chain
- * JWT por-tenant existente (que não tem @Order ⇒ LOWEST_PRECEDENCE ⇒ avaliada por último como
+ * Chains de segurança do control plane (ADR 0023), separadas por path e com precedência sobre a
+ * chain JWT por-tenant existente (que não tem @Order ⇒ LOWEST_PRECEDENCE ⇒ avaliada por último como
  * catch-all). Cada chain confia apenas no token interno (X-Internal-Token):
  *
  * <ul>
  *   <li>@Order(1) /internal/platform/** — service token (worker/BFF)
- *   <li>@Order(2) /admin/platform/** — admin token (nora-admin); auditoria via X-Operator-Email lido
- *       no controller
+ *   <li>@Order(2) /admin/platform/** — admin token (nora-admin); auditoria via X-Operator-Email
+ *       lido no controller
  * </ul>
  *
  * Sem CORS (server-to-server), stateless, 401 quando o token falta/não bate.
@@ -39,12 +39,12 @@ public class PlatformSecurityConfig {
             if (props.getInternalToken() == null || props.getInternalToken().isBlank()) {
                 LOG.warn(
                         "Control plane habilitado mas NORA_PLATFORM_INTERNAL_TOKEN está vazio —"
-                            + " /internal/platform/** vai recusar tudo (401).");
+                                + " /internal/platform/** vai recusar tudo (401).");
             }
             if (props.getAdminToken() == null || props.getAdminToken().isBlank()) {
                 LOG.warn(
                         "NORA_PLATFORM_ADMIN_TOKEN vazio — /admin/platform/** cai no internal-token"
-                            + " (recomendado configurar tokens distintos).");
+                                + " (recomendado configurar tokens distintos).");
             }
         }
     }

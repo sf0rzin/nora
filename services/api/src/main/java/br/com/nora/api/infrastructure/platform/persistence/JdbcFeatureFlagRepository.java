@@ -35,7 +35,7 @@ public class JdbcFeatureFlagRepository implements FeatureFlagRepository {
     public List<FeatureFlag> findAll() {
         return jdbc.query(
                 "SELECT key, enabled, description, updated_by, updated_at FROM feature_flags ORDER BY"
-                    + " key",
+                        + " key",
                 new MapSqlParameterSource(),
                 MAPPER);
     }
@@ -45,7 +45,7 @@ public class JdbcFeatureFlagRepository implements FeatureFlagRepository {
         return jdbc
                 .query(
                         "SELECT key, enabled, description, updated_by, updated_at FROM feature_flags"
-                            + " WHERE key = :k",
+                                + " WHERE key = :k",
                         new MapSqlParameterSource("k", key),
                         MAPPER)
                 .stream()

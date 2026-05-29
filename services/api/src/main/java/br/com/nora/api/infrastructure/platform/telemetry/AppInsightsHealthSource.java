@@ -14,10 +14,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
- * Lê saúde do sistema via Application Insights REST query API (telemetria (b), ADR 0024). Best-effort:
- * se {@code app-insights-app-id}/{@code api-key} não estiverem configurados, ou a consulta falhar,
- * devolve {@link HealthSnapshot#unavailable} (o endpoint /admin/.../health ainda responde 200). Bean
- * sempre presente (não-gated) — não toca o banco de plataforma.
+ * Lê saúde do sistema via Application Insights REST query API (telemetria (b), ADR 0024).
+ * Best-effort: se {@code app-insights-app-id}/{@code api-key} não estiverem configurados, ou a
+ * consulta falhar, devolve {@link HealthSnapshot#unavailable} (o endpoint /admin/.../health ainda
+ * responde 200). Bean sempre presente (não-gated) — não toca o banco de plataforma.
  */
 @Component
 public class AppInsightsHealthSource implements HealthMetricsSource {
@@ -25,7 +25,7 @@ public class AppInsightsHealthSource implements HealthMetricsSource {
     private static final Logger LOG = LoggerFactory.getLogger(AppInsightsHealthSource.class);
     private static final String KQL =
             "requests | summarize requests=count(), failed=countif(success=='False'),"
-                + " p95=percentile(duration,95) by cloud_RoleName";
+                    + " p95=percentile(duration,95) by cloud_RoleName";
 
     private final PlatformProperties props;
     private final WebClient webClient;
@@ -43,7 +43,7 @@ public class AppInsightsHealthSource implements HealthMetricsSource {
             return HealthSnapshot.unavailable(
                     window,
                     "App Insights query API não configurada"
-                        + " (NORA_PLATFORM_HEALTH_APP_ID + NORA_PLATFORM_HEALTH_API_KEY)");
+                            + " (NORA_PLATFORM_HEALTH_APP_ID + NORA_PLATFORM_HEALTH_API_KEY)");
         }
         try {
             AiResponse resp =

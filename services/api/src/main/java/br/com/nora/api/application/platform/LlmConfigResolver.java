@@ -16,8 +16,9 @@ import org.springframework.stereotype.Service;
 
 /**
  * Resolve o modelo ativo por serviço no hot-path (ADR 0024). Cache Caffeine ~60s (mesmo padrão do
- * AuthRateLimiter). <b>Fallback SOFT</b>: qualquer falha (plataforma off/degradada, binding ausente,
- * exceção de query) devolve a config do env default — <b>nunca</b> lança, nunca derruba chat/worker.
+ * AuthRateLimiter). <b>Fallback SOFT</b>: qualquer falha (plataforma off/degradada, binding
+ * ausente, exceção de query) devolve a config do env default — <b>nunca</b> lança, nunca derruba
+ * chat/worker.
  *
  * <p>Não é gated: existe sempre, e degrada para o env quando os repos do banco de plataforma não
  * estão presentes/usáveis.
@@ -75,7 +76,10 @@ public class LlmConfigResolver {
             return new ResolvedLlmConfig(
                     r.provider(), r.model(), r.baseUrl(), r.enabled() && featureEnabled(service));
         } catch (RuntimeException ex) {
-            LOG.warn("Resolver: fallback SOFT p/ env (service={}). Causa: {}", service, ex.getMessage());
+            LOG.warn(
+                    "Resolver: fallback SOFT p/ env (service={}). Causa: {}",
+                    service,
+                    ex.getMessage());
             return fallback(true);
         }
     }

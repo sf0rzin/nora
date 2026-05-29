@@ -111,7 +111,8 @@ public class ModelCatalogService {
         return guarded(() -> configs().findAll());
     }
 
-    public ServiceBinding bindService(String service, UUID modelId, boolean enabled, String operator) {
+    public ServiceBinding bindService(
+            String service, UUID modelId, boolean enabled, String operator) {
         if (!LlmConfigResolver.SERVICES.contains(service)) {
             throw new PlatformValidationException("serviço inválido: " + service, false);
         }
@@ -160,22 +161,22 @@ public class ModelCatalogService {
 
     private void requireUsable() {
         if (!availability.isUsable()) {
-            throw new PlatformUnavailableException("control plane indisponível (banco de plataforma)");
+            throw new PlatformUnavailableException(
+                    "control plane indisponível (banco de plataforma)");
         }
     }
 
     /**
      * Executa uma operação que toca o banco de plataforma traduzindo falha de runtime (banco caiu
      * pós-boot) em {@link PlatformUnavailableException} → 503. Per-call (não degrada o estado
-     * permanentemente): quando o banco volta, a próxima chamada funciona. Exceções de domínio
-     * (Not Found/Conflict/Validation/Unavailable) propagam intactas para os status corretos.
+     * permanentemente): quando o banco volta, a próxima chamada funciona. Exceções de domínio (Not
+     * Found/Conflict/Validation/Unavailable) propagam intactas para os status corretos.
      */
     private <T> T guarded(Supplier<T> action) {
         try {
             return action.get();
         } catch (DataAccessException ex) {
-            throw new PlatformUnavailableException(
-                    "banco de plataforma indisponível em runtime");
+            throw new PlatformUnavailableException("banco de plataforma indisponível em runtime");
         }
     }
 
@@ -188,7 +189,11 @@ public class ModelCatalogService {
     }
 
     private void audit(
-            String operator, String action, String type, String target, Map<String, Object> detail) {
+            String operator,
+            String action,
+            String type,
+            String target,
+            Map<String, Object> detail) {
         try {
             auditProvider.getObject().record(operator, action, type, target, detail);
         } catch (RuntimeException ex) {

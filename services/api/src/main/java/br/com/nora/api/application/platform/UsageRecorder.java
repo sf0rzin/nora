@@ -5,9 +5,10 @@ import java.util.UUID;
 
 /**
  * Porta de emissão de telemetria de uso de IA. AnalysisService depende dela (in-process, caminho da
- * análise); o controller /internal/platform/usage depende dela (caminho do chat/externos). Há sempre
- * um bean ativo: a implementação real (gated {@code nora.platform.enabled=true}) ou um no-op (quando
- * a plataforma está desabilitada) — então AnalysisService nunca quebra por ausência de bean.
+ * análise); o controller /internal/platform/usage depende dela (caminho do chat/externos). Há
+ * sempre um bean ativo: a implementação real (gated {@code nora.platform.enabled=true}) ou um no-op
+ * (quando a plataforma está desabilitada) — então AnalysisService nunca quebra por ausência de
+ * bean.
  */
 public interface UsageRecorder {
 
@@ -26,8 +27,8 @@ public interface UsageRecorder {
 
     /**
      * Emite usage de um caller externo (BFF de chat, multimodal futuro) via POST
-     * /internal/platform/usage. {@code costUsdHint} é best-effort; o custo autoritativo é recalculado
-     * do catálogo quando o modelo é conhecido. Nunca lança (fire-and-forget).
+     * /internal/platform/usage. {@code costUsdHint} é best-effort; o custo autoritativo é
+     * recalculado do catálogo quando o modelo é conhecido. Nunca lança (fire-and-forget).
      */
     void recordExternal(
             String service,

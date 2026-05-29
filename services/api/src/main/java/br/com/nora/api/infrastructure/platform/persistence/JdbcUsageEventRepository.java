@@ -37,8 +37,8 @@ public class JdbcUsageEventRepository implements UsageEventRepository {
                         .addValue("status", e.status());
         jdbc.update(
                 "INSERT INTO usage_events (service, provider, model, tenant_id, prompt_tokens,"
-                    + " completion_tokens, cost_usd, latency_ms, status) VALUES (:service, :provider,"
-                    + " :model, :tenantId, :in, :out, :cost, :latency, :status)",
+                        + " completion_tokens, cost_usd, latency_ms, status) VALUES (:service, :provider,"
+                        + " :model, :tenantId, :in, :out, :cost, :latency, :status)",
                 params);
     }
 

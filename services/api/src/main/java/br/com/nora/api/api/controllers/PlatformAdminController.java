@@ -41,10 +41,10 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Console do operador (contrato platform-control-plane.md §3). Protegido por admin token (chain
- * @Order(2)); o e-mail do operador chega em X-Operator-Email (repassado pelo nora-admin a partir do
- * Easy Auth) e é gravado na auditoria. Operações que tocam o banco de plataforma devolvem 503 quando
- * degradado/off (via PlatformUnavailableException → PlatformExceptionHandler).
+ * Console do operador (contrato platform-control-plane.md §3). Protegido por admin token
+ * (chain @Order(2)); o e-mail do operador chega em X-Operator-Email (repassado pelo nora-admin a
+ * partir do Easy Auth) e é gravado na auditoria. Operações que tocam o banco de plataforma devolvem
+ * 503 quando degradado/off (via PlatformUnavailableException → PlatformExceptionHandler).
  */
 @RestController
 @RequestMapping("/admin/platform")
@@ -151,7 +151,8 @@ public class PlatformAdminController {
 
     @GetMapping("/telemetry/business")
     public BusinessSnapshot business(
-            @RequestParam(required = false) String from, @RequestParam(required = false) String to) {
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to) {
         OffsetDateTime[] w = window(from, to);
         return business.business(w[0], w[1]);
     }

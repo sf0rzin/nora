@@ -7,8 +7,8 @@ import org.springframework.stereotype.Component;
  * Estado de disponibilidade do control plane (ADR 0022). Sempre presente (não-gated): quando a
  * plataforma está desabilitada fica {@code DISABLED}; quando habilitada começa {@code DEGRADED} e
  * vira {@code HEALTHY} após a migração Flyway bem-sucedida; se a migração falhar, permanece {@code
- * DEGRADED}. Admin endpoints exigem {@code HEALTHY}; o hot-path (llm-config/usage) faz fallback/drop
- * quando não está usable.
+ * DEGRADED}. Admin endpoints exigem {@code HEALTHY}; o hot-path (llm-config/usage) faz
+ * fallback/drop quando não está usable.
  */
 @Component
 public class PlatformAvailability {
@@ -33,7 +33,9 @@ public class PlatformAvailability {
         state.updateAndGet(s -> s == State.DISABLED ? State.DISABLED : State.DEGRADED);
     }
 
-    /** True só quando habilitada E migrada — única condição em que o banco de plataforma é usável. */
+    /**
+     * True só quando habilitada E migrada — única condição em que o banco de plataforma é usável.
+     */
     public boolean isUsable() {
         return state.get() == State.HEALTHY;
     }

@@ -14,10 +14,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 /**
- * Escritor único de telemetria de custo (ADR 0024). Implementa {@link UsageRecorder}; ativo só quando
- * {@code nora.platform.enabled=true} (quando off, o bean ativo é {@code NoOpUsageRecorder}). Calcula
- * o custo a partir do pricing do catálogo (fonte da verdade) — o {@code costUsdHint} do caller é só
- * fallback. <b>Nunca lança</b>: em plataforma degradada ou erro de query, descarta silenciosamente.
+ * Escritor único de telemetria de custo (ADR 0024). Implementa {@link UsageRecorder}; ativo só
+ * quando {@code nora.platform.enabled=true} (quando off, o bean ativo é {@code NoOpUsageRecorder}).
+ * Calcula o custo a partir do pricing do catálogo (fonte da verdade) — o {@code costUsdHint} do
+ * caller é só fallback. <b>Nunca lança</b>: em plataforma degradada ou erro de query, descarta
+ * silenciosamente.
  */
 @Service
 @ConditionalOnProperty(name = "nora.platform.enabled", havingValue = "true")

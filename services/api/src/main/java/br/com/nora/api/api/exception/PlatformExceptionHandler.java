@@ -16,9 +16,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /**
- * Tradutor de exceções do control plane (ADR 0022/0023/0024). @Order(HIGHEST_PRECEDENCE) garante que
- * estes handlers específicos vençam o catch-all Exception do GlobalExceptionHandler (que tem ordem
- * default). Reusa o {@link ErrorResponse} pra manter o formato de erro consistente.
+ * Tradutor de exceções do control plane (ADR 0022/0023/0024). @Order(HIGHEST_PRECEDENCE) garante
+ * que estes handlers específicos vençam o catch-all Exception do GlobalExceptionHandler (que tem
+ * ordem default). Reusa o {@link ErrorResponse} pra manter o formato de erro consistente.
  */
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -46,7 +46,8 @@ public class PlatformExceptionHandler {
         return body(status, "PLATFORM_VALIDATION", ex.getMessage());
     }
 
-    private static ResponseEntity<ErrorResponse> body(HttpStatus status, String code, String message) {
+    private static ResponseEntity<ErrorResponse> body(
+            HttpStatus status, String code, String message) {
         return ResponseEntity.status(status)
                 .body(
                         new ErrorResponse(

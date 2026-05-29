@@ -149,7 +149,9 @@ public class PlatformProperties {
         }
     }
 
-    /** Fonte de saúde (Application Insights REST query API). Vazio = telemetria health unavailable. */
+    /**
+     * Fonte de saúde (Application Insights REST query API). Vazio = telemetria health unavailable.
+     */
     public static class Health {
         private String appInsightsAppId = "";
         private String apiKey = "";

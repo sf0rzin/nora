@@ -13,7 +13,9 @@ public final class PlatformDtos {
 
     private PlatformDtos() {}
 
-    /** Resposta do catálogo (GET /admin/platform/models). Espelha o contrato (model/modality wire). */
+    /**
+     * Resposta do catálogo (GET /admin/platform/models). Espelha o contrato (model/modality wire).
+     */
     public record ModelResponse(
             String id,
             String provider,
@@ -60,7 +62,9 @@ public final class PlatformDtos {
             BigDecimal priceCachedInputPerMTok,
             Boolean enabled) {}
 
-    /** Resposta de binding (GET /admin/platform/config), enriquecida com provider/model do modelo. */
+    /**
+     * Resposta de binding (GET /admin/platform/config), enriquecida com provider/model do modelo.
+     */
     public record BindingResponse(
             String service,
             String modelId,

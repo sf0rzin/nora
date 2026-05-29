@@ -20,8 +20,8 @@ public class JdbcLlmModelRepository implements LlmModelRepository {
 
     private static final String COLS =
             "id, provider, model_id, display_name, base_url, modality, supports_strict_json_schema,"
-                + " price_input_per_mtok, price_output_per_mtok, price_cached_input_per_mtok, enabled,"
-                + " created_at, updated_at";
+                    + " price_input_per_mtok, price_output_per_mtok, price_cached_input_per_mtok, enabled,"
+                    + " created_at, updated_at";
 
     private static final RowMapper<LlmModel> MAPPER =
             (rs, n) ->
@@ -92,10 +92,11 @@ public class JdbcLlmModelRepository implements LlmModelRepository {
                         .addValue("enabled", m.enabled());
         return jdbc.queryForObject(
                 "INSERT INTO llm_models (provider, model_id, display_name, base_url, modality,"
-                    + " supports_strict_json_schema, price_input_per_mtok, price_output_per_mtok,"
-                    + " price_cached_input_per_mtok, enabled) VALUES (:provider, :modelId,"
-                    + " :displayName, :baseUrl, :modality, :strict, :pin, :pout, :pcached, :enabled)"
-                    + " RETURNING " + COLS,
+                        + " supports_strict_json_schema, price_input_per_mtok, price_output_per_mtok,"
+                        + " price_cached_input_per_mtok, enabled) VALUES (:provider, :modelId,"
+                        + " :displayName, :baseUrl, :modality, :strict, :pin, :pout, :pcached, :enabled)"
+                        + " RETURNING "
+                        + COLS,
                 params,
                 MAPPER);
     }

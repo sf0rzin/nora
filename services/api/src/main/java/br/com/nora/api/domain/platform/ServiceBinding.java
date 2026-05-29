@@ -8,4 +8,8 @@ import java.util.UUID;
  * {@code multimodal} (ADR 0024).
  */
 public record ServiceBinding(
-        String service, UUID modelId, boolean enabled, String updatedBy, OffsetDateTime updatedAt) {}
+        String service,
+        UUID modelId,
+        boolean enabled,
+        String updatedBy,
+        OffsetDateTime updatedAt) {}

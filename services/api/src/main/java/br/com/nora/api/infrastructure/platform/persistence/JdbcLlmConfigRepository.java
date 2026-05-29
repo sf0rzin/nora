@@ -37,7 +37,7 @@ public class JdbcLlmConfigRepository implements LlmConfigRepository {
     public List<ServiceBinding> findAll() {
         return jdbc.query(
                 "SELECT service, model_id, enabled, updated_by, updated_at FROM llm_config ORDER BY"
-                    + " service",
+                        + " service",
                 new MapSqlParameterSource(),
                 MAPPER);
     }
@@ -47,7 +47,7 @@ public class JdbcLlmConfigRepository implements LlmConfigRepository {
         return jdbc
                 .query(
                         "SELECT service, model_id, enabled, updated_by, updated_at FROM llm_config"
-                            + " WHERE service = :s",
+                                + " WHERE service = :s",
                         new MapSqlParameterSource("s", service),
                         MAPPER)
                 .stream()
@@ -64,10 +64,10 @@ public class JdbcLlmConfigRepository implements LlmConfigRepository {
                         .addValue("by", updatedBy);
         return jdbc.queryForObject(
                 "INSERT INTO llm_config (service, model_id, enabled, updated_by) VALUES (:service,"
-                    + " :modelId, :enabled, :by) ON CONFLICT (service) DO UPDATE SET model_id ="
-                    + " EXCLUDED.model_id, enabled = EXCLUDED.enabled, updated_by ="
-                    + " EXCLUDED.updated_by, updated_at = NOW() RETURNING service, model_id, enabled,"
-                    + " updated_by, updated_at",
+                        + " :modelId, :enabled, :by) ON CONFLICT (service) DO UPDATE SET model_id ="
+                        + " EXCLUDED.model_id, enabled = EXCLUDED.enabled, updated_by ="
+                        + " EXCLUDED.updated_by, updated_at = NOW() RETURNING service, model_id, enabled,"
+                        + " updated_by, updated_at",
                 params,
                 MAPPER);
     }
@@ -77,8 +77,8 @@ public class JdbcLlmConfigRepository implements LlmConfigRepository {
         return jdbc
                 .query(
                         "SELECT m.provider AS provider, m.model_id AS model, m.base_url AS base_url,"
-                            + " (c.enabled AND m.enabled) AS enabled FROM llm_config c JOIN llm_models"
-                            + " m ON m.id = c.model_id WHERE c.service = :s",
+                                + " (c.enabled AND m.enabled) AS enabled FROM llm_config c JOIN llm_models"
+                                + " m ON m.id = c.model_id WHERE c.service = :s",
                         new MapSqlParameterSource("s", service),
                         (rs, n) ->
                                 new ResolvedLlmConfig(

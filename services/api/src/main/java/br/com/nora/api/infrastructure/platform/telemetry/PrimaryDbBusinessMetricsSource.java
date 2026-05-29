@@ -12,9 +12,9 @@ import org.springframework.stereotype.Component;
  * Métricas de negócio cross-tenant (telemetria (c), CORTÁVEL, ADR 0024). Lê o banco PRIMÁRIO via o
  * {@code JdbcTemplate} autoconfigurado, SEM contexto de tenant — agregação operador-only e
  * intencional (não passa por @Transactional, então o TenantRlsAspect não aplica; com RLS enforce
- * desligado, a leitura cross-tenant funciona). v1 minimalista: contagens seguras (analyses + tenants
- * ativos); médias deixadas null pra não acoplar a schema de outros módulos. Bean não-gated (não toca
- * o banco de plataforma).
+ * desligado, a leitura cross-tenant funciona). v1 minimalista: contagens seguras (analyses +
+ * tenants ativos); médias deixadas null pra não acoplar a schema de outros módulos. Bean não-gated
+ * (não toca o banco de plataforma).
  *
  * <p><b>CAVEAT RLS (ADR 0019):</b> esta leitura cross-tenant depende do datasource primário rodar
  * com role BYPASSRLS (estado atual: owner, NORA_RLS_ENFORCE=false). Se o opt-in de RLS enforce for
@@ -40,14 +40,14 @@ public class PrimaryDbBusinessMetricsSource implements BusinessMetricsSource {
             Long analyses =
                     jdbc.queryForObject(
                             "SELECT COUNT(*) FROM meeting_analyses WHERE generated_at >= ? AND"
-                                + " generated_at < ?",
+                                    + " generated_at < ?",
                             Long.class,
                             from,
                             to);
             Long tenants =
                     jdbc.queryForObject(
                             "SELECT COUNT(DISTINCT tenant_id) FROM meeting_analyses WHERE generated_at"
-                                + " >= ? AND generated_at < ?",
+                                    + " >= ? AND generated_at < ?",
                             Long.class,
                             from,
                             to);

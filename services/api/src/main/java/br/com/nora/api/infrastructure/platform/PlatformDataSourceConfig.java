@@ -14,14 +14,16 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 /**
- * Segundo datasource — banco de plataforma (ADR 0022). Gated por {@code nora.platform.enabled=true}:
- * em local/test/CI nada disto é criado (autoconfig single-datasource do Boot fica intacto).
+ * Segundo datasource — banco de plataforma (ADR 0022). Gated por {@code
+ * nora.platform.enabled=true}: em local/test/CI nada disto é criado (autoconfig single-datasource
+ * do Boot fica intacto).
  *
- * <p><b>Por que JdbcTemplate e não um 2º EntityManagerFactory:</b> a API não tem config explícita de
- * datasource hoje; um 2º EMF forçaria tornar o primário @Primary + segmentar @EnableJpaRepositories,
- * mexendo no JPA que já roda. Aqui expomos APENAS um {@link NamedParameterJdbcTemplate} sobre um pool
- * Hikari dedicado — o {@code HikariDataSource} <b>não</b> é registrado como bean do tipo {@code
- * DataSource}, então o autoconfig do datasource primário <b>não</b> sofre backoff.
+ * <p><b>Por que JdbcTemplate e não um 2º EntityManagerFactory:</b> a API não tem config explícita
+ * de datasource hoje; um 2º EMF forçaria tornar o primário @Primary +
+ * segmentar @EnableJpaRepositories, mexendo no JPA que já roda. Aqui expomos APENAS um {@link
+ * NamedParameterJdbcTemplate} sobre um pool Hikari dedicado — o {@code HikariDataSource} <b>não</b>
+ * é registrado como bean do tipo {@code DataSource}, então o autoconfig do datasource primário
+ * <b>não</b> sofre backoff.
  *
  * <p><b>Soft-fail:</b> {@code initializationFailTimeout=-1} faz o pool não validar conexão no boot;
  * a migração roda num {@link ApplicationRunner} com try/catch. Banco de plataforma fora ⇒ API sobe
@@ -70,8 +72,8 @@ public class PlatformDataSourceConfig {
                 availability.markDegraded();
                 LOG.error(
                         "Control plane: migração do banco de plataforma FALHOU — módulo DEGRADADO"
-                            + " (admin -> 503; llm-config -> fallback env; usage -> descartado)."
-                            + " Causa: {}",
+                                + " (admin -> 503; llm-config -> fallback env; usage -> descartado)."
+                                + " Causa: {}",
                         ex.getMessage());
             }
         };

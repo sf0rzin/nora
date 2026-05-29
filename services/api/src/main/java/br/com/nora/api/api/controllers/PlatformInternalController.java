@@ -17,8 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Endpoints serviço-a-serviço do control plane (contrato platform-control-plane.md §2). Protegidos
- * por token interno (chain @Order(1) em PlatformSecurityConfig). Hot-path: nunca 5xx — o resolver faz
- * fallback SOFT e o usage é fire-and-forget.
+ * por token interno (chain @Order(1) em PlatformSecurityConfig). Hot-path: nunca 5xx — o resolver
+ * faz fallback SOFT e o usage é fire-and-forget.
  */
 @RestController
 @RequestMapping("/internal/platform")

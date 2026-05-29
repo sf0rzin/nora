@@ -12,7 +12,11 @@ public record CostReport(
         OffsetDateTime from, OffsetDateTime to, String groupBy, List<Bucket> rows, Totals totals) {
 
     public record Bucket(
-            String key, long promptTokens, long completionTokens, BigDecimal costUsd, long events) {}
+            String key,
+            long promptTokens,
+            long completionTokens,
+            BigDecimal costUsd,
+            long events) {}
 
     public record Totals(
             long promptTokens, long completionTokens, BigDecimal costUsd, long events) {}

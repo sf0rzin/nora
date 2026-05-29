@@ -17,7 +17,8 @@ public class JdbcPlatformAuditRepository implements PlatformAuditRepository {
     private final NamedParameterJdbcTemplate jdbc;
     private final ObjectMapper json;
 
-    public JdbcPlatformAuditRepository(NamedParameterJdbcTemplate platformJdbcTemplate, ObjectMapper json) {
+    public JdbcPlatformAuditRepository(
+            NamedParameterJdbcTemplate platformJdbcTemplate, ObjectMapper json) {
         this.jdbc = platformJdbcTemplate;
         this.json = json;
     }
@@ -44,7 +45,7 @@ public class JdbcPlatformAuditRepository implements PlatformAuditRepository {
                         .addValue("detail", detailJson);
         jdbc.update(
                 "INSERT INTO platform_audit_log (operator_email, action, target_type, target_id,"
-                    + " detail) VALUES (:email, :action, :type, :target, CAST(:detail AS jsonb))",
+                        + " detail) VALUES (:email, :action, :type, :target, CAST(:detail AS jsonb))",
                 params);
     }
 }
