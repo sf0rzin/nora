@@ -63,3 +63,18 @@ param searchSku = 'basic'
 // Em dev, adicionar IP do desenvolvedor pra acessar via psql/DBeaver direto.
 // Pegar IP com: curl ifconfig.me
 param postgresFirewallRules = []
+
+// ---- Control plane (ADR 0022/0023/0024) ----
+// OFF por padrão: mantém a infra atual intacta. O outro arquiteto liga (enablePlatform=true)
+// quando: (1) imagem do nora-admin publicada no GHCR; (2) grupo Entra + App Registration criados
+// (passo MANUAL — ver docs/operations/control-plane-runbook.md); (3) secrets abaixo setados.
+param enablePlatform = false
+param platformPostgresAdminPassword = readEnvironmentVariable('PG_PLATFORM_ADMIN_PASSWORD', '')
+param platformInternalToken = readEnvironmentVariable('NORA_PLATFORM_INTERNAL_TOKEN', '')
+param platformAdminToken = readEnvironmentVariable('NORA_PLATFORM_ADMIN_TOKEN', '')
+param adminImage = 'ghcr.io/sys0xff/nora-admin:latest'
+param easyAuthClientId = readEnvironmentVariable('EASYAUTH_CLIENT_ID', '')
+param easyAuthClientSecret = readEnvironmentVariable('EASYAUTH_CLIENT_SECRET', '')
+// Allowlist de IP do operador no go-live, ex.:
+// [ { name: 'escritorio', ipAddressRange: '203.0.113.0/24', action: 'Allow' } ]
+param adminIpSecurityRestrictions = []

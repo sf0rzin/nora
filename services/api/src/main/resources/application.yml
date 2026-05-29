@@ -117,6 +117,34 @@ nora:
     allow-credentials: true
     max-age-seconds: 3600
 
+  # Control plane de operador + telemetria de IA (ADR 0022/0023/0024). Default OFF: em
+  # local/test/CI o módulo platform fica inteiramente inerte (sem 2º datasource, sem Flyway).
+  # Prod liga via NORA_PLATFORM_ENABLED=true (Bicep). Banco de plataforma é SEPARADO.
+  platform:
+    enabled: ${NORA_PLATFORM_ENABLED:false}
+    # Token serviço-a-serviço (worker/BFF -> /internal/platform/**)
+    internal-token: ${NORA_PLATFORM_INTERNAL_TOKEN:}
+    # Token do console (nora-admin -> /admin/platform/**). Vazio = cai no internal-token (WARN).
+    admin-token: ${NORA_PLATFORM_ADMIN_TOKEN:}
+    datasource:
+      url: ${PLATFORM_DATASOURCE_URL:jdbc:postgresql://localhost:5433/nora_platform}
+      username: ${PLATFORM_DATASOURCE_USERNAME:nora_platform}
+      password: ${PLATFORM_DATASOURCE_PASSWORD:nora_platform_dev}
+      max-pool-size: ${PLATFORM_DATASOURCE_MAX_POOL:4}
+    # Fallback SOFT do resolver de modelo (ADR 0024) — usado quando o catálogo falha.
+    fallback:
+      provider: ${NORA_PLATFORM_FALLBACK_PROVIDER:openai}
+      model: ${NORA_PLATFORM_FALLBACK_MODEL:gpt-4o-mini}
+      base-url: ${NORA_PLATFORM_FALLBACK_BASE_URL:https://api.openai.com/v1}
+    # Telemetria de saúde (b): App Insights REST query API. Vazio = health "unavailable".
+    health:
+      app-insights-app-id: ${NORA_PLATFORM_HEALTH_APP_ID:}
+      api-key: ${NORA_PLATFORM_HEALTH_API_KEY:}
+      window: ${NORA_PLATFORM_HEALTH_WINDOW:PT1H}
+    # Telemetria de negócio (c) — cortável.
+    business:
+      enabled: ${NORA_PLATFORM_BUSINESS_ENABLED:true}
+
 logging:
   level:
     root: ${LOG_LEVEL:INFO}
