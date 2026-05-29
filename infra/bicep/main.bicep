@@ -137,6 +137,38 @@ param searchSku string = 'basic'
 param postgresFirewallRules array = []
 
 // ============================================================
+// PARAMS — Control plane (ADR 0022/0023/0024). Gated por enablePlatform.
+// ============================================================
+
+@description('Liga o control plane: 2º Postgres (plataforma), UAI admin e Container App nora-admin. Default false — mantém a infra atual intacta até o image do nora-admin e o grupo Entra existirem.')
+param enablePlatform bool = false
+
+@description('Senha admin do Postgres de plataforma. Vai pro KV (postgres-platform-password). Vazio = reusa a senha do Postgres principal.')
+@secure()
+param platformPostgresAdminPassword string = ''
+
+@description('Token serviço-a-serviço (worker/BFF -> /internal/platform/**). Vai pro KV (internal-service-token).')
+@secure()
+param platformInternalToken string = ''
+
+@description('Token do console (nora-admin -> /admin/platform/**). Vai pro KV (admin-bridge-token). Distinto do internal por least-privilege.')
+@secure()
+param platformAdminToken string = ''
+
+@description('Imagem do app nora-admin (Next). Placeholder ate o outro arquiteto publicar a imagem real.')
+param adminImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+
+@description('Client ID da App Registration do Easy Auth (Entra) do nora-admin. Vazio = Easy Auth desligado (passo manual Entra pendente — ver runbook).')
+param easyAuthClientId string = ''
+
+@description('Client secret da App Registration do Easy Auth. Vai pro KV (easyauth-client-secret).')
+@secure()
+param easyAuthClientSecret string = ''
+
+@description('Allowlist de IPs (CIDR) do ingress do nora-admin. Formato: [{ name, ipAddressRange, action: "Allow" }]. Vazio = sem restricao de rede (configurar no go-live).')
+param adminIpSecurityRestrictions array = []
+
+// ============================================================
 // NAMING — deterministico + unico onde precisa
 // ============================================================
 
@@ -157,6 +189,10 @@ var speechName = '${namePrefix}-speech-${env}-${nameSuffix}'
 var uaiApiName = '${namePrefix}-uai-api-${env}'
 var uaiWorkerName = '${namePrefix}-uai-worker-${env}'
 var uaiWebName = '${namePrefix}-uai-web-${env}'
+// Control plane (ADR 0022/0023)
+var pgPlatformName = '${namePrefix}-pg-platform-${env}-${nameSuffix}'
+var adminName = '${namePrefix}-admin-${env}'
+var uaiAdminName = '${namePrefix}-uai-admin-${env}'
 
 var registry = empty(registryServer) ? {} : {
   server: registryServer
@@ -248,6 +284,16 @@ module uaiWeb 'modules/user-assigned-identity.bicep' = {
   }
 }
 
+// Control plane: UAI dedicada do nora-admin (ADR 0023). Só quando enablePlatform.
+module uaiAdmin 'modules/user-assigned-identity.bicep' = if (enablePlatform) {
+  name: 'uaiAdmin'
+  params: {
+    name: uaiAdminName
+    location: location
+    tags: tags
+  }
+}
+
 // ============================================================
 // MODULES — Key Vault (com role assignments pras UAIs + secrets)
 // ============================================================
@@ -275,7 +321,26 @@ var keyVaultSecrets = {
         name: 'resend-api-key'
         value: empty(resendApiKey) ? 'unset' : resendApiKey
       }
-    ]
+    ],
+    // Control plane (ADR 0022/0023): secrets só quando enablePlatform.
+    enablePlatform ? [
+      {
+        name: 'postgres-platform-password'
+        value: empty(platformPostgresAdminPassword) ? postgresAdminPassword : platformPostgresAdminPassword
+      }
+      {
+        name: 'internal-service-token'
+        value: empty(platformInternalToken) ? 'unset' : platformInternalToken
+      }
+      {
+        name: 'admin-bridge-token'
+        value: empty(platformAdminToken) ? 'unset' : platformAdminToken
+      }
+      {
+        name: 'easyauth-client-secret'
+        value: empty(easyAuthClientSecret) ? 'unset' : easyAuthClientSecret
+      }
+    ] : []
   )
 }
 
@@ -286,11 +351,14 @@ module keyVault 'modules/keyvault.bicep' = {
     location: location
     tags: tags
     enablePurgeProtection: false // dev — permite teardown rapido
-    secretsUserPrincipalIds: [
-      uaiApi.outputs.principalId
-      uaiWorker.outputs.principalId
-      uaiWeb.outputs.principalId
-    ]
+    secretsUserPrincipalIds: concat(
+      [
+        uaiApi.outputs.principalId
+        uaiWorker.outputs.principalId
+        uaiWeb.outputs.principalId
+      ],
+      enablePlatform ? [ uaiAdmin.?outputs.principalId ?? '' ] : []
+    )
     secrets: keyVaultSecrets
   }
 }
@@ -308,6 +376,26 @@ module postgres 'modules/postgres.bicep' = {
     adminLogin: postgresAdminLogin
     adminPassword: postgresAdminPassword
     databaseName: 'nora'
+    skuName: 'Standard_B1ms'
+    skuTier: 'Burstable'
+    storageSizeGB: 32
+    backupRetentionDays: 7
+    allowAzureServices: true
+    firewallRules: postgresFirewallRules
+  }
+}
+
+// Control plane: 2º Postgres SEPARADO (ADR 0022 — blast radius isolado). Reusa o módulo 1:1.
+// Server próprio B1ms; database nora_platform. Só quando enablePlatform.
+module postgresPlatform 'modules/postgres.bicep' = if (enablePlatform) {
+  name: 'postgresPlatform'
+  params: {
+    name: pgPlatformName
+    location: location
+    tags: tags
+    adminLogin: postgresAdminLogin
+    adminPassword: empty(platformPostgresAdminPassword) ? postgresAdminPassword : platformPostgresAdminPassword
+    databaseName: 'nora_platform'
     skuName: 'Standard_B1ms'
     skuTier: 'Burstable'
     storageSizeGB: 32
@@ -407,6 +495,19 @@ var workerSearchEnv = enableSearch ? [
   }
 ] : []
 
+// Control plane: token + base da API pro worker ler /internal/platform/llm-config (ADR 0024).
+// O outro arquiteto pluga a leitura no hot-path; aqui só provisionamos as envs.
+var workerPlatformEnv = enablePlatform ? [
+  {
+    name: 'NORA_PLATFORM_INTERNAL_TOKEN'
+    secretRef: 'internal-service-token'
+  }
+  {
+    name: 'NORA_API_BASE_URL'
+    value: apiPublicUrl
+  }
+] : []
+
 var workerSecrets = {
   items: union(
     [
@@ -421,7 +522,14 @@ var workerSecrets = {
         name: 'registry-password'
         value: registryPassword
       }
-    ]
+    ],
+    enablePlatform ? [
+      {
+        name: 'internal-service-token'
+        keyVaultUrl: '${kvUri}secrets/internal-service-token'
+        identity: uaiWorker.outputs.id
+      }
+    ] : []
   )
 }
 
@@ -440,7 +548,7 @@ module workerApp 'modules/container-app.bicep' = {
     memory: '1Gi'
     minReplicas: 0
     maxReplicas: 3
-    envVars: concat(workerBaseEnv, workerSearchEnv)
+    envVars: concat(workerBaseEnv, workerSearchEnv, workerPlatformEnv)
     secretsObject: workerSecrets
     userAssignedIdentityId: uaiWorker.outputs.id
     registry: registry
@@ -448,6 +556,52 @@ module workerApp 'modules/container-app.bicep' = {
 }
 
 // ---- API Spring Boot (external ingress) ----
+
+// Control plane (ADR 0022/0024): 2º datasource + tokens. Só quando enablePlatform.
+var apiPlatformSecrets = enablePlatform ? [
+  {
+    name: 'postgres-platform-password'
+    keyVaultUrl: '${kvUri}secrets/postgres-platform-password'
+    identity: uaiApi.outputs.id
+  }
+  {
+    name: 'internal-service-token'
+    keyVaultUrl: '${kvUri}secrets/internal-service-token'
+    identity: uaiApi.outputs.id
+  }
+  {
+    name: 'admin-bridge-token'
+    keyVaultUrl: '${kvUri}secrets/admin-bridge-token'
+    identity: uaiApi.outputs.id
+  }
+] : []
+
+var apiPlatformEnv = enablePlatform ? [
+  {
+    name: 'NORA_PLATFORM_ENABLED'
+    value: 'true'
+  }
+  {
+    name: 'PLATFORM_DATASOURCE_URL'
+    value: postgresPlatform.?outputs.jdbcUrl ?? ''
+  }
+  {
+    name: 'PLATFORM_DATASOURCE_USERNAME'
+    value: postgresAdminLogin
+  }
+  {
+    name: 'PLATFORM_DATASOURCE_PASSWORD'
+    secretRef: 'postgres-platform-password'
+  }
+  {
+    name: 'NORA_PLATFORM_INTERNAL_TOKEN'
+    secretRef: 'internal-service-token'
+  }
+  {
+    name: 'NORA_PLATFORM_ADMIN_TOKEN'
+    secretRef: 'admin-bridge-token'
+  }
+] : []
 
 var apiSecrets = {
   items: union(
@@ -478,7 +632,8 @@ var apiSecrets = {
         name: 'registry-password'
         value: registryPassword
       }
-    ]
+    ],
+    apiPlatformSecrets
   )
 }
 
@@ -497,7 +652,7 @@ module apiApp 'modules/container-app.bicep' = {
     memory: '1Gi'
     minReplicas: 1 // sempre pelo menos 1 — API e caminho critico
     maxReplicas: 3
-    envVars: [
+    envVars: concat([
       {
         name: 'SPRING_PROFILES_ACTIVE'
         value: env
@@ -600,7 +755,7 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'NORA_EMAIL_FROM'
         value: noraEmailFrom
       }
-    ]
+    ], apiPlatformEnv)
     secretsObject: apiSecrets
     userAssignedIdentityId: uaiApi.outputs.id
     registry: registry
@@ -625,9 +780,24 @@ var webSecrets = {
         name: 'registry-password'
         value: registryPassword
       }
-    ]
+    ],
+    enablePlatform ? [
+      {
+        name: 'internal-service-token'
+        keyVaultUrl: '${kvUri}secrets/internal-service-token'
+        identity: uaiWeb.outputs.id
+      }
+    ] : []
   )
 }
+
+// Control plane: token pro BFF de chat chamar /internal/platform/{llm-config,usage} (ADR 0024).
+var webPlatformEnv = enablePlatform ? [
+  {
+    name: 'NORA_PLATFORM_INTERNAL_TOKEN'
+    secretRef: 'internal-service-token'
+  }
+] : []
 
 module webApp 'modules/container-app.bicep' = {
   name: 'webApp'
@@ -644,7 +814,7 @@ module webApp 'modules/container-app.bicep' = {
     memory: '0.5Gi'
     minReplicas: 0
     maxReplicas: 3
-    envVars: [
+    envVars: concat([
       // NOTA: NEXT_PUBLIC_* sao baked in build-time no bundle Next. O Dockerfile do web
       // ja hardcoda NEXT_PUBLIC_USE_MOCKS=false. Aqui injetamos a URL em runtime apenas
       // para casos onde o build receba a variavel como build-arg ARG no Dockerfile
@@ -681,10 +851,97 @@ module webApp 'modules/container-app.bicep' = {
         name: 'LLM_MODEL'
         value: openAiModel
       }
-    ]
+    ], webPlatformEnv)
     secretsObject: webSecrets
     userAssignedIdentityId: uaiWeb.outputs.id
     registry: registry
+  }
+}
+
+// ============================================================
+// MODULES — Control plane: nora-admin (Next shell, ADR 0023)
+// Easy Auth (Entra) + ipSecurityRestrictions na borda; chama o Spring /admin/platform/**
+// server-side com o admin token. Só quando enablePlatform.
+// ============================================================
+
+var tenantIssuer = '${environment().authentication.loginEndpoint}${subscription().tenantId}/v2.0'
+
+var adminSecrets = {
+  items: union(
+    [
+      {
+        name: 'admin-bridge-token'
+        keyVaultUrl: '${kvUri}secrets/admin-bridge-token'
+        identity: uaiAdmin.?outputs.id ?? ''
+      }
+      {
+        name: 'easyauth-client-secret'
+        keyVaultUrl: '${kvUri}secrets/easyauth-client-secret'
+        identity: uaiAdmin.?outputs.id ?? ''
+      }
+    ],
+    empty(registryServer) ? [] : [
+      {
+        name: 'registry-password'
+        value: registryPassword
+      }
+    ]
+  )
+}
+
+module adminApp 'modules/container-app.bicep' = if (enablePlatform) {
+  name: 'adminApp'
+  params: {
+    name: adminName
+    location: location
+    tags: tags
+    environmentId: containerAppsEnv.outputs.id
+    image: adminImage
+    containerName: 'admin'
+    targetPort: 3000
+    ingress: 'external'
+    cpu: '0.25'
+    memory: '0.5Gi'
+    minReplicas: 0
+    maxReplicas: 2
+    envVars: [
+      {
+        name: 'NORA_ENV'
+        value: env
+      }
+      {
+        name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+        value: appInsights.outputs.connectionString
+      }
+      // Liga o data layer real do nora-admin (sai do mock).
+      {
+        name: 'NORA_ADMIN_USE_MOCKS'
+        value: 'false'
+      }
+      // Nomes alinhados ao apps/admin/src/lib/data.ts (merged em #171). O token carrega o
+      // admin-bridge-token (chamadas server-side a /admin/platform/**).
+      {
+        name: 'PLATFORM_API_BASE_URL'
+        value: apiPublicUrl
+      }
+      {
+        name: 'PLATFORM_INTERNAL_TOKEN'
+        secretRef: 'admin-bridge-token'
+      }
+    ]
+    secretsObject: adminSecrets
+    userAssignedIdentityId: uaiAdmin.?outputs.id ?? ''
+    registry: registry
+    ipSecurityRestrictions: adminIpSecurityRestrictions
+    // Easy Auth só quando o clientId existir (passo manual Entra — ver runbook). Sem clientId,
+    // o app sobe protegido apenas pela allowlist de IP até o grupo/App Registration serem criados.
+    easyAuth: empty(easyAuthClientId) ? {} : {
+      enabled: true
+      clientId: easyAuthClientId
+      openIdIssuer: tenantIssuer
+      clientSecretSettingName: 'easyauth-client-secret'
+      unauthenticatedClientAction: 'RedirectToLoginPage'
+    }
   }
 }
 
@@ -709,3 +966,7 @@ output speechRegion string = speech.outputs.region
 output apiUaiPrincipalId string = uaiApi.outputs.principalId
 output workerUaiPrincipalId string = uaiWorker.outputs.principalId
 output webUaiPrincipalId string = uaiWeb.outputs.principalId
+
+// Control plane (ADR 0022/0023) — vazios quando enablePlatform=false.
+output platformPostgresFqdn string = postgresPlatform.?outputs.fqdn ?? ''
+output adminUrl string = enablePlatform ? 'https://${adminName}.${containerAppsEnv.outputs.defaultDomain}' : ''
