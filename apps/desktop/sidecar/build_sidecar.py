@@ -108,7 +108,7 @@ def main() -> int:
     shutil.copy2(built_exe, dest)
 
     print()
-    print(f"✅ Sidecar compilado com sucesso!")
+    print("[OK] Sidecar compilado com sucesso!")
     print(f"   Origem: {built_exe}")
     print(f"   Destino: {dest}")
     return 0
