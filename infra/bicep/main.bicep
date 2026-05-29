@@ -73,6 +73,14 @@ param openAiApiKey string = ''
 @description('Modelo OpenAI default usado pelo worker.')
 param openAiModel string = 'gpt-4o-mini'
 
+@description('DeepSeek API Key. Pro chat multi-provider (troca de modelo ao vivo, ADR 0024). Se vazio, vira "unset" no KV (secret deepseek-api-key).')
+@secure()
+param deepSeekApiKey string = ''
+
+@description('Google AI (Gemini) API Key. Pro chat/multimodal. Se vazio, vira "unset" no KV (secret gemini-api-key).')
+@secure()
+param geminiApiKey string = ''
+
 @description('Resend API Key. Se vazio, backend cai em LogEmailSender (dev). Vai pro KV (secret resend-api-key).')
 @secure()
 param resendApiKey string = ''
@@ -312,6 +320,16 @@ var keyVaultSecrets = {
       {
         name: 'openai-api-key'
         value: empty(openAiApiKey) ? 'unset' : openAiApiKey
+      }
+      // Chaves por provider pro chat multi-provider (ADR 0024). Sempre no KV ('unset' quando
+      // vazias) — o web só as referencia se o provider for usado.
+      {
+        name: 'deepseek-api-key'
+        value: empty(deepSeekApiKey) ? 'unset' : deepSeekApiKey
+      }
+      {
+        name: 'gemini-api-key'
+        value: empty(geminiApiKey) ? 'unset' : geminiApiKey
       }
       {
         name: 'azure-speech-key'
@@ -774,6 +792,17 @@ var webSecrets = {
         keyVaultUrl: '${kvUri}secrets/openai-api-key'
         identity: uaiWeb.outputs.id
       }
+      // Chat multi-provider (ADR 0024): chaves por provider lidas pelo BFF via LLM_KEY_<PROVIDER>.
+      {
+        name: 'deepseek-api-key'
+        keyVaultUrl: '${kvUri}secrets/deepseek-api-key'
+        identity: uaiWeb.outputs.id
+      }
+      {
+        name: 'gemini-api-key'
+        keyVaultUrl: '${kvUri}secrets/gemini-api-key'
+        identity: uaiWeb.outputs.id
+      }
     ],
     empty(registryServer) ? [] : [
       {
@@ -850,6 +879,21 @@ module webApp 'modules/container-app.bicep' = {
       {
         name: 'LLM_MODEL'
         value: openAiModel
+      }
+      // Chaves por provider pro chat multi-provider (ADR 0024). O BFF resolve o modelo ativo via
+      // /internal/platform/llm-config e escolhe a chave por LLM_KEY_<PROVIDER em MAIÚSCULO>. Os
+      // LLM_API_KEY/LLM_BASE_URL/LLM_MODEL acima seguem como default OpenAI (fallback).
+      {
+        name: 'LLM_KEY_OPENAI'
+        secretRef: 'openai-api-key'
+      }
+      {
+        name: 'LLM_KEY_DEEPSEEK'
+        secretRef: 'deepseek-api-key'
+      }
+      {
+        name: 'LLM_KEY_GOOGLE'
+        secretRef: 'gemini-api-key'
       }
     ], webPlatformEnv)
     secretsObject: webSecrets
