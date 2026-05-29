@@ -76,7 +76,14 @@ param command array = []
 @description('Args passados pro comando.')
 param args array = []
 
+@description('Allowlist de IPs no ingress (ADR 0023). Formato: [{ name, ipAddressRange (CIDR), action: "Allow"|"Deny" }]. Vazio = sem restrição de rede.')
+param ipSecurityRestrictions array = []
+
+@description('Easy Auth (Entra). Vazio ou enabled=false = sem Easy Auth. Formato: { enabled, clientId, openIdIssuer, clientSecretSettingName, unauthenticatedClientAction }. clientSecretSettingName deve referenciar um secret presente em secretsObject.')
+param easyAuth object = {}
+
 var hasRegistry = !empty(registry)
+var easyAuthEnabled = !empty(easyAuth) && (easyAuth.?enabled ?? false)
 var hasUai = !empty(userAssignedIdentityId)
 
 var ingressConfig = ingress == 'none' ? null : {
@@ -84,6 +91,7 @@ var ingressConfig = ingress == 'none' ? null : {
   targetPort: targetPort
   transport: 'auto'
   allowInsecure: allowInsecure
+  ipSecurityRestrictions: empty(ipSecurityRestrictions) ? null : ipSecurityRestrictions
   traffic: [
     {
       weight: 100
@@ -190,6 +198,33 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             }
           }
         ] : null
+      }
+    }
+  }
+}
+
+// Easy Auth (Entra) — child resource separado (ADR 0023). Só criado quando easyAuth.enabled.
+// A plataforma Container Apps strippa headers X-MS-CLIENT-PRINCIPAL-* do cliente e injeta os
+// seus após validar — o app downstream (nora-admin) lê a identidade do operador daí.
+resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (easyAuthEnabled) {
+  parent: containerApp
+  name: 'current'
+  properties: {
+    platform: {
+      enabled: true
+    }
+    globalValidation: {
+      unauthenticatedClientAction: easyAuth.?unauthenticatedClientAction ?? 'RedirectToLoginPage'
+      redirectToProvider: 'azureactivedirectory'
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        enabled: true
+        registration: {
+          openIdIssuer: easyAuth.openIdIssuer
+          clientId: easyAuth.clientId
+          clientSecretSettingName: easyAuth.clientSecretSettingName
+        }
       }
     }
   }
