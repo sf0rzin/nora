@@ -2,6 +2,7 @@ package br.com.nora.api.application.analysis;
 
 import br.com.nora.api.application.customer.CustomerConfidenceService;
 import br.com.nora.api.application.meeting.MeetingException;
+import br.com.nora.api.application.platform.UsageRecorder;
 import br.com.nora.api.application.ports.MeetingAnalysisRepository;
 import br.com.nora.api.application.ports.MeetingGoalRepository;
 import br.com.nora.api.application.ports.MeetingRepository;
@@ -47,6 +48,7 @@ public class AnalysisService {
     private final ProductivityAssessmentRepository assessments;
     private final NlpWorkerClient worker;
     private final CustomerConfidenceService customerConfidence;
+    private final UsageRecorder usageRecorder;
 
     public AnalysisService(
             MeetingRepository meetings,
@@ -56,7 +58,8 @@ public class AnalysisService {
             MeetingGoalRepository goals,
             ProductivityAssessmentRepository assessments,
             NlpWorkerClient worker,
-            CustomerConfidenceService customerConfidence) {
+            CustomerConfidenceService customerConfidence,
+            UsageRecorder usageRecorder) {
         this.meetings = meetings;
         this.transcripts = transcripts;
         this.tenantContexts = tenantContexts;
@@ -65,6 +68,7 @@ public class AnalysisService {
         this.assessments = assessments;
         this.worker = worker;
         this.customerConfidence = customerConfidence;
+        this.usageRecorder = usageRecorder;
     }
 
     /**
@@ -110,8 +114,34 @@ public class AnalysisService {
                         p -> assessments.save(p),
                         () -> assessments.deleteByMeetingId(meetingId, tenantId));
         persistCustomerConfidence(meetingId, tenantId, result);
+        emitUsage(tenantId, saved);
         markStatusAndSnippet(meeting, ProcessingStatus.COMPLETED, saved.summarySnippet());
         return saved;
+    }
+
+    /**
+     * Emite telemetria de custo da análise in-process (ADR 0024). Usa o {@code metadata} que o
+     * worker já reporta (modelo + tokens + latência, persistidos no {@link MeetingAnalysis}).
+     * Tolerante: uma falha aqui NUNCA derruba o pipeline (o {@link UsageRecorder} é no-op quando o
+     * control plane está off e já é fail-soft quando on).
+     */
+    private void emitUsage(UUID tenantId, MeetingAnalysis a) {
+        try {
+            boolean stub = a.modelVersion() != null && a.modelVersion().startsWith("stub");
+            usageRecorder.recordAnalysisUsage(
+                    tenantId,
+                    a.modelVersion(),
+                    a.tokensInput(),
+                    a.tokensOutput(),
+                    a.processingMillis(),
+                    stub);
+        } catch (RuntimeException ex) {
+            LOG.warn(
+                    "Falha ao emitir usage da análise meetingId={} tenantId={} cause={}",
+                    a.meetingId(),
+                    tenantId,
+                    ex.getMessage());
+        }
     }
 
     /**
