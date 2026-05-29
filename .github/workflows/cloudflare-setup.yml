@@ -1,0 +1,241 @@
+name: cloudflare-setup
+
+# Configura Cloudflare Access pra proteger admin.nora.systems com login obrigatorio
+# (allowlist por email). Roda manual via workflow_dispatch; idempotente — re-run apenas
+# reconcilia diff (upsert em DNS, Access App, Policy, IdP).
+#
+# Secrets necessarios:
+#   - CLOUDFLARE_API_TOKEN  Token escopado em nora.systems com permissoes:
+#                            Account: Access (Apps and Policies) Edit
+#                            Account: Access (Service Tokens) Edit
+#                            Zone: DNS Edit
+#                            Zone: Zone Read
+#
+# Pre-requisito manual (uma vez):
+#   - Zero Trust habilitado na conta CF (https://one.dash.cloudflare.com/ -> onboarding,
+#     criar team com nome = input team_name). Plano Free serve.
+#
+# Pos-step manual opcional (Google/GitHub OAuth):
+#   - Workflow cria One-Time PIN como IdP fallback (funciona out-of-the-box, sem OAuth).
+#   - Pra Google/GitHub OAuth, ver docs/operations/cloudflare-access.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      admin_hostname:
+        description: 'FQDN do Container App admin (alvo do CNAME). Vazio = pula DNS step.'
+        required: false
+        default: ''
+      team_name:
+        description: 'Nome do team Zero Trust (vira <name>.cloudflareaccess.com). Apenas leitura — team deve existir.'
+        required: true
+        default: 'stratfy'
+      access_emails:
+        description: 'Emails autorizados (CSV, sem espacos extras)'
+        required: true
+        default: 'axonogenesis@proton.me,gmaciel0204@gmail.com'
+
+permissions:
+  contents: read
+
+env:
+  CF_API: https://api.cloudflare.com/client/v4
+  CF_ACCOUNT_ID: 76e6b917a3ef8fcaff2b20ffb2c8afd6
+  DOMAIN: nora.systems
+  SUBDOMAIN: admin
+
+jobs:
+  setup:
+    name: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Verify token is active
+        run: |
+          set -euo pipefail
+          response=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" "$CF_API/user/tokens/verify")
+          status=$(echo "$response" | jq -r '.result.status // "unknown"')
+          if [ "$status" != "active" ]; then
+            echo "::error::Token nao ativo (status=$status). Verifica permissoes do CLOUDFLARE_API_TOKEN."
+            echo "$response" | jq .
+            exit 1
+          fi
+          echo "Token ativo. Permissoes verificadas pelo proprio scope nas chamadas seguintes."
+
+      - name: Resolve Zone ID
+        id: zone
+        run: |
+          set -euo pipefail
+          response=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" "$CF_API/zones?name=$DOMAIN")
+          zone_id=$(echo "$response" | jq -r '.result[0].id // empty')
+          zone_status=$(echo "$response" | jq -r '.result[0].status // empty')
+          if [ -z "$zone_id" ]; then
+            echo "::error::Zone '$DOMAIN' nao encontrada. Confere que o dominio esta adicionado na conta CF e Active."
+            echo "$response" | jq .
+            exit 1
+          fi
+          if [ "$zone_status" != "active" ]; then
+            echo "::warning::Zone '$DOMAIN' encontrada mas status=$zone_status (esperado: active). DNS pode ainda nao estar propagado."
+          fi
+          echo "zone_id=$zone_id" >> "$GITHUB_OUTPUT"
+          echo "Zone $DOMAIN -> $zone_id (status=$zone_status)"
+
+      - name: Upsert CNAME admin.nora.systems
+        if: inputs.admin_hostname != ''
+        env:
+          ZONE_ID: ${{ steps.zone.outputs.zone_id }}
+          TARGET: ${{ inputs.admin_hostname }}
+        run: |
+          set -euo pipefail
+          fqdn="$SUBDOMAIN.$DOMAIN"
+          existing=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+            "$CF_API/zones/$ZONE_ID/dns_records?type=CNAME&name=$fqdn" \
+            | jq -r '.result[0].id // empty')
+          payload=$(jq -nc \
+            --arg name "$SUBDOMAIN" \
+            --arg content "$TARGET" \
+            '{type:"CNAME", name:$name, content:$content, proxied:true, ttl:1, comment:"NORA admin console — gated por Cloudflare Access"}')
+          if [ -n "$existing" ]; then
+            echo "CNAME $fqdn existe ($existing); atualizando target -> $TARGET"
+            curl -fsSL -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+              "$CF_API/zones/$ZONE_ID/dns_records/$existing" -d "$payload" \
+              | jq '{success, name: .result.name, content: .result.content, proxied: .result.proxied}'
+          else
+            echo "Criando CNAME $fqdn -> $TARGET (proxied)"
+            curl -fsSL -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+              "$CF_API/zones/$ZONE_ID/dns_records" -d "$payload" \
+              | jq '{success, name: .result.name, content: .result.content, proxied: .result.proxied}'
+          fi
+
+      - name: Verify Zero Trust team exists
+        id: team
+        run: |
+          set -euo pipefail
+          response=$(curl -sSL -H "Authorization: Bearer $CF_TOKEN" \
+            "$CF_API/accounts/$CF_ACCOUNT_ID/access/organizations")
+          success=$(echo "$response" | jq -r '.success // false')
+          team_domain=$(echo "$response" | jq -r '.result.auth_domain // empty')
+          if [ "$success" != "true" ] || [ -z "$team_domain" ]; then
+            echo "::error::Zero Trust nao habilitado nesta conta CF."
+            echo "::error::Habilita em https://one.dash.cloudflare.com/ (escolhe plano Free), cria team com nome '${{ inputs.team_name }}', e re-roda este workflow."
+            echo "$response" | jq .
+            exit 1
+          fi
+          echo "Team domain ativo: $team_domain"
+          echo "team_domain=$team_domain" >> "$GITHUB_OUTPUT"
+
+      - name: Upsert Access Application
+        id: app
+        run: |
+          set -euo pipefail
+          fqdn="$SUBDOMAIN.$DOMAIN"
+          app_id=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+            "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps?per_page=100" \
+            | jq -r --arg fqdn "$fqdn" '.result[] | select(.domain==$fqdn) | .id' | head -1)
+          payload=$(jq -nc \
+            --arg name "nora-admin" \
+            --arg domain "$fqdn" \
+            '{name:$name, domain:$domain, type:"self_hosted", session_duration:"24h", auto_redirect_to_identity:false, app_launcher_visible:true}')
+          if [ -n "$app_id" ]; then
+            echo "Access App $app_id existe pra $fqdn; atualizando."
+            curl -fsSL -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+              "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps/$app_id" -d "$payload" \
+              | jq '{success, id: .result.id, domain: .result.domain}'
+          else
+            echo "Criando Access App pra $fqdn"
+            response=$(curl -fsSL -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+              "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps" -d "$payload")
+            app_id=$(echo "$response" | jq -r .result.id)
+            echo "$response" | jq '{success, id: .result.id, domain: .result.domain}'
+          fi
+          echo "app_id=$app_id" >> "$GITHUB_OUTPUT"
+
+      - name: Upsert allowlist policy
+        env:
+          APP_ID: ${{ steps.app.outputs.app_id }}
+        run: |
+          set -euo pipefail
+          emails_json=$(echo "${{ inputs.access_emails }}" \
+            | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+            | grep -v '^$' \
+            | jq -R . \
+            | jq -s 'map({email:{email:.}})')
+          echo "Allowlist: $emails_json"
+          policy_id=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+            "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps/$APP_ID/policies" \
+            | jq -r '.result[] | select(.name=="operators-allowlist") | .id' | head -1)
+          payload=$(jq -nc \
+            --argjson incl "$emails_json" \
+            '{name:"operators-allowlist", decision:"allow", include:$incl, precedence:1}')
+          if [ -n "$policy_id" ]; then
+            echo "Policy $policy_id existe; atualizando allowlist."
+            curl -fsSL -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+              "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps/$APP_ID/policies/$policy_id" -d "$payload" \
+              | jq '{success, name: .result.name, emails_count: (.result.include | length)}'
+          else
+            echo "Criando policy operators-allowlist"
+            curl -fsSL -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+              "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps/$APP_ID/policies" -d "$payload" \
+              | jq '{success, name: .result.name, emails_count: (.result.include | length)}'
+          fi
+
+      - name: Ensure One-Time PIN identity provider (fallback login)
+        run: |
+          set -euo pipefail
+          # OTP nao tem config externa — Cloudflare manda codigo pro email do operador.
+          # Login imediato sem precisar de Google/GitHub OAuth Apps.
+          existing=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+            "$CF_API/accounts/$CF_ACCOUNT_ID/access/identity_providers" \
+            | jq -r '.result[] | select(.type=="onetimepin") | .id' | head -1)
+          if [ -n "$existing" ]; then
+            echo "OTP IdP ja configurado ($existing)."
+          else
+            echo "Criando OTP IdP"
+            payload='{"name":"One-Time PIN","type":"onetimepin","config":{}}'
+            curl -fsSL -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+              "$CF_API/accounts/$CF_ACCOUNT_ID/access/identity_providers" -d "$payload" \
+              | jq '{success, name: .result.name, type: .result.type}'
+          fi
+
+      - name: Summary
+        env:
+          TEAM_DOMAIN: ${{ steps.team.outputs.team_domain }}
+          ZONE_ID: ${{ steps.zone.outputs.zone_id }}
+          APP_ID: ${{ steps.app.outputs.app_id }}
+          ADMIN_HOSTNAME: ${{ inputs.admin_hostname }}
+          ACCESS_EMAILS: ${{ inputs.access_emails }}
+        run: |
+          dns_state="⏳ pendente — re-roda com admin_hostname quando o Container App admin existir"
+          if [ -n "$ADMIN_HOSTNAME" ]; then
+            dns_state="✅ apontado pra \`$ADMIN_HOSTNAME\`"
+          fi
+          {
+            echo "## Cloudflare Access — Setup ok"
+            echo ""
+            echo "| Item | Valor |"
+            echo "|---|---|"
+            echo "| Zone | \`$DOMAIN\` (\`$ZONE_ID\`) |"
+            echo "| Hostname protegido | \`$SUBDOMAIN.$DOMAIN\` |"
+            echo "| Team domain | \`$TEAM_DOMAIN\` |"
+            echo "| Access App ID | \`$APP_ID\` |"
+            echo "| Allowlist | \`$ACCESS_EMAILS\` |"
+            echo "| DNS CNAME | $dns_state |"
+            echo ""
+            echo "### Login ja funcional"
+            echo ""
+            echo "**One-Time PIN por email** — sem OAuth setup. Quando \`https://$SUBDOMAIN.$DOMAIN\` "
+            echo "estiver acessivel, Cloudflare pede email e manda codigo (so emails da allowlist passam)."
+            echo ""
+            echo "### Adicionar Google + GitHub OAuth (opcional)"
+            echo ""
+            echo "Callback URL pros dois providers (vai pedir no console deles):"
+            echo ""
+            echo '```'
+            echo "https://$TEAM_DOMAIN/cdn-cgi/access/callback"
+            echo '```'
+            echo ""
+            echo "Passo-a-passo em [\`docs/operations/cloudflare-access.md\`](../docs/operations/cloudflare-access.md)."
+          } >> "$GITHUB_STEP_SUMMARY"
