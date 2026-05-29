@@ -37,6 +37,9 @@ param postgresAdminLogin = 'nora_admin'
 param postgresAdminPassword = readEnvironmentVariable('PG_ADMIN_PASSWORD')
 param jwtSecret = readEnvironmentVariable('JWT_SECRET')
 param openAiApiKey = readEnvironmentVariable('OPENAI_API_KEY', '')
+// Chat multi-provider (ADR 0024). Vazias = só OpenAI troca ao vivo.
+param deepSeekApiKey = readEnvironmentVariable('DEEPSEEK_API_KEY', '')
+param geminiApiKey = readEnvironmentVariable('GEMINI_API_KEY', '')
 // Se vazio, backend usa LogEmailSender em dev (logs em vez de email real).
 param resendApiKey = readEnvironmentVariable('RESEND_API_KEY', '')
 param noraEmailFrom = readEnvironmentVariable('NORA_EMAIL_FROM', 'NORA <onboarding@resend.dev>')
