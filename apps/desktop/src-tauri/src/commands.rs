@@ -317,7 +317,7 @@ pub fn check_system_audio_prerequisites() -> Result<serde_json::Value, String> {
         Ok(serde_json::json!({
             "platform": "macos",
             "available": has_blackhole,
-            "missingDriver": if has_blackhole { null } else { "blackhole" },
+            "missingDriver": if has_blackhole { serde_json::Value::Null } else { serde_json::json!("blackhole") },
             "supportsScreenCaptureKit": supports_sck,
             "message": if has_blackhole {
                 "Driver virtual detectado"
