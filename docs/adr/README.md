@@ -64,3 +64,6 @@ Decisões parcialmente substituídas: ADR sucessor pode marcar `Substitui parcia
 | 0019 | Tenant isolation em profundidade: RLS Postgres + FK composta | aceito |
 | 0020 | Rotação de refresh token + detecção de reuso (token families) | aceito |
 | 0021 | Estratégia de soft-delete em entidades tenant-owned | aceito |
+| 0022 | Banco de plataforma separado + 2º datasource (control plane) | aceito |
+| 0023 | Identidade de operador (platform admin), separada do IAM por-tenant | aceito |
+| 0024 | Catálogo de modelos dinâmico + router por modalidade + resolução runtime | aceito (estende 0004) |

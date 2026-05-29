@@ -191,10 +191,25 @@ Workflow dedicado `.github/workflows/rotate-secrets.yml` com cron mensal pode au
 | 5. LGPD operational | L (data retention + endpoints + DPO + runbook) | ADR 0019 ou doc |
 | 6. DR runbook | S (doc + dry run) | — |
 | 7. Secrets rotation | M (workflows + rotation scripts) | — |
+| 8. Control plane sob RLS enforce | S (role BYPASSRLS p/ telemetria de negócio) | ADR 0022 |
 
 **Estimativa total Sub-fase 1.12 — Production Hardening: ~1-2 semanas agentic.**
 
 Pré-requisitos: itens de **código** da Sub-fase 1.11 já entregues — Customer Confidence (#148), AUTH_FILTER fix (teto silencioso de 500 removido via scan em lotes) e PolicyEvaluator (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`). Restam (e) seed e (f) roteiro de demo, que não bloqueiam 1.12.
+
+---
+
+## Gap 8 — Control plane: telemetria de negócio quebra silenciosamente sob RLS enforce
+
+**Situação atual:** o control plane (ADR 0022/0024) tem a frente de telemetria de **negócio** (cortável) lendo o banco **primário** cross-tenant via `PrimaryDbBusinessMetricsSource` (`COUNT(*)` / `COUNT(DISTINCT tenant_id)` em `meeting_analyses`), **sem** contexto de tenant — agregação operador-only intencional. Funciona hoje porque o datasource primário roda como role owner (BYPASSRLS) com `NORA_RLS_ENFORCE=false`.
+
+**Gap:** quando o opt-in de RLS enforce do Gap 5 / ADR 0019 for ativado (role `nora_app` NOBYPASSRLS + `NORA_RLS_ENFORCE=true`), essas queries rodam **sem GUC de tenant** (não há `@Transactional`, o `TenantRlsAspect` não dispara) ⇒ a policy `tenant_isolation` (fail-closed) esconde **todas** as linhas ⇒ `analyses=0`/`tenantsActive=0` **silencioso** (sem erro). O painel do operador mostraria "zero atividade" falso, sem sinal de que a leitura foi suprimida.
+
+**Plano (pré-requisito de ligar RLS enforce):**
+
+- Dar à leitura operador-only um caminho **BYPASSRLS** dedicado: ou uma role de telemetria com `BYPASSRLS`, ou uma view/função `SECURITY DEFINER` owned por role privilegiada com `GRANT SELECT` ao `nora_app`. A agregação cross-tenant é intencional e operador-only.
+- Alternativa mínima: detectar o estado e devolver `enabled:false` (em vez de `enabled:true` com zeros) quando a leitura cross-tenant não for possível — assim o operador vê "indisponível", não "zero real".
+- Documentado no Javadoc de `PrimaryDbBusinessMetricsSource` e no contrato (§3). Custo: S. **Não bloqueia o v1** (enforce=false hoje).
 
 ---
 
@@ -203,3 +218,4 @@ Pré-requisitos: itens de **código** da Sub-fase 1.11 já entregues — Custome
 | Data | Autor | Mudança |
 |---|---|---|
 | 2026-05-14 | Tech Lead | Doc criado durante Sub-fase 1.10 (Docs Refresh). Análise informada por revisão do Arquiteto Design no audit (§4.3) |
+| 2026-05-28 | Co-arquiteto (Opus) | Gap 8 adicionado: telemetria de negócio do control plane (ADR 0022) zera sob RLS enforce — pré-requisito de role BYPASSRLS antes de ligar o Gap 5 |

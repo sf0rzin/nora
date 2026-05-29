@@ -10,6 +10,12 @@ name: deploy-infra
 #   - JWT_SECRET              gerado random na Subfase 1.7
 #   - OPENAI_API_KEY          opcional (vazio = worker em modo stub)
 #   - RESEND_API_KEY          opcional (vazio = backend cai em LogEmailSender)
+#   Control plane (ADR 0022/0023/0024) — só usados quando enablePlatform=true no bicepparam:
+#   - PG_PLATFORM_ADMIN_PASSWORD   senha do 2º Postgres (plataforma)
+#   - NORA_PLATFORM_INTERNAL_TOKEN token serviço-a-serviço (/internal/platform/**)
+#   - NORA_PLATFORM_ADMIN_TOKEN    token do console (/admin/platform/**)
+#   - EASYAUTH_CLIENT_ID           App Registration do Easy Auth do nora-admin (passo manual Entra)
+#   - EASYAUTH_CLIENT_SECRET       client secret do Easy Auth
 #
 # Variaveis (Variables tab > Environment dev):
 #   - NORA_EMAIL_FROM         opcional (default 'NORA <onboarding@resend.dev>')
@@ -101,6 +107,12 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           NORA_EMAIL_FROM: ${{ vars.NORA_EMAIL_FROM }}
+          # Control plane (ADR 0022/0023/0024) — usados quando enablePlatform=true.
+          PG_PLATFORM_ADMIN_PASSWORD: ${{ secrets.PG_PLATFORM_ADMIN_PASSWORD }}
+          NORA_PLATFORM_INTERNAL_TOKEN: ${{ secrets.NORA_PLATFORM_INTERNAL_TOKEN }}
+          NORA_PLATFORM_ADMIN_TOKEN: ${{ secrets.NORA_PLATFORM_ADMIN_TOKEN }}
+          EASYAUTH_CLIENT_ID: ${{ secrets.EASYAUTH_CLIENT_ID }}
+          EASYAUTH_CLIENT_SECRET: ${{ secrets.EASYAUTH_CLIENT_SECRET }}
         run: |
           az deployment group what-if \
             --resource-group ${{ env.AZURE_RG }} \
@@ -142,6 +154,12 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           NORA_EMAIL_FROM: ${{ vars.NORA_EMAIL_FROM }}
+          # Control plane (ADR 0022/0023/0024) — usados quando enablePlatform=true.
+          PG_PLATFORM_ADMIN_PASSWORD: ${{ secrets.PG_PLATFORM_ADMIN_PASSWORD }}
+          NORA_PLATFORM_INTERNAL_TOKEN: ${{ secrets.NORA_PLATFORM_INTERNAL_TOKEN }}
+          NORA_PLATFORM_ADMIN_TOKEN: ${{ secrets.NORA_PLATFORM_ADMIN_TOKEN }}
+          EASYAUTH_CLIENT_ID: ${{ secrets.EASYAUTH_CLIENT_ID }}
+          EASYAUTH_CLIENT_SECRET: ${{ secrets.EASYAUTH_CLIENT_SECRET }}
         run: |
           DEPLOY_NAME="deploy-$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
           az deployment group create \
