@@ -1212,11 +1212,42 @@ export function OverlayPage() {
   const partialKey = partialBubbles.map((p) => `${p.track}:${p.text.length}`).join("|");
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
+  // "Grudado no fim": só auto-scrolla quando o usuário já está no rodapé. Se ele
+  // rolou pra cima (pra reler o histórico enquanto fala), respeitamos a posição
+  // e não puxamos de volta a cada parcial. Quando ele volta pro fim, regruda.
+  const pinnedToBottomRef = useRef(true);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+
+  const onChatScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = distanceFromBottom < 60;
+    pinnedToBottomRef.current = atBottom;
+    setShowJumpToLatest((prev) => (prev === !atBottom ? prev : !atBottom));
+  };
+
+  const jumpToLatest = () => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
+    pinnedToBottomRef.current = true;
+    setShowJumpToLatest(false);
+  };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (pinnedToBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [groups.length, partialKey]);
+
+  // Nova sessão (linhas zeradas) — regruda no fim e some o botão.
+  useEffect(() => {
+    if (lines.length === 0) {
+      pinnedToBottomRef.current = true;
+      setShowJumpToLatest(false);
+    }
+  }, [lines.length]);
 
   const handleStop = async () => {
     if (stopping) return;
@@ -1235,6 +1266,14 @@ export function OverlayPage() {
     } catch (e) {
       console.error("[overlay] failed to emit cancel:", e);
     }
+  };
+  const handleMinimize = () => {
+    // Esconde a overlay sem parar a gravação (toggle_overlay só dá window.hide).
+    // Garante o dock visível pra ter caminho de volta — e ele mostra o timer,
+    // deixando claro que a captura continua ativa. Restaura pelo botão
+    // "Mostrar overlay" do dock.
+    if (!dockVisible) toggleDock(true);
+    invoke("toggle_overlay", { show: false }).catch(() => {});
   };
   const handleCloseRequest = () => {
     if (isRecording) {
@@ -1424,6 +1463,32 @@ export function OverlayPage() {
             </svg>
           </button>
           <button
+            onClick={handleMinimize}
+            aria-label="Minimizar"
+            title="Minimizar (esconder — gravação continua)"
+            className="grid place-items-center rounded-md transition-colors"
+            style={{
+              width: 24,
+              height: 24,
+              background: "transparent",
+              border: "none",
+              color: "var(--muted)",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(0,0,0,0.05)";
+              e.currentTarget.style.color = "var(--ink)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "var(--muted)";
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+          <button
             onClick={handleCloseRequest}
             aria-label="Fechar"
             title={isRecording ? "Fechar (confirmação)" : "Fechar"}
@@ -1550,10 +1615,12 @@ export function OverlayPage() {
 
       {/* Body: chat (left) + highlights (right, collapsible) */}
       <div className="flex-1 min-h-0 flex relative">
+        <div className="flex-1 min-w-0 relative flex flex-col">
         <div
           ref={scrollRef}
-          className="flex-1 min-w-0 overflow-y-auto"
+          className="flex-1 min-h-0 overflow-y-auto"
           style={{ padding: "14px 16px 16px" }}
+          onScroll={onChatScroll}
         >
           {empty ? (
             <div className="h-full flex flex-col items-center justify-center text-center gap-2">
@@ -1594,6 +1661,36 @@ export function OverlayPage() {
                 <PartialBubble key={p.track} text={p.text} isMe={p.isMe} />
               ))}
             </div>
+          )}
+        </div>
+          {showJumpToLatest && (
+            <button
+              onClick={jumpToLatest}
+              className="absolute inline-flex items-center gap-1.5 transition-colors"
+              style={{
+                bottom: 12,
+                left: "50%",
+                transform: "translateX(-50%)",
+                padding: "5px 12px",
+                background: "var(--ink)",
+                color: "var(--canvas)",
+                border: "none",
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 500,
+                letterSpacing: "-0.005em",
+                cursor: "pointer",
+                boxShadow: "0 6px 18px -8px rgba(15, 23, 42, 0.45)",
+                fontFamily: "var(--sans)",
+                animation: "revealUp 200ms cubic-bezier(.2,.8,.2,1)",
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <polyline points="19 12 12 19 5 12" />
+              </svg>
+              Novas mensagens
+            </button>
           )}
         </div>
 
