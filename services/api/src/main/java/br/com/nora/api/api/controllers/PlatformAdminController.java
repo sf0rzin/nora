@@ -6,12 +6,14 @@ import br.com.nora.api.api.dto.platform.PlatformDtos.CreateModelRequest;
 import br.com.nora.api.api.dto.platform.PlatformDtos.ModelResponse;
 import br.com.nora.api.application.platform.BusinessTelemetryService;
 import br.com.nora.api.application.platform.CostTelemetryService;
+import br.com.nora.api.application.platform.FeatureFlagService;
 import br.com.nora.api.application.platform.HealthTelemetryService;
 import br.com.nora.api.application.platform.ModelCatalogService;
 import br.com.nora.api.application.platform.ModelCatalogService.NewModelCommand;
 import br.com.nora.api.application.platform.PlatformValidationException;
 import br.com.nora.api.domain.platform.BusinessSnapshot;
 import br.com.nora.api.domain.platform.CostReport;
+import br.com.nora.api.domain.platform.FeatureFlag;
 import br.com.nora.api.domain.platform.HealthSnapshot;
 import br.com.nora.api.domain.platform.LlmModel;
 import br.com.nora.api.domain.platform.Modality;
@@ -56,16 +58,19 @@ public class PlatformAdminController {
     private final CostTelemetryService cost;
     private final HealthTelemetryService health;
     private final BusinessTelemetryService business;
+    private final FeatureFlagService flags;
 
     public PlatformAdminController(
             ModelCatalogService catalog,
             CostTelemetryService cost,
             HealthTelemetryService health,
-            BusinessTelemetryService business) {
+            BusinessTelemetryService business,
+            FeatureFlagService flags) {
         this.catalog = catalog;
         this.cost = cost;
         this.health = health;
         this.business = business;
+        this.flags = flags;
     }
 
     // ---------- catálogo ----------
@@ -104,6 +109,11 @@ public class PlatformAdminController {
     }
 
     // ---------- bindings ----------
+
+    @GetMapping("/flags")
+    public List<FeatureFlag> listFlags() {
+        return flags.listFlags();
+    }
 
     @GetMapping("/config")
     public List<BindingResponse> listConfig() {

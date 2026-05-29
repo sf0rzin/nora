@@ -132,6 +132,17 @@ Todos exigem **admin token**; gravam auditoria com `X-Operator-Email`.
   - `chat` → qualquer modalidade.
 - Invalida o cache de resolução (≤60s de propagação garantida de qualquer forma).
 
+### Feature flags
+
+`GET /admin/platform/flags` → **200** lista:
+```json
+[{ "key":"service.chat","enabled":true,"description":"Chat IA do plano Core (BFF /api/chat)",
+   "updatedBy":"seed","updatedAt":"…" }]
+```
+- **Keys têm prefixo `service.`** (`service.chat`, `service.analysis`, `service.multimodal`,
+  `service.search-embeddings`) — o resolver lê `service.{service}`. O consumidor mapeia o prefixo.
+- v1 read-only (sem PUT de toggle ainda). `updatedBy`/`updatedAt` são aditivos (ignoráveis).
+
 ### Telemetria
 
 `GET /admin/platform/telemetry/cost?from={iso}&to={iso}&groupBy={tenant|model|service}` → **200**:

@@ -913,13 +913,19 @@ module adminApp 'modules/container-app.bicep' = if (enablePlatform) {
         name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
         value: appInsights.outputs.connectionString
       }
-      // Base da API Spring (server-side) + admin token pra /admin/platform/**.
+      // Liga o data layer real do nora-admin (sai do mock).
       {
-        name: 'API_BASE_URL'
+        name: 'NORA_ADMIN_USE_MOCKS'
+        value: 'false'
+      }
+      // Nomes alinhados ao apps/admin/src/lib/data.ts (merged em #171). O token carrega o
+      // admin-bridge-token (chamadas server-side a /admin/platform/**).
+      {
+        name: 'PLATFORM_API_BASE_URL'
         value: apiPublicUrl
       }
       {
-        name: 'NORA_PLATFORM_ADMIN_TOKEN'
+        name: 'PLATFORM_INTERNAL_TOKEN'
         secretRef: 'admin-bridge-token'
       }
     ]
