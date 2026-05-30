@@ -43,12 +43,23 @@ Passo manual no dashboard, **não tem API pra criar team**:
 
 ### 2. Criar API token escopado
 
-`dash.cloudflare.com` → My Profile → API Tokens → Create Custom Token. Permissões mínimas:
+`dash.cloudflare.com` → My Profile → API Tokens → Create Custom Token.
+
+**Permissões mínimas (caminho crítico — DNS + Access App + Policy funcionam):**
 
 - `Account` → `Access: Apps and Policies` → **Edit**
 - `Account` → `Access: Service Tokens` → **Edit**
 - `Zone` → `DNS` → **Edit**
 - `Zone` → `Zone` → **Read**
+
+**Permissão opcional (full automation, inclui criar IdP via workflow):**
+
+- `Account` → `Access: Organizations, Identity Providers, and Groups` → **Edit**
+
+Sem a permissão opcional, o workflow degrada graciosamente: `team_domain` é construído do input (não verificado via API) e OTP IdP não é criado — usuário adiciona manualmente em 30s pelo painel (ver "Operação → Adicionar OTP IdP manualmente" abaixo).
+
+**Scope:**
+
 - Account Resources: conta específica
 - Zone Resources: zona específica (`nora.systems`)
 
@@ -99,6 +110,17 @@ Depois de adicionar, edita a Access App pra permitir os novos IdPs no campo `all
 
 ## Operação
 
+### Adicionar OTP IdP manualmente (se workflow skipped)
+
+Se o token não tem a permissão opcional, o workflow loga warning e pula a criação do OTP IdP. Adicionar manualmente (30s):
+
+1. `https://one.dash.cloudflare.com/` → seleciona a conta
+2. **Settings** → **Authentication**
+3. Em **Login methods**, clica **Add new**
+4. Escolhe **One-time PIN** → Save
+
+Pronto. Login no `admin.nora.systems` agora pede email e Cloudflare manda código (allowlist do workflow continua valendo).
+
 ### Adicionar/remover operador
 
 Re-rodar o workflow com `access_emails` atualizado. Workflow faz upsert da policy.
@@ -119,9 +141,11 @@ Painel Zero Trust → Access → Applications → nora-admin → Edit → desabi
 
 Nameservers do Namecheap ainda não foram trocados pros da Cloudflare. Painel Namecheap → Domain List → Manage → Nameservers → Custom DNS → cola os 2 NS dados pela Cloudflare (algo tipo `xxx.ns.cloudflare.com`). Propagação geralmente em 10-30 min.
 
-### Workflow falha em `Verify Zero Trust team exists`
+### Workflow loga warning em `Resolve team domain`
 
-Zero Trust não habilitado na conta. Voltar pro passo 1 do Setup Inicial e fazer onboarding no `one.dash.cloudflare.com`.
+Geralmente significa que o token escopado não tem `Access: Organizations, IdPs, and Groups Read` — endpoint `/access/organizations` retorna `10000 Authentication error`. Workflow degrada graciosamente: usa `team_name` do input pra construir `team_domain`. Steps subsequentes (Access App, Policy) validam funcionalmente.
+
+Se Zero Trust também não estiver habilitado (raro, screenshot do painel já confirmaria), os steps de Access App falhariam com erro claro. Solução: passo 1 do Setup Inicial.
 
 ### Login aceita mas página retorna 502/timeout
 
