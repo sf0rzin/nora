@@ -5,18 +5,24 @@ name: cloudflare-setup
 # reconcilia diff (upsert em DNS, Access App, Policy, IdP).
 #
 # Secrets necessarios:
-#   - CLOUDFLARE_API_TOKEN  Token escopado em nora.systems com permissoes:
-#                            Account: Access (Apps and Policies) Edit
-#                            Account: Access (Service Tokens) Edit
-#                            Zone: DNS Edit
-#                            Zone: Zone Read
+#   - CLOUDFLARE_API_TOKEN  Token escopado em nora.systems. Permissoes minimas
+#                            (caminho critico — DNS + Access App + Policy funcionam):
+#                              Account: Access (Apps and Policies) Edit
+#                              Account: Access (Service Tokens) Edit
+#                              Zone: DNS Edit
+#                              Zone: Zone Read
+#                            Permissoes opcionais (full automation, inclui IdP):
+#                              Account: Access (Organizations, Identity Providers, and Groups) Edit
+#                            Sem a permissao opcional, o workflow degrada graciosamente:
+#                              - team_domain e construido do input (nao verificado via API)
+#                              - OTP IdP nao e criado (adicionar manualmente no painel CF)
 #
 # Pre-requisito manual (uma vez):
 #   - Zero Trust habilitado na conta CF (https://one.dash.cloudflare.com/ -> onboarding,
 #     criar team com nome = input team_name). Plano Free serve.
 #
 # Pos-step manual opcional (Google/GitHub OAuth):
-#   - Workflow cria One-Time PIN como IdP fallback (funciona out-of-the-box, sem OAuth).
+#   - Workflow tenta criar One-Time PIN como IdP fallback (sem OAuth).
 #   - Pra Google/GitHub OAuth, ver docs/operations/cloudflare-access.md.
 
 on:
@@ -109,21 +115,28 @@ jobs:
               | jq '{success, name: .result.name, content: .result.content, proxied: .result.proxied}'
           fi
 
-      - name: Verify Zero Trust team exists
+      - name: Resolve team domain
         id: team
         run: |
           set -euo pipefail
+          # Tenta verificar via API. Se token nao tiver 'Access: Organizations Read',
+          # cai no input direto — steps subsequentes (Access App / Policy) validam
+          # funcionalmente se o team realmente existe.
           response=$(curl -sSL -H "Authorization: Bearer $CF_TOKEN" \
-            "$CF_API/accounts/$CF_ACCOUNT_ID/access/organizations")
+            "$CF_API/accounts/$CF_ACCOUNT_ID/access/organizations" \
+            || echo '{"success":false,"errors":[{"code":-1,"message":"curl falhou"}]}')
           success=$(echo "$response" | jq -r '.success // false')
           team_domain=$(echo "$response" | jq -r '.result.auth_domain // empty')
-          if [ "$success" != "true" ] || [ -z "$team_domain" ]; then
-            echo "::error::Zero Trust nao habilitado nesta conta CF."
-            echo "::error::Habilita em https://one.dash.cloudflare.com/ (escolhe plano Free), cria team com nome '${{ inputs.team_name }}', e re-roda este workflow."
-            echo "$response" | jq .
-            exit 1
+          if [ "$success" = "true" ] && [ -n "$team_domain" ]; then
+            echo "Team verificado via API: $team_domain"
+          else
+            err_code=$(echo "$response" | jq -r '.errors[0].code // "unknown"')
+            err_msg=$(echo "$response" | jq -r '.errors[0].message // "unknown"')
+            team_domain="${{ inputs.team_name }}.cloudflareaccess.com"
+            echo "::warning::API /access/organizations rejeitou (code=$err_code: $err_msg). Construindo team_domain do input: $team_domain"
+            echo "::warning::Pra verificacao via API, adiciona 'Access: Organizations, IdPs, and Groups Read' no token CF."
+            echo "::warning::Se o team realmente NAO existir, o step 'Upsert Access Application' vai falhar mais a frente."
           fi
-          echo "Team domain ativo: $team_domain"
           echo "team_domain=$team_domain" >> "$GITHUB_OUTPUT"
 
       - name: Upsert Access Application
@@ -183,13 +196,26 @@ jobs:
           fi
 
       - name: Ensure One-Time PIN identity provider (fallback login)
+        id: otp_idp
         run: |
           set -euo pipefail
           # OTP nao tem config externa — Cloudflare manda codigo pro email do operador.
-          # Login imediato sem precisar de Google/GitHub OAuth Apps.
-          existing=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+          # Endpoint precisa de 'Access: Organizations, IdPs, and Groups Edit' no token.
+          # Se o token nao tiver, skipa com warning (user adiciona via UI ou expande token).
+          response=$(curl -sSL -H "Authorization: Bearer $CF_TOKEN" \
             "$CF_API/accounts/$CF_ACCOUNT_ID/access/identity_providers" \
-            | jq -r '.result[] | select(.type=="onetimepin") | .id' | head -1)
+            || echo '{"success":false,"errors":[{"code":-1,"message":"curl falhou"}]}')
+          success=$(echo "$response" | jq -r '.success // false')
+          if [ "$success" != "true" ]; then
+            err_code=$(echo "$response" | jq -r '.errors[0].code // "unknown"')
+            err_msg=$(echo "$response" | jq -r '.errors[0].message // "unknown"')
+            echo "::warning::API /access/identity_providers rejeitou (code=$err_code: $err_msg). OTP IdP nao sera criado via workflow."
+            echo "::warning::OPCAO A: adiciona 'Access: Organizations, IdPs, and Groups Edit' no token CF e re-roda."
+            echo "::warning::OPCAO B: adiciona manualmente em https://one.dash.cloudflare.com/ -> Settings -> Authentication -> Add new -> One-time PIN."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          existing=$(echo "$response" | jq -r '.result[] | select(.type=="onetimepin") | .id' | head -1)
           if [ -n "$existing" ]; then
             echo "OTP IdP ja configurado ($existing)."
           else
@@ -199,21 +225,28 @@ jobs:
               "$CF_API/accounts/$CF_ACCOUNT_ID/access/identity_providers" -d "$payload" \
               | jq '{success, name: .result.name, type: .result.type}'
           fi
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
 
       - name: Summary
+        if: always()
         env:
           TEAM_DOMAIN: ${{ steps.team.outputs.team_domain }}
           ZONE_ID: ${{ steps.zone.outputs.zone_id }}
           APP_ID: ${{ steps.app.outputs.app_id }}
           ADMIN_HOSTNAME: ${{ inputs.admin_hostname }}
           ACCESS_EMAILS: ${{ inputs.access_emails }}
+          OTP_SKIPPED: ${{ steps.otp_idp.outputs.skipped }}
         run: |
           dns_state="⏳ pendente — re-roda com admin_hostname quando o Container App admin existir"
           if [ -n "$ADMIN_HOSTNAME" ]; then
             dns_state="✅ apontado pra \`$ADMIN_HOSTNAME\`"
           fi
+          otp_state="✅ configurado via workflow"
+          if [ "$OTP_SKIPPED" = "true" ]; then
+            otp_state="⚠️ skipped (token sem permissao — adicionar manualmente, ver abaixo)"
+          fi
           {
-            echo "## Cloudflare Access — Setup ok"
+            echo "## Cloudflare Access — Setup"
             echo ""
             echo "| Item | Valor |"
             echo "|---|---|"
@@ -223,12 +256,29 @@ jobs:
             echo "| Access App ID | \`$APP_ID\` |"
             echo "| Allowlist | \`$ACCESS_EMAILS\` |"
             echo "| DNS CNAME | $dns_state |"
+            echo "| OTP IdP | $otp_state |"
             echo ""
-            echo "### Login ja funcional"
-            echo ""
-            echo "**One-Time PIN por email** — sem OAuth setup. Quando \`https://$SUBDOMAIN.$DOMAIN\` "
-            echo "estiver acessivel, Cloudflare pede email e manda codigo (so emails da allowlist passam)."
-            echo ""
+            if [ "$OTP_SKIPPED" = "true" ]; then
+              echo "### ⚠️ Acao manual necessaria: adicionar IdP"
+              echo ""
+              echo "Sem IdP, ninguem consegue logar. Duas opcoes:"
+              echo ""
+              echo "**A) Adicionar OTP via UI (mais rapido, 30s)**"
+              echo "1. https://one.dash.cloudflare.com/ → Settings → Authentication"
+              echo "2. Login methods → Add new → **One-time PIN** → Save"
+              echo ""
+              echo "**B) Expandir token e re-rodar workflow**"
+              echo "1. CF dashboard → My Profile → API Tokens → edita o CLOUDFLARE_API_TOKEN"
+              echo "2. Adiciona permissao: **Account → Access: Organizations, Identity Providers, and Groups → Edit**"
+              echo "3. Re-roda este workflow"
+              echo ""
+            else
+              echo "### Login ja funcional"
+              echo ""
+              echo "**One-Time PIN por email** — sem OAuth setup. Quando \`https://$SUBDOMAIN.$DOMAIN\` "
+              echo "estiver acessivel, Cloudflare pede email e manda codigo (so emails da allowlist passam)."
+              echo ""
+            fi
             echo "### Adicionar Google + GitHub OAuth (opcional)"
             echo ""
             echo "Callback URL pros dois providers (vai pedir no console deles):"
