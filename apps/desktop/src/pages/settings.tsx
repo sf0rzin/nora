@@ -32,7 +32,7 @@ function Btn({
     ghost: { bg: "transparent", color: "var(--ink)", border: "transparent" },
     danger: {
       bg: "var(--canvas)",
-      color: "#a04c3e",
+      color: "var(--danger-ink)",
       border: "rgba(201, 119, 102, 0.40)",
     },
   };
