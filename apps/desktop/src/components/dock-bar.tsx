@@ -4,6 +4,7 @@ import { emit } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { NoraBars } from "@/components/brand/nora-bars";
 import { useTauriListener } from "@/hooks/use-tauri-listener";
+import { formatDuration } from "@/lib/format";
 
 const DOCK_STORAGE_KEY = "nora.dock.visible";
 
@@ -11,12 +12,6 @@ interface RecordingStatus {
   isRecording: boolean;
   micDevice?: string;
   sampleRate?: number;
-}
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 function DockButton({

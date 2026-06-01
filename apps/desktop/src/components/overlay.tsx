@@ -12,6 +12,7 @@ import {
   NotificationStack,
   useNotifications,
 } from "@/components/overlay-notifications";
+import { formatDuration, relTime } from "@/lib/format";
 
 type SpeakerMap = Record<string, string>;
 
@@ -66,20 +67,6 @@ function saveDockPref(v: boolean) {
   } catch {
     // ignore
   }
-}
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
-}
-
-function relTime(ms: number): string {
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms / 1000) % 60);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 function getDisplayName(line: LiveTranscriptLine, isMe: boolean, overrides: SpeakerMap): string {
