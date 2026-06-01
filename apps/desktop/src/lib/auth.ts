@@ -1,5 +1,5 @@
 import { apiClient } from "./api-client";
-import { secrets } from "./secrets";
+import { secrets, SECRET_KEYS } from "./secrets";
 import type {
   LoginRequest,
   LoginResponse,
@@ -22,7 +22,8 @@ function parseJwtPayload(token: string): Record<string, unknown> | null {
 
 function parseJwtRoles(token: string): string[] {
   const payload = parseJwtPayload(token);
-  return (payload?.roles as string[]) || [];
+  const roles = payload?.roles;
+  return Array.isArray(roles) ? roles.filter((r): r is string => typeof r === "string") : [];
 }
 
 function getTokenExpirationMs(token: string): number | null {
@@ -50,6 +51,14 @@ export async function login(req: LoginRequest): Promise<SessionUser> {
     auth: false,
   });
 
+  // Defesa: backend fora do ar ou resposta inesperada (2xx sem corpo JSON) fazia
+  // o login estourar com "null is not an object". Mensagem clara em vez de crash.
+  if (!response?.accessToken) {
+    throw new Error(
+      "Resposta de login inválida do servidor. Verifique se o backend está no ar.",
+    );
+  }
+
   const roles = parseJwtRoles(response.accessToken);
 
   const user: SessionUser = {
@@ -60,10 +69,9 @@ export async function login(req: LoginRequest): Promise<SessionUser> {
     roles,
   };
 
-  await secrets.set("access-token", response.accessToken);
-  await secrets.set("refresh-token", response.refreshToken);
-  await secrets.set("current-user", JSON.stringify(user));
-  apiClient.setCachedUser(user);
+  await secrets.set(SECRET_KEYS.ACCESS_TOKEN, response.accessToken);
+  await secrets.set(SECRET_KEYS.REFRESH_TOKEN, response.refreshToken);
+  await secrets.set(SECRET_KEYS.CURRENT_USER, JSON.stringify(user));
 
   startTokenRefreshLoop();
 
@@ -72,10 +80,9 @@ export async function login(req: LoginRequest): Promise<SessionUser> {
 
 export async function logout(): Promise<void> {
   stopTokenRefreshLoop();
-  await secrets.delete("access-token");
-  await secrets.delete("refresh-token");
-  await secrets.delete("current-user");
-  apiClient.setCachedUser(null);
+  await secrets.delete(SECRET_KEYS.ACCESS_TOKEN);
+  await secrets.delete(SECRET_KEYS.REFRESH_TOKEN);
+  await secrets.delete(SECRET_KEYS.CURRENT_USER);
 }
 
 // Mutex único pro refresh — tanto o loop proativo (checkAndRefresh a cada 5min)
@@ -87,7 +94,7 @@ let inFlightRefresh: Promise<string | null> | null = null;
 export function refreshAccessToken(): Promise<string | null> {
   if (inFlightRefresh) return inFlightRefresh;
   inFlightRefresh = (async (): Promise<string | null> => {
-    const refresh = await secrets.get("refresh-token");
+    const refresh = await secrets.get(SECRET_KEYS.REFRESH_TOKEN);
     if (!refresh) {
       console.warn("[auth] no refresh token available");
       return null;
@@ -111,9 +118,9 @@ export function refreshAccessToken(): Promise<string | null> {
         return null;
       }
 
-      await secrets.set("access-token", response.accessToken);
+      await secrets.set(SECRET_KEYS.ACCESS_TOKEN, response.accessToken);
       if (response.refreshToken) {
-        await secrets.set("refresh-token", response.refreshToken);
+        await secrets.set(SECRET_KEYS.REFRESH_TOKEN, response.refreshToken);
       }
 
       console.log("[auth] token refreshed successfully");
@@ -149,7 +156,7 @@ export function stopTokenRefreshLoop(): void {
 }
 
 async function checkAndRefresh(): Promise<void> {
-  const token = await secrets.get("access-token");
+  const token = await secrets.get(SECRET_KEYS.ACCESS_TOKEN);
   if (!token) return;
 
   if (shouldRefresh(token)) {
@@ -163,15 +170,14 @@ async function checkAndRefresh(): Promise<void> {
 
 async function handleAuthExpired(): Promise<void> {
   stopTokenRefreshLoop();
-  await secrets.delete("access-token");
-  await secrets.delete("refresh-token");
-  await secrets.delete("current-user");
-  apiClient.setCachedUser(null);
+  await secrets.delete(SECRET_KEYS.ACCESS_TOKEN);
+  await secrets.delete(SECRET_KEYS.REFRESH_TOKEN);
+  await secrets.delete(SECRET_KEYS.CURRENT_USER);
   window.dispatchEvent(new CustomEvent("auth-expired"));
 }
 
 export async function bootstrapSession(): Promise<SessionUser | null> {
-  const token = await secrets.get("access-token");
+  const token = await secrets.get(SECRET_KEYS.ACCESS_TOKEN);
   if (!token) return null;
 
   if (isTokenExpired(token)) {
@@ -183,7 +189,7 @@ export async function bootstrapSession(): Promise<SessionUser | null> {
     }
   }
 
-  const userJson = await secrets.get("current-user");
+  const userJson = await secrets.get(SECRET_KEYS.CURRENT_USER);
   if (!userJson) return null;
 
   let user: SessionUser;
@@ -194,20 +200,6 @@ export async function bootstrapSession(): Promise<SessionUser | null> {
     return null;
   }
 
-  apiClient.setCachedUser(user);
   startTokenRefreshLoop();
   return user;
-}
-
-export async function isAuthenticated(): Promise<boolean> {
-  const token = await secrets.get("access-token");
-  if (!token) return false;
-  if (isTokenExpired(token)) {
-    const newToken = await refreshAccessToken();
-    if (!newToken) {
-      await logout();
-      return false;
-    }
-  }
-  return true;
 }

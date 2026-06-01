@@ -26,6 +26,10 @@
   --warn-ink: #a37528;
   --danger: #c97766;
   --danger-ink: #a04c3e;
+  /* Soft danger (fundo/borda de banners de erro). Mesmos valores que estavam
+     hardcoded como rgba(201,119,102,…) em várias telas. Auditoria desktop #37. */
+  --danger-soft-bg: rgba(201, 119, 102, 0.10);
+  --danger-soft-border: rgba(201, 119, 102, 0.25);
 }
 
 html,
@@ -128,6 +132,13 @@ select option { background: var(--canvas); color: var(--ink); }
 }
 @keyframes badgeFadeIn {
   to { opacity: 1; }
+}
+/* Modal/palette — usadas pelo new-meeting-modal E pelo CloseConfirmDialog da
+   overlay; precisam estar aqui (não inline no modal) pra valer na janela overlay. */
+@keyframes paletteFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes paletteSlideIn {
+  from { opacity: 0; transform: translateY(-8px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
 
 /* ── Prose overrides (Markdown no Meeting Detail) ─────────────────── */

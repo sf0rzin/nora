@@ -5,18 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:linux": "cross-env GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
-    "@tauri-apps/plugin-shell": "^2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-markdown": "9.0.1",
-    "react-router-dom": "^6.26.0"
+    "react-markdown": "9.0.1"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
