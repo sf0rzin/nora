@@ -182,8 +182,8 @@ param adminIpSecurityRestrictions array = []
 @secure()
 param cloudflareTunnelToken string = ''
 
-@description('Imagem do conector cloudflared (sidecar do nora-admin). Pinada por reprodutibilidade; bumpar conforme releases do Cloudflare.')
-param cloudflaredImage string = 'docker.io/cloudflare/cloudflared:2024.12.2'
+@description('Imagem do conector cloudflared (sidecar do nora-admin). Pinada por reprodutibilidade; bumpar conforme releases do Cloudflare. Verificado no Docker Hub em 2026-06-01.')
+param cloudflaredImage string = 'docker.io/cloudflare/cloudflared:2026.5.2'
 
 @description('Team domain do Cloudflare Access (ex.: stratfy.cloudflareaccess.com). O nora-admin valida o JWT Cf-Access-Jwt-Assertion contra o JWKS desse dominio (Tier 2, defense-in-depth). Vazio = validacao degrada pra edge-only.')
 param cfAccessTeamDomain string = ''
