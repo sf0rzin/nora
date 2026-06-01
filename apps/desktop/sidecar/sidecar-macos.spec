@@ -6,7 +6,6 @@ Equivalente ao sidecar-linux.spec mas com target triple Darwin (x86_64 ou aarch6
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add src to path so PyInstaller can find nora_stt_sidecar

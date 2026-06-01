@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useActiveRecording } from "@/hooks/use-active-recording";
 import { ShaderOrb } from "@/components/brand/shader-orb";
+import { focusOn, focusOff } from "@/components/ui/field";
+import { Spinner } from "@/components/spinner";
 
 interface Props {
   open: boolean;
@@ -20,15 +22,6 @@ const inputCss: React.CSSProperties = {
   transition: "border-color 140ms ease, box-shadow 140ms ease",
   fontFamily: "var(--sans)",
 };
-
-function focusOn(e: React.FocusEvent<HTMLElement>) {
-  e.currentTarget.style.borderColor = "var(--accent)";
-  e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-soft)";
-}
-function focusOff(e: React.FocusEvent<HTMLElement>) {
-  e.currentTarget.style.borderColor = "var(--border)";
-  e.currentTarget.style.boxShadow = "none";
-}
 
 export function NewMeetingModal({ open, onClose }: Props) {
   const recording = useActiveRecording();
@@ -261,8 +254,8 @@ export function NewMeetingModal({ open, onClose }: Props) {
           <div
             style={{
               padding: "10px 12px",
-              background: "rgba(201, 119, 102, 0.10)",
-              border: "1px solid rgba(201, 119, 102, 0.25)",
+              background: "var(--danger-soft-bg)",
+              border: "1px solid var(--danger-soft-border)",
               borderRadius: 9,
               fontSize: 12.5,
               color: "var(--danger-ink)",
@@ -312,16 +305,7 @@ export function NewMeetingModal({ open, onClose }: Props) {
           >
             {submitting ? (
               <>
-                <span
-                  style={{
-                    width: 12,
-                    height: 12,
-                    border: "2px solid rgba(253,253,252,0.35)",
-                    borderTopColor: "var(--canvas)",
-                    borderRadius: "50%",
-                    animation: "nora-spin 0.9s linear infinite",
-                  }}
-                />
+                <Spinner color="rgba(253,253,252,0.35)" topColor="var(--canvas)" />
                 Iniciando…
               </>
             ) : (
@@ -341,13 +325,6 @@ export function NewMeetingModal({ open, onClose }: Props) {
           </button>
         </footer>
       </form>
-      <style>{`
-        @keyframes paletteFadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes paletteSlideIn {
-          from { opacity: 0; transform: translateY(-8px) scale(0.985); }
-          to   { opacity: 1; transform: translateY(0)    scale(1); }
-        }
-      `}</style>
     </div>
   );
 }

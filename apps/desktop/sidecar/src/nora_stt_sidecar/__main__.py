@@ -23,8 +23,8 @@ class SidecarApp:
     def __init__(self):
         self._transcriber: LiveTranscriber | None = None
         self._running = True
-        self._audio_seq = 0
         self._expected_seq = 0
+        self._audio_error_emitted = False
     
     def _emit(self, msg: OutboundMessage) -> None:
         """Emit NDJSON message to stdout."""
@@ -51,8 +51,8 @@ class SidecarApp:
                 on_event=self._emit,
             )
             self._transcriber.start()
-            self._audio_seq = 0
             self._expected_seq = 0
+            self._audio_error_emitted = False
         except Exception as e:
             logger.error(f"Failed to start session: {e}")
             self._transcriber = None
@@ -103,6 +103,16 @@ class SidecarApp:
             self._transcriber.feed(pcm_bytes)
         except Exception as e:
             logger.error(f"Failed to process audio: {e}")
+            # Avisa o Rust UMA vez por sessão (não floodar o IPC por frame). #123
+            if not self._audio_error_emitted:
+                self._audio_error_emitted = True
+                self._emit(
+                    ErrorMessage(
+                        session_id=msg.session_id,
+                        code="AUDIO_DECODE_FAILED",
+                        message=str(e),
+                    )
+                )
     
     def _handle_stop(self, msg: StopMessage) -> None:
         """Handle stop message."""
@@ -120,12 +130,10 @@ class SidecarApp:
         self._transcriber = None
     
     def _handle_signal(self, signum, frame) -> None:
-        """Handle SIGTERM/SIGINT."""
-        logger.info(f"Received signal {signum}, shutting down...")
+        """Handle SIGTERM/SIGINT — só sinaliza a parada. Chamar stop()/print() no
+        contexto do signal não é async-signal-safe; o cleanup roda no finally do
+        run() (stop() é idempotente). Auditoria #122."""
         self._running = False
-        if self._transcriber:
-            self._transcriber.stop()
-            self._transcriber = None
     
     def run(self) -> None:
         """Main loop: read NDJSON from stdin and dispatch."""

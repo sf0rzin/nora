@@ -25,7 +25,6 @@ interface RequestOptions {
 
 class ApiClient {
   private onUnauthorized: (() => void) | null = null;
-  private cachedUser: unknown = null;
 
   on401(callback: () => void) {
     this.onUnauthorized = callback;
@@ -47,7 +46,7 @@ class ApiClient {
       auth,
     };
 
-    console.log("[api] invoking http_proxy:", method, path);
+    if (import.meta.env.DEV) console.log("[api] invoking http_proxy:", method, path);
 
     let response: ProxyResponse;
     try {
@@ -57,7 +56,8 @@ class ApiClient {
       throw err;
     }
 
-    console.log("[api] response:", response.status, response.body);
+    // body só em dev (Vite elimina em prod) — não vaza token no bundle. #98
+    if (import.meta.env.DEV) console.log("[api] response:", response.status, response.body);
 
     if (response.status === 401 && auth && _retryDepth === 0) {
       // Uma única tentativa de refresh+retry. refreshAccessToken() é idempotente
@@ -87,14 +87,6 @@ class ApiClient {
     }
 
     return response.body as T;
-  }
-
-  setCachedUser(user: unknown): void {
-    this.cachedUser = user;
-  }
-
-  getCachedUser<T>(): T | null {
-    return this.cachedUser as T | null;
   }
 }
 

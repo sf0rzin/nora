@@ -93,10 +93,13 @@ pub async fn analyze_live(
         }
     }
 
+    // Sinaliza o início da análise pra UI (spinner da overlay). O fim vem por
+    // "live-analysis" (sucesso) ou pela telemetria com success:false (falha).
+    let _ = app_handle.emit("live-analysis-start", request.chunk_seq);
+
     let start = std::time::Instant::now();
 
-    let client = reqwest::Client::new();
-    let result = client
+    let result = crate::http_proxy::http_client()
         .post(format!("{}/meetings/live-analyze", backend_url))
         .header("Authorization", format!("Bearer {}", access_token))
         .header("Content-Type", "application/json")
@@ -234,7 +237,9 @@ pub fn toggle_overlay(
     if let Some(window) = app_handle.get_webview_window("overlay") {
         if show {
             let _ = window.show();
-            let _ = window.set_focus();
+            // NÃO chamar set_focus aqui: roubava o foco do app em primeiro plano
+            // (Meet/Zoom). O foco explícito fica a cargo de focus_overlay_window
+            // quando o usuário clica pra abrir a overlay (dock-bar). Auditoria #26.
 
             // Se stealth mode estiver ativo, aplicar na overlay agora que ela ficou visível
             #[cfg(target_os = "windows")]
@@ -256,14 +261,6 @@ pub fn toggle_overlay(
 }
 
 #[tauri::command]
-pub fn get_live_highlights_snapshot(
-    state: State<'_, LiveHighlightsState>,
-) -> Result<Option<LiveHighlights>, String> {
-    let snapshot = state.lock().map_err(|e| e.to_string())?;
-    Ok(snapshot.clone())
-}
-
-#[tauri::command]
 pub fn clear_live_highlights(
     app_handle: AppHandle,
     state: State<'_, LiveHighlightsState>,
@@ -274,25 +271,4 @@ pub fn clear_live_highlights(
     }
     let _ = app_handle.emit("clear-highlights", ());
     Ok(())
-}
-
-#[tauri::command]
-pub fn get_overlay_position(app_handle: AppHandle) -> Result<(i32, i32), String> {
-    if let Some(window) = app_handle.get_webview_window("overlay") {
-        let pos = window.outer_position().map_err(|e| e.to_string())?;
-        Ok((pos.x, pos.y))
-    } else {
-        Err("Overlay window not found".to_string())
-    }
-}
-
-#[tauri::command]
-pub fn set_overlay_position(app_handle: AppHandle, x: i32, y: i32) -> Result<(), String> {
-    if let Some(window) = app_handle.get_webview_window("overlay") {
-        window
-            .set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))
-            .map_err(|e| e.to_string())
-    } else {
-        Err("Overlay window not found".to_string())
-    }
 }

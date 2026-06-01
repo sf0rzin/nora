@@ -19,7 +19,7 @@ const FORBIDDEN_HEADERS: &[&str] = &[
 
 const MAX_BODY_BYTES: usize = 1024 * 1024;
 
-fn http_client() -> &'static Client {
+pub(crate) fn http_client() -> &'static Client {
     static CLIENT: OnceLock<Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
@@ -81,8 +81,9 @@ pub async fn http_proxy(
         }
         clean_headers.insert(k, v);
     }
-    // Só força Content-Type se o frontend não enviou um
-    if !clean_headers.contains_key("Content-Type") {
+    // Só força Content-Type se o frontend não enviou um (case-insensitive —
+    // senão um "content-type" minúsculo do renderer geraria header duplicado).
+    if !clean_headers.keys().any(|k| k.eq_ignore_ascii_case("content-type")) {
         clean_headers.insert("Content-Type".into(), "application/json".into());
     }
 
@@ -93,9 +94,9 @@ pub async fn http_proxy(
     }
 
     let client = http_client();
-    let method = req.method.unwrap_or_else(|| "GET".into());
+    let upper = req.method.unwrap_or_else(|| "GET".into()).to_ascii_uppercase();
 
-    let mut builder = match method.to_ascii_uppercase().as_str() {
+    let mut builder = match upper.as_str() {
         "GET" => client.get(target),
         "POST" => client.post(target),
         "PUT" => client.put(target),
@@ -107,13 +108,17 @@ pub async fn http_proxy(
         builder = builder.header(k, v);
     }
 
+    // Só anexa body em métodos que o aceitam e quando não é null — senão um GET
+    // com `body: null` (default do api-client) mandava o literal "null" no corpo.
     if let Some(body) = req.body {
-        let bytes = serde_json::to_vec(&body)
-            .map_err(|e| format!("body serialize: {}", e))?;
-        if bytes.len() > MAX_BODY_BYTES {
-            return Err(format!("body acima do limite ({} bytes)", bytes.len()));
+        if !body.is_null() && matches!(upper.as_str(), "POST" | "PUT") {
+            let bytes = serde_json::to_vec(&body)
+                .map_err(|e| format!("body serialize: {}", e))?;
+            if bytes.len() > MAX_BODY_BYTES {
+                return Err(format!("body acima do limite ({} bytes)", bytes.len()));
+            }
+            builder = builder.body(bytes);
         }
-        builder = builder.body(bytes);
     }
 
     let response = builder

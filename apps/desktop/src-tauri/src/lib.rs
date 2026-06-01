@@ -22,11 +22,17 @@ use tauri::Manager;
 
 pub type SidecarState = Arc<Mutex<Vec<stt_sidecar::SidecarHandle>>>;
 
-/// Lê a URL base da API do tauri.conf.json (compile-time).
-/// O campo deve estar em `plugins.nora.apiBaseUrl`.
+/// Resolve a URL base da API uma vez (memoizada). Prioridade:
+/// 1) env `NORA_API_BASE_URL` injetada em build-time pelo build.rs (CI/produção);
+/// 2) campo `plugins.nora.apiBaseUrl` do tauri.conf.json (default dev = localhost).
 pub fn api_base_url() -> String {
     static URL: OnceLock<String> = OnceLock::new();
     URL.get_or_init(|| {
+        if let Some(url) = option_env!("NORA_API_BASE_URL") {
+            if !url.is_empty() {
+                return url.to_string();
+            }
+        }
         const CONFIG_JSON: &str = include_str!("../tauri.conf.json");
         let config: serde_json::Value = match serde_json::from_str(CONFIG_JSON) {
             Ok(c) => c,
@@ -66,16 +72,13 @@ pub fn run() {
         .manage(live_state)
         .manage(stealth_state)
         .manage(http_proxy::ApiBaseUrl(base_url))
+        .manage(secrets::SecretStore::new())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 if window.label() == "main" {
                     window.app_handle().exit(0);
                 }
             }
-        })
-        .setup(|app| {
-            app.manage(secrets::SecretStore::new());
-            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_audio_devices,
@@ -91,10 +94,7 @@ pub fn run() {
             secrets::secret_delete,
             live_analysis::analyze_live,
             live_analysis::toggle_overlay,
-            live_analysis::get_live_highlights_snapshot,
             live_analysis::clear_live_highlights,
-            live_analysis::get_overlay_position,
-            live_analysis::set_overlay_position,
             stealth_mode::set_stealth_mode,
             stealth_mode::get_stealth_mode,
             windows::toggle_dock,

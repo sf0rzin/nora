@@ -1,6 +1,7 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { login } from "@/lib/auth";
+import { toUserMessage } from "@/lib/errors";
 import { NoraLogo } from "@/components/brand/nora-logo";
 
 interface TranscriptLine {
@@ -260,12 +261,8 @@ export function LoginPage() {
       const user = await login({ email, password });
       setAuthUser(user);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : (err as Record<string, unknown>)?.message?.toString() ||
-            JSON.stringify(err);
-      setError(msg || "Erro ao fazer login.");
+      console.error("[login] falha:", err);
+      setError(toUserMessage(err, "Erro ao fazer login."));
     } finally {
       setLoading(false);
     }
@@ -509,8 +506,8 @@ export function LoginPage() {
                 fontSize: 12.5,
                 color: "var(--danger-ink)",
                 padding: "10px 12px",
-                background: "rgba(201, 119, 102, 0.10)",
-                border: "1px solid rgba(201, 119, 102, 0.25)",
+                background: "var(--danger-soft-bg)",
+                border: "1px solid var(--danger-soft-border)",
                 borderRadius: 8,
                 lineHeight: 1.45,
               }}

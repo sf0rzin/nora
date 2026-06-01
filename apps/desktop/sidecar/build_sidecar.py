@@ -14,6 +14,7 @@ Requisitos:
 """
 
 import platform
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -59,7 +60,7 @@ def main() -> int:
 
     if not spec_file.exists():
         print(f"ERRO: Spec não encontrado: {spec_file}", file=sys.stderr)
-        print(f"Specs disponíveis:", file=sys.stderr)
+        print("Specs disponíveis:", file=sys.stderr)
         for s in project_root.glob("sidecar-*.spec"):
             print(f"  - {s.name}", file=sys.stderr)
         return 1
@@ -95,7 +96,7 @@ def main() -> int:
 
     if not built_exe.exists():
         # Procura qualquer arquivo gerado no dist
-        candidates = list(dist_dir.iterdir())
+        candidates = list(dist_dir.iterdir()) if dist_dir.exists() else []
         print(f"ERRO: Binário esperado não encontrado: {built_exe}", file=sys.stderr)
         print(f"Conteúdo de {dist_dir}:", file=sys.stderr)
         for c in candidates:
@@ -104,7 +105,6 @@ def main() -> int:
 
     # Copia para src-tauri/binaries/
     dest = binaries_dir / built_exe.name
-    import shutil
     shutil.copy2(built_exe, dest)
 
     print()
