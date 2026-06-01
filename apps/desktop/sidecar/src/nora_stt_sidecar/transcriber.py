@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 from typing import Callable
@@ -28,6 +29,13 @@ from .protocol import (
 )
 
 logger = logging.getLogger("nora_stt_sidecar")
+
+# Constantes de áudio/segmentação (eram números mágicos espalhados). Auditoria #117.
+_TICKS_PER_MS = 10_000  # o SDK reporta tempos em unidades de 100ns
+_SAMPLE_RATE_HZ = 16_000
+_BITS_PER_SAMPLE = 16
+_CHANNELS = 1
+_SEGMENTATION_SILENCE_MS = "800"
 
 
 class LiveTranscriber:
@@ -78,7 +86,10 @@ class LiveTranscriber:
         """Setup the ConversationTranscriber with push audio stream."""
         speech_config = SpeechConfig(auth_token=self.auth_token, region=self.region)
         speech_config.speech_recognition_language = self.language
-        
+
+        # Saída detalhada → NBest[0].Confidence (o SDK não expõe .confidence direto).
+        speech_config.output_format = speechsdk.OutputFormat.Detailed
+
         # Enable diarization for intermediate results
         speech_config.set_property(
             PropertyId.SpeechServiceResponse_DiarizeIntermediateResults,
@@ -88,14 +99,14 @@ class LiveTranscriber:
         # Silence timeout for faster segmentation
         speech_config.set_property(
             PropertyId.Speech_SegmentationSilenceTimeoutMs,
-            "800",
+            _SEGMENTATION_SILENCE_MS,
         )
         
         # Create push audio stream with 16kHz, 16-bit, mono
         stream_format = AudioStreamFormat(
-            samples_per_second=16000,
-            bits_per_sample=16,
-            channels=1,
+            samples_per_second=_SAMPLE_RATE_HZ,
+            bits_per_sample=_BITS_PER_SAMPLE,
+            channels=_CHANNELS,
         )
         self._push_stream = PushAudioInputStream(stream_format)
         
@@ -117,9 +128,9 @@ class LiveTranscriber:
             self._emit(
                 PartialMessage(
                     session_id=self.session_id,
-                    speaker_id=getattr(result, "speaker_id", None),
+                    speaker_id=result.speaker_id or None,
                     text=result.text,
-                    offset_ms=result.offset // 10000,  # Convert to milliseconds
+                    offset_ms=result.offset // _TICKS_PER_MS,  # Convert to milliseconds
                 )
             )
     
@@ -130,31 +141,47 @@ class LiveTranscriber:
             self._emit(
                 FinalMessage(
                     session_id=self.session_id,
-                    speaker_id=getattr(result, "speaker_id", None),
+                    speaker_id=result.speaker_id or None,
                     text=result.text,
-                    offset_ms=result.offset // 10000,
-                    duration_ms=result.duration // 10000 if result.duration else None,
-                    confidence=getattr(result, "confidence", None),
+                    offset_ms=result.offset // _TICKS_PER_MS,
+                    duration_ms=result.duration // _TICKS_PER_MS if result.duration else None,
+                    confidence=self._parse_confidence(result),
                 )
             )
     
+    def _parse_confidence(self, result) -> float | None:
+        """Confidence vem do JSON detalhado (NBest[0].Confidence); o SDK não
+        expõe um atributo .confidence direto. Degrada pra None se ausente."""
+        try:
+            data = json.loads(result.json)
+        except (AttributeError, ValueError, TypeError):
+            return None
+        nbest = data.get("NBest") if isinstance(data, dict) else None
+        if isinstance(nbest, list) and nbest:
+            conf = nbest[0].get("Confidence")
+            if isinstance(conf, (int, float)):
+                return float(conf)
+        return None
+
     def _on_canceled(self, evt: ConversationTranscriptionEventArgs) -> None:
         """Handle cancellation events."""
         result = evt.result
         cancellation_details = result.cancellation_details
-        
-        error_code = "UNKNOWN"
-        if cancellation_details.reason == CancellationReason.Error:
-            error_code_map = {
-                speechsdk.CancellationErrorCode.AuthenticationFailure: "AUTH_FAILED",
-                speechsdk.CancellationErrorCode.BadRequestParameters: "BAD_REQUEST",
-                speechsdk.CancellationErrorCode.TooManyRequests: "QUOTA",
-                speechsdk.CancellationErrorCode.ConnectionFailure: "NETWORK",
-                speechsdk.CancellationErrorCode.ServiceUnavailable: "SERVICE_UNAVAILABLE",
-                speechsdk.CancellationErrorCode.RuntimeError: "RUNTIME_ERROR",
-            }
-            error_code = error_code_map.get(cancellation_details.error_code, "UNKNOWN")
-        
+
+        # EndOfStream (fim normal) NÃO é erro: não emitir ErrorMessage nem reiniciar.
+        if cancellation_details.reason != CancellationReason.Error:
+            return
+
+        error_code_map = {
+            speechsdk.CancellationErrorCode.AuthenticationFailure: "AUTH_FAILED",
+            speechsdk.CancellationErrorCode.BadRequest: "BAD_REQUEST",
+            speechsdk.CancellationErrorCode.TooManyRequests: "QUOTA",
+            speechsdk.CancellationErrorCode.ConnectionFailure: "NETWORK",
+            speechsdk.CancellationErrorCode.ServiceUnavailable: "SERVICE_UNAVAILABLE",
+            speechsdk.CancellationErrorCode.RuntimeError: "RUNTIME_ERROR",
+        }
+        error_code = error_code_map.get(cancellation_details.error_code, "UNKNOWN")
+
         self._emit(
             ErrorMessage(
                 session_id=self.session_id,
@@ -162,31 +189,45 @@ class LiveTranscriber:
                 message=cancellation_details.error_message or "Unknown error",
             )
         )
-        
-        # Try to restart if it's a network/service error
-        if error_code in ("NETWORK", "SERVICE_UNAVAILABLE") and self._restart_count < self._max_restarts:
-            self._restart_count += 1
-            backoff = 2 ** (self._restart_count - 1)
-            logger.warning(f"Restarting transcriber (attempt {self._restart_count}/{self._max_restarts}) after {backoff}s")
-            time.sleep(backoff)
-            try:
-                self._cleanup()
-                self._setup_transcriber()
-                logger.info("Transcriber restarted successfully")
-            except Exception as e:
-                logger.error(f"Failed to restart transcriber: {e}")
-                self._emit(
-                    ErrorMessage(
-                        session_id=self.session_id,
-                        code="RESTART_FAILED",
-                        message=f"Failed to restart after {self._restart_count} attempts: {e}",
-                    )
+
+        # Reinicia só em erro de rede/serviço — e nunca depois de stop() (evita
+        # ressuscitar a sessão). Roda no thread de callback do SDK. Auditoria #113.
+        if error_code not in ("NETWORK", "SERVICE_UNAVAILABLE"):
+            return
+        if self._stopped or self._restart_count >= self._max_restarts:
+            return
+
+        self._restart_count += 1
+        backoff = 2 ** (self._restart_count - 1)
+        logger.warning(
+            f"Restarting transcriber (attempt {self._restart_count}/{self._max_restarts}) after {backoff}s"
+        )
+        time.sleep(backoff)
+        if self._stopped:
+            return  # stop() durante o backoff — não ressuscita
+
+        try:
+            self._cleanup()
+            self._setup_transcriber()
+            self._restart_count = 0  # reset após recuperação (auditoria #116)
+            logger.info("Transcriber restarted successfully")
+        except Exception as e:
+            logger.error(f"Failed to restart transcriber: {e}")
+            self._emit(
+                ErrorMessage(
+                    session_id=self.session_id,
+                    code="RESTART_FAILED",
+                    message=f"Failed to restart after {self._restart_count} attempts: {e}",
                 )
+            )
     
     def feed(self, pcm_bytes: bytes) -> None:
         """Feed PCM16LE audio data to the transcriber."""
-        if self._push_stream and self._started:
-            self._push_stream.write(pcm_bytes)
+        # Captura a ref local: _cleanup() (restart/stop) pode zerar _push_stream
+        # entre o teste e o write, rodando no thread de callback. Auditoria #115.
+        stream = self._push_stream
+        if stream and self._started:
+            stream.write(pcm_bytes)
     
     def stop(self) -> None:
         """Stop the transcriber gracefully."""

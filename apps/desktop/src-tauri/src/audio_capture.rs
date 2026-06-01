@@ -257,9 +257,10 @@ impl AudioCapture {
                 })
                 .or_else(system_audio::find_system_audio_source);
 
-            if let Some(source) = source {
+            // Exige fonte E sink: o unwrap() panicava se o contrato caller/callee
+            // divergisse (capture_system_audio sem system_tx). Auditoria #19.
+            if let (Some(source), Some(system_tx)) = (source, sinks.system_tx) {
                 let flag = Arc::new(AtomicBool::new(true));
-                let system_tx = sinks.system_tx.unwrap();
 
                 match system_audio::SystemAudioCapture::start(
                     &source,
