@@ -1,5 +1,5 @@
 import { apiClient } from "./api-client";
-import { secrets } from "./secrets";
+import { secrets, SECRET_KEYS } from "./secrets";
 import type {
   LoginRequest,
   LoginResponse,
@@ -60,9 +60,9 @@ export async function login(req: LoginRequest): Promise<SessionUser> {
     roles,
   };
 
-  await secrets.set("access-token", response.accessToken);
-  await secrets.set("refresh-token", response.refreshToken);
-  await secrets.set("current-user", JSON.stringify(user));
+  await secrets.set(SECRET_KEYS.ACCESS_TOKEN, response.accessToken);
+  await secrets.set(SECRET_KEYS.REFRESH_TOKEN, response.refreshToken);
+  await secrets.set(SECRET_KEYS.CURRENT_USER, JSON.stringify(user));
   apiClient.setCachedUser(user);
 
   startTokenRefreshLoop();
@@ -72,9 +72,9 @@ export async function login(req: LoginRequest): Promise<SessionUser> {
 
 export async function logout(): Promise<void> {
   stopTokenRefreshLoop();
-  await secrets.delete("access-token");
-  await secrets.delete("refresh-token");
-  await secrets.delete("current-user");
+  await secrets.delete(SECRET_KEYS.ACCESS_TOKEN);
+  await secrets.delete(SECRET_KEYS.REFRESH_TOKEN);
+  await secrets.delete(SECRET_KEYS.CURRENT_USER);
   apiClient.setCachedUser(null);
 }
 
@@ -87,7 +87,7 @@ let inFlightRefresh: Promise<string | null> | null = null;
 export function refreshAccessToken(): Promise<string | null> {
   if (inFlightRefresh) return inFlightRefresh;
   inFlightRefresh = (async (): Promise<string | null> => {
-    const refresh = await secrets.get("refresh-token");
+    const refresh = await secrets.get(SECRET_KEYS.REFRESH_TOKEN);
     if (!refresh) {
       console.warn("[auth] no refresh token available");
       return null;
@@ -111,9 +111,9 @@ export function refreshAccessToken(): Promise<string | null> {
         return null;
       }
 
-      await secrets.set("access-token", response.accessToken);
+      await secrets.set(SECRET_KEYS.ACCESS_TOKEN, response.accessToken);
       if (response.refreshToken) {
-        await secrets.set("refresh-token", response.refreshToken);
+        await secrets.set(SECRET_KEYS.REFRESH_TOKEN, response.refreshToken);
       }
 
       console.log("[auth] token refreshed successfully");
@@ -149,7 +149,7 @@ export function stopTokenRefreshLoop(): void {
 }
 
 async function checkAndRefresh(): Promise<void> {
-  const token = await secrets.get("access-token");
+  const token = await secrets.get(SECRET_KEYS.ACCESS_TOKEN);
   if (!token) return;
 
   if (shouldRefresh(token)) {
@@ -163,15 +163,15 @@ async function checkAndRefresh(): Promise<void> {
 
 async function handleAuthExpired(): Promise<void> {
   stopTokenRefreshLoop();
-  await secrets.delete("access-token");
-  await secrets.delete("refresh-token");
-  await secrets.delete("current-user");
+  await secrets.delete(SECRET_KEYS.ACCESS_TOKEN);
+  await secrets.delete(SECRET_KEYS.REFRESH_TOKEN);
+  await secrets.delete(SECRET_KEYS.CURRENT_USER);
   apiClient.setCachedUser(null);
   window.dispatchEvent(new CustomEvent("auth-expired"));
 }
 
 export async function bootstrapSession(): Promise<SessionUser | null> {
-  const token = await secrets.get("access-token");
+  const token = await secrets.get(SECRET_KEYS.ACCESS_TOKEN);
   if (!token) return null;
 
   if (isTokenExpired(token)) {
@@ -183,7 +183,7 @@ export async function bootstrapSession(): Promise<SessionUser | null> {
     }
   }
 
-  const userJson = await secrets.get("current-user");
+  const userJson = await secrets.get(SECRET_KEYS.CURRENT_USER);
   if (!userJson) return null;
 
   let user: SessionUser;
@@ -200,7 +200,7 @@ export async function bootstrapSession(): Promise<SessionUser | null> {
 }
 
 export async function isAuthenticated(): Promise<boolean> {
-  const token = await secrets.get("access-token");
+  const token = await secrets.get(SECRET_KEYS.ACCESS_TOKEN);
   if (!token) return false;
   if (isTokenExpired(token)) {
     const newToken = await refreshAccessToken();

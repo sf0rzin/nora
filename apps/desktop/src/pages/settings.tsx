@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { secrets } from "@/lib/secrets";
+import { secrets, SECRET_KEYS } from "@/lib/secrets";
 import { invoke } from "@tauri-apps/api/core";
 import { Avatar } from "@/components/brand/avatar";
 
@@ -425,10 +425,10 @@ function AudioSection() {
   useEffect(() => {
     (async () => {
       try {
-        const hasOldKey = await secrets.has("azure-speech-key");
-        if (hasOldKey) await secrets.delete("azure-speech-key");
-        const hasOldRegion = await secrets.has("azure-region");
-        if (hasOldRegion) await secrets.delete("azure-region");
+        const hasOldKey = await secrets.has(SECRET_KEYS.LEGACY_AZURE_SPEECH_KEY);
+        if (hasOldKey) await secrets.delete(SECRET_KEYS.LEGACY_AZURE_SPEECH_KEY);
+        const hasOldRegion = await secrets.has(SECRET_KEYS.LEGACY_AZURE_REGION);
+        if (hasOldRegion) await secrets.delete(SECRET_KEYS.LEGACY_AZURE_REGION);
         setCleanupDone(true);
       } catch (e) {
         console.error("[settings] secret migration:", e);
