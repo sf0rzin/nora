@@ -1,6 +1,7 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { login } from "@/lib/auth";
+import { toUserMessage } from "@/lib/errors";
 import { NoraLogo } from "@/components/brand/nora-logo";
 
 interface TranscriptLine {
@@ -260,12 +261,8 @@ export function LoginPage() {
       const user = await login({ email, password });
       setAuthUser(user);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : (err as Record<string, unknown>)?.message?.toString() ||
-            JSON.stringify(err);
-      setError(msg || "Erro ao fazer login.");
+      console.error("[login] falha:", err);
+      setError(toUserMessage(err, "Erro ao fazer login."));
     } finally {
       setLoading(false);
     }
