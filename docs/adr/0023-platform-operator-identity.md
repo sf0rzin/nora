@@ -1,9 +1,9 @@
 # 0023 — Identidade de operador (platform admin), separada do IAM por-tenant
 
-- Status: aceito
+- Status: aceito (Easy Auth substituído por ADR 0025 — Cloudflare Tunnel/Access; demais decisões mantidas)
 - Data: 2026-05-28
 - Decisores: Co-arquitetos (Opus) + Stratfy (PO/dono)
-- Relacionado: ADR 0007 (IAM AWS-style por-tenant), ADR 0022 (banco de plataforma)
+- Relacionado: ADR 0007 (IAM AWS-style por-tenant), ADR 0022 (banco de plataforma), ADR 0025 (substitui o Easy Auth desta decisão)
 
 ## Contexto
 
@@ -74,3 +74,4 @@ Identidade de operador **completamente separada** do IAM por-tenant, com **isola
 | Data | Decisor | Mudança |
 |---|---|---|
 | 2026-05-28 | Co-arquitetos + Stratfy | Criação. Refino do dono: `nora-admin` é app Next separado; Spring por token interno (não Easy Auth). Exceção consciente ao ADR 0014 autorizada. |
+| 2026-06-01 | Arquiteto Control Plane + Stratfy | Easy Auth (Entra) substituído pelo **ADR 0025** (Cloudflare Tunnel + Access): tenant FIAP bloqueou a criação de App Registration (`Authorization_RequestDenied`). O token entre serviços, a separação de planos (operador ≠ IAM por-tenant) e o `X-Operator-Email` de auditoria seguem valendo. |
