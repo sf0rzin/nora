@@ -168,7 +168,7 @@ export function DockBar() {
           className="inline-flex items-center gap-2 shrink-0"
           style={{
             padding: "5px 12px 5px 9px",
-            background: isRecording ? "rgba(201, 119, 102, 0.10)" : "var(--sidebar)",
+            background: isRecording ? "var(--danger-soft-bg)" : "var(--sidebar)",
             border: `1px solid ${
               isRecording ? "rgba(201, 119, 102, 0.30)" : "var(--border)"
             }`,

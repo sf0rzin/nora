@@ -1513,7 +1513,7 @@ export function OverlayPage() {
           className="shrink-0 flex items-start gap-3"
           style={{
             padding: "10px 14px",
-            background: "rgba(201, 119, 102, 0.10)",
+            background: "var(--danger-soft-bg)",
             borderBottom: "1px solid rgba(201, 119, 102, 0.30)",
           }}
         >

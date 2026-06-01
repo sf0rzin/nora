@@ -414,7 +414,7 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
             className="flex items-start justify-between gap-4"
             style={{
               padding: "16px 18px",
-              background: "rgba(201,119,102,0.10)",
+              background: "var(--danger-soft-bg)",
               border: "1px solid rgba(201,119,102,0.30)",
               borderRadius: 12,
               marginBottom: 36,

@@ -254,8 +254,8 @@ export function NewMeetingModal({ open, onClose }: Props) {
           <div
             style={{
               padding: "10px 12px",
-              background: "rgba(201, 119, 102, 0.10)",
-              border: "1px solid rgba(201, 119, 102, 0.25)",
+              background: "var(--danger-soft-bg)",
+              border: "1px solid var(--danger-soft-border)",
               borderRadius: 9,
               fontSize: 12.5,
               color: "var(--danger-ink)",

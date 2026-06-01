@@ -26,6 +26,10 @@
   --warn-ink: #a37528;
   --danger: #c97766;
   --danger-ink: #a04c3e;
+  /* Soft danger (fundo/borda de banners de erro). Mesmos valores que estavam
+     hardcoded como rgba(201,119,102,…) em várias telas. Auditoria desktop #37. */
+  --danger-soft-bg: rgba(201, 119, 102, 0.10);
+  --danger-soft-border: rgba(201, 119, 102, 0.25);
 }
 
 html,
