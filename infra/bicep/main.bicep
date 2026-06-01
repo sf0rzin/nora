@@ -173,8 +173,23 @@ param easyAuthClientId string = ''
 @secure()
 param easyAuthClientSecret string = ''
 
-@description('Allowlist de IPs (CIDR) do ingress do nora-admin. Formato: [{ name, ipAddressRange, action: "Allow" }]. Vazio = sem restricao de rede (configurar no go-live).')
+@description('Allowlist de IPs (CIDR) do ingress do nora-admin. Formato: [{ name, ipAddressRange, action: "Allow" }]. Vazio = sem restricao de rede. Com Tunnel (ADR 0025) o ingress e internal — sem FQDN publico —, entao isto fica vazio.')
 param adminIpSecurityRestrictions array = []
+
+// ---- Operator identity v2: Cloudflare Tunnel + Access (ADR 0025, substitui Easy Auth do 0023) ----
+
+@description('Connector token do Cloudflare Tunnel do nora-admin. Vai pro KV (cloudflare-tunnel-token). Vazio = "unset" (cloudflared nao conecta — tunnel off). Gerado pelo workflow cloudflare-tunnel.yml e setado no Secret CLOUDFLARE_TUNNEL_TOKEN.')
+@secure()
+param cloudflareTunnelToken string = ''
+
+@description('Imagem do conector cloudflared (sidecar do nora-admin). Pinada por reprodutibilidade; bumpar conforme releases do Cloudflare. Verificado no Docker Hub em 2026-06-01.')
+param cloudflaredImage string = 'docker.io/cloudflare/cloudflared:2026.5.2'
+
+@description('Team domain do Cloudflare Access (ex.: stratfy.cloudflareaccess.com). O nora-admin valida o JWT Cf-Access-Jwt-Assertion contra o JWKS desse dominio (Tier 2, defense-in-depth). Vazio = validacao degrada pra edge-only.')
+param cfAccessTeamDomain string = ''
+
+@description('AUD tag da Access Application (admin.nora.systems). O nora-admin valida o audience do JWT do Access. Vazio = validacao de JWT degrada pra edge-only (origem ja protegida pelo tunnel + Access na borda).')
+param cfAccessAud string = ''
 
 // ============================================================
 // NAMING — deterministico + unico onde precisa
@@ -357,6 +372,10 @@ var keyVaultSecrets = {
       {
         name: 'easyauth-client-secret'
         value: empty(easyAuthClientSecret) ? 'unset' : easyAuthClientSecret
+      }
+      {
+        name: 'cloudflare-tunnel-token'
+        value: empty(cloudflareTunnelToken) ? 'unset' : cloudflareTunnelToken
       }
     ] : []
   )
@@ -903,9 +922,11 @@ module webApp 'modules/container-app.bicep' = {
 }
 
 // ============================================================
-// MODULES — Control plane: nora-admin (Next shell, ADR 0023)
-// Easy Auth (Entra) + ipSecurityRestrictions na borda; chama o Spring /admin/platform/**
-// server-side com o admin token. Só quando enablePlatform.
+// MODULES — Control plane: nora-admin (Next shell, ADR 0023 + ADR 0025)
+// Identidade de operador v2 (ADR 0025): ingress INTERNAL (sem FQDN público) + conector
+// cloudflared (sidecar) expõe o app via Cloudflare Tunnel atrás do Cloudflare Access.
+// Easy Auth (Entra) fica inerte (tenant FIAP bloqueou App Registration). Chama o Spring
+// /admin/platform/** server-side com o admin token. Só quando enablePlatform.
 // ============================================================
 
 var tenantIssuer = '${environment().authentication.loginEndpoint}${subscription().tenantId}/v2.0'
@@ -921,6 +942,11 @@ var adminSecrets = {
       {
         name: 'easyauth-client-secret'
         keyVaultUrl: '${kvUri}secrets/easyauth-client-secret'
+        identity: uaiAdmin.?outputs.id ?? ''
+      }
+      {
+        name: 'cloudflare-tunnel-token'
+        keyVaultUrl: '${kvUri}secrets/cloudflare-tunnel-token'
         identity: uaiAdmin.?outputs.id ?? ''
       }
     ],
@@ -942,11 +968,14 @@ module adminApp 'modules/container-app.bicep' = if (enablePlatform) {
     environmentId: containerAppsEnv.outputs.id
     image: adminImage
     containerName: 'admin'
-    targetPort: 3000
-    ingress: 'external'
+    // Next standalone escuta em 3002 (apps/admin/Dockerfile: PORT=3002 / EXPOSE 3002 / healthz).
+    targetPort: 3002
+    // ADR 0025: ingress INTERNAL — sem FQDN público. Acesso externo só via Cloudflare Tunnel
+    // (sidecar cloudflared) atrás do Cloudflare Access. minReplicas 1: o conector fica sempre de pé.
+    ingress: 'internal'
     cpu: '0.25'
     memory: '0.5Gi'
-    minReplicas: 0
+    minReplicas: 1
     maxReplicas: 2
     envVars: [
       {
@@ -972,13 +1001,44 @@ module adminApp 'modules/container-app.bicep' = if (enablePlatform) {
         name: 'PLATFORM_INTERNAL_TOKEN'
         secretRef: 'admin-bridge-token'
       }
+      // Tier 2 (ADR 0025): o nora-admin valida (server-side, lib/access.ts) o header
+      // Cf-Access-Jwt-Assertion contra o JWKS do team domain, conferindo o audience. Vazios =
+      // validação degrada pra edge-only (origem já protegida pelo tunnel + Access na borda).
+      {
+        name: 'CF_ACCESS_TEAM_DOMAIN'
+        value: cfAccessTeamDomain
+      }
+      {
+        name: 'CF_ACCESS_AUD'
+        value: cfAccessAud
+      }
     ]
     secretsObject: adminSecrets
     userAssignedIdentityId: uaiAdmin.?outputs.id ?? ''
     registry: registry
     ipSecurityRestrictions: adminIpSecurityRestrictions
-    // Easy Auth só quando o clientId existir (passo manual Entra — ver runbook). Sem clientId,
-    // o app sobe protegido apenas pela allowlist de IP até o grupo/App Registration serem criados.
+    // Sidecar cloudflared (ADR 0025): conecta ao Cloudflare Tunnel e encaminha pro Next em
+    // localhost:3002. Só quando o token existe — sem token, o admin sobe internal/inacessível
+    // (seguro) até o cloudflare-tunnel.yml rodar e o CLOUDFLARE_TUNNEL_TOKEN ser setado.
+    sidecars: empty(cloudflareTunnelToken) ? [] : [
+      {
+        name: 'cloudflared'
+        image: cloudflaredImage
+        args: [ 'tunnel', '--no-autoupdate', 'run' ]
+        resources: {
+          cpu: json('0.25')
+          memory: '0.5Gi'
+        }
+        env: [
+          {
+            name: 'TUNNEL_TOKEN'
+            secretRef: 'cloudflare-tunnel-token'
+          }
+        ]
+      }
+    ]
+    // Easy Auth (Entra) ficou inerte: tenant FIAP bloqueou App Registration (Authorization_RequestDenied).
+    // Substituído por Cloudflare Tunnel + Access (ADR 0025). Mantido como no-op (clientId vazio = {}).
     easyAuth: empty(easyAuthClientId) ? {} : {
       enabled: true
       clientId: easyAuthClientId
@@ -1013,4 +1073,6 @@ output webUaiPrincipalId string = uaiWeb.outputs.principalId
 
 // Control plane (ADR 0022/0023) — vazios quando enablePlatform=false.
 output platformPostgresFqdn string = postgresPlatform.?outputs.fqdn ?? ''
-output adminUrl string = enablePlatform ? 'https://${adminName}.${containerAppsEnv.outputs.defaultDomain}' : ''
+// ADR 0025: nora-admin tem ingress internal (sem FQDN público). O acesso é pelo hostname do
+// Cloudflare (Tunnel + Access). O FQDN interno é nora-admin-dev.internal.<defaultDomain>.
+output adminUrl string = enablePlatform ? 'https://admin.nora.systems' : ''

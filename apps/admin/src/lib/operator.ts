@@ -1,13 +1,14 @@
 import { headers } from "next/headers";
 
 /**
- * Identidade do operador, lida do header `x-ms-client-principal` que o
- * Container Apps Easy Auth (Entra) injeta APÓS autenticar. O app público nunca
- * confia nesse header; aqui é seguro porque o Easy Auth strippa o que vier do
- * cliente e injeta o seu. Em dev (sem Easy Auth) cai num operador fake.
+ * Identidade do operador. Em produção vem do Cloudflare Access (ADR 0025), que injeta
+ * `Cf-Access-Authenticated-User-Email` nas requisições que passam pelo login. A asserção
+ * (`Cf-Access-Jwt-Assertion`) já foi validada pelo gate em `lib/access.ts`, e a origem é
+ * inalcançável de fora (Tunnel + ingress internal) — então confiar neste header é seguro.
+ * Em dev (sem Cloudflare) cai num operador fake.
  *
- * O nora-admin repassa `operator.email` pra API Spring (header de auditoria)
- * pra registrar "quem trocou o modelo".
+ * O nora-admin repassa `operator.email` pra API Spring (header de auditoria) pra registrar
+ * "quem trocou o modelo". Legado: ainda lê `x-ms-client-principal` (Easy Auth) caso volte.
  */
 export interface Operator {
   email: string;
@@ -27,7 +28,16 @@ interface PrincipalClaim {
 }
 
 export function getOperator(): Operator {
-  const raw = headers().get("x-ms-client-principal");
+  const h = headers();
+
+  // Caminho atual: Cloudflare Access (ADR 0025).
+  const cfEmail = h.get("cf-access-authenticated-user-email");
+  if (cfEmail) {
+    return { email: cfEmail, name: cfEmail, authenticated: true };
+  }
+
+  // Legado: Easy Auth (Entra) — inerte hoje, mantido por robustez.
+  const raw = h.get("x-ms-client-principal");
   if (!raw) return DEV_OPERATOR;
   try {
     const decoded = JSON.parse(Buffer.from(raw, "base64").toString("utf-8")) as {
