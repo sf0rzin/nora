@@ -57,7 +57,7 @@ class ApiClient {
       throw err;
     }
 
-    console.log("[api] response:", response.status, response.body);
+    console.log("[api] response:", response.status);
 
     if (response.status === 401 && auth && _retryDepth === 0) {
       // Uma única tentativa de refresh+retry. refreshAccessToken() é idempotente
