@@ -341,13 +341,6 @@ export function NewMeetingModal({ open, onClose }: Props) {
           </button>
         </footer>
       </form>
-      <style>{`
-        @keyframes paletteFadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes paletteSlideIn {
-          from { opacity: 0; transform: translateY(-8px) scale(0.985); }
-          to   { opacity: 1; transform: translateY(0)    scale(1); }
-        }
-      `}</style>
     </div>
   );
 }
