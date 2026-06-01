@@ -106,7 +106,6 @@ export function ShaderOrb({
     const gl = canvas.getContext("webgl", {
       premultipliedAlpha: false,
       antialias: true,
-      preserveDrawingBuffer: true,
     });
     if (!gl) return;
 
@@ -120,9 +119,11 @@ export function ShaderOrb({
       return s;
     };
 
+    const vs = compile(gl.VERTEX_SHADER, VERT);
+    const fs = compile(gl.FRAGMENT_SHADER, FRAG);
     const prog = gl.createProgram()!;
-    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
-    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
     gl.linkProgram(prog);
     gl.useProgram(prog);
 
@@ -159,7 +160,15 @@ export function ShaderOrb({
     };
     frame();
 
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      // Sem isso, cada re-run do effect (mudança de props) ou desmontagem
+      // vazava program/shaders/buffer no contexto WebGL. Auditoria #50/#51.
+      cancelAnimationFrame(raf);
+      gl.deleteProgram(prog);
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
+      gl.deleteBuffer(buf);
+    };
   }, [size, speed, intensity, hueShift]);
 
   return (
