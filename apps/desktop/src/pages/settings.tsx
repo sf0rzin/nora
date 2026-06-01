@@ -316,6 +316,7 @@ function ProfileSection() {
 function PrivacySection() {
   const [stealthMode, setStealthMode] = useState(false);
   const [platform, setPlatform] = useState<string | null>(null);
+  const [stealthError, setStealthError] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<{ platform: string }>("check_system_audio_prerequisites")
@@ -341,8 +342,10 @@ function PrivacySection() {
     try {
       await invoke("set_stealth_mode", { enabled });
       setStealthMode(enabled);
+      setStealthError(null);
     } catch (e) {
       console.error("[settings] stealth set:", e);
+      setStealthError("Não foi possível alterar o modo stealth. Tente novamente.");
     }
   };
 
@@ -384,8 +387,13 @@ function PrivacySection() {
           checked={stealthMode}
           onChange={handleStealthToggle}
           disabled={!isSupported}
-          tag={!isSupported ? (platform === "macos" ? "Em breve" : "Indisponível") : undefined}
+          tag={platform === null ? undefined : !isSupported ? (platform === "macos" ? "Em breve" : "Indisponível") : undefined}
         />
+        {stealthError && (
+          <div style={{ marginTop: 8, fontSize: 12, color: "var(--danger-ink)" }}>
+            {stealthError}
+          </div>
+        )}
       </SectionWrap>
 
       <SectionWrap label="PII Shield">
