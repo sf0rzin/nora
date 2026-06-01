@@ -77,7 +77,7 @@ export function useLiveTranscript() {
           text: payload.text,
           speaker: payload.speaker,
           speakerId: payload.speakerId,
-          track: payload.track,
+          track,
           timestamp: Date.now(),
         };
         setState((prev) => {

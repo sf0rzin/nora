@@ -80,11 +80,8 @@ export function LiveHighlightsProvider({ children }: { children: ReactNode }) {
     };
 
     attach(
-      listen<LiveHighlights>("live-analysis", (event) => {
-        const { highlights: newHighlights, chunkSeq: seq } = event.payload as unknown as {
-          highlights: LiveHighlights;
-          chunkSeq: number;
-        };
+      listen<{ highlights: LiveHighlights; chunkSeq: number }>("live-analysis", (event) => {
+        const { highlights: newHighlights, chunkSeq: seq } = event.payload;
         setHighlights((prev) => mergeHighlights(prev, newHighlights));
         setLastUpdatedAt(Date.now());
         setChunkSeq(seq);
@@ -152,7 +149,6 @@ export function useLiveAnalysisTrigger() {
         .reduce((acc, l) => acc + l.text.length, 0);
 
       if (!force && newLines < 3 && newChars < 100 && timeSinceLastAnalysis < 15000) {
-        console.log("[live-trigger] skipped:", { newLines, newChars, timeSinceLastAnalysis });
         return;
       }
 
@@ -161,11 +157,8 @@ export function useLiveAnalysisTrigger() {
         .map((l) => l.text)
         .join("\n");
       if (transcriptChunk.length < 30) {
-        console.log("[live-trigger] chunk too short:", transcriptChunk.length, "chars");
         return;
       }
-
-      console.log("[live-trigger] firing:", { newLines, newChars, timeSinceLastAnalysis, chunkLen: transcriptChunk.length, seq: chunkSeqRef.current + 1 });
 
       isAnalyzingRef.current = true;
       lastAnalyzedCountRef.current = transcriptLines.length;

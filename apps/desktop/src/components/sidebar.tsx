@@ -53,7 +53,9 @@ export function Sidebar() {
   }, []);
 
   const isActive = (hash: string) => {
-    if (hash === "#/meetings") return route === "" || route.startsWith("#/meetings");
+    // Meetings é o default do Router: ativo a menos que esteja em chat/settings.
+    if (hash === "#/meetings")
+      return !route.startsWith("#/chat") && !route.startsWith("#/settings");
     return route.startsWith(hash);
   };
   const settingsActive = route.startsWith("#/settings");

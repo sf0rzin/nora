@@ -22,7 +22,8 @@ function parseJwtPayload(token: string): Record<string, unknown> | null {
 
 function parseJwtRoles(token: string): string[] {
   const payload = parseJwtPayload(token);
-  return (payload?.roles as string[]) || [];
+  const roles = payload?.roles;
+  return Array.isArray(roles) ? roles.filter((r): r is string => typeof r === "string") : [];
 }
 
 function getTokenExpirationMs(token: string): number | null {
@@ -197,17 +198,4 @@ export async function bootstrapSession(): Promise<SessionUser | null> {
   apiClient.setCachedUser(user);
   startTokenRefreshLoop();
   return user;
-}
-
-export async function isAuthenticated(): Promise<boolean> {
-  const token = await secrets.get(SECRET_KEYS.ACCESS_TOKEN);
-  if (!token) return false;
-  if (isTokenExpired(token)) {
-    const newToken = await refreshAccessToken();
-    if (!newToken) {
-      await logout();
-      return false;
-    }
-  }
-  return true;
 }
