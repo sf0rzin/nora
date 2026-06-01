@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { Avatar } from "@/components/brand/avatar";
+import { Spinner } from "@/components/spinner";
 
 interface ChatMessage {
+  id: number;
   role: "user" | "assistant";
   content: string;
   ts: number;
@@ -82,16 +84,7 @@ function SendOrbButton({
       }}
     >
       {busy ? (
-        <span
-          style={{
-            width: 14,
-            height: 14,
-            border: "2px solid rgba(253,253,252,0.35)",
-            borderTopColor: "var(--canvas)",
-            borderRadius: "50%",
-            animation: "nora-spin 0.9s linear infinite",
-          }}
-        />
+        <Spinner size={14} color="rgba(253,253,252,0.35)" topColor="var(--canvas)" />
       ) : (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={active ? "white" : "var(--muted)"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 19V5M5 12l7-7 7 7" />
@@ -160,6 +153,7 @@ export function ChatPage() {
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const idRef = useRef(0);
 
   // Auto-scroll
   useEffect(() => {
@@ -181,17 +175,18 @@ export function ChatPage() {
   async function send() {
     const text = input.trim();
     if (!text || busy) return;
-    const userMsg: ChatMessage = { role: "user", content: text, ts: Date.now() };
+    const userMsg: ChatMessage = { id: idRef.current++, role: "user", content: text, ts: Date.now() };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setBusy(true);
     try {
       const reply = await fakeAssistantReply(text);
-      setMessages((prev) => [...prev, { role: "assistant", content: reply, ts: Date.now() }]);
+      setMessages((prev) => [...prev, { id: idRef.current++, role: "assistant", content: reply, ts: Date.now() }]);
     } catch {
       setMessages((prev) => [
         ...prev,
         {
+          id: idRef.current++,
           role: "assistant",
           content:
             "Não consegui responder agora. O chat com a NORA ainda está sendo integrado — tenta de novo em alguns segundos.",
@@ -363,9 +358,9 @@ export function ChatPage() {
               gap: 22,
             }}
           >
-            {messages.map((m, i) => (
+            {messages.map((m) => (
               <MessageBubble
-                key={i}
+                key={m.id}
                 m={m}
                 authorAvatar={
                   m.role === "user" ? (
@@ -380,7 +375,7 @@ export function ChatPage() {
             ))}
             {busy && (
               <MessageBubble
-                m={{ role: "assistant", content: "", ts: Date.now() }}
+                m={{ id: -1, role: "assistant", content: "", ts: Date.now() }}
                 thinking
               />
             )}

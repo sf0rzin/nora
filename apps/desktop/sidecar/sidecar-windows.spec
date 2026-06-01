@@ -7,7 +7,6 @@ are properly bundled into the executable.
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add src to path so PyInstaller can find nora_stt_sidecar

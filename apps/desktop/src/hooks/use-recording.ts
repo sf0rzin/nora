@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { RecordingStatus } from "@/lib/recording-types";
 import { uploadTranscript } from "@/lib/meetings";
-import { savePendingMeeting, removePendingMeeting, getPendingMeetings } from "@/lib/pending-meetings";
+import { savePendingMeeting, removePendingMeeting, getPendingMeetings, getPendingCount } from "@/lib/pending-meetings";
 import { useRecordingContext } from "./use-recording-context";
 import { useLiveHighlights, useLiveAnalysisTrigger } from "./use-live-highlights";
 
@@ -11,6 +11,20 @@ interface UseRecordingOptions {
   language?: string;
   captureSystemAudio?: boolean;
   systemAudioDevice?: string | null;
+}
+
+/** Monta o transcript com prefixo [speaker] por linha. Compartilhado entre
+ *  saveMeeting e fullTranscript (eram idênticos). Auditoria desktop #90. */
+function buildTranscript(
+  lines: { text: string; speaker: string | null; speakerId: string | null; track: string }[],
+  getSpeakerName: (speakerId: string | null, speaker: string | null, track?: string) => string | null,
+): string {
+  return lines
+    .map((l) => {
+      const speakerName = getSpeakerName(l.speakerId, l.speaker, l.track);
+      return (speakerName ? `[${speakerName}] ` : "") + l.text;
+    })
+    .join("\n");
 }
 
 export function useRecording(options: UseRecordingOptions = {}) {
@@ -38,6 +52,9 @@ export function useRecording(options: UseRecordingOptions = {}) {
   const [pendingCount, setPendingCount] = useState(0);
   const startTimeRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Persistente entre re-execuções do effect de retry pra não duplicar uploads
+  // se o effect recriar (auditoria desktop #87).
+  const inFlightIdsRef = useRef<Set<string>>(new Set());
 
   const { clearHighlights, highlights } = useLiveHighlights();
   const { triggerAnalysis, resetTrigger } = useLiveAnalysisTrigger();
@@ -65,7 +82,6 @@ export function useRecording(options: UseRecordingOptions = {}) {
 
     attach(
       listen<unknown>("transcript", (event) => {
-        console.log("[transcript event]", event.payload);
         const payload = event.payload as {
           text: string;
           isFinal: boolean;
@@ -102,10 +118,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
     const checkStatus = async () => {
       try {
         const status = await invoke<RecordingStatus>("get_recording_status");
-        console.log("[recording] status check:", status);
         if (status.isRecording) {
           setRecordingState(true, status.micDevice, status.sampleRate);
-          console.log("[recording] restored recording state");
         }
       } catch (e) {
         console.error("[recording] failed to get status:", e);
@@ -232,12 +246,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     setSaveError(null);
     setError(null);
 
-    const transcript = transcriptLines
-      .map((l) => {
-        const speakerName = getSpeakerName(l.speakerId, l.speaker, l.track);
-        return (speakerName ? `[${speakerName}] ` : "") + l.text;
-      })
-      .join("\n");
+    const transcript = buildTranscript(transcriptLines, getSpeakerName);
 
     const startedAt = new Date(
       Date.now() - (duration * 1000)
@@ -275,7 +284,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
         retryCount: 0,
         lastError: msg,
       });
-      setPendingCount(getPendingMeetings().filter((m) => m.status === "pending").length);
+      setPendingCount(getPendingCount());
       setError("Falha ao salvar — reunião armazenada localmente. Tentaremos enviar automaticamente.");
       return { ok: false, error: msg };
     } finally {
@@ -290,7 +299,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     });
 
     // Update pending count on mount
-    setPendingCount(getPendingMeetings().filter((m) => m.status === "pending").length);
+    setPendingCount(getPendingCount());
 
     // Retry worker: attempts to send pending meetings every 30 seconds.
     // inFlightIds garante que o mesmo meeting não dispara 2x se um upload
@@ -298,7 +307,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     // interno até ~7.5s + um timeout do reqwest que pode passar de 30s).
     // Sem isso, gerava reuniões duplicadas no backend quando o segundo tick
     // disparava o mesmo payload enquanto o primeiro ainda processava.
-    const inFlightIds = new Set<string>();
+    const inFlightIds = inFlightIdsRef.current;
     const retryInterval = setInterval(() => {
       const pending = getPendingMeetings().filter(
         (m) =>
@@ -311,13 +320,16 @@ export function useRecording(options: UseRecordingOptions = {}) {
         try {
           await uploadTranscript(meeting.payload);
           removePendingMeeting(meeting.id);
-          setPendingCount(getPendingMeetings().filter((m) => m.status === "pending").length);
-          console.log("[recording] queued meeting sent successfully:", meeting.id);
+          setPendingCount(getPendingCount());
         } catch (e) {
           console.error("[recording] retry failed for queued meeting:", meeting.id, e);
+          const nextRetry = meeting.retryCount + 1;
           savePendingMeeting({
             ...meeting,
-            retryCount: meeting.retryCount + 1,
+            // Após 10 tentativas, marca falha permanente em vez de deixar a
+            // reunião "pending" zumbi sendo re-filtrada pra sempre. Auditoria #91.
+            status: nextRetry >= 10 ? "failed_permanently" : "pending",
+            retryCount: nextRetry,
             lastError: e instanceof Error ? e.message : String(e),
           });
         } finally {
@@ -332,12 +344,7 @@ export function useRecording(options: UseRecordingOptions = {}) {
     };
   }, [loadDevices]);
 
-  const fullTranscript = transcriptLines
-    .map((l) => {
-      const speakerName = getSpeakerName(l.speakerId, l.speaker, l.track);
-      return (speakerName ? `[${speakerName}] ` : "") + l.text;
-    })
-    .join("\n");
+  const fullTranscript = buildTranscript(transcriptLines, getSpeakerName);
 
   return {
     isRecording,
