@@ -331,7 +331,7 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
           </a>
           <span style={{ opacity: 0.5 }}>/</span>
           <span style={{ color: "var(--accent-ink)" }}>
-            {meeting.tags?.[0] || "Sem projeto"}
+            {meeting.tags[0] || "Sem projeto"}
           </span>
         </div>
 
