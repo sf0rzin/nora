@@ -93,8 +93,16 @@ export function LiveHighlightsProvider({ children }: { children: ReactNode }) {
       }),
     );
     attach(
+      listen("live-analysis-start", () => {
+        setIsAnalyzing(true);
+        setError(null);
+      }),
+    );
+    attach(
       listen<LiveAnalysisTelemetry>("live-analysis-telemetry", (event) => {
         setLastLatencyMs(event.payload.latencyMs);
+        // Falha não emite "live-analysis"; a telemetria é o único sinal de fim.
+        if (!event.payload.success) setIsAnalyzing(false);
       }),
     );
     attach(

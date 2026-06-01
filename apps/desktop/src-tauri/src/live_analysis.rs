@@ -93,6 +93,10 @@ pub async fn analyze_live(
         }
     }
 
+    // Sinaliza o início da análise pra UI (spinner da overlay). O fim vem por
+    // "live-analysis" (sucesso) ou pela telemetria com success:false (falha).
+    let _ = app_handle.emit("live-analysis-start", request.chunk_seq);
+
     let start = std::time::Instant::now();
 
     let client = reqwest::Client::new();
