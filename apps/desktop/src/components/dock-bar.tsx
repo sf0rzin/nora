@@ -7,6 +7,7 @@ import { useTauriListener } from "@/hooks/use-tauri-listener";
 import { formatDuration } from "@/lib/format";
 import { setDockVisible } from "@/lib/dock-prefs";
 import { EVENTS } from "@/lib/desktop-events";
+import { useElapsedSeconds } from "@/hooks/use-now";
 
 interface RecordingStatus {
   isRecording: boolean;
@@ -56,7 +57,6 @@ function DockButton({
 export function DockBar() {
   const [isRecording, setIsRecording] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [, forceTick] = useState(0);
 
   useTauriListener<RecordingStatus>("recording-status", (e) => {
     const s = e.payload;
@@ -82,14 +82,7 @@ export function DockBar() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!isRecording) return;
-    const id = setInterval(() => forceTick((t) => t + 1), 500);
-    return () => clearInterval(id);
-  }, [isRecording]);
-
-  const duration =
-    startedAt == null ? 0 : Math.floor((Date.now() - startedAt) / 1000);
+  const duration = useElapsedSeconds(startedAt, isRecording);
 
   const handleOpenMain = () => {
     invoke("focus_main_window").catch(() => {});

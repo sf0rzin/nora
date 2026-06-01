@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { useNow } from "@/hooks/use-now";
 
 export interface LiveTranscriptLine {
   id: string;
@@ -159,18 +160,10 @@ export function useLiveTranscript() {
     };
   }, []);
 
-  // Live-updating duration in seconds
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    if (!state.isRecording || state.startedAt == null) return;
-    const id = setInterval(() => setTick((t) => t + 1), 500);
-    return () => clearInterval(id);
-  }, [state.isRecording, state.startedAt]);
-
+  // Live-updating duration in seconds — useNow força o re-render do timer.
+  useNow(state.isRecording && state.startedAt != null);
   const duration =
     state.startedAt == null ? 0 : Math.floor((Date.now() - state.startedAt) / 1000);
-  // referencia tick pra forçar re-render do timer (eslint silenciador)
-  void tick;
 
   return {
     lines: state.lines,
