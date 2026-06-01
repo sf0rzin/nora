@@ -25,7 +25,6 @@ interface RequestOptions {
 
 class ApiClient {
   private onUnauthorized: (() => void) | null = null;
-  private cachedUser: unknown = null;
 
   on401(callback: () => void) {
     this.onUnauthorized = callback;
@@ -87,14 +86,6 @@ class ApiClient {
     }
 
     return response.body as T;
-  }
-
-  setCachedUser(user: unknown): void {
-    this.cachedUser = user;
-  }
-
-  getCachedUser<T>(): T | null {
-    return this.cachedUser as T | null;
   }
 }
 

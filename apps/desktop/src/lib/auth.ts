@@ -64,7 +64,6 @@ export async function login(req: LoginRequest): Promise<SessionUser> {
   await secrets.set(SECRET_KEYS.ACCESS_TOKEN, response.accessToken);
   await secrets.set(SECRET_KEYS.REFRESH_TOKEN, response.refreshToken);
   await secrets.set(SECRET_KEYS.CURRENT_USER, JSON.stringify(user));
-  apiClient.setCachedUser(user);
 
   startTokenRefreshLoop();
 
@@ -76,7 +75,6 @@ export async function logout(): Promise<void> {
   await secrets.delete(SECRET_KEYS.ACCESS_TOKEN);
   await secrets.delete(SECRET_KEYS.REFRESH_TOKEN);
   await secrets.delete(SECRET_KEYS.CURRENT_USER);
-  apiClient.setCachedUser(null);
 }
 
 // Mutex único pro refresh — tanto o loop proativo (checkAndRefresh a cada 5min)
@@ -167,7 +165,6 @@ async function handleAuthExpired(): Promise<void> {
   await secrets.delete(SECRET_KEYS.ACCESS_TOKEN);
   await secrets.delete(SECRET_KEYS.REFRESH_TOKEN);
   await secrets.delete(SECRET_KEYS.CURRENT_USER);
-  apiClient.setCachedUser(null);
   window.dispatchEvent(new CustomEvent("auth-expired"));
 }
 
@@ -195,7 +192,6 @@ export async function bootstrapSession(): Promise<SessionUser | null> {
     return null;
   }
 
-  apiClient.setCachedUser(user);
   startTokenRefreshLoop();
   return user;
 }

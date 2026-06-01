@@ -27,7 +27,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     bootstrapSession()
       .then((stored) => {
         if (stored) {
-          apiClient.setCachedUser(stored);
           setUser(stored);
         }
       })
@@ -44,7 +43,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleLogin = (u: SessionUser) => {
-    apiClient.setCachedUser(u);
     setUser(u);
     setLoading(false);
   };
