@@ -93,7 +93,9 @@ export interface MeetingAnalysis {
 export interface Decision {
   id: string;
   text: string;
-  confidence: number;
+  /** Opcional: nem todo backend/versão preenche. O guard `confidence !== undefined`
+   *  em meeting-detail só faz sentido com o tipo honesto. Auditoria #69. */
+  confidence?: number;
 }
 
 export interface ActionItem {

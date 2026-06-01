@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nora/desktop/main/src-tauri/gen/schemas/desktop-schema.json",
+  "$schema": "gen/schemas/desktop-schema.json",
   "productName": "NORA Desktop",
   "version": "0.1.0",
   "identifier": "com.nora.desktop",
