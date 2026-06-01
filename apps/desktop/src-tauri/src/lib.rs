@@ -22,11 +22,17 @@ use tauri::Manager;
 
 pub type SidecarState = Arc<Mutex<Vec<stt_sidecar::SidecarHandle>>>;
 
-/// Lê a URL base da API do tauri.conf.json (compile-time).
-/// O campo deve estar em `plugins.nora.apiBaseUrl`.
+/// Resolve a URL base da API uma vez (memoizada). Prioridade:
+/// 1) env `NORA_API_BASE_URL` injetada em build-time pelo build.rs (CI/produção);
+/// 2) campo `plugins.nora.apiBaseUrl` do tauri.conf.json (default dev = localhost).
 pub fn api_base_url() -> String {
     static URL: OnceLock<String> = OnceLock::new();
     URL.get_or_init(|| {
+        if let Some(url) = option_env!("NORA_API_BASE_URL") {
+            if !url.is_empty() {
+                return url.to_string();
+            }
+        }
         const CONFIG_JSON: &str = include_str!("../tauri.conf.json");
         let config: serde_json::Value = match serde_json::from_str(CONFIG_JSON) {
             Ok(c) => c,
