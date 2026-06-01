@@ -51,6 +51,14 @@ export async function login(req: LoginRequest): Promise<SessionUser> {
     auth: false,
   });
 
+  // Defesa: backend fora do ar ou resposta inesperada (2xx sem corpo JSON) fazia
+  // o login estourar com "null is not an object". Mensagem clara em vez de crash.
+  if (!response?.accessToken) {
+    throw new Error(
+      "Resposta de login inválida do servidor. Verifique se o backend está no ar.",
+    );
+  }
+
   const roles = parseJwtRoles(response.accessToken);
 
   const user: SessionUser = {
