@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useActiveRecording } from "@/hooks/use-active-recording";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { focusOn, focusOff } from "@/components/ui/field";
+import { Spinner } from "@/components/spinner";
 
 interface Props {
   open: boolean;
@@ -304,16 +305,7 @@ export function NewMeetingModal({ open, onClose }: Props) {
           >
             {submitting ? (
               <>
-                <span
-                  style={{
-                    width: 12,
-                    height: 12,
-                    border: "2px solid rgba(253,253,252,0.35)",
-                    borderTopColor: "var(--canvas)",
-                    borderRadius: "50%",
-                    animation: "nora-spin 0.9s linear infinite",
-                  }}
-                />
+                <Spinner color="rgba(253,253,252,0.35)" topColor="var(--canvas)" />
                 Iniciando…
               </>
             ) : (

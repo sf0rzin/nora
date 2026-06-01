@@ -4,6 +4,7 @@ import { listMeetings } from "@/lib/meetings";
 import type { MeetingSummary, ApiError } from "@/lib/types";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { focusOn, focusOff } from "@/components/ui/field";
+import { Spinner } from "@/components/spinner";
 import { openNewMeetingModal } from "@/App";
 
 type Group = "Hoje" | "Ontem" | "Esta semana" | "Mais antigas";
@@ -333,16 +334,7 @@ function SearchBar({
         }}
       >
         {busy ? (
-          <span
-            style={{
-              width: 11,
-              height: 11,
-              border: "1.5px solid var(--chip)",
-              borderTopColor: "var(--accent)",
-              borderRadius: "50%",
-              animation: "nora-spin 0.9s linear infinite",
-            }}
-          />
+          <Spinner size={11} thickness={1.5} />
         ) : value ? (
           <span
             style={{

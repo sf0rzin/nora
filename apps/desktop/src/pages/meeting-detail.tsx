@@ -11,6 +11,7 @@ import type {
 } from "@/lib/types";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { AvatarStack } from "@/components/brand/avatar";
+import { Spinner } from "@/components/spinner";
 
 function Section({
   label,
@@ -492,16 +493,7 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
             >
               {reprocessing ? (
                 <>
-                  <span
-                    style={{
-                      width: 10,
-                      height: 10,
-                      border: "1.5px solid rgba(253,253,252,0.4)",
-                      borderTopColor: "var(--canvas)",
-                      borderRadius: "50%",
-                      animation: "nora-spin 0.9s linear infinite",
-                    }}
-                  />
+                  <Spinner size={10} thickness={1.5} color="rgba(253,253,252,0.4)" topColor="var(--canvas)" />
                   Reprocessando…
                 </>
               ) : (

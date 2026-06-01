@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { Avatar } from "@/components/brand/avatar";
+import { Spinner } from "@/components/spinner";
 
 interface ChatMessage {
   id: number;
@@ -83,16 +84,7 @@ function SendOrbButton({
       }}
     >
       {busy ? (
-        <span
-          style={{
-            width: 14,
-            height: 14,
-            border: "2px solid rgba(253,253,252,0.35)",
-            borderTopColor: "var(--canvas)",
-            borderRadius: "50%",
-            animation: "nora-spin 0.9s linear infinite",
-          }}
-        />
+        <Spinner size={14} color="rgba(253,253,252,0.35)" topColor="var(--canvas)" />
       ) : (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={active ? "white" : "var(--muted)"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 19V5M5 12l7-7 7 7" />
