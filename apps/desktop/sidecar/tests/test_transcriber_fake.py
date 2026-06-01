@@ -20,7 +20,13 @@ class FakeResult:
         self.offset = offset
         self.duration = duration
         self.speaker_id = speaker_id
-        self.confidence = confidence
+        # O código real lê confidence do JSON detalhado (NBest[0].Confidence),
+        # não de um atributo .confidence (que o SDK não expõe). Auditoria #112.
+        self.json = (
+            json.dumps({"NBest": [{"Confidence": confidence}]})
+            if confidence is not None
+            else "{}"
+        )
 
 
 class FakeEventArgs:

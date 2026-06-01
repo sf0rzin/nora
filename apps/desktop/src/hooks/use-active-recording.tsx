@@ -13,9 +13,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useRecording } from "./use-recording";
 import { useTauriListener } from "./use-tauri-listener";
+import { getDockVisible } from "@/lib/dock-prefs";
 
 const META_STORAGE_KEY = "nora.active-recording.meta";
-const DOCK_STORAGE_KEY = "nora.dock.visible";
 
 interface ActiveMeetingMeta {
   title: string;
@@ -97,15 +97,7 @@ export function ActiveRecordingProvider({ children }: { children: ReactNode }) {
         systemAudioDevice: opts.systemAudioDevice ?? null,
       });
       // Open the dock window too, if user prefers it visible.
-      const dockEnabled = (() => {
-        try {
-          const v = localStorage.getItem(DOCK_STORAGE_KEY);
-          return v == null ? true : v === "1";
-        } catch {
-          return true;
-        }
-      })();
-      if (dockEnabled) {
+      if (getDockVisible()) {
         invoke("toggle_dock", { show: true }).catch(() => {});
       }
     },

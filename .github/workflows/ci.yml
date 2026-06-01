@@ -224,6 +224,11 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          # A URL base da API é baked em build-time pelo build.rs (option_env!).
+          # Sem isso o bundle aponta pro localhost (inútil contra o Azure). Setar
+          # vars.NORA_API_BASE_URL no repo/environment pra sobrescrever o default.
+          # Alinhado com NEXT_PUBLIC_API_BASE_URL em build-images.yml.
+          NORA_API_BASE_URL: ${{ vars.NORA_API_BASE_URL || 'https://nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io' }}
         run: npx tauri build ${{ matrix.args }}
 
       - name: Upload artifacts

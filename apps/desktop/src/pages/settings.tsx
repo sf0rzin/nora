@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { secrets } from "@/lib/secrets";
+import { secrets, SECRET_KEYS } from "@/lib/secrets";
 import { invoke } from "@tauri-apps/api/core";
 import { Avatar } from "@/components/brand/avatar";
 
@@ -32,7 +32,7 @@ function Btn({
     ghost: { bg: "transparent", color: "var(--ink)", border: "transparent" },
     danger: {
       bg: "var(--canvas)",
-      color: "#a04c3e",
+      color: "var(--danger-ink)",
       border: "rgba(201, 119, 102, 0.40)",
     },
   };
@@ -316,6 +316,7 @@ function ProfileSection() {
 function PrivacySection() {
   const [stealthMode, setStealthMode] = useState(false);
   const [platform, setPlatform] = useState<string | null>(null);
+  const [stealthError, setStealthError] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<{ platform: string }>("check_system_audio_prerequisites")
@@ -341,8 +342,10 @@ function PrivacySection() {
     try {
       await invoke("set_stealth_mode", { enabled });
       setStealthMode(enabled);
+      setStealthError(null);
     } catch (e) {
       console.error("[settings] stealth set:", e);
+      setStealthError("Não foi possível alterar o modo stealth. Tente novamente.");
     }
   };
 
@@ -384,8 +387,13 @@ function PrivacySection() {
           checked={stealthMode}
           onChange={handleStealthToggle}
           disabled={!isSupported}
-          tag={!isSupported ? (platform === "macos" ? "Em breve" : "Indisponível") : undefined}
+          tag={platform === null ? undefined : !isSupported ? (platform === "macos" ? "Em breve" : "Indisponível") : undefined}
         />
+        {stealthError && (
+          <div style={{ marginTop: 8, fontSize: 12, color: "var(--danger-ink)" }}>
+            {stealthError}
+          </div>
+        )}
       </SectionWrap>
 
       <SectionWrap label="PII Shield">
@@ -425,10 +433,10 @@ function AudioSection() {
   useEffect(() => {
     (async () => {
       try {
-        const hasOldKey = await secrets.has("azure-speech-key");
-        if (hasOldKey) await secrets.delete("azure-speech-key");
-        const hasOldRegion = await secrets.has("azure-region");
-        if (hasOldRegion) await secrets.delete("azure-region");
+        const hasOldKey = await secrets.has(SECRET_KEYS.LEGACY_AZURE_SPEECH_KEY);
+        if (hasOldKey) await secrets.delete(SECRET_KEYS.LEGACY_AZURE_SPEECH_KEY);
+        const hasOldRegion = await secrets.has(SECRET_KEYS.LEGACY_AZURE_REGION);
+        if (hasOldRegion) await secrets.delete(SECRET_KEYS.LEGACY_AZURE_REGION);
         setCleanupDone(true);
       } catch (e) {
         console.error("[settings] secret migration:", e);

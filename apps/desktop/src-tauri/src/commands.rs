@@ -106,7 +106,14 @@ pub async fn start_recording(
         let sidecar = mic_sidecar.audio_tx.clone();
         tokio::spawn(async move {
             while let Some(samples) = mic_rx.recv().await {
-                let _ = sidecar.try_send(samples);
+                match sidecar.try_send(samples) {
+                    Ok(()) => {}
+                    // Backpressure: sidecar não consome rápido o bastante. Dropa a
+                    // amostra (tempo real > completude) — esperado sob carga.
+                    Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {}
+                    // Sidecar morreu: encerra a bridge em vez de girar à toa.
+                    Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => break,
+                }
             }
         })
     };
@@ -115,7 +122,11 @@ pub async fn start_recording(
         let tx = sidecar.audio_tx.clone();
         Some(tokio::spawn(async move {
             while let Some(samples) = system_rx.recv().await {
-                let _ = tx.try_send(samples);
+                match tx.try_send(samples) {
+                    Ok(()) => {}
+                    Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {}
+                    Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => break,
+                }
             }
         }))
     } else {
@@ -281,11 +292,11 @@ pub async fn upload_meeting(
             .mime_str("text/plain")
             .map_err(|e| e.to_string())?);
 
-    let client = reqwest::Client::new();
-    let response = client
+    let response = crate::http_proxy::http_client()
         .post(format!("{}/meetings", backend_url))
         .header("Authorization", format!("Bearer {}", access_token))
         .multipart(form)
+        .timeout(std::time::Duration::from_secs(120))
         .send()
         .await
         .map_err(|e| format!("Upload request failed: {}", e))?;
@@ -301,8 +312,12 @@ pub async fn upload_meeting(
     let json: serde_json::Value = serde_json::from_str(&body_text)
         .map_err(|e| format!("Failed to parse response: {} — body: {}", e, body_text))?;
 
+    let meeting_id = json["id"]
+        .as_str()
+        .ok_or_else(|| format!("Upload: resposta do backend sem 'id': {}", body_text))?
+        .to_string();
     Ok(UploadMeetingResponse {
-        meeting_id: json["id"].as_str().unwrap_or("").to_string(),
+        meeting_id,
         processing_status: json["processingStatus"].as_str().unwrap_or("PENDING").to_string(),
     })
 }

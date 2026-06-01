@@ -3,6 +3,7 @@ import { RecordingProvider } from "@/hooks/use-recording-context";
 import { LiveHighlightsProvider } from "@/hooks/use-live-highlights";
 import { ActiveRecordingProvider } from "@/hooks/use-active-recording";
 import { Sidebar } from "@/components/sidebar";
+import { NoraBars } from "@/components/brand/nora-bars";
 import { Titlebar } from "@/components/titlebar";
 import { ResizeHandles } from "@/components/resize-handles";
 import { NewMeetingModal } from "@/components/new-meeting-modal";
@@ -68,21 +69,7 @@ function Router() {
   if (loading) {
     content = (
       <div className="flex flex-col items-center justify-center h-full gap-3.5">
-        <span className="inline-flex items-end gap-[3px]" style={{ height: 28 }}>
-          {[0.35, 0.65, 1, 0.6, 0.4].map((h, i) => (
-            <span
-              key={i}
-              style={{
-                display: "block",
-                width: 4,
-                height: `${h * 100}%`,
-                background: "var(--ink)",
-                borderRadius: 2,
-                animation: `dotPulse 1.4s ease-in-out ${i * 0.12}s infinite`,
-              }}
-            />
-          ))}
-        </span>
+        <NoraBars size={28} active animate color="var(--ink)" />
         <small style={{ fontSize: 12, color: "var(--muted)", letterSpacing: "0.04em" }}>
           Carregando NORA
         </small>
