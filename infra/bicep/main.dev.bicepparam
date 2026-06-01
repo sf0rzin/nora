@@ -67,17 +67,30 @@ param searchSku = 'basic'
 // Pegar IP com: curl ifconfig.me
 param postgresFirewallRules = []
 
-// ---- Control plane (ADR 0022/0023/0024) ----
-// OFF por padrão: mantém a infra atual intacta. O outro arquiteto liga (enablePlatform=true)
-// quando: (1) imagem do nora-admin publicada no GHCR; (2) grupo Entra + App Registration criados
-// (passo MANUAL — ver docs/operations/control-plane-runbook.md); (3) secrets abaixo setados.
-param enablePlatform = false
+// ---- Control plane (ADR 0022/0023/0024/0025) ----
+// LIGADO no go-live. PRÉ-REQUISITO antes do merge: setar PG_PLATFORM_ADMIN_PASSWORD,
+// NORA_PLATFORM_INTERNAL_TOKEN e NORA_PLATFORM_ADMIN_TOKEN nos GitHub Secrets — senão os tokens
+// viram 'unset' no KV (admin/internal destravados).
+// Auth do operador (ADR 0025): Cloudflare Access + Cloudflare Tunnel. O nora-admin sobe com
+// ingress INTERNAL (sem FQDN público) e um sidecar cloudflared expõe admin.nora.systems atrás
+// do Access (allowlist + OTP/SSO). Easy Auth (Entra) ficou inerte (tenant FIAP bloqueou App
+// Registration) — EASYAUTH_* podem ficar vazios. Ver control-plane-runbook.md + cloudflare-access.md.
+param enablePlatform = true
 param platformPostgresAdminPassword = readEnvironmentVariable('PG_PLATFORM_ADMIN_PASSWORD', '')
 param platformInternalToken = readEnvironmentVariable('NORA_PLATFORM_INTERNAL_TOKEN', '')
 param platformAdminToken = readEnvironmentVariable('NORA_PLATFORM_ADMIN_TOKEN', '')
 param adminImage = 'ghcr.io/sys0xff/nora-admin:latest'
+// Easy Auth (Entra) — inerte no go-live (ADR 0025). Mantido vazio; Cloudflare substitui.
 param easyAuthClientId = readEnvironmentVariable('EASYAUTH_CLIENT_ID', '')
 param easyAuthClientSecret = readEnvironmentVariable('EASYAUTH_CLIENT_SECRET', '')
-// Allowlist de IP do operador no go-live, ex.:
-// [ { name: 'escritorio', ipAddressRange: '203.0.113.0/24', action: 'Allow' } ]
+// Com Tunnel (ingress internal) não há FQDN público pra restringir — fica vazio.
 param adminIpSecurityRestrictions = []
+
+// ---- Cloudflare Tunnel + Access (operator identity v2, ADR 0025) ----
+// CLOUDFLARE_TUNNEL_TOKEN sai do workflow cloudflare-tunnel.yml (que cria o túnel) e é setado
+// como GitHub Secret. Vazio = cloudflared não sobe (admin fica internal/inacessível até setar).
+// cfAccessTeamDomain casa com o team 'stratfy' (cloudflare-access.md). CF_ACCESS_AUD (não-secreto)
+// vem da Access App — setar como GitHub Variable. Vazio = Tier 2 degrada pra edge-only.
+param cloudflareTunnelToken = readEnvironmentVariable('CLOUDFLARE_TUNNEL_TOKEN', '')
+param cfAccessTeamDomain = 'stratfy.cloudflareaccess.com'
+param cfAccessAud = readEnvironmentVariable('CF_ACCESS_AUD', '')
