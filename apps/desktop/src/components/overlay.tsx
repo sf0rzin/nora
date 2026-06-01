@@ -266,7 +266,7 @@ function PartialBubble({ text, isMe }: { text: string; isMe: boolean }) {
 // recente (cue de "acabou de detectar"), que esmaece ao chegar o próximo.
 type FeedKind = "decision" | "nextStep" | "observation" | "task";
 
-const KIND_META: Record<FeedKind, { label: string; icon: JSX.Element }> = {
+const KIND_META: Record<FeedKind, { label: string; icon: React.ReactElement }> = {
   decision: {
     label: "Decisão",
     icon: (

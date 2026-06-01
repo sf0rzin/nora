@@ -19,7 +19,7 @@ export interface OverlayNotification {
 interface VariantStyle {
   accent: string;
   bg: string;
-  icon: JSX.Element;
+  icon: React.ReactElement;
   eyebrow: string;
 }
 

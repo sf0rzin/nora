@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 interface NavItem {
   label: string;
   hash: string;
-  icon: JSX.Element;
+  icon: React.ReactElement;
 }
 
 const ICON_CHAT = (
