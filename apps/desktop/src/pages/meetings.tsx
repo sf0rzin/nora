@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { listMeetings } from "@/lib/meetings";
 import type { MeetingSummary, ApiError } from "@/lib/types";
 import { ShaderOrb } from "@/components/brand/shader-orb";
+import { focusOn, focusOff } from "@/components/ui/field";
 import { openNewMeetingModal } from "@/App";
 
 type Group = "Hoje" | "Ontem" | "Esta semana" | "Mais antigas";
@@ -319,14 +320,8 @@ function SearchBar({
           color: "var(--ink)",
           letterSpacing: "-0.005em",
         }}
-        onFocus={(e) => {
-          e.currentTarget.style.borderColor = "var(--accent)";
-          e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-soft)";
-        }}
-        onBlur={(e) => {
-          e.currentTarget.style.borderColor = "var(--border)";
-          e.currentTarget.style.boxShadow = "none";
-        }}
+        onFocus={focusOn}
+        onBlur={focusOff}
       />
       <div
         className="flex items-center gap-1.5"

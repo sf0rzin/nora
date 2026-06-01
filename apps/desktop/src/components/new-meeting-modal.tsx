@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useActiveRecording } from "@/hooks/use-active-recording";
 import { ShaderOrb } from "@/components/brand/shader-orb";
+import { focusOn, focusOff } from "@/components/ui/field";
 
 interface Props {
   open: boolean;
@@ -20,15 +21,6 @@ const inputCss: React.CSSProperties = {
   transition: "border-color 140ms ease, box-shadow 140ms ease",
   fontFamily: "var(--sans)",
 };
-
-function focusOn(e: React.FocusEvent<HTMLElement>) {
-  e.currentTarget.style.borderColor = "var(--accent)";
-  e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-soft)";
-}
-function focusOff(e: React.FocusEvent<HTMLElement>) {
-  e.currentTarget.style.borderColor = "var(--border)";
-  e.currentTarget.style.boxShadow = "none";
-}
 
 export function NewMeetingModal({ open, onClose }: Props) {
   const recording = useActiveRecording();
