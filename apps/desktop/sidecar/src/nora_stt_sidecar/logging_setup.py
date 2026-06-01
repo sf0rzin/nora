@@ -11,7 +11,7 @@ def configure(level: int = logging.INFO) -> None:
     
     logger = logging.getLogger("nora_stt_sidecar")
     logger.setLevel(level)
+    # Idempotente: limpa handlers antigos pra não duplicar logs se chamado 2x.
+    logger.handlers.clear()
     logger.addHandler(handler)
-    
-    # Remove default handlers to avoid duplicates
     logger.propagate = False

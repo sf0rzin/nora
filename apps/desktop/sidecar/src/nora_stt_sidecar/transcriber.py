@@ -30,6 +30,13 @@ from .protocol import (
 
 logger = logging.getLogger("nora_stt_sidecar")
 
+# Constantes de áudio/segmentação (eram números mágicos espalhados). Auditoria #117.
+_TICKS_PER_MS = 10_000  # o SDK reporta tempos em unidades de 100ns
+_SAMPLE_RATE_HZ = 16_000
+_BITS_PER_SAMPLE = 16
+_CHANNELS = 1
+_SEGMENTATION_SILENCE_MS = "800"
+
 
 class LiveTranscriber:
     def __init__(
@@ -92,14 +99,14 @@ class LiveTranscriber:
         # Silence timeout for faster segmentation
         speech_config.set_property(
             PropertyId.Speech_SegmentationSilenceTimeoutMs,
-            "800",
+            _SEGMENTATION_SILENCE_MS,
         )
         
         # Create push audio stream with 16kHz, 16-bit, mono
         stream_format = AudioStreamFormat(
-            samples_per_second=16000,
-            bits_per_sample=16,
-            channels=1,
+            samples_per_second=_SAMPLE_RATE_HZ,
+            bits_per_sample=_BITS_PER_SAMPLE,
+            channels=_CHANNELS,
         )
         self._push_stream = PushAudioInputStream(stream_format)
         
@@ -121,9 +128,9 @@ class LiveTranscriber:
             self._emit(
                 PartialMessage(
                     session_id=self.session_id,
-                    speaker_id=getattr(result, "speaker_id", None),
+                    speaker_id=result.speaker_id or None,
                     text=result.text,
-                    offset_ms=result.offset // 10000,  # Convert to milliseconds
+                    offset_ms=result.offset // _TICKS_PER_MS,  # Convert to milliseconds
                 )
             )
     
@@ -134,10 +141,10 @@ class LiveTranscriber:
             self._emit(
                 FinalMessage(
                     session_id=self.session_id,
-                    speaker_id=getattr(result, "speaker_id", None),
+                    speaker_id=result.speaker_id or None,
                     text=result.text,
-                    offset_ms=result.offset // 10000,
-                    duration_ms=result.duration // 10000 if result.duration else None,
+                    offset_ms=result.offset // _TICKS_PER_MS,
+                    duration_ms=result.duration // _TICKS_PER_MS if result.duration else None,
                     confidence=self._parse_confidence(result),
                 )
             )
@@ -216,8 +223,11 @@ class LiveTranscriber:
     
     def feed(self, pcm_bytes: bytes) -> None:
         """Feed PCM16LE audio data to the transcriber."""
-        if self._push_stream and self._started:
-            self._push_stream.write(pcm_bytes)
+        # Captura a ref local: _cleanup() (restart/stop) pode zerar _push_stream
+        # entre o teste e o write, rodando no thread de callback. Auditoria #115.
+        stream = self._push_stream
+        if stream and self._started:
+            stream.write(pcm_bytes)
     
     def stop(self) -> None:
         """Stop the transcriber gracefully."""
