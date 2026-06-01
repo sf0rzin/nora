@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useLiveTranscript, type LiveTranscriptLine } from "@/hooks/use-live-transcript";
 import { useLiveHighlights, type LiveHighlights } from "@/hooks/use-live-highlights";
 import { useTauriListener } from "@/hooks/use-tauri-listener";
@@ -1055,6 +1056,17 @@ export function OverlayPage() {
   const { items: notifications, push: pushNotification, dismiss: dismissNotification } =
     useNotifications();
 
+  // Arraste da overlay via startDragging() — funciona no WebKitGTK (Linux), onde
+  // data-tauri-drag-region / -webkit-app-region NÃO funcionam. Mesmo padrão do
+  // titlebar e do dock. Só botão esquerdo; os controles ficam fora da região.
+  const overlayWin = useMemo(() => getCurrentWebviewWindow(), []);
+  const onHeaderDragMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    overlayWin
+      .startDragging()
+      .catch((err) => console.warn("[overlay] startDragging failed:", err));
+  };
+
   // Listen to highlights and surface new items as toasts
   const { highlights } = useLiveHighlights();
   const prevHighlightCountsRef = useRef({
@@ -1160,6 +1172,27 @@ export function OverlayPage() {
           duration: 5000,
         });
       }
+    },
+    [pushNotification],
+  );
+
+  // Erros do sidecar de STT (Rust emite "stt-error" com o payload cru do
+  // sidecar). Sem este listener o erro de transcrição sumia sem feedback.
+  useTauriListener<{ message?: string; error?: string }>(
+    "stt-error",
+    (e) => {
+      const detail =
+        typeof e.payload?.message === "string"
+          ? e.payload.message
+          : typeof e.payload?.error === "string"
+            ? e.payload.error
+            : undefined;
+      pushNotification({
+        variant: "warn",
+        title: "Transcrição interrompida",
+        body: detail ?? "O serviço de transcrição reportou um erro.",
+        duration: 8000,
+      });
     },
     [pushNotification],
   );
@@ -1304,16 +1337,18 @@ export function OverlayPage() {
     >
       {/* Header */}
       <div
-        data-tauri-drag-region
         className="flex items-center justify-between shrink-0"
         style={{
           padding: "9px 14px",
           borderBottom: "1px solid var(--border)",
           background: "var(--sidebar)",
-          cursor: "move",
         }}
       >
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div
+          className="flex flex-1 items-center gap-2.5 min-w-0"
+          onMouseDown={onHeaderDragMouseDown}
+          style={{ cursor: "move" }}
+        >
           <NoraBars size={16} active={isRecording} animate />
           <span
             className="truncate"
