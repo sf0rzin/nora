@@ -1,0 +1,190 @@
+name: cloudflare-tunnel
+
+# Provisiona o Cloudflare Tunnel do nora-admin (operator identity v2, ADR 0025).
+# Cria o túnel (remotely-managed), configura a rota pro Next via o sidecar cloudflared
+# (localhost:3002) e aponta o DNS admin.nora.systems pro <tunnel-id>.cfargotunnel.com.
+# Roda manual (workflow_dispatch). Idempotente — re-run só reconcilia.
+#
+# Divisão de lanes (ADR 0025):
+#   - ESTE workflow é dono do TÚNEL + do DNS de admin.nora.systems (CNAME -> cfargotunnel).
+#   - O cloudflare-setup.yml (lane irmã) é dono do Access App + Policy + IdP.
+#   - ⚠️ NÃO rodar cloudflare-setup.yml com `admin_hostname` preenchido: o DNS step dele
+#     sobrescreveria o CNAME do túnel. Rodar sempre com admin_hostname VAZIO.
+#
+# Secrets necessários:
+#   - CLOUDFLARE_API_TOKEN  Token escopado em nora.systems. Permissões mínimas:
+#                             Account: Cloudflare Tunnel  Edit
+#                             Zone:    DNS                Edit
+#                             Zone:    Zone               Read
+#                           (mesmo token do cloudflare-setup.yml, com Tunnel:Edit adicionado)
+#
+# Saída: o connector token (pro Secret CLOUDFLARE_TUNNEL_TOKEN) e o AUD da Access App
+# (pra Variable CF_ACCESS_AUD) saem no log do step "Connector token + AUD".
+
+on:
+  workflow_dispatch:
+    inputs:
+      tunnel_name:
+        description: 'Nome do túnel Cloudflare'
+        required: true
+        default: 'nora-admin'
+      origin_service:
+        description: 'Origem que o cloudflared serve (sidecar -> Next). Porta = targetPort do nora-admin.'
+        required: true
+        default: 'http://localhost:3002'
+
+permissions:
+  contents: read
+
+env:
+  CF_API: https://api.cloudflare.com/client/v4
+  CF_ACCOUNT_ID: 76e6b917a3ef8fcaff2b20ffb2c8afd6
+  DOMAIN: nora.systems
+  SUBDOMAIN: admin
+
+jobs:
+  tunnel:
+    name: tunnel
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Verify token is active
+        run: |
+          set -euo pipefail
+          response=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" "$CF_API/user/tokens/verify")
+          status=$(echo "$response" | jq -r '.result.status // "unknown"')
+          if [ "$status" != "active" ]; then
+            echo "::error::Token não ativo (status=$status). Verifica permissões do CLOUDFLARE_API_TOKEN."
+            echo "$response" | jq .
+            exit 1
+          fi
+          echo "Token ativo."
+
+      - name: Resolve Zone ID
+        id: zone
+        run: |
+          set -euo pipefail
+          response=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" "$CF_API/zones?name=$DOMAIN")
+          zone_id=$(echo "$response" | jq -r '.result[0].id // empty')
+          if [ -z "$zone_id" ]; then
+            echo "::error::Zone '$DOMAIN' não encontrada na conta CF."
+            echo "$response" | jq .
+            exit 1
+          fi
+          echo "zone_id=$zone_id" >> "$GITHUB_OUTPUT"
+          echo "Zone $DOMAIN -> $zone_id"
+
+      - name: Ensure tunnel (remotely-managed)
+        id: tunnel
+        env:
+          TUNNEL_NAME: ${{ inputs.tunnel_name }}
+        run: |
+          set -euo pipefail
+          # Procura túnel ativo por nome (não-deletado).
+          tunnel_id=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+            "$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel?name=$TUNNEL_NAME&is_deleted=false" \
+            | jq -r '.result[0].id // empty')
+          if [ -n "$tunnel_id" ]; then
+            echo "Túnel '$TUNNEL_NAME' já existe ($tunnel_id); reusando."
+          else
+            echo "Criando túnel '$TUNNEL_NAME' (config_src=cloudflare)"
+            payload=$(jq -nc --arg name "$TUNNEL_NAME" '{name:$name, config_src:"cloudflare"}')
+            response=$(curl -fsSL -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+              "$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel" -d "$payload")
+            tunnel_id=$(echo "$response" | jq -r '.result.id // empty')
+            if [ -z "$tunnel_id" ]; then
+              echo "::error::Falha ao criar túnel."
+              echo "$response" | jq .
+              exit 1
+            fi
+          fi
+          echo "tunnel_id=$tunnel_id" >> "$GITHUB_OUTPUT"
+          echo "Tunnel ID: $tunnel_id"
+
+      - name: Configure tunnel route
+        env:
+          TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
+          ORIGIN: ${{ inputs.origin_service }}
+        run: |
+          set -euo pipefail
+          fqdn="$SUBDOMAIN.$DOMAIN"
+          # Rota: admin.nora.systems -> origem (sidecar cloudflared serve o Next em localhost),
+          # com catch-all 404 pra qualquer outro hostname.
+          payload=$(jq -nc --arg host "$fqdn" --arg svc "$ORIGIN" \
+            '{config:{ingress:[{hostname:$host, service:$svc}, {service:"http_status:404"}]}}')
+          echo "Configurando rota $fqdn -> $ORIGIN"
+          curl -fsSL -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+            "$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID/configurations" -d "$payload" \
+            | jq '{success, ingress: .result.config.ingress}'
+
+      - name: Upsert DNS CNAME -> cfargotunnel
+        env:
+          ZONE_ID: ${{ steps.zone.outputs.zone_id }}
+          TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
+        run: |
+          set -euo pipefail
+          fqdn="$SUBDOMAIN.$DOMAIN"
+          target="$TUNNEL_ID.cfargotunnel.com"
+          existing=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+            "$CF_API/zones/$ZONE_ID/dns_records?type=CNAME&name=$fqdn" \
+            | jq -r '.result[0].id // empty')
+          payload=$(jq -nc --arg name "$SUBDOMAIN" --arg content "$target" \
+            '{type:"CNAME", name:$name, content:$content, proxied:true, ttl:1, comment:"NORA admin — Cloudflare Tunnel (ADR 0025)"}')
+          if [ -n "$existing" ]; then
+            echo "CNAME $fqdn existe ($existing); apontando -> $target"
+            curl -fsSL -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+              "$CF_API/zones/$ZONE_ID/dns_records/$existing" -d "$payload" \
+              | jq '{success, name: .result.name, content: .result.content, proxied: .result.proxied}'
+          else
+            echo "Criando CNAME $fqdn -> $target (proxied)"
+            curl -fsSL -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+              "$CF_API/zones/$ZONE_ID/dns_records" -d "$payload" \
+              | jq '{success, name: .result.name, content: .result.content, proxied: .result.proxied}'
+          fi
+
+      - name: Connector token + AUD
+        env:
+          TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
+        run: |
+          set -euo pipefail
+          # Connector token (pro Secret CLOUDFLARE_TUNNEL_TOKEN). É sensível — vai pro log deste
+          # run (repo privado). Após copiar, rotacione recriando o túnel se precisar.
+          token=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+            "$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID/token" | jq -r '.result')
+          # AUD da Access App admin.nora.systems (read-only — não muta o Access App da lane irmã).
+          aud=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+            "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps?per_page=100" \
+            | jq -r --arg fqdn "$SUBDOMAIN.$DOMAIN" '.result[] | select(.domain==$fqdn) | .aud' | head -1)
+          echo "================ AÇÕES MANUAIS (PO) ================"
+          echo ">>> GitHub Secret  CLOUDFLARE_TUNNEL_TOKEN ="
+          echo "$token"
+          echo ">>> GitHub Variable CF_ACCESS_AUD ="
+          echo "${aud:-<Access App ainda sem AUD — rode cloudflare-setup.yml primeiro>}"
+          echo "==================================================="
+
+      - name: Summary
+        if: always()
+        env:
+          TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
+          ORIGIN: ${{ inputs.origin_service }}
+        run: |
+          {
+            echo "## Cloudflare Tunnel — nora-admin (ADR 0025)"
+            echo ""
+            echo "| Item | Valor |"
+            echo "|---|---|"
+            echo "| Tunnel ID | \`$TUNNEL_ID\` |"
+            echo "| Hostname | \`$SUBDOMAIN.$DOMAIN\` |"
+            echo "| Rota | \`$ORIGIN\` |"
+            echo "| DNS | \`$SUBDOMAIN.$DOMAIN\` → \`$TUNNEL_ID.cfargotunnel.com\` (proxied) |"
+            echo ""
+            echo "### Próximos passos"
+            echo "1. Pega o **connector token** + **AUD** no log do step \`Connector token + AUD\`."
+            echo "2. Seta o **Secret** \`CLOUDFLARE_TUNNEL_TOKEN\` e a **Variable** \`CF_ACCESS_AUD\` no repo."
+            echo "3. Merge do PR → \`deploy-infra.yml\` sobe o nora-admin (internal) + sidecar cloudflared."
+            echo "4. **Lane Cloudflare:** garantir Access App + allowlist via \`cloudflare-setup.yml\` **SEM** \`admin_hostname\`."
+            echo ""
+            echo "> ⚠️ Nunca rode \`cloudflare-setup.yml\` com \`admin_hostname\` preenchido — sobrescreve o CNAME do túnel."
+          } >> "$GITHUB_STEP_SUMMARY"
