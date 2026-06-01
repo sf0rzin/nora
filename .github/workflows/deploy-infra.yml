@@ -12,15 +12,17 @@ name: deploy-infra
 #   - DEEPSEEK_API_KEY        opcional (chat multi-provider — troca p/ DeepSeek ao vivo)
 #   - GEMINI_API_KEY          opcional (chat/multimodal — Gemini)
 #   - RESEND_API_KEY          opcional (vazio = backend cai em LogEmailSender)
-#   Control plane (ADR 0022/0023/0024) — só usados quando enablePlatform=true no bicepparam:
+#   Control plane (ADR 0022/0023/0024/0025) — só usados quando enablePlatform=true no bicepparam:
 #   - PG_PLATFORM_ADMIN_PASSWORD   senha do 2º Postgres (plataforma)
 #   - NORA_PLATFORM_INTERNAL_TOKEN token serviço-a-serviço (/internal/platform/**)
 #   - NORA_PLATFORM_ADMIN_TOKEN    token do console (/admin/platform/**)
-#   - EASYAUTH_CLIENT_ID           App Registration do Easy Auth do nora-admin (passo manual Entra)
-#   - EASYAUTH_CLIENT_SECRET       client secret do Easy Auth
+#   - EASYAUTH_CLIENT_ID           inerte (ADR 0025 trocou Entra por Cloudflare); pode ficar vazio
+#   - EASYAUTH_CLIENT_SECRET       inerte (idem)
+#   - CLOUDFLARE_TUNNEL_TOKEN      connector token do Cloudflare Tunnel (ADR 0025; sai do cloudflare-tunnel.yml)
 #
 # Variaveis (Variables tab > Environment dev):
 #   - NORA_EMAIL_FROM         opcional (default 'NORA <onboarding@resend.dev>')
+#   - CF_ACCESS_AUD           AUD tag da Access App admin.nora.systems (Tier 2, ADR 0025; não-secreto)
 #
 # Service Principal escopado: role Contributor em rg-nora-dev (não na subscription).
 # Federated credentials:
@@ -117,6 +119,9 @@ jobs:
           NORA_PLATFORM_ADMIN_TOKEN: ${{ secrets.NORA_PLATFORM_ADMIN_TOKEN }}
           EASYAUTH_CLIENT_ID: ${{ secrets.EASYAUTH_CLIENT_ID }}
           EASYAUTH_CLIENT_SECRET: ${{ secrets.EASYAUTH_CLIENT_SECRET }}
+          # Operator identity v2 (ADR 0025): Cloudflare Tunnel + Access. Token sai do cloudflare-tunnel.yml.
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+          CF_ACCESS_AUD: ${{ vars.CF_ACCESS_AUD }}
         run: |
           az deployment group what-if \
             --resource-group ${{ env.AZURE_RG }} \
@@ -166,6 +171,9 @@ jobs:
           NORA_PLATFORM_ADMIN_TOKEN: ${{ secrets.NORA_PLATFORM_ADMIN_TOKEN }}
           EASYAUTH_CLIENT_ID: ${{ secrets.EASYAUTH_CLIENT_ID }}
           EASYAUTH_CLIENT_SECRET: ${{ secrets.EASYAUTH_CLIENT_SECRET }}
+          # Operator identity v2 (ADR 0025): Cloudflare Tunnel + Access. Token sai do cloudflare-tunnel.yml.
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+          CF_ACCESS_AUD: ${{ vars.CF_ACCESS_AUD }}
         run: |
           DEPLOY_NAME="deploy-$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
           az deployment group create \
