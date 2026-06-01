@@ -65,5 +65,6 @@ Decisões parcialmente substituídas: ADR sucessor pode marcar `Substitui parcia
 | 0020 | Rotação de refresh token + detecção de reuso (token families) | aceito |
 | 0021 | Estratégia de soft-delete em entidades tenant-owned | aceito |
 | 0022 | Banco de plataforma separado + 2º datasource (control plane) | aceito |
-| 0023 | Identidade de operador (platform admin), separada do IAM por-tenant | aceito |
+| 0023 | Identidade de operador (platform admin), separada do IAM por-tenant | aceito (Easy Auth substituído por 0025) |
 | 0024 | Catálogo de modelos dinâmico + router por modalidade + resolução runtime | aceito (estende 0004) |
+| 0025 | Identidade de operador v2: Cloudflare Tunnel + Access (substitui Easy Auth do 0023) | aceito |

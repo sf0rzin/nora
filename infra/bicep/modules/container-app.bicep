@@ -79,6 +79,9 @@ param args array = []
 @description('Allowlist de IPs no ingress (ADR 0023). Formato: [{ name, ipAddressRange (CIDR), action: "Allow"|"Deny" }]. Vazio = sem restrição de rede.')
 param ipSecurityRestrictions array = []
 
+@description('Containers extras (sidecars) no mesmo pod, ex.: cloudflared (ADR 0025). Default [] = só o principal — callers existentes (api/worker/web) ficam idênticos. Cada item segue o schema de container do Microsoft.App: { name, image, args?, env?, resources }.')
+param sidecars array = []
+
 @description('Easy Auth (Entra). Vazio ou enabled=false = sem Easy Auth. Formato: { enabled, clientId, openIdIssuer, clientSecretSettingName, unauthenticatedClientAction }. clientSecretSettingName deve referenciar um secret presente em secretsObject.')
 param easyAuth object = {}
 
@@ -171,20 +174,23 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       ] : []
     }
     template: {
-      containers: [
-        {
-          name: containerName
-          image: image
-          command: empty(command) ? null : command
-          args: empty(args) ? null : args
-          resources: {
-            cpu: json(cpu)
-            memory: memory
+      containers: concat(
+        [
+          {
+            name: containerName
+            image: image
+            command: empty(command) ? null : command
+            args: empty(args) ? null : args
+            resources: {
+              cpu: json(cpu)
+              memory: memory
+            }
+            env: envVars
+            probes: probes
           }
-          env: envVars
-          probes: probes
-        }
-      ]
+        ],
+        sidecars
+      )
       scale: {
         minReplicas: minReplicas
         maxReplicas: maxReplicas
