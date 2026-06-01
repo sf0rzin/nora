@@ -4,19 +4,15 @@ import { emit } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { NoraBars } from "@/components/brand/nora-bars";
 import { useTauriListener } from "@/hooks/use-tauri-listener";
-
-const DOCK_STORAGE_KEY = "nora.dock.visible";
+import { formatDuration } from "@/lib/format";
+import { setDockVisible } from "@/lib/dock-prefs";
+import { EVENTS } from "@/lib/desktop-events";
+import { useElapsedSeconds } from "@/hooks/use-now";
 
 interface RecordingStatus {
   isRecording: boolean;
   micDevice?: string;
   sampleRate?: number;
-}
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 function DockButton({
@@ -61,7 +57,6 @@ function DockButton({
 export function DockBar() {
   const [isRecording, setIsRecording] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [, forceTick] = useState(0);
 
   useTauriListener<RecordingStatus>("recording-status", (e) => {
     const s = e.payload;
@@ -87,14 +82,7 @@ export function DockBar() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!isRecording) return;
-    const id = setInterval(() => forceTick((t) => t + 1), 500);
-    return () => clearInterval(id);
-  }, [isRecording]);
-
-  const duration =
-    startedAt == null ? 0 : Math.floor((Date.now() - startedAt) / 1000);
+  const duration = useElapsedSeconds(startedAt, isRecording);
 
   const handleOpenMain = () => {
     invoke("focus_main_window").catch(() => {});
@@ -106,15 +94,11 @@ export function DockBar() {
   const handleHide = () => {
     // Persiste a preferência aqui também pra ficar consistente com a leitura do
     // overlay/active-recording, que usa a mesma chave.
-    try {
-      localStorage.setItem(DOCK_STORAGE_KEY, "0");
-    } catch {
-      // ignore
-    }
+    setDockVisible(false);
     invoke("toggle_dock", { show: false }).catch(() => {});
     // Notifica overlay/main sobre a mudança pra atualizar o toggle "Mostrar dock"
     // — localStorage não dispara `storage` event entre webviews Tauri.
-    emit("nora://dock-visibility-changed", { visible: false }).catch(() => {});
+    emit(EVENTS.DOCK_VISIBILITY_CHANGED, { visible: false }).catch(() => {});
   };
 
   // `-webkit-app-region: drag` não funciona no WebKitGTK Linux.
@@ -184,7 +168,7 @@ export function DockBar() {
           className="inline-flex items-center gap-2 shrink-0"
           style={{
             padding: "5px 12px 5px 9px",
-            background: isRecording ? "rgba(201, 119, 102, 0.10)" : "var(--sidebar)",
+            background: isRecording ? "var(--danger-soft-bg)" : "var(--sidebar)",
             border: `1px solid ${
               isRecording ? "rgba(201, 119, 102, 0.30)" : "var(--border)"
             }`,

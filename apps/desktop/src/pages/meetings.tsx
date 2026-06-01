@@ -3,6 +3,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { listMeetings } from "@/lib/meetings";
 import type { MeetingSummary, ApiError } from "@/lib/types";
 import { ShaderOrb } from "@/components/brand/shader-orb";
+import { focusOn, focusOff } from "@/components/ui/field";
+import { Spinner } from "@/components/spinner";
+import { Chip } from "@/components/chip";
 import { openNewMeetingModal } from "@/App";
 
 type Group = "Hoje" | "Ontem" | "Esta semana" | "Mais antigas";
@@ -153,19 +156,7 @@ function MeetingRow({ m, query }: { m: MeetingSummary; query: string }) {
             </span>
           )}
           {m.tags.slice(0, 2).map((tag) => (
-            <span
-              key={tag}
-              className="px-2"
-              style={{
-                fontSize: 11,
-                background: "var(--chip)",
-                color: "var(--ink)",
-                borderRadius: 999,
-                padding: "1px 8px",
-              }}
-            >
-              {tag}
-            </span>
+            <Chip key={tag} fontSize={11} padding="1px 8px">{tag}</Chip>
           ))}
         </span>
       </span>
@@ -319,14 +310,8 @@ function SearchBar({
           color: "var(--ink)",
           letterSpacing: "-0.005em",
         }}
-        onFocus={(e) => {
-          e.currentTarget.style.borderColor = "var(--accent)";
-          e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-soft)";
-        }}
-        onBlur={(e) => {
-          e.currentTarget.style.borderColor = "var(--border)";
-          e.currentTarget.style.boxShadow = "none";
-        }}
+        onFocus={focusOn}
+        onBlur={focusOff}
       />
       <div
         className="flex items-center gap-1.5"
@@ -338,16 +323,7 @@ function SearchBar({
         }}
       >
         {busy ? (
-          <span
-            style={{
-              width: 11,
-              height: 11,
-              border: "1.5px solid var(--chip)",
-              borderTopColor: "var(--accent)",
-              borderRadius: "50%",
-              animation: "nora-spin 0.9s linear infinite",
-            }}
-          />
+          <Spinner size={11} thickness={1.5} />
         ) : value ? (
           <span
             style={{
@@ -517,8 +493,8 @@ export function MeetingsPage() {
             className="mb-6"
             style={{
               padding: "10px 12px",
-              background: "rgba(201, 119, 102, 0.10)",
-              border: "1px solid rgba(201, 119, 102, 0.25)",
+              background: "var(--danger-soft-bg)",
+              border: "1px solid var(--danger-soft-border)",
               borderRadius: 8,
               fontSize: 13,
               color: "var(--danger-ink)",

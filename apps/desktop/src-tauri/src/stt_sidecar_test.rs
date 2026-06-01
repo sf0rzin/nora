@@ -16,6 +16,7 @@ async fn test_sidecar_fake_lifecycle() {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .kill_on_drop(true)
         .spawn()
         .expect("failed to spawn fake sidecar");
 

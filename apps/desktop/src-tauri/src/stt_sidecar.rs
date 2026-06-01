@@ -27,7 +27,6 @@ pub struct SidecarHandle {
     pub session_id: String,
     pub audio_tx: mpsc::Sender<Vec<i16>>,
     stop_tx: Option<oneshot::Sender<()>>,
-    pub track_label: String,
 }
 
 impl Drop for SidecarHandle {
@@ -143,7 +142,6 @@ fn resolve_sidecar_binary() -> Option<PathBuf> {
     None
 }
 
-#[allow(dead_code)]
 impl SidecarHandle {
     pub async fn start(
         app: AppHandle,
@@ -161,13 +159,12 @@ impl SidecarHandle {
 
         let app_clone = app.clone();
         let session_id_clone = session_id.clone();
-        let track_label_clone = track_label.clone();
 
         let join = tokio::spawn(async move {
             if let Err(e) = run_sidecar(
                 app_clone,
                 session_id_clone,
-                track_label_clone,
+                track_label,
                 region,
                 auth_token,
                 language,
@@ -201,14 +198,7 @@ impl SidecarHandle {
             session_id,
             audio_tx,
             stop_tx: Some(stop_tx),
-            track_label,
         })
-    }
-
-    pub fn feed(&self, samples: Vec<i16>) -> Result<(), String> {
-        self.audio_tx
-            .try_send(samples)
-            .map_err(|e| format!("Failed to feed audio: {}", e))
     }
 
     pub fn stop(mut self) {

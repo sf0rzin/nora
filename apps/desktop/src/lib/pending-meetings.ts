@@ -18,13 +18,23 @@ export interface PendingMeeting {
 
 const STORAGE_KEY = "nora-pending-meetings";
 
+function isPendingMeeting(v: unknown): v is PendingMeeting {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as PendingMeeting).id === "string" &&
+    typeof (v as PendingMeeting).payload === "object" &&
+    (v as PendingMeeting).payload !== null
+  );
+}
+
 export function getPendingMeetings(): PendingMeeting[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed;
-    return [];
+    // Valida o shape: localStorage pode ter lixo de versões antigas. Auditoria #108.
+    return Array.isArray(parsed) ? parsed.filter(isPendingMeeting) : [];
   } catch {
     return [];
   }
@@ -48,8 +58,4 @@ export function removePendingMeeting(id: string): void {
 
 export function getPendingCount(): number {
   return getPendingMeetings().filter((m) => m.status === "pending").length;
-}
-
-export function hasPendingMeetings(): boolean {
-  return getPendingCount() > 0;
 }
