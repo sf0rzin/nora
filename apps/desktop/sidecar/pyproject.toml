@@ -5,7 +5,7 @@ description = "NORA Desktop STT Sidecar - Microsoft Speech SDK with Conversation
 requires-python = ">=3.12"
 dependencies = [
     "azure-cognitiveservices-speech>=1.40",
-    "pydantic>=2.0",
+    "pydantic>=2.9",
 ]
 
 [project.optional-dependencies]
