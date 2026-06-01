@@ -57,15 +57,27 @@ export interface UploadTranscriptOptions {
   onRetry?: (attempt: number, delayMs: number, error: unknown) => void;
 }
 
+/** Extrai um status HTTP do erro: do campo `.status` ou do "(NNN)" da mensagem
+ *  (o upload no Rust devolve "Upload failed (404): ..."). */
+function extractStatus(err: unknown): number | undefined {
+  if (err && typeof err === "object") {
+    const s = (err as { status?: number }).status;
+    if (typeof s === "number") return s;
+  }
+  const msg =
+    typeof err === "string" ? err : err instanceof Error ? err.message : "";
+  const m = msg.match(/\((\d{3})\)/);
+  return m ? Number(m[1]) : undefined;
+}
+
 function isTransient(err: unknown): boolean {
   if (err == null) return false;
-  if (typeof err === "string") return true;
-  if (err instanceof Error) return true;
-  if (typeof err === "object") {
-    const status = (err as { status?: number }).status;
-    if (typeof status === "number") return status >= 500 && status < 600;
-  }
-  return false;
+  const status = extractStatus(err);
+  // Com status detectável: só 5xx vale retry; 4xx (auth/validação) é permanente.
+  // Antes QUALQUER string/Error era "transitório" → retentava 4xx à toa.
+  if (typeof status === "number") return status >= 500 && status < 600;
+  // Sem status (falha de rede/timeout) → transitório.
+  return typeof err === "string" || err instanceof Error;
 }
 
 export async function uploadTranscript(

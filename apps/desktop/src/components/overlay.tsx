@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useLiveTranscript, type LiveTranscriptLine } from "@/hooks/use-live-transcript";
 import { useLiveHighlights, type LiveHighlights } from "@/hooks/use-live-highlights";
 import { useTauriListener } from "@/hooks/use-tauri-listener";
@@ -11,11 +12,14 @@ import {
   NotificationStack,
   useNotifications,
 } from "@/components/overlay-notifications";
+import { formatDuration, relTime } from "@/lib/format";
+import { DecisionIcon, NextStepIcon, ObservationIcon, TaskIcon } from "@/components/brand/feed-icons";
+import { getDockVisible, setDockVisible as persistDockPref } from "@/lib/dock-prefs";
+import { EVENTS, type DockVisibilityPayload } from "@/lib/desktop-events";
 
 type SpeakerMap = Record<string, string>;
 
 const SPEAKER_OVERRIDES_KEY = "nora.overlay.speaker-overrides";
-const DOCK_STORAGE_KEY = "nora.dock.visible";
 const HIGHLIGHTS_STORAGE_KEY = "nora.overlay.highlights-visible";
 
 function loadHighlightsPref(): boolean {
@@ -51,36 +55,6 @@ function saveOverrides(map: SpeakerMap) {
     // ignore
   }
 }
-function loadDockPref(): boolean {
-  try {
-    const v = localStorage.getItem(DOCK_STORAGE_KEY);
-    return v == null ? true : v === "1";
-  } catch {
-    return true;
-  }
-}
-function saveDockPref(v: boolean) {
-  try {
-    localStorage.setItem(DOCK_STORAGE_KEY, v ? "1" : "0");
-  } catch {
-    // ignore
-  }
-}
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
-}
-
-function relTime(ms: number): string {
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms / 1000) % 60);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
 function getDisplayName(line: LiveTranscriptLine, isMe: boolean, overrides: SpeakerMap): string {
   if (isMe) return "Você";
   if (line.speakerId && overrides[line.speakerId]) return overrides[line.speakerId];
@@ -293,43 +267,11 @@ function PartialBubble({ text, isMe }: { text: string; isMe: boolean }) {
 // recente (cue de "acabou de detectar"), que esmaece ao chegar o próximo.
 type FeedKind = "decision" | "nextStep" | "observation" | "task";
 
-const KIND_META: Record<FeedKind, { label: string; icon: JSX.Element }> = {
-  decision: {
-    label: "Decisão",
-    icon: (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-    ),
-  },
-  nextStep: {
-    label: "Próximo passo",
-    icon: (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="5" y1="12" x2="19" y2="12" />
-        <polyline points="12 5 19 12 12 19" />
-      </svg>
-    ),
-  },
-  observation: {
-    label: "Observação",
-    icon: (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="16" x2="12" y2="12" />
-        <line x1="12" y1="8" x2="12.01" y2="8" />
-      </svg>
-    ),
-  },
-  task: {
-    label: "Tarefa",
-    icon: (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="9 11 12 14 22 4" />
-        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-      </svg>
-    ),
-  },
+const KIND_META: Record<FeedKind, { label: string; icon: React.ReactElement }> = {
+  decision: { label: "Decisão", icon: <DecisionIcon /> },
+  nextStep: { label: "Próximo passo", icon: <NextStepIcon /> },
+  observation: { label: "Observação", icon: <ObservationIcon /> },
+  task: { label: "Tarefa", icon: <TaskIcon /> },
 };
 
 interface FeedRow {
@@ -343,7 +285,7 @@ interface FeedRow {
 
 function buildFeed(h: LiveHighlights): FeedRow[] {
   const rows: FeedRow[] = [];
-  const norm = (s: string) => s.toLowerCase().trim().slice(0, 80);
+  const norm = (s: string) => s.toLowerCase().trim();
   for (const d of h.decisions)
     rows.push({ id: `decision-${norm(d.text)}`, kind: "decision", text: d.text, receivedAt: d.receivedAt ?? 0 });
   for (const d of h.nextSteps)
@@ -1044,7 +986,7 @@ export function OverlayPage() {
 
   const [overrides, setOverrides] = useState<SpeakerMap>(loadOverrides);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [dockVisible, setDockVisible] = useState<boolean>(loadDockPref);
+  const [dockVisible, setDockVisible] = useState<boolean>(getDockVisible);
   const [highlightsVisible, setHighlightsVisible] = useState<boolean>(
     loadHighlightsPref,
   );
@@ -1054,6 +996,17 @@ export function OverlayPage() {
 
   const { items: notifications, push: pushNotification, dismiss: dismissNotification } =
     useNotifications();
+
+  // Arraste da overlay via startDragging() — funciona no WebKitGTK (Linux), onde
+  // data-tauri-drag-region / -webkit-app-region NÃO funcionam. Mesmo padrão do
+  // titlebar e do dock. Só botão esquerdo; os controles ficam fora da região.
+  const overlayWin = useMemo(() => getCurrentWebviewWindow(), []);
+  const onHeaderDragMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    overlayWin
+      .startDragging()
+      .catch((err) => console.warn("[overlay] startDragging failed:", err));
+  };
 
   // Listen to highlights and surface new items as toasts
   const { highlights } = useLiveHighlights();
@@ -1118,11 +1071,15 @@ export function OverlayPage() {
     saveHighlightsPref(next);
   };
 
-  // Reset overrides when a new recording session begins
+  // Reset de estado quando uma nova sessão de gravação começa. Unifica dois
+  // useEffect que tinham a MESMA guarda (auditoria #44) e zera `stopping` pra
+  // não ficar travado entre sessões depois de um Descartar (#32).
   useEffect(() => {
     if (isRecording && lines.length === 0) {
       setOverrides({});
       saveOverrides({});
+      setSaveError(null);
+      setStopping(false);
     }
   }, [isRecording, lines.length]);
 
@@ -1139,19 +1096,14 @@ export function OverlayPage() {
     },
   );
 
-  // Clear save-error when a fresh recording starts
-  useEffect(() => {
-    if (isRecording && lines.length === 0) setSaveError(null);
-  }, [isRecording, lines.length]);
-
   // Sync dock visibility when changed by another window (dock's own X button)
-  useTauriListener<{ visible: boolean }>(
-    "nora://dock-visibility-changed",
+  useTauriListener<DockVisibilityPayload>(
+    EVENTS.DOCK_VISIBILITY_CHANGED,
     (e) => {
       if (typeof e.payload?.visible !== "boolean") return;
       const visible = e.payload.visible;
       setDockVisible(visible);
-      saveDockPref(visible);
+      persistDockPref(visible);
       if (!visible) {
         pushNotification({
           variant: "info",
@@ -1160,6 +1112,27 @@ export function OverlayPage() {
           duration: 5000,
         });
       }
+    },
+    [pushNotification],
+  );
+
+  // Erros do sidecar de STT (Rust emite "stt-error" com o payload cru do
+  // sidecar). Sem este listener o erro de transcrição sumia sem feedback.
+  useTauriListener<{ message?: string; error?: string }>(
+    "stt-error",
+    (e) => {
+      const detail =
+        typeof e.payload?.message === "string"
+          ? e.payload.message
+          : typeof e.payload?.error === "string"
+            ? e.payload.error
+            : undefined;
+      pushNotification({
+        variant: "warn",
+        title: "Transcrição interrompida",
+        body: detail ?? "O serviço de transcrição reportou um erro.",
+        duration: 8000,
+      });
     },
     [pushNotification],
   );
@@ -1175,11 +1148,11 @@ export function OverlayPage() {
 
   const toggleDock = (next: boolean) => {
     setDockVisible(next);
-    saveDockPref(next);
+    persistDockPref(next);
     invoke("toggle_dock", { show: next }).catch(() => {});
     // Espelha pelo event bus pra qualquer outra janela aberta (e pra ativar
     // o toast de "Dock escondido" via o mesmo listener que cobre o X do dock).
-    emit("nora://dock-visibility-changed", { visible: next }).catch(() => {});
+    emit(EVENTS.DOCK_VISIBILITY_CHANGED, { visible: next }).catch(() => {});
   };
 
   const detectedSpeakers = useMemo(() => {
@@ -1261,10 +1234,12 @@ export function OverlayPage() {
   };
   const handleCancel = async () => {
     if (stopping) return;
+    setStopping(true);
     try {
       await emit("nora://cancel-recording");
     } catch (e) {
       console.error("[overlay] failed to emit cancel:", e);
+      setStopping(false);
     }
   };
   const handleMinimize = () => {
@@ -1304,16 +1279,18 @@ export function OverlayPage() {
     >
       {/* Header */}
       <div
-        data-tauri-drag-region
         className="flex items-center justify-between shrink-0"
         style={{
           padding: "9px 14px",
           borderBottom: "1px solid var(--border)",
           background: "var(--sidebar)",
-          cursor: "move",
         }}
       >
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div
+          className="flex flex-1 items-center gap-2.5 min-w-0"
+          onMouseDown={onHeaderDragMouseDown}
+          style={{ cursor: "move" }}
+        >
           <NoraBars size={16} active={isRecording} animate />
           <span
             className="truncate"
@@ -1536,7 +1513,7 @@ export function OverlayPage() {
           className="shrink-0 flex items-start gap-3"
           style={{
             padding: "10px 14px",
-            background: "rgba(201, 119, 102, 0.10)",
+            background: "var(--danger-soft-bg)",
             borderBottom: "1px solid rgba(201, 119, 102, 0.30)",
           }}
         >

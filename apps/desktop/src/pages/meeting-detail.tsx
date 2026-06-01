@@ -11,6 +11,8 @@ import type {
 } from "@/lib/types";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { AvatarStack } from "@/components/brand/avatar";
+import { Spinner } from "@/components/spinner";
+import { Chip } from "@/components/chip";
 
 function Section({
   label,
@@ -331,7 +333,7 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
           </a>
           <span style={{ opacity: 0.5 }}>/</span>
           <span style={{ color: "var(--accent-ink)" }}>
-            {meeting.tags?.[0] || "Sem projeto"}
+            {meeting.tags[0] || "Sem projeto"}
           </span>
         </div>
 
@@ -356,45 +358,13 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
             <div className="flex items-center gap-2 flex-wrap">
               {participants.length > 0 ? (
                 participants.map((p, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      fontSize: 12,
-                      padding: "3px 9px",
-                      borderRadius: 999,
-                      background: "var(--chip)",
-                      color: "var(--ink)",
-                    }}
-                  >
-                    {p}
-                  </span>
+                  <Chip key={i}>{p}</Chip>
                 ))
               ) : (
-                <span
-                  style={{
-                    fontSize: 12,
-                    padding: "3px 9px",
-                    borderRadius: 999,
-                    background: "var(--chip)",
-                    color: "var(--ink)",
-                  }}
-                >
-                  {meeting.ownerName || meeting.owner?.displayName || "Você"}
-                </span>
+                <Chip>{meeting.ownerName || meeting.owner?.displayName || "Você"}</Chip>
               )}
               {meeting.tags.slice(1).map((t) => (
-                <span
-                  key={t}
-                  style={{
-                    fontSize: 11,
-                    padding: "3px 9px",
-                    borderRadius: 999,
-                    background: "var(--accent-soft)",
-                    color: "var(--accent-ink)",
-                  }}
-                >
-                  {t}
-                </span>
+                <Chip key={t} variant="accent" fontSize={11}>{t}</Chip>
               ))}
             </div>
           </div>
@@ -444,7 +414,7 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
             className="flex items-start justify-between gap-4"
             style={{
               padding: "16px 18px",
-              background: "rgba(201,119,102,0.10)",
+              background: "var(--danger-soft-bg)",
               border: "1px solid rgba(201,119,102,0.30)",
               borderRadius: 12,
               marginBottom: 36,
@@ -492,16 +462,7 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
             >
               {reprocessing ? (
                 <>
-                  <span
-                    style={{
-                      width: 10,
-                      height: 10,
-                      border: "1.5px solid rgba(253,253,252,0.4)",
-                      borderTopColor: "var(--canvas)",
-                      borderRadius: "50%",
-                      animation: "nora-spin 0.9s linear infinite",
-                    }}
-                  />
+                  <Spinner size={10} thickness={1.5} color="rgba(253,253,252,0.4)" topColor="var(--canvas)" />
                   Reprocessando…
                 </>
               ) : (
