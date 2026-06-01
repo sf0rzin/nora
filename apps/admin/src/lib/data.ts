@@ -12,17 +12,17 @@ const USE_MOCKS = process.env.NORA_ADMIN_USE_MOCKS !== "false";
 
 export async function getModels(): Promise<LlmModel[]> {
   if (USE_MOCKS) return MOCK_MODELS;
-  return platformGet<LlmModel[]>("/admin/platform/models");
+  return (await platformGet<LlmModel[] | null>("/admin/platform/models")) ?? [];
 }
 
 export async function getBindings(): Promise<ServiceBinding[]> {
   if (USE_MOCKS) return MOCK_BINDINGS;
-  return platformGet<ServiceBinding[]>("/admin/platform/config");
+  return (await platformGet<ServiceBinding[] | null>("/admin/platform/config")) ?? [];
 }
 
 export async function getFlags(): Promise<FeatureFlag[]> {
   if (USE_MOCKS) return MOCK_FLAGS;
-  return platformGet<FeatureFlag[]>("/admin/platform/flags");
+  return (await platformGet<FeatureFlag[] | null>("/admin/platform/flags")) ?? [];
 }
 
 export async function getCost(from?: string, to?: string): Promise<CostSummary> {
@@ -30,7 +30,19 @@ export async function getCost(from?: string, to?: string): Promise<CostSummary> 
   const qs = new URLSearchParams({ groupBy: "service" });
   if (from) qs.set("from", from);
   if (to) qs.set("to", to);
-  return platformGet<CostSummary>(`/admin/platform/telemetry/cost?${qs.toString()}`);
+  const raw = await platformGet<Partial<CostSummary> | null>(
+    `/admin/platform/telemetry/cost?${qs.toString()}`,
+  );
+  // Telemetria vazia (plataforma recém-criada) → a API agrega SUM de zero linhas e pode devolver
+  // null/ausente. Normaliza pra um CostSummary completo: o console mostra "$0.00 / 0 chamadas" em
+  // vez de crashar (toFixed em undefined). Idealmente a API COALESCE pra 0 — follow-up no backend.
+  return {
+    from: raw?.from ?? from ?? "",
+    to: raw?.to ?? to ?? "",
+    totalCostUsd: raw?.totalCostUsd ?? 0,
+    totalCalls: raw?.totalCalls ?? 0,
+    rows: raw?.rows ?? [],
+  };
 }
 
 /** Resolve o modelo de uma binding (helper de UI). */
