@@ -24,13 +24,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    bootstrapSession().then((stored) => {
-      if (stored) {
-        apiClient.setCachedUser(stored);
-        setUser(stored);
-      }
-      setLoading(false);
-    });
+    bootstrapSession()
+      .then((stored) => {
+        if (stored) {
+          apiClient.setCachedUser(stored);
+          setUser(stored);
+        }
+      })
+      .catch((err) => {
+        // Sem .catch, uma rejeição deixava `loading` travado em true (app em
+        // branco pra sempre). O .finally garante que sempre saímos do loading.
+        console.error("[auth] bootstrapSession falhou:", err);
+      })
+      .finally(() => setLoading(false));
 
     return () => {
       stopTokenRefreshLoop();
