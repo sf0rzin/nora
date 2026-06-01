@@ -316,7 +316,7 @@ interface FeedRow {
 
 function buildFeed(h: LiveHighlights): FeedRow[] {
   const rows: FeedRow[] = [];
-  const norm = (s: string) => s.toLowerCase().trim().slice(0, 80);
+  const norm = (s: string) => s.toLowerCase().trim();
   for (const d of h.decisions)
     rows.push({ id: `decision-${norm(d.text)}`, kind: "decision", text: d.text, receivedAt: d.receivedAt ?? 0 });
   for (const d of h.nextSteps)
@@ -1102,11 +1102,15 @@ export function OverlayPage() {
     saveHighlightsPref(next);
   };
 
-  // Reset overrides when a new recording session begins
+  // Reset de estado quando uma nova sessão de gravação começa. Unifica dois
+  // useEffect que tinham a MESMA guarda (auditoria #44) e zera `stopping` pra
+  // não ficar travado entre sessões depois de um Descartar (#32).
   useEffect(() => {
     if (isRecording && lines.length === 0) {
       setOverrides({});
       saveOverrides({});
+      setSaveError(null);
+      setStopping(false);
     }
   }, [isRecording, lines.length]);
 
@@ -1122,11 +1126,6 @@ export function OverlayPage() {
       }
     },
   );
-
-  // Clear save-error when a fresh recording starts
-  useEffect(() => {
-    if (isRecording && lines.length === 0) setSaveError(null);
-  }, [isRecording, lines.length]);
 
   // Sync dock visibility when changed by another window (dock's own X button)
   useTauriListener<DockVisibilityPayload>(
@@ -1266,10 +1265,12 @@ export function OverlayPage() {
   };
   const handleCancel = async () => {
     if (stopping) return;
+    setStopping(true);
     try {
       await emit("nora://cancel-recording");
     } catch (e) {
       console.error("[overlay] failed to emit cancel:", e);
+      setStopping(false);
     }
   };
   const handleMinimize = () => {
