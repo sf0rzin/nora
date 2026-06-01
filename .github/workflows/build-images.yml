@@ -23,6 +23,7 @@ on:
       - 'services/nlp-worker/**'
       - 'packages/nlp-baseline/**'
       - 'apps/web/**'
+      - 'apps/admin/**'
       - '.github/workflows/build-images.yml'
   pull_request:
     branches: [main]
@@ -31,6 +32,7 @@ on:
       - 'services/nlp-worker/**'
       - 'packages/nlp-baseline/**'
       - 'apps/web/**'
+      - 'apps/admin/**'
       - '.github/workflows/build-images.yml'
       - 'services/*/Dockerfile'
       - 'apps/*/Dockerfile'
