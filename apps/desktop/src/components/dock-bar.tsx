@@ -5,8 +5,8 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { NoraBars } from "@/components/brand/nora-bars";
 import { useTauriListener } from "@/hooks/use-tauri-listener";
 import { formatDuration } from "@/lib/format";
-
-const DOCK_STORAGE_KEY = "nora.dock.visible";
+import { setDockVisible } from "@/lib/dock-prefs";
+import { EVENTS } from "@/lib/desktop-events";
 
 interface RecordingStatus {
   isRecording: boolean;
@@ -101,15 +101,11 @@ export function DockBar() {
   const handleHide = () => {
     // Persiste a preferência aqui também pra ficar consistente com a leitura do
     // overlay/active-recording, que usa a mesma chave.
-    try {
-      localStorage.setItem(DOCK_STORAGE_KEY, "0");
-    } catch {
-      // ignore
-    }
+    setDockVisible(false);
     invoke("toggle_dock", { show: false }).catch(() => {});
     // Notifica overlay/main sobre a mudança pra atualizar o toggle "Mostrar dock"
     // — localStorage não dispara `storage` event entre webviews Tauri.
-    emit("nora://dock-visibility-changed", { visible: false }).catch(() => {});
+    emit(EVENTS.DOCK_VISIBILITY_CHANGED, { visible: false }).catch(() => {});
   };
 
   // `-webkit-app-region: drag` não funciona no WebKitGTK Linux.

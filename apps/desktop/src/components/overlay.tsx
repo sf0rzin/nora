@@ -13,11 +13,12 @@ import {
   useNotifications,
 } from "@/components/overlay-notifications";
 import { formatDuration, relTime } from "@/lib/format";
+import { getDockVisible, setDockVisible as persistDockPref } from "@/lib/dock-prefs";
+import { EVENTS, type DockVisibilityPayload } from "@/lib/desktop-events";
 
 type SpeakerMap = Record<string, string>;
 
 const SPEAKER_OVERRIDES_KEY = "nora.overlay.speaker-overrides";
-const DOCK_STORAGE_KEY = "nora.dock.visible";
 const HIGHLIGHTS_STORAGE_KEY = "nora.overlay.highlights-visible";
 
 function loadHighlightsPref(): boolean {
@@ -53,22 +54,6 @@ function saveOverrides(map: SpeakerMap) {
     // ignore
   }
 }
-function loadDockPref(): boolean {
-  try {
-    const v = localStorage.getItem(DOCK_STORAGE_KEY);
-    return v == null ? true : v === "1";
-  } catch {
-    return true;
-  }
-}
-function saveDockPref(v: boolean) {
-  try {
-    localStorage.setItem(DOCK_STORAGE_KEY, v ? "1" : "0");
-  } catch {
-    // ignore
-  }
-}
-
 function getDisplayName(line: LiveTranscriptLine, isMe: boolean, overrides: SpeakerMap): string {
   if (isMe) return "Você";
   if (line.speakerId && overrides[line.speakerId]) return overrides[line.speakerId];
@@ -1032,7 +1017,7 @@ export function OverlayPage() {
 
   const [overrides, setOverrides] = useState<SpeakerMap>(loadOverrides);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [dockVisible, setDockVisible] = useState<boolean>(loadDockPref);
+  const [dockVisible, setDockVisible] = useState<boolean>(getDockVisible);
   const [highlightsVisible, setHighlightsVisible] = useState<boolean>(
     loadHighlightsPref,
   );
@@ -1144,13 +1129,13 @@ export function OverlayPage() {
   }, [isRecording, lines.length]);
 
   // Sync dock visibility when changed by another window (dock's own X button)
-  useTauriListener<{ visible: boolean }>(
-    "nora://dock-visibility-changed",
+  useTauriListener<DockVisibilityPayload>(
+    EVENTS.DOCK_VISIBILITY_CHANGED,
     (e) => {
       if (typeof e.payload?.visible !== "boolean") return;
       const visible = e.payload.visible;
       setDockVisible(visible);
-      saveDockPref(visible);
+      persistDockPref(visible);
       if (!visible) {
         pushNotification({
           variant: "info",
@@ -1195,11 +1180,11 @@ export function OverlayPage() {
 
   const toggleDock = (next: boolean) => {
     setDockVisible(next);
-    saveDockPref(next);
+    persistDockPref(next);
     invoke("toggle_dock", { show: next }).catch(() => {});
     // Espelha pelo event bus pra qualquer outra janela aberta (e pra ativar
     // o toast de "Dock escondido" via o mesmo listener que cobre o X do dock).
-    emit("nora://dock-visibility-changed", { visible: next }).catch(() => {});
+    emit(EVENTS.DOCK_VISIBILITY_CHANGED, { visible: next }).catch(() => {});
   };
 
   const detectedSpeakers = useMemo(() => {
