@@ -5,6 +5,7 @@ import type { MeetingSummary, ApiError } from "@/lib/types";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { focusOn, focusOff } from "@/components/ui/field";
 import { Spinner } from "@/components/spinner";
+import { Chip } from "@/components/chip";
 import { openNewMeetingModal } from "@/App";
 
 type Group = "Hoje" | "Ontem" | "Esta semana" | "Mais antigas";
@@ -155,19 +156,7 @@ function MeetingRow({ m, query }: { m: MeetingSummary; query: string }) {
             </span>
           )}
           {m.tags.slice(0, 2).map((tag) => (
-            <span
-              key={tag}
-              className="px-2"
-              style={{
-                fontSize: 11,
-                background: "var(--chip)",
-                color: "var(--ink)",
-                borderRadius: 999,
-                padding: "1px 8px",
-              }}
-            >
-              {tag}
-            </span>
+            <Chip key={tag} fontSize={11} padding="1px 8px">{tag}</Chip>
           ))}
         </span>
       </span>
