@@ -1,6 +1,14 @@
 # Cloudflare Access — proteção do console operador
 
-Runbook pra configurar e operar Cloudflare Access protegendo `admin.nora.systems` (console do nora-admin, ADR 0023). Atualizado em 2026-05-29.
+Runbook pra configurar e operar Cloudflare Access protegendo `admin.nora.systems` (console do nora-admin). Atualizado em 2026-06-02 pós-ADR 0025.
+
+> **⚠️ Modelo atual (ADR 0025): Cloudflare Tunnel + Access.** O `nora-admin` deixou de ter ingress público — o único caminho de entrada é via Cloudflare Tunnel (sidecar `cloudflared`). O CNAME `admin.nora.systems` aponta pra `<tunnel-id>.cfargotunnel.com`, **não pro Azure**. Por isso:
+>
+> - **Este workflow (`cloudflare-setup.yml`)** é dono do **Access App + Policy + IdP**.
+> - **Workflow irmão (`cloudflare-tunnel.yml`)** é dono do **CNAME + Tunnel + rota**.
+> - **NUNCA** passar `admin_hostname` no `cloudflare-setup.yml` — o step de CNAME tem guard que ABORTA se detectar o tunel. Input mantido apenas pra back-compat.
+>
+> Pra túnel e ingress, ver `docs/operations/control-plane-runbook.md` e ADR 0025.
 
 ## Por que Cloudflare Access
 
@@ -69,18 +77,13 @@ Cola o token como secret `CLOUDFLARE_API_TOKEN` no repo (`Settings → Secrets a
 
 `.github/workflows/cloudflare-setup.yml` é `workflow_dispatch` e idempotente. Inputs:
 
-- `admin_hostname` — FQDN do Container App admin (alvo do CNAME). Vazio = pula DNS step, útil quando `enablePlatform=false` ainda
+- `admin_hostname` — **LEGACY pré-ADR 0025. DEIXE VAZIO.** O CNAME hoje é gerenciado pelo `cloudflare-tunnel.yml`. O step tem guard que aborta se detectar `*.cfargotunnel.com` no CNAME existente (proteção contra derrubar o admin por engano).
 - `team_name` — nome do team (default `stratfy`); precisa coincidir com o team já criado no passo 1
 - `access_emails` — CSV de emails autorizados (default já tem os 2 operadores)
 
-Pra descobrir `admin_hostname` quando o admin app subir:
+O workflow faz upsert: garantir Access App, garantir policy de allowlist, garantir OTP IdP. Re-rodar é seguro.
 
-```bash
-az containerapp show -n nora-admin-dev -g rg-nora-dev \
-  --query properties.configuration.ingress.fqdn -o tsv
-```
-
-O workflow faz upsert: criar CNAME, garantir Access App, garantir policy de allowlist, garantir OTP IdP. Re-rodar é seguro.
+Pra configurar/reconciliar o **túnel** em si (CNAME → cfargotunnel + rota → sidecar), rodar o `cloudflare-tunnel.yml` (ver `control-plane-runbook.md`).
 
 ## Identity providers — adicionar Google e/ou GitHub
 
@@ -149,13 +152,20 @@ Se Zero Trust também não estiver habilitado (raro, screenshot do painel já co
 
 ### Login aceita mas página retorna 502/timeout
 
-CNAME proxied=true tá apontando pra um destino que ainda não existe (Container App não subiu, ou `enablePlatform=false`). Verificar:
+No modelo ADR 0025 (Tunnel), 502 geralmente significa que o sidecar `cloudflared` não conectou no Cloudflare. Verificar:
 
 ```bash
-az containerapp show -n nora-admin-dev -g rg-nora-dev --query properties.configuration.ingress.fqdn -o tsv
+# Réplicas do nora-admin (precisa ≥1 sempre — o sidecar não escala a zero):
+az containerapp replica list -n nora-admin-dev -g rg-nora-dev --revision latest -o table
+
+# Logs do sidecar cloudflared (procurar "Registered tunnel connection" e ausência de erro):
+az containerapp logs show -n nora-admin-dev -g rg-nora-dev --container cloudflared --tail 100
 ```
 
-Se vazio: ligar `enablePlatform=true` no `main.dev.bicepparam` e redeploy. Depois re-rodar `cloudflare-setup.yml` com o FQDN correto.
+Causas comuns:
+- `CLOUDFLARE_TUNNEL_TOKEN` secret faltando/errado → sidecar não conecta. Re-rodar `cloudflare-tunnel.yml`, copiar o connector token do log, atualizar o GitHub Secret, redeploy.
+- Container App escalou a zero → trocar `minReplicas` pra `≥1` no Bicep do admin.
+- Túnel deletado/rotacionado mas DNS ainda aponta pro ID antigo → re-rodar `cloudflare-tunnel.yml` (recria DNS).
 
 ### Email não chega (OTP)
 
