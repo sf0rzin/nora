@@ -2,7 +2,14 @@ name: cloudflare-setup
 
 # Configura Cloudflare Access pra proteger admin.nora.systems com login obrigatorio
 # (allowlist por email). Roda manual via workflow_dispatch; idempotente — re-run apenas
-# reconcilia diff (upsert em DNS, Access App, Policy, IdP).
+# reconcilia diff (upsert em Access App, Policy, IdP).
+#
+# Lanes (ADR 0025 — Cloudflare Tunnel + Access):
+#   - ESTE workflow e dono do Access App + Policy + IdP em admin.nora.systems.
+#   - cloudflare-tunnel.yml (lane irma) e dono do CNAME admin.nora.systems -> cfargotunnel.com.
+#   - ⚠️ NUNCA passe `admin_hostname` em produção: sobrescreveria o CNAME do tunel e
+#     derrubaria o acesso. Input mantido apenas para back-compat pre-ADR 0025; o step de
+#     CNAME tem guard que ABORTA se detectar tunel ativo.
 #
 # Secrets necessarios:
 #   - CLOUDFLARE_API_TOKEN  Token escopado em nora.systems. Permissoes minimas
@@ -29,7 +36,7 @@ on:
   workflow_dispatch:
     inputs:
       admin_hostname:
-        description: 'FQDN do Container App admin (alvo do CNAME). Vazio = pula DNS step.'
+        description: 'LEGACY (pre-ADR 0025). DEIXE VAZIO. Workflow aborta se CNAME ja aponta pro Cloudflare Tunnel.'
         required: false
         default: ''
       team_name:
@@ -88,7 +95,7 @@ jobs:
           echo "zone_id=$zone_id" >> "$GITHUB_OUTPUT"
           echo "Zone $DOMAIN -> $zone_id (status=$zone_status)"
 
-      - name: Upsert CNAME admin.nora.systems
+      - name: Upsert CNAME admin.nora.systems (LEGACY pre-ADR 0025)
         if: inputs.admin_hostname != ''
         env:
           ZONE_ID: ${{ steps.zone.outputs.zone_id }}
@@ -96,15 +103,28 @@ jobs:
         run: |
           set -euo pipefail
           fqdn="$SUBDOMAIN.$DOMAIN"
+          # Guard ADR 0025: se o CNAME ja aponta pro Cloudflare Tunnel (*.cfargotunnel.com),
+          # ABORTA. Sobrescrever derrubaria o admin (origem deixou de ser publica;
+          # o tunel e o unico caminho de entrada).
+          existing_content=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+            "$CF_API/zones/$ZONE_ID/dns_records?type=CNAME&name=$fqdn" \
+            | jq -r '.result[0].content // empty')
+          if [[ "$existing_content" == *.cfargotunnel.com ]]; then
+            echo "::error::ABORT: CNAME $fqdn aponta pro Cloudflare Tunnel ($existing_content)."
+            echo "::error::Sobrescrever derrubaria o admin (ADR 0025: origem do nora-admin e internal — so o tunel entra)."
+            echo "::error::Se voce realmente quer migrar pra ingress public, primeiro: (1) muda main.bicep p/ ingress external,"
+            echo "::error::(2) deleta o tunel via cloudflare-tunnel.yml + 'az containerapp ... remove sidecar', (3) re-roda este workflow."
+            exit 1
+          fi
           existing=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
             "$CF_API/zones/$ZONE_ID/dns_records?type=CNAME&name=$fqdn" \
             | jq -r '.result[0].id // empty')
           payload=$(jq -nc \
             --arg name "$SUBDOMAIN" \
             --arg content "$TARGET" \
-            '{type:"CNAME", name:$name, content:$content, proxied:true, ttl:1, comment:"NORA admin console — gated por Cloudflare Access"}')
+            '{type:"CNAME", name:$name, content:$content, proxied:true, ttl:1, comment:"NORA admin console — gated por Cloudflare Access (legacy pre-ADR 0025)"}')
           if [ -n "$existing" ]; then
-            echo "CNAME $fqdn existe ($existing); atualizando target -> $TARGET"
+            echo "CNAME $fqdn existe ($existing) apontando pra $existing_content; atualizando target -> $TARGET"
             curl -fsSL -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
               "$CF_API/zones/$ZONE_ID/dns_records/$existing" -d "$payload" \
               | jq '{success, name: .result.name, content: .result.content, proxied: .result.proxied}'
