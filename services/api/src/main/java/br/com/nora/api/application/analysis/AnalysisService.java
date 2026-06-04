@@ -10,6 +10,7 @@ import br.com.nora.api.application.ports.NlpWorkerClient;
 import br.com.nora.api.application.ports.NlpWorkerClient.AnalysisResult;
 import br.com.nora.api.application.ports.ProductivityAssessmentRepository;
 import br.com.nora.api.application.ports.TenantContextRepository;
+import br.com.nora.api.application.ports.TenantRlsContext;
 import br.com.nora.api.application.ports.TranscriptRepository;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.meeting.Meeting;
@@ -49,6 +50,7 @@ public class AnalysisService {
     private final NlpWorkerClient worker;
     private final CustomerConfidenceService customerConfidence;
     private final UsageRecorder usageRecorder;
+    private final TenantRlsContext rlsContext;
 
     public AnalysisService(
             MeetingRepository meetings,
@@ -59,7 +61,8 @@ public class AnalysisService {
             ProductivityAssessmentRepository assessments,
             NlpWorkerClient worker,
             CustomerConfidenceService customerConfidence,
-            UsageRecorder usageRecorder) {
+            UsageRecorder usageRecorder,
+            TenantRlsContext rlsContext) {
         this.meetings = meetings;
         this.transcripts = transcripts;
         this.tenantContexts = tenantContexts;
@@ -69,6 +72,7 @@ public class AnalysisService {
         this.worker = worker;
         this.customerConfidence = customerConfidence;
         this.usageRecorder = usageRecorder;
+        this.rlsContext = rlsContext;
     }
 
     /**
@@ -76,6 +80,11 @@ public class AnalysisService {
      */
     @Async
     public void runAsync(UUID meetingId, UUID tenantId) {
+        // Sob RLS enforce (ADR 0028) esta thread de executor NAO herda o TenantContextHolder do
+        // request — propagamos o tenant explicitamente pra que o TenantRlsAspect aplique o GUC nas
+        // transacoes do pipeline (leitura de transcript + escrita de analise, tabelas enforced).
+        // Limpamos no finally (a thread do pool e reusada entre tasks).
+        rlsContext.set(tenantId);
         try {
             run(meetingId, tenantId);
         } catch (RuntimeException ex) {
@@ -85,6 +94,8 @@ public class AnalysisService {
                     tenantId,
                     ex.getMessage());
             safeMarkFailed(meetingId, tenantId);
+        } finally {
+            rlsContext.clear();
         }
     }
 

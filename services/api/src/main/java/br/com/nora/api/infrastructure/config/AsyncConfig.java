@@ -1,5 +1,7 @@
 package br.com.nora.api.infrastructure.config;
 
+import br.com.nora.api.infrastructure.security.TenantContextHolder;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -39,6 +41,26 @@ public class AsyncConfig implements AsyncConfigurer {
         executor.setThreadNamePrefix("nora-async-");
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
+        // Propaga o tenant (TenantContextHolder) da thread do request pra thread do executor.
+        // Sob RLS enforce (ADR 0028) o pipeline de análise async escreve em tabelas enforced
+        // (meeting_analyses + filhos) — o TenantRlsAspect precisa do GUC, que vem deste holder.
+        // Sem isso, a task roda sem tenant na thread do pool e as escritas seriam fail-closed.
+        // Capturamos no submit (request, holder setado pelo JwtAuthenticationFilter) e limpamos
+        // no fim pra não vazar entre tasks que reusam a thread.
+        executor.setTaskDecorator(
+                runnable -> {
+                    UUID tenantId = TenantContextHolder.get();
+                    return () -> {
+                        if (tenantId != null) {
+                            TenantContextHolder.set(tenantId);
+                        }
+                        try {
+                            runnable.run();
+                        } finally {
+                            TenantContextHolder.clear();
+                        }
+                    };
+                });
         executor.initialize();
         return executor;
     }
