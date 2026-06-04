@@ -45,8 +45,11 @@ import org.springframework.transaction.annotation.Transactional;
  *       refresh.
  *   <li><b>On-read expire:</b> ao listar/aceitar, qualquer invite PENDING com {@code expiresAt &lt;
  *       now} e atualizado para EXPIRED antes da resposta. Evita rodar job separado no MVP.
- *   <li><b>Token como secret:</b> nunca o devolvemos em listagens nem logamos. Apenas o adapter de
- *       e-mail recebe o {@code acceptUrl} contendo o token.
+ *   <li><b>Token como secret:</b> persistimos apenas o SHA-256 do token (mesmo padrao dos demais
+ *       one-time tokens — email-verification, password-reset, refresh). O token cru existe apenas em
+ *       memoria durante {@link #inviteUser}, para montar o {@code acceptUrl} do e-mail; nunca o
+ *       devolvemos em listagens, nunca o logamos e nunca o persistimos. No aceite, hasheamos o token
+ *       recebido e fazemos lookup por hash (O(1) por indice). Um dump do banco expoe so o hash.
  * </ul>
  */
 public class InvitationService {
@@ -144,9 +147,10 @@ public class InvitationService {
         int days = clampDays(expiresInDays);
         Instant expiresAt = now.plus(Duration.ofDays(days));
 
-        // 7. Gera token (cru + persistido). Mantemos o cru apenas em memoria durante esta
-        //    chamada — vai para o acceptUrl do e-mail. O raw token e persistido em texto pleno
-        //    porque a tabela precisa indexar para lookup direto no aceite (sem hash).
+        // 7. Gera token (cru + hash). Persistimos APENAS o SHA-256 (token.hash()) — mesmo padrao
+        //    de email-verification / password-reset / refresh. O token cru fica apenas em memoria
+        //    nesta chamada para montar o acceptUrl do e-mail; jamais e persistido. O lookup no
+        //    aceite hasheia o token recebido e busca pelo hash (O(1) por indice).
         GeneratedToken token = tokenGenerator.generate();
 
         IamInvitation invite =
@@ -154,7 +158,7 @@ public class InvitationService {
                         UUID.randomUUID(),
                         tenantId,
                         email.value(),
-                        token.rawToken(),
+                        token.hash(),
                         InvitationStatus.PENDING,
                         invitedBy,
                         now,
@@ -192,8 +196,13 @@ public class InvitationService {
         if (rawToken == null || rawToken.isBlank()) {
             throw InvitationException.inviteNotFound();
         }
+        // Lookup por hash: hasheamos o token cru recebido e buscamos pela coluna token_hash
+        // (indexada). O token cru nunca toca o banco.
+        String tokenHash = tokenGenerator.hash(rawToken);
         IamInvitation invite =
-                invitations.findByToken(rawToken).orElseThrow(InvitationException::inviteNotFound);
+                invitations
+                        .findByTokenHash(tokenHash)
+                        .orElseThrow(InvitationException::inviteNotFound);
 
         Instant now = clock.now();
 
