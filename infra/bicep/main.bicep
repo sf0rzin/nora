@@ -203,6 +203,13 @@ param rlsTelemetryDatasourceUrl string = ''
 @secure()
 param rlsTelemetryPassword string = ''
 
+@description('Username do role de runtime da API sob RLS enforce (NOBYPASSRLS). Default nora_app; so usado quando rlsEnforce=true (senao a API conecta como postgresAdminLogin). Provisionado pelo R001 (ADR 0028).')
+param appDbUsername string = 'nora_app'
+
+@description('Senha do role nora_app (runtime sob RLS enforce). Vai pro KV (nora-app-password). Vazio quando rlsEnforce=false; provisionado no cutover (ADR 0028).')
+@secure()
+param appDbPassword string = ''
+
 // ============================================================
 // NAMING — deterministico + unico onde precisa
 // ============================================================
@@ -396,6 +403,13 @@ var keyVaultSecrets = {
       {
         name: 'rls-telemetry-password'
         value: rlsTelemetryPassword
+      }
+    ],
+    // RLS enforce (ADR 0028): senha do nora_app criada no KV so quando fornecida (cutover).
+    empty(appDbPassword) ? [] : [
+      {
+        name: 'nora-app-password'
+        value: appDbPassword
       }
     ]
   )
@@ -672,6 +686,20 @@ var apiRlsEnv = concat(
       name: 'NORA_RLS_ENFORCE'
       value: 'true'
     }
+    // Flyway roda como ADMIN (DDL + dono das tabelas) enquanto o runtime e nora_app (ADR 0028).
+    // SPRING_FLYWAY_* mapeia pra spring.flyway.* (relaxed binding) — so existe quando setado aqui.
+    {
+      name: 'SPRING_FLYWAY_URL'
+      value: postgres.outputs.jdbcUrl
+    }
+    {
+      name: 'SPRING_FLYWAY_USER'
+      value: postgresAdminLogin
+    }
+    {
+      name: 'SPRING_FLYWAY_PASSWORD'
+      secretRef: 'postgres-password'
+    }
   ] : [],
   empty(rlsTelemetryDatasourceUrl) ? [] : [
     {
@@ -727,6 +755,14 @@ var apiSecrets = {
         keyVaultUrl: '${kvUri}secrets/rls-telemetry-password'
         identity: uaiApi.outputs.id
       }
+    ],
+    // RLS enforce (ADR 0028): senha do role nora_app, referenciada do KV so no cutover.
+    empty(appDbPassword) ? [] : [
+      {
+        name: 'nora-app-password'
+        keyVaultUrl: '${kvUri}secrets/nora-app-password'
+        identity: uaiApi.outputs.id
+      }
     ]
   )
 }
@@ -760,13 +796,14 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'DATASOURCE_URL'
         value: postgres.outputs.jdbcUrl
       }
+      // RLS enforce (ADR 0028): runtime conecta como nora_app (NOBYPASSRLS); senao, admin.
       {
         name: 'DATASOURCE_USERNAME'
-        value: postgresAdminLogin
+        value: rlsEnforce ? appDbUsername : postgresAdminLogin
       }
       {
         name: 'DATASOURCE_PASSWORD'
-        secretRef: 'postgres-password'
+        secretRef: rlsEnforce ? 'nora-app-password' : 'postgres-password'
       }
       {
         name: 'JWT_SECRET'
