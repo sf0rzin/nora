@@ -289,3 +289,28 @@ jobs:
             az bicep build --file "$f" --outdir .bicep-out
             echo "::endgroup::"
           done
+
+  # Gate agregador — é o ÚNICO status check exigido pela branch protection da main (ADR 0027).
+  # Os jobs acima são condicionais por path (paths-filter): exigi-los diretamente como required
+  # checks travaria o merge quando um job é "skipped" (PR que não toca aquela área — GitHub trata
+  # required check que nunca roda como pending eterno). Este gate SEMPRE roda, depende de todos os
+  # jobs de PR, e só falha se ALGUM deles falhou/foi cancelado (skipped = ok).
+  # desktop-bundle fica de fora de propósito (só roda em push em main, não é portão de PR).
+  ci-gate:
+    name: ci-gate
+    if: always()
+    needs: [changes, api, worker, web, desktop-sidecar, docs-link-check, infra]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checar resultado dos jobs obrigatórios
+        run: |
+          results="${{ join(needs.*.result, ' ') }}"
+          echo "Resultados dos needs: $results"
+          for r in $results; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              echo "::error::Um job obrigatório do CI não passou (resultado: $r)."
+              exit 1
+            fi
+          done
+          echo "OK — todos os jobs obrigatórios passaram ou foram pulados por path-filter."
