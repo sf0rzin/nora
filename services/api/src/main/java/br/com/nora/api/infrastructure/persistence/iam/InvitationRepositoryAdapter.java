@@ -20,6 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
  * Adapter JPA/native para a tabela {@code iam_user_invitations} + {@code iam_invitation_groups}
  * (US06, ADR 0011). Persistencia sem entidades JPA dedicadas — SQL nativo via EntityManager,
  * seguindo o padrao do {@code IamRepositoryAdapter}.
+ *
+ * <p>A coluna {@code token_hash} guarda o SHA-256 do token; o token cru nunca e persistido (mesmo
+ * padrao de email_verification_tokens / password_reset_tokens / refresh_tokens).
  */
 @Repository
 public class InvitationRepositoryAdapter implements InvitationRepository {
@@ -29,16 +32,16 @@ public class InvitationRepositoryAdapter implements InvitationRepository {
     @Override
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
-    public Optional<IamInvitation> findByToken(String token) {
-        if (token == null || token.isBlank()) {
+    public Optional<IamInvitation> findByTokenHash(String tokenHash) {
+        if (tokenHash == null || tokenHash.isBlank()) {
             return Optional.empty();
         }
         List<Object[]> rows =
                 em.createNativeQuery(
-                                "SELECT id, tenant_id, email, token, status, invited_by,"
+                                "SELECT id, tenant_id, email, token_hash, status, invited_by,"
                                         + " invited_at, expires_at, accepted_at, accepted_user_id "
-                                        + "FROM iam_user_invitations WHERE token = :token")
-                        .setParameter("token", token)
+                                        + "FROM iam_user_invitations WHERE token_hash = :tokenHash")
+                        .setParameter("tokenHash", tokenHash)
                         .getResultList();
         if (rows.isEmpty()) {
             return Optional.empty();
@@ -54,7 +57,7 @@ public class InvitationRepositoryAdapter implements InvitationRepository {
     public Optional<IamInvitation> findById(UUID invitationId, UUID tenantId) {
         List<Object[]> rows =
                 em.createNativeQuery(
-                                "SELECT id, tenant_id, email, token, status, invited_by,"
+                                "SELECT id, tenant_id, email, token_hash, status, invited_by,"
                                         + " invited_at, expires_at, accepted_at, accepted_user_id "
                                         + "FROM iam_user_invitations WHERE id = :id AND tenant_id ="
                                         + " :t")
@@ -74,7 +77,7 @@ public class InvitationRepositoryAdapter implements InvitationRepository {
     public Optional<IamInvitation> findPendingByEmail(UUID tenantId, String email) {
         List<Object[]> rows =
                 em.createNativeQuery(
-                                "SELECT id, tenant_id, email, token, status, invited_by,"
+                                "SELECT id, tenant_id, email, token_hash, status, invited_by,"
                                         + " invited_at, expires_at, accepted_at, accepted_user_id "
                                         + "FROM iam_user_invitations WHERE tenant_id = :t AND email"
                                         + " = :email AND status = 'PENDING' ORDER BY invited_at DESC"
@@ -103,15 +106,15 @@ public class InvitationRepositoryAdapter implements InvitationRepository {
 
         if (existing == null) {
             em.createNativeQuery(
-                            "INSERT INTO iam_user_invitations (id, tenant_id, email, token,"
+                            "INSERT INTO iam_user_invitations (id, tenant_id, email, token_hash,"
                                     + " status, invited_by, invited_at, expires_at, accepted_at,"
-                                    + " accepted_user_id) VALUES (:id, :t, :email, :token, :status,"
-                                    + " :invitedBy, :invitedAt, :expiresAt, :acceptedAt,"
+                                    + " accepted_user_id) VALUES (:id, :t, :email, :tokenHash,"
+                                    + " :status, :invitedBy, :invitedAt, :expiresAt, :acceptedAt,"
                                     + " :acceptedUserId)")
                     .setParameter("id", invitation.id())
                     .setParameter("t", invitation.tenantId())
                     .setParameter("email", invitation.email())
-                    .setParameter("token", invitation.token())
+                    .setParameter("tokenHash", invitation.tokenHash())
                     .setParameter("status", invitation.status().name())
                     .setParameter("invitedBy", invitation.invitedBy())
                     .setParameter("invitedAt", Timestamp.from(invitation.invitedAt()))
@@ -133,7 +136,7 @@ public class InvitationRepositoryAdapter implements InvitationRepository {
             }
         } else {
             // Update: apenas campos mutaveis (status/acceptedAt/acceptedUserId). Tenant/email/
-            // token/invitedBy/invitedAt/expiresAt sao imutaveis no fluxo atual.
+            // token_hash/invitedBy/invitedAt/expiresAt sao imutaveis no fluxo atual.
             em.createNativeQuery(
                             "UPDATE iam_user_invitations SET status = :status, accepted_at ="
                                     + " :acceptedAt, accepted_user_id = :acceptedUserId WHERE id ="
@@ -156,7 +159,7 @@ public class InvitationRepositoryAdapter implements InvitationRepository {
     @SuppressWarnings("unchecked")
     public List<IamInvitation> listByTenant(UUID tenantId, InvitationStatus status) {
         String sql =
-                "SELECT id, tenant_id, email, token, status, invited_by, invited_at,"
+                "SELECT id, tenant_id, email, token_hash, status, invited_by, invited_at,"
                         + " expires_at, accepted_at, accepted_user_id FROM iam_user_invitations "
                         + "WHERE tenant_id = :t "
                         + (status == null ? "" : "AND status = :status ")

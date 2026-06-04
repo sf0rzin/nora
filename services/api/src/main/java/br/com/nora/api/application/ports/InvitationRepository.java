@@ -8,12 +8,13 @@ import java.util.UUID;
 
 /**
  * Porta de persistencia dos convites de usuario (US06). Todas as operacoes sao escopadas por
- * tenant. O token e indexado mas tratado como secret pela camada de aplicacao.
+ * tenant. Persistimos apenas o SHA-256 do token (coluna {@code token_hash}, indexada); o token cru
+ * nunca chega aqui.
  */
 public interface InvitationRepository {
 
-    /** Busca convite pelo token (fluxo de aceite). */
-    Optional<IamInvitation> findByToken(String token);
+    /** Busca convite pelo SHA-256 do token (fluxo de aceite). Lookup O(1) por indice. */
+    Optional<IamInvitation> findByTokenHash(String tokenHash);
 
     /** Busca convite por id dentro do tenant (revogacao, lookup administrativo). */
     Optional<IamInvitation> findById(UUID invitationId, UUID tenantId);

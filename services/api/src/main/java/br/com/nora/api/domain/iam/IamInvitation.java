@@ -12,8 +12,11 @@ import java.util.UUID;
  * ficam aqui: state transitions sao validas apenas quando o status atual permite, e a expiracao e
  * determinada pelo tempo do relogio fornecido pela camada de aplicacao.
  *
- * <p>O {@code token} e tratado como secret: nunca deve ser devolvido em respostas de listagem e
- * jamais logado em producao. Ele e a credencial do convidado para o endpoint publico de aceite.
+ * <p>O agregado guarda apenas o {@code tokenHash} (SHA-256 do token cru), nunca o token em claro —
+ * mesmo padrao de {@link br.com.nora.api.domain.identity.OneTimeToken} e {@link
+ * br.com.nora.api.domain.identity.RefreshToken}. O token cru e a credencial do convidado para o
+ * endpoint publico de aceite; ele existe apenas em memoria durante a criacao (para montar a URL do
+ * e-mail) e nunca e persistido nem logado. Um dump do banco expoe somente o hash, irrecuperavel.
  *
  * <p>{@code groupIds} pode estar vazio quando o invite nao anexa o user a nenhum grupo no aceite.
  * {@code acceptedAt} e {@code acceptedUserId} sao preenchidos apenas no aceite.
@@ -22,7 +25,7 @@ public record IamInvitation(
         UUID id,
         UUID tenantId,
         String email,
-        String token,
+        String tokenHash,
         InvitationStatus status,
         UUID invitedBy,
         Instant invitedAt,
@@ -35,7 +38,7 @@ public record IamInvitation(
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(tenantId, "tenantId");
         Objects.requireNonNull(email, "email");
-        Objects.requireNonNull(token, "token");
+        Objects.requireNonNull(tokenHash, "tokenHash");
         Objects.requireNonNull(status, "status");
         Objects.requireNonNull(invitedBy, "invitedBy");
         Objects.requireNonNull(invitedAt, "invitedAt");
@@ -63,7 +66,7 @@ public record IamInvitation(
                 id,
                 tenantId,
                 email,
-                token,
+                tokenHash,
                 InvitationStatus.ACCEPTED,
                 invitedBy,
                 invitedAt,
@@ -87,7 +90,7 @@ public record IamInvitation(
                 id,
                 tenantId,
                 email,
-                token,
+                tokenHash,
                 InvitationStatus.REVOKED,
                 invitedBy,
                 invitedAt,
@@ -110,7 +113,7 @@ public record IamInvitation(
                 id,
                 tenantId,
                 email,
-                token,
+                tokenHash,
                 InvitationStatus.EXPIRED,
                 invitedBy,
                 invitedAt,
