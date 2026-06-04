@@ -8,10 +8,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p><b>Por que existe:</b> {@code PrimaryDbBusinessMetricsSource} agrega {@code meeting_analyses}
  * SEM contexto de tenant (COUNT/COUNT DISTINCT cross-tenant). Sob {@code NORA_RLS_ENFORCE=true}, o
- * datasource primário roda como {@code nora_app} (NOBYPASSRLS) e, sem GUC de tenant setado, a policy
- * {@code tenant_isolation} é fail-closed ⇒ a query veria 0 linhas SILENCIOSAMENTE (painel mostraria
- * 0). Para preservar a leitura agregada, esta config aponta para um role {@code nora_telemetry}
- * (BYPASSRLS), provisionado por {@code db/operational/R001__provision_app_roles.sql}.
+ * datasource primário roda como {@code nora_app} (NOBYPASSRLS) e, sem GUC de tenant setado, a
+ * policy {@code tenant_isolation} é fail-closed ⇒ a query veria 0 linhas SILENCIOSAMENTE (painel
+ * mostraria 0). Para preservar a leitura agregada, esta config aponta para um role {@code
+ * nora_telemetry} (BYPASSRLS), provisionado por {@code
+ * db/operational/R001__provision_app_roles.sql}.
  *
  * <p><b>Default vazio = desligado:</b> sem {@code url} setada (dev/local/test/CI, ou prod antes do
  * cutover de RLS), {@code PrimaryDbBusinessMetricsSource} cai no {@code JdbcTemplate} primário — o

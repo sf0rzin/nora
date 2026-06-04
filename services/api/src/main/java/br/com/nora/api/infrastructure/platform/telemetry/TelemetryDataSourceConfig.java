@@ -17,17 +17,18 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * Datasource dedicado (opcional) da telemetria de negócio cross-tenant, ligado no MESMO passo de
  * cutover do RLS enforce (ADR 0019, ADR 0026).
  *
- * <p>Gated por {@code nora.security.rls.telemetry.url} <b>não-vazia</b> ({@link TelemetryConfigured}).
- * Não usamos {@code @ConditionalOnProperty} porque o default em {@code application.yml} é string
- * vazia ({@code ${NORA_TELEMETRY_DATASOURCE_URL:}}) — e {@code @ConditionalOnProperty} sem {@code
- * havingValue} considera "" como presente (matcharia indevidamente). Em local/test/CI e em prod
- * ANTES do cutover, a URL é vazia ⇒ este bean não existe e {@code PrimaryDbBusinessMetricsSource}
- * usa o {@code JdbcTemplate} primário (comportamento atual, owner bypassa RLS).
+ * <p>Gated por {@code nora.security.rls.telemetry.url} <b>não-vazia</b> ({@link
+ * TelemetryConfigured}). Não usamos {@code @ConditionalOnProperty} porque o default em {@code
+ * application.yml} é string vazia ({@code ${NORA_TELEMETRY_DATASOURCE_URL:}}) — e
+ * {@code @ConditionalOnProperty} sem {@code havingValue} considera "" como presente (matcharia
+ * indevidamente). Em local/test/CI e em prod ANTES do cutover, a URL é vazia ⇒ este bean não existe
+ * e {@code PrimaryDbBusinessMetricsSource} usa o {@code JdbcTemplate} primário (comportamento
+ * atual, owner bypassa RLS).
  *
  * <p>Quando configurado, expõe um {@link JdbcTemplate} {@code telemetryJdbcTemplate} sobre um pool
- * Hikari pequeno, conectando como o role {@code nora_telemetry} (BYPASSRLS). Mesma técnica do {@code
- * PlatformDataSourceConfig}: o {@code HikariDataSource} <b>não</b> é exposto como bean do tipo {@code
- * DataSource}, então o autoconfig do datasource primário não sofre backoff. {@code
+ * Hikari pequeno, conectando como o role {@code nora_telemetry} (BYPASSRLS). Mesma técnica do
+ * {@code PlatformDataSourceConfig}: o {@code HikariDataSource} <b>não</b> é exposto como bean do
+ * tipo {@code DataSource}, então o autoconfig do datasource primário não sofre backoff. {@code
  * initializationFailTimeout=-1}: pool lazy, boot não falha se o banco estiver fora.
  */
 @Configuration

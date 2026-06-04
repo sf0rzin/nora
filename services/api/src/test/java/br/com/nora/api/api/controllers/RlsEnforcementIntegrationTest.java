@@ -175,8 +175,7 @@ class RlsEnforcementIntegrationTest {
             // Troca de tenant na mesma conexão: agora só vê B.
             setTenant(conn, tenantB);
             assertThat(countTranscripts(conn)).isEqualTo(1);
-            assertThat(rawTextsVisible(conn))
-                    .allSatisfy(t -> assertThat(t).contains("Tenant B"));
+            assertThat(rawTextsVisible(conn)).allSatisfy(t -> assertThat(t).contains("Tenant B"));
         }
     }
 
