@@ -9,6 +9,15 @@ spring:
     properties:
       hibernate.format_sql: false
 
+# Swagger/OpenAPI desabilitado em prod: o apiApp tem ingress external, entao publicar
+# a spec exporia o mapa completo da API a nao-autenticados (reconnaissance). Springdoc
+# fica habilitado em local/dev (util pra desenvolvimento). Auditoria api-security 2026-06-03.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 nora:
   security:
     expose-dev-tokens: false
