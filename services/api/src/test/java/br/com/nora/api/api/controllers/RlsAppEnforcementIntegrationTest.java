@@ -76,9 +76,28 @@ class RlsAppEnforcementIntegrationTest {
                     .withPassword("nora_dev");
 
     @DynamicPropertySource
-    static void registerProps(DynamicPropertyRegistry registry) throws Exception {
-        // Cria o role NOBYPASSRLS ANTES do contexto subir — a pool de runtime conecta como ele.
-        // (Grants vêm no @BeforeAll, depois do Flyway criar o schema.)
+    static void registerProps(DynamicPropertyRegistry registry) {
+        // Runtime = nora_app_test (NOBYPASSRLS, criado no @BeforeAll). Flyway = admin (owner do
+        // container). Enforce ON. Suppliers lazy — avaliados no context-load, com o container up.
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", () -> APP_ROLE);
+        registry.add("spring.datasource.password", () -> APP_PASSWORD);
+        registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.flyway.user", POSTGRES::getUsername);
+        registry.add("spring.flyway.password", POSTGRES::getPassword);
+        registry.add("nora.security.rls.enforce", () -> "true");
+    }
+
+    @Autowired TestRestTemplate rest;
+    @Autowired ObjectMapper mapper;
+
+    /**
+     * Cria o role NOBYPASSRLS ANTES do contexto Spring subir. {@code @BeforeAll} roda depois do
+     * Testcontainers iniciar o container, mas ANTES do context-load ({@code @DynamicPropertySource}
+     * + Flyway + pool da API) — então o role já existe quando a pool de runtime conecta como ele.
+     */
+    @BeforeAll
+    static void createRuntimeRole() throws Exception {
         try (Connection c =
                         DriverManager.getConnection(
                                 POSTGRES.getJdbcUrl(),
@@ -93,27 +112,26 @@ class RlsAppEnforcementIntegrationTest {
                             + APP_PASSWORD
                             + "' NOBYPASSRLS");
         }
-
-        // Runtime = nora_app_test (NOBYPASSRLS). Flyway = admin (owner do container). Enforce ON.
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", () -> APP_ROLE);
-        registry.add("spring.datasource.password", () -> APP_PASSWORD);
-        registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.flyway.user", POSTGRES::getUsername);
-        registry.add("spring.flyway.password", POSTGRES::getPassword);
-        registry.add("nora.security.rls.enforce", () -> "true");
     }
 
-    @Autowired TestRestTemplate rest;
-    @Autowired ObjectMapper mapper;
+    private static boolean granted = false;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        rest.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
+        grantRuntimeRoleOnce();
+    }
 
     /**
-     * Grants do nora_app (espelha o R001) — rodados como admin DEPOIS do Flyway criar o schema + a
-     * função nora.current_tenant_id(). O app boota sem isso (só faz SELECT 1 de health como o role
-     * antes daqui); os grants chegam antes da 1ª chamada de API.
+     * Grants do nora_app (espelha o R001) — precisam do schema + da função {@code
+     * nora.current_tenant_id()}, criados pelo Flyway no context-load; rodam aqui (pós-load) uma
+     * vez. O app boota antes disso fazendo só {@code SELECT 1} de health (sem grant), então a pool
+     * sobe; os grants chegam antes da 1ª chamada de API.
      */
-    @BeforeAll
-    static void grantRuntimeRole() throws Exception {
+    private static synchronized void grantRuntimeRoleOnce() throws Exception {
+        if (granted) {
+            return;
+        }
         try (Connection c =
                         DriverManager.getConnection(
                                 POSTGRES.getJdbcUrl(),
@@ -128,11 +146,7 @@ class RlsAppEnforcementIntegrationTest {
                             + APP_ROLE);
             s.execute("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO " + APP_ROLE);
         }
-    }
-
-    @BeforeEach
-    void useJdkHttpClient() {
-        rest.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
+        granted = true;
     }
 
     @Test

@@ -17,18 +17,16 @@ spring:
     properties:
       hibernate.jdbc.time_zone: UTC
     open-in-view: false
-  flyway:
+    # Sob RLS enforce (ADR 0028) a API runtime conecta como nora_app (NOBYPASSRLS, SEM DDL);
+    # o Flyway precisa rodar como ADMIN (owner, com DDL, e dono das tabelas pra que o nora_app
+    # nao-owner seja sujeito a RLS). NAO definimos spring.flyway.{url,user,password} aqui de
+    # proposito: setar um default forcaria o FlywayUrlCondition e o Flyway ignoraria o datasource
+    # (quebrando dev/test, que usam DATASOURCE_* dinamico). Por default, spring.flyway herda o
+    # spring.datasource. No cutover, o Bicep injeta SPRING_FLYWAY_URL/USER/PASSWORD (= admin) por
+    # env (relaxed binding) -> aí sim o Flyway usa o admin enquanto o datasource aponta pro nora_app.
     enabled: true
     baseline-on-migrate: true
     locations: classpath:db/migration
-    # Flyway conecta com credenciais PROPRIAS (default = as do datasource, via fallback abaixo —
-    # dev/test/prod pre-cutover ficam identicos). Sob RLS enforce (ADR 0028) a API runtime roda
-    # como nora_app (NOBYPASSRLS, SEM CREATE/ALTER); o Flyway precisa rodar como ADMIN (owner, com
-    # DDL, e dono das tabelas pra que o nora_app nao-owner seja sujeito a RLS). No cutover, setar
-    # FLYWAY_DATASOURCE_USERNAME/PASSWORD = admin enquanto DATASOURCE_* aponta pro nora_app.
-    url: ${FLYWAY_DATASOURCE_URL:${DATASOURCE_URL:jdbc:postgresql://localhost:5432/nora}}
-    user: ${FLYWAY_DATASOURCE_USERNAME:${DATASOURCE_USERNAME:nora}}
-    password: ${FLYWAY_DATASOURCE_PASSWORD:${DATASOURCE_PASSWORD:nora_dev}}
   # Sem isso, requests para rotas inexistentes caem no DefaultServlet de static
   # resources (Whitelabel 404) em vez de chegar no `NoHandlerFoundException`
   # do `GlobalExceptionHandler`. Combinado com `add-mappings: false` para

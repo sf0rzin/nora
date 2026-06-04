@@ -687,16 +687,17 @@ var apiRlsEnv = concat(
       value: 'true'
     }
     // Flyway roda como ADMIN (DDL + dono das tabelas) enquanto o runtime e nora_app (ADR 0028).
+    // SPRING_FLYWAY_* mapeia pra spring.flyway.* (relaxed binding) — so existe quando setado aqui.
     {
-      name: 'FLYWAY_DATASOURCE_URL'
+      name: 'SPRING_FLYWAY_URL'
       value: postgres.outputs.jdbcUrl
     }
     {
-      name: 'FLYWAY_DATASOURCE_USERNAME'
+      name: 'SPRING_FLYWAY_USER'
       value: postgresAdminLogin
     }
     {
-      name: 'FLYWAY_DATASOURCE_PASSWORD'
+      name: 'SPRING_FLYWAY_PASSWORD'
       secretRef: 'postgres-password'
     }
   ] : [],
