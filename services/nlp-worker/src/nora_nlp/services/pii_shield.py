@@ -37,15 +37,24 @@ _CPF_RE = re.compile(r"(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)")
 _CPF_RAW_RE = re.compile(r"(?<!\d)\d{11}(?!\d)")
 # CPF parcialmente mascarado (so com hifen, sem pontos): "12345678-09".
 _CPF_PARTIAL_RE = re.compile(r"(?<!\d)\d{8}-\d{2}(?!\d)")
+# CPF com grupos separados por ESPACO: "111 444 777 35" (3-3-3-2). A validacao de
+# DV (apos remover os espacos) evita redigir sequencias numericas aleatorias.
+_CPF_SPACED_RE = re.compile(r"(?<!\d)\d{3}\s\d{3}\s\d{3}\s\d{2}(?!\d)")
 
 # CNPJ mascarado.
 _CNPJ_RE = re.compile(r"(?<!\d)\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}(?!\d)")
 # CNPJ raw (14 digitos sem mascara). Validacao de DV filtra falsos positivos.
 _CNPJ_RAW_RE = re.compile(r"(?<!\d)\d{14}(?!\d)")
+# CNPJ com grupos separados por ESPACO: "11 222 333 0001 81" (2-3-3-4-2). A
+# validacao de DV (apos remover os espacos) filtra falsos positivos.
+_CNPJ_SPACED_RE = re.compile(r"(?<!\d)\d{2}\s\d{3}\s\d{3}\s\d{4}\s\d{2}(?!\d)")
 
 # Cartoes — Amex tem 15 digitos com prefixo 34/37; demais tem 16 com 4x4.
-_CARD_AMEX_RE = re.compile(r"(?<!\d)3[47]\d{2}[\s\-]?\d{6}[\s\-]?\d{5}(?!\d)")
-_CARD_RE = re.compile(r"(?<!\d)(?:\d{4}[\s\-]?){3}\d{4}(?!\d)")
+# Separadores aceitos: espaco, hifen e PONTO ("4111.1111.1111.1111"). A
+# validacao de Luhn (`_validate_card`, apos remover separadores) reduz drasticamente
+# o falso-positivo de qualquer sequencia generica de 16 digitos.
+_CARD_AMEX_RE = re.compile(r"(?<!\d)3[47]\d{2}[\s.\-]?\d{6}[\s.\-]?\d{5}(?!\d)")
+_CARD_RE = re.compile(r"(?<!\d)(?:\d{4}[\s.\-]?){3}\d{4}(?!\d)")
 
 
 def _validate_cpf(digits: str) -> bool:
@@ -81,18 +90,63 @@ def _validate_cnpj(digits: str) -> bool:
     return True
 
 
+def _luhn_ok(digits: str) -> bool:
+    """Checa o digito verificador de Luhn (mod 10) de uma sequencia de digitos."""
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        n = int(ch)
+        if i % 2 == 1:
+            n *= 2
+            if n > 9:
+                n -= 9
+        total += n
+    return total % 10 == 0
+
+
+def _strip_separators(value: str) -> str:
+    """Remove tudo que nao for digito (espaco, ponto, hifen, barra)."""
+    return re.sub(r"\D", "", value)
+
+
+def _validate_card(value: str) -> bool:
+    """Valida um candidato a cartao: 15 (Amex) ou 16 digitos + Luhn valido.
+
+    Recebe o match cru (com separadores espaco/ponto/hifen) e normaliza antes do
+    Luhn. Reduz falso-positivo de qualquer sequencia generica de 16 digitos
+    (codigos de pedido, rastreio, NFE) que nao passa no digito verificador.
+    """
+    digits = _strip_separators(value)
+    if len(digits) not in (15, 16):
+        return False
+    return _luhn_ok(digits)
+
+
+def _validate_cpf_separated(value: str) -> bool:
+    """Valida CPF cujo match contem separadores (espaco): normaliza e checa DV."""
+    return _validate_cpf(_strip_separators(value))
+
+
+def _validate_cnpj_separated(value: str) -> bool:
+    """Valida CNPJ cujo match contem separadores (espaco): normaliza e checa DV."""
+    return _validate_cnpj(_strip_separators(value))
+
+
 # Ordem importa: mascarados/cartoes primeiro (regex mais especifico), depois raw
 # com DV check (CPF/CNPJ raw), por ultimo telefone (mais ambiguo). Sem essa ordem,
 # PHONE_RE consome 11 digitos antes do CPF_RAW_RE poder identificar — tipo errado
 # no placeholder mas mesmo grau de protecao.
 #
-# `_apply_basic_patterns` filtra raw via `_validate_cpf` / `_validate_cnpj`.
-# Cartao Amex (15 digitos) vem ANTES do _CARD_RE generico (16 digitos com 4x4).
+# `_apply_basic_patterns` filtra raw/separado via `_validate_*`. Cartoes exigem
+# Luhn valido (`_validate_card`). Cartao Amex (15 digitos) vem ANTES do _CARD_RE
+# generico (16 digitos com 4x4). Os patterns separados por espaco (CPF/CNPJ) vem
+# junto dos mascarados, mas so sao aceitos com DV valido.
 _BASIC_PATTERNS: list[tuple[PiiType, re.Pattern[str]]] = [
     (PiiType.EMAIL, _EMAIL_RE),
     (PiiType.CPF, _CPF_RE),
     (PiiType.CPF, _CPF_PARTIAL_RE),
+    (PiiType.CPF, _CPF_SPACED_RE),  # "111 444 777 35" — exige DV
     (PiiType.CNPJ, _CNPJ_RE),
+    (PiiType.CNPJ, _CNPJ_SPACED_RE),  # "11 222 333 0001 81" — exige DV
     (PiiType.CREDIT_CARD, _CARD_AMEX_RE),
     (PiiType.CREDIT_CARD, _CARD_RE),
     (PiiType.CNPJ, _CNPJ_RAW_RE),  # raw com DV — antes de PHONE pra ganhar prioridade
@@ -100,10 +154,15 @@ _BASIC_PATTERNS: list[tuple[PiiType, re.Pattern[str]]] = [
     (PiiType.PHONE, _PHONE_RE),
 ]
 
-# Patterns que exigem validacao de DV para serem aceitos.
+# Patterns que exigem validacao (DV ou Luhn) para serem aceitos. Cartoes usam
+# Luhn; CPF/CNPJ (raw ou separados por espaco) usam digito verificador.
 _VALIDATORS: dict[int, callable] = {
     id(_CPF_RAW_RE): _validate_cpf,
     id(_CNPJ_RAW_RE): _validate_cnpj,
+    id(_CPF_SPACED_RE): _validate_cpf_separated,
+    id(_CNPJ_SPACED_RE): _validate_cnpj_separated,
+    id(_CARD_AMEX_RE): _validate_card,
+    id(_CARD_RE): _validate_card,
 }
 
 
