@@ -1,0 +1,27 @@
+# CODEOWNERS — roteamento automático de review por área (ADR 0027).
+# Quando um PR toca um path, o(s) owner(s) correspondente(s) são pedidos como reviewers.
+# A última regra que casa um arquivo vence. Sintaxe: <path> <@owner...>
+#
+# Donos atuais: @sys0xFF (Web app: front+back+infra) · @pollotherunner (Desktop).
+
+# Default — qualquer coisa não coberta abaixo.
+*                           @sys0xFF
+
+# Backend / áreas críticas (IAM, Auth, PII boundary, multi-tenancy)
+/services/api/              @sys0xFF
+/services/nlp-worker/       @sys0xFF
+/packages/                  @sys0xFF
+
+# Frontend (web + console admin do operador)
+/apps/web/                  @sys0xFF
+/apps/admin/                @sys0xFF
+
+# Infra (Bicep, Docker, control plane / Cloudflare)
+/infra/                     @sys0xFF
+/.github/                   @sys0xFF
+
+# Decisões arquiteturais
+/docs/adr/                  @sys0xFF
+
+# Desktop (Tauri) — colaborador dedicado
+/apps/desktop/              @pollotherunner
