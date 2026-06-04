@@ -734,14 +734,19 @@ O bloco LLM para Customer Confidence existe no schema (`meeting-analysis-v1.sche
 - UNIQUEs afetados (`tenants.slug`, `users(tenant_id,email)`, `tenant_contexts.tenant_id`) viraram **índices parciais `WHERE deleted_at IS NULL`** — permite reusar slug/email após soft-delete (senão um user deletado bloquearia novo signup com mesmo email para sempre).
 - **Hard-delete** continua possível via native query (LGPD direito ao esquecimento / retenção).
 
-### RLS — Row-Level Security (V016)
+### RLS — Row-Level Security (V016 → V017 → V018, cobertura completa)
 
-ADR 0002 prometia RLS em produção; **V016 entrega no schema** (não mais "pendente"):
+ADR 0002 prometia RLS em produção; **V016 entregou no schema** e **V018 completou a cobertura** (ADR 0026 — não mais parcial):
 
-- `CREATE POLICY tenant_isolation` + `ENABLE ROW LEVEL SECURITY` nas tabelas tenant-owned: `meetings`, `tenants`, `tenant_contexts`, `users`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses`, `meeting_participants`.
+- `CREATE POLICY tenant_isolation` + `ENABLE ROW LEVEL SECURITY` em **todas** as 30 tabelas tenant-owned com `tenant_id` próprio:
+  - **V016 (12):** `meetings`, `tenants`, `tenant_contexts`, `users`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses`, `meeting_participants` (+ a função `nora.current_tenant_id()`).
+  - **V017 (3):** `customer_accounts`, `meeting_account_links`, `customer_confidence_assessments`.
+  - **V018 (15):** `transcripts` (prioridade — `raw_text` = PII em repouso), `meeting_tags`, `meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities`, `meeting_goals`, `meeting_productivity_assessments`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events`, `email_verification_tokens`, `password_reset_tokens`.
+- **Fronteiras de cascade (sem policy, por design):** `iam_invitation_groups`, `meeting_goal_expected_outcomes`, `meeting_outcome_coverage`, `customer_buying_signals`, `customer_objections` — filhas sem `tenant_id` próprio, isoladas via cascade FK ao pai. Documentadas no cabeçalho de V018.
+- **Legado fora de RLS:** `roles` (linhas globais `tenant_id NULL`) e `user_roles` (deprecadas) — saem em limpeza futura.
 - Predicado: `tenant_id = nora.current_tenant_id()` (em `tenants`, `id = ...`). A função lê o GUC de sessão `nora.current_tenant_id` (NULL ⇒ fail-closed: 0 rows para role sem BYPASSRLS).
 - `infrastructure/security/TenantRlsAspect` faz `SET LOCAL nora.current_tenant_id = '<uuid>'` no início de cada `@Transactional` (GUC local, auto-reset no commit).
-- **Enforcement é opt-in:** owner/admin Postgres bypassa RLS (default em dev/Testcontainers — testes seguem inertes). Em prod, ativar via role dedicado `nora_app` (`NOBYPASSRLS`) + flag `nora.security.rls.enforce=true`.
+- **Enforcement é opt-in:** owner/admin Postgres bypassa RLS (default em dev/Testcontainers — testes seguem inertes). Em prod, ativar via role dedicado `nora_app` (`NOBYPASSRLS`) + flag `nora.security.rls.enforce=true`. O provisionamento de role é versionado em `db/operational/R001__provision_app_roles.sql` (rodado por **admin**, não pelo `nora_app`); a telemetria operador-only usa um role `nora_telemetry` (BYPASSRLS) dedicado pra não virar 0 silencioso sob enforce. **Sequência de cutover e detalhes: ADR 0026.**
 
 ---
 
@@ -766,6 +771,7 @@ ADR 0002 prometia RLS em produção; **V016 entrega no schema** (não mais "pend
 | **V015** | composite FK: `users` UNIQUE `(tenant_id, id)` + `meetings.(tenant_id, owner_user_id)` → `users(tenant_id, id)` (defesa anti cross-tenant) |
 | **V016** | Row-Level Security: schema `nora` + `nora.current_tenant_id()` + policies `tenant_isolation` + `ENABLE RLS` em 10 tabelas tenant-owned (enforce opt-in) |
 | **V017** | Customer Confidence (fundação, ADR 0015): `customer_accounts` (UNIQUE `(tenant_id, LOWER(name))`), `meeting_account_links`, `customer_confidence_assessments` (UNIQUE `(meeting_id, customer_account_id)`), `customer_buying_signals`, `customer_objections`; RLS `tenant_isolation` nas 3 tabelas tenant-owned |
+| **V018** | RLS completa (ADR 0026): `ENABLE RLS` + policy `tenant_isolation` nas 15 tabelas tenant-owned remanescentes (prioridade `transcripts` = PII), fechando a cobertura iniciada em V016/V017 (30 no total). Fronteiras de cascade documentadas (sem policy). Provisionamento de role versionado em `db/operational/R001` (admin) |
 
 ---
 
