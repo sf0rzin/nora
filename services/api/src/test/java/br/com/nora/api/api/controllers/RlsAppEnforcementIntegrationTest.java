@@ -99,6 +99,10 @@ class RlsAppEnforcementIntegrationTest {
         registry.add("spring.flyway.user", POSTGRES::getUsername);
         registry.add("spring.flyway.password", POSTGRES::getPassword);
         registry.add("nora.security.rls.enforce", () -> "true");
+        // O profile 'test' desliga o dispatch async (sem worker nos ITs). Ligamos aqui pra
+        // exercitar
+        // o pipeline async sob enforce (com o StubWorkerConfig fazendo o worker).
+        registry.add("nora.analysis.auto-dispatch", () -> "true");
     }
 
     @Autowired TestRestTemplate rest;
