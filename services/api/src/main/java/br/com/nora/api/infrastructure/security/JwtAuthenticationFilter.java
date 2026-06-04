@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
+import org.slf4j.MDC;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -71,6 +72,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // Popula o holder pra RLS aspect ler. Limpamos no finally pra nao vazar entre
                 // requests reusando a mesma thread (Tomcat pool).
                 TenantContextHolder.set(principal.tenantId());
+                // Enriquece o MDC com tenant/user pra correlacionar os logs apos a autenticacao
+                // (o requestId ja foi setado pelo RequestIdFilter, antes da cadeia de seguranca).
+                MDC.put("tenantId", principal.tenantId().toString());
+                MDC.put("userId", principal.userId().toString());
             } catch (Exception ex) {
                 // Token invalido => nao popula contexto. Resposta 401 sai do entry point quando
                 // a rota exige autenticacao.
@@ -82,6 +87,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             chain.doFilter(req, res);
         } finally {
             TenantContextHolder.clear();
+            MDC.remove("tenantId");
+            MDC.remove("userId");
         }
     }
 
