@@ -7,19 +7,24 @@
 --
 -- ## Quando rodar
 --
--- Manualmente (ou via pipeline de infra com a credencial de admin), UMA vez por
--- ambiente, ANTES de ligar nora.security.rls.enforce=true (ver sequencia de cutover
--- no ADR 0026). E idempotente: pode rodar de novo sem efeito colateral.
+-- Manualmente (ou via o workflow `rls-cutover.yml` com a credencial de admin), UMA vez
+-- por ambiente, ANTES de ligar nora.security.rls.enforce=true (ver sequencia de cutover
+-- no ADR 0028, que corrige o 0026). E idempotente: pode rodar de novo sem efeito colateral.
 --
 -- ## Como rodar (exemplo)
 --
 --   psql "<connection string como ADMIN>" \
---     -v app_password="'<senha-forte-do-nora_app>'" \
---     -v telemetry_password="'<senha-forte-do-nora_telemetry>'" \
+--     -v app_password="<senha-forte-do-nora_app>" \
+--     -v telemetry_password="<senha-forte-do-nora_telemetry>" \
 --     -f R001__provision_app_roles.sql
 --
+--   IMPORTANTE: passar as senhas CRUAS (sem aspas em volta). Os DO blocks usam
+--   :'app_password' (psql quoted-variable), que ja transforma o valor em literal SQL
+--   com escaping correto. Passar com aspas (-v app_password="'...'") faz a senha do
+--   role virar literalmente 'senha' (COM as aspas) e a API nao conecta.
+--
 -- Depois, apontar DATASOURCE_USERNAME/PASSWORD da API pra nora_app e setar
--- NORA_RLS_ENFORCE=true (ver Bicep + ADR 0026).
+-- NORA_RLS_ENFORCE=true via o flip do bicepparam (ver Bicep + ADR 0028).
 --
 -- ## O que este script faz
 --
@@ -72,8 +77,9 @@ ALTER ROLE nora_telemetry BYPASSRLS;
 
 -- ============================================================
 -- 3. GRANTs ao nora_app — todas as tabelas tenant-owned + infra do schema public.
---    Loop sobre information_schema cobre tudo (migrations atuais e ja aplicadas),
---    incluindo flyway_schema_history (Flyway roda como nora_app).
+--    Sob o ADR 0028 o Flyway roda como ADMIN (nora_admin), entao as tabelas (inclusive
+--    flyway_schema_history) sao OWNED pelo admin — o nora_app (nao-owner, NOBYPASSRLS)
+--    precisa destes GRANTs explicitos pra enxerga-las, e fica sujeito a RLS.
 -- ============================================================
 GRANT USAGE ON SCHEMA public TO nora_app;
 GRANT USAGE ON SCHEMA nora   TO nora_app;  -- precisa enxergar nora.current_tenant_id()
@@ -94,18 +100,19 @@ GRANT SELECT ON meeting_analyses TO nora_telemetry;
 -- 5. DEFAULT PRIVILEGES — tabelas/sequences FUTURAS criadas pelo owner (admin que
 --    roda as migrations) ja nascem com grant pro nora_app. Sem isso, cada migration
 --    nova exigiria um GRANT manual antes da API enxergar a tabela.
---    Observacao: ALTER DEFAULT PRIVILEGES e por-role-criador. Como as migrations da
---    aplicacao sao aplicadas pelo nora_app (Flyway roda como ele), tabelas novas ja
---    sao OWNED por nora_app e dispensam grant. Declaramos os defaults para o admin
---    tambem, cobrindo o caso de objetos criados por scripts de admin.
+--    Observacao: ALTER DEFAULT PRIVILEGES e por-role-CRIADOR do objeto. Sob o ADR 0028
+--    o Flyway roda como ADMIN (nora_admin) — o MESMO role que roda este R001 — entao o
+--    ALTER DEFAULT PRIVILEGES sem FOR ROLE abaixo (executado pelo admin) ja cobre as
+--    tabelas das proximas migrations. Por isso e CRITICO rodar o R001 como nora_admin
+--    (o mesmo da connection string do Flyway), nao como outro superuser.
 -- ============================================================
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO nora_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT USAGE, SELECT ON SEQUENCES TO nora_app;
 
--- nora_app cria as tabelas das proximas migrations (Flyway como nora_app):
--- garante que objetos futuros dele herdem grants se um dia houver outro consumidor.
--- (Inofensivo hoje; explicito pra evitar surpresa em evolucao do schema.)
+-- Defesa adicional: se algum dia o nora_app criar objetos (ele NAO cria sob 0028,
+-- onde o Flyway e admin), eles ja herdam grants. Inofensivo hoje; explicito pra
+-- evitar surpresa em evolucao do schema.
 ALTER DEFAULT PRIVILEGES FOR ROLE nora_app IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO nora_app;
