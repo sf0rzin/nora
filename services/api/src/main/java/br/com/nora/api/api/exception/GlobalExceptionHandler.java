@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -359,6 +360,10 @@ public class GlobalExceptionHandler {
     }
 
     private static String traceId() {
-        return UUID.randomUUID().toString();
+        // Reaproveita o requestId setado pelo RequestIdFilter (mesmo id que aparece nos logs e no
+        // header X-Request-Id), tornando o traceId da resposta de erro correlacionavel. Fallback
+        // pra UUID se o filtro nao tiver rodado (ex.: erro muito cedo na cadeia).
+        String requestId = MDC.get("requestId");
+        return requestId != null ? requestId : UUID.randomUUID().toString();
     }
 }
