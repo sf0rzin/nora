@@ -46,10 +46,11 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li><b>On-read expire:</b> ao listar/aceitar, qualquer invite PENDING com {@code expiresAt &lt;
  *       now} e atualizado para EXPIRED antes da resposta. Evita rodar job separado no MVP.
  *   <li><b>Token como secret:</b> persistimos apenas o SHA-256 do token (mesmo padrao dos demais
- *       one-time tokens — email-verification, password-reset, refresh). O token cru existe apenas em
- *       memoria durante {@link #inviteUser}, para montar o {@code acceptUrl} do e-mail; nunca o
- *       devolvemos em listagens, nunca o logamos e nunca o persistimos. No aceite, hasheamos o token
- *       recebido e fazemos lookup por hash (O(1) por indice). Um dump do banco expoe so o hash.
+ *       one-time tokens — email-verification, password-reset, refresh). O token cru existe apenas
+ *       em memoria durante {@link #inviteUser}, para montar o {@code acceptUrl} do e-mail; nunca o
+ *       devolvemos em listagens, nunca o logamos e nunca o persistimos. No aceite, hasheamos o
+ *       token recebido e fazemos lookup por hash (O(1) por indice). Um dump do banco expoe so o
+ *       hash.
  * </ul>
  */
 public class InvitationService {

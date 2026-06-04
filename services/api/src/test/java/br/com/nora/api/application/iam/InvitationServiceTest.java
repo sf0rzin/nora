@@ -526,8 +526,9 @@ class InvitationServiceTest {
     }
 
     /**
-     * Extrai o token CRU do ultimo accept URL enviado por e-mail. O domain so guarda o hash; o token
-     * cru existe apenas na URL do e-mail (exatamente o que o convidado clica). Espelha o fluxo real.
+     * Extrai o token CRU do ultimo accept URL enviado por e-mail. O domain so guarda o hash; o
+     * token cru existe apenas na URL do e-mail (exatamente o que o convidado clica). Espelha o
+     * fluxo real.
      */
     private String lastRawToken() {
         String url = mail.lastInviteAcceptUrl;
@@ -687,9 +688,7 @@ class InvitationServiceTest {
 
         @Override
         public Optional<IamInvitation> findByTokenHash(String tokenHash) {
-            return store.values().stream()
-                    .filter(i -> i.tokenHash().equals(tokenHash))
-                    .findFirst();
+            return store.values().stream().filter(i -> i.tokenHash().equals(tokenHash)).findFirst();
         }
 
         @Override
