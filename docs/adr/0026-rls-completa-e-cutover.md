@@ -1,6 +1,6 @@
 # 0026 — RLS completa, provisionamento de role versionado e cutover do enforce
 
-- Status: proposto
+- Status: parcialmente substituído por 0028 (o design de enforce + a sequência de cutover foram corrigidos no ADR 0028 após achar 3 furos; o V019 e o script R001 deste ADR continuam válidos)
 - Data: 2026-06-04
 - Decisores: Arquiteto + Stratfy (PO)
 - Relacionado: ADR 0002 (multi-tenancy), ADR 0019 (tenant isolation em profundidade: RLS + FK composta), ADR 0024 (telemetria de negócio)

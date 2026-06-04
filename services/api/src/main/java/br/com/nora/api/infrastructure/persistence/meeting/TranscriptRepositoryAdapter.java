@@ -6,7 +6,14 @@ import br.com.nora.api.domain.meeting.TranscriptFormat;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * {@code @Transactional} em todos os métodos: sob RLS enforce (ADR 0028) o {@code TenantRlsAspect}
+ * só seta o GUC {@code nora.current_tenant_id} dentro de uma transação. Sem isso, leitura/escrita
+ * de {@code transcripts} (tabela enforced) pelo pipeline de análise async rodaria sem GUC →
+ * fail-closed (transcript "missing"). Espelha o {@code MeetingRepositoryAdapter}.
+ */
 @Repository
 public class TranscriptRepositoryAdapter implements TranscriptRepository {
 
@@ -17,6 +24,7 @@ public class TranscriptRepositoryAdapter implements TranscriptRepository {
     }
 
     @Override
+    @Transactional
     public Transcript save(Transcript t) {
         TranscriptJpaEntity e = new TranscriptJpaEntity();
         e.setId(t.id());
@@ -31,6 +39,7 @@ public class TranscriptRepositoryAdapter implements TranscriptRepository {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<Transcript> findByMeetingAndTenant(UUID meetingId, UUID tenantId) {
         return jpa.findByMeetingIdAndTenantId(meetingId, tenantId).map(this::toDomain);
     }
