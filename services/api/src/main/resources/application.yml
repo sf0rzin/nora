@@ -150,3 +150,7 @@ logging:
     root: ${LOG_LEVEL:INFO}
     org.springframework.security: WARN
     org.hibernate.SQL: WARN
+  # Injeta o contexto de correlacao (RequestIdFilter + JwtAuthenticationFilter) em toda linha de
+  # log: req=<X-Request-Id> tenant=<tenantId> user=<userId>. ':-' = vazio quando ausente.
+  pattern:
+    level: "%5p [req=%X{requestId:-} tenant=%X{tenantId:-} user=%X{userId:-}]"
