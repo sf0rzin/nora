@@ -155,8 +155,15 @@ class InvitationServiceTest {
         assertThat(mail.lastInviteInvitedBy).isEqualTo("Camila Root");
         assertThat(mail.lastInviteAcceptUrl)
                 .startsWith("http://localhost:3000/auth/invites/accept/");
-        assertThat(mail.lastInviteAcceptUrl).contains(inv.token());
         assertThat(mail.lastInviteExpiresInDays).isEqualTo(7);
+
+        // SEGURANCA: persistimos APENAS o hash do token, nunca o token cru. A URL do e-mail leva o
+        // cru; o agregado/banco guardam o SHA-256 (mesmo padrao dos demais one-time tokens).
+        String rawToken = lastRawToken();
+        assertThat(inv.tokenHash()).isEqualTo(tokens.hash(rawToken));
+        assertThat(inv.tokenHash()).isNotEqualTo(rawToken);
+        assertThat(mail.lastInviteAcceptUrl).contains(rawToken);
+        assertThat(mail.lastInviteAcceptUrl).doesNotContain(inv.tokenHash());
 
         // Audit registrado.
         assertThat(iam.audits).hasSize(1);
@@ -228,7 +235,7 @@ class InvitationServiceTest {
                 service.inviteUser(tenantId, invitedBy, "carlos@acme.com", Set.of(groupId), 7);
 
         assertThat(second.id()).isEqualTo(first.id());
-        assertThat(second.token()).isEqualTo(first.token());
+        assertThat(second.tokenHash()).isEqualTo(first.tokenHash());
         assertThat(iam.audits).hasSize(auditsAfterFirst);
         assertThat(mail.inviteCount).isEqualTo(emailsAfterFirst);
     }
@@ -244,7 +251,7 @@ class InvitationServiceTest {
                 service.inviteUser(tenantId, invitedBy, "carlos@acme.com", Set.of(), 7);
 
         assertThat(second.id()).isNotEqualTo(first.id());
-        assertThat(second.token()).isNotEqualTo(first.token());
+        assertThat(second.tokenHash()).isNotEqualTo(first.tokenHash());
 
         // Antigo deve ter sido marcado como EXPIRED.
         IamInvitation oldNow = invitations.byId(first.id()).orElseThrow();
@@ -295,8 +302,9 @@ class InvitationServiceTest {
     void accept_happyPath_createsUser_attachesGroups_marksAccepted_audits_returnsJwt() {
         IamInvitation inv =
                 service.inviteUser(tenantId, invitedBy, "carlos@acme.com", Set.of(groupId), 7);
+        String token = lastRawToken();
 
-        AcceptResult result = service.acceptInvite(inv.token(), "Carlos Silva", "SenhaForte123");
+        AcceptResult result = service.acceptInvite(token, "Carlos Silva", "SenhaForte123");
 
         // User criado e linkado ao tenant.
         assertThat(result.user().email().value()).isEqualTo("carlos@acme.com");
@@ -324,8 +332,9 @@ class InvitationServiceTest {
     @Test
     void accept_issuesAccessAndRefreshTokenPair() {
         IamInvitation inv = service.inviteUser(tenantId, invitedBy, "carol@acme.com", Set.of(), 7);
+        String token = lastRawToken();
 
-        AcceptResult result = service.acceptInvite(inv.token(), "Carol", "SenhaForte123");
+        AcceptResult result = service.acceptInvite(token, "Carol", "SenhaForte123");
 
         // Par access+refresh emitido.
         assertThat(result.accessToken()).isNotBlank();
@@ -359,9 +368,10 @@ class InvitationServiceTest {
     @Test
     void accept_alreadyAccepted_throwsAlreadyAccepted() {
         IamInvitation inv = service.inviteUser(tenantId, invitedBy, "carlos@acme.com", Set.of(), 7);
-        service.acceptInvite(inv.token(), "Carlos", "SenhaForte123");
+        String token = lastRawToken();
+        service.acceptInvite(token, "Carlos", "SenhaForte123");
 
-        assertThatThrownBy(() -> service.acceptInvite(inv.token(), "Other", "SenhaForte123"))
+        assertThatThrownBy(() -> service.acceptInvite(token, "Other", "SenhaForte123"))
                 .isInstanceOf(InvitationException.class)
                 .satisfies(
                         ex ->
@@ -372,9 +382,10 @@ class InvitationServiceTest {
     @Test
     void accept_revoked_throwsAlreadyAccepted() {
         IamInvitation inv = service.inviteUser(tenantId, invitedBy, "carlos@acme.com", Set.of(), 7);
+        String token = lastRawToken();
         service.revokeInvite(inv.id(), tenantId, invitedBy);
 
-        assertThatThrownBy(() -> service.acceptInvite(inv.token(), "Carlos", "SenhaForte123"))
+        assertThatThrownBy(() -> service.acceptInvite(token, "Carlos", "SenhaForte123"))
                 .isInstanceOf(InvitationException.class)
                 .satisfies(
                         ex ->
@@ -385,9 +396,10 @@ class InvitationServiceTest {
     @Test
     void accept_expired_throwsExpired_andPersistsStatus() {
         IamInvitation inv = service.inviteUser(tenantId, invitedBy, "carlos@acme.com", Set.of(), 1);
+        String token = lastRawToken();
         clock.advance(Duration.ofDays(2));
 
-        assertThatThrownBy(() -> service.acceptInvite(inv.token(), "Carlos", "SenhaForte123"))
+        assertThatThrownBy(() -> service.acceptInvite(token, "Carlos", "SenhaForte123"))
                 .isInstanceOf(InvitationException.class)
                 .satisfies(
                         ex ->
@@ -401,8 +413,9 @@ class InvitationServiceTest {
     @Test
     void accept_weakPassword_rejectsViaPasswordPolicy() {
         IamInvitation inv = service.inviteUser(tenantId, invitedBy, "carlos@acme.com", Set.of(), 7);
+        String token = lastRawToken();
 
-        assertThatThrownBy(() -> service.acceptInvite(inv.token(), "Carlos", "short"))
+        assertThatThrownBy(() -> service.acceptInvite(token, "Carlos", "short"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -422,16 +435,18 @@ class InvitationServiceTest {
                         fixedNow));
 
         IamInvitation inv = service.inviteUser(tenantId, invitedBy, "carlos@acme.com", Set.of(), 7);
+        String token = lastRawToken();
 
-        assertThatThrownBy(() -> service.acceptInvite(inv.token(), "Carlos", "SenhaForte123"))
+        assertThatThrownBy(() -> service.acceptInvite(token, "Carlos", "SenhaForte123"))
                 .isInstanceOf(AuthException.EmailAlreadyTaken.class);
     }
 
     @Test
     void accept_blankDisplayName_fallsBackToEmailLocalPart() {
         IamInvitation inv = service.inviteUser(tenantId, invitedBy, "carlos@acme.com", Set.of(), 7);
+        String token = lastRawToken();
 
-        AcceptResult result = service.acceptInvite(inv.token(), "", "SenhaForte123");
+        AcceptResult result = service.acceptInvite(token, "", "SenhaForte123");
         assertThat(result.user().displayName()).isEqualTo("carlos");
     }
 
@@ -483,7 +498,8 @@ class InvitationServiceTest {
     @Test
     void revoke_alreadyAccepted_throwsConflict() {
         IamInvitation inv = service.inviteUser(tenantId, invitedBy, "carlos@acme.com", Set.of(), 7);
-        service.acceptInvite(inv.token(), "Carlos", "SenhaForte123");
+        String token = lastRawToken();
+        service.acceptInvite(token, "Carlos", "SenhaForte123");
 
         assertThatThrownBy(() -> service.revokeInvite(inv.id(), tenantId, invitedBy))
                 .isInstanceOf(InvitationException.class)
@@ -507,6 +523,16 @@ class InvitationServiceTest {
 
     private static InvitationStatus reloadStatus(List<IamInvitation> list, UUID id) {
         return list.stream().filter(i -> i.id().equals(id)).findFirst().orElseThrow().status();
+    }
+
+    /**
+     * Extrai o token CRU do ultimo accept URL enviado por e-mail. O domain so guarda o hash; o
+     * token cru existe apenas na URL do e-mail (exatamente o que o convidado clica). Espelha o
+     * fluxo real.
+     */
+    private String lastRawToken() {
+        String url = mail.lastInviteAcceptUrl;
+        return url.substring(url.lastIndexOf('/') + 1);
     }
 
     // ============================================================
@@ -661,8 +687,8 @@ class InvitationServiceTest {
         final Map<UUID, IamInvitation> store = new LinkedHashMap<>();
 
         @Override
-        public Optional<IamInvitation> findByToken(String token) {
-            return store.values().stream().filter(i -> i.token().equals(token)).findFirst();
+        public Optional<IamInvitation> findByTokenHash(String tokenHash) {
+            return store.values().stream().filter(i -> i.tokenHash().equals(tokenHash)).findFirst();
         }
 
         @Override

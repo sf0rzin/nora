@@ -1,7 +1,12 @@
 package br.com.nora.api.api.controllers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 
+import br.com.nora.api.application.ports.EmailSender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
@@ -11,6 +16,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -28,6 +34,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -70,6 +77,7 @@ class InvitationFlowIntegrationTest {
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
     @Autowired PasswordEncoder passwordEncoder;
+    @MockitoBean EmailSender emailSender;
 
     @BeforeEach
     void useJdkHttpClient() {
@@ -106,12 +114,8 @@ class InvitationFlowIntegrationTest {
         assertThat(invBody.has("token")).as("token deve nao ser exposto na resposta").isFalse();
         UUID inviteId = UUID.fromString(invBody.get("id").asText());
 
-        // Token persistido (so o backend conhece — leitura via JDBC pra simular o e-mail).
-        String token =
-                jdbc.queryForObject(
-                        "SELECT token FROM iam_user_invitations WHERE id = ?",
-                        String.class,
-                        inviteId);
+        // Token cru capturado do acceptUrl que o backend mandou ao e-mail (o banco so tem o hash).
+        String token = captureInviteToken(inviteEmail);
         assertThat(token).isNotBlank();
 
         // Audit invited.
@@ -253,11 +257,7 @@ class InvitationFlowIntegrationTest {
                 "UPDATE iam_user_invitations SET expires_at = NOW() - INTERVAL '1 hour' WHERE id"
                         + " = ?",
                 inviteId);
-        String token =
-                jdbc.queryForObject(
-                        "SELECT token FROM iam_user_invitations WHERE id = ?",
-                        String.class,
-                        inviteId);
+        String token = captureInviteToken(inviteEmail);
 
         ResponseEntity<String> acceptResp =
                 postJson(
@@ -282,14 +282,9 @@ class InvitationFlowIntegrationTest {
         String rootToken = signupAndLogin(rootEmail, "SenhaForte123", "Root Dup");
 
         String inviteEmail = uniq("dup");
-        ResponseEntity<String> inviteResp =
-                postJsonAuth("/iam/users/invite", Map.of("email", inviteEmail), rootToken).response;
-        UUID inviteId = UUID.fromString(mapper.readTree(inviteResp.getBody()).get("id").asText());
-        String token =
-                jdbc.queryForObject(
-                        "SELECT token FROM iam_user_invitations WHERE id = ?",
-                        String.class,
-                        inviteId);
+        postJsonAuth("/iam/users/invite", Map.of("email", inviteEmail), rootToken)
+                .expect(HttpStatus.CREATED);
+        String token = captureInviteToken(inviteEmail);
 
         ResponseEntity<String> first =
                 postJson(
@@ -404,6 +399,21 @@ class InvitationFlowIntegrationTest {
 
     private String inviteIdFromResponse(ResponseEntity<String> resp) throws Exception {
         return mapper.readTree(resp.getBody()).get("id").asText();
+    }
+
+    /**
+     * Recupera o token cru do convite a partir do {@code acceptUrl} que o backend passou ao
+     * EmailSender — o mesmo canal do e-mail real. O banco guarda apenas o SHA-256 ({@code
+     * token_hash}), entao ler o token cru via JDBC nao e mais possivel (por design — hardening
+     * US06).
+     */
+    private String captureInviteToken(String inviteEmail) {
+        ArgumentCaptor<String> acceptUrl = ArgumentCaptor.forClass(String.class);
+        verify(emailSender)
+                .sendInvitation(
+                        eq(inviteEmail), anyString(), anyString(), acceptUrl.capture(), anyInt());
+        String url = acceptUrl.getValue();
+        return url.substring(url.lastIndexOf('/') + 1);
     }
 
     private String signupAndLogin(String email, String pwd, String name) throws Exception {
