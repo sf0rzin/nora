@@ -164,3 +164,159 @@ def test_full_pii_mix():
     assert PiiType.CPF in types
     assert PiiType.PHONE in types
     assert PiiType.EMAIL in types
+
+
+# --------------------------------------------------------------------------- #
+# CARTAO DE CREDITO -- regressao de vazamento por separador PONTO + Luhn
+# (auditoria 2026-06-03, ADR 0012)
+# --------------------------------------------------------------------------- #
+
+
+def test_card_with_dot_separator_is_redacted():
+    """Probe da auditoria: '4111.1111.1111.1111' vazava cru. Agora redige."""
+    text = "4111.1111.1111.1111"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == "[[CREDIT_CARD_1]]"
+    assert "4111.1111.1111.1111" not in result.redacted_text
+    assert any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
+
+
+def test_card_with_dot_separator_inline_is_redacted():
+    """Probe da auditoria: cartao com ponto no meio de uma frase."""
+    text = "Cartao 4111.1111.1111.1111 venceu"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == "Cartao [[CREDIT_CARD_1]] venceu"
+    assert "4111.1111.1111.1111" not in result.redacted_text
+
+
+def test_card_with_space_and_hyphen_separators_still_redacted():
+    """Separadores legados (espaco/hifen) seguem funcionando apos a mudanca."""
+    for raw in ("4111 1111 1111 1111", "4111-1111-1111-1111"):
+        result = pii_shield.redact(raw)
+        assert result.redacted_text == "[[CREDIT_CARD_1]]"
+        assert raw not in result.redacted_text
+
+
+def test_amex_card_is_redacted():
+    """Amex (15 digitos, prefixo 34/37) com Luhn valido eh redigido."""
+    text = "Amex 378282246310005 no arquivo"
+    result = pii_shield.redact(text)
+    assert "378282246310005" not in result.redacted_text
+    assert any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
+
+
+def test_non_luhn_16_digits_not_treated_as_card():
+    """Negativo: 16 digitos que NAO passam Luhn nao viram cartao (precisao)."""
+    text = "Pedido 1234567890123456 enviado"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == text
+    assert not any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
+
+
+def test_non_luhn_16_digits_with_dots_not_treated_as_card():
+    """Negativo: sequencia 4x4 com pontos mas sem Luhn valido nao eh cartao."""
+    text = "1234.5678.9012.3456"
+    result = pii_shield.redact(text)
+    assert not any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
+
+
+def test_long_phone_not_treated_as_card():
+    """Negativo: telefone longo com DDD nao deve ser classificado como cartao."""
+    text = "Ligue para (11) 98888-7777 hoje"
+    result = pii_shield.redact(text)
+    assert not any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
+    assert any(r.type == PiiType.PHONE for r in result.redactions)
+
+
+# --------------------------------------------------------------------------- #
+# CPF / CNPJ -- regressao de vazamento por separador ESPACO
+# (auditoria 2026-06-03, ADR 0012)
+# --------------------------------------------------------------------------- #
+
+
+def test_cpf_with_space_groups_is_redacted():
+    """Probe da auditoria: 'Meu CPF e 111 444 777 35' vazava cru. Agora redige."""
+    text = "Meu CPF e 111 444 777 35"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == "Meu CPF e [[CPF_1]]"
+    assert "111 444 777 35" not in result.redacted_text
+    assert any(r.type == PiiType.CPF for r in result.redactions)
+
+
+def test_cnpj_with_space_groups_is_redacted():
+    """CNPJ com grupos separados por espaco eh redigido (DV valido)."""
+    text = "CNPJ 11 222 333 0001 81"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == "CNPJ [[CNPJ_1]]"
+    assert "11 222 333 0001 81" not in result.redacted_text
+    assert any(r.type == PiiType.CNPJ for r in result.redactions)
+
+
+def test_spaced_cpf_with_invalid_dv_not_redacted():
+    """Negativo: grupos espacados com DV invalido nao sao redigidos (precisao)."""
+    text = "Codigo 123 456 789 00 do lote"
+    result = pii_shield.redact(text)
+    assert "123 456 789 00" in result.redacted_text
+    assert not any(r.type == PiiType.CPF for r in result.redactions)
+
+
+# --------------------------------------------------------------------------- #
+# Validadores diretos: _validate_cpf / _validate_cnpj / _validate_card / _luhn_ok
+# (sobe cobertura dos ramos de DV — ADR 0018 exige >85% em PII)
+# --------------------------------------------------------------------------- #
+
+
+def test_validate_cpf_accepts_valid_dv():
+    assert pii_shield._validate_cpf("11144477735") is True
+
+
+def test_validate_cpf_rejects_invalid_dv():
+    assert pii_shield._validate_cpf("11144477730") is False
+
+
+def test_validate_cpf_rejects_trivial_sequence():
+    """Sequencia trivial (todos digitos iguais) tem DV 'valido' mas eh rejeitada."""
+    assert pii_shield._validate_cpf("11111111111") is False
+
+
+def test_validate_cpf_rejects_wrong_length():
+    assert pii_shield._validate_cpf("1114447773") is False  # 10 digitos
+    assert pii_shield._validate_cpf("111444777355") is False  # 12 digitos
+
+
+def test_validate_cpf_rejects_non_digits():
+    assert pii_shield._validate_cpf("111.444.777") is False
+
+
+def test_validate_cnpj_accepts_valid_dv():
+    assert pii_shield._validate_cnpj("11222333000181") is True
+
+
+def test_validate_cnpj_rejects_invalid_dv():
+    assert pii_shield._validate_cnpj("11222333000180") is False
+
+
+def test_validate_cnpj_rejects_trivial_sequence():
+    assert pii_shield._validate_cnpj("11111111111111") is False
+
+
+def test_validate_cnpj_rejects_wrong_length():
+    assert pii_shield._validate_cnpj("1122233300018") is False  # 13 digitos
+
+
+def test_validate_card_accepts_luhn_valid():
+    assert pii_shield._validate_card("4111 1111 1111 1111") is True
+    assert pii_shield._validate_card("378282246310005") is True  # amex 15
+
+
+def test_validate_card_rejects_luhn_invalid():
+    assert pii_shield._validate_card("1234567890123456") is False
+
+
+def test_validate_card_rejects_wrong_length():
+    assert pii_shield._validate_card("41111111") is False  # 8 digitos
+
+
+def test_luhn_ok():
+    assert pii_shield._luhn_ok("4111111111111111") is True
+    assert pii_shield._luhn_ok("1234567890123456") is False
