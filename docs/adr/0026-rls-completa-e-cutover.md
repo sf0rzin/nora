@@ -25,13 +25,13 @@ Três acoplamentos adicionais foram identificados:
 
 ## Decisão
 
-### 1. Cobertura completa de RLS (`V018`)
+### 1. Cobertura completa de RLS (`V019`)
 
-`V018__row_level_security_complete.sql` habilita `ENABLE ROW LEVEL SECURITY` + `CREATE POLICY tenant_isolation` (mesmo predicado e estilo de V016/V017: `tenant_id = nora.current_tenant_id()` com `USING` + `WITH CHECK`) em **15 tabelas** tenant-owned remanescentes que carregam `tenant_id` próprio, com **prioridade para `transcripts`**.
+`V019__row_level_security_complete.sql` habilita `ENABLE ROW LEVEL SECURITY` + `CREATE POLICY tenant_isolation` (mesmo predicado e estilo de V016/V017: `tenant_id = nora.current_tenant_id()` com `USING` + `WITH CHECK`) em **15 tabelas** tenant-owned remanescentes que carregam `tenant_id` próprio, com **prioridade para `transcripts`**.
 
-Cobertura após V018: V016 (12) + V017 (3) + V018 (15) = **30 tabelas** com policy direta.
+Cobertura após V019: V016 (12) + V017 (3) + V019 (15) = **30 tabelas** com policy direta.
 
-**Fronteiras de cascade (sem policy, por design).** Três tabelas filhas **não** têm `tenant_id` próprio e são acessadas exclusivamente via o pai já isolado (cascade FK `ON DELETE CASCADE`): `iam_invitation_groups` (filha de `iam_user_invitations`), `meeting_goal_expected_outcomes` (filha de `meeting_goals`) e `meeting_outcome_coverage` (filha de `meeting_productivity_assessments`). Seguem a mesma convenção já adotada em V017 para `customer_buying_signals` / `customer_objections`: o isolamento vem do cascade + do fato de que todo acesso passa pelo pai isolado. Documentado explicitamente como fronteira no cabeçalho de V018 — se alguma delas ganhar acesso direto (sem passar pelo pai), precisará de policy via JOIN.
+**Fronteiras de cascade (sem policy, por design).** Três tabelas filhas **não** têm `tenant_id` próprio e são acessadas exclusivamente via o pai já isolado (cascade FK `ON DELETE CASCADE`): `iam_invitation_groups` (filha de `iam_user_invitations`), `meeting_goal_expected_outcomes` (filha de `meeting_goals`) e `meeting_outcome_coverage` (filha de `meeting_productivity_assessments`). Seguem a mesma convenção já adotada em V017 para `customer_buying_signals` / `customer_objections`: o isolamento vem do cascade + do fato de que todo acesso passa pelo pai isolado. Documentado explicitamente como fronteira no cabeçalho de V019 — se alguma delas ganhar acesso direto (sem passar pelo pai), precisará de policy via JOIN.
 
 **Tabelas legadas fora de escopo.** `roles` (tem linhas globais `tenant_id IS NULL` — uma policy por tenant as esconderia) e `user_roles` (V002, deprecadas, fora de uso no modelo IAM novo) **não** recebem RLS; saem em migration de limpeza futura.
 
@@ -59,7 +59,7 @@ Alternativa considerada e rejeitada: função `SECURITY DEFINER` owned por role 
 
 ### 5. Sequência de cutover (a ordem importa)
 
-1. **Aplicar V018** (deploy normal da API — Flyway cria as policies; enforce ainda OFF, sem efeito porque a API roda como owner).
+1. **Aplicar V019** (deploy normal da API — Flyway cria as policies; enforce ainda OFF, sem efeito porque a API roda como owner).
 2. **Provisionar roles**: rodar `R001` como **admin** do Postgres (cria `nora_app` NOBYPASSRLS + `nora_telemetry` BYPASSRLS + grants + default privileges). Popular os secrets no Key Vault (senha do `nora_app`, `rls-telemetry-password`).
 3. **Validar a telemetria BYPASSRLS** em staging: setar as 3 vars `NORA_TELEMETRY_DATASOURCE_*` apontando o banco primário com `nora_telemetry`; confirmar que o painel de negócio continua somando (analyses/tenants > 0) **antes** de mexer no enforce.
 4. **Ligar enforce em staging**: apontar `DATASOURCE_USERNAME/PASSWORD` para `nora_app` + `NORA_RLS_ENFORCE=true`. Exercitar o smoke cross-tenant (login em 2 tenants, cada um só vê o próprio meeting/transcript/task) e confirmar painel operador ainda somando.
@@ -93,4 +93,4 @@ Alternativa considerada e rejeitada: função `SECURITY DEFINER` owned por role 
 
 | Data | Decisor | Mudança |
 |---|---|---|
-| 2026-06-04 | Arquiteto + Stratfy (PO) | ADR criado. V018 (cobertura completa de RLS, prioridade `transcripts`), `db/operational/R001` (provisionamento versionado de `nora_app`/`nora_telemetry`), telemetria BYPASSRLS-safe (`TelemetryDataSourceConfig` + `PrimaryDbBusinessMetricsSource`), params Bicep `rlsEnforce`/telemetria (default OFF) e sequência de cutover. Enforce **não** ligado em prod neste passo. Estende ADR 0019 |
+| 2026-06-04 | Arquiteto + Stratfy (PO) | ADR criado. V019 (cobertura completa de RLS, prioridade `transcripts`), `db/operational/R001` (provisionamento versionado de `nora_app`/`nora_telemetry`), telemetria BYPASSRLS-safe (`TelemetryDataSourceConfig` + `PrimaryDbBusinessMetricsSource`), params Bicep `rlsEnforce`/telemetria (default OFF) e sequência de cutover. Enforce **não** ligado em prod neste passo. Estende ADR 0019 |

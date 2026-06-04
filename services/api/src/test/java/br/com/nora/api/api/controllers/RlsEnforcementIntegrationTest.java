@@ -23,7 +23,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Prova de enforcement REAL do RLS completo (V016/V017/V018, ADR 0002/0019/0026).
+ * Prova de enforcement REAL do RLS completo (V016/V017/V019, ADR 0002/0019/0026).
  *
  * <p><b>Por que este teste é diferente dos outros ITs:</b> o app (e o {@code JdbcTemplate}
  * autowired) conecta como o superuser do container, que <b>bypassa RLS por default</b> — então as
@@ -31,17 +31,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * enforce de verdade, este teste:
  *
  * <ol>
- *   <li>deixa o Flyway (via boot do app) criar todas as policies, incluindo as de V018;
+ *   <li>deixa o Flyway (via boot do app) criar todas as policies, incluindo as de V019;
  *   <li>semeia 2 tenants com {@code transcripts} e {@code meeting_action_items} via a conexão owner
  *       (que bypassa RLS);
  *   <li>cria um role {@code rls_probe} NOBYPASSRLS, dá grants e abre uma conexão JDBC dedicada como
  *       ele — replicando o que {@code nora_app} faz em prod sob {@code NORA_RLS_ENFORCE=true};
  *   <li>seta o GUC {@code nora.current_tenant_id} = tenant A e afirma que A só enxerga as linhas de
  *       A, nunca as de B (e vice-versa). Cobre {@code transcripts} (raw_text = PII em repouso, a
- *       tabela que V018 fechou com prioridade) e {@code meeting_action_items}.
+ *       tabela que V019 fechou com prioridade) e {@code meeting_action_items}.
  * </ol>
  *
- * <p>Sem V018, este teste FALHARIA: {@code transcripts}/{@code meeting_action_items} não tinham
+ * <p>Sem V019, este teste FALHARIA: {@code transcripts}/{@code meeting_action_items} não tinham
  * policy, então o role NOBYPASSRLS leria tudo cross-tenant.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

@@ -1,4 +1,4 @@
--- V018: Row Level Security (RLS) COMPLETA — fecha a cobertura iniciada em V016/V017 (ADR 0002, ADR 0019, ADR 0026).
+-- V019: Row Level Security (RLS) COMPLETA — fecha a cobertura iniciada em V016/V017 (ADR 0002, ADR 0019, ADR 0026).
 --
 -- ## Por que esta migration existe
 --
@@ -39,9 +39,9 @@
 -- pai. Documentado aqui como FRONTEIRA EXPLICITA: se algum dia uma dessas tabelas
 -- ganhar acesso direto (sem passar pelo pai), ela precisa de policy via JOIN.
 --
--- ## Cobertura apos V018
+-- ## Cobertura apos V019
 --
--- V016 (12) + V017 (3) + V018 (15) = 30 tabelas tenant-owned com policy direta.
+-- V016 (12) + V017 (3) + V019 (15) = 30 tabelas tenant-owned com policy direta.
 -- Tabelas legadas `roles` (linhas globais tenant_id NULL) e `user_roles` (V002,
 -- deprecadas e fora de uso no modelo IAM novo) NAO recebem RLS: `roles` tem linhas
 -- globais que uma policy por tenant esconderia; ambas saem em migration de limpeza
