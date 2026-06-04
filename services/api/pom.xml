@@ -241,6 +241,52 @@
                             <goal>report</goal>
                         </goals>
                     </execution>
+                    <!--
+                      Gate de cobertura nas areas criticas IAM (ADR 0018: >85% sustentado em
+                      IAM/Auth/PII). Hoje a regra esta escopada a UMA classe — PolicyEvaluator,
+                      o ponto de decisao de autorizacao do IAM (ADR 0007), coberto por
+                      PolicyEvaluatorTest (~22 testes unitarios, sem Docker). Medido localmente:
+                      INSTRUCTION 0.945 / BRANCH 0.806 — os limites abaixo (0.90 / 0.75) passam
+                      com folga e sao significativos.
+
+                      FOLLOWUP (subir o gate a 0.85 package-wide): cobrir
+                      application/identity e infrastructure/security exige Testcontainers
+                      (Docker), que so roda no CI. A regra package-wide em domain.iam hoje fica
+                      em ~0.83 instruction porque records data-carrier (IamPolicy, IamGroup,
+                      PolicyDocument, IamAuditEvent) so sao exercitados via testes de integracao.
+                      Ampliar este check para PACKAGE/aplicacao deve ser calibrado medindo no CI
+                      com Docker, nao localmente.
+                    -->
+                    <execution>
+                        <id>check-iam-coverage</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>CLASS</element>
+                                    <includes>
+                                        <include>br.com.nora.api.domain.iam.PolicyEvaluator</include>
+                                    </includes>
+                                    <limits>
+                                        <limit>
+                                            <counter>INSTRUCTION</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.90</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.75</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                            <haltOnFailure>true</haltOnFailure>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
         </plugins>

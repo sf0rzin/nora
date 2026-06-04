@@ -100,6 +100,19 @@ jobs:
       - name: Tests
         working-directory: services/nlp-worker
         run: pytest
+      # Gate de cobertura escopado ao PII Shield (ADR 0012 + ADR 0018: >85% sustentado em
+      # IAM/Auth/PII). NAO impomos cobertura global do worker de proposito — llm.py e
+      # live_analyzer tem cobertura baixa e nao sao area critica de PII. Medido: ~96%;
+      # limite 90 passa com folga. FOLLOWUP: estender o gate a outras areas criticas exige
+      # subir a cobertura delas primeiro.
+      - name: PII Shield coverage gate
+        working-directory: services/nlp-worker
+        run: >
+          pytest
+          --cov=nora_nlp.services.pii_shield
+          --cov-report=term-missing
+          --cov-fail-under=90
+          tests/test_pii_shield.py
 
   web:
     needs: changes
