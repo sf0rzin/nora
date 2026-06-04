@@ -191,6 +191,18 @@ param cfAccessTeamDomain string = ''
 @description('AUD tag da Access Application (admin.nora.systems). O nora-admin valida o audience do JWT do Access. Vazio = validacao de JWT degrada pra edge-only (origem ja protegida pelo tunnel + Access na borda).')
 param cfAccessAud string = ''
 
+// ---- RLS enforce (defesa em profundidade do tenant_id, ADR 0002/0019/0026) ----
+
+@description('Liga o enforce de Row Level Security no apiApp (NORA_RLS_ENFORCE). Default FALSE: o schema tem todas as policies (V016/V017/V018), mas o enforce SO vale com role NOBYPASSRLS na connection string. NAO ligar direto em prod — seguir a sequencia de cutover do ADR 0026 (provisionar nora_app/nora_telemetry via db/operational/R001 -> validar telemetria BYPASSRLS -> staging -> prod).')
+param rlsEnforce bool = false
+
+@description('URL JDBC do banco PRIMARIO conectando como o role nora_telemetry (BYPASSRLS) para a telemetria de negocio operador-only sob RLS enforce (ADR 0026). Vazio = telemetria usa o datasource primario (estado atual, pre-cutover). Setar JUNTO com rlsEnforce=true.')
+param rlsTelemetryDatasourceUrl string = ''
+
+@description('Senha do role nora_telemetry (BYPASSRLS). Vai pro KV (rls-telemetry-password). Vazio quando rlsEnforce=false.')
+@secure()
+param rlsTelemetryPassword string = ''
+
 // ============================================================
 // NAMING — deterministico + unico onde precisa
 // ============================================================
@@ -377,7 +389,15 @@ var keyVaultSecrets = {
         name: 'cloudflare-tunnel-token'
         value: empty(cloudflareTunnelToken) ? 'unset' : cloudflareTunnelToken
       }
-    ] : []
+    ] : [],
+    // RLS telemetria BYPASSRLS (ADR 0026): so quando a senha do nora_telemetry e
+    // fornecida (passo de cutover). Sem isso, nenhum secret extra e criado.
+    empty(rlsTelemetryPassword) ? [] : [
+      {
+        name: 'rls-telemetry-password'
+        value: rlsTelemetryPassword
+      }
+    ]
   )
 }
 
@@ -640,6 +660,35 @@ var apiPlatformEnv = enablePlatform ? [
   }
 ] : []
 
+// RLS enforce (ADR 0002/0019/0026). NORA_RLS_ENFORCE so liga o aspect; o enforce REAL
+// exige que DATASOURCE_USERNAME/PASSWORD apontem pro role nora_app (NOBYPASSRLS) —
+// passo de cutover separado e controlado (ver ADR 0026), NAO feito neste template.
+// Quando rlsTelemetryDatasourceUrl esta setada, injeta o caminho BYPASSRLS dedicado da
+// telemetria (role nora_telemetry) pra que o painel operador continue agregando
+// cross-tenant sob enforce (senao veria 0 linhas, fail-closed).
+var apiRlsEnv = concat(
+  rlsEnforce ? [
+    {
+      name: 'NORA_RLS_ENFORCE'
+      value: 'true'
+    }
+  ] : [],
+  empty(rlsTelemetryDatasourceUrl) ? [] : [
+    {
+      name: 'NORA_TELEMETRY_DATASOURCE_URL'
+      value: rlsTelemetryDatasourceUrl
+    }
+    {
+      name: 'NORA_TELEMETRY_DATASOURCE_USERNAME'
+      value: 'nora_telemetry'
+    }
+    {
+      name: 'NORA_TELEMETRY_DATASOURCE_PASSWORD'
+      secretRef: 'rls-telemetry-password'
+    }
+  ]
+)
+
 var apiSecrets = {
   items: union(
     [
@@ -670,7 +719,15 @@ var apiSecrets = {
         value: registryPassword
       }
     ],
-    apiPlatformSecrets
+    apiPlatformSecrets,
+    // RLS telemetria BYPASSRLS (ADR 0026): referencia o secret do KV so quando setado.
+    empty(rlsTelemetryPassword) ? [] : [
+      {
+        name: 'rls-telemetry-password'
+        keyVaultUrl: '${kvUri}secrets/rls-telemetry-password'
+        identity: uaiApi.outputs.id
+      }
+    ]
   )
 }
 
@@ -792,7 +849,7 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'NORA_EMAIL_FROM'
         value: noraEmailFrom
       }
-    ], apiPlatformEnv)
+    ], apiPlatformEnv, apiRlsEnv)
     secretsObject: apiSecrets
     userAssignedIdentityId: uaiApi.outputs.id
     registry: registry
