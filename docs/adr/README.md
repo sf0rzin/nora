@@ -68,4 +68,5 @@ Decisões parcialmente substituídas: ADR sucessor pode marcar `Substitui parcia
 | 0023 | Identidade de operador (platform admin), separada do IAM por-tenant | aceito (Easy Auth substituído por 0025) |
 | 0024 | Catálogo de modelos dinâmico + router por modalidade + resolução runtime | aceito (estende 0004) |
 | 0025 | Identidade de operador v2: Cloudflare Tunnel + Access (substitui Easy Auth do 0023) | aceito |
+| 0026 | RLS completa, provisionamento de role versionado e cutover do enforce | proposto |
 | 0027 | Branch protection da `main` + CI gate obrigatório | aceito |
