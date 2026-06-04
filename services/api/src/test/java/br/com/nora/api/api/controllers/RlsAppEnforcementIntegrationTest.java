@@ -2,6 +2,12 @@ package br.com.nora.api.api.controllers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import br.com.nora.api.application.ports.NlpWorkerClient;
+import br.com.nora.api.application.ports.NlpWorkerClient.AnalysisResult;
+import br.com.nora.api.domain.analysis.MeetingAnalysis;
+import br.com.nora.api.domain.analysis.Sentiment;
+import br.com.nora.api.domain.tenant.TenantContext;
+import br.com.nora.api.infrastructure.nlp.WorkerDtos;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
@@ -10,12 +16,17 @@ import java.sql.DriverManager;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -300,6 +311,62 @@ class RlsAppEnforcementIntegrationTest {
             return response.getBody() == null
                     ? mapper.createObjectNode()
                     : mapper.readTree(response.getBody());
+        }
+    }
+
+    /**
+     * Stub determinístico do worker NLP — não há worker rodando no IT. Faz a análise async
+     * completar (escrevendo {@code meeting_analyses} sob enforce), provando que o TaskDecorator
+     * propagou o tenant pro GUC na thread do executor. Nested @TestConfiguration auto-detectada
+     * pelo {@code @SpringBootTest}.
+     */
+    @TestConfiguration
+    static class StubWorkerConfig {
+        @Bean
+        @Primary
+        NlpWorkerClient stubWorker() {
+            return new NlpWorkerClient() {
+                @Override
+                public AnalysisResult analyze(
+                        UUID meetingId,
+                        UUID tenantId,
+                        String language,
+                        String transcript,
+                        Optional<TenantContext> tenantContext,
+                        Optional<br.com.nora.api.domain.meeting.productivity.MeetingGoal> goal) {
+                    MeetingAnalysis analysis =
+                            MeetingAnalysis.newAnalysis(
+                                    meetingId,
+                                    tenantId,
+                                    "Resumo stub (RLS enforce IT).",
+                                    Sentiment.NEUTRAL,
+                                    List.of("topico1"),
+                                    List.of(),
+                                    List.of(),
+                                    List.of(),
+                                    List.of(),
+                                    "stub-1",
+                                    "meeting-analysis-v1",
+                                    100,
+                                    50,
+                                    10,
+                                    0);
+                    return AnalysisResult.of(analysis, null, null);
+                }
+
+                @Override
+                public WorkerDtos.LiveAnalyzeResponse analyzeLive(
+                        String transcriptChunk,
+                        String language,
+                        WorkerDtos.LiveHighlights previousHighlights) {
+                    return new WorkerDtos.LiveAnalyzeResponse(
+                            List.of(),
+                            List.of(),
+                            List.of(),
+                            List.of(),
+                            new WorkerDtos.LiveMetadata(0, 0, 0, 0, "stub-live"));
+                }
+            };
         }
     }
 }
