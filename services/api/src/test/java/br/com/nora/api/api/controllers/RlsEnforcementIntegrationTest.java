@@ -44,7 +44,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * <p>Sem V019, este teste FALHARIA: {@code transcripts}/{@code meeting_action_items} não tinham
  * policy, então o role NOBYPASSRLS leria tudo cross-tenant.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+// RANDOM_PORT (não NONE): o contexto tem SecurityFilterChain beans (SecurityConfig +
+// PlatformSecurityConfig) que dependem do HttpSecurity, que só existe num contexto web. Com NONE o
+// contexto nem sobe. O teste não faz HTTP — só precisa do app bootado (Flyway cria as policies) +
+// JDBC direto como o role NOBYPASSRLS. Alinhado aos demais ITs.
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @Testcontainers
 class RlsEnforcementIntegrationTest {
