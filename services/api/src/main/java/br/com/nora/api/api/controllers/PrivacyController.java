@@ -1,0 +1,53 @@
+package br.com.nora.api.api.controllers;
+
+import br.com.nora.api.api.security.CurrentUser;
+import br.com.nora.api.application.iam.AuthorizationService;
+import br.com.nora.api.application.privacy.PrivacyService;
+import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
+import java.util.UUID;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * Endpoints de privacidade/LGPD (ADR 0029). Escopados por tenant do JWT.
+ *
+ * <p>Direito ao esquecimento: apaga DEFINITIVAMENTE um meeting (hard-delete físico, distinto do
+ * soft-delete default da ADR 0021). O cascade do banco purga transcript ({@code raw_text} = PII),
+ * participants, tags e análises.
+ */
+@RestController
+@RequestMapping("/privacy")
+public class PrivacyController {
+
+    private final PrivacyService privacy;
+    private final AuthorizationService authz;
+
+    public PrivacyController(PrivacyService privacy, AuthorizationService authz) {
+        this.privacy = privacy;
+        this.authz = authz;
+    }
+
+    private static String meetingResource(UUID tenantId, UUID meetingId) {
+        return "nora:tenant/" + tenantId + ":meeting/" + (meetingId == null ? "*" : meetingId);
+    }
+
+    /**
+     * Apaga definitivamente o meeting e todo o PII vinculado. 204 em sucesso; 404 se não existir no
+     * tenant (não vaza existência cross-tenant). Exige {@code meeting:update} (mesmo gate da
+     * remoção destrutiva de goal).
+     */
+    @DeleteMapping("/meetings/{id}")
+    public ResponseEntity<Void> eraseMeeting(@PathVariable("id") UUID id) {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        authz.require(
+                principal.userId(),
+                principal.tenantId(),
+                "meeting:update",
+                meetingResource(principal.tenantId(), id));
+        privacy.eraseMeeting(id, principal.tenantId());
+        return ResponseEntity.noContent().build();
+    }
+}

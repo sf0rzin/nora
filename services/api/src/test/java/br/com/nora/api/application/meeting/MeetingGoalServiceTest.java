@@ -187,6 +187,16 @@ class MeetingGoalServiceTest {
         private final Map<UUID, Meeting> store = new HashMap<>();
 
         @Override
+        public int hardErase(UUID meetingId, UUID tenantId) {
+            return store.remove(meetingId) == null ? 0 : 1;
+        }
+
+        @Override
+        public int purgeOlderThan(UUID tenantId, java.time.OffsetDateTime cutoff) {
+            return 0;
+        }
+
+        @Override
         public Meeting save(Meeting meeting) {
             store.put(meeting.id(), meeting);
             return meeting;
