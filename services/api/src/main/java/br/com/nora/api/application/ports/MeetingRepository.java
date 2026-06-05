@@ -18,6 +18,19 @@ public interface MeetingRepository {
     PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size);
 
     /**
+     * Hard-delete FISICO de um meeting (LGPD: direito ao esquecimento, ADR 0029). Ignora o
+     * soft-delete; o FK CASCADE purga transcript (raw_text = PII), participants, tags e analises.
+     * Retorna linhas afetadas (0 = nao existia no tenant).
+     */
+    int hardErase(UUID meetingId, UUID tenantId);
+
+    /**
+     * Hard-delete FISICO de meetings do tenant criados antes de {@code cutoff} (retencao, ADR
+     * 0029). Retorna quantos foram purgados.
+     */
+    int purgeOlderThan(UUID tenantId, OffsetDateTime cutoff);
+
+    /**
      * Filtros opcionais para a listagem. Qualquer campo nulo significa "sem restricao". O search
      * casa por substring case-insensitive sobre o titulo.
      */
