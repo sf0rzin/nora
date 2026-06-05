@@ -809,6 +809,16 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'JWT_SECRET'
         secretRef: 'jwt-secret'
       }
+      // Embeddings do RAG (busca semântica do chat). Provider-agnóstico (ADR 0004): o client usa
+      // GEMINI_API_KEY (default) ou OPENAI_API_KEY. 'unset' (KV vazio) = embeddings desligados.
+      {
+        name: 'GEMINI_API_KEY'
+        secretRef: 'gemini-api-key'
+      }
+      {
+        name: 'OPENAI_API_KEY'
+        secretRef: 'openai-api-key'
+      }
       // Worker NLP base URL — Spring espera NLP_WORKER_BASE_URL
       {
         name: 'NLP_WORKER_BASE_URL'

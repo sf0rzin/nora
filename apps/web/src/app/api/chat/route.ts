@@ -133,40 +133,63 @@ function recordUsage(
   });
 }
 
-async function buildWorkspaceContext(cookieHeader: string): Promise<string> {
+interface MeetingContextItem {
+  title?: string;
+  summarySnippet?: string;
+  startedAt?: string;
+}
+
+/**
+ * RAG: busca as reuniões RELEVANTES à pergunta por similaridade semântica
+ * (GET /meetings/search). Fallback pras mais recentes quando a busca volta vazia
+ * (embeddings desligados/sem indexação ainda) ou indisponível.
+ */
+async function fetchContextMeetings(
+  headers: Record<string, string>,
+  query: string,
+): Promise<{ label: string; items: MeetingContextItem[] }> {
+  if (query.trim()) {
+    try {
+      const r = await fetch(
+        `${API_BASE_URL}/meetings/search?q=${encodeURIComponent(query)}&k=6`,
+        { headers, cache: "no-store" },
+      );
+      if (r.ok) {
+        const d = (await r.json()) as { items?: MeetingContextItem[] };
+        if (d.items && d.items.length > 0) {
+          return { label: "REUNIÕES RELEVANTES À PERGUNTA (busca semântica):", items: d.items };
+        }
+      }
+    } catch {
+      // cai no fallback de recentes
+    }
+  }
+  try {
+    const r = await fetch(`${API_BASE_URL}/meetings?size=12`, { headers, cache: "no-store" });
+    if (r.ok) {
+      const d = (await r.json()) as { items?: MeetingContextItem[] };
+      return { label: "REUNIÕES RECENTES DO WORKSPACE:", items: (d.items ?? []).slice(0, 12) };
+    }
+  } catch {
+    // sem contexto de reuniões
+  }
+  return { label: "", items: [] };
+}
+
+async function buildWorkspaceContext(cookieHeader: string, query: string): Promise<string> {
   const parts: string[] = [];
   try {
     const headers = { Cookie: cookieHeader, Accept: "application/json" };
-    const [mRes, tRes] = await Promise.all([
-      fetch(`${API_BASE_URL}/meetings?size=12`, { headers, cache: "no-store" }),
+    const [meetings, tRes] = await Promise.all([
+      fetchContextMeetings(headers, query),
       fetch(`${API_BASE_URL}/tasks`, { headers, cache: "no-store" }),
     ]);
 
-    if (mRes.ok) {
-      const data = (await mRes.json()) as {
-        items?: Array<{
-          title?: string;
-          summarySnippet?: string;
-          processingStatus?: string;
-          startedAt?: string;
-          actionItemCount?: number;
-          riskCount?: number;
-          opportunityCount?: number;
-        }>;
-      };
-      const items = (data.items ?? []).slice(0, 12);
-      if (items.length > 0) {
-        parts.push("REUNIÕES RECENTES DO WORKSPACE:");
-        for (const m of items) {
-          const date = m.startedAt ? ` (${m.startedAt.slice(0, 10)})` : "";
-          parts.push(
-            `- [${m.processingStatus ?? "?"}] "${m.title ?? "sem título"}"${date}: ${
-              m.summarySnippet ?? "sem resumo"
-            } — ${m.actionItemCount ?? 0} action items, ${m.riskCount ?? 0} riscos, ${
-              m.opportunityCount ?? 0
-            } oportunidades`,
-          );
-        }
+    if (meetings.label && meetings.items.length > 0) {
+      parts.push(meetings.label);
+      for (const m of meetings.items) {
+        const date = m.startedAt ? ` (${m.startedAt.slice(0, 10)})` : "";
+        parts.push(`- "${m.title ?? "sem título"}"${date}: ${m.summarySnippet ?? "sem resumo"}`);
       }
     }
 
@@ -317,7 +340,9 @@ export async function POST(req: Request): Promise<Response> {
     .getAll()
     .map((c) => `${c.name}=${c.value}`)
     .join("; ");
-  const workspaceContext = await buildWorkspaceContext(cookieHeader);
+  // RAG: a última mensagem do usuário vira a query da busca semântica de reuniões.
+  const lastUserMsg = [...history].reverse().find((m) => m.role === "user")?.content ?? "";
+  const workspaceContext = await buildWorkspaceContext(cookieHeader, lastUserMsg);
 
   const systemContent = workspaceContext
     ? `${SYSTEM_PROMPT}\n\n--- CONTEXTO DO WORKSPACE (use quando relevante) ---\n${workspaceContext}`
