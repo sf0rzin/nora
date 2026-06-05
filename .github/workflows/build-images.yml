@@ -1,15 +1,20 @@
 name: build-images
 
-# Builda e pusha imagens Docker pra GHCR.
+# Builda + pusha imagens Docker pra GHCR E deploya os serviços mudados nos Container Apps.
 #
 # Triggers:
-#   - push em main: rebuild só dos serviços que mudaram (path filter)
-#   - workflow_dispatch: rebuild todos manualmente
+#   - push em main: rebuild + deploy só dos serviços que mudaram (path filter)
+#   - workflow_dispatch: rebuild + deploy todos manualmente
 #
 # Imagens publicadas:
-#   - ghcr.io/sys0xff/nora-api:{latest, sha-XXXXXXX}
-#   - ghcr.io/sys0xff/nora-worker:{latest, sha-XXXXXXX}
-#   - ghcr.io/sys0xff/nora-web:{latest, sha-XXXXXXX}
+#   - ghcr.io/sys0xff/nora-{api,worker,web,admin}:{latest, sha-XXXXXXX}
+#
+# ROLLOUT (job deploy-apps): cada serviço mudado é deployado no Container App na tag
+# IMUTÁVEL :sha-<short> via `az containerapp update` (OIDC). Isso fecha o gap em que
+# merges de código só faziam push da imagem mas nunca chegavam em prod — o deploy-infra
+# só dispara em mudanças de infra/bicep/**, e re-deployar :latest não muda o template
+# (sem revisão nova). Trocar pra uma tag :sha nova SEMPRE força revisão nova. Divisão de
+# responsabilidade: build-images = imagem dos apps; deploy-infra = infra/env (bicep).
 #
 # IMPORTANTE: por padrão, pacotes no GHCR ficam privados. Após o primeiro push,
 # ir em github.com/sys0xff/<package>/settings → "Change visibility" → Public
@@ -42,6 +47,7 @@ permissions:
   contents: read
   packages: write
   pull-requests: read
+  id-token: write # OIDC pro deploy-apps (az login federado, sem secret)
 
 env:
   REGISTRY: ghcr.io
@@ -217,6 +223,60 @@ jobs:
           cache-from: type=gha,scope=admin
           cache-to: type=gha,scope=admin,mode=max
           provenance: false
+
+  # Faz o ROLLOUT real: deploya cada serviço que mudou pro seu Container App na tag
+  # IMUTÁVEL :sha-<short> (não :latest). Trocar a imagem pra uma tag nova força uma
+  # revisão nova → o código efetivamente entra em prod. Antes deste job, merges de
+  # código só faziam push da imagem e nunca eram deployados (o deploy-infra só dispara
+  # em mudanças de infra/bicep/**, e :latest não muda o template → sem revisão nova).
+  # É LEVE de propósito (só `az containerapp update`, sem bicep) — não toca o
+  # azure.extensions do Postgres, então não esbarra no flaky ServerIsBusy.
+  deploy-apps:
+    name: Deploy apps mudados (Container Apps)
+    needs: [changes, api, worker, web, admin]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy serviços mudados na tag :sha-<short>
+        env:
+          EVENT: ${{ github.event_name }}
+          CH_API: ${{ needs.changes.outputs.api }}
+          CH_WORKER: ${{ needs.changes.outputs.worker }}
+          CH_WEB: ${{ needs.changes.outputs.web }}
+          CH_ADMIN: ${{ needs.changes.outputs.admin }}
+          R_API: ${{ needs.api.result }}
+          R_WORKER: ${{ needs.worker.result }}
+          R_WEB: ${{ needs.web.result }}
+          R_ADMIN: ${{ needs.admin.result }}
+        run: |
+          set -euo pipefail
+          SHORT=${GITHUB_SHA::7}
+          RG=rg-nora-dev
+          IMG=ghcr.io/sys0xff/nora
+          # deploy <app> <container> <changed> <build-result> <imgname>
+          deploy() {
+            local app=$1 cont=$2 changed=$3 result=$4 name=$5
+            if [ "$changed" != "true" ] && [ "$EVENT" != "workflow_dispatch" ]; then
+              echo "↷ $app: não mudou — mantém imagem atual"; return
+            fi
+            if [ "$result" != "success" ]; then
+              echo "::warning::$app: build=$result — NÃO deploya"; return
+            fi
+            echo "→ $app: deploy $IMG-$name:sha-$SHORT (container $cont)"
+            az containerapp update -g "$RG" -n "$app" --container-name "$cont" \
+              --image "$IMG-$name:sha-$SHORT" -o none
+          }
+          deploy nora-api-dev    api    "$CH_API"    "$R_API"    api
+          deploy nora-worker-dev worker "$CH_WORKER" "$R_WORKER" worker
+          deploy nora-web-dev    web    "$CH_WEB"    "$R_WEB"    web
+          deploy nora-admin-dev  admin  "$CH_ADMIN"  "$R_ADMIN"  admin
+          echo "Rollout concluído (serviços não-mudados foram preservados)."
 
   summary:
     needs: [api, worker, web, admin]
