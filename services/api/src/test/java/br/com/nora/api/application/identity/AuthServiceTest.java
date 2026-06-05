@@ -473,6 +473,12 @@ class AuthServiceTest {
 
     static class InMemoryTenantRepo implements TenantRepository {
         private final Map<UUID, Tenant> byId = new LinkedHashMap<>();
+
+        @Override
+        public java.util.List<UUID> allActiveTenantIds() {
+            return java.util.List.copyOf(byId.keySet());
+        }
+
         private final Map<String, UUID> bySlug = new HashMap<>();
 
         @Override

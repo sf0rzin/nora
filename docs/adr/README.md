@@ -71,3 +71,4 @@ Decisões parcialmente substituídas: ADR sucessor pode marcar `Substitui parcia
 | 0026 | RLS completa, provisionamento de role versionado e cutover do enforce | parcialmente substituído por 0028 (design de enforce/cutover; V019+R001 mantidos) |
 | 0027 | Branch protection da `main` + CI gate obrigatório | aceito |
 | 0028 | RLS enforcement auth-aware: escopo por dado, Flyway-as-admin e cutover | aceito (corrige 0026) |
+| 0029 | LGPD operacional: direito ao esquecimento + retenção (hard-delete) | aceito |

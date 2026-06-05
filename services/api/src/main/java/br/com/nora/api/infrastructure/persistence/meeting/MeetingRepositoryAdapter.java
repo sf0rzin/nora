@@ -60,6 +60,18 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
         return new PagedMeetings(items, result.getTotalElements(), page, size);
     }
 
+    @Override
+    @Transactional
+    public int hardErase(UUID meetingId, UUID tenantId) {
+        return jpa.hardDeleteByIdAndTenant(meetingId, tenantId);
+    }
+
+    @Override
+    @Transactional
+    public int purgeOlderThan(UUID tenantId, OffsetDateTime cutoff) {
+        return jpa.hardDeleteByTenantOlderThan(tenantId, cutoff);
+    }
+
     private MeetingJpaEntity toEntity(Meeting m) {
         MeetingJpaEntity e = new MeetingJpaEntity();
         e.setId(m.id());
