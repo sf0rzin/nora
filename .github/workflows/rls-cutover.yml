@@ -1,0 +1,133 @@
+name: rls-cutover
+
+# Provisiona os roles de runtime do RLS enforce (ADR 0028) no Postgres do ambiente.
+#
+# Roda o script idempotente `db/operational/R001` como ADMIN do Postgres (nora_admin),
+# criando:
+#   - nora_app        (LOGIN, NOBYPASSRLS) — role de runtime da API sob enforce
+#   - nora_telemetry  (LOGIN, BYPASSRLS)   — leitura agregada cross-tenant (operador)
+# + os GRANTs e DEFAULT PRIVILEGES (ver R001).
+#
+# É a ETAPA 2 da sequência de cutover do ADR 0028 (a 1 foi mergear o mecanismo, default OFF).
+# NÃO liga o enforce — isso é a etapa 3 (flip do `rlsEnforce=true` no bicepparam → deploy-infra).
+# Rodar este workflow tem ZERO impacto no app rodando: os roles ficam OCIOSOS até o flip.
+# É idempotente — pode rodar de novo sem efeito colateral.
+#
+# Pré-requisitos (GitHub Secrets — ver rls-cutover-runbook.md):
+#   - AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID  (OIDC, já existem)
+#   - PG_ADMIN_PASSWORD          senha do nora_admin (já existe)
+#   - NORA_APP_PASSWORD          senha FORTE a criar pro nora_app (a MESMA que o deploy injeta no KV)
+#   - RLS_TELEMETRY_PASSWORD     senha FORTE a criar pro nora_telemetry
+#
+# Segurança: a senha admin nunca sai do GitHub (OIDC + secret). A regra de firewall do runner
+# é temporária e removida no final (sempre, mesmo em falha).
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Digite PROVISION para confirmar a criação dos roles no Postgres'
+        required: true
+        default: ''
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_RG: rg-nora-dev
+  PG_SERVER: nora-pg-dev-wgl3a3
+  PG_HOST: nora-pg-dev-wgl3a3.postgres.database.azure.com
+  PG_DB: nora
+  PG_ADMIN_USER: nora_admin
+
+jobs:
+  provision-roles:
+    name: Provisiona roles RLS (R001)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: dev # federated credential github-environment-dev (mesmo do deploy)
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Guard — confirmação explícita
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "PROVISION" ]; then
+            echo "::error::Confirmação inválida. Digite exatamente PROVISION para rodar."
+            exit 1
+          fi
+
+      - name: Guard — secrets obrigatórios presentes
+        env:
+          PG_ADMIN_PASSWORD: ${{ secrets.PG_ADMIN_PASSWORD }}
+          NORA_APP_PASSWORD: ${{ secrets.NORA_APP_PASSWORD }}
+          RLS_TELEMETRY_PASSWORD: ${{ secrets.RLS_TELEMETRY_PASSWORD }}
+        run: |
+          miss=0
+          [ -z "$PG_ADMIN_PASSWORD" ]      && { echo "::error::PG_ADMIN_PASSWORD vazio"; miss=1; }
+          [ -z "$NORA_APP_PASSWORD" ]      && { echo "::error::NORA_APP_PASSWORD vazio — gere e sete antes (runbook)"; miss=1; }
+          [ -z "$RLS_TELEMETRY_PASSWORD" ] && { echo "::error::RLS_TELEMETRY_PASSWORD vazio — gere e sete antes (runbook)"; miss=1; }
+          exit $miss
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Instala psql client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Abre firewall temporário pro runner
+        id: fw
+        run: |
+          RUNNER_IP=$(curl -s --max-time 15 ifconfig.me)
+          if [ -z "$RUNNER_IP" ]; then echo "::error::não obteve IP do runner"; exit 1; fi
+          RULE="gh-cutover-${{ github.run_id }}"
+          echo "rule=$RULE" >> "$GITHUB_OUTPUT"
+          az postgres flexible-server firewall-rule create \
+            -g "$AZURE_RG" -n "$PG_SERVER" --rule-name "$RULE" \
+            --start-ip-address "$RUNNER_IP" --end-ip-address "$RUNNER_IP" -o none
+          echo "Firewall aberto pra $RUNNER_IP (regra $RULE)"
+
+      - name: Roda R001 (provisiona roles como admin)
+        env:
+          PGPASSWORD: ${{ secrets.PG_ADMIN_PASSWORD }}
+          APP_PW: ${{ secrets.NORA_APP_PASSWORD }}
+          TEL_PW: ${{ secrets.RLS_TELEMETRY_PASSWORD }}
+        run: |
+          # Senhas passadas CRUAS (sem aspas): o R001 usa :'app_password' que já as
+          # transforma em literal SQL com escaping correto (psql quoted-variable).
+          psql "host=$PG_HOST port=5432 dbname=$PG_DB user=$PG_ADMIN_USER sslmode=require" \
+            --set ON_ERROR_STOP=1 \
+            -v app_password="$APP_PW" \
+            -v telemetry_password="$TEL_PW" \
+            -f services/api/src/main/resources/db/operational/R001__provision_app_roles.sql
+
+      - name: Smoke — roles criados corretamente
+        env:
+          PGPASSWORD: ${{ secrets.PG_ADMIN_PASSWORD }}
+          APP_PW: ${{ secrets.NORA_APP_PASSWORD }}
+        run: |
+          set -e
+          echo "== flags dos roles (esperado: nora_app bypassrls=f, nora_telemetry=t) =="
+          psql "host=$PG_HOST port=5432 dbname=$PG_DB user=$PG_ADMIN_USER sslmode=require" \
+            --set ON_ERROR_STOP=1 -t -A -F'|' \
+            -c "SELECT rolname, rolcanlogin, rolbypassrls FROM pg_roles WHERE rolname IN ('nora_app','nora_telemetry') ORDER BY rolname"
+          echo "== nora_app conecta + lê tabela EXEMPT (users) + tabela ENFORCED sob tenant aleatório (0 linhas, sem erro) =="
+          PGPASSWORD="$APP_PW" psql "host=$PG_HOST port=5432 dbname=$PG_DB user=nora_app sslmode=require" \
+            --set ON_ERROR_STOP=1 -t -A <<'SQL'
+          SELECT 'users_visiveis=' || count(*) FROM users;
+          SET nora.current_tenant_id = '00000000-0000-0000-0000-000000000000';
+          SELECT 'meetings_do_tenant_random=' || count(*) FROM meetings;
+          SQL
+          echo "Smoke OK — nora_app é NOBYPASSRLS e a RLS está ativa."
+
+      - name: Fecha firewall temporário
+        if: always() && steps.fw.outputs.rule != ''
+        run: |
+          az postgres flexible-server firewall-rule delete \
+            -g "$AZURE_RG" -n "$PG_SERVER" --rule-name "${{ steps.fw.outputs.rule }}" --yes -o none || true
+          echo "Firewall ${{ steps.fw.outputs.rule }} removido."

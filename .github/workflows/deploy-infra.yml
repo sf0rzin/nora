@@ -122,6 +122,10 @@ jobs:
           # Operator identity v2 (ADR 0025): Cloudflare Tunnel + Access. Token sai do cloudflare-tunnel.yml.
           CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
           CF_ACCESS_AUD: ${{ vars.CF_ACCESS_AUD }}
+          # RLS enforce (ADR 0028) — lidos pelo bicepparam só no flip do cutover (rlsEnforce=true).
+          # Vazios/ausentes = sem efeito (default OFF). Provisionados via rls-cutover.yml.
+          NORA_APP_PASSWORD: ${{ secrets.NORA_APP_PASSWORD }}
+          RLS_TELEMETRY_PASSWORD: ${{ secrets.RLS_TELEMETRY_PASSWORD }}
         run: |
           az deployment group what-if \
             --resource-group ${{ env.AZURE_RG }} \
@@ -174,6 +178,10 @@ jobs:
           # Operator identity v2 (ADR 0025): Cloudflare Tunnel + Access. Token sai do cloudflare-tunnel.yml.
           CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
           CF_ACCESS_AUD: ${{ vars.CF_ACCESS_AUD }}
+          # RLS enforce (ADR 0028) — lidos pelo bicepparam só no flip do cutover (rlsEnforce=true).
+          # Vazios/ausentes = sem efeito (default OFF). Provisionados via rls-cutover.yml.
+          NORA_APP_PASSWORD: ${{ secrets.NORA_APP_PASSWORD }}
+          RLS_TELEMETRY_PASSWORD: ${{ secrets.RLS_TELEMETRY_PASSWORD }}
         run: |
           DEPLOY_NAME="deploy-$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
           az deployment group create \
