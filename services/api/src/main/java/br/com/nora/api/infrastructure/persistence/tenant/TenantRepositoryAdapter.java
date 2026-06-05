@@ -2,6 +2,7 @@ package br.com.nora.api.infrastructure.persistence.tenant;
 
 import br.com.nora.api.application.ports.TenantRepository;
 import br.com.nora.api.domain.tenant.Tenant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -23,6 +24,11 @@ public class TenantRepositoryAdapter implements TenantRepository {
     @Override
     public boolean existsBySlug(String slug) {
         return jpa.existsBySlug(slug);
+    }
+
+    @Override
+    public List<UUID> allActiveTenantIds() {
+        return jpa.findAllActiveIds();
     }
 
     @Override

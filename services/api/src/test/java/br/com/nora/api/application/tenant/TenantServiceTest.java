@@ -178,6 +178,11 @@ class TenantServiceTest {
         private final Map<UUID, Tenant> store = new HashMap<>();
 
         @Override
+        public java.util.List<UUID> allActiveTenantIds() {
+            return java.util.List.copyOf(store.keySet());
+        }
+
+        @Override
         public Optional<Tenant> findById(UUID id) {
             return Optional.ofNullable(store.get(id));
         }
