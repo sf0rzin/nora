@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -36,4 +37,22 @@ public interface MeetingJpaRepository extends JpaRepository<MeetingJpaEntity, UU
             @Param("fromTs") OffsetDateTime fromTs,
             @Param("toTs") OffsetDateTime toTs,
             Pageable pageable);
+
+    // ---- Hard-delete (LGPD: direito ao esquecimento + retenção, ADR 0021/0029) ----
+    // Native query = SQL cru: IGNORA o @SQLDelete (soft) e o @SQLRestriction (deleted_at IS NULL)
+    // da entidade — é um DELETE FÍSICO de verdade. O FK ON DELETE CASCADE (V004) propaga pra
+    // transcripts (raw_text = PII em repouso), participants, tags e meeting_analyses (+ filhos).
+
+    @Modifying
+    @Query(
+            value = "DELETE FROM meetings WHERE id = :id AND tenant_id = :tenantId",
+            nativeQuery = true)
+    int hardDeleteByIdAndTenant(@Param("id") UUID id, @Param("tenantId") UUID tenantId);
+
+    @Modifying
+    @Query(
+            value = "DELETE FROM meetings WHERE tenant_id = :tenantId AND created_at < :cutoff",
+            nativeQuery = true)
+    int hardDeleteByTenantOlderThan(
+            @Param("tenantId") UUID tenantId, @Param("cutoff") OffsetDateTime cutoff);
 }
