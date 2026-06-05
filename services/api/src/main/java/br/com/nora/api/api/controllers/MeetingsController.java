@@ -10,6 +10,7 @@ import br.com.nora.api.api.dto.meeting.MeetingGoalResponse;
 import br.com.nora.api.api.dto.meeting.MeetingGoalResponseMapper;
 import br.com.nora.api.api.dto.meeting.MeetingListItem;
 import br.com.nora.api.api.dto.meeting.MeetingListResponse;
+import br.com.nora.api.api.dto.meeting.MeetingSearchResponse;
 import br.com.nora.api.api.dto.meeting.MeetingUploadMetadata;
 import br.com.nora.api.api.dto.meeting.MeetingUploadResponse;
 import br.com.nora.api.api.dto.meeting.ProductivityAssessmentResponse;
@@ -18,6 +19,7 @@ import br.com.nora.api.application.analysis.AnalysisException;
 import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.analysis.LiveAnalysisService;
 import br.com.nora.api.application.customer.CustomerConfidenceService;
+import br.com.nora.api.application.embedding.EmbeddingService;
 import br.com.nora.api.application.iam.AuthorizationService;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.meeting.MeetingGoalService;
@@ -38,6 +40,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -76,6 +79,7 @@ public class MeetingsController {
     private final ObjectMapper objectMapper;
     private final Validator validator;
     private final AuthorizationService authz;
+    private final EmbeddingService embeddings;
 
     public MeetingsController(
             MeetingService meetings,
@@ -85,7 +89,8 @@ public class MeetingsController {
             CustomerConfidenceService customerConfidence,
             ObjectMapper objectMapper,
             Validator validator,
-            AuthorizationService authz) {
+            AuthorizationService authz,
+            EmbeddingService embeddings) {
         this.meetings = meetings;
         this.analyses = analyses;
         this.meetingGoals = meetingGoals;
@@ -94,10 +99,45 @@ public class MeetingsController {
         this.objectMapper = objectMapper;
         this.validator = validator;
         this.authz = authz;
+        this.embeddings = embeddings;
     }
 
     private static String meetingResource(UUID tenantId, UUID meetingId) {
         return "nora:tenant/" + tenantId + ":meeting/" + (meetingId == null ? "*" : meetingId);
+    }
+
+    /**
+     * Busca semântica (RAG): retorna as reuniões mais RELEVANTES à query {@code q} por similaridade
+     * de embedding (não as mais recentes). Usado pelo chat pra montar contexto + citação. Vazio se
+     * o embedding estiver desligado (sem credencial) ou o tenant ainda não ter reuniões indexadas —
+     * o caller deve ter fallback. Spring roteia {@code /search} (literal) antes de {@code /{id}}.
+     */
+    @GetMapping("/search")
+    public MeetingSearchResponse search(
+            @RequestParam("q") String q, @RequestParam(name = "k", defaultValue = "5") int k) {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        authz.require(
+                principal.userId(),
+                principal.tenantId(),
+                "meeting:read",
+                meetingResource(principal.tenantId(), null));
+        int limit = Math.min(Math.max(k, 1), 10);
+        List<MeetingSearchResponse.Item> items = new ArrayList<>();
+        for (UUID id : embeddings.search(principal.tenantId(), q, limit)) {
+            try {
+                Meeting m = meetings.getById(id, principal.tenantId());
+                items.add(
+                        new MeetingSearchResponse.Item(
+                                m.id(),
+                                m.title(),
+                                m.summarySnippet(),
+                                m.startedAt(),
+                                m.processingStatus().name()));
+            } catch (RuntimeException ignored) {
+                // embedding órfão (corrida com delete/erasure) — pula silenciosamente.
+            }
+        }
+        return new MeetingSearchResponse(items);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
