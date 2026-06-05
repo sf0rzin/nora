@@ -113,6 +113,14 @@ nora:
     # filhos mais antigos que N dias. 0 = DESLIGADO (default — destrutivo, opt-in por ambiente).
     retention-days: ${NORA_PRIVACY_RETENTION_DAYS:0}
     retention-cron: ${NORA_PRIVACY_RETENTION_CRON:0 30 3 * * *}
+  embedding:
+    # RAG (busca semântica do chat). Provider-agnóstico (ADR 0004): gemini (default) ou openai.
+    # Sem credencial pro provider ativo → embeddings DESLIGADOS (no-op; o chat cai no fallback).
+    provider: ${NORA_EMBEDDING_PROVIDER:gemini}
+    model: ${NORA_EMBEDDING_MODEL:text-embedding-004}
+    dimension: ${NORA_EMBEDDING_DIMENSION:768}
+    gemini-api-key: ${GEMINI_API_KEY:}
+    openai-api-key: ${OPENAI_API_KEY:}
   frontend:
     base-url: ${NORA_FRONTEND_BASE_URL:http://localhost:3000}
   email:

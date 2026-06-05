@@ -1,6 +1,7 @@
 package br.com.nora.api.application.analysis;
 
 import br.com.nora.api.application.customer.CustomerConfidenceService;
+import br.com.nora.api.application.embedding.EmbeddingService;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.platform.UsageRecorder;
 import br.com.nora.api.application.ports.MeetingAnalysisRepository;
@@ -51,6 +52,7 @@ public class AnalysisService {
     private final CustomerConfidenceService customerConfidence;
     private final UsageRecorder usageRecorder;
     private final TenantRlsContext rlsContext;
+    private final EmbeddingService embeddings;
 
     public AnalysisService(
             MeetingRepository meetings,
@@ -62,7 +64,8 @@ public class AnalysisService {
             NlpWorkerClient worker,
             CustomerConfidenceService customerConfidence,
             UsageRecorder usageRecorder,
-            TenantRlsContext rlsContext) {
+            TenantRlsContext rlsContext,
+            EmbeddingService embeddings) {
         this.meetings = meetings;
         this.transcripts = transcripts;
         this.tenantContexts = tenantContexts;
@@ -73,6 +76,7 @@ public class AnalysisService {
         this.customerConfidence = customerConfidence;
         this.usageRecorder = usageRecorder;
         this.rlsContext = rlsContext;
+        this.embeddings = embeddings;
     }
 
     /**
@@ -127,6 +131,10 @@ public class AnalysisService {
         persistCustomerConfidence(meetingId, tenantId, result);
         emitUsage(tenantId, saved);
         markStatusAndSnippet(meeting, ProcessingStatus.COMPLETED, saved.summarySnippet());
+        // RAG: indexa o embedding do RESUMO (já tratado pelo PII Shield, não a transcrição bruta).
+        // Best-effort — o EmbeddingService engole falhas e nunca derruba a análise.
+        String snippet = saved.summarySnippet() == null ? "" : saved.summarySnippet();
+        embeddings.index(meetingId, tenantId, (meeting.title() + ". " + snippet).trim());
         return saved;
     }
 
