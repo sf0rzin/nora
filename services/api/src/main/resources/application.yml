@@ -108,6 +108,11 @@ nora:
     cookie-domain: ${AUTH_COOKIE_DOMAIN:}
   app:
     public-base-url: ${NORA_APP_PUBLIC_BASE_URL:http://localhost:3000}
+  privacy:
+    # LGPD retenção (ADR 0029): sweeper purga meetings + transcript (raw_text = PII em repouso) +
+    # filhos mais antigos que N dias. 0 = DESLIGADO (default — destrutivo, opt-in por ambiente).
+    retention-days: ${NORA_PRIVACY_RETENTION_DAYS:0}
+    retention-cron: ${NORA_PRIVACY_RETENTION_CRON:0 30 3 * * *}
   frontend:
     base-url: ${NORA_FRONTEND_BASE_URL:http://localhost:3000}
   email:
