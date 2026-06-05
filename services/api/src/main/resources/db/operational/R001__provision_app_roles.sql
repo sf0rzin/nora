@@ -38,42 +38,34 @@
 --      herdem os grants automaticamente — senao cada nova tabela exigiria um grant
 --      manual antes da API enxerga-la.
 --
--- Tudo dentro de uma transacao implicita do psql -f (cada statement). Os DO blocks
--- abaixo tornam CREATE ROLE idempotente (CREATE ROLE nao tem IF NOT EXISTS).
+-- Cada statement do psql -f autocommita. A criacao idempotente usa \gexec (cria o
+-- role so quando falta) + um ALTER ROLE top-level pra senha/flag.
+--
+-- IMPORTANTE: a senha NAO pode ser interpolada dentro de um bloco DO $$..$$ — o psql
+-- NAO substitui :'app_password' dentro de dollar-quotes (vira literal ":'app_password'"
+-- -> syntax error). Por isso o ALTER ROLE ... PASSWORD :'app_password' fica top-level,
+-- onde o psql transforma a variavel em literal SQL quotado/escapado corretamente.
 
 -- ============================================================
 -- 1. Role de runtime da API: nora_app (NOBYPASSRLS => RLS vale de verdade).
 -- ============================================================
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nora_app') THEN
-        EXECUTE format('CREATE ROLE nora_app WITH LOGIN PASSWORD %L', :'app_password');
-    ELSE
-        EXECUTE format('ALTER ROLE nora_app WITH LOGIN PASSWORD %L', :'app_password');
-    END IF;
-END
-$$;
-
--- Garante NOBYPASSRLS (o ponto inteiro do enforce). Idempotente.
-ALTER ROLE nora_app NOBYPASSRLS;
+-- Cria so quando falta (SELECT do comando -> \gexec executa o que voltou; 0 linhas = no-op).
+SELECT 'CREATE ROLE nora_app LOGIN'
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nora_app')
+\gexec
+-- Garante LOGIN + senha + NOBYPASSRLS (o ponto inteiro do enforce). Idempotente.
+ALTER ROLE nora_app WITH LOGIN PASSWORD :'app_password' NOBYPASSRLS;
 
 -- ============================================================
 -- 2. Role de telemetria operador-only: nora_telemetry (BYPASSRLS => le cross-tenant).
 --    Usado APENAS pela agregacao de metricas de negocio (COUNT/COUNT DISTINCT em
 --    meeting_analyses). NUNCA usado pelo caminho de request normal. Ver ADR 0026.
 -- ============================================================
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nora_telemetry') THEN
-        EXECUTE format('CREATE ROLE nora_telemetry WITH LOGIN PASSWORD %L', :'telemetry_password');
-    ELSE
-        EXECUTE format('ALTER ROLE nora_telemetry WITH LOGIN PASSWORD %L', :'telemetry_password');
-    END IF;
-END
-$$;
-
+SELECT 'CREATE ROLE nora_telemetry LOGIN'
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nora_telemetry')
+\gexec
 -- BYPASSRLS: este role IGNORA as policies (leitura agregada cross-tenant intencional).
-ALTER ROLE nora_telemetry BYPASSRLS;
+ALTER ROLE nora_telemetry WITH LOGIN PASSWORD :'telemetry_password' BYPASSRLS;
 
 -- ============================================================
 -- 3. GRANTs ao nora_app — todas as tabelas tenant-owned + infra do schema public.
