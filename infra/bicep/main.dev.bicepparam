@@ -94,3 +94,15 @@ param adminIpSecurityRestrictions = []
 param cloudflareTunnelToken = readEnvironmentVariable('CLOUDFLARE_TUNNEL_TOKEN', '')
 param cfAccessTeamDomain = 'stratfy.cloudflareaccess.com'
 param cfAccessAud = readEnvironmentVariable('CF_ACCESS_AUD', '')
+
+// ---- RLS enforce (ADR 0028) — FLIP DO CUTOVER ----
+// Liga o Row Level Security REAL: a API passa a conectar como nora_app (NOBYPASSRLS),
+// o Flyway segue como admin (nora_admin), e o caminho BYPASSRLS da telemetria (nora_telemetry)
+// mantém o painel operador agregando cross-tenant. Roles + senhas já provisionados pelo
+// rls-cutover.yml (R001). As senhas vêm dos GitHub Secrets (MESMA fonte que o R001 usou) e o
+// bicep as injeta no Key Vault (nora-app-password / rls-telemetry-password).
+// ROLLBACK: remover este bloco (ou rlsEnforce=false) + redeploy → API volta pra nora_admin.
+param rlsEnforce = true
+param appDbPassword = readEnvironmentVariable('NORA_APP_PASSWORD')
+param rlsTelemetryDatasourceUrl = 'jdbc:postgresql://nora-pg-dev-wgl3a3.postgres.database.azure.com:5432/nora?sslmode=require'
+param rlsTelemetryPassword = readEnvironmentVariable('RLS_TELEMETRY_PASSWORD')
