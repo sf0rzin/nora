@@ -8,6 +8,7 @@ import { formatDateTime } from "@/lib/utils";
 import { MarkdownContent } from "@/components/markdown-content";
 import MeetingProductivitySection from "@/components/meeting-productivity-section";
 import CustomerConfidenceCard from "@/components/customer-confidence-card";
+import { MeetingDangerZone, ReprocessButton } from "@/components/meeting-actions";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 
 export const dynamic = "force-dynamic";
@@ -79,12 +80,17 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
       </div>
 
       {!a && (
-        <div style={{ padding: "16px 18px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--chip)", fontSize: 14, color: "var(--muted)" }}>
-          {meeting.processingStatus === "PROCESSING"
-            ? "A NORA está analisando esta reunião. Volte em instantes."
-            : meeting.processingStatus === "FAILED"
-              ? "A análise desta reunião falhou. Tente reprocessar."
-              : "Esta reunião ainda não foi analisada."}
+        <div style={{ padding: "16px 18px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--chip)", fontSize: 14, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 12 }}>
+          <span>
+            {meeting.processingStatus === "PROCESSING"
+              ? "A NORA está analisando esta reunião. Volte em instantes."
+              : meeting.processingStatus === "FAILED"
+                ? "A análise desta reunião falhou."
+                : "Esta reunião ainda não foi analisada."}
+          </span>
+          {(meeting.processingStatus === "FAILED" || meeting.processingStatus === "PENDING") && (
+            <ReprocessButton meetingId={meeting.id} label="Reprocessar análise" />
+          )}
         </div>
       )}
 
@@ -184,7 +190,14 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
         <MeetingProductivitySection meetingId={meeting.id} goal={meeting.goal ?? null} productivity={meeting.productivity ?? null} />
       </div>
 
-      <div style={{ marginTop: 48, paddingTop: 18, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 14, fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)" }}>
+      <div style={{ marginTop: 40, paddingTop: 18, borderTop: "1px solid var(--border)" }}>
+        <h2 style={{ fontFamily: "var(--mono)", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 14px" }}>
+          Ações
+        </h2>
+        <MeetingDangerZone meetingId={meeting.id} title={meeting.title} canReprocess={Boolean(a)} />
+      </div>
+
+      <div style={{ marginTop: 40, paddingTop: 18, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 14, fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)" }} />
           PII Shield aplicado

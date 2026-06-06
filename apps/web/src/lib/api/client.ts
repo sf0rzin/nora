@@ -240,6 +240,34 @@ export async function uploadMeeting(input: UploadMeetingInput) {
   });
 }
 
+/**
+ * Re-dispara o pipeline de analise de uma reuniao existente (POST 202).
+ * Util para recuperar de um `FAILED` ou reanalisar um `COMPLETED`. O backend
+ * volta o `processingStatus` para `PENDING`/`PROCESSING`; o caller deve refazer
+ * o polling/refresh. O Desktop ja consome o mesmo endpoint.
+ */
+export async function reprocessMeeting(
+  meetingId: string,
+): Promise<{ id: string; processingStatus: string }> {
+  return request<{ id: string; processingStatus: string }>(
+    `/meetings/${encodeURIComponent(meetingId)}/reprocess`,
+    { method: 'POST' },
+  );
+}
+
+// ---------- Privacidade / LGPD (ADR 0029) ----------
+
+/**
+ * Direito ao esquecimento (LGPD Art. 18): apaga DEFINITIVAMENTE a reuniao e todo
+ * o PII em cascata (transcript bruto, participantes, analises). Irreversivel.
+ * Retorna 204; 404 quando nao existe no tenant (nao vaza existencia cross-tenant).
+ */
+export async function deleteMeeting(meetingId: string): Promise<void> {
+  return request<void>(`/privacy/meetings/${encodeURIComponent(meetingId)}`, {
+    method: 'DELETE',
+  });
+}
+
 // ---------- Auth ----------
 
 export interface LoginResponse {

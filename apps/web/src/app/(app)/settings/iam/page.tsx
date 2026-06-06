@@ -19,6 +19,7 @@ import {
   listGroups,
   listPolicies,
   removeGroupMember,
+  updatePolicyDocument,
 } from "@/lib/api/client";
 import PolicyEditor from "@/components/policy-editor";
 import CorporateDomainCard from "@/components/corporate-domain-card";
@@ -53,6 +54,10 @@ export default function IamPage() {
   const [attachUserId, setAttachUserId] = useState("");
   const [memberGroupId, setMemberGroupId] = useState("");
   const [memberUserId, setMemberUserId] = useState("");
+  // edicao de policy existente (PUT /iam/policies/{id} → nova versao)
+  const [editPolicyId, setEditPolicyId] = useState<string | null>(null);
+  const [editPolicyDoc, setEditPolicyDoc] = useState("");
+  const [editPolicyValid, setEditPolicyValid] = useState(true);
 
   async function refresh() {
     setLoading(true);
@@ -279,19 +284,69 @@ export default function IamPage() {
                     )}
                     <div className="text-xs text-slate-400">{p.id}</div>
                   </div>
-                  <button
-                    type="button"
-                    className="text-xs text-red-600 hover:underline"
-                    onClick={() => {
-                      void handle(() => deletePolicy(p.id));
-                    }}
-                  >
-                    excluir
-                  </button>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      className="text-xs text-slate-600 hover:underline"
+                      onClick={() => {
+                        if (editPolicyId === p.id) {
+                          setEditPolicyId(null);
+                        } else {
+                          setEditPolicyId(p.id);
+                          setEditPolicyDoc(JSON.stringify(p.document, null, 2));
+                          setEditPolicyValid(true);
+                        }
+                      }}
+                    >
+                      {editPolicyId === p.id ? "cancelar" : "editar"}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs text-red-600 hover:underline"
+                      onClick={() => {
+                        void handle(() => deletePolicy(p.id));
+                      }}
+                    >
+                      excluir
+                    </button>
+                  </div>
                 </div>
-                <pre className="mt-2 overflow-x-auto rounded-md bg-slate-50 p-2 text-xs">
-                  {JSON.stringify(p.document, null, 2)}
-                </pre>
+                {editPolicyId === p.id ? (
+                  <div className="mt-2 space-y-2">
+                    <PolicyEditor
+                      value={editPolicyDoc}
+                      onChange={(next, isValid) => {
+                        setEditPolicyDoc(next);
+                        setEditPolicyValid(isValid);
+                      }}
+                      height={320}
+                    />
+                    <button
+                      type="button"
+                      disabled={!editPolicyValid}
+                      className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                      onClick={() => {
+                        let parsed: unknown;
+                        try {
+                          parsed = JSON.parse(editPolicyDoc);
+                        } catch {
+                          setError("Policy document deve ser um JSON válido.");
+                          return;
+                        }
+                        void handle(async () => {
+                          await updatePolicyDocument(p.id, parsed);
+                          setEditPolicyId(null);
+                        });
+                      }}
+                    >
+                      Salvar alterações (nova versão)
+                    </button>
+                  </div>
+                ) : (
+                  <pre className="mt-2 overflow-x-auto rounded-md bg-slate-50 p-2 text-xs">
+                    {JSON.stringify(p.document, null, 2)}
+                  </pre>
+                )}
               </li>
             ))}
           </ul>
