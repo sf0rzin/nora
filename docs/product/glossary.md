@@ -1,3 +1,11 @@
+---
+title: "Glossário — NORA"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.1
+last_reviewed: 2026-06-06
+---
+
 # Glossário — NORA
 
 > Vocabulário canônico do projeto NORA. Termos ordenados alfabeticamente. Cada entrada inclui definição, escopo (onde aparece) e referência (ADR / arquivo / PR) quando aplicável.
@@ -17,7 +25,7 @@
 
 **ADR** — Architecture Decision Record. Decisão técnica durável + contexto + alternativas consideradas. **Imutável** uma vez aceita — sucessor cria novo ADR, não edita o antigo. Formato MADR enxuto (Status / Data / Decisores / Contexto / Decisão / Consequências / Alternativas). Em `docs/adr/`. Índice: `docs/adr/README.md`.
 
-**AUTH_FILTER_HARD_CAP** — Constante `500` em `MeetingsController.java:67` que limita quantas reuniões são carregadas em memória antes da filtragem IAM. Débito conhecido **ainda aberto** (2026-05-21): tenants com >500 reuniões têm páginas vazias e `totalItems` truncado. Fix era alvo da Sub-fase 1.11 (não iniciada) via empurrar predicado IAM pra SQL (JSONB GIN em `meeting_attributes`).
+**AUTH_FILTER_HARD_CAP** — Constante de cap em memória que antes limitava quantas reuniões eram carregadas antes da filtragem IAM. **Removida**: a varredura agora ocorre em lotes (scan paginado) em `MeetingService.listAllForAuthFilter`, eliminando o débito de páginas vazias e `totalItems` truncado para tenants com muitas reuniões.
 
 ## B
 
@@ -25,19 +33,19 @@
 - **Productivity Score** e **Customer Confidence**: `LOW` / `MEDIUM` / `HIGH`
 - **Account Health**: `AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`
 
-**BlackHole** — Driver de áudio virtual macOS usado pelo Desktop NORA pra capturar áudio do sistema (workaround pre-ScreenCaptureKit). Adicionado em PR #37. Contradiz documentação anterior que dizia "Não suporta macOS no MVP".
+**BlackHole** — Driver de áudio virtual macOS usado pelo Desktop NORA para capturar áudio do sistema (workaround pre-ScreenCaptureKit). Adicionado em PR #37. Contradiz documentação anterior que dizia "Não suporta macOS no MVP".
 
-**Bucket4j** — Lib Java (versão 8.10.1) usada pra rate limiting no backend. Usada principalmente no `SpeechController` pra evitar abuse do Speech Token Broker (que custa dinheiro Azure).
+**Bucket4j** — Lib Java (versão 8.10.1) usada para rate limiting no backend. Usada principalmente no `SpeechController` para evitar abuse do Speech Token Broker (que custa dinheiro Azure).
 
 ## C
 
-**Container Apps** — Serviço Azure usado pra hospedar `nora-api-dev`, `nora-worker-dev` e `nora-web-dev`. Ambiente único `nora-cae-dev`. Worker é internal-only (não exposto ingressante).
+**Container Apps** — Serviço Azure usado para hospedar `nora-api-dev`, `nora-worker-dev` e `nora-web-dev`. Ambiente único `nora-cae-dev`. Worker é internal-only (não exposto ingressante).
 
-**Conditions** — Em IAM Policy, regras opcionais que restringem quando um statement Allow/Deny aplica. Formato AWS-style: `{ "stringEquals": { "nora:Department": "sales" } }`. PolicyEvaluator atual suporta só `StringEquals`; `StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan` planejados pra Sub-fase 1.11. Operadores não-suportados resultam em `false` (fail-closed).
+**Conditions** — Em IAM Policy, regras opcionais que restringem quando um statement Allow/Deny aplica. Formato AWS-style: `{ "stringEquals": { "nora:Department": "sales" } }`. PolicyEvaluator suporta `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan` e `DateLessThan`. Operadores não-suportados resultam em `false` (fail-closed).
 
 **Coverage** — (1) Em **Productivity Score**, status de cada `expectedOutcome` declarado pelo usuário: `ADDRESSED` (cobriu integralmente) / `PARTIAL` (cobriu parcialmente) / `MISSED` (não cobriu). Cada um com evidência textual (`sourceQuote`). (2) Em **testes**, percentual de código exercitado pelos testes — worker NLP 87%, backend Spring 67%, web 0% (sem runner).
 
-**Customer Confidence** — Score 0-100 da **confiança do cliente/lead na NORA do tenant** (não a nossa confiança no cliente). Por reunião. Combina sentimento + sinais de compra (`buyingSignals`) + objeções (`objections`) + tendência em relação à última reunião da mesma conta. Banda `LOW`/`MEDIUM`/`HIGH`. Tendência `IMPROVING`/`STABLE`/`DECLINING`. ADR 0006 aceito; schema LLM existe; persistência adiada (US48-49 PARTIAL); ADR 0015 (Sub-fase 1.11) decide entre implementar mínimo viável vs remover da landing.
+**Customer Confidence** — Score 0-100 da **confiança do cliente/lead na NORA do tenant** (não a nossa confiança no cliente). Por reunião. Combina sentimento + sinais de compra (`buyingSignals`) + objeções (`objections`) + tendência em relação à última reunião da mesma conta. Banda `LOW`/`MEDIUM`/`HIGH`. Tendência `IMPROVING`/`STABLE`/`DECLINING`. ADR 0006 aceito. **Entregue full-stack (PR #148)**: campo emitido pelo worker, persistido no backend e renderizado no web, com tendência autoritativa por conta.
 
 ## D
 
@@ -57,9 +65,9 @@
 
 ## F
 
-**Federated Credential** — Mecanismo OIDC do Azure pra autenticar GitHub Actions sem armazenar client secret. Service Principal `sp-nora-github-deploy` tem 3 credenciais federadas separadas: (main) / (pull_request) / (environment:dev). Lição: precisa fed cred por par (branch, environment).
+**Federated Credential** — Mecanismo OIDC do Azure para autenticar GitHub Actions sem armazenar client secret. Service Principal `sp-nora-github-deploy` tem 3 credenciais federadas separadas: (main) / (pull_request) / (environment:dev). Lição: precisa fed cred por par (branch, environment).
 
-**Flyway** — Ferramenta de migrations SQL versionadas. Migrations em `services/api/src/main/resources/db/migration/V001__*.sql` até V012 (em 2026-05-14). Cada migration é imutável após mergeada em main.
+**Flyway** — Ferramenta de migrations SQL versionadas. Migrations em `services/api/src/main/resources/db/migration/V001__*.sql` até V021 (fonte canônica: `docs/engineering/data-model.md`). Cada migration é imutável após mergeada em main.
 
 ## G
 
@@ -73,13 +81,13 @@
 
 ## J
 
-**JJWT** — Lib Java (versão 0.12.6) usada pra emitir e validar JWTs no backend. Configurada em `services/api/pom.xml`.
+**JJWT** — Lib Java (versão 0.12.6) usada para emitir e validar JWTs no backend. Configurada em `services/api/pom.xml`.
 
-**JSON Schema strict** — Formato obrigatório de validação na saída do LLM. Passamos `response_format={"type": "json_schema", ...}` pra OpenAI/Azure OpenAI; o provedor garante que a resposta valida contra o schema. Sem isso, parsing pode quebrar. ADR 0003. Schema canônico em `docs/api/llm-schemas/meeting-analysis-v1.schema.json`.
+**JSON Schema strict** — Formato obrigatório de validação na saída do LLM. Passamos `response_format={"type": "json_schema", ...}` para OpenAI/Azure OpenAI; o provedor garante que a resposta valida contra o schema. Sem isso, parsing pode quebrar. ADR 0003. Schema canônico em `docs/api/llm-schemas/meeting-analysis-v1.schema.json`.
 
 ## K
 
-**Key Vault** — Serviço Azure usado pra armazenar secrets (JWT_SECRET, OPENAI_API_KEY, ConnectionString Postgres, Speech key). Container Apps acessa via **Key Vault references** com User-Assigned Identity (UAI). Nome no dev: `nora-kv-dev-wgl3a3`. Soft-delete bloqueia recriação por 7 dias (pegadinha Azure for Students).
+**Key Vault** — Serviço Azure usado para armazenar secrets (JWT_SECRET, OPENAI_API_KEY, ConnectionString Postgres, Speech key). Container Apps acessa via **Key Vault references** com User-Assigned Identity (UAI). Nome no dev: `nora-kv-dev-wgl3a3`. Soft-delete bloqueia recriação por 7 dias (armadilha Azure for Students).
 
 ## L
 
@@ -89,16 +97,16 @@
 
 ## M
 
-**MeetingGoal** — Input **opt-in** do usuário pra calcular Productivity Score. Campos:
+**MeetingGoal** — Input **opt-in** do usuário para calcular Productivity Score. Campos:
 - `purpose` (string curta) — propósito declarado da reunião
 - `expectedOutcomes` (lista) — o que precisava ser resolvido/decidido
-- `projectStateSnapshot` (opcional) — estado do projeto pra contexto
+- `projectStateSnapshot` (opcional) — estado do projeto para contexto
 
 Submetido via `PUT /meetings/{id}/goal`. ADR 0005.
 
 **MoSCoW** — Acrônimo de priorização: **M**ust have / **S**hould have / **C**ould have / **W**on't have (v1). Usado no backlog (`docs/product/backlog.md`). 31 Must, 14 Should, 5 Could, 7 Won't no MVP original.
 
-**Multi-tenancy** — Isolamento de dados entre clientes (tenants) do NORA. **No MVP**: `tenant_id` em toda tabela tenant-owned + filtro no application layer (Spring). **Defesa em profundidade**: RLS Postgres (V016, enforce opt-in) + FK composta de isolamento (V015). ADR 0002.
+**Multi-tenancy** — Isolamento de dados entre clientes (tenants) do NORA. **No MVP**: `tenant_id` em toda tabela tenant-owned + filtro no application layer (Spring). **Defesa em profundidade**: RLS Postgres (schema em V016; RLS completa + scope auth-aware em V019/V020) + FK composta de isolamento (V015). ADR 0002.
 
 ## N
 
@@ -110,47 +118,47 @@ Submetido via `PUT /meetings/{id}/goal`. ADR 0005.
 
 Internal-only — só backend Spring fala com ele. Hosted em `nora-worker-dev` (Container App internal).
 
-**Negative list** — Lista de termos que **não** devem ser redigidos pelo PII Shield mesmo que pareçam nomes (e.g., "Apolo" parece nome próprio mas é referência mitológica/comum no contexto técnico; nomes próprios de membros da equipe que aparecem em commits e comentários idem). ~80 termos catalogados pra reduzir false positives. ADR 0012.
+**Negative list** — Lista de termos que **não** devem ser redigidos pelo PII Shield mesmo que pareçam nomes (e.g., "Apolo" parece nome próprio mas é referência mitológica/comum no contexto técnico; nomes próprios de membros da equipe que aparecem em commits e comentários idem). ~80 termos catalogados para reduzir false positives. ADR 0012.
 
 ## O
 
-**OIDC** — OpenID Connect. Usado pelo Service Principal Azure (`sp-nora-github-deploy`) pra autenticar GitHub Actions sem client secret. Configurado via federated credentials no app registration.
+**OIDC** — OpenID Connect. Usado pelo Service Principal Azure (`sp-nora-github-deploy`) para autenticar GitHub Actions sem client secret. Configurado via federated credentials no app registration.
 
 **Outcome** — Ver `expectedOutcome`.
 
 ## P
 
-**packages/nlp-baseline** — Package Python local em `packages/nlp-baseline/` com 3 módulos TF-IDF (preprocessing, vectorizer, top_terms). Usado pelo worker NLP **antes** do LLM pra extrair termos importantes de forma interpretável. ADR 0010.
+**packages/nlp-baseline** — Package Python local em `packages/nlp-baseline/` com 3 módulos TF-IDF (preprocessing, vectorizer, top_terms). Usado pelo worker NLP **antes** do LLM para extrair termos importantes de forma interpretável. ADR 0010.
 
 **PII** — Personally Identifiable Information. Categorias cobertas pelo PII Shield do NORA: email, CPF, CNPJ, phone, credit card, PERSON_NAME (BR). Não cobertos no MVP: ADDRESS (débito catalogado). ADR 0012.
 
-**PII Shield** — Sistema do worker NLP que detecta e redige PII **antes** de mandar texto pra LLM externo. Substitui por placeholders `[[TIPO_N]]` (e.g., `[[EMAIL_1]]`, `[[CPF_2]]`). Pós-LLM o backend pode unredact se autorizado. ADR 0012. Implementação em `services/nlp-worker/src/.../pii_shield.py` (95% coverage).
+**PII Shield** — Sistema do worker NLP que detecta e redige PII **antes** de mandar texto para LLM externo. Substitui por placeholders `[[TIPO_N]]` (e.g., `[[EMAIL_1]]`, `[[CPF_2]]`). Pós-LLM o backend pode unredact se autorizado. ADR 0012. Implementação em `services/nlp-worker/src/.../pii_shield.py` (95% coverage).
 
-**PolicyEvaluator** — Componente Spring em `services/api/src/main/java/.../PolicyEvaluator.java` que recebe um conjunto de policies + contexto (user, action, resource, attributes) e retorna `Allow` / `Deny`. Implementa Deny-first eval. Operador suportado hoje: `StringEquals`. Operadores planejados pra 1.11: `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan`. Cobertura 95.8% instr / 84% branches.
+**PolicyEvaluator** — Componente Spring em `services/api/src/main/java/.../PolicyEvaluator.java` que recebe um conjunto de policies + contexto (user, action, resource, attributes) e retorna `Allow` / `Deny`. Implementa Deny-first eval. Operadores suportados: `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (operadores não-suportados resultam em `false`, fail-closed). Cobertura 95.8% instr / 84% branches.
 
-**Productivity Score** — Score 0-100 da **reunião contra o objetivo declarado** pelo próprio usuário (não benchmark externo). **Opt-in** por reunião — sem `MeetingGoal` não calcula. Banda `LOW`/`MEDIUM`/`HIGH`. ADR 0005. Implementação full-stack: V012 + worker (model + stub + LLM) + backend Spring + web (`MeetingGoalForm`, `MeetingProductivitySection`, `ProductivityScoreCard`).
+**Productivity Score** — Score 0-100 da **reunião contra o objetivo declarado** pelo próprio usuário (não benchmark externo). **Opt-in** por reunião — sem `MeetingGoal` não calcula. Banda `LOW`/`MEDIUM`/`HIGH`. ADR 0005. Implementação full-stack: migration dedicada (ver `docs/engineering/data-model.md`) + worker (model + stub + LLM) + backend Spring + web (`MeetingGoalForm`, `MeetingProductivitySection`, `ProductivityScoreCard`).
 
 ## R
 
-**RAG** — Retrieval-Augmented Generation. Padrão de IA onde o prompt do LLM é enriquecido com documentos relevantes recuperados de uma base de conhecimento. No NORA, usado pra trazer **contexto do tenant** (produtos, glossário, concorrentes, stakeholders) ao prompt. **MVP**: stub local (injeta contexto inline no prompt). **Produção**: Azure AI Search com índice por tenant (flag `enableSearch` no Bicep, hoje `false`).
+**RAG** — Retrieval-Augmented Generation. Padrão de IA onde o prompt do LLM é enriquecido com documentos relevantes recuperados de uma base de conhecimento. No NORA, usado para trazer **contexto do tenant** (produtos, glossário, concorrentes, stakeholders) ao prompt, além de busca semântica sobre reuniões. **Entregue (US15, PR #206)**: embeddings provider-agnósticos (Gemini/OpenAI) persistidos via pgvector (migration V021) e recuperados por um HTTP embedding client (`EmbeddingService.java`, `HttpEmbeddingClient.java`). O chat Core consome `/meetings/search` como contexto RAG. (Não usa Azure AI Search.)
 
-**Refresh token** — Token de **longa duração** (30 dias, UUID stateful) usado pra renovar o JWT de access (15min). Persistido em `iam_refresh_tokens` (migration V011). Cookie httpOnly `nora_refresh`. Acesso curto + refresh longo = padrão de segurança balanceado.
+**Refresh token** — Token de **longa duração** (30 dias, UUID stateful) usado para renovar o JWT de access (15min). Persistido em `iam_refresh_tokens` (migration V011). Cookie httpOnly `nora_refresh`. Acesso curto + refresh longo = padrão de segurança balanceado.
 
 **rg-nora-dev** — Resource Group Azure de desenvolvimento. Subscription `Azure for Students`. Region `centralus`. Contém 14 recursos. Custo estimado R$110-180/mês.
 
-**rg-nora-prod** — Resource Group Azure de produção. **Ainda não existe** — criação planejada pra Sub-fase 1.12 (Production Hardening). Isolamento total do dev.
+**rg-nora-prod** — Resource Group Azure de produção. **Ainda não existe** — criação planejada para Sub-fase 1.12 (Production Hardening). Isolamento total do dev.
 
-**RLS** — Row-Level Security. Recurso do Postgres que filtra rows por policy SQL. **Entregue no schema em V016** (`tenant_isolation` em 10 tabelas; predicado `tenant_id = nora.current_tenant_id()`, lendo o GUC `nora.current_tenant_id` setado pelo `TenantRlsAspect`). **Enforcement opt-in:** owner/admin bypassa por default (dev/testes inertes); em prod, ativar via role `nora_app` (`NOBYPASSRLS`) + flag `nora.security.rls.enforce`. Defesa em profundidade do filtro de app (ADR 0002). (Nota: o GUC real é `nora.current_tenant_id`, não `app.tenant_id` como o ADR 0002 esboçou.)
+**RLS** — Row-Level Security. Recurso do Postgres que filtra rows por policy SQL. **Schema entregue em V016** (`tenant_isolation` em 10 tabelas; predicado `tenant_id = nora.current_tenant_id()`, lendo o GUC `nora.current_tenant_id` setado pelo `TenantRlsAspect`), com **RLS completa + scope auth-aware em V019/V020** e runbook de cutover (ADR 0026/0028). O que resta é o **cutover/enforcement operacional em prod** (role `nora_app` `NOBYPASSRLS` + flag `nora.security.rls.enforce`), não o schema. Defesa em profundidade do filtro de app (ADR 0002). (Nota: o GUC real é `nora.current_tenant_id`, não `app.tenant_id` como o ADR 0002 esboçou.)
 
 ## S
 
 **Schema strict** — Ver JSON Schema strict.
 
-**Service Principal** — Identity de aplicação Azure usada pra autenticar pipelines/scripts. NORA usa `sp-nora-github-deploy` (appId `3f8b27f6-...`) com roles `Contributor` + `Role Based Access Control Administrator` em `rg-nora-dev`. Autenticação via OIDC (federated credentials).
+**Service Principal** — Identity de aplicação Azure usada para autenticar pipelines/scripts. NORA usa `sp-nora-github-deploy` (appId `3f8b27f6-...`) com roles `Contributor` + `Role Based Access Control Administrator` em `rg-nora-dev`. Autenticação via OIDC (federated credentials).
 
-**Soft-delete** — Comportamento padrão de Key Vault e Cognitive Services (Azure Speech) onde recursos deletados ficam recuperáveis por 7 dias. Bloqueia recriação com mesmo nome. Fix: `az keyvault purge` / `az cognitiveservices account purge`. Pegadinha #4 e #5 do Azure for Students.
+**Soft-delete** — Comportamento padrão de Key Vault e Cognitive Services (Azure Speech) onde recursos deletados ficam recuperáveis por 7 dias. Bloqueia recriação com mesmo nome. Correção: `az keyvault purge` / `az cognitiveservices account purge`. Armadilha #4 e #5 do Azure for Students.
 
-**Speech Token Broker** — Endpoint backend (`SpeechController`) que emite token efêmero Azure Speech (~9 minutos) pro Desktop. **Não expõe a Speech key** — só o token. Rate limit Bucket4j. ADR 0009.
+**Speech Token Broker** — Endpoint backend (`SpeechController`) que emite token efêmero Azure Speech (~9 minutos) para o Desktop. **Não expõe a Speech key** — só o token. Rate limit Bucket4j. ADR 0009.
 
 **Sub-fase** — Unidade de trabalho do NORA. Numeração `X.Y` (e.g., `1.10`). Cada sub-fase = 1+ PRs mergeados + entrega coerente e verificável. Sub-fase fecha quando escopo entrega, não quando timer estoura. Roadmap completo em `docs/product/roadmap.md`.
 
@@ -164,13 +172,13 @@ Internal-only — só backend Spring fala com ele. Hosted em `nora-worker-dev` (
 
 ## U
 
-**UAI** — User-Assigned Identity. Tipo de managed identity Azure **pré-criada** (vs SystemAssigned que é criada com o recurso). NORA usa duas UAIs (`nora-uai-deploy` e `nora-uai-app`) pra resolver ciclo de role assignment + KV reference no Container Apps. Sem isso, ACA tenta acessar KV antes da role assignment ser propagada.
+**UAI** — User-Assigned Identity. Tipo de managed identity Azure **pré-criada** (vs SystemAssigned que é criada com o recurso). NORA usa duas UAIs (`nora-uai-deploy` e `nora-uai-app`) para resolver ciclo de role assignment + KV reference no Container Apps. Sem isso, ACA tenta acessar KV antes da role assignment ser propagada.
 
 **Unredact** — Operação de reverter placeholders `[[TIPO_N]]` do PII Shield de volta pros valores originais. Feito pelo backend após resposta do LLM, só se autorizado pelo contexto do request.
 
 ## V
 
-**V001 - V016** — Migrations Flyway atuais (até 2026-05-21). Cada uma idempotente e imutável, numeração sequencial. V013 = soft-delete, V014 = refresh-token rotation, V015 = composite FK de isolamento, V016 = Row-Level Security. **Nota:** o ADR 0015 reservara "V013" para Customer Confidence, mas o slot virou soft-delete e a persistência de Customer Confidence segue inexistente.
+**V001 - V021** — Migrations Flyway atuais (fonte canônica: `docs/engineering/data-model.md`). Cada uma idempotente e imutável, numeração sequencial. Destaques: V013 = soft-delete, V014 = refresh-token rotation, V015 = composite FK de isolamento, V016 = Row-Level Security (schema), V018 = hash do token de convite, V019/V020 = RLS completa + scope auth-aware, V021 = `meeting_embeddings` (pgvector). Customer Confidence está persistido (ver entrada **Customer Confidence**).
 
 ## W
 
@@ -181,7 +189,7 @@ Internal-only — só backend Spring fala com ele. Hosted em `nora-worker-dev` (
 
 Implementado em PolicyEvaluator com glob-style matching.
 
-**WireMock** — Lib Java (versão standalone 3.9.1) usada nos testes de integração do backend pra mockar respostas HTTP externas (worker NLP, Azure Speech, OpenAI). Permite teste sem rede.
+**WireMock** — Lib Java (versão standalone 3.9.1) usada nos testes de integração do backend para mockar respostas HTTP externas (worker NLP, Azure Speech, OpenAI). Permite teste sem rede.
 
 **Worker NLP** — Ver NlpWorker.
 
@@ -192,3 +200,4 @@ Implementado em PolicyEvaluator com glob-style matching.
 | Versão | Data | Descrição |
 |---|---|---|
 | 1.0 | 2026-05-14 | **Criação inicial**. Glossário canônico cobrindo termos de produto (Customer Confidence, Productivity Score, Account Health, MoSCoW, Tenant), arquitetura (DDD, RAG, JSON Schema strict, Multi-tenancy, RLS), IAM (IAM AWS-style, Effect, Conditions, Wildcard, Deny-first eval, PolicyEvaluator), infra Azure (Container Apps, Key Vault, UAI, OIDC, Soft-delete, Service Principal, rg-nora-dev), implementação (NlpWorker, PII Shield, TF-IDF baseline, packages/nlp-baseline, Speech Token Broker, Refresh token), e processo (ADR, Sub-fase, Flyway/V001-V012, BlackHole, AUTH_FILTER_HARD_CAP). 50+ termos no total |
+| 1.1 | 2026-06-06 | Arquiteto NORA (Tech Lead) — Reconciliação doc x código + padronização (auditoria pré-apresentação) |

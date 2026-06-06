@@ -1,3 +1,11 @@
+---
+title: "Cartografia de secrets e variáveis de ambiente"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # NORA — Cartografia de Secrets & Environment Variables
 
 > **Documento operacional.** Última varredura: 2026-06-03 (auditoria sênior).
@@ -15,7 +23,7 @@ NORA tem **três planos** distintos onde variáveis vivem. Não confundir:
 
 | Camada | Onde mora | Quem consome | Exemplos |
 |---|---|---|---|
-| **GitHub Secrets** (repo) | Settings → Secrets and variables → Actions → Secrets | Os workflows do GitHub Actions (`deploy-infra.yml` etc.) — passam pro Bicep via `readEnvironmentVariable(...)` | `JWT_SECRET`, `OPENAI_API_KEY`, `PG_ADMIN_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN` |
+| **GitHub Secrets** (repo) | Settings → Secrets and variables → Actions → Secrets | Os workflows do GitHub Actions (`deploy-infra.yml` etc.) — passam para o Bicep via `readEnvironmentVariable(...)` | `JWT_SECRET`, `OPENAI_API_KEY`, `PG_ADMIN_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN` |
 | **GitHub Variables** (repo) | mesma tela → aba Variables | Workflows, valores **não-secretos** | `NORA_EMAIL_FROM`, **`CF_ACCESS_AUD`** (hoje cadastrado errado — ver §5) |
 | **Azure Key Vault** | `nora-kv-dev-XXXXXX` (criado pelo Bicep) | Os Container Apps em runtime, via `secretRef` + UAI | `azure-speech-key` (gerado pelo Bicep, **não** vem do GitHub), `postgres-password`, `jwt-secret`, `openai-api-key` (espelha o GitHub Secret) |
 | **`.env.local`** (dev) | máquina do dev (gitignored) | `docker compose`, Spring (spring-dotenv), Next dev, worker dev | `POSTGRES_PASSWORD=nora_dev`, `JWT_SECRET=change-me...`, `LLM_API_KEY` opcional |
@@ -37,7 +45,7 @@ Lê env vars via `application.yml` (placeholders `${VAR:default}`) e `@Value`. A
 | `JWT_ALGORITHM` (default `HS256`) / `JWT_RS256_PRIVATE_KEY_PEM` / `JWT_RS256_KID` | Suporte opcional a RS256 (assimétrico c/ JWKS). **Hoje não usado** (default HS256). PEM só obrigatório se virar RS256. | não setado | Não |
 | `RESEND_API_KEY` | Envio de e-mail (verificação de conta, reset de senha). Vazio → `LogEmailSender` (links no log). | GitHub Secret → KV | Não (degrada) |
 | `NORA_EMAIL_FROM` | Remetente dos e-mails. | GitHub **Variable** | Não |
-| `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION` | Broker de token efêmero pro desktop (ADR 0009). A chave **é gerada pelo Bicep** (não vem do GitHub) e vai pro KV como `azure-speech-key`. | KV (origem Bicep) | Não (só desktop STT) |
+| `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION` | Broker de token efêmero para o desktop (ADR 0009). A chave **é gerada pelo Bicep** (não vem do GitHub) e vai para o KV como `azure-speech-key`. | KV (origem Bicep) | Não (só desktop STT) |
 | `NLP_WORKER_BASE_URL` | URL interna do worker NLP. Em prod = FQDN interno do Container App. | Bicep | Sim |
 | `CORS_ALLOWED_ORIGINS`, `NORA_APP_PUBLIC_BASE_URL`, `NORA_FRONTEND_BASE_URL`, `AUTH_COOKIE_SECURE`, `AUTH_COOKIE_DOMAIN`, `EXPOSE_DEV_TOKENS` | Hardening de auth/CORS/cookies. Setados pelo Bicep em prod. | Bicep (valores literais) | — |
 | `NORA_RLS_ENFORCE` (default false) | Liga Row Level Security do Postgres (ADR 0002/0019). | não setado | Não |
@@ -80,7 +88,7 @@ Arquivos: `apps/admin/src/lib/{access.ts,data.ts}`.
 
 | Variável | Função | Onde no prod | Obrigatório |
 |---|---|---|---|
-| `PLATFORM_API_BASE_URL` | Base da API Spring pro console (server-side). | Bicep | Sim (platform on) |
+| `PLATFORM_API_BASE_URL` | Base da API Spring para o console (server-side). | Bicep | Sim (platform on) |
 | `PLATFORM_INTERNAL_TOKEN` | Token p/ chamar `/admin/platform/**`. secretRef `admin-bridge-token` (origem GitHub `NORA_PLATFORM_ADMIN_TOKEN`). | GitHub Secret → KV | Sim (platform on) |
 | `CF_ACCESS_TEAM_DOMAIN` | Team domain do Cloudflare Access (`stratfy.cloudflareaccess.com`). Valida JWT `Cf-Access-Jwt-Assertion` contra JWKS (Tier 2). | Bicep (literal) | Não (degrada) |
 | `CF_ACCESS_AUD` | AUD da Access App (`admin.nora.systems`). Valida o audience do JWT do Access. **Hoje chega vazio por bug — ver §5.** | GitHub **Variable** (deveria) | Não (degrada) |
@@ -137,11 +145,11 @@ Apenas para referência (não auditado). Não compartilha secrets de servidor. V
 | `EASYAUTH_CLIENT_ID` | **orphan** — referenciado em `deploy-infra.yml` (linhas 120, 172) mas não existe. Inerte por ADR 0025 (Entra trocado por Cloudflare). Resolve vazio sem quebrar. Recomendo **remover do workflow**. |
 | `EASYAUTH_CLIENT_SECRET` | **orphan** — idem (linhas 121, 173). |
 
-### 3.4 Só local / gerados pelo Azure (nunca vão pro GitHub)
+### 3.4 Só local / gerados pelo Azure (nunca vão para o GitHub)
 
 | Nome | Origem |
 |---|---|
-| `AZURE_SPEECH_KEY` | **gerado pelo Bicep** (`speech.bicep` → `key1`), vai pro KV `azure-speech-key`. Não precisa cadastrar no GitHub. |
+| `AZURE_SPEECH_KEY` | **gerado pelo Bicep** (`speech.bicep` → `key1`), vai para o KV `azure-speech-key`. Não precisa cadastrar no GitHub. |
 | `POSTGRES_PASSWORD` (dev) | só `.env.local` (docker-compose). |
 | `REGISTRY_PASSWORD` | opcional; só se imagens GHCR forem privadas. |
 | `NORA_PLATFORM_HEALTH_APP_ID` / `_API_KEY` | telemetria de saúde — **não provisionado** (gap, painel fica unavailable). |
@@ -254,10 +262,10 @@ Apenas para referência (não auditado). Não compartilha secrets de servidor. V
 - `NORA_PLATFORM_HEALTH_APP_ID` / `NORA_PLATFORM_HEALTH_API_KEY` não estão em Secret nem no Bicep. O painel de saúde do operador (App Insights REST) fica "unavailable". Se quiser ligar: criar uma API key do App Insights (`nora-ai-dev`) e o App ID, e provisioná-los como env do Container App da API (hoje exige editar o Bicep — não há param).
 
 ### 5.4 BAIXO — `NORA_EMAIL_FROM` aponta para domínio não-sandbox
-- Variable = `NORA <noreply@nora.systems>`. Só funciona se `nora.systems` estiver **verificado no Resend**. Caso contrário, e-mails falham silenciosamente. Verificar em https://resend.com/domains ou voltar pro sandbox `onboarding@resend.dev`.
+- Variable = `NORA <noreply@nora.systems>`. Só funciona se `nora.systems` estiver **verificado no Resend**. Caso contrário, e-mails falham silenciosamente. Verificar em https://resend.com/domains ou voltar para o sandbox `onboarding@resend.dev`.
 
 ### 5.5 INFORMATIVO — Dependabot/supply-chain
-- O run "npm_and_yarn in /apps/web" do Dependabot está **falhando** e os **Dependabot alerts estão desabilitados** no repo. Não é secret, mas é dívida de segurança relevante pra um SaaS de produção. Habilitar em Settings → Code security.
+- O run "npm_and_yarn in /apps/web" do Dependabot está **falhando** e os **Dependabot alerts estão desabilitados** no repo. Não é secret, mas é dívida de segurança relevante para um SaaS de produção. Habilitar em Settings → Code security.
 
 ---
 
@@ -265,19 +273,19 @@ Apenas para referência (não auditado). Não compartilha secrets de servidor. V
 
 | Item | GitHub Secret | GitHub Variable | `.env.local` (dev) |
 |---|:---:|:---:|:---:|
-| `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY` | ✅ | — | opcional |
-| `RESEND_API_KEY` | ✅ | — | opcional |
-| `JWT_SECRET` | ✅ | — | ✅ (valor dev fraco) |
-| `PG_ADMIN_PASSWORD`, `PG_PLATFORM_ADMIN_PASSWORD` | ✅ | — | ✅ (`nora_dev`) |
-| `AZURE_CLIENT_ID`/`TENANT_ID`/`SUBSCRIPTION_ID` | ✅ | — | — |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_TUNNEL_TOKEN` | ✅ | — | — |
-| `NORA_PLATFORM_INTERNAL_TOKEN`, `NORA_PLATFORM_ADMIN_TOKEN` | ✅ | — | — |
-| `REGISTRY_PASSWORD` (se privado) | ✅ | — | — |
-| **`CF_ACCESS_AUD`** (público) | ❌ (hoje errado) | ✅ **corrigir** | — |
-| `NORA_EMAIL_FROM` | — | ✅ | opcional |
-| `NEXT_PUBLIC_API_BASE_URL`, `NORA_API_BASE_URL` (build) | — | ✅ (opcional) | ✅ |
-| `AZURE_SPEECH_KEY` | ❌ (gerado pelo Bicep) | ❌ | opcional |
-| `POSTGRES_PASSWORD`, `POSTGRES_DB/USER` (dev) | — | — | ✅ |
+| `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY` | Sim | — | opcional |
+| `RESEND_API_KEY` | Sim | — | opcional |
+| `JWT_SECRET` | Sim | — | Sim (valor dev fraco) |
+| `PG_ADMIN_PASSWORD`, `PG_PLATFORM_ADMIN_PASSWORD` | Sim | — | Sim (`nora_dev`) |
+| `AZURE_CLIENT_ID`/`TENANT_ID`/`SUBSCRIPTION_ID` | Sim | — | — |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_TUNNEL_TOKEN` | Sim | — | — |
+| `NORA_PLATFORM_INTERNAL_TOKEN`, `NORA_PLATFORM_ADMIN_TOKEN` | Sim | — | — |
+| `REGISTRY_PASSWORD` (se privado) | Sim | — | — |
+| **`CF_ACCESS_AUD`** (público) | Não (hoje errado) | Sim **corrigir** | — |
+| `NORA_EMAIL_FROM` | — | Sim | opcional |
+| `NEXT_PUBLIC_API_BASE_URL`, `NORA_API_BASE_URL` (build) | — | Sim (opcional) | Sim |
+| `AZURE_SPEECH_KEY` | Não (gerado pelo Bicep) | Não | opcional |
+| `POSTGRES_PASSWORD`, `POSTGRES_DB/USER` (dev) | — | — | Sim |
 
 ---
 
@@ -327,7 +335,7 @@ Apenas para referência (não auditado). Não compartilha secrets de servidor. V
 - [ ] (opcional) remover `EASYAUTH_CLIENT_ID/SECRET` do `deploy-infra.yml`
 - [ ] (opcional) habilitar Dependabot alerts + resolver o run falhando em `/apps/web`
 
-### `.env.local` mínimo para rodar DEV (não vai pro GitHub)
+### `.env.local` mínimo para rodar DEV (não vai para o GitHub)
 ```dotenv
 # raiz/.env.local (docker-compose)
 POSTGRES_DB=nora

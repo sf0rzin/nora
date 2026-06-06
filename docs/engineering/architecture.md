@@ -1,3 +1,11 @@
+---
+title: "Arquitetura — NORA"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # Arquitetura — NORA
 
 > Visão técnica end-to-end da NORA: stack, camadas, fluxos e racional das decisões.
@@ -39,7 +47,7 @@
 
 Notas:
 
-- O monorepo vive em `apps/`, `services/`, `packages/`, `infra/`, `mcp/` (ADR 0001).
+- O monorepo vive em `apps/`, `services/`, `packages/` e `infra/` (ADR 0001). Os MCPs (calendar/tasks/crm) seguem como conceito de roadmap deferido; não há pasta `mcp/` no repositório.
 - Web roda em **Tailwind cru**: a paleta editorial e tokens estão em `apps/web/src/app/globals.css` e `apps/web/tailwind.config.ts`. Não há dependência de `@shadcn/ui`, MUI, Chakra ou similar.
 - Worker tem três modos de operação: `USE_LLM_STUB=true` (CI / dev sem LLM), `LLM_BASE_URL=https://api.openai.com/v1` (default MVP, OpenAI direto) e Azure OpenAI (Enterprise).
 
@@ -89,7 +97,7 @@ Decisão raiz: **ADR 0002 — filtro de aplicação no MVP, RLS em produção.**
 
 ### `tenant_id` é dado de primeira classe
 
-Toda tabela tenant-bound carrega `tenant_id UUID NOT NULL` (V001–V012). Conferido nas migrations:
+Toda tabela tenant-bound carrega `tenant_id UUID NOT NULL` (o schema vai até `V021`; ver `docs/engineering/data-model.md` como fonte canônica). Conferido nas migrations:
 
 - `tenants` (V001) — fonte
 - `users.tenant_id` (V002:10)
@@ -113,11 +121,11 @@ O JWT emitido em `JjwtJwtIssuer` carrega `tenantId` no claim. Em cada request au
 
 Em SQL, isso vira `WHERE tenant_id = :tenantId AND id = :id` — nunca apenas `WHERE id = :id`. Tentativas de acesso fora do escopo retornam 403 (ou 404, conforme risco de enumeração; ver `GlobalExceptionHandler`).
 
-### RLS — implementado no schema (V016)
+### RLS — implementado no schema (V016 + V019/V020)
 
-ADR 0002 prometia Row-Level Security em produção. **Entregue no schema em `V016__row_level_security.sql`** (não é mais "débito pendente"): policies `tenant_isolation` + `ENABLE ROW LEVEL SECURITY` em 10 tabelas tenant-owned (mais as 3 de V017: `customer_accounts`, `meeting_account_links`, `customer_confidence_assessments` → 13 no total), predicado `tenant_id = nora.current_tenant_id()` (lê o GUC de sessão `nora.current_tenant_id`). O `infrastructure/security/TenantRlsAspect` faz `SET LOCAL` por `@Transactional`.
+ADR 0002 prometia Row-Level Security em produção. **Entregue no schema em `V016__row_level_security.sql`** (não é mais "débito pendente"): policies `tenant_isolation` + `ENABLE ROW LEVEL SECURITY` em 10 tabelas tenant-owned (mais as 3 de V017: `customer_accounts`, `meeting_account_links`, `customer_confidence_assessments` → 13 no total), predicado `tenant_id = nora.current_tenant_id()` (lê o GUC de sessão `nora.current_tenant_id`). `V019`/`V020` completam a cobertura RLS e tornam o scope auth-aware. O `infrastructure/security/TenantRlsAspect` faz `SET LOCAL` por `@Transactional`.
 
-**Enforcement é opt-in:** owner/admin Postgres bypassa RLS por default (dev/Testcontainers ficam inertes — testes intocados). Em prod, ativar via role dedicado `nora_app` (`NOBYPASSRLS`) + flag `nora.security.rls.enforce=true`. É defesa em profundidade: mesmo que uma query esqueça o `WHERE tenant_id`, o RLS bloqueia. Ver `data-model.md §4`.
+**Enforcement é opt-in:** owner/admin Postgres bypassa RLS por default (dev/Testcontainers ficam inertes — testes intocados). Em prod, ativar via role dedicado `nora_app` (`NOBYPASSRLS`) + flag `nora.security.rls.enforce=true`. É defesa em profundidade: mesmo que uma query esqueça o `WHERE tenant_id`, o RLS bloqueia. O que resta é o cutover/enforcement operacional em produção (runbook em ADR 0026/0028), não o schema. Ver `data-model.md §4`.
 
 ---
 
@@ -223,7 +231,7 @@ Fluxo de análise de reunião — disparado quando um upload chega ou via `POST 
 ### Steps detalhados
 
 1. **PII Shield** (`services/nlp-worker/src/nora_nlp/services/pii_shield.py`): redige email, phone, CPF, CNPJ, cartão e nomes próprios BR antes de qualquer chamada externa. Ver §6.
-2. **TF-IDF baseline** (`packages/nlp-baseline/src/nlp_baseline/`, ADR 0010): extrai termos top-N do texto pra interpretabilidade acadêmica e enriquecimento do prompt.
+2. **TF-IDF baseline** (`packages/nlp-baseline/src/nlp_baseline/`, ADR 0010): extrai termos top-N do texto para interpretabilidade acadêmica e enriquecimento do prompt.
 3. **LLM call** (`services/nlp-worker/src/nora_nlp/services/llm_analyzer.py:117`): `analyze()` carrega prompt versionado de `prompts/{version}.md`, monta system+user prompts, chama o cliente LLM agnóstico (`clients/llm.py`) com `response_format=json_schema` (modo strict — ADR 0003).
 4. **Validação Pydantic** (`models.py`, `MeetingAnalysisV1`): cada campo da resposta passa por validação estrita — score 0-100, enum bands, tamanhos, etc. Falha de schema é erro controlado, não stack trace exposto.
 
@@ -329,7 +337,7 @@ A UI (e qualquer export futuro) **deve** exibir: *"Indicador da reunião, não d
 
 ## §9. Customer Confidence (ADR 0006 + ADR 0015) — implementado full-stack (#148)
 
-**Status atual: IMPLEMENTADO.** Shipou em PR #148 (2026-05-21) via ADR 0015: schema LLM → worker emite → backend persiste no pipeline → endpoint read → UI. Account Health **agregado** (US50-51) segue deferido (ADR 0014).
+**Status atual: IMPLEMENTADO.** Foi entregue em PR #148 (2026-05-21) via ADR 0015: schema LLM → worker emite → backend persiste no pipeline → endpoint read → UI. Account Health **agregado** (US50-51) segue deferido (ADR 0014).
 
 ### O que existe hoje
 
@@ -355,7 +363,7 @@ A UI (e qualquer export futuro) **deve** exibir: *"Indicador da reunião, não d
 
 **ADR 0015 — Customer Confidence: persistência mínima viável** (substitui parcialmente ADR 0006). Voto Stratfy (PO) em bloco: **opção (a)** — implementar mínimo. Entregue em #148, com duas divergências do plano original:
 
-- A migration shipou como **V017** (o slot V013 planejado foi usado por soft-delete em #114).
+- A migration foi entregue como **V017** (o slot V013 planejado foi usado por soft-delete em #114).
 - Veio em 1 PR (não na branch dedicada `feat/sub-1.11-...` planejada).
 
 Account Health agregado (US50-US51) **continua deferido** via ADR 0014. Alternativa (B) — remover Customer Health da landing — foi rejeitada: credibilidade da demo > esforço economizado. Detalhes em `docs/adr/0015-customer-confidence-minimal-persistence.md`.
@@ -416,7 +424,7 @@ Passo a passo verbal:
 
 ## §11. Infra Azure
 
-Provisionada via Bicep (`infra/bicep/main.bicep`) e deployada por `deploy-infra.yml` (Service Principal OIDC). Detalhes operacionais (oito pegadinhas Azure for Students, comandos de recriação, troubleshooting) **vivem em `docs/operations/azure-deploy.md`** (a ser escrito pelo Tech Lead em paralelo).
+Provisionada via Bicep (`infra/bicep/main.bicep`) e deployada por `deploy-infra.yml` (Service Principal OIDC). Detalhes operacionais (oito armadilhas do Azure for Students, comandos de recriação, troubleshooting) **vivem em `docs/operations/azure-deploy.md`** (a ser escrito pelo Tech Lead em paralelo).
 
 ### Resource Group `rg-nora-dev` — inventário atual
 
@@ -433,7 +441,7 @@ Provisionada via Bicep (`infra/bicep/main.bicep`) e deployada por `deploy-infra.
 | App Insights | `nora-ai-dev` | conectado ao LA |
 | Speech | provisionado em PR #71 | `Microsoft.CognitiveServices` kind=`SpeechServices` |
 | User-Assigned MI (×3) | api/worker/web | Federada com Service Principal OIDC |
-| AI Search | **desabilitado** (`enableSearch=false`) | provisionar quando US15 for ligado |
+| AI Search | **não utilizado** (`enableSearch=false`) | a busca semântica (US15) foi entregue via pgvector + HTTP embedding client, não Azure AI Search (PR #206, `V021`) |
 
 Service Principal: `sp-nora-github-deploy` (audit §7), com 3 federated credentials (main, pull_request, environment:dev). Roles: `Contributor` + `Role Based Access Control Administrator` em `rg-nora-dev`.
 
@@ -495,7 +503,7 @@ Service Principal: `sp-nora-github-deploy` (audit §7), com 3 federated credenti
 Uma onda de hardening (PRs ~#114–#138, rotulados "audit follow-up #N") entrou em `main` após a Sub-fase 1.10. Documentada retroativamente em **ADR 0019** (RLS + FK composta), **ADR 0020** (token rotation) e **ADR 0021** (soft-delete):
 
 - **RLS Postgres (V016)** — ver §3. Schema-level pronto; enforce opt-in (`nora_app` + flag).
-- **Soft-delete (V013)** — `deleted_at` + `@SQLRestriction` em `tenants/users/tenant_contexts/meetings`; UNIQUEs viraram parciais. Hard-delete fica para LGPD/retenção.
+- **Soft-delete (V013)** — `deleted_at` + `@SQLRestriction` em `tenants/users/tenant_contexts/meetings`; UNIQUEs viraram parciais. O hard-delete para LGPD/retenção já está operacional (ADR 0029): `DELETE /privacy/meetings/{id}` (direito ao esquecimento) + `RetentionSweeper` agendado.
 - **Refresh-token rotation + reuse-detection (V014)** — `refresh_tokens.family_id`/`replaced_by_id`; cada `/auth/refresh` rotaciona; apresentar token revogado revoga a family inteira.
 - **Composite FK de isolamento (V015)** — `meetings.(tenant_id, owner_user_id) → users(tenant_id, id)`: bloqueia owner forjado de outro tenant no nível do schema (defesa em profundidade do ADR 0002).
 - **JWT RS256 + JWKS** — assinatura assimétrica; chave pública exposta em `GET /.well-known/jwks.json` (modo RSA).
@@ -507,10 +515,10 @@ Uma onda de hardening (PRs ~#114–#138, rotulados "audit follow-up #N") entrou 
 
 Débitos técnicos catalogados, priorização e ADRs sucessores planejados ficam em **`docs/operations/production-readiness-gaps.md`** (escrito na Sub-fase 1.10; implementação ataca-se na Sub-fase 1.12 — Production Hardening, formalizada via ADR 0016). Resumo dos principais (estado em 2026-05-21):
 
-- **AUTH_FILTER_HARD_CAP**: ✅ **resolvido** (Sub-fase 1.11b) — teto silencioso de `500` removido; `MeetingService.listAllForAuthFilter` varre todas as meetings do tenant em lotes antes do filtro IAM in-memory. Pushdown SQL via `meeting_attributes @>` + GIN (V008) fica como otimização **de performance** futura (não correção), quando algum tenant atingir escala.
-- **PolicyEvaluator** operadores: ✅ **resolvido** (Sub-fase 1.11c) — `SUPPORTED_CONDITION_OPERATORS` agora cobre `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (fail-closed mantido para operador desconhecido e atributo ausente).
-- **RLS Postgres**: ✅ **entregue no schema (V016)** — falta só ativar enforcement em prod (role `nora_app` + flag). Ver §3/§13.
+- **AUTH_FILTER_HARD_CAP**: **resolvido** (Sub-fase 1.11b) — teto silencioso de `500` removido; `MeetingService.listAllForAuthFilter` varre todas as meetings do tenant em lotes antes do filtro IAM in-memory. Pushdown SQL via `meeting_attributes @>` + GIN (V008) fica como otimização **de performance** futura (não correção), quando algum tenant atingir escala.
+- **PolicyEvaluator** operadores: **resolvido** (Sub-fase 1.11c) — `SUPPORTED_CONDITION_OPERATORS` agora cobre `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (fail-closed mantido para operador desconhecido e atributo ausente).
+- **RLS Postgres**: **entregue no schema (V016 + V019/V020)** — falta só o cutover/enforcement operacional em prod (role `nora_app` + flag; runbook em ADR 0026/0028). Ver §3/§13.
 - **`tenant_contexts.version`** (US31): coluna ausente; sem histórico de versão do contexto. Alvo Sub-fase 1.12.
 - **`audit_events` global** (não só IAM): auth já tem log próprio (§13); falta consolidar MEETING_UPLOAD, CONTEXT_UPDATE numa trilha única. Alvo Sub-fase 1.12.
-- **Customer Confidence**: ✅ **implementado full-stack** (PR #148, 2026-05-21) — V017 + worker emit + `AnalysisService` wiring (trend server-side) + `GET /meetings/{id}` + `CustomerConfidenceCard`. Dívida narrativa resolvida. Account Health **agregado** (US50-51) segue deferido (ADR 0014). Ver `docs/adr/0015-customer-confidence-minimal-persistence.md`.
+- **Customer Confidence**: **implementado full-stack** (PR #148, 2026-05-21) — V017 + worker emit + `AnalysisService` wiring (trend server-side) + `GET /meetings/{id}` + `CustomerConfidenceCard`. Dívida narrativa resolvida. Account Health **agregado** (US50-51) segue deferido (ADR 0014). Ver `docs/adr/0015-customer-confidence-minimal-persistence.md`.
 - **ADRs do hardening**: documentados retroativamente em ADR 0019 (RLS + FK composta), 0020 (refresh-token rotation), 0021 (soft-delete). Resta avaliar ADR para JWT RS256/JWKS (candidato).

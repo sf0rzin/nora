@@ -1,3 +1,11 @@
+---
+title: "JSON Schemas — Saída Estruturada do LLM"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # JSON Schemas — Saída Estruturada do LLM
 
 Estes schemas são a **fonte da verdade** dos formatos que o NLP Worker exige do LLM.
@@ -7,7 +15,7 @@ Estes schemas são a **fonte da verdade** dos formatos que o NLP Worker exige do
 - **Validação**: Pydantic (Python) e Bean Validation (Java) devem espelhar estes schemas.
 - **Versionamento**: alterações breaking incrementam o sufixo do nome do arquivo (`-v2`).
 
-> **Caveat de fidelidade (2026-05-21):** o `meeting-analysis-v1.schema.json` é o contrato documental, mas o worker emite via `build_json_schema_for_analysis()` (`services/nlp-worker/src/nora_nlp/clients/llm.py`) e valida via Pydantic `MeetingAnalysisV1` (`models.py`). O campo `customerConfidence` consta no schema mas **não** é emitido pelo worker (ver ADR 0015 — não implementado); `participants` e `baselineTerms` são emitidos pelo worker e foram adicionados ao schema nesta reconciliação. Mudança de campo aqui exige sincronizar Pydantic + o builder inline.
+> **Caveat de fidelidade (2026-05-21):** o `meeting-analysis-v1.schema.json` é o contrato documental, mas o worker emite via `build_json_schema_for_analysis()` (`services/nlp-worker/src/nora_nlp/clients/llm.py`) e valida via Pydantic `MeetingAnalysisV1` (`models.py`). O campo `customerConfidence` consta no schema, **é** emitido pelo worker e persistido (ver ADR 0015); `participants` e `baselineTerms` são emitidos pelo worker e foram adicionados ao schema nesta reconciliação. Mudança de campo aqui exige sincronizar Pydantic + o builder inline.
 
 | Arquivo | Conteúdo |
 |---|---|
@@ -21,4 +29,4 @@ Estes schemas são a **fonte da verdade** dos formatos que o NLP Worker exige do
 2. **Toda quote de origem é obrigatória** para itens acionáveis (action items, risks, opportunities).
 3. **Confidências são `0.0–1.0`**, nunca percentual.
 4. **Enums fechados.** Categorias livres só dentro de `topics`.
-5. **Sem markdown** dentro dos campos de texto. Texto puro.
+5. **Markdown apenas no campo `summary`** (renderizado no web via `react-markdown`). Demais campos de texto são texto puro, sem markdown.
