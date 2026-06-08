@@ -94,8 +94,8 @@ function resolveKey(provider: string): string {
   return (byProvider && byProvider.trim()) || LLM_API_KEY;
 }
 
-function tenantIdFromCookies(): string | null {
-  const raw = cookies().get("nora_user")?.value;
+async function tenantIdFromCookies(): Promise<string | null> {
+  const raw = (await cookies()).get("nora_user")?.value;
   if (!raw) return null;
   try {
     return (JSON.parse(decodeURIComponent(raw)) as { tenantId?: string }).tenantId ?? null;
@@ -292,7 +292,7 @@ function openAiSseToText(
 export async function POST(req: Request): Promise<Response> {
   // Exige sessão: evita uso anônimo do orçamento de IA. O contexto do workspace
   // também depende dos cookies da sessão.
-  if (!cookies().get("nora_access")?.value) {
+  if (!(await cookies()).get("nora_access")?.value) {
     return new Response(JSON.stringify({ error: "Não autenticado." }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -336,7 +336,7 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const cookieHeader = cookies()
+  const cookieHeader = (await cookies())
     .getAll()
     .map((c) => `${c.name}=${c.value}`)
     .join("; ");
@@ -349,7 +349,7 @@ export async function POST(req: Request): Promise<Response> {
     : `${SYSTEM_PROMPT}\n\n(Sem contexto de workspace disponível agora — responda de forma geral e, se precisar de dados de reuniões, peça pro usuário abrir/enviar a reunião.)`;
 
   const messages: ChatMessage[] = [{ role: "system", content: systemContent }, ...history];
-  const tenantId = tenantIdFromCookies();
+  const tenantId = await tenantIdFromCookies();
   const startedAt = Date.now();
 
   let upstream: Response;
