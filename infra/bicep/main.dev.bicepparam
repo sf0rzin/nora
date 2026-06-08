@@ -95,6 +95,15 @@ param cloudflareTunnelToken = readEnvironmentVariable('CLOUDFLARE_TUNNEL_TOKEN',
 param cfAccessTeamDomain = 'stratfy.cloudflareaccess.com'
 param cfAccessAud = readEnvironmentVariable('CF_ACCESS_AUD', '')
 
+// ---- Dominio publico customizado (Cloudflare custom domain, ver docs/operations/web-custom-domain.md) ----
+// Web em nora.systems + API em api.nora.systems (mesmo registrable domain -> cookies de auth
+// Domain=nora.systems compartilhados cross-subdominio). Os managed certs foram criados via
+// `az hostname bind` (validacao HTTP) e sao referenciados por nome (renovam in-place, nome estavel).
+param publicDomain = 'nora.systems'
+param webCertName = 'mc-nora-cae-dev-nora-systems-8115'
+param wwwCertName = 'mc-nora-cae-dev-www-nora-systems-5335'
+param apiCertName = 'mc-nora-cae-dev-api-nora-systems-3445'
+
 // ---- RLS enforce (ADR 0028) — FLIP DO CUTOVER ----
 // Liga o Row Level Security REAL: a API passa a conectar como nora_app (NOBYPASSRLS),
 // o Flyway segue como admin (nora_admin), e o caminho BYPASSRLS da telemetria (nora_telemetry)
