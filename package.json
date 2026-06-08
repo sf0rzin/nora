@@ -1,8 +1,0 @@
-{
-  "devDependencies": {
-    "cross-env": "^10.1.0"
-  },
-  "dependencies": {
-    "react-markdown": "^10.1.0"
-  }
-}

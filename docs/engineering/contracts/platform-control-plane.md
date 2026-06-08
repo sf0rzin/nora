@@ -1,4 +1,18 @@
+---
+title: "Contrato — Control Plane de Operador + Telemetria de IA"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # Contrato — Control Plane de Operador + Telemetria de IA
+
+> **Nota de supersessão (2026-06-06):** a identidade de borda do operador descrita neste contrato
+> migrou de **Easy Auth (Entra)** para **Cloudflare Tunnel + Access** (ADR 0025). As menções a Easy
+> Auth / Entra / `X-MS-CLIENT-PRINCIPAL-*` abaixo permanecem para registro histórico do contrato
+> congelado; o mecanismo de autenticação do operador na borda é hoje o Cloudflare Access. O restante
+> do contrato (paths, tokens, headers `X-Internal-Token` / `X-Operator-Email`) permanece válido.
 
 > **Status:** CONGELADO (v1) — 2026-05-28. Ponto de encaixe do app `nora-admin` (Next) e dos
 > hot-paths (worker / BFF de chat). Mudança de assinatura aqui exige acordo entre os dois arquitetos
@@ -161,7 +175,7 @@ Todos exigem **admin token**; gravam auditoria com `X-Operator-Email`.
   "degraded":false }
 ```
 - Se o App Insights não estiver configurado/consulta falhar → **200** com `"source":"unavailable"` +
-  `"note"` (soft, pra UI não quebrar).
+  `"note"` (soft, para a UI não quebrar).
 
 `GET /admin/platform/telemetry/business?from={iso}&to={iso}` → **200** (cortável; cross-tenant
 operador-only):
@@ -176,13 +190,13 @@ operador-only):
 
 ---
 
-## 4. Notas de integração (pro outro Opus)
+## 4. Notas de integração (para o outro Opus)
 
 - **Worker** (`/analyze`): pode adicionar o bloco aditivo `usage:{model,promptTokens,completionTokens}`
   na resposta — a API o ignora com segurança (Jackson tolerante) e mede a análise pelo `metadata`
-  que **já existe**. O bloco é bem-vindo mas **não é pré-requisito** pra telemetria da análise
+  que **já existe**. O bloco é bem-vindo mas **não é pré-requisito** para a telemetria da análise
   funcionar.
-- **BFF de chat** (`route.ts`): pra medir custo precisa de `stream_options.include_usage=true` +
+- **BFF de chat** (`route.ts`): para medir custo precisa de `stream_options.include_usage=true` +
   capturar o frame `usage` antes do `[DONE]`, e então `POST /internal/platform/usage` com
   `service:"chat"`, `tenantId` da sessão, tokens, `latencyMs`, `status`. Lê o modelo ativo via
   `GET /internal/platform/llm-config?service=chat`.
