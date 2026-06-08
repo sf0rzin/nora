@@ -52,7 +52,7 @@ async function serverCookieHeader(): Promise<Record<string, string>> {
   try {
     // Import dinâmico evita carregar next/headers em client bundles.
     const { cookies } = await import('next/headers');
-    const all = cookies().getAll();
+    const all = (await cookies()).getAll();
     if (all.length === 0) return {};
     const cookieStr = all.map((c) => `${c.name}=${c.value}`).join('; ');
     return { Cookie: cookieStr };
