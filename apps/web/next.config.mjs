@@ -7,6 +7,12 @@
 // NEXT_PUBLIC_API_BASE_URL, então derivamos a origin desse env em build-time
 // e a incluímos na policy. Os demais fetches do browser são contra a própria
 // origin ('self'): o BFF em /api/chat e o restante das rotas RSC/route-handler.
+//
+// Em produção a API é servida em https://api.nora.systems (mesmo registrable
+// domain que nora.systems) para que os cookies de auth (Domain=nora.systems)
+// sejam enviados cross-subdomínio. NEXT_PUBLIC_API_BASE_URL aponta pra esse host;
+// chamar a API por um host fora de nora.systems faria o navegador rejeitar os
+// cookies (mismatch de Domain) e bloquear o login.
 function apiOrigin() {
   const raw = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (!raw) return null;
