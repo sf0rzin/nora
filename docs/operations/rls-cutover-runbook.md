@@ -1,20 +1,28 @@
+---
+title: "RLS Enforce — Runbook de Cutover (ADR 0028)"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # RLS Enforce — Runbook de Cutover (ADR 0028)
 
 Liga o **Row Level Security real** do Postgres como defesa em profundidade do `tenant_id`
 (além do filtro app-level, que já é 100% disciplinado). Companheiro operacional do
 [ADR 0028](../adr/0028-rls-enforcement-auth-aware.md).
 
-> ⚠️ O **flip ao vivo** muda como a API conecta no banco em produção. É reversível
-> (um redeploy), mas faça com os olhos no painel. Não pule o smoke.
+> Atenção: o **flip ao vivo** muda como a API conecta no banco em produção. É reversível
+> (um redeploy), mas faça com atenção ao painel. Não pule o smoke.
 
 ## Estado da sequência
 
 | Etapa | O quê | Status |
 |---|---|---|
-| 1 | Mecanismo (V019/V020 + Flyway-admin + onboarding GUC + Bicep switch + teste-gate) | ✅ mergeado (PR #197), enforce **default OFF** |
-| 2 | Provisionar roles `nora_app` / `nora_telemetry` no Postgres | ⬜ `rls-cutover.yml` |
-| 3 | Flip `rlsEnforce=true` no bicepparam → deploy | ⬜ requer "go" do dono |
-| 4 | Smoke ao vivo + monitorar | ⬜ |
+| 1 | Mecanismo (V019/V020 + Flyway-admin + onboarding GUC + Bicep switch + teste-gate) | Concluído (PR #197), enforce **default OFF** |
+| 2 | Provisionar roles `nora_app` / `nora_telemetry` no Postgres | Pendente — `rls-cutover.yml` |
+| 3 | Flip `rlsEnforce=true` no bicepparam → deploy | Pendente — requer "go" do responsável |
+| 4 | Smoke ao vivo + monitorar | Pendente |
 
 Rodar a Etapa 2 tem **zero impacto** no app em execução — os roles ficam ociosos até o flip.
 
@@ -49,7 +57,7 @@ O workflow (como **admin** `nora_admin`, via OIDC):
 
 É **idempotente** — pode re-rodar. Senha admin nunca sai do GitHub.
 
-## Etapa 3 — Flip (requer "go" do dono)
+## Etapa 3 — Flip (requer "go" do responsável)
 
 Adicionar ao fim de `infra/bicep/main.dev.bicepparam`:
 
@@ -74,7 +82,7 @@ PR com **só** essa mudança → merge → `deploy-infra.yml` aplica. A API rein
 como `nora_app`.
 
 > Não inclua o flip no mesmo PR do provisionamento: mergear o flip **antes** da Etapa 2 sobe
-> a API apontando pra um `nora_app` que não existe → boot quebra.
+> a API apontando para um `nora_app` que não existe → boot quebra.
 
 ## Etapa 4 — Smoke ao vivo
 
@@ -94,9 +102,9 @@ sem efeito enquanto enforce está OFF.
 - **`ServerIsBusy` no `azure.extensions`:** o `deploy-infra.yml` reescreve o parâmetro
   `azure.extensions` (já em `PGCRYPTO,CITEXT`) a cada deploy; em servidor B1ms ocupado dá
   `ServerIsBusy` (no-op transiente). Remédio: confirmar `state=Ready` nos dois Postgres
-  (`az postgres flexible-server show ... --query state`) e re-rodar **uma** vez (não spammar —
-  cada tentativa reinicia o server e ocupa a próxima).
-- **Por que dois roles:** `nora_app` é NOBYPASSRLS (RLS vale pros dados de tenant); `nora_telemetry`
+  (`az postgres flexible-server show ... --query state`) e re-rodar **uma** vez (não repetir em
+  excesso — cada tentativa reinicia o server e ocupa a próxima).
+- **Por que dois roles:** `nora_app` é NOBYPASSRLS (RLS vale para os dados de tenant); `nora_telemetry`
   é BYPASSRLS (leitura agregada operador-only, cross-tenant intencional). Ver ADR 0028 §telemetria.
 - **Escopo auth-aware:** identidade (users/tenants/tokens/invitations) e IAM authz (groups/policies/…)
   têm RLS **desabilitada** (V020) — auth é cross-tenant por design. Negócio/PII fica enforced.

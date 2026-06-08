@@ -1,4 +1,12 @@
-# Security Policy
+---
+title: "Política de Segurança"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
+# Política de Segurança
 
 NORA leva segurança a sério. Este documento descreve **como reportar vulnerabilidades, escopo, contato seguro, e expectativa de timeline**.
 
@@ -6,9 +14,9 @@ NORA leva segurança a sério. Este documento descreve **como reportar vulnerabi
 
 **Por favor não abra issue público no GitHub.** Use os canais abaixo:
 
-- **E-mail seguro:** axonogenesis@gmail.com (com prefixo `[SECURITY-NORA]` no assunto)
+- **E-mail seguro:** axonogenesis@proton.me (com prefixo `[SECURITY-NORA]` no assunto)
 - **Resposta esperada:** em até **3 dias úteis** com acknowledgement inicial
-- **Disclosure timeline:** typicamente **90 dias** entre report e disclosure pública, com correção mergeada antes
+- **Disclosure timeline:** tipicamente **90 dias** entre report e disclosure pública, com correção mergeada antes
 
 PGP key disponível mediante request inicial pelo e-mail acima.
 
@@ -28,15 +36,15 @@ PGP key disponível mediante request inicial pelo e-mail acima.
 
 - **Vulnerabilidades em dependências upstream** (Spring Boot, Next.js, Tauri, OpenAI SDK, etc.) — reporte upstream e nos avise por cortesia
 - **Configurações específicas do ambiente do usuário** que não derivam do código padrão NORA
-- **Self-XSS** (requer engenharia social ativa pra explorar)
+- **Self-XSS** (requer engenharia social ativa para explorar)
 - **Issues de UX/usabilidade sem componente de segurança**
 
 ## Vulnerabilidades de alta prioridade
 
 NORA processa dados sensíveis (transcripts de reuniões, possíveis dados pessoais via PII Shield) sob LGPD brasileiro. Categorias de **alta prioridade**:
 
-1. **Bypass de tenant isolation** — qualquer caminho que permita usuário do tenant A acessar dados do tenant B (`tenant_id` violado em query, frontend filtering only sem backend gate, JWT manipulado pra trocar `tenantId`)
-2. **Bypass do PII Shield** — caminho que entrega PII bruto pro LLM (incluindo via prompt injection)
+1. **Bypass de tenant isolation** — qualquer caminho que permita usuário do tenant A acessar dados do tenant B (`tenant_id` violado em query, frontend filtering only sem backend gate, JWT manipulado para trocar `tenantId`)
+2. **Bypass do PII Shield** — caminho que entrega PII bruto para o LLM (incluindo via prompt injection)
 3. **IAM privilege escalation** — usuário consegue executar action que policy aplicável Deny ou não Allow (Policy Evaluator bypass, Resource string injection, condition operator misuse)
 4. **JWT/refresh token forgery** — assinatura forjada, replay attack, ou cookie hijack sem detection
 5. **Secrets leakage** — secrets do Key Vault expostos em logs, error responses, ou via debug endpoints
@@ -68,7 +76,7 @@ NORA é licenciado sob **AGPL-3.0** (ver `LICENSE`). Pesquisadores que descobrem
 **Encarregado de Proteção de Dados** (LGPD exige indicação de pessoa física):
 
 - **Nome:** Anthony Sforzin (membro da equipe Stratfy designado como Encarregado)
-- **Contato:** axonogenesis@gmail.com (com prefixo `[LGPD-NORA]`)
+- **Contato:** axonogenesis@proton.me (com prefixo `[LGPD-NORA]`)
 
 NORA é operado pela equipe Stratfy durante MVP/Pilot. Em GA com >10 tenants, DPO formal contratado ou role designado.
 
@@ -76,8 +84,7 @@ NORA é operado pela equipe Stratfy durante MVP/Pilot. Em GA com >10 tenants, DP
 
 - **Dependabot** habilitado via `.github/dependabot.yml` — updates semanais agrupados por ecosystem (Maven, pip, npm, Cargo, GitHub Actions). Alerts via Security tab.
 - **JaCoCo + áreas IAM/Auth/PII** — meta ADR 0018 de >85% coverage. Hoje rodada manualmente; gate de CI bloqueando regressão está na Sub-fase 1.12 (ADR 0016 — production readiness).
-- **GitHub Secret Scanning** habilitado (default em repos públicos)
-- **GitHub Push Protection** — bloqueia commits com chaves detectadas (default em repos públicos com Secret Scanning).
+- **GitHub Secret Scanning / Push Protection** — o repositório NORA é **privado**, portanto Secret Scanning e Push Protection não vêm habilitados por default (esse comportamento é default apenas em repos públicos). Habilitação em repo privado depende de configuração explícita.
 - **PII Shield** no worker como último gate antes de LLM (ADR 0012)
 
 ## Histórico
@@ -85,3 +92,4 @@ NORA é operado pela equipe Stratfy durante MVP/Pilot. Em GA com >10 tenants, DP
 | Data | Mudança |
 |---|---|
 | 2026-05-14 | Documento criado durante Sub-fase 1.10 (Docs Refresh) |
+| 2026-06-06 | Reconciliação doc x código + padronização (auditoria pré-apresentação) — Arquiteto NORA (Tech Lead) |

@@ -1,8 +1,16 @@
+---
+title: "Modelo de Dados — NORA (Postgres 16)"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # Modelo de Dados — NORA (Postgres 16)
 
-> Estado real do schema, alinhado com **migrations V001–V017** em `services/api/src/main/resources/db/migration/`.
+> Estado real do schema, alinhado com as **migrations V001–V021** em `services/api/src/main/resources/db/migration/` (inventário completo em §5).
 > Cada tabela é mapeada para a migration de origem. Quando há **drift** entre o que estava documentado e o que está no banco, está marcado explicitamente.
-> Multi-tenancy: coluna `tenant_id` em toda tabela tenant-bound (ADR 0002). **RLS habilitado no schema em V016** (enforcement opt-in via role `nora_app` + flag `nora.security.rls.enforce`; ver §RLS).
+> Multi-tenancy: coluna `tenant_id` em toda tabela tenant-bound (ADR 0002). **RLS habilitado no schema (V016, completado em V019; escopo auth-aware em V020)** — enforcement opt-in via role `nora_app` + flag `nora.security.rls.enforce`; ver §RLS.
 > **Soft-delete** (V013): tabelas `tenants`, `users`, `tenant_contexts`, `meetings` têm `deleted_at`; queries Spring Data filtram `deleted_at IS NULL` via `@SQLRestriction`; UNIQUEs totais viraram parciais (ver §4).
 
 ---
@@ -44,6 +52,8 @@ erDiagram
   MEETING_GOALS ||--o{ MEETING_GOAL_EXPECTED_OUTCOMES : has
   MEETINGS ||--|| MEETING_PRODUCTIVITY_ASSESSMENTS : produces
   MEETING_PRODUCTIVITY_ASSESSMENTS ||--o{ MEETING_OUTCOME_COVERAGE : covers
+
+  MEETINGS ||--|| MEETING_EMBEDDINGS : "RAG (semantic search)"
 ```
 
 ---
@@ -704,9 +714,32 @@ Formato esperado de `document`:
 
 ---
 
+### 2.34 `meeting_embeddings` — V021
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `meeting_id` | `UUID PK REFERENCES meetings(id) ON DELETE CASCADE` | 1:1 — um embedding por reunião (vetor do resumo/título) |
+| `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` | |
+| `model` | `TEXT NOT NULL` | modelo/provider que gerou o vetor; busca só compara vetores do mesmo espaço (mesmo provider+modelo). Trocar de provider exige re-backfill |
+| `dim` | `INT NOT NULL` | dimensão do vetor |
+| `embedding` | `TEXT NOT NULL` | JSON array de floats |
+| `source_chars` | `INT NOT NULL DEFAULT 0` | |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+**Indexes**: `idx_meeting_embeddings_tenant(tenant_id)`.
+
+**Propósito**: busca semântica / RAG (US15), entregue em PR #206. Embeddings provider-agnósticos (Gemini/OpenAI) via `HttpEmbeddingClient`; `EmbeddingService` gera/persiste e a similaridade (cosseno) é computada em Java sobre os embeddings do tenant. O chat Core consome `/meetings/search` como contexto RAG. ADR 0004 (provider-agnóstico).
+
+> Nota de escala: a similaridade roda em Java (adequado a dezenas/centenas de reuniões por tenant), evitando a dependência de `pgvector` (que exigiria allow-list de extensão no Azure). `pgvector` (índice ANN) é a otimização futura quando o volume justificar.
+
+> Tenant-owned: RLS `tenant_isolation` habilitada em V021 (tabela de negócio, enforced sob V020).
+
+---
+
 ## 3. Tabelas planejadas mas **não migradas**
 
-Listadas em ADR 0006 e/ou `data-model.md` antigo, mas **sem migration correspondente** (V001–V017 não cobrem). Persistência é débito conhecido (audit §6, severity Alta para a narrativa Plano A).
+Listadas em ADR 0006 e/ou `data-model.md` antigo, mas **sem migration correspondente** (V001–V021 não cobrem; inventário em §5). Persistência é débito conhecido (audit §6, severity Alta para a narrativa Plano A).
 
 > **Nota (2026-05-21, reconciliada pós-#148):** o ADR 0015 reservou "V013" para `customer_confidence_persistence`, mas o slot **V013 foi usado para `add_soft_delete`** e V014–V016 para rotation / composite FK / RLS. O Customer Confidence foi entregue em **V017** (`customer_accounts`, `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections` — ver §2.29–§2.33) e **totalmente wired em #148**: o worker emite `customerConfidence` e o `AnalysisService` persiste no pipeline. Só `account_health_snapshots` (US50-51) segue não migrada.
 
@@ -732,21 +765,23 @@ O bloco LLM para Customer Confidence existe no schema (`meeting-analysis-v1.sche
 
 - `tenants`, `users`, `tenant_contexts`, `meetings` têm `deleted_at TIMESTAMPTZ NULL`. Spring Data aplica `@SQLDelete` (UPDATE seta `deleted_at`) + `@SQLRestriction("deleted_at IS NULL")` (queries default ignoram deletados).
 - UNIQUEs afetados (`tenants.slug`, `users(tenant_id,email)`, `tenant_contexts.tenant_id`) viraram **índices parciais `WHERE deleted_at IS NULL`** — permite reusar slug/email após soft-delete (senão um user deletado bloquearia novo signup com mesmo email para sempre).
-- **Hard-delete** continua possível via native query (LGPD direito ao esquecimento / retenção).
+- **Hard-delete** continua possível via native query e sustenta a LGPD operacional **entregue** (ADR 0029): `DELETE /privacy/meetings/{id}` (direito ao esquecimento) + `RetentionSweeper` agendado (retenção), cobertos por `PrivacyFlowIntegrationTest`.
 
-### RLS — Row-Level Security (V016 → V017 → V019, cobertura completa)
+### RLS — Row-Level Security (V016 → V017 → V019 → V020 → V021)
 
-ADR 0002 prometia RLS em produção; **V016 entregou no schema** e **V019 completou a cobertura** (ADR 0026 — não mais parcial):
+ADR 0002 prometia RLS em produção; **V016 entregou no schema**, **V019 completou a cobertura** (ADR 0026) e **V020 ajustou o escopo de enforce para auth-aware** (ADR 0028). O que resta é o cutover/enforcement operacional em produção (runbook em ADR 0026/0028), não o schema:
 
-- `CREATE POLICY tenant_isolation` + `ENABLE ROW LEVEL SECURITY` em **todas** as 30 tabelas tenant-owned com `tenant_id` próprio:
-  - **V016 (12):** `meetings`, `tenants`, `tenant_contexts`, `users`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses`, `meeting_participants` (+ a função `nora.current_tenant_id()`).
+- `CREATE POLICY tenant_isolation` + `ENABLE ROW LEVEL SECURITY` definidos nas tabelas tenant-owned com `tenant_id` próprio:
+  - **V016 (10):** `meetings`, `tenants`, `tenant_contexts`, `users`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses`, `meeting_participants` (+ a função `nora.current_tenant_id()`).
   - **V017 (3):** `customer_accounts`, `meeting_account_links`, `customer_confidence_assessments`.
   - **V019 (15):** `transcripts` (prioridade — `raw_text` = PII em repouso), `meeting_tags`, `meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities`, `meeting_goals`, `meeting_productivity_assessments`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events`, `email_verification_tokens`, `password_reset_tokens`.
+  - **V021 (1):** `meeting_embeddings` (RAG / busca semântica) — tabela de negócio tenant-owned, enforced.
+- **Escopo de enforce auth-aware (V020, ADR 0028):** o enforce do role `nora_app` (NOBYPASSRLS) vale para as tabelas de **dados de negócio + PII** (tocadas só por requests autenticados ou pelo pipeline de análise, que setam o GUC). V020 **desabilita RLS** em duas famílias que não podem ser enforced sem quebrar fluxos sem JWT, mantendo o isolamento pelo filtro `tenant_id` na aplicação: **(A) Identidade** (`users`, `tenants`, `email_verification_tokens`, `password_reset_tokens`, `refresh_tokens`, `iam_user_invitations` — login/signup/aceite são cross-tenant ou sem tenant); **(B) Autorização IAM** (`iam_groups`, `iam_policies`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events` — config de autorização gravada em onboarding sem JWT). As policies `tenant_isolation` continuam **definidas** (inertes com RLS off), reversível sem recriar.
 - **Fronteiras de cascade (sem policy, por design):** `iam_invitation_groups`, `meeting_goal_expected_outcomes`, `meeting_outcome_coverage`, `customer_buying_signals`, `customer_objections` — filhas sem `tenant_id` próprio, isoladas via cascade FK ao pai. Documentadas no cabeçalho de V019.
 - **Legado fora de RLS:** `roles` (linhas globais `tenant_id NULL`) e `user_roles` (deprecadas) — saem em limpeza futura.
 - Predicado: `tenant_id = nora.current_tenant_id()` (em `tenants`, `id = ...`). A função lê o GUC de sessão `nora.current_tenant_id` (NULL ⇒ fail-closed: 0 rows para role sem BYPASSRLS).
 - `infrastructure/security/TenantRlsAspect` faz `SET LOCAL nora.current_tenant_id = '<uuid>'` no início de cada `@Transactional` (GUC local, auto-reset no commit).
-- **Enforcement é opt-in:** owner/admin Postgres bypassa RLS (default em dev/Testcontainers — testes seguem inertes). Em prod, ativar via role dedicado `nora_app` (`NOBYPASSRLS`) + flag `nora.security.rls.enforce=true`. O provisionamento de role é versionado em `db/operational/R001__provision_app_roles.sql` (rodado por **admin**, não pelo `nora_app`); a telemetria operador-only usa um role `nora_telemetry` (BYPASSRLS) dedicado pra não virar 0 silencioso sob enforce. **Sequência de cutover e detalhes: ADR 0026.**
+- **Enforcement é opt-in:** owner/admin Postgres bypassa RLS (default em dev/Testcontainers — testes seguem inertes). Em prod, ativar via role dedicado `nora_app` (`NOBYPASSRLS`) + flag `nora.security.rls.enforce=true`. O provisionamento de role é versionado em `db/operational/R001__provision_app_roles.sql` (rodado por **admin**, não pelo `nora_app`); a telemetria operador-only usa um role `nora_telemetry` (BYPASSRLS) dedicado para não virar 0 silencioso sob enforce. **Sequência de cutover e detalhes: ADR 0026.**
 
 ---
 
@@ -771,7 +806,10 @@ ADR 0002 prometia RLS em produção; **V016 entregou no schema** e **V019 comple
 | **V015** | composite FK: `users` UNIQUE `(tenant_id, id)` + `meetings.(tenant_id, owner_user_id)` → `users(tenant_id, id)` (defesa anti cross-tenant) |
 | **V016** | Row-Level Security: schema `nora` + `nora.current_tenant_id()` + policies `tenant_isolation` + `ENABLE RLS` em 10 tabelas tenant-owned (enforce opt-in) |
 | **V017** | Customer Confidence (fundação, ADR 0015): `customer_accounts` (UNIQUE `(tenant_id, LOWER(name))`), `meeting_account_links`, `customer_confidence_assessments` (UNIQUE `(meeting_id, customer_account_id)`), `customer_buying_signals`, `customer_objections`; RLS `tenant_isolation` nas 3 tabelas tenant-owned |
-| **V019** | RLS completa (ADR 0026): `ENABLE RLS` + policy `tenant_isolation` nas 15 tabelas tenant-owned remanescentes (prioridade `transcripts` = PII), fechando a cobertura iniciada em V016/V017 (30 no total). Fronteiras de cascade documentadas (sem policy). Provisionamento de role versionado em `db/operational/R001` (admin) |
+| **V018** | hash do token de convite: `iam_user_invitations.token` → `token_hash` (SHA-256, alinhado aos demais tokens one-time); invalida convites PENDING legados; renomeia índice (US06, ADR 0011) |
+| **V019** | RLS completa (ADR 0026): `ENABLE RLS` + policy `tenant_isolation` nas 15 tabelas tenant-owned remanescentes (prioridade `transcripts` = PII), fechando a cobertura iniciada em V016/V017 (28 tabelas com policy direta até V019; +1 em V021). Fronteiras de cascade documentadas (sem policy). Provisionamento de role versionado em `db/operational/R001` (admin) |
+| **V020** | escopo de RLS auth-aware (ADR 0028, corrige o enforce do ADR 0026): `DISABLE RLS` nas famílias Identidade (6) e Autorização IAM (7) — não enforceáveis sem quebrar fluxos sem JWT; policies seguem definidas (inertes). Enforce fica restrito a dados de negócio + PII |
+| **V021** | RAG / busca semântica (US15, PR #206): `meeting_embeddings` (PK `meeting_id`, embeddings provider-agnósticos em JSON/TEXT, similaridade cosseno em Java); RLS `tenant_isolation` enforced (ADR 0004/0028) |
 
 ---
 

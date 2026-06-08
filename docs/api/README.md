@@ -1,3 +1,11 @@
+---
+title: "Contratos de API — NORA"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # Contratos de API — NORA
 
 Esta pasta contém os contratos canônicos entre **Web ↔ Backend ↔ Worker NLP**.
