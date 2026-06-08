@@ -1,8 +1,16 @@
+---
+title: "Runbook — Deploy do NORA na Azure"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # Runbook — Deploy do NORA na Azure
 
 > **Audiência:** quem opera o deploy do NORA em Azure (Tech Lead hoje; futuros operadores).
 >
-> **Pré-requisitos:** subscription Azure ativa (atualmente "Azure for Students"), Az CLI 2.86+, Bicep CLI 0.43+, GitHub repo com permissões pra criar workflows.
+> **Pré-requisitos:** subscription Azure ativa (atualmente "Azure for Students"), Az CLI 2.86+, Bicep CLI 0.43+, GitHub repo com permissões para criar workflows.
 
 ## Visão geral
 
@@ -23,17 +31,17 @@ Stack provisionada (ver `infra/bicep/main.bicep`):
 - 1 Log Analytics workspace + 1 Application Insights workspace-based
 - 1 Azure Speech (Cognitive Services SpeechServices S0)
 - 3 User-Assigned Managed Identities (uai-api, uai-worker, uai-web)
-- (opcional) 1 Azure AI Search Basic — desligado por padrão, ligar ~14 dias antes do pitch
+- (opcional) 1 Azure AI Search Basic — desligado por padrão. Atenção: a busca semântica / RAG (US15) já foi entregue (PR #206) via pgvector + HTTP embedding client provider-agnóstico (Gemini/OpenAI), migration V021 `meeting_embeddings` — **não** depende de Azure AI Search. Este recurso permanece opcional/legado.
 
 Custo dev (atualmente provisionado): **~R$110-180/mês** (ver `docs/engineering/architecture.md` §12 "Stack rationale" e `docs/product/roadmap.md` Unit Economics).
 
 ---
 
-## 🚨 As 8 pegadinhas do Azure for Students (CATALOGADAS)
+## As 8 armadilhas do Azure for Students (CATALOGADAS)
 
 Estas 8 armadilhas foram descobertas durante Sub-fase 1.9 (2026-05-13). Aplique fixes antes de deploy senão deploy falha.
 
-### Pegadinha 1 — Federated credential precisa subject por contexto
+### Armadilha 1 — Federated credential precisa subject por contexto
 
 **Sintoma:** Deploy via `deploy-infra.yml` falha imediatamente em `azure/login@v2` com:
 
@@ -42,7 +50,7 @@ AADSTS700213: No matching federated identity record found for presented assertio
 subject 'repo:sys0xFF/nora:environment:dev'
 ```
 
-**Causa:** Service Principal criado com federated credential pra `repo:sys0xFF/nora:ref:refs/heads/main`, mas job tem `environment: dev` no workflow → subject muda pra `repo:sys0xFF/nora:environment:dev`.
+**Causa:** Service Principal criado com federated credential para `repo:sys0xFF/nora:ref:refs/heads/main`, mas job tem `environment: dev` no workflow → subject muda para `repo:sys0xFF/nora:environment:dev`.
 
 **Fix (uma vez):**
 
@@ -56,11 +64,11 @@ az ad app federated-credential create --id <APP_ID> --parameters '{
 ```
 
 3 federated credentials totais necessários:
-- `github-main-branch` (subject `repo:sys0xFF/nora:ref:refs/heads/main`) — pra push em main sem environment
-- `github-pull-requests` (subject `repo:sys0xFF/nora:pull_request`) — pra what-if em PR
-- `github-environment-dev` (subject `repo:sys0xFF/nora:environment:dev`) — pra job com `environment: dev`
+- `github-main-branch` (subject `repo:sys0xFF/nora:ref:refs/heads/main`) — para push em main sem environment
+- `github-pull-requests` (subject `repo:sys0xFF/nora:pull_request`) — para what-if em PR
+- `github-environment-dev` (subject `repo:sys0xFF/nora:environment:dev`) — para job com `environment: dev`
 
-### Pegadinha 2 — Region restriction policy
+### Armadilha 2 — Region restriction policy
 
 **Sintoma:** Deploy falha com `RequestDisallowedByAzure`:
 
@@ -76,7 +84,7 @@ can deploy resources.
 - `centralus`
 - `canadacentral`
 
-Brazil South **não** está permitido pra recursos (RGs em si podem ficar em brazilsouth, mas recursos dentro precisam estar em uma das 5 regiões permitidas).
+Brazil South **não** está permitido para recursos (RGs em si podem ficar em brazilsouth, mas recursos dentro precisam estar em uma das 5 regiões permitidas).
 
 **Fix:** Usar `location = 'centralus'` no `main.dev.bicepparam` (já configurado).
 
@@ -85,7 +93,7 @@ $az = "az.cmd"
 & $az policy assignment list --query "[?contains(displayName, 'region') || contains(displayName, 'Region')].{name:displayName, params:parameters}" -o json
 ```
 
-### Pegadinha 3 — Resource providers não auto-registram
+### Armadilha 3 — Resource providers não auto-registram
 
 **Sintoma:** Deploy falha com `MissingSubscriptionRegistration`:
 
@@ -110,7 +118,7 @@ Aguardar registration ficar `Registered` (alguns minutos cada):
 az provider show --namespace Microsoft.OperationalInsights --query "registrationState"
 ```
 
-### Pegadinha 4 — Postgres rejeita `eastus` (offer restriction)
+### Armadilha 4 — Postgres rejeita `eastus` (offer restriction)
 
 **Sintoma:** Deploy de Postgres falha em `eastus` com:
 
@@ -121,17 +129,17 @@ LocationIsOfferRestricted: Subscriptions are restricted from provisioning in loc
 **Causa:** Outras categorias de Azure for Students aceitam recursos em `eastus`, mas Postgres Flexible Server **não**. Restriction de offer por serviço.
 
 **Regiões testadas (2026-05-13)** que aceitam Postgres B1ms:
-- ✅ `centralus`
-- ✅ `northcentralus`
-- ✅ `canadacentral`
-- ✅ `mexicocentral`
-- ❌ `eastus`
+- `centralus` — aceita
+- `northcentralus` — aceita
+- `canadacentral` — aceita
+- `mexicocentral` — aceita
+- `eastus` — rejeita
 
 **Fix:** Manter `centralus` no bicepparam. Speech também provisionado em `centralus` — proximidade reduz latência cross-region.
 
-### Pegadinha 5 — Key Vault soft-delete reserva nome global por 7 dias
+### Armadilha 5 — Key Vault soft-delete reserva nome global por 7 dias
 
-**Sintoma:** Após `az group delete` + recreate do RG (`nuke + recreate`), próximo deploy falha:
+**Sintoma:** Após `az group delete` + recreate do RG (destruir + recriar), próximo deploy falha:
 
 ```
 VaultAlreadyExists: The vault name 'nora-kv-dev-wgl3a3' is already in use.
@@ -150,14 +158,14 @@ az keyvault list-deleted --query "[?starts_with(name, 'nora-')].{name:name, loca
 az keyvault purge --name <kv-name> --location <region>
 ```
 
-**O mesmo vale pra Cognitive Services Speech** (pegadinha 5b):
+**O mesmo vale para Cognitive Services Speech** (armadilha 5b):
 
 ```bash
 az cognitiveservices account list-deleted --query "[?contains(name, 'nora')]" -o table
 az cognitiveservices account purge --location <region> --resource-group <rg> --name <speech-name>
 ```
 
-### Pegadinha 6 — Speech kind rejeita `bypass:AzureServices`
+### Armadilha 6 — Speech kind rejeita `bypass:AzureServices`
 
 **Sintoma:** Bicep deploy falha:
 
@@ -169,7 +177,7 @@ NetworkAclsBypassNotSupported: The Kind 'SpeechServices' does not support Truste
 
 **Fix:** No `infra/bicep/modules/speech.bicep`, remover chave `bypass` do `networkAcls` (já corrigido). `defaultAction: 'Allow'` basta.
 
-### Pegadinha 7 — Contributor não cria role assignments
+### Armadilha 7 — Contributor não cria role assignments
 
 **Sintoma:** Deploy falha:
 
@@ -189,7 +197,7 @@ az role assignment create \
   --scope "/subscriptions/<SUB_ID>/resourceGroups/rg-nora-dev"
 ```
 
-### Pegadinha 8 — Postgres bloqueia `CREATE EXTENSION` por default
+### Armadilha 8 — Postgres bloqueia `CREATE EXTENSION` por default
 
 **Sintoma:** API container app entra em CrashLoopBackOff com:
 
@@ -221,7 +229,7 @@ az postgres flexible-server parameter set \
   --name azure.extensions \
   --value 'PGCRYPTO,CITEXT'
 
-# Depois restart o API Container App pra Flyway tentar de novo:
+# Depois restart o API Container App para Flyway tentar de novo:
 az containerapp revision restart \
   --resource-group rg-nora-dev \
   --name nora-api-dev \
@@ -242,7 +250,7 @@ az account set --subscription "Azure for Students"
 az account show --query "{id:id, tenantId:tenantId, name:name}"
 ```
 
-### 2. Resolver providers (pegadinha 3)
+### 2. Resolver providers (armadilha 3)
 
 ```bash
 for p in Microsoft.OperationalInsights Microsoft.DBforPostgreSQL Microsoft.App Microsoft.ContainerRegistry; do
@@ -264,9 +272,9 @@ az group create \
   --tags project=nora env=dev managed-by=claude
 ```
 
-(RG pode ficar em brazilsouth pois RGs em si não são bloqueados pela region policy. Recursos vão pra `centralus` via bicepparam.)
+(RG pode ficar em brazilsouth pois RGs em si não são bloqueados pela region policy. Recursos vão para `centralus` via bicepparam.)
 
-### 4. Criar Service Principal pra deploy automatizado
+### 4. Criar Service Principal para deploy automatizado
 
 ```bash
 # App registration
@@ -282,16 +290,16 @@ az role assignment create \
   --role Contributor \
   --scope /subscriptions/<SUB_ID>/resourceGroups/rg-nora-dev
 
-# Role RBAC Administrator (pegadinha 7)
+# Role RBAC Administrator (armadilha 7)
 az role assignment create \
   --assignee <APP_ID> \
   --role "Role Based Access Control Administrator" \
   --scope /subscriptions/<SUB_ID>/resourceGroups/rg-nora-dev
 ```
 
-### 5. Federated credentials (pegadinha 1)
+### 5. Federated credentials (armadilha 1)
 
-3 federated credentials necessárias. Veja pegadinha 1.
+3 federated credentials necessárias. Veja armadilha 1.
 
 ### 6. GitHub Secrets
 
@@ -305,7 +313,7 @@ gh secret set AZURE_SUBSCRIPTION_ID --body "<SUB_ID>" --repo sys0xFF/nora
 # Secrets de runtime (gerados random ou seus valores):
 gh secret set PG_ADMIN_PASSWORD --body "<senha-forte-28-chars>" --repo sys0xFF/nora
 gh secret set JWT_SECRET --body "<random-base64-44-chars>" --repo sys0xFF/nora
-gh secret set OPENAI_API_KEY --body "<sk-...>" --repo sys0xFF/nora  # ou vazio pra rodar em modo stub
+gh secret set OPENAI_API_KEY --body "<sk-...>" --repo sys0xFF/nora  # ou vazio para rodar em modo stub
 ```
 
 ### 7. Disparar deploy
@@ -338,13 +346,15 @@ URLs esperadas:
 
 ### Ligar/desligar AI Search (custo ~R$13-15/dia ativo)
 
+Atenção: a busca semântica / RAG do produto (US15) é servida por pgvector + HTTP embedding client (PR #206, migration V021), **não** por Azure AI Search. Este toggle controla apenas o recurso opcional/legado de AI Search.
+
 Editar `infra/bicep/main.dev.bicepparam`:
 
 ```bicep
-param enableSearch = true   // ligar (ex.: 29/05 pra pitch 12/06)
+param enableSearch = true   // ligar (ex.: 29/05 para pitch 15/06)
 ```
 
-Commit + merge em main → deploy automático. **AI Search não tem pause** — só provisiona ou destrói. Estratégia recomendada: ligar ~14 dias antes do pitch FIAP pra ter tempo de popular índice e iterar.
+Commit + merge em main → deploy automático. **AI Search não tem pause** — só provisiona ou destrói. Estratégia recomendada: ligar ~14 dias antes do pitch FIAP para ter tempo de popular índice e iterar.
 
 ### Atualizar imagens GHCR
 
@@ -354,7 +364,7 @@ Após push em main que toque `services/api/`, `services/nlp-worker/`, ou `apps/w
 - `ghcr.io/sys0xff/nora-{api,worker,web}:sha-<SHA7>`
 - `ghcr.io/sys0xff/nora-{api,worker,web}:<branch>`
 
-`main.dev.bicepparam` aponta pra `:latest`. Pra rollback: trocar pra tag SHA específica.
+`main.dev.bicepparam` aponta para `:latest`. Para rollback: trocar para tag SHA específica.
 
 ### Acessar secrets do Key Vault
 
@@ -396,7 +406,7 @@ az postgres flexible-server firewall-rule create \
 az group delete --name rg-nora-dev --yes --no-wait
 ```
 
-Demora 5-15min (CAE é o gargalo). **Lembre das pegadinhas 5 (KV soft-delete) e 5b (Speech soft-delete)** — após delete do RG, faça purge antes de recreate:
+Demora 5-15min (CAE é o gargalo). **Lembre das armadilhas 5 (KV soft-delete) e 5b (Speech soft-delete)** — após delete do RG, faça purge antes de recreate:
 
 ```bash
 sleep 1000  # ou aguardar callback
@@ -408,7 +418,7 @@ az keyvault purge --name <kv-name> --location centralus
 az cognitiveservices account purge --location centralus --resource-group rg-nora-dev --name <speech-name>
 ```
 
-E **role assignments** (pegadinha 7) — após RG recreate, recriar:
+E **role assignments** (armadilha 7) — após RG recreate, recriar:
 
 ```bash
 az role assignment create --assignee <APP_ID> --role Contributor --scope /subscriptions/<SUB_ID>/resourceGroups/rg-nora-dev
@@ -427,7 +437,7 @@ Resumo:
 - RG `rg-nora-prod` (decidir region final)
 - Monitoring + alerts wired
 - Migrations safety strategy (3 opções avaliadas)
-- LGPD operational compliance (`docs/security/lgpd-operations.md` — Sub-fase 1.12 cria)
+- LGPD operacional: **entregue** (ADR 0029) — `DELETE /privacy/meetings/{id}` (direito ao esquecimento) + `RetentionSweeper` agendado + `PrivacyFlowIntegrationTest`. Resta apenas validar enforcement de retenção no ambiente prod.
 - Secrets rotation policy
 - DR runbook testado (drill quarterly)
 
@@ -437,4 +447,5 @@ Resumo:
 
 | Data | Mudança |
 |---|---|
-| 2026-05-14 | Runbook criado durante Sub-fase 1.10 (Docs Refresh). Cobre 8 pegadinhas do Azure for Students catalogadas na Sub-fase 1.9. Promoção pra prod fica como `docs/operations/production-readiness-gaps.md` |
+| 2026-05-14 | Runbook criado durante Sub-fase 1.10 (Docs Refresh). Cobre 8 armadilhas do Azure for Students catalogadas na Sub-fase 1.9. Promoção para prod fica como `docs/operations/production-readiness-gaps.md` |
+| 2026-06-06 | v1.0 (Arquiteto NORA / Tech Lead): Reconciliação doc x código + padronização (auditoria pré-apresentação) |
