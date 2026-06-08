@@ -43,7 +43,7 @@ export async function checkAccess(): Promise<AccessResult> {
     return { enforced: false, ok: true };
   }
 
-  const token = headers().get("cf-access-jwt-assertion") ?? "";
+  const token = (await headers()).get("cf-access-jwt-assertion") ?? "";
   if (token === "") {
     console.warn("[access] Cf-Access-Jwt-Assertion ausente — bloqueando.");
     return { enforced: true, ok: false };

@@ -27,8 +27,8 @@ interface PrincipalClaim {
   val: string;
 }
 
-export function getOperator(): Operator {
-  const h = headers();
+export async function getOperator(): Promise<Operator> {
+  const h = await headers();
 
   // Caminho atual: Cloudflare Access (ADR 0025).
   const cfEmail = h.get("cf-access-authenticated-user-email");
