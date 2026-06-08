@@ -1,7 +1,15 @@
+---
+title: "Padrões de Engenharia — NORA"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # Padrões de Engenharia — NORA
 
 > Guia operacional para humanos e agentes de IA programando a NORA.
-> Define convenções, estrutura, padrões e ferramentas. Atualizado pra refletir o **estado real do código** (Sub-fase 1.10) — não promessas.
+> Define convenções, estrutura, padrões e ferramentas. Atualizado para refletir o **estado real do código** — não promessas.
 
 ---
 
@@ -27,10 +35,10 @@
 | **Worker NLP** | Python 3.12 + FastAPI + Pydantic 2 + OpenAI SDK 1.50 | Pipelines pequenos, schemas explícitos, prompts versionados em `prompts/{version}.md` |
 | **Banco** | Postgres 16 + Flyway | Migrations versionadas `V###__nome.sql`, `tenant_id` em toda tabela tenant-bound |
 | **IA** | LLM agnóstico via env vars (default OpenAI `gpt-4o-mini`; Azure OpenAI em Enterprise) | JSON Schema strict, temperatura baixa, logs sem PII. ADR 0004. |
-| **Search/RAG** | Azure AI Search (desligado no MVP, `enableSearch=false`) | Stub local aceitável; interface `Retriever` estável desde já |
+| **Search/RAG** | pgvector + HTTP embedding client provider-agnóstico (Gemini/OpenAI) | Busca semântica entregue (PR #206, V021 `meeting_embeddings`); chat Core consome `/meetings/search` como contexto RAG |
 | **Auth** | JWT (JJWT 0.12) + refresh tokens stateful (V011); cookies HttpOnly | SSO Entra ID/SAML pós-MVP |
 | **Desktop** | Tauri 2 + Rust + sidecar Python | Captura áudio nativa; ADR 0008. Escopo de outro arquiteto. |
-| **Infra** | Azure (Container Apps + Postgres Flexible + KV + Storage + AI Search opt) + Bicep | IaC declarativa; SP OIDC via GitHub Actions |
+| **Infra** | Azure (Container Apps + Postgres Flexible + KV + Storage) + Bicep | IaC declarativa; SP OIDC via GitHub Actions |
 | **CI/CD** | GitHub Actions: `ci.yml` + `build-images.yml` + `deploy-infra.yml` | Push GHCR; deploy automatizado para `dev` |
 
 ### Decisão de Escopo MVP
@@ -45,13 +53,14 @@ Foco no slice **Web + Backend + Worker NLP**. Desktop, SSO, upload de áudio/ví
 nora/
 ├── apps/
 │   ├── web/                    # Next.js (Tailwind cru)
+│   ├── admin/                  # console de operador / control plane (ADR 0022-0025)
 │   └── desktop/                # Tauri 2 (outro arquiteto)
 ├── services/
 │   ├── api/                    # Spring Boot backend
 │   └── nlp-worker/             # FastAPI worker NLP/LLM
 ├── packages/
 │   ├── nlp-baseline/           # TF-IDF PT-BR reaproveitável (ADR 0010)
-│   └── shared-contracts/       # placeholder, pouco usado no MVP
+│   └── shared-contracts/       # contratos compartilhados (error-codes, pii-types, processing-status)
 ├── infra/
 │   ├── bicep/                  # Infra Azure (main.bicep + 9 módulos)
 │   └── docker/                 # Compose local, Dockerfiles auxiliares
@@ -62,11 +71,11 @@ nora/
 ├── docs/
 │   ├── product/                # vision, backlog (status real), roadmap, glossary
 │   ├── engineering/            # architecture, standards (este doc), data-model, data-model-oracle
-│   ├── operations/             # azure-deploy (runbook + 8 pegadinhas), production-readiness-gaps
+│   ├── operations/             # azure-deploy (runbook + 8 armadilhas), production-readiness-gaps
 │   ├── challenge/              # FIAP Challenge 2026 (personas, casos de uso, README, fiap-challenge-2026)
-│   ├── security/               # em construção (Sub-fase 1.12 — threat model, LGPD operacional)
+│   ├── security/               # threat model, LGPD operacional (entregue — ADR 0029)
 │   ├── api/                    # OpenAPI + JSON Schemas LLM + exemplos
-│   └── adr/                    # 21 ADRs (0001-0021) + README
+│   └── adr/                    # ADRs (índice canônico em docs/adr/README.md)
 ├── scripts/                    # automação local
 ├── .github/                    # workflows + templates
 ├── CLAUDE.md                   # contexto para Claude Code
@@ -76,8 +85,8 @@ nora/
 **Notas sobre a estrutura real:**
 
 - **Não existe `apps/web/src/features/`** (a versão anterior do doc previa). O frontend usa `src/components/` flat + `src/app/` (App Router).
-- **`packages/shared-contracts/`** é praticamente um placeholder no MVP (só `.gitkeep`); contratos vivem em `docs/api/`.
-- **MCPs (calendar, tasks, crm)** foram deferidos pós-MVP via ADR 0014 (defer commercial gate). Pastas vazias removidas do monorepo na Sub-fase 1.10. ADR 0001 (monorepo) menciona estrutura prevista; reativação condicional ao primeiro tenant pagante pedir integração.
+- **`packages/shared-contracts/`** contém contratos compartilhados reais (`error-codes.md`, `pii-types.json`, `processing-status.json`, `README.md`); contratos HTTP completos vivem em `docs/api/`.
+- **MCPs (calendar, tasks, crm)** seguem deferidos pós-MVP via ADR 0014 (defer commercial gate) como conceito de roadmap. Não há pasta `mcp/` no monorepo. ADR 0001 (monorepo) menciona estrutura prevista; reativação condicional ao primeiro tenant pagante pedir integração.
 
 ---
 
@@ -94,10 +103,10 @@ nora/
 | Padrões técnicos (este doc) | `docs/engineering/standards.md` |
 | Modelo de dados Postgres | `docs/engineering/data-model.md` |
 | Modelo de dados Oracle (entrega FIAP DB) | `docs/engineering/data-model-oracle.md` |
-| Runbook deploy Azure + 8 pegadinhas (Sub-fase 1.9) | `docs/operations/azure-deploy.md` |
+| Runbook deploy Azure + 8 armadilhas (Sub-fase 1.9) | `docs/operations/azure-deploy.md` |
 | Production-readiness gaps (alvo Sub-fase 1.12) | `docs/operations/production-readiness-gaps.md` |
 | Material acadêmico FIAP Challenge 2026 (personas, casos de uso, rubrica) | `docs/challenge/` |
-| Decisões arquiteturais duráveis (21 ADRs) | `docs/adr/NNNN-titulo.md` (índice em `docs/adr/README.md`) |
+| Decisões arquiteturais duráveis (índice canônico) | `docs/adr/NNNN-titulo.md` (índice em `docs/adr/README.md`) |
 | Contratos HTTP | `docs/api/openapi.yaml` (a gerar) ou via springdoc-openapi |
 | Exemplos de payload | `docs/api/examples/*.json` |
 | Schemas LLM | `docs/api/llm-schemas/*.schema.json` |
@@ -202,7 +211,7 @@ updated_at timestamptz not null default now()
 ### Multi-tenancy
 
 - MVP: filtro obrigatório no backend + testes de isolamento (`IamScopingIntegrationTest`).
-- Produção: Postgres RLS — **schema entregue em V016** (`tenant_isolation` + `TenantRlsAspect`); enforcement opt-in (role `nora_app` `NOBYPASSRLS` + flag `nora.security.rls.enforce`). Defesa em profundidade do filtro de app (ADR 0002).
+- Produção: Postgres RLS — **schema entregue em V016**, **RLS completa + scope auth-aware em V019/V020** (`tenant_isolation` + `TenantRlsAspect`); o que resta é o cutover/enforcement operacional em prod (runbook em ADR 0026/0028), não o schema. Defesa em profundidade do filtro de app (ADR 0002).
 - Nunca buscar entidade tenant-bound só por `id`; sempre `(tenant_id, id)`.
 - Acesso fora do escopo retorna `403` ou `404` conforme risco de enumeração.
 
@@ -211,7 +220,7 @@ updated_at timestamptz not null default now()
 - Flyway no backend.
 - Nome: `V001__create_tenants.sql`, `V002__create_users_and_roles.sql`, etc.
 - **Migration nunca é editada depois de aplicada** — sempre criar nova versão (forward-only).
-- Ver `docs/engineering/data-model.md` para mapa completo V001–V017 (V013 soft-delete, V014 refresh rotation, V015 composite FK, V016 RLS, V017 Customer Confidence).
+- Ver `docs/engineering/data-model.md` para o mapa completo de migrations (até V021: V018 hash do token de convite, V019/V020 RLS completa + scope auth-aware, V021 `meeting_embeddings`). Fonte única de verdade do schema.
 
 ---
 
@@ -245,7 +254,7 @@ services/nlp-worker/src/nora_nlp/
 1. Receber transcript + metadados (idioma, formato) + tenant_context.
 2. **PII Shield** — regex BR (EMAIL/CPF/CNPJ/PHONE/CREDIT_CARD/PERSON_NAME). Ver `services/pii_shield.py`.
 3. Normalizar texto, gerar baseline TF-IDF para interpretabilidade.
-4. (Pós-MVP) recuperar contexto vetorial via Azure AI Search.
+4. Recuperar contexto vetorial via pgvector + embedding client provider-agnóstico (busca semântica entregue — PR #206, V021).
 5. Chamar LLM com prompt versionado e `response_format=json_schema` strict.
 6. Validar com Pydantic (`MeetingAnalysisV1`).
 7. Retornar JSON estruturado ao backend.
@@ -329,7 +338,7 @@ apps/web/src/
 | **Frontend** | (TBD — sem runner declarado no `package.json`). Sub-fase 1.11+ pode adicionar Vitest |
 | **Contratos** | Exemplos JSON válidos em `docs/api/examples/` para payloads worker↔API |
 
-### Test coverage targets (audit §12, propostos em ADR futuro)
+### Metas de cobertura de testes (auditoria §12, ADR 0018)
 
 | Área | Target sustained |
 |---|---|
@@ -348,7 +357,7 @@ apps/web/src/
 
 > **Caveat (2026-05-21):** números medidos em 2026-05-13, **antes** da onda de hardening #114–#138 (RLS aspect, token rotation, RS256/JWKS, composite FK, auth audit) que tocou áreas críticas de Auth/IAM. **Re-medir** (`mvn verify` + `pytest`) antes de citar no pitch; o worker ainda não declara `pytest-cov` (adicionar — ADR 0018).
 
-### Definition of Done
+### Definição de pronto
 
 Uma story só é DONE quando:
 
@@ -414,8 +423,8 @@ Ancore cada afirmação técnica em path:linha ou ADR.
 
 ### Divisão de modelos
 
-- **Opus 4.7**: arquitetura, revisão de segurança, modelagem de dados, refatorações críticas, desenho de contratos, ADRs.
-- **Opus 4.6 / Sonnet**: implementação focada, testes, componentes de UI, CRUD, fixtures, documentação localizada.
+- **Modelos Opus**: arquitetura, revisão de segurança, modelagem de dados, refatorações críticas, desenho de contratos, ADRs.
+- **Modelos Sonnet**: implementação focada, testes, componentes de UI, CRUD, fixtures, documentação localizada.
 
 ---
 
@@ -423,7 +432,7 @@ Ancore cada afirmação técnica em path:linha ou ADR.
 
 Decisões arquiteturais duráveis ficam em `docs/adr/NNNN-titulo.md`. Toda nova feature que tome decisão de difícil reversão (banco, framework, modelo de tenancy, formato de IA) **deve** criar ADR.
 
-ADRs (estado em 2026-05-21, pós-auditoria doc×código):
+O índice canônico e sempre atualizado dos ADRs está em **`docs/adr/README.md`** (fonte única de verdade); a tabela abaixo é um resumo de conveniência:
 
 | ID | Decisão | Status |
 |---|---|---|
@@ -448,6 +457,14 @@ ADRs (estado em 2026-05-21, pós-auditoria doc×código):
 | 0019 | Tenant isolation defense-in-depth (RLS + FK composta) | aceito |
 | 0020 | Refresh-token rotation + reuse detection | aceito |
 | 0021 | Soft-delete em entidades tenant-owned | aceito |
+| 0022 | Banco de plataforma separado + 2º datasource (control plane) | aceito |
+| 0023 | Identidade de operador (platform admin) separada do IAM por-tenant | aceito (Easy Auth substituído por ADR 0025) |
+| 0024 | Catálogo de modelos dinâmico + router por modalidade | aceito |
+| 0025 | Identidade de operador v2: Cloudflare Tunnel + Access | aceito |
+| 0026 | RLS completa, provisionamento de role versionado e cutover | parcialmente substituído por 0028 |
+| 0027 | Branch protection da `main` + CI gate obrigatório | aceito |
+| 0028 | RLS enforcement auth-aware: escopo por dado e cutover | aceito |
+| 0029 | LGPD operacional: direito ao esquecimento + retenção | aceito |
 
 Quando criar ADR:
 

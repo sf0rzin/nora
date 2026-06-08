@@ -1,3 +1,11 @@
+---
+title: "CLAUDE.md — NORA (contexto principal do projeto)"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # CLAUDE.md — NORA
 
 This file is the main project context for Claude Code and similar AI coding agents. Read it before making code changes.
@@ -18,15 +26,15 @@ NORA (Negotiation Observability & Revenue Assistant) is a SaaS conversational in
 2. **`docs/product/roadmap.md`** — backlog priorizado + histórico de sub-fases + futuro
 3. **`docs/engineering/architecture.md`** — fluxos end-to-end + stack rationale + DDD layers
 4. **`docs/engineering/standards.md`** — convenções de código e PR
-5. **`docs/adr/`** — decisões arquiteturais durables (ver `docs/adr/README.md` pra índice)
+5. **`docs/adr/`** — decisões arquiteturais durables (ver `docs/adr/README.md` para o índice canônico de ADRs)
 6. **`docs/product/glossary.md`** — termos NORA (Productivity Score, Customer Confidence, etc.)
 
-Pra contexto operacional (deploy Azure, runbooks):
+Para contexto operacional (deploy Azure, runbooks):
 
-7. **`docs/operations/azure-deploy.md`** — runbook + 8 pegadinhas do Azure for Students
-8. **`docs/operations/production-readiness-gaps.md`** — gaps pra promover dev → prod
+7. **`docs/operations/azure-deploy.md`** — runbook + armadilhas do Azure for Students
+8. **`docs/operations/production-readiness-gaps.md`** — gaps para promover dev → prod
 
-Pra contexto acadêmico (FIAP Challenge):
+Para contexto acadêmico (FIAP Challenge):
 
 9. **`docs/challenge/fiap-challenge-2026.md`** — contexto FIAP, rubrica, deadlines
 10. **`docs/challenge/personas-e-mapa-de-empatia.md`** — 3 personas + mapa de empatia
@@ -71,7 +79,7 @@ For up-to-date status of each backlog story, see `docs/product/backlog.md` (DONE
 | Tauri (desktop) | 2 |
 | Bicep | builder padrão `az bicep build` |
 
-Ver `docs/engineering/architecture.md` §1 pra tabela completa com onde verificar cada versão.
+Ver `docs/engineering/architecture.md` §1 para a tabela completa com onde verificar cada versão.
 
 ## Non-Negotiables (regras invioláveis)
 
@@ -82,22 +90,22 @@ Ver `docs/engineering/architecture.md` §1 pra tabela completa com onde verifica
 - **DDD layers no backend**: `domain` não conhece Spring/HTTP/SDK. `application` orquestra. `infrastructure` adapta. `api` é fino
 - **Sem TOTVS hardcoded** no código de produto. Tenant context é configurável
 - **ADRs são imutáveis** uma vez aceitos. Decisão obsoleta? Cria ADR sucessor (ver `docs/adr/README.md`)
-- **Defer scope creep**: ADR 0014 declara v1 fechada. 13 US deferidas explicitamente (+ US48/US49 endereçadas via ADR 0015) — sem adicionar novo escopo até pitch FIAP (12/06/2026)
+- **Defer scope creep**: ADR 0014 declara v1 fechada. 13 US deferidas explicitamente (+ US48/US49 endereçadas via ADR 0015) — sem adicionar novo escopo até pitch FIAP (15/06/2026)
 - **Tests**: áreas críticas (IAM, Auth, PII) >85% coverage sustained (ADR 0018)
-- **Não comitar secrets**. Use `.env.example` pra nomes de variáveis
+- **Não comitar secrets**. Use `.env.example` para nomes de variáveis
 
-## How To Work
+## Como trabalhamos
 
 - **Implementar uma sub-fase ou story por branch.** Naming: `feat/sub-X.Y-<slug>` ou `feat/usZZ-<slug>` ou `fix/<slug>` ou `docs/<slug>`
 - **Referenciar IDs** (US##, Sub-fase 1.X, ADR NNNN, PR #) em commits e PR descriptions
-- **Antes de editar**, inspect existing patterns no módulo alvo (Grep/Glob)
+- **Antes de editar**, inspecionar os padrões existentes no módulo alvo (Grep/Glob)
 - **Após editar**, rodar o menor comando de verificação relevante (`mvn test`, `pytest`, `npm run typecheck`, `az bicep build`) e reportar passou/falhou
 - **Atualizar docs** quando código diverge: doc é parte do produto, não acessório
-- **Obsidian vault** é obrigatório pra mudanças não-triviais (ver skill `arquiteto-nora`)
+- **Obsidian vault** é obrigatório para mudanças não-triviais (ver skill `arquiteto-nora`)
 
 ## AI Collaboration Pattern (subagentes)
 
-Pra tarefas grandes, divida em fatias implementáveis paralelas. Use a skill `arquiteto-nora` pra:
+Para tarefas grandes, divida em fatias implementáveis paralelas. Use a skill `arquiteto-nora` para:
 
 1. **Entender** (ler `MEMORY.md` + `CURRENT-STATE.md` + docs relevantes)
 2. **Decidir** (apresentar 1-3 abordagens + recomendar)
@@ -107,11 +115,12 @@ Pra tarefas grandes, divida em fatias implementáveis paralelas. Use a skill `ar
 6. **Revisar** o diff (não confiar no resumo)
 7. **Documentar** no Obsidian + atualizar memory + sugerir ADR se decisão durável faltou registro
 
-Use **Opus-style models** para architecture, data model, security review e refactors. Use **Sonnet-style** ou subagentes pra focused implementation, tests, UI components, CRUD flows mecânicos.
+Use **modelos Opus** para arquitetura, modelo de dados, revisão de segurança e refactors. Use **modelos Sonnet** ou subagentes para implementação focada, testes, componentes de UI e fluxos CRUD mecânicos.
 
 ## Histórico de mudanças deste arquivo
 
 | Data | Mudança |
 |---|---|
+| 1.0 / 2026-06-06 | Arquiteto NORA (Tech Lead): Reconciliação doc × código + padronização (auditoria pré-apresentação) |
 | 2026-05-14 | Reescrito durante Sub-fase 1.10 (Docs Refresh): nova estrutura `docs/` em subpastas (product/engineering/operations/challenge/security), referências atualizadas, ADRs novos linkados, estrutura multi-arquiteto documentada |
 | (anterior) 2026-05-02+ | Versão original criada com scaffolding inicial |

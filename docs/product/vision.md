@@ -1,6 +1,14 @@
+---
+title: "Visão do Produto — NORA"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.1
+last_reviewed: 2026-06-06
+---
+
 # Visão do Produto — NORA
 
-> Documento de referência de produto. Fonte de verdade pro **O que** NORA é, pra **quem**, e o **porquê**.
+> Documento de referência de produto. Fonte de verdade para **O que** NORA é, para **quem**, e o **porquê**.
 >
 > Para a história da disciplina **Agile Methodology with Squad Framework** (Sprint 1+2, FIAP Challenge 2026 × TOTVS) este doc serve como Vision Statement principal.
 
@@ -61,24 +69,24 @@ O NORA é uma plataforma com dois planos que compartilham o mesmo motor de IA e 
 
 ---
 
-## 3. Estado Atual (2026-05-21)
+## 3. Estado Atual (2026-06-06)
 
 O NORA não está mais em fase de scaffolding nem de Sprint 1+2 puro de documentação. **Está deployado em Azure** e operacional ponta-a-ponta nos fluxos centrais do MVP:
 
 - Web em produção dev: <https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io>
 - 14 recursos Azure provisionados no `rg-nora-dev` (centralus): Container Apps Env, 3 Container Apps (web + api + worker), Postgres Flexible, Key Vault, Storage Account, App Insights, Log Analytics, Azure Speech, 3 User-Assigned Identities (api/worker/web), e federated credentials no SP `sp-nora-github-deploy`
 - Pipeline `build-images.yml` publicando 3 imagens reais no GHCR (`ghcr.io/sys0xff/nora-{api,worker,web}`); deploy via `deploy-infra.yml` com OIDC
-- IAM AWS-style operacional: Users + Groups + Policies + audit log com versionamento imutável de policies. PolicyEvaluator avalia `StringEquals` em produção; expansão para `StringIn`/`StringLike`/`DateGreaterThan` planejada pra Sub-fase 1.11
+- IAM AWS-style operacional: Users + Groups + Policies + audit log com versionamento imutável de policies. PolicyEvaluator suporta `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan` e `DateLessThan` (operadores fora da lista e atributos ausentes resultam em `Deny`, fail-closed)
 - Productivity Score full-stack (ADR 0005): backend Spring + worker NLP + web 3 componentes (`MeetingGoalForm`, `MeetingProductivitySection`, `ProductivityScoreCard`)
 - PII Shield expandido: além de email/CPF/CNPJ/phone/credit card, cobre **PERSON_NAME (BR)** com lista de ~270 nomes brasileiros + negative list (ADR 0012)
 - Pipeline LLM agnóstico (ADR 0004): default OpenAI `gpt-4o-mini`, schema strict via `response_format=json_schema`
-- Cobertura: worker NLP 87% (54 testes), backend Spring 67% (174 testes), web Next.js 0% (sem runner — débito pra 1.12)
+- Cobertura: worker NLP 87% (54 testes), backend Spring 67% (174 testes), web Next.js 0% (sem runner — débito para 1.12)
 - **App Core chat-first (2026-05-28)**: a superfície web do Core virou conversacional — **Chat IA com streaming** (OpenAI via ADR 0004, chave server-side num BFF `/api/chat`, contexto do workspace injetado), com Início (inbox), detalhe da reunião, Action items, Projetos e Integrações (MCP). IAM/contexto de tenant (Enterprise) saíram do nav do Core.
 - **Transcrições TOTVS**: pipeline de Data Science em `notebooks/totvs_transcricoes_eda.py` processa o export real (parser dedicado do formato malformado + limpeza do `[LOCUTOR N]` + TF-IDF reusando o `nlp_baseline` + correlação linguagem×NPS para sinais de risco/oportunidade)
 
-21 ADRs (0001–0021; ADRs 0013 e 0016 ainda em estado *Proposto* aguardando refino de design / Sub-fase 1.12) documentam as decisões duráveis. **Customer Confidence foi implementado full-stack** em **PR #148 (2026-05-21)** via ADR 0015: migration V017 (5 tabelas), worker emite o bloco `customerConfidence`, backend persiste no pipeline com trend autoritativo por conta, `GET /meetings/{id}` retorna o bloco e o `CustomerConfidenceCard` aparece no detalhe da reunião — resolvendo a dívida narrativa da landing. Account Health **agregado** (US50-51) segue deferido (ADR 0014). Já uma onda de hardening pós-1.10 (#114–#138) entregou RLS (V016), soft-delete (V013), refresh-token rotation (V014) e FK composta de isolamento (V015) — documentados em ADR 0019/0020/0021.
+As decisões duráveis estão documentadas nos ADRs (índice canônico: `docs/adr/README.md`). **Customer Confidence foi entregue full-stack** em **PR #148 (2026-05-21)** via ADR 0015: worker emite o bloco `customerConfidence`, backend persiste no pipeline com trend autoritativo por conta, `GET /meetings/{id}` retorna o bloco e o `CustomerConfidenceCard` aparece no detalhe da reunião — resolvendo a dívida narrativa da landing. Account Health **agregado** (US50-51) segue deferido (ADR 0014). A busca semântica / RAG (US15) foi entregue (PR #206): migration V021 (`meeting_embeddings`), `EmbeddingService` + `HttpEmbeddingClient` com embeddings provider-agnósticos (Gemini/OpenAI) via pgvector, e o chat Core consome `/meetings/search` como contexto RAG. A LGPD operacional também foi entregue (ADR 0029): `DELETE /privacy/meetings/{id}` (direito ao esquecimento) + `RetentionSweeper` agendado. Já uma onda de hardening pós-1.10 (#114–#138) entregou RLS (V016) — completada por RLS plena e scope auth-aware (V019/V020) —, soft-delete (V013), refresh-token rotation (V014) e FK composta de isolamento (V015). O schema de migrations vai até **V021** (fonte canônica: `docs/engineering/data-model.md`).
 
-Pra entender o estado anterior (Sprint 1+2 documentação) consulte o histórico do documento no fim deste arquivo e o `docs/product/roadmap.md`.
+Para entender o estado anterior (Sprint 1+2 documentação) consulte o histórico do documento no fim deste arquivo e o `docs/product/roadmap.md`.
 
 ---
 
@@ -108,21 +116,21 @@ Pra entender o estado anterior (Sprint 1+2 documentação) consulte o histórico
 |  | **Faz** | **Não Faz** |
 |---|---|---|
 | **Input** | Aceita transcrições em **texto** (`.txt`, `.vtt`, `.srt`) — MVP. Desktop captura áudio do sistema em **tempo real** (Windows via WASAPI; macOS via BlackHole; Linux via PulseAudio) | Não aceita upload de áudio/vídeo arquivado no MVP (`.mp3`, `.mp4`) — está em US08 (Won't Have v1). Roadmap: pós-MVP via Azure Speech batch |
-| **PII Shield** | **Detecta e redige automaticamente** CPF, CNPJ, valores monetários sigilosos, email, telefone, cartão de crédito e **nomes pessoais brasileiros (PERSON_NAME)** antes de qualquer envio à IA externa, com placeholders `[[TIPO_N]]` (ADR 0012) | Não cobre PII de endereço (ADDRESS) no MVP — débito catalogado pra pós-MVP. Não retém áudio original após extração; quando necessário, usa armazenamento temporário com TTL curto |
+| **PII Shield** | **Detecta e redige automaticamente** CPF, CNPJ, valores monetários sigilosos, email, telefone, cartão de crédito e **nomes pessoais brasileiros (PERSON_NAME)** antes de qualquer envio à IA externa, com placeholders `[[TIPO_N]]` (ADR 0012) | Não cobre PII de endereço (ADDRESS) no MVP — débito catalogado para pós-MVP. Não retém áudio original após extração; quando necessário, usa armazenamento temporário com TTL curto |
 | **Core — Resumo** | **Gera resumo estruturado**: contexto, decisões tomadas, próximos passos, em até 30 segundos | Não reescreve ou edita criativamente o conteúdo — sempre preserva a intenção original |
 | **Core — Action Items** | **Detecta e categoriza tarefas** explícitas e implícitas com nível de confiança exibido, prioridade `LOW`/`MEDIUM`/`HIGH` e citação textual da fonte (`sourceQuote`) | Não garante captura de 100% dos itens — insumo para revisão humana. Não atribui automaticamente sem nome explícito |
 | **Core — Productivity Score** | **Opt-in por reunião**: usuário declara objetivo + outcomes esperados; NORA mede cobertura (`ADDRESSED`/`PARTIAL`/`MISSED`) e atribui score 0–100 com banda `LOW`/`MEDIUM`/`HIGH` (ADR 0005) | Não calcula sem opt-in — privacidade by design. Não usa benchmarks externos — só o gabarito declarado pelo próprio usuário |
 | **Core — Projetos** | **Mantém rastreabilidade de projetos** ao longo do tempo sem preenchimento manual; usa attributes do tenant ou tags da reunião | Não é um gerenciador de projetos — envia dados para Jira/Linear via MCP (pós-MVP) |
 | **Core — MCPs** | **Integra via MCP** com Calendar/Outlook, Linear/Jira, GitHub e Salesforce/HubSpot — todas pós-MVP | Não requer uso de todas as integrações — cada MCP é opcional e independente |
-| **Enterprise — Product Context** | **Aprende o negócio do cliente**: admin configura catálogo de produtos, concorrentes, glossário e stakeholders; IA usa esse contexto via RAG/injection em toda análise | Não usa conhecimento genérico ou hardcoded de nenhum vendor — o contexto é sempre do tenant. RAG full com Azure AI Search está pós-MVP (US15) |
-| **Enterprise — Customer Confidence** | **Implementado full-stack** (ADR 0015, PR #148): worker emite score 0–100 + banda + tendência + sinais de compra + objeções + `accountName`; backend persiste (V017) com trend autoritativo por conta; `GET /meetings/{id}` retorna o bloco; UI `CustomerConfidenceCard` no detalhe da reunião | Account Health **agregado** (score temporal por conta + alertas, US50-51) segue deferido (ADR 0014) — exige volume de pilot |
+| **Enterprise — Product Context** | **Aprende o negócio do cliente**: admin configura catálogo de produtos, concorrentes, glossário e stakeholders; IA usa esse contexto via RAG/injection em toda análise | Não usa conhecimento genérico ou hardcoded de nenhum vendor — o contexto é sempre do tenant. A busca semântica / RAG (US15) foi entregue (PR #206) com embeddings provider-agnósticos (Gemini/OpenAI) via pgvector + HTTP embedding client (não Azure AI Search) |
+| **Enterprise — Customer Confidence** | **Entregue full-stack** (ADR 0015, PR #148): worker emite score 0–100 + banda + tendência + sinais de compra + objeções + `accountName`; backend persiste com trend autoritativo por conta; `GET /meetings/{id}` retorna o bloco; UI `CustomerConfidenceCard` no detalhe da reunião | Account Health **agregado** (score temporal por conta + alertas, US50-51) segue deferido (ADR 0014) — exige volume de pilot |
 | **Enterprise — Account Health** | Schema previsto (ADR 0006): bandas `AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`, agregado por conta, com tendência | **Não implementado** — adiado via ADR 0014 (defer post-MVP commercial gate) |
 | **Enterprise — Next Action** | **Recomenda Next Best Action** nas próximas 48–72h com base no padrão da conversa | Não cria automaticamente tarefas no CRM — envia via MCP ou webhook (pós-MVP) |
 | **IAM — Modelo** | **IAM granular estilo AWS**: Root + Users + Groups + Policies (Effect/Action/Resource/Condition) criados pelo próprio tenant. Versionamento imutável de policies + audit log. (ADR 0007) | Não impõe hierarquia de roles fixas (sem Manager/Analyst/Viewer pré-definidos) |
 | **IAM — Conditions** | **Conditions estilo AWS** por atributos definidos pelo tenant: `Department`, `Project`, `Account` etc. PolicyEvaluator suporta `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` | Operadores fora dessa lista (e atributos ausentes no contexto) resultam em `Deny` (fail-closed) |
 | **Desktop** | **App Tauri 2** (Rust + sidecar Python) com captura de áudio do sistema. **Windows via WASAPI** (oficial v1) · **macOS via BlackHole** (driver de áudio virtual; ScreenCaptureKit nativo está em débito como nice-to-have) · **Linux via PulseAudio** | Não é plugin de videoconferência. Não roda em mobile no MVP |
-| **Multi-tenancy** | **Isolamento por organização** via `tenant_id` em todas as tabelas + filtro de aplicação (ADR 0002), com **RLS Postgres (V016)** e **FK composta de isolamento (V015)** como defesa em profundidade. Bicep IaC reprodutível | RLS tem enforcement **opt-in** — ativar em prod (role `nora_app` + flag) é o que falta. Não oferece instalação on-premises no MVP |
-| **Conformidade** | **LGPD by design**: consentimento, registro auditado, direito ao esquecimento (modelo) | Não realiza DPIAs automaticamente — ação manual do DPO do cliente. Tabela `audit_events` global é débito pra 1.12+ |
+| **Multi-tenancy** | **Isolamento por organização** via `tenant_id` em todas as tabelas + filtro de aplicação (ADR 0002), com **RLS Postgres** (schema em V016, RLS completa + scope auth-aware em V019/V020) e **FK composta de isolamento (V015)** como defesa em profundidade. Bicep IaC reprodutível | O que resta é o cutover/enforcement operacional do RLS em prod (runbook em ADR 0026/0028); o schema já está entregue. Não oferece instalação on-premises no MVP |
+| **Conformidade** | **LGPD by design e operacional** (ADR 0029): consentimento, registro auditado e **direito ao esquecimento entregue** — `DELETE /privacy/meetings/{id}` + `RetentionSweeper` agendado | Não realiza DPIAs automaticamente — ação manual do DPO do cliente |
 
 ---
 
@@ -170,7 +178,7 @@ Reunião transcrita no NORA
 
 Isso elimina o principal atrito de adoção de ferramentas de produtividade: a dupla entrada de dados. O usuário transcreve uma vez — o NORA distribui para onde precisa ir.
 
-> No MVP atual nenhum servidor MCP está implementado (pastas `mcp/calendar`, `mcp/tasks`, `mcp/crm` vazias). Roadmap: pós-MVP comercial.
+> No MVP atual nenhum servidor MCP está implementado. Os MCPs seguem como conceito de roadmap (pós-MVP comercial).
 
 ---
 
@@ -188,7 +196,7 @@ Isso elimina o principal atrito de adoção de ferramentas de produtividade: a d
 
 Três personas referenciais guiam decisões de produto:
 
-- **Lucas** — Profissional individual, usuário Core. Gerencia múltiplos projetos, perde tempo voltando em reuniões pra lembrar do que foi decidido
+- **Lucas** — Profissional individual, usuário Core. Gerencia múltiplos projetos, perde tempo voltando em reuniões para lembrar do que foi decidido
 - **Camila** — Admin Enterprise. Configura tenant, define quem vê o quê via IAM, configura o contexto da empresa
 - **Rafael** — AE Enterprise. Vendedor que precisa ler sinais de oportunidade e risco em cada conversa com cliente
 
@@ -206,7 +214,7 @@ Detalhes completos, mapas de empatia, dores e ganhos: `docs/challenge/personas-e
 1. Plataforma brasileira, LGPD-compliant, em português, com adoção PLG.
 2. Única plataforma que aprende o contexto de qualquer empresa — não só as listadas em seu banco de dados fixo.
 
-**Mercado inicial: ecossistema TOTVS** (primeira referência de cliente vertical para go-to-market — pitch FIAP 12/06/2026).
+**Mercado inicial: ecossistema TOTVS** (primeira referência de cliente vertical para go-to-market — pitch FIAP 15/06/2026).
 
 **Impacto estimado no Enterprise (hipóteses a validar):**
 - ↓ 40% no tempo de preenchimento de CRM pós-reunião.
@@ -219,9 +227,9 @@ Detalhes completos, mapas de empatia, dores e ganhos: `docs/challenge/personas-e
 
 Detalhes em `docs/product/roadmap.md`. Resumo:
 
-- **1.11 — Demo Polish Plano A** (em curso): ✅ Customer Confidence (#148), ✅ AUTH_FILTER_HARD_CAP fix (teto silencioso removido) e ✅ expansão `PolicyEvaluator` (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`) entregues; restam UX interna polida + dataset sintético + roteiro de demo
-- **1.12 — Production Hardening**: RG dedicado de produção (`rg-nora-prod`) + RLS Postgres + monitoring alerts + LGPD operacional + DR runbook + secrets rotation + test coverage targets (ADR 0018 a criar)
-- **1.13+** — Pós-pitch TOTVS (12/06+): depende do desfecho do Plano A. Cenários: dossier de pitch / due-diligence (Plano A) · Plano C content + Plano B pivô comercial
+- **1.11 — Demo Polish Plano A** (em curso): Customer Confidence (#148), AUTH_FILTER_HARD_CAP removido (scan em lotes em `MeetingService.listAllForAuthFilter`) e expansão `PolicyEvaluator` (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`) entregues; restam UX interna polida + dataset sintético + roteiro de demo
+- **1.12 — Production Hardening**: RG dedicado de produção (`rg-nora-prod`) + cutover/enforcement operacional do RLS Postgres em prod + monitoring alerts + DR runbook + secrets rotation + test coverage targets (ADR 0018 a criar). A LGPD operacional já foi entregue (ADR 0029)
+- **1.13+** — Pós-pitch TOTVS (15/06+): depende do desfecho do Plano A. Cenários: dossier de pitch / due-diligence (Plano A) · Plano C content + Plano B pivô comercial
 
 ---
 
@@ -234,3 +242,4 @@ Detalhes em `docs/product/roadmap.md`. Resumo:
 | 0.3 | 2026-05-02 | Plataforma horizontal (qualquer empresa, não só TOTVS) + Desktop real-time (Tauri) + IAM RBAC+ABAC + três superfícies + Product Context via RAG |
 | 0.4 | 2026-05-02 | Alinhamento de MVP: SSO e Desktop como pós-MVP; áudio com armazenamento temporário por TTL |
 | **1.0** | **2026-05-14** | **Reescrita pós-deploy Azure real (Sub-fase 1.9). Corrige drift: Desktop suporta macOS via BlackHole (PR #37 — não é mais "Não suporta macOS no MVP"). Adiciona seção "Estado Atual" com endpoints reais + IAM operacional + Productivity Score full-stack + cobertura de testes. Adiciona seção "Próximas Sub-fases" com link pro roadmap. Substitui o doc anterior `docs/visao-do-produto.md` (deslocado pra `docs/product/vision.md`).** |
+| 1.1 | 2026-06-06 | Arquiteto NORA (Tech Lead) — Reconciliação doc x código + padronização (auditoria pré-apresentação) |

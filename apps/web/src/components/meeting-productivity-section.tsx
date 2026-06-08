@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import MeetingGoalForm from "@/components/meeting-goal-form";
 import ProductivityScoreCard from "@/components/productivity-score-card";
+import { deleteMeetingGoal } from "@/lib/api/client";
 import type {
   MeetingGoal,
   ProductivityAssessment,
@@ -23,6 +24,7 @@ export default function MeetingProductivitySection({
   const router = useRouter();
   const [goal, setGoal] = useState<MeetingGoal | null>(initialGoal);
   const [editing, setEditing] = useState<boolean>(false);
+  const [removing, setRemoving] = useState<boolean>(false);
 
   function handleSaved(saved: MeetingGoal) {
     setGoal(saved);
@@ -33,6 +35,24 @@ export default function MeetingProductivitySection({
 
   function handleCancel() {
     setEditing(false);
+  }
+
+  async function handleRemoveGoal() {
+    if (
+      !window.confirm(
+        "Remover o objetivo desta reunião? O Productivity Score vinculado será descartado.",
+      )
+    ) {
+      return;
+    }
+    setRemoving(true);
+    try {
+      await deleteMeetingGoal(meetingId);
+      setGoal(null);
+      router.refresh();
+    } finally {
+      setRemoving(false);
+    }
   }
 
   // Caso A: sem goal e sem productivity → CTA pra avaliar produtividade
@@ -99,13 +119,23 @@ export default function MeetingProductivitySection({
             <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
               Aguardando análise…
             </p>
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-            >
-              Editar objetivo
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+              >
+                Editar objetivo
+              </button>
+              <button
+                type="button"
+                onClick={handleRemoveGoal}
+                disabled={removing}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {removing ? "Removendo…" : "Remover objetivo"}
+              </button>
+            </div>
           </div>
         )}
       </section>
@@ -142,13 +172,21 @@ export default function MeetingProductivitySection({
               </div>
             </details>
           )}
-          <div>
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setEditing(true)}
               className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
             >
               Editar objetivo
+            </button>
+            <button
+              type="button"
+              onClick={handleRemoveGoal}
+              disabled={removing}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              {removing ? "Removendo…" : "Remover objetivo"}
             </button>
           </div>
         </div>

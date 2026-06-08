@@ -1,3 +1,11 @@
+---
+title: "Docs Challenge — NORA (FIAP 2026)"
+owner: Equipe Stratfy
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # NORA — Docs Challenge (FIAP 2026)
 
 > NORA é construído como **produto comercial real** atendendo a parceria FIAP × TOTVS. Esta pasta consolida o material que cumpre a **rubrica acadêmica do FIAP Challenge 2026**, mantendo separação clara entre o material acadêmico e o material de produto (`docs/product/`, `docs/engineering/`, `docs/operations/`).
@@ -17,6 +25,7 @@
 
 ## Histórico
 
-| Data | Mudança |
-|---|---|
-| 2026-05-14 | Pasta criada na Sub-fase 1.10 (Docs Refresh). Documentos `personas-e-mapa-de-empatia.md` e `diagrama-casos-de-uso.md` movidos da raiz `docs/` |
+| Versão | Data | Responsável | Mudança |
+|---|---|---|---|
+| (inicial) | 2026-05-14 | Equipe Stratfy | Pasta criada na Sub-fase 1.10 (Docs Refresh). Documentos `personas-e-mapa-de-empatia.md` e `diagrama-casos-de-uso.md` movidos da raiz `docs/` |
+| 1.0 | 2026-06-06 | Equipe Stratfy | Reconciliação doc × código + padronização (auditoria pré-apresentação) |
