@@ -30,10 +30,11 @@ function durationLabel(seconds?: number): string | null {
   return `${Math.round(seconds / 60)}min`;
 }
 
-export default async function MeetingDetailPage({ params }: { params: { id: string } }) {
+export default async function MeetingDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   let meeting: MeetingDetail | undefined;
   try {
-    meeting = await getMeeting(params.id);
+    meeting = await getMeeting(id);
   } catch {
     notFound();
   }
