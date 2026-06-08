@@ -1,3 +1,11 @@
+---
+title: "Personas e Mapa de Empatia — NORA"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # Personas e Mapas de Empatia — NORA
 
 > Documento de referência para a disciplina **Agile Methodology with Squad Framework**
@@ -339,16 +347,16 @@ Camila acessa o dashboard Enterprise com Account Health Score de todas as contas
 
 | Feature NORA | Lucas (Core) | Rafael (Enterprise) | Camila (Enterprise) |
 |---|---|---|---|
-| Resumo estruturado da reunião | ✅ Principal uso | ✅ Preenche CRM | ✅ Contexto para 1:1 |
-| Detecção de action items | ✅ Principal uso | ✅ Follow-ups de venda | ✅ Visibilidade de compromissos |
-| Push via MCP (Linear/Jira) | ✅ Principal uso | — | — |
-| Push via MCP (Salesforce/CRM) | — | ✅ Principal uso | ✅ Forecast |
-| Product Context via RAG | — | ✅ Oportunidades com produto certo | ✅ Entende linguagem de cada conta |
-| Account Health Score | — | ✅ Revisão de conta pré-1:1 | ✅ **Principal uso — visão da carteira** |
-| Competitive Radar | — | ✅ Detecta ameaça em tempo real | ✅ Padrão de mercado no time |
-| Next Best Action | — | ✅ Principal uso | ✅ Input para coaching de AEs |
-| IAM ABAC (departamento) | — | ✅ Vê só contas da própria carteira | ✅ Vê toda a regional |
-| Desktop real-time | Possível uso (reuniões técnicas) | ✅ Coaching durante a call | — |
+| Resumo estruturado da reunião | Principal uso | Preenche CRM | Contexto para 1:1 |
+| Detecção de action items | Principal uso | Follow-ups de venda | Visibilidade de compromissos |
+| Push via MCP (Linear/Jira) | Principal uso | — | — |
+| Push via MCP (Salesforce/CRM) | — | Principal uso | Forecast |
+| Product Context via RAG | — | Oportunidades com produto certo | Entende linguagem de cada conta |
+| Account Health Score | — | Revisão de conta pré-1:1 | **Principal uso — visão da carteira** |
+| Competitive Radar | — | Detecta ameaça em tempo real | Padrão de mercado no time |
+| Next Best Action | — | Principal uso | Input para coaching de AEs |
+| IAM ABAC (departamento) | — | Vê só contas da própria carteira | Vê toda a regional |
+| Desktop real-time | Possível uso (reuniões técnicas) | Coaching durante a call | — |
 
 ---
 
