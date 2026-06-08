@@ -24,9 +24,9 @@ function isStatus(s: string | undefined): s is ListMeetingsParams["status"] {
   return !!s && (STATUS_VALUES as readonly string[]).includes(s);
 }
 
-function firstName(): string {
+async function firstName(): Promise<string> {
   try {
-    const raw = cookies().get("nora_user")?.value;
+    const raw = (await cookies()).get("nora_user")?.value;
     if (!raw) return "";
     const u = JSON.parse(decodeURIComponent(raw)) as { displayName?: string };
     return (u.displayName ?? "").trim().split(/\s+/)[0] ?? "";
@@ -122,13 +122,14 @@ function MeetingRow({ m }: { m: MeetingListItem }) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: { search?: string; status?: string; from?: string; to?: string };
+  searchParams: Promise<{ search?: string; status?: string; from?: string; to?: string }>;
 }) {
+  const sp = await searchParams;
   const filters: ListMeetingsParams = {
-    search: searchParams.search?.trim() || undefined,
-    status: isStatus(searchParams.status) ? searchParams.status : undefined,
-    from: searchParams.from || undefined,
-    to: searchParams.to || undefined,
+    search: sp.search?.trim() || undefined,
+    status: isStatus(sp.status) ? sp.status : undefined,
+    from: sp.from || undefined,
+    to: sp.to || undefined,
   };
 
   let data;
@@ -140,7 +141,7 @@ export default async function DashboardPage({
     data = { items: [] as MeetingListItem[], page: 0, size: 20, totalItems: 0, totalPages: 0 };
   }
 
-  const name = firstName();
+  const name = await firstName();
   const hasFilters = Boolean(filters.search || filters.status || filters.from || filters.to);
 
   const grouped: Record<string, MeetingListItem[]> = {};
