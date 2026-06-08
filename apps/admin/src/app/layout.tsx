@@ -20,7 +20,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // /healthz é route handler (não passa por layout) — segue livre pro probe do Container App.
   const access = await checkAccess();
   // Server-side: identidade do operador (Cloudflare Access em prod, fake em dev).
-  const operator = getOperator();
+  const operator = await getOperator();
   return (
     <html lang="pt-BR" className={`${dmSans.variable} ${jetbrainsMono.variable}`}>
       <body>

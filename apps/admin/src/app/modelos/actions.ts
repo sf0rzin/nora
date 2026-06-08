@@ -24,7 +24,7 @@ export async function bindServiceAction(
   enabled: boolean,
 ): Promise<ActionResult> {
   try {
-    await bindService(service, modelId, enabled, getOperator().email);
+    await bindService(service, modelId, enabled, (await getOperator()).email);
     revalidatePath("/modelos");
     return { ok: true };
   } catch (e) {
@@ -34,7 +34,7 @@ export async function bindServiceAction(
 
 export async function removeModelAction(id: string): Promise<ActionResult> {
   try {
-    await removeModel(id, getOperator().email);
+    await removeModel(id, (await getOperator()).email);
     revalidatePath("/modelos");
     return { ok: true };
   } catch (e) {
@@ -44,7 +44,7 @@ export async function removeModelAction(id: string): Promise<ActionResult> {
 
 export async function addModelAction(input: NewModelInput): Promise<ActionResult> {
   try {
-    await createModel(input, getOperator().email);
+    await createModel(input, (await getOperator()).email);
     revalidatePath("/modelos");
     return { ok: true };
   } catch (e) {
