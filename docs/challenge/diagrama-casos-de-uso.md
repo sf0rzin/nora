@@ -1,3 +1,11 @@
+---
+title: "Diagrama de Casos de Uso — NORA"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.0
+last_reviewed: 2026-06-06
+---
+
 # Diagrama de Casos de Uso — NORA
 
 > Documento de referência para a disciplina **Agile Methodology with Squad Framework**

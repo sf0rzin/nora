@@ -1,9 +1,19 @@
+---
+title: "Modelo de Dados — NORA (Oracle 19c+)"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.1
+last_reviewed: 2026-06-06
+---
+
 # Modelo de Dados — NORA (Oracle 19c+)
 
 > Espelho do schema Postgres em sintaxe **Oracle 19c+ (PL/SQL DDL)**.
 > NORA roda **em Postgres em produção** (ver `data-model.md`). Este documento é entrega acadêmica para a disciplina de Database Design da FIAP, que exige modelagem Oracle.
 > Cada tabela corresponde 1:1 ao schema documentado em `data-model.md`, com as adaptações de tipo e sintaxe descritas em §15.
-> Cobre as migrations **V001–V016** (inclui soft-delete V013, refresh token rotation V014, FK composta V015 e Row-Level Security V016 — ver §18 para a equivalência Oracle do RLS via VPD/DBMS_RLS). Inventário completo em §17. **Nota (2026-05-21):** a migration **V017 (Customer Confidence)** ainda não foi mapeada para Oracle — débito deste doc (as 5 tabelas estão em `data-model.md §2.29-2.33`).
+> Cobre as migrations **V001–V016** (inclui soft-delete V013, refresh token rotation V014, FK composta V015 e Row-Level Security V016 — ver §18 para a equivalência Oracle do RLS via VPD/DBMS_RLS). Inventário completo em §17. A lista canônica de migrations (que avança além da V016, até a V021) está em `data-model.md`.
+>
+> **Nota (escopo deste doc):** as migrations posteriores à V016 — Customer Confidence (entregue full-stack), RLS completa/scope auth-aware, hash do token de convite e `meeting_embeddings` (busca semântica) — ainda não foram mapeadas para a sintaxe Oracle. Isto é um débito do espelho acadêmico, não do produto: os recursos estão entregues e documentados no schema Postgres canônico em `data-model.md` (Customer Confidence em `§2.29-2.33`).
 
 ---
 
@@ -32,7 +42,7 @@ CREATE INDEX idx_tenants_status ON tenants (status);
 -- Postgres usa indice parcial WHERE deleted_at IS NULL; Oracle <23ai nao tem
 -- indice parcial, entao emulamos com function-based index (slug indexado
 -- apenas enquanto deleted_at IS NULL; linhas soft-deleted viram NULL e nao
--- contam para a unicidade, liberando o slug pra reuso).
+-- contam para a unicidade, liberando o slug para reuso).
 CREATE UNIQUE INDEX tenants_slug_uk
     ON tenants (CASE WHEN deleted_at IS NULL THEN slug END);
 
@@ -66,7 +76,7 @@ CREATE TABLE users (
     CONSTRAINT users_root_chk   CHECK (is_root IN (0,1)),
     -- UNIQUE composto (tenant_id, id) exigido como target da FK composta de
     -- meetings (V015). A PK simples `id` continua sendo o identificador; este
-    -- UNIQUE existe apenas pra suportar o FOREIGN KEY (tenant_id, owner_user_id).
+    -- UNIQUE existe apenas para suportar o FOREIGN KEY (tenant_id, owner_user_id).
     CONSTRAINT users_tenant_id_uk UNIQUE (tenant_id, id)
 );
 
@@ -79,7 +89,7 @@ CREATE UNIQUE INDEX users_email_uk
               CASE WHEN deleted_at IS NULL THEN email     END);
 
 -- Equivalente ao CITEXT do Postgres: unicidade case-insensitive, tambem
--- restrita aos vivos pra ficar consistente com o soft-delete.
+-- restrita aos vivos para ficar consistente com o soft-delete.
 CREATE UNIQUE INDEX uq_users_tenant_email_ci
     ON users (CASE WHEN deleted_at IS NULL THEN tenant_id      END,
               CASE WHEN deleted_at IS NULL THEN LOWER(email)   END);
@@ -649,7 +659,7 @@ CREATE INDEX idx_refresh_tokens_user
 
 CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens (token_hash);
 
--- Lookup pela family pra revogar toda a cadeia em reuse (V014).
+-- Lookup pela family para revogar toda a cadeia em reuse (V014).
 CREATE INDEX idx_refresh_tokens_family ON refresh_tokens (family_id);
 ```
 
@@ -735,12 +745,12 @@ CREATE INDEX idx_meeting_outcome_coverage_assessment ON meeting_outcome_coverage
 | **Texto longo** | `TEXT` (sem limite) | `CLOB` (até 4GB) ou `VARCHAR2(4000)` para curto. Oracle não tem `TEXT` puro. |
 | **Timestamp com TZ** | `TIMESTAMPTZ` | `TIMESTAMP WITH TIME ZONE` |
 | **JSON binário** | `JSONB` com operadores nativos (`@>`, `?`, `->`) | `CLOB CHECK(column IS JSON)` em 19c. Em 21c+ existe tipo `JSON` nativo. Operadores via `JSON_VALUE`, `JSON_QUERY`, `JSON_EXISTS`. |
-| **Boolean** | `BOOLEAN` (TRUE/FALSE) | `NUMBER(1) CHECK (val IN (0,1))`. Oracle 23ai tem `BOOLEAN` nativo, mas evitamos pra portabilidade 19c+. |
+| **Boolean** | `BOOLEAN` (TRUE/FALSE) | `NUMBER(1) CHECK (val IN (0,1))`. Oracle 23ai tem `BOOLEAN` nativo, mas evitamos para portabilidade 19c+. |
 | **Email case-insensitive** | extensão `citext` (`CITEXT`) | function-based index `LOWER(email)` + UNIQUE; queries usam `LOWER()` |
 | **`gen_random_uuid()`** | `pgcrypto` | `SYS_GUID()` (retorna `RAW(16)`; convertido para `VARCHAR2(36)` via cast implícito) |
 | **`NOW()`** | função | `SYSTIMESTAMP` (com timezone) ou `CURRENT_TIMESTAMP` |
 | **Array nativo (`TEXT[]`)** | nativo | inexistente. Usar `JSON_ARRAY` em CLOB com `IS JSON` check, ou tabela child N:N. |
-| **Índice parcial (`WHERE …`)** | nativo (`CREATE INDEX … WHERE`) | inexistente; emular com function-based index (`CASE WHEN … THEN … END`). Usado tanto pra `is_root`/refresh-tokens quanto pra **unique parcial do soft-delete** (V013): `UNIQUE INDEX (CASE WHEN deleted_at IS NULL THEN col END)`, que libera slug/email/tenant_id pra reuso após soft-delete. |
+| **Índice parcial (`WHERE …`)** | nativo (`CREATE INDEX … WHERE`) | inexistente; emular com function-based index (`CASE WHEN … THEN … END`). Usado tanto para `is_root`/refresh-tokens quanto para **unique parcial do soft-delete** (V013): `UNIQUE INDEX (CASE WHEN deleted_at IS NULL THEN col END)`, que libera slug/email/tenant_id para reuso após soft-delete. |
 | **Índice GIN para JSONB** | `USING GIN (col jsonb_path_ops)` | `CREATE SEARCH INDEX … FOR JSON` (Oracle Text/JSON Search Index) em 19c+. |
 | **Cascade FK** | `ON DELETE CASCADE` / `ON DELETE RESTRICT` / `ON DELETE SET NULL` | idêntico (`ON DELETE CASCADE`, `ON DELETE SET NULL`; **`RESTRICT` não existe** — comportamento padrão sem cláusula é equivalente a `NO ACTION`/`RESTRICT`). |
 | **FK composta** | `FOREIGN KEY (a, b) REFERENCES t(a, b)` (target precisa de UNIQUE/PK composta) | idêntico — Oracle suporta FK composta nativamente; target é o `UNIQUE (tenant_id, id)` (V015, §2). |
