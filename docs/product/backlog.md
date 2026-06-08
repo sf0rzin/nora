@@ -1,12 +1,20 @@
+---
+title: "Backlog — NORA"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.1
+last_reviewed: 2026-06-06
+---
+
 # Backlog — NORA
 
 > Backlog vivo do MVP, mantido em formato MoSCoW com **status real por user story** (DONE / PARTIAL / MISSING). Atualizado 2026-05-14, base no audit `2026-05-13-audit-pre-subfase-1.10.md` §2 e §3.
 >
-> Documento substitui `docs/backlog-mvp.md` (movido pra cá). Fonte de verdade dos status: PRs mergeados em `main`, migrations `services/api/src/main/resources/db/migration/V*.sql`, audit retro-ativo.
+> Documento substitui `docs/backlog-mvp.md` (movido para cá). Fonte de verdade dos status: PRs mergeados em `main`, migrations `services/api/src/main/resources/db/migration/V*.sql`, audit retro-ativo.
 >
 > **Reconciliado 2026-05-21 (pós-PR #148):** Customer Confidence (US48-49) passou de PARTIAL → **DONE** full-stack. O audit `2026-05-13` (e a reconciliação doc×código de 2026-05-21 que o precedeu no mesmo dia) foram escritos **antes** do #148 mergear; este doc reflete o estado pós-merge.
 >
-> Pra entender o histórico de execução das sub-fases que entregaram cada status, ver `docs/product/roadmap.md`.
+> Para entender o histórico de execução das sub-fases que entregaram cada status, ver `docs/product/roadmap.md`.
 
 ---
 
@@ -55,7 +63,7 @@
 |---|---|---|---|---|---|
 | US07 | Upload de transcrição (`.txt`, `.vtt`, `.srt`) | M | DONE | `MeetingsController.upload` (linha 98-136) · migration V004 · PR #5 | — |
 | US08 | Upload de áudio/vídeo (`.mp3`, `.mp4`) | **W** | MISSING | `ALLOWED_FORMATS = {TXT,VTT,SRT}` em `MeetingsController.java:66` | Pós-MVP. Deferido em bloco via ADR 0014 |
-| US09 | Captura ao vivo no Desktop | **W** (declarado W no backlog, mas **implementado**) | DONE | `apps/desktop/src-tauri/.../system_audio.rs`, `audio_capture.rs`, `stt_sidecar.rs` · PRs #8, #65 · ADRs 0008 + 0009 | Validação em ambiente Windows/Teams real ainda pendente. macOS via BlackHole funciona; ScreenCaptureKit nativo é nice-to-have (escopo do amigo) |
+| US09 | Captura ao vivo no Desktop | **W** (declarado W no backlog, mas **implementado**) | DONE | `apps/desktop/src-tauri/.../system_audio.rs`, `audio_capture.rs`, `stt_sidecar.rs` · PRs #8, #65 · ADRs 0008 + 0009 | Validação em ambiente Windows/Teams real ainda pendente. macOS via BlackHole funciona; ScreenCaptureKit nativo é nice-to-have (escopo do colaborador) |
 | US10 | Nomear e categorizar reunião no upload | S | DONE | `MeetingUploadMetadata` aceita `title` e `tags` (`MeetingsController.java:107,120`) | — |
 
 ### E3 — Processamento IA
@@ -66,7 +74,7 @@
 | US12 | Tarefas e decisões extraídas | M | DONE | `actionItems` + `decisions` em `MeetingAnalysisV1` · endpoint `/tasks` | — |
 | US13 | Identificar participantes mencionados | S | **PARTIAL** | `Participant` model em `services/nlp-worker/src/.../models.py:104-109` · migration V004 | Sem dedup nem matching de participantes entre reuniões |
 | US14 | Contexto da empresa injetado no LLM | M | DONE | `TenantContextController` · migration V005 · injetado no prompt | — |
-| US15 | Busca semântica por embeddings | S | MISSING | Bicep flag `enableSearch = false`. Tabelas `*_chunks` não criadas | Pós-MVP / condicional. Deferido em bloco via ADR 0014. Reativar quando produto exigir semantic > BM25 |
+| US15 | Busca semântica por embeddings | S | DONE | Embeddings provider-agnóstico (Gemini/OpenAI) via pgvector + HTTP embedding client: `EmbeddingService.java` · `HttpEmbeddingClient.java` · migration V021 (`meeting_embeddings`) · `RagSearchIntegrationTest.java` · `GET /meetings/search` consumido pelo chat Core como contexto RAG · **PR #206** | — |
 
 ### E4 — Dashboard & Insights
 
@@ -93,7 +101,7 @@
 
 | ID | Título | MoSCoW | Status | Evidência | Débito conhecido |
 |---|---|---|---|---|---|
-| US27 | MCP Claude | **W** | MISSING | Pasta `mcp/` no monorepo, vazia | Pós-MVP. Deferido em bloco via ADR 0014 |
+| US27 | MCP Claude | **W** | MISSING | Sem código. MCPs seguem como conceito de roadmap (sem pasta dedicada no repo) | Pós-MVP. Deferido em bloco via ADR 0014 |
 | US28 | MCP Google Calendar | **W** | MISSING | — | Pós-MVP. Deferido em bloco via ADR 0014 |
 | US29 | MCP task managers (Linear/Jira/Notion) | **W** | MISSING | — | Pós-MVP. Deferido em bloco via ADR 0014 |
 
@@ -104,7 +112,7 @@
 | US30 | Configurar contexto da empresa | M | DONE | `TenantContextController` · migration V005 · PR #33 | — |
 | US31 | Histórico de versões do contexto da empresa | S | MISSING | V005 só tem `created_at`/`updated_at`. `data-model.md` previu coluna `version` mas migration não inclui | Débito: migration V014 trivial (S). Deferido em bloco via ADR 0014. Reativar antes de prod GA (compliance LGPD precisa) |
 | US32 | Domínio corporativo do tenant | M | DONE | `TenantController.updateDomain` · migration V009 · ADR 0011 · PR #55 | — |
-| US33 | Métricas de uso do tenant | S | MISSING | Sem endpoint | Deferido em bloco via ADR 0014. Reativar quando 5+ tenants ativos em pilot pagar pra ver ROI |
+| US33 | Métricas de uso do tenant | S | MISSING | Sem endpoint | Deferido em bloco via ADR 0014. Reativar quando 5+ tenants ativos em pilot pagar para ver ROI |
 | US34 | Export relatório consolidado do período | S | MISSING | Sem endpoint | Deferido em bloco via ADR 0014. Reativar quando US33 entregue (dependência de agregações) |
 
 ### E8 — IAM Enterprise (estilo AWS)
@@ -134,9 +142,9 @@
 
 | ID | Título | MoSCoW | Status | Evidência | Débito conhecido |
 |---|---|---|---|---|---|
-| US48 | Customer Confidence Score 0-100 com sinais e objeções | M | **DONE** | Migration `V017__create_customer_confidence.sql` (5 tabelas + RLS) · worker emite `customerConfidence` (`models.py:252` + stub + prompt) · persistido no pipeline (`AnalysisService.java:127` → `CustomerConfidenceService.persist`) · `GET /meetings/{id}` retorna `customerConfidence` (`MeetingDetailResponse`) · UI `CustomerConfidenceCard` (`meetings/[id]/page.tsx:182`) · **PR #148 (2026-05-21)** | Shipou como **V017** (o slot V013 do ADR 0015 acabou em soft-delete, #114). Account Health **agregado** (US50-51) segue deferido (ADR 0014) |
+| US48 | Customer Confidence Score 0-100 com sinais e objeções | M | **DONE** | Migration `V017__create_customer_confidence.sql` (5 tabelas + RLS) · worker emite `customerConfidence` (`models.py:252` + stub + prompt) · persistido no pipeline (`AnalysisService.java:127` → `CustomerConfidenceService.persist`) · `GET /meetings/{id}` retorna `customerConfidence` (`MeetingDetailResponse`) · UI `CustomerConfidenceCard` (`meetings/[id]/page.tsx:182`) · **PR #148 (2026-05-21)** | Entregue como **V017** (o slot V013 do ADR 0015 acabou em soft-delete, #114). Account Health **agregado** (US50-51) segue deferido (ADR 0014) |
 | US49 | Trend `IMPROVING`/`STABLE`/`DECLINING` | M | **DONE** | Trend **autoritativo no servidor**: `CustomerConfidenceService.computeTrend` compara com a avaliação anterior da conta (banda morta ±5 pts), persistido em `customer_confidence_assessments.trend` · PR #148 | Palpite de trend do worker é ignorado (backend é fonte da verdade) |
-| US50 | Account Health Score agregado por conta | S | MISSING | `docs/data-model.md:437-453` prevê `account_health_snapshots` mas sem migration | Deferido em bloco via ADR 0014. Reativar pós-pilot quando 3+ tenants tiverem dados suficientes pra agregar |
+| US50 | Account Health Score agregado por conta | S | MISSING | `docs/data-model.md:437-453` prevê `account_health_snapshots` mas sem migration | Deferido em bloco via ADR 0014. Reativar pós-pilot quando 3+ tenants tiverem dados suficientes para agregar |
 | US51 | Alerta quando Account Health muda de banda | S | MISSING | Sem código | Deferido em bloco via ADR 0014. Reativar junto com US50 |
 
 ---
@@ -161,7 +169,7 @@ Trabalho que não estava no MoSCoW original mas entrou via sub-fases ou decisão
 | Deploy Azure via OIDC (`deploy-infra.yml`) | #64 | — | DONE |
 | Customer Confidence schema LLM | #25 | ADR 0006 | DONE (schema) |
 | Customer Confidence full-stack (persistência + worker emit + endpoint + UI) | #148 | ADR 0015 | DONE (V017 + `AnalysisService` wiring + trend server-side + `CustomerConfidenceCard`) |
-| `meeting_attributes` JSONB + índice GIN | V007 + V008 | ADR 0007 | DONE (atributos arbitrários pra IAM conditions) |
+| `meeting_attributes` JSONB + índice GIN | V007 + V008 | ADR 0007 | DONE (atributos arbitrários para IAM conditions) |
 | Reprocessamento de reuniões | #46 | — | DONE (`POST /meetings/{id}/reprocess`) |
 | CORS configurável por env | #42 | — | DONE (`CORS_ALLOWED_ORIGINS` em `application.yml`) |
 | Skill `arquiteto-nora` para Claude Code | #53 | — | DONE (em `.claude/skills/`) |
@@ -178,7 +186,7 @@ Frente de segurança/infra que entrou após a Sub-fase 1.10, rotulada "audit fol
 | Audit log de auth expandido (login/refresh/logout) | #118 | — | DONE |
 | App Insights Java Agent + role names | #136 | — | DONE |
 | Composite FK isolamento `meetings.(tenant_id,owner_user_id)→users` | #137 | V015 | DONE |
-| **Row-Level Security** (`tenant_isolation` + `TenantRlsAspect`) | #138 | V016 | DONE (enforce opt-in; era item da 1.12) |
+| **Row-Level Security** (`tenant_isolation` + `TenantRlsAspect`) | #138 | V016 → V019/V020 | DONE (schema V016 + RLS completa/scope auth-aware V019/V020; runbook de cutover em ADR 0026/0028). Resta o cutover/enforcement operacional em prod, não o schema |
 
 ---
 
@@ -187,16 +195,16 @@ Frente de segurança/infra que entrou após a Sub-fase 1.10, rotulada "audit fol
 | MoSCoW | Total | DONE | PARTIAL | MISSING |
 |---|---|---|---|---|
 | **Must Have (M)** | 31 | **29** | **0** | **2** (US05*, US08*) |
-| **Should Have (S)** | 15 | **6** | **2** (US13, US42) | **7** (US15, US25, US31, US33, US34, US41, US43) |
+| **Should Have (S)** | 15 | **7** | **2** (US13, US42) | **6** (US25, US31, US33, US34, US41, US43) |
 | **Could Have (C)** | 5 | — | **1** (US26) | **4** (US21, US44, etc) |
 | **Won't Have v1 (W)** | 7 | **1** (US09) | — | **6** |
-| **Total** | **58** | **36** | **3** | **19** |
+| **Total** | **58** | **37** | **3** | **18** |
 
 > *US05 e US08 são `M` no MoSCoW original mas foram **rebatizadas como W via decisão de escopo** (CLAUDE.md + PROJECT.md). Aqui contam como MISSING/W na prática.
 
-**Cobertura efetiva do MVP** (M + S desejáveis pra demo):
-- Must Have entregue: **29 de 31** (94%) — Customer Confidence (US48-49) shipou full-stack em #148; restam só US05/US08 (rebatizadas W)
-- Should Have entregue: **8 de 14** (57%) — gap principal é exportação, métricas tenant, simulator de policy
+**Cobertura efetiva do MVP** (M + S desejáveis para demo):
+- Must Have entregue: **29 de 31** (94%) — Customer Confidence (US48-49) foi entregue full-stack em #148; restam só US05/US08 (rebatizadas W)
+- Should Have entregue: **9 de 14** (64%) — gap principal é exportação, métricas tenant, simulator de policy
 
 **Frentes que destacam o produto além do MoSCoW** (12 itens): Productivity Score full-stack, PII PERSON_NAME, Bicep IaC, deploy real Azure, dataset sintético + notebook DS, refresh tokens, Live analysis, redesign visual.
 
@@ -204,15 +212,15 @@ Frente de segurança/infra que entrou após a Sub-fase 1.10, rotulada "audit fol
 
 ## 5. Decisão "Deferir Pós-MVP" — ADR 0014
 
-> Aprovada em bloco pela Stratfy em 2026-05-14. Esta decisão fecha 14 US como **Won't Have v1** com critério de reativação documentado.
+> Aprovada em bloco pela Stratfy em 2026-05-14. Esta decisão fechou 14 US como **Won't Have v1** com critério de reativação documentado. **Atualização:** US15 (busca semântica) foi subsequentemente entregue em PR #206 — ver nota na tabela abaixo.
 
-**Critério geral:** as 14 US abaixo são adiadas pra liberar foco em Sub-fase 1.11 (Demo Polish Plano A) e 1.12 (Production Hardening). Nenhuma bloqueia o pitch FIAP × TOTVS (12/06/2026) nem o Plano A imediato.
+**Critério geral:** as US abaixo foram adiadas para liberar foco em Sub-fase 1.11 (Demo Polish Plano A) e 1.12 (Production Hardening). Nenhuma bloqueia o pitch FIAP × TOTVS (15/06/2026) nem o Plano A imediato.
 
 | US | Título | Critério de reativação |
 |---|---|---|
 | US05 | SSO Entra ID/SAML | Quando primeiro tenant Enterprise pago exigir explicitamente (sinal comercial concreto) |
 | US08 | Upload de áudio/vídeo | Quando demanda repetida em pilot indicar (>30% dos uploads são áudio) ou Azure Speech batch ficar barato (R$5/h) |
-| US15 | Busca semântica por embeddings (condicional) | Quando volume por tenant >500 reuniões e usuários reclamarem que keyword search não encontra. Strategy "ligar AI Search 14 dias antes do pitch" continua válida |
+| US15 | Busca semântica por embeddings | **Não mais deferida** — entregue em PR #206 (embeddings provider-agnósticos via pgvector + HTTP embedding client; migration V021). Ver E3 / US15 acima |
 | US21 | Painel de tendências (temas + carga tarefas) | Depois de US15 ligada. Sem embeddings/análise temporal o painel é raso |
 | US25 | Export CSV/MD de tarefas | Quando feedback de pilot indicar uso fora do app (>2 tenants pedindo) |
 | US31 | Histórico de versões do contexto da empresa | Antes de prod GA — compliance LGPD precisa de audit trail no contexto. Migration trivial (V014) |
@@ -221,8 +229,8 @@ Frente de segurança/infra que entrou após a Sub-fase 1.10, rotulada "audit fol
 | US41 | Templates de policy | Quando >3 tenants pedirem onboarding rápido com policies pré-feitas |
 | US43 | Simulador de policy | **Antes** do primeiro pilot pago — sem isso, debug de policies é cego. Probabilidade alta de subir na 1.11 |
 | US44 | Permission boundaries | Quando hierarquia organizacional + delegação de IAM virar necessidade real (Pilot+1) |
-| US47 | MCP project state | Quando primeiro tenant pedir integração Jira/Linear pra Productivity Score |
-| **US50-51** | **Account Health agregado + alertas** | US48-49 (Customer Confidence por reunião) shipou em #148 via ADR 0015. O conjunto **agregado** (Account Health Score temporal + alertas de banda) segue deferido: pós-pilot quando 3+ tenants tiverem >10 reuniões pra agregar |
+| US47 | MCP project state | Quando primeiro tenant pedir integração Jira/Linear para Productivity Score |
+| **US50-51** | **Account Health agregado + alertas** | US48-49 (Customer Confidence por reunião) foi entregue em #148 via ADR 0015. O conjunto **agregado** (Account Health Score temporal + alertas de banda) segue deferido: pós-pilot quando 3+ tenants tiverem >10 reuniões para agregar |
 
 > Critério de reativação por US é descritivo, não bloqueante. Sub-fase 1.13+ pode pegar qualquer um se contexto justificar.
 

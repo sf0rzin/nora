@@ -1,3 +1,11 @@
+---
+title: "FIAP Challenge 2026 — NORA × Parceria TOTVS"
+owner: Arquiteto NORA (Tech Lead)
+status: approved
+version: 1.1
+last_reviewed: 2026-06-06
+---
+
 # FIAP Challenge 2026 — NORA × Parceria TOTVS
 
 ## Contexto
@@ -14,7 +22,7 @@ Esta página documenta:
 
 ## Rubrica acadêmica
 
-> **NOTA:** itens marcados `?? não conferido` precisam ser validados contra a rubrica oficial publicada pela FIAP. Documento foi escrito com base em entregas históricas FIAP Challenge anteriores; pode necessitar ajustes específicos pra edição 2026.
+> **NOTA:** itens marcados `?? não conferido` precisam ser validados contra a rubrica oficial publicada pela FIAP. Documento foi escrito com base em entregas históricas FIAP Challenge anteriores; pode necessitar ajustes específicos para a edição 2026.
 
 ### Entregas acadêmicas esperadas
 
@@ -23,10 +31,10 @@ Esta página documenta:
 | **Personas e mapa de empatia** | [`personas-e-mapa-de-empatia.md`](personas-e-mapa-de-empatia.md) — 3 personas (Lucas Almeida, Camila Souza, Rafael Costa) |
 | **Diagrama de casos de uso (UML)** | [`diagrama-casos-de-uso.md`](diagrama-casos-de-uso.md) — mermaid com 20+ casos de uso |
 | **Backlog priorizado (MoSCoW)** | [`../product/backlog.md`](../product/backlog.md) — US01-US51 com status real DONE/PARTIAL/MISSING |
-| **Modelo de dados relacional (Postgres)** | [`../engineering/data-model.md`](../engineering/data-model.md) — 35 tabelas, 17 migrations Flyway aplicadas |
+| **Modelo de dados relacional (Postgres)** | [`../engineering/data-model.md`](../engineering/data-model.md) — schema relacional + migrations Flyway aplicadas (fonte canônica do conjunto de migrations) |
 | **Modelo de dados Oracle (entrega DB)** | [`../engineering/data-model-oracle.md`](../engineering/data-model-oracle.md) — DDL Oracle 19c+ equivalente ao schema Postgres |
 | **Arquitetura técnica (diagramas, fluxos)** | [`../engineering/architecture.md`](../engineering/architecture.md) — DDD layers, IAM flow, RAG pipeline, multi-tenancy |
-| **Decisões arquiteturais documentadas** | [`../adr/`](../adr/) — 21 ADRs (decisões durables com contexto + alternativas) |
+| **Decisões arquiteturais documentadas** | [`../adr/README.md`](../adr/README.md) — índice canônico de ADRs (decisões durables com contexto + alternativas) |
 | **Validação técnica (testes)** | Test coverage real medido (worker 87%, backend 67%) — ver ADR 0018 |
 | **Demonstração funcional (deploy)** | NORA deployado em Azure: `https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io` |
 | **Pitch / apresentação final** | Sub-fase 1.11 cria roteiro de demo de 15-20min |
@@ -39,10 +47,10 @@ NORA entrega elementos que vão além da rubrica acadêmica típica:
 - **PII Shield BR-aware** (ADR 0012) — redaction de EMAIL, CPF, CNPJ, PHONE, CREDIT_CARD, PERSON_NAME (lista BR ~270 nomes) antes de chamadas LLM. Compliance LGPD por design
 - **Provider LLM agnóstico** (ADR 0004) — abstração que permite trocar OpenAI direto → Azure OpenAI → Whisper local sem mudar pipeline
 - **JSON Schema strict obrigatório** (ADR 0003) — saída LLM validada server-side, sem free-form text cross-service
-- **Multi-tenancy** (ADR 0002) — filtro de aplicação no MVP, RLS Postgres planejada pra prod
+- **Multi-tenancy** (ADR 0002) — filtro de aplicação no MVP + RLS Postgres com schema entregue e scope auth-aware; resta o cutover/enforcement operacional em prod (ADR 0026/0028)
 - **Productivity Score opt-in** (ADR 0005) — análise de produtividade da reunião contra objetivo declarado, com disclaimer obrigatório "indicador da reunião, não dos participantes"
-- **Customer Confidence schema** (ADR 0006) — score por reunião com buying signals + objeções (implementação mínima na Sub-fase 1.11)
-- **Deploy Azure production-grade** — 8 pegadinhas do Azure for Students catalogadas + workflow OIDC sem secrets, 14 recursos provisionados via Bicep IaC
+- **Customer Confidence** (ADR 0006) — score por reunião com buying signals + objeções, entregue full-stack com trend autoritativo por conta (PR #148)
+- **Deploy Azure production-grade** — 8 armadilhas do Azure for Students catalogadas + workflow OIDC sem secrets, 14 recursos provisionados via Bicep IaC
 - **Test coverage rigoroso** (ADR 0018) — áreas críticas (IAM, Auth, PII) sustentadas >85%
 - **License AGPL-3.0** (ADR 0017) — proteção contra clone-and-compete
 
@@ -52,7 +60,7 @@ NORA entrega elementos que vão além da rubrica acadêmica típica:
 |---|---|---|
 | Entrega de modelagem de dados (Oracle) | ?? não conferido | Material em `../engineering/data-model-oracle.md` |
 | Apresentação parcial (sprint review) | ?? não conferido | — |
-| **Pitch FIAP / NEXT 2026** | **2026-06-12** | **Sub-fase 1.11 (Demo Polish) entrega o material** |
+| **Pitch FIAP / NEXT 2026** | **2026-06-15** | **Sub-fase 1.11 (Demo Polish) entrega o material** |
 | Entrega final FIAP | ?? não conferido | Sub-fases 1.11 + 1.12 cobrem |
 
 ## Equipe Stratfy
@@ -65,21 +73,22 @@ NORA entrega elementos que vão além da rubrica acadêmica típica:
 
 ## Por que NORA é mais que um trabalho acadêmico
 
-A Stratfy trabalha com **3 cenários estratégicos pra NORA pós-pitch**:
+A Stratfy trabalha com **3 cenários estratégicos para NORA pós-pitch**:
 
 - **Plano A** — TOTVS contrata vendo NORA na demo (parceria FIAP × TOTVS, NORA passa de portfolio a oferta concreta de contratação/parceria institucional)
 - **Plano B** — SaaS comercial operado pela própria Stratfy (longo prazo, com co-founder de negócio se necessário)
-- **Plano C** — Portfolio técnico / posicionamento profissional dos membros (material já existe agora, pronto pra publicação)
+- **Plano C** — Portfolio técnico / posicionamento profissional dos membros (material já existe agora, pronto para publicação)
 
 A rubrica FIAP é a **camada acadêmica visível**; o produto comercial roda em paralelo como código real, deployado, monetizável.
 
-## Próximos passos pré-pitch (12/06)
+## Próximos passos pré-pitch (15/06)
 
-- **Sub-fase 1.11 — Demo Polish Plano A** (2-3 semanas agentic): polir UX interna (dashboard, meeting detail, tasks, settings) + implementar Customer Confidence persistência mínima (ADR 0015) + corrigir AUTH_FILTER_HARD_CAP + adicionar PolicyEvaluator operators (stringIn, stringLike) + seed sintético TOTVS realista + roteiro de demo gravado
-- **Sub-fase 1.12 — Production Hardening** (se sobrar tempo pré-pitch): rg-nora-prod separado, monitoring alerts, LGPD operational, secrets rotation. **Pode ficar pós-pitch sem prejuízo da demo.**
+- **Sub-fase 1.11 — Demo Polish Plano A** (2-3 semanas agentic): polir UX interna (dashboard, meeting detail, tasks, settings) + seed sintético TOTVS realista + roteiro de demo gravado. Itens antes listados aqui já foram entregues: Customer Confidence full-stack (PR #148), remoção do AUTH_FILTER_HARD_CAP (scan em lotes em `MeetingService.listAllForAuthFilter`) e operadores do PolicyEvaluator (StringEquals, StringIn, StringLike, DateGreaterThan, DateLessThan, fail-closed)
+- **Sub-fase 1.12 — Production Hardening** (se sobrar tempo pré-pitch): rg-nora-prod separado, monitoring alerts, secrets rotation, cutover/enforcement de RLS em prod. LGPD operacional já entregue (ADR 0029: `DELETE /privacy/meetings/{id}` + RetentionSweeper agendado). **Pode ficar pós-pitch sem prejuízo da demo.**
 
 ## Histórico
 
 | Data | Mudança |
 |---|---|
 | 2026-05-14 | Doc criado na Sub-fase 1.10 (Docs Refresh) consolidando o framing FIAP × TOTVS |
+| 2026-06-06 | Arquiteto NORA (Tech Lead) — Reconciliação doc x código + padronização (auditoria pré-apresentação) |
