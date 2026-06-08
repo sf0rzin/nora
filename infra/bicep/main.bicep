@@ -191,6 +191,20 @@ param cfAccessTeamDomain string = ''
 @description('AUD tag da Access Application (admin.nora.systems). O nora-admin valida o audience do JWT do Access. Vazio = validacao de JWT degrada pra edge-only (origem ja protegida pelo tunnel + Access na borda).')
 param cfAccessAud string = ''
 
+// ---- Dominio publico customizado (Cloudflare -> custom domain, ver docs/operations/web-custom-domain.md) ----
+
+@description('Dominio publico (apex). Vazio = usa o FQDN .azurecontainerapps.io (comportamento antigo). Ex.: nora.systems')
+param publicDomain string = ''
+
+@description('Nome do managed certificate (no env) para o apex. Ex.: mc-nora-cae-dev-nora-systems-XXXX. Criado via az hostname bind.')
+param webCertName string = ''
+
+@description('Nome do managed certificate (no env) para www.')
+param wwwCertName string = ''
+
+@description('Nome do managed certificate (no env) para api.')
+param apiCertName string = ''
+
 // ---- RLS enforce (defesa em profundidade do tenant_id, ADR 0002/0019/0026) ----
 
 @description('Liga o enforce de Row Level Security no apiApp (NORA_RLS_ENFORCE). Default FALSE: o schema tem todas as policies (V016/V017/V018), mas o enforce SO vale com role NOBYPASSRLS na connection string. NAO ligar direto em prod — seguir a sequencia de cutover do ADR 0026 (provisionar nora_app/nora_telemetry via db/operational/R001 -> validar telemetria BYPASSRLS -> staging -> prod).')
@@ -519,6 +533,26 @@ var webPublicFqdn = '${webName}.${containerAppsEnv.outputs.defaultDomain}'
 var apiPublicUrl = 'https://${apiPublicFqdn}'
 var webPublicUrl = 'https://${webPublicFqdn}'
 
+// ---- Domínio público customizado (Cloudflare -> custom domain no Container App) ----
+// Quando publicDomain está setado (ex.: 'nora.systems'), web/api usam o domínio próprio:
+// web em nora.systems chama a API em api.nora.systems (mesmo registrable domain), então os
+// cookies de auth (Domain=nora.systems) são compartilhados cross-subdomínio. Os managed
+// certificates são criados via `az hostname bind` (ver docs/operations/web-custom-domain.md)
+// e referenciados aqui por nome. Vazio = usa só o FQDN .azurecontainerapps.io (comportamento antigo).
+var hasPublicDomain = !empty(publicDomain)
+var certBaseId = '${containerAppsEnv.outputs.id}/managedCertificates'
+var corsAllowedOrigins = hasPublicDomain ? 'https://${publicDomain},https://www.${publicDomain}' : webPublicUrl
+var authCookieDomainValue = hasPublicDomain ? publicDomain : containerAppsEnv.outputs.defaultDomain
+var frontendBaseUrl = hasPublicDomain ? 'https://${publicDomain}' : webPublicUrl
+var apiBaseUrl = hasPublicDomain ? 'https://api.${publicDomain}' : apiPublicUrl
+var webCustomDomains = hasPublicDomain ? [
+  { name: publicDomain, bindingType: 'SniEnabled', certificateId: '${certBaseId}/${webCertName}' }
+  { name: 'www.${publicDomain}', bindingType: 'SniEnabled', certificateId: '${certBaseId}/${wwwCertName}' }
+] : []
+var apiCustomDomains = hasPublicDomain ? [
+  { name: 'api.${publicDomain}', bindingType: 'SniEnabled', certificateId: '${certBaseId}/${apiCertName}' }
+] : []
+
 // ---- Worker NLP (internal ingress; api fala com ele) ----
 
 // Worker NLP consome LLM_* (ADR 0004). Bicep mantem secretRef chamado openai-api-key
@@ -778,6 +812,7 @@ module apiApp 'modules/container-app.bicep' = {
     containerName: 'api'
     targetPort: 8080
     ingress: 'external'
+    customDomains: apiCustomDomains
     cpu: '0.5'
     memory: '1Gi'
     minReplicas: 1 // sempre pelo menos 1 — API e caminho critico
@@ -857,15 +892,15 @@ module apiApp 'modules/container-app.bicep' = {
       // FQDNs construidos via env.defaultDomain pra evitar ciclo apiApp <-> webApp
       {
         name: 'CORS_ALLOWED_ORIGINS'
-        value: webPublicUrl
+        value: corsAllowedOrigins
       }
       {
         name: 'NORA_APP_PUBLIC_BASE_URL'
-        value: webPublicUrl
+        value: frontendBaseUrl
       }
       {
         name: 'NORA_FRONTEND_BASE_URL'
-        value: webPublicUrl
+        value: frontendBaseUrl
       }
       // Forca cookie auth seguro (HTTPS-only) — prod stack so usa HTTPS
       {
@@ -879,7 +914,7 @@ module apiApp 'modules/container-app.bicep' = {
       // do env, web e api ficam "same-site" e compartilham o cookie.
       {
         name: 'AUTH_COOKIE_DOMAIN'
-        value: containerAppsEnv.outputs.defaultDomain
+        value: authCookieDomainValue
       }
       // Bloqueia signup/reset retornar tokens crus em prod
       {
@@ -962,6 +997,7 @@ module webApp 'modules/container-app.bicep' = {
     containerName: 'web'
     targetPort: 3000
     ingress: 'external'
+    customDomains: webCustomDomains
     cpu: '0.25'
     memory: '0.5Gi'
     minReplicas: 0
@@ -974,7 +1010,7 @@ module webApp 'modules/container-app.bicep' = {
       // NEXT_PUBLIC_API_BASE_URL (alinhado com apps/web/src/lib/api/client.ts).
       {
         name: 'NEXT_PUBLIC_API_BASE_URL'
-        value: apiPublicUrl
+        value: apiBaseUrl
       }
       {
         name: 'NEXT_PUBLIC_USE_MOCKS'
