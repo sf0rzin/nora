@@ -2,6 +2,7 @@ package br.com.nora.api.api.dto.chat;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
