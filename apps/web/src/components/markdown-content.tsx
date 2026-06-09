@@ -17,7 +17,7 @@
  *   Markdown ali quebraria o layout das pills/badges e nao agrega valor.
  *
  * Estilos:
- * - Paleta slate (espelha CorporateDomainCard / o resto do app interno).
+ * - Paleta v3 (tokens OKLCH: --ink / --muted / --accent-ink / --border / --chip).
  * - Espacamentos compactos suficientes para inline em sections.
  */
 
@@ -32,34 +32,34 @@ type Props = {
 
 const components: Components = {
   h1: (props: ComponentPropsWithoutRef<"h1">) => (
-    <h1 className="mt-4 mb-2 text-xl font-semibold text-slate-900" {...props} />
+    <h1 style={{ marginTop: 16, marginBottom: 8, fontSize: 20, fontWeight: 600, color: "var(--ink)" }} {...props} />
   ),
   h2: (props: ComponentPropsWithoutRef<"h2">) => (
-    <h2 className="mt-3 mb-2 text-lg font-semibold text-slate-900" {...props} />
+    <h2 style={{ marginTop: 12, marginBottom: 8, fontSize: 18, fontWeight: 600, color: "var(--ink)" }} {...props} />
   ),
   h3: (props: ComponentPropsWithoutRef<"h3">) => (
-    <h3 className="mt-2 mb-1 text-base font-semibold text-slate-900" {...props} />
+    <h3 style={{ marginTop: 8, marginBottom: 4, fontSize: 16, fontWeight: 600, color: "var(--ink)" }} {...props} />
   ),
   p: (props: ComponentPropsWithoutRef<"p">) => (
-    <p className="mb-2 leading-relaxed last:mb-0" {...props} />
+    <p className="last:mb-0" style={{ marginBottom: 8, lineHeight: 1.65 }} {...props} />
   ),
   ul: (props: ComponentPropsWithoutRef<"ul">) => (
-    <ul className="mb-2 list-disc space-y-1 pl-5 last:mb-0" {...props} />
+    <ul className="last:mb-0" style={{ marginBottom: 8, paddingLeft: 20, listStyleType: "disc" }} {...props} />
   ),
   ol: (props: ComponentPropsWithoutRef<"ol">) => (
-    <ol className="mb-2 list-decimal space-y-1 pl-5 last:mb-0" {...props} />
+    <ol className="last:mb-0" style={{ marginBottom: 8, paddingLeft: 20, listStyleType: "decimal" }} {...props} />
   ),
-  li: (props: ComponentPropsWithoutRef<"li">) => <li className="leading-relaxed" {...props} />,
+  li: (props: ComponentPropsWithoutRef<"li">) => <li style={{ lineHeight: 1.65, marginBottom: 2 }} {...props} />,
   strong: (props: ComponentPropsWithoutRef<"strong">) => (
-    <strong className="font-semibold text-slate-900" {...props} />
+    <strong style={{ fontWeight: 600, color: "var(--ink)" }} {...props} />
   ),
-  em: (props: ComponentPropsWithoutRef<"em">) => <em className="italic" {...props} />,
+  em: (props: ComponentPropsWithoutRef<"em">) => <em style={{ fontStyle: "italic" }} {...props} />,
   code: (props: ComponentPropsWithoutRef<"code">) => (
-    <code className="rounded bg-slate-100 px-1 py-0.5 text-sm font-mono" {...props} />
+    <code style={{ borderRadius: 4, background: "var(--chip)", padding: "1px 4px", fontSize: 13 }} {...props} />
   ),
   a: (props: ComponentPropsWithoutRef<"a">) => (
     <a
-      className="text-blue-600 underline-offset-2 hover:underline"
+      style={{ color: "var(--accent-ink)", textUnderlineOffset: 2 }}
       target="_blank"
       rel="noopener noreferrer"
       {...props}
@@ -67,26 +67,26 @@ const components: Components = {
   ),
   blockquote: (props: ComponentPropsWithoutRef<"blockquote">) => (
     <blockquote
-      className="my-2 border-l-2 border-slate-300 pl-3 italic text-slate-600"
+      style={{ margin: "8px 0", borderLeft: "2px solid var(--border-strong)", paddingLeft: 12, fontStyle: "italic", color: "var(--muted)" }}
       {...props}
     />
   ),
   hr: (props: ComponentPropsWithoutRef<"hr">) => (
-    <hr className="my-4 border-slate-200" {...props} />
+    <hr style={{ margin: "16px 0", border: "none", borderTop: "1px solid var(--border)" }} {...props} />
   ),
   table: (props: ComponentPropsWithoutRef<"table">) => (
-    <div className="my-2 overflow-x-auto">
-      <table className="w-full border-collapse text-sm" {...props} />
+    <div style={{ margin: "8px 0", overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }} {...props} />
     </div>
   ),
   th: (props: ComponentPropsWithoutRef<"th">) => (
     <th
-      className="border border-slate-200 bg-slate-50 px-2 py-1 text-left font-semibold"
+      style={{ border: "1px solid var(--border)", background: "var(--sidebar)", padding: "4px 8px", textAlign: "left", fontWeight: 600 }}
       {...props}
     />
   ),
   td: (props: ComponentPropsWithoutRef<"td">) => (
-    <td className="border border-slate-200 px-2 py-1 align-top" {...props} />
+    <td style={{ border: "1px solid var(--border)", padding: "4px 8px", verticalAlign: "top" }} {...props} />
   ),
 };
 
