@@ -25,6 +25,9 @@
  *   cada tick (state dependency reruns useEffect).
  * - Erro do polling (rede caida no GET) e tolerado ate o timeout: nao
  *   abortamos o polling no primeiro 5xx; backend ainda pode estar processando.
+ *
+ * Visual: porte do prototipo do Claude Design (upload.html) — dropzone com
+ * drag&drop, chips de participantes/tags, campos opcionais de inicio/termino.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -58,9 +61,15 @@ export default function UploadMeetingPage() {
   const [title, setTitle] = useState("");
   const [language, setLanguage] = useState("pt-BR");
   const [format, setFormat] = useState<Format>("TXT");
-  const [tags, setTags] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [participants, setParticipants] = useState<string[]>([]);
+  const [startedAt, setStartedAt] = useState("");
+  const [endedAt, setEndedAt] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [isOver, setIsOver] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Phase machine
   const [phase, setPhase] = useState<Phase>("form");
@@ -71,8 +80,7 @@ export default function UploadMeetingPage() {
   // Counter vive em ref pra nao recriar o interval a cada tick.
   const pollCountRef = useRef(0);
 
-  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0] ?? null;
+  function applyFile(f: File | null) {
     setFile(f);
     if (f) {
       const ext = f.name.split(".").pop()?.toLowerCase();
@@ -81,11 +89,22 @@ export default function UploadMeetingPage() {
     }
   }
 
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    applyFile(e.target.files?.[0] ?? null);
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsOver(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) applyFile(f);
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
     if (!file) {
-      setFormError("Selecione um arquivo de transcricao.");
+      setFormError("Selecione um arquivo de transcrição.");
       return;
     }
     setPhase("uploading");
@@ -94,10 +113,10 @@ export default function UploadMeetingPage() {
         title: title.trim(),
         language,
         transcriptFormat: format,
-        tags: tags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
+        startedAt: startedAt ? new Date(startedAt).toISOString() : undefined,
+        endedAt: endedAt ? new Date(endedAt).toISOString() : undefined,
+        participants: participants.map((displayName) => ({ displayName })),
+        tags,
         file,
       });
       setMeetingId(r.id);
@@ -192,7 +211,8 @@ export default function UploadMeetingPage() {
 
   if (phase !== "form") {
     return (
-      <div className="max-w-2xl">
+      <div className="page page--narrow" style={{ maxWidth: 680 }}>
+        <Breadcrumb />
         <StatusCard
           phase={phase}
           status={pollingStatus}
@@ -205,49 +225,67 @@ export default function UploadMeetingPage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Nova reunião</h1>
-        <p className="text-sm text-slate-500">
+    <div className="page page--narrow" style={{ maxWidth: 680 }}>
+      <Breadcrumb />
+
+      <header style={{ marginBottom: 26 }}>
+        <h1 className="h1" style={{ fontSize: 26 }}>
+          Nova reunião.
+        </h1>
+        <p className="lede" style={{ marginTop: 8 }}>
           Suba uma transcrição (.txt, .vtt ou .srt) — a análise começa em segundo plano.
         </p>
       </header>
 
-      <form
-        onSubmit={onSubmit}
-        className="space-y-4 rounded-lg border border-slate-200 bg-white p-6"
-      >
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Título</label>
+      <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <Dropzone
+          file={file}
+          isOver={isOver}
+          inputRef={fileInputRef}
+          onOver={(v) => setIsOver(v)}
+          onDrop={onDrop}
+          onFileChange={onFileChange}
+        />
+
+        <div className="field">
+          <label className="field-label" htmlFor="f-title">
+            Título <span className="req">*</span>
+          </label>
           <input
+            id="f-title"
+            className="input"
             required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-            placeholder="Discovery Acme – outubro/2025"
+            placeholder="Discovery — Acme, junho/2026"
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">Idioma</label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div className="field">
+            <label className="field-label" htmlFor="f-lang">
+              Idioma
+            </label>
             <select
+              id="f-lang"
+              className="select"
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
               <option value="pt-BR">Português (BR)</option>
               <option value="en-US">Inglês (US)</option>
               <option value="es-ES">Espanhol</option>
             </select>
           </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">Formato</label>
+          <div className="field">
+            <label className="field-label" htmlFor="f-format">
+              Formato
+            </label>
             <select
+              id="f-format"
+              className="select"
               value={format}
               onChange={(e) => setFormat(e.target.value as Format)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
               <option value="TXT">TXT</option>
               <option value="VTT">VTT</option>
@@ -256,49 +294,322 @@ export default function UploadMeetingPage() {
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Tags (separadas por vírgula)</label>
-          <input
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            placeholder="discovery, renovacao"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-          />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div className="field">
+            <label className="field-label" htmlFor="f-start">
+              Início da reunião
+            </label>
+            <input
+              id="f-start"
+              className="input"
+              type="datetime-local"
+              value={startedAt}
+              onChange={(e) => setStartedAt(e.target.value)}
+            />
+            <div className="field-help">Se vazio, usamos a data do upload.</div>
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="f-end">
+              Término
+            </label>
+            <input
+              id="f-end"
+              className="input"
+              type="datetime-local"
+              value={endedAt}
+              onChange={(e) => setEndedAt(e.target.value)}
+            />
+          </div>
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Arquivo de transcrição</label>
-          <input
-            type="file"
-            accept=".txt,.vtt,.srt,text/plain"
-            onChange={onFileChange}
-            className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-800"
-          />
-          {file && (
-            <p className="text-xs text-slate-500">
-              {file.name} · {(file.size / 1024).toFixed(1)} KB
-            </p>
-          )}
-        </div>
+        <ChipField
+          id="p-input"
+          label="Participantes"
+          help="Aparecem no detalhe da reunião e ajudam a NORA a atribuir action items."
+          placeholder="Digite um nome e aperte Enter"
+          values={participants}
+          onChange={setParticipants}
+        />
 
-        {formError && <p className="text-sm text-red-600">{formError}</p>}
+        <ChipField
+          id="t-input"
+          label="Tags"
+          help="Tags agrupam reuniões em Projetos."
+          placeholder="discovery, renovação…"
+          values={tags}
+          onChange={setTags}
+        />
 
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-          >
+        {formError && (
+          <div className="notice notice--danger" role="alert">
+            {formError}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
+          <button className="btn btn-primary" type="submit">
             Enviar e analisar
           </button>
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-          >
+          <button className="btn btn-ghost" type="button" onClick={() => router.back()}>
             Cancelar
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Breadcrumb
+// ---------------------------------------------------------------------------
+
+function Breadcrumb() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        fontSize: 12,
+        color: "var(--muted)",
+        marginBottom: 22,
+      }}
+    >
+      <Link href={"/dashboard" as Route} style={{ color: "var(--muted)" }}>
+        Reuniões
+      </Link>
+      <span style={{ opacity: 0.5 }}>/</span>
+      <span>Nova reunião</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dropzone — drag & drop + clique pra escolher arquivo
+// ---------------------------------------------------------------------------
+
+interface DropzoneProps {
+  file: File | null;
+  isOver: boolean;
+  inputRef: React.RefObject<HTMLInputElement>;
+  onOver: (over: boolean) => void;
+  onDrop: (e: React.DragEvent) => void;
+  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}
+
+function Dropzone({ file, isOver, inputRef, onOver, onDrop, onFileChange }: DropzoneProps) {
+  const hasFile = file !== null;
+  const open = () => inputRef.current?.click();
+
+  const border = isOver
+    ? "1.5px dashed var(--accent)"
+    : hasFile
+      ? "1.5px solid var(--border)"
+      : "1.5px dashed var(--border-strong)";
+  const background = isOver
+    ? "var(--accent-soft)"
+    : hasFile
+      ? "var(--sidebar)"
+      : "transparent";
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label="Selecionar arquivo de transcrição"
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        onOver(true);
+      }}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        onOver(true);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        onOver(false);
+      }}
+      onDrop={onDrop}
+      style={{
+        border,
+        background,
+        borderRadius: 12,
+        padding: "28px 20px",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 8,
+        textAlign: "center",
+        cursor: "pointer",
+        transition: "border-color 140ms ease, background 140ms ease",
+      }}
+    >
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="var(--muted)"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="17 8 12 3 7 8" />
+        <line x1="12" y1="3" x2="12" y2="15" />
+      </svg>
+      <div style={{ fontSize: 13.5, color: "var(--ink)", fontWeight: 500 }}>
+        {hasFile ? file.name : "Arraste a transcrição aqui ou clique pra escolher"}
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
+        {hasFile
+          ? `${(file.size / 1024).toFixed(1)} KB · clique pra trocar`
+          : ".txt · .vtt · .srt — até 10 MB"}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".txt,.vtt,.srt,text/plain"
+        onChange={onFileChange}
+        style={{ display: "none" }}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ChipField — input de chips (participantes / tags)
+// ---------------------------------------------------------------------------
+
+interface ChipFieldProps {
+  id: string;
+  label: string;
+  help: string;
+  placeholder: string;
+  values: string[];
+  onChange: (next: string[]) => void;
+}
+
+function ChipField({ id, label, help, placeholder, values, onChange }: ChipFieldProps) {
+  const [draft, setDraft] = useState("");
+
+  function commit() {
+    const v = draft.replace(/,/g, "").trim();
+    if (v && !values.includes(v)) onChange([...values, v]);
+    setDraft("");
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if ((e.key === "Enter" || e.key === ",") && draft.trim()) {
+      e.preventDefault();
+      commit();
+    } else if (e.key === "Backspace" && !draft && values.length) {
+      onChange(values.slice(0, -1));
+    }
+  }
+
+  function remove(v: string) {
+    onChange(values.filter((x) => x !== v));
+  }
+
+  return (
+    <div className="field">
+      <label className="field-label" htmlFor={id}>
+        {label}
+      </label>
+      <div
+        onClick={() => document.getElementById(id)?.focus()}
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 6,
+          alignItems: "center",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: "6px 8px",
+          background: "var(--canvas)",
+          cursor: "text",
+        }}
+      >
+        {values.map((v) => (
+          <span
+            key={v}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "3px 6px 3px 10px",
+              borderRadius: 999,
+              background: "var(--chip)",
+              fontSize: 12,
+              color: "var(--ink)",
+            }}
+          >
+            {v}
+            <button
+              type="button"
+              aria-label={`Remover ${v}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                remove(v);
+              }}
+              style={{
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                color: "var(--muted)",
+                display: "grid",
+                placeItems: "center",
+                width: 16,
+                height: 16,
+                padding: 0,
+                borderRadius: "50%",
+              }}
+            >
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </span>
+        ))}
+        <input
+          id={id}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKeyDown}
+          onBlur={() => draft.trim() && commit()}
+          placeholder={placeholder}
+          style={{
+            border: "none",
+            outline: "none",
+            background: "transparent",
+            fontFamily: "var(--sans)",
+            fontSize: 13,
+            color: "var(--ink)",
+            flex: 1,
+            minWidth: 140,
+            padding: "3px 4px",
+          }}
+        />
+      </div>
+      <div className="field-help">{help}</div>
     </div>
   );
 }
@@ -320,54 +631,81 @@ function StatusCard({ phase, status, meetingId, pollingError, onRetry }: StatusC
   const view = pickView(phase, status);
 
   return (
-    <section
+    <div
+      className="card"
       role="status"
       aria-live="polite"
-      className="rounded-lg border border-slate-200 bg-white p-8 text-center"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 18,
+        padding: "72px 24px",
+        textAlign: "center",
+      }}
     >
-      <div className="mx-auto flex max-w-sm flex-col items-center space-y-4">
-        <div className="flex h-14 w-14 items-center justify-center">{view.icon}</div>
-        <div className="space-y-1">
-          <h2 className="text-base font-medium text-slate-900">{view.title}</h2>
-          {view.subtitle && <p className="text-sm text-slate-500">{view.subtitle}</p>}
-        </div>
-
-        {pollingError && phase === "polling" && (
-          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            {pollingError}
+      {/* keyframe local do spinner — nao existe global noraSpin no design system */}
+      <style>{"@keyframes noraSpin { to { transform: rotate(360deg); } }"}</style>
+      {view.icon}
+      <div>
+        <h2
+          style={{
+            fontSize: 17,
+            fontWeight: 500,
+            letterSpacing: "-0.015em",
+            margin: "0 0 5px",
+          }}
+        >
+          {view.title}
+        </h2>
+        {view.subtitle && (
+          <p
+            style={{
+              fontSize: 13,
+              color: "var(--muted)",
+              margin: 0,
+              lineHeight: 1.55,
+              maxWidth: 380,
+            }}
+          >
+            {view.subtitle}
           </p>
         )}
-
-        {phase === "failed" && (
-          <div className="flex flex-col items-stretch space-y-2 pt-2">
-            <button
-              type="button"
-              onClick={onRetry}
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              Tentar novamente
-            </button>
-            {meetingId && (
-              <Link
-                href={`/meetings/${meetingId}` as Route}
-                className="text-sm text-slate-600 hover:text-slate-900 hover:underline"
-              >
-                Ver detalhes da reunião
-              </Link>
-            )}
-          </div>
-        )}
-
-        {phase === "timeout" && meetingId && (
-          <Link
-            href={`/meetings/${meetingId}` as Route}
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Ver reunião
-          </Link>
-        )}
       </div>
-    </section>
+
+      {pollingError && phase === "polling" && (
+        <div className="notice" style={{ fontSize: 12, maxWidth: 380 }}>
+          {pollingError}
+        </div>
+      )}
+
+      {phase === "failed" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <button type="button" className="btn btn-primary btn-sm" onClick={onRetry}>
+            Tentar novamente
+          </button>
+          {meetingId && (
+            <Link
+              href={`/meetings/${meetingId}` as Route}
+              style={{
+                fontSize: 12.5,
+                color: "var(--muted)",
+                textDecoration: "underline",
+                textUnderlineOffset: 2,
+              }}
+            >
+              Ver detalhes da reunião
+            </Link>
+          )}
+        </div>
+      )}
+
+      {phase === "timeout" && meetingId && (
+        <Link className="btn btn-ghost btn-sm" href={`/meetings/${meetingId}` as Route}>
+          Ver reunião
+        </Link>
+      )}
+    </div>
   );
 }
 
@@ -379,18 +717,18 @@ interface View {
 
 function pickView(phase: Exclude<Phase, "form">, status: ProcessingStatus): View {
   if (phase === "uploading") {
-    return { icon: <Spinner tone="slate" />, title: "Enviando transcrição..." };
+    return { icon: <Spinner tone="accent" />, title: "Enviando transcrição…" };
   }
   if (phase === "completed") {
     return {
-      icon: <CheckIcon />,
+      icon: <SignalIcon tone="success" kind="check" />,
       title: "Análise pronta",
-      subtitle: "Redirecionando...",
+      subtitle: "Redirecionando…",
     };
   }
   if (phase === "failed") {
     return {
-      icon: <XIcon />,
+      icon: <SignalIcon tone="danger" kind="x" />,
       title: "Falha na análise",
       subtitle:
         "O processamento da reunião falhou. Tente novamente ou abra os detalhes para mais informações.",
@@ -398,7 +736,7 @@ function pickView(phase: Exclude<Phase, "form">, status: ProcessingStatus): View
   }
   if (phase === "timeout") {
     return {
-      icon: <AlertIcon />,
+      icon: <SignalIcon tone="warn" kind="clock" />,
       title: "Processamento demorou mais que o esperado",
       subtitle:
         "Você pode acompanhar a análise diretamente na página da reunião — ela continua rodando em segundo plano.",
@@ -407,14 +745,14 @@ function pickView(phase: Exclude<Phase, "form">, status: ProcessingStatus): View
   // phase === "polling": detalha o status atual
   if (status === "PROCESSING") {
     return {
-      icon: <Spinner tone="blue" />,
-      title: "Analisando reunião com IA...",
+      icon: <Spinner tone="accent" />,
+      title: "Analisando reunião com IA…",
       subtitle: "Isso pode levar até 30 segundos.",
     };
   }
   // PENDING (ou FAILED/COMPLETED que ja foram tratados acima)
   return {
-    icon: <Spinner tone="slate" />,
+    icon: <Spinner tone="muted" />,
     title: "Aguardando processamento",
     subtitle: "A reunião está na fila do worker.",
   };
@@ -424,81 +762,87 @@ function pickView(phase: Exclude<Phase, "form">, status: ProcessingStatus): View
 // Icones inline (sem libs novas — projeto ja usa SVG inline)
 // ---------------------------------------------------------------------------
 
-function Spinner({ tone }: { tone: "slate" | "blue" }) {
-  const colorClass = tone === "blue" ? "text-blue-500" : "text-slate-400";
+function Spinner({ tone }: { tone: "accent" | "muted" }) {
+  const topColor = tone === "accent" ? "var(--accent)" : "var(--muted)";
   return (
-    <svg
-      className={`h-10 w-10 animate-spin ${colorClass}`}
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
+    <span
       aria-hidden="true"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-      />
-    </svg>
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: "50%",
+        border: "2.5px solid var(--chip)",
+        borderTopColor: topColor,
+        animation: "noraSpin 0.9s linear infinite",
+      }}
+    />
   );
 }
 
-function CheckIcon() {
+function SignalIcon({
+  tone,
+  kind,
+}: {
+  tone: "success" | "danger" | "warn";
+  kind: "check" | "x" | "clock";
+}) {
+  const color = `var(--${tone})`;
+  const background = `color-mix(in oklch, var(--${tone}) 14%, var(--canvas))`;
   return (
-    <svg
-      className="h-10 w-10 text-emerald-600"
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth="2"
+    <span
       aria-hidden="true"
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: "50%",
+        display: "grid",
+        placeItems: "center",
+        background,
+        color,
+      }}
     >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-function XIcon() {
-  return (
-    <svg
-      className="h-10 w-10 text-red-600"
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden="true"
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  );
-}
-
-function AlertIcon() {
-  return (
-    <svg
-      className="h-10 w-10 text-amber-500"
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden="true"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12 9v3.75m0 3.75h.008v.008H12v-.008zM10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-      />
-    </svg>
+      {kind === "check" && (
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      )}
+      {kind === "x" && (
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+        >
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      )}
+      {kind === "clock" && (
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 3" />
+        </svg>
+      )}
+    </span>
   );
 }

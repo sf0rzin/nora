@@ -1,37 +1,102 @@
 "use client";
 
 /**
- * NORA Core — Chat IA (Nova sessão).
+ * NORA Core — Chat IA.
  *
  * Centro do Core: conversa com a NORA sobre as reuniões/action items/projetos do
  * workspace. Consome o stream de texto de `/api/chat` (server-side, OpenAI via
- * ADR 0004). Renderiza markdown nas respostas. A chave do LLM nunca toca o client.
+ * ADR 0004) e renderiza markdown nas respostas. A chave do LLM nunca toca o client.
+ *
+ * Persistência: abrir com `?s={id}` carrega a sessão (getChatSession). A primeira
+ * mensagem de uma conversa nova cria a sessão (createChatSession) e atualiza a URL;
+ * cada troca (pergunta + resposta) é persistida via appendChatMessage. A geração
+ * pode ser interrompida (AbortController) e reenviada após erro/interrupção.
  */
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import type { Route } from "next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { ShaderOrb } from "@/components/brand/shader-orb";
+import {
+  appendChatMessage,
+  createChatSession,
+  getChatSession,
+} from "@/lib/api/client";
 
 type Role = "user" | "assistant";
 interface Msg {
   role: Role;
   content: string;
+  /** Marca uma resposta cortada pelo usuário (botão parar) — habilita "Tentar de novo". */
+  interrupted?: boolean;
 }
 
+// §3.7 — sugestões genéricas de produto, sem cliente nem jargão interno.
 const SUGGESTIONS = [
-  "Resuma a última reunião com a TOTVS",
+  "Resuma minha última reunião",
+  "O que ficou pendente esta semana?",
   "Quais action items eu tenho pra hoje?",
-  "O que ficou pendente do meu último 1:1?",
-  "Quais decisões vieram do ADR 0012?",
+  "Quais riscos apareceram nas reuniões?",
 ];
 
 export default function ChatPage() {
+  return (
+    <Suspense fallback={<ChatFallback />}>
+      <ChatRoom />
+    </Suspense>
+  );
+}
+
+function ChatRoom() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const sessionParam = searchParams.get("s");
+
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [title, setTitle] = useState("Nova sessão");
+  const [loading, setLoading] = useState(false);
+
+  // Sessão persistida. Vive em ref pra estar disponível dentro de `send` sem
+  // recriar o callback; o state só espelha pra UI/URL.
+  const sessionIdRef = useRef<string | null>(sessionParam);
+  const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+
+  // Hidrata a sessão quando aberta via ?s={id}.
+  useEffect(() => {
+    sessionIdRef.current = sessionParam;
+    if (!sessionParam) {
+      setMessages([]);
+      setTitle("Nova sessão");
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    getChatSession(sessionParam)
+      .then((detail) => {
+        if (cancelled) return;
+        setMessages(
+          detail.messages.map((m) => ({ role: m.role, content: m.content })),
+        );
+        setTitle(detail.title?.trim() || "Sessão");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMessages([]);
+        setTitle("Sessão indisponível");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionParam]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -44,54 +109,144 @@ export default function ChatPage() {
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
   }, [input]);
 
-  async function send(text: string) {
-    const content = text.trim();
-    if (!content || busy) return;
-    const next: Msg[] = [...messages, { role: "user", content }];
-    setMessages(next);
-    setInput("");
-    setBusy(true);
-
-    // mensagem do assistant que vamos preencher conforme o stream chega
-    setMessages([...next, { role: "assistant", content: "" }]);
-
+  // Persiste uma mensagem na sessão atual sem quebrar o fluxo se o back-end falhar.
+  const persist = useCallback(async (role: Role, content: string) => {
+    const id = sessionIdRef.current;
+    if (!id) return;
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next }),
-      });
-
-      if (!res.ok || !res.body) {
-        const err = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(err.error ?? `Erro ${res.status}`);
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let acc = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        acc += decoder.decode(value, { stream: true });
-        setMessages([...next, { role: "assistant", content: acc }]);
-      }
-      if (!acc.trim()) {
-        setMessages([...next, { role: "assistant", content: "_(sem resposta)_" }]);
-      }
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : "erro desconhecido";
-      setMessages([
-        ...next,
-        {
-          role: "assistant",
-          content: `Não consegui responder agora (${reason}). Tente de novo em alguns segundos.`,
-        },
-      ]);
-    } finally {
-      setBusy(false);
-      taRef.current?.focus();
+      await appendChatMessage(id, { role, content });
+    } catch {
+      // Persistência é best-effort: a conversa segue mesmo se o histórico falhar.
     }
+  }, []);
+
+  const run = useCallback(
+    async (history: Msg[]) => {
+      setBusy(true);
+      // bolha do assistant que vamos preenchendo conforme o stream chega.
+      setMessages([...history, { role: "assistant", content: "" }]);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      let acc = "";
+      let aborted = false;
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: history }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok || !res.body) {
+          const err = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(err.error ?? `Erro ${res.status}`);
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          acc += decoder.decode(value, { stream: true });
+          setMessages([...history, { role: "assistant", content: acc }]);
+        }
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          aborted = true;
+        } else {
+          const reason = e instanceof Error ? e.message : "erro desconhecido";
+          setMessages([
+            ...history,
+            {
+              role: "assistant",
+              content: `Não consegui responder agora (${reason}).`,
+              interrupted: true,
+            },
+          ]);
+          return;
+        }
+      } finally {
+        abortRef.current = null;
+        setBusy(false);
+        taRef.current?.focus();
+      }
+
+      if (aborted) {
+        setMessages([
+          ...history,
+          { role: "assistant", content: acc, interrupted: true },
+        ]);
+        if (acc.trim()) await persist("assistant", acc);
+        return;
+      }
+
+      const finalText = acc.trim() ? acc : "_(sem resposta)_";
+      setMessages([...history, { role: "assistant", content: finalText }]);
+      await persist("assistant", finalText);
+    },
+    [persist],
+  );
+
+  const send = useCallback(
+    async (text: string) => {
+      const content = text.trim();
+      if (!content || busy || loading) return;
+
+      // Cria a sessão na 1a mensagem de uma conversa nova e reflete na URL.
+      if (!sessionIdRef.current) {
+        try {
+          const created = await createChatSession();
+          sessionIdRef.current = created.id;
+          setTitle(created.title?.trim() || "Nova sessão");
+          router.replace(`/chat?s=${encodeURIComponent(created.id)}` as Route, {
+            scroll: false,
+          });
+        } catch {
+          // Sem persistência: a conversa segue em memória nesta aba.
+        }
+      }
+
+      const next: Msg[] = [...messages, { role: "user", content }];
+      setMessages(next);
+      setInput("");
+      await persist("user", content);
+      await run(next);
+    },
+    [busy, loading, messages, persist, run, router],
+  );
+
+  // Reenvia a partir da última pergunta do usuário (após erro ou interrupção).
+  const retry = useCallback(
+    (assistantIndex: number) => {
+      if (busy) return;
+      let question = "";
+      for (let j = assistantIndex - 1; j >= 0; j--) {
+        if (messages[j].role === "user") {
+          question = messages[j].content;
+          break;
+        }
+      }
+      const history = messages.slice(0, assistantIndex);
+      setMessages(history);
+      if (question) void run(history);
+    },
+    [busy, messages, run],
+  );
+
+  function stop() {
+    abortRef.current?.abort();
+  }
+
+  function startNew() {
+    if (sessionIdRef.current || sessionParam) {
+      router.push("/chat" as Route);
+      return;
+    }
+    setMessages([]);
+    setInput("");
+    setTitle("Nova sessão");
   }
 
   const empty = messages.length === 0;
@@ -108,24 +263,52 @@ export default function ChatPage() {
           borderBottom: empty ? "none" : "1px solid var(--border)",
         }}
       >
-        <div style={{ fontSize: 13, color: "var(--muted)", letterSpacing: "-0.005em" }}>Nova sessão</div>
+        <div style={{ fontSize: 13, color: "var(--muted)", letterSpacing: "-0.005em" }}>{title}</div>
         {!empty && (
-          <button
-            type="button"
-            onClick={() => setMessages([])}
-            style={{ fontSize: 12.5, color: "var(--muted)", background: "transparent", border: "1px solid var(--border)", borderRadius: 7, padding: "5px 10px", cursor: "pointer" }}
-          >
-            Limpar
+          <button type="button" className="btn btn-ghost btn-sm" onClick={startNew}>
+            {sessionParam ? "Nova sessão" : "Limpar"}
           </button>
         )}
       </div>
 
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto" }}>
-        {empty ? (
-          <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24, padding: "32px 24px 120px" }}>
+        {loading ? (
+          <div
+            style={{
+              minHeight: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--muted)",
+              fontSize: 13,
+            }}
+          >
+            Carregando conversa…
+          </div>
+        ) : empty ? (
+          <div
+            style={{
+              minHeight: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 24,
+              padding: "32px 24px 120px",
+            }}
+          >
             <ShaderOrb size={120} speed={1} intensity={1} />
             <div style={{ textAlign: "center", maxWidth: 460 }}>
-              <h1 style={{ fontFamily: "var(--display)", fontSize: 28, fontWeight: 500, letterSpacing: "-0.025em", color: "var(--ink)", margin: "0 0 8px" }}>
+              <h1
+                style={{
+                  fontFamily: "var(--display)",
+                  fontSize: 28,
+                  fontWeight: 500,
+                  letterSpacing: "-0.025em",
+                  color: "var(--ink)",
+                  margin: "0 0 8px",
+                }}
+              >
                 Como posso ajudar?
               </h1>
               <p style={{ fontSize: 14, color: "var(--muted)", margin: 0, lineHeight: 1.55 }}>
@@ -157,7 +340,12 @@ export default function ChatPage() {
         ) : (
           <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 24px 160px", display: "flex", flexDirection: "column", gap: 22 }}>
             {messages.map((m, i) => (
-              <ChatBubble key={i} msg={m} streaming={busy && i === messages.length - 1 && m.role === "assistant"} />
+              <ChatBubble
+                key={i}
+                msg={m}
+                streaming={busy && i === messages.length - 1 && m.role === "assistant"}
+                onRetry={m.interrupted ? () => retry(i) : undefined}
+              />
             ))}
           </div>
         )}
@@ -211,14 +399,44 @@ export default function ChatPage() {
               maxHeight: 200,
             }}
           />
-          <SendButton active={hasInput && !busy} busy={busy} onClick={() => void send(input)} />
+          <SendButton
+            active={hasInput}
+            busy={busy}
+            onClick={() => (busy ? stop() : void send(input))}
+          />
         </div>
       </div>
     </div>
   );
 }
 
-function ChatBubble({ msg, streaming }: { msg: Msg; streaming: boolean }) {
+function ChatFallback() {
+  return (
+    <div
+      style={{
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--canvas)",
+        color: "var(--muted)",
+        fontSize: 13,
+      }}
+    >
+      Carregando…
+    </div>
+  );
+}
+
+function ChatBubble({
+  msg,
+  streaming,
+  onRetry,
+}: {
+  msg: Msg;
+  streaming: boolean;
+  onRetry?: () => void;
+}) {
   const isUser = msg.role === "user";
   if (isUser) {
     return (
@@ -230,14 +448,44 @@ function ChatBubble({ msg, streaming }: { msg: Msg; streaming: boolean }) {
     );
   }
   return (
-    <div style={{ display: "flex", justifyContent: "flex-start" }}>
-      <div className="nora-prose" style={{ maxWidth: "100%", fontSize: 14.5, lineHeight: 1.65, color: "var(--ink)" }}>
-        {msg.content ? (
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-        ) : streaming ? (
-          <ThinkingDots />
-        ) : null}
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "flex-start" }}>
+        <div className="nora-prose" style={{ maxWidth: "100%", fontSize: 14.5, lineHeight: 1.65, color: "var(--ink)" }}>
+          {msg.content ? (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+          ) : streaming ? (
+            <ThinkingDots />
+          ) : null}
+        </div>
       </div>
+      {onRetry && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, color: "var(--muted)" }}>
+          <span>Resposta interrompida.</span>
+          <button
+            type="button"
+            onClick={onRetry}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12.5,
+              fontWeight: 500,
+              color: "var(--ink)",
+              background: "var(--sidebar)",
+              border: "1px solid var(--border)",
+              borderRadius: 999,
+              padding: "5px 12px",
+              cursor: "pointer",
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 4v6h6" />
+              <path d="M3.5 15a9 9 0 1 0 2-9.4L1 10" />
+            </svg>
+            Tentar de novo
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -262,30 +510,36 @@ function ThinkingDots() {
 }
 
 function SendButton({ active, busy, onClick }: { active: boolean; busy: boolean; onClick: () => void }) {
+  const filled = busy || active;
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={!active}
-      aria-label="Enviar"
+      disabled={!busy && !active}
+      aria-label={busy ? "Parar" : "Enviar"}
       style={{
         width: 36,
         height: 36,
         borderRadius: "50%",
-        background: active ? "var(--ink)" : "var(--chip)",
+        background: filled ? "var(--ink)" : "var(--chip)",
         border: "none",
-        cursor: active ? "pointer" : "default",
+        cursor: busy || active ? "pointer" : "default",
         padding: 0,
         display: "grid",
         placeItems: "center",
         transition: "background 180ms ease",
-        opacity: busy ? 0.7 : 1,
         flexShrink: 0,
       }}
     >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={active ? "white" : "var(--muted)"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 19V5M5 12l7-7 7 7" />
-      </svg>
+      {busy ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="white">
+          <rect x="5" y="5" width="14" height="14" rx="2" />
+        </svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={active ? "white" : "var(--muted)"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 19V5M5 12l7-7 7 7" />
+        </svg>
+      )}
     </button>
   );
 }

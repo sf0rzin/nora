@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ApiRequestError,
   getTenantContext,
   upsertTenantContext,
   type TenantContextDto,
 } from "@/lib/api/client";
+import { getCurrentUser, type SessionUser } from "@/lib/auth";
 
 interface ProductForm {
   name: string;
@@ -59,7 +60,472 @@ function splitLines(s: string): string[] {
     .filter(Boolean);
 }
 
+// ── seções do hub (sem IAM: Core é individual) ──
+const SECTIONS = ["conta", "seguranca", "workspace", "contexto"] as const;
+type Section = (typeof SECTIONS)[number];
+
+const SECTION_LABELS: Record<Section, string> = {
+  conta: "Conta",
+  seguranca: "Segurança",
+  workspace: "Workspace",
+  contexto: "Contexto da empresa",
+};
+
+function CheckIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+// ── força de senha (porte do protótipo §4.3) ──
+const STRENGTH_LABELS = ["—", "Fraca", "Razoável", "Boa", "Forte"];
+const STRENGTH_COLORS = [
+  "var(--chip)",
+  "var(--danger)",
+  "var(--warn)",
+  "var(--accent)",
+  "var(--success)",
+];
+
+function strengthOf(pw: string): number {
+  if (!pw) return 0;
+  let s = 0;
+  if (pw.length >= 8) s++;
+  if (pw.length >= 12) s++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++;
+  if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) s++;
+  return s;
+}
+
 export default function TenantContextPage() {
+  // ── navegação interna do hub (hash) ──
+  const [section, setSection] = useState<Section>("conta");
+
+  useEffect(() => {
+    const fromHash = (location.hash || "").slice(1) as Section;
+    if (SECTIONS.includes(fromHash)) setSection(fromHash);
+  }, []);
+
+  function goTo(next: Section) {
+    setSection(next);
+    if (typeof history !== "undefined") {
+      history.replaceState(null, "", `#${next}`);
+    }
+  }
+
+  return (
+    <div className="set-layout">
+      <style>{SET_STYLES}</style>
+
+      <nav className="set-nav" aria-label="Seções de configurações">
+        {SECTIONS.map((s) => (
+          <a
+            key={s}
+            href={`#${s}`}
+            className={s === section ? "is-active" : undefined}
+            aria-current={s === section ? "page" : undefined}
+            onClick={(e) => {
+              e.preventDefault();
+              goTo(s);
+            }}
+          >
+            {SECTION_LABELS[s]}
+          </a>
+        ))}
+      </nav>
+
+      <div className="set-pane">
+        {section === "conta" && <AccountSection />}
+        {section === "seguranca" && <SecuritySection />}
+        {section === "workspace" && <WorkspaceSection />}
+        {section === "contexto" && <CompanyContextSection />}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Conta — perfil. Pré-preenchido com a sessão real (cookie
+   nora_user). Edição de nome / e-mail ainda não tem endpoint:
+   formulário pronto, salvar desabilitado.
+   ───────────────────────────────────────────────────────────── */
+function AccountSection() {
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [displayName, setDisplayName] = useState("");
+
+  useEffect(() => {
+    const u = getCurrentUser();
+    setUser(u);
+    setDisplayName(u?.displayName ?? "");
+  }, []);
+
+  return (
+    <section className="section">
+      <div className="section-head">
+        <h2 className="sec-label">Perfil</h2>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <UserOrb size={44} />
+          <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>
+            Seu avatar é gerado a partir da conta.
+            <br />
+            Upload de foto chega depois do piloto.
+          </div>
+        </div>
+
+        <div className="field">
+          <label className="field-label" htmlFor="acc-name">
+            Nome de exibição
+          </label>
+          <input
+            className="input"
+            id="acc-name"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            style={{ maxWidth: 320 }}
+          />
+          <div className="field-help">
+            É como a NORA se refere a você nas análises e no chat.
+          </div>
+        </div>
+
+        <div className="field">
+          <label className="field-label" htmlFor="acc-email">
+            E-mail
+          </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <input
+              className="input"
+              id="acc-email"
+              value={user?.email ?? ""}
+              disabled
+              style={{
+                flex: 1,
+                minWidth: 280,
+                maxWidth: 440,
+                color: "var(--muted)",
+                background: "var(--sidebar)",
+              }}
+            />
+            <span className="chip" style={{ background: "var(--accent-soft)", color: "var(--success)" }}>
+              Verificado
+            </span>
+          </div>
+          <div className="field-help">
+            O e-mail é o identificador da conta e não pode ser trocado no Core.
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button className="btn btn-primary btn-sm" type="button" disabled title="Em breve">
+            Salvar alterações
+          </button>
+          <span className="field-help">Edição de perfil chega em breve.</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Segurança — trocar senha + sessões. Sem endpoints ainda:
+   medidor de força funciona localmente; ações desabilitadas.
+   ───────────────────────────────────────────────────────────── */
+function SecuritySection() {
+  const [pwCur, setPwCur] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConf, setPwConf] = useState("");
+  const [logoutConfirm, setLogoutConfirm] = useState(false);
+
+  const strength = useMemo(() => strengthOf(pwNew), [pwNew]);
+  const mismatch = pwConf.length > 0 && pwConf !== pwNew;
+
+  return (
+    <>
+      <section className="section">
+        <div className="section-head">
+          <h2 className="sec-label">Trocar senha</h2>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 360 }}>
+          <div className="field">
+            <label className="field-label" htmlFor="pw-cur">
+              Senha atual
+            </label>
+            <input
+              className="input"
+              id="pw-cur"
+              type="password"
+              placeholder="••••••••"
+              autoComplete="current-password"
+              value={pwCur}
+              onChange={(e) => setPwCur(e.target.value)}
+            />
+          </div>
+
+          <div className="field">
+            <label className="field-label" htmlFor="pw-new">
+              Nova senha
+            </label>
+            <input
+              className="input"
+              id="pw-new"
+              type="password"
+              placeholder="••••••••"
+              autoComplete="new-password"
+              value={pwNew}
+              onChange={(e) => setPwNew(e.target.value)}
+            />
+            <div className="pw-bars">
+              {[0, 1, 2, 3].map((i) => (
+                <span
+                  key={i}
+                  style={{ background: i < strength ? STRENGTH_COLORS[strength] : "var(--chip)" }}
+                />
+              ))}
+            </div>
+            <div className="pw-meta">
+              <span>{STRENGTH_LABELS[strength]}</span>
+              <span>{pwNew.length} caracteres</span>
+            </div>
+          </div>
+
+          <div className="field">
+            <label className="field-label" htmlFor="pw-conf">
+              Confirme a nova senha
+            </label>
+            <input
+              className="input"
+              id="pw-conf"
+              type="password"
+              placeholder="••••••••"
+              autoComplete="new-password"
+              value={pwConf}
+              onChange={(e) => setPwConf(e.target.value)}
+            />
+            {mismatch && <div className="field-help is-err">As senhas não coincidem.</div>}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button className="btn btn-primary btn-sm" type="button" disabled title="Em breve">
+              Atualizar senha
+            </button>
+            <span className="field-help">Troca de senha chega em breve.</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-head">
+          <h2 className="sec-label">Sessões</h2>
+        </div>
+        <div
+          className="card"
+          style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}
+        >
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 500 }}>Sair de todos os dispositivos</div>
+            <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5, marginTop: 3 }}>
+              Encerra todas as sessões ativas, inclusive esta. Você precisará entrar de novo.
+            </div>
+          </div>
+          <button
+            className="btn btn-ghost btn-sm"
+            type="button"
+            disabled
+            title="Em breve"
+            onClick={() => setLogoutConfirm(true)}
+          >
+            Sair de tudo
+          </button>
+        </div>
+        {logoutConfirm && (
+          <div className="notice" style={{ marginTop: 10 }}>
+            Tem certeza? Todas as sessões serão encerradas agora.
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button className="btn btn-primary btn-sm" type="button" disabled>
+                Sim, sair de tudo
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                type="button"
+                onClick={() => setLogoutConfirm(false)}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Workspace — nome + plano + zona de perigo. Sem endpoints ainda:
+   renomear / excluir desabilitados; typed-confirm pronto.
+   ───────────────────────────────────────────────────────────── */
+function WorkspaceSection() {
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [wsName, setWsName] = useState("");
+  const [delOpen, setDelOpen] = useState(false);
+  const [delInput, setDelInput] = useState("");
+
+  useEffect(() => {
+    const u = getCurrentUser();
+    setUser(u);
+    setWsName(u?.displayName ? `${u.displayName} · Pessoal` : "");
+  }, []);
+
+  const email = user?.email ?? "";
+  const delMatches = email.length > 0 && delInput.trim().toLowerCase() === email.toLowerCase();
+
+  return (
+    <>
+      <section className="section">
+        <div className="section-head">
+          <h2 className="sec-label">Workspace</h2>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="field">
+            <label className="field-label" htmlFor="ws-name">
+              Nome do workspace
+            </label>
+            <input
+              className="input"
+              id="ws-name"
+              value={wsName}
+              onChange={(e) => setWsName(e.target.value)}
+              style={{ maxWidth: 320 }}
+            />
+            <div className="field-help">
+              Definido no cadastro — agora dá pra renomear quando quiser.
+            </div>
+          </div>
+
+          <div className="field">
+            <span className="field-label">Plano</span>
+            <div
+              className="card"
+              style={{ display: "flex", alignItems: "center", gap: 14, maxWidth: 460 }}
+            >
+              <span className="plan-badge" style={{ fontSize: 11, padding: "3px 9px" }}>
+                Core
+              </span>
+              <div style={{ flex: 1, fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>
+                Workspace individual: reuniões, chat e projetos ilimitados pra uma pessoa. Times e
+                permissões são do Enterprise.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button className="btn btn-primary btn-sm" type="button" disabled title="Em breve">
+              Salvar alterações
+            </button>
+            <span className="field-help">Renomear workspace chega em breve.</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-head">
+          <h2 className="sec-label">Zona de perigo</h2>
+        </div>
+        <div className="danger-card">
+          <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--danger)" }}>
+            Excluir conta e todos os dados
+          </div>
+          <p
+            style={{
+              fontSize: 12.5,
+              color: "var(--muted)",
+              lineHeight: 1.55,
+              margin: "6px 0 12px",
+            }}
+          >
+            Apaga sua conta, reuniões, transcrições, análises e action items — definitivamente. É o
+            seu direito pela LGPD (direito ao esquecimento) e não tem volta.
+          </p>
+          {!delOpen ? (
+            <button
+              className="btn btn-ghost btn-sm"
+              type="button"
+              style={{ color: "var(--danger)" }}
+              onClick={() => setDelOpen(true)}
+            >
+              Quero excluir minha conta
+            </button>
+          ) : (
+            <div
+              style={{
+                marginTop: 0,
+                paddingTop: 14,
+                borderTop: "1px solid var(--border)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: "var(--ink)",
+                  lineHeight: 1.55,
+                  marginBottom: 10,
+                }}
+              >
+                Para confirmar, digite seu e-mail (<strong>{email || "seu e-mail"}</strong>):
+              </div>
+              <input
+                className="input"
+                placeholder="Digite seu e-mail"
+                value={delInput}
+                onChange={(e) => setDelInput(e.target.value)}
+                style={{ width: "100%", maxWidth: 320, marginBottom: 10 }}
+              />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  className="btn btn-danger btn-sm"
+                  type="button"
+                  disabled={!delMatches}
+                  title="Em breve"
+                >
+                  Excluir definitivamente
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  onClick={() => {
+                    setDelOpen(false);
+                    setDelInput("");
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Contexto da empresa — LÓGICA REAL (GET/PUT /tenant/context).
+   Apenas re-skin: classes do design system, sem tocar no fluxo
+   de dados/API.
+   ───────────────────────────────────────────────────────────── */
+function CompanyContextSection() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -138,166 +604,238 @@ export default function TenantContextPage() {
   }
 
   if (loading) {
-    return <p className="text-sm text-slate-500">Carregando contexto…</p>;
+    return (
+      <section className="section">
+        <div className="section-head">
+          <h2 className="sec-label">Contexto da empresa</h2>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div className="skel" style={{ height: 38, maxWidth: 320 }} />
+          <div className="skel" style={{ height: 38 }} />
+          <div className="skel" style={{ height: 72 }} />
+        </div>
+      </section>
+    );
   }
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Contexto do tenant</h1>
-        <p className="text-sm text-slate-500">
-          Esses dados são enviados ao motor de NLP em toda análise de reunião.
-        </p>
-      </header>
+    <section className="section">
+      <div className="section-head">
+        <h2 className="sec-label">Contexto da empresa</h2>
+      </div>
+      <p
+        style={{
+          fontSize: 13,
+          color: "var(--muted)",
+          lineHeight: 1.6,
+          margin: "0 0 18px",
+        }}
+      >
+        Esses dados entram em toda análise de reunião — quanto mais contexto, mais precisa a NORA
+        fica sobre riscos, concorrentes e oportunidades.
+      </p>
 
-      <form onSubmit={onSubmit} className="space-y-5 rounded-lg border border-slate-200 bg-white p-6">
-        <Field label="Nome da empresa" required>
+      <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="field">
+          <label className="field-label" htmlFor="ctx-company">
+            Nome da empresa <span className="req">*</span>
+          </label>
           <input
+            className="input"
+            id="ctx-company"
             required
             value={form.companyName}
             onChange={(e) => update("companyName", e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+            style={{ maxWidth: 320 }}
           />
-        </Field>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="Indústria">
-            <input
-              value={form.industry}
-              onChange={(e) => update("industry", e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              placeholder="ex: Software B2B"
-            />
-          </Field>
-          <Field label="ICP (Ideal Customer Profile)">
-            <input
-              value={form.idealCustomerProfile}
-              onChange={(e) => update("idealCustomerProfile", e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              placeholder="ex: midmarket varejo no Brasil"
-            />
-          </Field>
         </div>
 
-        <Field label="Proposta de valor">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div className="field">
+            <label className="field-label" htmlFor="ctx-industry">
+              Indústria
+            </label>
+            <input
+              className="input"
+              id="ctx-industry"
+              value={form.industry}
+              onChange={(e) => update("industry", e.target.value)}
+              placeholder="ex.: Software B2B"
+            />
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="ctx-icp">
+              ICP
+            </label>
+            <input
+              className="input"
+              id="ctx-icp"
+              value={form.idealCustomerProfile}
+              onChange={(e) => update("idealCustomerProfile", e.target.value)}
+              placeholder="ex.: mid-market varejo"
+            />
+          </div>
+        </div>
+
+        <div className="field">
+          <label className="field-label" htmlFor="ctx-value">
+            Proposta de valor
+          </label>
           <textarea
+            className="textarea"
+            id="ctx-value"
             rows={3}
             value={form.valueProposition}
             onChange={(e) => update("valueProposition", e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
           />
-        </Field>
+        </div>
 
-        <Field
-          label="Concorrentes (um por linha)"
-          hint="Ex: Concorrente A&#10;Concorrente B"
-        >
+        <div className="field">
+          <label className="field-label" htmlFor="ctx-comp">
+            Concorrentes{" "}
+            <span style={{ fontWeight: 400, color: "var(--muted)" }}>(um por linha)</span>
+          </label>
           <textarea
+            className="textarea"
+            id="ctx-comp"
             rows={3}
             value={form.competitors}
             onChange={(e) => update("competitors", e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
           />
-        </Field>
+        </div>
 
-        <Field label="Objection handling (um por linha)">
+        <div className="field">
+          <label className="field-label" htmlFor="ctx-obj">
+            Objection handling{" "}
+            <span style={{ fontWeight: 400, color: "var(--muted)" }}>(um por linha)</span>
+          </label>
           <textarea
+            className="textarea"
+            id="ctx-obj"
             rows={3}
             value={form.objectionHandling}
             onChange={(e) => update("objectionHandling", e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
           />
-        </Field>
+        </div>
 
-        <fieldset className="space-y-3">
-          <div className="flex items-center justify-between">
-            <legend className="text-sm font-medium text-slate-700">Produtos</legend>
-            <button
-              type="button"
-              onClick={addProduct}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50"
-            >
+        <div className="field">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span className="field-label">Produtos</span>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={addProduct}>
               + Adicionar produto
             </button>
           </div>
-
-          {form.products.length === 0 && (
-            <p className="text-sm text-slate-500">Nenhum produto cadastrado.</p>
-          )}
-
-          {form.products.map((p, i) => (
-            <div key={i} className="space-y-2 rounded-md border border-slate-200 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <input
-                  value={p.name}
-                  onChange={(e) => updateProduct(i, { name: e.target.value })}
-                  placeholder="Nome do produto"
-                  className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeProduct(i)}
-                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {form.products.length === 0 ? (
+              <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>
+                Nenhum produto cadastrado.
+              </p>
+            ) : (
+              form.products.map((p, i) => (
+                <div
+                  key={i}
+                  className="card"
+                  style={{ display: "flex", flexDirection: "column", gap: 8 }}
                 >
-                  Remover
-                </button>
-              </div>
-              <textarea
-                rows={2}
-                value={p.description}
-                onChange={(e) => updateProduct(i, { description: e.target.value })}
-                placeholder="Descrição"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              />
-              <textarea
-                rows={2}
-                value={p.keyDifferentiators}
-                onChange={(e) => updateProduct(i, { keyDifferentiators: e.target.value })}
-                placeholder="Diferenciais (um por linha)"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              />
-            </div>
-          ))}
-        </fieldset>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      className="input"
+                      value={p.name}
+                      onChange={(e) => updateProduct(i, { name: e.target.value })}
+                      placeholder="Nome do produto"
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      onClick={() => removeProduct(i)}
+                      style={{ color: "var(--danger)" }}
+                    >
+                      Remover
+                    </button>
+                  </div>
+                  <textarea
+                    className="textarea"
+                    rows={2}
+                    value={p.description}
+                    onChange={(e) => updateProduct(i, { description: e.target.value })}
+                    placeholder="Descrição"
+                  />
+                  <textarea
+                    className="textarea"
+                    rows={2}
+                    value={p.keyDifferentiators}
+                    onChange={(e) => updateProduct(i, { keyDifferentiators: e.target.value })}
+                    placeholder="Diferenciais (um por linha)"
+                  />
+                </div>
+              ))
+            )}
+          </div>
+        </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {message && <p className="text-sm text-green-700">{message}</p>}
-
-        <div>
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+        {error && <div className="notice notice--danger">{error}</div>}
+        {message && (
+          <span
+            className="saved-note is-show"
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--success)" }}
           >
+            <CheckIcon />
+            {message}
+          </span>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button className="btn btn-primary btn-sm" type="submit" disabled={saving}>
             {saving ? "Salvando…" : "Salvar contexto"}
           </button>
         </div>
       </form>
-
-      
-    </div>
+    </section>
   );
 }
 
-function Field({
-  label,
-  hint,
-  required,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
+/* ── avatar gerado (mesma fórmula do .user-orb) ── */
+function UserOrb({ size = 44 }: { size?: number }) {
   return (
-    <div className="space-y-1.5">
-      <label className="text-sm font-medium text-slate-700">
-        {label}
-        {required && <span className="text-red-600"> *</span>}
-      </label>
-      {children}
-      {hint && <p className="text-xs text-slate-500 whitespace-pre-line">{hint}</p>}
-    </div>
+    <div
+      aria-hidden
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        flexShrink: 0,
+        background:
+          "radial-gradient(circle at 30% 25%, #d8f0f6 0%, transparent 38%), radial-gradient(circle at 78% 62%, #e8b8d8 0%, transparent 45%), radial-gradient(circle at 22% 78%, #3a4a4f 0%, transparent 30%), radial-gradient(circle at 60% 40%, #4ec4d8 8%, #6aa8d8 45%, #9778b8 100%)",
+        boxShadow: "inset 0 0 6px rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.06)",
+        filter: "saturate(1.15)",
+      }}
+    />
   );
 }
+
+/* ── estilos exclusivos do hub (não há classe em components.css) ── */
+const SET_STYLES = `
+.set-layout { display: flex; gap: 40px; align-items: flex-start; }
+.set-nav {
+  width: 180px; flex-shrink: 0; display: flex; flex-direction: column; gap: 1px;
+  position: sticky; top: 24px;
+}
+.set-nav a {
+  padding: 7px 10px; border-radius: 7px; font-size: 13px; color: var(--muted);
+  transition: background 120ms ease, color 120ms ease; cursor: pointer;
+}
+.set-nav a:hover { background: var(--sidebar); color: var(--ink); }
+.set-nav a.is-active { background: var(--accent-soft); color: var(--accent-ink); font-weight: 500; }
+.set-pane { flex: 1; min-width: 0; max-width: 560px; }
+@media (max-width: 860px) {
+  .set-layout { flex-direction: column; gap: 20px; }
+  .set-nav { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 4px; position: static; }
+  .set-nav a { border: 1px solid var(--border); border-radius: 999px; padding: 6px 13px; font-size: 12.5px; }
+  .set-nav a.is-active { border-color: transparent; }
+}
+.pw-bars { display: flex; gap: 4px; margin-top: 8px; }
+.pw-bars span { height: 3px; flex: 1; border-radius: 2px; background: var(--chip); transition: background 160ms ease; }
+.pw-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 5px; }
+.danger-card { border: 1px solid var(--danger); border-radius: 12px; padding: 16px 18px; background: var(--chip); }
+`;

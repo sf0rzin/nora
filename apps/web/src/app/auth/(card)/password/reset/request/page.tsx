@@ -26,42 +26,111 @@ export default function PasswordResetRequestPage() {
 
   if (done) {
     return (
-      <div className="space-y-3 text-sm text-slate-700">
-        <h2 className="text-lg font-medium text-slate-800">Verifique seu e-mail</h2>
-        <p>Se {email} estiver cadastrado, enviamos um link para redefinir a senha.</p>
-        <Link href="/auth/login" className="text-slate-900 underline">
-          Voltar para o login
-        </Link>
+      <div>
+        <MailIcon />
+        <h2 style={cardTitle}>Verifique seu e-mail.</h2>
+        <p style={cardSub}>
+          Se{" "}
+          <strong style={{ color: "var(--ink)", fontWeight: 500 }}>{email}</strong> estiver
+          cadastrado, enviamos um link para redefinir a senha.
+        </p>
+        <p style={footLink}>
+          <Link href="/auth/login" style={{ textDecoration: "underline", textUnderlineOffset: 2 }}>
+            Voltar para o login
+          </Link>
+        </p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <h2 className="text-lg font-medium text-slate-800">Esqueci a senha</h2>
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium text-slate-700">E-mail</label>
-        <input
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-        />
-      </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
+    <div>
+      <h2 style={cardTitle}>Esqueci minha senha.</h2>
+      <p style={cardSub}>Digite o e-mail da conta — mandamos um link para redefinir.</p>
+
+      <form
+        onSubmit={onSubmit}
+        style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 14 }}
       >
-        {loading ? "Enviando…" : "Enviar link"}
-      </button>
-      <p className="text-center text-xs text-slate-600">
-        <Link href="/auth/login" className="underline">
+        <div className="field">
+          <label className="field-label" htmlFor="rr-email">
+            E-mail
+          </label>
+          <input
+            className="input"
+            id="rr-email"
+            type="email"
+            required
+            placeholder="você@empresa.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </div>
+
+        {error && <p className="field-help is-err">{error}</p>}
+
+        <button type="submit" className="btn btn-primary" disabled={loading}>
+          {loading ? "Enviando…" : "Enviar link"}
+        </button>
+      </form>
+
+      <p style={footLink}>
+        <Link href="/auth/login" style={{ textDecoration: "underline", textUnderlineOffset: 2 }}>
           Voltar
         </Link>
       </p>
-    </form>
+    </div>
+  );
+}
+
+// ── Estilos compartilhados (cards de auth) ──────────────────────────
+const cardTitle: React.CSSProperties = {
+  fontSize: 19,
+  fontWeight: 500,
+  letterSpacing: "-0.018em",
+  margin: "0 0 6px",
+  color: "var(--ink)",
+};
+const cardSub: React.CSSProperties = {
+  fontSize: 13.5,
+  color: "var(--muted)",
+  lineHeight: 1.55,
+  margin: 0,
+};
+const footLink: React.CSSProperties = {
+  fontSize: 12,
+  color: "var(--muted)",
+  textAlign: "center",
+  margin: "14px 0 0",
+};
+
+function MailIcon() {
+  return (
+    <div
+      style={{
+        width: 42,
+        height: 42,
+        borderRadius: "50%",
+        display: "grid",
+        placeItems: "center",
+        marginBottom: 16,
+        background: "var(--accent-soft)",
+        color: "var(--accent-ink)",
+      }}
+    >
+      <svg
+        width="19"
+        height="19"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="m3 7 9 6 9-6" />
+      </svg>
+    </div>
   );
 }

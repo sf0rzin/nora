@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import MeetingGoalForm from "@/components/meeting-goal-form";
 import ProductivityScoreCard from "@/components/productivity-score-card";
-import { deleteMeetingGoal } from "@/lib/api/client";
+import { ApiRequestError, deleteMeetingGoal } from "@/lib/api/client";
 import type {
   MeetingGoal,
   ProductivityAssessment,
@@ -24,7 +24,6 @@ export default function MeetingProductivitySection({
   const router = useRouter();
   const [goal, setGoal] = useState<MeetingGoal | null>(initialGoal);
   const [editing, setEditing] = useState<boolean>(false);
-  const [removing, setRemoving] = useState<boolean>(false);
 
   function handleSaved(saved: MeetingGoal) {
     setGoal(saved);
@@ -37,178 +36,196 @@ export default function MeetingProductivitySection({
     setEditing(false);
   }
 
-  async function handleRemoveGoal() {
-    if (
-      !window.confirm(
-        "Remover o objetivo desta reunião? O Productivity Score vinculado será descartado.",
-      )
-    ) {
-      return;
-    }
-    setRemoving(true);
-    try {
-      await deleteMeetingGoal(meetingId);
-      setGoal(null);
-      router.refresh();
-    } finally {
-      setRemoving(false);
-    }
+  function onGoalRemoved() {
+    setGoal(null);
+    router.refresh();
   }
 
   // Caso A: sem goal e sem productivity → CTA pra avaliar produtividade
   if (!goal && !productivity) {
     return (
-      <section className="space-y-3" aria-labelledby="productivity-heading">
-        <h2
-          id="productivity-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-        >
-          Produtividade
-        </h2>
+      <Frame>
         {editing ? (
-          <MeetingGoalForm
-            meetingId={meetingId}
-            initialGoal={null}
-            onSaved={handleSaved}
-            onCancel={handleCancel}
-          />
+          <MeetingGoalForm meetingId={meetingId} initialGoal={null} onSaved={handleSaved} onCancel={handleCancel} />
         ) : (
-          <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-6">
-            <p className="text-sm text-slate-700">
-              Quer entender o quão produtiva essa reunião foi? Declare o objetivo
-              e os outcomes esperados e a NORA gera um indicador comparando o que
-              aconteceu com o que era pra acontecer.
+          <div className="card card--pad" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.6, margin: 0 }}>
+              Quer entender o quão produtiva essa reunião foi? Declare o objetivo e os outcomes esperados e a NORA gera um
+              indicador comparando o que aconteceu com o que era pra acontecer.
             </p>
-            <p className="text-xs text-slate-500">
+            <p style={{ fontSize: 11.5, color: "var(--muted)", margin: 0 }}>
               Sem outcomes declarados, a NORA não tenta inventar um score.
             </p>
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              Avaliar produtividade desta reunião
-            </button>
+            <div>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing(true)}>
+                Avaliar produtividade desta reunião
+              </button>
+            </div>
           </div>
         )}
-      </section>
+      </Frame>
     );
   }
 
   // Caso B: goal definido, mas sem productivity → aguardando reprocessamento
   if (goal && !productivity) {
     return (
-      <section className="space-y-3" aria-labelledby="productivity-heading">
-        <h2
-          id="productivity-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-        >
-          Produtividade
-        </h2>
-
+      <Frame>
         {editing ? (
-          <MeetingGoalForm
-            meetingId={meetingId}
-            initialGoal={goal}
-            onSaved={handleSaved}
-            onCancel={handleCancel}
-          />
+          <MeetingGoalForm meetingId={meetingId} initialGoal={goal} onSaved={handleSaved} onCancel={handleCancel} />
         ) : (
-          <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-6">
+          <div className="card card--pad" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <MeetingGoalSummary goal={goal} />
-            <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <div className="notice" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span className="status-dot status-dot--processing" />
               Aguardando análise…
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-              >
-                Editar objetivo
-              </button>
-              <button
-                type="button"
-                onClick={handleRemoveGoal}
-                disabled={removing}
-                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-              >
-                {removing ? "Removendo…" : "Remover objetivo"}
-              </button>
             </div>
+            <GoalControls onEdit={() => setEditing(true)} meetingId={meetingId} onRemoved={onGoalRemoved} />
           </div>
         )}
-      </section>
+      </Frame>
     );
   }
 
   // Caso C: productivity disponível
   return (
-    <section className="space-y-3" aria-labelledby="productivity-heading">
-      <h2
-        id="productivity-heading"
-        className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-      >
-        Produtividade
-      </h2>
-
+    <Frame>
       {editing ? (
-        <MeetingGoalForm
-          meetingId={meetingId}
-          initialGoal={goal}
-          onSaved={handleSaved}
-          onCancel={handleCancel}
-        />
+        <MeetingGoalForm meetingId={meetingId} initialGoal={goal} onSaved={handleSaved} onCancel={handleCancel} />
       ) : (
-        <div className="space-y-4">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {productivity && <ProductivityScoreCard assessment={productivity} />}
           {goal && (
-            <details className="rounded-lg border border-slate-200 bg-white p-4">
-              <summary className="cursor-pointer text-sm font-medium text-slate-700">
+            <details className="card" style={{ padding: "14px 18px" }}>
+              <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>
                 Objetivo declarado
               </summary>
-              <div className="mt-3">
+              <div style={{ marginTop: 12 }}>
                 <MeetingGoalSummary goal={goal} />
               </div>
             </details>
           )}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-            >
-              Editar objetivo
+          <GoalControls onEdit={() => setEditing(true)} meetingId={meetingId} onRemoved={onGoalRemoved} />
+        </div>
+      )}
+    </Frame>
+  );
+}
+
+function Frame({ children }: { children: React.ReactNode }) {
+  return (
+    <section aria-labelledby="productivity-heading" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <h2 id="productivity-heading" className="sec-label">
+        Produtividade
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * Editar objetivo + remover objetivo com confirmação por digitação ("REMOVER"),
+ * no padrão da danger zone — sem window.confirm. Erro de API é exibido inline.
+ */
+function GoalControls({
+  onEdit,
+  meetingId,
+  onRemoved,
+}: {
+  onEdit: () => void;
+  meetingId: string;
+  onRemoved: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [text, setText] = useState("");
+  const [removing, setRemoving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canRemove = text.trim().toUpperCase() === "REMOVER" && !removing;
+
+  function cancel() {
+    setConfirming(false);
+    setText("");
+    setError(null);
+  }
+
+  async function onRemove() {
+    if (!canRemove) return;
+    setRemoving(true);
+    setError(null);
+    try {
+      await deleteMeetingGoal(meetingId);
+      onRemoved();
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError ? err.message : "Falha ao remover o objetivo da reunião.",
+      );
+      setRemoving(false);
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit}>
+          Editar objetivo
+        </button>
+        {!confirming && (
+          <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => setConfirming(true)}>
+            Remover objetivo
+          </button>
+        )}
+      </div>
+
+      {confirming && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "14px 16px",
+            border: "1px solid var(--danger)",
+            borderRadius: 12,
+            background: "var(--chip)",
+          }}
+        >
+          <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 10, color: "var(--ink)" }}>
+            Remover o objetivo descarta o Productivity Score vinculado. Pra confirmar, digite <strong>REMOVER</strong>:
+          </div>
+          {error && <div style={{ fontSize: 12, color: "var(--danger)", marginBottom: 10 }}>{error}</div>}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input
+              className="input"
+              style={{ width: 140 }}
+              placeholder="REMOVER"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
+            <button type="button" className="btn btn-danger btn-sm" disabled={!canRemove} onClick={onRemove}>
+              {removing ? "Removendo…" : "Remover"}
             </button>
-            <button
-              type="button"
-              onClick={handleRemoveGoal}
-              disabled={removing}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-            >
-              {removing ? "Removendo…" : "Remover objetivo"}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={cancel} disabled={removing}>
+              Cancelar
             </button>
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
 function MeetingGoalSummary({ goal }: { goal: MeetingGoal }) {
   return (
-    <div className="space-y-3 text-sm">
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        <div className="sec-label" style={{ marginBottom: 4 }}>
           Propósito
-        </p>
-        <p className="mt-1 text-slate-800">{goal.purpose}</p>
+        </div>
+        <p style={{ fontSize: 14, color: "var(--ink)", margin: 0, lineHeight: 1.5 }}>{goal.purpose}</p>
       </div>
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        <div className="sec-label" style={{ marginBottom: 4 }}>
           Outcomes esperados ({goal.expectedOutcomes.length})
-        </p>
-        <ul className="mt-1 list-disc space-y-1 pl-5 text-slate-800">
+        </div>
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, color: "var(--ink)", lineHeight: 1.6 }}>
           {goal.expectedOutcomes.map((outcome, idx) => (
             <li key={`${outcome}-${idx}`}>{outcome}</li>
           ))}
@@ -216,10 +233,10 @@ function MeetingGoalSummary({ goal }: { goal: MeetingGoal }) {
       </div>
       {goal.projectStateSnapshot && (
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          <div className="sec-label" style={{ marginBottom: 4 }}>
             Snapshot do projeto
-          </p>
-          <p className="mt-1 whitespace-pre-line text-slate-700">
+          </div>
+          <p style={{ fontSize: 13.5, color: "var(--muted)", margin: 0, lineHeight: 1.55, whiteSpace: "pre-line" }}>
             {goal.projectStateSnapshot}
           </p>
         </div>
