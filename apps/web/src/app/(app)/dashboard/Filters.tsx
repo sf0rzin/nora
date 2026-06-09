@@ -2,23 +2,12 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Route } from "next";
-import { useState, useEffect, type CSSProperties } from "react";
+import { useState, useEffect } from "react";
 import type { ListMeetingsParams } from "@/lib/api/client";
 
 interface Props {
   defaults: ListMeetingsParams;
 }
-
-const inputStyle: CSSProperties = {
-  fontFamily: "var(--sans)",
-  fontSize: 13,
-  color: "var(--ink)",
-  background: "var(--canvas)",
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  padding: "8px 11px",
-  outline: "none",
-};
 
 export default function DashboardFilters({ defaults }: Props) {
   const router = useRouter();
@@ -42,6 +31,7 @@ export default function DashboardFilters({ defaults }: Props) {
     if (status) qs.set("status", status);
     if (from) qs.set("from", `${from}T00:00:00Z`);
     if (to) qs.set("to", `${to}T23:59:59Z`);
+    // Reaplicar filtros sempre volta pra página 1.
     const q = qs.toString();
     router.push((q ? `/dashboard?${q}` : "/dashboard") as Route);
   }
@@ -59,38 +49,67 @@ export default function DashboardFilters({ defaults }: Props) {
   return (
     <form onSubmit={apply} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
       <div style={{ position: "relative", flex: "1 1 220px", minWidth: 200 }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: 11, top: 10, color: "var(--muted)" }}>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ position: "absolute", left: 11, top: 10, color: "var(--muted)" }}
+        >
           <circle cx="11" cy="11" r="7" />
           <path d="m20 20-3.5-3.5" />
         </svg>
         <input
+          className="input"
           type="search"
           placeholder="Buscar reuniões…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ ...inputStyle, width: "100%", paddingLeft: 32 }}
+          style={{ width: "100%", paddingLeft: 32 }}
         />
       </div>
-      <select value={status} onChange={(e) => setStatus(e.target.value)} style={inputStyle}>
+      <select className="select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
         <option value="">Todos status</option>
         <option value="PENDING">Na fila</option>
         <option value="PROCESSING">Analisando</option>
         <option value="COMPLETED">Analisada</option>
         <option value="FAILED">Falhou</option>
       </select>
-      <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={inputStyle} aria-label="De" />
-      <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={inputStyle} aria-label="Até" />
-      <button
-        type="submit"
-        style={{ ...inputStyle, background: "var(--ink)", color: "var(--canvas)", border: "none", fontWeight: 500, cursor: "pointer" }}
-      >
+      <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="De" />
+      <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="Até" />
+      <button className="btn btn-primary btn-sm" type="submit" style={{ borderRadius: 8 }}>
         Aplicar
       </button>
       {hasAny && (
-        <button type="button" onClick={clear} style={{ ...inputStyle, color: "var(--muted)", cursor: "pointer" }}>
+        <button className="btn btn-ghost btn-sm" type="button" onClick={clear}>
           Limpar
         </button>
       )}
     </form>
   );
+}
+
+/**
+ * Atualiza a lista enquanto houver reuniões em PROCESSING — espelha o polling
+ * do upload (Subfase 1.3), mas no nível da lista. Sem libs novas: setInterval
+ * + router.refresh() revalida o Server Component até nada mais estar analisando.
+ */
+const POLL_INTERVAL_MS = 4_000;
+
+export function ProcessingPoller({ active }: { active: boolean }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => {
+      router.refresh();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [active, router]);
+
+  return null;
 }
