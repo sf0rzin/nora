@@ -14,9 +14,9 @@ import br.com.nora.api.domain.chat.ChatMessage;
 import br.com.nora.api.domain.chat.ChatRole;
 import br.com.nora.api.domain.chat.ChatSession;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
-
 import jakarta.validation.Valid;
-
+import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -27,9 +27,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
-import java.util.UUID;
 
 /**
  * Histórico de sessões de chat do assistente NORA. Cada sessão é escopada pelo tenant_id (ADR 0002
