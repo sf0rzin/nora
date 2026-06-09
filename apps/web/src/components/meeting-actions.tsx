@@ -37,23 +37,14 @@ export function ReprocessButton({
     }
   }
 
-  const base: React.CSSProperties = {
-    fontSize: 13,
-    fontWeight: 500,
-    padding: "8px 16px",
-    borderRadius: 8,
-    cursor: busy ? "default" : "pointer",
-    opacity: busy ? 0.6 : 1,
-    transition: "opacity 0.15s",
-  };
-  const skin: React.CSSProperties =
-    variant === "solid"
-      ? { background: "var(--accent-ink)", color: "var(--bg)", border: "1px solid var(--accent-ink)" }
-      : { background: "transparent", color: "var(--ink)", border: "1px solid var(--border)" };
-
   return (
     <div style={{ display: "inline-flex", flexDirection: "column", gap: 6 }}>
-      <button type="button" onClick={onClick} disabled={busy} style={{ ...base, ...skin }}>
+      <button
+        type="button"
+        className={`btn btn-sm ${variant === "solid" ? "btn-primary" : "btn-ghost"}`}
+        onClick={onClick}
+        disabled={busy}
+      >
         {busy ? "Reprocessando…" : label}
       </button>
       {error && <span style={{ fontSize: 12, color: "var(--danger)" }}>{error}</span>}
@@ -107,20 +98,7 @@ export function MeetingDangerZone({
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         {canReprocess && <ReprocessButton meetingId={meetingId} label="Reanalisar reunião" variant="outline" />}
         {!open && (
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              padding: "8px 16px",
-              borderRadius: 8,
-              cursor: "pointer",
-              background: "transparent",
-              color: "var(--danger)",
-              border: "1px solid var(--border)",
-            }}
-          >
+          <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => setOpen(true)}>
             Apagar permanentemente
           </button>
         )}
@@ -139,60 +117,43 @@ export function MeetingDangerZone({
           }}
         >
           <div style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.5 }}>
-            Isto apaga <strong>definitivamente</strong> a reunião e todo o conteúdo
-            associado (transcrição, participantes, análise). A ação é irreversível
-            (LGPD, direito ao esquecimento). Para confirmar, digite o título da reunião:
+            Isto apaga <strong>definitivamente</strong> a reunião e todo o conteúdo associado (transcrição, participantes,
+            análise). A ação é irreversível (LGPD, direito ao esquecimento). Para confirmar, digite o título da reunião:
           </div>
-          <code style={{ fontSize: 12.5, color: "var(--muted)", fontFamily: "var(--mono)" }}>{title}</code>
+          <code
+            style={{
+              display: "block",
+              fontSize: 12.5,
+              color: "var(--muted)",
+              fontFamily: "var(--sans)",
+              background: "var(--canvas)",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              padding: "6px 10px",
+            }}
+          >
+            {title}
+          </code>
           <input
+            className="input"
             value={confirmText}
             onChange={(e) => setConfirmText(e.target.value)}
             placeholder="Digite o título exato"
-            style={{
-              fontSize: 14,
-              padding: "8px 12px",
-              borderRadius: 8,
-              border: "1px solid var(--border)",
-              background: "var(--bg)",
-              color: "var(--ink)",
-            }}
           />
           {error && <span style={{ fontSize: 12, color: "var(--danger)" }}>{error}</span>}
           <div style={{ display: "flex", gap: 10 }}>
-            <button
-              type="button"
-              onClick={onDelete}
-              disabled={!canDelete}
-              style={{
-                fontSize: 13,
-                fontWeight: 500,
-                padding: "8px 16px",
-                borderRadius: 8,
-                cursor: canDelete ? "pointer" : "not-allowed",
-                background: canDelete ? "var(--danger)" : "var(--chip)",
-                color: canDelete ? "#fff" : "var(--muted)",
-                border: "1px solid var(--border)",
-              }}
-            >
+            <button type="button" className="btn btn-danger btn-sm" onClick={onDelete} disabled={!canDelete}>
               {busy ? "Apagando…" : "Apagar para sempre"}
             </button>
             <button
               type="button"
+              className="btn btn-ghost btn-sm"
               onClick={() => {
                 setOpen(false);
                 setConfirmText("");
                 setError(null);
               }}
               disabled={busy}
-              style={{
-                fontSize: 13,
-                padding: "8px 16px",
-                borderRadius: 8,
-                cursor: "pointer",
-                background: "transparent",
-                color: "var(--muted)",
-                border: "1px solid var(--border)",
-              }}
             >
               Cancelar
             </button>
