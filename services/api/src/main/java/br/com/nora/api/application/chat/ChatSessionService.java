@@ -6,12 +6,14 @@ import br.com.nora.api.application.ports.Clock;
 import br.com.nora.api.domain.chat.ChatMessage;
 import br.com.nora.api.domain.chat.ChatRole;
 import br.com.nora.api.domain.chat.ChatSession;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Serviço das sessões de chat do assistente NORA. Toda operação é escopada pelo tenant_id + user_id
@@ -62,8 +64,8 @@ public class ChatSessionService {
     }
 
     /**
-     * Anexa uma mensagem à sessão. Bumpa updated_at; se a sessão estiver sem título e a mensagem for
-     * do usuário, deriva o título do conteúdo (~48 chars).
+     * Anexa uma mensagem à sessão. Bumpa updated_at; se a sessão estiver sem título e a mensagem
+     * for do usuário, deriva o título do conteúdo (~48 chars).
      */
     @Transactional
     public ChatMessage appendMessage(
@@ -77,8 +79,7 @@ public class ChatSessionService {
 
         OffsetDateTime now = now();
         ChatMessage message =
-                new ChatMessage(
-                        UUID.randomUUID(), sessionId, tenantId, role, content.strip(), now);
+                new ChatMessage(UUID.randomUUID(), sessionId, tenantId, role, content.strip(), now);
         sessions.appendMessage(message);
 
         String derivedTitle = null;
@@ -98,8 +99,7 @@ public class ChatSessionService {
         if (title == null || title.isBlank()) {
             throw new ChatException.InvalidTitle();
         }
-        sessions.findByIdForUser(id, tenantId, userId)
-                .orElseThrow(ChatException.NotFound::new);
+        sessions.findByIdForUser(id, tenantId, userId).orElseThrow(ChatException.NotFound::new);
         sessions.updateTitle(id, tenantId, userId, title.trim(), now());
         return sessions.findByIdForUser(id, tenantId, userId)
                 .orElseThrow(ChatException.NotFound::new);
@@ -107,8 +107,7 @@ public class ChatSessionService {
 
     @Transactional
     public void delete(UUID id, UUID tenantId, UUID userId) {
-        sessions.findByIdForUser(id, tenantId, userId)
-                .orElseThrow(ChatException.NotFound::new);
+        sessions.findByIdForUser(id, tenantId, userId).orElseThrow(ChatException.NotFound::new);
         sessions.delete(id, tenantId, userId);
     }
 }
