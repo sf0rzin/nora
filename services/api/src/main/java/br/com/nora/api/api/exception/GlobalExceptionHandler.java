@@ -11,10 +11,9 @@ import br.com.nora.api.application.speech.SpeechException;
 import br.com.nora.api.application.task.TaskException;
 import br.com.nora.api.application.tenant.TenantContextException;
 import br.com.nora.api.application.tenant.TenantException;
+
 import jakarta.servlet.http.HttpServletRequest;
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -34,6 +33,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 
 /** Tradutor central de excecoes para o formato de erro padrao. */
 @RestControllerAdvice
