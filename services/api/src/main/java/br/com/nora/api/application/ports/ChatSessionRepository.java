@@ -2,6 +2,7 @@ package br.com.nora.api.application.ports;
 
 import br.com.nora.api.domain.chat.ChatMessage;
 import br.com.nora.api.domain.chat.ChatSession;
+
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -17,8 +18,7 @@ public interface ChatSessionRepository {
      * Visão de listagem da sidebar: a sessão somada à contagem de mensagens e ao trecho da última
      * mensagem. Achatada para evitar carregar todas as mensagens só para a lista.
      */
-    record ChatSessionSummaryRow(
-            ChatSession session, int messageCount, String lastSnippet) {}
+    record ChatSessionSummaryRow(ChatSession session, int messageCount, String lastSnippet) {}
 
     /** Sessões do usuário no tenant, mais recentes primeiro (por updated_at desc). */
     List<ChatSessionSummaryRow> listByUser(UUID tenantId, UUID userId);
