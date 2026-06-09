@@ -2,7 +2,6 @@ package br.com.nora.api.application.ports;
 
 import br.com.nora.api.domain.chat.ChatMessage;
 import br.com.nora.api.domain.chat.ChatSession;
-
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
