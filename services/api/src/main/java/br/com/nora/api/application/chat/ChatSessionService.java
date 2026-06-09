@@ -6,14 +6,12 @@ import br.com.nora.api.application.ports.Clock;
 import br.com.nora.api.domain.chat.ChatMessage;
 import br.com.nora.api.domain.chat.ChatRole;
 import br.com.nora.api.domain.chat.ChatSession;
-
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Serviço das sessões de chat do assistente NORA. Toda operação é escopada pelo tenant_id + user_id
