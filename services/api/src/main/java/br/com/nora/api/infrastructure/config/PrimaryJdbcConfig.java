@@ -18,8 +18,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
  *
  * <p>Declarando o {@code jdbcTemplate} primário aqui (sem condição), o bean existe <b>sempre</b> —
  * com ou sem o datasource de telemetria. Os datasources de plataforma/telemetria não registram bean
- * do tipo {@code DataSource} (mantêm o {@code HikariDataSource} privado), então o {@code DataSource}
- * injetado aqui é o primário, sem ambiguidade. {@code @Primary} garante que injeções de
+ * do tipo {@code DataSource} (mantêm o {@code HikariDataSource} privado), então o {@code
+ * DataSource} injetado aqui é o primário, sem ambiguidade. {@code @Primary} garante que injeções de
  * {@code JdbcTemplate} sem qualifier resolvam para o primário.
  */
 @Configuration
