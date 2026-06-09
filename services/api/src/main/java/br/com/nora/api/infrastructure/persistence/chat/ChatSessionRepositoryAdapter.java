@@ -4,8 +4,13 @@ import br.com.nora.api.application.ports.ChatSessionRepository;
 import br.com.nora.api.domain.chat.ChatMessage;
 import br.com.nora.api.domain.chat.ChatRole;
 import br.com.nora.api.domain.chat.ChatSession;
+
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -13,14 +18,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.stereotype.Repository;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Adapter JDBC (via {@link EntityManager} + SQL nativo) das sessões de chat e mensagens (V022).
  * Mesmo estilo do {@code TaskRepositoryAdapter}: projeta linhas achatadas e escreve com SQL nativo,
- * sempre escopando por tenant_id (RLS, ADR 0028) + user_id. {@code @Transactional} para que, sob RLS
- * enforce, o aspect aplique o GUC de tenant nas leituras/escritas das tabelas enforced.
+ * sempre escopando por tenant_id (RLS, ADR 0028) + user_id. {@code @Transactional} para que, sob
+ * RLS enforce, o aspect aplique o GUC de tenant nas leituras/escritas das tabelas enforced.
  */
 @Repository
 public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
@@ -34,15 +37,13 @@ public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
     @SuppressWarnings("unchecked")
     public List<ChatSessionSummaryRow> listByUser(UUID tenantId, UUID userId) {
         String sql =
-                "SELECT s.id, s.tenant_id, s.user_id, s.title, s.created_at, s.updated_at, "
-                        + "       (SELECT COUNT(*) FROM chat_message m "
-                        + "          WHERE m.session_id = s.id AND m.tenant_id = s.tenant_id) AS msg_count, "
-                        + "       (SELECT m2.content FROM chat_message m2 "
-                        + "          WHERE m2.session_id = s.id AND m2.tenant_id = s.tenant_id "
-                        + "          ORDER BY m2.created_at DESC, m2.id DESC LIMIT 1) AS last_snippet "
-                        + "FROM chat_session s "
-                        + "WHERE s.tenant_id = :tenantId AND s.user_id = :userId "
-                        + "ORDER BY s.updated_at DESC, s.created_at DESC";
+                "SELECT s.id, s.tenant_id, s.user_id, s.title, s.created_at, s.updated_at,       "
+                    + " (SELECT COUNT(*) FROM chat_message m           WHERE m.session_id = s.id"
+                    + " AND m.tenant_id = s.tenant_id) AS msg_count,        (SELECT m2.content FROM"
+                    + " chat_message m2           WHERE m2.session_id = s.id AND m2.tenant_id ="
+                    + " s.tenant_id           ORDER BY m2.created_at DESC, m2.id DESC LIMIT 1) AS"
+                    + " last_snippet FROM chat_session s WHERE s.tenant_id = :tenantId AND"
+                    + " s.user_id = :userId ORDER BY s.updated_at DESC, s.created_at DESC";
         var query = em.createNativeQuery(sql);
         query.setParameter("tenantId", tenantId);
         query.setParameter("userId", userId);
@@ -61,8 +62,9 @@ public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
     @Transactional
     public void create(ChatSession session) {
         em.createNativeQuery(
-                        "INSERT INTO chat_session (id, tenant_id, user_id, title, created_at, updated_at) "
-                                + "VALUES (:id, :tenantId, :userId, :title, :createdAt, :updatedAt)")
+                        "INSERT INTO chat_session (id, tenant_id, user_id, title, created_at,"
+                            + " updated_at) VALUES (:id, :tenantId, :userId, :title, :createdAt,"
+                            + " :updatedAt)")
                 .setParameter("id", session.id())
                 .setParameter("tenantId", session.tenantId())
                 .setParameter("userId", session.ownerUserId())
@@ -115,8 +117,9 @@ public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
     @Transactional
     public void appendMessage(ChatMessage message) {
         em.createNativeQuery(
-                        "INSERT INTO chat_message (id, session_id, tenant_id, role, content, created_at) "
-                                + "VALUES (:id, :sessionId, :tenantId, :role, :content, :createdAt)")
+                        "INSERT INTO chat_message (id, session_id, tenant_id, role, content,"
+                            + " created_at) VALUES (:id, :sessionId, :tenantId, :role, :content,"
+                            + " :createdAt)")
                 .setParameter("id", message.id())
                 .setParameter("sessionId", message.sessionId())
                 .setParameter("tenantId", message.tenantId())
