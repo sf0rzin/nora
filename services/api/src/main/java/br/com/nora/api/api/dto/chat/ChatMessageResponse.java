@@ -1,0 +1,8 @@
+package br.com.nora.api.api.dto.chat;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+/** Uma mensagem de chat na resposta (role em wire format: {@code "user"}/{@code "assistant"}). */
+public record ChatMessageResponse(
+        UUID id, String role, String content, OffsetDateTime createdAt) {}
