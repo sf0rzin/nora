@@ -432,6 +432,11 @@ class AuthServiceTest {
                 int expiresInDays) {
             // AuthService nao usa invite; no-op aqui.
         }
+
+        @Override
+        public void sendWorkflowNotification(String toEmail, String subject, String htmlBody) {
+            // AuthService nao usa notificacao de workflow; no-op aqui.
+        }
     }
 
     static class FakeTokenGenerator implements SecureTokenGenerator {
