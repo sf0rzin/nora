@@ -197,6 +197,11 @@ class TenantServiceTest {
             store.put(tenant.id(), tenant);
             return tenant;
         }
+
+        @Override
+        public void hardDelete(UUID tenantId) {
+            store.remove(tenantId);
+        }
     }
 
     private record RecordedAudit(

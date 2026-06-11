@@ -184,13 +184,22 @@ public class WorkflowDefinitionParser {
     }
 
     private void validateActionParams(Node action) {
-        if ("send_email".equals(action.type())) {
+        if ("send_email".equals(action.type()) || "gmail_send_email".equals(action.type())) {
             String to = action.paramAsString("to");
             if (to == null || to.isBlank() || !to.contains("@")) {
                 throw new WorkflowException.InvalidDefinition(
                         "ação 'Enviar e-mail' (nó '"
                                 + action.id()
                                 + "') precisa de um destinatário válido em params.to");
+            }
+        }
+        if ("slack_post_message".equals(action.type())) {
+            String channel = action.paramAsString("channel");
+            if (channel == null || channel.isBlank()) {
+                throw new WorkflowException.InvalidDefinition(
+                        "ação 'Postar no Slack' (nó '"
+                                + action.id()
+                                + "') precisa do canal em params.channel (ex.: #vendas)");
             }
         }
     }
