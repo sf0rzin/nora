@@ -73,4 +73,5 @@ Decisões parcialmente substituídas: ADR sucessor pode marcar `Substitui parcia
 | 0028 | RLS enforcement auth-aware: escopo por dado, Flyway-as-admin e cutover | aceito (corrige 0026) |
 | 0029 | LGPD operacional: direito ao esquecimento + retenção (hard-delete) | aceito |
 | 0030 | NORA Flows: event bus in-process pós-commit + workflow engine | aceito |
+| 0031 | Integrações OAuth (Google) e armazenamento de tokens | aceito |
 | 0032 | Canvas do NORA Flows: React Flow estilizado com tokens NORA | aceito |

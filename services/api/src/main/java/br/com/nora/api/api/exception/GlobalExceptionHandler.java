@@ -89,7 +89,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleAuthDomain(AuthException ex) {
         HttpStatus status =
                 switch (ex.code()) {
-                    case "EMAIL_ALREADY_TAKEN" -> HttpStatus.CONFLICT;
+                    case "EMAIL_ALREADY_TAKEN", "ACCOUNT_TENANT_SHARED" -> HttpStatus.CONFLICT;
                     case "INVALID_CREDENTIALS", "EMAIL_NOT_VERIFIED", "REFRESH_TOKEN_INVALID" ->
                             HttpStatus.UNAUTHORIZED;
                     case "USER_DISABLED" -> HttpStatus.FORBIDDEN;
@@ -167,6 +167,24 @@ public class GlobalExceptionHandler {
         HttpStatus status =
                 switch (ex.code()) {
                     case "TASK_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
+    @ExceptionHandler(br.com.nora.api.application.integration.IntegrationException.class)
+    public ResponseEntity<ErrorResponse> handleIntegration(
+            br.com.nora.api.application.integration.IntegrationException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "INTEGRATION_NOT_CONNECTED" -> HttpStatus.NOT_FOUND;
+                    case "INTEGRATION_UNKNOWN_PROVIDER" -> HttpStatus.NOT_FOUND;
+                    case "INTEGRATION_NOT_CONFIGURED" -> HttpStatus.UNPROCESSABLE_ENTITY;
+                    case "INTEGRATION_INVALID_STATE" -> HttpStatus.BAD_REQUEST;
+                    case "INTEGRATION_PROVIDER_ERROR" -> HttpStatus.BAD_GATEWAY;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)
