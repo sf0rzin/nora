@@ -1,0 +1,475 @@
+/* ═══════════════════════════════════════════════════════════════════
+   NORA Flows — estilos da rota /fluxos (lista + builder visual).
+
+   Camadas:
+   1. Lista de fluxos (cards clicáveis)
+   2. Layout do editor (topbar + paleta | canvas | painel)
+   3. Nós custom do canvas
+   4. Overrides do React Flow (@xyflow/react) com os tokens NORA —
+      sem tema dark, sem trazer o visual default da lib.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Lista ──────────────────────────────────────────────────── */
+.flows-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--ink);
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms var(--ease-out-expo);
+}
+.flows-card:hover {
+  border-color: var(--border-strong);
+  background: var(--sidebar);
+}
+
+/* ── 2. Layout do editor ───────────────────────────────────────── */
+.flows-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+  background: var(--canvas);
+}
+@media (max-width: 720px) {
+  /* abaixo do breakpoint o app-main deixa de ter 100dvh e o mhead entra */
+  .flows-editor {
+    height: auto;
+    min-height: calc(100dvh - 69px);
+  }
+}
+
+.flows-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--canvas);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* input do nome estilo título: borda só no hover/focus */
+.flows-name-input {
+  font-family: var(--sans);
+  font-size: 16.5px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 6px 10px;
+  min-width: 0;
+  width: min(360px, 100%);
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.flows-name-input:hover {
+  border-color: var(--border);
+}
+.flows-name-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.flows-name-input::placeholder {
+  color: var(--muted);
+  font-weight: 400;
+}
+.flows-name-input.is-err {
+  border-color: var(--danger);
+}
+
+/* switch Ativo/Pausado */
+.flows-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.flows-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.flows-switch .track {
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  position: relative;
+  transition: background 160ms ease;
+  flex-shrink: 0;
+}
+.flows-switch .track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: transform 160ms var(--ease-out-expo);
+}
+.flows-switch input:checked + .track {
+  background: var(--success);
+}
+.flows-switch input:checked + .track::after {
+  transform: translateX(14px);
+}
+.flows-switch input:focus-visible + .track {
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.flows-switch .estado {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.flows-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* paleta esquerda */
+.flows-palette {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 16px 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.flows-palette .sec-label {
+  padding: 0 4px;
+  margin: 10px 0 4px;
+}
+.flows-palette .sec-label:first-child {
+  margin-top: 0;
+}
+
+.flows-bloco {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 10px;
+  cursor: pointer;
+  font-family: var(--sans);
+  transition: border-color 130ms ease, background 130ms ease;
+}
+.flows-bloco:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--chip);
+}
+.flows-bloco:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.flows-bloco .ic {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+.flows-bloco .nome {
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  line-height: 1.35;
+}
+.flows-bloco .desc {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* canvas centro */
+.flows-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+/* painel direito */
+.flows-panel {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--canvas);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.flows-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 10px 12px 0;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.flows-tab {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 7px 10px 9px;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.flows-tab:hover:not(:disabled) {
+  color: var(--ink);
+}
+.flows-tab.is-active {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+.flows-tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* chips de placeholder clicáveis (send_email) */
+.flows-ph {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--chip);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.flows-ph:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+/* linha de execução no histórico */
+.flows-exec {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.flows-exec-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 11px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--sans);
+  text-align: left;
+  transition: background 120ms ease;
+}
+.flows-exec-head:hover {
+  background: var(--sidebar);
+}
+.flows-exec-log {
+  border-top: 1px solid var(--border);
+  background: var(--sidebar);
+  padding: 8px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.flows-exec-linha {
+  display: flex;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.flows-exec-linha .hora {
+  color: var(--muted);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.flows-exec-linha.is-err,
+.flows-exec-linha.is-err .hora {
+  color: var(--danger);
+}
+
+/* ── 3. Nós custom ─────────────────────────────────────────────── */
+.flow-node {
+  width: 220px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+  padding: 10px 12px;
+  font-family: var(--sans);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.flow-node.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.flow-node .kind {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+.flow-node .titulo {
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.008em;
+  color: var(--ink);
+  line-height: 1.35;
+}
+.flow-node .resumo {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 3px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 4. Overrides React Flow (tokens NORA) ─────────────────────── */
+.flows-canvas .react-flow {
+  background: var(--canvas);
+}
+
+.flows-canvas .react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border: 1.5px solid var(--border-strong);
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.flows-canvas .react-flow__handle:hover,
+.flows-canvas .react-flow__handle.connectionindicator:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.flows-canvas .react-flow__edge-path {
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+}
+.flows-canvas .react-flow__edge.selected .react-flow__edge-path,
+.flows-canvas .react-flow__edge:focus .react-flow__edge-path {
+  stroke: var(--accent);
+}
+.flows-canvas .react-flow__connection-path {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.flows-canvas .react-flow__controls {
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+.flows-canvas .react-flow__controls-button {
+  background: var(--canvas);
+  border-bottom: 1px solid var(--border);
+  color: var(--ink);
+  width: 26px;
+  height: 26px;
+}
+.flows-canvas .react-flow__controls-button:hover {
+  background: var(--sidebar);
+}
+.flows-canvas .react-flow__controls-button svg {
+  fill: var(--ink);
+  max-width: 11px;
+  max-height: 11px;
+}
+.flows-canvas .react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+/* atribuição da lib fica visível (MIT, manter por respeito) — só harmoniza */
+.flows-canvas .react-flow__attribution {
+  background: transparent;
+  color: var(--muted);
+  font-size: 9px;
+}
+.flows-canvas .react-flow__attribution a {
+  color: var(--muted);
+}
+
+/* nó selecionado não ganha o outline default da lib (usamos o ring custom) */
+.flows-canvas .react-flow__node {
+  cursor: grab;
+}
+.flows-canvas .react-flow__node.dragging {
+  cursor: grabbing;
+}
+.flows-canvas .react-flow__node:focus,
+.flows-canvas .react-flow__node:focus-visible {
+  outline: none;
+}
+
+/* ── Responsivo (canvas builder é desktop-first; mobile usável) ── */
+@media (max-width: 900px) {
+  .flows-body {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .flows-palette {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 10px 12px;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .flows-palette .sec-label {
+    display: none;
+  }
+  .flows-bloco {
+    min-width: 190px;
+  }
+  .flows-canvas {
+    min-height: 420px;
+    flex: none;
+  }
+  .flows-panel {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
