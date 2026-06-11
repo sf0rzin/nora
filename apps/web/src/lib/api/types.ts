@@ -75,6 +75,12 @@ export interface MeetingAnalysis {
   modelVersion?: string;
   promptVersion?: string;
   generatedAt?: string;
+  /**
+   * Metadados do pipeline de análise (espelha AnalysisResponse.Metadata no
+   * backend). `piiRedactionsApplied` é a contagem real de redações aplicadas
+   * pelo PII Shield (ADR 0012). Opcional: análises antigas podem não ter.
+   */
+  metadata?: { piiRedactionsApplied?: number; [k: string]: unknown };
 }
 
 export interface UserRef {
