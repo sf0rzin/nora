@@ -88,6 +88,30 @@ param resendApiKey string = ''
 @description('Email From usado pelo Resend (`Nome <email@dominio>`).')
 param noraEmailFrom string = 'NORA <onboarding@resend.dev>'
 
+// ---- Integracoes OAuth (NORA Flows Fase 2 — ADR 0031) ----
+
+@description('Google OAuth Client ID (Gmail/Calendar). Nao-secreto (vai como env puro). Vazio = hub mostra Google como "nao configurado" e o start retorna 422 (fail-visible).')
+param googleOauthClientId string = ''
+
+@description('Google OAuth Client Secret. Vai pro KV (google-oauth-client-secret) so quando setado.')
+@secure()
+param googleOauthClientSecret string = ''
+
+@description('Slack OAuth Client ID. Mesmo contrato do Google.')
+param slackOauthClientId string = ''
+
+@description('Slack OAuth Client Secret. KV slack-oauth-client-secret so quando setado.')
+@secure()
+param slackOauthClientSecret string = ''
+
+@description('Assina o state OAuth (HMAC-SHA256, ADR 0031). Vazio = segredo efemero por boot (states nao sobrevivem a restart — ok em dev, ruim em prod).')
+@secure()
+param integrationsStateSecret string = ''
+
+@description('Cifra os tokens OAuth em repouso (AES-256-GCM, 32 bytes base64, ADR 0031). Vazio = tokens armazenados sem cifra com WARN no boot.')
+@secure()
+param integrationsEncKey string = ''
+
 // ============================================================
 // PARAMS — imagens
 // ============================================================
@@ -388,6 +412,32 @@ var keyVaultSecrets = {
         value: empty(resendApiKey) ? 'unset' : resendApiKey
       }
     ],
+    // Integracoes OAuth (ADR 0031): secrets criados SO quando setados — sem placeholder 'unset'
+    // (o TokenCipher rejeitaria "unset" como base64 e derrubaria o boot da API).
+    empty(googleOauthClientSecret) ? [] : [
+      {
+        name: 'google-oauth-client-secret'
+        value: googleOauthClientSecret
+      }
+    ],
+    empty(slackOauthClientSecret) ? [] : [
+      {
+        name: 'slack-oauth-client-secret'
+        value: slackOauthClientSecret
+      }
+    ],
+    empty(integrationsStateSecret) ? [] : [
+      {
+        name: 'integrations-state-secret'
+        value: integrationsStateSecret
+      }
+    ],
+    empty(integrationsEncKey) ? [] : [
+      {
+        name: 'integrations-enc-key'
+        value: integrationsEncKey
+      }
+    ],
     // Control plane (ADR 0022/0023): secrets só quando enablePlatform.
     enablePlatform ? [
       {
@@ -681,6 +731,53 @@ var apiPlatformSecrets = enablePlatform ? [
   }
 ] : []
 
+// Integracoes OAuth (ADR 0031): cada bloco so entra quando o respectivo param foi setado —
+// secretRef para secret inexistente derrubaria a revision, e placeholder 'unset' quebraria o
+// boot (TokenCipher valida base64). Redirect URIs derivam do dominio publico da API (PR #215):
+// precisam bater EXATAMENTE com os Authorized redirect URIs cadastrados no Google/Slack.
+var apiIntegrationsEnv = union(
+  empty(googleOauthClientId) || empty(googleOauthClientSecret) ? [] : [
+    {
+      name: 'GOOGLE_OAUTH_CLIENT_ID'
+      value: googleOauthClientId
+    }
+    {
+      name: 'GOOGLE_OAUTH_CLIENT_SECRET'
+      secretRef: 'google-oauth-client-secret'
+    }
+    {
+      name: 'GOOGLE_OAUTH_REDIRECT_URI'
+      value: '${apiBaseUrl}/integrations/google/oauth/callback'
+    }
+  ],
+  empty(slackOauthClientId) || empty(slackOauthClientSecret) ? [] : [
+    {
+      name: 'SLACK_OAUTH_CLIENT_ID'
+      value: slackOauthClientId
+    }
+    {
+      name: 'SLACK_OAUTH_CLIENT_SECRET'
+      secretRef: 'slack-oauth-client-secret'
+    }
+    {
+      name: 'SLACK_OAUTH_REDIRECT_URI'
+      value: '${apiBaseUrl}/integrations/slack/oauth/callback'
+    }
+  ],
+  empty(integrationsStateSecret) ? [] : [
+    {
+      name: 'NORA_INTEGRATIONS_STATE_SECRET'
+      secretRef: 'integrations-state-secret'
+    }
+  ],
+  empty(integrationsEncKey) ? [] : [
+    {
+      name: 'NORA_INTEGRATIONS_ENC_KEY'
+      secretRef: 'integrations-enc-key'
+    }
+  ]
+)
+
 var apiPlatformEnv = enablePlatform ? [
   {
     name: 'NORA_PLATFORM_ENABLED'
@@ -772,6 +869,36 @@ var apiSecrets = {
       {
         name: 'resend-api-key'
         keyVaultUrl: '${kvUri}secrets/resend-api-key'
+        identity: uaiApi.outputs.id
+      }
+    ],
+    // Integracoes OAuth (ADR 0031): referencias condicionais — o secret do KV so existe
+    // quando o param foi setado (mesma condicao do bloco de criacao no KV).
+    empty(googleOauthClientSecret) ? [] : [
+      {
+        name: 'google-oauth-client-secret'
+        keyVaultUrl: '${kvUri}secrets/google-oauth-client-secret'
+        identity: uaiApi.outputs.id
+      }
+    ],
+    empty(slackOauthClientSecret) ? [] : [
+      {
+        name: 'slack-oauth-client-secret'
+        keyVaultUrl: '${kvUri}secrets/slack-oauth-client-secret'
+        identity: uaiApi.outputs.id
+      }
+    ],
+    empty(integrationsStateSecret) ? [] : [
+      {
+        name: 'integrations-state-secret'
+        keyVaultUrl: '${kvUri}secrets/integrations-state-secret'
+        identity: uaiApi.outputs.id
+      }
+    ],
+    empty(integrationsEncKey) ? [] : [
+      {
+        name: 'integrations-enc-key'
+        keyVaultUrl: '${kvUri}secrets/integrations-enc-key'
         identity: uaiApi.outputs.id
       }
     ],
@@ -931,7 +1058,7 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'NORA_EMAIL_FROM'
         value: noraEmailFrom
       }
-    ], apiPlatformEnv, apiRlsEnv)
+    ], apiIntegrationsEnv, apiPlatformEnv, apiRlsEnv)
     secretsObject: apiSecrets
     userAssignedIdentityId: uaiApi.outputs.id
     registry: registry
