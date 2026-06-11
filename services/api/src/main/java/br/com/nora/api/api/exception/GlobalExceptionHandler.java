@@ -175,6 +175,21 @@ public class GlobalExceptionHandler {
                                 ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
     }
 
+    @ExceptionHandler(br.com.nora.api.application.workflow.WorkflowException.class)
+    public ResponseEntity<ErrorResponse> handleWorkflow(
+            br.com.nora.api.application.workflow.WorkflowException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "WORKFLOW_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+                    case "WORKFLOW_INVALID_DEFINITION" -> HttpStatus.UNPROCESSABLE_ENTITY;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
     @ExceptionHandler(ChatException.class)
     public ResponseEntity<ErrorResponse> handleChat(ChatException ex) {
         HttpStatus status =
