@@ -12,6 +12,11 @@ name: deploy-infra
 #   - DEEPSEEK_API_KEY        opcional (chat multi-provider — troca p/ DeepSeek ao vivo)
 #   - GEMINI_API_KEY          opcional (chat/multimodal — Gemini)
 #   - RESEND_API_KEY          opcional (vazio = backend cai em LogEmailSender)
+#   Integracoes OAuth do NORA Flows (ADR 0031) — vazios = conector "nao configurado" no hub:
+#   - GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET   (Gmail + Calendar)
+#   - SLACK_OAUTH_CLIENT_ID / SLACK_OAUTH_CLIENT_SECRET     (Slack)
+#   - NORA_INTEGRATIONS_STATE_SECRET   assina o state OAuth (HMAC)
+#   - NORA_INTEGRATIONS_ENC_KEY        AES-256-GCM dos tokens em repouso (32 bytes base64)
 #   Control plane (ADR 0022/0023/0024/0025) — só usados quando enablePlatform=true no bicepparam:
 #   - PG_PLATFORM_ADMIN_PASSWORD   senha do 2º Postgres (plataforma)
 #   - NORA_PLATFORM_INTERNAL_TOKEN token serviço-a-serviço (/internal/platform/**)
@@ -113,6 +118,13 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           NORA_EMAIL_FROM: ${{ vars.NORA_EMAIL_FROM }}
+          # Integracoes OAuth do NORA Flows (ADR 0031) — vazios = conector "nao configurado".
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          SLACK_OAUTH_CLIENT_ID: ${{ secrets.SLACK_OAUTH_CLIENT_ID }}
+          SLACK_OAUTH_CLIENT_SECRET: ${{ secrets.SLACK_OAUTH_CLIENT_SECRET }}
+          NORA_INTEGRATIONS_STATE_SECRET: ${{ secrets.NORA_INTEGRATIONS_STATE_SECRET }}
+          NORA_INTEGRATIONS_ENC_KEY: ${{ secrets.NORA_INTEGRATIONS_ENC_KEY }}
           # Control plane (ADR 0022/0023/0024) — usados quando enablePlatform=true.
           PG_PLATFORM_ADMIN_PASSWORD: ${{ secrets.PG_PLATFORM_ADMIN_PASSWORD }}
           NORA_PLATFORM_INTERNAL_TOKEN: ${{ secrets.NORA_PLATFORM_INTERNAL_TOKEN }}
@@ -169,6 +181,13 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           NORA_EMAIL_FROM: ${{ vars.NORA_EMAIL_FROM }}
+          # Integracoes OAuth do NORA Flows (ADR 0031) — vazios = conector "nao configurado".
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          SLACK_OAUTH_CLIENT_ID: ${{ secrets.SLACK_OAUTH_CLIENT_ID }}
+          SLACK_OAUTH_CLIENT_SECRET: ${{ secrets.SLACK_OAUTH_CLIENT_SECRET }}
+          NORA_INTEGRATIONS_STATE_SECRET: ${{ secrets.NORA_INTEGRATIONS_STATE_SECRET }}
+          NORA_INTEGRATIONS_ENC_KEY: ${{ secrets.NORA_INTEGRATIONS_ENC_KEY }}
           # Control plane (ADR 0022/0023/0024) — usados quando enablePlatform=true.
           PG_PLATFORM_ADMIN_PASSWORD: ${{ secrets.PG_PLATFORM_ADMIN_PASSWORD }}
           NORA_PLATFORM_INTERNAL_TOKEN: ${{ secrets.NORA_PLATFORM_INTERNAL_TOKEN }}
