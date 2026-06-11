@@ -14,7 +14,7 @@
 | 0 | Event bus + MeetingAnalysisCompletedEvent | ✅ codado | IT verde | ADR 0030; porta DomainEventPublisher + adapter pós-commit; emissão em AnalysisService.run() fail-soft |
 | 0 | Storage + engine Flows (V023+, RLS) | ✅ codado | IT verde | V023 (workflows + workflow_executions, RLS padrão V022); WorkflowEngine BFS + ConditionEvaluator + ActionRegistry; API /workflows CRUD + test + executions |
 | 0 | Ação "Enviar e-mail" real (Resend) | ✅ codado | IT verde (e-mail capturado) | EmailSender.sendWorkflowNotification PROPAGA falha; falta verificação com Resend real em produção |
-| 0 | Spike OAuth Google | ⬜ pendente | — | depende de handoff |
+| 0 | Spike OAuth Google | 🟨 backend pronto | testes verdes (Google stubado) | ADR 0031: V024 + state HMAC + AES-GCM + refresh runtime + ações gmail_send_email/calendar_create_event; FALTA handoff (projeto Google Cloud + client id/secret) p/ ficar REAL |
 | 1 | Canvas /fluxos (grid + nós + Testar) | ⬜ pendente | — | |
 | 1 | Cenário-âncora ao vivo | ⬜ pendente | — | |
 | 2 | Gmail (OAuth real) | ⬜ pendente | — | |
