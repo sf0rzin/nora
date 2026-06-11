@@ -8,7 +8,8 @@ public sealed class AuthException extends RuntimeException
                 AuthException.TokenInvalid,
                 AuthException.RefreshTokenInvalid,
                 AuthException.UserDisabled,
-                AuthException.RateLimited {
+                AuthException.RateLimited,
+                AuthException.AccountNotPersonal {
 
     private final String code;
 
@@ -65,6 +66,20 @@ public sealed class AuthException extends RuntimeException
     public static final class RateLimited extends AuthException {
         public RateLimited() {
             super("RATE_LIMITED", "Too many requests. Try again in a few minutes.");
+        }
+    }
+
+    /**
+     * Exclusao de conta bloqueada: o tenant tem outros usuarios (Enterprise). A exclusao via
+     * configuracoes so cobre o tenant pessoal do Core (1 usuario); workspaces compartilhados exigem
+     * fluxo administrativo proprio.
+     */
+    public static final class AccountNotPersonal extends AuthException {
+        public AccountNotPersonal() {
+            super(
+                    "ACCOUNT_TENANT_SHARED",
+                    "Workspace has other users; account deletion only applies to personal"
+                            + " workspaces.");
         }
     }
 

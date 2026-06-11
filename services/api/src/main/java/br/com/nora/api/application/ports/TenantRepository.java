@@ -15,4 +15,11 @@ public interface TenantRepository {
 
     /** IDs de todos os tenants ATIVOS (soft-delete filtrado). Usado pelo sweeper de retenção. */
     List<UUID> allActiveTenantIds();
+
+    /**
+     * Hard-delete FÍSICO do tenant (LGPD: exclusão de conta, GOAL Fase 3). O FK CASCADE purga TUDO
+     * que referencia tenants(id): users, meetings/transcripts (PII), análises, chat, workflows,
+     * conexões OAuth, tokens. Irreversível — o caller valida senha + tenant pessoal antes.
+     */
+    void hardDelete(UUID tenantId);
 }

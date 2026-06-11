@@ -498,6 +498,14 @@ class AuthServiceTest {
             return t;
         }
 
+        @Override
+        public void hardDelete(UUID tenantId) {
+            Tenant removed = byId.remove(tenantId);
+            if (removed != null) {
+                bySlug.remove(removed.slug());
+            }
+        }
+
         Optional<Tenant> byId(UUID id) {
             return findById(id);
         }
@@ -506,6 +514,11 @@ class AuthServiceTest {
     static class InMemoryUserRepo implements UserRepository {
         private final Map<UUID, User> byId = new LinkedHashMap<>();
         private final java.util.Set<UUID> rootIds = new java.util.HashSet<>();
+
+        @Override
+        public int countByTenant(UUID tenantId) {
+            return (int) byId.values().stream().filter(u -> u.tenantId().equals(tenantId)).count();
+        }
 
         @Override
         public Optional<User> findById(UUID id) {
