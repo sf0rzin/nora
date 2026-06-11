@@ -45,14 +45,40 @@
 /* mudança Stratfy: sessões coladas no título da categoria (gap menor) */
 .side-sec-label--tight { margin: 16px 0 2px; }
 
-.side-session {
-  display: block; padding: 6px 10px; border-radius: 7px; font-size: 12.5px;
-  color: var(--ink); letter-spacing: -0.005em; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; transition: background 120ms ease;
+/* Sessão da sidebar com ações (renomear/apagar) reveladas no hover/focus da linha */
+.side-session-row {
+  display: flex; align-items: center; border-radius: 7px;
+  transition: background 120ms ease;
 }
-.side-session:hover { background: rgba(0, 0, 0, 0.03); }
-.side-session.is-active { background: var(--accent-soft); color: var(--accent-ink); }
-.side-session .when { font-size: 10.5px; color: var(--muted); margin-left: 6px; }
+.side-session-row:hover, .side-session-row.is-editing { background: rgba(0, 0, 0, 0.03); }
+.side-session-row.is-active { background: var(--accent-soft); }
+.side-session-row.is-active .side-session-link { color: var(--accent-ink); }
+.side-session-link {
+  flex: 1; min-width: 0; display: block; padding: 6px 10px; font-size: 12.5px;
+  color: var(--ink); letter-spacing: -0.005em; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.side-session-link .when { font-size: 10.5px; color: var(--muted); margin-left: 6px; }
+.side-session-acts { display: none; align-items: center; gap: 1px; padding-right: 5px; flex-shrink: 0; }
+.side-session-row:hover .side-session-acts,
+.side-session-row:focus-within .side-session-acts { display: inline-flex; }
+.side-session-act {
+  width: 22px; height: 22px; display: grid; place-items: center; border: none;
+  background: transparent; border-radius: 5px; color: var(--muted); cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.side-session-act:hover { background: rgba(0, 0, 0, 0.05); color: var(--ink); }
+.side-session-act.is-danger:hover { color: var(--danger); }
+.side-session-act:disabled { opacity: 0.5; cursor: default; }
+.side-session-input {
+  flex: 1; min-width: 0; margin: 2px 4px; padding: 4px 6px; font-family: var(--sans);
+  font-size: 12.5px; color: var(--ink); background: var(--canvas);
+  border: 1px solid var(--accent); border-radius: 6px; outline: none;
+}
+.side-session-confirm {
+  flex: 1; min-width: 0; padding: 6px 10px; font-size: 12px; color: var(--danger);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .side-link {
   display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 7px;
@@ -186,6 +212,20 @@ kbd.kbd {
   font-family: var(--sans); font-size: 10.5px; padding: 1px 6px; border: 1px solid var(--border);
   border-radius: 4px; background: var(--canvas); color: var(--muted); letter-spacing: 0.02em;
 }
+
+/* menu pop pequeno (ancorado a um botão; ex.: Exportar do detalhe) */
+.menu-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 176px;
+  background: var(--canvas); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 32px -12px rgba(15, 23, 42, 0.22); padding: 4px;
+  display: flex; flex-direction: column;
+}
+.menu-item {
+  display: block; width: 100%; text-align: left; padding: 8px 10px; border: none;
+  background: transparent; border-radius: 7px; font-family: var(--sans);
+  font-size: 12.5px; color: var(--ink); cursor: pointer; transition: background 120ms ease;
+}
+.menu-item:hover { background: var(--sidebar); }
 
 .notice {
   padding: 10px 14px; border-radius: 9px; border: 1px solid var(--border);
