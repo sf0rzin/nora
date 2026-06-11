@@ -1,5 +1,5 @@
 /**
- * NORA Flows — catálogo de blocos v1 (Fase 1 do builder).
+ * NORA Flows — catálogo de blocos do builder (Fase 1 + ações Google da Fase 2).
  *
  * Fonte única de verdade no front pros blocos que o engine aceita (ADR 0030).
  * O backend rejeita tipos desconhecidos, então NUNCA adicione um bloco aqui
@@ -57,6 +57,43 @@ export function IconeKind({ kind, size = 14 }: { kind: WorkflowNodeKind; size?: 
   }
 }
 
+/** Props comuns dos ícones por bloco — mesmo traço do IconeKind (stroke 1.7). */
+function propsSvg(size: number) {
+  return {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.7,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+}
+
+/** Envelope com seta de envio — ação "Enviar via Gmail". */
+export function IconeGmail({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8" />
+      <path d="m3 7 9 6 9-6" />
+      <path d="M15.5 19H22" />
+      <path d="m19.5 16.5 2.5 2.5-2.5 2.5" />
+    </svg>
+  );
+}
+
+/** Calendário com "+" — ação "Criar evento no Calendar". */
+export function IconeCalendarMais({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <rect x="3" y="5" width="18" height="16" rx="2.5" />
+      <path d="M8 3v4M16 3v4M3 10h18" />
+      <path d="M12 13.2v4.6M9.7 15.5h4.6" />
+    </svg>
+  );
+}
+
 const PRIORIDADE_ROTULO: Record<string, string> = {
   HIGH: "Alta",
   MEDIUM: "Média",
@@ -73,6 +110,8 @@ export interface BlocoMeta {
   paramsPadrao: Record<string, unknown>;
   /** Linha de resumo dos params exibida dentro do nó (null = sem resumo). */
   resumo: (params: Record<string, unknown>) => string | null;
+  /** Ícone próprio do bloco; quando ausente, usa o ícone do papel (IconeKind). */
+  Icone?: (props: { size?: number }) => ReactNode;
 }
 
 /** Catálogo v1 — exatamente os tipos que o engine executa hoje. */
@@ -130,7 +169,35 @@ export const CATALOGO: BlocoMeta[] = [
     resumo: (p) =>
       typeof p.to === "string" && p.to.trim() ? `para: ${p.to.trim()}` : "defina o destinatário",
   },
+  {
+    kind: "action",
+    type: "gmail_send_email",
+    nome: "Enviar via Gmail",
+    descricao: "Envia pela SUA conta Google conectada (remetente = você)",
+    paramsPadrao: { to: "" },
+    resumo: (p) =>
+      typeof p.to === "string" && p.to.trim() ? `para: ${p.to.trim()}` : "defina o destinatário",
+    Icone: IconeGmail,
+  },
+  {
+    kind: "action",
+    type: "calendar_create_event",
+    nome: "Criar evento no Calendar",
+    descricao: "Cria um follow-up no seu Google Calendar",
+    paramsPadrao: { title: "", startInDays: 1, hour: 10, durationMinutes: 30 },
+    resumo: (p) => resumoEvento(p),
+    Icone: IconeCalendarMais,
+  },
 ];
+
+/** Resumo do calendar_create_event — ex.: "amanhã às 10h, 30min". */
+function resumoEvento(p: Record<string, unknown>): string {
+  const dias = typeof p.startInDays === "number" ? p.startInDays : 1;
+  const hora = typeof p.hour === "number" ? p.hour : 10;
+  const dur = typeof p.durationMinutes === "number" ? p.durationMinutes : 30;
+  const quando = dias === 0 ? "hoje" : dias === 1 ? "amanhã" : `em ${dias} dias`;
+  return `${quando} às ${hora}h, ${dur}min`;
+}
 
 /** Busca a meta de um bloco pelo tipo. Tipos fora do catálogo retornam undefined. */
 export function metaDoBloco(type: string): BlocoMeta | undefined {
@@ -138,7 +205,8 @@ export function metaDoBloco(type: string): BlocoMeta | undefined {
 }
 
 /**
- * Placeholders suportados pelo backend em subject/body do send_email.
+ * Placeholders suportados pelo backend em subject/body do send_email e do
+ * gmail_send_email (e no title do calendar_create_event).
  * Renderizados como chips clicáveis no painel de parâmetros.
  */
 export const PLACEHOLDERS_EMAIL: { token: string; dica: string }[] = [
