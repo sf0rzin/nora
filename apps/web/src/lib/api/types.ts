@@ -241,3 +241,74 @@ export interface ChatSessionDetail {
   updatedAt: string;
   messages: ChatMessage[];
 }
+
+// ---------- NORA Flows — workflows de automação (ADR 0030) ----------
+
+/** Papel de um nó dentro do grafo do fluxo. */
+export type WorkflowNodeKind = "trigger" | "condition" | "action";
+
+/** Nó da definição persistida no backend (kind + type do catálogo + params). */
+export interface WorkflowDefinitionNode {
+  id: string;
+  kind: WorkflowNodeKind;
+  /** Tipo do catálogo (ex.: `meeting.analysis_completed`, `send_email`). */
+  type: string;
+  params?: Record<string, unknown>;
+  /** Posição do nó no canvas do builder (persistida pra reabrir igual). */
+  position?: { x: number; y: number };
+}
+
+/** Aresta dirigida entre dois nós do fluxo. */
+export interface WorkflowDefinitionEdge {
+  id: string;
+  source: string;
+  target: string;
+}
+
+/**
+ * Definição completa do fluxo (grafo). O backend valida: exatamente 1 gatilho,
+ * ao menos 1 ação, sem ciclos e params obrigatórios por tipo de nó.
+ */
+export interface WorkflowDefinition {
+  nodes: WorkflowDefinitionNode[];
+  edges: WorkflowDefinitionEdge[];
+}
+
+/** Workflow persistido, escopado ao tenant (ADR 0002). */
+export interface WorkflowResponse {
+  id: string;
+  name: string;
+  /** Tipo do gatilho (derivado da definição pelo backend). */
+  triggerType: string;
+  active: boolean;
+  definition: WorkflowDefinition;
+  /** ISO-8601. */
+  createdAt: string;
+  /** ISO-8601. */
+  updatedAt: string;
+}
+
+export type WorkflowExecutionStatus = "RUNNING" | "SUCCESS" | "FAILED";
+
+/** Linha do log de uma execução de fluxo. */
+export interface WorkflowExecutionLogEntry {
+  /** ISO-8601. */
+  at: string;
+  /** Nó que produziu a linha; null para mensagens do engine. */
+  nodeId: string | null;
+  level: "info" | "error";
+  message: string;
+}
+
+/** Execução de um fluxo (disparo real ou teste manual). */
+export interface WorkflowExecutionResponse {
+  id: string;
+  workflowId: string;
+  eventType: string;
+  status: WorkflowExecutionStatus;
+  log: WorkflowExecutionLogEntry[];
+  /** ISO-8601. */
+  createdAt: string;
+  /** ISO-8601; null enquanto RUNNING. */
+  finishedAt: string | null;
+}

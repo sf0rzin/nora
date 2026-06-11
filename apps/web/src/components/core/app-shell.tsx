@@ -64,6 +64,15 @@ function TasksIcon() {
     </svg>
   );
 }
+function FlowsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+      <path d="M10 6.5h5.5a2 2 0 0 1 2 2V14" />
+    </svg>
+  );
+}
 function PlugIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -143,6 +152,7 @@ const NAV: NavItem[] = [
   { label: "Nova sessão", href: "/chat" as Route, icon: <ChatIcon />, plus: true },
   { label: "Projetos", href: "/projetos" as Route, icon: <ProjectsIcon /> },
   { label: "Action items", href: "/tasks" as Route, icon: <TasksIcon /> },
+  { label: "Fluxos", href: "/fluxos" as Route, icon: <FlowsIcon />, matchPrefixes: ["/fluxos"] },
 ];
 
 const CONNECTORS: NavItem = {
