@@ -21,7 +21,7 @@ public final class User {
     private final UUID tenantId;
     private final Email email;
     private String passwordHash;
-    private final String displayName;
+    private String displayName;
     private UserStatus status;
     private Instant emailVerifiedAt;
     private final Instant createdAt;
@@ -77,6 +77,15 @@ public final class User {
 
     public void changePasswordHash(String newHash, Instant now) {
         this.passwordHash = Objects.requireNonNull(newHash);
+        this.updatedAt = now;
+    }
+
+    /** Troca o nome de exibicao (aba Conta das configuracoes). Rejeita blank. */
+    public void changeDisplayName(String newDisplayName, Instant now) {
+        if (newDisplayName == null || newDisplayName.isBlank()) {
+            throw new IllegalArgumentException("displayName cannot be blank");
+        }
+        this.displayName = newDisplayName.trim();
         this.updatedAt = now;
     }
 

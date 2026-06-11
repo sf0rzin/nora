@@ -653,6 +653,11 @@ class InvitationServiceTest {
             return tenant;
         }
 
+        @Override
+        public void hardDelete(UUID tenantId) {
+            store.remove(tenantId);
+        }
+
         Tenant byId(UUID id) {
             return store.get(id);
         }
@@ -661,6 +666,11 @@ class InvitationServiceTest {
     static class InMemoryUserRepo implements UserRepository {
         final Map<UUID, User> byId = new LinkedHashMap<>();
         final Set<UUID> rootIds = new HashSet<>();
+
+        @Override
+        public int countByTenant(UUID tenantId) {
+            return (int) byId.values().stream().filter(u -> u.tenantId().equals(tenantId)).count();
+        }
 
         @Override
         public Optional<User> findById(UUID id) {

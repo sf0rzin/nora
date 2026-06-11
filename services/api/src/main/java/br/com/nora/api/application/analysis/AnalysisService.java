@@ -14,8 +14,13 @@ import br.com.nora.api.application.ports.ProductivityAssessmentRepository;
 import br.com.nora.api.application.ports.TenantContextRepository;
 import br.com.nora.api.application.ports.TenantRlsContext;
 import br.com.nora.api.application.ports.TranscriptRepository;
+import br.com.nora.api.domain.analysis.ActionItem;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
+import br.com.nora.api.domain.analysis.Risk;
+import br.com.nora.api.domain.analysis.Severity;
+import br.com.nora.api.domain.event.ActionItemCreatedEvent;
 import br.com.nora.api.domain.event.MeetingAnalysisCompletedEvent;
+import br.com.nora.api.domain.event.MeetingRiskDetectedEvent;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
 import br.com.nora.api.domain.meeting.Transcript;
@@ -137,10 +142,10 @@ public class AnalysisService {
         persistCustomerConfidence(meetingId, tenantId, result);
         emitUsage(tenantId, saved);
         markStatusAndSnippet(meeting, ProcessingStatus.COMPLETED, saved.summarySnippet());
-        // Evento de domínio do NORA Flows: emitido APÓS o commit do COMPLETED acima
+        // Eventos de domínio do NORA Flows: emitidos APÓS o commit do COMPLETED acima
         // (markStatusAndSnippet é @Transactional e já retornou). Fail-soft: workflow nunca
         // derruba nem reverte a análise.
-        publishAnalysisCompleted(meetingId, tenantId, saved);
+        publishDomainEvents(meetingId, tenantId, saved);
         // RAG: indexa o embedding do RESUMO (já tratado pelo PII Shield, não a transcrição bruta).
         // Best-effort — o EmbeddingService engole falhas e nunca derruba a análise.
         String snippet = saved.summarySnippet() == null ? "" : saved.summarySnippet();
@@ -148,17 +153,42 @@ public class AnalysisService {
         return saved;
     }
 
-    private void publishAnalysisCompleted(UUID meetingId, UUID tenantId, MeetingAnalysis saved) {
+    /**
+     * Emite os eventos de domínio do NORA Flows pós-COMPLETED: análise concluída + um evento por
+     * action item + um por risco de severidade ALTA (só o nível máximo vira alerta — risco
+     * baixo/médio é ruído como gatilho). Cada publish é fail-soft individualmente: falha em um
+     * evento não impede os demais e NUNCA derruba o pipeline.
+     */
+    private void publishDomainEvents(UUID meetingId, UUID tenantId, MeetingAnalysis saved) {
+        Instant occurredAt = Instant.now();
+        publishSafely(
+                new MeetingAnalysisCompletedEvent(tenantId, meetingId, saved.id(), occurredAt));
+        for (ActionItem item : saved.actionItems()) {
+            publishSafely(
+                    new ActionItemCreatedEvent(
+                            tenantId,
+                            meetingId,
+                            item.title(),
+                            item.assignee(),
+                            item.priority(),
+                            occurredAt));
+        }
+        for (Risk risk : saved.risks()) {
+            if (risk.severity() == Severity.HIGH) {
+                publishSafely(
+                        new MeetingRiskDetectedEvent(
+                                tenantId, meetingId, risk.text(), risk.severity(), occurredAt));
+            }
+        }
+    }
+
+    private void publishSafely(Object event) {
         try {
-            events.publish(
-                    new MeetingAnalysisCompletedEvent(
-                            tenantId, meetingId, saved.id(), Instant.now()));
+            events.publish(event);
         } catch (RuntimeException ex) {
             LOG.warn(
-                    "Falha ao publicar MeetingAnalysisCompletedEvent meetingId={} tenantId={}"
-                            + " cause={}",
-                    meetingId,
-                    tenantId,
+                    "Falha ao publicar evento de domínio {} cause={}",
+                    event.getClass().getSimpleName(),
                     ex.getMessage());
         }
     }

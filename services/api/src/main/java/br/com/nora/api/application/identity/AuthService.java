@@ -404,6 +404,128 @@ public class AuthService {
         return refreshTokenRepository.revokeAllByUserId(userId, clock.now());
     }
 
+    // ----- Configuracoes (GOAL Fase 3): conta, senha autenticada, reenvio, exclusao -----
+
+    /** Usuario autenticado atual (aba Conta). */
+    @Transactional(readOnly = true)
+    public User me(UUID userId) {
+        return userRepository.findById(userId).orElseThrow(AuthException.InvalidCredentials::new);
+    }
+
+    /** Atualiza o nome de exibicao do proprio usuario (PATCH /users/me). */
+    @Transactional
+    public User updateDisplayName(UUID userId, String displayName) {
+        User user =
+                userRepository.findById(userId).orElseThrow(AuthException.InvalidCredentials::new);
+        user.changeDisplayName(displayName, clock.now());
+        User saved = userRepository.save(user);
+        audit.record(
+                saved.tenantId(),
+                saved.id(),
+                "auth.profile.display_name.updated",
+                "USER",
+                saved.id(),
+                Map.of("displayName", saved.displayName()));
+        return saved;
+    }
+
+    /**
+     * Troca de senha AUTENTICADA (aba Seguranca; distinta do reset por e-mail do US04). Exige a
+     * senha atual, valida a nova na policy, revoga TODAS as sessoes (OWASP — sessao roubada nao
+     * sobrevive a troca) e emite um par novo para o dispositivo atual continuar logado.
+     */
+    @Transactional
+    public LoginResult changePassword(UUID userId, String currentPassword, String newPassword) {
+        User user =
+                userRepository.findById(userId).orElseThrow(AuthException.InvalidCredentials::new);
+        if (!passwordHasher.matches(currentPassword, user.passwordHash())) {
+            throw new AuthException.InvalidCredentials();
+        }
+        PasswordPolicy.validate(newPassword);
+        Instant now = clock.now();
+        user.changePasswordHash(passwordHasher.hash(newPassword), now);
+        userRepository.save(user);
+        int revokedSessions = refreshTokenRepository.revokeAllByUserId(user.id(), now);
+        audit.record(
+                user.tenantId(),
+                user.id(),
+                "auth.password.changed",
+                "USER",
+                user.id(),
+                Map.of("revokedSessions", revokedSessions));
+        return issueTokens(user);
+    }
+
+    /**
+     * Reenvia o e-mail de verificacao (tela de login, quando o login falha com EMAIL_NOT_VERIFIED).
+     * Silencioso como o reset: e-mail inexistente ou ja verificado nao e distinguivel na resposta
+     * (anti-enumeracao).
+     */
+    @Transactional
+    public RequestPasswordResetResult resendVerificationEmail(String rawEmail) {
+        Email email;
+        try {
+            email = Email.of(rawEmail);
+        } catch (IllegalArgumentException ex) {
+            return new RequestPasswordResetResult(null);
+        }
+        var maybeUser = userRepository.findByEmail(email);
+        if (maybeUser.isEmpty() || maybeUser.get().isEmailVerified()) {
+            return new RequestPasswordResetResult(null);
+        }
+        User user = maybeUser.get();
+        Instant now = clock.now();
+        // So o ultimo token gerado vale (mesmo padrao do reset de senha).
+        tokenRepository.invalidateActiveForUser(user.id(), Purpose.EMAIL_VERIFICATION, now);
+
+        GeneratedToken token = tokenGenerator.generate();
+        tokenRepository.save(
+                new OneTimeToken(
+                        UUID.randomUUID(),
+                        user.id(),
+                        user.tenantId(),
+                        token.hash(),
+                        now.plus(settings.emailVerificationTtl()),
+                        null,
+                        now,
+                        Purpose.EMAIL_VERIFICATION));
+
+        String link = settings.publicBaseUrl() + "/auth/verify-email?token=" + token.rawToken();
+        emailSender.sendEmailVerification(email.value(), user.displayName(), link);
+        audit.record(
+                user.tenantId(),
+                user.id(),
+                "auth.email.verification.resent",
+                "USER",
+                user.id(),
+                Map.of("email", user.email().value()));
+        return new RequestPasswordResetResult(settings.exposeDevTokens() ? token.rawToken() : null);
+    }
+
+    /**
+     * LGPD — exclusao DEFINITIVA da conta (zona de perigo). Exige a senha atual e que o tenant seja
+     * pessoal (1 usuario): o hard-delete do tenant CASCADE purga usuario, reunioes, transcricoes
+     * (PII), analises, chat, workflows e tokens. Irreversivel por design.
+     */
+    @Transactional
+    public void deleteAccount(UUID userId, UUID tenantId, String password) {
+        User user =
+                userRepository.findById(userId).orElseThrow(AuthException.InvalidCredentials::new);
+        if (!user.tenantId().equals(tenantId)) {
+            throw new AuthException.InvalidCredentials();
+        }
+        if (!passwordHasher.matches(password, user.passwordHash())) {
+            throw new AuthException.InvalidCredentials();
+        }
+        if (userRepository.countByTenant(tenantId) != 1) {
+            throw new AuthException.AccountNotPersonal();
+        }
+        // Sem audit persistido: a trilha pertence ao tenant e sera purgada junto (esquecimento
+        // total e o objetivo). Fica so o log operacional com ids, sem PII.
+        LOG.info("LGPD account deletion userId={} tenantId={}", userId, tenantId);
+        tenantRepository.hardDelete(tenantId);
+    }
+
     // ----- US04: reset de senha -----
 
     public record RequestPasswordResetCommand(String email) {}
