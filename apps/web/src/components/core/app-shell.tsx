@@ -20,7 +20,7 @@ import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { clearSession, getCurrentUser, type SessionUser } from "@/lib/auth";
+import { SESSION_USER_EVENT, clearSession, getCurrentUser, type SessionUser } from "@/lib/auth";
 
 import { AppSidebarSessions } from "./app-sidebar-sessions";
 import { CommandPalette } from "./command-palette";
@@ -176,6 +176,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setUser(getCurrentUser());
+    // Perfil editado nas configurações (displayName) → sidebar reflete na hora.
+    const onUserUpdated = () => setUser(getCurrentUser());
+    window.addEventListener(SESSION_USER_EVENT, onUserUpdated);
+    return () => window.removeEventListener(SESSION_USER_EVENT, onUserUpdated);
   }, []);
 
   // Fecha o drawer ao trocar de rota (navegação por link dentro dele).

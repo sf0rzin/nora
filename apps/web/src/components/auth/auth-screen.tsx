@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type CSSProperties, type FormEvent } from "react";
 
 import { NoraLogo } from "@/components/brand/nora-logo";
-import { ApiRequestError, login, signup } from "@/lib/api/client";
+import { ApiRequestError, login, resendVerificationEmail, signup } from "@/lib/api/client";
 import { setSession } from "@/lib/auth";
 
 import "./auth.css";
@@ -244,10 +244,16 @@ function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; n
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // E-mail ainda não verificado (401 EMAIL_NOT_VERIFIED): oferece reenvio.
+  const [needsVerify, setNeedsVerify] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resentNote, setResentNote] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setErr(null);
+    setNeedsVerify(false);
+    setResentNote(null);
     setBusy(true);
     try {
       const r = await login(email, pw);
@@ -258,8 +264,33 @@ function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; n
       router.replace(next);
       router.refresh();
     } catch (e2) {
-      setErr(e2 instanceof ApiRequestError ? e2.message : "Falha ao entrar.");
+      if (e2 instanceof ApiRequestError) {
+        setErr(e2.message);
+        if (e2.status === 401 && e2.payload?.code === "EMAIL_NOT_VERIFIED") {
+          setNeedsVerify(true);
+        }
+      } else {
+        setErr("Falha ao entrar.");
+      }
       setBusy(false);
+    }
+  }
+
+  async function resend() {
+    if (!email) return;
+    setResending(true);
+    try {
+      await resendVerificationEmail(email);
+      // 202 sempre (anti-enumeração) — a mensagem é a mesma em qualquer caso.
+      setErr(null);
+      setNeedsVerify(false);
+      setResentNote(
+        "Se este e-mail estiver cadastrado e ainda não verificado, enviamos um novo link. Confira sua caixa de entrada.",
+      );
+    } catch {
+      setResentNote("Não foi possível reenviar agora. Tente de novo em instantes.");
+    } finally {
+      setResending(false);
     }
   }
 
@@ -279,7 +310,44 @@ function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; n
 
       <div className="divider">ou</div>
 
-      {err && <div className="error-banner">{err}</div>}
+      {err && (
+        <div className="error-banner">
+          {err}
+          {needsVerify && (
+            <button
+              type="button"
+              onClick={resend}
+              disabled={resending}
+              style={{
+                display: "block",
+                marginTop: 8,
+                background: "none",
+                border: "none",
+                padding: 0,
+                font: "inherit",
+                fontWeight: 500,
+                color: "var(--ink)",
+                cursor: resending ? "default" : "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              {resending ? "Reenviando…" : "Reenviar e-mail de verificação"}
+            </button>
+          )}
+        </div>
+      )}
+      {resentNote && (
+        <div
+          className="error-banner"
+          style={{
+            color: "var(--accent-ink)",
+            background: "var(--accent-soft)",
+            borderColor: "transparent",
+          }}
+        >
+          {resentNote}
+        </div>
+      )}
 
       <form onSubmit={submit}>
         <div className="field">
