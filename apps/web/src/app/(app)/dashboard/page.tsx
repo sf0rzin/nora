@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { listMeetings, type ListMeetingsParams } from "@/lib/api/client";
 import type { MeetingListItem, ProcessingStatus } from "@/lib/api/types";
 import { ShaderOrb } from "@/components/brand/shader-orb";
-import DashboardFilters from "./Filters";
+import DashboardFilters, { ProcessingPoller } from "./Filters";
 
 export const dynamic = "force-dynamic";
 
@@ -70,13 +70,29 @@ function durationLabel(seconds?: number): string | null {
 function StatusDot({ status }: { status: ProcessingStatus }) {
   const meta = STATUS_META[status] ?? STATUS_META.PENDING;
   if (status === "PROCESSING") {
-    return (
-      <span style={{ width: 14, height: 14, display: "inline-block", borderRadius: "50%", overflow: "hidden" }} title={meta.label}>
-        <ShaderOrb size={14} speed={1.8} intensity={1} />
-      </span>
-    );
+    return <span className="status-dot status-dot--processing" title={meta.label} />;
   }
-  return <span title={meta.label} style={{ width: 8, height: 8, borderRadius: "50%", background: meta.color, display: "inline-block" }} />;
+  return <span className="status-dot" title={meta.label} style={{ background: meta.color }} />;
+}
+
+function TagChips({ tags }: { tags: string[] }) {
+  if (!tags || tags.length === 0) return null;
+  const shown = tags.slice(0, 3);
+  const rest = tags.length - shown.length;
+  return (
+    <>
+      {shown.map((t) => (
+        <span key={t} className="chip">
+          {t}
+        </span>
+      ))}
+      {rest > 0 && (
+        <span className="chip" style={{ color: "var(--muted)" }}>
+          +{rest}
+        </span>
+      )}
+    </>
+  );
 }
 
 function MeetingRow({ m }: { m: MeetingListItem }) {
@@ -98,10 +114,8 @@ function MeetingRow({ m }: { m: MeetingListItem }) {
         <span style={{ fontSize: 14.5, fontWeight: 500, letterSpacing: "-0.012em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {m.title}
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--muted)", flexWrap: "wrap" }}>
-          {m.tags?.[0] && (
-            <span style={{ padding: "1px 8px", borderRadius: 999, background: "var(--chip)", color: "var(--ink)", fontSize: 11 }}>{m.tags[0]}</span>
-          )}
+        <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--muted)", flexWrap: "wrap" }}>
+          <TagChips tags={m.tags} />
           {m.processingStatus === "PROCESSING" ? (
             <span style={{ color: "var(--accent-ink)" }}>{meta.label}</span>
           ) : (
@@ -119,17 +133,33 @@ function MeetingRow({ m }: { m: MeetingListItem }) {
   );
 }
 
+/** Constrói a query string preservando filtros e definindo a página alvo. */
+function pageHref(filters: ListMeetingsParams, page: number): Route {
+  const qs = new URLSearchParams();
+  if (filters.search) qs.set("search", filters.search);
+  if (filters.status) qs.set("status", filters.status);
+  if (filters.from) qs.set("from", filters.from);
+  if (filters.to) qs.set("to", filters.to);
+  if (page > 0) qs.set("page", String(page));
+  const q = qs.toString();
+  return (q ? `/dashboard?${q}` : "/dashboard") as Route;
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; status?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ search?: string; status?: string; from?: string; to?: string; page?: string }>;
 }) {
   const sp = await searchParams;
+  const pageParam = Number.parseInt(sp.page ?? "", 10);
+  const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 0;
+
   const filters: ListMeetingsParams = {
     search: sp.search?.trim() || undefined,
     status: isStatus(sp.status) ? sp.status : undefined,
     from: sp.from || undefined,
     to: sp.to || undefined,
+    page,
   };
 
   let data;
@@ -151,25 +181,36 @@ export default async function DashboardPage({
   }
   const todayCount = grouped["Hoje"]?.length ?? 0;
 
+  const hasProcessing = data.items.some((m) => m.processingStatus === "PROCESSING" || m.processingStatus === "PENDING");
+
+  const currentPage = data.page ?? page;
+  const totalPages = data.totalPages ?? 0;
+  const hasPrev = currentPage > 0;
+  const hasNext = totalPages > 0 ? currentPage < totalPages - 1 : false;
+  const showPagination = data.items.length > 0 && (hasPrev || hasNext);
+  const rangeStart = data.totalItems > 0 ? currentPage * (data.size || 20) + 1 : 0;
+  const rangeEnd = currentPage * (data.size || 20) + data.items.length;
+
   return (
-    <div style={{ maxWidth: 920, margin: "0 auto", padding: "56px 40px 80px" }}>
+    <div className="page">
+      <ProcessingPoller active={hasProcessing} />
+
       <header style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 24, marginBottom: 28 }}>
         <div>
-          <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 6 }}>
+          <div className="eyebrow">
             {greeting()}
             {name ? `, ${name}.` : "."}
           </div>
-          <h1 style={{ fontFamily: "var(--display)", fontSize: 30, fontWeight: 500, letterSpacing: "-0.025em", lineHeight: 1.1, color: "var(--ink)", margin: 0 }}>
+          <h1 className="h1">
             {todayCount > 0
               ? `${todayCount} ${todayCount === 1 ? "reunião" : "reuniões"} hoje.`
               : `${data.totalItems} ${data.totalItems === 1 ? "reunião" : "reuniões"} no total.`}
           </h1>
         </div>
-        <Link
-          href={"/meetings/upload" as Route}
-          style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 15px", background: "var(--ink)", color: "var(--canvas)", borderRadius: 9, fontSize: 13, fontWeight: 500, flexShrink: 0 }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+        <Link href={"/meetings/upload" as Route} className="btn btn-primary" style={{ flexShrink: 0 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
           Nova reunião
         </Link>
       </header>
@@ -177,7 +218,7 @@ export default async function DashboardPage({
       {(data.items.length > 0 || hasFilters) && <DashboardFilters defaults={filters} />}
 
       {errorMessage && (
-        <div style={{ marginTop: 16, padding: "10px 14px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--chip)", fontSize: 13, color: "var(--muted)" }}>
+        <div className="notice" style={{ marginTop: 16 }}>
           Não consegui carregar as reuniões agora ({errorMessage}). Verifique a conexão com a API.
         </div>
       )}
@@ -196,7 +237,7 @@ export default async function DashboardPage({
             </p>
           </div>
           {!hasFilters && (
-            <Link href={"/meetings/upload" as Route} style={{ display: "inline-flex", padding: "10px 18px", background: "var(--ink)", color: "var(--canvas)", borderRadius: 9, fontSize: 13, fontWeight: 500 }}>
+            <Link href={"/meetings/upload" as Route} className="btn btn-primary">
               Fazer upload
             </Link>
           )}
@@ -206,7 +247,7 @@ export default async function DashboardPage({
           {GROUP_ORDER.filter((g) => grouped[g]).map((g) => (
             <section key={g}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, padding: "0 14px" }}>
-                <h3 style={{ fontSize: 11, fontWeight: 500, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", margin: 0 }}>{g}</h3>
+                <h3 className="sec-label">{g}</h3>
                 <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
                 <span style={{ fontSize: 11, color: "var(--muted)" }}>{grouped[g].length}</span>
               </div>
@@ -220,26 +261,61 @@ export default async function DashboardPage({
         </div>
       )}
 
-      <div style={{ marginTop: 48, paddingTop: 18, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 16, fontSize: 11.5, color: "var(--muted)" }}>
+      {showPagination && (
+        <nav
+          aria-label="Paginação"
+          style={{ marginTop: 28, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}
+        >
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>
+            {rangeStart}–{rangeEnd} de {data.totalItems} reuniões · página {currentPage + 1} de {Math.max(totalPages, 1)}
+          </span>
+          <div style={{ display: "flex", gap: 6 }}>
+            {hasPrev ? (
+              <Link href={pageHref(filters, currentPage - 1)} className="btn btn-ghost btn-sm">
+                Anterior
+              </Link>
+            ) : (
+              <button className="btn btn-ghost btn-sm" type="button" disabled>
+                Anterior
+              </button>
+            )}
+            {hasNext ? (
+              <Link href={pageHref(filters, currentPage + 1)} className="btn btn-ghost btn-sm">
+                Próxima
+              </Link>
+            ) : (
+              <button className="btn btn-ghost btn-sm" type="button" disabled>
+                Próxima
+              </button>
+            )}
+          </div>
+        </nav>
+      )}
+
+      <div
+        style={{
+          marginTop: 48,
+          paddingTop: 18,
+          borderTop: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          fontSize: 11.5,
+          color: "var(--muted)",
+          flexWrap: "wrap",
+        }}
+      >
         <span>Atalhos:</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Kbd>N</Kbd> nova reunião
+          <kbd className="kbd">N</kbd> nova reunião
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Kbd>/</Kbd> buscar
+          <kbd className="kbd">/</kbd> buscar
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Kbd>⌘K</Kbd> comandos
+          <kbd className="kbd">⌘K</kbd> comandos
         </span>
       </div>
     </div>
-  );
-}
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd style={{ fontFamily: "var(--sans)", fontSize: 10.5, padding: "1px 6px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--canvas)", color: "var(--muted)", letterSpacing: "0.02em" }}>
-      {children}
-    </kbd>
   );
 }

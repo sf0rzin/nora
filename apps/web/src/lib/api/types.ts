@@ -205,3 +205,39 @@ export interface InviteListResponse {
   page: number;
   size: number;
 }
+
+// ---------- Chat sessions (persistência tenant + user scoped) ----------
+
+/**
+ * Resumo de uma sessão de chat, usado na lista lateral. Sempre escopado ao
+ * usuário logado (user_id do principal) dentro do tenant (ADR 0002 + RLS ADR 0028).
+ */
+export interface ChatSessionSummary {
+  id: string;
+  title: string;
+  /** ISO-8601. Lista vem ordenada por este campo, mais recentes primeiro. */
+  updatedAt: string;
+  messageCount: number;
+  /** Trecho curto da última mensagem, para preview na lista. */
+  lastSnippet?: string;
+}
+
+/** Uma mensagem dentro de uma sessão de chat. */
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  /** ISO-8601. */
+  createdAt: string;
+}
+
+/** Sessão de chat completa, com o histórico de mensagens. */
+export interface ChatSessionDetail {
+  id: string;
+  title: string;
+  /** ISO-8601. */
+  createdAt: string;
+  /** ISO-8601. */
+  updatedAt: string;
+  messages: ChatMessage[];
+}
