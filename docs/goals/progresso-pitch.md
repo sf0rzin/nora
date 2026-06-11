@@ -11,9 +11,9 @@
 ## Status por fase
 | Fase | Item | Estado | Verificado? | Notas |
 |---|---|---|---|---|
-| 0 | Event bus + MeetingAnalysisCompletedEvent | ⬜ pendente | — | |
-| 0 | Storage + engine Flows (V023+, RLS) | ⬜ pendente | — | |
-| 0 | Ação "Enviar e-mail" real (Resend) | ⬜ pendente | — | |
+| 0 | Event bus + MeetingAnalysisCompletedEvent | ✅ codado | IT verde | ADR 0030; porta DomainEventPublisher + adapter pós-commit; emissão em AnalysisService.run() fail-soft |
+| 0 | Storage + engine Flows (V023+, RLS) | ✅ codado | IT verde | V023 (workflows + workflow_executions, RLS padrão V022); WorkflowEngine BFS + ConditionEvaluator + ActionRegistry; API /workflows CRUD + test + executions |
+| 0 | Ação "Enviar e-mail" real (Resend) | ✅ codado | IT verde (e-mail capturado) | EmailSender.sendWorkflowNotification PROPAGA falha; falta verificação com Resend real em produção |
 | 0 | Spike OAuth Google | ⬜ pendente | — | depende de handoff |
 | 1 | Canvas /fluxos (grid + nós + Testar) | ⬜ pendente | — | |
 | 1 | Cenário-âncora ao vivo | ⬜ pendente | — | |

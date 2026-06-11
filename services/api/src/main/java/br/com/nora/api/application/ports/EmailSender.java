@@ -27,4 +27,11 @@ public interface EmailSender {
             String invitedByName,
             String acceptUrl,
             int expiresInDays);
+
+    /**
+     * Envia uma notificação de workflow do NORA Flows (assunto + corpo HTML prontos, montados pela
+     * ação). Diferente dos e-mails transacionais acima, FALHA DEVE PROPAGAR (exceção): o engine
+     * captura e registra o erro no log da execução — fingir sucesso quebraria o histórico real.
+     */
+    void sendWorkflowNotification(String toEmail, String subject, String htmlBody);
 }

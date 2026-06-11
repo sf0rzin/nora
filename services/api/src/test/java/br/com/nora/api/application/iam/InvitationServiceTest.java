@@ -615,6 +615,11 @@ class InvitationServiceTest {
             lastInviteExpiresInDays = expiresInDays;
             inviteCount++;
         }
+
+        @Override
+        public void sendWorkflowNotification(String toEmail, String subject, String htmlBody) {
+            // InvitationService nao usa notificacao de workflow; no-op aqui.
+        }
     }
 
     static class FakeJwtIssuer implements JwtIssuer {
