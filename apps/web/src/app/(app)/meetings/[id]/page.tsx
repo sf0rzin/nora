@@ -48,6 +48,8 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
 
   const a = meeting.analysis;
   const duration = durationLabel(meeting.durationSeconds);
+  // Tags do upload — exibidas todas (sem cortar); edição fica pra outra fatia.
+  const tags = meeting.tags ?? [];
   const statusMeta = STATUS_META[meeting.processingStatus] ?? {
     label: meeting.processingStatus,
     color: "var(--accent-ink)",
@@ -97,6 +99,15 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
               <span style={{ fontSize: 12, color: "var(--muted)" }}>Owner: {meeting.owner.displayName}</span>
             )}
           </div>
+          {tags.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+              {tags.map((t) => (
+                <span key={t} className="chip">
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "right", whiteSpace: "nowrap", flexShrink: 0, paddingTop: 6 }}>
           {formatDateTime(meeting.startedAt)}
