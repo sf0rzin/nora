@@ -127,6 +127,16 @@ nora:
     from: ${NORA_EMAIL_FROM:NORA <onboarding@resend.dev>}
     resend:
       api-key: ${RESEND_API_KEY:}
+  integrations:
+    # NORA Flows Fase 2 — OAuth com provedores externos (Gmail/Calendar; Slack futuro).
+    # Sem client-id/redirect-uri o hub mostra "não configurado" e start retorna 422 (fail-visible).
+    state-secret: ${NORA_INTEGRATIONS_STATE_SECRET:}
+    # AES-256-GCM p/ tokens em repouso: 32 bytes em base64. Vazio (dev) = armazena sem cifra c/ WARN.
+    encryption-key: ${NORA_INTEGRATIONS_ENC_KEY:}
+    google:
+      client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
+      client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${GOOGLE_OAUTH_REDIRECT_URI:http://localhost:8080/integrations/google/oauth/callback}
   worker:
     base-url: ${NLP_WORKER_BASE_URL:http://localhost:8001}
   speech:
