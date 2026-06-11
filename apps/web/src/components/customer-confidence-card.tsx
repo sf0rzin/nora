@@ -5,46 +5,23 @@ import type {
   Severity,
 } from "@/lib/api/types";
 
-// Band → linguagem de cor danger/warning/success, espelhando o Health Score
-// da landing (--danger / --warn / --success) traduzida pra paleta Tailwind
-// do app (rose / amber / emerald), igual ao ProductivityScoreCard.
 const BAND_LABEL: Record<ConfidenceBand, string> = {
   LOW: "Baixa",
   MEDIUM: "Média",
   HIGH: "Alta",
 };
 
-const BAND_CLASSES: Record<ConfidenceBand, string> = {
-  LOW: "bg-rose-100 text-rose-700",
-  MEDIUM: "bg-amber-100 text-amber-700",
-  HIGH: "bg-emerald-100 text-emerald-700",
+// Banda → cor de sinal (danger/warn/success), espelhando o Health Score.
+const BAND_COLOR: Record<ConfidenceBand, string> = {
+  LOW: "var(--danger)",
+  MEDIUM: "var(--warn)",
+  HIGH: "var(--success)",
 };
 
-const SCORE_TEXT_CLASS: Record<ConfidenceBand, string> = {
-  LOW: "text-rose-600",
-  MEDIUM: "text-amber-600",
-  HIGH: "text-emerald-600",
-};
-
-const TREND_META: Record<
-  ConfidenceTrend,
-  { glyph: string; label: string; className: string }
-> = {
-  IMPROVING: {
-    glyph: "↑",
-    label: "Confiança em melhora",
-    className: "bg-emerald-100 text-emerald-700",
-  },
-  STABLE: {
-    glyph: "→",
-    label: "Confiança estável",
-    className: "bg-slate-100 text-slate-600",
-  },
-  DECLINING: {
-    glyph: "↓",
-    label: "Confiança em queda",
-    className: "bg-rose-100 text-rose-700",
-  },
+const TREND_META: Record<ConfidenceTrend, { glyph: string; label: string }> = {
+  IMPROVING: { glyph: "↑", label: "Em melhora" },
+  STABLE: { glyph: "→", label: "Estável" },
+  DECLINING: { glyph: "↓", label: "Em queda" },
 };
 
 const SEVERITY_LABEL: Record<Severity, string> = {
@@ -53,17 +30,25 @@ const SEVERITY_LABEL: Record<Severity, string> = {
   HIGH: "Alta",
 };
 
-const SEVERITY_TEXT_CLASS: Record<Severity, string> = {
-  LOW: "text-amber-700",
-  MEDIUM: "text-orange-700",
-  HIGH: "text-rose-700",
-};
+function softBg(color: string): string {
+  return `color-mix(in oklch, ${color} 16%, var(--canvas))`;
+}
 
-function TrendBadge({ trend }: { trend: ConfidenceTrend }) {
+function TrendChip({ trend }: { trend: ConfidenceTrend }) {
   const meta = TREND_META[trend];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${meta.className}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "3px 11px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 500,
+        background: "var(--chip)",
+        color: "var(--muted)",
+      }}
     >
       <span aria-hidden="true">{meta.glyph}</span>
       <span>{meta.label}</span>
@@ -81,149 +66,159 @@ export default function CustomerConfidenceCard({
   // Reuniões internas (sem conversa de cliente) não têm confidence: nada a renderizar.
   if (!confidence) return null;
 
-  const {
-    score,
-    band,
-    trend,
-    accountName,
-    rationale,
-    buyingSignals,
-    objections,
-  } = confidence;
+  const { score, band, trend, accountName, rationale, buyingSignals, objections } =
+    confidence;
+  const bandColor = BAND_COLOR[band];
 
   return (
-    <article
-      className="space-y-6 rounded-lg border border-slate-200 bg-white p-6"
-      aria-label="Sinal de confiança do cliente nesta reunião"
-    >
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Confiança do cliente
-          </p>
-          <p className="text-lg font-semibold text-slate-900">
+    <article className="card card--pad" aria-label="Sinal de confiança do cliente nesta reunião">
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <div className="sec-label" style={{ marginBottom: 4 }}>
+            Conta
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 500, letterSpacing: "-0.01em", color: "var(--ink)" }}>
             {accountName ?? "Conta não identificada"}
-          </p>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-baseline gap-2">
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
             <span
-              className={`text-5xl font-semibold tracking-tight ${SCORE_TEXT_CLASS[band]}`}
+              style={{ fontSize: 44, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1, color: bandColor }}
               aria-label={`Score de confiança ${score} de 100`}
             >
               {score}
             </span>
-            <span className="text-sm text-slate-500">/ 100</span>
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>/ 100</span>
           </div>
           <span
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${BAND_CLASSES[band]}`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "3px 11px",
+              borderRadius: 999,
+              fontSize: 11,
+              fontWeight: 500,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+              background: softBg(bandColor),
+              color: bandColor,
+            }}
           >
             Confiança {BAND_LABEL[band]}
           </span>
-          {trend && <TrendBadge trend={trend} />}
+          {trend && <TrendChip trend={trend} />}
         </div>
-      </header>
+      </div>
 
-      <section className="space-y-3" aria-labelledby="buying-signals-heading">
-        <h3
-          id="buying-signals-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-        >
-          Sinais de compra ({buyingSignals.length})
-        </h3>
+      <div style={{ marginTop: 18 }}>
+        <div className="sec-label" style={{ marginBottom: 2 }}>
+          Sinais de compra · {buyingSignals.length}
+        </div>
         {buyingSignals.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            Nenhum sinal de compra detectado.
-          </p>
+          <p style={{ fontSize: 13, color: "var(--muted)", margin: "8px 0 0" }}>Nenhum sinal de compra detectado.</p>
         ) : (
-          <ul className="space-y-3">
-            {buyingSignals.map((signal, idx) => (
-              <li
-                key={`${signal.type}-${idx}`}
-                className="flex items-start gap-3 rounded-md border border-slate-200 p-3"
+          buyingSignals.map((signal, idx) => (
+            <div
+              key={`${signal.type}-${idx}`}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
+                padding: "12px 0",
+                borderTop: idx === 0 ? "none" : "1px solid var(--border)",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: "50%",
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  flexShrink: 0,
+                  marginTop: 1,
+                  background: softBg("var(--success)"),
+                  color: "var(--success)",
+                }}
               >
-                <span
-                  aria-hidden="true"
-                  className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-semibold text-emerald-700"
-                >
-                  ↑
-                </span>
-                <div className="space-y-1">
-                  <p className="font-medium text-slate-900">{signal.type}</p>
-                  <blockquote className="border-l-2 border-slate-300 pl-3 text-xs italic text-slate-600">
-                    “{signal.quote}”
-                  </blockquote>
+                ↑
+              </span>
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--ink)" }}>{signal.type}</div>
+                <div className="quote" style={{ marginTop: 6 }}>
+                  {signal.quote}
                 </div>
-              </li>
-            ))}
-          </ul>
+              </div>
+            </div>
+          ))
         )}
-      </section>
+      </div>
 
-      <section className="space-y-3" aria-labelledby="objections-heading">
-        <h3
-          id="objections-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-        >
-          Objeções ({objections.length})
-        </h3>
+      <div style={{ marginTop: 16 }}>
+        <div className="sec-label" style={{ marginBottom: 2 }}>
+          Objeções · {objections.length}
+        </div>
         {objections.length === 0 ? (
-          <p className="text-sm text-slate-500">Nenhuma objeção registrada.</p>
+          <p style={{ fontSize: 13, color: "var(--muted)", margin: "8px 0 0" }}>Nenhuma objeção registrada.</p>
         ) : (
-          <ul className="space-y-3">
-            {objections.map((objection, idx) => (
-              <li
-                key={`${objection.type}-${idx}`}
-                className="flex items-start gap-3 rounded-md border border-slate-200 p-3"
+          objections.map((objection, idx) => (
+            <div
+              key={`${objection.type}-${idx}`}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
+                padding: "12px 0",
+                borderTop: idx === 0 ? "none" : "1px solid var(--border)",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: "50%",
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  flexShrink: 0,
+                  marginTop: 1,
+                  background: softBg("var(--danger)"),
+                  color: "var(--danger)",
+                }}
               >
-                <span
-                  aria-hidden="true"
-                  className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rose-100 text-xs font-semibold text-rose-700"
-                >
-                  !
-                </span>
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <p className="font-medium text-slate-900">
-                      {objection.type}
-                    </p>
-                    <span
-                      className={`text-xs font-medium uppercase tracking-wide ${SEVERITY_TEXT_CLASS[objection.severity]}`}
-                    >
-                      Severidade {SEVERITY_LABEL[objection.severity]}
-                    </span>
-                    {objection.competitor && (
-                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                        Concorrente: {objection.competitor}
-                      </span>
-                    )}
-                  </div>
-                  <blockquote className="border-l-2 border-slate-300 pl-3 text-xs italic text-slate-600">
-                    “{objection.quote}”
-                  </blockquote>
+                !
+              </span>
+              <div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 500, color: "var(--ink)" }}>{objection.type}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 500, color: "var(--danger)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                    Severidade {SEVERITY_LABEL[objection.severity]}
+                  </span>
+                  {objection.competitor && (
+                    <span className="chip">Concorrente: {objection.competitor}</span>
+                  )}
                 </div>
-              </li>
-            ))}
-          </ul>
+                <div className="quote" style={{ marginTop: 6 }}>
+                  {objection.quote}
+                </div>
+              </div>
+            </div>
+          ))
         )}
-      </section>
+      </div>
 
-      <section className="space-y-2" aria-labelledby="confidence-rationale-heading">
-        <h3
-          id="confidence-rationale-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-        >
-          Justificativa
-        </h3>
-        <p className="text-sm leading-relaxed text-slate-600">{rationale}</p>
-      </section>
-
-      <footer className="border-t border-slate-200 pt-3">
-        <p className="text-xs text-slate-500">
-          Sinal de confiança por reunião — não usar isoladamente para avaliar o
-          vendedor.
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+        <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6, margin: 0 }}>{rationale}</p>
+        <p style={{ fontSize: 11.5, color: "var(--muted)", margin: "10px 0 0" }}>
+          Sinal por reunião — não usar isoladamente pra avaliar o vendedor.
         </p>
-      </footer>
+      </div>
     </article>
   );
 }

@@ -10,10 +10,11 @@ const BAND_LABEL: Record<ProductivityBand, string> = {
   HIGH: "Alta",
 };
 
-const BAND_CLASSES: Record<ProductivityBand, string> = {
-  LOW: "bg-rose-100 text-rose-700",
-  MEDIUM: "bg-amber-100 text-amber-700",
-  HIGH: "bg-emerald-100 text-emerald-700",
+// Banda → cor de sinal (success/warn/danger), espelhando o Health Score.
+const BAND_COLOR: Record<ProductivityBand, string> = {
+  LOW: "var(--danger)",
+  MEDIUM: "var(--warn)",
+  HIGH: "var(--success)",
 };
 
 const STATUS_LABEL: Record<CoverageStatus, string> = {
@@ -22,38 +23,42 @@ const STATUS_LABEL: Record<CoverageStatus, string> = {
   MISSED: "Não tratado",
 };
 
-const STATUS_TEXT_CLASS: Record<CoverageStatus, string> = {
-  ADDRESSED: "text-emerald-700",
-  PARTIAL: "text-amber-700",
-  MISSED: "text-rose-700",
+const STATUS_COLOR: Record<CoverageStatus, string> = {
+  ADDRESSED: "var(--success)",
+  PARTIAL: "var(--warn)",
+  MISSED: "var(--danger)",
 };
 
-function StatusIcon({ status }: { status: CoverageStatus }) {
-  const common =
-    "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-semibold";
-  if (status === "ADDRESSED") {
-    return (
-      <span
-        aria-hidden="true"
-        className={`${common} bg-emerald-100 text-emerald-700`}
-      >
-        ✓
-      </span>
-    );
-  }
-  if (status === "PARTIAL") {
-    return (
-      <span
-        aria-hidden="true"
-        className={`${common} bg-amber-100 text-amber-700`}
-      >
-        ~
-      </span>
-    );
-  }
+const STATUS_GLYPH: Record<CoverageStatus, string> = {
+  ADDRESSED: "✓",
+  PARTIAL: "~",
+  MISSED: "✗",
+};
+
+function softBg(color: string): string {
+  return `color-mix(in oklch, ${color} 16%, var(--canvas))`;
+}
+
+function CoverIcon({ status }: { status: CoverageStatus }) {
+  const color = STATUS_COLOR[status];
   return (
-    <span aria-hidden="true" className={`${common} bg-rose-100 text-rose-700`}>
-      ✗
+    <span
+      aria-hidden="true"
+      style={{
+        width: 20,
+        height: 20,
+        borderRadius: "50%",
+        display: "grid",
+        placeItems: "center",
+        fontSize: 11,
+        fontWeight: 600,
+        flexShrink: 0,
+        marginTop: 1,
+        background: softBg(color),
+        color,
+      }}
+    >
+      {STATUS_GLYPH[status]}
     </span>
   );
 }
@@ -69,126 +74,103 @@ export interface ProductivityScoreCardProps {
 export default function ProductivityScoreCard({
   assessment,
 }: ProductivityScoreCardProps) {
-  const {
-    score,
-    band,
-    coverage,
-    offTopicRatio,
-    decisionDensity,
-    rationale,
-  } = assessment;
+  const { score, band, coverage, offTopicRatio, decisionDensity, rationale } =
+    assessment;
+  const bandColor = BAND_COLOR[band];
 
   return (
-    <article
-      className="space-y-6 rounded-lg border border-slate-200 bg-white p-6"
-      aria-label="Avaliação de produtividade da reunião"
-    >
-      <header className="flex flex-wrap items-baseline gap-4">
-        <div className="flex items-baseline gap-3">
+    <article className="card card--pad" aria-label="Avaliação de produtividade da reunião">
+      <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <span
-            className="text-6xl font-semibold tracking-tight text-slate-900"
+            style={{ fontSize: 56, fontWeight: 500, letterSpacing: "-0.03em", lineHeight: 1, color: "var(--ink)" }}
             aria-label={`Score ${score} de 100`}
           >
             {score}
           </span>
-          <span className="text-base text-slate-500">/ 100</span>
+          <span style={{ fontSize: 14, color: "var(--muted)" }}>/ 100</span>
         </div>
         <span
-          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${BAND_CLASSES[band]}`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "3px 11px",
+            borderRadius: 999,
+            fontSize: 11,
+            fontWeight: 500,
+            letterSpacing: "0.05em",
+            textTransform: "uppercase",
+            background: softBg(bandColor),
+            color: bandColor,
+          }}
         >
           Produtividade {BAND_LABEL[band]}
         </span>
-      </header>
+      </div>
 
-      <section className="space-y-3" aria-labelledby="coverage-heading">
-        <h3
-          id="coverage-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-        >
+      <div style={{ marginTop: 20 }}>
+        <div className="sec-label" style={{ marginBottom: 8 }}>
           Cobertura dos outcomes
-        </h3>
+        </div>
         {coverage.length === 0 ? (
-          <p className="text-sm text-slate-500">
+          <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>
             Nenhum outcome avaliado nesta análise.
           </p>
         ) : (
-          <ul className="space-y-3">
-            {coverage.map((item, idx) => (
-              <li
+          coverage.map((item, idx) => {
+            const color = STATUS_COLOR[item.status];
+            return (
+              <div
                 key={`${item.expectedOutcome}-${idx}`}
-                className="flex items-start gap-3 rounded-md border border-slate-200 p-3"
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 12,
+                  padding: "12px 0",
+                  borderTop: idx === 0 ? "none" : "1px solid var(--border)",
+                }}
               >
-                <StatusIcon status={item.status} />
-                <div className="space-y-1">
-                  <p className="font-medium text-slate-900">
-                    {item.expectedOutcome}
-                  </p>
-                  <p
-                    className={`text-xs font-medium uppercase tracking-wide ${STATUS_TEXT_CLASS[item.status]}`}
-                  >
+                <CoverIcon status={item.status} />
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--ink)" }}>{item.expectedOutcome}</div>
+                  <div style={{ fontSize: 11, color, letterSpacing: "0.05em", textTransform: "uppercase", marginTop: 2 }}>
                     {STATUS_LABEL[item.status]}
-                  </p>
+                  </div>
                   {item.evidence && (
-                    <blockquote className="border-l-2 border-slate-300 pl-3 text-xs italic text-slate-600">
-                      “{item.evidence}”
-                    </blockquote>
+                    <div className="quote" style={{ marginTop: 6 }}>
+                      {item.evidence}
+                    </div>
                   )}
                 </div>
-              </li>
-            ))}
-          </ul>
+              </div>
+            );
+          })
         )}
-      </section>
+      </div>
 
       {(offTopicRatio !== null || decisionDensity !== null) && (
-        <section
-          className="grid gap-3 sm:grid-cols-2"
-          aria-label="Métricas auxiliares"
-        >
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 16 }}>
           {offTopicRatio !== null && (
-            <div className="rounded-md border border-slate-200 p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Off-topic
-              </p>
-              <p className="mt-1 text-xl font-semibold text-slate-900">
-                {formatPercent(offTopicRatio)}
-              </p>
-              <p className="text-xs text-slate-500">
-                proporção do tempo fora do propósito declarado.
-              </p>
+            <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+              <div className="sec-label">Off-topic</div>
+              <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4, color: "var(--ink)" }}>{formatPercent(offTopicRatio)}</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.4 }}>do tempo fora do propósito declarado</div>
             </div>
           )}
           {decisionDensity !== null && (
-            <div className="rounded-md border border-slate-200 p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Densidade de decisões
-              </p>
-              <p className="mt-1 text-xl font-semibold text-slate-900">
-                {formatPercent(decisionDensity)}
-              </p>
-              <p className="text-xs text-slate-500">
-                quanto a conversa converge em decisões objetivas.
-              </p>
+            <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+              <div className="sec-label">Densidade de decisões</div>
+              <div style={{ fontSize: 20, fontWeight: 500, marginTop: 4, color: "var(--ink)" }}>{formatPercent(decisionDensity)}</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.4 }}>da conversa converge em decisões objetivas</div>
             </div>
           )}
-        </section>
+        </div>
       )}
 
-      <section className="space-y-2" aria-labelledby="rationale-heading">
-        <h3
-          id="rationale-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-slate-500"
-        >
-          Justificativa
-        </h3>
-        <p className="text-sm leading-relaxed text-slate-600">{rationale}</p>
-      </section>
-
-      <footer className="border-t border-slate-200 pt-3">
-        <p className="text-xs text-slate-500">
-          Indicador da reunião, não dos participantes.
-        </p>
-      </footer>
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+        <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6, margin: 0 }}>{rationale}</p>
+        <p style={{ fontSize: 11.5, color: "var(--muted)", margin: "10px 0 0" }}>Indicador da reunião, não dos participantes.</p>
+      </div>
     </article>
   );
 }
