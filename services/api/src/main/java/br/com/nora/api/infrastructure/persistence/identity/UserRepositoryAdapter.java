@@ -38,6 +38,7 @@ public class UserRepositoryAdapter implements UserRepository {
                         .map(
                                 e -> {
                                     e.setPasswordHash(user.passwordHash());
+                                    e.setDisplayName(user.displayName());
                                     e.setStatus(user.status());
                                     e.setEmailVerifiedAt(user.emailVerifiedAt());
                                     e.setUpdatedAt(user.updatedAt());
@@ -81,6 +82,16 @@ public class UserRepositoryAdapter implements UserRepository {
                 .setParameter("id", userId)
                 .setParameter("tenantId", tenantId)
                 .executeUpdate();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public int countByTenant(UUID tenantId) {
+        Object result =
+                em.createNativeQuery("SELECT COUNT(*) FROM users WHERE tenant_id = :tenantId")
+                        .setParameter("tenantId", tenantId)
+                        .getSingleResult();
+        return ((Number) result).intValue();
     }
 
     @Override
