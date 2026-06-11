@@ -122,6 +122,10 @@ public class UserJpaEntity {
         this.status = status;
     }
 
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
     public void setEmailVerifiedAt(Instant emailVerifiedAt) {
         this.emailVerifiedAt = emailVerifiedAt;
     }
