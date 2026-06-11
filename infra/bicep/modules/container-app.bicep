@@ -79,6 +79,9 @@ param args array = []
 @description('Allowlist de IPs no ingress (ADR 0023). Formato: [{ name, ipAddressRange (CIDR), action: "Allow"|"Deny" }]. Vazio = sem restrição de rede.')
 param ipSecurityRestrictions array = []
 
+@description('Domínios customizados no ingress. Formato: [{ name, bindingType: "SniEnabled", certificateId }]. Vazio = só o FQDN default do env. Os certs gerenciados são referenciados por ID (criados via az hostname bind; ver docs/operations/web-custom-domain.md).')
+param customDomains array = []
+
 @description('Containers extras (sidecars) no mesmo pod, ex.: cloudflared (ADR 0025). Default [] = só o principal — callers existentes (api/worker/web) ficam idênticos. Cada item segue o schema de container do Microsoft.App: { name, image, args?, env?, resources }.')
 param sidecars array = []
 
@@ -95,6 +98,7 @@ var ingressConfig = ingress == 'none' ? null : {
   transport: 'auto'
   allowInsecure: allowInsecure
   ipSecurityRestrictions: empty(ipSecurityRestrictions) ? null : ipSecurityRestrictions
+  customDomains: empty(customDomains) ? null : customDomains
   traffic: [
     {
       weight: 100
