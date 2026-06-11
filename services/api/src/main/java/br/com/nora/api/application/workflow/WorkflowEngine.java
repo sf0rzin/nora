@@ -4,12 +4,15 @@ import br.com.nora.api.application.ports.Clock;
 import br.com.nora.api.application.ports.WorkflowExecutionRepository;
 import br.com.nora.api.application.ports.WorkflowRepository;
 import br.com.nora.api.application.workflow.WorkflowDefinition.Node;
+import br.com.nora.api.domain.event.ActionItemCreatedEvent;
 import br.com.nora.api.domain.event.MeetingAnalysisCompletedEvent;
+import br.com.nora.api.domain.event.MeetingRiskDetectedEvent;
 import br.com.nora.api.domain.workflow.TriggerType;
 import br.com.nora.api.domain.workflow.Workflow;
 import br.com.nora.api.domain.workflow.WorkflowExecution;
 import br.com.nora.api.domain.workflow.WorkflowExecutionStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayDeque;
@@ -66,9 +69,38 @@ public class WorkflowEngine {
 
     /** Entrada do gatilho-âncora: análise de reunião concluída (pós-commit). */
     public void onMeetingAnalysisCompleted(MeetingAnalysisCompletedEvent event) {
-        List<Workflow> active =
-                workflows.findActiveByTenantAndTrigger(
-                        event.tenantId(), TriggerType.MEETING_ANALYSIS_COMPLETED);
+        dispatchForMeeting(
+                event.tenantId(),
+                event.meetingId(),
+                TriggerType.MEETING_ANALYSIS_COMPLETED,
+                event.occurredAt());
+    }
+
+    /** Entrada do gatilho "action item criado" (um evento por item; pós-commit). */
+    public void onActionItemCreated(ActionItemCreatedEvent event) {
+        dispatchForMeeting(
+                event.tenantId(),
+                event.meetingId(),
+                TriggerType.ACTION_ITEM_CREATED,
+                event.occurredAt());
+    }
+
+    /** Entrada do gatilho "risco detectado" (só severidade ALTA é emitida; pós-commit). */
+    public void onMeetingRiskDetected(MeetingRiskDetectedEvent event) {
+        dispatchForMeeting(
+                event.tenantId(),
+                event.meetingId(),
+                TriggerType.MEETING_RISK_DETECTED,
+                event.occurredAt());
+    }
+
+    /**
+     * Casa os workflows ATIVOS do tenant com o gatilho e executa cada um. O snapshot da reunião é o
+     * mesmo para qualquer gatilho derivado da análise — muda só o eventType registrado no log.
+     */
+    private void dispatchForMeeting(
+            UUID tenantId, UUID meetingId, TriggerType trigger, Instant occurredAt) {
+        List<Workflow> active = workflows.findActiveByTenantAndTrigger(tenantId, trigger);
         if (active.isEmpty()) {
             return;
         }
@@ -76,17 +108,15 @@ public class WorkflowEngine {
         try {
             ctx =
                     contextFactory.forMeeting(
-                            event.tenantId(),
-                            event.meetingId(),
-                            TriggerType.MEETING_ANALYSIS_COMPLETED.wire(),
-                            event.occurredAt() == null
-                                    ? now()
-                                    : event.occurredAt().atOffset(ZoneOffset.UTC));
+                            tenantId,
+                            meetingId,
+                            trigger.wire(),
+                            occurredAt == null ? now() : occurredAt.atOffset(ZoneOffset.UTC));
         } catch (RuntimeException ex) {
             LOG.error(
                     "Flows: contexto do evento indisponível meetingId={} tenantId={} cause={}",
-                    event.meetingId(),
-                    event.tenantId(),
+                    meetingId,
+                    tenantId,
                     ex.getMessage());
             return;
         }
@@ -98,7 +128,7 @@ public class WorkflowEngine {
                 LOG.error(
                         "Flows: execução do workflow {} falhou tenantId={} cause={}",
                         workflow.id(),
-                        event.tenantId(),
+                        tenantId,
                         ex.getMessage());
             }
         }
