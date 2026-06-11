@@ -178,6 +178,31 @@ export interface ApiError {
   details?: { field: string; issue: string }[];
 }
 
+// ---------- Conta & Workspace (settings — Conta/Segurança/Workspace) ----------
+
+/** Usuário autenticado (GET /auth/me; PATCH /users/me devolve o mesmo shape). */
+export interface MeResponse {
+  userId: string;
+  tenantId: string;
+  email: string;
+  displayName: string;
+  /** Se o e-mail da conta já foi verificado (link enviado no signup). */
+  emailVerified: boolean;
+  /** ISO-8601. */
+  createdAt: string;
+}
+
+/** Workspace (tenant) atual (GET /tenant; PUT /tenant/name devolve o mesmo shape). */
+export interface TenantInfo {
+  id: string;
+  name: string;
+  /** Identificador imutável do workspace, definido no cadastro. */
+  slug: string;
+  plan: string;
+  /** ISO-8601. */
+  createdAt: string;
+}
+
 // ---------- IAM Invitations (US06, ADR 0011) ----------
 
 export type InviteStatus = "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";

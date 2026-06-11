@@ -15,6 +15,19 @@
 
 const USER_COOKIE = 'nora_user';
 
+/**
+ * Sobrevida do cookie de user-info: alinhada com o refresh TTL nominal
+ * (30 dias). Logout / sessão expirada limpam explicitamente.
+ */
+const USER_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+
+/**
+ * Evento disparado em `window` quando o cookie `nora_user` muda fora do fluxo
+ * de login (ex.: displayName editado nas configurações). Quem renderiza dados
+ * da sessão (sidebar/orb) escuta pra refletir na hora, sem reload.
+ */
+export const SESSION_USER_EVENT = 'nora:session-user';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
 
 /** Fracao do TTL onde disparamos o refresh proativo (80%). */
@@ -60,11 +73,26 @@ function clearCookie(name: string) {
  * (30 dias). Logout limpa explicitamente.
  */
 export function setSession(user: SessionUser, expiresInSeconds: number) {
-  // Sobrevida do user-info: alinhada com refresh TTL (ate 30 dias). Em caso
-  // de logout server-side, refresh falha e clearSession limpa local.
-  const userInfoMaxAge = 60 * 60 * 24 * 30;
-  setCookie(USER_COOKIE, JSON.stringify(user), userInfoMaxAge);
+  // Em caso de logout server-side, refresh falha e clearSession limpa local.
+  setCookie(USER_COOKIE, JSON.stringify(user), USER_COOKIE_MAX_AGE);
   scheduleRefresh(expiresInSeconds);
+}
+
+/**
+ * Atualiza campos display-only da sessão (ex.: displayName após editar o
+ * perfil em /settings) e notifica os listeners via `SESSION_USER_EVENT` —
+ * a sidebar reflete na hora, sem esperar reload. Retorna o estado novo, ou
+ * `null` se não há sessão local.
+ */
+export function updateSessionUser(patch: Partial<SessionUser>): SessionUser | null {
+  const current = getCurrentUser();
+  if (!current) return null;
+  const next: SessionUser = { ...current, ...patch };
+  setCookie(USER_COOKIE, JSON.stringify(next), USER_COOKIE_MAX_AGE);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(SESSION_USER_EVENT));
+  }
+  return next;
 }
 
 export function getCurrentUser(): SessionUser | null {
@@ -78,13 +106,23 @@ export function getCurrentUser(): SessionUser | null {
 }
 
 /**
+ * Limpa APENAS o estado local (timer de refresh + cookie `nora_user`), sem
+ * chamar o backend. Pra fluxos onde o servidor JÁ revogou as sessões e limpou
+ * os cookies httpOnly (logout-all, exclusão de conta) — chamar /auth/logout
+ * de novo seria redundante.
+ */
+export function clearLocalSession(): void {
+  cancelScheduledRefresh();
+  clearCookie(USER_COOKIE);
+}
+
+/**
  * Limpa sessao no client + chama backend pra revogar o refresh em DB.
  * Idempotente: se o logout falhar (rede off, refresh ja revogado etc),
  * ainda limpa o estado local — usuario tem que conseguir sair.
  */
 export async function clearSession(): Promise<void> {
-  cancelScheduledRefresh();
-  clearCookie(USER_COOKIE);
+  clearLocalSession();
   try {
     await fetch(`${API_BASE_URL}/auth/logout`, {
       method: 'POST',
