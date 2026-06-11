@@ -44,7 +44,7 @@ import {
   type WorkflowExecutionResponse,
 } from "@/lib/api/client";
 
-import { CATALOGO, type BlocoMeta } from "./catalogo";
+import { CATALOGO, metaDoBloco, type BlocoMeta } from "./catalogo";
 import { NoBloco, type NoRF } from "./no-bloco";
 import { PainelLateral, type TabPainel } from "./painel-lateral";
 import { PaletaBlocos } from "./paleta-blocos";
@@ -269,13 +269,16 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
     if (!nodes.some((n) => n.data.kind === "action"))
       return "Adicione ao menos uma ação (ex.: “Enviar e-mail”).";
     const emailSemDestino = nodes.find((n) => {
-      if (n.data.blockType !== "send_email") return false;
+      if (n.data.blockType !== "send_email" && n.data.blockType !== "gmail_send_email") {
+        return false;
+      }
       const to = n.data.params.to;
       return typeof to !== "string" || !to.includes("@");
     });
     if (emailSemDestino) {
       focarNo(emailSemDestino.id);
-      return "A ação “Enviar e-mail” precisa de um destinatário válido no campo Para.";
+      const nomeBloco = metaDoBloco(emailSemDestino.data.blockType)?.nome ?? "Enviar e-mail";
+      return `A ação “${nomeBloco}” precisa de um destinatário válido no campo Para.`;
     }
     return null;
   }
