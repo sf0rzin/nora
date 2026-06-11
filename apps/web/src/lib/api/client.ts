@@ -18,6 +18,8 @@ import type {
   ChatMessage,
   ChatSessionDetail,
   ChatSessionSummary,
+  IntegrationProvider,
+  IntegrationStatus,
   Invite,
   InviteListResponse,
   InviteStatus,
@@ -35,6 +37,7 @@ import type {
 export type { AcceptInviteRequest, Invite, InviteListResponse, InviteStatus, InviteUserRequest };
 export type { ChatMessage, ChatSessionDetail, ChatSessionSummary };
 export type { WorkflowDefinition, WorkflowExecutionResponse, WorkflowResponse };
+export type { IntegrationProvider, IntegrationStatus };
 import meetingsListFixture from '@/fixtures/meetings-list-response.json';
 import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
 import { handleSessionExpired, scheduleRefresh } from '@/lib/auth';
@@ -724,4 +727,35 @@ export async function listWorkflowExecutions(id: string): Promise<WorkflowExecut
   return request<WorkflowExecutionResponse[]>(
     `/workflows/${encodeURIComponent(id)}/executions`,
   );
+}
+
+// ---------- Integrações OAuth (Google / Slack — NORA Flows Fase 2) ----------
+//
+// Conectores por usuário: o backend guarda os tokens OAuth e expõe só o status.
+// O fluxo de conexão é um redirect completo: `authorizeUrl` → consent no
+// provedor → callback no backend → volta pra /integracoes?connected={provider}
+// ou /integracoes?error={codigo}.
+
+/** Status de todos os conectores suportados pro usuário logado. */
+export async function listIntegrations(): Promise<IntegrationStatus[]> {
+  return request<IntegrationStatus[]>(`/integrations`);
+}
+
+/**
+ * Inicia o OAuth do provedor; o caller deve redirecionar o browser pra
+ * `authorizeUrl`. Erros: 422 `INTEGRATION_NOT_CONFIGURED` (servidor sem
+ * credenciais OAuth — a `message` vem em PT-BR) e 404 provedor desconhecido.
+ */
+export async function startIntegrationOAuth(
+  provider: IntegrationProvider,
+): Promise<{ authorizeUrl: string }> {
+  return request<{ authorizeUrl: string }>(
+    `/integrations/${encodeURIComponent(provider)}/oauth/start`,
+    { method: 'POST' },
+  );
+}
+
+/** Desconecta a conta do provedor e revoga os tokens guardados (204). */
+export async function disconnectIntegration(provider: IntegrationProvider): Promise<void> {
+  return request<void>(`/integrations/${encodeURIComponent(provider)}`, { method: 'DELETE' });
 }

@@ -320,3 +320,23 @@ export interface WorkflowExecutionResponse {
   /** ISO-8601; null enquanto RUNNING. */
   finishedAt: string | null;
 }
+
+// ---------- Integrações OAuth (NORA Flows Fase 2) ----------
+
+/** Provedor de integração OAuth suportado pelo backend. */
+export type IntegrationProvider = "google" | "slack";
+
+/**
+ * Estado de um conector pro usuário logado (GET /integrations).
+ * `configured` = o servidor tem credenciais OAuth do provedor (ambiente);
+ * `connected` = o usuário autorizou a própria conta via OAuth.
+ */
+export interface IntegrationStatus {
+  provider: IntegrationProvider;
+  configured: boolean;
+  connected: boolean;
+  /** Conta externa conectada (ex.: e-mail Google); null quando desconectado. */
+  externalAccount: string | null;
+  /** ISO-8601; null quando desconectado. */
+  connectedAt: string | null;
+}
