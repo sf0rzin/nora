@@ -41,16 +41,25 @@ main): `#222` admin telemetria real, `#224` endpoints de settings.
 ## HANDOFFs humanos (abertos / resolvidos)
 | Data | Pedido | Status | Resultado |
 |---|---|---|---|
-| 2026-06-11 | Confirmar e-mail de prova do Resend na caixa (axonogenesis@proton.me, assunto "NORA Flows - prova de envio real (Fase 0)") | 🟡 aberto | |
-| 2026-06-11 | Criar projeto Google Cloud + OAuth Client ID/Secret + redirect URIs + habilitar Gmail/Calendar APIs (passos no .env.example da api) | 🟡 aberto | |
-| 2026-06-11 | Autorizar merge da cadeia #219→#220→#221→#223 (CI verde) | 🟡 aberto | |
+| 2026-06-11 | Confirmar e-mail de prova do Resend na caixa (axonogenesis@proton.me, assunto "NORA Flows - prova de envio real (Fase 0)") | ✅ resolvido | chegou na caixa de entrada |
+| 2026-06-11 | Criar projeto Google Cloud + OAuth Client ID/Secret + redirect URIs + habilitar Gmail/Calendar APIs (passos no .env.example da api) | ✅ resolvido | consent em modo Testing; credenciais nas env vars User + GitHub Secrets |
+| 2026-06-11 | Autorizar merge da cadeia #219→#220→#221→#223 (CI verde) | ✅ resolvido | TUDO mergeado (até #232) e DEPLOYADO; smoke verde em produção |
+| 2026-06-11 | Criar app Slack (chat:write + channels:read) e setar SLACK_OAUTH_CLIENT_ID/SECRET | 🟡 aberto | wiring pronto no Bicep |
+| 2026-06-11 | Validar ao vivo: conectar Google em /integracoes + cenário-âncora (fluxo → e-mail + Calendar) | 🟡 aberto | roteiro entregue ao Anthony |
+
+## Deploy (2026-06-11, fim do dia)
+- Produção atualizada: API revision 34 Healthy com imagem `sha-80c9a06` (HEAD), web/admin/worker idem.
+- Smoke em produção: healthz 200, resend 202, callback OAuth 302 → /integracoes, /workflows e /integrations 401 sem auth.
+- 3 bugs de infra latentes corrigidos no caminho: corrida ServerIsBusy no Postgres (#229), secretRefs de embedding ausentes no apiApp (#230), e BOM UTF-8 nos GitHub Secrets gravados via pipe do PowerShell (regravados via --body; ver memória reference-gh-secret-bom-powershell).
+- **Procedimento de deploy**: deploy-infra reseta as imagens para `:latest` (stale) — SEMPRE rodar `gh workflow run build-images.yml --ref main` depois, que re-pina `sha-<commit>` nas 4 apps.
 
 ## Riscos para o palco
-- OAuth Google em produção exige consent screen em modo Testing com o e-mail da demo como test user (verificação da tela leva dias — usar Testing).
+- **Google em modo Testing: refresh token expira em 7 DIAS** — reconectar o Google em /integracoes na véspera (14/06). Verificação p/ público geral não dá até 15/06 (gmail.send é restricted scope: semanas + CASA).
 - Admin em demo local mostra MOCK por default (`NORA_ADMIN_USE_MOCKS` só desliga com "false").
 - Telemetria de custo usa janela de 24h — gerar tráfego antes da demo ou passar `from`.
 - `CF_ACCESS_AUD` lido de vars (vazio) no deploy-infra — Tier 2 do admin degrada silencioso (bug pré-existente documentado).
 - Evento do Flows é in-process sem retry: crash entre commit e dispatch perde o disparo (mitigação: botão Testar).
+- Falta da Fase 4: gatilho schedule.cron, ação "criar tarefa", templates de fluxo e dry-run (não bloqueiam o roteiro da demo).
 
 ## Decisões registradas (ADR)
 - ADR 0030 — event bus in-process pós-commit + workflow engine (PR #220)
