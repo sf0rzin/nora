@@ -3,19 +3,27 @@
 /**
  * NORA Core — shell do app (sidebar chat-first + área principal).
  *
- * Porte do protótipo do Claude Design (app.jsx) pro Next: navegação por rotas
- * (Link + usePathname), perfil do usuário a partir do cookie de sessão, logout.
+ * Porte visual do protótipo do Claude Design (shell.js) pro Next: navegação por
+ * rotas (Link + usePathname), perfil do usuário a partir do cookie de sessão,
+ * logout, command palette ⌘K com busca semântica e drawer mobile.
  *
  * Nav do Core (Enterprise — IAM, contexto de tenant — fica fora daqui; é gateado
  * pra Enterprise, conforme a fronteira Core/Enterprise da vision).
+ *
+ * Mudanças Stratfy aplicadas:
+ *  - logo da sidebar é só a wordmark "Nora" (sem soundwave);
+ *  - "Integrações" sai da nav principal e vira a categoria "Conectores";
+ *  - bloco "Sessões" usa `.side-sec-label--tight` (label colado).
  */
 import Link from "next/link";
 import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { NoraLogo } from "@/components/brand/nora-logo";
 import { clearSession, getCurrentUser, type SessionUser } from "@/lib/auth";
+
+import { AppSidebarSessions } from "./app-sidebar-sessions";
+import { CommandPalette } from "./command-palette";
 
 type NavItem = {
   label: string;
@@ -64,6 +72,13 @@ function PlugIcon() {
     </svg>
   );
 }
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
 function SettingsIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -72,31 +87,73 @@ function SettingsIcon() {
     </svg>
   );
 }
+function LogoutIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5M21 12H9" />
+    </svg>
+  );
+}
+function BurgerIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
+function CloseIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+function SearchIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+/** Wordmark "Nora" — sem soundwave (decisão Stratfy). DM Sans 500, -0.02em. */
+function NoraWordmark() {
+  return (
+    <span
+      role="img"
+      aria-label="NORA"
+      style={{
+        fontFamily: "var(--font-sans), system-ui, sans-serif",
+        fontWeight: 500,
+        fontSize: 19,
+        letterSpacing: "-0.02em",
+        lineHeight: 1,
+        color: "var(--ink)",
+      }}
+    >
+      Nora
+    </span>
+  );
+}
 
 const NAV: NavItem[] = [
   { label: "Início", href: "/dashboard" as Route, icon: <HomeIcon />, matchPrefixes: ["/dashboard", "/meetings"] },
   { label: "Nova sessão", href: "/chat" as Route, icon: <ChatIcon />, plus: true },
   { label: "Projetos", href: "/projetos" as Route, icon: <ProjectsIcon /> },
   { label: "Action items", href: "/tasks" as Route, icon: <TasksIcon /> },
-  { label: "Integrações", href: "/integracoes" as Route, icon: <PlugIcon />, hint: "MCP" },
 ];
 
+const CONNECTORS: NavItem = {
+  label: "Integrações",
+  href: "/integracoes" as Route,
+  icon: <PlugIcon />,
+  hint: "MCP",
+};
+
 function UserOrb() {
-  return (
-    <div
-      aria-hidden
-      style={{
-        width: 28,
-        height: 28,
-        borderRadius: "50%",
-        flexShrink: 0,
-        background:
-          "radial-gradient(circle at 30% 25%, #d8f0f6 0%, transparent 38%), radial-gradient(circle at 78% 62%, #e8b8d8 0%, transparent 45%), radial-gradient(circle at 22% 78%, #3a4a4f 0%, transparent 30%), radial-gradient(circle at 60% 40%, #4ec4d8 8%, #6aa8d8 45%, #9778b8 100%)",
-        boxShadow: "inset 0 0 6px rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.06)",
-        filter: "saturate(1.15)",
-      }}
-    />
-  );
+  return <div className="user-orb" aria-hidden />;
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -104,10 +161,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     setUser(getCurrentUser());
   }, []);
+
+  // Fecha o drawer ao trocar de rota (navegação por link dentro dele).
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
 
   const isActive = useMemo(
     () => (item: NavItem) => {
@@ -117,137 +181,166 @@ export function AppShell({ children }: { children: ReactNode }) {
     [pathname],
   );
 
-  async function handleLogout() {
+  const handleLogout = useCallback(async () => {
     setLoggingOut(true);
     await clearSession();
     router.push("/auth/login" as Route);
     router.refresh();
+  }, [router]);
+
+  const togglePalette = useCallback(() => setPaletteOpen((v) => !v), []);
+  const openPalette = useCallback(() => setPaletteOpen(true), []);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+
+  // Atalhos globais (§3.9): ⌘K abre/fecha a palette; N → nova reunião;
+  // / → busca (foco no input #search-input se existir, senão abre a palette).
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const tag = (target?.tagName ?? "").toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable === true;
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        togglePalette();
+        return;
+      }
+      if (typing) return;
+      if (e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        router.push("/meetings/upload" as Route);
+      } else if (e.key === "/") {
+        e.preventDefault();
+        const s = document.getElementById("search-input") as HTMLInputElement | null;
+        if (s) {
+          s.focus();
+          s.select?.();
+        } else {
+          openPalette();
+        }
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [togglePalette, openPalette, router]);
+
+  function NavLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void }) {
+    const active = isActive(item);
+    return (
+      <Link
+        href={item.href}
+        className={`side-link${active ? " is-active" : ""}`}
+        onClick={onNavigate}
+      >
+        <span className="icon">{item.icon}</span>
+        <span className="grow">{item.label}</span>
+        {item.plus && (
+          <span className="icon">
+            <PlusIcon />
+          </span>
+        )}
+        {item.hint && <span className="hint">{item.hint}</span>}
+      </Link>
+    );
   }
 
-  const sidebar = (
-    <aside
-      style={{
-        width: 248,
-        flexShrink: 0,
-        height: "100dvh",
-        background: "var(--sidebar)",
-        borderRight: "1px solid var(--border)",
-        display: "flex",
-        flexDirection: "column",
-        padding: "18px 14px 14px",
-        gap: 16,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 4px" }}>
-        <Link href={"/chat" as Route} aria-label="NORA — nova sessão" style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-          <NoraLogo size={20} animate={false} />
-        </Link>
-        <span
-          style={{
-            fontSize: 9.5,
-            padding: "2px 6px",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            color: "var(--muted)",
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-          }}
-        >
-          Core
-        </span>
+  const userBlock = (
+    <div className="side-user">
+      <UserOrb />
+      <div className="meta">
+        <div className="name">{user?.displayName ?? "Carregando…"}</div>
+        <div className="mail">{user?.email ? `${user.email} · Core` : "—"}</div>
       </div>
-
-      <nav style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 4 }}>
-        {NAV.map((item) => {
-          const active = isActive(item);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 10px",
-                background: active ? "var(--accent-soft)" : "transparent",
-                borderRadius: 7,
-                fontSize: 13,
-                color: active ? "var(--accent-ink)" : "var(--ink)",
-                letterSpacing: "-0.005em",
-                transition: "background 120ms ease",
-              }}
-            >
-              <span style={{ display: "grid", placeItems: "center", width: 18, color: active ? "var(--accent-ink)" : "var(--muted)" }}>
-                {item.icon}
-              </span>
-              <span style={{ flex: 1 }}>{item.label}</span>
-              {item.plus && (
-                <span style={{ display: "grid", placeItems: "center", width: 16, height: 16, color: "var(--muted)" }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                    <path d="M12 5v14M5 12h14" />
-                  </svg>
-                </span>
-              )}
-              {item.hint && (
-                <span style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.06em" }}>{item.hint}</span>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div style={{ flex: 1 }} />
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "14px 4px 2px",
-          borderTop: "1px solid var(--border)",
-        }}
-      >
-        <UserOrb />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12.5, color: "var(--ink)", letterSpacing: "-0.005em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {user?.displayName ?? "Carregando…"}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {user?.email ? `${user.email} · Core` : "—"}
-          </div>
-        </div>
-        <Link
-          href={"/settings/context" as Route}
-          aria-label="Configurações"
-          title="Configurações"
-          style={{ width: 28, height: 28, display: "grid", placeItems: "center", borderRadius: 6, color: "var(--muted)" }}
-        >
-          <SettingsIcon />
-        </Link>
-        <button
-          type="button"
-          onClick={handleLogout}
-          disabled={loggingOut}
-          aria-label="Sair"
-          title="Sair"
-          style={{ width: 28, height: 28, display: "grid", placeItems: "center", borderRadius: 6, color: "var(--muted)", background: "transparent", border: "none", cursor: "pointer" }}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <path d="M16 17l5-5-5-5M21 12H9" />
-          </svg>
-        </button>
-      </div>
-    </aside>
+      <Link className="icon-btn" href={"/settings/context" as Route} aria-label="Configurações" title="Configurações">
+        <SettingsIcon />
+      </Link>
+      <button type="button" className="icon-btn" onClick={handleLogout} disabled={loggingOut} aria-label="Sair" title="Sair">
+        <LogoutIcon />
+      </button>
+    </div>
   );
 
-  return (
-    <div style={{ display: "flex", height: "100dvh", background: "var(--canvas)", color: "var(--ink)" }}>
-      <div className="hidden md:flex">{sidebar}</div>
+  /** Conteúdo compartilhado entre a sidebar desktop e o drawer mobile. */
+  function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
+    return (
+      <>
+        <nav className="side-nav">
+          {NAV.map((item) => (
+            <NavLink key={item.href} item={item} onNavigate={onNavigate} />
+          ))}
+        </nav>
 
-      <main style={{ flex: 1, minWidth: 0, height: "100dvh", overflowY: "auto" }}>
+        <div>
+          <div className="side-sec-label">Conectores</div>
+          <NavLink item={CONNECTORS} onNavigate={onNavigate} />
+        </div>
+
+        <Suspense fallback={null}>
+          <AppSidebarSessions />
+        </Suspense>
+
+        <div style={{ flex: 1 }} />
+
+        {userBlock}
+      </>
+    );
+  }
+
+  return (
+    <div className="app">
+      <aside className="side">
+        <div className="side-brand">
+          <Link href={"/chat" as Route} aria-label="NORA — nova sessão" style={{ display: "inline-flex", alignItems: "center" }}>
+            <NoraWordmark />
+          </Link>
+          <span className="plan-badge">Core</span>
+        </div>
+        <SidebarBody />
+      </aside>
+
+      <main className="app-main">
+        <div className="mhead">
+          <button type="button" className="mhead-btn" aria-label="Abrir menu" onClick={() => setDrawerOpen(true)}>
+            <BurgerIcon />
+          </button>
+          <Link href={"/dashboard" as Route} aria-label="NORA" style={{ display: "inline-flex", alignItems: "center" }}>
+            <NoraWordmark />
+          </Link>
+          <span className="grow" />
+          <button type="button" className="mhead-btn" aria-label="Buscar" onClick={openPalette}>
+            <SearchIcon />
+          </button>
+        </div>
+
         {children}
       </main>
+
+      {/* Drawer mobile */}
+      <div
+        className={`drawer-veil${drawerOpen ? " is-open" : ""}`}
+        onClick={() => setDrawerOpen(false)}
+        aria-hidden
+      />
+      <nav className={`drawer${drawerOpen ? " is-open" : ""}`} aria-label="Navegação">
+        <div className="side-brand" style={{ justifyContent: "space-between" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <NoraWordmark />
+            <span className="plan-badge">Core</span>
+          </span>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Fechar menu"
+            onClick={() => setDrawerOpen(false)}
+            style={{ width: 40, height: 40 }}
+          >
+            <CloseIcon />
+          </button>
+        </div>
+        <SidebarBody onNavigate={() => setDrawerOpen(false)} />
+      </nav>
+
+      <CommandPalette open={paletteOpen} onClose={closePalette} />
     </div>
   );
 }
