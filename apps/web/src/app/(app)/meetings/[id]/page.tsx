@@ -52,13 +52,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
     color: "var(--accent-ink)",
   };
 
-  // PII Shield: se o worker reportar a contagem de redações aplicadas, mostra o
-  // número real; senão mantém o selo genérico de "aplicado". (Campo opcional,
-  // ainda não tipado em MeetingAnalysis.)
+  // PII Shield (ADR 0012): se o worker reportou a contagem de redações
+  // aplicadas, mostra o número real; análises antigas (sem metadata) mantêm
+  // o selo genérico de "aplicado".
   const piiCount =
-    a && typeof (a as { metadata?: { piiRedactionsApplied?: number } }).metadata?.piiRedactionsApplied === "number"
-      ? (a as { metadata?: { piiRedactionsApplied?: number } }).metadata!.piiRedactionsApplied!
-      : null;
+    typeof a?.metadata?.piiRedactionsApplied === "number" ? a.metadata.piiRedactionsApplied : null;
 
   return (
     <div className="page page--narrow">
@@ -284,9 +282,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       <div style={{ marginTop: 40, paddingTop: 18, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: "var(--muted)" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <span className="status-dot" style={{ background: "var(--success)", width: 6, height: 6 }} />
-          {piiCount !== null
-            ? `PII Shield · ${piiCount} ${piiCount === 1 ? "dado sensível redigido" : "dados sensíveis redigidos"}`
-            : "PII Shield aplicado"}
+          {piiCount === null
+            ? "PII Shield aplicado"
+            : piiCount === 0
+              ? "PII Shield · nenhum dado sensível detectado"
+              : `PII Shield · ${piiCount} ${piiCount === 1 ? "dado sensível redigido" : "dados sensíveis redigidos"}`}
         </span>
       </div>
     </div>
