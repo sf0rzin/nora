@@ -43,7 +43,7 @@ export function PaletaBlocos({
                 onClick={() => onAdicionar(bloco)}
               >
                 <span className="ic" style={{ color: KIND_META[bloco.kind].cor }}>
-                  <IconeKind kind={bloco.kind} size={15} />
+                  {bloco.Icone ? <bloco.Icone size={15} /> : <IconeKind kind={bloco.kind} size={15} />}
                 </span>
                 <span style={{ minWidth: 0 }}>
                   <span className="nome" style={{ display: "block" }}>
