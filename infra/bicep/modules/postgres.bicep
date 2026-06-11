@@ -103,6 +103,10 @@ resource database 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-0
   }
 }
 
+// IMPORTANTE: os recursos-filho abaixo sao ENCADEADOS via dependsOn de proposito.
+// O Flexible Server serializa operacoes de gerenciamento; sem o encadeamento o ARM
+// aplica database/firewall/configuration em PARALELO e o segundo write falha com
+// 'ServerIsBusy' (flakiness intermitente observada em deploys consecutivos no B1ms).
 resource allowAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2024-08-01' = if (allowAzureServices) {
   parent: server
   name: 'AllowAllAzureServicesAndResourcesWithinAzureIps'
@@ -110,6 +114,9 @@ resource allowAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@202
     startIpAddress: '0.0.0.0'
     endIpAddress: '0.0.0.0'
   }
+  dependsOn: [
+    database
+  ]
 }
 
 resource customFirewallRules 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2024-08-01' = [
@@ -120,6 +127,9 @@ resource customFirewallRules 'Microsoft.DBforPostgreSQL/flexibleServers/firewall
       startIpAddress: rule.startIpAddress
       endIpAddress: rule.endIpAddress
     }
+    dependsOn: [
+      allowAzure
+    ]
   }
 ]
 
@@ -133,6 +143,10 @@ resource extensionsConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configurati
     value: allowedExtensions
     source: 'user-override'
   }
+  dependsOn: [
+    allowAzure
+    customFirewallRules
+  ]
 }
 
 output id string = server.id
