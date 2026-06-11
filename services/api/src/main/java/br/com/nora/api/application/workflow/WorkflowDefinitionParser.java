@@ -193,6 +193,15 @@ public class WorkflowDefinitionParser {
                                 + "') precisa de um destinatário válido em params.to");
             }
         }
+        if ("slack_post_message".equals(action.type())) {
+            String channel = action.paramAsString("channel");
+            if (channel == null || channel.isBlank()) {
+                throw new WorkflowException.InvalidDefinition(
+                        "ação 'Postar no Slack' (nó '"
+                                + action.id()
+                                + "') precisa do canal em params.channel (ex.: #vendas)");
+            }
+        }
     }
 
     private static String textOrNull(JsonNode node, String field) {

@@ -55,10 +55,18 @@ public class IntegrationsController {
     @PostMapping("/{provider}/oauth/start")
     public ResponseEntity<StartResponse> start(@PathVariable("provider") String provider) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        if (!IntegrationProvider.GOOGLE.wire().equalsIgnoreCase(provider)) {
+        IntegrationProvider parsed;
+        try {
+            parsed = IntegrationProvider.fromWire(provider);
+        } catch (IllegalArgumentException ex) {
             throw new IntegrationException.UnknownProvider(provider);
         }
-        String url = integrations.startGoogle(principal.tenantId(), principal.userId());
+        String url =
+                switch (parsed) {
+                    case GOOGLE ->
+                            integrations.startGoogle(principal.tenantId(), principal.userId());
+                    case SLACK -> integrations.startSlack(principal.tenantId(), principal.userId());
+                };
         return ResponseEntity.ok(new StartResponse(url));
     }
 
@@ -83,6 +91,31 @@ public class IntegrationsController {
             return redirect("/integracoes?error=" + ex.code().toLowerCase());
         } catch (RuntimeException ex) {
             LOG.error("OAuth Google callback erro inesperado", ex);
+            return redirect("/integracoes?error=internal");
+        }
+    }
+
+    /** Callback do Slack (público; redirect do navegador). Sempre redireciona pro front. */
+    @GetMapping("/slack/oauth/callback")
+    public ResponseEntity<Void> slackCallback(
+            @RequestParam(name = "code", required = false) String code,
+            @RequestParam(name = "state", required = false) String state,
+            @RequestParam(name = "error", required = false) String error) {
+        if (error != null && !error.isBlank()) {
+            // Usuário negou o consentimento (ou erro do Slack) — sem stack, sem 500.
+            return redirect("/integracoes?error=" + error);
+        }
+        if (code == null || code.isBlank()) {
+            return redirect("/integracoes?error=missing_code");
+        }
+        try {
+            integrations.handleSlackCallback(code, state);
+            return redirect("/integracoes?connected=slack");
+        } catch (IntegrationException ex) {
+            LOG.warn("OAuth Slack callback falhou: {} {}", ex.code(), ex.getMessage());
+            return redirect("/integracoes?error=" + ex.code().toLowerCase());
+        } catch (RuntimeException ex) {
+            LOG.error("OAuth Slack callback erro inesperado", ex);
             return redirect("/integracoes?error=internal");
         }
     }
