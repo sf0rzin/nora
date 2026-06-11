@@ -3,9 +3,11 @@ package br.com.nora.api.application.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import br.com.nora.api.application.integration.IntegrationService.ProviderStatus;
 import br.com.nora.api.application.ports.Clock;
 import br.com.nora.api.application.ports.GoogleOAuthClient;
 import br.com.nora.api.application.ports.IntegrationConnectionRepository;
+import br.com.nora.api.application.ports.SlackOAuthClient;
 import br.com.nora.api.domain.integration.IntegrationConnection;
 import br.com.nora.api.domain.integration.IntegrationProvider;
 import java.time.Instant;
@@ -27,6 +29,7 @@ class IntegrationServiceTest {
 
     private final FakeRepo repo = new FakeRepo();
     private final FakeGoogle google = new FakeGoogle();
+    private final FakeSlack slack = new FakeSlack();
     private final OAuthStateCodec codec = new OAuthStateCodec("segredo-teste");
     private final Clock clock = () -> now;
 
@@ -34,10 +37,13 @@ class IntegrationServiceTest {
         return new IntegrationService(
                 repo,
                 google,
+                slack,
                 codec,
                 clock,
                 "client-id-teste",
-                "http://localhost:8080/integrations/google/oauth/callback");
+                "http://localhost:8080/integrations/google/oauth/callback",
+                "slack-client-id-teste",
+                "http://localhost:8080/integrations/slack/oauth/callback");
     }
 
     @Test
@@ -53,8 +59,11 @@ class IntegrationServiceTest {
 
     @Test
     void start_semConfiguracaoFalhaVisivel() {
-        IntegrationService semConfig = new IntegrationService(repo, google, codec, clock, "", "");
+        IntegrationService semConfig =
+                new IntegrationService(repo, google, slack, codec, clock, "", "", "", "");
         assertThatThrownBy(() -> semConfig.startGoogle(tenantId, userId))
+                .isInstanceOf(IntegrationException.NotConfigured.class);
+        assertThatThrownBy(() -> semConfig.startSlack(tenantId, userId))
                 .isInstanceOf(IntegrationException.NotConfigured.class);
     }
 
@@ -108,6 +117,86 @@ class IntegrationServiceTest {
         assertThatThrownBy(() -> service().validGoogleAccessToken(tenantId))
                 .isInstanceOf(IntegrationException.ProviderError.class)
                 .hasMessageContaining("reconecte");
+    }
+
+    /* =========================== Slack =========================== */
+
+    @Test
+    void startSlack_montaUrlOAuthV2ComStateAssinado() {
+        String url = service().startSlack(tenantId, userId);
+        assertThat(url).startsWith("https://slack.com/oauth/v2/authorize?");
+        assertThat(url).contains("client_id=slack-client-id-teste");
+        assertThat(url).contains("scope=chat%3Awrite%2Cchannels%3Aread");
+        assertThat(url).contains("state=");
+    }
+
+    @Test
+    void slackCallback_persisteBotTokenSemExpiracaoComTeamName() {
+        String state = codec.encode(tenantId, userId, IntegrationProvider.SLACK, now);
+        slack.exchangeResult =
+                new SlackOAuthClient.TokenResponse(
+                        "xoxb-token-1", "Time NORA", "chat:write,channels:read");
+
+        service().handleSlackCallback("code-slack", state);
+
+        IntegrationConnection saved =
+                repo.findByTenantAndProvider(tenantId, IntegrationProvider.SLACK).orElseThrow();
+        assertThat(saved.accessToken()).isEqualTo("xoxb-token-1");
+        // Bot token não expira: sem refresh token e sem expiresAt.
+        assertThat(saved.refreshToken()).isNull();
+        assertThat(saved.expiresAt()).isNull();
+        assertThat(saved.externalAccount()).isEqualTo("Time NORA");
+    }
+
+    @Test
+    void slackCallback_stateDeOutroProvedor_falha() {
+        String stateGoogle = codec.encode(tenantId, userId, IntegrationProvider.GOOGLE, now);
+        assertThatThrownBy(() -> service().handleSlackCallback("code", stateGoogle))
+                .isInstanceOf(IntegrationException.InvalidState.class);
+    }
+
+    @Test
+    void validSlackBotToken_devolveTokenSemRefresh() {
+        String state = codec.encode(tenantId, userId, IntegrationProvider.SLACK, now);
+        slack.exchangeResult =
+                new SlackOAuthClient.TokenResponse("xoxb-token-2", "Time NORA", null);
+        service().handleSlackCallback("code", state);
+
+        assertThat(service().validSlackBotToken(tenantId)).isEqualTo("xoxb-token-2");
+    }
+
+    @Test
+    void validSlackBotToken_semConexao_falhaClaro() {
+        assertThatThrownBy(() -> service().validSlackBotToken(tenantId))
+                .isInstanceOf(IntegrationException.NotConnected.class)
+                .hasMessageContaining("slack");
+    }
+
+    @Test
+    void status_listaSlackComConfiguredProprio() {
+        List<ProviderStatus> status = service().status(tenantId);
+        ProviderStatus slackStatus =
+                status.stream().filter(s -> s.provider().equals("slack")).findFirst().orElseThrow();
+        assertThat(slackStatus.configured()).isTrue();
+        assertThat(slackStatus.connected()).isFalse();
+
+        IntegrationService semSlack =
+                new IntegrationService(
+                        repo,
+                        google,
+                        slack,
+                        codec,
+                        clock,
+                        "client-id-teste",
+                        "http://localhost:8080/integrations/google/oauth/callback",
+                        "",
+                        "");
+        ProviderStatus naoConfigurado =
+                semSlack.status(tenantId).stream()
+                        .filter(s -> s.provider().equals("slack"))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(naoConfigurado.configured()).isFalse();
     }
 
     private void seedConnection(String access, String refresh, OffsetDateTime expiresAt) {
@@ -187,6 +276,15 @@ class IntegrationServiceTest {
         @Override
         public String userEmail(String accessToken) {
             return email;
+        }
+    }
+
+    private static final class FakeSlack implements SlackOAuthClient {
+        TokenResponse exchangeResult;
+
+        @Override
+        public TokenResponse exchangeCode(String code, String redirectUri) {
+            return exchangeResult;
         }
     }
 }
