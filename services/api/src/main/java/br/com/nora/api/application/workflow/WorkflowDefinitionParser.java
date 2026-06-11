@@ -184,7 +184,7 @@ public class WorkflowDefinitionParser {
     }
 
     private void validateActionParams(Node action) {
-        if ("send_email".equals(action.type())) {
+        if ("send_email".equals(action.type()) || "gmail_send_email".equals(action.type())) {
             String to = action.paramAsString("to");
             if (to == null || to.isBlank() || !to.contains("@")) {
                 throw new WorkflowException.InvalidDefinition(
