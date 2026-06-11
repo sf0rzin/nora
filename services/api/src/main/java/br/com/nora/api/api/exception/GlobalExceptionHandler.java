@@ -175,6 +175,24 @@ public class GlobalExceptionHandler {
                                 ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
     }
 
+    @ExceptionHandler(br.com.nora.api.application.integration.IntegrationException.class)
+    public ResponseEntity<ErrorResponse> handleIntegration(
+            br.com.nora.api.application.integration.IntegrationException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "INTEGRATION_NOT_CONNECTED" -> HttpStatus.NOT_FOUND;
+                    case "INTEGRATION_UNKNOWN_PROVIDER" -> HttpStatus.NOT_FOUND;
+                    case "INTEGRATION_NOT_CONFIGURED" -> HttpStatus.UNPROCESSABLE_ENTITY;
+                    case "INTEGRATION_INVALID_STATE" -> HttpStatus.BAD_REQUEST;
+                    case "INTEGRATION_PROVIDER_ERROR" -> HttpStatus.BAD_GATEWAY;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
     @ExceptionHandler(br.com.nora.api.application.workflow.WorkflowException.class)
     public ResponseEntity<ErrorResponse> handleWorkflow(
             br.com.nora.api.application.workflow.WorkflowException ex) {
