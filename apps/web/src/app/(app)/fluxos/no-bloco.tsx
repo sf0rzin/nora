@@ -36,7 +36,7 @@ export function NoBloco({ data, selected }: NodeProps<NoRF>) {
       {data.kind !== "trigger" && <Handle type="target" position={Position.Left} />}
 
       <div className="kind" style={{ color: kindMeta.cor }}>
-        <IconeKind kind={data.kind} />
+        {meta?.Icone ? <meta.Icone /> : <IconeKind kind={data.kind} />}
         {kindMeta.rotulo}
       </div>
       <div className="titulo">{meta?.nome ?? data.blockType}</div>
