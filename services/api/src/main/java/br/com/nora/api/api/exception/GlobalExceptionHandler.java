@@ -88,7 +88,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleAuthDomain(AuthException ex) {
         HttpStatus status =
                 switch (ex.code()) {
-                    case "EMAIL_ALREADY_TAKEN" -> HttpStatus.CONFLICT;
+                    case "EMAIL_ALREADY_TAKEN", "ACCOUNT_TENANT_SHARED" -> HttpStatus.CONFLICT;
                     case "INVALID_CREDENTIALS", "EMAIL_NOT_VERIFIED", "REFRESH_TOKEN_INVALID" ->
                             HttpStatus.UNAUTHORIZED;
                     case "USER_DISABLED" -> HttpStatus.FORBIDDEN;
