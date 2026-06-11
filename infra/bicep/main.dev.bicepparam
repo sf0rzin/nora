@@ -44,6 +44,16 @@ param geminiApiKey = readEnvironmentVariable('GEMINI_API_KEY', '')
 param resendApiKey = readEnvironmentVariable('RESEND_API_KEY', '')
 param noraEmailFrom = readEnvironmentVariable('NORA_EMAIL_FROM', 'NORA <onboarding@resend.dev>')
 
+// ---- Integracoes OAuth (NORA Flows Fase 2 — ADR 0031) ----
+// Vazios = conector aparece como "nao configurado" no hub (fail-visible, sem stub).
+// Redirect URIs derivam do dominio publico (api.nora.systems) direto no main.bicep.
+param googleOauthClientId = readEnvironmentVariable('GOOGLE_OAUTH_CLIENT_ID', '')
+param googleOauthClientSecret = readEnvironmentVariable('GOOGLE_OAUTH_CLIENT_SECRET', '')
+param slackOauthClientId = readEnvironmentVariable('SLACK_OAUTH_CLIENT_ID', '')
+param slackOauthClientSecret = readEnvironmentVariable('SLACK_OAUTH_CLIENT_SECRET', '')
+param integrationsStateSecret = readEnvironmentVariable('NORA_INTEGRATIONS_STATE_SECRET', '')
+param integrationsEncKey = readEnvironmentVariable('NORA_INTEGRATIONS_ENC_KEY', '')
+
 // ---- Imagens ----
 // Imagens reais publicadas pelo workflow `build-images.yml` no GHCR público.
 // Packages marcados como Public em github.com/users/sys0xff/packages.
