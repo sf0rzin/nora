@@ -121,7 +121,7 @@ export default async function MeetingReportPage({ params }: { params: Promise<{ 
         <article
           className="report-paper"
           style={{
-            background: "#fff",
+            background: "var(--surface)",
             border: "1px solid var(--border)",
             borderRadius: 12,
             padding: "44px 52px 40px",
