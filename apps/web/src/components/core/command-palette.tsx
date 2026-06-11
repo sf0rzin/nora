@@ -20,7 +20,7 @@ type CommandItem = {
   kind: "cmd";
   label: string;
   sub?: string;
-  icon: "plus" | "chat" | "tasks" | "gear";
+  icon: "plus" | "chat" | "tasks" | "flow" | "gear";
   href: Route;
 };
 
@@ -30,6 +30,7 @@ const COMMANDS: CommandItem[] = [
   { kind: "cmd", label: "Nova reunião", sub: "N", icon: "plus", href: "/meetings/upload" as Route },
   { kind: "cmd", label: "Nova sessão de chat", icon: "chat", href: "/chat" as Route },
   { kind: "cmd", label: "Ver action items", icon: "tasks", href: "/tasks" as Route },
+  { kind: "cmd", label: "Fluxos", icon: "flow", href: "/fluxos" as Route },
   { kind: "cmd", label: "Abrir configurações", icon: "gear", href: "/settings/context" as Route },
 ];
 
@@ -52,6 +53,14 @@ function CmdIcon({ name }: { name: CommandItem["icon"] | "doc" | "search" }) {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
           <path d="M9 11l3 3L22 4" />
           <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+        </svg>
+      );
+    case "flow":
+      return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+          <path d="M10 6.5h5.5a2 2 0 0 1 2 2V14" />
         </svg>
       );
     case "gear":
