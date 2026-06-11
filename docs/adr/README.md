@@ -74,3 +74,4 @@ Decisões parcialmente substituídas: ADR sucessor pode marcar `Substitui parcia
 | 0029 | LGPD operacional: direito ao esquecimento + retenção (hard-delete) | aceito |
 | 0030 | NORA Flows: event bus in-process pós-commit + workflow engine | aceito |
 | 0031 | Integrações OAuth (Google) e armazenamento de tokens | aceito |
+| 0032 | Canvas do NORA Flows: React Flow estilizado com tokens NORA | aceito |
