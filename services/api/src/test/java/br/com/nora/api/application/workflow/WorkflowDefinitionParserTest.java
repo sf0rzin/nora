@@ -12,7 +12,7 @@ class WorkflowDefinitionParserTest {
 
     private final WorkflowDefinitionParser parser =
             new WorkflowDefinitionParser(new ObjectMapper());
-    private final Set<String> actions = Set.of("send_email");
+    private final Set<String> actions = Set.of("send_email", "slack_post_message");
 
     private static final String VALID =
             """
@@ -133,6 +133,34 @@ class WorkflowDefinitionParserTest {
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
                 .hasMessageContaining("destinatário");
+    }
+
+    @Test
+    void rejeitaSlackPostMessageSemCanal() {
+        String json =
+                """
+                {"nodes":[
+                  {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
+                  {"id":"a1","kind":"action","type":"slack_post_message","params":{"text":"oi"}}],
+                 "edges":[{"id":"e1","source":"t1","target":"a1"}]}
+                """;
+        assertThatThrownBy(() -> parser.parse(json, actions))
+                .isInstanceOf(WorkflowException.InvalidDefinition.class)
+                .hasMessageContaining("params.channel");
+    }
+
+    @Test
+    void aceitaSlackPostMessageComCanal() {
+        String json =
+                """
+                {"nodes":[
+                  {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
+                  {"id":"a1","kind":"action","type":"slack_post_message",
+                   "params":{"channel":"#vendas"}}],
+                 "edges":[{"id":"e1","source":"t1","target":"a1"}]}
+                """;
+        assertThat(parser.parse(json, actions).nodesById().get("a1").params())
+                .containsEntry("channel", "#vendas");
     }
 
     @Test
