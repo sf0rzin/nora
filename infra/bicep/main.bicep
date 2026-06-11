@@ -885,34 +885,34 @@ var apiSecrets = {
         identity: uaiApi.outputs.id
       }
     ],
-    // Integracoes OAuth (ADR 0031): referencias condicionais — o secret do KV so existe
-    // quando o param foi setado (mesma condicao do bloco de criacao no KV).
+    // Integracoes OAuth (ADR 0031): VALOR DIRETO no secret store do app (mesmo padrao do
+    // registry-password), condicionais a estarem setados. NAO usar keyVaultUrl aqui: na
+    // primeira ativacao com KV-reference a plataforma injetou valor corrompido (0x3F) e o
+    // TokenCipher derrubou o boot (revision ActivationFailed em 2026-06-11), apesar de
+    // `az containerapp secret list --show-values` exibir o valor correto. O KV continua
+    // guardando as copias (bloco kvSecrets) para operacao/rotacao.
     empty(googleOauthClientSecret) ? [] : [
       {
         name: 'google-oauth-client-secret'
-        keyVaultUrl: '${kvUri}secrets/google-oauth-client-secret'
-        identity: uaiApi.outputs.id
+        value: googleOauthClientSecret
       }
     ],
     empty(slackOauthClientSecret) ? [] : [
       {
         name: 'slack-oauth-client-secret'
-        keyVaultUrl: '${kvUri}secrets/slack-oauth-client-secret'
-        identity: uaiApi.outputs.id
+        value: slackOauthClientSecret
       }
     ],
     empty(integrationsStateSecret) ? [] : [
       {
         name: 'integrations-state-secret'
-        keyVaultUrl: '${kvUri}secrets/integrations-state-secret'
-        identity: uaiApi.outputs.id
+        value: integrationsStateSecret
       }
     ],
     empty(integrationsEncKey) ? [] : [
       {
         name: 'integrations-enc-key'
-        keyVaultUrl: '${kvUri}secrets/integrations-enc-key'
-        identity: uaiApi.outputs.id
+        value: integrationsEncKey
       }
     ],
     empty(registryServer) ? [] : [
