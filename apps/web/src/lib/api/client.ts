@@ -27,6 +27,8 @@ import type {
   MeetingDetail,
   MeetingGoal,
   MeetingsListResponse,
+  MeResponse,
+  TenantInfo,
   WorkflowDefinition,
   WorkflowExecutionResponse,
   WorkflowResponse,
@@ -38,6 +40,7 @@ export type { AcceptInviteRequest, Invite, InviteListResponse, InviteStatus, Inv
 export type { ChatMessage, ChatSessionDetail, ChatSessionSummary };
 export type { WorkflowDefinition, WorkflowExecutionResponse, WorkflowResponse };
 export type { IntegrationProvider, IntegrationStatus };
+export type { MeResponse, TenantInfo };
 import meetingsListFixture from '@/fixtures/meetings-list-response.json';
 import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
 import { handleSessionExpired, scheduleRefresh } from '@/lib/auth';
@@ -173,7 +176,10 @@ async function request<T>(path: string, init?: RequestOptions): Promise<T> {
     );
   }
   if (resp.status === 204) return undefined as T;
-  return (await resp.json()) as T;
+  // 2xx sem corpo (ex.: 202 do /auth/verify-email/resend) não pode quebrar no parse.
+  const text = await resp.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
 }
 
 // ---------- Meetings ----------
@@ -328,6 +334,85 @@ export async function confirmPasswordReset(token: string, newPassword: string) {
   return request<{ reset: boolean }>(`/auth/password/reset/confirm`, {
     method: 'POST',
     body: JSON.stringify({ token, newPassword }),
+  });
+}
+
+// ---------- Conta & sessão (settings — abas Conta/Segurança) ----------
+
+/** Dados do usuário autenticado — fonte de verdade do perfil (GET /auth/me). */
+export async function getMe(): Promise<MeResponse> {
+  return request<MeResponse>(`/auth/me`);
+}
+
+/** Atualiza o perfil do usuário logado. 400 VALIDATION_FAILED quando blank. */
+export async function updateMe(input: { displayName: string }): Promise<MeResponse> {
+  return request<MeResponse>(`/users/me`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Troca a senha do usuário logado (204). O backend revoga TODAS as sessões e
+ * reemite cookies novos pro dispositivo atual — o usuário CONTINUA logado aqui.
+ * 401 INVALID_CREDENTIALS = senha atual errada; 400 = nova senha fora da policy
+ * (a `message` explica a regra).
+ */
+export async function changePassword(input: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<void> {
+  return request<void>(`/auth/password/change`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Encerra TODAS as sessões, inclusive a atual (204 + cookies limpos pelo
+ * backend). O caller deve limpar o estado local (`clearLocalSession`) e
+ * mandar o usuário pro login.
+ */
+export async function logoutAllSessions(): Promise<void> {
+  return request<void>(`/auth/logout-all`, { method: 'POST' });
+}
+
+/**
+ * Reenvia o e-mail de verificação. **Endpoint público**, responde 202 sempre
+ * (anti-enumeração) — a UI deve mostrar a mesma mensagem em qualquer caso.
+ */
+export async function resendVerificationEmail(email: string): Promise<void> {
+  return request<void>(`/auth/verify-email/resend`, {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+    skipAuth: true,
+  });
+}
+
+/**
+ * Exclui DEFINITIVAMENTE a conta + workspace + todos os dados (LGPD, direito
+ * ao esquecimento). 204 e cookies limpos pelo backend. 401 = senha errada;
+ * 409 ACCOUNT_TENANT_SHARED = workspace compartilhado (mostrar a `message`).
+ */
+export async function deleteAccount(input: { password: string }): Promise<void> {
+  return request<void>(`/users/me`, {
+    method: 'DELETE',
+    body: JSON.stringify(input),
+  });
+}
+
+// ---------- Workspace / Tenant (settings — aba Workspace) ----------
+
+/** Workspace atual (GET /tenant). O slug é imutável — só meta info na UI. */
+export async function getTenant(): Promise<TenantInfo> {
+  return request<TenantInfo>(`/tenant`);
+}
+
+/** Renomeia o workspace (PUT /tenant/name). Slug não muda. */
+export async function renameTenant(input: { name: string }): Promise<TenantInfo> {
+  return request<TenantInfo>(`/tenant/name`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
   });
 }
 
