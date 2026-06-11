@@ -3,13 +3,18 @@ package br.com.nora.api.api.controllers;
 import br.com.nora.api.api.dto.auth.ConfirmPasswordResetRequest;
 import br.com.nora.api.api.dto.auth.LoginRequest;
 import br.com.nora.api.api.dto.auth.LoginResponse;
+import br.com.nora.api.api.dto.auth.MeResponse;
+import br.com.nora.api.api.dto.auth.PasswordChangeRequest;
 import br.com.nora.api.api.dto.auth.RefreshResponse;
 import br.com.nora.api.api.dto.auth.RequestPasswordResetRequest;
 import br.com.nora.api.api.dto.auth.RequestPasswordResetResponse;
+import br.com.nora.api.api.dto.auth.ResendVerificationRequest;
+import br.com.nora.api.api.dto.auth.ResendVerificationResponse;
 import br.com.nora.api.api.dto.auth.SignupRequest;
 import br.com.nora.api.api.dto.auth.SignupResponse;
 import br.com.nora.api.api.dto.auth.VerifyEmailRequest;
 import br.com.nora.api.api.security.AuthCookies;
+import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.identity.AuthException;
 import br.com.nora.api.application.identity.AuthService;
 import br.com.nora.api.application.identity.AuthService.ConfirmPasswordResetCommand;
@@ -20,7 +25,9 @@ import br.com.nora.api.application.identity.AuthService.RequestPasswordResetComm
 import br.com.nora.api.application.identity.AuthService.RequestPasswordResetResult;
 import br.com.nora.api.application.identity.AuthService.SignupCommand;
 import br.com.nora.api.application.identity.AuthService.SignupResult;
+import br.com.nora.api.domain.identity.User;
 import br.com.nora.api.infrastructure.security.AuthRateLimiter;
+import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -30,6 +37,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -174,6 +182,79 @@ public class AuthController {
         AuthCookies.appendSetCookie(headers, cookies.buildClearAccessCookie());
         AuthCookies.appendSetCookie(headers, cookies.buildClearRefreshCookie());
         return ResponseEntity.noContent().headers(headers).build();
+    }
+
+    /** Identidade do usuario autenticado (aba Conta das configuracoes). */
+    @GetMapping("/me")
+    public MeResponse me() {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        User user = authService.me(principal.userId());
+        return new MeResponse(
+                user.id(),
+                user.tenantId(),
+                user.email().value(),
+                user.displayName(),
+                user.isEmailVerified(),
+                user.createdAt());
+    }
+
+    /**
+     * Troca de senha AUTENTICADA (aba Seguranca). Revoga todas as sessoes (OWASP) e emite um par
+     * novo pro dispositivo atual — os cookies sao reescritos na resposta, o usuario nao e deslogado
+     * aqui.
+     */
+    @PostMapping("/password/change")
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody PasswordChangeRequest req) {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        LoginResult result =
+                authService.changePassword(
+                        principal.userId(), req.currentPassword(), req.newPassword());
+        HttpHeaders headers = new HttpHeaders();
+        AuthCookies.appendSetCookie(
+                headers,
+                cookies.buildAccessCookie(
+                        result.accessToken(), Duration.ofSeconds(result.accessExpiresInSeconds())));
+        AuthCookies.appendSetCookie(
+                headers,
+                cookies.buildRefreshCookie(
+                        result.refreshTokenPlain(),
+                        Duration.ofSeconds(result.refreshExpiresInSeconds())));
+        return ResponseEntity.noContent().headers(headers).build();
+    }
+
+    /**
+     * "Sair de todos os dispositivos": revoga TODOS os refresh tokens do usuario e limpa os cookies
+     * deste cliente. O access token atual segue valido ate expirar (15min) — aceitavel; o front
+     * redireciona pro login imediatamente.
+     */
+    @PostMapping("/logout-all")
+    public ResponseEntity<Void> logoutAll() {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        authService.logoutAllSessions(principal.userId());
+        HttpHeaders headers = new HttpHeaders();
+        AuthCookies.appendSetCookie(headers, cookies.buildClearAccessCookie());
+        AuthCookies.appendSetCookie(headers, cookies.buildClearRefreshCookie());
+        return ResponseEntity.noContent().headers(headers).build();
+    }
+
+    /**
+     * Reenvia o e-mail de verificacao (publico — usado quando o login falha com
+     * EMAIL_NOT_VERIFIED). Resposta 202 indistinguivel (anti-enumeracao), com o mesmo rate limit
+     * por e-mail do reset (mesmo vetor de abuso: inundar inbox alheio).
+     */
+    @PostMapping("/verify-email/resend")
+    public ResponseEntity<ResendVerificationResponse> resendVerification(
+            @Valid @RequestBody ResendVerificationRequest req) {
+        String message = "Se houver uma conta nao verificada para este e-mail, reenviamos o link.";
+        if (!rateLimiter.allowPasswordReset(req.email())) {
+            LOG.warn(
+                    "Verification resend rate-limited for email-hash={}",
+                    Integer.toHexString(req.email().toLowerCase(java.util.Locale.ROOT).hashCode()));
+            return ResponseEntity.accepted().body(new ResendVerificationResponse(message, null));
+        }
+        RequestPasswordResetResult result = authService.resendVerificationEmail(req.email());
+        return ResponseEntity.accepted()
+                .body(new ResendVerificationResponse(message, result.devToken()));
     }
 
     @PostMapping("/password/reset/request")
