@@ -19,4 +19,7 @@ public interface UserRepository {
 
     /** Indica se o usuario e o Root do tenant. */
     boolean isRoot(UUID userId, UUID tenantId);
+
+    /** Quantos usuarios o tenant tem. Guarda da exclusao de conta (so tenant pessoal, 1 user). */
+    int countByTenant(UUID tenantId);
 }
