@@ -56,10 +56,20 @@ const NODE_TYPES = { bloco: NoBloco };
 
 const GATILHO_PADRAO = CATALOGO.find((b) => b.kind === "trigger")!;
 
-/** Cria um nó RF novo a partir de um bloco do catálogo. */
-function novoNo(bloco: BlocoMeta, position: { x: number; y: number }, selecionado = false): NoRF {
+/**
+ * Cria um nó RF novo a partir de um bloco do catálogo. O id é injetável:
+ * nós adicionados pelo usuário usam crypto.randomUUID(), mas o gatilho
+ * inicial de /fluxos/novo usa id fixo — o estado inicial roda também no
+ * SSR e um id aleatório divergiria entre servidor e hidratação.
+ */
+function novoNo(
+  bloco: BlocoMeta,
+  position: { x: number; y: number },
+  id: string,
+  selecionado = false,
+): NoRF {
   return {
-    id: crypto.randomUUID(),
+    id,
     type: "bloco",
     position,
     selected: selecionado,
@@ -115,7 +125,7 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
   const [nome, setNome] = useState("");
   const [ativo, setAtivo] = useState(true);
   const [nodes, setNodes, onNodesChange] = useNodesState<NoRF>(
-    fluxoSalvo ? [] : [novoNo(GATILHO_PADRAO, { x: 60, y: 140 })],
+    fluxoSalvo ? [] : [novoNo(GATILHO_PADRAO, { x: 60, y: 140 }, "no-gatilho-inicial")],
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [sujo, setSujo] = useState(false);
@@ -207,16 +217,21 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
 
   /** CLICK na paleta: adiciona o bloco perto do nó mais à direita, já selecionado. */
   function adicionarBloco(bloco: BlocoMeta) {
+    // id criado FORA do updater: em StrictMode o updater roda 2x e um id
+    // gerado lá dentro divergiria do que registramos na seleção.
+    const id = crypto.randomUUID();
     setNodes((ns) => {
       let pos = { x: 60, y: 140 };
       if (ns.length > 0) {
         const ref = ns.reduce((a, b) => (b.position.x > a.position.x ? b : a));
         pos = { x: ref.position.x + 260, y: ref.position.y + ((ns.length % 3) - 1) * 36 };
       }
-      const no = novoNo(bloco, pos, true);
-      setSelId(no.id);
-      return [...ns.map((n) => (n.selected ? { ...n, selected: false } : n)), no];
+      return [
+        ...ns.map((n) => (n.selected ? { ...n, selected: false } : n)),
+        novoNo(bloco, pos, id, true),
+      ];
     });
+    setSelId(id);
     setSujo(true);
   }
 
@@ -314,6 +329,13 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
     if (tab === "execucoes" && execucoes === null && fluxoSalvo) recarregarExecucoes();
   }, [tab, execucoes, fluxoSalvo, recarregarExecucoes]);
 
+  // Aviso de sucesso some sozinho; erro fica até o usuário fechar.
+  useEffect(() => {
+    if (aviso?.tipo !== "ok") return;
+    const t = setTimeout(() => setAviso(null), 6000);
+    return () => clearTimeout(t);
+  }, [aviso]);
+
   async function testar() {
     if (!workflowId) return;
     setTestando(true);
@@ -323,6 +345,9 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
       setExecucoes((curr) => [ex, ...(curr ?? []).filter((e) => e.id !== ex.id)]);
       setExpandida(ex.id);
       setTab("execucoes");
+      // garante o histórico completo (se a tab nunca foi aberta, só a
+      // execução nova estaria na lista) — refetch em segundo plano
+      recarregarExecucoes();
       // limpa a seleção pro painel direito mostrar a tab de execuções
       setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n)));
       setSelId(null);
