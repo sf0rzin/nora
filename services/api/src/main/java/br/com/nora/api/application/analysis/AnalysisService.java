@@ -4,6 +4,7 @@ import br.com.nora.api.application.customer.CustomerConfidenceService;
 import br.com.nora.api.application.embedding.EmbeddingService;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.platform.UsageRecorder;
+import br.com.nora.api.application.ports.DomainEventPublisher;
 import br.com.nora.api.application.ports.MeetingAnalysisRepository;
 import br.com.nora.api.application.ports.MeetingGoalRepository;
 import br.com.nora.api.application.ports.MeetingRepository;
@@ -14,12 +15,14 @@ import br.com.nora.api.application.ports.TenantContextRepository;
 import br.com.nora.api.application.ports.TenantRlsContext;
 import br.com.nora.api.application.ports.TranscriptRepository;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
+import br.com.nora.api.domain.event.MeetingAnalysisCompletedEvent;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
 import br.com.nora.api.domain.meeting.Transcript;
 import br.com.nora.api.domain.meeting.productivity.MeetingGoal;
 import br.com.nora.api.domain.meeting.productivity.ProductivityAssessment;
 import br.com.nora.api.domain.tenant.TenantContext;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -53,6 +56,7 @@ public class AnalysisService {
     private final UsageRecorder usageRecorder;
     private final TenantRlsContext rlsContext;
     private final EmbeddingService embeddings;
+    private final DomainEventPublisher events;
 
     public AnalysisService(
             MeetingRepository meetings,
@@ -65,7 +69,8 @@ public class AnalysisService {
             CustomerConfidenceService customerConfidence,
             UsageRecorder usageRecorder,
             TenantRlsContext rlsContext,
-            EmbeddingService embeddings) {
+            EmbeddingService embeddings,
+            DomainEventPublisher events) {
         this.meetings = meetings;
         this.transcripts = transcripts;
         this.tenantContexts = tenantContexts;
@@ -77,6 +82,7 @@ public class AnalysisService {
         this.usageRecorder = usageRecorder;
         this.rlsContext = rlsContext;
         this.embeddings = embeddings;
+        this.events = events;
     }
 
     /**
@@ -131,11 +137,30 @@ public class AnalysisService {
         persistCustomerConfidence(meetingId, tenantId, result);
         emitUsage(tenantId, saved);
         markStatusAndSnippet(meeting, ProcessingStatus.COMPLETED, saved.summarySnippet());
+        // Evento de domínio do NORA Flows: emitido APÓS o commit do COMPLETED acima
+        // (markStatusAndSnippet é @Transactional e já retornou). Fail-soft: workflow nunca
+        // derruba nem reverte a análise.
+        publishAnalysisCompleted(meetingId, tenantId, saved);
         // RAG: indexa o embedding do RESUMO (já tratado pelo PII Shield, não a transcrição bruta).
         // Best-effort — o EmbeddingService engole falhas e nunca derruba a análise.
         String snippet = saved.summarySnippet() == null ? "" : saved.summarySnippet();
         embeddings.index(meetingId, tenantId, (meeting.title() + ". " + snippet).trim());
         return saved;
+    }
+
+    private void publishAnalysisCompleted(UUID meetingId, UUID tenantId, MeetingAnalysis saved) {
+        try {
+            events.publish(
+                    new MeetingAnalysisCompletedEvent(
+                            tenantId, meetingId, saved.id(), Instant.now()));
+        } catch (RuntimeException ex) {
+            LOG.warn(
+                    "Falha ao publicar MeetingAnalysisCompletedEvent meetingId={} tenantId={}"
+                            + " cause={}",
+                    meetingId,
+                    tenantId,
+                    ex.getMessage());
+        }
     }
 
     /**

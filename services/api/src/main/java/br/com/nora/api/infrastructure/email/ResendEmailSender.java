@@ -24,6 +24,7 @@ public class ResendEmailSender implements EmailSender {
 
     private static final Logger LOG = LoggerFactory.getLogger(ResendEmailSender.class);
     private static final String RESEND_URL = "https://api.resend.com/emails";
+    private static final java.time.Duration TIMEOUT = java.time.Duration.ofSeconds(10);
 
     private final WebClient http;
     private final String fromAddress;
@@ -87,15 +88,20 @@ public class ResendEmailSender implements EmailSender {
         send(toEmail, "Convite NORA - " + tenantName, body);
     }
 
+    @Override
+    public void sendWorkflowNotification(String toEmail, String subject, String htmlBody) {
+        // Sem try/catch de propósito: o WorkflowEngine registra a falha no log da execução
+        // (status FAILED). Engolir o erro aqui mostraria sucesso falso no histórico do fluxo.
+        Map<String, Object> body =
+                Map.of("from", fromAddress, "to", toEmail, "subject", subject, "html", htmlBody);
+        http.post().bodyValue(body).retrieve().bodyToMono(String.class).block(TIMEOUT);
+    }
+
     private void send(String to, String subject, String html) {
         Map<String, Object> body =
                 Map.of("from", fromAddress, "to", to, "subject", subject, "html", html);
         try {
-            http.post()
-                    .bodyValue(body)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block(java.time.Duration.ofSeconds(10));
+            http.post().bodyValue(body).retrieve().bodyToMono(String.class).block(TIMEOUT);
         } catch (Exception ex) {
             // Falha de envio nao deve quebrar o fluxo do usuario; logamos para investigar.
             LOG.error("Resend send failed to={} subject={}", to, subject, ex);
