@@ -9,6 +9,7 @@ const PROTECTED_PREFIXES = [
   '/chat',
   '/projetos',
   '/integracoes',
+  '/fluxos',
 ];
 const AUTH_PREFIXES = ['/auth'];
 
@@ -68,6 +69,7 @@ export const config = {
     '/chat/:path*',
     '/projetos/:path*',
     '/integracoes/:path*',
+    '/fluxos/:path*',
     '/auth/:path*',
   ],
 };
