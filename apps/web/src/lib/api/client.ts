@@ -15,6 +15,9 @@
 import type {
   AcceptInviteRequest,
   ApiError,
+  ChatMessage,
+  ChatSessionDetail,
+  ChatSessionSummary,
   Invite,
   InviteListResponse,
   InviteStatus,
@@ -27,6 +30,7 @@ import type {
 // Re-export para componentes consumirem direto de @/lib/api/client (parity
 // com GroupDto/PolicyDto etc., que sao declarados localmente neste modulo).
 export type { AcceptInviteRequest, Invite, InviteListResponse, InviteStatus, InviteUserRequest };
+export type { ChatMessage, ChatSessionDetail, ChatSessionSummary };
 import meetingsListFixture from '@/fixtures/meetings-list-response.json';
 import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
 import { handleSessionExpired, scheduleRefresh } from '@/lib/auth';
@@ -578,4 +582,79 @@ export async function acceptInvite(
 /** Revoga um convite PENDING. Exige IAM `iam:invite:revoke`. */
 export async function revokeInvite(id: string): Promise<void> {
   return request<void>(`/iam/invites/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// ---------- Chat sessions (persistência tenant + user scoped) ----------
+//
+// Todas as sessões sao escopadas ao usuario logado (user_id do principal) dentro
+// do tenant atual (ADR 0002 + RLS ADR 0028). O usuario so enxerga as proprias
+// sessoes; o backend resolve user_id/tenant_id pelo contexto autenticado (cookies
+// httpOnly via `credentials: 'include'`, ja aplicado no helper `request`).
+
+/** Lista as sessoes do usuario logado, mais recentes primeiro. */
+export async function listChatSessions(): Promise<ChatSessionSummary[]> {
+  return request<ChatSessionSummary[]>(`/chat/sessions`);
+}
+
+/** Cria uma sessao. `title` e opcional; o backend pode derivar depois da 1a mensagem. */
+export async function createChatSession(title?: string): Promise<ChatSessionSummary> {
+  return request<ChatSessionSummary>(`/chat/sessions`, {
+    method: 'POST',
+    body: JSON.stringify(title !== undefined ? { title } : {}),
+  });
+}
+
+/** Carrega uma sessao com o historico completo de mensagens. */
+export async function getChatSession(id: string): Promise<ChatSessionDetail> {
+  return request<ChatSessionDetail>(`/chat/sessions/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Anexa uma mensagem a sessao. Bumpa `updatedAt`; se a sessao estiver sem titulo,
+ * o backend deriva o titulo da 1a mensagem do usuario (~48 chars).
+ */
+export async function appendChatMessage(
+  id: string,
+  msg: { role: 'user' | 'assistant'; content: string },
+): Promise<ChatMessage> {
+  return request<ChatMessage>(`/chat/sessions/${encodeURIComponent(id)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify(msg),
+  });
+}
+
+/** Renomeia uma sessao. */
+export async function renameChatSession(
+  id: string,
+  title: string,
+): Promise<ChatSessionSummary> {
+  return request<ChatSessionSummary>(`/chat/sessions/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
+  });
+}
+
+/** Apaga definitivamente uma sessao (204). */
+export async function deleteChatSession(id: string): Promise<void> {
+  return request<void>(`/chat/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// ---------- Busca semântica de reuniões (RAG) ----------
+
+/**
+ * Busca reunioes relevantes a uma query por similaridade semantica.
+ * `k` controla quantos resultados retornar (default backend). Escopado ao tenant.
+ */
+export async function searchMeetings(
+  q: string,
+  k?: number,
+): Promise<{
+  items: Array<{ id: string; title: string; summarySnippet?: string; startedAt?: string }>;
+}> {
+  const qs = new URLSearchParams();
+  qs.set('q', q);
+  if (typeof k === 'number') qs.set('k', String(k));
+  return request<{
+    items: Array<{ id: string; title: string; summarySnippet?: string; startedAt?: string }>;
+  }>(`/meetings/search?${qs.toString()}`);
 }

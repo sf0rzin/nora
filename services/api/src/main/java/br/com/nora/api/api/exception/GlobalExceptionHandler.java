@@ -2,6 +2,7 @@ package br.com.nora.api.api.exception;
 
 import br.com.nora.api.api.dto.ErrorResponse;
 import br.com.nora.api.application.analysis.AnalysisException;
+import br.com.nora.api.application.chat.ChatException;
 import br.com.nora.api.application.iam.IamException;
 import br.com.nora.api.application.iam.InvitationException;
 import br.com.nora.api.application.identity.AuthException;
@@ -166,6 +167,19 @@ public class GlobalExceptionHandler {
         HttpStatus status =
                 switch (ex.code()) {
                     case "TASK_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
+    @ExceptionHandler(ChatException.class)
+    public ResponseEntity<ErrorResponse> handleChat(ChatException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "CHAT_SESSION_NOT_FOUND" -> HttpStatus.NOT_FOUND;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)

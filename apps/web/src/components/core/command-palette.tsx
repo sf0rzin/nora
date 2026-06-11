@@ -1,0 +1,253 @@
+"use client";
+
+/**
+ * NORA Core — command palette (⌘K) com busca semântica de reuniões.
+ *
+ * Porte do protótipo do Claude Design (shell.js · mountPalette/renderPalette):
+ * comandos fixos + resultados de reuniões via `searchMeetings(q)` (RAG real,
+ * escopado ao tenant). Sem mock: a lista de reuniões vem do backend.
+ *
+ * Atalhos de teclado (bindShortcuts) e o estado de abertura ficam no AppShell;
+ * este componente só renderiza/controla o overlay quando `open` é true.
+ */
+import type { Route } from "next";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { searchMeetings } from "@/lib/api/client";
+
+type CommandItem = {
+  kind: "cmd";
+  label: string;
+  sub?: string;
+  icon: "plus" | "chat" | "tasks" | "gear";
+  href: Route;
+};
+
+type ResolvedItem = { href: Route };
+
+const COMMANDS: CommandItem[] = [
+  { kind: "cmd", label: "Nova reunião", sub: "N", icon: "plus", href: "/meetings/upload" as Route },
+  { kind: "cmd", label: "Nova sessão de chat", icon: "chat", href: "/chat" as Route },
+  { kind: "cmd", label: "Ver action items", icon: "tasks", href: "/tasks" as Route },
+  { kind: "cmd", label: "Abrir configurações", icon: "gear", href: "/settings/context" as Route },
+];
+
+function CmdIcon({ name }: { name: CommandItem["icon"] | "doc" | "search" }) {
+  switch (name) {
+    case "plus":
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      );
+    case "chat":
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+      );
+    case "tasks":
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 11l3 3L22 4" />
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+        </svg>
+      );
+    case "gear":
+      return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H7a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      );
+    case "doc":
+      return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <path d="M14 2v6h6" />
+        </svg>
+      );
+    case "search":
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+function fmtDate(iso?: string): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
+type MeetingHit = { id: string; title: string; summarySnippet?: string; startedAt?: string };
+
+export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const router = useRouter();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [query, setQuery] = useState("");
+  const [meetings, setMeetings] = useState<MeetingHit[]>([]);
+  const [sel, setSel] = useState(0);
+
+  // Foca o input ao abrir e zera a busca. Fechar não precisa limpar tudo —
+  // o reset acontece na próxima abertura.
+  useEffect(() => {
+    if (!open) return;
+    setQuery("");
+    setSel(0);
+    const t = setTimeout(() => inputRef.current?.focus(), 30);
+    return () => clearTimeout(t);
+  }, [open]);
+
+  // Busca semântica debounced. Query vazia → mostra reuniões recentes
+  // (searchMeetings com q vazio retorna os recentes do backend).
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    const handle = setTimeout(async () => {
+      try {
+        const k = query.trim() ? 6 : 4;
+        const res = await searchMeetings(query.trim(), k);
+        if (alive) setMeetings(res.items ?? []);
+      } catch {
+        if (alive) setMeetings([]);
+      }
+    }, query.trim() ? 180 : 0);
+    return () => {
+      alive = false;
+      clearTimeout(handle);
+    };
+  }, [query, open]);
+
+  const q = query.trim().toLowerCase();
+  const cmds = COMMANDS.filter((c) => !q || c.label.toLowerCase().includes(q));
+
+  // Lista achatada na ordem visual, pra navegação por teclado.
+  const items: ResolvedItem[] = [
+    ...cmds.map((c) => ({ href: c.href })),
+    ...meetings.map((m) => ({ href: `/meetings/${m.id}` as Route })),
+  ];
+
+  // Mantém a seleção dentro dos limites quando a lista muda.
+  useEffect(() => {
+    setSel((s) => Math.min(Math.max(s, 0), Math.max(items.length - 1, 0)));
+  }, [items.length]);
+
+  const go = useCallback(
+    (href: Route) => {
+      onClose();
+      router.push(href);
+    },
+    [onClose, router],
+  );
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSel((s) => Math.min(s + 1, items.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSel((s) => Math.max(s - 1, 0));
+    } else if (e.key === "Enter") {
+      const item = items[sel];
+      if (item) go(item.href);
+    } else if (e.key === "Escape") {
+      onClose();
+    }
+  }
+
+  if (!open) return null;
+
+  const cmdOffset = cmds.length;
+
+  return (
+    <div
+      className="palette-veil is-open"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="palette" role="dialog" aria-label="Busca e comandos">
+        <div className="palette-input-row">
+          <CmdIcon name="search" />
+          <input
+            ref={inputRef}
+            className="palette-input"
+            placeholder="Buscar reuniões ou digitar um comando…"
+            autoComplete="off"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+          <kbd className="kbd">esc</kbd>
+        </div>
+
+        <div className="palette-list">
+          {cmds.length > 0 && <div className="palette-group">Comandos</div>}
+          {cmds.map((c, i) => (
+            <div
+              key={c.label}
+              className={`palette-item${sel === i ? " is-sel" : ""}`}
+              data-i={i}
+              onClick={() => go(c.href)}
+              onMouseMove={() => setSel(i)}
+            >
+              <span className="icon">
+                <CmdIcon name={c.icon} />
+              </span>
+              <span className="grow">{c.label}</span>
+              {c.sub && <kbd className="kbd">{c.sub}</kbd>}
+            </div>
+          ))}
+
+          {meetings.length > 0 && (
+            <div className="palette-group">{q ? "Reuniões — busca semântica" : "Reuniões recentes"}</div>
+          )}
+          {meetings.map((m, i) => {
+            const idx = cmdOffset + i;
+            return (
+              <div
+                key={m.id}
+                className={`palette-item${sel === idx ? " is-sel" : ""}`}
+                data-i={idx}
+                onClick={() => go(`/meetings/${m.id}` as Route)}
+                onMouseMove={() => setSel(idx)}
+              >
+                <span className="icon">
+                  <CmdIcon name="doc" />
+                </span>
+                <span className="grow">{m.title}</span>
+                {m.startedAt && <span className="sub">{fmtDate(m.startedAt)}</span>}
+              </div>
+            );
+          })}
+
+          {items.length === 0 && (
+            <div className="palette-empty">
+              {query.trim() ? `Nada encontrado pra “${query.trim()}”.` : "Nenhuma reunião ainda."}
+            </div>
+          )}
+        </div>
+
+        <div className="palette-foot">
+          <span>
+            <kbd className="kbd">↑↓</kbd> navegar
+          </span>
+          <span>
+            <kbd className="kbd">↵</kbd> abrir
+          </span>
+          <span>Busca semântica nas suas reuniões</span>
+        </div>
+      </div>
+    </div>
+  );
+}
