@@ -9,6 +9,7 @@ import { MarkdownContent } from "@/components/markdown-content";
 import MeetingProductivitySection from "@/components/meeting-productivity-section";
 import CustomerConfidenceCard from "@/components/customer-confidence-card";
 import { MeetingDangerZone, ReprocessButton } from "@/components/meeting-actions";
+import MeetingProcessingPoller from "./processing-poller";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,9 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="page page--narrow">
+      {/* Enquanto PENDING/PROCESSING, revalida a página a cada 2,5s (máx ~5min). */}
+      <MeetingProcessingPoller status={meeting.processingStatus} />
+
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--muted)", marginBottom: 22 }}>
         <Link href={"/dashboard" as Route} style={{ color: "var(--muted)" }}>
           Reuniões
