@@ -30,6 +30,27 @@ public class TenantService {
         this.clock = clock;
     }
 
+    /** Tenant completo (aba Workspace das configuracoes: nome, slug, plano). */
+    @Transactional(readOnly = true)
+    public Tenant get(UUID tenantId) {
+        return tenants.findById(tenantId).orElseThrow(() -> new TenantException.NotFound(tenantId));
+    }
+
+    /** Renomeia o workspace (GOAL Fase 3). Preserva o slug; grava audit com old/new. */
+    @Transactional
+    public Tenant rename(UUID tenantId, String newName, UUID actorUserId) {
+        Tenant current =
+                tenants.findById(tenantId)
+                        .orElseThrow(() -> new TenantException.NotFound(tenantId));
+        Tenant saved = tenants.save(current.withName(newName, clock.now()));
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("oldName", current.name());
+        payload.put("newName", saved.name());
+        iam.recordAudit(tenantId, actorUserId, "tenant.name.updated", "TENANT", tenantId, payload);
+        return saved;
+    }
+
     /** Le o dominio corporativo configurado para o tenant. */
     @Transactional(readOnly = true)
     public String getAllowedEmailDomain(UUID tenantId) {
