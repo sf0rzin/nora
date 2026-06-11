@@ -25,12 +25,16 @@ import type {
   MeetingDetail,
   MeetingGoal,
   MeetingsListResponse,
+  WorkflowDefinition,
+  WorkflowExecutionResponse,
+  WorkflowResponse,
 } from './types';
 
 // Re-export para componentes consumirem direto de @/lib/api/client (parity
 // com GroupDto/PolicyDto etc., que sao declarados localmente neste modulo).
 export type { AcceptInviteRequest, Invite, InviteListResponse, InviteStatus, InviteUserRequest };
 export type { ChatMessage, ChatSessionDetail, ChatSessionSummary };
+export type { WorkflowDefinition, WorkflowExecutionResponse, WorkflowResponse };
 import meetingsListFixture from '@/fixtures/meetings-list-response.json';
 import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
 import { handleSessionExpired, scheduleRefresh } from '@/lib/auth';
@@ -657,4 +661,67 @@ export async function searchMeetings(
   return request<{
     items: Array<{ id: string; title: string; summarySnippet?: string; startedAt?: string }>;
   }>(`/meetings/search?${qs.toString()}`);
+}
+
+// ---------- NORA Flows — workflows de automação (ADR 0030) ----------
+//
+// CRUD + teste manual + histórico de execuções. Tudo escopado ao tenant pelo
+// backend (ADR 0002); o engine valida a definição no POST/PUT e devolve 422
+// `WORKFLOW_INVALID_DEFINITION` com mensagem PT-BR acionável quando o grafo
+// está inválido (sem gatilho, sem ação, com ciclo, params faltando etc.).
+
+/** Lista os fluxos do tenant atual. */
+export async function listWorkflows(): Promise<WorkflowResponse[]> {
+  return request<WorkflowResponse[]>(`/workflows`);
+}
+
+/** Carrega um fluxo com a definição completa (nós + arestas + posições). */
+export async function getWorkflow(id: string): Promise<WorkflowResponse> {
+  return request<WorkflowResponse>(`/workflows/${encodeURIComponent(id)}`);
+}
+
+/** Cria um fluxo. `active` default true no backend quando omitido. */
+export async function createWorkflow(input: {
+  name: string;
+  active?: boolean;
+  definition: WorkflowDefinition;
+}): Promise<WorkflowResponse> {
+  return request<WorkflowResponse>(`/workflows`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Atualiza nome, estado ativo e definição de um fluxo existente. */
+export async function updateWorkflow(
+  id: string,
+  input: { name: string; active: boolean; definition: WorkflowDefinition },
+): Promise<WorkflowResponse> {
+  return request<WorkflowResponse>(`/workflows/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Apaga definitivamente um fluxo (204). */
+export async function deleteWorkflow(id: string): Promise<void> {
+  return request<void>(`/workflows/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/**
+ * Executa o fluxo agora, de forma síncrona, contra a última reunião analisada
+ * do tenant (ou dados de exemplo quando não há reunião). Retorna a execução
+ * completa com o log linha a linha — inclusive envio REAL de e-mail.
+ */
+export async function testWorkflow(id: string): Promise<WorkflowExecutionResponse> {
+  return request<WorkflowExecutionResponse>(`/workflows/${encodeURIComponent(id)}/test`, {
+    method: 'POST',
+  });
+}
+
+/** Histórico de execuções do fluxo (máx. 50, mais recentes primeiro). */
+export async function listWorkflowExecutions(id: string): Promise<WorkflowExecutionResponse[]> {
+  return request<WorkflowExecutionResponse[]>(
+    `/workflows/${encodeURIComponent(id)}/executions`,
+  );
 }
