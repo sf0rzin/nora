@@ -24,6 +24,7 @@ import {
   createChatSession,
   getChatSession,
 } from "@/lib/api/client";
+import { notifySessionsChanged } from "@/lib/chat-sessions-sync";
 
 type Role = "user" | "assistant";
 interface Msg {
@@ -115,6 +116,9 @@ function ChatRoom() {
     if (!id) return;
     try {
       await appendChatMessage(id, { role, content });
+      // Sidebar viva: o título (derivado da 1ª mensagem), o snippet e a ordem
+      // por updatedAt mudam a cada mensagem persistida.
+      notifySessionsChanged();
     } catch {
       // Persistência é best-effort: a conversa segue mesmo se o histórico falhar.
     }
@@ -200,6 +204,8 @@ function ChatRoom() {
           const created = await createChatSession();
           sessionIdRef.current = created.id;
           setTitle(created.title?.trim() || "Nova sessão");
+          // Sessão nova aparece na sidebar na hora, sem full reload.
+          notifySessionsChanged();
           router.replace(`/chat?s=${encodeURIComponent(created.id)}` as Route, {
             scroll: false,
           });

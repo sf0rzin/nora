@@ -9,6 +9,8 @@ import { MarkdownContent } from "@/components/markdown-content";
 import MeetingProductivitySection from "@/components/meeting-productivity-section";
 import CustomerConfidenceCard from "@/components/customer-confidence-card";
 import { MeetingDangerZone, ReprocessButton } from "@/components/meeting-actions";
+import ExportMenu from "./export-menu";
+import MeetingProcessingPoller from "./processing-poller";
 
 export const dynamic = "force-dynamic";
 
@@ -47,21 +49,24 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
 
   const a = meeting.analysis;
   const duration = durationLabel(meeting.durationSeconds);
+  // Tags do upload — exibidas todas (sem cortar); edição fica pra outra fatia.
+  const tags = meeting.tags ?? [];
   const statusMeta = STATUS_META[meeting.processingStatus] ?? {
     label: meeting.processingStatus,
     color: "var(--accent-ink)",
   };
 
-  // PII Shield: se o worker reportar a contagem de redações aplicadas, mostra o
-  // número real; senão mantém o selo genérico de "aplicado". (Campo opcional,
-  // ainda não tipado em MeetingAnalysis.)
+  // PII Shield (ADR 0012): se o worker reportou a contagem de redações
+  // aplicadas, mostra o número real; análises antigas (sem metadata) mantêm
+  // o selo genérico de "aplicado".
   const piiCount =
-    a && typeof (a as { metadata?: { piiRedactionsApplied?: number } }).metadata?.piiRedactionsApplied === "number"
-      ? (a as { metadata?: { piiRedactionsApplied?: number } }).metadata!.piiRedactionsApplied!
-      : null;
+    typeof a?.metadata?.piiRedactionsApplied === "number" ? a.metadata.piiRedactionsApplied : null;
 
   return (
     <div className="page page--narrow">
+      {/* Enquanto PENDING/PROCESSING, revalida a página a cada 2,5s (máx ~5min). */}
+      <MeetingProcessingPoller status={meeting.processingStatus} />
+
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--muted)", marginBottom: 22 }}>
         <Link href={"/dashboard" as Route} style={{ color: "var(--muted)" }}>
           Reuniões
@@ -95,10 +100,22 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
               <span style={{ fontSize: 12, color: "var(--muted)" }}>Owner: {meeting.owner.displayName}</span>
             )}
           </div>
+          {tags.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+              {tags.map((t) => (
+                <span key={t} className="chip">
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
-        <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "right", whiteSpace: "nowrap", flexShrink: 0, paddingTop: 6 }}>
-          {formatDateTime(meeting.startedAt)}
-          {duration ? ` · ${duration}` : ""}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, flexShrink: 0, paddingTop: 6 }}>
+          <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "right", whiteSpace: "nowrap" }}>
+            {formatDateTime(meeting.startedAt)}
+            {duration ? ` · ${duration}` : ""}
+          </div>
+          {a && <ExportMenu detail={meeting} />}
         </div>
       </div>
 
@@ -284,9 +301,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       <div style={{ marginTop: 40, paddingTop: 18, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: "var(--muted)" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <span className="status-dot" style={{ background: "var(--success)", width: 6, height: 6 }} />
-          {piiCount !== null
-            ? `PII Shield · ${piiCount} ${piiCount === 1 ? "dado sensível redigido" : "dados sensíveis redigidos"}`
-            : "PII Shield aplicado"}
+          {piiCount === null
+            ? "PII Shield aplicado"
+            : piiCount === 0
+              ? "PII Shield · nenhum dado sensível detectado"
+              : `PII Shield · ${piiCount} ${piiCount === 1 ? "dado sensível redigido" : "dados sensíveis redigidos"}`}
         </span>
       </div>
     </div>
