@@ -159,6 +159,8 @@ export interface MeetingDetail {
   language?: string;
   owner: UserRef;
   participants: Participant[];
+  /** Tags informadas no upload da reunião (podem estar vazias). */
+  tags?: string[];
   processingStatus: ProcessingStatus;
   analysis?: MeetingAnalysis;
   goal?: MeetingGoal | null;
