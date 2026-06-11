@@ -54,6 +54,9 @@ public class SecurityConfig {
         "/auth/logout",
         "/auth/password/reset/request",
         "/auth/password/reset/confirm",
+        // GOAL Fase 3: reenvio de verificacao e para quem NAO consegue logar (EMAIL_NOT_VERIFIED)
+        // — publico por design, com rate limit por e-mail + resposta anti-enumeracao.
+        "/auth/verify-email/resend",
         // US06: aceite de convite usa o token como credencial — endpoint publico por design.
         "/iam/invites/*/accept",
         // JWKS publico (RFC 7517): validators externos buscam aqui a chave publica RSA.

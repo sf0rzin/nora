@@ -3,6 +3,8 @@ package br.com.nora.api.api.controllers;
 import br.com.nora.api.api.dto.tenant.TenantDomainResponse;
 import br.com.nora.api.api.dto.tenant.TenantDomainUpdateRequest;
 import br.com.nora.api.api.dto.tenant.TenantDomainUpdateResponse;
+import br.com.nora.api.api.dto.tenant.TenantNameUpdateRequest;
+import br.com.nora.api.api.dto.tenant.TenantResponse;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.iam.AuthorizationService;
 import br.com.nora.api.application.tenant.TenantService;
@@ -32,6 +34,30 @@ public class TenantController {
     public TenantController(TenantService tenants, AuthorizationService authz) {
         this.tenants = tenants;
         this.authz = authz;
+    }
+
+    /** Workspace atual (aba Workspace das configuracoes). */
+    @GetMapping
+    public TenantResponse get() {
+        AuthenticatedPrincipal p = CurrentUser.require();
+        authz.require(p.userId(), p.tenantId(), "tenant:read", resource(p));
+        Tenant tenant = tenants.get(p.tenantId());
+        return new TenantResponse(
+                tenant.id(),
+                tenant.name(),
+                tenant.slug(),
+                tenant.plan().name(),
+                tenant.createdAt());
+    }
+
+    /** Renomeia o workspace. O slug e imutavel (vive em URLs/convites). */
+    @PutMapping("/name")
+    public TenantResponse rename(@Valid @RequestBody TenantNameUpdateRequest body) {
+        AuthenticatedPrincipal p = CurrentUser.require();
+        authz.require(p.userId(), p.tenantId(), "tenant:name:write", resource(p));
+        Tenant saved = tenants.rename(p.tenantId(), body.name(), p.userId());
+        return new TenantResponse(
+                saved.id(), saved.name(), saved.slug(), saved.plan().name(), saved.createdAt());
     }
 
     @GetMapping("/domain")
