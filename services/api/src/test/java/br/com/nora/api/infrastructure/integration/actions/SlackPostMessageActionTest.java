@@ -1,0 +1,85 @@
+package br.com.nora.api.infrastructure.integration.actions;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import br.com.nora.api.application.workflow.WorkflowEventContext;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+
+/** Renderização do texto da ação slack_post_message (default, custom e truncamento). */
+class SlackPostMessageActionTest {
+
+    @Test
+    void textoDefault_aplicaPlaceholdersEAnexaLink() {
+        WorkflowEventContext ctx = context("Renovação Acme", "Resumo curto da reunião.");
+        String text = SlackPostMessageAction.defaultText(ctx);
+        assertThat(text).startsWith("*Renovação Acme* analisada pelo NORA — resumo: Resumo curto");
+        assertThat(text).endsWith("\nhttp://localhost:3000/meetings/" + ctx.meetingId());
+    }
+
+    @Test
+    void textoDefault_truncaResumoLongoAntesDoLink() {
+        WorkflowEventContext ctx = context("Reunião X", "a".repeat(2000));
+        String text = SlackPostMessageAction.defaultText(ctx);
+        String[] lines = text.split("\n", 2);
+        // Corpo limitado a ~400 chars (com reticências); o link vem inteiro na linha seguinte.
+        assertThat(lines[0]).hasSize(SlackPostMessageAction.DEFAULT_TEXT_MAX);
+        assertThat(lines[0]).endsWith("…");
+        assertThat(lines[1]).isEqualTo("http://localhost:3000/meetings/" + ctx.meetingId());
+    }
+
+    @Test
+    void textoCustom_usaTemplateDoUsuarioComPlaceholders() {
+        WorkflowEventContext ctx = context("Kickoff Beta", "Resumo.");
+        String text =
+                SlackPostMessageAction.renderText(
+                        Map.of("text", "Olha essa: {{meeting.title}} ({{meeting.url}})"), ctx);
+        assertThat(text)
+                .isEqualTo(
+                        "Olha essa: Kickoff Beta (http://localhost:3000/meetings/"
+                                + ctx.meetingId()
+                                + ")");
+    }
+
+    @Test
+    void textoCustomVazio_caiNoDefault() {
+        WorkflowEventContext ctx = context("Kickoff Beta", "Resumo.");
+        assertThat(SlackPostMessageAction.renderText(Map.of("text", "  "), ctx))
+                .isEqualTo(SlackPostMessageAction.defaultText(ctx));
+    }
+
+    @Test
+    void canalObrigatorio_faltandoFalhaClaro() {
+        assertThatThrownBy(() -> SlackPostMessageAction.requiredChannel(Map.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("params.channel");
+        assertThat(SlackPostMessageAction.requiredChannel(Map.of("channel", " #vendas ")))
+                .isEqualTo("#vendas");
+    }
+
+    private static WorkflowEventContext context(String title, String summary) {
+        UUID meetingId = UUID.randomUUID();
+        return new WorkflowEventContext(
+                UUID.randomUUID(),
+                "meeting.analysis_completed",
+                meetingId,
+                title,
+                List.of("flows"),
+                summary,
+                summary,
+                1,
+                2,
+                1,
+                List.of(),
+                70,
+                65,
+                "http://localhost:3000/meetings/" + meetingId,
+                OffsetDateTime.now(ZoneOffset.UTC),
+                false);
+    }
+}
