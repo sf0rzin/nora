@@ -58,6 +58,34 @@ export interface CostSummary {
   rows: CostRow[];
 }
 
+/** Saúde por serviço (App Insights, janela ~1h). Espelha HealthSnapshot do backend. */
+export interface ServiceHealth {
+  role: string; // cloud_RoleName (nora-api, nora-web, nora-worker...)
+  requests: number;
+  failed: number;
+  failureRate: number; // 0..1
+  p95LatencyMs: number | null;
+}
+
+export interface HealthSnapshot {
+  window: string; // ex.: "1h"
+  source: string; // "appinsights" | "unavailable"
+  services: ServiceHealth[];
+  degraded: boolean; // alguma failureRate > 5%
+  note: string | null;
+}
+
+/** Métricas de negócio agregadas do banco primário. Espelha BusinessSnapshot do backend. */
+export interface BusinessSnapshot {
+  from: string;
+  to: string;
+  enabled: boolean;
+  analyses: number;
+  tenantsActive: number;
+  productivityAvg: number | null;
+  customerConfidenceAvg: number | null;
+}
+
 export const SERVICE_LABEL: Record<ServiceKey, string> = {
   chat: "Chat IA (Core)",
   analysis: "Análise de reunião",
