@@ -58,6 +58,16 @@ public class LogEmailSender implements EmailSender {
                 expiresInDays);
     }
 
+    @Override
+    public void sendWorkflowNotification(String toEmail, String subject, String htmlBody) {
+        // Corpo suprimido: pode conter resumo da reunião (dados de negócio) — não vai pra log.
+        LOG.info(
+                "[email/dev] workflow-notification -> to={} subject={} (corpo suprimido; setar"
+                        + " RESEND_API_KEY para envio real)",
+                toEmail,
+                subject);
+    }
+
     /** Marker para Spring carregar o pacote. */
     @Configuration
     static class Marker {}
