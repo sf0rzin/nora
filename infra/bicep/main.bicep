@@ -871,6 +871,19 @@ var apiSecrets = {
         keyVaultUrl: '${kvUri}secrets/resend-api-key'
         identity: uaiApi.outputs.id
       }
+      // Embeddings RAG (US15/PR #206): a API consome OPENAI_API_KEY/GEMINI_API_KEY via
+      // secretRef no env — sem estas referencias o preflight do Container App falha com
+      // ContainerAppSecretRefNotFound (bug latente: nenhum deploy rodou desde o merge).
+      {
+        name: 'openai-api-key'
+        keyVaultUrl: '${kvUri}secrets/openai-api-key'
+        identity: uaiApi.outputs.id
+      }
+      {
+        name: 'gemini-api-key'
+        keyVaultUrl: '${kvUri}secrets/gemini-api-key'
+        identity: uaiApi.outputs.id
+      }
     ],
     // Integracoes OAuth (ADR 0031): referencias condicionais — o secret do KV so existe
     // quando o param foi setado (mesma condicao do bloco de criacao no KV).
