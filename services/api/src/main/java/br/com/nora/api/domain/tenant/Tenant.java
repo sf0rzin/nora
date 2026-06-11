@@ -164,6 +164,22 @@ public final class Tenant {
      * responsavel por gravar via {@link
      * br.com.nora.api.application.ports.TenantRepository#save(Tenant)}.
      */
+    /**
+     * Retorna uma nova instancia com o nome atualizado (renomear workspace nas configuracoes),
+     * preservando slug e demais campos. O caller grava via {@code TenantRepository.save}.
+     */
+    public Tenant withName(String newName, Instant updatedAt) {
+        return new Tenant(
+                this.id,
+                requireNonBlank(newName, "name"),
+                this.slug,
+                this.status,
+                this.plan,
+                this.allowedEmailDomain,
+                this.createdAt,
+                Objects.requireNonNull(updatedAt, "updatedAt"));
+    }
+
     public Tenant withAllowedEmailDomain(String newDomain, Instant updatedAt) {
         return new Tenant(
                 this.id,
