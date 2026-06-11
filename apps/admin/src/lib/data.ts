@@ -9,14 +9,23 @@
  * do front usa `label`/`inputCostPer1M`. `toModel` é a camada anticorrupção que reconcilia os dois.
  */
 import type {
+  BusinessSnapshot,
   CostSummary,
   FeatureFlag,
+  HealthSnapshot,
   LlmModel,
   Modality,
   ServiceBinding,
   ServiceKey,
 } from "./contracts";
-import { MOCK_BINDINGS, MOCK_COST, MOCK_FLAGS, MOCK_MODELS } from "./mock";
+import {
+  MOCK_BINDINGS,
+  MOCK_BUSINESS,
+  MOCK_COST,
+  MOCK_FLAGS,
+  MOCK_HEALTH,
+  MOCK_MODELS,
+} from "./mock";
 
 const USE_MOCKS = process.env.NORA_ADMIN_USE_MOCKS !== "false";
 const API_BASE_URL = (process.env.PLATFORM_API_BASE_URL ?? "http://localhost:8080").replace(/\/$/, "");
@@ -92,6 +101,43 @@ export async function getCost(from?: string, to?: string): Promise<CostSummary> 
     totalCostUsd: raw?.totalCostUsd ?? 0,
     totalCalls: raw?.totalCalls ?? 0,
     rows: raw?.rows ?? [],
+  };
+}
+
+/** Saúde do sistema (App Insights via backend). `source: "unavailable"` quando sem credenciais. */
+export async function getHealth(): Promise<HealthSnapshot> {
+  if (USE_MOCKS) return MOCK_HEALTH;
+  const raw = await platformGet<Partial<HealthSnapshot> | null>(
+    "/admin/platform/telemetry/health",
+  );
+  return {
+    window: raw?.window ?? "1h",
+    source: raw?.source ?? "unavailable",
+    services: raw?.services ?? [],
+    degraded: raw?.degraded ?? false,
+    note: raw?.note ?? null,
+  };
+}
+
+/** Métricas de negócio do banco primário. `enabled: false` quando desligado por flag. */
+export async function getBusiness(from?: string, to?: string): Promise<BusinessSnapshot> {
+  if (USE_MOCKS) return MOCK_BUSINESS;
+  const qs = new URLSearchParams();
+  if (from) qs.set("from", from);
+  if (to) qs.set("to", to);
+  const query = qs.toString();
+  const suffix = query ? `?${query}` : "";
+  const raw = await platformGet<Partial<BusinessSnapshot> | null>(
+    `/admin/platform/telemetry/business${suffix}`,
+  );
+  return {
+    from: raw?.from ?? from ?? "",
+    to: raw?.to ?? to ?? "",
+    enabled: raw?.enabled ?? false,
+    analyses: raw?.analyses ?? 0,
+    tenantsActive: raw?.tenantsActive ?? 0,
+    productivityAvg: raw?.productivityAvg ?? null,
+    customerConfidenceAvg: raw?.customerConfidenceAvg ?? null,
   };
 }
 

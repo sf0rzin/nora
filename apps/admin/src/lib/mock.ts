@@ -1,4 +1,11 @@
-import type { CostSummary, FeatureFlag, LlmModel, ServiceBinding } from "./contracts";
+import type {
+  BusinessSnapshot,
+  CostSummary,
+  FeatureFlag,
+  HealthSnapshot,
+  LlmModel,
+  ServiceBinding,
+} from "./contracts";
 
 /** Seeds — espelham o V001 de plataforma proposto pelo 4.8. Usados enquanto o
  *  backend não está plugado (NORA_ADMIN_USE_MOCKS != "false"). */
@@ -62,4 +69,26 @@ export const MOCK_COST: CostSummary = {
     { key: "chat", label: "Chat (deepseek-v4-flash)", calls: 305, promptTokens: 920_000, completionTokens: 340_000, costUsd: 0.224 },
     { key: "multimodal", label: "Multimodal (gemini-3.5-flash)", calls: 11, promptTokens: 140_000, completionTokens: 96_000, costUsd: 1.074 },
   ],
+};
+
+export const MOCK_HEALTH: HealthSnapshot = {
+  window: "1h",
+  source: "appinsights",
+  degraded: false,
+  note: null,
+  services: [
+    { role: "nora-api", requests: 1840, failed: 12, failureRate: 0.0065, p95LatencyMs: 412 },
+    { role: "nora-web", requests: 3210, failed: 4, failureRate: 0.0012, p95LatencyMs: 188 },
+    { role: "nora-worker", requests: 96, failed: 1, failureRate: 0.0104, p95LatencyMs: 8450 },
+  ],
+};
+
+export const MOCK_BUSINESS: BusinessSnapshot = {
+  from: "2026-06-10",
+  to: "2026-06-11",
+  enabled: true,
+  analyses: 23,
+  tenantsActive: 6,
+  productivityAvg: 71.4,
+  customerConfidenceAvg: 63.8,
 };
