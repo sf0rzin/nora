@@ -7,7 +7,9 @@
  * Sem seleção: tabs "Fluxo" (resumo + dicas) e "Execuções" (histórico real,
  * com log linha a linha — só em fluxo salvo).
  */
-import { useRef } from "react";
+import Link from "next/link";
+import type { Route } from "next";
+import { useRef, type ChangeEvent } from "react";
 
 import type {
   WorkflowExecutionResponse,
@@ -31,7 +33,23 @@ function valorTexto(params: Record<string, unknown>, chave: string): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-/** Formulário do send_email: destinatário + assunto + corpo + placeholders. */
+/** Nota dos blocos Google: link pro hub de integrações. */
+function NotaRequerGoogle() {
+  return (
+    <div className="notice" style={{ fontSize: 12, lineHeight: 1.5 }}>
+      Requer Google conectado em{" "}
+      <Link
+        href={"/integracoes" as Route}
+        style={{ color: "var(--accent-ink)", textDecoration: "underline", textUnderlineOffset: 2 }}
+      >
+        Integrações
+      </Link>
+      .
+    </div>
+  );
+}
+
+/** Formulário do send_email/gmail_send_email: destinatário + assunto + corpo + placeholders. */
 function FormEmail({
   no,
   mostrarErros,
@@ -161,6 +179,106 @@ function FormEmail({
   );
 }
 
+/**
+ * Formulário do calendar_create_event: título + agendamento relativo.
+ * Todos os params são opcionais — o backend aplica os defaults na execução
+ * (amanhã às 10h, 30 minutos), então campos vazios não bloqueiam o salvar.
+ */
+function FormEvento({
+  no,
+  onChange,
+}: {
+  no: NoRF;
+  onChange: (chave: string, valor: unknown) => void;
+}) {
+  function numero(chave: string): number | "" {
+    const v = no.data.params[chave];
+    return typeof v === "number" && Number.isFinite(v) ? v : "";
+  }
+  function aoMudarNumero(chave: string) {
+    return (e: ChangeEvent<HTMLInputElement>) => {
+      const n = e.target.value === "" ? undefined : Number(e.target.value);
+      onChange(chave, typeof n === "number" && Number.isFinite(n) ? n : undefined);
+    };
+  }
+
+  return (
+    <>
+      <NotaRequerGoogle />
+
+      <div className="field">
+        <label className="field-label" htmlFor="flows-evento-titulo">
+          Título
+        </label>
+        <input
+          id="flows-evento-titulo"
+          className="input"
+          type="text"
+          placeholder="Follow-up: {{meeting.title}}"
+          value={valorTexto(no.data.params, "title")}
+          onChange={(e) => onChange("title", e.target.value)}
+        />
+        <span className="field-help">
+          Vazio usa o padrão {"“Follow-up: {{meeting.title}}”"} — o placeholder vira o título real
+          da reunião na hora.
+        </span>
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="flows-evento-dias">
+          Começa em (dias)
+        </label>
+        <input
+          id="flows-evento-dias"
+          className="input"
+          type="number"
+          min={0}
+          step={1}
+          placeholder="1"
+          value={numero("startInDays")}
+          onChange={aoMudarNumero("startInDays")}
+        />
+        <span className="field-help">Daqui a quantos dias o evento começa (1 = amanhã).</span>
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="flows-evento-hora">
+          Hora (0–23)
+        </label>
+        <input
+          id="flows-evento-hora"
+          className="input"
+          type="number"
+          min={0}
+          max={23}
+          step={1}
+          placeholder="10"
+          value={numero("hour")}
+          onChange={aoMudarNumero("hour")}
+        />
+        <span className="field-help">Horário de São Paulo.</span>
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="flows-evento-duracao">
+          Duração (minutos)
+        </label>
+        <input
+          id="flows-evento-duracao"
+          className="input"
+          type="number"
+          min={1}
+          step={5}
+          placeholder="30"
+          value={numero("durationMinutes")}
+          onChange={aoMudarNumero("durationMinutes")}
+        />
+        <span className="field-help">Vazio usa 30 minutos.</span>
+      </div>
+    </>
+  );
+}
+
 /** Formulário de parâmetros por tipo de bloco. */
 function FormParams({
   no,
@@ -255,6 +373,19 @@ function FormParams({
 
   if (t === "send_email") {
     return <FormEmail no={no} mostrarErros={mostrarErros} onChange={onChange} />;
+  }
+
+  if (t === "gmail_send_email") {
+    return (
+      <>
+        <NotaRequerGoogle />
+        <FormEmail no={no} mostrarErros={mostrarErros} onChange={onChange} />
+      </>
+    );
+  }
+
+  if (t === "calendar_create_event") {
+    return <FormEvento no={no} onChange={onChange} />;
   }
 
   return (
@@ -490,7 +621,7 @@ export function PainelLateral({
               marginBottom: 4,
             }}
           >
-            <IconeKind kind={no.data.kind} />
+            {meta?.Icone ? <meta.Icone /> : <IconeKind kind={no.data.kind} />}
             {kindMeta.rotulo}
           </div>
           <h2
