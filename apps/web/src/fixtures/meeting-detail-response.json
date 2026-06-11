@@ -14,6 +14,7 @@
     { "displayName": "Lucas Silva", "email": "lucas.silva@acme.com", "isInternal": true },
     { "displayName": "Marina Costa", "email": "marina@cliente.com.br", "isInternal": false }
   ],
+  "tags": ["renovação", "acme", "comercial"],
   "processingStatus": "COMPLETED",
   "analysis": {
     "id": "f99c0a3e-2b41-4d8f-a8b2-9d1e3c4f5678",
