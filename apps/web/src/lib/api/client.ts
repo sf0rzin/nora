@@ -43,7 +43,7 @@ export type { IntegrationProvider, IntegrationStatus };
 export type { MeResponse, TenantInfo };
 import meetingsListFixture from '@/fixtures/meetings-list-response.json';
 import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
-import { handleSessionExpired, scheduleRefresh } from '@/lib/auth';
+import { handleSessionExpired, sharedRefresh } from '@/lib/auth';
 
 // Default deve ser 'false' em prod. Antes era 'true' → se a build esquecesse de
 // setar NEXT_PUBLIC_USE_MOCKS, prod servia fixtures hardcoded. Agora qualquer
@@ -98,37 +98,16 @@ interface RequestOptions extends RequestInit {
 }
 
 /**
- * Promise compartilhada de refresh em andamento. Quando varias requests
- * batem 401 simultaneamente, todas aguardam o mesmo /auth/refresh em vez
- * de disparar N requests redundantes.
+ * Refresh single-flight: a promise compartilhada vive em `@/lib/auth`
+ * (`sharedRefresh`) e e a MESMA aguardada pelo timer de refresh proativo.
+ * Quando varias requests batem 401 simultaneamente — ou o timer dispara
+ * junto — todas aguardam o mesmo POST /auth/refresh em vez de disparar N
+ * requests redundantes (refresh duplicado com o mesmo cookie acionava a
+ * reuse detection do backend e derrubava a sessao inteira).
  */
-let refreshInFlight: Promise<boolean> | null = null;
-
 async function performRefresh(): Promise<boolean> {
-  if (refreshInFlight) return refreshInFlight;
-  refreshInFlight = (async () => {
-    try {
-      const resp = await fetch(`${API_BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-        cache: 'no-store',
-      });
-      if (!resp.ok) return false;
-      const data = (await resp.json().catch(() => ({}))) as {
-        expiresInSeconds?: number;
-      };
-      if (typeof data.expiresInSeconds === 'number' && data.expiresInSeconds > 0) {
-        scheduleRefresh(data.expiresInSeconds);
-      }
-      return true;
-    } catch {
-      return false;
-    } finally {
-      // Limpa apos completar — proxima chamada cria nova promise se precisar.
-      refreshInFlight = null;
-    }
-  })();
-  return refreshInFlight;
+  const result = await sharedRefresh();
+  return result.ok;
 }
 
 async function request<T>(path: string, init?: RequestOptions): Promise<T> {

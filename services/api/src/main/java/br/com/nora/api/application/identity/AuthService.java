@@ -46,6 +46,22 @@ public class AuthService {
     /** Default roles do MVP. Movido para ca pra ser reusavel pelo refresh. */
     private static final List<String> DEFAULT_ROLES = List.of("ADMIN");
 
+    /**
+     * Janela de tolerancia para reuso BENIGNO de refresh token recem-rotacionado.
+     *
+     * <p>Corridas legitimas acontecem em producao: o timer proativo do web e o interceptor 401
+     * disparam dois POST /auth/refresh simultaneos com o mesmo cookie, e cada aba do navegador tem
+     * timer proprio — a segunda aba reapresenta o cookie antigo logo apos a primeira rotacionar.
+     * Sem a janela, a reuse detection revogava a family inteira e deslogava o usuario em todas as
+     * abas (bug reportado em producao).
+     *
+     * <p>Dentro da janela, e somente quando o token foi rotacionado de fato ({@code replacedById}
+     * preenchido — token revogado por logout NAO entra aqui), tratamos como corrida e emitimos um
+     * par novo na mesma family. Fora dela, a protecao real contra roubo de token permanece: family
+     * inteira revogada.
+     */
+    private static final Duration REFRESH_REUSE_LEEWAY = Duration.ofSeconds(60);
+
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
     private final OneTimeTokenRepository tokenRepository;
@@ -307,9 +323,14 @@ public class AuthService {
      * <p>Caminho feliz: valida o token apresentado, revoga ele, emite um filho na mesma family,
      * retorna o novo refresh raw pro cliente.
      *
-     * <p>Reuse detection: se o token apresentado ja esta revogado (e ainda dentro do TTL),
-     * assumimos cadeia comprometida (atacante exfiltrou o cookie e usou um token velho). Revogamos
-     * a family inteira e logamos WARN.
+     * <p>Corrida benigna: token revogado por rotacao ({@code replacedById} preenchido) e usado ha
+     * menos de {@link #REFRESH_REUSE_LEEWAY} — timer proativo + interceptor 401 na mesma aba, ou
+     * outra aba reapresentando o cookie antigo. Emitimos um par novo na MESMA family, sem revogar
+     * nada.
+     *
+     * <p>Reuse detection: se o token apresentado ja esta revogado (e ainda dentro do TTL) fora da
+     * janela acima, assumimos cadeia comprometida (atacante exfiltrou o cookie e usou um token
+     * velho). Revogamos a family inteira e logamos WARN.
      */
     @Transactional
     public RefreshResult refresh(String refreshTokenPlain) {
@@ -324,27 +345,33 @@ public class AuthService {
         Instant now = clock.now();
 
         if (token.isRevoked() && !token.isExpired(now)) {
-            // Reuse de token revogado e ainda nao expirado: cadeia comprometida. Revoga toda
-            // a family pra deslogar atacante + vitima simultaneamente.
-            int revoked = refreshTokenRepository.revokeAllByFamilyId(token.familyId(), now);
-            LOG.warn(
-                    "Refresh token reuse detected family={} userId={} tokensRevoked={}",
+            if (!isBenignReuse(token, now)) {
+                // Reuse de token revogado e ainda nao expirado, fora da janela de corrida:
+                // cadeia comprometida. Revoga toda a family pra deslogar atacante + vitima
+                // simultaneamente.
+                int revoked = refreshTokenRepository.revokeAllByFamilyId(token.familyId(), now);
+                LOG.warn(
+                        "Refresh token reuse detected family={} userId={} tokensRevoked={}",
+                        token.familyId(),
+                        token.userId(),
+                        revoked);
+                throw new AuthException.RefreshTokenInvalid();
+            }
+            // Corrida benigna (multi-aba / timer + interceptor): emite par novo na mesma family
+            // sem revogar nada. O pai fica intocado de proposito — lastUsedAt continua ancorado
+            // no PRIMEIRO uso, entao a janela nao se estende a cada reuso (um atacante nao
+            // consegue manter o token velho vivo reapresentando-o a cada <60s).
+            User user = loadActiveUser(token);
+            LOG.info(
+                    "Refresh reuse benigno dentro da janela family={} userId={}",
                     token.familyId(),
-                    token.userId(),
-                    revoked);
-            throw new AuthException.RefreshTokenInvalid();
+                    token.userId());
+            return issueChildPair(user, token.familyId(), now);
         }
         if (!token.isActive(now)) {
             throw new AuthException.RefreshTokenInvalid();
         }
-        User user =
-                userRepository
-                        .findById(token.userId())
-                        .orElseThrow(AuthException.RefreshTokenInvalid::new);
-        if (user.status() == br.com.nora.api.domain.identity.UserStatus.DISABLED) {
-            // Usuario desativado depois do login: refresh nao deve renovar.
-            throw new AuthException.RefreshTokenInvalid();
-        }
+        User user = loadActiveUser(token);
 
         // Rotacao: emite filho na mesma family, marca pai como replaced_by_id, revoga pai.
         GeneratedToken next = tokenGenerator.generate();
@@ -365,6 +392,51 @@ public class AuthService {
         token.revoke(now);
         refreshTokenRepository.save(token);
 
+        String access = jwtIssuer.issue(user, DEFAULT_ROLES, settings.jwtTtl());
+        return new RefreshResult(
+                user,
+                access,
+                settings.jwtTtl().toSeconds(),
+                next.rawToken(),
+                settings.refreshTokenTtl().toSeconds());
+    }
+
+    /**
+     * Reuso e benigno quando o token foi rotacionado de fato ({@code replacedById} preenchido —
+     * exclui revogacao por logout) e o primeiro uso ocorreu ha no maximo {@link
+     * #REFRESH_REUSE_LEEWAY}.
+     */
+    private boolean isBenignReuse(RefreshToken token, Instant now) {
+        return token.replacedById() != null
+                && token.lastUsedAt() != null
+                && Duration.between(token.lastUsedAt(), now).compareTo(REFRESH_REUSE_LEEWAY) <= 0;
+    }
+
+    /** Carrega o dono do token e barra usuario desativado depois do login. */
+    private User loadActiveUser(RefreshToken token) {
+        User user =
+                userRepository
+                        .findById(token.userId())
+                        .orElseThrow(AuthException.RefreshTokenInvalid::new);
+        if (user.status() == br.com.nora.api.domain.identity.UserStatus.DISABLED) {
+            // Usuario desativado depois do login: refresh nao deve renovar.
+            throw new AuthException.RefreshTokenInvalid();
+        }
+        return user;
+    }
+
+    /** Emite um par access+refresh como filho de uma family existente (caminho da corrida). */
+    private RefreshResult issueChildPair(User user, UUID familyId, Instant now) {
+        GeneratedToken next = tokenGenerator.generate();
+        refreshTokenRepository.save(
+                RefreshToken.issueChild(
+                        UUID.randomUUID(),
+                        user.id(),
+                        user.tenantId(),
+                        next.hash(),
+                        now,
+                        now.plus(settings.refreshTokenTtl()),
+                        familyId));
         String access = jwtIssuer.issue(user, DEFAULT_ROLES, settings.jwtTtl());
         return new RefreshResult(
                 user,
