@@ -25,6 +25,7 @@ import {
   updateSessionUser,
   type SessionUser,
 } from "@/lib/auth";
+import { Avatar } from "@/components/core/avatar";
 
 interface ProductForm {
   name: string;
@@ -289,7 +290,7 @@ function AccountSection() {
       </div>
       <form onSubmit={onSave} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <UserOrb size={44} />
+          <Avatar seed={email} size={44} />
           <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>
             Seu avatar é gerado a partir da conta.
             <br />
@@ -1188,25 +1189,6 @@ function CompanyContextSection() {
         </div>
       </form>
     </section>
-  );
-}
-
-/* ── avatar gerado (mesma fórmula do .user-orb) ── */
-function UserOrb({ size = 44 }: { size?: number }) {
-  return (
-    <div
-      aria-hidden
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        flexShrink: 0,
-        background:
-          "radial-gradient(circle at 30% 25%, #d8f0f6 0%, transparent 38%), radial-gradient(circle at 78% 62%, #e8b8d8 0%, transparent 45%), radial-gradient(circle at 22% 78%, #3a4a4f 0%, transparent 30%), radial-gradient(circle at 60% 40%, #4ec4d8 8%, #6aa8d8 45%, #9778b8 100%)",
-        boxShadow: "inset 0 0 6px rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.06)",
-        filter: "saturate(1.15)",
-      }}
-    />
   );
 }
 

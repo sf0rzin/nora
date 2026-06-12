@@ -4,8 +4,9 @@
  * NORA Flows — editor visual de fluxos (canvas estilo n8n).
  *
  * Mesmo componente pra /fluxos/novo (workflowId null) e /fluxos/[id].
- * Layout: topbar (nome + Ativo + Testar/Salvar/Excluir) sobre 3 colunas —
- * paleta de blocos | canvas React Flow | painel de parâmetros/execuções.
+ * Layout: topbar (nome à esquerda; Ativo + Testar/Salvar/Excluir agrupados à
+ * direita) sobre 3 colunas — paleta de blocos | canvas React Flow | painel
+ * de parâmetros/execuções.
  *
  * Persistência 100% real: POST/PUT /workflows com a definição serializada
  * (nós kind/type/params + posição do canvas) e POST /workflows/{id}/test
@@ -450,19 +451,6 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
           aria-label="Nome do fluxo"
         />
 
-        <label className="flows-switch">
-          <input
-            type="checkbox"
-            checked={ativo}
-            onChange={(e) => {
-              setAtivo(e.target.checked);
-              setSujo(true);
-            }}
-          />
-          <span className="track" aria-hidden />
-          <span className="estado">{ativo ? "Ativo" : "Pausado"}</span>
-        </label>
-
         <span style={{ flex: 1 }} />
 
         {salvoAs && !sujo && (
@@ -498,6 +486,23 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
               Excluir
             </button>
           ))}
+
+        {/* switch agrupado com as ações primárias (Testar/Salvar) — antes
+            flutuava ao lado do nome, "no meio do nada" (feedback do PO) */}
+        <label className="flows-switch" title={ativo ? "Fluxo ativo — roda nos gatilhos" : "Fluxo pausado"}>
+          <input
+            type="checkbox"
+            checked={ativo}
+            onChange={(e) => {
+              setAtivo(e.target.checked);
+              setSujo(true);
+            }}
+          />
+          <span className="track" aria-hidden />
+          <span className="estado">{ativo ? "Ativo" : "Pausado"}</span>
+        </label>
+
+        <span aria-hidden style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
 
         <button
           type="button"
