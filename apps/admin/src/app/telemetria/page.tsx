@@ -31,14 +31,14 @@ export default async function TelemetriaPage() {
             <div key={r.key}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 5 }}>
                 <span>{r.label}</span>
-                <span style={{ fontFamily: "var(--mono)" }}>
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>
                   ${r.costUsd.toFixed(3)} <span style={{ color: "var(--muted)" }}>· {r.calls} calls</span>
                 </span>
               </div>
               <div style={{ height: 8, background: "var(--chip)", borderRadius: 999, overflow: "hidden" }}>
                 <div style={{ width: `${(r.costUsd / maxCost) * 100}%`, height: "100%", background: "var(--accent)", borderRadius: 999 }} />
               </div>
-              <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--mono)", marginTop: 3 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", fontVariantNumeric: "tabular-nums", marginTop: 3 }}>
                 {(r.promptTokens / 1000).toFixed(0)}k in · {(r.completionTokens / 1000).toFixed(0)}k out
               </div>
             </div>
@@ -127,7 +127,7 @@ function LinhaSaude({ s }: { s: ServiceHealth }) {
   const erroAlto = s.failureRate > 0.05;
   return (
     <tr style={{ borderTop: "1px solid var(--border)" }}>
-      <td style={{ ...td, fontFamily: "var(--mono)" }}>{s.role}</td>
+      <td style={td}>{s.role}</td>
       <td style={{ ...td, textAlign: "right" }}>{s.requests.toLocaleString("pt-BR")}</td>
       <td style={{ ...td, textAlign: "right" }}>{s.failed.toLocaleString("pt-BR")}</td>
       <td
@@ -140,7 +140,7 @@ function LinhaSaude({ s }: { s: ServiceHealth }) {
       >
         {(s.failureRate * 100).toFixed(2)}%
       </td>
-      <td style={{ ...td, textAlign: "right", fontFamily: "var(--mono)" }}>
+      <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
         {s.p95LatencyMs == null ? "—" : `${Math.round(s.p95LatencyMs)} ms`}
       </td>
     </tr>
@@ -162,7 +162,6 @@ function Kpi({ rotulo, valor, sufixo }: { rotulo: string; valor: string; sufixo?
 }
 
 const sectionLabel: React.CSSProperties = {
-  fontFamily: "var(--mono)",
   fontSize: 10.5,
   fontWeight: 500,
   letterSpacing: "0.08em",

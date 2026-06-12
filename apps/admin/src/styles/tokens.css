@@ -24,10 +24,9 @@
   --warn: oklch(0.65 0.16 70);
   --danger: oklch(0.55 0.2 25);
 
-  /* Fonts */
+  /* Fonts — tipografia única DM Sans (sem mono, decisão de design do Core) */
   --sans: var(--font-sans);
   --display: var(--font-sans);
-  --mono: var(--font-mono);
 
   /* Radii */
   --radius-sm: 6px;
