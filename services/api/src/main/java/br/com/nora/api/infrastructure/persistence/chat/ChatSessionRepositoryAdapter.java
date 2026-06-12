@@ -193,6 +193,9 @@ public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
         if (value instanceof OffsetDateTime odt) {
             return odt;
         }
+        if (value instanceof java.time.Instant instant) {
+            return instant.atOffset(ZoneOffset.UTC);
+        }
         return ((Timestamp) value).toInstant().atOffset(ZoneOffset.UTC);
     }
 
