@@ -3,6 +3,7 @@ package br.com.nora.api.application.workflow.actions;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import br.com.nora.api.application.workflow.WorkflowEventContext;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -25,9 +26,10 @@ class WorkflowActionTemplatesTest {
                 3,
                 1,
                 List.of(
-                        new WorkflowEventContext.ActionItemView("Enviar proposta", "Ana", "HIGH"),
                         new WorkflowEventContext.ActionItemView(
-                                "Agendar follow-up", null, "MEDIUM")),
+                                "Enviar proposta", "Ana", "HIGH", LocalDate.of(2026, 6, 20)),
+                        new WorkflowEventContext.ActionItemView(
+                                "Agendar follow-up", null, "MEDIUM", null)),
                 82,
                 74,
                 "https://nora.systems/meetings/abc",
