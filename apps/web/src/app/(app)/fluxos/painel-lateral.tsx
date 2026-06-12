@@ -16,7 +16,7 @@ import type {
   WorkflowExecutionStatus,
 } from "@/lib/api/types";
 
-import { IconeKind, KIND_META, metaDoBloco, PLACEHOLDERS_EMAIL } from "./catalogo";
+import { ehWebhookDiscord, IconeKind, KIND_META, metaDoBloco, PLACEHOLDERS_EMAIL } from "./catalogo";
 import type { NoRF } from "./no-bloco";
 import { horaLog, tempoRelativo } from "./tempo-relativo";
 
@@ -279,6 +279,86 @@ function FormEvento({
   );
 }
 
+/** Formulário do call_webhook: só a URL de destino (HTTPS, endereços internos bloqueados). */
+function FormWebhook({
+  no,
+  mostrarErros,
+  onChange,
+}: {
+  no: NoRF;
+  mostrarErros: boolean;
+  onChange: (chave: string, valor: unknown) => void;
+}) {
+  const url = valorTexto(no.data.params, "url");
+  const invalida = mostrarErros && !url.trim().startsWith("https://");
+
+  return (
+    <div className="field">
+      <label className="field-label" htmlFor="flows-webhook-url">
+        URL do webhook <span className="req">*</span>
+      </label>
+      <input
+        id="flows-webhook-url"
+        className="input"
+        type="url"
+        placeholder="https://hooks.exemplo.com/nora"
+        value={url}
+        onChange={(e) => onChange("url", e.target.value)}
+        style={invalida ? { borderColor: "var(--danger)" } : undefined}
+      />
+      {invalida ? (
+        <span className="field-help is-err">Informe uma URL https:// — http:// é bloqueado.</span>
+      ) : (
+        <span className="field-help">
+          Recebe um POST em JSON com evento, reunião, resumo, contagens, scores e action items.
+          Apenas HTTPS; endereços internos/privados são bloqueados.
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Formulário do discord_post_message: URL do webhook do canal. */
+function FormDiscord({
+  no,
+  mostrarErros,
+  onChange,
+}: {
+  no: NoRF;
+  mostrarErros: boolean;
+  onChange: (chave: string, valor: unknown) => void;
+}) {
+  const webhookUrl = valorTexto(no.data.params, "webhookUrl");
+  const invalida = mostrarErros && !ehWebhookDiscord(webhookUrl);
+
+  return (
+    <div className="field">
+      <label className="field-label" htmlFor="flows-discord-webhook">
+        Webhook do canal <span className="req">*</span>
+      </label>
+      <input
+        id="flows-discord-webhook"
+        className="input"
+        type="url"
+        placeholder="https://discord.com/api/webhooks/…"
+        value={webhookUrl}
+        onChange={(e) => onChange("webhookUrl", e.target.value)}
+        style={invalida ? { borderColor: "var(--danger)" } : undefined}
+      />
+      {invalida ? (
+        <span className="field-help is-err">
+          A URL precisa começar com https://discord.com/api/webhooks/.
+        </span>
+      ) : (
+        <span className="field-help">
+          No Discord: Configurações do canal → Integrações → Webhooks → Novo webhook → copiar URL.
+          A mensagem sai como “NORA” com o resumo da reunião.
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** Formulário de parâmetros por tipo de bloco. */
 function FormParams({
   no,
@@ -386,6 +466,14 @@ function FormParams({
 
   if (t === "calendar_create_event") {
     return <FormEvento no={no} onChange={onChange} />;
+  }
+
+  if (t === "call_webhook") {
+    return <FormWebhook no={no} mostrarErros={mostrarErros} onChange={onChange} />;
+  }
+
+  if (t === "discord_post_message") {
+    return <FormDiscord no={no} mostrarErros={mostrarErros} onChange={onChange} />;
   }
 
   return (

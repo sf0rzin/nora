@@ -45,7 +45,7 @@ import {
   type WorkflowExecutionResponse,
 } from "@/lib/api/client";
 
-import { CATALOGO, metaDoBloco, type BlocoMeta } from "./catalogo";
+import { CATALOGO, ehWebhookDiscord, metaDoBloco, type BlocoMeta } from "./catalogo";
 import { NoBloco, type NoRF } from "./no-bloco";
 import { PainelLateral, type TabPainel } from "./painel-lateral";
 import { PaletaBlocos } from "./paleta-blocos";
@@ -280,6 +280,22 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
       focarNo(emailSemDestino.id);
       const nomeBloco = metaDoBloco(emailSemDestino.data.blockType)?.nome ?? "Enviar e-mail";
       return `A ação “${nomeBloco}” precisa de um destinatário válido no campo Para.`;
+    }
+    const webhookSemUrl = nodes.find((n) => {
+      if (n.data.blockType !== "call_webhook") return false;
+      const url = n.data.params.url;
+      return typeof url !== "string" || !url.trim().startsWith("https://");
+    });
+    if (webhookSemUrl) {
+      focarNo(webhookSemUrl.id);
+      return "A ação “Chamar webhook” precisa de uma URL https:// no campo URL do webhook.";
+    }
+    const discordSemWebhook = nodes.find(
+      (n) => n.data.blockType === "discord_post_message" && !ehWebhookDiscord(n.data.params.webhookUrl),
+    );
+    if (discordSemWebhook) {
+      focarNo(discordSemWebhook.id);
+      return "A ação “Avisar no Discord” precisa da URL do webhook do canal (começa com https://discord.com/api/webhooks/).";
     }
     return null;
   }
