@@ -349,7 +349,13 @@ export interface WorkflowExecutionResponse {
 // ---------- Integrações OAuth (NORA Flows Fase 2) ----------
 
 /** Provedor de integração OAuth suportado pelo backend. */
-export type IntegrationProvider = "google" | "slack";
+export type IntegrationProvider =
+  | "google"
+  | "slack"
+  | "github"
+  | "notion"
+  | "todoist"
+  | "linear";
 
 /**
  * Estado de um conector pro usuário logado (GET /integrations).
