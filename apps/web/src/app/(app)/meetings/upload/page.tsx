@@ -723,7 +723,11 @@ function StatusCard({
     <CardFrame
       icon={<SignalIcon tone="success" kind="check" />}
       title="Transcrição enviada."
-      subtitle={meetingTitle ? `"${meetingTitle}" já está com a NORA — a análise roda em segundo plano.` : "A análise roda em segundo plano."}
+      subtitle={
+        meetingTitle
+          ? `A análise de "${meetingTitle}" continua em segundo plano.`
+          : "A análise continua em segundo plano."
+      }
     >
       <div
         style={{
@@ -743,13 +747,12 @@ function StatusCard({
 
       {flowsHint === "has-flows" && (
         <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0, maxWidth: 400, lineHeight: 1.55 }}>
-          Seus fluxos ativos vão disparar quando a análise terminar — você será
-          notificado (e-mail, agenda… o que seus fluxos fizerem).
+          Seus fluxos ativos serão executados quando a análise terminar.
         </p>
       )}
       {flowsHint === "no-flows" && (
         <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0, maxWidth: 400, lineHeight: 1.55 }}>
-          Quer ser avisado quando a análise terminar? Crie um fluxo com o gatilho
+          Para receber um aviso ao fim da análise, crie um fluxo com o gatilho
           &quot;Reunião analisada&quot; em{" "}
           <Link href={"/fluxos" as Route} style={{ color: "var(--accent-ink)", textDecoration: "underline", textUnderlineOffset: 2 }}>
             Fluxos
