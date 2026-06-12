@@ -33,7 +33,7 @@ export default async function OverviewPage() {
                 <StatusPill on={b.enabled} />
               </div>
               <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: "-0.01em", marginTop: 6 }}>{m?.label ?? b.modelId}</div>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2, fontFamily: "var(--mono)" }}>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
                 {m ? `${m.provider} · $${m.inputCostPer1M}/$${m.outputCostPer1M} por 1M` : "modelo desconhecido"}
               </div>
             </div>
@@ -64,7 +64,7 @@ export default async function OverviewPage() {
           >
             <div>
               <div style={{ fontSize: 14 }}>{f.description}</div>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", fontFamily: "var(--mono)" }}>{f.key}</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{f.key}</div>
             </div>
             <StatusPill on={f.enabled} />
           </div>
@@ -83,7 +83,7 @@ const card: React.CSSProperties = {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h2 style={{ fontFamily: "var(--mono)", fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 12px" }}>
+    <h2 style={{ fontSize: 10.5, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 12px" }}>
       {children}
     </h2>
   );
