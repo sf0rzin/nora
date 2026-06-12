@@ -27,8 +27,8 @@ class ConditionEvaluatorTest {
                 2,
                 1,
                 List.of(
-                        new ActionItemView("Enviar proposta", "Ana", "HIGH"),
-                        new ActionItemView("Follow-up", null, "MEDIUM")),
+                        new ActionItemView("Enviar proposta", "Ana", "HIGH", null),
+                        new ActionItemView("Follow-up", null, "MEDIUM", null)),
                 productivity,
                 confidence,
                 "http://localhost:3000/meetings/x",
