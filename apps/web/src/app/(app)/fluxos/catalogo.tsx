@@ -94,6 +94,40 @@ export function IconeCalendarMais({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
+/** Seta saindo da caixa — ação "Chamar webhook" (POST pra fora do NORA). */
+export function IconeWebhook({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <path d="M14 4h6v6" />
+      <path d="M20 4 11 13" />
+      <path d="M20 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5" />
+    </svg>
+  );
+}
+
+/** Balão de chat com dois pontos — ação "Avisar no Discord". */
+export function IconeDiscord({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" />
+      <path d="M9 11.5h.01M15 11.5h.01" />
+    </svg>
+  );
+}
+
+/** Prefixos válidos de webhook de canal do Discord — mesma regra do backend. */
+export const PREFIXOS_WEBHOOK_DISCORD = [
+  "https://discord.com/api/webhooks/",
+  "https://discordapp.com/api/webhooks/",
+];
+
+/** true quando o valor é uma URL de webhook do Discord. */
+export function ehWebhookDiscord(valor: unknown): boolean {
+  return (
+    typeof valor === "string" && PREFIXOS_WEBHOOK_DISCORD.some((p) => valor.trim().startsWith(p))
+  );
+}
+
 const PRIORIDADE_ROTULO: Record<string, string> = {
   HIGH: "Alta",
   MEDIUM: "Média",
@@ -188,7 +222,40 @@ export const CATALOGO: BlocoMeta[] = [
     resumo: (p) => resumoEvento(p),
     Icone: IconeCalendarMais,
   },
+  {
+    kind: "action",
+    type: "call_webhook",
+    nome: "Chamar webhook",
+    descricao: "POST com os dados da reunião em JSON pra uma URL sua",
+    paramsPadrao: { url: "" },
+    resumo: (p) =>
+      typeof p.url === "string" && p.url.trim() ? hostDaUrl(p.url) : "defina a URL",
+    Icone: IconeWebhook,
+  },
+  {
+    kind: "action",
+    type: "discord_post_message",
+    nome: "Avisar no Discord",
+    descricao: "Posta o resumo da reunião num canal via webhook",
+    paramsPadrao: { webhookUrl: "" },
+    resumo: (p) =>
+      ehWebhookDiscord(p.webhookUrl)
+        ? "webhook configurado"
+        : typeof p.webhookUrl === "string" && p.webhookUrl.trim()
+          ? "webhook inválido"
+          : "defina o webhook",
+    Icone: IconeDiscord,
+  },
 ];
+
+/** Host da URL pro resumo do nó (ex.: "hooks.exemplo.com"). */
+function hostDaUrl(url: string): string {
+  try {
+    return new URL(url.trim()).host || "URL inválida";
+  } catch {
+    return "URL inválida";
+  }
+}
 
 /** Resumo do calendar_create_event — ex.: "amanhã às 10h, 30min". */
 function resumoEvento(p: Record<string, unknown>): string {
