@@ -37,9 +37,9 @@ class TodoistCreateTaskActionTest {
                         "Resumo.",
                         List.of(
                                 new WorkflowEventContext.ActionItemView(
-                                        "Enviar proposta", "Ana", "HIGH"),
+                                        "Enviar proposta", "Ana", "HIGH", null),
                                 new WorkflowEventContext.ActionItemView(
-                                        "Agendar follow-up", null, "LOW")));
+                                        "Agendar follow-up", null, "LOW", null)));
 
         String result = action.execute(ctx, Map.of());
 
@@ -84,7 +84,9 @@ class TodoistCreateTaskActionTest {
                 TestContexts.context(
                         "Reunião",
                         "Resumo.",
-                        List.of(new WorkflowEventContext.ActionItemView("Item", null, "LOW")));
+                        List.of(
+                                new WorkflowEventContext.ActionItemView(
+                                        "Item", null, "LOW", null)));
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> failing.execute(ctx, Map.of()))
                 .isInstanceOf(IllegalStateException.class);
     }
