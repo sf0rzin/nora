@@ -1,5 +1,6 @@
 package br.com.nora.api.application.workflow;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -28,6 +29,10 @@ public record WorkflowEventContext(
         OffsetDateTime occurredAt,
         boolean sampleData) {
 
-    /** Projeção mínima de um action item para condições ({@code priority_equals}) e templates. */
-    public record ActionItemView(String title, String assignee, String priority) {}
+    /**
+     * Projeção mínima de um action item para condições ({@code priority_equals}), templates e
+     * payloads de webhook ({@code dueDate} pode ser null — a LLM nem sempre extrai prazo).
+     */
+    public record ActionItemView(
+            String title, String assignee, String priority, LocalDate dueDate) {}
 }
