@@ -953,8 +953,8 @@ module apiApp 'modules/container-app.bicep' = {
     targetPort: 8080
     ingress: 'external'
     customDomains: apiCustomDomains
-    cpu: '0.5'
-    memory: '1Gi'
+    cpu: '1'
+    memory: '2Gi'
     minReplicas: 1 // sempre pelo menos 1 — API e caminho critico
     maxReplicas: 3
     envVars: concat([
@@ -1138,9 +1138,11 @@ module webApp 'modules/container-app.bicep' = {
     targetPort: 3000
     ingress: 'external'
     customDomains: webCustomDomains
-    cpu: '0.25'
-    memory: '0.5Gi'
-    minReplicas: 0
+    // 0.25/0.5Gi + minReplicas 0 deixava o SSR do Next sufocado e com cold
+    // start visivel (site "lento" na demo). Saldo Azure autorizado pelo PO.
+    cpu: '1'
+    memory: '2Gi'
+    minReplicas: 1
     maxReplicas: 3
     envVars: concat([
       // NOTA: NEXT_PUBLIC_* sao baked in build-time no bundle Next. O Dockerfile do web
