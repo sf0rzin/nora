@@ -127,10 +127,13 @@ class RefreshFlowIntegrationTest {
     }
 
     @Test
-    void refreshRotatesIssuingNewRefreshAndRevokingPrevious() throws Exception {
-        // Audit follow-up #3: cada /auth/refresh rotaciona o cookie. O cookie velho fica
-        // revogado (reuse detection); apenas o novo, retornado pelo Set-Cookie do response,
-        // continua valido.
+    void refreshRotatesAndToleratesBenignReuseWithinLeeway() throws Exception {
+        // Audit follow-up #3 + corrida benigna (PR #238): cada /auth/refresh rotaciona o
+        // cookie. Reapresentar o cookie velho LOGO APOS a rotacao (multi-aba, timer +
+        // interceptor 401) e tratado como corrida benigna dentro da janela de 60s: emite um
+        // par novo na mesma family em vez de revogar tudo e deslogar o usuario. A revogacao
+        // da family fora da janela e coberta no AuthServiceTest (clock fake) — aqui o clock
+        // e real e nao da pra esperar 60s.
         String email = "rt@nora.dev";
         registerAndVerify(email);
         ResponseEntity<String> login = postJson("/auth/login", basicAuth(email));
@@ -150,15 +153,22 @@ class RefreshFlowIntegrationTest {
         String newRefresh = extractCookieValue(r1Cookies, "nora_refresh");
         assertThat(newRefresh).isNotBlank().isNotEqualTo(oldRefresh);
 
-        // Reapresentar o refresh velho (revogado) dispara reuse detection => 401.
+        // Reapresentar o refresh velho imediatamente = corrida benigna => 200 com par novo
+        // na mesma family ("segunda aba" segue logada com cookie proprio).
         ResponseEntity<String> reuse =
                 postWithCookies("/auth/refresh", List.of("nora_refresh=" + oldRefresh));
-        assertThat(reuse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(reuse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String racedRefresh = extractCookieValue(setCookieHeaders(reuse), "nora_refresh");
+        assertThat(racedRefresh).isNotBlank().isNotEqualTo(oldRefresh).isNotEqualTo(newRefresh);
 
-        // O refresh novo continua valido na proxima rotacao.
+        // Ambos os filhos (rotacao normal e corrida) continuam validos na proxima rotacao —
+        // a family NAO foi revogada.
         ResponseEntity<String> r2 =
                 postWithCookies("/auth/refresh", List.of("nora_refresh=" + newRefresh));
         assertThat(r2.getStatusCode()).isEqualTo(HttpStatus.OK);
+        ResponseEntity<String> r3 =
+                postWithCookies("/auth/refresh", List.of("nora_refresh=" + racedRefresh));
+        assertThat(r3.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
     @Test
