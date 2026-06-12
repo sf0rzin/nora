@@ -23,6 +23,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } f
 import { SESSION_USER_EVENT, clearSession, getCurrentUser, type SessionUser } from "@/lib/auth";
 
 import { AppSidebarSessions } from "./app-sidebar-sessions";
+import { Avatar } from "./avatar";
 import { CommandPalette } from "./command-palette";
 
 type NavItem = {
@@ -162,10 +163,6 @@ const CONNECTORS: NavItem = {
   hint: "MCP",
 };
 
-function UserOrb() {
-  return <div className="user-orb" aria-hidden />;
-}
-
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -260,7 +257,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const userBlock = (
     <div className="side-user">
-      <UserOrb />
+      <Avatar seed={user?.email} size={28} />
       <div className="meta">
         <div className="name">{user?.displayName ?? "Carregando…"}</div>
         <div className="mail">{user?.email ? `${user.email} · Core` : "—"}</div>
@@ -300,8 +297,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
+  // Rotas que travam a viewport (composer fixo + scroll interno próprio).
+  // As demais páginas scrollam no documento — ver "Shell" em components.css.
+  const viewportLocked = pathname === "/chat" || pathname.startsWith("/chat/");
+
   return (
-    <div className="app">
+    <div className={`app${viewportLocked ? " app--viewport" : ""}`}>
       <aside className="side">
         <div className="side-brand">
           <Link href={"/chat" as Route} aria-label="NORA — nova sessão" style={{ display: "inline-flex", alignItems: "center" }}>

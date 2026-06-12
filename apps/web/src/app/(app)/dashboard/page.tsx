@@ -4,7 +4,6 @@ import { cookies } from "next/headers";
 
 import { listMeetings, type ListMeetingsParams } from "@/lib/api/client";
 import type { MeetingListItem, ProcessingStatus } from "@/lib/api/types";
-import { ShaderOrb } from "@/components/brand/shader-orb";
 import DashboardFilters, { ProcessingPoller } from "./Filters";
 
 export const dynamic = "force-dynamic";
@@ -224,8 +223,7 @@ export default async function DashboardPage({
       )}
 
       {data.items.length === 0 && !errorMessage ? (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "64px 24px", textAlign: "center" }}>
-          <ShaderOrb size={110} speed={1} intensity={0.85} />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "72px 24px", textAlign: "center" }}>
           <div style={{ maxWidth: 400 }}>
             <h2 style={{ fontFamily: "var(--display)", fontSize: 19, fontWeight: 500, letterSpacing: "-0.018em", margin: "0 0 6px", color: "var(--ink)" }}>
               {hasFilters ? "Nenhuma reunião com esses filtros." : "Sua primeira reunião está a um upload de distância."}

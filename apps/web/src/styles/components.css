@@ -10,20 +10,29 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ── Shell ─────────────────────────────────────────────────── */
-.app { display: flex; height: 100dvh; background: var(--canvas); color: var(--ink); }
-.app-main { flex: 1; min-width: 0; height: 100dvh; overflow-y: auto; }
+/* O documento é o scroller das páginas de conteúdo (Início, Projetos, …):
+   barra de rolagem na janela, scroll por teclado (espaço/PgDn/setas) e
+   restauração de posição do navegador funcionam — antes o scroll vivia num
+   .app-main de 100dvh e a página "não scrollava" fora do wheel. Rotas que
+   travam a viewport (chat) recebem .app--viewport no AppShell e mantêm o
+   scroll interno no .app-main, como era. */
+.app { display: flex; min-height: 100dvh; background: var(--canvas); color: var(--ink); }
+.app-main { flex: 1; min-width: 0; }
+.app--viewport { height: 100dvh; }
+.app--viewport .app-main { height: 100dvh; overflow-y: auto; }
 
 .page { max-width: 920px; margin: 0 auto; padding: 56px 40px 80px; }
 .page--narrow { max-width: 760px; padding: 48px 40px 80px; }
 @media (max-width: 720px) {
   .page, .page--narrow { padding: 28px 20px 64px; }
-  .app-main { height: auto; min-height: 0; flex: 1; }
   .app { flex-direction: column; }
+  .app--viewport .app-main { height: auto; min-height: 0; flex: 1; }
 }
 
 /* ── Sidebar ───────────────────────────────────────────────── */
 .side {
   width: 248px; flex-shrink: 0; height: 100dvh;
+  position: sticky; top: 0;
   background: var(--sidebar); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; padding: 18px 14px 14px; gap: 16px;
 }
@@ -93,16 +102,6 @@
 
 .side-user {
   display: flex; align-items: center; gap: 8px; padding: 14px 4px 2px; border-top: 1px solid var(--border);
-}
-.user-orb {
-  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
-  background:
-    radial-gradient(circle at 30% 25%, #d8f0f6 0%, transparent 38%),
-    radial-gradient(circle at 78% 62%, #e8b8d8 0%, transparent 45%),
-    radial-gradient(circle at 22% 78%, #3a4a4f 0%, transparent 30%),
-    radial-gradient(circle at 60% 40%, #4ec4d8 8%, #6aa8d8 45%, #9778b8 100%);
-  box-shadow: inset 0 0 6px rgba(255, 255, 255, 0.4), 0 1px 2px rgba(0, 0, 0, 0.06);
-  filter: saturate(1.15);
 }
 .side-user .meta { flex: 1; min-width: 0; }
 .side-user .name { font-size: 12.5px; letter-spacing: -0.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
