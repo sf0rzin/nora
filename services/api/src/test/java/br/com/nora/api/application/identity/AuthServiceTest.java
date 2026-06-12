@@ -212,15 +212,17 @@ class AuthServiceTest {
         assertThat(parent.familyId()).isEqualTo(child.familyId());
         assertThat(parent.replacedById()).isEqualTo(child.id());
 
-        // O novo refresh funciona; o anterior ja revogado dispara reuse detection.
+        // O novo refresh funciona; o anterior ja revogado dispara reuse detection
+        // depois da janela de corrida benigna (60s).
         RefreshResult again = service.refresh(refresh.refreshTokenPlain());
         assertThat(again.accessToken()).isNotBlank();
+        clock.advance(Duration.ofSeconds(61));
         assertThatThrownBy(() -> service.refresh(login.refreshTokenPlain()))
                 .isInstanceOf(AuthException.RefreshTokenInvalid.class);
     }
 
     @Test
-    void refreshReuseOfRevokedTokenRevokesEntireFamily() {
+    void refreshReuseAfterLeewayRevokesEntireFamily() {
         SignupResult sr = service.signup(new SignupCommand("ru@nora.dev", "SenhaForte123", "RU"));
         service.verifyEmail(sr.emailVerificationDevToken());
         LoginResult login = service.login(new LoginCommand("ru@nora.dev", "SenhaForte123"));
@@ -228,12 +230,68 @@ class AuthServiceTest {
         // Rotaciona uma vez. Atacante recupera o token velho.
         RefreshResult rotated = service.refresh(login.refreshTokenPlain());
 
+        // Fora da janela de corrida benigna (60s), reuse e tratado como roubo de token.
+        clock.advance(Duration.ofSeconds(61));
+
         // Atacante reapresenta o token velho (revogado) → reuse detection revoga family.
         assertThatThrownBy(() -> service.refresh(login.refreshTokenPlain()))
                 .isInstanceOf(AuthException.RefreshTokenInvalid.class);
 
         // Apos reuse, o token rotacionado (que era valido) tambem foi invalidado.
         assertThatThrownBy(() -> service.refresh(rotated.refreshTokenPlain()))
+                .isInstanceOf(AuthException.RefreshTokenInvalid.class);
+        assertThat(refreshRepo.all).allMatch(RefreshToken::isRevoked);
+    }
+
+    @Test
+    void refreshReuseWithinLeewayIsTreatedAsBenignRaceAndKeepsFamilyAlive() {
+        // Cenario real de producao: timer proativo + interceptor 401 (ou duas abas)
+        // disparam refresh quase simultaneo com o mesmo cookie. O segundo chega com o
+        // token ja rotacionado — NAO pode derrubar a family (logout espontaneo).
+        SignupResult sr = service.signup(new SignupCommand("br@nora.dev", "SenhaForte123", "BR"));
+        service.verifyEmail(sr.emailVerificationDevToken());
+        LoginResult login = service.login(new LoginCommand("br@nora.dev", "SenhaForte123"));
+
+        // Aba A rotaciona normalmente.
+        RefreshResult rotated = service.refresh(login.refreshTokenPlain());
+
+        // Aba B reapresenta o token antigo 30s depois (dentro da janela de 60s).
+        clock.advance(Duration.ofSeconds(30));
+        RefreshResult raced = service.refresh(login.refreshTokenPlain());
+
+        // Recebe um par novo valido, na MESMA family, sem revogar mais nada.
+        assertThat(raced.accessToken()).isNotBlank();
+        assertThat(raced.refreshTokenPlain())
+                .isNotBlank()
+                .isNotEqualTo(login.refreshTokenPlain())
+                .isNotEqualTo(rotated.refreshTokenPlain());
+        assertThat(refreshRepo.all).hasSize(3);
+        UUID familyId = refreshRepo.all.get(0).familyId();
+        assertThat(refreshRepo.all).allMatch(t -> t.familyId().equals(familyId));
+        // So o pai (rotacionado) esta revogado; os dois filhos continuam ativos.
+        assertThat(refreshRepo.all.stream().filter(RefreshToken::isRevoked)).hasSize(1);
+
+        // Ambas as "abas" continuam funcionando: tokens de A e B seguem refreshaveis.
+        assertThat(service.refresh(rotated.refreshTokenPlain()).accessToken()).isNotBlank();
+        assertThat(service.refresh(raced.refreshTokenPlain()).accessToken()).isNotBlank();
+    }
+
+    @Test
+    void refreshReuseWindowIsAnchoredOnFirstUseNotExtendedByEachReuse() {
+        // Anti-abuso: reusar o token velho dentro da janela NAO renova a janela.
+        // 30s + 31s = 61s desde o PRIMEIRO uso → reuse detection plena.
+        SignupResult sr = service.signup(new SignupCommand("an@nora.dev", "SenhaForte123", "AN"));
+        service.verifyEmail(sr.emailVerificationDevToken());
+        LoginResult login = service.login(new LoginCommand("an@nora.dev", "SenhaForte123"));
+
+        service.refresh(login.refreshTokenPlain());
+
+        clock.advance(Duration.ofSeconds(30));
+        RefreshResult raced = service.refresh(login.refreshTokenPlain());
+        assertThat(raced.accessToken()).isNotBlank();
+
+        clock.advance(Duration.ofSeconds(31));
+        assertThatThrownBy(() -> service.refresh(login.refreshTokenPlain()))
                 .isInstanceOf(AuthException.RefreshTokenInvalid.class);
         assertThat(refreshRepo.all).allMatch(RefreshToken::isRevoked);
     }
