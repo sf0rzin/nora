@@ -8,12 +8,17 @@
  *   form -> uploading -> polling -> { completed | failed | timeout }
  *
  * Apos o POST `/meetings` (que retorna `{id, processingStatus: "PENDING"}`),
- * em vez de redirecionar direto pra `/meetings/{id}` (UX porosa: usuario via
- * pagina PENDING e tinha que recarregar manualmente), entramos em modo
- * polling: chamamos `getMeeting(id)` a cada 2s ate o backend reportar
- * `COMPLETED` ou `FAILED`. Em `COMPLETED` redirecionamos com pequeno delay
- * pra dar feedback visual. Em `FAILED` mostramos erro com cta "Tentar
- * novamente" (volta ao form) e link manual pra reuniao.
+ * mostramos imediatamente o card "Transcricao enviada" com acoes livres
+ * ("Enviar outra transcricao" / "Ir para o Inicio") — o usuario NAO fica
+ * preso esperando a analise (feedback do PO, 2026-06-12: o redirect
+ * automatico parecia travamento quando a analise demorava). O polling
+ * continua em segundo plano so pra animar o status no card (na fila →
+ * analisando → pronta, quando vira CTA "Ver analise"). Em `FAILED`
+ * mostramos erro com cta "Tentar novamente".
+ *
+ * O card tambem conecta com o NORA Flows: se o usuario tem fluxo ativo com
+ * gatilho `meeting.analysis_completed`, avisamos que os fluxos vao disparar
+ * quando a analise terminar; senao, sugerimos criar um em /fluxos.
  *
  * Timeout: 5 minutos (150 polls de 2s). Apos isso mostramos aviso com link
  * manual — nao paramos a analise no backend, apenas paramos de pollar.
@@ -34,7 +39,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Route } from "next";
-import { ApiRequestError, getMeeting, uploadMeeting } from "@/lib/api/client";
+import { ApiRequestError, getMeeting, listWorkflows, uploadMeeting } from "@/lib/api/client";
 import type { ProcessingStatus } from "@/lib/api/types";
 
 type Format = "TXT" | "VTT" | "SRT";
@@ -49,10 +54,11 @@ const FORMAT_BY_EXT: Record<string, Format> = {
 const POLL_INTERVAL_MS = 2_000;
 /** Maximo de polls antes de mostrar timeout (5 min @ 2s). */
 const MAX_POLLS = 150;
-/** Delay de redirect apos COMPLETED — janela curta pro usuario ver o feedback verde. */
-const REDIRECT_DELAY_MS = 500;
 
 type Phase = "form" | "uploading" | "polling" | "completed" | "failed" | "timeout";
+
+/** Estado da dica de notificacao via Flows no card pos-envio. */
+type FlowsHint = "loading" | "has-flows" | "no-flows" | "unavailable";
 
 export default function UploadMeetingPage() {
   const router = useRouter();
@@ -189,22 +195,48 @@ export default function UploadMeetingPage() {
     };
   }, [phase, meetingId]);
 
-  // Quando completed, redireciona com pequeno delay pro feedback visual.
+  // Dica de notificacao via Flows no card pos-envio: um fetch unico por envio
+  // (guard via ref pra nao refetchar a cada transicao de phase). Falha e
+  // tolerada — a dica simplesmente nao aparece.
+  const [flowsHint, setFlowsHint] = useState<FlowsHint>("loading");
+  const flowsHintFetchedForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (phase !== "completed" || !meetingId) return;
-    const t = setTimeout(() => {
-      router.push(`/meetings/${meetingId}` as Route);
-      router.refresh();
-    }, REDIRECT_DELAY_MS);
-    return () => clearTimeout(t);
-  }, [phase, meetingId, router]);
+    if (phase === "form" || phase === "uploading" || !meetingId) return;
+    if (flowsHintFetchedForRef.current === meetingId) return;
+    flowsHintFetchedForRef.current = meetingId;
+    let cancelled = false;
+    listWorkflows()
+      .then((flows) => {
+        if (cancelled) return;
+        const hasAnalysisFlow = flows.some(
+          (f) => f.active && f.triggerType === "meeting.analysis_completed",
+        );
+        setFlowsHint(hasAnalysisFlow ? "has-flows" : "no-flows");
+      })
+      .catch(() => {
+        if (!cancelled) setFlowsHint("unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, meetingId]);
 
+  /** Volta pro form LIMPO — "Enviar outra transcrição" começa do zero. */
   function resetToForm() {
     setPhase("form");
     setMeetingId(null);
     setPollingStatus("PENDING");
     setPollingError(null);
     pollCountRef.current = 0;
+    setFlowsHint("loading");
+    setFile(null);
+    setTitle("");
+    setTags([]);
+    setParticipants([]);
+    setStartedAt("");
+    setEndedAt("");
+    setFormError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   // ---------- Render ----------
@@ -217,6 +249,8 @@ export default function UploadMeetingPage() {
           phase={phase}
           status={pollingStatus}
           meetingId={meetingId}
+          meetingTitle={title}
+          flowsHint={flowsHint}
           pollingError={pollingError}
           onRetry={resetToForm}
         />
@@ -622,65 +656,38 @@ interface StatusCardProps {
   phase: Exclude<Phase, "form">;
   status: ProcessingStatus;
   meetingId: string | null;
+  meetingTitle: string;
+  flowsHint: FlowsHint;
   pollingError: string | null;
   onRetry: () => void;
 }
 
-function StatusCard({ phase, status, meetingId, pollingError, onRetry }: StatusCardProps) {
-  // phase = "uploading" e o passo do POST; phase = "polling" usa `status`.
-  const view = pickView(phase, status);
+function StatusCard({
+  phase,
+  status,
+  meetingId,
+  meetingTitle,
+  flowsHint,
+  pollingError,
+  onRetry,
+}: StatusCardProps) {
+  // "uploading" = POST em andamento; "failed" = erro terminal. Os demais
+  // (polling/completed/timeout) compartilham o card "Transcrição enviada"
+  // com status ao vivo — o usuário fica livre desde o primeiro segundo.
+  if (phase === "uploading") {
+    return (
+      <CardFrame icon={<Spinner tone="accent" />} title="Enviando transcrição…" />
+    );
+  }
 
-  return (
-    <div
-      className="card"
-      role="status"
-      aria-live="polite"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 18,
-        padding: "72px 24px",
-        textAlign: "center",
-      }}
-    >
-      {/* keyframe local do spinner — nao existe global noraSpin no design system */}
-      <style>{"@keyframes noraSpin { to { transform: rotate(360deg); } }"}</style>
-      {view.icon}
-      <div>
-        <h2
-          style={{
-            fontSize: 17,
-            fontWeight: 500,
-            letterSpacing: "-0.015em",
-            margin: "0 0 5px",
-          }}
-        >
-          {view.title}
-        </h2>
-        {view.subtitle && (
-          <p
-            style={{
-              fontSize: 13,
-              color: "var(--muted)",
-              margin: 0,
-              lineHeight: 1.55,
-              maxWidth: 380,
-            }}
-          >
-            {view.subtitle}
-          </p>
-        )}
-      </div>
-
-      {pollingError && phase === "polling" && (
-        <div className="notice" style={{ fontSize: 12, maxWidth: 380 }}>
-          {pollingError}
-        </div>
-      )}
-
-      {phase === "failed" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+  if (phase === "failed") {
+    return (
+      <CardFrame
+        icon={<SignalIcon tone="danger" kind="x" />}
+        title="Falha na análise"
+        subtitle="O processamento da reunião falhou. Tente novamente ou abra os detalhes para mais informações."
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
           <button type="button" className="btn btn-primary btn-sm" onClick={onRetry}>
             Tentar novamente
           </button>
@@ -698,64 +705,183 @@ function StatusCard({ phase, status, meetingId, pollingError, onRetry }: StatusC
             </Link>
           )}
         </div>
+      </CardFrame>
+    );
+  }
+
+  // Enviado: status da análise ao vivo + ações livres.
+  const live =
+    phase === "completed"
+      ? { icon: <MiniCheck />, label: "Análise pronta." }
+      : phase === "timeout"
+        ? { icon: <MiniSpinner tone="muted" />, label: "Ainda processando — está demorando mais que o normal." }
+        : status === "PROCESSING"
+          ? { icon: <MiniSpinner tone="accent" />, label: "Analisando com IA…" }
+          : { icon: <MiniSpinner tone="muted" />, label: "Na fila de análise…" };
+
+  return (
+    <CardFrame
+      icon={<SignalIcon tone="success" kind="check" />}
+      title="Transcrição enviada."
+      subtitle={meetingTitle ? `"${meetingTitle}" já está com a NORA — a análise roda em segundo plano.` : "A análise roda em segundo plano."}
+    >
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "7px 14px",
+          borderRadius: 999,
+          background: "var(--chip)",
+          fontSize: 12.5,
+          color: "var(--ink)",
+        }}
+      >
+        {live.icon}
+        {live.label}
+      </div>
+
+      {flowsHint === "has-flows" && (
+        <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0, maxWidth: 400, lineHeight: 1.55 }}>
+          Seus fluxos ativos vão disparar quando a análise terminar — você será
+          notificado (e-mail, agenda… o que seus fluxos fizerem).
+        </p>
+      )}
+      {flowsHint === "no-flows" && (
+        <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0, maxWidth: 400, lineHeight: 1.55 }}>
+          Quer ser avisado quando a análise terminar? Crie um fluxo com o gatilho
+          &quot;Reunião analisada&quot; em{" "}
+          <Link href={"/fluxos" as Route} style={{ color: "var(--accent-ink)", textDecoration: "underline", textUnderlineOffset: 2 }}>
+            Fluxos
+          </Link>
+          .
+        </p>
       )}
 
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", paddingTop: 4 }}>
+        {phase === "completed" && meetingId && (
+          <Link className="btn btn-primary btn-sm" href={`/meetings/${meetingId}` as Route}>
+            Ver análise
+          </Link>
+        )}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onRetry}>
+          Enviar outra transcrição
+        </button>
+        <Link className="btn btn-ghost btn-sm" href={"/dashboard" as Route}>
+          Ir para o Início
+        </Link>
+      </div>
+
+      {pollingError && phase === "polling" && (
+        <div className="notice" style={{ fontSize: 12, maxWidth: 380 }}>
+          {pollingError}
+        </div>
+      )}
       {phase === "timeout" && meetingId && (
-        <Link className="btn btn-ghost btn-sm" href={`/meetings/${meetingId}` as Route}>
-          Ver reunião
+        <Link
+          href={`/meetings/${meetingId}` as Route}
+          style={{ fontSize: 12.5, color: "var(--muted)", textDecoration: "underline", textUnderlineOffset: 2 }}
+        >
+          Acompanhar na página da reunião
         </Link>
       )}
+    </CardFrame>
+  );
+}
+
+function CardFrame({
+  icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="card"
+      role="status"
+      aria-live="polite"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 18,
+        padding: "64px 24px",
+        textAlign: "center",
+      }}
+    >
+      {/* keyframe local do spinner — nao existe global noraSpin no design system */}
+      <style>{"@keyframes noraSpin { to { transform: rotate(360deg); } }"}</style>
+      {icon}
+      <div>
+        <h2
+          style={{
+            fontSize: 17,
+            fontWeight: 500,
+            letterSpacing: "-0.015em",
+            margin: "0 0 5px",
+          }}
+        >
+          {title}
+        </h2>
+        {subtitle && (
+          <p
+            style={{
+              fontSize: 13,
+              color: "var(--muted)",
+              margin: 0,
+              lineHeight: 1.55,
+              maxWidth: 400,
+            }}
+          >
+            {subtitle}
+          </p>
+        )}
+      </div>
+      {children}
     </div>
   );
 }
 
-interface View {
-  icon: React.ReactNode;
-  title: string;
-  subtitle?: string;
+/** Spinner pequeno pro chip de status ao vivo. */
+function MiniSpinner({ tone }: { tone: "accent" | "muted" }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 12,
+        height: 12,
+        borderRadius: "50%",
+        border: "2px solid var(--border)",
+        borderTopColor: tone === "accent" ? "var(--accent)" : "var(--muted)",
+        animation: "noraSpin 0.9s linear infinite",
+        flexShrink: 0,
+      }}
+    />
+  );
 }
 
-function pickView(phase: Exclude<Phase, "form">, status: ProcessingStatus): View {
-  if (phase === "uploading") {
-    return { icon: <Spinner tone="accent" />, title: "Enviando transcrição…" };
-  }
-  if (phase === "completed") {
-    return {
-      icon: <SignalIcon tone="success" kind="check" />,
-      title: "Análise pronta",
-      subtitle: "Redirecionando…",
-    };
-  }
-  if (phase === "failed") {
-    return {
-      icon: <SignalIcon tone="danger" kind="x" />,
-      title: "Falha na análise",
-      subtitle:
-        "O processamento da reunião falhou. Tente novamente ou abra os detalhes para mais informações.",
-    };
-  }
-  if (phase === "timeout") {
-    return {
-      icon: <SignalIcon tone="warn" kind="clock" />,
-      title: "Processamento demorou mais que o esperado",
-      subtitle:
-        "Você pode acompanhar a análise diretamente na página da reunião — ela continua rodando em segundo plano.",
-    };
-  }
-  // phase === "polling": detalha o status atual
-  if (status === "PROCESSING") {
-    return {
-      icon: <Spinner tone="accent" />,
-      title: "Analisando reunião com IA…",
-      subtitle: "Isso pode levar até 30 segundos.",
-    };
-  }
-  // PENDING (ou FAILED/COMPLETED que ja foram tratados acima)
-  return {
-    icon: <Spinner tone="muted" />,
-    title: "Aguardando processamento",
-    subtitle: "A reunião está na fila do worker.",
-  };
+function MiniCheck() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="var(--success)"
+      strokeWidth="2.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ flexShrink: 0 }}
+    >
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
 }
 
 // ---------------------------------------------------------------------------
