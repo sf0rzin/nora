@@ -161,35 +161,83 @@ export function cancelScheduledRefresh(): void {
   }
 }
 
+/** Resultado do refresh compartilhado — cada consumidor decide o que fazer. */
+export interface SharedRefreshResult {
+  /** `true` quando o backend respondeu 2xx. */
+  ok: boolean;
+  /** Status HTTP da resposta, ou `null` em erro de rede. */
+  status: number | null;
+  /** TTL do novo access em segundos (quando ok e o backend informou). */
+  expiresInSeconds: number | null;
+}
+
 /**
- * Chama POST /auth/refresh. Se sucesso, reagenda; se 401, limpa sessao e
- * redireciona para /auth/login preservando rota atual em `?next=`.
+ * Promise compartilhada do POST /auth/refresh em andamento (single-flight).
+ *
+ * Vive AQUI (e nao em client.ts) porque os dois consumidores — o timer
+ * proativo deste modulo e o interceptor 401 de `@/lib/api/client` — precisam
+ * aguardar a MESMA chamada, e client.ts ja importa auth.ts (importar no outro
+ * sentido criaria ciclo).
+ */
+let refreshInFlight: Promise<SharedRefreshResult> | null = null;
+
+/**
+ * Single-flight do POST /auth/refresh. Timer proativo e interceptor 401
+ * compartilham a mesma promise: dois refresh simultaneos com o mesmo cookie
+ * eram tratados pelo backend como reuse de token rotacionado (reuse
+ * detection), revogando a family inteira → logout espontaneo em producao.
+ *
+ * No sucesso, ja reagenda o proximo refresh proativo (`scheduleRefresh`).
+ */
+export function sharedRefresh(): Promise<SharedRefreshResult> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async (): Promise<SharedRefreshResult> => {
+    try {
+      const resp = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (!resp.ok) {
+        return { ok: false, status: resp.status, expiresInSeconds: null };
+      }
+      const data = (await resp.json().catch(() => ({}))) as { expiresInSeconds?: number };
+      const expiresInSeconds =
+        typeof data.expiresInSeconds === 'number' && data.expiresInSeconds > 0
+          ? data.expiresInSeconds
+          : null;
+      if (expiresInSeconds !== null) scheduleRefresh(expiresInSeconds);
+      return { ok: true, status: resp.status, expiresInSeconds };
+    } catch {
+      return { ok: false, status: null, expiresInSeconds: null };
+    } finally {
+      // Limpa apos completar — proxima chamada cria nova promise se precisar.
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+/**
+ * Refresh proativo (timer). Usa o single-flight compartilhado; se ja houver
+ * um refresh em voo (ex.: interceptor 401), apenas aguarda o resultado dele.
+ * Se sucesso, o reagendamento ja foi feito pelo `sharedRefresh`; se 401,
+ * limpa sessao e redireciona para /auth/login preservando rota em `?next=`.
  *
  * Retorna o `expiresInSeconds` do novo access em caso de sucesso, ou
  * `null` em caso de falha (caller pode decidir comportamento).
  */
 export async function runProactiveRefresh(): Promise<number | null> {
   if (typeof window === 'undefined') return null;
-  try {
-    const resp = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-      cache: 'no-store',
-    });
-    if (!resp.ok) {
-      if (resp.status === 401) {
-        // Refresh invalido: forca logout local + redirect.
-        await handleSessionExpired();
-      }
-      return null;
+  const result = await sharedRefresh();
+  if (!result.ok) {
+    if (result.status === 401) {
+      // Refresh invalido: forca logout local + redirect.
+      await handleSessionExpired();
     }
-    const data = (await resp.json()) as { expiresInSeconds?: number };
-    const next = typeof data.expiresInSeconds === 'number' ? data.expiresInSeconds : 0;
-    if (next > 0) scheduleRefresh(next);
-    return next || null;
-  } catch {
     return null;
   }
+  return result.expiresInSeconds;
 }
 
 /**
