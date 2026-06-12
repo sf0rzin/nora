@@ -111,7 +111,7 @@ export function ModelosClient({
             <div key={service} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderTop: i === 0 ? "none" : "1px solid var(--border)", opacity: rowBusy ? 0.6 : 1 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14 }}>{SERVICE_LABEL[service]}</div>
-                <div style={{ fontSize: 11.5, color: "var(--muted)", fontFamily: "var(--mono)" }}>{service}</div>
+                <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{service}</div>
               </div>
               <select
                 value={b?.modelId ?? ""}
@@ -149,7 +149,7 @@ export function ModelosClient({
                 <span style={tag}>{m.modality === "multimodal" ? "multimodal" : "texto"}</span>
                 {m.supportsStrictJsonSchema && <span style={{ ...tag, color: "var(--accent-ink)" }}>strict JSON</span>}
               </div>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", fontFamily: "var(--mono)", marginTop: 2 }}>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", fontVariantNumeric: "tabular-nums", marginTop: 2 }}>
                 {m.provider} · {m.model} · ${m.inputCostPer1M}/${m.outputCostPer1M} por 1M
                 {m.cachedInputCostPer1M != null ? ` · cache $${m.cachedInputCostPer1M}` : ""}
               </div>
@@ -253,7 +253,6 @@ function AddModelForm({
 }
 
 const sectionLabel: React.CSSProperties = {
-  fontFamily: "var(--mono)",
   fontSize: 10.5,
   fontWeight: 500,
   letterSpacing: "0.08em",
@@ -295,7 +294,6 @@ const pill: React.CSSProperties = {
 };
 const tag: React.CSSProperties = {
   fontSize: 10,
-  fontFamily: "var(--mono)",
   color: "var(--muted)",
   border: "1px solid var(--border)",
   borderRadius: 4,
