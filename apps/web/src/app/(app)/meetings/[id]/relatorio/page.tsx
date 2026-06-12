@@ -47,7 +47,7 @@ const SENTIMENT_LABEL: Record<string, string> = {
 const REPORT_CSS = `
 /* Rota de impressão: esconde o chrome do shell (em tela e no print). */
 .side, .mhead, .drawer, .drawer-veil { display: none !important; }
-.app { height: auto !important; }
+.app { height: auto !important; min-height: 0 !important; }
 .app-main { height: auto !important; overflow: visible !important; }
 
 @media print {
