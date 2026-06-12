@@ -106,9 +106,21 @@ public class TaskRepositoryAdapter implements TaskRepository {
         ActionItemStatus status = ActionItemStatus.valueOf((String) r[5]);
         UUID meetingId = (UUID) r[6];
         String meetingTitle = (String) r[7];
-        OffsetDateTime updatedAt =
-                r[8] == null ? null : ((Timestamp) r[8]).toInstant().atOffset(ZoneOffset.UTC);
+        OffsetDateTime updatedAt = toOffset(r[8]);
         return new TaskRow(
                 id, title, assignee, dueDate, priority, status, meetingId, meetingTitle, updatedAt);
+    }
+
+    private static OffsetDateTime toOffset(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof OffsetDateTime odt) {
+            return odt;
+        }
+        if (value instanceof java.time.Instant instant) {
+            return instant.atOffset(ZoneOffset.UTC);
+        }
+        return ((Timestamp) value).toInstant().atOffset(ZoneOffset.UTC);
     }
 }
