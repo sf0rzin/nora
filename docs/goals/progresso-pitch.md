@@ -45,13 +45,23 @@ main): `#222` admin telemetria real, `#224` endpoints de settings.
 | 2026-06-11 | Criar projeto Google Cloud + OAuth Client ID/Secret + redirect URIs + habilitar Gmail/Calendar APIs (passos no .env.example da api) | ✅ resolvido | consent em modo Testing; credenciais nas env vars User + GitHub Secrets |
 | 2026-06-11 | Autorizar merge da cadeia #219→#220→#221→#223 (CI verde) | ✅ resolvido | TUDO mergeado (até #232) e DEPLOYADO; smoke verde em produção |
 | 2026-06-11 | Criar app Slack (chat:write + channels:read) e setar SLACK_OAUTH_CLIENT_ID/SECRET | 🟡 aberto | wiring pronto no Bicep |
-| 2026-06-11 | Validar ao vivo: conectar Google em /integracoes + cenário-âncora (fluxo → e-mail + Calendar) | 🟡 aberto | roteiro entregue ao Anthony |
+| 2026-06-11 | Validar ao vivo: conectar Google em /integracoes + cenário-âncora (fluxo → e-mail + Calendar) | 🟡 reteste | 1ª rodada (12/06) achou análise 422 + Calendar 400 — corrigidos e deployados; falta repetir o roteiro |
 
 ## Deploy (2026-06-11, fim do dia)
 - Produção atualizada: API revision 34 Healthy com imagem `sha-80c9a06` (HEAD), web/admin/worker idem.
 - Smoke em produção: healthz 200, resend 202, callback OAuth 302 → /integracoes, /workflows e /integrations 401 sem auth.
 - 3 bugs de infra latentes corrigidos no caminho: corrida ServerIsBusy no Postgres (#229), secretRefs de embedding ausentes no apiApp (#230), e BOM UTF-8 nos GitHub Secrets gravados via pipe do PowerShell (regravados via --body; ver memória reference-gh-secret-bom-powershell).
 - **Procedimento de deploy**: deploy-infra reseta as imagens para `:latest` (stale) — SEMPRE rodar `gh workflow run build-images.yml --ref main` depois, que re-pina `sha-<commit>` nas 4 apps.
+
+## Bug-bash pós-teste do Grand Finale (2026-06-12)
+Anthony rodou o roteiro ao vivo em produção e reportou problemas; todos diagnosticados e corrigidos no mesmo dia (PRs #235–#240, todos mergeados e deployados):
+- **Análise falhando (422)** — `WorkerDtos` mandava `commercialPlaybook`/`keyFeatures`; o worker Pydantic (`extra="forbid"`) só aceita `objectionHandling`/`keyDifferentiators`. Mismatch antigo, exposto quando o deploy de 11/06 subiu a imagem nova do worker. Fix + `WorkerDtosContractTest` travando o contrato (#235). NÃO era a chave OpenAI (local = KV = válida, testadas contra a API).
+- **calendar_create_event 400** — `OffsetDateTime.toString()` omite segundos zerados e o Google exige RFC3339 completo. Formatter explícito + corpo do erro do provedor no log da execução (#235). OAuth do Anthony estava perfeito (Gmail do mesmo fluxo saiu).
+- **138× ClassCastException Instant→Timestamp em 12h** — cast cru nos adapters de chat sessions e tasks (sidebar polla sessões → travava a sidebar e "deixava o site lento"). Guarda `instanceof` (#235).
+- **Site lento** — web rodava com 0.25 vCPU/0.5Gi e `minReplicas 0` (cold start a cada idle). Subido pra 1 vCPU/2Gi sempre quente + API 1 vCPU/2Gi, via az (efeito imediato) e persistido no Bicep (#236).
+- **Logout espontâneo** — corrida benigna de refresh (multi-aba e timer+interceptor) caía na reuse detection e revogava a family inteira. Janela de tolerância de 60s no backend (ancorada no primeiro uso; logout não entra) + single-flight unificado no front (#238); IT realinhado ao contrato novo (#239 — a main ficou ~30min vermelha porque o agente não tinha Docker pro IT; lição: rodar ITs no CI antes de mergear).
+- **Polish a pedido do PO** — admin 100% DM Sans sem mono (#237); scroll do Início no documento (causa raiz: scroller interno em `.app-main`), orbs removidos de Início/Projetos, switch Ativar/Pausado agrupado com Testar/Salvar no editor, avatares determinísticos estilo "macro desfocada" com 8 paletas (#240).
+- **Pendente do feedback**: propriedades do Calendar dinâmicas a partir dos dados da reunião + confirmação quando a IA não souber o horário (feature — desenhar fatia mínima antes de codar; mexe no schema de análise a 3 dias do pitch).
 
 ## Riscos para o palco
 - **Google em modo Testing: refresh token expira em 7 DIAS** — reconectar o Google em /integracoes na véspera (14/06). Verificação p/ público geral não dá até 15/06 (gmail.send é restricted scope: semanas + CASA).
