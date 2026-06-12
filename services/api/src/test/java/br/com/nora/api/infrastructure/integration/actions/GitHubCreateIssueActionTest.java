@@ -37,9 +37,9 @@ class GitHubCreateIssueActionTest {
                         "Resumo.",
                         List.of(
                                 new WorkflowEventContext.ActionItemView(
-                                        "Enviar proposta", "Ana", "HIGH"),
+                                        "Enviar proposta", "Ana", "HIGH", null),
                                 new WorkflowEventContext.ActionItemView(
-                                        "Agendar follow-up", null, "MEDIUM")));
+                                        "Agendar follow-up", null, "MEDIUM", null)));
 
         String result = action.execute(ctx, Map.of("repo", "stratfy/nora"));
 
@@ -79,7 +79,9 @@ class GitHubCreateIssueActionTest {
                 TestContexts.context(
                         "Kickoff Beta",
                         "Resumo.",
-                        List.of(new WorkflowEventContext.ActionItemView("Item", "Ana", "LOW")));
+                        List.of(
+                                new WorkflowEventContext.ActionItemView(
+                                        "Item", "Ana", "LOW", null)));
 
         String result =
                 action.execute(
