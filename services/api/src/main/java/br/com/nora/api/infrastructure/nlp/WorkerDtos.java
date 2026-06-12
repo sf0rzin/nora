@@ -37,14 +37,14 @@ public final class WorkerDtos {
             @JsonProperty("products") List<Product> products,
             @JsonProperty("competitors") List<String> competitors,
             @JsonProperty("idealCustomerProfile") String idealCustomerProfile,
-            @JsonProperty("commercialPlaybook") List<String> commercialPlaybook,
+            @JsonProperty("objectionHandling") List<String> objectionHandling,
             @JsonProperty("glossary") List<GlossaryEntry> glossary) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Product(
             @JsonProperty("name") String name,
             @JsonProperty("description") String description,
-            @JsonProperty("keyFeatures") List<String> keyFeatures) {}
+            @JsonProperty("keyDifferentiators") List<String> keyDifferentiators) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record GlossaryEntry(
