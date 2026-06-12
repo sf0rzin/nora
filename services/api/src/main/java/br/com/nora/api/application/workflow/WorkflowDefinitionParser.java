@@ -35,6 +35,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class WorkflowDefinitionParser {
 
+    /** Prefixos aceitos pra webhook de canal do Discord (mesma regra do executor). */
+    private static final List<String> DISCORD_WEBHOOK_PREFIXES =
+            List.of("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/");
+
     /** Condições conhecidas pelo {@link ConditionEvaluator}. */
     public static final Set<String> CONDITION_TYPES =
             Set.of(
@@ -200,6 +204,26 @@ public class WorkflowDefinitionParser {
                         "ação 'Postar no Slack' (nó '"
                                 + action.id()
                                 + "') precisa do canal em params.channel (ex.: #vendas)");
+            }
+        }
+        if ("call_webhook".equals(action.type())) {
+            String url = action.paramAsString("url");
+            if (url == null || url.isBlank() || !url.trim().startsWith("https://")) {
+                throw new WorkflowException.InvalidDefinition(
+                        "ação 'Chamar webhook' (nó '"
+                                + action.id()
+                                + "') precisa de uma URL https:// em params.url");
+            }
+        }
+        if ("discord_post_message".equals(action.type())) {
+            String url = action.paramAsString("webhookUrl");
+            String trimmed = url == null ? "" : url.trim();
+            if (DISCORD_WEBHOOK_PREFIXES.stream().noneMatch(trimmed::startsWith)) {
+                throw new WorkflowException.InvalidDefinition(
+                        "ação 'Avisar no Discord' (nó '"
+                                + action.id()
+                                + "') precisa da URL do webhook do canal em params.webhookUrl"
+                                + " (começa com https://discord.com/api/webhooks/)");
             }
         }
     }
