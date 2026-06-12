@@ -34,7 +34,7 @@ class NotionCreatePageActionTest {
                         "Resumo da reunião.",
                         List.of(
                                 new WorkflowEventContext.ActionItemView(
-                                        "Enviar proposta", "Ana", "HIGH")));
+                                        "Enviar proposta", "Ana", "HIGH", null)));
 
         String result = action.execute(ctx, Map.of("parentPageId", "page-123"));
 

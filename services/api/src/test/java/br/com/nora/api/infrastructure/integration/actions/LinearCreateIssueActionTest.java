@@ -34,7 +34,7 @@ class LinearCreateIssueActionTest {
                         "Resumo.",
                         List.of(
                                 new WorkflowEventContext.ActionItemView(
-                                        "Enviar proposta", "Ana", "HIGH")));
+                                        "Enviar proposta", "Ana", "HIGH", null)));
 
         String result = action.execute(ctx, Map.of());
 
@@ -59,8 +59,10 @@ class LinearCreateIssueActionTest {
                         "Reunião",
                         "Resumo.",
                         List.of(
-                                new WorkflowEventContext.ActionItemView("Item A", null, "LOW"),
-                                new WorkflowEventContext.ActionItemView("Item B", null, "LOW")));
+                                new WorkflowEventContext.ActionItemView(
+                                        "Item A", null, "LOW", null),
+                                new WorkflowEventContext.ActionItemView(
+                                        "Item B", null, "LOW", null)));
 
         String result = action.execute(ctx, Map.of("teamKey", "ENG"));
 
