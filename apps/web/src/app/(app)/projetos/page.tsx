@@ -3,7 +3,6 @@ import type { Route } from "next";
 
 import { listMeetings } from "@/lib/api/client";
 import type { MeetingListItem, ProcessingStatus } from "@/lib/api/types";
-import { ShaderOrb } from "@/components/brand/shader-orb";
 
 /**
  * NORA Core — Projetos.
@@ -264,7 +263,6 @@ function EmptyView() {
           background: "var(--canvas)",
         }}
       >
-        <ShaderOrb size={92} speed={0.9} intensity={0.8} />
         <div style={{ maxWidth: 420 }}>
           <h2 style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 500, letterSpacing: "-0.018em", margin: "0 0 6px", color: "var(--ink)" }}>
             Seus projetos aparecem aqui conforme você usa a NORA.
