@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.Map;
 import org.springframework.http.MediaType;
@@ -26,6 +27,11 @@ public class GoogleWorkspaceClient {
     private static final String CALENDAR_EVENTS_URL =
             "https://www.googleapis.com/calendar/v3/calendars/primary/events";
     private static final Duration TIMEOUT = Duration.ofSeconds(15);
+
+    // RFC3339 exige segundos; OffsetDateTime.toString() os omite quando zerados
+    // (ex.: "2026-06-13T10:00-03:00") e o Calendar responde 400.
+    private static final DateTimeFormatter RFC3339 =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx");
 
     private final WebClient http;
     private final ObjectMapper mapper;
@@ -69,9 +75,9 @@ public class GoogleWorkspaceClient {
                         "description",
                         description == null ? "" : description,
                         "start",
-                        Map.of("dateTime", start.toString()),
+                        Map.of("dateTime", rfc3339(start)),
                         "end",
-                        Map.of("dateTime", end.toString()));
+                        Map.of("dateTime", rfc3339(end)));
         try {
             String body =
                     http.post()
@@ -112,6 +118,10 @@ public class GoogleWorkspaceClient {
                 + Base64.getMimeEncoder().encodeToString(htmlBody.getBytes(StandardCharsets.UTF_8));
     }
 
+    static String rfc3339(OffsetDateTime value) {
+        return RFC3339.format(value);
+    }
+
     private static String base64Url(String value) {
         return Base64.getUrlEncoder()
                 .withoutPadding()
@@ -122,10 +132,17 @@ public class GoogleWorkspaceClient {
         if (ex instanceof IntegrationException ie) {
             return ie;
         }
-        String reason =
-                ex instanceof WebClientResponseException http
-                        ? String.valueOf(http.getStatusCode().value())
-                        : ex.getMessage();
+        String reason;
+        if (ex instanceof WebClientResponseException http) {
+            String detail = http.getResponseBodyAsString();
+            reason =
+                    http.getStatusCode().value()
+                            + (detail.isBlank()
+                                    ? ""
+                                    : " — " + detail.substring(0, Math.min(detail.length(), 300)));
+        } else {
+            reason = ex.getMessage();
+        }
         return new IntegrationException.ProviderError("google", api + ": " + reason);
     }
 }
