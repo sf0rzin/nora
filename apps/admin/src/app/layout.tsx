@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
-import { DM_Sans, JetBrains_Mono } from "next/font/google";
+import { DM_Sans } from "next/font/google";
 
 import { AdminShell } from "@/components/admin-shell";
 import { checkAccess } from "@/lib/access";
 import { getOperator } from "@/lib/operator";
 import "./globals.css";
 
+// Tipografia única DM Sans (decisão de design do Core, 2026-06-09): nenhuma fonte mono no console.
 const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
-const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
 export const metadata: Metadata = {
   title: "NORA — Console do Operador",
@@ -22,10 +22,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Server-side: identidade do operador (Cloudflare Access em prod, fake em dev).
   const operator = await getOperator();
   return (
-    <html lang="pt-BR" className={`${dmSans.variable} ${jetbrainsMono.variable}`}>
+    <html lang="pt-BR" className={dmSans.variable}>
       <body>
         {access.enforced && !access.ok ? (
-          <main style={{ padding: "4rem 2rem", fontFamily: "var(--font-mono)", maxWidth: "40rem" }}>
+          <main style={{ padding: "4rem 2rem", fontFamily: "var(--font-sans)", maxWidth: "40rem" }}>
             <h1 style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>403 — Acesso negado</h1>
             <p style={{ opacity: 0.7 }}>
               Esta requisição não traz uma asserção válida do Cloudflare Access. O console do
