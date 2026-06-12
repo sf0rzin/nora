@@ -67,6 +67,54 @@ function SlackLogo() {
   );
 }
 
+function GitHubLogo() {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden>
+      <path
+        fill="currentColor"
+        d="M12 .3a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.04c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.11-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.29-1.23 3.29-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.49 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 12 .3Z"
+      />
+    </svg>
+  );
+}
+
+function NotionLogo() {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden>
+      <path
+        fill="currentColor"
+        d="M4.46 1.28 15.4.47c1.34-.12 1.69-.04 2.53.57l3.48 2.45c.57.42.76.54.76 1v15.62c0 .85-.31 1.35-1.39 1.42l-12.7.77c-.81.04-1.2-.08-1.62-.62L3.89 18.3c-.46-.62-.66-1.08-.66-1.62V2.63c0-.69.31-1.27 1.23-1.35Zm11.21 1.46-10.2.75c-.62.08-.81.39-.57.7l1.46 1.27c.23.23.54.35.96.31l10.31-.62c.54-.08.66-.35.42-.58l-1.61-1.45c-.27-.23-.42-.42-.77-.38Zm-9.85 4.94v12.04c0 .65.32.89.97.85l11.31-.66c.65-.04.73-.43.73-.96V7c0-.53-.2-.81-.65-.77l-11.81.69c-.49.04-.55.29-.55.76Zm10.93.62c.07.35 0 .69-.35.73l-.58.11v8.54c-.5.27-.96.42-1.34.42-.62 0-.77-.19-1.23-.77l-3.78-5.94v5.75l1.2.27s0 .69-.96.69l-2.65.16c-.08-.16 0-.54.27-.62l.69-.19V9.83l-.96-.08c-.08-.34.11-.84.65-.88l2.84-.19 3.92 5.99v-5.3l-1-.11c-.08-.43.23-.74.61-.78l2.67-.18Z"
+      />
+    </svg>
+  );
+}
+
+function TodoistLogo() {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden>
+      <path
+        fill="#E44332"
+        d="M21 0H3C1.35 0 0 1.35 0 3v18c0 1.65 1.35 3 3 3h18c1.65 0 3-1.35 3-3V3c0-1.65-1.35-3-3-3Z"
+      />
+      <path
+        fill="#fff"
+        d="m5.1 10.93 6.49-3.73c.18-.1.64-.37.64-.37.16-.09.34-.09.5 0 0 0 .42.24.62.36l1.07.61c.17.1.18.4 0 .5l-7.62 4.38c-.21.12-.46.12-.66 0L3.2 11.04c-.18-.1-.18-.4 0-.5l1.06-.61c.2-.12.62-.36.62-.36.07-.04.15-.04.22.01v1.35Zm0 3.47 6.49-3.73c.18-.1.64-.37.64-.37.16-.09.34-.09.5 0 0 0 .42.24.62.36l1.07.61c.17.1.18.4 0 .5l-7.62 4.38c-.21.12-.46.12-.66 0L3.2 14.51c-.18-.1-.18-.4 0-.5l1.06-.61c.2-.12.62-.36.62-.36.07-.04.15-.04.22.01v1.35Zm0 3.47 6.49-3.73c.18-.1.64-.37.64-.37.16-.09.34-.09.5 0 0 0 .42.24.62.36l1.07.61c.17.1.18.4 0 .5l-7.62 4.38c-.21.12-.46.12-.66 0L3.2 17.98c-.18-.1-.18-.4 0-.5l1.06-.61c.2-.12.62-.36.62-.36.07-.04.15-.04.22.01v1.35Z"
+      />
+    </svg>
+  );
+}
+
+function LinearLogo() {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden>
+      <path
+        fill="#5E6AD2"
+        d="M1.22 14.51a.25.25 0 0 1 .07-.23l8.43 8.43a.25.25 0 0 1-.23.07 11.96 11.96 0 0 1-8.27-8.27ZM.07 10.7a.25.25 0 0 0 .07.21l12.95 12.95c.06.06.14.08.21.07.73-.09 1.44-.25 2.12-.47a.25.25 0 0 0 .1-.41L1.95 8.48a.25.25 0 0 0-.41.1c-.22.68-.38 1.39-.47 2.12Zm2.4-4.92a.25.25 0 0 1-.02-.33A11.97 11.97 0 0 1 12 0c6.63 0 12 5.37 12 12 0 3.7-1.68 7.02-4.31 9.22a.25.25 0 0 1-.33-.02L2.47 5.78Z"
+      />
+    </svg>
+  );
+}
+
 /* ── Metadados de exibição por provedor ────────────────────────────────── */
 
 const PROVEDORES: Record<IntegrationProvider, { nome: string; desc: string; logo: ReactNode }> = {
@@ -80,12 +128,39 @@ const PROVEDORES: Record<IntegrationProvider, { nome: string; desc: string; logo
     desc: "Manda resumos e alertas das reuniões nos canais do seu workspace.",
     logo: <SlackLogo />,
   },
+  github: {
+    nome: "GitHub",
+    desc: "Cria issues no seu repositório a partir dos action items das reuniões.",
+    logo: <GitHubLogo />,
+  },
+  notion: {
+    nome: "Notion",
+    desc: "Cria páginas no seu workspace com resumo e action items de cada reunião.",
+    logo: <NotionLogo />,
+  },
+  todoist: {
+    nome: "Todoist",
+    desc: "Transforma os action items das reuniões em tarefas na sua conta.",
+    logo: <TodoistLogo />,
+  },
+  linear: {
+    nome: "Linear",
+    desc: "Cria issues no seu time a partir dos action items das reuniões.",
+    logo: <LinearLogo />,
+  },
 };
 
-const NOME_CURTO: Record<IntegrationProvider, string> = { google: "Google", slack: "Slack" };
+const NOME_CURTO: Record<IntegrationProvider, string> = {
+  google: "Google",
+  slack: "Slack",
+  github: "GitHub",
+  notion: "Notion",
+  todoist: "Todoist",
+  linear: "Linear",
+};
 
 /** Ordem fixa de exibição dos conectores no hub. */
-const ORDEM: IntegrationProvider[] = ["google", "slack"];
+const ORDEM: IntegrationProvider[] = ["google", "slack", "github", "notion", "todoist", "linear"];
 
 type Aviso = { tipo: "ok" | "erro"; msg: string };
 
@@ -93,9 +168,11 @@ type Aviso = { tipo: "ok" | "erro"; msg: string };
 function mensagemErroOAuth(codigo: string): string {
   switch (codigo) {
     case "access_denied":
-      return "Você cancelou a autorização no Google. Nada foi conectado.";
+      return "Você cancelou a autorização no provedor. Nada foi conectado.";
     case "integration_invalid_state":
       return "O link de autorização expirou — tente conectar de novo.";
+    case "integration_unknown_provider":
+      return "O servidor não conhece esse conector — recarregue a página e tente de novo.";
     case "integration_not_configured":
       return "Este conector não está configurado neste ambiente — faltam credenciais OAuth no servidor.";
     default:
@@ -456,9 +533,8 @@ function HubIntegracoes() {
           No radar
         </div>
         <p style={{ fontSize: 12, color: "var(--muted)", margin: 0, lineHeight: 1.6, maxWidth: 560 }}>
-          Outlook, Linear, Jira, GitHub, Salesforce e Pipedrive estão no roadmap de conectores —
-          ainda sem data. Quando um deles estiver pronto de verdade, aparece nesta página com o
-          botão “Conectar”.
+          Outlook, Jira, Salesforce e Pipedrive estão no roadmap de conectores — ainda sem data.
+          Quando um deles estiver pronto de verdade, aparece nesta página com o botão “Conectar”.
         </p>
       </div>
     </div>

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import br.com.nora.api.application.integration.IntegrationService.ProviderStatus;
 import br.com.nora.api.application.ports.Clock;
+import br.com.nora.api.application.ports.GenericOAuthClient;
 import br.com.nora.api.application.ports.GoogleOAuthClient;
 import br.com.nora.api.application.ports.IntegrationConnectionRepository;
 import br.com.nora.api.application.ports.SlackOAuthClient;
@@ -30,20 +31,49 @@ class IntegrationServiceTest {
     private final FakeRepo repo = new FakeRepo();
     private final FakeGoogle google = new FakeGoogle();
     private final FakeSlack slack = new FakeSlack();
+    private final FakeGeneric generic = new FakeGeneric();
     private final OAuthStateCodec codec = new OAuthStateCodec("segredo-teste");
     private final Clock clock = () -> now;
 
     private IntegrationService service() {
+        return service(directory());
+    }
+
+    private IntegrationService service(OAuthProviderDirectory directory) {
         return new IntegrationService(
                 repo,
                 google,
                 slack,
+                generic,
+                directory,
                 codec,
                 clock,
                 "client-id-teste",
                 "http://localhost:8080/integrations/google/oauth/callback",
                 "slack-client-id-teste",
                 "http://localhost:8080/integrations/slack/oauth/callback");
+    }
+
+    /** Diretório com os 4 provedores genéricos da onda 1 configurados. */
+    private static OAuthProviderDirectory directory() {
+        return new OAuthProviderDirectory(
+                "github-id",
+                "github-secret",
+                "http://localhost:8080/integrations/github/oauth/callback",
+                "notion-id",
+                "notion-secret",
+                "http://localhost:8080/integrations/notion/oauth/callback",
+                "todoist-id",
+                "todoist-secret",
+                "http://localhost:8080/integrations/todoist/oauth/callback",
+                "linear-id",
+                "linear-secret",
+                "http://localhost:8080/integrations/linear/oauth/callback");
+    }
+
+    /** Diretório vazio (nenhum provedor genérico configurado no ambiente). */
+    private static OAuthProviderDirectory emptyDirectory() {
+        return new OAuthProviderDirectory("", "", "", "", "", "", "", "", "", "", "", "");
     }
 
     @Test
@@ -60,10 +90,23 @@ class IntegrationServiceTest {
     @Test
     void start_semConfiguracaoFalhaVisivel() {
         IntegrationService semConfig =
-                new IntegrationService(repo, google, slack, codec, clock, "", "", "", "");
+                new IntegrationService(
+                        repo,
+                        google,
+                        slack,
+                        generic,
+                        emptyDirectory(),
+                        codec,
+                        clock,
+                        "",
+                        "",
+                        "",
+                        "");
         assertThatThrownBy(() -> semConfig.startGoogle(tenantId, userId))
                 .isInstanceOf(IntegrationException.NotConfigured.class);
         assertThatThrownBy(() -> semConfig.startSlack(tenantId, userId))
+                .isInstanceOf(IntegrationException.NotConfigured.class);
+        assertThatThrownBy(() -> semConfig.start(IntegrationProvider.GITHUB, tenantId, userId))
                 .isInstanceOf(IntegrationException.NotConfigured.class);
     }
 
@@ -185,6 +228,8 @@ class IntegrationServiceTest {
                         repo,
                         google,
                         slack,
+                        generic,
+                        emptyDirectory(),
                         codec,
                         clock,
                         "client-id-teste",
@@ -197,6 +242,128 @@ class IntegrationServiceTest {
                         .findFirst()
                         .orElseThrow();
         assertThat(naoConfigurado.configured()).isFalse();
+    }
+
+    /* ==================== Provedores genéricos (onda 1) ==================== */
+
+    @Test
+    void startGenerico_montaUrlComScopeExtrasEState() {
+        String github = service().start(IntegrationProvider.GITHUB, tenantId, userId);
+        assertThat(github).startsWith("https://github.com/login/oauth/authorize?");
+        assertThat(github).contains("client_id=github-id");
+        assertThat(github).contains("response_type=code");
+        assertThat(github).contains("scope=repo");
+        assertThat(github).contains("state=");
+
+        // Notion: sem scope (capabilities do app) e com owner=user.
+        String notion = service().start(IntegrationProvider.NOTION, tenantId, userId);
+        assertThat(notion).startsWith("https://api.notion.com/v1/oauth/authorize?");
+        assertThat(notion).doesNotContain("scope=");
+        assertThat(notion).contains("owner=user");
+
+        // Linear: actor=user.
+        String linear = service().start(IntegrationProvider.LINEAR, tenantId, userId);
+        assertThat(linear).contains("actor=user");
+    }
+
+    @Test
+    void callbackGenerico_persisteTokenSemRefreshComContaExterna() {
+        String state = codec.encode(tenantId, userId, IntegrationProvider.NOTION, now);
+        generic.exchangeResult =
+                new GenericOAuthClient.TokenResponse("ntn-token-1", null, "Workspace NORA", null);
+
+        service().handleCallback(IntegrationProvider.NOTION, "code-notion", state);
+
+        IntegrationConnection saved =
+                repo.findByTenantAndProvider(tenantId, IntegrationProvider.NOTION).orElseThrow();
+        assertThat(saved.accessToken()).isEqualTo("ntn-token-1");
+        assertThat(saved.refreshToken()).isNull();
+        assertThat(saved.expiresAt()).isNull();
+        assertThat(saved.externalAccount()).isEqualTo("Workspace NORA");
+    }
+
+    @Test
+    void callbackGenerico_persisteExpiresAtQuandoProvedorInforma() {
+        String state = codec.encode(tenantId, userId, IntegrationProvider.LINEAR, now);
+        generic.exchangeResult =
+                new GenericOAuthClient.TokenResponse("lin_token", "write", null, 315360000L);
+
+        service().handleCallback(IntegrationProvider.LINEAR, "code-linear", state);
+
+        IntegrationConnection saved =
+                repo.findByTenantAndProvider(tenantId, IntegrationProvider.LINEAR).orElseThrow();
+        assertThat(saved.expiresAt())
+                .isEqualTo(now.atOffset(ZoneOffset.UTC).plusSeconds(315360000L));
+        assertThat(saved.scopes()).isEqualTo("write");
+    }
+
+    @Test
+    void callbackGenerico_stateDeOutroProvedor_falha() {
+        String stateGithub = codec.encode(tenantId, userId, IntegrationProvider.GITHUB, now);
+        assertThatThrownBy(
+                        () ->
+                                service()
+                                        .handleCallback(
+                                                IntegrationProvider.TODOIST, "code", stateGithub))
+                .isInstanceOf(IntegrationException.InvalidState.class);
+    }
+
+    @Test
+    void validAccessToken_devolveTokenPersistido() {
+        String state = codec.encode(tenantId, userId, IntegrationProvider.GITHUB, now);
+        generic.exchangeResult =
+                new GenericOAuthClient.TokenResponse("gho_token", "repo", null, null);
+        service().handleCallback(IntegrationProvider.GITHUB, "code", state);
+
+        assertThat(service().validAccessToken(tenantId, IntegrationProvider.GITHUB))
+                .isEqualTo("gho_token");
+    }
+
+    @Test
+    void validAccessToken_semConexao_falhaClaro() {
+        assertThatThrownBy(() -> service().validAccessToken(tenantId, IntegrationProvider.TODOIST))
+                .isInstanceOf(IntegrationException.NotConnected.class)
+                .hasMessageContaining("todoist");
+    }
+
+    @Test
+    void validAccessToken_expiradoSemRefresh_pedeReconexao() {
+        OffsetDateTime created = now.atOffset(ZoneOffset.UTC).minusDays(1);
+        repo.upsert(
+                new IntegrationConnection(
+                        UUID.randomUUID(),
+                        tenantId,
+                        userId,
+                        IntegrationProvider.LINEAR,
+                        "write",
+                        null,
+                        "lin_velho",
+                        null,
+                        now.atOffset(ZoneOffset.UTC).minusSeconds(10),
+                        created,
+                        created));
+        assertThatThrownBy(() -> service().validAccessToken(tenantId, IntegrationProvider.LINEAR))
+                .isInstanceOf(IntegrationException.ProviderError.class)
+                .hasMessageContaining("reconecte");
+    }
+
+    @Test
+    void status_listaOsSeisProvedoresComConfiguredProprio() {
+        List<ProviderStatus> status = service().status(tenantId);
+        assertThat(status)
+                .extracting(ProviderStatus::provider)
+                .containsExactlyInAnyOrder(
+                        "google", "slack", "github", "notion", "todoist", "linear");
+        assertThat(status).allMatch(ProviderStatus::configured);
+
+        List<ProviderStatus> semGenericos = service(emptyDirectory()).status(tenantId);
+        assertThat(
+                        semGenericos.stream()
+                                .filter(s -> s.provider().equals("github"))
+                                .findFirst()
+                                .orElseThrow()
+                                .configured())
+                .isFalse();
     }
 
     private void seedConnection(String access, String refresh, OffsetDateTime expiresAt) {
@@ -284,6 +451,15 @@ class IntegrationServiceTest {
 
         @Override
         public TokenResponse exchangeCode(String code, String redirectUri) {
+            return exchangeResult;
+        }
+    }
+
+    private static final class FakeGeneric implements GenericOAuthClient {
+        TokenResponse exchangeResult;
+
+        @Override
+        public TokenResponse exchangeCode(OAuthProviderConfig config, String code) {
             return exchangeResult;
         }
     }

@@ -51,6 +51,15 @@ param googleOauthClientId = readEnvironmentVariable('GOOGLE_OAUTH_CLIENT_ID', ''
 param googleOauthClientSecret = readEnvironmentVariable('GOOGLE_OAUTH_CLIENT_SECRET', '')
 param slackOauthClientId = readEnvironmentVariable('SLACK_OAUTH_CLIENT_ID', '')
 param slackOauthClientSecret = readEnvironmentVariable('SLACK_OAUTH_CLIENT_SECRET', '')
+// Onda 1 de provedores genericos (GitHub, Notion, Todoist, Linear) — mesmo contrato do Slack.
+param githubOauthClientId = readEnvironmentVariable('GITHUB_OAUTH_CLIENT_ID', '')
+param githubOauthClientSecret = readEnvironmentVariable('GITHUB_OAUTH_CLIENT_SECRET', '')
+param notionOauthClientId = readEnvironmentVariable('NOTION_OAUTH_CLIENT_ID', '')
+param notionOauthClientSecret = readEnvironmentVariable('NOTION_OAUTH_CLIENT_SECRET', '')
+param todoistOauthClientId = readEnvironmentVariable('TODOIST_OAUTH_CLIENT_ID', '')
+param todoistOauthClientSecret = readEnvironmentVariable('TODOIST_OAUTH_CLIENT_SECRET', '')
+param linearOauthClientId = readEnvironmentVariable('LINEAR_OAUTH_CLIENT_ID', '')
+param linearOauthClientSecret = readEnvironmentVariable('LINEAR_OAUTH_CLIENT_SECRET', '')
 param integrationsStateSecret = readEnvironmentVariable('NORA_INTEGRATIONS_STATE_SECRET', '')
 param integrationsEncKey = readEnvironmentVariable('NORA_INTEGRATIONS_ENC_KEY', '')
 
