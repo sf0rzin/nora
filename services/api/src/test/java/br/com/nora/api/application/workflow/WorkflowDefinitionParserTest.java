@@ -12,7 +12,8 @@ class WorkflowDefinitionParserTest {
 
     private final WorkflowDefinitionParser parser =
             new WorkflowDefinitionParser(new ObjectMapper());
-    private final Set<String> actions = Set.of("send_email", "slack_post_message");
+    private final Set<String> actions =
+            Set.of("send_email", "slack_post_message", "call_webhook", "discord_post_message");
 
     private static final String VALID =
             """
@@ -191,17 +192,80 @@ class WorkflowDefinitionParserTest {
     }
 
     @Test
+    void rejeitaCallWebhookSemUrlHttps() {
+        for (String params : new String[] {"{}", "{\"url\":\"http://exemplo.com/hook\"}"}) {
+            String json =
+                    """
+                    {"nodes":[
+                      {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
+                      {"id":"a1","kind":"action","type":"call_webhook","params":%s}],
+                     "edges":[{"id":"e1","source":"t1","target":"a1"}]}
+                    """
+                            .formatted(params);
+            assertThatThrownBy(() -> parser.parse(json, actions))
+                    .isInstanceOf(WorkflowException.InvalidDefinition.class)
+                    .hasMessageContaining("https://");
+        }
+    }
+
+    @Test
     void rejeitaNotionCreatePageSemPaginaPai() {
-        String json =
+        String semPai =
                 """
                 {"nodes":[
                   {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
                   {"id":"a1","kind":"action","type":"notion_create_page","params":{}}],
                  "edges":[{"id":"e1","source":"t1","target":"a1"}]}
                 """;
-        assertThatThrownBy(() -> parser.parse(json, Set.of("notion_create_page")))
+        assertThatThrownBy(() -> parser.parse(semPai, Set.of("notion_create_page")))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
                 .hasMessageContaining("params.parentPageId");
+    }
+
+    @Test
+    void aceitaCallWebhookComUrlHttps() {
+        String json =
+                """
+                {"nodes":[
+                  {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
+                  {"id":"a1","kind":"action","type":"call_webhook",
+                   "params":{"url":"https://hooks.exemplo.com/nora"}}],
+                 "edges":[{"id":"e1","source":"t1","target":"a1"}]}
+                """;
+        assertThat(parser.parse(json, actions).nodesById().get("a1").params())
+                .containsEntry("url", "https://hooks.exemplo.com/nora");
+    }
+
+    @Test
+    void rejeitaDiscordSemWebhookDoDiscord() {
+        for (String params :
+                new String[] {"{}", "{\"webhookUrl\":\"https://exemplo.com/webhooks/1/a\"}"}) {
+            String json =
+                    """
+                    {"nodes":[
+                      {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
+                      {"id":"a1","kind":"action","type":"discord_post_message","params":%s}],
+                     "edges":[{"id":"e1","source":"t1","target":"a1"}]}
+                    """
+                            .formatted(params);
+            assertThatThrownBy(() -> parser.parse(json, actions))
+                    .isInstanceOf(WorkflowException.InvalidDefinition.class)
+                    .hasMessageContaining("discord.com/api/webhooks");
+        }
+    }
+
+    @Test
+    void aceitaDiscordComWebhookValido() {
+        String json =
+                """
+                {"nodes":[
+                  {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
+                  {"id":"a1","kind":"action","type":"discord_post_message",
+                   "params":{"webhookUrl":"https://discord.com/api/webhooks/123/abc"}}],
+                 "edges":[{"id":"e1","source":"t1","target":"a1"}]}
+                """;
+        assertThat(parser.parse(json, actions).nodesById().get("a1").params())
+                .containsEntry("webhookUrl", "https://discord.com/api/webhooks/123/abc");
     }
 
     @Test

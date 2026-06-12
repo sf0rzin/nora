@@ -20,7 +20,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { deleteChatSession, listChatSessions, renameChatSession } from "@/lib/api/client";
 import type { ChatSessionSummary } from "@/lib/api/types";
@@ -90,10 +90,22 @@ export function AppSidebarSessions() {
   const [renameValue, setRenameValue] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Guarda contra respostas fora de ordem: rota + eventos disparam refreshes
+  // em rajada e uma resposta antiga aterrissando por último sobrescrevia a
+  // lista nova (a seção "piscava"). Só a resposta do request mais recente
+  // pode aplicar estado.
+  const refreshSeqRef = useRef(0);
+
   const refresh = useCallback(() => {
+    const seq = ++refreshSeqRef.current;
     listChatSessions()
-      .then(setSessions)
-      .catch(() => setSessions([]));
+      .then((next) => {
+        if (seq === refreshSeqRef.current) setSessions(next);
+      })
+      .catch(() => {
+        // Erro transiente NÃO zera a lista — zerar fazia a seção inteira
+        // sumir e voltar (length === 0 retorna null). Mantém a última boa.
+      });
   }, []);
 
   // Mount + qualquer mudança de rota/sessão ativa → re-fetch (cobre criar

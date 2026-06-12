@@ -9,6 +9,7 @@ import br.com.nora.api.application.workflow.WorkflowEventContext.ActionItemView;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -71,7 +72,13 @@ public class WorkflowContextFactory {
                         .orElse(null);
         List<ActionItemView> actionItems =
                 analysis.actionItems().stream()
-                        .map(a -> new ActionItemView(a.title(), a.assignee(), a.priority().name()))
+                        .map(
+                                a ->
+                                        new ActionItemView(
+                                                a.title(),
+                                                a.assignee(),
+                                                a.priority().name(),
+                                                a.dueDate()))
                         .toList();
         return new WorkflowEventContext(
                 tenantId,
@@ -131,8 +138,12 @@ public class WorkflowContextFactory {
                 2,
                 1,
                 List.of(
-                        new ActionItemView("Enviar proposta revisada", "[[PESSOA_1]]", "HIGH"),
-                        new ActionItemView("Agendar follow-up", "[[PESSOA_2]]", "MEDIUM")),
+                        new ActionItemView(
+                                "Enviar proposta revisada",
+                                "[[PESSOA_1]]",
+                                "HIGH",
+                                LocalDate.now(ZoneOffset.UTC).plusDays(3)),
+                        new ActionItemView("Agendar follow-up", "[[PESSOA_2]]", "MEDIUM", null)),
                 62,
                 58,
                 frontendBaseUrl + "/dashboard",
