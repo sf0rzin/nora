@@ -6,6 +6,7 @@ import br.com.nora.api.application.ports.GoogleOAuthClient;
 import br.com.nora.api.application.ports.GoogleOAuthClient.TokenResponse;
 import br.com.nora.api.application.ports.IntegrationConnectionRepository;
 import br.com.nora.api.application.ports.SlackOAuthClient;
+import br.com.nora.api.application.ports.TrelloApi;
 import br.com.nora.api.domain.integration.IntegrationConnection;
 import br.com.nora.api.domain.integration.IntegrationProvider;
 import java.net.URLEncoder;
@@ -34,10 +35,15 @@ import org.springframework.transaction.annotation.Transactional;
  * refresh. Escopos do bot: chat:write (postar) e channels:read (listar canais). Tudo tenant-scoped
  * (ADR 0002 + RLS).
  *
- * <p>Demais provedores (GitHub, Notion, Todoist, Linear — onda 1): fluxo OAuth2 code-flow padrão
- * declarado no {@link OAuthProviderDirectory} e executado pelo client genérico. Nenhum emite
- * refresh token na prática — {@code validAccessToken} devolve o token persistido ou orienta
- * reconexão se um {@code expires_in} informado pelo provedor já passou.
+ * <p>Demais provedores OAuth (GitHub, Notion, Todoist, Linear — onda 1; Microsoft — onda 2): fluxo
+ * OAuth2 code-flow padrão declarado no {@link OAuthProviderDirectory} e executado pelo client
+ * genérico. {@code validAccessToken} devolve o token persistido; quando o config declara {@code
+ * supportsRefresh} (Microsoft), renova com a mesma semântica do Google (skew 60s + rotation
+ * persistida); senão, token expirado orienta reconexão.
+ *
+ * <p>Onda 2 fora do OAuth: Telegram conecta por pareamento de código (ver {@code
+ * TelegramPairingService}) e Trello por token colado pelo usuário ({@link #saveTrelloToken}) — o
+ * start do Trello devolve a URL de authorize do próprio Trello pra abrir em nova aba.
  */
 @Service
 public class IntegrationService {
@@ -60,12 +66,15 @@ public class IntegrationService {
     private final SlackOAuthClient slack;
     private final GenericOAuthClient genericOAuth;
     private final OAuthProviderDirectory providerDirectory;
+    private final TrelloApi trello;
     private final OAuthStateCodec stateCodec;
     private final Clock clock;
     private final String googleClientId;
     private final String googleRedirectUri;
     private final String slackClientId;
     private final String slackRedirectUri;
+    private final String telegramBotToken;
+    private final String trelloApiKey;
 
     public IntegrationService(
             IntegrationConnectionRepository connections,
@@ -73,23 +82,29 @@ public class IntegrationService {
             SlackOAuthClient slack,
             GenericOAuthClient genericOAuth,
             OAuthProviderDirectory providerDirectory,
+            TrelloApi trello,
             OAuthStateCodec stateCodec,
             Clock clock,
             @Value("${nora.integrations.google.client-id:}") String googleClientId,
             @Value("${nora.integrations.google.redirect-uri:}") String googleRedirectUri,
             @Value("${nora.integrations.slack.client-id:}") String slackClientId,
-            @Value("${nora.integrations.slack.redirect-uri:}") String slackRedirectUri) {
+            @Value("${nora.integrations.slack.redirect-uri:}") String slackRedirectUri,
+            @Value("${nora.integrations.telegram.bot-token:}") String telegramBotToken,
+            @Value("${nora.integrations.trello.api-key:}") String trelloApiKey) {
         this.connections = connections;
         this.google = google;
         this.slack = slack;
         this.genericOAuth = genericOAuth;
         this.providerDirectory = providerDirectory;
+        this.trello = trello;
         this.stateCodec = stateCodec;
         this.clock = clock;
         this.googleClientId = googleClientId;
         this.googleRedirectUri = googleRedirectUri;
         this.slackClientId = slackClientId;
         this.slackRedirectUri = slackRedirectUri;
+        this.telegramBotToken = telegramBotToken;
+        this.trelloApiKey = trelloApiKey;
     }
 
     /** Status de cada provedor para o hub (conectado? qual conta?). */
@@ -114,11 +129,30 @@ public class IntegrationService {
                 .toList();
     }
 
-    /** Inicia o OAuth do provedor (roteia Google/Slack pros fluxos dedicados; resto é genérico). */
+    /** Status de UM provedor (resposta dos endpoints de pareamento/token do hub). */
+    @Transactional(readOnly = true)
+    public ProviderStatus statusOf(UUID tenantId, IntegrationProvider provider) {
+        Optional<IntegrationConnection> conn =
+                connections.findByTenantAndProvider(tenantId, provider);
+        return new ProviderStatus(
+                provider.wire(),
+                configured(provider),
+                conn.isPresent(),
+                conn.map(IntegrationConnection::externalAccount).orElse(null),
+                conn.map(IntegrationConnection::updatedAt).orElse(null));
+    }
+
+    /**
+     * Inicia a conexão do provedor. Google/Slack têm fluxos dedicados; Trello devolve a URL de
+     * authorize do próprio Trello (o usuário copia o token gerado e cola no hub); Telegram NÃO
+     * passa por aqui (pareamento por código — {@code TelegramPairingService}) e cai no genérico,
+     * que falha {@code NotConfigured} por nunca estar no catálogo OAuth; o resto é genérico.
+     */
     public String start(IntegrationProvider provider, UUID tenantId, UUID userId) {
         return switch (provider) {
             case GOOGLE -> startGoogle(tenantId, userId);
             case SLACK -> startSlack(tenantId, userId);
+            case TRELLO -> startTrello();
             default -> startGeneric(provider, tenantId, userId);
         };
     }
@@ -309,9 +343,10 @@ public class IntegrationService {
     }
 
     /**
-     * Callback genérico: valida o state, troca o code pelo access token (sem refresh — nenhum
-     * provedor da onda 1 emite na prática) e faz upsert da conexão. {@code expiresAt} só é
-     * persistido quando o provedor informa {@code expires_in} (ex.: Linear, ~10 anos).
+     * Callback genérico: valida o state, troca o code pelos tokens e faz upsert da conexão. {@code
+     * refreshToken} só vem de provedores com {@code supportsRefresh} (Microsoft); {@code expiresAt}
+     * só é persistido quando o provedor informa {@code expires_in} (ex.: Linear ~10 anos, Microsoft
+     * ~1h).
      */
     @Transactional
     public OAuthStateCodec.DecodedState handleGenericCallback(
@@ -332,7 +367,7 @@ public class IntegrationService {
                         tokens.scope() == null ? config.scopes() : tokens.scope(),
                         tokens.externalAccount(),
                         tokens.accessToken(),
-                        null,
+                        tokens.refreshToken(),
                         tokens.expiresInSeconds() == null
                                 ? null
                                 : now.plusSeconds(tokens.expiresInSeconds()),
@@ -342,22 +377,87 @@ public class IntegrationService {
     }
 
     /**
-     * Access token de um provedor genérico para uso imediato pelas ações do Flows. Sem refresh:
-     * devolve o token persistido; se o provedor informou validade e ela passou, orienta reconexão.
+     * Access token de um provedor genérico para uso imediato pelas ações do Flows. Token dentro da
+     * validade (skew de 60s) volta direto. Expirado: provedores com {@code supportsRefresh}
+     * (Microsoft) renovam aqui — mesma semântica do {@link #validGoogleAccessToken} (rotation
+     * persistida); os demais orientam reconexão.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public String validAccessToken(UUID tenantId, IntegrationProvider provider) {
         IntegrationConnection conn =
                 connections
                         .findByTenantAndProvider(tenantId, provider)
                         .orElseThrow(() -> new IntegrationException.NotConnected(provider.wire()));
-        if (conn.expiresAt() != null
-                && !now().plusSeconds(REFRESH_SKEW_SECONDS).isBefore(conn.expiresAt())) {
+        OffsetDateTime now = now();
+        if (conn.expiresAt() == null
+                || now.plusSeconds(REFRESH_SKEW_SECONDS).isBefore(conn.expiresAt())) {
+            return conn.accessToken();
+        }
+        OAuthProviderConfig config = providerDirectory.find(provider).orElse(null);
+        if (config == null || !config.supportsRefresh()) {
             throw new IntegrationException.ProviderError(
                     provider.wire(),
                     "token expirado e o provedor não emite refresh token — reconecte a integração");
         }
-        return conn.accessToken();
+        if (conn.refreshToken() == null || conn.refreshToken().isBlank()) {
+            throw new IntegrationException.ProviderError(
+                    provider.wire(), "token expirado e sem refresh token — reconecte a integração");
+        }
+        GenericOAuthClient.TokenResponse refreshed =
+                genericOAuth.refresh(config, conn.refreshToken());
+        IntegrationConnection updated =
+                conn.withTokens(
+                        refreshed.accessToken(),
+                        refreshed.refreshToken(),
+                        refreshed.expiresInSeconds() == null
+                                ? null
+                                : now.plusSeconds(refreshed.expiresInSeconds()),
+                        now);
+        connections.updateTokens(updated);
+        return updated.accessToken();
+    }
+
+    /**
+     * URL de authorize do Trello (key do app + {@code response_type=token}): o hub abre em nova
+     * aba, o usuário copia o token que o Trello exibe e cola de volta ({@link #saveTrelloToken}).
+     * Sem OAuth server-side (o 1.0a do Trello não vale o custo) — por isso sem state.
+     */
+    public String startTrello() {
+        requireTrelloConfigured();
+        return "https://trello.com/1/authorize?key="
+                + url(trelloApiKey)
+                + "&name=NORA&scope=read,write&expiration=never&response_type=token";
+    }
+
+    /**
+     * Valida o token colado pelo usuário no Trello ({@code GET /1/members/me}) e persiste a conexão
+     * (cifrada como as demais; token com {@code expiration=never} — sem refresh/expiração). Token
+     * inválido = {@code ProviderError} claro, nada é salvo.
+     */
+    @Transactional
+    public ProviderStatus saveTrelloToken(UUID tenantId, UUID userId, String token) {
+        requireTrelloConfigured();
+        if (token == null || token.isBlank()) {
+            throw new IntegrationException.ProviderError(
+                    IntegrationProvider.TRELLO.wire(),
+                    "cole o token gerado pelo Trello antes de salvar");
+        }
+        String account = trello.validateToken(token.trim());
+        OffsetDateTime now = now();
+        connections.upsert(
+                new IntegrationConnection(
+                        UUID.randomUUID(),
+                        tenantId,
+                        userId,
+                        IntegrationProvider.TRELLO,
+                        "read,write",
+                        account,
+                        token.trim(),
+                        null,
+                        null,
+                        now,
+                        now));
+        return statusOf(tenantId, IntegrationProvider.TRELLO);
     }
 
     public record ProviderStatus(
@@ -371,8 +471,25 @@ public class IntegrationService {
         return switch (provider) {
             case GOOGLE -> googleConfigured();
             case SLACK -> slackConfigured();
+            case TELEGRAM -> telegramConfigured();
+            case TRELLO -> trelloConfigured();
             default -> providerDirectory.configured(provider);
         };
+    }
+
+    /** O bot global do app está configurado? (token único — a conexão por tenant é o chat_id). */
+    public boolean telegramConfigured() {
+        return telegramBotToken != null && !telegramBotToken.isBlank();
+    }
+
+    private boolean trelloConfigured() {
+        return trelloApiKey != null && !trelloApiKey.isBlank();
+    }
+
+    private void requireTrelloConfigured() {
+        if (!trelloConfigured()) {
+            throw new IntegrationException.NotConfigured(IntegrationProvider.TRELLO.wire());
+        }
     }
 
     private OAuthProviderConfig requireGenericConfigured(IntegrationProvider provider) {
