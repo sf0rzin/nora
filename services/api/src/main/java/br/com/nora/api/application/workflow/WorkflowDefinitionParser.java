@@ -188,7 +188,9 @@ public class WorkflowDefinitionParser {
     }
 
     private void validateActionParams(Node action) {
-        if ("send_email".equals(action.type()) || "gmail_send_email".equals(action.type())) {
+        if ("send_email".equals(action.type())
+                || "gmail_send_email".equals(action.type())
+                || "outlook_send_email".equals(action.type())) {
             String to = action.paramAsString("to");
             if (to == null || to.isBlank() || !to.contains("@")) {
                 throw new WorkflowException.InvalidDefinition(
@@ -214,6 +216,15 @@ public class WorkflowDefinitionParser {
                                 + action.id()
                                 + "') precisa do repositório em params.repo no formato owner/nome"
                                 + " (ex.: stratfy/nora)");
+            }
+        }
+        if ("trello_create_card".equals(action.type())) {
+            String listId = action.paramAsString("listId");
+            if (listId == null || listId.isBlank()) {
+                throw new WorkflowException.InvalidDefinition(
+                        "ação 'Criar cards no Trello' (nó '"
+                                + action.id()
+                                + "') precisa da lista em params.listId (id da lista do board)");
             }
         }
         if ("notion_create_page".equals(action.type())) {

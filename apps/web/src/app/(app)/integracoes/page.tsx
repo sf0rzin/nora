@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * NORA Core — Integrações (hub real de conectores OAuth, NORA Flows Fase 2).
@@ -13,21 +13,25 @@
  * como "Não configurado neste ambiente" SEM botão morto; o roadmap dos demais
  * conectores é um bloco textual no rodapé, sem fingir integração.
  */
-import Link from "next/link";
-import type { Route } from "next";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, type ReactNode } from "react";
+import Link from 'next/link';
+import type { Route } from 'next';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState, type ReactNode } from 'react';
 
 import {
   ApiRequestError,
   disconnectIntegration,
   listIntegrations,
+  saveTrelloToken,
   startIntegrationOAuth,
+  startTelegramPairing,
+  verifyTelegramPairing,
   type IntegrationProvider,
   type IntegrationStatus,
-} from "@/lib/api/client";
+  type TelegramPairingStart,
+} from '@/lib/api/client';
 
-import { tempoRelativo } from "../fluxos/tempo-relativo";
+import { tempoRelativo } from '../fluxos/tempo-relativo';
 
 /* ── Logos das marcas (SVG inline, estilo simple-icons, container 36×36) ─── */
 
@@ -58,10 +62,22 @@ function SlackLogo() {
   return (
     <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden>
       <g strokeWidth="0">
-        <path fill="#36C5F0" d="M9 3.2a1.7 1.7 0 1 0-1.7 1.7H9V3.2Zm.9 0A1.7 1.7 0 0 1 13.3 3.2v4.2a1.7 1.7 0 0 1-3.4 0V3.2Z" />
-        <path fill="#2EB67D" d="M20.8 9a1.7 1.7 0 1 0-1.7-1.7V9h1.7Zm0 .9A1.7 1.7 0 0 1 20.8 13.3h-4.2a1.7 1.7 0 0 1 0-3.4h4.2Z" />
-        <path fill="#ECB22E" d="M15 20.8a1.7 1.7 0 1 0 1.7-1.7H15v1.7Zm-.9 0A1.7 1.7 0 0 1 10.7 20.8v-4.2a1.7 1.7 0 0 1 3.4 0v4.2Z" />
-        <path fill="#E01E5A" d="M3.2 15a1.7 1.7 0 1 0 1.7 1.7V15H3.2Zm0-.9A1.7 1.7 0 0 1 3.2 10.7h4.2a1.7 1.7 0 0 1 0 3.4H3.2Z" />
+        <path
+          fill="#36C5F0"
+          d="M9 3.2a1.7 1.7 0 1 0-1.7 1.7H9V3.2Zm.9 0A1.7 1.7 0 0 1 13.3 3.2v4.2a1.7 1.7 0 0 1-3.4 0V3.2Z"
+        />
+        <path
+          fill="#2EB67D"
+          d="M20.8 9a1.7 1.7 0 1 0-1.7-1.7V9h1.7Zm0 .9A1.7 1.7 0 0 1 20.8 13.3h-4.2a1.7 1.7 0 0 1 0-3.4h4.2Z"
+        />
+        <path
+          fill="#ECB22E"
+          d="M15 20.8a1.7 1.7 0 1 0 1.7-1.7H15v1.7Zm-.9 0A1.7 1.7 0 0 1 10.7 20.8v-4.2a1.7 1.7 0 0 1 3.4 0v4.2Z"
+        />
+        <path
+          fill="#E01E5A"
+          d="M3.2 15a1.7 1.7 0 1 0 1.7 1.7V15H3.2Zm0-.9A1.7 1.7 0 0 1 3.2 10.7h4.2a1.7 1.7 0 0 1 0 3.4H3.2Z"
+        />
       </g>
     </svg>
   );
@@ -115,66 +131,131 @@ function LinearLogo() {
   );
 }
 
+function MicrosoftLogo() {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden>
+      <path fill="#F25022" d="M1 1h10.5v10.5H1z" />
+      <path fill="#7FBA00" d="M12.5 1H23v10.5H12.5z" />
+      <path fill="#00A4EF" d="M1 12.5h10.5V23H1z" />
+      <path fill="#FFB900" d="M12.5 12.5H23V23H12.5z" />
+    </svg>
+  );
+}
+
+function TelegramLogo() {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden>
+      <path
+        fill="#26A5E4"
+        d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0Zm5.57 8.16-1.97 9.3c-.15.66-.54.82-1.09.51l-3-2.21-1.45 1.39c-.16.16-.3.3-.6.3l.21-3.05 5.56-5.02c.24-.21-.05-.33-.37-.12l-6.87 4.33-2.96-.93c-.64-.2-.66-.64.14-.95l11.57-4.46c.54-.2 1.01.12.83.91Z"
+      />
+    </svg>
+  );
+}
+
+function TrelloLogo() {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden>
+      <path
+        fill="#0052CC"
+        d="M21 0H3C1.35 0 0 1.35 0 3v18c0 1.65 1.35 3 3 3h18c1.65 0 3-1.35 3-3V3c0-1.65-1.35-3-3-3Z"
+      />
+      <path
+        fill="#fff"
+        d="M10.44 3.12H4.56c-.8 0-1.44.65-1.44 1.44v15.12c0 .8.65 1.44 1.44 1.44h5.88c.8 0 1.44-.65 1.44-1.44V4.56c0-.8-.65-1.44-1.44-1.44Zm9 0h-5.88c-.8 0-1.44.65-1.44 1.44v8.4c0 .8.65 1.44 1.44 1.44h5.88c.8 0 1.44-.65 1.44-1.44v-8.4c0-.8-.65-1.44-1.44-1.44Z"
+      />
+    </svg>
+  );
+}
+
 /* ── Metadados de exibição por provedor ────────────────────────────────── */
 
 const PROVEDORES: Record<IntegrationProvider, { nome: string; desc: string; logo: ReactNode }> = {
   google: {
-    nome: "Google (Gmail + Calendar)",
-    desc: "Envia e-mails pela sua conta e cria follow-ups no seu Calendar direto dos fluxos.",
+    nome: 'Google (Gmail + Calendar)',
+    desc: 'Envia e-mails pela sua conta e cria follow-ups no seu Calendar direto dos fluxos.',
     logo: <GoogleLogo />,
   },
   slack: {
-    nome: "Slack",
-    desc: "Manda resumos e alertas das reuniões nos canais do seu workspace.",
+    nome: 'Slack',
+    desc: 'Manda resumos e alertas das reuniões nos canais do seu workspace.',
     logo: <SlackLogo />,
   },
   github: {
-    nome: "GitHub",
-    desc: "Cria issues no seu repositório a partir dos action items das reuniões.",
+    nome: 'GitHub',
+    desc: 'Cria issues no seu repositório a partir dos action items das reuniões.',
     logo: <GitHubLogo />,
   },
   notion: {
-    nome: "Notion",
-    desc: "Cria páginas no seu workspace com resumo e action items de cada reunião.",
+    nome: 'Notion',
+    desc: 'Cria páginas no seu workspace com resumo e action items de cada reunião.',
     logo: <NotionLogo />,
   },
   todoist: {
-    nome: "Todoist",
-    desc: "Transforma os action items das reuniões em tarefas na sua conta.",
+    nome: 'Todoist',
+    desc: 'Transforma os action items das reuniões em tarefas na sua conta.',
     logo: <TodoistLogo />,
   },
   linear: {
-    nome: "Linear",
-    desc: "Cria issues no seu time a partir dos action items das reuniões.",
+    nome: 'Linear',
+    desc: 'Cria issues no seu time a partir dos action items das reuniões.',
     logo: <LinearLogo />,
+  },
+  microsoft: {
+    nome: 'Microsoft (Outlook + Calendar)',
+    desc: 'Envia e-mails pela sua conta Outlook e cria follow-ups no seu calendário direto dos fluxos.',
+    logo: <MicrosoftLogo />,
+  },
+  telegram: {
+    nome: 'Telegram',
+    desc: 'Manda o resumo das reuniões direto no seu chat — pareamento rápido com o bot do NORA.',
+    logo: <TelegramLogo />,
+  },
+  trello: {
+    nome: 'Trello',
+    desc: 'Transforma os action items das reuniões em cards na lista que você escolher.',
+    logo: <TrelloLogo />,
   },
 };
 
 const NOME_CURTO: Record<IntegrationProvider, string> = {
-  google: "Google",
-  slack: "Slack",
-  github: "GitHub",
-  notion: "Notion",
-  todoist: "Todoist",
-  linear: "Linear",
+  google: 'Google',
+  slack: 'Slack',
+  github: 'GitHub',
+  notion: 'Notion',
+  todoist: 'Todoist',
+  linear: 'Linear',
+  microsoft: 'Microsoft',
+  telegram: 'Telegram',
+  trello: 'Trello',
 };
 
 /** Ordem fixa de exibição dos conectores no hub. */
-const ORDEM: IntegrationProvider[] = ["google", "slack", "github", "notion", "todoist", "linear"];
+const ORDEM: IntegrationProvider[] = [
+  'google',
+  'microsoft',
+  'slack',
+  'telegram',
+  'github',
+  'notion',
+  'todoist',
+  'linear',
+  'trello',
+];
 
-type Aviso = { tipo: "ok" | "erro"; msg: string };
+type Aviso = { tipo: 'ok' | 'erro'; msg: string };
 
 /** Tradução PT-BR amigável dos códigos de erro do callback OAuth. */
 function mensagemErroOAuth(codigo: string): string {
   switch (codigo) {
-    case "access_denied":
-      return "Você cancelou a autorização no provedor. Nada foi conectado.";
-    case "integration_invalid_state":
-      return "O link de autorização expirou — tente conectar de novo.";
-    case "integration_unknown_provider":
-      return "O servidor não conhece esse conector — recarregue a página e tente de novo.";
-    case "integration_not_configured":
-      return "Este conector não está configurado neste ambiente — faltam credenciais OAuth no servidor.";
+    case 'access_denied':
+      return 'Você cancelou a autorização no provedor. Nada foi conectado.';
+    case 'integration_invalid_state':
+      return 'O link de autorização expirou — tente conectar de novo.';
+    case 'integration_unknown_provider':
+      return 'O servidor não conhece esse conector — recarregue a página e tente de novo.';
+    case 'integration_not_configured':
+      return 'Este conector não está configurado neste ambiente — faltam credenciais OAuth no servidor.';
     default:
       return `Não foi possível concluir a conexão (código: ${codigo}). Tente de novo.`;
   }
@@ -183,8 +264,8 @@ function mensagemErroOAuth(codigo: string): string {
 /** "desde {quando}" a partir do tempoRelativo ("há 3 dias" → "3 dias"). */
 function desdeQuando(iso: string): string {
   const rel = tempoRelativo(iso);
-  if (rel === "agora") return "agora há pouco";
-  return rel.startsWith("há ") ? rel.slice(3) : rel;
+  if (rel === 'agora') return 'agora há pouco';
+  return rel.startsWith('há ') ? rel.slice(3) : rel;
 }
 
 /* ── Card de um conector ───────────────────────────────────────────────── */
@@ -194,15 +275,32 @@ function CardConector({
   conectando,
   onConectar,
   onDesconectar,
+  onStatus,
+  onAviso,
 }: {
   status: IntegrationStatus;
   conectando: boolean;
   onConectar: () => void;
   /** Resolve true quando a desconexão deu certo (o card sai do modo confirmação). */
   onDesconectar: () => Promise<boolean>;
+  /** Status novo do conector vindo de um fluxo concluído dentro do card (Telegram/Trello). */
+  onStatus: (status: IntegrationStatus) => void;
+  onAviso: (aviso: Aviso | null) => void;
 }) {
   const [confirmando, setConfirmando] = useState(false);
   const [desconectando, setDesconectando] = useState(false);
+
+  // Telegram: pareamento por código (deep link + "Verificar conexão").
+  const [pareamento, setPareamento] = useState<TelegramPairingStart | null>(null);
+  const [gerandoCodigo, setGerandoCodigo] = useState(false);
+  const [verificando, setVerificando] = useState(false);
+  const [pendencia, setPendencia] = useState<string | null>(null);
+
+  // Trello: o usuário gera o token em nova aba e cola aqui.
+  const [coletandoToken, setColetandoToken] = useState(false);
+  const [tokenColado, setTokenColado] = useState('');
+  const [salvandoToken, setSalvandoToken] = useState(false);
+
   const meta = PROVEDORES[status.provider];
 
   async function confirmarDesconexao() {
@@ -212,22 +310,105 @@ function CardConector({
     if (ok) setConfirmando(false);
   }
 
+  async function iniciarPareamentoTelegram() {
+    setGerandoCodigo(true);
+    setPendencia(null);
+    onAviso(null);
+    try {
+      setPareamento(await startTelegramPairing());
+    } catch (e) {
+      onAviso({
+        tipo: 'erro',
+        msg: e instanceof ApiRequestError ? e.message : 'Falha ao gerar o código. Tente de novo.',
+      });
+    } finally {
+      setGerandoCodigo(false);
+    }
+  }
+
+  async function verificarPareamentoTelegram() {
+    setVerificando(true);
+    setPendencia(null);
+    try {
+      const atualizado = await verifyTelegramPairing();
+      setPareamento(null);
+      onStatus(atualizado);
+      onAviso({
+        tipo: 'ok',
+        msg: 'Telegram conectado! O bot do NORA já pode mandar resumos no seu chat.',
+      });
+    } catch (e) {
+      if (e instanceof ApiRequestError && e.status === 409) {
+        // INTEGRATION_PAIRING_PENDING — o /start ainda não chegou; mensagem inline, sem alarde.
+        setPendencia(e.message);
+      } else {
+        // Código expirado / pareamento perdido: recomeça do botão Conectar.
+        setPareamento(null);
+        onAviso({
+          tipo: 'erro',
+          msg: e instanceof ApiRequestError ? e.message : 'Falha ao verificar. Tente de novo.',
+        });
+      }
+    } finally {
+      setVerificando(false);
+    }
+  }
+
+  async function abrirAutorizacaoTrello() {
+    setGerandoCodigo(true);
+    onAviso(null);
+    try {
+      const { authorizeUrl } = await startIntegrationOAuth('trello');
+      window.open(authorizeUrl, '_blank', 'noopener');
+      setColetandoToken(true);
+    } catch (e) {
+      onAviso({
+        tipo: 'erro',
+        msg: e instanceof ApiRequestError ? e.message : 'Falha ao abrir a autorização do Trello.',
+      });
+    } finally {
+      setGerandoCodigo(false);
+    }
+  }
+
+  async function salvarTokenTrello() {
+    setSalvandoToken(true);
+    onAviso(null);
+    try {
+      const atualizado = await saveTrelloToken(tokenColado.trim());
+      setColetandoToken(false);
+      setTokenColado('');
+      onStatus(atualizado);
+      onAviso({
+        tipo: 'ok',
+        msg: 'Trello conectado! A ação de criar cards já está liberada nos seus fluxos.',
+      });
+    } catch (e) {
+      onAviso({
+        tipo: 'erro',
+        msg: e instanceof ApiRequestError ? e.message : 'Falha ao salvar o token. Tente de novo.',
+      });
+    } finally {
+      setSalvandoToken(false);
+    }
+  }
+
   return (
     <section
       className="card card--pad"
       aria-label={meta.nome}
-      style={{ display: "flex", flexDirection: "column", gap: 0 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         <div
           style={{
             width: 36,
             height: 36,
             borderRadius: 9,
-            background: "var(--sidebar)",
-            border: "1px solid var(--border)",
-            display: "grid",
-            placeItems: "center",
+            background: 'var(--sidebar)',
+            border: '1px solid var(--border)',
+            display: 'grid',
+            placeItems: 'center',
             flexShrink: 0,
           }}
         >
@@ -235,22 +416,32 @@ function CardConector({
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 14.5, fontWeight: 500, color: "var(--ink)", letterSpacing: "-0.01em" }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span
+              style={{
+                fontSize: 14.5,
+                fontWeight: 500,
+                color: 'var(--ink)',
+                letterSpacing: '-0.01em',
+              }}
+            >
               {meta.nome}
             </span>
             {status.connected ? (
-              <span className="chip" style={{ color: "var(--success)" }}>
-                <span className="status-dot" style={{ background: "var(--success)", width: 6, height: 6 }} />
+              <span className="chip" style={{ color: 'var(--success)' }}>
+                <span
+                  className="status-dot"
+                  style={{ background: 'var(--success)', width: 6, height: 6 }}
+                />
                 Conectado
               </span>
             ) : !status.configured ? (
-              <span className="chip" style={{ color: "var(--muted)" }}>
+              <span className="chip" style={{ color: 'var(--muted)' }}>
                 Não configurado neste ambiente
               </span>
             ) : null}
           </div>
-          <p style={{ fontSize: 12.5, color: "var(--muted)", margin: "3px 0 0", lineHeight: 1.5 }}>
+          <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '3px 0 0', lineHeight: 1.5 }}>
             {meta.desc}
           </p>
         </div>
@@ -258,15 +449,15 @@ function CardConector({
         <div style={{ flexShrink: 0, paddingTop: 2 }}>
           {status.connected ? (
             confirmando ? (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, color: "var(--danger)" }}>Desconectar?</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--danger)' }}>Desconectar?</span>
                 <button
                   type="button"
                   className="btn btn-danger btn-sm"
                   onClick={confirmarDesconexao}
                   disabled={desconectando}
                 >
-                  {desconectando ? "Desconectando…" : "Sim, desconectar"}
+                  {desconectando ? 'Desconectando…' : 'Sim, desconectar'}
                 </button>
                 <button
                   type="button"
@@ -278,14 +469,47 @@ function CardConector({
                 </button>
               </span>
             ) : (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirmando(true)}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setConfirmando(true)}
+              >
                 Desconectar
               </button>
             )
           ) : status.configured ? (
-            <button type="button" className="btn btn-primary" onClick={onConectar} disabled={conectando}>
-              {conectando ? "Redirecionando…" : "Conectar"}
-            </button>
+            status.provider === 'telegram' ? (
+              !pareamento && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={iniciarPareamentoTelegram}
+                  disabled={gerandoCodigo}
+                >
+                  {gerandoCodigo ? 'Gerando código…' : 'Conectar'}
+                </button>
+              )
+            ) : status.provider === 'trello' ? (
+              !coletandoToken && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={abrirAutorizacaoTrello}
+                  disabled={gerandoCodigo}
+                >
+                  {gerandoCodigo ? 'Abrindo…' : 'Conectar'}
+                </button>
+              )
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={onConectar}
+                disabled={conectando}
+              >
+                {conectando ? 'Redirecionando…' : 'Conectar'}
+              </button>
+            )
           ) : null}
         </div>
       </div>
@@ -293,18 +517,18 @@ function CardConector({
       {status.connected && (
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
+            display: 'flex',
+            alignItems: 'center',
             gap: 8,
-            flexWrap: "wrap",
+            flexWrap: 'wrap',
             fontSize: 12.5,
-            color: "var(--muted)",
+            color: 'var(--muted)',
             marginTop: 14,
             paddingTop: 12,
-            borderTop: "1px solid var(--border)",
+            borderTop: '1px solid var(--border)',
           }}
         >
-          <span style={{ color: "var(--ink)" }}>{status.externalAccount ?? "conta conectada"}</span>
+          <span style={{ color: 'var(--ink)' }}>{status.externalAccount ?? 'conta conectada'}</span>
           {status.connectedAt && <span>· desde {desdeQuando(status.connectedAt)}</span>}
         </div>
       )}
@@ -313,10 +537,10 @@ function CardConector({
         <p
           style={{
             fontSize: 12,
-            color: "var(--muted)",
-            margin: "14px 0 0",
+            color: 'var(--muted)',
+            margin: '14px 0 0',
             paddingTop: 12,
-            borderTop: "1px solid var(--border)",
+            borderTop: '1px solid var(--border)',
             lineHeight: 1.55,
           }}
         >
@@ -325,13 +549,134 @@ function CardConector({
         </p>
       )}
 
-      {status.provider === "google" && status.connected && (
-        <Link
-          href={"/fluxos" as Route}
+      {status.provider === 'telegram' && !status.connected && pareamento && (
+        <div
           style={{
-            display: "block",
+            marginTop: 14,
+            paddingTop: 12,
+            borderTop: '1px solid var(--border)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+        >
+          <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: 0, lineHeight: 1.55 }}>
+            1. Abra o link abaixo — ele manda <code>/start {pareamento.code}</code> pro bot do NORA.
+            <br />
+            2. Depois volte aqui e clique em “Verificar conexão”. O código vale por 10 minutos.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <a
+              href={pareamento.deepLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-ghost btn-sm"
+            >
+              Abrir no Telegram ↗
+            </a>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={verificarPareamentoTelegram}
+              disabled={verificando}
+            >
+              {verificando ? 'Verificando…' : 'Verificar conexão'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setPareamento(null);
+                setPendencia(null);
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+          {pendencia && (
+            <p style={{ fontSize: 12.5, color: 'var(--danger)', margin: 0 }}>{pendencia}</p>
+          )}
+        </div>
+      )}
+
+      {status.provider === 'trello' && !status.connected && coletandoToken && (
+        <div
+          style={{
+            marginTop: 14,
+            paddingTop: 12,
+            borderTop: '1px solid var(--border)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+        >
+          <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: 0, lineHeight: 1.55 }}>
+            O Trello abriu numa nova aba. Clique em “Permitir”, copie o token exibido e cole aqui.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              value={tokenColado}
+              onChange={(e) => setTokenColado(e.target.value)}
+              placeholder="Cole o token do Trello"
+              aria-label="Token do Trello"
+              style={{
+                flex: 1,
+                minWidth: 220,
+                fontSize: 12.5,
+                padding: '7px 10px',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                background: 'transparent',
+                color: 'var(--ink)',
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={salvarTokenTrello}
+              disabled={salvandoToken || tokenColado.trim().length === 0}
+            >
+              {salvandoToken ? 'Validando…' : 'Salvar token'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setColetandoToken(false);
+                setTokenColado('');
+              }}
+              disabled={salvandoToken}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {status.provider === 'microsoft' && status.connected && (
+        <Link
+          href={'/fluxos' as Route}
+          style={{
+            display: 'block',
             fontSize: 12.5,
-            color: "var(--accent-ink)",
+            color: 'var(--accent-ink)',
+            marginTop: 10,
+            lineHeight: 1.5,
+          }}
+        >
+          As ações “Enviar via Outlook” e “Criar evento no Outlook Calendar” já podem ser usadas nos
+          seus fluxos →
+        </Link>
+      )}
+
+      {status.provider === 'google' && status.connected && (
+        <Link
+          href={'/fluxos' as Route}
+          style={{
+            display: 'block',
+            fontSize: 12.5,
+            color: 'var(--accent-ink)',
             marginTop: 10,
             lineHeight: 1.5,
           }}
@@ -359,22 +704,24 @@ function HubIntegracoes() {
   // Resultado do callback OAuth (?connected= / ?error=) → notice + limpa a URL,
   // pra um refresh não repetir a mensagem.
   useEffect(() => {
-    const conectado = searchParams.get("connected");
-    const erro = searchParams.get("error");
+    const conectado = searchParams.get('connected');
+    const erro = searchParams.get('error');
     if (!conectado && !erro) return;
     if (conectado) {
       const nome = NOME_CURTO[conectado as IntegrationProvider] ?? conectado;
       setAviso({
-        tipo: "ok",
+        tipo: 'ok',
         msg:
-          conectado === "google"
-            ? "Conta Google conectada! As ações “Enviar via Gmail” e “Criar evento no Calendar” já estão liberadas nos seus fluxos."
-            : `Conta ${nome} conectada!`,
+          conectado === 'google'
+            ? 'Conta Google conectada! As ações “Enviar via Gmail” e “Criar evento no Calendar” já estão liberadas nos seus fluxos.'
+            : conectado === 'microsoft'
+              ? 'Conta Microsoft conectada! As ações “Enviar via Outlook” e “Criar evento no Outlook Calendar” já estão liberadas nos seus fluxos.'
+              : `Conta ${nome} conectada!`,
       });
     } else if (erro) {
-      setAviso({ tipo: "erro", msg: mensagemErroOAuth(erro) });
+      setAviso({ tipo: 'erro', msg: mensagemErroOAuth(erro) });
     }
-    router.replace("/integracoes" as Route, { scroll: false });
+    router.replace('/integracoes' as Route, { scroll: false });
   }, [searchParams, router]);
 
   // Status real dos conectores no backend.
@@ -387,7 +734,9 @@ function HubIntegracoes() {
       })
       .catch((e) => {
         if (!vivo) return;
-        setErroCarga(e instanceof ApiRequestError ? e.message : "Falha ao carregar as integrações.");
+        setErroCarga(
+          e instanceof ApiRequestError ? e.message : 'Falha ao carregar as integrações.',
+        );
       });
     return () => {
       vivo = false;
@@ -406,16 +755,17 @@ function HubIntegracoes() {
       setConectando(null);
       if (e instanceof ApiRequestError && e.status === 422) {
         // INTEGRATION_NOT_CONFIGURED — a message do backend já vem acionável.
-        setAviso({ tipo: "erro", msg: e.message });
+        setAviso({ tipo: 'erro', msg: e.message });
       } else if (e instanceof ApiRequestError && e.status === 404) {
         setAviso({
-          tipo: "erro",
-          msg: "O servidor não conhece esse conector — recarregue a página e tente de novo.",
+          tipo: 'erro',
+          msg: 'O servidor não conhece esse conector — recarregue a página e tente de novo.',
         });
       } else {
         setAviso({
-          tipo: "erro",
-          msg: e instanceof ApiRequestError ? e.message : "Falha ao iniciar a conexão. Tente de novo.",
+          tipo: 'erro',
+          msg:
+            e instanceof ApiRequestError ? e.message : 'Falha ao iniciar a conexão. Tente de novo.',
         });
       }
     }
@@ -431,12 +781,12 @@ function HubIntegracoes() {
             : i,
         ),
       );
-      setAviso({ tipo: "ok", msg: `Conta ${NOME_CURTO[provider] ?? provider} desconectada.` });
+      setAviso({ tipo: 'ok', msg: `Conta ${NOME_CURTO[provider] ?? provider} desconectada.` });
       return true;
     } catch (e) {
       setAviso({
-        tipo: "erro",
-        msg: e instanceof ApiRequestError ? e.message : "Falha ao desconectar. Tente de novo.",
+        tipo: 'erro',
+        msg: e instanceof ApiRequestError ? e.message : 'Falha ao desconectar. Tente de novo.',
       });
       return false;
     }
@@ -463,9 +813,9 @@ function HubIntegracoes() {
 
       {aviso && (
         <div
-          className={`notice ${aviso.tipo === "erro" ? "notice--danger" : "notice--accent"}`}
-          role={aviso.tipo === "erro" ? "alert" : "status"}
-          style={{ margin: "0 0 18px", display: "flex", alignItems: "center", gap: 10 }}
+          className={`notice ${aviso.tipo === 'erro' ? 'notice--danger' : 'notice--accent'}`}
+          role={aviso.tipo === 'erro' ? 'alert' : 'status'}
+          style={{ margin: '0 0 18px', display: 'flex', alignItems: 'center', gap: 10 }}
         >
           <span style={{ flex: 1 }}>{aviso.msg}</span>
           <button
@@ -473,17 +823,25 @@ function HubIntegracoes() {
             onClick={() => setAviso(null)}
             aria-label="Fechar aviso"
             style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              color: "inherit",
-              display: "grid",
-              placeItems: "center",
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'inherit',
+              display: 'grid',
+              placeItems: 'center',
               padding: 2,
               flexShrink: 0,
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
@@ -493,28 +851,38 @@ function HubIntegracoes() {
       {erroCarga && (
         <div
           className="notice notice--danger"
-          style={{ marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}
+          style={{
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
         >
           <span>Não consegui carregar as integrações agora ({erroCarga}).</span>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTentativa((t) => t + 1)}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setTentativa((t) => t + 1)}
+          >
             Tentar de novo
           </button>
         </div>
       )}
 
       {ordenadas === null && !erroCarga ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }} aria-busy>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }} aria-busy>
           {[0, 1].map((i) => (
             <div key={i} className="skel" style={{ height: 104, borderRadius: 12 }} />
           ))}
         </div>
       ) : ordenadas !== null ? (
         ordenadas.length === 0 ? (
-          <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>
+          <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
             O servidor não expôs nenhum conector neste ambiente.
           </p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {ordenadas.map((st) => (
               <CardConector
                 key={st.provider}
@@ -522,19 +890,27 @@ function HubIntegracoes() {
                 conectando={conectando === st.provider}
                 onConectar={() => conectar(st.provider)}
                 onDesconectar={() => desconectar(st.provider)}
+                onStatus={(novo) =>
+                  setIntegracoes((curr) =>
+                    (curr ?? []).map((i) => (i.provider === novo.provider ? novo : i)),
+                  )
+                }
+                onAviso={setAviso}
               />
             ))}
           </div>
         )
       ) : null}
 
-      <div style={{ marginTop: 40, paddingTop: 18, borderTop: "1px solid var(--border)" }}>
+      <div style={{ marginTop: 40, paddingTop: 18, borderTop: '1px solid var(--border)' }}>
         <div className="sec-label" style={{ marginBottom: 6 }}>
           No radar
         </div>
-        <p style={{ fontSize: 12, color: "var(--muted)", margin: 0, lineHeight: 1.6, maxWidth: 560 }}>
-          Outlook, Jira, Salesforce e Pipedrive estão no roadmap de conectores — ainda sem data.
-          Quando um deles estiver pronto de verdade, aparece nesta página com o botão “Conectar”.
+        <p
+          style={{ fontSize: 12, color: 'var(--muted)', margin: 0, lineHeight: 1.6, maxWidth: 560 }}
+        >
+          Jira, Salesforce e Pipedrive estão no roadmap de conectores — ainda sem data. Quando um
+          deles estiver pronto de verdade, aparece nesta página com o botão “Conectar”.
         </p>
       </div>
     </div>
@@ -547,7 +923,7 @@ function PaginaSkeleton() {
     <div className="page" aria-busy>
       <div className="skel" style={{ width: 90, height: 13, marginBottom: 10 }} />
       <div className="skel" style={{ width: 220, height: 30, marginBottom: 28 }} />
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {[0, 1].map((i) => (
           <div key={i} className="skel" style={{ height: 104, borderRadius: 12 }} />
         ))}
