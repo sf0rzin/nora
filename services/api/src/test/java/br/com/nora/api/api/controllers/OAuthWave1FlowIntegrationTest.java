@@ -326,7 +326,12 @@ class OAuthWave1FlowIntegrationTest {
             return new GenericOAuthClient() {
                 @Override
                 public TokenResponse exchangeCode(OAuthProviderConfig config, String code) {
-                    return new TokenResponse("gho-token-1", "repo", null, null);
+                    return new TokenResponse("gho-token-1", null, "repo", null, null);
+                }
+
+                @Override
+                public TokenResponse refresh(OAuthProviderConfig config, String refreshToken) {
+                    throw new UnsupportedOperationException("nenhum provedor deste IT usa refresh");
                 }
             };
         }

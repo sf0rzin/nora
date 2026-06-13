@@ -3,11 +3,11 @@
  * docs/api/examples/. Mudancas aqui devem manter paridade com o backend.
  */
 
-export type Sentiment = "POSITIVE" | "NEUTRAL" | "NEGATIVE" | "MIXED";
-export type Severity = "LOW" | "MEDIUM" | "HIGH";
-export type Priority = "LOW" | "MEDIUM" | "HIGH";
+export type Sentiment = 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'MIXED';
+export type Severity = 'LOW' | 'MEDIUM' | 'HIGH';
+export type Priority = 'LOW' | 'MEDIUM' | 'HIGH';
 
-export type ProcessingStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+export type ProcessingStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
 export interface MeetingListItem {
   id: string;
@@ -44,7 +44,7 @@ export interface ActionItem {
   dueDate?: string | null;
   priority: Priority;
   sourceQuote: string;
-  status?: "OPEN" | "IN_PROGRESS" | "DONE";
+  status?: 'OPEN' | 'IN_PROGRESS' | 'DONE';
 }
 
 export interface Risk {
@@ -205,7 +205,7 @@ export interface TenantInfo {
 
 // ---------- IAM Invitations (US06, ADR 0011) ----------
 
-export type InviteStatus = "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
+export type InviteStatus = 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
 
 export interface Invite {
   id: string;
@@ -258,7 +258,7 @@ export interface ChatSessionSummary {
 /** Uma mensagem dentro de uma sessão de chat. */
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant";
+  role: 'user' | 'assistant';
   content: string;
   /** ISO-8601. */
   createdAt: string;
@@ -278,7 +278,7 @@ export interface ChatSessionDetail {
 // ---------- NORA Flows — workflows de automação (ADR 0030) ----------
 
 /** Papel de um nó dentro do grafo do fluxo. */
-export type WorkflowNodeKind = "trigger" | "condition" | "action";
+export type WorkflowNodeKind = 'trigger' | 'condition' | 'action';
 
 /** Nó da definição persistida no backend (kind + type do catálogo + params). */
 export interface WorkflowDefinitionNode {
@@ -321,7 +321,7 @@ export interface WorkflowResponse {
   updatedAt: string;
 }
 
-export type WorkflowExecutionStatus = "RUNNING" | "SUCCESS" | "FAILED";
+export type WorkflowExecutionStatus = 'RUNNING' | 'SUCCESS' | 'FAILED';
 
 /** Linha do log de uma execução de fluxo. */
 export interface WorkflowExecutionLogEntry {
@@ -329,7 +329,7 @@ export interface WorkflowExecutionLogEntry {
   at: string;
   /** Nó que produziu a linha; null para mensagens do engine. */
   nodeId: string | null;
-  level: "info" | "error";
+  level: 'info' | 'error';
   message: string;
 }
 
@@ -348,14 +348,29 @@ export interface WorkflowExecutionResponse {
 
 // ---------- Integrações OAuth (NORA Flows Fase 2) ----------
 
-/** Provedor de integração OAuth suportado pelo backend. */
+/**
+ * Provedor de integração suportado pelo backend. Quase todos são OAuth;
+ * exceções da onda 2: `telegram` (pareamento por código via bot) e
+ * `trello` (token gerado pelo usuário e colado no hub).
+ */
 export type IntegrationProvider =
-  | "google"
-  | "slack"
-  | "github"
-  | "notion"
-  | "todoist"
-  | "linear";
+  | 'google'
+  | 'slack'
+  | 'github'
+  | 'notion'
+  | 'todoist'
+  | 'linear'
+  | 'microsoft'
+  | 'telegram'
+  | 'trello';
+
+/** Resposta do início do pareamento Telegram (POST /integrations/telegram/pairing/start). */
+export interface TelegramPairingStart {
+  /** Deep link t.me/<bot>?start=<código> pro usuário abrir e mandar /start. */
+  deepLink: string;
+  /** Código exibido no hub (mesmo payload do deep link). */
+  code: string;
+}
 
 /**
  * Estado de um conector pro usuário logado (GET /integrations).
