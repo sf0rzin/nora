@@ -3,6 +3,7 @@ package br.com.nora.api.infrastructure.integration.actions;
 import br.com.nora.api.application.integration.IntegrationService;
 import br.com.nora.api.application.workflow.ActionExecutor;
 import br.com.nora.api.application.workflow.WorkflowEventContext;
+import br.com.nora.api.application.workflow.actions.FollowUpSchedule;
 import br.com.nora.api.application.workflow.actions.WorkflowActionTemplates;
 import br.com.nora.api.domain.integration.IntegrationProvider;
 import br.com.nora.api.infrastructure.integration.MicrosoftGraphClient;
@@ -46,25 +47,25 @@ public class MicrosoftCalendarCreateEventAction implements ActionExecutor {
         }
         String title = WorkflowActionTemplates.applyPlaceholders(titleTemplate, ctx, false);
 
-        int startInDays = intParam(params, "startInDays", 1);
-        int hour = intParam(params, "hour", 10);
-        int durationMinutes = intParam(params, "durationMinutes", 30);
-
-        OffsetDateTime start =
-                OffsetDateTime.now(SAO_PAULO)
-                        .plusDays(startInDays)
-                        .withHour(Math.min(Math.max(hour, 0), 23))
-                        .withMinute(0)
-                        .withSecond(0)
-                        .withNano(0);
-        OffsetDateTime end = start.plusMinutes(Math.max(durationMinutes, 5));
+        FollowUpSchedule.Resolved agenda =
+                FollowUpSchedule.resolve(ctx, params, OffsetDateTime.now(SAO_PAULO));
 
         String accessToken =
                 integrations.validAccessToken(ctx.tenantId(), IntegrationProvider.MICROSOFT);
         String link =
                 graph.createEvent(
-                        accessToken, title, description(ctx), start, end, SAO_PAULO.getId());
-        return "Evento criado no Outlook Calendar: \"" + title + "\" — " + link;
+                        accessToken,
+                        title,
+                        description(ctx),
+                        agenda.start(),
+                        agenda.end(),
+                        SAO_PAULO.getId());
+        return "Evento criado no Outlook Calendar: \""
+                + title
+                + "\""
+                + (agenda.origem() == null ? "" : " — agendado pelo " + agenda.origem())
+                + " — "
+                + link;
     }
 
     private String description(WorkflowEventContext ctx) {
@@ -88,20 +89,5 @@ public class MicrosoftCalendarCreateEventAction implements ActionExecutor {
             sb.append("\nAbrir no NORA: ").append(ctx.meetingUrl());
         }
         return sb.toString().strip();
-    }
-
-    private static int intParam(Map<String, Object> params, String key, int defaultValue) {
-        Object raw = params.get(key);
-        if (raw instanceof Number n) {
-            return n.intValue();
-        }
-        if (raw instanceof String s && !s.isBlank()) {
-            try {
-                return Integer.parseInt(s.trim());
-            } catch (NumberFormatException ignored) {
-                // cai no default
-            }
-        }
-        return defaultValue;
     }
 }
