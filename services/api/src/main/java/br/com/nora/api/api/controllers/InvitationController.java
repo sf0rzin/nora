@@ -13,6 +13,7 @@ import br.com.nora.api.application.iam.InvitationService.AcceptResult;
 import br.com.nora.api.domain.iam.IamInvitation;
 import br.com.nora.api.domain.iam.InvitationStatus;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -83,12 +84,17 @@ public class InvitationController {
 
     @PostMapping("/invites/{token}/accept")
     public ResponseEntity<LoginResponse> accept(
-            @PathVariable("token") String token, @Valid @RequestBody AcceptInviteRequest body) {
+            @PathVariable("token") String token,
+            @Valid @RequestBody AcceptInviteRequest body,
+            HttpServletRequest httpReq) {
         AcceptResult result = service.acceptInvite(token, body.displayName(), body.password());
+        // Mesma regra do login: cliente web (header X-NORA-Client: web) recebe a sessão só por
+        // cookie httpOnly; tokens ficam fora do body. Cliente nativo (sem header) recebe no body.
+        boolean nativeClient = !"web".equalsIgnoreCase(httpReq.getHeader("X-NORA-Client"));
         LoginResponse resp =
                 new LoginResponse(
-                        result.accessToken(),
-                        result.refreshTokenPlain(),
+                        nativeClient ? result.accessToken() : null,
+                        nativeClient ? result.refreshTokenPlain() : null,
                         "Bearer",
                         result.expiresInSeconds(),
                         result.user().id(),
