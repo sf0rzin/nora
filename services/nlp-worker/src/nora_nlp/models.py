@@ -379,6 +379,56 @@ class AnalyzeResponse(MeetingAnalysisV1):
     metadata: AnalyzeMetadata
 
 
+# ---------- Worker Split (deteccao de fronteiras de reunioes num arquivo unico) ----------
+
+
+class SplitRequest(BaseModel):
+    """Request do endpoint /split: arquivo .txt com 1..N reunioes concatenadas."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    # Mesmo cap defensivo do /analyze: 1MB de texto.
+    transcript: Annotated[str, Field(min_length=1, max_length=1_000_000)]
+    language: str = "pt-BR"
+
+
+class SplitSegment(BaseModel):
+    """Uma reuniao detectada dentro do arquivo. Linhas 1-based e inclusivas.
+
+    `preview` carrega os primeiros ~200 chars do segmento JA REDIGIDO pelo
+    PII Shield (nunca PII crua — ADR 0012). O fatiamento real e client-side
+    usando `startLine`/`endLine` sobre o arquivo original.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    index: Annotated[int, Field(ge=1)]
+    title: Annotated[str, Field(min_length=1, max_length=120)]
+    start_line: Annotated[int, Field(ge=1, alias="startLine")]
+    end_line: Annotated[int, Field(ge=1, alias="endLine")]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    preview: Annotated[str, Field(max_length=240)]
+
+
+class SplitMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    model_version: str = Field(alias="modelVersion")
+    prompt_version: str = Field(alias="promptVersion")
+    tokens_input: int = Field(default=0, alias="tokensInput")
+    tokens_output: int = Field(default=0, alias="tokensOutput")
+    processing_millis: int = Field(default=0, alias="processingMillis")
+    pii_redactions_applied: int = Field(default=0, alias="piiRedactionsApplied")
+
+
+class SplitResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    segments: list[SplitSegment]
+    total_lines: Annotated[int, Field(ge=1, alias="totalLines")]
+    metadata: SplitMetadata
+
+
 # ---------- Live Highlights (analise em tempo real durante a reuniao) ----------
 
 

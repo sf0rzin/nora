@@ -5,6 +5,7 @@ public sealed class MeetingException extends RuntimeException
         permits MeetingException.NotFound,
                 MeetingException.TranscriptTooLarge,
                 MeetingException.UnsupportedFormat,
+                MeetingException.SplitUnsupportedFormat,
                 MeetingException.EmptyTranscript,
                 MeetingException.CannotReprocess {
 
@@ -36,6 +37,15 @@ public sealed class MeetingException extends RuntimeException
     public static final class UnsupportedFormat extends MeetingException {
         public UnsupportedFormat(String raw) {
             super("UNSUPPORTED_TRANSCRIPT_FORMAT", "Unsupported transcript format: " + raw);
+        }
+    }
+
+    /** Split-preview aceita apenas .txt por enquanto (VTT/SRT tem timestamps proprios). */
+    public static final class SplitUnsupportedFormat extends MeetingException {
+        public SplitUnsupportedFormat() {
+            super(
+                    "SPLIT_UNSUPPORTED_FORMAT",
+                    "Separação automática disponível só para .txt por enquanto.");
         }
     }
 
