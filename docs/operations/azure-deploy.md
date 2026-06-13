@@ -12,6 +12,15 @@ last_reviewed: 2026-06-06
 >
 > **Pré-requisitos:** subscription Azure ativa (atualmente "Azure for Students"), Az CLI 2.86+, Bicep CLI 0.43+, GitHub repo com permissões para criar workflows.
 
+> **Ambiente de produção (modelo de ambiente único).** O `rg-nora-dev` é, na prática,
+> o **ambiente de produção** do NORA: é ele que serve o domínio público `nora.systems` /
+> `api.nora.systems` com tráfego real. NÃO existe um segundo ambiente — operamos um único
+> ambiente vivo. Os nomes físicos (`rg-nora-dev`, `nora-*-dev`, GitHub environment `dev`)
+> são **históricos**: renomeá-los exigiria recriar Container Apps + Postgres (downtime) e
+> reconfigurar as federated credentials OIDC (subject `environment:dev`). Esse rename
+> cosmético fica para uma janela de manutenção pós-pitch; até lá, **`dev` = produção**. Um
+> eventual ambiente de staging separado, se desejado, seria criado como `rg-nora-stg`.
+
 ## Visão geral
 
 NORA é deployado em Azure via 3 workflows GitHub Actions:
