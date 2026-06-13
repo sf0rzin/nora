@@ -191,6 +191,38 @@ class WorkflowDefinitionParserTest {
                 .hasMessageContaining("owner/nome");
     }
 
+    /** Onda 2: outlook_send_email exige destinatário válido, igual send_email/gmail. */
+    @Test
+    void rejeitaOutlookSendEmailSemDestinatario() {
+        Set<String> comOutlook = Set.of("outlook_send_email");
+        String json =
+                """
+                {"nodes":[
+                  {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
+                  {"id":"a1","kind":"action","type":"outlook_send_email","params":{}}],
+                 "edges":[{"id":"e1","source":"t1","target":"a1"}]}
+                """;
+        assertThatThrownBy(() -> parser.parse(json, comOutlook))
+                .isInstanceOf(WorkflowException.InvalidDefinition.class)
+                .hasMessageContaining("params.to");
+    }
+
+    /** Onda 2: trello_create_card exige a lista do board. */
+    @Test
+    void rejeitaTrelloCreateCardSemListId() {
+        Set<String> comTrello = Set.of("trello_create_card");
+        String json =
+                """
+                {"nodes":[
+                  {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
+                  {"id":"a1","kind":"action","type":"trello_create_card","params":{}}],
+                 "edges":[{"id":"e1","source":"t1","target":"a1"}]}
+                """;
+        assertThatThrownBy(() -> parser.parse(json, comTrello))
+                .isInstanceOf(WorkflowException.InvalidDefinition.class)
+                .hasMessageContaining("params.listId");
+    }
+
     @Test
     void rejeitaCallWebhookSemUrlHttps() {
         for (String params : new String[] {"{}", "{\"url\":\"http://exemplo.com/hook\"}"}) {

@@ -28,6 +28,7 @@ import type {
   MeetingGoal,
   MeetingsListResponse,
   MeResponse,
+  TelegramPairingStart,
   TenantInfo,
   WorkflowDefinition,
   WorkflowExecutionResponse,
@@ -39,7 +40,7 @@ import type {
 export type { AcceptInviteRequest, Invite, InviteListResponse, InviteStatus, InviteUserRequest };
 export type { ChatMessage, ChatSessionDetail, ChatSessionSummary };
 export type { WorkflowDefinition, WorkflowExecutionResponse, WorkflowResponse };
-export type { IntegrationProvider, IntegrationStatus };
+export type { IntegrationProvider, IntegrationStatus, TelegramPairingStart };
 export type { MeResponse, TenantInfo };
 import meetingsListFixture from '@/fixtures/meetings-list-response.json';
 import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
@@ -190,10 +191,7 @@ export async function getMeeting(id: string): Promise<MeetingDetail> {
 }
 
 // Productivity Score opt-in (ADR 0005)
-export async function setMeetingGoal(
-  meetingId: string,
-  goal: MeetingGoal,
-): Promise<MeetingGoal> {
+export async function setMeetingGoal(meetingId: string, goal: MeetingGoal): Promise<MeetingGoal> {
   return request<MeetingGoal>(`/meetings/${encodeURIComponent(meetingId)}/goal`, {
     method: 'PUT',
     body: JSON.stringify(goal),
@@ -695,10 +693,7 @@ export async function appendChatMessage(
 }
 
 /** Renomeia uma sessao. */
-export async function renameChatSession(
-  id: string,
-  title: string,
-): Promise<ChatSessionSummary> {
+export async function renameChatSession(id: string, title: string): Promise<ChatSessionSummary> {
   return request<ChatSessionSummary>(`/chat/sessions/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     body: JSON.stringify({ title }),
@@ -788,9 +783,7 @@ export async function testWorkflow(id: string): Promise<WorkflowExecutionRespons
 
 /** Histórico de execuções do fluxo (máx. 50, mais recentes primeiro). */
 export async function listWorkflowExecutions(id: string): Promise<WorkflowExecutionResponse[]> {
-  return request<WorkflowExecutionResponse[]>(
-    `/workflows/${encodeURIComponent(id)}/executions`,
-  );
+  return request<WorkflowExecutionResponse[]>(`/workflows/${encodeURIComponent(id)}/executions`);
 }
 
 // ---------- Integrações OAuth (Google / Slack — NORA Flows Fase 2) ----------
@@ -822,4 +815,38 @@ export async function startIntegrationOAuth(
 /** Desconecta a conta do provedor e revoga os tokens guardados (204). */
 export async function disconnectIntegration(provider: IntegrationProvider): Promise<void> {
   return request<void>(`/integrations/${encodeURIComponent(provider)}`, { method: 'DELETE' });
+}
+
+/**
+ * Telegram (sem OAuth): gera o código de pareamento do tenant e devolve o
+ * deep link do bot. O usuário abre o link, manda o /start e depois chama
+ * `verifyTelegramPairing`. Erros: 422 sem NORA_TELEGRAM_BOT_TOKEN no servidor.
+ */
+export async function startTelegramPairing(): Promise<TelegramPairingStart> {
+  return request<TelegramPairingStart>(`/integrations/telegram/pairing/start`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Telegram: confere se o /start chegou e conclui a conexão. Erros: 409
+ * `INTEGRATION_PAIRING_PENDING` (/start ainda não visto — a message orienta
+ * tentar de novo) e 502 código expirado/pareamento não iniciado.
+ */
+export async function verifyTelegramPairing(): Promise<IntegrationStatus> {
+  return request<IntegrationStatus>(`/integrations/telegram/pairing/verify`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Trello (sem OAuth server-side): envia o token que o usuário colou; o
+ * backend valida no Trello antes de salvar. Erros: 502 token recusado
+ * (message em PT-BR) e 422 sem TRELLO_API_KEY no servidor.
+ */
+export async function saveTrelloToken(token: string): Promise<IntegrationStatus> {
+  return request<IntegrationStatus>(`/integrations/trello/token`, {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
 }
