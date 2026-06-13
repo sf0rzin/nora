@@ -285,7 +285,11 @@ export async function deleteMeeting(meetingId: string): Promise<void> {
 // ---------- Auth ----------
 
 export interface LoginResponse {
-  accessToken: string;
+  /**
+   * Só presente para clientes nativos. O web envia `X-NORA-Client: web` e recebe a
+   * sessão apenas via cookies httpOnly — o token NÃO vem no body (defesa contra XSS).
+   */
+  accessToken?: string;
   tokenType: string;
   expiresInSeconds: number;
   userId: string;
@@ -297,6 +301,8 @@ export interface LoginResponse {
 export async function login(email: string, password: string) {
   return request<LoginResponse>(`/auth/login`, {
     method: 'POST',
+    // Declara-se cliente web: backend devolve a sessão só por cookie httpOnly (token fora do body).
+    headers: { 'X-NORA-Client': 'web' },
     body: JSON.stringify({ email, password }),
   });
 }
@@ -663,6 +669,7 @@ export async function acceptInvite(
 ): Promise<LoginResponse> {
   return request<LoginResponse>(`/iam/invites/${encodeURIComponent(token)}/accept`, {
     method: 'POST',
+    headers: { 'X-NORA-Client': 'web' },
     body: JSON.stringify(req),
     skipAuth: true,
   });
