@@ -1,6 +1,7 @@
 package br.com.nora.api.application.integration;
 
 import br.com.nora.api.application.ports.Clock;
+import br.com.nora.api.application.ports.GenericOAuthClient;
 import br.com.nora.api.application.ports.GoogleOAuthClient;
 import br.com.nora.api.application.ports.GoogleOAuthClient.TokenResponse;
 import br.com.nora.api.application.ports.IntegrationConnectionRepository;
@@ -32,6 +33,11 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>Slack: {@code validSlackBotToken} devolve o bot token ({@code xoxb-...}) — NÃO expira, sem
  * refresh. Escopos do bot: chat:write (postar) e channels:read (listar canais). Tudo tenant-scoped
  * (ADR 0002 + RLS).
+ *
+ * <p>Demais provedores (GitHub, Notion, Todoist, Linear — onda 1): fluxo OAuth2 code-flow padrão
+ * declarado no {@link OAuthProviderDirectory} e executado pelo client genérico. Nenhum emite
+ * refresh token na prática — {@code validAccessToken} devolve o token persistido ou orienta
+ * reconexão se um {@code expires_in} informado pelo provedor já passou.
  */
 @Service
 public class IntegrationService {
@@ -52,6 +58,8 @@ public class IntegrationService {
     private final IntegrationConnectionRepository connections;
     private final GoogleOAuthClient google;
     private final SlackOAuthClient slack;
+    private final GenericOAuthClient genericOAuth;
+    private final OAuthProviderDirectory providerDirectory;
     private final OAuthStateCodec stateCodec;
     private final Clock clock;
     private final String googleClientId;
@@ -63,6 +71,8 @@ public class IntegrationService {
             IntegrationConnectionRepository connections,
             GoogleOAuthClient google,
             SlackOAuthClient slack,
+            GenericOAuthClient genericOAuth,
+            OAuthProviderDirectory providerDirectory,
             OAuthStateCodec stateCodec,
             Clock clock,
             @Value("${nora.integrations.google.client-id:}") String googleClientId,
@@ -72,6 +82,8 @@ public class IntegrationService {
         this.connections = connections;
         this.google = google;
         this.slack = slack;
+        this.genericOAuth = genericOAuth;
+        this.providerDirectory = providerDirectory;
         this.stateCodec = stateCodec;
         this.clock = clock;
         this.googleClientId = googleClientId;
@@ -100,6 +112,26 @@ public class IntegrationService {
                                     conn.map(IntegrationConnection::updatedAt).orElse(null));
                         })
                 .toList();
+    }
+
+    /** Inicia o OAuth do provedor (roteia Google/Slack pros fluxos dedicados; resto é genérico). */
+    public String start(IntegrationProvider provider, UUID tenantId, UUID userId) {
+        return switch (provider) {
+            case GOOGLE -> startGoogle(tenantId, userId);
+            case SLACK -> startSlack(tenantId, userId);
+            default -> startGeneric(provider, tenantId, userId);
+        };
+    }
+
+    /** Conclui o callback OAuth do provedor (mesmo roteamento do {@link #start}). */
+    @Transactional
+    public OAuthStateCodec.DecodedState handleCallback(
+            IntegrationProvider provider, String code, String state) {
+        return switch (provider) {
+            case GOOGLE -> handleGoogleCallback(code, state);
+            case SLACK -> handleSlackCallback(code, state);
+            default -> handleGenericCallback(provider, code, state);
+        };
     }
 
     /** Monta a URL de autorização do Google com state assinado (tenant/usuário embutidos). */
@@ -251,6 +283,83 @@ public class IntegrationService {
                 .accessToken();
     }
 
+    /** Monta a URL de autorização de um provedor genérico (code-flow padrão, state assinado). */
+    private String startGeneric(IntegrationProvider provider, UUID tenantId, UUID userId) {
+        OAuthProviderConfig config = requireGenericConfigured(provider);
+        String state = stateCodec.encode(tenantId, userId, provider, clock.now());
+        StringBuilder authorizeUrl =
+                new StringBuilder(config.authorizationUrl())
+                        .append("?client_id=")
+                        .append(url(config.clientId()))
+                        .append("&redirect_uri=")
+                        .append(url(config.redirectUri()))
+                        .append("&response_type=code");
+        if (!config.scopes().isBlank()) {
+            authorizeUrl.append("&scope=").append(url(config.scopes()));
+        }
+        config.extraAuthorizeParams()
+                .forEach(
+                        (key, value) ->
+                                authorizeUrl
+                                        .append('&')
+                                        .append(url(key))
+                                        .append('=')
+                                        .append(url(value)));
+        return authorizeUrl.append("&state=").append(url(state)).toString();
+    }
+
+    /**
+     * Callback genérico: valida o state, troca o code pelo access token (sem refresh — nenhum
+     * provedor da onda 1 emite na prática) e faz upsert da conexão. {@code expiresAt} só é
+     * persistido quando o provedor informa {@code expires_in} (ex.: Linear, ~10 anos).
+     */
+    @Transactional
+    public OAuthStateCodec.DecodedState handleGenericCallback(
+            IntegrationProvider provider, String code, String state) {
+        OAuthProviderConfig config = requireGenericConfigured(provider);
+        OAuthStateCodec.DecodedState decoded = stateCodec.decode(state, clock.now());
+        if (decoded.provider() != provider) {
+            throw new IntegrationException.InvalidState();
+        }
+        GenericOAuthClient.TokenResponse tokens = genericOAuth.exchangeCode(config, code);
+        OffsetDateTime now = now();
+        connections.upsert(
+                new IntegrationConnection(
+                        UUID.randomUUID(),
+                        decoded.tenantId(),
+                        decoded.userId(),
+                        provider,
+                        tokens.scope() == null ? config.scopes() : tokens.scope(),
+                        tokens.externalAccount(),
+                        tokens.accessToken(),
+                        null,
+                        tokens.expiresInSeconds() == null
+                                ? null
+                                : now.plusSeconds(tokens.expiresInSeconds()),
+                        now,
+                        now));
+        return decoded;
+    }
+
+    /**
+     * Access token de um provedor genérico para uso imediato pelas ações do Flows. Sem refresh:
+     * devolve o token persistido; se o provedor informou validade e ela passou, orienta reconexão.
+     */
+    @Transactional(readOnly = true)
+    public String validAccessToken(UUID tenantId, IntegrationProvider provider) {
+        IntegrationConnection conn =
+                connections
+                        .findByTenantAndProvider(tenantId, provider)
+                        .orElseThrow(() -> new IntegrationException.NotConnected(provider.wire()));
+        if (conn.expiresAt() != null
+                && !now().plusSeconds(REFRESH_SKEW_SECONDS).isBefore(conn.expiresAt())) {
+            throw new IntegrationException.ProviderError(
+                    provider.wire(),
+                    "token expirado e o provedor não emite refresh token — reconecte a integração");
+        }
+        return conn.accessToken();
+    }
+
     public record ProviderStatus(
             String provider,
             boolean configured,
@@ -262,7 +371,14 @@ public class IntegrationService {
         return switch (provider) {
             case GOOGLE -> googleConfigured();
             case SLACK -> slackConfigured();
+            default -> providerDirectory.configured(provider);
         };
+    }
+
+    private OAuthProviderConfig requireGenericConfigured(IntegrationProvider provider) {
+        return providerDirectory
+                .find(provider)
+                .orElseThrow(() -> new IntegrationException.NotConfigured(provider.wire()));
     }
 
     private boolean googleConfigured() {

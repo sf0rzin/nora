@@ -165,6 +165,33 @@ class WorkflowDefinitionParserTest {
     }
 
     @Test
+    void rejeitaGithubCreateIssueSemRepoOuForaDoFormato() {
+        Set<String> comGithub = Set.of("github_create_issue");
+        String semRepo =
+                """
+                {"nodes":[
+                  {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
+                  {"id":"a1","kind":"action","type":"github_create_issue","params":{}}],
+                 "edges":[{"id":"e1","source":"t1","target":"a1"}]}
+                """;
+        assertThatThrownBy(() -> parser.parse(semRepo, comGithub))
+                .isInstanceOf(WorkflowException.InvalidDefinition.class)
+                .hasMessageContaining("params.repo");
+
+        String semBarra =
+                """
+                {"nodes":[
+                  {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
+                  {"id":"a1","kind":"action","type":"github_create_issue",
+                   "params":{"repo":"sem-barra"}}],
+                 "edges":[{"id":"e1","source":"t1","target":"a1"}]}
+                """;
+        assertThatThrownBy(() -> parser.parse(semBarra, comGithub))
+                .isInstanceOf(WorkflowException.InvalidDefinition.class)
+                .hasMessageContaining("owner/nome");
+    }
+
+    @Test
     void rejeitaCallWebhookSemUrlHttps() {
         for (String params : new String[] {"{}", "{\"url\":\"http://exemplo.com/hook\"}"}) {
             String json =
@@ -179,6 +206,20 @@ class WorkflowDefinitionParserTest {
                     .isInstanceOf(WorkflowException.InvalidDefinition.class)
                     .hasMessageContaining("https://");
         }
+    }
+
+    @Test
+    void rejeitaNotionCreatePageSemPaginaPai() {
+        String semPai =
+                """
+                {"nodes":[
+                  {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
+                  {"id":"a1","kind":"action","type":"notion_create_page","params":{}}],
+                 "edges":[{"id":"e1","source":"t1","target":"a1"}]}
+                """;
+        assertThatThrownBy(() -> parser.parse(semPai, Set.of("notion_create_page")))
+                .isInstanceOf(WorkflowException.InvalidDefinition.class)
+                .hasMessageContaining("params.parentPageId");
     }
 
     @Test
