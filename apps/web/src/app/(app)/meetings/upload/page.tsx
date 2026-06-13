@@ -23,6 +23,15 @@
  * Timeout: 5 minutos (150 polls de 2s). Apos isso mostramos aviso com link
  * manual — nao paramos a analise no backend, apenas paramos de pollar.
  *
+ * Lote (multi-upload): a dropzone aceita varios arquivos. Com 1 arquivo o
+ * fluxo acima permanece IDENTICO (mesmo card, mesmo status ao vivo). Com 2+
+ * escondemos titulo/inicio/termino/formato (titulo deriva do nome de cada
+ * arquivo e o formato da extensao; idioma/participantes/tags valem para
+ * todos), enviamos com concorrencia 2 (BATCH_CONCURRENCY) e mostramos
+ * progresso por arquivo com "Tentar de novo" individual ao final. O card do
+ * lote NAO faz polling de N reunioes — as analises seguem em segundo plano
+ * e o Inicio (que ja tem polling de PROCESSING) acompanha o progresso.
+ *
  * Decisoes:
  * - Mantemos `useState` + `setInterval` (sem react-query/swr) — o backlog
  *   pede zero libs novas e o caso de uso e pontual.
@@ -54,11 +63,33 @@ const FORMAT_BY_EXT: Record<string, Format> = {
 const POLL_INTERVAL_MS = 2_000;
 /** Maximo de polls antes de mostrar timeout (5 min @ 2s). */
 const MAX_POLLS = 150;
+/** Uploads simultaneos no modo lote — 2 evita rajada de POSTs no backend. */
+const BATCH_CONCURRENCY = 2;
 
 type Phase = "form" | "uploading" | "polling" | "completed" | "failed" | "timeout";
 
 /** Estado da dica de notificacao via Flows no card pos-envio. */
 type FlowsHint = "loading" | "has-flows" | "no-flows" | "unavailable";
+
+/** Um arquivo do lote (modo 2+ arquivos). */
+interface BatchItem {
+  id: number;
+  file: File;
+  /** Derivado do nome do arquivo (sem extensao), como no modo single. */
+  title: string;
+  format: Format;
+  status: "queued" | "uploading" | "done" | "error";
+  error?: string;
+}
+
+function detectFormat(fileName: string): Format {
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  return (ext && FORMAT_BY_EXT[ext]) || "TXT";
+}
+
+function deriveTitle(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, "") || fileName;
+}
 
 export default function UploadMeetingPage() {
   const router = useRouter();
@@ -71,48 +102,139 @@ export default function UploadMeetingPage() {
   const [participants, setParticipants] = useState<string[]>([]);
   const [startedAt, setStartedAt] = useState("");
   const [endedAt, setEndedAt] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [isOver, setIsOver] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Phase machine
+  // Phase machine (modo single — 0 ou 1 arquivo)
   const [phase, setPhase] = useState<Phase>("form");
   const [meetingId, setMeetingId] = useState<string | null>(null);
   const [pollingStatus, setPollingStatus] = useState<ProcessingStatus>("PENDING");
   const [pollingError, setPollingError] = useState<string | null>(null);
 
+  // Lote (2+ arquivos). `null` = fora do modo lote; o array existe a partir
+  // do submit e guarda o progresso de cada arquivo.
+  const [batchItems, setBatchItems] = useState<BatchItem[] | null>(null);
+
   // Counter vive em ref pra nao recriar o interval a cada tick.
   const pollCountRef = useRef(0);
 
-  function applyFile(f: File | null) {
-    setFile(f);
-    if (f) {
-      const ext = f.name.split(".").pop()?.toLowerCase();
-      if (ext && FORMAT_BY_EXT[ext]) setFormat(FORMAT_BY_EXT[ext]);
-      if (!title) setTitle(f.name.replace(/\.[^.]+$/, ""));
+  /** Espelha titulo/formato pro arquivo unico (comportamento single de sempre). */
+  function applySingleDefaults(f: File, opts?: { overwriteTitle?: boolean }) {
+    setFormat(detectFormat(f.name));
+    if (opts?.overwriteTitle || !title) setTitle(deriveTitle(f.name));
+  }
+
+  function applyFiles(incoming: File[]) {
+    if (incoming.length === 0) return;
+    let next: File[];
+    if (files.length === 1 && incoming.length === 1) {
+      // 1 arquivo ja selecionado + 1 novo = TROCA ("clique pra trocar"),
+      // exatamente como o single-file sempre fez.
+      next = incoming;
+    } else {
+      // Demais casos acumulam (permite arrastar em varias levas), com
+      // dedupe por nome+tamanho.
+      next = [...files];
+      for (const f of incoming) {
+        if (!next.some((m) => m.name === f.name && m.size === f.size)) next.push(f);
+      }
     }
+    setFiles(next);
+    if (next.length === 1) applySingleDefaults(next[0]);
+    // Limpa o input pra permitir re-selecionar os mesmos arquivos depois
+    // (o evento change nao dispararia com o mesmo value).
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removeFile(index: number) {
+    const next = files.filter((_, i) => i !== index);
+    setFiles(next);
+    // De volta ao modo single: titulo/formato passam a refletir o arquivo
+    // restante (no lote o titulo vinha do nome de cada arquivo).
+    if (next.length === 1) applySingleDefaults(next[0], { overwriteTitle: true });
   }
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    applyFile(e.target.files?.[0] ?? null);
+    applyFiles(Array.from(e.target.files ?? []));
   }
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     setIsOver(false);
-    const f = e.dataTransfer.files?.[0];
-    if (f) applyFile(f);
+    applyFiles(Array.from(e.dataTransfer.files ?? []));
+  }
+
+  // ---------- Lote: envio com concorrencia limitada + retry individual ----------
+
+  function patchBatchItem(id: number, patch: Partial<BatchItem>) {
+    setBatchItems((prev) =>
+      prev ? prev.map((i) => (i.id === id ? { ...i, ...patch } : i)) : prev,
+    );
+  }
+
+  async function uploadBatchItem(item: BatchItem): Promise<void> {
+    patchBatchItem(item.id, { status: "uploading", error: undefined });
+    try {
+      await uploadMeeting({
+        title: item.title,
+        language,
+        transcriptFormat: item.format,
+        participants: participants.map((displayName) => ({ displayName })),
+        tags,
+        file: item.file,
+      });
+      patchBatchItem(item.id, { status: "done" });
+    } catch (err) {
+      // Falha de um arquivo NAO cancela os demais — o worker do pool segue
+      // pro proximo e o item ganha "Tentar de novo" no final.
+      patchBatchItem(item.id, {
+        status: "error",
+        error: err instanceof ApiRequestError ? err.message : "Falha no upload.",
+      });
+    }
+  }
+
+  async function runBatch(items: BatchItem[]) {
+    let cursor = 0;
+    async function worker() {
+      while (cursor < items.length) {
+        const item = items[cursor];
+        cursor += 1;
+        await uploadBatchItem(item);
+      }
+    }
+    await Promise.all(
+      Array.from({ length: Math.min(BATCH_CONCURRENCY, items.length) }, () => worker()),
+    );
+  }
+
+  function startBatch() {
+    const items: BatchItem[] = files.map((file, idx) => ({
+      id: idx,
+      file,
+      title: deriveTitle(file.name),
+      format: detectFormat(file.name),
+      status: "queued",
+    }));
+    setBatchItems(items);
+    void runBatch(items);
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
-    if (!file) {
-      setFormError("Selecione um arquivo de transcrição.");
+    if (files.length === 0) {
+      setFormError("Selecione pelo menos um arquivo de transcrição.");
       return;
     }
+    if (files.length >= 2) {
+      startBatch();
+      return;
+    }
+    const file = files[0];
     setPhase("uploading");
     try {
       const r = await uploadMeeting({
@@ -197,13 +319,15 @@ export default function UploadMeetingPage() {
 
   // Dica de notificacao via Flows no card pos-envio: um fetch unico por envio
   // (guard via ref pra nao refetchar a cada transicao de phase). Falha e
-  // tolerada — a dica simplesmente nao aparece.
+  // tolerada — a dica simplesmente nao aparece. Vale pro single (pos-POST)
+  // e pro lote (a partir do submit — fluxos nao mudam durante o envio).
   const [flowsHint, setFlowsHint] = useState<FlowsHint>("loading");
-  const flowsHintFetchedForRef = useRef<string | null>(null);
+  const flowsHintFetchedRef = useRef(false);
   useEffect(() => {
-    if (phase === "form" || phase === "uploading" || !meetingId) return;
-    if (flowsHintFetchedForRef.current === meetingId) return;
-    flowsHintFetchedForRef.current = meetingId;
+    const postUploadSingle = phase !== "form" && phase !== "uploading" && meetingId !== null;
+    if (!postUploadSingle && batchItems === null) return;
+    if (flowsHintFetchedRef.current) return;
+    flowsHintFetchedRef.current = true;
     let cancelled = false;
     listWorkflows()
       .then((flows) => {
@@ -219,9 +343,9 @@ export default function UploadMeetingPage() {
     return () => {
       cancelled = true;
     };
-  }, [phase, meetingId]);
+  }, [phase, meetingId, batchItems]);
 
-  /** Volta pro form LIMPO — "Enviar outra transcrição" começa do zero. */
+  /** Volta pro form LIMPO — "Enviar outra transcrição" / "Enviar mais" começa do zero. */
   function resetToForm() {
     setPhase("form");
     setMeetingId(null);
@@ -229,7 +353,9 @@ export default function UploadMeetingPage() {
     setPollingError(null);
     pollCountRef.current = 0;
     setFlowsHint("loading");
-    setFile(null);
+    flowsHintFetchedRef.current = false;
+    setBatchItems(null);
+    setFiles([]);
     setTitle("");
     setTags([]);
     setParticipants([]);
@@ -240,6 +366,22 @@ export default function UploadMeetingPage() {
   }
 
   // ---------- Render ----------
+
+  // Modo lote tem precedencia: `batchItems` so existe apos o submit com 2+
+  // arquivos (phase fica em "form" — a maquina single nao roda no lote).
+  if (batchItems) {
+    return (
+      <div className="page page--narrow" style={{ maxWidth: 680 }}>
+        <Breadcrumb />
+        <BatchCard
+          items={batchItems}
+          flowsHint={flowsHint}
+          onRetryItem={(item) => void uploadBatchItem(item)}
+          onSendMore={resetToForm}
+        />
+      </div>
+    );
+  }
 
   if (phase !== "form") {
     return (
@@ -258,6 +400,11 @@ export default function UploadMeetingPage() {
     );
   }
 
+  // 2+ arquivos = modo lote no form: titulo/inicio/termino/formato somem
+  // (titulo vem do nome de cada arquivo, formato da extensao); idioma,
+  // participantes e tags valem para todos.
+  const isBatchForm = files.length >= 2;
+
   return (
     <div className="page page--narrow" style={{ maxWidth: 680 }}>
       <Breadcrumb />
@@ -267,13 +414,13 @@ export default function UploadMeetingPage() {
           Nova reunião.
         </h1>
         <p className="lede" style={{ marginTop: 8 }}>
-          Suba uma transcrição (.txt, .vtt ou .srt) — a análise começa em segundo plano.
+          Suba uma ou mais transcrições (.txt, .vtt ou .srt) — a análise começa em segundo plano.
         </p>
       </header>
 
       <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         <Dropzone
-          file={file}
+          files={files}
           isOver={isOver}
           inputRef={fileInputRef}
           onOver={(v) => setIsOver(v)}
@@ -281,21 +428,25 @@ export default function UploadMeetingPage() {
           onFileChange={onFileChange}
         />
 
-        <div className="field">
-          <label className="field-label" htmlFor="f-title">
-            Título <span className="req">*</span>
-          </label>
-          <input
-            id="f-title"
-            className="input"
-            required
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Discovery — Acme, junho/2026"
-          />
-        </div>
+        {isBatchForm && <FileList files={files} onRemove={removeFile} />}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        {!isBatchForm && (
+          <div className="field">
+            <label className="field-label" htmlFor="f-title">
+              Título <span className="req">*</span>
+            </label>
+            <input
+              id="f-title"
+              className="input"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Discovery — Acme, junho/2026"
+            />
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: isBatchForm ? "1fr" : "1fr 1fr", gap: 14 }}>
           <div className="field">
             <label className="field-label" htmlFor="f-lang">
               Idioma
@@ -311,50 +462,54 @@ export default function UploadMeetingPage() {
               <option value="es-ES">Espanhol</option>
             </select>
           </div>
-          <div className="field">
-            <label className="field-label" htmlFor="f-format">
-              Formato
-            </label>
-            <select
-              id="f-format"
-              className="select"
-              value={format}
-              onChange={(e) => setFormat(e.target.value as Format)}
-            >
-              <option value="TXT">TXT</option>
-              <option value="VTT">VTT</option>
-              <option value="SRT">SRT</option>
-            </select>
-          </div>
+          {!isBatchForm && (
+            <div className="field">
+              <label className="field-label" htmlFor="f-format">
+                Formato
+              </label>
+              <select
+                id="f-format"
+                className="select"
+                value={format}
+                onChange={(e) => setFormat(e.target.value as Format)}
+              >
+                <option value="TXT">TXT</option>
+                <option value="VTT">VTT</option>
+                <option value="SRT">SRT</option>
+              </select>
+            </div>
+          )}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div className="field">
-            <label className="field-label" htmlFor="f-start">
-              Início da reunião
-            </label>
-            <input
-              id="f-start"
-              className="input"
-              type="datetime-local"
-              value={startedAt}
-              onChange={(e) => setStartedAt(e.target.value)}
-            />
-            <div className="field-help">Se vazio, usamos a data do upload.</div>
+        {!isBatchForm && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div className="field">
+              <label className="field-label" htmlFor="f-start">
+                Início da reunião
+              </label>
+              <input
+                id="f-start"
+                className="input"
+                type="datetime-local"
+                value={startedAt}
+                onChange={(e) => setStartedAt(e.target.value)}
+              />
+              <div className="field-help">Se vazio, usamos a data do upload.</div>
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="f-end">
+                Término
+              </label>
+              <input
+                id="f-end"
+                className="input"
+                type="datetime-local"
+                value={endedAt}
+                onChange={(e) => setEndedAt(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="field">
-            <label className="field-label" htmlFor="f-end">
-              Término
-            </label>
-            <input
-              id="f-end"
-              className="input"
-              type="datetime-local"
-              value={endedAt}
-              onChange={(e) => setEndedAt(e.target.value)}
-            />
-          </div>
-        </div>
+        )}
 
         <ChipField
           id="p-input"
@@ -382,7 +537,7 @@ export default function UploadMeetingPage() {
 
         <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
           <button className="btn btn-primary" type="submit">
-            Enviar e analisar
+            {isBatchForm ? `Enviar ${files.length} transcrições` : "Enviar e analisar"}
           </button>
           <button className="btn btn-ghost" type="button" onClick={() => router.back()}>
             Cancelar
@@ -419,11 +574,11 @@ function Breadcrumb() {
 }
 
 // ---------------------------------------------------------------------------
-// Dropzone — drag & drop + clique pra escolher arquivo
+// Dropzone — drag & drop + clique pra escolher arquivos (1 ou varios)
 // ---------------------------------------------------------------------------
 
 interface DropzoneProps {
-  file: File | null;
+  files: File[];
   isOver: boolean;
   inputRef: React.RefObject<HTMLInputElement>;
   onOver: (over: boolean) => void;
@@ -431,8 +586,9 @@ interface DropzoneProps {
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-function Dropzone({ file, isOver, inputRef, onOver, onDrop, onFileChange }: DropzoneProps) {
-  const hasFile = file !== null;
+function Dropzone({ files, isOver, inputRef, onOver, onDrop, onFileChange }: DropzoneProps) {
+  const hasFile = files.length > 0;
+  const single = files.length === 1 ? files[0] : null;
   const open = () => inputRef.current?.click();
 
   const border = isOver
@@ -450,7 +606,7 @@ function Dropzone({ file, isOver, inputRef, onOver, onDrop, onFileChange }: Drop
     <div
       role="button"
       tabIndex={0}
-      aria-label="Selecionar arquivo de transcrição"
+      aria-label="Selecionar arquivos de transcrição"
       onClick={open}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -501,20 +657,118 @@ function Dropzone({ file, isOver, inputRef, onOver, onDrop, onFileChange }: Drop
         <line x1="12" y1="3" x2="12" y2="15" />
       </svg>
       <div style={{ fontSize: 13.5, color: "var(--ink)", fontWeight: 500 }}>
-        {hasFile ? file.name : "Arraste a transcrição aqui ou clique pra escolher"}
+        {single
+          ? single.name
+          : hasFile
+            ? `${files.length} arquivos selecionados`
+            : "Arraste as transcrições aqui ou clique pra escolher"}
       </div>
       <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
-        {hasFile
-          ? `${(file.size / 1024).toFixed(1)} KB · clique pra trocar`
-          : ".txt · .vtt · .srt — até 10 MB"}
+        {single
+          ? `${(single.size / 1024).toFixed(1)} KB · clique pra trocar`
+          : hasFile
+            ? "arraste mais ou clique pra adicionar"
+            : ".txt · .vtt · .srt — até 10 MB cada"}
       </div>
       <input
         ref={inputRef}
         type="file"
+        multiple
         accept=".txt,.vtt,.srt,text/plain"
         onChange={onFileChange}
         style={{ display: "none" }}
       />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FileList — arquivos do lote no form (nome, tamanho, formato, remover)
+// ---------------------------------------------------------------------------
+
+function FileList({ files, onRemove }: { files: File[]; onRemove: (index: number) => void }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {files.map((f, i) => (
+        <div
+          key={`${f.name}-${f.size}`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "8px 10px",
+            background: "var(--canvas)",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              color: "var(--muted)",
+              background: "var(--chip)",
+              borderRadius: 5,
+              padding: "2px 7px",
+              flexShrink: 0,
+            }}
+          >
+            {detectFormat(f.name)}
+          </span>
+          <span
+            style={{
+              fontSize: 13,
+              color: "var(--ink)",
+              flex: 1,
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {f.name}
+          </span>
+          <span style={{ fontSize: 11.5, color: "var(--muted)", flexShrink: 0 }}>
+            {(f.size / 1024).toFixed(1)} KB
+          </span>
+          <button
+            type="button"
+            aria-label={`Remover ${f.name}`}
+            onClick={() => onRemove(i)}
+            style={{
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              color: "var(--muted)",
+              display: "grid",
+              placeItems: "center",
+              width: 20,
+              height: 20,
+              padding: 0,
+              borderRadius: "50%",
+              flexShrink: 0,
+            }}
+          >
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+      ))}
+      <div className="field-help">
+        O título de cada reunião vem do nome do arquivo. Idioma, participantes e tags valem
+        para todas.
+      </div>
     </div>
   );
 }
@@ -745,21 +999,7 @@ function StatusCard({
         {live.label}
       </div>
 
-      {flowsHint === "has-flows" && (
-        <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0, maxWidth: 400, lineHeight: 1.55 }}>
-          Seus fluxos ativos serão executados quando a análise terminar.
-        </p>
-      )}
-      {flowsHint === "no-flows" && (
-        <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0, maxWidth: 400, lineHeight: 1.55 }}>
-          Para receber um aviso ao fim da análise, crie um fluxo com o gatilho
-          &quot;Reunião analisada&quot; em{" "}
-          <Link href={"/fluxos" as Route} style={{ color: "var(--accent-ink)", textDecoration: "underline", textUnderlineOffset: 2 }}>
-            Fluxos
-          </Link>
-          .
-        </p>
-      )}
+      <FlowsHintNote hint={flowsHint} />
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", paddingTop: 4 }}>
         {phase === "completed" && meetingId && (
@@ -789,6 +1029,190 @@ function StatusCard({
         </Link>
       )}
     </CardFrame>
+  );
+}
+
+/**
+ * Dica de notificacao via Flows — compartilhada entre o card single e o card
+ * do lote. `plural` ajusta a frase pro caso de varias analises.
+ */
+function FlowsHintNote({ hint, plural = false }: { hint: FlowsHint; plural?: boolean }) {
+  const noteStyle: React.CSSProperties = {
+    fontSize: 12.5,
+    color: "var(--muted)",
+    margin: 0,
+    maxWidth: 400,
+    lineHeight: 1.55,
+  };
+  if (hint === "has-flows") {
+    return (
+      <p style={noteStyle}>
+        {plural
+          ? "Seus fluxos ativos serão executados quando cada análise terminar."
+          : "Seus fluxos ativos serão executados quando a análise terminar."}
+      </p>
+    );
+  }
+  if (hint === "no-flows") {
+    return (
+      <p style={noteStyle}>
+        {plural
+          ? "Para receber um aviso ao fim de cada análise, crie um fluxo com o gatilho "
+          : "Para receber um aviso ao fim da análise, crie um fluxo com o gatilho "}
+        &quot;Reunião analisada&quot; em{" "}
+        <Link
+          href={"/fluxos" as Route}
+          style={{ color: "var(--accent-ink)", textDecoration: "underline", textUnderlineOffset: 2 }}
+        >
+          Fluxos
+        </Link>
+        .
+      </p>
+    );
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// BatchCard — progresso do lote (2+ arquivos): por-arquivo + resumo final.
+// Sem polling de status das N reunioes — as analises seguem em segundo plano
+// e o Inicio (polling de PROCESSING) acompanha o progresso.
+// ---------------------------------------------------------------------------
+
+interface BatchCardProps {
+  items: BatchItem[];
+  flowsHint: FlowsHint;
+  onRetryItem: (item: BatchItem) => void;
+  onSendMore: () => void;
+}
+
+function BatchCard({ items, flowsHint, onRetryItem, onSendMore }: BatchCardProps) {
+  const sent = items.filter((i) => i.status === "done").length;
+  const failed = items.filter((i) => i.status === "error").length;
+  const settled = sent + failed === items.length;
+
+  const icon = !settled ? (
+    <Spinner tone="accent" />
+  ) : sent > 0 ? (
+    <SignalIcon tone="success" kind="check" />
+  ) : (
+    <SignalIcon tone="danger" kind="x" />
+  );
+
+  const title = !settled
+    ? `Enviando transcrições… (${sent + failed} de ${items.length})`
+    : sent === 0
+      ? "Nenhuma transcrição foi enviada."
+      : sent === 1
+        ? "1 transcrição enviada."
+        : `${sent} transcrições enviadas.`;
+
+  const subtitle = !settled
+    ? undefined
+    : sent === 0
+      ? "Todos os envios falharam. Tente de novo por arquivo abaixo."
+      : "As análises continuam em segundo plano — o Início acompanha o progresso de cada uma.";
+
+  return (
+    <CardFrame icon={icon} title={title} subtitle={subtitle}>
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 440,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          textAlign: "left",
+        }}
+      >
+        {items.map((item) => (
+          <BatchRow
+            key={item.id}
+            item={item}
+            settled={settled}
+            onRetry={() => onRetryItem(item)}
+          />
+        ))}
+      </div>
+
+      {settled && sent > 0 && <FlowsHintNote hint={flowsHint} plural />}
+
+      {settled && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", paddingTop: 4 }}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onSendMore}>
+            Enviar mais
+          </button>
+          <Link className="btn btn-ghost btn-sm" href={"/dashboard" as Route}>
+            Ir para o Início
+          </Link>
+        </div>
+      )}
+    </CardFrame>
+  );
+}
+
+function BatchRow({
+  item,
+  settled,
+  onRetry,
+}: {
+  item: BatchItem;
+  settled: boolean;
+  onRetry: () => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        padding: "9px 12px",
+        background: "var(--canvas)",
+      }}
+    >
+      <span style={{ flexShrink: 0, width: 14, display: "grid", placeItems: "center" }}>
+        {item.status === "queued" && <MiniSpinner tone="muted" />}
+        {item.status === "uploading" && <MiniSpinner tone="accent" />}
+        {item.status === "done" && <MiniCheck />}
+        {item.status === "error" && <MiniX />}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 12.5,
+            color: "var(--ink)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {item.file.name}
+        </div>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: item.status === "error" ? "var(--danger)" : "var(--muted)",
+          }}
+        >
+          {item.status === "queued" && "Na fila…"}
+          {item.status === "uploading" && "Enviando…"}
+          {item.status === "done" && "Enviado"}
+          {item.status === "error" && (item.error ?? "Falha no upload.")}
+        </div>
+      </div>
+      {item.status === "error" && settled && (
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={onRetry}
+          style={{ flexShrink: 0 }}
+        >
+          Tentar de novo
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -883,6 +1307,24 @@ function MiniCheck() {
       style={{ flexShrink: 0 }}
     >
       <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function MiniX() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="var(--danger)"
+      strokeWidth="2.6"
+      strokeLinecap="round"
+      aria-hidden="true"
+      style={{ flexShrink: 0 }}
+    >
+      <path d="M6 6l12 12M18 6L6 18" />
     </svg>
   );
 }
