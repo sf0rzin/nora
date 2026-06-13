@@ -178,6 +178,39 @@ export interface ApiError {
   details?: { field: string; issue: string }[];
 }
 
+// ---------- Split de transcrição (arquivo .txt com várias reuniões) ----------
+
+/**
+ * Um segmento detectado pelo `POST /meetings/split-preview`. `startLine` e
+ * `endLine` são 1-based e INCLUSIVOS sobre o arquivo ORIGINAL — o fatiamento
+ * real é feito client-side após a confirmação do usuário. `preview` já vem
+ * redigido pelo PII Shield do worker (nunca PII crua).
+ */
+export interface SplitSegment {
+  index: number;
+  title: string;
+  startLine: number;
+  endLine: number;
+  /** 0..1 — abaixo de 0.7 a UI sugere conferir a divisão. */
+  confidence: number;
+  preview: string;
+}
+
+export interface SplitPreviewMetadata {
+  modelVersion: string;
+  promptVersion: string;
+  tokensInput: number;
+  tokensOutput: number;
+  processingMillis: number;
+  piiRedactionsApplied: number;
+}
+
+export interface SplitPreviewResponse {
+  segments: SplitSegment[];
+  totalLines: number;
+  metadata: SplitPreviewMetadata;
+}
+
 // ---------- Conta & Workspace (settings — Conta/Segurança/Workspace) ----------
 
 /** Usuário autenticado (GET /auth/me; PATCH /users/me devolve o mesmo shape). */
