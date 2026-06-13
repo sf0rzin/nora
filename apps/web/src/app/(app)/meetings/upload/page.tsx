@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * Upload de reuniao (Subfase 1.3 U)
@@ -48,8 +48,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Route } from "next";
-import { ApiRequestError, getMeeting, listWorkflows, uploadMeeting } from "@/lib/api/client";
-import type { ProcessingStatus } from "@/lib/api/types";
+import { ApiRequestError, getMeeting, listWorkflows, splitPreview, uploadMeeting } from "@/lib/api/client";
+import type { ProcessingStatus, SplitSegment } from "@/lib/api/types";
 
 type Format = "TXT" | "VTT" | "SRT";
 
@@ -65,8 +65,10 @@ const POLL_INTERVAL_MS = 2_000;
 const MAX_POLLS = 150;
 /** Uploads simultaneos no modo lote — 2 evita rajada de POSTs no backend. */
 const BATCH_CONCURRENCY = 2;
+/** Limiar de confianca abaixo do qual mostramos o badge ambar de aviso. */
+const SPLIT_CONFIDENCE_WARN = 0.7;
 
-type Phase = "form" | "uploading" | "polling" | "completed" | "failed" | "timeout";
+type Phase = "form" | "split-loading" | "split-confirm" | "uploading" | "polling" | "completed" | "failed" | "timeout";
 
 /** Estado da dica de notificacao via Flows no card pos-envio. */
 type FlowsHint = "loading" | "has-flows" | "no-flows" | "unavailable";
@@ -80,6 +82,42 @@ interface BatchItem {
   format: Format;
   status: "queued" | "uploading" | "done" | "error";
   error?: string;
+}
+
+/**
+ * Estado de um segmento na tela de confirmacao do split. Titulo editavel +
+ * flag included (default true).
+ */
+interface ConfirmSegment {
+  index: number;
+  title: string;
+  startLine: number;
+  endLine: number;
+  confidence: number;
+  preview: string;
+  included: boolean;
+}
+
+/** Converte titulo em slug seguro para nome de arquivo (.txt). */
+function slugify(title: string): string {
+  return (
+    title
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'segmento'
+  );
+}
+
+/**
+ * Fatia o arquivo original pelo intervalo de linhas (1-based, inclusivo).
+ * Normaliza CRLF antes do split.
+ */
+function sliceFileLines(text: string, startLine: number, endLine: number): string {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  return lines.slice(startLine - 1, endLine).join("\n");
 }
 
 function detectFormat(fileName: string): Format {
@@ -117,9 +155,30 @@ export default function UploadMeetingPage() {
   // Lote (2+ arquivos). `null` = fora do modo lote; o array existe a partir
   // do submit e guarda o progresso de cada arquivo.
   const [batchItems, setBatchItems] = useState<BatchItem[] | null>(null);
+  // Toggle "separar automaticamente" — visivel so com 1 .txt selecionado.
+  const [splitEnabled, setSplitEnabled] = useState(false);
+
+  // Segmentos da tela de confirmacao do split.
+  const [splitSegments, setSplitSegments] = useState<ConfirmSegment[] | null>(null);
+  // Guard do "Criar N reunioes": ref pro bloqueio sincrono (duplo-clique /
+  // race pos-cancelamento) + state pro feedback visual (botao desabilitado).
+  const splitSubmittingRef = useRef(false);
+  const [splitSubmitting, setSplitSubmitting] = useState(false);
 
   // Counter vive em ref pra nao recriar o interval a cada tick.
   const pollCountRef = useRef(0);
+  // O toggle split so aparece com exatamente 1 arquivo .txt.
+  const singleTxtFile =
+    files.length === 1 && files[0].name.toLowerCase().endsWith(".txt")
+      ? files[0]
+      : null;
+
+  // Quando o arquivo muda para nao-.txt ou 2+, desabilita o toggle.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!singleTxtFile) setSplitEnabled(false);
+  }, [singleTxtFile]);
+
 
   /** Espelha titulo/formato pro arquivo unico (comportamento single de sempre). */
   function applySingleDefaults(f: File, opts?: { overwriteTitle?: boolean }) {
@@ -165,6 +224,89 @@ export default function UploadMeetingPage() {
     e.preventDefault();
     setIsOver(false);
     applyFiles(Array.from(e.dataTransfer.files ?? []));
+  }
+
+  // ---------- Split-preview ----------
+
+  async function callSplitPreview() {
+    if (!singleTxtFile) return;
+    setPhase("split-loading");
+    setFormError(null);
+    try {
+      const result = await splitPreview(singleTxtFile, language);
+      const segments: ConfirmSegment[] = result.segments.map((s: SplitSegment) => ({
+        index: s.index,
+        title: s.title,
+        startLine: s.startLine,
+        endLine: s.endLine,
+        confidence: s.confidence,
+        preview: s.preview,
+        included: true,
+      }));
+      setSplitSegments(segments);
+      setPhase("split-confirm");
+    } catch (err) {
+      const msg = err instanceof ApiRequestError ? err.message : "Falha ao analisar o arquivo.";
+      setFormError(msg);
+      setPhase("form");
+    }
+  }
+
+  /** Volta da tela de confirmacao pro form com o arquivo mantido. */
+  function cancelSplitConfirm() {
+    // Libera o guard: um confirmSplit em voo (await text()) ve o ref false e
+    // aborta antes de disparar uploads-fantasma.
+    splitSubmittingRef.current = false;
+    setSplitSubmitting(false);
+    setSplitSegments(null);
+    setPhase("form");
+  }
+
+  /**
+   * Confirma o split: fatia o arquivo client-side e injeta os segmentos no
+   * pool de lote do #253 (mesmo pool, mesma concorrencia, mesmo card).
+   */
+  async function confirmSplit(segments: ConfirmSegment[]) {
+    if (!singleTxtFile) return;
+    const included = segments.filter((s) => s.included);
+    if (included.length === 0) return;
+    // Guard sincrono: bloqueia duplo-clique no "Criar N reunioes" (cada clique
+    // dispararia um runBatch e duplicaria os uploads). Setado ANTES do await.
+    if (splitSubmittingRef.current) return;
+    splitSubmittingRef.current = true;
+    setSplitSubmitting(true);
+
+    const text = await singleTxtFile.text();
+    // Cancelado durante a leitura (usuario clicou "Voltar")? Aborta sem upload.
+    if (!splitSubmittingRef.current) return;
+
+    // Desambigua nomes: dois segmentos com titulos que geram o mesmo slug
+    // (ex.: "Reuniao" e "reuniao") nao podem virar o mesmo arquivo. O lote
+    // rastreia por id, mas nomes iguais confundiriam o card de progresso.
+    const usedNames = new Set<string>();
+    const items: BatchItem[] = included.map((seg, idx) => {
+      const segText = sliceFileLines(text, seg.startLine, seg.endLine);
+      const blob = new Blob([segText], { type: "text/plain" });
+      const base = slugify(seg.title);
+      let fileName = `${base}.txt`;
+      let n = 2;
+      while (usedNames.has(fileName)) fileName = `${base}-${n++}.txt`;
+      usedNames.add(fileName);
+      const file = new File([blob], fileName, { type: "text/plain" });
+      return {
+        id: idx,
+        file,
+        title: seg.title,
+        format: "TXT" as Format,
+        status: "queued" as const,
+      };
+    });
+
+    splitSubmittingRef.current = false;
+    setSplitSubmitting(false);
+    setBatchItems(items);
+    setSplitSegments(null);
+    void runBatch(items);
   }
 
   // ---------- Lote: envio com concorrencia limitada + retry individual ----------
@@ -228,6 +370,11 @@ export default function UploadMeetingPage() {
     setFormError(null);
     if (files.length === 0) {
       setFormError("Selecione pelo menos um arquivo de transcrição.");
+      return;
+    }
+    // 1 arquivo .txt com split habilitado: tela de confirmacao.
+    if (files.length === 1 && splitEnabled && singleTxtFile) {
+      await callSplitPreview();
       return;
     }
     if (files.length >= 2) {
@@ -324,7 +471,7 @@ export default function UploadMeetingPage() {
   const [flowsHint, setFlowsHint] = useState<FlowsHint>("loading");
   const flowsHintFetchedRef = useRef(false);
   useEffect(() => {
-    const postUploadSingle = phase !== "form" && phase !== "uploading" && meetingId !== null;
+    const postUploadSingle = phase !== "form" && phase !== "uploading" && phase !== "split-loading" && phase !== "split-confirm" && meetingId !== null;
     if (!postUploadSingle && batchItems === null) return;
     if (flowsHintFetchedRef.current) return;
     flowsHintFetchedRef.current = true;
@@ -367,6 +514,38 @@ export default function UploadMeetingPage() {
 
   // ---------- Render ----------
 
+  // Split-loading: spinner enquanto aguarda o split-preview.
+  if (phase === "split-loading") {
+    return (
+      <div className="page page--narrow" style={{ maxWidth: 680 }}>
+        <Breadcrumb />
+        <CardFrame icon={<Spinner tone="accent" />} title="Procurando as fronteiras entre as reuniões…">
+          <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>
+            Pode levar alguns instantes — estamos lendo o arquivo inteiro.
+          </p>
+        </CardFrame>
+      </div>
+    );
+  }
+
+  // Split-confirm: tela de revisao dos segmentos detectados.
+  if (phase === "split-confirm" && splitSegments !== null) {
+    return (
+      <div className="page page--narrow" style={{ maxWidth: 680 }}>
+        <Breadcrumb />
+        <SplitConfirmScreen
+          segments={splitSegments}
+          onChange={setSplitSegments}
+          onConfirm={confirmSplit}
+          onCancel={cancelSplitConfirm}
+          file={singleTxtFile}
+          language={language}
+          submitting={splitSubmitting}
+        />
+      </div>
+    );
+  }
+
   // Modo lote tem precedencia: `batchItems` so existe apos o submit com 2+
   // arquivos (phase fica em "form" — a maquina single nao roda no lote).
   if (batchItems) {
@@ -388,7 +567,7 @@ export default function UploadMeetingPage() {
       <div className="page page--narrow" style={{ maxWidth: 680 }}>
         <Breadcrumb />
         <StatusCard
-          phase={phase}
+          phase={phase as Exclude<typeof phase, "split-loading" | "split-confirm" | "form">}
           status={pollingStatus}
           meetingId={meetingId}
           meetingTitle={title}
@@ -429,6 +608,14 @@ export default function UploadMeetingPage() {
         />
 
         {isBatchForm && <FileList files={files} onRemove={removeFile} />}
+
+        {/* Toggle de split — visivel so com 1 arquivo .txt */}
+        {singleTxtFile && !isBatchForm && (
+          <SplitToggle
+            checked={splitEnabled}
+            onChange={setSplitEnabled}
+          />
+        )}
 
         {!isBatchForm && (
           <div className="field">
@@ -537,13 +724,224 @@ export default function UploadMeetingPage() {
 
         <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
           <button className="btn btn-primary" type="submit">
-            {isBatchForm ? `Enviar ${files.length} transcrições` : "Enviar e analisar"}
+            {isBatchForm
+              ? `Enviar ${files.length} transcrições`
+              : splitEnabled && singleTxtFile
+                ? "Analisar e separar"
+                : "Enviar e analisar"}
           </button>
           <button className="btn btn-ghost" type="button" onClick={() => router.back()}>
             Cancelar
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SplitToggle — checkbox discreto para habilitar a separacao automatica
+// ---------------------------------------------------------------------------
+
+function SplitToggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 12px",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        background: checked ? "color-mix(in oklch, var(--accent) 8%, var(--canvas))" : "var(--canvas)",
+        cursor: "pointer",
+        transition: "background 120ms ease",
+        userSelect: "none",
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ width: 15, height: 15, accentColor: "var(--accent)", flexShrink: 0 }}
+      />
+      <span style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.4 }}>
+        Este arquivo contém várias reuniões — separar automaticamente
+      </span>
+    </label>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SplitConfirmScreen — tela de revisao dos segmentos detectados
+// ---------------------------------------------------------------------------
+
+function SplitConfirmScreen({
+  segments,
+  onChange,
+  onConfirm,
+  onCancel,
+  file,
+  submitting,
+}: {
+  segments: ConfirmSegment[];
+  onChange: (segs: ConfirmSegment[]) => void;
+  onConfirm: (segs: ConfirmSegment[]) => Promise<void>;
+  onCancel: () => void;
+  file: File | null;
+  language: string;
+  submitting: boolean;
+}) {
+  const includedCount = segments.filter((s) => s.included).length;
+
+  function patchSegment(index: number, patch: Partial<ConfirmSegment>) {
+    onChange(segments.map((s) => (s.index === index ? { ...s, ...patch } : s)));
+  }
+
+  if (segments.length === 1) {
+    return (
+      <CardFrame
+        icon={<SignalIcon tone="warn" kind="clock" />}
+        title="Parece ser uma reunião única."
+        subtitle={file ? ('Não encontramos divisões claras em "' + file.name + '".') : undefined}
+      >
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={submitting}
+            onClick={() => void onConfirm(segments)}
+          >
+            Enviar como uma reunião
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
+            Voltar
+          </button>
+        </div>
+      </CardFrame>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div>
+        <h2 className="h1" style={{ fontSize: 22, marginBottom: 6 }}>
+          Encontramos {segments.length} reuniões neste arquivo.
+        </h2>
+        <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>
+          Revise os títulos e confirme quais deseja criar. Idioma, participantes e tags do
+          formulário valem para todas.
+        </p>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {segments.map((seg) => (
+          <SegmentCard key={seg.index} segment={seg} onPatch={patchSegment} />
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={includedCount === 0 || submitting}
+          onClick={() => void onConfirm(segments)}
+        >
+          {includedCount === 0
+            ? "Selecione ao menos uma reunião"
+            : ("Criar " + includedCount + " " + (includedCount === 1 ? "reunião" : "reuniões"))}
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SegmentCard — um segmento editavel na tela de confirmacao
+// ---------------------------------------------------------------------------
+
+function SegmentCard({ segment, onPatch }: { segment: ConfirmSegment; onPatch: (index: number, patch: Partial<ConfirmSegment>) => void }) {
+  const lowConfidence = segment.confidence < SPLIT_CONFIDENCE_WARN;
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        background: "var(--canvas)",
+        padding: "14px 16px",
+        opacity: segment.included ? 1 : 0.5,
+        transition: "opacity 140ms ease",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <input
+          type="checkbox"
+          checked={segment.included}
+          onChange={(e) => onPatch(segment.index, { included: e.target.checked })}
+          aria-label={"Incluir " + segment.title}
+          style={{ width: 15, height: 15, accentColor: "var(--accent)", flexShrink: 0 }}
+        />
+        <input
+          type="text"
+          value={segment.title}
+          onChange={(e) => onPatch(segment.index, { title: e.target.value })}
+          disabled={!segment.included}
+          aria-label="Título da reunião"
+          style={{
+            flex: 1,
+            border: "none",
+            outline: "none",
+            background: "transparent",
+            fontFamily: "var(--sans)",
+            fontSize: 13.5,
+            fontWeight: 500,
+            color: "var(--ink)",
+            padding: 0,
+          }}
+        />
+        {lowConfidence && (
+          <span
+            title="A divisão aqui pode não ser precisa — confira as linhas antes de confirmar."
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: "0.03em",
+              color: "var(--warn)",
+              background: "color-mix(in oklch, var(--warn) 14%, var(--canvas))",
+              borderRadius: 999,
+              padding: "2px 8px",
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+            }}
+          >
+            confira esta divisão
+          </span>
+        )}
+      </div>
+
+      <div style={{ paddingLeft: 25 }}>
+        <p
+          style={{
+            fontSize: 12.5,
+            color: "var(--muted)",
+            margin: "0 0 4px",
+            lineHeight: 1.55,
+            display: "-webkit-box",
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {segment.preview}
+        </p>
+        <span style={{ fontSize: 11.5, color: "var(--muted)", opacity: 0.7 }}>
+          linhas {segment.startLine}–{segment.endLine}
+        </span>
+      </div>
     </div>
   );
 }
@@ -907,7 +1305,7 @@ function ChipField({ id, label, help, placeholder, values, onChange }: ChipField
 // ---------------------------------------------------------------------------
 
 interface StatusCardProps {
-  phase: Exclude<Phase, "form">;
+  phase: Exclude<Phase, "form" | "split-loading" | "split-confirm">;
   status: ProcessingStatus;
   meetingId: string | null;
   meetingTitle: string;
@@ -1417,3 +1815,6 @@ function SignalIcon({
     </span>
   );
 }
+
+
+

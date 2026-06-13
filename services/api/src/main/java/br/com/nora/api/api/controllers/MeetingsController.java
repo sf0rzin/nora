@@ -207,8 +207,13 @@ public class MeetingsController {
                 meetingResource(principal.tenantId(), null));
 
         requireTxtFile(file);
-        // Reusa as mesmas defesas do upload normal: cap de 10MB, filename safety,
-        // content-type e magic bytes (binario disfarcado de .txt).
+        // Pre-checa o tamanho ANTES do readFile: o readFile lanca
+        // IllegalArgumentException (mascarada como "Invalid request." em ingles),
+        // mas aqui queremos uma mensagem PT-BR clara (413). As demais defesas do
+        // upload normal (filename safety, content-type, magic bytes) seguem no readFile.
+        if (file != null && file.getSize() > MAX_UPLOAD_BYTES) {
+            throw new MeetingException.FileTooLarge(MAX_UPLOAD_BYTES / (1024 * 1024));
+        }
         String transcript = readFile(file);
 
         SplitDtos.SplitResponse response =
