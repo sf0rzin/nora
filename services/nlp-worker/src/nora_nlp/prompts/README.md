@@ -16,3 +16,5 @@ Cada arquivo `.md` aqui é um prompt versionado. Mudança de comportamento exige
 |---|---|---|
 | Meeting Analysis | v1 | `meeting-analysis-v1.schema.json` |
 | PII Shield | v1 | `pii-redaction-v1.schema.json` |
+| Live Highlights | v1 | inline em `live_analyzer._build_json_schema_for_live` |
+| Meeting Split | v1 | inline em `split_analyzer._build_json_schema_for_split` |
