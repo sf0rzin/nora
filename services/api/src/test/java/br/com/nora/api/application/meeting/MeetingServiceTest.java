@@ -165,6 +165,49 @@ class MeetingServiceTest {
         assertThat(all.stream().map(Meeting::tenantId).distinct().toList()).containsExactly(tenant);
     }
 
+    @Test
+    void reprocessFromCompletedResetsToPending() {
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "done", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        // Transição válida até COMPLETED (PENDING -> PROCESSING -> COMPLETED).
+        meetingRepo.save(
+                m.withStatus(ProcessingStatus.PROCESSING).withStatus(ProcessingStatus.COMPLETED));
+
+        Meeting reprocessed = service.reprocess(m.id(), tenant);
+
+        assertThat(reprocessed.processingStatus()).isEqualTo(ProcessingStatus.PENDING);
+    }
+
+    @Test
+    void reprocessFromFailedResetsToPending() {
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "failed", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        meetingRepo.save(m.withStatus(ProcessingStatus.FAILED));
+
+        Meeting reprocessed = service.reprocess(m.id(), tenant);
+
+        assertThat(reprocessed.processingStatus()).isEqualTo(ProcessingStatus.PENDING);
+    }
+
+    @Test
+    void reprocessRejectedWhileProcessing() {
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "busy", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        meetingRepo.save(m.withStatus(ProcessingStatus.PROCESSING));
+
+        assertThatThrownBy(() -> service.reprocess(m.id(), tenant))
+                .isInstanceOf(MeetingException.CannotReprocess.class);
+    }
+
     /* ---------- in-memory fakes ---------- */
 
     static final class InMemoryMeetingRepo implements MeetingRepository {

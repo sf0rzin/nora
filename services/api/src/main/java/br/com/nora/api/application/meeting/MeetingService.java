@@ -189,11 +189,14 @@ public class MeetingService {
                 meetings.findByIdAndTenant(meetingId, tenantId)
                         .orElseThrow(MeetingException.NotFound::new);
         authorize.accept(meeting);
-        if (meeting.processingStatus() != ProcessingStatus.FAILED) {
+        // Reprocessar é válido a partir de qualquer estado terminal/de espera (FAILED, COMPLETED
+        // -> "reanalisar", PENDING -> "analisar agora"). Só PROCESSING é barrado: a análise já está
+        // em andamento e reagendar criaria uma execução concorrente sobre o mesmo meeting.
+        if (meeting.processingStatus() == ProcessingStatus.PROCESSING) {
             throw new MeetingException.CannotReprocess(
-                    "Only meetings in FAILED status can be reprocessed. Current status: "
-                            + meeting.processingStatus());
+                    "A análise já está em andamento; aguarde concluir antes de reprocessar.");
         }
+        ProcessingStatus previousStatus = meeting.processingStatus();
         Meeting updated = meeting.withStatus(ProcessingStatus.PENDING);
         meetings.save(updated);
         audit.record(
@@ -202,7 +205,7 @@ public class MeetingService {
                 "meeting.reprocessed",
                 "MEETING",
                 meetingId,
-                Map.of("previousStatus", "FAILED"));
+                Map.of("previousStatus", previousStatus.name()));
         scheduleAnalysisAfterCommit(meetingId, tenantId);
         return updated;
     }
