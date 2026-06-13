@@ -236,6 +236,15 @@ jobs:
     needs: [changes, api, worker, web, admin]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !cancelled()
     runs-on: ubuntu-latest
+    # Serializa com o job `deploy` do deploy-infra.yml (mesmo grupo). Ambos fazem
+    # operacao de escrita no MESMO Container App (aqui via `az containerapp update`,
+    # la via `az deployment group create`). Sem isso, um merge que toca apps/** E
+    # infra/bicep/** dispara os dois workflows em paralelo e colide com
+    # `ContainerAppOperationInProgress`. cancel-in-progress:false enfileira em vez de
+    # cancelar, garantindo que o rollout sempre termine.
+    concurrency:
+      group: nora-azure-rollout-${{ github.ref }}
+      cancel-in-progress: false
     steps:
       - uses: azure/login@v3
         with:
