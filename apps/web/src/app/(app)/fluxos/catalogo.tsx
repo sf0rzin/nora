@@ -1,5 +1,5 @@
 /**
- * NORA Flows — catálogo de blocos do builder (Fase 1 + ações Google da Fase 2).
+ * NORA Flows — catálogo de blocos do builder (Fase 1 + ações de integração da Fase 2).
  *
  * Fonte única de verdade no front pros blocos que o engine aceita (ADR 0030).
  * O backend rejeita tipos desconhecidos, então NUNCA adicione um bloco aqui
@@ -115,6 +115,47 @@ export function IconeDiscord({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
+/** Círculo com "+" — ação "Criar issue no GitHub" (estilo issue aberta). */
+export function IconeGitHub({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 8.8v6.4M8.8 12h6.4" />
+    </svg>
+  );
+}
+
+/** Documento com linhas — ação "Criar página no Notion". */
+export function IconeNotion({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6M9 17h6" />
+    </svg>
+  );
+}
+
+/** Quadrado com check — ação "Criar tarefa no Todoist". */
+export function IconeTodoist({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <rect x="4" y="4" width="16" height="16" rx="3.5" />
+      <path d="m8.5 12.3 2.4 2.4 4.8-5" />
+    </svg>
+  );
+}
+
+/** Quadro kanban com três colunas — ação "Criar issue no Linear". */
+export function IconeLinear({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+      <path d="M9.2 4.5v15M14.8 4.5v15" />
+    </svg>
+  );
+}
+
 /** Prefixos válidos de webhook de canal do Discord — mesma regra do backend. */
 export const PREFIXOS_WEBHOOK_DISCORD = [
   "https://discord.com/api/webhooks/",
@@ -126,6 +167,11 @@ export function ehWebhookDiscord(valor: unknown): boolean {
   return (
     typeof valor === "string" && PREFIXOS_WEBHOOK_DISCORD.some((p) => valor.trim().startsWith(p))
   );
+}
+
+/** true quando o valor segue o formato owner/nome — mesma regra do backend. */
+export function ehRepoGitHub(valor: unknown): boolean {
+  return typeof valor === "string" && valor.trim().length > 0 && valor.trim().includes("/");
 }
 
 const PRIORIDADE_ROTULO: Record<string, string> = {
@@ -246,7 +292,59 @@ export const CATALOGO: BlocoMeta[] = [
           : "defina o webhook",
     Icone: IconeDiscord,
   },
+  {
+    kind: "action",
+    type: "github_create_issue",
+    nome: "Criar issue no GitHub",
+    descricao: "Abre issues no repositório — uma por action item",
+    paramsPadrao: { repo: "" },
+    resumo: (p) =>
+      ehRepoGitHub(p.repo)
+        ? `repo: ${String(p.repo).trim()}`
+        : typeof p.repo === "string" && p.repo.trim()
+          ? "use o formato owner/nome"
+          : "defina o repositório",
+    Icone: IconeGitHub,
+  },
+  {
+    kind: "action",
+    type: "notion_create_page",
+    nome: "Criar página no Notion",
+    descricao: "Cria uma página com resumo e action items da reunião",
+    paramsPadrao: { parentPageId: "" },
+    resumo: (p) =>
+      typeof p.parentPageId === "string" && p.parentPageId.trim()
+        ? `página: ${truncar(p.parentPageId.trim(), 12)}`
+        : "defina a página pai",
+    Icone: IconeNotion,
+  },
+  {
+    kind: "action",
+    type: "todoist_create_task",
+    nome: "Criar tarefa no Todoist",
+    descricao: "Uma tarefa no Inbox pra cada action item",
+    paramsPadrao: {},
+    resumo: () => "uma tarefa por action item",
+    Icone: IconeTodoist,
+  },
+  {
+    kind: "action",
+    type: "linear_create_issue",
+    nome: "Criar issue no Linear",
+    descricao: "Uma issue por action item no time escolhido",
+    paramsPadrao: { teamKey: "" },
+    resumo: (p) =>
+      typeof p.teamKey === "string" && p.teamKey.trim()
+        ? `time: ${p.teamKey.trim()}`
+        : "primeiro time do workspace",
+    Icone: IconeLinear,
+  },
 ];
+
+/** Trunca valores longos pro resumo do nó (ex.: ID de página do Notion). */
+function truncar(valor: string, max: number): string {
+  return valor.length > max ? `${valor.slice(0, max)}…` : valor;
+}
 
 /** Host da URL pro resumo do nó (ex.: "hooks.exemplo.com"). */
 function hostDaUrl(url: string): string {
