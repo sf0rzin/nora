@@ -269,8 +269,9 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
     if (gatilhos.length > 1) return "O fluxo só pode ter um gatilho — remova os extras.";
     if (!nodes.some((n) => n.data.kind === "action"))
       return "Adicione ao menos uma ação (ex.: “Enviar e-mail”).";
+    const tiposEmail = ["send_email", "gmail_send_email", "outlook_send_email"];
     const emailSemDestino = nodes.find((n) => {
-      if (n.data.blockType !== "send_email" && n.data.blockType !== "gmail_send_email") {
+      if (!tiposEmail.includes(n.data.blockType)) {
         return false;
       }
       const to = n.data.params.to;
@@ -312,6 +313,24 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
     if (notionSemPagina) {
       focarNo(notionSemPagina.id);
       return "A ação “Criar página no Notion” precisa do ID da página pai (código no fim da URL da página).";
+    }
+    const slackSemCanal = nodes.find((n) => {
+      if (n.data.blockType !== "slack_post_message") return false;
+      const channel = n.data.params.channel;
+      return typeof channel !== "string" || !channel.trim();
+    });
+    if (slackSemCanal) {
+      focarNo(slackSemCanal.id);
+      return "A ação “Postar no Slack” precisa do canal de destino no campo Canal (ex.: #vendas).";
+    }
+    const trelloSemLista = nodes.find((n) => {
+      if (n.data.blockType !== "trello_create_card") return false;
+      const listId = n.data.params.listId;
+      return typeof listId !== "string" || !listId.trim();
+    });
+    if (trelloSemLista) {
+      focarNo(trelloSemLista.id);
+      return "A ação “Criar card no Trello” precisa do ID da lista do board (abra o board com .json na URL pra ver os ids).";
     }
     return null;
   }
