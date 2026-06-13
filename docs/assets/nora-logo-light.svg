@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 80" role="img" aria-label="NORA">
+  <title>NORA</title>
+  <g fill="#15171a">
+    <rect x="14" y="24" width="12" height="32" rx="6"/>
+    <rect x="34" y="16" width="12" height="48" rx="6"/>
+    <rect x="54" y="8"  width="12" height="64" rx="6"/>
+    <rect x="74" y="16" width="12" height="48" rx="6"/>
+    <rect x="94" y="24" width="12" height="32" rx="6"/>
+    <text x="128" y="57" font-family="'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="50" font-weight="600" letter-spacing="-1">NORA</text>
+  </g>
+</svg>
