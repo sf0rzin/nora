@@ -14,6 +14,7 @@ import br.com.nora.api.api.dto.meeting.MeetingSearchResponse;
 import br.com.nora.api.api.dto.meeting.MeetingUploadMetadata;
 import br.com.nora.api.api.dto.meeting.MeetingUploadResponse;
 import br.com.nora.api.api.dto.meeting.ProductivityAssessmentResponse;
+import br.com.nora.api.api.dto.meeting.SplitPreviewDtos;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.analysis.AnalysisException;
 import br.com.nora.api.application.analysis.AnalysisService;
@@ -25,12 +26,14 @@ import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.meeting.MeetingGoalService;
 import br.com.nora.api.application.meeting.MeetingService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
+import br.com.nora.api.application.meeting.TranscriptSplitService;
 import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.customer.CustomerConfidenceAssessment;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
+import br.com.nora.api.infrastructure.nlp.SplitDtos;
 import br.com.nora.api.infrastructure.nlp.WorkerDtos;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -76,6 +79,7 @@ public class MeetingsController {
     private final MeetingGoalService meetingGoals;
     private final LiveAnalysisService liveAnalysis;
     private final CustomerConfidenceService customerConfidence;
+    private final TranscriptSplitService transcriptSplit;
     private final ObjectMapper objectMapper;
     private final Validator validator;
     private final AuthorizationService authz;
@@ -87,6 +91,7 @@ public class MeetingsController {
             MeetingGoalService meetingGoals,
             LiveAnalysisService liveAnalysis,
             CustomerConfidenceService customerConfidence,
+            TranscriptSplitService transcriptSplit,
             ObjectMapper objectMapper,
             Validator validator,
             AuthorizationService authz,
@@ -96,6 +101,7 @@ public class MeetingsController {
         this.meetingGoals = meetingGoals;
         this.liveAnalysis = liveAnalysis;
         this.customerConfidence = customerConfidence;
+        this.transcriptSplit = transcriptSplit;
         this.objectMapper = objectMapper;
         this.validator = validator;
         this.authz = authz;
@@ -178,6 +184,81 @@ public class MeetingsController {
                         saved.processingStatus().name(),
                         saved.createdAt());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(body);
+    }
+
+    /**
+     * Preview de separacao de um arquivo .txt com varias reunioes concatenadas. Chama o worker
+     * {@code /split} e devolve as fronteiras propostas ({@code startLine}/{@code endLine} 1-based
+     * sobre o arquivo original) + previews ja redigidos pelo PII Shield. NAO cria reuniao e NAO
+     * persiste nada — a confirmacao e o fatiamento sao client-side.
+     *
+     * <p>Aceita APENAS .txt por enquanto: VTT/SRT carregam timestamps/cues proprios e respondem 400
+     * com mensagem clara.
+     */
+    @PostMapping(value = "/split-preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public SplitPreviewDtos.SplitPreviewResponse splitPreview(
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(name = "language", required = false) String language) {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        authz.require(
+                principal.userId(),
+                principal.tenantId(),
+                "meeting:upload",
+                meetingResource(principal.tenantId(), null));
+
+        requireTxtFile(file);
+        // Reusa as mesmas defesas do upload normal: cap de 10MB, filename safety,
+        // content-type e magic bytes (binario disfarcado de .txt).
+        String transcript = readFile(file);
+
+        SplitDtos.SplitResponse response =
+                transcriptSplit.preview(principal.tenantId(), transcript, language);
+        return toApiSplitResponse(response);
+    }
+
+    /** Split-preview e .txt-only: VTT/SRT ficam para uma fatia futura. */
+    private static void requireTxtFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new MeetingException.EmptyTranscript();
+        }
+        String filename = file.getOriginalFilename();
+        if (filename == null || !filename.toLowerCase(java.util.Locale.ROOT).endsWith(".txt")) {
+            throw new MeetingException.SplitUnsupportedFormat();
+        }
+    }
+
+    private static SplitPreviewDtos.SplitPreviewResponse toApiSplitResponse(
+            SplitDtos.SplitResponse r) {
+        List<SplitPreviewDtos.SegmentDto> segments =
+                r.segments() == null
+                        ? List.of()
+                        : r.segments().stream()
+                                .map(
+                                        s ->
+                                                new SplitPreviewDtos.SegmentDto(
+                                                        s.index() == null ? 0 : s.index(),
+                                                        s.title(),
+                                                        s.startLine() == null ? 0 : s.startLine(),
+                                                        s.endLine() == null ? 0 : s.endLine(),
+                                                        s.confidence() == null
+                                                                ? 0.0
+                                                                : s.confidence(),
+                                                        s.preview()))
+                                .toList();
+        SplitDtos.SplitMetadata md =
+                r.metadata() != null
+                        ? r.metadata()
+                        : new SplitDtos.SplitMetadata("", "", 0, 0, 0, 0);
+        return new SplitPreviewDtos.SplitPreviewResponse(
+                segments,
+                r.totalLines() == null ? 0 : r.totalLines(),
+                new SplitPreviewDtos.MetadataDto(
+                        md.modelVersion(),
+                        md.promptVersion(),
+                        md.tokensInput() == null ? 0 : md.tokensInput(),
+                        md.tokensOutput() == null ? 0 : md.tokensOutput(),
+                        md.processingMillis() == null ? 0 : md.processingMillis(),
+                        md.piiRedactionsApplied() == null ? 0 : md.piiRedactionsApplied()));
     }
 
     @GetMapping
