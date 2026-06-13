@@ -7,7 +7,10 @@ public enum IntegrationProvider {
     GITHUB("github"),
     NOTION("notion"),
     TODOIST("todoist"),
-    LINEAR("linear");
+    LINEAR("linear"),
+    MICROSOFT("microsoft"),
+    TELEGRAM("telegram"),
+    TRELLO("trello");
 
     private final String wire;
 

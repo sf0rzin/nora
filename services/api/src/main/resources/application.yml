@@ -158,6 +158,18 @@ nora:
       client-id: ${LINEAR_OAUTH_CLIENT_ID:}
       client-secret: ${LINEAR_OAUTH_CLIENT_SECRET:}
       redirect-uri: ${LINEAR_OAUTH_REDIRECT_URI:http://localhost:8080/integrations/linear/oauth/callback}
+    # Onda 2 — três modelos de conexão diferentes:
+    # Microsoft (Outlook + Calendar): OAuth2 code-flow genérico COM refresh (offline_access).
+    microsoft:
+      client-id: ${MS_OAUTH_CLIENT_ID:}
+      client-secret: ${MS_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${MS_OAUTH_REDIRECT_URI:http://localhost:8080/integrations/microsoft/oauth/callback}
+    # Telegram: SEM OAuth — bot único do app; cada tenant pareia por código (deep link /start).
+    telegram:
+      bot-token: ${NORA_TELEGRAM_BOT_TOKEN:}
+    # Trello: SEM OAuth server-side — a key do app monta a URL de authorize; o usuário cola o token.
+    trello:
+      api-key: ${TRELLO_API_KEY:}
   worker:
     base-url: ${NLP_WORKER_BASE_URL:http://localhost:8001}
   speech:
