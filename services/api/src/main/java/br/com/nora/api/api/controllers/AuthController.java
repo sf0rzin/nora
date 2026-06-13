@@ -76,6 +76,13 @@ public class AuthController {
         this.rateLimiter = rateLimiter;
     }
 
+    /**
+     * Cliente web declara-se via header {@code X-NORA-Client: web} (recebe sessão só por cookie).
+     */
+    private static boolean isWebClient(HttpServletRequest req) {
+        return "web".equalsIgnoreCase(req.getHeader("X-NORA-Client"));
+    }
+
     @PostMapping("/signup")
     public ResponseEntity<SignupResponse> signup(
             @Valid @RequestBody SignupRequest req, HttpServletRequest httpReq) {
@@ -108,10 +115,14 @@ public class AuthController {
         }
         LoginResult result = authService.login(new LoginCommand(req.email(), req.password()));
 
+        // Cliente web (header X-NORA-Client: web) recebe a sessão SÓ via cookies httpOnly — os
+        // tokens ficam FORA do body pra um XSS não conseguir lê-los. Cliente nativo (desktop, sem
+        // o header) recebe os tokens no body (guarda no keyring; não usa cookie).
+        boolean nativeClient = !isWebClient(httpReq);
         LoginResponse body =
                 new LoginResponse(
-                        result.accessToken(),
-                        result.refreshTokenPlain(),
+                        nativeClient ? result.accessToken() : null,
+                        nativeClient ? result.refreshTokenPlain() : null,
                         "Bearer",
                         result.accessExpiresInSeconds(),
                         result.user().id(),
@@ -139,7 +150,8 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<RefreshResponse> refresh(HttpServletRequest req) {
         String refresh = readCookie(req, AuthCookies.REFRESH_COOKIE);
-        if (refresh == null || refresh.isBlank()) {
+        boolean fromCookie = refresh != null && !refresh.isBlank();
+        if (!fromCookie) {
             String bearer = req.getHeader("Authorization");
             if (bearer != null && bearer.startsWith("Bearer ")) {
                 refresh = bearer.substring(7);
@@ -160,12 +172,15 @@ public class AuthController {
                 cookies.buildRefreshCookie(
                         result.refreshTokenPlain(),
                         Duration.ofSeconds(result.refreshExpiresInSeconds())));
+        // Browser (refresh via cookie httpOnly): tokens NÃO voltam no body — um XSS não tem como
+        // apresentar o refresh por Bearer, então fica sem nada. Cliente nativo (Bearer): recebe no
+        // body (não usa cookie). Em ambos os casos os cookies foram reescritos acima.
         return ResponseEntity.ok()
                 .headers(headers)
                 .body(
                         new RefreshResponse(
-                                result.accessToken(),
-                                result.refreshTokenPlain(),
+                                fromCookie ? null : result.accessToken(),
+                                fromCookie ? null : result.refreshTokenPlain(),
                                 "Bearer",
                                 result.accessExpiresInSeconds()));
     }
