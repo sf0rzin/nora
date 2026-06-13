@@ -16,7 +16,14 @@ import type {
   WorkflowExecutionStatus,
 } from "@/lib/api/types";
 
-import { ehWebhookDiscord, IconeKind, KIND_META, metaDoBloco, PLACEHOLDERS_EMAIL } from "./catalogo";
+import {
+  ehRepoGitHub,
+  ehWebhookDiscord,
+  IconeKind,
+  KIND_META,
+  metaDoBloco,
+  PLACEHOLDERS_EMAIL,
+} from "./catalogo";
 import type { NoRF } from "./no-bloco";
 import { horaLog, tempoRelativo } from "./tempo-relativo";
 
@@ -33,11 +40,11 @@ function valorTexto(params: Record<string, unknown>, chave: string): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-/** Nota dos blocos Google: link pro hub de integrações. */
-function NotaRequerGoogle() {
+/** Nota dos blocos com OAuth: requer o provedor conectado no hub de integrações. */
+function NotaRequerIntegracao({ provedor }: { provedor: string }) {
   return (
     <div className="notice" style={{ fontSize: 12, lineHeight: 1.5 }}>
-      Requer Google conectado em{" "}
+      Requer {provedor} conectado em{" "}
       <Link
         href={"/integracoes" as Route}
         style={{ color: "var(--accent-ink)", textDecoration: "underline", textUnderlineOffset: 2 }}
@@ -204,7 +211,7 @@ function FormEvento({
 
   return (
     <>
-      <NotaRequerGoogle />
+      <NotaRequerIntegracao provedor="Google" />
 
       <div className="field">
         <label className="field-label" htmlFor="flows-evento-titulo">
@@ -359,6 +366,134 @@ function FormDiscord({
   );
 }
 
+/** Formulário do github_create_issue: repositório de destino (owner/nome). */
+function FormGitHub({
+  no,
+  mostrarErros,
+  onChange,
+}: {
+  no: NoRF;
+  mostrarErros: boolean;
+  onChange: (chave: string, valor: unknown) => void;
+}) {
+  const repo = valorTexto(no.data.params, "repo");
+  const invalido = mostrarErros && !ehRepoGitHub(repo);
+
+  return (
+    <>
+      <NotaRequerIntegracao provedor="GitHub" />
+      <div className="field">
+        <label className="field-label" htmlFor="flows-github-repo">
+          Repositório <span className="req">*</span>
+        </label>
+        <input
+          id="flows-github-repo"
+          className="input"
+          type="text"
+          placeholder="stratfy/nora"
+          value={repo}
+          onChange={(e) => onChange("repo", e.target.value)}
+          style={invalido ? { borderColor: "var(--danger)" } : undefined}
+        />
+        {invalido ? (
+          <span className="field-help is-err">Use o formato owner/nome (ex.: stratfy/nora).</span>
+        ) : (
+          <span className="field-help">
+            Uma issue por action item da reunião, com a label “nora”.
+          </span>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** Formulário do notion_create_page: ID da página pai. */
+function FormNotion({
+  no,
+  mostrarErros,
+  onChange,
+}: {
+  no: NoRF;
+  mostrarErros: boolean;
+  onChange: (chave: string, valor: unknown) => void;
+}) {
+  const parentPageId = valorTexto(no.data.params, "parentPageId");
+  const invalido = mostrarErros && !parentPageId.trim();
+
+  return (
+    <>
+      <NotaRequerIntegracao provedor="Notion" />
+      <div className="field">
+        <label className="field-label" htmlFor="flows-notion-pagina">
+          ID da página pai <span className="req">*</span>
+        </label>
+        <input
+          id="flows-notion-pagina"
+          className="input"
+          type="text"
+          placeholder="1f2d3c4b5a69708192a3b4c5d6e7f809"
+          value={parentPageId}
+          onChange={(e) => onChange("parentPageId", e.target.value)}
+          style={invalido ? { borderColor: "var(--danger)" } : undefined}
+        />
+        {invalido ? (
+          <span className="field-help is-err">
+            Informe o ID da página pai — a página nova nasce dentro dela.
+          </span>
+        ) : (
+          <span className="field-help">
+            É o código no fim da URL da página (Compartilhar → Copiar link). A página precisa estar
+            compartilhada com a integração NORA.
+          </span>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** Formulário do todoist_create_task: sem parâmetros — só a nota de conexão. */
+function FormTodoist() {
+  return (
+    <>
+      <NotaRequerIntegracao provedor="Todoist" />
+      <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0, lineHeight: 1.6 }}>
+        Sem parâmetros — cria uma tarefa no Inbox da sua conta pra cada action item da reunião.
+      </p>
+    </>
+  );
+}
+
+/** Formulário do linear_create_issue: chave do time (opcional). */
+function FormLinear({
+  no,
+  onChange,
+}: {
+  no: NoRF;
+  onChange: (chave: string, valor: unknown) => void;
+}) {
+  return (
+    <>
+      <NotaRequerIntegracao provedor="Linear" />
+      <div className="field">
+        <label className="field-label" htmlFor="flows-linear-team">
+          Chave do time (opcional)
+        </label>
+        <input
+          id="flows-linear-team"
+          className="input"
+          type="text"
+          placeholder="ENG"
+          value={valorTexto(no.data.params, "teamKey")}
+          onChange={(e) => onChange("teamKey", e.target.value)}
+        />
+        <span className="field-help">
+          Vazio usa o primeiro time do workspace. Uma issue por action item da reunião.
+        </span>
+      </div>
+    </>
+  );
+}
+
 /** Formulário de parâmetros por tipo de bloco. */
 function FormParams({
   no,
@@ -458,7 +593,7 @@ function FormParams({
   if (t === "gmail_send_email") {
     return (
       <>
-        <NotaRequerGoogle />
+        <NotaRequerIntegracao provedor="Google" />
         <FormEmail no={no} mostrarErros={mostrarErros} onChange={onChange} />
       </>
     );
@@ -474,6 +609,22 @@ function FormParams({
 
   if (t === "discord_post_message") {
     return <FormDiscord no={no} mostrarErros={mostrarErros} onChange={onChange} />;
+  }
+
+  if (t === "github_create_issue") {
+    return <FormGitHub no={no} mostrarErros={mostrarErros} onChange={onChange} />;
+  }
+
+  if (t === "notion_create_page") {
+    return <FormNotion no={no} mostrarErros={mostrarErros} onChange={onChange} />;
+  }
+
+  if (t === "todoist_create_task") {
+    return <FormTodoist />;
+  }
+
+  if (t === "linear_create_issue") {
+    return <FormLinear no={no} onChange={onChange} />;
   }
 
   return (
