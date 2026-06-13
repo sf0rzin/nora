@@ -160,7 +160,10 @@ export default function UploadMeetingPage() {
 
   // Segmentos da tela de confirmacao do split.
   const [splitSegments, setSplitSegments] = useState<ConfirmSegment[] | null>(null);
-
+  // Guard do "Criar N reunioes": ref pro bloqueio sincrono (duplo-clique /
+  // race pos-cancelamento) + state pro feedback visual (botao desabilitado).
+  const splitSubmittingRef = useRef(false);
+  const [splitSubmitting, setSplitSubmitting] = useState(false);
 
   // Counter vive em ref pra nao recriar o interval a cada tick.
   const pollCountRef = useRef(0);
@@ -251,6 +254,10 @@ export default function UploadMeetingPage() {
 
   /** Volta da tela de confirmacao pro form com o arquivo mantido. */
   function cancelSplitConfirm() {
+    // Libera o guard: um confirmSplit em voo (await text()) ve o ref false e
+    // aborta antes de disparar uploads-fantasma.
+    splitSubmittingRef.current = false;
+    setSplitSubmitting(false);
     setSplitSegments(null);
     setPhase("form");
   }
@@ -263,13 +270,28 @@ export default function UploadMeetingPage() {
     if (!singleTxtFile) return;
     const included = segments.filter((s) => s.included);
     if (included.length === 0) return;
+    // Guard sincrono: bloqueia duplo-clique no "Criar N reunioes" (cada clique
+    // dispararia um runBatch e duplicaria os uploads). Setado ANTES do await.
+    if (splitSubmittingRef.current) return;
+    splitSubmittingRef.current = true;
+    setSplitSubmitting(true);
 
     const text = await singleTxtFile.text();
+    // Cancelado durante a leitura (usuario clicou "Voltar")? Aborta sem upload.
+    if (!splitSubmittingRef.current) return;
 
+    // Desambigua nomes: dois segmentos com titulos que geram o mesmo slug
+    // (ex.: "Reuniao" e "reuniao") nao podem virar o mesmo arquivo. O lote
+    // rastreia por id, mas nomes iguais confundiriam o card de progresso.
+    const usedNames = new Set<string>();
     const items: BatchItem[] = included.map((seg, idx) => {
       const segText = sliceFileLines(text, seg.startLine, seg.endLine);
       const blob = new Blob([segText], { type: "text/plain" });
-      const fileName = `${slugify(seg.title)}.txt`;
+      const base = slugify(seg.title);
+      let fileName = `${base}.txt`;
+      let n = 2;
+      while (usedNames.has(fileName)) fileName = `${base}-${n++}.txt`;
+      usedNames.add(fileName);
       const file = new File([blob], fileName, { type: "text/plain" });
       return {
         id: idx,
@@ -280,6 +302,8 @@ export default function UploadMeetingPage() {
       };
     });
 
+    splitSubmittingRef.current = false;
+    setSplitSubmitting(false);
     setBatchItems(items);
     setSplitSegments(null);
     void runBatch(items);
@@ -516,6 +540,7 @@ export default function UploadMeetingPage() {
           onCancel={cancelSplitConfirm}
           file={singleTxtFile}
           language={language}
+          submitting={splitSubmitting}
         />
       </div>
     );
@@ -757,6 +782,7 @@ function SplitConfirmScreen({
   onConfirm,
   onCancel,
   file,
+  submitting,
 }: {
   segments: ConfirmSegment[];
   onChange: (segs: ConfirmSegment[]) => void;
@@ -764,6 +790,7 @@ function SplitConfirmScreen({
   onCancel: () => void;
   file: File | null;
   language: string;
+  submitting: boolean;
 }) {
   const includedCount = segments.filter((s) => s.included).length;
 
@@ -782,6 +809,7 @@ function SplitConfirmScreen({
           <button
             type="button"
             className="btn btn-primary btn-sm"
+            disabled={submitting}
             onClick={() => void onConfirm(segments)}
           >
             Enviar como uma reunião
@@ -816,7 +844,7 @@ function SplitConfirmScreen({
         <button
           type="button"
           className="btn btn-primary"
-          disabled={includedCount === 0}
+          disabled={includedCount === 0 || submitting}
           onClick={() => void onConfirm(segments)}
         >
           {includedCount === 0
