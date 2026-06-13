@@ -73,3 +73,11 @@ src-tauri/gen/
 *.pem
 *.key
 *.p12
+
+# --- Agentes / worktrees locais ---
+.claude/worktrees/
+
+# --- Scratch local (challenge build, extrações temporárias) ---
+.challenge-build/
+.tmp_tools/
+.tmp_*
