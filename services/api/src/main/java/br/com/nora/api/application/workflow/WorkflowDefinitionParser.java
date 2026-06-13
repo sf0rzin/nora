@@ -206,6 +206,25 @@ public class WorkflowDefinitionParser {
                                 + "') precisa do canal em params.channel (ex.: #vendas)");
             }
         }
+        if ("github_create_issue".equals(action.type())) {
+            String repo = action.paramAsString("repo");
+            if (repo == null || repo.isBlank() || !repo.contains("/")) {
+                throw new WorkflowException.InvalidDefinition(
+                        "ação 'Criar issue no GitHub' (nó '"
+                                + action.id()
+                                + "') precisa do repositório em params.repo no formato owner/nome"
+                                + " (ex.: stratfy/nora)");
+            }
+        }
+        if ("notion_create_page".equals(action.type())) {
+            String parentPageId = action.paramAsString("parentPageId");
+            if (parentPageId == null || parentPageId.isBlank()) {
+                throw new WorkflowException.InvalidDefinition(
+                        "ação 'Criar página no Notion' (nó '"
+                                + action.id()
+                                + "') precisa da página pai em params.parentPageId");
+            }
+        }
         if ("call_webhook".equals(action.type())) {
             String url = action.paramAsString("url");
             if (url == null || url.isBlank() || !url.trim().startsWith("https://")) {
