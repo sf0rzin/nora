@@ -21,8 +21,23 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ..models import AnalyzeRequest, AnalyzeResponse, LiveAnalyzeRequest, LiveAnalyzeResponse
-from ..services import baseline, live_analyzer, llm_analyzer, pii_shield, stub_analyzer
+from ..models import (
+    AnalyzeRequest,
+    AnalyzeResponse,
+    LiveAnalyzeRequest,
+    LiveAnalyzeResponse,
+    SplitRequest,
+    SplitResponse,
+)
+from ..services import (
+    baseline,
+    live_analyzer,
+    llm_analyzer,
+    pii_shield,
+    split_analyzer,
+    stub_analyzer,
+    stub_split_analyzer,
+)
 from ..settings import Settings, get_settings
 
 router = APIRouter()
@@ -64,6 +79,44 @@ def analyze(req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> 
             detail={
                 "code": "LLM_PROVIDER_ERROR",
                 "message": "Erro ao processar a transcricao. Tente novamente.",
+            },
+        ) from exc
+
+
+@router.post("/split", response_model=SplitResponse, response_model_by_alias=True)
+def split(req: SplitRequest, settings: Settings = Depends(get_settings)) -> SplitResponse:
+    """Deteccao de fronteiras entre reunioes concatenadas num arquivo unico.
+
+    Pipeline: PII Shield linha a linha → LLM (janelas + JSON Schema strict) →
+    validacao server-side das fronteiras. A redacao intra-linha garante que os
+    numeros de linha do texto redigido correspondem aos do arquivo original
+    (o fatiamento real e client-side). Nada e persistido aqui.
+    """
+    redacted_lines, redactions = split_analyzer.redact_lines(req.transcript)
+
+    if settings.use_llm_stub:
+        return stub_split_analyzer.analyze(req, redacted_lines, pii_redactions_applied=redactions)
+
+    try:
+        return split_analyzer.analyze(
+            req, redacted_lines, settings, pii_redactions_applied=redactions
+        )
+    except ValueError as exc:
+        logger.error("Configuracao do LLM invalida: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "LLM_CONFIG_INVALID",
+                "message": str(exc),
+            },
+        ) from exc
+    except Exception as exc:
+        logger.exception("Erro inesperado na chamada ao LLM (split)")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "LLM_PROVIDER_ERROR",
+                "message": "Erro ao detectar reunioes no arquivo. Tente novamente.",
             },
         ) from exc
 
