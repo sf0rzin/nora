@@ -198,6 +198,39 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
         }
     }
 
+    @Override
+    public SplitDtos.SplitResponse split(String transcript, String language) {
+        SplitDtos.SplitRequest body =
+                new SplitDtos.SplitRequest(
+                        transcript, language == null || language.isBlank() ? "pt-BR" : language);
+
+        try {
+            SplitDtos.SplitResponse response =
+                    client.post()
+                            .uri("/split")
+                            .bodyValue(body)
+                            .retrieve()
+                            .bodyToMono(SplitDtos.SplitResponse.class)
+                            .block(Duration.ofMillis(Math.max(1_000L, props.getTimeoutMillis())));
+            if (response == null) {
+                throw new AnalysisException.WorkerUnavailable("split: empty response", null);
+            }
+            return response;
+        } catch (WebClientResponseException ex) {
+            LOG.error(
+                    "NLP worker split respondeu erro status={} body={}",
+                    ex.getStatusCode(),
+                    ex.getResponseBodyAsString());
+            throw new AnalysisException.WorkerUnavailable(
+                    "split: status " + ex.getStatusCode(), ex);
+        } catch (AnalysisException.WorkerUnavailable ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            LOG.error("Falha na chamada ao NLP worker (split)", ex);
+            throw new AnalysisException.WorkerUnavailable("split: " + ex.getMessage(), ex);
+        }
+    }
+
     private WorkerDtos.TenantContext toWorkerContext(Optional<TenantContext> ctx) {
         if (ctx.isEmpty()) {
             return new WorkerDtos.TenantContext(
