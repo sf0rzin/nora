@@ -22,11 +22,12 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 /**
  * Adapter HTTP ÚNICO do token exchange dos provedores OAuth genéricos (onda 1: GitHub, Notion,
- * Todoist, Linear). A configuração declarativa ({@link OAuthProviderConfig}) decide o estilo de
- * autenticação (credenciais no corpo ou HTTP Basic), o formato do corpo (form ou JSON) e de onde
- * sai a conta externa. Sempre manda {@code Accept: application/json} — o GitHub responde
- * form-encoded sem isso. Erros viram {@code ProviderError} só com o status HTTP (o corpo do
- * provedor pode ecoar dados sensíveis), espelhando Google/Slack.
+ * Todoist, Linear; onda 2: Microsoft). A configuração declarativa ({@link OAuthProviderConfig})
+ * decide o estilo de autenticação (credenciais no corpo ou HTTP Basic), o formato do corpo (form ou
+ * JSON), de onde sai a conta externa (corpo da resposta ou claim do id_token) e se há refresh.
+ * Sempre manda {@code Accept: application/json} — o GitHub responde form-encoded sem isso. Erros
+ * viram {@code ProviderError} só com o status HTTP (o corpo do provedor pode ecoar dados
+ * sensíveis), espelhando Google/Slack.
  */
 @Component
 public class GenericOAuthHttpClient implements GenericOAuthClient {
@@ -43,6 +44,17 @@ public class GenericOAuthHttpClient implements GenericOAuthClient {
 
     @Override
     public TokenResponse exchangeCode(OAuthProviderConfig config, String code) {
+        return tokenCall(config, "token", request -> withCodeBody(request, config, code));
+    }
+
+    @Override
+    public TokenResponse refresh(OAuthProviderConfig config, String refreshToken) {
+        return tokenCall(
+                config, "refresh", request -> withRefreshBody(request, config, refreshToken));
+    }
+
+    private TokenResponse tokenCall(
+            OAuthProviderConfig config, String label, BodyAttacher attachBody) {
         String provider = config.provider().wire();
         try {
             WebClient.RequestBodySpec request =
@@ -51,15 +63,12 @@ public class GenericOAuthHttpClient implements GenericOAuthClient {
                 request = request.header("Authorization", basicAuth(config));
             }
             String body =
-                    withBody(request, config, code)
-                            .retrieve()
-                            .bodyToMono(String.class)
-                            .block(TIMEOUT);
+                    attachBody.attach(request).retrieve().bodyToMono(String.class).block(TIMEOUT);
             return parse(mapper.readTree(body == null ? "{}" : body), config);
         } catch (IntegrationException ex) {
             throw ex;
         } catch (Exception ex) {
-            throw new IntegrationException.ProviderError(provider, "token: " + reason(ex));
+            throw new IntegrationException.ProviderError(provider, label + ": " + reason(ex));
         }
     }
 
@@ -74,24 +83,84 @@ public class GenericOAuthHttpClient implements GenericOAuthClient {
             throw new IntegrationException.ProviderError(
                     config.provider().wire(), "token: " + error);
         }
-        String externalAccount =
-                config.accountJsonPointer() == null
-                        ? null
-                        : textAt(json, config.accountJsonPointer());
+        String refreshToken = json.path("refresh_token").asText(null);
+        String externalAccount = externalAccount(json, config);
         Long expiresIn =
                 json.path("expires_in").isNumber() ? json.path("expires_in").asLong() : null;
         return new TokenResponse(
-                accessToken, json.path("scope").asText(null), externalAccount, expiresIn);
+                accessToken,
+                refreshToken == null || refreshToken.isBlank() ? null : refreshToken,
+                json.path("scope").asText(null),
+                externalAccount,
+                expiresIn);
+    }
+
+    /** Conta externa: JSON Pointer no corpo (Notion) ou claim do id_token OIDC (Microsoft). */
+    private static String externalAccount(JsonNode json, OAuthProviderConfig config) {
+        if (config.accountJsonPointer() != null) {
+            return textAt(json, config.accountJsonPointer());
+        }
+        if (config.accountIdTokenClaim() != null) {
+            return idTokenClaim(json.path("id_token").asText(null), config.accountIdTokenClaim());
+        }
+        return null;
+    }
+
+    /**
+     * Lê um claim do payload do id_token (JWT OIDC) SEM validar assinatura — o token veio direto do
+     * token endpoint via TLS, não do navegador. Fallback em {@code preferred_username} (Microsoft
+     * nem sempre emite {@code email} em contas corporativas). Qualquer malformação = null (a
+     * conexão não depende da conta exibida no hub).
+     */
+    static String idTokenClaim(String idToken, String claim) {
+        if (idToken == null || idToken.isBlank()) {
+            return null;
+        }
+        String[] parts = idToken.split("\\.");
+        if (parts.length < 2) {
+            return null;
+        }
+        try {
+            JsonNode payload =
+                    new ObjectMapper()
+                            .readTree(
+                                    new String(
+                                            Base64.getUrlDecoder().decode(parts[1]),
+                                            StandardCharsets.UTF_8));
+            String value = payload.path(claim).asText(null);
+            if (value == null || value.isBlank()) {
+                value = payload.path("preferred_username").asText(null);
+            }
+            return value == null || value.isBlank() ? null : value;
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private WebClient.RequestHeadersSpec<?> withCodeBody(
+            WebClient.RequestBodySpec request, OAuthProviderConfig config, String code) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("grant_type", "authorization_code");
+        fields.put("code", code);
+        fields.put("redirect_uri", config.redirectUri());
+        return withBody(request, config, fields);
+    }
+
+    private WebClient.RequestHeadersSpec<?> withRefreshBody(
+            WebClient.RequestBodySpec request, OAuthProviderConfig config, String refreshToken) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("grant_type", "refresh_token");
+        fields.put("refresh_token", refreshToken);
+        return withBody(request, config, fields);
     }
 
     private WebClient.RequestHeadersSpec<?> withBody(
-            WebClient.RequestBodySpec request, OAuthProviderConfig config, String code) {
+            WebClient.RequestBodySpec request,
+            OAuthProviderConfig config,
+            Map<String, String> fields) {
         boolean credentialsInBody = config.tokenAuthStyle() == TokenAuthStyle.CLIENT_SECRET_BODY;
         if (config.tokenRequestFormat() == TokenRequestFormat.JSON) {
-            Map<String, String> payload = new LinkedHashMap<>();
-            payload.put("grant_type", "authorization_code");
-            payload.put("code", code);
-            payload.put("redirect_uri", config.redirectUri());
+            Map<String, String> payload = new LinkedHashMap<>(fields);
             if (credentialsInBody) {
                 payload.put("client_id", config.clientId());
                 payload.put("client_secret", config.clientSecret());
@@ -99,9 +168,7 @@ public class GenericOAuthHttpClient implements GenericOAuthClient {
             return request.contentType(MediaType.APPLICATION_JSON).bodyValue(payload);
         }
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("grant_type", "authorization_code");
-        form.add("code", code);
-        form.add("redirect_uri", config.redirectUri());
+        fields.forEach(form::add);
         if (credentialsInBody) {
             form.add("client_id", config.clientId());
             form.add("client_secret", config.clientSecret());
@@ -126,5 +193,10 @@ public class GenericOAuthHttpClient implements GenericOAuthClient {
             return String.valueOf(http.getStatusCode().value());
         }
         return ex.getMessage();
+    }
+
+    @FunctionalInterface
+    private interface BodyAttacher {
+        WebClient.RequestHeadersSpec<?> attach(WebClient.RequestBodySpec request);
     }
 }
