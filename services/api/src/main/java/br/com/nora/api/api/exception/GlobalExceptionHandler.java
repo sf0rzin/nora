@@ -184,6 +184,8 @@ public class GlobalExceptionHandler {
                     case "INTEGRATION_UNKNOWN_PROVIDER" -> HttpStatus.NOT_FOUND;
                     case "INTEGRATION_NOT_CONFIGURED" -> HttpStatus.UNPROCESSABLE_ENTITY;
                     case "INTEGRATION_INVALID_STATE" -> HttpStatus.BAD_REQUEST;
+                    // Pareamento Telegram ainda sem o /start do usuário — estado, não falha 5xx.
+                    case "INTEGRATION_PAIRING_PENDING" -> HttpStatus.CONFLICT;
                     case "INTEGRATION_PROVIDER_ERROR" -> HttpStatus.BAD_GATEWAY;
                     default -> HttpStatus.BAD_REQUEST;
                 };
