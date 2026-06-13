@@ -6,6 +6,7 @@ public sealed class MeetingException extends RuntimeException
                 MeetingException.TranscriptTooLarge,
                 MeetingException.UnsupportedFormat,
                 MeetingException.SplitUnsupportedFormat,
+                MeetingException.FileTooLarge,
                 MeetingException.EmptyTranscript,
                 MeetingException.CannotReprocess {
 
@@ -46,6 +47,17 @@ public sealed class MeetingException extends RuntimeException
             super(
                     "SPLIT_UNSUPPORTED_FORMAT",
                     "Separação automática disponível só para .txt por enquanto.");
+        }
+    }
+
+    /**
+     * Arquivo acima do limite de upload. Mensagem em PT-BR e voltada ao usuario (o handler de
+     * MeetingException devolve {@code getMessage()} direto, ao contrario do
+     * IllegalArgumentException que e mascarado por seguranca).
+     */
+    public static final class FileTooLarge extends MeetingException {
+        public FileTooLarge(int maxMegabytes) {
+            super("FILE_TOO_LARGE", "O arquivo excede o limite de " + maxMegabytes + " MB.");
         }
     }
 
