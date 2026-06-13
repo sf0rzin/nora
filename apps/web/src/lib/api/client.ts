@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cliente HTTP minimalista para a API do NORA.
  *
  * Por padrao em modo dev usa fixtures (NEXT_PUBLIC_USE_MOCKS=true). Quando false,
@@ -28,6 +28,7 @@ import type {
   MeetingGoal,
   MeetingsListResponse,
   MeResponse,
+  SplitPreviewResponse,
   TelegramPairingStart,
   TenantInfo,
   WorkflowDefinition,
@@ -234,6 +235,25 @@ export async function uploadMeeting(input: UploadMeetingInput) {
   });
 }
 
+
+/**
+ * Analisa um arquivo .txt e detecta segmentos de multiplas reunioes.
+ * Retorna os segmentos com titulo sugerido, linhas e preview — o fatiamento
+ * real e feito client-side apos a confirmacao do usuario.
+ *
+ * Erros esperados:
+ * - 400: arquivo nao e .txt (mensagem PT-BR da API, exibir direto)
+ * - 413: arquivo grande demais
+ */
+export async function splitPreview(file: File, language?: string): Promise<SplitPreviewResponse> {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (language) fd.append('language', language);
+  return request<SplitPreviewResponse>(`/meetings/split-preview`, {
+    method: 'POST',
+    body: fd,
+  });
+}
 /**
  * Re-dispara o pipeline de analise de uma reuniao existente (POST 202).
  * Util para recuperar de um `FAILED` ou reanalisar um `COMPLETED`. O backend
@@ -850,3 +870,4 @@ export async function saveTrelloToken(token: string): Promise<IntegrationStatus>
     body: JSON.stringify({ token }),
   });
 }
+

@@ -86,7 +86,15 @@ def redact_lines(transcript: str) -> tuple[list[str], int]:
     do fatiamento client-side. Custo: a numeracao dos placeholders reinicia a
     cada linha (irrelevante aqui: o preview nao precisa de dedup global).
     """
-    lines = transcript.split("\n")
+    # Normaliza quebras de linha ANTES de numerar: CRLF (Windows) e CR (Mac
+    # classico) viram LF. O fatiamento client-side (sliceFileLines em
+    # apps/web/.../upload/page.tsx) faz exatamente a mesma normalizacao antes
+    # de cortar por startLine/endLine; sem isso, um arquivo com CR-solto teria
+    # contagem de linhas divergente entre worker e front e os cortes sairiam
+    # deslocados. (CRLF ja casava na contagem, mas deixava um \r residual no
+    # preview — removido aqui tambem.)
+    normalized = transcript.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
     redacted: list[str] = []
     count = 0
     for line in lines:

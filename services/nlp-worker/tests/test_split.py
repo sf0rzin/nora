@@ -297,6 +297,37 @@ def test_redact_lines_keeps_phone_split_across_lines_intra_line():
     assert len(red_lines) == 3
 
 
+def test_redact_lines_normalizes_crlf_and_cr_to_match_frontend():
+    """O fatiamento client-side normaliza CRLF/CR->LF antes de cortar por linha
+    (sliceFileLines em apps/web/.../upload/page.tsx). O worker tem que numerar
+    as MESMAS linhas, senao os cortes saem deslocados. Garante paridade de
+    contagem para LF, CRLF (Windows) e CR-solto (Mac classico)."""
+    lf = "reuniao um\nlinha dois\nreuniao dois"
+    crlf = "reuniao um\r\nlinha dois\r\nreuniao dois"
+    cr = "reuniao um\rlinha dois\rreuniao dois"
+
+    base_lines, _ = redact_lines(lf)
+    assert len(base_lines) == 3
+    for variant in (crlf, cr):
+        red_lines, _ = redact_lines(variant)
+        # mesma contagem que o LF...
+        assert len(red_lines) == 3
+        # ...e nenhum \r residual vazando para o preview.
+        assert all("\r" not in line for line in red_lines)
+        assert red_lines == base_lines
+
+
+def test_redact_lines_trailing_newline_matches_frontend_split():
+    """Arquivo terminando em nova linha gera um elemento "" final tanto no
+    split do worker quanto no split('\\n') do front apos normalizar — paridade
+    no boundary da ultima linha."""
+    text = "reuniao um\r\nlinha dois\r\n"
+    red_lines, _ = redact_lines(text)
+    # "a\nb\n".split("\n") == ["a", "b", ""] (3 elementos), igual no front.
+    assert len(red_lines) == 3
+    assert red_lines[-1] == ""
+
+
 # ---------- Janelas + merge ----------
 
 
