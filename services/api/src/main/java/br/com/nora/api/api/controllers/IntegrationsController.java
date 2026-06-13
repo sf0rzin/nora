@@ -4,6 +4,7 @@ import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.integration.IntegrationException;
 import br.com.nora.api.application.integration.IntegrationService;
 import br.com.nora.api.application.integration.IntegrationService.ProviderStatus;
+import br.com.nora.api.application.integration.TelegramPairingService;
 import br.com.nora.api.domain.integration.IntegrationProvider;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import java.net.URI;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -33,12 +35,15 @@ public class IntegrationsController {
     private static final Logger LOG = LoggerFactory.getLogger(IntegrationsController.class);
 
     private final IntegrationService integrations;
+    private final TelegramPairingService telegramPairing;
     private final String frontendBaseUrl;
 
     public IntegrationsController(
             IntegrationService integrations,
+            TelegramPairingService telegramPairing,
             @Value("${nora.frontend.base-url}") String frontendBaseUrl) {
         this.integrations = integrations;
+        this.telegramPairing = telegramPairing;
         this.frontendBaseUrl =
                 frontendBaseUrl.endsWith("/")
                         ? frontendBaseUrl.substring(0, frontendBaseUrl.length() - 1)
@@ -108,7 +113,40 @@ public class IntegrationsController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Telegram (onda 2, SEM OAuth): gera o código de pareamento do tenant e devolve o deep link do
+     * bot ({@code t.me/<bot>?start=<código>}) pro hub exibir.
+     */
+    @PostMapping("/telegram/pairing/start")
+    public TelegramPairingService.PairingStart telegramPairingStart() {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        return telegramPairing.start(principal.tenantId(), principal.userId());
+    }
+
+    /**
+     * Telegram: procura o {@code /start <código>} do tenant no getUpdates do bot e conclui a
+     * conexão. Sem o /start ainda = 409 {@code INTEGRATION_PAIRING_PENDING} com mensagem acionável.
+     */
+    @PostMapping("/telegram/pairing/verify")
+    public ProviderStatus telegramPairingVerify() {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        return telegramPairing.verify(principal.tenantId());
+    }
+
+    /**
+     * Trello (onda 2, sem OAuth server-side): valida o token que o usuário colou e persiste a
+     * conexão. Token inválido = 502 {@code INTEGRATION_PROVIDER_ERROR} com orientação.
+     */
+    @PostMapping("/trello/token")
+    public ProviderStatus saveTrelloToken(@RequestBody TrelloTokenRequest body) {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        return integrations.saveTrelloToken(
+                principal.tenantId(), principal.userId(), body == null ? null : body.token());
+    }
+
     public record StartResponse(String authorizeUrl) {}
+
+    public record TrelloTokenRequest(String token) {}
 
     private ResponseEntity<Void> redirect(String frontendPath) {
         return ResponseEntity.status(HttpStatus.FOUND)

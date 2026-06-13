@@ -135,6 +135,22 @@ param linearOauthClientId string = ''
 @secure()
 param linearOauthClientSecret string = ''
 
+// Onda 2 — tres modelos de conexao diferentes:
+
+@description('Microsoft OAuth Client ID (Outlook + Calendar via Graph; tenant common). Mesmo contrato do Slack.')
+param msOauthClientId string = ''
+
+@description('Microsoft OAuth Client Secret. Secret ms-oauth-client-secret so quando setado.')
+@secure()
+param msOauthClientSecret string = ''
+
+@description('Token do bot Telegram unico do app (BotFather). SEM OAuth: cada tenant pareia por codigo e o backend guarda o chat_id. Vazio = conector "nao configurado".')
+@secure()
+param telegramBotToken string = ''
+
+@description('API key do app no Trello (nao-secreta: aparece na URL de authorize que o usuario abre). SEM OAuth server-side: o usuario cola o token gerado. Vazio = "nao configurado".')
+param trelloApiKey string = ''
+
 @description('Assina o state OAuth (HMAC-SHA256, ADR 0031). Vazio = segredo efemero por boot (states nao sobrevivem a restart — ok em dev, ruim em prod).')
 @secure()
 param integrationsStateSecret string = ''
@@ -479,6 +495,19 @@ var keyVaultSecrets = {
       {
         name: 'linear-oauth-client-secret'
         value: linearOauthClientSecret
+      }
+    ],
+    // Onda 2: Microsoft + Telegram (Trello API key e nao-secreta — vai como env puro).
+    empty(msOauthClientSecret) ? [] : [
+      {
+        name: 'ms-oauth-client-secret'
+        value: msOauthClientSecret
+      }
+    ],
+    empty(telegramBotToken) ? [] : [
+      {
+        name: 'telegram-bot-token'
+        value: telegramBotToken
       }
     ],
     empty(integrationsStateSecret) ? [] : [
@@ -875,6 +904,33 @@ var apiIntegrationsEnv = union(
       value: '${apiBaseUrl}/integrations/linear/oauth/callback'
     }
   ],
+  // Onda 2 — Microsoft segue o contrato OAuth; Telegram e Trello sao um env so cada.
+  empty(msOauthClientId) || empty(msOauthClientSecret) ? [] : [
+    {
+      name: 'MS_OAUTH_CLIENT_ID'
+      value: msOauthClientId
+    }
+    {
+      name: 'MS_OAUTH_CLIENT_SECRET'
+      secretRef: 'ms-oauth-client-secret'
+    }
+    {
+      name: 'MS_OAUTH_REDIRECT_URI'
+      value: '${apiBaseUrl}/integrations/microsoft/oauth/callback'
+    }
+  ],
+  empty(telegramBotToken) ? [] : [
+    {
+      name: 'NORA_TELEGRAM_BOT_TOKEN'
+      secretRef: 'telegram-bot-token'
+    }
+  ],
+  empty(trelloApiKey) ? [] : [
+    {
+      name: 'TRELLO_API_KEY'
+      value: trelloApiKey
+    }
+  ],
   empty(integrationsStateSecret) ? [] : [
     {
       name: 'NORA_INTEGRATIONS_STATE_SECRET'
@@ -1036,6 +1092,19 @@ var apiSecrets = {
       {
         name: 'linear-oauth-client-secret'
         value: linearOauthClientSecret
+      }
+    ],
+    // Onda 2 (mesmo padrao de valor direto): Microsoft + Telegram.
+    empty(msOauthClientSecret) ? [] : [
+      {
+        name: 'ms-oauth-client-secret'
+        value: msOauthClientSecret
+      }
+    ],
+    empty(telegramBotToken) ? [] : [
+      {
+        name: 'telegram-bot-token'
+        value: telegramBotToken
       }
     ],
     empty(integrationsStateSecret) ? [] : [
