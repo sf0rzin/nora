@@ -181,6 +181,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: dev   # GitHub environment. Permite adicionar approval rule via UI futuramente.
+    # Mesmo grupo do job `deploy-apps` (build-images.yml): serializa as operacoes de
+    # escrita no Azure entre os dois workflows para evitar ContainerAppOperationInProgress
+    # quando um merge toca infra/bicep/** E apps/** ao mesmo tempo.
+    concurrency:
+      group: nora-azure-rollout-${{ github.ref }}
+      cancel-in-progress: false
     permissions:
       id-token: write
       contents: read
