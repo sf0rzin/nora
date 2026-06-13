@@ -8,6 +8,7 @@ import br.com.nora.api.domain.customer.Objection;
 import br.com.nora.api.domain.meeting.productivity.MeetingGoal;
 import br.com.nora.api.domain.meeting.productivity.ProductivityAssessment;
 import br.com.nora.api.domain.tenant.TenantContext;
+import br.com.nora.api.infrastructure.nlp.SplitDtos;
 import br.com.nora.api.infrastructure.nlp.WorkerDtos;
 import br.com.nora.api.infrastructure.nlp.WorkerDtos.LiveAnalyzeResponse;
 import java.util.List;
@@ -43,6 +44,19 @@ public interface NlpWorkerClient {
 
     LiveAnalyzeResponse analyzeLive(
             String transcriptChunk, String language, WorkerDtos.LiveHighlights previousHighlights);
+
+    /**
+     * Detecta fronteiras entre reunioes distintas concatenadas num unico arquivo .txt (preview de
+     * split). O worker aplica PII Shield linha a linha e devolve segmentos com {@code
+     * startLine}/{@code endLine} 1-based validos para o arquivo original; nada e persistido.
+     *
+     * <p>{@code default} que lanca: somente a implementacao HTTP real (e stubs de teste que
+     * exercitam split) precisam sobrescrever — os demais stubs de IT continuam compilando sem
+     * conhecer este fluxo.
+     */
+    default SplitDtos.SplitResponse split(String transcript, String language) {
+        throw new UnsupportedOperationException("split nao implementado por este client");
+    }
 
     /**
      * Resultado combinado: analise sempre presente, productivity opcional (so quando goal foi
