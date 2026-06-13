@@ -312,11 +312,15 @@ export async function signup(input: {
   password: string;
   displayName: string;
   companyName: string;
+  /** Intenção de uso coletada no onboarding (telemetria #156). */
+  role: string;
 }) {
-  return request<{ userId: string; tenantId: string; verificationRequired: boolean }>(
-    `/auth/signup`,
-    { method: 'POST', body: JSON.stringify(input) },
-  );
+  return request<{
+    userId: string;
+    tenantId: string;
+    message?: string;
+    emailVerificationDevToken?: string;
+  }>(`/auth/signup`, { method: 'POST', body: JSON.stringify(input) });
 }
 
 export async function verifyEmail(token: string) {

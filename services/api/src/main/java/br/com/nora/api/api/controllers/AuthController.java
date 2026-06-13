@@ -91,7 +91,12 @@ public class AuthController {
         }
         SignupResult result =
                 authService.signup(
-                        new SignupCommand(req.email(), req.password(), req.displayName()));
+                        new SignupCommand(
+                                req.email(),
+                                req.password(),
+                                req.displayName(),
+                                req.companyName(),
+                                req.role()));
         SignupResponse body =
                 new SignupResponse(
                         result.userId(),

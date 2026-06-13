@@ -101,7 +101,13 @@ public class AuthService {
 
     // ----- US01: signup -----
 
-    public record SignupCommand(String email, String password, String displayName) {}
+    public record SignupCommand(
+            String email, String password, String displayName, String companyName, String role) {
+        /** Atalho para signup pessoal: sem workspace nomeado nem role declarada. */
+        public SignupCommand(String email, String password, String displayName) {
+            this(email, password, displayName, null, null);
+        }
+    }
 
     public record SignupResult(UUID userId, UUID tenantId, String emailVerificationDevToken) {}
 
@@ -129,7 +135,7 @@ public class AuthService {
                         });
 
         Instant now = clock.now();
-        Tenant tenant = createPersonalTenant(displayName, email, now);
+        Tenant tenant = createTenant(displayName, cmd.companyName(), now);
         Tenant saved = tenantRepository.save(tenant);
 
         User user =
@@ -163,6 +169,15 @@ public class AuthService {
         Map<String, Object> auditPayload = new HashMap<>();
         auditPayload.put("email", email.value());
         auditPayload.put("flow", "signup-personal");
+        // Telemetria de onboarding (#156): intenção de uso declarada no signup. Persistida no
+        // audit log (sem PII) para segmentar workspaces por individual/team/company no funil PLG.
+        auditPayload.put(
+                "role",
+                (cmd.role() == null || cmd.role().isBlank())
+                        ? "unspecified"
+                        : cmd.role().trim().toLowerCase());
+        auditPayload.put(
+                "namedWorkspace", cmd.companyName() != null && !cmd.companyName().isBlank());
         audit.record(
                 savedUser.tenantId(),
                 savedUser.id(),
@@ -177,8 +192,10 @@ public class AuthService {
                 settings.exposeDevTokens() ? token.rawToken() : null);
     }
 
-    private Tenant createPersonalTenant(String displayName, Email email, Instant now) {
-        String base = Tenant.slugify(displayName);
+    private Tenant createTenant(String displayName, String companyName, Instant now) {
+        boolean hasCompany = companyName != null && !companyName.isBlank();
+        String workspaceName = hasCompany ? companyName.trim() : displayName + " (pessoal)";
+        String base = Tenant.slugify(hasCompany ? companyName.trim() : displayName);
         String candidate = base;
         int suffix = 1;
         while (tenantRepository.existsBySlug(candidate)) {
@@ -192,7 +209,7 @@ public class AuthService {
         }
         return new Tenant(
                 UUID.randomUUID(),
-                displayName + " (pessoal)",
+                workspaceName,
                 candidate,
                 Tenant.Status.ACTIVE,
                 Tenant.Plan.FREE,
