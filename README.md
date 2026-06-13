@@ -1,37 +1,42 @@
----
-title: "NORA — Negotiation Observability & Revenue Assistant"
-owner: Equipe Stratfy
-status: approved
-version: 2.0
-last_reviewed: 2026-06-06
----
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/nora-logo-dark.svg">
+    <img alt="NORA" src="docs/assets/nora-logo-light.svg" width="260">
+  </picture>
+</p>
 
-# NORA
+<p align="center">
+  <strong>Negotiation Observability &amp; Revenue Assistant</strong><br>
+  Plataforma SaaS de inteligência conversacional para reuniões.
+</p>
 
-> Negotiation Observability & Revenue Assistant — plataforma SaaS de inteligência
-> conversacional para reuniões corporativas.
+<p align="center">
+  <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-15171a.svg"></a>
+  <a href="#estado-atual"><img alt="Status: Em produção" src="https://img.shields.io/badge/Status-Em_produ%C3%A7%C3%A3o-2e7d32.svg"></a>
+  <img alt="Java 21" src="https://img.shields.io/badge/Java-21-007396.svg">
+  <img alt="Spring Boot 3.3" src="https://img.shields.io/badge/Spring_Boot-3.3-6db33f.svg">
+  <img alt="Next.js 14" src="https://img.shields.io/badge/Next.js-14-000000.svg">
+  <img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776ab.svg">
+</p>
+
+---
 
 NORA transforma transcrições de reuniões em **resumos, decisões, tarefas, riscos e
 oportunidades**, usando o **contexto da empresa cliente** (produtos, ICP, playbook,
 concorrentes). É construída como **produto comercial real**, atendendo também à parceria
 **FIAP Challenge 2026 × TOTVS**.
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Status: Deployed in Azure](https://img.shields.io/badge/Status-Deployed_in_Azure-success.svg)](#estado-atual)
-
----
-
 ## Estado atual
 
-NORA está **implantada em Azure** (via Bicep IaC), com a vertical Web + API + Worker NLP
-+ Desktop funcional. O detalhamento por sub-fase e o histórico de entregas vivem no
+NORA está **em produção em Azure** (via Bicep IaC), com a vertical Web + API + Worker NLP
+funcional. O detalhamento por sub-fase e o histórico de entregas vivem no
 [roadmap](docs/product/roadmap.md); o status por user story, no
 [backlog](docs/product/backlog.md).
 
 ```
-Web:    https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io
-API:    https://nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io
-Health: https://nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io/actuator/health
+Aplicação:  https://nora.systems
+API:        https://api.nora.systems
+Health:     https://api.nora.systems/actuator/health
 ```
 
 O app **Core** é **chat-first**: o usuário conversa com a NORA sobre reuniões, action
@@ -41,12 +46,10 @@ embeddings** sobre as próprias reuniões, com provider de LLM e de embeddings a
 BFF. Além do chat, há inbox cronológico, detalhe da reunião (resumo, decisões, action
 items, riscos e oportunidades), Productivity Score e Customer Confidence.
 
-O NORA conta ainda com um **console de operador (control plane)** para catálogo de
+NORA conta ainda com um **console de operador (control plane)** para catálogo de
 modelos e telemetria de IA — ver [ADRs 0022–0025](docs/adr/README.md). As transcrições
 reais da TOTVS são processadas por um pipeline de Data Science em
 [`notebooks/`](notebooks/).
-
----
 
 ## Documentação
 
@@ -76,26 +79,42 @@ docs/
 **Para agentes de IA (Claude Code, Copilot):** [`CLAUDE.md`](CLAUDE.md) ·
 [`.github/copilot-instructions.md`](.github/copilot-instructions.md).
 
----
+## Arquitetura
+
+```
+                 ┌──────────────┐       ┌──────────────┐
+   Navegador ──▶ │   Web (BFF)  │ ────▶ │     API      │ ──▶ Postgres + pgvector
+                 │  Next.js 14  │       │ Spring Boot  │
+                 └──────────────┘       └──────┬───────┘
+                                               │ HTTP interno
+                                        ┌──────▼───────┐
+                                        │  NLP Worker  │ ──▶ Provider LLM/embeddings
+                                        │   FastAPI    │     (PII Shield no último gate)
+                                        └──────────────┘
+```
+
+- **Web (BFF):** mantém as chaves server-side; sessão via cookies httpOnly.
+- **API:** DDD (domain / application / infrastructure / api), multi-tenancy por
+  `tenant_id`, IAM estilo AWS (Root + Users + Groups + Policies).
+- **Worker:** redige PII antes de qualquer chamada ao LLM e valida a saída com
+  JSON Schema strict + Pydantic.
 
 ## Estrutura do monorepo
 
 ```
-apps/web              # Next.js 14 + TypeScript + Tailwind sem shadcn (ADR 0013) — app Core chat-first
-apps/admin            # Console de operador (control plane): catálogo de modelos + telemetria
-apps/desktop          # Tauri 2 + Rust + sidecar Python (captura de áudio via Azure Speech)
-services/api          # Spring Boot 3 + Java 21 + DDD + Postgres + Flyway
-services/nlp-worker   # FastAPI + Pydantic + PII Shield + cliente de LLM/embeddings agnóstico
-packages/nlp-baseline # TF-IDF interpretável em PT-BR (ADR 0010)
-packages/shared-contracts # Contratos compartilhados (códigos de erro, tipos de PII, status)
-infra/bicep           # Infra como código (Azure Container Apps, Postgres, Key Vault, Speech)
-data/                 # Datasets sintéticos e amostras para testes
-notebooks/            # Pipeline de Data Science das transcrições TOTVS (parser + TF-IDF + EDA)
-docs/                 # Documentação canônica (ver acima)
-.github/              # Workflows de CI/CD e templates
+apps/web                   # Next.js 14 + TypeScript + Tailwind sem shadcn (ADR 0013) — app Core chat-first
+apps/admin                 # Console de operador (control plane): catálogo de modelos + telemetria
+apps/desktop               # Tauri 2 + Rust + sidecar Python (captura de áudio via Azure Speech)
+services/api               # Spring Boot 3 + Java 21 + DDD + Postgres + Flyway
+services/nlp-worker        # FastAPI + Pydantic + PII Shield + cliente de LLM/embeddings agnóstico
+packages/nlp-baseline      # TF-IDF interpretável em PT-BR (ADR 0010)
+packages/shared-contracts  # Contratos compartilhados (códigos de erro, tipos de PII, status)
+infra/bicep                # Infra como código (Azure Container Apps, Postgres, Key Vault, Speech)
+data/                      # Datasets sintéticos e amostras para testes
+notebooks/                 # Pipeline de Data Science das transcrições TOTVS (parser + TF-IDF + EDA)
+docs/                      # Documentação canônica (ver acima)
+.github/                   # Workflows de CI/CD e templates
 ```
-
----
 
 ## Stack
 
@@ -112,8 +131,6 @@ docs/                 # Documentação canônica (ver acima)
 
 > As versões exatas e onde verificá-las estão em
 > [`docs/engineering/architecture.md`](docs/engineering/architecture.md).
-
----
 
 ## Pré-requisitos
 
@@ -141,8 +158,6 @@ make web-dev      # web em     http://localhost:3000
 
 Para ver todos os comandos: `make help`.
 
----
-
 ## Como contribuir
 
 NORA é operada pela **equipe Stratfy (PO) + múltiplos arquitetos Claude**. Colaboração
@@ -150,11 +165,10 @@ externa é bem-vinda dentro do escopo declarado no [roadmap](docs/product/roadma
 
 1. Leia o ADR relacionado em [`docs/adr/`](docs/adr/README.md) antes de propor mudança arquitetural.
 2. Branches: `feat/sub-X.Y-<slug>`, `feat/usZZ-<slug>`, `fix/<slug>`, `docs/<slug>`, `chore/<slug>`.
-3. PRs apontam para `main`. A CI deve passar antes do merge.
-4. ADRs aceitos são **imutáveis** — para mudar uma decisão, crie um ADR sucessor.
-5. Não faça commit de secrets — use `.env.example` para os nomes das variáveis.
-
----
+3. Commits seguem [Conventional Commits](https://www.conventionalcommits.org/); PRs apontam para `main` e são integrados por squash.
+4. A CI deve passar antes do merge.
+5. ADRs aceitos são **imutáveis** — para mudar uma decisão, crie um ADR sucessor.
+6. Não faça commit de secrets — use `.env.example` para os nomes das variáveis.
 
 ## Segurança
 
@@ -166,12 +180,3 @@ Reporte vulnerabilidades por e-mail (não em issue público). Detalhes em
 [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0) — ver
 [ADR 0017](docs/adr/0017-license-agpl-3.md). A equipe Stratfy mantém o copyright.
 Licenciamento comercial (dual-licensing) disponível mediante contato.
-
----
-
-## Histórico do documento
-
-| Versão | Data | Autor | Mudança |
-|---|---|---|---|
-| 2.0 | 2026-06-06 | Equipe Stratfy | Reescrita como documento-modelo do novo padrão de docs: front-matter, tom profissional, idioma consistente, fonte única de verdade (links em vez de contagens), e reconciliação com o estado real (RAG/embeddings, app admin/control plane, LGPD operacional) |
-| 1.x | até 2026-05-28 | Equipe Stratfy | Versões anteriores |
