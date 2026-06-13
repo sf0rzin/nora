@@ -146,10 +146,14 @@ public class AnalysisService {
         // (markStatusAndSnippet é @Transactional e já retornou). Fail-soft: workflow nunca
         // derruba nem reverte a análise.
         publishDomainEvents(meetingId, tenantId, saved);
-        // RAG: indexa o embedding do RESUMO (já tratado pelo PII Shield, não a transcrição bruta).
+        // RAG: indexa só o RESUMO (summarySnippet), que já passou pelo PII Shield (foi
+        // gerado a partir da transcrição redigida). O título da reunião vem cru do upload e
+        // pode conter PII não redigida — por isso fica FORA do payload de embedding (ADR 0012).
         // Best-effort — o EmbeddingService engole falhas e nunca derruba a análise.
-        String snippet = saved.summarySnippet() == null ? "" : saved.summarySnippet();
-        embeddings.index(meetingId, tenantId, (meeting.title() + ". " + snippet).trim());
+        String snippet = saved.summarySnippet() == null ? "" : saved.summarySnippet().trim();
+        if (!snippet.isEmpty()) {
+            embeddings.index(meetingId, tenantId, snippet);
+        }
         return saved;
     }
 
