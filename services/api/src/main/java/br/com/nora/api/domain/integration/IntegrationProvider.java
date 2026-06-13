@@ -3,7 +3,11 @@ package br.com.nora.api.domain.integration;
 /** Provedores externos suportados pelo hub de integrações do NORA Flows. */
 public enum IntegrationProvider {
     GOOGLE("google"),
-    SLACK("slack");
+    SLACK("slack"),
+    GITHUB("github"),
+    NOTION("notion"),
+    TODOIST("todoist"),
+    LINEAR("linear");
 
     private final String wire;
 

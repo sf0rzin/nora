@@ -141,6 +141,23 @@ nora:
       client-id: ${SLACK_OAUTH_CLIENT_ID:}
       client-secret: ${SLACK_OAUTH_CLIENT_SECRET:}
       redirect-uri: ${SLACK_OAUTH_REDIRECT_URI:http://localhost:8080/integrations/slack/oauth/callback}
+    # Onda 1 de provedores genéricos (OAuth2 code-flow padrão, sem refresh token na prática).
+    github:
+      client-id: ${GITHUB_OAUTH_CLIENT_ID:}
+      client-secret: ${GITHUB_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${GITHUB_OAUTH_REDIRECT_URI:http://localhost:8080/integrations/github/oauth/callback}
+    notion:
+      client-id: ${NOTION_OAUTH_CLIENT_ID:}
+      client-secret: ${NOTION_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${NOTION_OAUTH_REDIRECT_URI:http://localhost:8080/integrations/notion/oauth/callback}
+    todoist:
+      client-id: ${TODOIST_OAUTH_CLIENT_ID:}
+      client-secret: ${TODOIST_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${TODOIST_OAUTH_REDIRECT_URI:http://localhost:8080/integrations/todoist/oauth/callback}
+    linear:
+      client-id: ${LINEAR_OAUTH_CLIENT_ID:}
+      client-secret: ${LINEAR_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${LINEAR_OAUTH_REDIRECT_URI:http://localhost:8080/integrations/linear/oauth/callback}
   worker:
     base-url: ${NLP_WORKER_BASE_URL:http://localhost:8001}
   speech:
