@@ -67,6 +67,58 @@ class GenericOAuthHttpClientTest {
                 .hasMessageContaining("bad_verification_code");
     }
 
+    /** Microsoft: refresh_token persiste e a conta vem do claim `email` do id_token. */
+    @Test
+    void microsoft_refreshTokenEContaDoIdToken() throws Exception {
+        String idToken = jwt("{\"email\":\"conta@outlook.com\",\"aud\":\"x\"}");
+        TokenResponse parsed =
+                GenericOAuthHttpClient.parse(
+                        mapper.readTree(
+                                "{\"access_token\":\"ms_at\",\"refresh_token\":\"ms_rt\","
+                                        + "\"expires_in\":3599,\"scope\":\"Mail.Send\","
+                                        + "\"id_token\":\""
+                                        + idToken
+                                        + "\"}"),
+                        config(IntegrationProvider.MICROSOFT, null, "email"));
+        assertThat(parsed.accessToken()).isEqualTo("ms_at");
+        assertThat(parsed.refreshToken()).isEqualTo("ms_rt");
+        assertThat(parsed.expiresInSeconds()).isEqualTo(3599L);
+        assertThat(parsed.externalAccount()).isEqualTo("conta@outlook.com");
+    }
+
+    /** Conta corporativa sem claim `email` — cai no preferred_username. */
+    @Test
+    void microsoft_semEmailCaiNoPreferredUsername() throws Exception {
+        String idToken = jwt("{\"preferred_username\":\"ana@empresa.com\"}");
+        TokenResponse parsed =
+                GenericOAuthHttpClient.parse(
+                        mapper.readTree(
+                                "{\"access_token\":\"ms_at\",\"id_token\":\"" + idToken + "\"}"),
+                        config(IntegrationProvider.MICROSOFT, null, "email"));
+        assertThat(parsed.externalAccount()).isEqualTo("ana@empresa.com");
+    }
+
+    /** id_token malformado não derruba a conexão — só fica sem conta exibida. */
+    @Test
+    void microsoft_idTokenMalformado_naoQuebra() throws Exception {
+        TokenResponse parsed =
+                GenericOAuthHttpClient.parse(
+                        mapper.readTree("{\"access_token\":\"ms_at\",\"id_token\":\"lixo\"}"),
+                        config(IntegrationProvider.MICROSOFT, null, "email"));
+        assertThat(parsed.accessToken()).isEqualTo("ms_at");
+        assertThat(parsed.externalAccount()).isNull();
+    }
+
+    /** Onda 1 continua sem refresh: campo ausente vira null (nada de string vazia). */
+    @Test
+    void onda1_semRefreshToken_continuaNull() throws Exception {
+        TokenResponse parsed =
+                GenericOAuthHttpClient.parse(
+                        mapper.readTree("{\"access_token\":\"gho_abc\"}"),
+                        config(IntegrationProvider.GITHUB, null));
+        assertThat(parsed.refreshToken()).isNull();
+    }
+
     @Test
     void respostaSemAccessToken_falhaClaro() throws Exception {
         assertThatThrownBy(
@@ -78,7 +130,22 @@ class GenericOAuthHttpClientTest {
                 .hasMessageContaining("sem access_token");
     }
 
+    /** JWT de teste: header e assinatura fake, payload real em base64url. */
+    private static String jwt(String payloadJson) {
+        java.util.Base64.Encoder b64 = java.util.Base64.getUrlEncoder().withoutPadding();
+        return b64.encodeToString(
+                        "{\"alg\":\"none\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                + "."
+                + b64.encodeToString(payloadJson.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                + ".assinatura";
+    }
+
     private static OAuthProviderConfig config(IntegrationProvider provider, String accountPointer) {
+        return config(provider, accountPointer, null);
+    }
+
+    private static OAuthProviderConfig config(
+            IntegrationProvider provider, String accountPointer, String idTokenClaim) {
         return new OAuthProviderConfig(
                 provider,
                 "https://example.test/authorize",
@@ -90,6 +157,8 @@ class GenericOAuthHttpClientTest {
                 TokenAuthStyle.CLIENT_SECRET_BODY,
                 TokenRequestFormat.FORM,
                 Map.of(),
-                accountPointer);
+                accountPointer,
+                idTokenClaim,
+                idTokenClaim != null);
     }
 }
