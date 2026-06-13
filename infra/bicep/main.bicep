@@ -104,6 +104,37 @@ param slackOauthClientId string = ''
 @secure()
 param slackOauthClientSecret string = ''
 
+// Onda 1 de provedores genericos (GitHub, Notion, Todoist, Linear) — mesmo contrato do Slack:
+// default vazio = conector "nao configurado" no hub, sem quebrar o deploy.
+
+@description('GitHub OAuth Client ID. Mesmo contrato do Slack.')
+param githubOauthClientId string = ''
+
+@description('GitHub OAuth Client Secret. KV github-oauth-client-secret so quando setado.')
+@secure()
+param githubOauthClientSecret string = ''
+
+@description('Notion OAuth Client ID. Mesmo contrato do Slack.')
+param notionOauthClientId string = ''
+
+@description('Notion OAuth Client Secret. KV notion-oauth-client-secret so quando setado.')
+@secure()
+param notionOauthClientSecret string = ''
+
+@description('Todoist OAuth Client ID. Mesmo contrato do Slack.')
+param todoistOauthClientId string = ''
+
+@description('Todoist OAuth Client Secret. KV todoist-oauth-client-secret so quando setado.')
+@secure()
+param todoistOauthClientSecret string = ''
+
+@description('Linear OAuth Client ID. Mesmo contrato do Slack.')
+param linearOauthClientId string = ''
+
+@description('Linear OAuth Client Secret. KV linear-oauth-client-secret so quando setado.')
+@secure()
+param linearOauthClientSecret string = ''
+
 @description('Assina o state OAuth (HMAC-SHA256, ADR 0031). Vazio = segredo efemero por boot (states nao sobrevivem a restart — ok em dev, ruim em prod).')
 @secure()
 param integrationsStateSecret string = ''
@@ -424,6 +455,30 @@ var keyVaultSecrets = {
       {
         name: 'slack-oauth-client-secret'
         value: slackOauthClientSecret
+      }
+    ],
+    empty(githubOauthClientSecret) ? [] : [
+      {
+        name: 'github-oauth-client-secret'
+        value: githubOauthClientSecret
+      }
+    ],
+    empty(notionOauthClientSecret) ? [] : [
+      {
+        name: 'notion-oauth-client-secret'
+        value: notionOauthClientSecret
+      }
+    ],
+    empty(todoistOauthClientSecret) ? [] : [
+      {
+        name: 'todoist-oauth-client-secret'
+        value: todoistOauthClientSecret
+      }
+    ],
+    empty(linearOauthClientSecret) ? [] : [
+      {
+        name: 'linear-oauth-client-secret'
+        value: linearOauthClientSecret
       }
     ],
     empty(integrationsStateSecret) ? [] : [
@@ -764,6 +819,62 @@ var apiIntegrationsEnv = union(
       value: '${apiBaseUrl}/integrations/slack/oauth/callback'
     }
   ],
+  empty(githubOauthClientId) || empty(githubOauthClientSecret) ? [] : [
+    {
+      name: 'GITHUB_OAUTH_CLIENT_ID'
+      value: githubOauthClientId
+    }
+    {
+      name: 'GITHUB_OAUTH_CLIENT_SECRET'
+      secretRef: 'github-oauth-client-secret'
+    }
+    {
+      name: 'GITHUB_OAUTH_REDIRECT_URI'
+      value: '${apiBaseUrl}/integrations/github/oauth/callback'
+    }
+  ],
+  empty(notionOauthClientId) || empty(notionOauthClientSecret) ? [] : [
+    {
+      name: 'NOTION_OAUTH_CLIENT_ID'
+      value: notionOauthClientId
+    }
+    {
+      name: 'NOTION_OAUTH_CLIENT_SECRET'
+      secretRef: 'notion-oauth-client-secret'
+    }
+    {
+      name: 'NOTION_OAUTH_REDIRECT_URI'
+      value: '${apiBaseUrl}/integrations/notion/oauth/callback'
+    }
+  ],
+  empty(todoistOauthClientId) || empty(todoistOauthClientSecret) ? [] : [
+    {
+      name: 'TODOIST_OAUTH_CLIENT_ID'
+      value: todoistOauthClientId
+    }
+    {
+      name: 'TODOIST_OAUTH_CLIENT_SECRET'
+      secretRef: 'todoist-oauth-client-secret'
+    }
+    {
+      name: 'TODOIST_OAUTH_REDIRECT_URI'
+      value: '${apiBaseUrl}/integrations/todoist/oauth/callback'
+    }
+  ],
+  empty(linearOauthClientId) || empty(linearOauthClientSecret) ? [] : [
+    {
+      name: 'LINEAR_OAUTH_CLIENT_ID'
+      value: linearOauthClientId
+    }
+    {
+      name: 'LINEAR_OAUTH_CLIENT_SECRET'
+      secretRef: 'linear-oauth-client-secret'
+    }
+    {
+      name: 'LINEAR_OAUTH_REDIRECT_URI'
+      value: '${apiBaseUrl}/integrations/linear/oauth/callback'
+    }
+  ],
   empty(integrationsStateSecret) ? [] : [
     {
       name: 'NORA_INTEGRATIONS_STATE_SECRET'
@@ -901,6 +1012,30 @@ var apiSecrets = {
       {
         name: 'slack-oauth-client-secret'
         value: slackOauthClientSecret
+      }
+    ],
+    empty(githubOauthClientSecret) ? [] : [
+      {
+        name: 'github-oauth-client-secret'
+        value: githubOauthClientSecret
+      }
+    ],
+    empty(notionOauthClientSecret) ? [] : [
+      {
+        name: 'notion-oauth-client-secret'
+        value: notionOauthClientSecret
+      }
+    ],
+    empty(todoistOauthClientSecret) ? [] : [
+      {
+        name: 'todoist-oauth-client-secret'
+        value: todoistOauthClientSecret
+      }
+    ],
+    empty(linearOauthClientSecret) ? [] : [
+      {
+        name: 'linear-oauth-client-secret'
+        value: linearOauthClientSecret
       }
     ],
     empty(integrationsStateSecret) ? [] : [

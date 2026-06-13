@@ -15,6 +15,11 @@ name: deploy-infra
 #   Integracoes OAuth do NORA Flows (ADR 0031) — vazios = conector "nao configurado" no hub:
 #   - GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET   (Gmail + Calendar)
 #   - SLACK_OAUTH_CLIENT_ID / SLACK_OAUTH_CLIENT_SECRET     (Slack)
+#   - GH_OAUTH_CLIENT_ID / GH_OAUTH_CLIENT_SECRET           (GitHub; o prefixo GITHUB_ e
+#       reservado pelo Actions — o secret chama GH_* e vira env GITHUB_OAUTH_* no deploy)
+#   - NOTION_OAUTH_CLIENT_ID / NOTION_OAUTH_CLIENT_SECRET   (Notion)
+#   - TODOIST_OAUTH_CLIENT_ID / TODOIST_OAUTH_CLIENT_SECRET (Todoist)
+#   - LINEAR_OAUTH_CLIENT_ID / LINEAR_OAUTH_CLIENT_SECRET   (Linear)
 #   - NORA_INTEGRATIONS_STATE_SECRET   assina o state OAuth (HMAC)
 #   - NORA_INTEGRATIONS_ENC_KEY        AES-256-GCM dos tokens em repouso (32 bytes base64)
 #   Control plane (ADR 0022/0023/0024/0025) — só usados quando enablePlatform=true no bicepparam:
@@ -123,6 +128,14 @@ jobs:
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
           SLACK_OAUTH_CLIENT_ID: ${{ secrets.SLACK_OAUTH_CLIENT_ID }}
           SLACK_OAUTH_CLIENT_SECRET: ${{ secrets.SLACK_OAUTH_CLIENT_SECRET }}
+          GITHUB_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          NOTION_OAUTH_CLIENT_ID: ${{ secrets.NOTION_OAUTH_CLIENT_ID }}
+          NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+          TODOIST_OAUTH_CLIENT_ID: ${{ secrets.TODOIST_OAUTH_CLIENT_ID }}
+          TODOIST_OAUTH_CLIENT_SECRET: ${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
+          LINEAR_OAUTH_CLIENT_ID: ${{ secrets.LINEAR_OAUTH_CLIENT_ID }}
+          LINEAR_OAUTH_CLIENT_SECRET: ${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
           NORA_INTEGRATIONS_STATE_SECRET: ${{ secrets.NORA_INTEGRATIONS_STATE_SECRET }}
           NORA_INTEGRATIONS_ENC_KEY: ${{ secrets.NORA_INTEGRATIONS_ENC_KEY }}
           # Control plane (ADR 0022/0023/0024) — usados quando enablePlatform=true.
@@ -186,6 +199,14 @@ jobs:
           GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
           SLACK_OAUTH_CLIENT_ID: ${{ secrets.SLACK_OAUTH_CLIENT_ID }}
           SLACK_OAUTH_CLIENT_SECRET: ${{ secrets.SLACK_OAUTH_CLIENT_SECRET }}
+          GITHUB_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          NOTION_OAUTH_CLIENT_ID: ${{ secrets.NOTION_OAUTH_CLIENT_ID }}
+          NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+          TODOIST_OAUTH_CLIENT_ID: ${{ secrets.TODOIST_OAUTH_CLIENT_ID }}
+          TODOIST_OAUTH_CLIENT_SECRET: ${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
+          LINEAR_OAUTH_CLIENT_ID: ${{ secrets.LINEAR_OAUTH_CLIENT_ID }}
+          LINEAR_OAUTH_CLIENT_SECRET: ${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
           NORA_INTEGRATIONS_STATE_SECRET: ${{ secrets.NORA_INTEGRATIONS_STATE_SECRET }}
           NORA_INTEGRATIONS_ENC_KEY: ${{ secrets.NORA_INTEGRATIONS_ENC_KEY }}
           # Control plane (ADR 0022/0023/0024) — usados quando enablePlatform=true.

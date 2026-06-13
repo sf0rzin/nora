@@ -61,61 +61,42 @@ public class IntegrationsController {
         } catch (IllegalArgumentException ex) {
             throw new IntegrationException.UnknownProvider(provider);
         }
-        String url =
-                switch (parsed) {
-                    case GOOGLE ->
-                            integrations.startGoogle(principal.tenantId(), principal.userId());
-                    case SLACK -> integrations.startSlack(principal.tenantId(), principal.userId());
-                };
+        String url = integrations.start(parsed, principal.tenantId(), principal.userId());
         return ResponseEntity.ok(new StartResponse(url));
     }
 
-    /** Callback do Google (público; redirect do navegador). Sempre redireciona pro front. */
-    @GetMapping("/google/oauth/callback")
-    public ResponseEntity<Void> googleCallback(
+    /**
+     * Callback OAuth de QUALQUER provedor (público; redirect do navegador — o wildcard do
+     * SecurityConfig "integrations/&#42;/oauth/callback" cobre todos). Sempre redireciona pro
+     * front; o service roteia Google/Slack pros fluxos dedicados e os demais pro genérico.
+     */
+    @GetMapping("/{provider}/oauth/callback")
+    public ResponseEntity<Void> oauthCallback(
+            @PathVariable("provider") String provider,
             @RequestParam(name = "code", required = false) String code,
             @RequestParam(name = "state", required = false) String state,
             @RequestParam(name = "error", required = false) String error) {
+        IntegrationProvider parsed;
+        try {
+            parsed = IntegrationProvider.fromWire(provider);
+        } catch (IllegalArgumentException ex) {
+            return redirect("/integracoes?error=integration_unknown_provider");
+        }
         if (error != null && !error.isBlank()) {
-            // Usuário negou o consentimento (ou erro do Google) — sem stack, sem 500.
+            // Usuário negou o consentimento (ou erro do provedor) — sem stack, sem 500.
             return redirect("/integracoes?error=" + error);
         }
         if (code == null || code.isBlank()) {
             return redirect("/integracoes?error=missing_code");
         }
         try {
-            integrations.handleGoogleCallback(code, state);
-            return redirect("/integracoes?connected=google");
+            integrations.handleCallback(parsed, code, state);
+            return redirect("/integracoes?connected=" + parsed.wire());
         } catch (IntegrationException ex) {
-            LOG.warn("OAuth Google callback falhou: {} {}", ex.code(), ex.getMessage());
+            LOG.warn("OAuth {} callback falhou: {} {}", parsed.wire(), ex.code(), ex.getMessage());
             return redirect("/integracoes?error=" + ex.code().toLowerCase());
         } catch (RuntimeException ex) {
-            LOG.error("OAuth Google callback erro inesperado", ex);
-            return redirect("/integracoes?error=internal");
-        }
-    }
-
-    /** Callback do Slack (público; redirect do navegador). Sempre redireciona pro front. */
-    @GetMapping("/slack/oauth/callback")
-    public ResponseEntity<Void> slackCallback(
-            @RequestParam(name = "code", required = false) String code,
-            @RequestParam(name = "state", required = false) String state,
-            @RequestParam(name = "error", required = false) String error) {
-        if (error != null && !error.isBlank()) {
-            // Usuário negou o consentimento (ou erro do Slack) — sem stack, sem 500.
-            return redirect("/integracoes?error=" + error);
-        }
-        if (code == null || code.isBlank()) {
-            return redirect("/integracoes?error=missing_code");
-        }
-        try {
-            integrations.handleSlackCallback(code, state);
-            return redirect("/integracoes?connected=slack");
-        } catch (IntegrationException ex) {
-            LOG.warn("OAuth Slack callback falhou: {} {}", ex.code(), ex.getMessage());
-            return redirect("/integracoes?error=" + ex.code().toLowerCase());
-        } catch (RuntimeException ex) {
-            LOG.error("OAuth Slack callback erro inesperado", ex);
+            LOG.error("OAuth {} callback erro inesperado", parsed.wire(), ex);
             return redirect("/integracoes?error=internal");
         }
     }
