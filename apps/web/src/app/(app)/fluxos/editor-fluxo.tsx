@@ -45,7 +45,7 @@ import {
   type WorkflowExecutionResponse,
 } from "@/lib/api/client";
 
-import { CATALOGO, ehWebhookDiscord, metaDoBloco, type BlocoMeta } from "./catalogo";
+import { CATALOGO, ehRepoGitHub, ehWebhookDiscord, metaDoBloco, type BlocoMeta } from "./catalogo";
 import { NoBloco, type NoRF } from "./no-bloco";
 import { PainelLateral, type TabPainel } from "./painel-lateral";
 import { PaletaBlocos } from "./paleta-blocos";
@@ -296,6 +296,22 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
     if (discordSemWebhook) {
       focarNo(discordSemWebhook.id);
       return "A ação “Avisar no Discord” precisa da URL do webhook do canal (começa com https://discord.com/api/webhooks/).";
+    }
+    const githubSemRepo = nodes.find(
+      (n) => n.data.blockType === "github_create_issue" && !ehRepoGitHub(n.data.params.repo),
+    );
+    if (githubSemRepo) {
+      focarNo(githubSemRepo.id);
+      return "A ação “Criar issue no GitHub” precisa do repositório no formato owner/nome (ex.: stratfy/nora).";
+    }
+    const notionSemPagina = nodes.find((n) => {
+      if (n.data.blockType !== "notion_create_page") return false;
+      const parentPageId = n.data.params.parentPageId;
+      return typeof parentPageId !== "string" || !parentPageId.trim();
+    });
+    if (notionSemPagina) {
+      focarNo(notionSemPagina.id);
+      return "A ação “Criar página no Notion” precisa do ID da página pai (código no fim da URL da página).";
     }
     return null;
   }
