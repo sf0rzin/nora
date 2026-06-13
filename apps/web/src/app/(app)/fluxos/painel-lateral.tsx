@@ -56,7 +56,7 @@ function NotaRequerIntegracao({ provedor }: { provedor: string }) {
   );
 }
 
-/** Formulário do send_email/gmail_send_email: destinatário + assunto + corpo + placeholders. */
+/** Formulário do send_email/gmail_send_email/outlook_send_email: destinatário + assunto + corpo + placeholders. */
 function FormEmail({
   no,
   mostrarErros,
@@ -187,15 +187,18 @@ function FormEmail({
 }
 
 /**
- * Formulário do calendar_create_event: título + agendamento relativo.
- * Todos os params são opcionais — o backend aplica os defaults na execução
- * (amanhã às 10h, 30 minutos), então campos vazios não bloqueiam o salvar.
+ * Formulário do calendar_create_event e do mscalendar_create_event: título +
+ * agendamento relativo. Todos os params são opcionais — o backend aplica os
+ * defaults na execução (amanhã às 10h, 30 minutos), então campos vazios não
+ * bloqueiam o salvar. O provedor muda só a nota de integração (Google/Microsoft).
  */
 function FormEvento({
   no,
+  provedor,
   onChange,
 }: {
   no: NoRF;
+  provedor: string;
   onChange: (chave: string, valor: unknown) => void;
 }) {
   function numero(chave: string): number | "" {
@@ -211,7 +214,7 @@ function FormEvento({
 
   return (
     <>
-      <NotaRequerIntegracao provedor="Google" />
+      <NotaRequerIntegracao provedor={provedor} />
 
       <div className="field">
         <label className="field-label" htmlFor="flows-evento-titulo">
@@ -494,6 +497,105 @@ function FormLinear({
   );
 }
 
+/** Formulário do slack_post_message: canal de destino (ex.: #vendas). */
+function FormSlack({
+  no,
+  mostrarErros,
+  onChange,
+}: {
+  no: NoRF;
+  mostrarErros: boolean;
+  onChange: (chave: string, valor: unknown) => void;
+}) {
+  const channel = valorTexto(no.data.params, "channel");
+  const invalido = mostrarErros && !channel.trim();
+
+  return (
+    <>
+      <NotaRequerIntegracao provedor="Slack" />
+      <div className="field">
+        <label className="field-label" htmlFor="flows-slack-canal">
+          Canal <span className="req">*</span>
+        </label>
+        <input
+          id="flows-slack-canal"
+          className="input"
+          type="text"
+          placeholder="#vendas"
+          value={channel}
+          onChange={(e) => onChange("channel", e.target.value)}
+          style={invalido ? { borderColor: "var(--danger)" } : undefined}
+        />
+        {invalido ? (
+          <span className="field-help is-err">Informe o canal de destino (ex.: #vendas).</span>
+        ) : (
+          <span className="field-help">
+            A mensagem sai com título, resumo e link da reunião. Em canal privado, convide o bot
+            antes (/invite).
+          </span>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** Formulário do telegram_send_message: sem parâmetros — só a nota de conexão. */
+function FormTelegram() {
+  return (
+    <>
+      <NotaRequerIntegracao provedor="Telegram" />
+      <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0, lineHeight: 1.6 }}>
+        Sem parâmetros — envia o resumo da reunião (com próximos passos e link) no chat pareado com
+        o bot da NORA.
+      </p>
+    </>
+  );
+}
+
+/** Formulário do trello_create_card: ID da lista de destino. */
+function FormTrello({
+  no,
+  mostrarErros,
+  onChange,
+}: {
+  no: NoRF;
+  mostrarErros: boolean;
+  onChange: (chave: string, valor: unknown) => void;
+}) {
+  const listId = valorTexto(no.data.params, "listId");
+  const invalido = mostrarErros && !listId.trim();
+
+  return (
+    <>
+      <NotaRequerIntegracao provedor="Trello" />
+      <div className="field">
+        <label className="field-label" htmlFor="flows-trello-lista">
+          ID da lista <span className="req">*</span>
+        </label>
+        <input
+          id="flows-trello-lista"
+          className="input"
+          type="text"
+          placeholder="5f2d3c4b5a69708192a3b4c5"
+          value={listId}
+          onChange={(e) => onChange("listId", e.target.value)}
+          style={invalido ? { borderColor: "var(--danger)" } : undefined}
+        />
+        {invalido ? (
+          <span className="field-help is-err">
+            Informe o ID da lista — os cards nascem dentro dela.
+          </span>
+        ) : (
+          <span className="field-help">
+            Pra achar o ID: abra o board e acrescente .json no fim da URL — cada lista aparece com
+            seu id. Um card por action item da reunião.
+          </span>
+        )}
+      </div>
+    </>
+  );
+}
+
 /** Formulário de parâmetros por tipo de bloco. */
 function FormParams({
   no,
@@ -599,8 +701,21 @@ function FormParams({
     );
   }
 
+  if (t === "outlook_send_email") {
+    return (
+      <>
+        <NotaRequerIntegracao provedor="Microsoft" />
+        <FormEmail no={no} mostrarErros={mostrarErros} onChange={onChange} />
+      </>
+    );
+  }
+
   if (t === "calendar_create_event") {
-    return <FormEvento no={no} onChange={onChange} />;
+    return <FormEvento no={no} provedor="Google" onChange={onChange} />;
+  }
+
+  if (t === "mscalendar_create_event") {
+    return <FormEvento no={no} provedor="Microsoft" onChange={onChange} />;
   }
 
   if (t === "call_webhook") {
@@ -625,6 +740,18 @@ function FormParams({
 
   if (t === "linear_create_issue") {
     return <FormLinear no={no} onChange={onChange} />;
+  }
+
+  if (t === "slack_post_message") {
+    return <FormSlack no={no} mostrarErros={mostrarErros} onChange={onChange} />;
+  }
+
+  if (t === "telegram_send_message") {
+    return <FormTelegram />;
+  }
+
+  if (t === "trello_create_card") {
+    return <FormTrello no={no} mostrarErros={mostrarErros} onChange={onChange} />;
   }
 
   return (
