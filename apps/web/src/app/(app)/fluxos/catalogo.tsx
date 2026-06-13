@@ -156,6 +156,57 @@ export function IconeLinear({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
+/** Cerquilha (#) — ação "Postar no Slack" (canal). */
+export function IconeSlack({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <path d="M10 4 8 20M16 4l-2 16" />
+      <path d="M5 9.5h15M4 14.5h15" />
+    </svg>
+  );
+}
+
+/** Envelope fechado — ação "Enviar pelo Outlook". */
+export function IconeOutlook({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7.5 9 6 9-6" />
+    </svg>
+  );
+}
+
+/** Calendário com check — ação "Evento no Outlook Calendar". */
+export function IconeCalendarCheck({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <rect x="3" y="5" width="18" height="16" rx="2.5" />
+      <path d="M8 3v4M16 3v4M3 10h18" />
+      <path d="m9.3 15.2 1.9 1.9 3.5-3.7" />
+    </svg>
+  );
+}
+
+/** Avião de papel num círculo — ação "Avisar no Telegram". */
+export function IconeTelegram({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m16.2 8.2-8.4 3.2 3.2 1.5 1.4 3.3z" />
+    </svg>
+  );
+}
+
+/** Board com duas listas (uma mais curta) — ação "Criar card no Trello". */
+export function IconeTrello({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...propsSvg(size)}>
+      <rect x="4" y="4" width="16" height="16" rx="3" />
+      <path d="M8.5 8v8M15.5 8v4.5" />
+    </svg>
+  );
+}
+
 /** Prefixos válidos de webhook de canal do Discord — mesma regra do backend. */
 export const PREFIXOS_WEBHOOK_DISCORD = [
   "https://discord.com/api/webhooks/",
@@ -339,6 +390,58 @@ export const CATALOGO: BlocoMeta[] = [
         : "primeiro time do workspace",
     Icone: IconeLinear,
   },
+  {
+    kind: "action",
+    type: "slack_post_message",
+    nome: "Postar no Slack",
+    descricao: "Resumo da reunião num canal da workspace conectada",
+    paramsPadrao: { channel: "" },
+    resumo: (p) =>
+      typeof p.channel === "string" && p.channel.trim()
+        ? `canal: ${p.channel.trim()}`
+        : "defina o canal",
+    Icone: IconeSlack,
+  },
+  {
+    kind: "action",
+    type: "outlook_send_email",
+    nome: "Enviar pelo Outlook",
+    descricao: "Envia pela SUA conta Microsoft conectada (remetente = você)",
+    paramsPadrao: { to: "" },
+    resumo: (p) =>
+      typeof p.to === "string" && p.to.trim() ? `para: ${p.to.trim()}` : "defina o destinatário",
+    Icone: IconeOutlook,
+  },
+  {
+    kind: "action",
+    type: "mscalendar_create_event",
+    nome: "Evento no Outlook Calendar",
+    descricao: "Cria um follow-up no calendário da conta Microsoft",
+    paramsPadrao: { title: "", startInDays: 1, hour: 10, durationMinutes: 30 },
+    resumo: (p) => resumoEvento(p),
+    Icone: IconeCalendarCheck,
+  },
+  {
+    kind: "action",
+    type: "telegram_send_message",
+    nome: "Avisar no Telegram",
+    descricao: "Resumo da reunião no chat pareado com o bot",
+    paramsPadrao: {},
+    resumo: () => "resumo no chat pareado",
+    Icone: IconeTelegram,
+  },
+  {
+    kind: "action",
+    type: "trello_create_card",
+    nome: "Criar card no Trello",
+    descricao: "Um card por action item na lista escolhida",
+    paramsPadrao: { listId: "" },
+    resumo: (p) =>
+      typeof p.listId === "string" && p.listId.trim()
+        ? `lista: ${truncar(p.listId.trim(), 12)}`
+        : "defina a lista",
+    Icone: IconeTrello,
+  },
 ];
 
 /** Trunca valores longos pro resumo do nó (ex.: ID de página do Notion). */
@@ -370,8 +473,9 @@ export function metaDoBloco(type: string): BlocoMeta | undefined {
 }
 
 /**
- * Placeholders suportados pelo backend em subject/body do send_email e do
- * gmail_send_email (e no title do calendar_create_event).
+ * Placeholders suportados pelo backend em subject/body das ações de e-mail
+ * (send_email, gmail_send_email, outlook_send_email) e no title dos eventos
+ * de calendário (calendar_create_event, mscalendar_create_event).
  * Renderizados como chips clicáveis no painel de parâmetros.
  */
 export const PLACEHOLDERS_EMAIL: { token: string; dica: string }[] = [
