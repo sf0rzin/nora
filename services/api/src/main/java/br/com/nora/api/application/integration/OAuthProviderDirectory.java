@@ -10,10 +10,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Catálogo dos provedores OAuth genéricos (onda 1: GitHub, Notion, Todoist, Linear). URLs, escopos
- * e particularidades de cada provedor ficam declarados AQUI; credenciais vêm de env (nunca em
- * código). Provedor sem client-id/secret no ambiente simplesmente não entra no catálogo — o hub
- * mostra "não configurado" e o start retorna 422 (fail-visible, mesmo contrato do Google/Slack).
+ * Catálogo dos provedores OAuth genéricos (onda 1: GitHub, Notion, Todoist, Linear; onda 2:
+ * Microsoft). URLs, escopos e particularidades de cada provedor ficam declarados AQUI; credenciais
+ * vêm de env (nunca em código). Provedor sem client-id/secret no ambiente simplesmente não entra no
+ * catálogo — o hub mostra "não configurado" e o start retorna 422 (fail-visible, mesmo contrato do
+ * Google/Slack).
  */
 @Component
 public class OAuthProviderDirectory {
@@ -33,7 +34,10 @@ public class OAuthProviderDirectory {
             @Value("${nora.integrations.todoist.redirect-uri:}") String todoistRedirectUri,
             @Value("${nora.integrations.linear.client-id:}") String linearClientId,
             @Value("${nora.integrations.linear.client-secret:}") String linearClientSecret,
-            @Value("${nora.integrations.linear.redirect-uri:}") String linearRedirectUri) {
+            @Value("${nora.integrations.linear.redirect-uri:}") String linearRedirectUri,
+            @Value("${nora.integrations.microsoft.client-id:}") String microsoftClientId,
+            @Value("${nora.integrations.microsoft.client-secret:}") String microsoftClientSecret,
+            @Value("${nora.integrations.microsoft.redirect-uri:}") String microsoftRedirectUri) {
         // GitHub: token form-encoded por default — o client manda Accept: application/json.
         // Token de OAuth App não expira; sem refresh.
         register(
@@ -47,7 +51,9 @@ public class OAuthProviderDirectory {
                 TokenAuthStyle.CLIENT_SECRET_BODY,
                 TokenRequestFormat.FORM,
                 Map.of(),
-                null);
+                null,
+                null,
+                false);
         // Notion: sem scopes (capabilities do app), token endpoint usa HTTP Basic + corpo JSON,
         // `owner=user` no authorize; a resposta traz workspace_name (vira a conta no hub).
         register(
@@ -61,7 +67,9 @@ public class OAuthProviderDirectory {
                 TokenAuthStyle.HTTP_BASIC,
                 TokenRequestFormat.JSON,
                 Map.of("owner", "user"),
-                "/workspace_name");
+                "/workspace_name",
+                null,
+                false);
         // Todoist: token não expira; sem refresh.
         register(
                 IntegrationProvider.TODOIST,
@@ -74,7 +82,9 @@ public class OAuthProviderDirectory {
                 TokenAuthStyle.CLIENT_SECRET_BODY,
                 TokenRequestFormat.FORM,
                 Map.of(),
-                null);
+                null,
+                null,
+                false);
         // Linear: token de longa duração (expires_in ~10 anos); `actor=user` no authorize.
         register(
                 IntegrationProvider.LINEAR,
@@ -87,7 +97,26 @@ public class OAuthProviderDirectory {
                 TokenAuthStyle.CLIENT_SECRET_BODY,
                 TokenRequestFormat.FORM,
                 Map.of("actor", "user"),
-                null);
+                null,
+                null,
+                false);
+        // Microsoft (Outlook + Calendar, onda 2): tenant `common` (conta pessoal ou corporativa),
+        // refresh REAL via offline_access (access token dura ~1h) e conta externa lida do claim
+        // `email` do id_token (escopos openid+email) — o corpo do token nao traz a conta.
+        register(
+                IntegrationProvider.MICROSOFT,
+                "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+                "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+                "openid email offline_access Mail.Send Calendars.ReadWrite",
+                microsoftClientId,
+                microsoftClientSecret,
+                microsoftRedirectUri,
+                TokenAuthStyle.CLIENT_SECRET_BODY,
+                TokenRequestFormat.FORM,
+                Map.of(),
+                null,
+                "email",
+                true);
     }
 
     /** Config do provedor — vazio quando as credenciais não estão no ambiente. */
@@ -111,7 +140,9 @@ public class OAuthProviderDirectory {
             TokenAuthStyle authStyle,
             TokenRequestFormat requestFormat,
             Map<String, String> extraAuthorizeParams,
-            String accountJsonPointer) {
+            String accountJsonPointer,
+            String accountIdTokenClaim,
+            boolean supportsRefresh) {
         if (isBlank(clientId) || isBlank(clientSecret) || isBlank(redirectUri)) {
             return;
         }
@@ -128,7 +159,9 @@ public class OAuthProviderDirectory {
                         authStyle,
                         requestFormat,
                         extraAuthorizeParams,
-                        accountJsonPointer));
+                        accountJsonPointer,
+                        accountIdTokenClaim,
+                        supportsRefresh));
     }
 
     private static boolean isBlank(String value) {

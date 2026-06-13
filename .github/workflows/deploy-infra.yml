@@ -20,6 +20,11 @@ name: deploy-infra
 #   - NOTION_OAUTH_CLIENT_ID / NOTION_OAUTH_CLIENT_SECRET   (Notion)
 #   - TODOIST_OAUTH_CLIENT_ID / TODOIST_OAUTH_CLIENT_SECRET (Todoist)
 #   - LINEAR_OAUTH_CLIENT_ID / LINEAR_OAUTH_CLIENT_SECRET   (Linear)
+#   Onda 2 (modelos de conexao diferentes):
+#   - MS_OAUTH_CLIENT_ID / MS_OAUTH_CLIENT_SECRET            (Microsoft Outlook + Calendar,
+#       OAuth com refresh via offline_access)
+#   - NORA_TELEGRAM_BOT_TOKEN          token do bot unico do app (pareamento por codigo)
+#   - TRELLO_API_KEY                   key do app no Trello (usuario cola o token gerado)
 #   - NORA_INTEGRATIONS_STATE_SECRET   assina o state OAuth (HMAC)
 #   - NORA_INTEGRATIONS_ENC_KEY        AES-256-GCM dos tokens em repouso (32 bytes base64)
 #   Control plane (ADR 0022/0023/0024/0025) — só usados quando enablePlatform=true no bicepparam:
@@ -136,6 +141,10 @@ jobs:
           TODOIST_OAUTH_CLIENT_SECRET: ${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
           LINEAR_OAUTH_CLIENT_ID: ${{ secrets.LINEAR_OAUTH_CLIENT_ID }}
           LINEAR_OAUTH_CLIENT_SECRET: ${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
+          MS_OAUTH_CLIENT_ID: ${{ secrets.MS_OAUTH_CLIENT_ID }}
+          MS_OAUTH_CLIENT_SECRET: ${{ secrets.MS_OAUTH_CLIENT_SECRET }}
+          NORA_TELEGRAM_BOT_TOKEN: ${{ secrets.NORA_TELEGRAM_BOT_TOKEN }}
+          TRELLO_API_KEY: ${{ secrets.TRELLO_API_KEY }}
           NORA_INTEGRATIONS_STATE_SECRET: ${{ secrets.NORA_INTEGRATIONS_STATE_SECRET }}
           NORA_INTEGRATIONS_ENC_KEY: ${{ secrets.NORA_INTEGRATIONS_ENC_KEY }}
           # Control plane (ADR 0022/0023/0024) — usados quando enablePlatform=true.
@@ -207,6 +216,10 @@ jobs:
           TODOIST_OAUTH_CLIENT_SECRET: ${{ secrets.TODOIST_OAUTH_CLIENT_SECRET }}
           LINEAR_OAUTH_CLIENT_ID: ${{ secrets.LINEAR_OAUTH_CLIENT_ID }}
           LINEAR_OAUTH_CLIENT_SECRET: ${{ secrets.LINEAR_OAUTH_CLIENT_SECRET }}
+          MS_OAUTH_CLIENT_ID: ${{ secrets.MS_OAUTH_CLIENT_ID }}
+          MS_OAUTH_CLIENT_SECRET: ${{ secrets.MS_OAUTH_CLIENT_SECRET }}
+          NORA_TELEGRAM_BOT_TOKEN: ${{ secrets.NORA_TELEGRAM_BOT_TOKEN }}
+          TRELLO_API_KEY: ${{ secrets.TRELLO_API_KEY }}
           NORA_INTEGRATIONS_STATE_SECRET: ${{ secrets.NORA_INTEGRATIONS_STATE_SECRET }}
           NORA_INTEGRATIONS_ENC_KEY: ${{ secrets.NORA_INTEGRATIONS_ENC_KEY }}
           # Control plane (ADR 0022/0023/0024) — usados quando enablePlatform=true.

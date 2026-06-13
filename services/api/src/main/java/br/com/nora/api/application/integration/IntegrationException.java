@@ -44,6 +44,16 @@ public abstract class IntegrationException extends RuntimeException {
         }
     }
 
+    /**
+     * Pareamento Telegram ainda não concluído: o backend não encontrou o {@code /start <código>} do
+     * usuário no getUpdates. NÃO é falha do provedor — o hub orienta tentar de novo.
+     */
+    public static final class PairingPending extends IntegrationException {
+        public PairingPending(String message) {
+            super("INTEGRATION_PAIRING_PENDING", message);
+        }
+    }
+
     public static final class ProviderError extends IntegrationException {
         public ProviderError(String provider, String detail) {
             super("INTEGRATION_PROVIDER_ERROR", "Erro do provedor '" + provider + "': " + detail);

@@ -60,6 +60,11 @@ param todoistOauthClientId = readEnvironmentVariable('TODOIST_OAUTH_CLIENT_ID', 
 param todoistOauthClientSecret = readEnvironmentVariable('TODOIST_OAUTH_CLIENT_SECRET', '')
 param linearOauthClientId = readEnvironmentVariable('LINEAR_OAUTH_CLIENT_ID', '')
 param linearOauthClientSecret = readEnvironmentVariable('LINEAR_OAUTH_CLIENT_SECRET', '')
+// Onda 2: Microsoft (OAuth com refresh), Telegram (bot + pareamento) e Trello (token colado).
+param msOauthClientId = readEnvironmentVariable('MS_OAUTH_CLIENT_ID', '')
+param msOauthClientSecret = readEnvironmentVariable('MS_OAUTH_CLIENT_SECRET', '')
+param telegramBotToken = readEnvironmentVariable('NORA_TELEGRAM_BOT_TOKEN', '')
+param trelloApiKey = readEnvironmentVariable('TRELLO_API_KEY', '')
 param integrationsStateSecret = readEnvironmentVariable('NORA_INTEGRATIONS_STATE_SECRET', '')
 param integrationsEncKey = readEnvironmentVariable('NORA_INTEGRATIONS_ENC_KEY', '')
 
