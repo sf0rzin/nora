@@ -63,6 +63,20 @@ Anthony rodou o roteiro ao vivo em produção e reportou problemas; todos diagno
 - **Polish a pedido do PO** — admin 100% DM Sans sem mono (#237); scroll do Início no documento (causa raiz: scroller interno em `.app-main`), orbs removidos de Início/Projetos, switch Ativar/Pausado agrupado com Testar/Salvar no editor, avatares determinísticos estilo "macro desfocada" com 8 paletas (#240).
 - **Pendente do feedback**: propriedades do Calendar dinâmicas a partir dos dados da reunião + confirmação quando a IA não souber o horário (feature — desenhar fatia mínima antes de codar; mexe no schema de análise a 3 dias do pitch).
 
+## Mutirão de integrações + UX pós-reteste (noite de 2026-06-12, PRs #242–#250)
+Reteste do Grand Finale pelo PO PASSOU (e-mail + Calendar reais). Na sequência, batch noturno:
+- **Card pós-envio de transcrição** (#242): sem redirect automático — "Transcrição enviada" com status ao vivo (fila → analisando → pronta + CTA "Ver análise"), ações livres ("Enviar outra"/"Ir para o Início") e ponte com Flows (avisa que fluxos ativos vão executar; sem fluxo, sugere criar). Ideia do PO.
+- **Catálogo de integrações** (#243): `docs/product/integracoes-possiveis.md` — 10 integrações grátis/multi-usuário com tutorial de credencial e env vars padronizadas.
+- **Sidebar sem piscar + copy sóbria** (#244); **e-mail do Flows profissional** (#245): `MarkdownLite` (MD→HTML escape-first, sem lib) + template com moldura NORA — o resumo chegava com asteriscos literais.
+- **Webhook genérico + Discord** (#246): `call_webhook` (POST JSON contrato estável, guarda SSRF resolvendo DNS e bloqueando ranges privados) e `discord_post_message` (embed via webhook de canal) + blocos no canvas. Zero credencial.
+- **Framework OAuth + GitHub/Notion/Todoist/Linear** (#247): `OAuthProviderConfig`/`Directory` + `GenericOAuthHttpClient` (token exchange único; Google/Slack intactos), callback genérico `/{provider}/oauth/callback`, V025 expande CHECK de provider, 4 ações (issue/página/tarefa/issue por action item), hub + Bicep. ⚠️ no GitHub Actions o secret do GitHub chama `GH_OAUTH_CLIENT_ID/SECRET` (prefixo GITHUB_ é reservado).
+- **Blocos no canvas dos 4 OAuth** (#248) — e descoberto gap antigo: slack_post_message não tinha bloco (coberto no #250).
+- **Microsoft + Telegram + Trello** (#249): framework ganhou `supportsRefresh` (skew 60s, semântica do Google) pro Graph (`outlook_send_email`, `mscalendar_create_event`); Telegram SEM OAuth (pareamento por código TTL 10min + deep-link t.me + "Verificar conexão" via getUpdates; chat_id cifrado como conexão); Trello com token colado validado em /1/members/me. V026 expande providers. 355 testes.
+- **Blocos finais no canvas** (#250): Slack, Outlook, Calendar MS, Telegram, Trello.
+**Total: 13 ações de integração reais no Flows.** Lições operacionais: branches de agente precisam de merge da main + ajuste de aridade quando o contrato evolui em paralelo (ActionItemView ganhou dueDate no #246 e quebrou testes de #245/#247 — resolvido nas worktrees antes do CI); nunca editar arquivo acentuado com cmdlets do PowerShell (mojibake — usar Edit/perl).
+
+**Aguardando credenciais do PO** (env vars locais → propagar): SLACK_OAUTH_*, GITHUB_OAUTH_* (repo secret: GH_OAUTH_*), NOTION_OAUTH_*, TODOIST_OAUTH_*, LINEAR_OAUTH_*, NORA_TELEGRAM_BOT_TOKEN, TRELLO_API_KEY, MS_OAUTH_*. Webhook/Discord funcionam sem credencial.
+
 ## Riscos para o palco
 - **Google em modo Testing: refresh token expira em 7 DIAS** — reconectar o Google em /integracoes na véspera (14/06). Verificação p/ público geral não dá até 15/06 (gmail.send é restricted scope: semanas + CASA).
 - Admin em demo local mostra MOCK por default (`NORA_ADMIN_USE_MOCKS` só desliga com "false").
