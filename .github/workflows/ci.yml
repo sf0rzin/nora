@@ -165,6 +165,42 @@ jobs:
           pip install -e ".[dev]"
           pytest -v
 
+  # Compile-check do Rust do Desktop em PR (cargo check, sem bundle). O desktop-bundle (build
+  # full) so roda em push/main — sem este job um erro de compilacao no src-tauri so apareceria
+  # depois do merge. tauri-build le o frontendDist, entao buildamos o front (gera dist/) antes.
+  desktop-rust:
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Build frontend (gera dist/ pro tauri-build)
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: cargo check
+        working-directory: apps/desktop/src-tauri
+        run: cargo check --locked
+
   # Build full do desktop (sidecar PyInstaller + Tauri bundle msi/dmg/deb/AppImage)
   # roda APENAS em push em main, gerando artifacts publicáveis. Em PR validation
   # esse build é overkill (15-20min cold-cache + fragil em 3 plataformas).
@@ -312,7 +348,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, api, worker, web, desktop-sidecar, docs-link-check, infra]
+    needs: [changes, api, worker, web, desktop-sidecar, desktop-rust, docs-link-check, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
