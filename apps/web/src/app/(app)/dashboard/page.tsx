@@ -94,6 +94,79 @@ function TagChips({ tags }: { tags: string[] }) {
   );
 }
 
+const BAND_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
+  HIGH: { bg: "rgba(46,125,50,0.12)", fg: "var(--success)", label: "Alta" },
+  MEDIUM: { bg: "rgba(176,124,12,0.14)", fg: "var(--warn)", label: "Média" },
+  LOW: { bg: "rgba(190,44,44,0.12)", fg: "var(--danger)", label: "Baixa" },
+};
+
+/** Pill de produtividade (banda + score) — só aparece quando a reunião foi avaliada. */
+function ProductivityPill({ band, score }: { band?: string | null; score?: number | null }) {
+  if (!band) return null;
+  const s = BAND_STYLE[band] ?? BAND_STYLE.MEDIUM;
+  return (
+    <span
+      title={`Produtividade ${s.label}${typeof score === "number" ? ` · ${score}/100` : ""}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        flexShrink: 0,
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 500,
+        background: s.bg,
+        color: s.fg,
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: 999, background: s.fg }} />
+      {typeof score === "number" ? score : s.label}
+    </span>
+  );
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/** Stack de avatares (iniciais) dos participantes, com overflow +N. */
+function AvatarStack({ names }: { names?: string[] }) {
+  if (!names || names.length === 0) return null;
+  const shown = names.slice(0, 3);
+  const overflow = names.length - shown.length;
+  const chip: React.CSSProperties = {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    display: "grid",
+    placeItems: "center",
+    fontSize: 9.5,
+    fontWeight: 600,
+    background: "var(--chip)",
+    color: "var(--muted)",
+    border: "1.5px solid var(--canvas)",
+    letterSpacing: "0.02em",
+  };
+  return (
+    <span
+      style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}
+      aria-label={`${names.length} participante${names.length === 1 ? "" : "s"}`}
+    >
+      {shown.map((n, i) => (
+        <span key={i} title={n} style={{ ...chip, marginLeft: i === 0 ? 0 : -7 }}>
+          {initialsOf(n)}
+        </span>
+      ))}
+      {overflow > 0 && <span style={{ ...chip, marginLeft: -7 }}>+{overflow}</span>}
+    </span>
+  );
+}
+
 function MeetingRow({ m }: { m: MeetingListItem }) {
   const meta = STATUS_META[m.processingStatus] ?? STATUS_META.PENDING;
   const duration = durationLabel(m.durationSeconds);
@@ -127,6 +200,8 @@ function MeetingRow({ m }: { m: MeetingListItem }) {
           )}
         </span>
       </span>
+      <AvatarStack names={m.participants} />
+      <ProductivityPill band={m.productivityBand} score={m.productivityScore} />
       <span style={{ flexShrink: 0, fontSize: 11, color: meta.color, letterSpacing: "0.02em" }}>{meta.label}</span>
     </Link>
   );
