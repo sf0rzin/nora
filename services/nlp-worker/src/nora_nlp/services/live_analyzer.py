@@ -16,49 +16,15 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
-from pathlib import Path
 
 from ..clients.llm import LlmClient
 from ..models import LiveAnalyzeRequest, LiveAnalyzeResponse, LiveHighlightsV1
 from ..settings import Settings
 from .pii_shield import redact as pii_redact
+from .prompt_utils import load_prompt, render_template
 
 logger = logging.getLogger(__name__)
-
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
-
-
-def _load_prompt() -> tuple[str, str]:
-    path = PROMPTS_DIR / "live-highlights-v1.md"
-    if not path.exists():
-        raise FileNotFoundError(f"Prompt nao encontrado: {path}")
-
-    content = path.read_text(encoding="utf-8")
-
-    system_match = re.search(r"##\s*SYSTEM\s*\n(.*?)(?=\n##\s*USER)", content, re.DOTALL)
-    user_match = re.search(r"##\s*USER\s*\n(.*)", content, re.DOTALL)
-
-    if not system_match or not user_match:
-        raise ValueError("Prompt live-highlights-v1.md deve conter secoes ## SYSTEM e ## USER")
-
-    return system_match.group(1).strip(), user_match.group(1).strip()
-
-
-def _escape_placeholders(value: str) -> str:
-    """Neutraliza placeholders `{{x}}` vindos do usuario (anti prompt-template
-    injection)."""
-    if "{{" not in value:
-        return value
-    return value.replace("{{", "{ {").replace("}}", "} }")
-
-
-def _render_template(template: str, **variables: str) -> str:
-    result = template
-    for key, value in variables.items():
-        result = result.replace(f"{{{{{key}}}}}", _escape_placeholders(value))
-    return result
 
 
 _TEXT_FIELDS_HIGHLIGHTS = {
@@ -187,12 +153,12 @@ def analyze(
 
     client = LlmClient(settings)
 
-    system_prompt, user_template = _load_prompt()
+    system_prompt, user_template = load_prompt("live-highlights-v1")
 
     previous_section, prev_redactions = _build_previous_highlights_section(req.previous_highlights)
     pii_redactions_applied = pii_redactions_applied + prev_redactions
 
-    user_prompt = _render_template(
+    user_prompt = render_template(
         user_template,
         language=req.language,
         transcript_chunk=req.transcript_chunk,
