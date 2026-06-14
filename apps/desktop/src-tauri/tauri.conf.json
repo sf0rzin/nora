@@ -1,7 +1,7 @@
 {
   "$schema": "gen/schemas/desktop-schema.json",
   "productName": "NORA Desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "com.nora.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -14,7 +14,7 @@
       {
         "label": "main",
         "title": "NORA Desktop",
-        "url": "https://nora.systems",
+        "url": "https://nora.systems/dashboard",
         "width": 1200,
         "height": 800,
         "minWidth": 900,
