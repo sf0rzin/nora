@@ -79,7 +79,10 @@ function ActionRow({ a, first }: { a: ActionItem; first: boolean }) {
       >
         <input
           type="checkbox"
-          defaultChecked={a.status === "DONE"}
+          checked={a.status === "DONE"}
+          readOnly
+          disabled
+          title={a.status === "DONE" ? "Concluído" : "Pendente"}
           style={{ marginTop: 4, accentColor: "var(--accent)" }}
           onClick={(e) => e.stopPropagation()}
         />
