@@ -39,17 +39,15 @@ import json
 import logging
 import re
 import time
-from pathlib import Path
 from typing import Any
 
 from ..clients.llm import LlmClient
 from ..models import SplitRequest, SplitResponse, SplitSegment
 from ..settings import Settings
 from .pii_shield import redact as pii_redact
+from .prompt_utils import load_prompt, render_template
 
 logger = logging.getLogger(__name__)
-
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 PROMPT_VERSION = "meeting-split-v1"
 
@@ -105,39 +103,8 @@ def redact_lines(transcript: str) -> tuple[list[str], int]:
 
 
 # --------------------------------------------------------------------------- #
-# Prompt helpers (mesmo padrao do llm_analyzer / live_analyzer)
+# Prompt helpers (load_prompt / render_template em services/prompt_utils.py)
 # --------------------------------------------------------------------------- #
-
-
-def _load_prompt() -> tuple[str, str]:
-    path = PROMPTS_DIR / f"{PROMPT_VERSION}.md"
-    if not path.exists():
-        raise FileNotFoundError(f"Prompt nao encontrado: {path}")
-
-    content = path.read_text(encoding="utf-8")
-
-    system_match = re.search(r"##\s*SYSTEM\s*\n(.*?)(?=\n##\s*USER)", content, re.DOTALL)
-    user_match = re.search(r"##\s*USER\s*\n(.*)", content, re.DOTALL)
-
-    if not system_match or not user_match:
-        raise ValueError(f"Prompt {PROMPT_VERSION}.md deve conter secoes ## SYSTEM e ## USER")
-
-    return system_match.group(1).strip(), user_match.group(1).strip()
-
-
-def _escape_placeholders(value: str) -> str:
-    """Neutraliza placeholders `{{x}}` vindos do usuario (anti prompt-template
-    injection)."""
-    if "{{" not in value:
-        return value
-    return value.replace("{{", "{ {").replace("}}", "} }")
-
-
-def _render_template(template: str, **variables: str) -> str:
-    result = template
-    for key, value in variables.items():
-        result = result.replace(f"{{{{{key}}}}}", _escape_placeholders(value))
-    return result
 
 
 def _build_json_schema_for_split() -> dict[str, Any]:
@@ -330,7 +297,7 @@ def analyze(
     started = time.monotonic()
 
     client = LlmClient(settings)
-    system_prompt, user_template = _load_prompt()
+    system_prompt, user_template = load_prompt(PROMPT_VERSION)
     json_schema = _build_json_schema_for_split()
 
     total_lines = len(redacted_lines)
@@ -345,7 +312,7 @@ def analyze(
     while pos <= total_lines:
         end = _window_end(numbered, pos, _WINDOW_CHAR_BUDGET)
         window_text = "\n".join(numbered[pos - 1 : end])
-        user_prompt = _render_template(
+        user_prompt = render_template(
             user_template,
             language=req.language,
             first_line=str(pos),
