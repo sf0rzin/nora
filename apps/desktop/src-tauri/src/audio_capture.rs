@@ -16,6 +16,19 @@ pub struct RecordingStatus {
     pub sample_rate: u32,
 }
 
+/// Avisa a UI que a gravação NÃO chegou a iniciar de fato — falha dentro da thread de áudio
+/// (abrir o stream, play()) que acontece DEPOIS de start() já ter retornado is_recording:true.
+/// A UI escuta "recording-status" e reverte o estado de "gravando" em vez de fingir que grava.
+fn emit_recording_failed(app: &AppHandle) {
+    let status = RecordingStatus {
+        is_recording: false,
+        mic_device: String::new(),
+        system_audio_device: None,
+        sample_rate: 0,
+    };
+    let _ = app.emit("recording-status", &status);
+}
+
 pub struct CaptureSinks {
     /// Recebe i16 16kHz mono do mic.
     pub mic_tx: tokio::sync::mpsc::Sender<Vec<i16>>,
@@ -136,6 +149,7 @@ impl AudioCapture {
             .spawn({
                 let stop_flag_thread = stop_flag.clone();
                 let device_name = device_name.clone();
+                let app_for_thread = app_handle.clone();
                 move || {
                     let host = cpal::default_host();
 
@@ -215,12 +229,14 @@ impl AudioCapture {
                         Ok(s) => s,
                         Err(e) => {
                             eprintln!("[audio] failed to build input stream: {}", e);
+                            emit_recording_failed(&app_for_thread);
                             return;
                         }
                     };
 
                     if let Err(e) = stream.play() {
                         eprintln!("[audio] failed to start stream: {}", e);
+                        emit_recording_failed(&app_for_thread);
                         return;
                     }
 
