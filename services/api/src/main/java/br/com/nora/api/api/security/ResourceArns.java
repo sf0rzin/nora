@@ -47,4 +47,16 @@ public final class ResourceArns {
     public static String tenantContext(UUID tenantId) {
         return base(tenantId) + ":tenant/context";
     }
+
+    /** Monta o ARN pelo tipo de recurso declarado em {@link RequiresPermission}. */
+    public static String of(RequiresPermission.ResourceType type, UUID tenantId, UUID id) {
+        return switch (type) {
+            case MEETING -> meeting(tenantId, id);
+            case TASK -> task(tenantId, id);
+            case INVITE -> invite(tenantId, id);
+            case IAM -> iamWildcard(tenantId);
+            case TENANT -> tenant(tenantId);
+            case TENANT_CONTEXT -> tenantContext(tenantId);
+        };
+    }
 }
