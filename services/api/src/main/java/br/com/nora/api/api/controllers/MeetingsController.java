@@ -290,17 +290,17 @@ public class MeetingsController {
         // Carrega todas as meetings do tenant que casam os filtros baratos, filtra por IAM
         // (conditions por item) e pagina apos — totalItems reflete o conjunto realmente visivel.
         List<Meeting> candidates = meetings.listAllForAuthFilter(principal.tenantId(), filter);
+        // Filtro IAM por item resolvendo o bypass de Root + os statements do usuario UMA vez para
+        // toda a lista (antes: isAllowed por reuniao -> 2 queries IAM por item = N+1 no endpoint
+        // mais quente do produto).
         List<Meeting> visible =
-                candidates.stream()
-                        .filter(
-                                m ->
-                                        authz.isAllowed(
-                                                principal.userId(),
-                                                principal.tenantId(),
-                                                "meeting:read",
-                                                meetingResource(principal.tenantId(), m.id()),
-                                                m.attributes()))
-                        .toList();
+                authz.filterAllowed(
+                        principal.userId(),
+                        principal.tenantId(),
+                        "meeting:read",
+                        candidates,
+                        m -> meetingResource(principal.tenantId(), m.id()),
+                        Meeting::attributes);
 
         long totalItems = visible.size();
         int fromIdx = Math.min(safePage * safeSize, visible.size());
