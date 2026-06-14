@@ -16,61 +16,15 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
-from pathlib import Path
 
 from ..clients.llm import LlmClient, build_json_schema_for_analysis
 from ..models import AnalyzeRequest, AnalyzeResponse, MeetingAnalysisV1
 from ..settings import Settings
 from .pii_shield import redact as pii_redact
+from .prompt_utils import load_prompt, render_template
 
 logger = logging.getLogger(__name__)
-
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
-
-
-def _load_prompt(version: str) -> tuple[str, str]:
-    """Carrega o prompt versionado e retorna (system, user) sections."""
-    filename = f"{version}.md"
-    path = PROMPTS_DIR / filename
-    if not path.exists():
-        raise FileNotFoundError(f"Prompt nao encontrado: {path}")
-
-    content = path.read_text(encoding="utf-8")
-
-    system_match = re.search(r"##\s*SYSTEM\s*\n(.*?)(?=\n##\s*USER)", content, re.DOTALL)
-    user_match = re.search(r"##\s*USER\s*\n(.*)", content, re.DOTALL)
-
-    if not system_match or not user_match:
-        raise ValueError(f"Prompt {filename} deve conter secoes ## SYSTEM e ## USER")
-
-    return system_match.group(1).strip(), user_match.group(1).strip()
-
-
-_TEMPLATE_PLACEHOLDER_RE = re.compile(r"\{\{[^{}]+\}\}")
-
-
-def _escape_placeholders(value: str) -> str:
-    """Neutraliza placeholders `{{x}}` vindos do usuario.
-
-    `_render_template` faz str.replace em ordem; se o transcript ou outro
-    campo do request contiver `{{goal_section}}`, ele seria substituido pelo
-    conteudo legitimo de goal_section nas iteracoes seguintes — prompt
-    template injection. Trocar `{{` por `{ {` rompe o casamento sem mudar a
-    intencao semantica do texto original.
-    """
-    if "{{" not in value:
-        return value
-    return value.replace("{{", "{ {").replace("}}", "} }")
-
-
-def _render_template(template: str, **variables: str) -> str:
-    """Substitui placeholders {{key}} no template, com escape de input do usuario."""
-    result = template
-    for key, value in variables.items():
-        result = result.replace(f"{{{{{key}}}}}", _escape_placeholders(value))
-    return result
 
 
 def _shield_field(value: str, counter: list[int]) -> str:
@@ -125,7 +79,7 @@ def analyze(
 
     client = LlmClient(settings)
 
-    system_prompt, user_template = _load_prompt(req.options.prompt_version)
+    system_prompt, user_template = load_prompt(req.options.prompt_version)
 
     # tenant_context tem campos longos de texto livre (companyName, products,
     # valueProposition, objectionHandling, glossary) — defesa-em-profundidade
@@ -162,7 +116,7 @@ def analyze(
 
     pii_redactions_applied = pii_redactions_applied + extra_redactions[0]
 
-    user_prompt = _render_template(
+    user_prompt = render_template(
         user_template,
         tenant_context_json=tenant_ctx_json,
         meeting_id=req.meeting_id,
