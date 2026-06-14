@@ -3,6 +3,7 @@
 
 mod audio_capture;
 mod audio_resample;
+mod auth_bridge;
 pub mod commands;
 mod http_proxy;
 mod live_analysis;
@@ -74,6 +75,59 @@ pub fn run() {
         .manage(stealth_state)
         .manage(http_proxy::ApiBaseUrl(base_url))
         .manage(secrets::SecretStore::new())
+        .setup(|app| {
+            // Bandeja do sistema: ponto de entrada nativo pra abrir a janela
+            // principal (web) e disparar a gravacao nativa (janela "recorder").
+            use tauri::{
+                menu::{MenuBuilder, MenuItemBuilder},
+                tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+                Manager,
+            };
+            let abrir = MenuItemBuilder::with_id("abrir", "Abrir NORA").build(app)?;
+            let gravar = MenuItemBuilder::with_id("gravar", "Gravar reunião").build(app)?;
+            let sair = MenuItemBuilder::with_id("sair", "Sair").build(app)?;
+            let menu = MenuBuilder::new(app)
+                .item(&abrir)
+                .item(&gravar)
+                .separator()
+                .item(&sair)
+                .build()?;
+            let _tray = TrayIconBuilder::with_id("nora-tray")
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("NORA Desktop")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "abrir" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "gravar" => {
+                        let _ = windows::show_recorder(app.clone());
+                    }
+                    "sair" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 if window.label() == "main" {
@@ -101,6 +155,7 @@ pub fn run() {
             windows::toggle_dock,
             windows::focus_main_window,
             windows::focus_overlay_window,
+            windows::show_recorder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

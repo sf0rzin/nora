@@ -1,7 +1,7 @@
 {
   "$schema": "gen/schemas/desktop-schema.json",
   "productName": "NORA Desktop",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "identifier": "com.nora.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -56,6 +56,19 @@
         "resizable": false,
         "skipTaskbar": true,
         "focus": false
+      },
+      {
+        "label": "recorder",
+        "title": "NORA — Gravação",
+        "url": "recorder.html",
+        "width": 940,
+        "height": 700,
+        "minWidth": 720,
+        "minHeight": 520,
+        "resizable": true,
+        "decorations": true,
+        "visible": false,
+        "backgroundColor": "#FDFDFC"
       }
     ],
     "security": {
