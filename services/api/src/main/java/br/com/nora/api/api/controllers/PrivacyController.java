@@ -1,6 +1,7 @@
 package br.com.nora.api.api.controllers;
 
 import br.com.nora.api.api.security.CurrentUser;
+import br.com.nora.api.api.security.ResourceArns;
 import br.com.nora.api.application.iam.AuthorizationService;
 import br.com.nora.api.application.privacy.PrivacyService;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
@@ -31,7 +32,7 @@ public class PrivacyController {
     }
 
     private static String meetingResource(UUID tenantId, UUID meetingId) {
-        return "nora:tenant/" + tenantId + ":meeting/" + (meetingId == null ? "*" : meetingId);
+        return ResourceArns.meeting(tenantId, meetingId);
     }
 
     /**
