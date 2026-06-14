@@ -77,7 +77,7 @@ pub fn run() {
         .manage(secrets::SecretStore::new())
         .setup(|app| {
             // Bandeja do sistema: ponto de entrada nativo pra abrir a janela
-            // principal (web) e disparar a gravacao nativa (janela "recorder").
+            // principal (web) e disparar a gravacao (mostra a dock flutuante).
             use tauri::{
                 menu::{MenuBuilder, MenuItemBuilder},
                 tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -106,7 +106,7 @@ pub fn run() {
                         }
                     }
                     "gravar" => {
-                        let _ = windows::show_recorder(app.clone());
+                        let _ = windows::toggle_dock(app.clone(), true);
                     }
                     "sair" => app.exit(0),
                     _ => {}
@@ -155,7 +155,7 @@ pub fn run() {
             windows::toggle_dock,
             windows::focus_main_window,
             windows::focus_overlay_window,
-            windows::show_recorder,
+            windows::open_log_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
