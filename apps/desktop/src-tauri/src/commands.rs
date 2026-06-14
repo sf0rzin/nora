@@ -1,5 +1,4 @@
 use crate::audio_capture::{AudioCapture, CaptureSinks, RecordingStatus};
-use crate::secrets::SecretStore;
 use crate::speech_token::fetch_speech_token;
 use crate::stt_sidecar::SidecarHandle;
 use crate::SidecarState;
@@ -28,7 +27,6 @@ pub async fn start_recording(
     app_handle: AppHandle,
     state: State<'_, CaptureState>,
     sidecar_state: State<'_, SidecarState>,
-    secrets: State<'_, SecretStore>,
     request: StartRecordingRequest,
 ) -> Result<RecordingStatus, String> {
     #[cfg(debug_assertions)]
@@ -40,12 +38,9 @@ pub async fn start_recording(
         eprintln!("[commands] system_audio_device: {:?}", request.system_audio_device);
     }
 
-    let access_token = secrets
-        .get("access-token")
-        .map_err(|e| format!("Failed to get access token: {}", e))?
-        .ok_or("Not authenticated. Please login first.")?;
+    let access_token = crate::auth_bridge::web_session_jwt(&app_handle)?;
     let backend_url = crate::api_base_url();
-    
+
     let speech_token = fetch_speech_token(
         &backend_url,
         &access_token,
@@ -253,13 +248,10 @@ pub struct UploadMeetingResponse {
 
 #[tauri::command]
 pub async fn upload_meeting(
-    secrets: State<'_, SecretStore>,
+    app_handle: AppHandle,
     request: UploadMeetingRequest,
 ) -> Result<UploadMeetingResponse, String> {
-    let access_token = secrets
-        .get("access-token")
-        .map_err(|e| format!("Failed to get access token: {}", e))?
-        .ok_or("Not authenticated. Please login first.")?;
+    let access_token = crate::auth_bridge::web_session_jwt(&app_handle)?;
 
     let backend_url = crate::api_base_url();
 
