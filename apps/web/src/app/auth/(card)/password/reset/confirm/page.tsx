@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense, useState } from "react";
 import { confirmPasswordReset, ApiRequestError } from "@/lib/api/client";
+import { PASSWORD_MIN } from "@/lib/password-policy";
 
 export default function PasswordResetConfirmPage() {
   return (
@@ -43,7 +44,7 @@ function ConfirmForm() {
 
   const score = strength(password);
   const mismatch = confirmPassword.length > 0 && confirmPassword !== password;
-  const canSubmit = password.length >= 8 && password === confirmPassword;
+  const canSubmit = password.length >= PASSWORD_MIN && password === confirmPassword;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -70,7 +71,7 @@ function ConfirmForm() {
   return (
     <div>
       <h2 style={cardTitle}>Escolha a nova senha.</h2>
-      <p style={cardSub}>Mínimo 8 caracteres. Recomendamos número + símbolo.</p>
+      <p style={cardSub}>Mínimo {PASSWORD_MIN} caracteres. Recomendamos número + símbolo.</p>
 
       <form
         onSubmit={onSubmit}
@@ -85,7 +86,7 @@ function ConfirmForm() {
             id="rc-pw"
             type="password"
             required
-            minLength={8}
+            minLength={PASSWORD_MIN}
             placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -115,7 +116,7 @@ function ConfirmForm() {
             id="rc-conf"
             type="password"
             required
-            minLength={8}
+            minLength={PASSWORD_MIN}
             placeholder="••••••••"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
