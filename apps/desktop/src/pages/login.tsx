@@ -364,6 +364,9 @@ export function LoginPage() {
                 e.currentTarget.style.background = "var(--canvas)";
                 e.currentTarget.style.borderColor = "var(--border)";
               }}
+              onClick={() =>
+                setError("Login com Microsoft em breve — use e-mail e senha por enquanto.")
+              }
             >
               <MicrosoftIcon />
               Continuar com Microsoft
@@ -438,13 +441,6 @@ export function LoginPage() {
                 >
                   Senha
                 </label>
-                <button
-                  type="button"
-                  style={{ fontSize: 12, color: "var(--accent-ink)" }}
-                  className="hover:underline"
-                >
-                  Esqueci minha senha
-                </button>
               </div>
               <div className="relative flex items-center">
                 <input
@@ -548,7 +544,7 @@ export function LoginPage() {
           >
             <span>
               Não tem conta?{" "}
-              <span style={{ color: "var(--ink)" }}>Falar com vendas</span>
+              <span style={{ color: "var(--muted)" }}>Falar com vendas</span>
             </span>
             <span style={{ letterSpacing: "0.04em" }}>SSO · SAML</span>
           </div>
