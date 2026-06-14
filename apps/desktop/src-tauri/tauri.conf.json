@@ -1,7 +1,7 @@
 {
   "$schema": "gen/schemas/desktop-schema.json",
   "productName": "NORA Desktop",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "identifier": "com.nora.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -14,13 +14,14 @@
       {
         "label": "main",
         "title": "NORA Desktop",
+        "url": "https://nora.systems",
         "width": 1200,
         "height": 800,
         "minWidth": 900,
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "decorations": false,
+        "decorations": true,
         "backgroundColor": "#FDFDFC"
       },
       {
@@ -58,7 +59,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' http://localhost:* ws://localhost:*; connect-src 'self' http://localhost:* http://127.0.0.1:*; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+      "csp": null
     }
   },
   "plugins": {
