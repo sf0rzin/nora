@@ -16,6 +16,7 @@ import br.com.nora.api.api.dto.meeting.MeetingUploadResponse;
 import br.com.nora.api.api.dto.meeting.ProductivityAssessmentResponse;
 import br.com.nora.api.api.dto.meeting.SplitPreviewDtos;
 import br.com.nora.api.api.security.CurrentUser;
+import br.com.nora.api.api.security.ResourceArns;
 import br.com.nora.api.application.analysis.AnalysisException;
 import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.analysis.LiveAnalysisService;
@@ -107,7 +108,7 @@ public class MeetingsController {
     }
 
     private static String meetingResource(UUID tenantId, UUID meetingId) {
-        return "nora:tenant/" + tenantId + ":meeting/" + (meetingId == null ? "*" : meetingId);
+        return ResourceArns.meeting(tenantId, meetingId);
     }
 
     /**
