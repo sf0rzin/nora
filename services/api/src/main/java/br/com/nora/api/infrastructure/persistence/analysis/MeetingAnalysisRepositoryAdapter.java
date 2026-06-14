@@ -55,6 +55,24 @@ public class MeetingAnalysisRepositoryAdapter implements MeetingAnalysisReposito
         jpa.deleteByMeetingIdAndTenantId(meetingId, tenantId);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<AnalysisCounts> countsByMeetingIds(
+            java.util.Collection<UUID> meetingIds, UUID tenantId) {
+        if (meetingIds == null || meetingIds.isEmpty()) {
+            return List.of();
+        }
+        return jpa.aggregateCountsByMeetingIds(meetingIds, tenantId).stream()
+                .map(
+                        r ->
+                                new AnalysisCounts(
+                                        (UUID) r[0],
+                                        ((Number) r[1]).intValue(),
+                                        ((Number) r[2]).intValue(),
+                                        ((Number) r[3]).intValue()))
+                .toList();
+    }
+
     private MeetingAnalysisJpaEntity toEntity(MeetingAnalysis a) {
         MeetingAnalysisJpaEntity e = new MeetingAnalysisJpaEntity();
         e.setId(a.id());
