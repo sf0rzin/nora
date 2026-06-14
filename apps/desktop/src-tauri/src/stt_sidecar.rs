@@ -114,10 +114,18 @@ fn resolve_sidecar_binary() -> Option<PathBuf> {
         }
     }
 
-    // 2. Relative to executable (packaged app):
+    // 2. Relative to executable (packaged app). O Tauri (externalBin) coloca o binario AO LADO
+    // do exe com o triple REMOVIDO ("nora-stt-sidecar[.exe]") — esse e o caso real do build
+    // empacotado e precisa vir PRIMEIRO. As subpastas binaries/ cobrem empacotamentos custom
+    // que mantem o nome completo.
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
+            let stripped = format!(
+                "nora-stt-sidecar{}",
+                if cfg!(target_os = "windows") { ".exe" } else { "" }
+            );
             let candidates = [
+                exe_dir.join(&stripped),
                 exe_dir.join(format!("binaries/{}", &name)),
                 exe_dir.join(format!("../binaries/{}", &name)),
                 exe_dir.join(format!("../../binaries/{}", &name)),
@@ -181,8 +189,11 @@ impl SidecarHandle {
             }
         });
 
-        // Wait for ready with timeout
-        match tokio::time::timeout(tokio::time::Duration::from_secs(5), ready_rx).await {
+        // Espera o "ready" com timeout. 20s (era 5s) porque o cold-start do PyInstaller onefile
+        // (descompactar + scan de antivirus + handshake TLS com o Azure Speech) estoura 5s
+        // facilmente em rede lenta/laptop frio — exatamente o cenario de uma demo no FIAP.
+        // join.abort() dropa a task; o child Python e morto pelo kill_on_drop do Command (abaixo).
+        match tokio::time::timeout(tokio::time::Duration::from_secs(20), ready_rx).await {
             Ok(Ok(())) => {}
             Ok(Err(_)) => {
                 join.abort();
@@ -190,7 +201,7 @@ impl SidecarHandle {
             }
             Err(_) => {
                 join.abort();
-                return Err("Sidecar startup timeout (5s)".into());
+                return Err("Sidecar startup timeout (20s)".into());
             }
         }
 
@@ -320,6 +331,10 @@ async fn run_sidecar(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        // Mata o processo Python se este handle for dropado (ex.: join.abort() no timeout de
+        // startup, ou erro no meio). Sem isso, o sidecar PyInstaller fica orfao consumindo
+        // quota/sessao do Azure Speech.
+        .kill_on_drop(true)
         .spawn()
         .map_err(|e| format!("failed to spawn sidecar: {}", e))?;
 
