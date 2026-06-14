@@ -4,9 +4,46 @@ use crate::stt_sidecar::SidecarHandle;
 use crate::SidecarState;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 pub type CaptureState = Arc<Mutex<AudioCapture>>;
+
+/// Logger de arquivo best-effort pro fluxo de gravacao.
+///
+/// Em release o binario roda com `windows_subsystem = "windows"`, sem console —
+/// entao `eprintln!` some e o usuario fica sem nenhum sinal quando "clica
+/// iniciar e nada acontece". Esta funcao append uma linha em
+/// `<app_log_dir>/desktop.log` com um timestamp simples.
+///
+/// REGRA: NUNCA pode fazer o caller falhar. Qualquer erro de IO/resolucao de
+/// path e silenciosamente ignorado (a gravacao e mais importante que o log).
+fn log_line(app_handle: &AppHandle, msg: &str) {
+    use std::io::Write;
+
+    // Timestamp relativo simples: segundos desde o UNIX epoch. Nao precisamos
+    // de wall-clock formatado — so de ordem + delta entre linhas pra debug.
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+
+    // Resolve o dir de log; se falhar, desiste em silencio.
+    let Ok(dir) = app_handle.path().app_log_dir() else {
+        return;
+    };
+    // Cria o dir best-effort; ignora erro (open abaixo simplesmente falhara).
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("desktop.log");
+
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        // Ignora erro de escrita — best-effort.
+        let _ = writeln!(file, "[{:.3}] {}", ts, msg);
+    }
+}
 
 #[tauri::command]
 pub fn list_audio_devices() -> Result<Vec<String>, String> {
@@ -38,16 +75,45 @@ pub async fn start_recording(
         eprintln!("[commands] system_audio_device: {:?}", request.system_audio_device);
     }
 
-    let access_token = crate::auth_bridge::web_session_jwt(&app_handle)?;
+    log_line(
+        &app_handle,
+        &format!(
+            "start_recording: begin (device={:?}, lang={:?}, system_audio={:?})",
+            request.device_name, request.language, request.capture_system_audio
+        ),
+    );
+
+    let access_token = match crate::auth_bridge::web_session_jwt(&app_handle) {
+        Ok(t) => {
+            log_line(&app_handle, "start_recording: auth ok");
+            t
+        }
+        Err(e) => {
+            log_line(&app_handle, &format!("start_recording: auth ERROR: {}", e));
+            return Err(e);
+        }
+    };
     let backend_url = crate::api_base_url();
 
-    let speech_token = fetch_speech_token(
+    let speech_token = match fetch_speech_token(
         &backend_url,
         &access_token,
         None, // Use default region from backend
     )
     .await
-    .map_err(|e| format!("Failed to fetch speech token: {}", e))?;
+    {
+        Ok(t) => {
+            log_line(&app_handle, "start_recording: speech token ok");
+            t
+        }
+        Err(e) => {
+            log_line(
+                &app_handle,
+                &format!("start_recording: speech token ERROR: {}", e),
+            );
+            return Err(format!("Failed to fetch speech token: {}", e));
+        }
+    };
     
     let language = request.language.unwrap_or_else(|| "pt-BR".to_string());
     let capture_system = request.capture_system_audio.unwrap_or(false);
@@ -66,7 +132,7 @@ pub async fn start_recording(
     };
 
     // Start sidecars with auth token
-    let mic_sidecar = SidecarHandle::start(
+    let mic_sidecar = match SidecarHandle::start(
         app_handle.clone(),
         speech_token.region.clone(),
         speech_token.token.clone(),
@@ -76,22 +142,44 @@ pub async fn start_recording(
         access_token.clone(),
     )
     .await
-    .map_err(|e| format!("Failed to start mic sidecar: {}", e))?;
+    {
+        Ok(s) => {
+            log_line(&app_handle, "start_recording: sidecar mic ok");
+            s
+        }
+        Err(e) => {
+            log_line(
+                &app_handle,
+                &format!("start_recording: sidecar mic ERROR: {}", e),
+            );
+            return Err(format!("Failed to start mic sidecar: {}", e));
+        }
+    };
 
     let system_sidecar = if capture_system {
-        Some(
-            SidecarHandle::start(
-                app_handle.clone(),
-                speech_token.region,
-                speech_token.token,
-                language,
-                "system".to_string(),
-                backend_url,
-                access_token,
-            )
-            .await
-            .map_err(|e| format!("Failed to start system sidecar: {}", e))?,
+        match SidecarHandle::start(
+            app_handle.clone(),
+            speech_token.region,
+            speech_token.token,
+            language,
+            "system".to_string(),
+            backend_url,
+            access_token,
         )
+        .await
+        {
+            Ok(s) => {
+                log_line(&app_handle, "start_recording: sidecar system ok");
+                Some(s)
+            }
+            Err(e) => {
+                log_line(
+                    &app_handle,
+                    &format!("start_recording: sidecar system ERROR: {}", e),
+                );
+                return Err(format!("Failed to start system sidecar: {}", e));
+            }
+        }
     } else {
         None
     };
@@ -149,11 +237,17 @@ pub async fn start_recording(
             .map_err(|e| {
                 #[cfg(debug_assertions)]
                 eprintln!("[commands] capture.start FAILED: {}", e);
+                log_line(
+                    &app_handle,
+                    &format!("start_recording: capture start ERROR: {}", e),
+                );
                 e
             })?;
 
         status
     };
+
+    log_line(&app_handle, "start_recording: capture start ok");
 
     #[cfg(debug_assertions)]
     eprintln!(
@@ -183,6 +277,13 @@ pub async fn start_recording(
 
     #[cfg(debug_assertions)]
     eprintln!("[commands] start_recording returning ok");
+    log_line(
+        &app_handle,
+        &format!(
+            "start_recording: returning ok (mic={}, system={:?}, sr={})",
+            status.mic_device, status.system_audio_device, status.sample_rate
+        ),
+    );
     Ok(status)
 }
 
