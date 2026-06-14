@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { NoraLogo } from "./brand/nora-logo";
 
 /**
  * Barra de título custom da janela principal.
@@ -78,17 +77,13 @@ export function Titlebar() {
         borderBottom: "1px solid var(--border)",
       }}
     >
-      {/* Região de arraste — marca NORA à esquerda, preenche até os controles */}
+      {/* Região de arraste — preenche tudo menos os controles (sem logo). */}
       <div
         className="flex-1 min-w-0 flex items-center"
         onMouseDown={onDragMouseDown}
         onDoubleClick={onToggleMaximize}
-        style={{ cursor: "default", paddingLeft: 13 }}
-      >
-        <span className="inline-flex items-center pointer-events-none" style={{ opacity: 0.92 }}>
-          <NoraLogo size={16} />
-        </span>
-      </div>
+        style={{ cursor: "default" }}
+      />
 
       {/* Controles de janela. position+zIndex acima das pegas de resize (z40)
           pra que o clique em fechar/maximizar no canto não vire redimensionar. */}
