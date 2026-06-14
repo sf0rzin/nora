@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DecisionIcon, NextStepIcon, ObservationIcon, TaskIcon } from "@/components/brand/feed-icons";
+import { Card, IconButton } from "./ui";
 
 export type NotificationVariant =
   | "info"
@@ -44,8 +45,8 @@ const ICONS: Record<NotificationVariant, VariantStyle> = {
     icon: <DecisionIcon />,
   },
   action: {
-    accent: "#3f8a5e",
-    bg: "rgba(98, 181, 133, 0.16)",
+    accent: "var(--success-ink)",
+    bg: "color-mix(in srgb, var(--success) 16%, transparent)",
     eyebrow: "Próximo passo",
     icon: <NextStepIcon />,
   },
@@ -56,14 +57,14 @@ const ICONS: Record<NotificationVariant, VariantStyle> = {
     icon: <ObservationIcon />,
   },
   task: {
-    accent: "#a37528",
-    bg: "rgba(212, 160, 76, 0.16)",
+    accent: "var(--warn-ink)",
+    bg: "color-mix(in srgb, var(--warn) 16%, transparent)",
     eyebrow: "Tarefa",
     icon: <TaskIcon />,
   },
   warn: {
     accent: "var(--danger-ink)",
-    bg: "rgba(201, 119, 102, 0.14)",
+    bg: "var(--danger-soft-bg)",
     eyebrow: "Aviso",
     icon: (
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -139,15 +140,13 @@ function NotificationCard({
 }) {
   const s = ICONS[notification.variant];
   return (
-    <div
+    <Card
       className="flex items-start gap-2.5"
       style={{
         width: 280,
         padding: "9px 11px 9px 10px",
-        background: "var(--canvas)",
-        border: "1px solid var(--border)",
-        borderRadius: 10,
-        animation: "notifIn 240ms cubic-bezier(.2,.8,.2,1)",
+        boxShadow: "var(--shadow-lg)",
+        animation: "notifIn 240ms var(--ease)",
         pointerEvents: "auto",
       }}
     >
@@ -156,7 +155,7 @@ function NotificationCard({
         style={{
           width: 22,
           height: 22,
-          borderRadius: 7,
+          borderRadius: "var(--radius-sm)",
           background: s.bg,
           color: s.accent,
           marginTop: 1,
@@ -204,33 +203,18 @@ function NotificationCard({
           </div>
         )}
       </div>
-      <button
+      <IconButton
+        size="sm"
         onClick={onDismiss}
         aria-label="Dispensar"
-        className="grid place-items-center shrink-0 rounded-md transition-colors"
-        style={{
-          width: 18,
-          height: 18,
-          background: "transparent",
-          border: "none",
-          color: "var(--muted)",
-          cursor: "pointer",
-          marginTop: 1,
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "var(--chip)";
-          e.currentTarget.style.color = "var(--ink)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "transparent";
-          e.currentTarget.style.color = "var(--muted)";
-        }}
+        className="shrink-0"
+        style={{ marginTop: 1 }}
       >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M18 6L6 18M6 6l12 12" />
         </svg>
-      </button>
-    </div>
+      </IconButton>
+    </Card>
   );
 }
 
