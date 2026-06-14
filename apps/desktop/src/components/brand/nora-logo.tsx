@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 
-const HEIGHTS = [0.42, 0.78, 1.0, 0.66, 0.52];
-const BAR_W = 3;
-const BAR_GAP = 2.5;
+// Espelha exatamente o logo canônico do web (apps/web/src/components/brand/nora-logo.tsx):
+// 5 barras [50,75,100,75,50]% da altura, largura/gap relativos ao size, wordmark DM Sans 600.
+const HEIGHTS = [0.5, 0.75, 1.0, 0.75, 0.5];
 
 interface Props {
   size?: number;
   showText?: boolean;
+  /** "brand" = barras/texto em --ink (sobre fundo claro); "paper" = em --canvas (sobre fundo escuro). */
+  variant?: "brand" | "paper";
   animate?: boolean;
   animKey?: number;
 }
@@ -14,12 +16,11 @@ interface Props {
 export function NoraLogo({
   size = 20,
   showText = true,
+  variant = "brand",
   animate = false,
   animKey = 0,
 }: Props) {
-  const [phase, setPhase] = useState<"init" | "animating" | "done">(
-    animate ? "init" : "done",
-  );
+  const [phase, setPhase] = useState<"init" | "animating" | "done">(animate ? "init" : "done");
 
   useEffect(() => {
     if (!animate) {
@@ -35,57 +36,42 @@ export function NoraLogo({
     };
   }, [animate, animKey]);
 
-  const totalW = HEIGHTS.length * BAR_W + (HEIGHTS.length - 1) * BAR_GAP;
+  const color = variant === "paper" ? "var(--canvas)" : "var(--ink)";
+  const barW = Math.max(2, Math.round(size * 0.12));
+  const barGap = Math.max(2, Math.round(size * 0.1));
+  const totalW = HEIGHTS.length * barW + (HEIGHTS.length - 1) * barGap;
 
   return (
-    <span className="inline-flex items-center gap-[7px] select-none">
+    <span className="inline-flex items-center select-none" style={{ gap: Math.round(size * 0.34) }}>
       <span
         className="inline-flex items-center justify-center"
-        style={{ width: totalW, height: size, gap: BAR_GAP }}
+        style={{ width: totalW, height: size, gap: barGap }}
       >
         {HEIGHTS.map((h, i) => {
           const finalH = h * size;
           const baseStyle: React.CSSProperties = {
             display: "block",
-            width: BAR_W,
-            background: "var(--ink)",
-            borderRadius: BAR_W,
+            width: barW,
+            height: finalH,
+            background: color,
+            borderRadius: barW / 2,
             transformOrigin: "bottom center",
           };
-          if (!animate) {
-            return <span key={i} style={{ ...baseStyle, height: finalH }} />;
+          if (!animate || phase === "done") {
+            return <span key={i} style={{ ...baseStyle, opacity: 1 }} />;
           }
           if (phase === "init") {
-            return (
-              <span
-                key={i}
-                style={{
-                  ...baseStyle,
-                  height: finalH,
-                  transform: "scaleY(0)",
-                  opacity: 0,
-                }}
-              />
-            );
-          }
-          if (phase === "animating") {
-            return (
-              <span
-                key={i}
-                style={{
-                  ...baseStyle,
-                  height: finalH,
-                  transform: "scaleY(1)",
-                  opacity: 1,
-                  transition: `transform 480ms cubic-bezier(.22,.8,.36,1) ${i * 70}ms, opacity 380ms ease ${i * 70}ms`,
-                }}
-              />
-            );
+            return <span key={i} style={{ ...baseStyle, transform: "scaleY(0)", opacity: 0 }} />;
           }
           return (
             <span
               key={i}
-              style={{ ...baseStyle, height: finalH, opacity: 1 }}
+              style={{
+                ...baseStyle,
+                transform: "scaleY(1)",
+                opacity: 1,
+                transition: `transform 420ms var(--ease-out-expo) ${i * 60}ms, opacity 360ms ease ${i * 60}ms`,
+              }}
             />
           );
         })}
@@ -94,13 +80,12 @@ export function NoraLogo({
         <span
           style={{
             fontFamily: "var(--display)",
-            fontSize: 15.5,
-            fontWeight: 500,
+            fontSize: Math.round(size * 0.95),
+            fontWeight: 600,
             letterSpacing: "-0.01em",
-            color: "var(--ink)",
+            color,
             opacity: !animate || phase === "done" ? 1 : 0,
-            transform:
-              !animate || phase === "done" ? "translateX(0)" : "translateX(-3px)",
+            transform: !animate || phase === "done" ? "translateX(0)" : "translateX(-3px)",
             transition: "opacity 320ms ease 380ms, transform 320ms ease 380ms",
           }}
         >

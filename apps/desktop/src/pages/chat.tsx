@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { ShaderOrb } from "@/components/brand/shader-orb";
 import { Avatar } from "@/components/brand/avatar";
 import { Spinner } from "@/components/spinner";
+import { Button, IconButton, Textarea } from "../components/ui";
 
 interface ChatMessage {
   id: number;
@@ -60,37 +61,33 @@ function SendOrbButton({
   busy: boolean;
 }) {
   return (
-    <button
+    <IconButton
       onClick={onClick}
       disabled={!active || busy}
       aria-label="Enviar"
-      className="relative grid place-items-center"
+      className="shrink-0 rounded-pill"
       style={{
-        width: 38,
-        height: 38,
-        borderRadius: "50%",
         background: active ? "var(--ink)" : "var(--chip)",
-        border: "none",
-        cursor: active && !busy ? "pointer" : "default",
-        padding: 0,
-        transition: "background 180ms ease, transform 180ms ease",
-        opacity: busy ? 0.7 : 1,
-      }}
-      onMouseEnter={(e) => {
-        if (active && !busy) e.currentTarget.style.transform = "scale(1.04)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "scale(1)";
+        color: active ? "var(--canvas)" : "var(--muted)",
       }}
     >
       {busy ? (
         <Spinner size={14} color="rgba(253,253,252,0.35)" topColor="var(--canvas)" />
       ) : (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={active ? "white" : "var(--muted)"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <path d="M12 19V5M5 12l7-7 7 7" />
         </svg>
       )}
-    </button>
+    </IconButton>
   );
 }
 
@@ -133,7 +130,7 @@ function MessageBubble({
           maxWidth: isUser ? "76%" : "calc(100% - 40px)",
           padding: isUser ? "10px 14px" : "2px 0",
           background: isUser ? "var(--chip)" : "transparent",
-          borderRadius: isUser ? 14 : 0,
+          borderRadius: isUser ? "var(--radius-md)" : 0,
           fontSize: 14.5,
           lineHeight: 1.6,
           color: "var(--ink)",
@@ -219,32 +216,21 @@ export function ChatPage() {
           Nova sessão
         </div>
         {!empty && (
-          <button
-            onClick={() => setMessages([])}
-            className="inline-flex items-center gap-1.5"
-            style={{
-              background: "transparent",
-              border: "none",
-              padding: "5px 10px",
-              borderRadius: 6,
-              fontSize: 12.5,
-              color: "var(--muted)",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--sidebar)";
-              e.currentTarget.style.color = "var(--ink)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "var(--muted)";
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <Button variant="ghost" size="sm" onClick={() => setMessages([])}>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" />
             </svg>
             Limpar conversa
-          </button>
+          </Button>
         )}
       </div>
 
@@ -309,31 +295,18 @@ export function ChatPage() {
               style={{ maxWidth: 560 }}
             >
               {SUGGESTIONS.map((s) => (
-                <button
+                <Button
                   key={s}
+                  variant="secondary"
+                  size="sm"
+                  className="rounded-pill"
                   onClick={() => {
                     setInput(s);
                     setTimeout(() => taRef.current?.focus(), 0);
                   }}
-                  style={{
-                    fontSize: 12.5,
-                    color: "var(--ink)",
-                    background: "var(--sidebar)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 999,
-                    padding: "7px 14px",
-                    cursor: "pointer",
-                    transition: "background 140ms ease, border-color 140ms ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--chip)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "var(--sidebar)";
-                  }}
                 >
                   {s}
-                </button>
+                </Button>
               ))}
             </div>
             <div
@@ -407,7 +380,7 @@ export function ChatPage() {
             pointerEvents: "auto",
           }}
         >
-          <textarea
+          <Textarea
             ref={taRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -421,17 +394,13 @@ export function ChatPage() {
             rows={1}
             style={{
               flex: 1,
-              resize: "none",
-              border: "none",
-              outline: "none",
-              fontFamily: "var(--sans)",
               fontSize: 14,
-              lineHeight: 1.5,
               background: "transparent",
-              color: "var(--ink)",
+              border: "none",
+              borderRadius: 0,
+              boxShadow: "none",
               padding: "8px 0",
               maxHeight: 200,
-              letterSpacing: "-0.005em",
             }}
           />
           <SendOrbButton onClick={send} active={hasInput} busy={busy} />

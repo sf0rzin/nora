@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { login } from "@/lib/auth";
 import { toUserMessage } from "@/lib/errors";
 import { NoraLogo } from "@/components/brand/nora-logo";
+import { Button, Input, Field, IconButton } from "@/components/ui";
 
 interface TranscriptLine {
   delay: number;
@@ -62,8 +63,8 @@ const TRANSCRIPT_DURATION = 23;
 function TagPill({ kind, label, delay }: { kind: TranscriptLine["tag"]["kind"]; label: string; delay: number }) {
   const palette: Record<typeof kind, { bg: string; fg: string; dot: string }> = {
     decision: { bg: "var(--accent-soft)", fg: "var(--accent-ink)", dot: "var(--accent-ink)" },
-    action:   { bg: "rgba(98,181,133,0.16)", fg: "#3f8a5e", dot: "#3f8a5e" },
-    pii:      { bg: "rgba(201,119,102,0.16)", fg: "#a04c3e", dot: "#a04c3e" },
+    action:   { bg: "rgba(98,181,133,0.16)", fg: "var(--success-ink)", dot: "var(--success-ink)" },
+    pii:      { bg: "rgba(201,119,102,0.16)", fg: "var(--danger-ink)", dot: "var(--danger-ink)" },
   };
   const c = palette[kind];
   return (
@@ -226,13 +227,13 @@ function ArrowRight() {
 
 function EyeIcon({ shown }: { shown: boolean }) {
   return shown ? (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 3l18 18" />
       <path d="M10.6 6.2A11 11 0 0 1 12 6c6.5 0 10 6 10 6a16 16 0 0 1-3 3.4M6.1 6.1A16 16 0 0 0 2 12s3.5 6 10 6a11 11 0 0 0 4.6-1" />
       <path d="M14.1 14.1A3 3 0 0 1 9.9 9.9" />
     </svg>
   ) : (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
       <circle cx="12" cy="12" r="3" />
     </svg>
@@ -341,37 +342,16 @@ export function LoginPage() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-2.5">
-            <button
-              type="button"
-              className="w-full inline-flex items-center justify-center gap-2.5 transition-colors"
-              style={{
-                padding: "10px 14px",
-                background: "var(--canvas)",
-                border: "1px solid var(--border)",
-                borderRadius: 9,
-                color: "var(--ink)",
-                fontSize: 13.5,
-                fontWeight: 500,
-                letterSpacing: "-0.005em",
-                cursor: "pointer",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--sidebar)";
-                e.currentTarget.style.borderColor = "var(--muted)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "var(--canvas)";
-                e.currentTarget.style.borderColor = "var(--border)";
-              }}
-              onClick={() =>
-                setError("Login com Microsoft em breve — use e-mail e senha por enquanto.")
-              }
-            >
-              <MicrosoftIcon />
-              Continuar com Microsoft
-            </button>
-          </div>
+          <Button
+            variant="secondary"
+            block
+            onClick={() =>
+              setError("Login com Microsoft em breve — use e-mail e senha por enquanto.")
+            }
+          >
+            <MicrosoftIcon />
+            Continuar com Microsoft
+          </Button>
 
           <div
             className="flex items-center gap-3"
@@ -388,62 +368,20 @@ export function LoginPage() {
           </div>
 
           <div className="flex flex-col gap-3.5">
-            <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="email"
-                style={{
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                  color: "var(--ink)",
-                  letterSpacing: "-0.005em",
-                }}
-              >
-                E-mail
-              </label>
-              <input
+            <Field label="E-mail" htmlFor="email">
+              <Input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="você@empresa.com"
                 required
-                className="w-full outline-none transition-all"
-                style={{
-                  padding: "10px 14px",
-                  background: "var(--canvas)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 9,
-                  color: "var(--ink)",
-                  fontSize: 14,
-                  letterSpacing: "-0.005em",
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = "var(--accent)";
-                  e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-soft)";
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = "var(--border)";
-                  e.currentTarget.style.boxShadow = "none";
-                }}
               />
-            </div>
+            </Field>
 
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-baseline justify-between">
-                <label
-                  htmlFor="password"
-                  style={{
-                    fontSize: 12.5,
-                    fontWeight: 500,
-                    color: "var(--ink)",
-                    letterSpacing: "-0.005em",
-                  }}
-                >
-                  Senha
-                </label>
-              </div>
+            <Field label="Senha" htmlFor="password">
               <div className="relative flex items-center">
-                <input
+                <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
@@ -451,49 +389,18 @@ export function LoginPage() {
                   placeholder="••••••••"
                   required
                   minLength={8}
-                  className="w-full outline-none transition-all"
-                  style={{
-                    padding: "10px 38px 10px 14px",
-                    background: "var(--canvas)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 9,
-                    color: "var(--ink)",
-                    fontSize: 14,
-                    letterSpacing: "-0.005em",
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "var(--accent)";
-                    e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-soft)";
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "var(--border)";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
+                  className="pr-9"
                 />
-                <button
-                  type="button"
+                <IconButton
+                  size="sm"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                  className="absolute right-2 grid place-items-center rounded transition-colors"
-                  style={{
-                    width: 26,
-                    height: 26,
-                    color: "var(--muted)",
-                    background: "transparent",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--chip)";
-                    e.currentTarget.style.color = "var(--ink)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = "var(--muted)";
-                  }}
+                  className="absolute right-1.5"
                 >
                   <EyeIcon shown={showPassword} />
-                </button>
+                </IconButton>
               </div>
-            </div>
+            </Field>
           </div>
 
           {error && (
@@ -512,31 +419,10 @@ export function LoginPage() {
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              padding: "11px 16px",
-              background: "var(--ink)",
-              color: "var(--canvas)",
-              borderRadius: 9,
-              fontSize: 13.5,
-              fontWeight: 500,
-              letterSpacing: "-0.005em",
-              cursor: loading ? "default" : "pointer",
-              opacity: loading ? 0.55 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (!loading) e.currentTarget.style.background = "#000";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "var(--ink)";
-            }}
-          >
+          <Button type="submit" variant="primary" block disabled={loading}>
             {loading ? "Entrando…" : "Entrar"}
             {!loading && <ArrowRight />}
-          </button>
+          </Button>
 
           <div
             className="flex justify-between items-center"
