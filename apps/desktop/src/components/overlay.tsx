@@ -16,6 +16,7 @@ import { formatDuration, relTime } from "@/lib/format";
 import { DecisionIcon, NextStepIcon, ObservationIcon, TaskIcon } from "@/components/brand/feed-icons";
 import { getDockVisible, setDockVisible as persistDockPref } from "@/lib/dock-prefs";
 import { EVENTS, type DockVisibilityPayload } from "@/lib/desktop-events";
+import { Button, IconButton, Input } from "./ui";
 
 type SpeakerMap = Record<string, string>;
 
@@ -161,7 +162,7 @@ function ChatBubble({
                 background: isMe ? "var(--ink)" : "var(--canvas)",
                 color: isMe ? "var(--canvas)" : "var(--ink)",
                 border: isMe ? "none" : "1px solid var(--border)",
-                borderRadius: 12,
+                borderRadius: "var(--radius-md)",
                 borderTopRightRadius: isMe ? 5 : 12,
                 borderTopLeftRadius: isMe ? 12 : 5,
                 fontSize: 12.5,
@@ -171,8 +172,8 @@ function ChatBubble({
                 whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
                 boxShadow: isMe
-                  ? "0 4px 14px -10px rgba(15, 23, 42, 0.40)"
-                  : "0 2px 6px -4px rgba(15, 23, 42, 0.10)",
+                  ? "var(--shadow-md)"
+                  : "var(--shadow-sm)",
               }}
             >
               {t.text}
@@ -222,7 +223,7 @@ function PartialBubble({ text, isMe }: { text: string; isMe: boolean }) {
           background: isMe ? "var(--ink)" : "var(--canvas)",
           color: isMe ? "var(--canvas)" : "var(--ink)",
           border: isMe ? "none" : "1px solid var(--border)",
-          borderRadius: 12,
+          borderRadius: "var(--radius-md)",
           borderTopRightRadius: isMe ? 5 : 12,
           borderTopLeftRadius: isMe ? 12 : 5,
           fontSize: 12.5,
@@ -454,33 +455,17 @@ function HighlightsColumn({ onCollapse }: { onCollapse: () => void }) {
               />
             </span>
           )}
-          <button
+          <IconButton
+            size="sm"
             onClick={onCollapse}
             aria-label="Esconder painel de detecções"
             title="Esconder painel"
-            className="grid place-items-center rounded-md transition-colors"
-            style={{
-              width: 22,
-              height: 22,
-              background: "transparent",
-              border: "none",
-              color: "var(--muted)",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--chip)";
-              e.currentTarget.style.color = "var(--ink)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "var(--muted)";
-            }}
           >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="13 17 18 12 13 7" />
               <polyline points="6 17 11 12 6 7" />
             </svg>
-          </button>
+          </IconButton>
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto" style={{ padding: "6px 8px" }}>
@@ -634,24 +619,11 @@ function AudioConfigSection({
           Áudio
         </h3>
         {dirty && (
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="sm"
             onClick={apply}
             disabled={applying}
-            className="inline-flex items-center gap-1.5"
-            style={{
-              padding: "3px 10px",
-              background: "var(--ink)",
-              color: "var(--canvas)",
-              border: "none",
-              borderRadius: 6,
-              fontSize: 10.5,
-              fontWeight: 500,
-              letterSpacing: "-0.005em",
-              cursor: applying ? "default" : "pointer",
-              opacity: applying ? 0.55 : 1,
-              fontFamily: "var(--sans)",
-            }}
           >
             {applying ? (
               <>
@@ -670,7 +642,7 @@ function AudioConfigSection({
             ) : (
               "Aplicar e reiniciar"
             )}
-          </button>
+          </Button>
         )}
       </div>
       <div className="grid grid-cols-2 gap-2 mb-2">
@@ -919,31 +891,12 @@ function ConfigDrawer({
                   name={overrides[s.speakerId] || s.fallback}
                   size={22}
                 />
-                <input
+                <Input
                   type="text"
                   value={overrides[s.speakerId] ?? ""}
                   onChange={(e) => onRename(s.speakerId, e.target.value)}
                   placeholder={s.fallback}
-                  className="flex-1 outline-none"
-                  style={{
-                    padding: "5px 9px",
-                    background: "var(--canvas)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 7,
-                    fontSize: 12,
-                    color: "var(--ink)",
-                    letterSpacing: "-0.005em",
-                    fontFamily: "var(--sans)",
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "var(--accent)";
-                    e.currentTarget.style.boxShadow =
-                      "0 0 0 3px var(--accent-soft)";
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "var(--border)";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
+                  className="flex-1"
                 />
                 <span
                   style={{
@@ -1273,8 +1226,7 @@ export function OverlayPage() {
         color: "var(--ink)",
         borderRadius: 10,
         border: "1px solid var(--border)",
-        boxShadow:
-          "0 18px 42px -20px rgba(15, 23, 42, 0.28), 0 4px 12px rgba(15, 23, 42, 0.06)",
+        boxShadow: "var(--shadow-lg)",
       }}
     >
       {/* Header */}
@@ -1323,59 +1275,22 @@ export function OverlayPage() {
         <div className="flex items-center gap-1.5">
           {isRecording && (
             <>
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={handleCancel}
                 disabled={stopping}
                 aria-label="Descartar"
                 title="Descartar"
-                style={{
-                  padding: "4px 10px",
-                  fontSize: 11,
-                  background: "transparent",
-                  border: "1px solid var(--border)",
-                  borderRadius: 7,
-                  color: "var(--muted)",
-                  cursor: stopping ? "default" : "pointer",
-                  letterSpacing: "-0.005em",
-                  fontWeight: 500,
-                  fontFamily: "var(--sans)",
-                }}
-                onMouseEnter={(e) => {
-                  if (!stopping) {
-                    e.currentTarget.style.background = "var(--chip)";
-                    e.currentTarget.style.color = "var(--ink)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--muted)";
-                }}
               >
                 Descartar
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={handleStop}
                 disabled={stopping}
                 aria-label="Parar e salvar"
-                className="inline-flex items-center gap-1.5"
-                style={{
-                  padding: "4px 11px 4px 9px",
-                  fontSize: 11,
-                  background: "var(--ink)",
-                  color: "var(--canvas)",
-                  border: "1px solid var(--ink)",
-                  borderRadius: 7,
-                  cursor: stopping ? "default" : "pointer",
-                  letterSpacing: "-0.005em",
-                  fontWeight: 500,
-                  fontFamily: "var(--sans)",
-                }}
-                onMouseEnter={(e) => {
-                  if (!stopping) e.currentTarget.style.background = "#000";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--ink)";
-                }}
               >
                 {stopping ? (
                   <>
@@ -1404,93 +1319,45 @@ export function OverlayPage() {
                     Parar e salvar
                   </>
                 )}
-              </button>
+              </Button>
             </>
           )}
-          <button
+          <IconButton
+            size="sm"
             onClick={() => setDrawerOpen((v) => !v)}
             aria-label="Configurações"
             title="Configurações"
-            className="grid place-items-center rounded-md transition-colors"
-            style={{
-              width: 24,
-              height: 24,
-              background: drawerOpen ? "var(--chip)" : "transparent",
-              border: "none",
-              color: drawerOpen ? "var(--ink)" : "var(--muted)",
-              cursor: "pointer",
-              marginLeft: 2,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(0,0,0,0.05)";
-              e.currentTarget.style.color = "var(--ink)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = drawerOpen
-                ? "var(--chip)"
-                : "transparent";
-              e.currentTarget.style.color = drawerOpen
-                ? "var(--ink)"
-                : "var(--muted)";
-            }}
+            style={
+              drawerOpen
+                ? { background: "var(--chip)", color: "var(--ink)" }
+                : undefined
+            }
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="3" />
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
-          </button>
-          <button
+          </IconButton>
+          <IconButton
+            size="sm"
             onClick={handleMinimize}
             aria-label="Minimizar"
             title="Minimizar (esconder — gravação continua)"
-            className="grid place-items-center rounded-md transition-colors"
-            style={{
-              width: 24,
-              height: 24,
-              background: "transparent",
-              border: "none",
-              color: "var(--muted)",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(0,0,0,0.05)";
-              e.currentTarget.style.color = "var(--ink)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "var(--muted)";
-            }}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-          </button>
-          <button
+          </IconButton>
+          <IconButton
+            size="sm"
             onClick={handleCloseRequest}
             aria-label="Fechar"
             title={isRecording ? "Fechar (confirmação)" : "Fechar"}
-            className="grid place-items-center rounded-md transition-colors"
-            style={{
-              width: 24,
-              height: 24,
-              background: "transparent",
-              border: "none",
-              color: "var(--muted)",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(0,0,0,0.05)";
-              e.currentTarget.style.color = "var(--ink)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "var(--muted)";
-            }}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
-          </button>
+          </IconButton>
         </div>
       </div>
 
@@ -1544,7 +1411,9 @@ export function OverlayPage() {
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => {
                 setStopping(true);
                 setSaveError(null);
@@ -1553,39 +1422,16 @@ export function OverlayPage() {
                 });
               }}
               disabled={stopping}
-              style={{
-                padding: "4px 10px",
-                fontSize: 11,
-                background: "var(--ink)",
-                color: "var(--canvas)",
-                border: "1px solid var(--ink)",
-                borderRadius: 7,
-                cursor: stopping ? "default" : "pointer",
-                letterSpacing: "-0.005em",
-                fontWeight: 500,
-                fontFamily: "var(--sans)",
-                opacity: stopping ? 0.55 : 1,
-              }}
             >
               {stopping ? "Tentando…" : "Tentar de novo"}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setSaveError(null)}
-              style={{
-                padding: "4px 10px",
-                fontSize: 11,
-                background: "transparent",
-                border: "1px solid var(--border)",
-                borderRadius: 7,
-                color: "var(--muted)",
-                cursor: "pointer",
-                letterSpacing: "-0.005em",
-                fontWeight: 500,
-                fontFamily: "var(--sans)",
-              }}
             >
               Esconder
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -1828,23 +1674,7 @@ function CloseConfirmDialog({
           </div>
         </div>
         <div className="flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={onStopAndSave}
-            className="inline-flex items-center justify-center gap-2"
-            style={{
-              padding: "9px 14px",
-              background: "var(--ink)",
-              color: "var(--canvas)",
-              border: "1px solid var(--ink)",
-              borderRadius: 9,
-              fontSize: 13,
-              fontWeight: 500,
-              letterSpacing: "-0.005em",
-              cursor: "pointer",
-              fontFamily: "var(--sans)",
-            }}
-          >
+          <Button variant="primary" block onClick={onStopAndSave}>
             <span
               style={{
                 width: 7,
@@ -1854,46 +1684,22 @@ function CloseConfirmDialog({
               }}
             />
             Parar e salvar
-          </button>
+          </Button>
           <div className="flex gap-2">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               onClick={onContinue}
-              style={{
-                flex: 1,
-                padding: "8px 12px",
-                background: "transparent",
-                border: "1px solid var(--border)",
-                borderRadius: 9,
-                fontSize: 12.5,
-                color: "var(--ink)",
-                cursor: "pointer",
-                fontFamily: "var(--sans)",
-                fontWeight: 500,
-                letterSpacing: "-0.005em",
-              }}
+              style={{ flex: 1 }}
             >
               Continuar gravando
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="danger"
               onClick={onDiscard}
-              style={{
-                flex: 1,
-                padding: "8px 12px",
-                background: "transparent",
-                border: "1px solid rgba(201, 119, 102, 0.4)",
-                borderRadius: 9,
-                fontSize: 12.5,
-                color: "var(--danger-ink)",
-                cursor: "pointer",
-                fontFamily: "var(--sans)",
-                fontWeight: 500,
-                letterSpacing: "-0.005em",
-              }}
+              style={{ flex: 1 }}
             >
               Descartar
-            </button>
+            </Button>
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { NoraBars } from "@/components/brand/nora-bars";
+import { IconButton } from "./ui";
 import { useTauriListener } from "@/hooks/use-tauri-listener";
 import { formatDuration } from "@/lib/format";
 import { setDockVisible } from "@/lib/dock-prefs";
@@ -13,45 +14,6 @@ interface RecordingStatus {
   isRecording: boolean;
   micDevice?: string;
   sampleRate?: number;
-}
-
-function DockButton({
-  onClick,
-  title,
-  children,
-}: {
-  onClick: () => void;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      className="grid place-items-center transition-colors"
-      style={{
-        width: 28,
-        height: 28,
-        borderRadius: 8,
-        background: "transparent",
-        border: "none",
-        color: "var(--muted)",
-        cursor: "pointer",
-        padding: 0,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = "var(--chip)";
-        e.currentTarget.style.color = "var(--ink)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "transparent";
-        e.currentTarget.style.color = "var(--muted)";
-      }}
-    >
-      {children}
-    </button>
-  );
 }
 
 export function DockBar() {
@@ -122,7 +84,7 @@ export function DockBar() {
           padding: "6px 8px 6px 6px",
           background: "var(--canvas)",
           color: "var(--ink)",
-          borderRadius: 999,
+          borderRadius: "var(--radius-pill)",
           border: "1px solid var(--border)",
           // Sem box-shadow: a janela do dock só tem 60px de altura, então
           // qualquer sombra que se estende além disso é cortada pela própria
@@ -170,9 +132,9 @@ export function DockBar() {
             padding: "5px 12px 5px 9px",
             background: isRecording ? "var(--danger-soft-bg)" : "var(--sidebar)",
             border: `1px solid ${
-              isRecording ? "rgba(201, 119, 102, 0.30)" : "var(--border)"
+              isRecording ? "var(--danger-soft-border)" : "var(--border)"
             }`,
-            borderRadius: 999,
+            borderRadius: "var(--radius-pill)",
             fontSize: 11.5,
             fontWeight: 500,
             letterSpacing: "-0.005em",
@@ -221,17 +183,25 @@ export function DockBar() {
         />
 
         {/* Actions */}
-        <DockButton onClick={handleOpenMain} title="Abrir NORA Desktop">
+        <IconButton
+          onClick={handleOpenMain}
+          title="Abrir NORA Desktop"
+          aria-label="Abrir NORA Desktop"
+        >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 12l9-9 9 9" />
             <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10" />
           </svg>
-        </DockButton>
-        <DockButton onClick={handleOpenOverlay} title="Mostrar overlay">
+        </IconButton>
+        <IconButton
+          onClick={handleOpenOverlay}
+          title="Mostrar overlay"
+          aria-label="Mostrar overlay"
+        >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-        </DockButton>
+        </IconButton>
 
         <span
           aria-hidden
@@ -244,11 +214,15 @@ export function DockBar() {
           }}
         />
 
-        <DockButton onClick={handleHide} title="Esconder dock">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <IconButton
+          onClick={handleHide}
+          title="Esconder dock"
+          aria-label="Esconder dock"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
-        </DockButton>
+        </IconButton>
       </div>
     </div>
   );

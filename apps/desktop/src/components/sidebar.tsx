@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { NoraLogo } from "@/components/brand/nora-logo";
 import { Avatar } from "@/components/brand/avatar";
+import { IconButton } from "./ui";
 import { useState, useEffect } from "react";
 
 interface NavItem {
@@ -62,12 +63,11 @@ export function Sidebar() {
 
   return (
     <aside
-      className="h-full flex flex-col shrink-0 relative"
+      className="h-full flex flex-col shrink-0 relative px-3.5 pb-3.5 pt-[18px]"
       style={{
         width: 248,
         background: "var(--sidebar)",
         borderRight: "1px solid var(--border)",
-        padding: "18px 14px 14px",
       }}
     >
       <div className="flex items-center justify-between px-1 mb-4">
@@ -75,31 +75,16 @@ export function Sidebar() {
           href="#/meetings"
           aria-label="NORA — reuniões"
           title="NORA — reuniões"
-          className="inline-flex items-center"
-          style={{
-            margin: "-4px -6px",
-            padding: "4px 6px",
-            borderRadius: 7,
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            textDecoration: "none",
-          }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.background = "rgba(0,0,0,0.04)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.background = "transparent")
-          }
+          className="ui-icon-btn inline-flex items-center w-auto px-1.5 -mx-1.5"
         >
           <NoraLogo animate />
         </a>
         <span
-          className="px-1.5 py-0.5 rounded text-[9.5px] font-medium uppercase tracking-[0.06em]"
+          className="px-1.5 py-0.5 rounded-pill text-[9.5px] font-medium uppercase tracking-[0.06em]"
           style={{
             color: "var(--muted)",
             border: "1px solid var(--border)",
-            background: "var(--canvas)",
+            background: "var(--chip)",
           }}
         >
           Core
@@ -113,14 +98,14 @@ export function Sidebar() {
             <a
               key={item.hash}
               href={item.hash}
-              className="flex items-center gap-2.5 px-2.5 py-2 rounded-md text-[13px] transition-colors"
+              className="flex items-center gap-2.5 px-2.5 py-2 rounded text-[13px] transition-colors"
               style={{
                 background: active ? "var(--accent-soft)" : "transparent",
                 color: active ? "var(--accent-ink)" : "var(--ink)",
                 letterSpacing: "-0.005em",
               }}
               onMouseEnter={(e) => {
-                if (!active) e.currentTarget.style.background = "rgba(0,0,0,0.03)";
+                if (!active) e.currentTarget.style.background = "rgba(0,0,0,0.04)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = active
@@ -164,40 +149,18 @@ export function Sidebar() {
           href="#/settings"
           aria-label="Configurações"
           title="Configurações"
-          className="grid place-items-center w-7 h-7 rounded-md transition-colors"
-          style={{
-            color: settingsActive ? "var(--accent-ink)" : "var(--muted)",
-            background: settingsActive ? "var(--accent-soft)" : "transparent",
-          }}
-          onMouseEnter={(e) => {
-            if (!settingsActive)
-              e.currentTarget.style.background = "rgba(0,0,0,0.04)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = settingsActive
-              ? "var(--accent-soft)"
-              : "transparent";
-          }}
+          className="ui-icon-btn ui-icon-btn--sm"
+          style={
+            settingsActive
+              ? { color: "var(--accent-ink)", background: "var(--accent-soft)" }
+              : undefined
+          }
         >
           {ICON_GEAR}
         </a>
-        <button
-          onClick={logout}
-          aria-label="Sair"
-          title="Sair"
-          className="grid place-items-center w-7 h-7 rounded-md transition-colors"
-          style={{ color: "var(--muted)", background: "transparent", border: "none", cursor: "pointer" }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(0,0,0,0.04)";
-            e.currentTarget.style.color = "var(--ink)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "var(--muted)";
-          }}
-        >
+        <IconButton size="sm" onClick={logout} aria-label="Sair" title="Sair">
           {ICON_SIGNOUT}
-        </button>
+        </IconButton>
       </div>
     </aside>
   );
