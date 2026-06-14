@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::secrets::SecretStore;
 use crate::stealth_mode::StealthModeState;
 
 #[cfg(target_os = "windows")]
@@ -66,13 +65,11 @@ pub struct LiveAnalysisTelemetry {
 pub async fn analyze_live(
     app_handle: AppHandle,
     state: State<'_, LiveHighlightsState>,
-    secrets: State<'_, SecretStore>,
     request: AnalyzeLiveRequest,
 ) -> Result<(), String> {
-    let access_token = secrets
-        .get("access-token")
-        .map_err(|e| format!("Failed to get access token: {}", e))?
-        .ok_or("Not authenticated. Please login first.")?;
+    // Token vem da sessao do web (cookie nora_access na webview main), nao do keychain —
+    // o login agora acontece dentro da janela principal que carrega nora.systems.
+    let access_token = crate::auth_bridge::web_session_jwt(&app_handle)?;
 
     let backend_url = crate::api_base_url();
 

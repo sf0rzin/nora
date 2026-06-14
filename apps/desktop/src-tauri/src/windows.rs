@@ -60,3 +60,19 @@ pub fn focus_overlay_window(app_handle: AppHandle) -> Result<(), String> {
     let _ = window.set_focus();
     Ok(())
 }
+
+/// Mostra e foca a janela de gravacao nativa (recorder).
+///
+/// A gravacao nativa (mic + audio do sistema + transcricao ao vivo) vive nessa
+/// janela separada porque cada janela Tauri e um contexto JS isolado — a main
+/// carrega o web remoto (nora.systems), que nao tem acesso aos comandos nativos.
+#[tauri::command]
+pub fn show_recorder(app_handle: AppHandle) -> Result<(), String> {
+    let w = app_handle
+        .get_webview_window("recorder")
+        .ok_or("recorder window not found")?;
+    w.show().map_err(|e| e.to_string())?;
+    w.unminimize().ok();
+    w.set_focus().map_err(|e| e.to_string())?;
+    Ok(())
+}
