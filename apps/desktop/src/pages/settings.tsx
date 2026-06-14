@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { secrets, SECRET_KEYS } from "@/lib/secrets";
 import { invoke } from "@tauri-apps/api/core";
 import { Avatar } from "@/components/brand/avatar";
+import { Button, Card } from "../components/ui";
 
 type SectionId = "profile" | "privacy" | "audio" | "about";
 
@@ -12,55 +13,6 @@ const SECTIONS: { id: SectionId; label: string }[] = [
   { id: "audio", label: "Áudio & captura" },
   { id: "about", label: "Sobre" },
 ];
-
-function Btn({
-  children,
-  onClick,
-  variant = "default",
-  size = "md",
-  disabled,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  variant?: "default" | "primary" | "ghost" | "danger";
-  size?: "sm" | "md";
-  disabled?: boolean;
-}) {
-  const styles = {
-    default: { bg: "var(--canvas)", color: "var(--ink)", border: "var(--border)" },
-    primary: { bg: "var(--ink)", color: "var(--canvas)", border: "var(--ink)" },
-    ghost: { bg: "transparent", color: "var(--ink)", border: "transparent" },
-    danger: {
-      bg: "var(--canvas)",
-      color: "var(--danger-ink)",
-      border: "rgba(201, 119, 102, 0.40)",
-    },
-  };
-  const s = styles[variant];
-  const pad = size === "sm" ? "5px 11px" : "8px 14px";
-  const fs = size === "sm" ? 12 : 13;
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        padding: pad,
-        background: s.bg,
-        color: s.color,
-        border: `1px solid ${s.border}`,
-        borderRadius: 7,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.5 : 1,
-        fontSize: fs,
-        fontWeight: 500,
-        letterSpacing: "-0.005em",
-        transition: "background 120ms ease, border-color 120ms ease",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
 
 function Toggle({
   checked,
@@ -207,10 +159,10 @@ function SectionWrap({
   children: React.ReactNode;
 }) {
   return (
-    <section style={{ marginBottom: 36 }}>
+    <section style={{ marginBottom: 28 }}>
       <div
         className="flex items-baseline justify-between"
-        style={{ marginBottom: 14, paddingBottom: 8, borderBottom: "1px solid var(--border)" }}
+        style={{ marginBottom: 12, padding: "0 2px" }}
       >
         <h3
           style={{
@@ -226,7 +178,7 @@ function SectionWrap({
         </h3>
         {right && <span style={{ fontSize: 11, color: "var(--muted)" }}>{right}</span>}
       </div>
-      {children}
+      <Card pad>{children}</Card>
     </section>
   );
 }
@@ -268,10 +220,7 @@ function ProfileSection() {
     <>
       <SectionHeader title="Perfil" subtitle="Como você aparece no NORA." />
 
-      <div
-        className="flex items-center gap-5"
-        style={{ paddingBottom: 24, marginBottom: 8, borderBottom: "1px solid var(--border)" }}
-      >
+      <Card pad className="flex items-center gap-5" style={{ marginBottom: 28 }}>
         <Avatar name={user?.displayName || "Você"} size={64} me />
         <div>
           <div style={{ fontSize: 16, fontWeight: 500, color: "var(--ink)", letterSpacing: "-0.012em" }}>
@@ -281,7 +230,7 @@ function ProfileSection() {
             {user?.email || ""}
           </div>
         </div>
-      </div>
+      </Card>
 
       <SectionWrap label="Identidade">
         <InfoRow label="Nome" value={user?.displayName || "—"} />
@@ -294,19 +243,16 @@ function ProfileSection() {
       </SectionWrap>
 
       <SectionWrap label="Sessão">
-        <div
-          className="flex items-center justify-between"
-          style={{ padding: "14px 0" }}
-        >
+        <div className="flex items-center justify-between gap-4">
           <div>
             <div style={{ fontSize: 13.5, color: "var(--ink)" }}>Sair desta máquina</div>
             <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>
               Limpa o token armazenado no keyring.
             </div>
           </div>
-          <Btn variant="danger" onClick={logout}>
+          <Button variant="danger" onClick={logout}>
             Encerrar sessão
-          </Btn>
+          </Button>
         </div>
       </SectionWrap>
     </>
@@ -353,7 +299,7 @@ function PrivacySection() {
     platform === "macos" ? (
       <>
         Disponível no Windows. Implementação para macOS via{" "}
-        <code style={{ background: "var(--chip)", padding: "1px 5px", borderRadius: 4, fontSize: 11.5 }}>
+        <code style={{ background: "var(--chip)", padding: "1px 5px", borderRadius: "var(--radius-sm)", fontSize: 11.5 }}>
           setSharingType(.none)
         </code>{" "}
         do NSWindow está planejada para uma versão futura.
@@ -367,7 +313,7 @@ function PrivacySection() {
     ) : isWindows ? (
       <>
         Oculta o NORA Desktop e a overlay de capturas de tela, OBS e compartilhamento.
-        Usa a API nativa do Windows (<code style={{ background: "var(--chip)", padding: "1px 5px", borderRadius: 4, fontSize: 11.5 }}>SetWindowDisplayAffinity</code>).
+        Usa a API nativa do Windows (<code style={{ background: "var(--chip)", padding: "1px 5px", borderRadius: "var(--radius-sm)", fontSize: 11.5 }}>SetWindowDisplayAffinity</code>).
       </>
     ) : (
       <>Detecção de plataforma em andamento…</>
@@ -400,11 +346,11 @@ function PrivacySection() {
         <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.6, marginBottom: 10 }}>
           Toda transcrição passa pelo PII Shield antes de chegar ao LLM. CPF, CNPJ,
           e-mail, telefone, cartão de crédito e nomes brasileiros viram placeholders{" "}
-          <code style={{ background: "var(--chip)", padding: "1px 5px", borderRadius: 4, fontSize: 11.5 }}>
+          <code style={{ background: "var(--chip)", padding: "1px 5px", borderRadius: "var(--radius-sm)", fontSize: 11.5 }}>
             [[CPF_1]]
           </code>
           ,{" "}
-          <code style={{ background: "var(--chip)", padding: "1px 5px", borderRadius: 4, fontSize: 11.5 }}>
+          <code style={{ background: "var(--chip)", padding: "1px 5px", borderRadius: "var(--radius-sm)", fontSize: 11.5 }}>
             [[EMAIL_2]]
           </code>{" "}
           etc.
@@ -415,11 +361,11 @@ function PrivacySection() {
             padding: "10px 14px",
             background: "rgba(98, 181, 133, 0.10)",
             border: "1px solid rgba(98, 181, 133, 0.30)",
-            borderRadius: 8,
+            borderRadius: "var(--radius)",
             fontSize: 13,
           }}
         >
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#62b585" }} />
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
           <span style={{ color: "var(--success-ink)" }}>PII Shield ativo (gerenciado pelo NORA)</span>
         </div>
       </SectionWrap>
@@ -459,11 +405,11 @@ function AudioSection() {
             padding: "10px 14px",
             background: "rgba(98, 181, 133, 0.10)",
             border: "1px solid rgba(98, 181, 133, 0.30)",
-            borderRadius: 8,
+            borderRadius: "var(--radius)",
             fontSize: 13,
           }}
         >
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#62b585" }} />
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
           <span style={{ color: "var(--success-ink)" }}>
             Transcrição gerenciada pelo NORA
           </span>
@@ -524,14 +470,11 @@ function AboutSection() {
       </SectionWrap>
 
       <SectionWrap label="Documentação">
-        <div
-          className="flex items-center justify-between"
-          style={{ padding: "14px 0" }}
-        >
+        <div className="flex items-center justify-between gap-4">
           <div>
             <div style={{ fontSize: 13.5, color: "var(--ink)" }}>ADRs e arquitetura</div>
             <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>
-              Decisões arquiteturais em <code style={{ background: "var(--chip)", padding: "1px 5px", borderRadius: 4, fontSize: 11.5 }}>docs/adr/</code>.
+              Decisões arquiteturais em <code style={{ background: "var(--chip)", padding: "1px 5px", borderRadius: "var(--radius-sm)", fontSize: 11.5 }}>docs/adr/</code>.
             </div>
           </div>
         </div>
@@ -602,7 +545,7 @@ export function SettingsPage() {
                 padding: "8px 10px",
                 background: active ? "var(--accent-soft)" : "transparent",
                 border: "none",
-                borderRadius: 7,
+                borderRadius: "var(--radius)",
                 cursor: "pointer",
                 fontSize: 13,
                 color: active ? "var(--accent-ink)" : "var(--ink)",

@@ -1,27 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useActiveRecording } from "@/hooks/use-active-recording";
 import { ShaderOrb } from "@/components/brand/shader-orb";
-import { focusOn, focusOff } from "@/components/ui/field";
+import { Button, IconButton, Input, Textarea, Field } from "./ui";
 import { Spinner } from "@/components/spinner";
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
-
-const inputCss: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 14px",
-  fontSize: 13.5,
-  background: "var(--canvas)",
-  border: "1px solid var(--border)",
-  borderRadius: 9,
-  color: "var(--ink)",
-  outline: "none",
-  letterSpacing: "-0.005em",
-  transition: "border-color 140ms ease, box-shadow 140ms ease",
-  fontFamily: "var(--sans)",
-};
 
 export function NewMeetingModal({ open, onClose }: Props) {
   const recording = useActiveRecording();
@@ -103,9 +89,8 @@ export function NewMeetingModal({ open, onClose }: Props) {
           width: "min(440px, 100%)",
           background: "var(--canvas)",
           border: "1px solid var(--border)",
-          borderRadius: 16,
-          boxShadow:
-            "0 32px 80px -24px rgba(15, 23, 42, 0.32), 0 8px 22px rgba(15, 23, 42, 0.06)",
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "var(--shadow-xl)",
           padding: "26px 26px 22px",
           display: "flex",
           flexDirection: "column",
@@ -159,51 +144,25 @@ export function NewMeetingModal({ open, onClose }: Props) {
               Dê um nome e um contexto rápido. O resto ajusta na overlay.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            aria-label="Fechar"
-            className="grid place-items-center rounded-md transition-colors"
-            style={{
-              width: 28,
-              height: 28,
-              background: "transparent",
-              border: "none",
-              color: "var(--muted)",
-              cursor: submitting ? "default" : "pointer",
-            }}
-            onMouseEnter={(e) => {
-              if (!submitting) {
-                e.currentTarget.style.background = "var(--chip)";
-                e.currentTarget.style.color = "var(--ink)";
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "var(--muted)";
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <IconButton onClick={onClose} disabled={submitting} aria-label="Fechar">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
-          </button>
+          </IconButton>
         </header>
 
         <div className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1.5">
-            <span
-              style={{
-                fontSize: 11.5,
-                fontWeight: 500,
-                color: "var(--muted)",
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
-              }}
-            >
-              Nome
-            </span>
-            <input
+          <Field label="Nome" htmlFor="new-meeting-title">
+            <Input
+              id="new-meeting-title"
               ref={titleRef}
               type="text"
               value={title}
@@ -211,43 +170,20 @@ export function NewMeetingModal({ open, onClose }: Props) {
               placeholder="Ex.: Discovery — TOTVS Protheus"
               required
               maxLength={140}
-              style={inputCss}
-              onFocus={focusOn}
-              onBlur={focusOff}
             />
-          </label>
+          </Field>
 
-          <label className="flex flex-col gap-1.5">
-            <span
-              style={{
-                fontSize: 11.5,
-                fontWeight: 500,
-                color: "var(--muted)",
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
-              }}
-            >
-              Descrição{" "}
-              <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400, opacity: 0.7 }}>
-                (opcional)
-              </span>
-            </span>
-            <textarea
+          <Field label="Descrição (opcional)" htmlFor="new-meeting-description">
+            <Textarea
+              id="new-meeting-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="O que você espera discutir?"
               rows={2}
               maxLength={600}
-              style={{
-                ...inputCss,
-                resize: "vertical",
-                minHeight: 60,
-                lineHeight: 1.5,
-              }}
-              onFocus={focusOn}
-              onBlur={focusOff}
+              style={{ resize: "vertical", minHeight: 60 }}
             />
-          </label>
+          </Field>
         </div>
 
         {err && (
@@ -256,7 +192,7 @@ export function NewMeetingModal({ open, onClose }: Props) {
               padding: "10px 12px",
               background: "var(--danger-soft-bg)",
               border: "1px solid var(--danger-soft-border)",
-              borderRadius: 9,
+              borderRadius: "var(--radius)",
               fontSize: 12.5,
               color: "var(--danger-ink)",
               lineHeight: 1.5,
@@ -267,41 +203,14 @@ export function NewMeetingModal({ open, onClose }: Props) {
         )}
 
         <footer className="flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            style={{
-              padding: "9px 14px",
-              background: "transparent",
-              border: "1px solid var(--border)",
-              borderRadius: 9,
-              fontSize: 13,
-              color: "var(--ink)",
-              cursor: submitting ? "default" : "pointer",
-              fontFamily: "var(--sans)",
-              fontWeight: 500,
-              opacity: submitting ? 0.5 : 1,
-            }}
-          >
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>
             Cancelar
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
+            variant="primary"
             disabled={!canStart}
             className="inline-flex items-center gap-2"
-            style={{
-              padding: "9px 18px",
-              background: "var(--ink)",
-              color: "var(--canvas)",
-              border: "1px solid var(--ink)",
-              borderRadius: 9,
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: canStart ? "pointer" : "default",
-              opacity: canStart ? 1 : 0.5,
-              fontFamily: "var(--sans)",
-            }}
           >
             {submitting ? (
               <>
@@ -314,15 +223,15 @@ export function NewMeetingModal({ open, onClose }: Props) {
                   style={{
                     width: 9,
                     height: 9,
-                    borderRadius: "50%",
+                    borderRadius: "var(--radius-pill)",
                     background: "var(--danger)",
-                    boxShadow: "0 0 0 3px rgba(201,119,102,0.30)",
+                    boxShadow: "0 0 0 3px rgba(201, 119, 102, 0.30)",
                   }}
                 />
                 Iniciar gravação
               </>
             )}
-          </button>
+          </Button>
         </footer>
       </form>
     </div>
