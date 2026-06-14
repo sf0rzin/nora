@@ -76,4 +76,33 @@ public class AuthorizationService {
             throw IamException.forbidden(action);
         }
     }
+
+    /**
+     * Filtra in-memory uma coleção por permissão, resolvendo o bypass de Root e os statements do
+     * usuário UMA ÚNICA vez para todo o conjunto. Use em list-endpoints com conditions por item:
+     * evita o N+1 de chamar {@link #isAllowed} por elemento (que reconsulta {@code isRoot} + {@code
+     * collectStatementsForUser} a cada chamada). A semântica de avaliação é idêntica — mesmo {@link
+     * PolicyEvaluator}, mesmo bypass de Root.
+     *
+     * @param resourceFn ARN do recurso para cada item
+     * @param contextFn atributos do recurso (conditions) para cada item
+     */
+    public <T> List<T> filterAllowed(
+            UUID userId,
+            UUID tenantId,
+            String action,
+            List<T> items,
+            java.util.function.Function<T, String> resourceFn,
+            java.util.function.Function<T, Map<String, String>> contextFn) {
+        if (users.isRoot(userId, tenantId)) {
+            return items;
+        }
+        List<PolicyStatement> stmts = iam.collectStatementsForUser(userId, tenantId);
+        return items.stream()
+                .filter(
+                        it ->
+                                PolicyEvaluator.isAllowed(
+                                        stmts, action, resourceFn.apply(it), contextFn.apply(it)))
+                .toList();
+    }
 }
