@@ -2150,7 +2150,7 @@ dependencies = [
 
 [[package]]
 name = "nora-desktop"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "audioadapter-buffers",
  "base64 0.22.1",
