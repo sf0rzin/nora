@@ -49,6 +49,17 @@ public class ProductivityAssessmentRepositoryAdapter implements ProductivityAsse
         jpa.deleteByMeetingIdAndTenantIdNative(meetingId, tenantId);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<BandScore> bandsByMeetingIds(java.util.Collection<UUID> meetingIds, UUID tenantId) {
+        if (meetingIds == null || meetingIds.isEmpty()) {
+            return List.of();
+        }
+        return jpa.aggregateBandsByMeetingIds(meetingIds, tenantId).stream()
+                .map(r -> new BandScore((UUID) r[0], (String) r[1], ((Number) r[2]).intValue()))
+                .toList();
+    }
+
     private ProductivityAssessmentJpaEntity toEntity(ProductivityAssessment a) {
         ProductivityAssessmentJpaEntity e = new ProductivityAssessmentJpaEntity();
         e.setId(a.id());
