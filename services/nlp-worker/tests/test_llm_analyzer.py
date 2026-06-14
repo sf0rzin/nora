@@ -15,7 +15,8 @@ import pytest
 
 from nora_nlp.clients.llm import LlmClient as _Real
 from nora_nlp.models import AnalyzeRequest
-from nora_nlp.services.llm_analyzer import _load_prompt, _render_template, analyze
+from nora_nlp.services.llm_analyzer import analyze
+from nora_nlp.services.prompt_utils import load_prompt, render_template
 from nora_nlp.settings import Settings
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -99,7 +100,7 @@ _FAKE_LLM_RESPONSE = {
 
 
 def test_load_prompt_returns_system_and_user():
-    system, user = _load_prompt("meeting-analysis-v1")
+    system, user = load_prompt("meeting-analysis-v1")
     assert "NORA" in system
     assert "{{tenant_context_json}}" in user
     assert "{{transcript}}" in user
@@ -107,12 +108,12 @@ def test_load_prompt_returns_system_and_user():
 
 def test_load_prompt_raises_for_missing_file():
     with pytest.raises(FileNotFoundError):
-        _load_prompt("nonexistent-prompt-v99")
+        load_prompt("nonexistent-prompt-v99")
 
 
 def test_render_template_substitutes_variables():
     template = "Hello {{name}}, your meeting {{meeting_id}} is ready."
-    result = _render_template(template, name="World", meeting_id="abc-123")
+    result = render_template(template, name="World", meeting_id="abc-123")
     assert result == "Hello World, your meeting abc-123 is ready."
 
 
