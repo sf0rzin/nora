@@ -197,6 +197,17 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
 
+      # tauri-build (build.rs) valida que o externalBin do sidecar EXISTE em disco. Este job
+      # não builda o sidecar PyInstaller (isso é do desktop-bundle, pesado) — então criamos um
+      # stub vazio só pra satisfazer a checagem de existência. cargo check não executa o binário,
+      # só precisa que o path exista pra compilar/checar o Rust do app.
+      - name: Stub do binario do sidecar (tauri-build checa existencia)
+        working-directory: apps/desktop/src-tauri
+        shell: bash
+        run: |
+          mkdir -p binaries
+          : > "binaries/nora-stt-sidecar-x86_64-pc-windows-msvc.exe"
+
       - name: cargo check
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked
