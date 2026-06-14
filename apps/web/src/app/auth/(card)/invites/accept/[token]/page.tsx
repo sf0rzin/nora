@@ -21,10 +21,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { ApiRequestError, acceptInvite } from '@/lib/api/client';
 import { setSession } from '@/lib/auth';
+import { PASSWORD_MIN, PASSWORD_MAX } from '@/lib/password-policy';
 
-// Espelha br.com.nora.api.domain.identity.PasswordPolicy.
-const PASSWORD_MIN = 10;
-const PASSWORD_MAX = 128;
 const DISPLAY_NAME_MAX = 120;
 
 function validatePassword(raw: string): string | null {
