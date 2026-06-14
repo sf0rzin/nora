@@ -1,4 +1,5 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// NB: `windows_subsystem = "windows"` mora em main.rs (crate-root do binario). Aqui na lib
+// ele nao tem efeito sobre o subsistema do .exe.
 
 mod audio_capture;
 mod audio_resample;
