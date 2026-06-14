@@ -8,6 +8,7 @@ import { useState, type CSSProperties, type FormEvent } from "react";
 import { NoraLogo } from "@/components/brand/nora-logo";
 import { ApiRequestError, login, resendVerificationEmail, signup } from "@/lib/api/client";
 import { setSession } from "@/lib/auth";
+import { PASSWORD_MIN } from "@/lib/password-policy";
 
 import "./auth.css";
 
@@ -467,7 +468,7 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
     step.id === "email"
       ? data.email.includes("@") && data.fullName.trim().length > 1
       : step.id === "password"
-        ? data.password.length >= 8 && data.password === data.confirm
+        ? data.password.length >= PASSWORD_MIN && data.password === data.confirm
         : data.workspaceName.trim().length > 1 && data.agreed;
 
   async function submit(e?: FormEvent) {
@@ -480,12 +481,12 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
     }
     setBusy(true);
     try {
-      // `role` é coletado mas ainda não enviado — wiring p/ métricas é issue à parte.
       await signup({
         email: data.email,
         password: data.password,
         displayName: data.fullName,
         companyName: data.workspaceName,
+        role: data.role,
       });
       setDone(true);
     } catch (e2) {

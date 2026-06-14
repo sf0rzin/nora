@@ -7,4 +7,8 @@ import jakarta.validation.constraints.Size;
 public record SignupRequest(
         @NotBlank @Email @Size(max = 254) String email,
         @NotBlank @Size(min = 10, max = 128) String password,
-        @Size(max = 120) String displayName) {}
+        @Size(max = 120) String displayName,
+        /** Nome do workspace (vira o nome do tenant). Vazio => tenant pessoal. */
+        @Size(max = 120) String companyName,
+        /** Intenção de uso coletada no onboarding (individual/team/company) — telemetria. */
+        @Size(max = 32) String role) {}
