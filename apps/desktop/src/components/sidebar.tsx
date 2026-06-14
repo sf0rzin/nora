@@ -72,9 +72,9 @@ export function Sidebar() {
     >
       <div className="flex items-center justify-between px-1 mb-4">
         <a
-          href="#/chat"
-          aria-label="Conversar com a NORA"
-          title="Conversar com a NORA"
+          href="#/meetings"
+          aria-label="NORA — reuniões"
+          title="NORA — reuniões"
           className="inline-flex items-center"
           style={{
             margin: "-4px -6px",
