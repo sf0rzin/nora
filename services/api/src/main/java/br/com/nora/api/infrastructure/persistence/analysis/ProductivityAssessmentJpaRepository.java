@@ -1,5 +1,7 @@
 package br.com.nora.api.infrastructure.persistence.analysis;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +14,18 @@ public interface ProductivityAssessmentJpaRepository
 
     Optional<ProductivityAssessmentJpaEntity> findByMeetingIdAndTenantId(
             UUID meetingId, UUID tenantId);
+
+    /**
+     * Banda + score de produtividade por meeting, em UMA query (projeção escalar — não carrega a
+     * coleção de coverage). Para enriquecer a listagem sem N+1.
+     *
+     * @return linhas {@code [meetingId, band, score]}
+     */
+    @Query(
+            "SELECT p.meetingId, p.band, p.score FROM ProductivityAssessmentJpaEntity p "
+                    + "WHERE p.tenantId = :tenantId AND p.meetingId IN :meetingIds")
+    List<Object[]> aggregateBandsByMeetingIds(
+            @Param("meetingIds") Collection<UUID> meetingIds, @Param("tenantId") UUID tenantId);
 
     /**
      * Apaga assessment via native SQL para que o ON DELETE CASCADE do Postgres remova as coverages.
