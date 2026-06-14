@@ -534,7 +534,6 @@ function AboutSection() {
               Decisões arquiteturais em <code style={{ background: "var(--chip)", padding: "1px 5px", borderRadius: 4, fontSize: 11.5 }}>docs/adr/</code>.
             </div>
           </div>
-          <Btn variant="ghost">Abrir docs</Btn>
         </div>
       </SectionWrap>
     </>
