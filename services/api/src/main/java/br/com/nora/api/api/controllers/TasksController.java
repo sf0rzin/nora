@@ -4,6 +4,7 @@ import br.com.nora.api.api.dto.task.TaskListItem;
 import br.com.nora.api.api.dto.task.TaskListResponse;
 import br.com.nora.api.api.dto.task.TaskUpdateRequest;
 import br.com.nora.api.api.security.CurrentUser;
+import br.com.nora.api.api.security.ResourceArns;
 import br.com.nora.api.application.iam.AuthorizationService;
 import br.com.nora.api.application.ports.TaskRepository.TaskRow;
 import br.com.nora.api.application.task.TaskService;
@@ -33,7 +34,7 @@ public class TasksController {
     }
 
     private static String taskResource(UUID tenantId, UUID taskId) {
-        return "nora:tenant/" + tenantId + ":task/" + (taskId == null ? "*" : taskId);
+        return ResourceArns.task(tenantId, taskId);
     }
 
     @GetMapping
