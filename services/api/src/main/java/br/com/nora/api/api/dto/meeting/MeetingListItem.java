@@ -16,4 +16,10 @@ public record MeetingListItem(
         int actionItemCount,
         int riskCount,
         int opportunityCount,
-        List<String> tags) {}
+        List<String> tags,
+        /** Banda de produtividade (LOW/MEDIUM/HIGH) quando avaliada; null caso contrário. */
+        String productivityBand,
+        /** Score de produtividade (0-100) quando avaliado; null caso contrário. */
+        Integer productivityScore,
+        /** Nomes dos participantes para o stack de avatares (vazio quando não há). */
+        List<String> participants) {}
