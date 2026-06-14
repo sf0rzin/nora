@@ -327,14 +327,22 @@ async fn run_sidecar(
     #[cfg(debug_assertions)]
     eprintln!("[stt_sidecar] using binary: {:?}", binary_path);
 
-    let mut child = Command::new(&binary_path)
-        .stdin(Stdio::piped())
+    let mut cmd = Command::new(&binary_path);
+    cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         // Mata o processo Python se este handle for dropado (ex.: join.abort() no timeout de
         // startup, ou erro no meio). Sem isso, o sidecar PyInstaller fica orfao consumindo
         // quota/sessao do Azure Speech.
-        .kill_on_drop(true)
+        .kill_on_drop(true);
+
+    // CREATE_NO_WINDOW (0x08000000): o sidecar e um .exe console (PyInstaller). Num app GUI
+    // (windows_subsystem = "windows"), spawnar um console-subsystem child faz piscar uma janela
+    // de CMD preta na primeira gravacao. Esta flag suprime o console do filho no Windows.
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("failed to spawn sidecar: {}", e))?;
 
