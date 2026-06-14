@@ -13,6 +13,7 @@ import { ShaderOrb } from "@/components/brand/shader-orb";
 import { AvatarStack } from "@/components/brand/avatar";
 import { Spinner } from "@/components/spinner";
 import { Chip } from "@/components/chip";
+import { Button, Card } from "../components/ui";
 
 function Section({
   label,
@@ -24,7 +25,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section style={{ marginBottom: 36 }}>
+    <Card pad style={{ marginBottom: 36 }}>
       <div
         className="flex items-baseline justify-between"
         style={{ marginBottom: 14, paddingBottom: 8, borderBottom: "1px solid var(--border)" }}
@@ -46,7 +47,7 @@ function Section({
         )}
       </div>
       {children}
-    </section>
+    </Card>
   );
 }
 
@@ -54,15 +55,15 @@ function ActionRow({ a, first }: { a: ActionItem; first: boolean }) {
   const [open, setOpen] = useState(false);
   const prColor =
     a.priority === "HIGH"
-      ? "#a04c3e"
+      ? "var(--danger-ink)"
       : a.priority === "MEDIUM"
-        ? "#a37528"
+        ? "var(--warn-ink)"
         : "var(--muted)";
   const statusColor =
     a.status === "DONE"
-      ? "#3f8a5e"
+      ? "var(--success-ink)"
       : a.status === "IN_PROGRESS"
-        ? "#a37528"
+        ? "var(--warn-ink)"
         : "var(--muted)";
 
   return (
@@ -102,7 +103,7 @@ function ActionRow({ a, first }: { a: ActionItem; first: boolean }) {
         </div>
         {a.sourceQuote && (
           <span
-            className="grid place-items-center"
+            className="grid place-items-center shrink-0"
             style={{
               width: 26,
               height: 26,
@@ -111,7 +112,7 @@ function ActionRow({ a, first }: { a: ActionItem; first: boolean }) {
               color: "var(--muted)",
             }}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </span>
@@ -124,7 +125,7 @@ function ActionRow({ a, first }: { a: ActionItem; first: boolean }) {
             marginTop: 10,
             padding: "10px 14px",
             background: "var(--chip)",
-            borderRadius: 6,
+            borderRadius: "var(--radius-sm)",
             fontSize: 12.5,
             color: "var(--muted)",
             fontStyle: "italic",
@@ -141,8 +142,8 @@ function ActionRow({ a, first }: { a: ActionItem; first: boolean }) {
 
 function RiskCard({ r }: { r: Risk }) {
   const colors = {
-    HIGH: { bg: "rgba(201,119,102,0.12)", border: "rgba(201,119,102,0.32)", fg: "#a04c3e" },
-    MEDIUM: { bg: "rgba(212,160,76,0.12)", border: "rgba(212,160,76,0.32)", fg: "#a37528" },
+    HIGH: { bg: "rgba(201,119,102,0.12)", border: "rgba(201,119,102,0.32)", fg: "var(--danger-ink)" },
+    MEDIUM: { bg: "rgba(212,160,76,0.12)", border: "rgba(212,160,76,0.32)", fg: "var(--warn-ink)" },
     LOW: { bg: "var(--sidebar)", border: "var(--border)", fg: "var(--muted)" },
   };
   const c = colors[r.severity];
@@ -152,7 +153,7 @@ function RiskCard({ r }: { r: Risk }) {
         padding: "10px 12px",
         background: c.bg,
         border: `1px solid ${c.border}`,
-        borderRadius: 8,
+        borderRadius: "var(--radius-sm)",
         fontSize: 13,
         lineHeight: 1.5,
         color: "var(--ink)",
@@ -174,13 +175,13 @@ function OpportunityCard({ o }: { o: Opportunity }) {
         padding: "10px 12px",
         background: "rgba(98,181,133,0.10)",
         border: "1px solid rgba(98,181,133,0.30)",
-        borderRadius: 8,
+        borderRadius: "var(--radius-sm)",
         fontSize: 13,
         lineHeight: 1.5,
         color: "var(--ink)",
       }}
     >
-      <span style={{ color: "#3f8a5e", fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 500 }}>
+      <span style={{ color: "var(--success-ink)", fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 500 }}>
         {o.category}
       </span>
       <span style={{ margin: "0 8px", color: "var(--muted)" }}>·</span>
@@ -397,29 +398,27 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
         )}
 
         {isProcessing && (
-          <div
+          <Card
+            pad
             style={{
-              padding: "16px 18px",
               background: "var(--accent-soft)",
-              border: "1px solid var(--accent-soft)",
-              borderRadius: 12,
+              borderColor: "var(--accent-soft)",
               fontSize: 13,
               color: "var(--accent-ink)",
               marginBottom: 36,
             }}
           >
             NORA está processando essa reunião — resumo, decisões e action items aparecem aqui em alguns segundos.
-          </div>
+          </Card>
         )}
 
         {isFailed && (
-          <div
+          <Card
+            pad
             className="flex items-start justify-between gap-4"
             style={{
-              padding: "16px 18px",
               background: "var(--danger-soft-bg)",
-              border: "1px solid rgba(201,119,102,0.30)",
-              borderRadius: 12,
+              borderColor: "var(--danger-soft-border)",
               marginBottom: 36,
             }}
           >
@@ -445,23 +444,12 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
                 )}
               </div>
             </div>
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleReprocess}
               disabled={reprocessing}
-              className="inline-flex items-center gap-1.5 shrink-0"
-              style={{
-                padding: "7px 13px",
-                background: "var(--ink)",
-                color: "var(--canvas)",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 12.5,
-                fontWeight: 500,
-                letterSpacing: "-0.005em",
-                cursor: reprocessing ? "default" : "pointer",
-                opacity: reprocessing ? 0.6 : 1,
-                fontFamily: "var(--sans)",
-              }}
+              className="shrink-0"
             >
               {reprocessing ? (
                 <>
@@ -471,8 +459,8 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
               ) : (
                 "Reprocessar"
               )}
-            </button>
-          </div>
+            </Button>
+          </Card>
         )}
 
         {isReady && (
@@ -544,9 +532,9 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
             )}
 
             {(analysis.risks.length > 0 || analysis.opportunities.length > 0) && (
-              <div className="grid grid-cols-2 gap-4 mb-9">
+              <div className="grid grid-cols-2 gap-4" style={{ marginBottom: 36 }}>
                 {analysis.risks.length > 0 && (
-                  <section>
+                  <Card pad>
                     <h3
                       style={{
                         fontSize: 10.5,
@@ -564,10 +552,10 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
                         <RiskCard key={r.id} r={r} />
                       ))}
                     </div>
-                  </section>
+                  </Card>
                 )}
                 {analysis.opportunities.length > 0 && (
-                  <section>
+                  <Card pad>
                     <h3
                       style={{
                         fontSize: 10.5,
@@ -585,7 +573,7 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
                         <OpportunityCard key={o.id} o={o} />
                       ))}
                     </div>
-                  </section>
+                  </Card>
                 )}
               </div>
             )}
@@ -606,7 +594,7 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
           <span style={{ opacity: 0.4 }}>·</span>
           <span>Exportar resumo</span>
           <span className="ml-auto inline-flex items-center gap-1.5">
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#62b585" }} />
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)" }} />
             PII Shield aplicado
           </span>
         </div>

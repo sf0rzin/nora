@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { listMeetings } from "@/lib/meetings";
 import type { MeetingSummary, ApiError } from "@/lib/types";
 import { ShaderOrb } from "@/components/brand/shader-orb";
-import { focusOn, focusOff } from "@/components/ui/field";
+import { Button, Input } from "@/components/ui";
 import { Spinner } from "@/components/spinner";
 import { Chip } from "@/components/chip";
 import { openNewMeetingModal } from "@/App";
@@ -59,10 +59,10 @@ function StatusDot({ status }: { status: MeetingSummary["processingStatus"] }) {
     );
   }
   const map: Record<string, { color: string; label: string }> = {
-    COMPLETED: { color: "#62b585", label: "Pronto" },
-    FAILED: { color: "#c97766", label: "Falhou" },
+    COMPLETED: { color: "var(--success)", label: "Pronto" },
+    FAILED: { color: "var(--danger)", label: "Falhou" },
   };
-  const s = map[status] || { color: "#c5c2bc", label: "Rascunho" };
+  const s = map[status] || { color: "var(--border-strong)", label: "Rascunho" };
   return (
     <span
       title={s.label}
@@ -97,7 +97,7 @@ function MeetingRow({ m, query }: { m: MeetingSummary; query: string }) {
         gridTemplateColumns: "auto 80px 1fr auto auto",
         gap: 14,
         padding: "12px 14px",
-        borderRadius: 10,
+        borderRadius: "var(--radius)",
         background: hover && hoverable ? "var(--sidebar)" : "transparent",
         cursor: hoverable ? "pointer" : "default",
         color: "var(--ink)",
@@ -178,7 +178,7 @@ function MeetingRow({ m, query }: { m: MeetingSummary; query: string }) {
             height: 26,
             display: "grid",
             placeItems: "center",
-            borderRadius: 6,
+            borderRadius: "var(--radius-sm)",
             color: "var(--muted)",
           }}
         >
@@ -294,24 +294,13 @@ function SearchBar({
         <circle cx="11" cy="11" r="7" />
         <path d="m20 20-3.5-3.5" />
       </svg>
-      <input
+      <Input
         ref={inputRef}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Buscar reuniões, tags, conteúdo…"
-        className="w-full outline-none"
-        style={{
-          padding: "9px 38px 9px 36px",
-          background: "var(--canvas)",
-          border: "1px solid var(--border)",
-          borderRadius: 9,
-          fontSize: 13,
-          color: "var(--ink)",
-          letterSpacing: "-0.005em",
-        }}
-        onFocus={focusOn}
-        onBlur={focusOff}
+        style={{ paddingLeft: 36, paddingRight: 38 }}
       />
       <div
         className="flex items-center gap-1.5"
@@ -450,32 +439,12 @@ export function MeetingsPage() {
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={openNewMeetingModal}
-              className="inline-flex items-center gap-2"
-              style={{
-                padding: "8px 14px",
-                background: "var(--ink)",
-                color: "var(--canvas)",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 500,
-                letterSpacing: "-0.005em",
-                border: "none",
-                cursor: "pointer",
-                fontFamily: "var(--sans)",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#000")}
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "var(--ink)")
-              }
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+            <Button variant="primary" onClick={openNewMeetingModal}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
                 <path d="M12 5v14M5 12h14" />
               </svg>
               Nova reunião
-            </button>
+            </Button>
           </div>
         </header>
 
@@ -495,7 +464,7 @@ export function MeetingsPage() {
               padding: "10px 12px",
               background: "var(--danger-soft-bg)",
               border: "1px solid var(--danger-soft-border)",
-              borderRadius: 8,
+              borderRadius: "var(--radius)",
               fontSize: 13,
               color: "var(--danger-ink)",
               lineHeight: 1.45,
@@ -516,7 +485,7 @@ export function MeetingsPage() {
                     "linear-gradient(90deg, var(--sidebar) 0%, var(--chip) 50%, var(--sidebar) 100%)",
                   backgroundSize: "200% 100%",
                   animation: "shimmer 1.6s linear infinite",
-                  borderRadius: 10,
+                  borderRadius: "var(--radius)",
                   opacity: 0.6,
                 }}
               />
@@ -615,24 +584,9 @@ export function MeetingsPage() {
                   action items.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={openNewMeetingModal}
-                className="inline-flex items-center gap-2"
-                style={{
-                  padding: "10px 18px",
-                  background: "var(--ink)",
-                  color: "var(--canvas)",
-                  borderRadius: 9,
-                  fontSize: 13,
-                  fontWeight: 500,
-                  border: "none",
-                  cursor: "pointer",
-                  fontFamily: "var(--sans)",
-                }}
-              >
+              <Button variant="primary" onClick={openNewMeetingModal}>
                 Começar a gravar
-              </button>
+              </Button>
             </div>
           )
         )}
