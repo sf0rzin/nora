@@ -18,6 +18,7 @@ export default defineConfig(async () => ({
         main: path.resolve(__dirname, "index.html"),
         overlay: path.resolve(__dirname, "overlay.html"),
         dock: path.resolve(__dirname, "dock.html"),
+        recorder: path.resolve(__dirname, "recorder.html"),
       },
     },
   },
