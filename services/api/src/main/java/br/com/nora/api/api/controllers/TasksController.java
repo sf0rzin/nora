@@ -4,8 +4,7 @@ import br.com.nora.api.api.dto.task.TaskListItem;
 import br.com.nora.api.api.dto.task.TaskListResponse;
 import br.com.nora.api.api.dto.task.TaskUpdateRequest;
 import br.com.nora.api.api.security.CurrentUser;
-import br.com.nora.api.api.security.ResourceArns;
-import br.com.nora.api.application.iam.AuthorizationService;
+import br.com.nora.api.api.security.RequiresPermission;
 import br.com.nora.api.application.ports.TaskRepository.TaskRow;
 import br.com.nora.api.application.task.TaskService;
 import br.com.nora.api.domain.analysis.ActionItemStatus;
@@ -26,25 +25,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class TasksController {
 
     private final TaskService tasks;
-    private final AuthorizationService authz;
 
-    public TasksController(TaskService tasks, AuthorizationService authz) {
+    public TasksController(TaskService tasks) {
         this.tasks = tasks;
-        this.authz = authz;
-    }
-
-    private static String taskResource(UUID tenantId, UUID taskId) {
-        return ResourceArns.task(tenantId, taskId);
     }
 
     @GetMapping
+    @RequiresPermission(action = "task:read", resource = RequiresPermission.ResourceType.TASK)
     public TaskListResponse list(@RequestParam(name = "status", required = false) String status) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        authz.require(
-                principal.userId(),
-                principal.tenantId(),
-                "task:read",
-                taskResource(principal.tenantId(), null));
         ActionItemStatus parsed = parseStatus(status);
         List<TaskRow> rows = tasks.list(principal.tenantId(), parsed);
         List<TaskListItem> items = rows.stream().map(TasksController::toDto).toList();
@@ -52,13 +41,12 @@ public class TasksController {
     }
 
     @PatchMapping("/{id}")
+    @RequiresPermission(
+            action = "task:write",
+            resource = RequiresPermission.ResourceType.TASK,
+            idParam = "id")
     public TaskListItem update(@PathVariable("id") UUID id, @RequestBody TaskUpdateRequest body) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        authz.require(
-                principal.userId(),
-                principal.tenantId(),
-                "task:write",
-                taskResource(principal.tenantId(), id));
         if ((body.status() == null || body.status().isBlank())
                 && (body.title() == null || body.title().isBlank())) {
             throw new IllegalArgumentException("at least one of 'status' or 'title' is required");
