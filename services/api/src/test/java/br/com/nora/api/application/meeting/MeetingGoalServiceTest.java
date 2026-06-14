@@ -265,6 +265,16 @@ class MeetingGoalServiceTest {
             store.remove(key(meetingId, tenantId));
         }
 
+        @Override
+        public java.util.List<BandScore> bandsByMeetingIds(
+                java.util.Collection<UUID> meetingIds, UUID tenantId) {
+            java.util.Set<UUID> ids = new java.util.HashSet<>(meetingIds);
+            return store.values().stream()
+                    .filter(a -> a.tenantId().equals(tenantId) && ids.contains(a.meetingId()))
+                    .map(a -> new BandScore(a.meetingId(), a.band().name(), a.score()))
+                    .toList();
+        }
+
         private static UUID key(UUID meetingId, UUID tenantId) {
             return new UUID(
                     meetingId.getMostSignificantBits() ^ tenantId.getMostSignificantBits(),

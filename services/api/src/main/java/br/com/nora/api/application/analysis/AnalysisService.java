@@ -285,4 +285,51 @@ public class AnalysisService {
         meetings.findByIdAndTenant(meetingId, tenantId).orElseThrow(MeetingException.NotFound::new);
         return assessments.findByMeetingId(meetingId, tenantId);
     }
+
+    /** Enriquecimento da linha da listagem: contagens + banda/score de produtividade. */
+    public record ListEnrichment(
+            int actionItems,
+            int risks,
+            int opportunities,
+            String productivityBand,
+            Integer productivityScore) {}
+
+    /**
+     * Enriquece em LOTE os itens da listagem de reuniões: contagens (action items/risks/
+     * opportunities) e banda/score de produtividade, em DUAS queries agregadas para todo o conjunto
+     * de IDs — em vez de uma análise completa por item (N+1 que carregava 4 coleções).
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<UUID, ListEnrichment> enrichListItems(
+            java.util.Collection<UUID> meetingIds, UUID tenantId) {
+        if (meetingIds == null || meetingIds.isEmpty()) {
+            return java.util.Map.of();
+        }
+        java.util.Map<UUID, MeetingAnalysisRepository.AnalysisCounts> countsByMeeting =
+                new java.util.HashMap<>();
+        for (MeetingAnalysisRepository.AnalysisCounts c :
+                analyses.countsByMeetingIds(meetingIds, tenantId)) {
+            countsByMeeting.put(c.meetingId(), c);
+        }
+        java.util.Map<UUID, ProductivityAssessmentRepository.BandScore> bandByMeeting =
+                new java.util.HashMap<>();
+        for (ProductivityAssessmentRepository.BandScore b :
+                assessments.bandsByMeetingIds(meetingIds, tenantId)) {
+            bandByMeeting.put(b.meetingId(), b);
+        }
+        java.util.Map<UUID, ListEnrichment> out = new java.util.HashMap<>();
+        for (UUID id : meetingIds) {
+            MeetingAnalysisRepository.AnalysisCounts c = countsByMeeting.get(id);
+            ProductivityAssessmentRepository.BandScore b = bandByMeeting.get(id);
+            out.put(
+                    id,
+                    new ListEnrichment(
+                            c == null ? 0 : c.actionItems(),
+                            c == null ? 0 : c.risks(),
+                            c == null ? 0 : c.opportunities(),
+                            b == null ? null : b.band(),
+                            b == null ? null : b.score()));
+        }
+        return out;
+    }
 }
