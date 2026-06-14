@@ -21,6 +21,12 @@ export interface MeetingListItem {
   riskCount: number;
   opportunityCount: number;
   tags: string[];
+  /** Banda de produtividade quando avaliada; ausente/null caso contrário. */
+  productivityBand?: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+  /** Score 0–100 quando avaliado. */
+  productivityScore?: number | null;
+  /** Nomes dos participantes para o stack de avatares. */
+  participants?: string[];
 }
 
 export interface MeetingsListResponse {

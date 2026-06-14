@@ -28,7 +28,6 @@ import br.com.nora.api.application.meeting.MeetingService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
 import br.com.nora.api.application.meeting.TranscriptSplitService;
 import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
-import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.customer.CustomerConfidenceAssessment;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
@@ -46,7 +45,6 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -305,12 +303,17 @@ public class MeetingsController {
         long totalItems = visible.size();
         int fromIdx = Math.min(safePage * safeSize, visible.size());
         int toIdx = Math.min(fromIdx + safeSize, visible.size());
+        List<Meeting> pageMeetings = visible.subList(fromIdx, toIdx);
+        // Enriquecimento em LOTE (2 queries agregadas) — antes era 1 analise completa por item
+        // (N+1 carregando 4 colecoes so pra contar). Participantes ja vem carregados na lista.
+        List<UUID> pageIds = pageMeetings.stream().map(Meeting::id).toList();
+        Map<UUID, AnalysisService.ListEnrichment> enrich =
+                analyses.enrichListItems(pageIds, principal.tenantId());
         List<MeetingListItem> items =
-                visible.subList(fromIdx, toIdx).stream()
+                pageMeetings.stream()
                         .map(
                                 m -> {
-                                    Optional<MeetingAnalysis> a =
-                                            analyses.findByMeeting(m.id(), principal.tenantId());
+                                    AnalysisService.ListEnrichment e = enrich.get(m.id());
                                     return new MeetingListItem(
                                             m.id(),
                                             m.title(),
@@ -319,15 +322,30 @@ public class MeetingsController {
                                             null,
                                             m.processingStatus().name(),
                                             m.summarySnippet(),
-                                            a.map(x -> x.actionItems().size()).orElse(0),
-                                            a.map(x -> x.risks().size()).orElse(0),
-                                            a.map(x -> x.opportunities().size()).orElse(0),
-                                            m.tags());
+                                            e == null ? 0 : e.actionItems(),
+                                            e == null ? 0 : e.risks(),
+                                            e == null ? 0 : e.opportunities(),
+                                            m.tags(),
+                                            e == null ? null : e.productivityBand(),
+                                            e == null ? null : e.productivityScore(),
+                                            participantNames(m));
                                 })
                         .toList();
         int totalPages =
                 safeSize <= 0 ? 0 : (int) Math.ceil((double) totalItems / (double) safeSize);
         return new MeetingListResponse(items, safePage, safeSize, totalItems, totalPages);
+    }
+
+    /** Nomes dos participantes (até 12) para o stack de avatares na listagem. */
+    private static List<String> participantNames(Meeting m) {
+        if (m.participants() == null) {
+            return List.of();
+        }
+        return m.participants().stream()
+                .map(Participant::displayName)
+                .filter(n -> n != null && !n.isBlank())
+                .limit(12)
+                .toList();
     }
 
     @GetMapping("/{id}")
