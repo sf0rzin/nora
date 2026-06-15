@@ -10,11 +10,12 @@ import { setDockVisible } from "@/lib/dock-prefs";
 import { EVENTS } from "@/lib/desktop-events";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DOCK — controle de gravação estilo Cluely.
+// DOCK — controle de gravação flutuante (estilo Cluely, no tema CLARO da Nora).
 //
 // A janela "dock" é transparent + decorations:false + alwaysOnTop + skipTaskbar.
 // Renderizamos UM elemento "barra" flutuante (não preenchemos a janela toda),
-// no tema GLASS ESCURO. A barra é o CONTROLE da gravação nativa; a transcrição
+// no tema PAPER (claro) da Nora — espelha os tokens de styles.css pra bater
+// exatamente com o web. A barra é o CONTROLE da gravação nativa; a transcrição
 // ao vivo aparece na janela OVERLAY. Toda a orquestração (start → acumula
 // transcript via eventos → parar → saveMeeting → upload) vem do hook
 // useRecording — esta UI só desenha os estados e dispara as ações dele.
@@ -22,22 +23,24 @@ import { EVENTS } from "@/lib/desktop-events";
 
 // Dimensões da janela (logical px) — compacto vs. expandido. A área Rust já
 // concede core:window:allow-set-size.
-const SIZE_COMPACT = { width: 460, height: 52 };
-const SIZE_EXPANDED = { width: 460, height: 300 };
+const SIZE_COMPACT = { width: 460, height: 56 };
+const SIZE_EXPANDED = { width: 460, height: 308 };
 
-// Tema glass escuro — tokens locais (a dock NÃO usa os primitivos .ui-* claros).
-const GLASS = {
-  bg: "rgba(18,20,24,0.72)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  text: "rgba(255,255,255,0.92)",
-  textDim: "rgba(255,255,255,0.55)",
-  iconIdle: "rgba(255,255,255,0.6)",
-  iconHover: "rgba(255,255,255,0.95)",
-  hoverBg: "rgba(255,255,255,0.08)",
-  divider: "rgba(255,255,255,0.10)",
-  panelBg: "rgba(255,255,255,0.04)",
-  panelBorder: "1px solid rgba(255,255,255,0.08)",
-  danger: "#ff8a7a",
+// Tema da barra — tokens claros da Nora (var(--…) de styles.css). Mantemos um
+// objeto local só pra os poucos valores translúcidos/glass que não existem como
+// token nomeado; todo o resto referencia as variáveis CSS direto.
+const THEME = {
+  bg: "rgba(253,253,252,0.86)",
+  border: "1px solid var(--border)",
+  text: "var(--ink)",
+  textDim: "var(--muted)",
+  iconIdle: "var(--muted)",
+  iconHover: "var(--ink)",
+  hoverBg: "rgba(0,0,0,0.05)",
+  divider: "var(--border)",
+  panelBg: "var(--sidebar)",
+  panelBorder: "1px solid var(--border)",
+  danger: "var(--danger-ink)",
 };
 
 /** Título padrão quando não há campo preenchido: "Reunião <data local>". */
@@ -45,8 +48,8 @@ function defaultTitle(): string {
   return "Reunião " + new Date().toLocaleString("pt-BR");
 }
 
-// Botão-ícone glass — ~28px, cor dim → hover claro + leve bg branco. `active`
-// pinta no acento NORA (estado ligado: stealth/config).
+// Botão-ícone — ~28px, cor dim → hover ink + leve bg. `active` pinta no acento
+// Nora (estado ligado: stealth/config).
 function DockIconButton({
   onClick,
   title,
@@ -62,12 +65,12 @@ function DockIconButton({
 }) {
   const [hover, setHover] = useState(false);
   const color = danger
-    ? GLASS.danger
+    ? THEME.danger
     : active
       ? "var(--accent)"
       : hover
-        ? GLASS.iconHover
-        : GLASS.iconIdle;
+        ? THEME.iconHover
+        : THEME.iconIdle;
   return (
     <button
       type="button"
@@ -82,7 +85,7 @@ function DockIconButton({
         height: 28,
         borderRadius: 8,
         border: "none",
-        background: hover || active ? GLASS.hoverBg : "transparent",
+        background: hover || active ? THEME.hoverBg : "transparent",
         color,
         cursor: "pointer",
         padding: 0,
@@ -94,21 +97,21 @@ function DockIconButton({
   );
 }
 
-// <select> escuro pro painel expandido (seletor de microfone).
-const darkSelectStyle: React.CSSProperties = {
+// <select> claro pro painel expandido (seletor de microfone).
+const selectStyle: React.CSSProperties = {
   width: "100%",
   padding: "8px 28px 8px 10px",
   fontSize: 12.5,
-  background: "rgba(0,0,0,0.25)",
-  border: "1px solid rgba(255,255,255,0.12)",
+  background: "var(--canvas)",
+  border: "1px solid var(--border)",
   borderRadius: 8,
-  color: GLASS.text,
+  color: THEME.text,
   outline: "none",
   letterSpacing: "-0.005em",
   appearance: "none",
-  colorScheme: "dark",
+  colorScheme: "light",
   backgroundImage:
-    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-opacity='0.55' stroke-width='2' stroke-linecap='round'><polyline points='6 9 12 15 18 9'/></svg>\")",
+    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236E7178' stroke-width='2' stroke-linecap='round'><polyline points='6 9 12 15 18 9'/></svg>\")",
   backgroundRepeat: "no-repeat",
   backgroundPosition: "right 9px center",
   fontFamily: "var(--sans)",
@@ -156,11 +159,17 @@ export function DockBar() {
     };
   }, [r.savedMeetingId]);
 
-  // `-webkit-app-region: drag` não funciona no WebKitGTK Linux. startDragging()
-  // é cross-platform (x11/wayland/macOS/Windows). Só o fundo da barra arrasta;
-  // botões e o painel param a propagação.
+  // Arrastar a janela pelo fundo da barra. CRÍTICO: startDragging() captura o
+  // mouse nativamente, então se disparasse em QUALQUER mousedown ele engoliria
+  // o clique dos botões (o clique virava um drag e nenhum botão funcionava —
+  // bug reportado na v0.2.x). Por isso ignoramos mousedown que nasce em um
+  // elemento interativo; só o espaço vazio da barra arrasta.
   const onDragMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button, a, input, select, textarea, label, [data-no-drag]")) {
+      return;
+    }
     win
       .startDragging()
       .catch((err) => console.warn("[dock] startDragging failed:", err));
@@ -221,19 +230,19 @@ export function DockBar() {
     // pra sombra não ser cortada.
     <div
       className="flex flex-col h-full w-full"
-      style={{ padding: 6, fontFamily: "var(--sans)" }}
+      style={{ padding: 7, fontFamily: "var(--sans)" }}
     >
       <div
         onMouseDown={onDragMouseDown}
         className="flex flex-col flex-1 min-h-0"
         style={{
-          background: GLASS.bg,
-          backdropFilter: "blur(22px) saturate(140%)",
-          WebkitBackdropFilter: "blur(22px) saturate(140%)",
-          border: GLASS.border,
-          borderRadius: 16,
-          boxShadow: "0 10px 36px rgba(0,0,0,0.45)",
-          color: GLASS.text,
+          background: THEME.bg,
+          backdropFilter: "blur(22px) saturate(160%)",
+          WebkitBackdropFilter: "blur(22px) saturate(160%)",
+          border: THEME.border,
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "var(--shadow-lg)",
+          color: THEME.text,
           cursor: "grab",
           overflow: "hidden",
         }}
@@ -241,11 +250,11 @@ export function DockBar() {
         {/* ── LINHA COMPACTA (sempre visível) ─────────────────────────── */}
         <div
           className="flex items-center gap-1.5 shrink-0"
-          style={{ height: 40, padding: "0 8px 0 12px" }}
+          style={{ height: 42, padding: "0 8px 0 13px" }}
         >
-          {/* Logo NORA — barras claras (variant "paper") sobre o glass escuro. */}
+          {/* Logo Nora — barras ink (variant "brand") sobre o paper claro. */}
           <span className="shrink-0" style={{ display: "inline-flex" }}>
-            <NoraLogo size={16} showText={false} variant="paper" />
+            <NoraLogo size={16} showText={false} variant="brand" />
           </span>
 
           {/* Botão REC: idle = círculo com ponto; gravando = quadrado vermelho
@@ -264,7 +273,7 @@ export function DockBar() {
               style={{
                 fontSize: 12.5,
                 fontWeight: 500,
-                color: GLASS.text,
+                color: THEME.text,
                 fontVariantNumeric: "tabular-nums",
                 letterSpacing: "-0.01em",
                 minWidth: 42,
@@ -282,7 +291,7 @@ export function DockBar() {
                 flex: 1,
                 minWidth: 0,
                 fontSize: 11,
-                color: statusLine.danger ? GLASS.danger : GLASS.textDim,
+                color: statusLine.danger ? THEME.danger : THEME.textDim,
                 letterSpacing: "-0.005em",
               }}
               title={statusLine.text}
@@ -316,7 +325,7 @@ export function DockBar() {
             style={{
               width: 1,
               height: 18,
-              background: GLASS.divider,
+              background: THEME.divider,
               margin: "0 2px",
               flexShrink: 0,
             }}
@@ -336,7 +345,7 @@ export function DockBar() {
             style={{
               cursor: "default",
               padding: "12px 14px 14px",
-              borderTop: GLASS.panelBorder,
+              borderTop: THEME.panelBorder,
               display: "flex",
               flexDirection: "column",
               gap: 12,
@@ -344,13 +353,13 @@ export function DockBar() {
           >
             {/* Microfone */}
             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 500, color: GLASS.textDim, letterSpacing: "0.01em" }}>
+              <span style={{ fontSize: 11, fontWeight: 500, color: THEME.textDim, letterSpacing: "0.01em" }}>
                 Microfone
               </span>
               <select
                 value={r.selectedDevice ?? ""}
                 onChange={(e) => r.setSelectedDevice(e.target.value || null)}
-                style={darkSelectStyle}
+                style={selectStyle}
               >
                 <option value="">Padrão do sistema</option>
                 {r.devices.map((d) => (
@@ -363,7 +372,7 @@ export function DockBar() {
 
             {/* Título opcional da reunião */}
             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 500, color: GLASS.textDim, letterSpacing: "0.01em" }}>
+              <span style={{ fontSize: 11, fontWeight: 500, color: THEME.textDim, letterSpacing: "0.01em" }}>
                 Título (opcional)
               </span>
               <input
@@ -375,10 +384,10 @@ export function DockBar() {
                   width: "100%",
                   padding: "8px 10px",
                   fontSize: 12.5,
-                  background: "rgba(0,0,0,0.25)",
-                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "var(--canvas)",
+                  border: "1px solid var(--border)",
                   borderRadius: 8,
-                  color: GLASS.text,
+                  color: THEME.text,
                   outline: "none",
                   letterSpacing: "-0.005em",
                   fontFamily: "var(--sans)",
@@ -408,10 +417,10 @@ export function DockBar() {
                 padding: "8px 12px",
                 fontSize: 12.5,
                 fontWeight: 500,
-                background: GLASS.panelBg,
-                border: GLASS.panelBorder,
+                background: THEME.panelBg,
+                border: THEME.panelBorder,
                 borderRadius: 8,
-                color: GLASS.text,
+                color: THEME.text,
                 cursor: "pointer",
                 fontFamily: "var(--sans)",
                 letterSpacing: "-0.005em",
@@ -429,7 +438,7 @@ export function DockBar() {
   );
 }
 
-// Botão REC circular. Idle: anel com ponto/traço. Gravando: quadrado vermelho
+// Botão REC circular. Idle: anel com ponto. Gravando: quadrado vermelho
 // pulsante (parar). Mostra spinner discreto durante "Iniciando…"/"Salvando…".
 function RecButton({
   recording,
@@ -466,9 +475,9 @@ function RecButton({
         height: 30,
         borderRadius: "50%",
         border: recording
-          ? "1px solid rgba(255,138,122,0.55)"
-          : "1.5px solid rgba(255,255,255,0.35)",
-        background: recording ? "rgba(201,119,102,0.16)" : "transparent",
+          ? "1px solid var(--danger-soft-border)"
+          : "1.5px solid var(--border-strong)",
+        background: recording ? "var(--danger-soft-bg)" : "transparent",
         cursor: busy && !recording ? "default" : "pointer",
         padding: 0,
         opacity: busy && !recording ? 0.7 : 1,
@@ -493,8 +502,8 @@ function RecButton({
             width: 12,
             height: 12,
             borderRadius: "50%",
-            border: "2px solid rgba(255,255,255,0.25)",
-            borderTopColor: "rgba(255,255,255,0.9)",
+            border: "2px solid rgba(0,0,0,0.15)",
+            borderTopColor: "var(--ink)",
             animation: "nora-spin 0.7s linear infinite",
           }}
         />
@@ -513,7 +522,7 @@ function RecButton({
   );
 }
 
-// Toggle estilo switch no tema glass escuro.
+// Toggle estilo switch no tema claro.
 function ToggleRow({
   label,
   checked,
@@ -526,7 +535,7 @@ function ToggleRow({
   return (
     <label
       className="flex items-center justify-between gap-3 cursor-pointer"
-      style={{ fontSize: 12.5, color: GLASS.text, letterSpacing: "-0.005em" }}
+      style={{ fontSize: 12.5, color: THEME.text, letterSpacing: "-0.005em" }}
     >
       <span>{label}</span>
       <span
@@ -539,7 +548,7 @@ function ToggleRow({
           width: 34,
           height: 19,
           borderRadius: 999,
-          background: checked ? "var(--accent)" : "rgba(255,255,255,0.16)",
+          background: checked ? "var(--accent)" : "rgba(0,0,0,0.14)",
           position: "relative",
           transition: "background 140ms ease",
         }}
@@ -553,6 +562,7 @@ function ToggleRow({
             height: 15,
             borderRadius: "50%",
             background: "#fff",
+            boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
             transition: "left 140ms ease",
           }}
         />

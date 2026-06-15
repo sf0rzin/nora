@@ -383,7 +383,7 @@ const FEATURES = [
   {
     anim: <ProductivityAnim />,
     title: "Productivity Score",
-    body: "Declare o objetivo da reunião; NORA mede cobertura real (Addressed / Partial / Missed) e devolve score 0–100.",
+    body: "Declare o objetivo da reunião; Nora mede cobertura real (Addressed / Partial / Missed) e devolve score 0–100.",
   },
   {
     anim: <ActionsAnim />,

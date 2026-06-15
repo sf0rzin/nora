@@ -71,7 +71,7 @@ function Router() {
       <div className="flex flex-col items-center justify-center h-full gap-3.5">
         <NoraBars size={28} active animate color="var(--ink)" />
         <small style={{ fontSize: 12, color: "var(--muted)", letterSpacing: "0.04em" }}>
-          Carregando NORA
+          Carregando Nora
         </small>
       </div>
     );

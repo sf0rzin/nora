@@ -18,7 +18,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NORA — Negotiation Observability & Revenue Assistant",
+  title: "Nora — Negotiation Observability & Revenue Assistant",
   description:
     "Plataforma de inteligência conversacional que transforma reuniões em decisões, ações e receita — com contexto do seu negócio.",
 };
