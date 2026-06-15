@@ -150,7 +150,7 @@ function LiveTranscription() {
             animation: "dotPulse 1.4s ease-in-out infinite",
           }}
         />
-        <span>NORA analisando…</span>
+        <span>Nora analisando…</span>
       </div>
 
       <div
@@ -338,7 +338,7 @@ export function LoginPage() {
                 lineHeight: 1.55,
               }}
             >
-              Entre na sua conta NORA pra continuar.
+              Entre na sua conta Nora pra continuar.
             </p>
           </div>
 

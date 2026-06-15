@@ -142,7 +142,7 @@ function FormEmail({
           ref={bodyRef}
           className="textarea"
           rows={5}
-          placeholder="Deixe vazio para a NORA enviar o relatório-resumo padrão."
+          placeholder="Deixe vazio para a Nora enviar o relatório-resumo padrão."
           value={valorTexto(no.data.params, "body")}
           onChange={(e) => onChange("body", e.target.value)}
           onFocus={() => {
@@ -150,7 +150,7 @@ function FormEmail({
           }}
         />
         <span className="field-help">
-          Sem assunto e corpo, a NORA envia um relatório-resumo padrão da reunião.
+          Sem assunto e corpo, a Nora envia um relatório-resumo padrão da reunião.
         </span>
       </div>
 
@@ -362,7 +362,7 @@ function FormDiscord({
       ) : (
         <span className="field-help">
           No Discord: Configurações do canal → Integrações → Webhooks → Novo webhook → copiar URL.
-          A mensagem sai como “NORA” com o resumo da reunião.
+          A mensagem sai como “Nora” com o resumo da reunião.
         </span>
       )}
     </div>
@@ -446,7 +446,7 @@ function FormNotion({
         ) : (
           <span className="field-help">
             É o código no fim da URL da página (Compartilhar → Copiar link). A página precisa estar
-            compartilhada com a integração NORA.
+            compartilhada com a integração Nora.
           </span>
         )}
       </div>
@@ -546,7 +546,7 @@ function FormTelegram() {
       <NotaRequerIntegracao provedor="Telegram" />
       <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0, lineHeight: 1.6 }}>
         Sem parâmetros — envia o resumo da reunião (com próximos passos e link) no chat pareado com
-        o bot da NORA.
+        o bot da Nora.
       </p>
     </>
   );

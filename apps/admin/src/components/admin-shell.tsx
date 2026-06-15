@@ -31,7 +31,7 @@ export function AdminShell({ operator, children }: { operator: Operator; childre
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 4px" }}>
           <SoundwaveMark />
-          <span style={{ fontFamily: "var(--display)", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>NORA</span>
+          <span style={{ fontFamily: "var(--display)", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>Nora</span>
           <span
             style={{
               fontSize: 9.5,

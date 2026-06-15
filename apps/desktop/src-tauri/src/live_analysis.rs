@@ -234,6 +234,10 @@ pub fn toggle_overlay(
     if let Some(window) = app_handle.get_webview_window("overlay") {
         if show {
             let _ = window.show();
+            // Mata o contorno fantasma do DWM (mesmo do dock) agora que a
+            // overlay está visível e tem HWND.
+            #[cfg(target_os = "windows")]
+            crate::windows::remove_window_border(&window);
             // NÃO chamar set_focus aqui: roubava o foco do app em primeiro plano
             // (Meet/Zoom). O foco explícito fica a cargo de focus_overlay_window
             // quando o usuário clica pra abrir a overlay (dock-bar). Auditoria #26.

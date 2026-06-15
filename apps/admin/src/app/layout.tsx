@@ -10,8 +10,8 @@ import "./globals.css";
 const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "NORA — Console do Operador",
-  description: "Control plane interno do NORA. Acesso restrito a operadores da plataforma.",
+  title: "Nora — Console do Operador",
+  description: "Control plane interno do Nora. Acesso restrito a operadores da plataforma.",
   robots: { index: false, follow: false },
 };
 

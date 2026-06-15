@@ -50,11 +50,11 @@ export default function MeetingProductivitySection({
         ) : (
           <div className="card card--pad" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <p style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.6, margin: 0 }}>
-              Quer entender o quão produtiva essa reunião foi? Declare o objetivo e os outcomes esperados e a NORA gera um
+              Quer entender o quão produtiva essa reunião foi? Declare o objetivo e os outcomes esperados e a Nora gera um
               indicador comparando o que aconteceu com o que era pra acontecer.
             </p>
             <p style={{ fontSize: 11.5, color: "var(--muted)", margin: 0 }}>
-              Sem outcomes declarados, a NORA não tenta inventar um score.
+              Sem outcomes declarados, a Nora não tenta inventar um score.
             </p>
             <div>
               <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditing(true)}>

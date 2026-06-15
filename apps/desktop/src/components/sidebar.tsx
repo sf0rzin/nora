@@ -73,8 +73,8 @@ export function Sidebar() {
       <div className="flex items-center justify-between px-1 mb-4">
         <a
           href="#/meetings"
-          aria-label="NORA — reuniões"
-          title="NORA — reuniões"
+          aria-label="Nora — reuniões"
+          title="Nora — reuniões"
           className="ui-icon-btn inline-flex items-center w-auto px-1.5 -mx-1.5"
         >
           <NoraLogo animate />

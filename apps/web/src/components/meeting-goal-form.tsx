@@ -185,7 +185,7 @@ export default function MeetingGoalForm({
           </button>
         </div>
         <p className="field-help">
-          Liste os pontos concretos que precisavam ser tratados ou decididos. Sem outcomes, a NORA não tenta gerar um score.
+          Liste os pontos concretos que precisavam ser tratados ou decididos. Sem outcomes, a Nora não tenta gerar um score.
         </p>
         <ul style={{ display: "flex", flexDirection: "column", gap: 8, listStyle: "none", margin: 0, padding: 0 }}>
           {form.expectedOutcomes.map((outcome, idx) => (

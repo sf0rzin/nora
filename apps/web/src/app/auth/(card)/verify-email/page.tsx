@@ -39,7 +39,7 @@ function VerifyEmailContent() {
       <div>
         <StateIcon kind="ok" />
         <h2 style={cardTitle}>E-mail verificado.</h2>
-        <p style={cardSub}>Sua conta está ativa. Bem-vindo à NORA.</p>
+        <p style={cardSub}>Sua conta está ativa. Bem-vindo à Nora.</p>
         <Link
           href="/auth/login"
           className="btn btn-primary"
