@@ -17,8 +17,9 @@ pub struct RecordingStatus {
 }
 
 /// Avisa a UI que a gravação NÃO chegou a iniciar de fato — falha dentro da thread de áudio
-/// (abrir o stream, play()) que acontece DEPOIS de start() já ter retornado is_recording:true.
-/// A UI escuta "recording-status" e reverte o estado de "gravando" em vez de fingir que grava.
+/// (abrir o stream, play(), config, resampler) que acontece DEPOIS de start() já ter
+/// retornado is_recording:true. A UI escuta "recording-status" e reverte o estado de
+/// "gravando" em vez de fingir que grava.
 fn emit_recording_failed(app: &AppHandle) {
     let status = RecordingStatus {
         is_recording: false,
@@ -27,6 +28,73 @@ fn emit_recording_failed(app: &AppHandle) {
         sample_rate: 0,
     };
     let _ = app.emit("recording-status", &status);
+}
+
+/// Converte uma amostra do formato nativo do device pra f32 normalizado [-1,1].
+/// O WASAPI (Windows) pode entregar o mic em F32, I16 ou U16 dependendo do
+/// formato escolhido nas configs de som — antes só tratávamos F32, então um mic
+/// em "16 bits" abria zero stream (silenciosamente). Agora cobrimos os três.
+trait SampleToF32: Copy {
+    fn to_f32_sample(self) -> f32;
+}
+impl SampleToF32 for f32 {
+    fn to_f32_sample(self) -> f32 {
+        self
+    }
+}
+impl SampleToF32 for i16 {
+    fn to_f32_sample(self) -> f32 {
+        self as f32 / 32768.0
+    }
+}
+impl SampleToF32 for u16 {
+    fn to_f32_sample(self) -> f32 {
+        (self as f32 - 32768.0) / 32768.0
+    }
+}
+
+/// Constrói o input stream do mic pra um formato de amostra T concreto. O
+/// callback converte T→f32, faz downmix→mono, resample→16kHz e empurra i16 pro
+/// canal. Genérico pra suportarmos F32/I16/U16 com um caminho só.
+#[allow(clippy::too_many_arguments)]
+fn build_mic_stream<T>(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    stop_flag: Arc<AtomicBool>,
+    mic_buf: Arc<Mutex<Vec<f32>>>,
+    mut resampler: MonoResampler,
+    channels: usize,
+    chunk_size: usize,
+    mic_tx: tokio::sync::mpsc::Sender<Vec<i16>>,
+) -> Result<cpal::Stream, cpal::BuildStreamError>
+where
+    T: cpal::SizedSample + SampleToF32 + Send + 'static,
+{
+    device.build_input_stream(
+        config,
+        move |data: &[T], _: &cpal::InputCallbackInfo| {
+            // stop_flag=true => gravando (processa). stop() seta false => ignora.
+            if !stop_flag.load(Ordering::SeqCst) {
+                return;
+            }
+            if let Ok(mut b) = mic_buf.lock() {
+                b.extend(data.iter().map(|&s| s.to_f32_sample()));
+                while b.len() >= chunk_size {
+                    let chunk: Vec<f32> = b.drain(..chunk_size).collect();
+                    let mono = downmix_to_mono(&chunk, channels);
+                    let resampled = resampler.process(&mono);
+                    let i16_samples = f32_to_i16(&resampled);
+                    let _ = mic_tx.try_send(i16_samples);
+                }
+            }
+        },
+        move |err| {
+            #[cfg(debug_assertions)]
+            eprintln!("[audio] mic stream error: {}", err);
+            let _ = err;
+        },
+        None,
+    )
 }
 
 pub struct CaptureSinks {
@@ -69,32 +137,49 @@ impl AudioCapture {
         Ok(devices.filter_map(|d| d.name().ok()).collect())
     }
 
-    fn find_best_config(device: &cpal::Device) -> Result<cpal::StreamConfig, String> {
-        let supported_configs: Vec<_> = device
+    /// Escolhe a melhor config de captura do device. Preferimos F32 (caminho
+    /// nativo do pipeline), mas aceitamos I16/U16 — antes filtrávamos SÓ F32, o
+    /// que fazia mics em 16 bits no Windows não abrirem stream nenhum.
+    /// Preferência de taxa: 16kHz nativo (sem resample), depois 48kHz, depois o
+    /// máximo suportado.
+    fn find_best_config(device: &cpal::Device) -> Result<cpal::SupportedStreamConfig, String> {
+        let ranges: Vec<cpal::SupportedStreamConfigRange> = device
             .supported_input_configs()
             .map_err(|e| format!("Config error: {}", e))?
-            .filter(|c| c.sample_format() == SampleFormat::F32)
             .collect();
 
-        if supported_configs.is_empty() {
-            return Err("No supported F32 audio config found".to_string());
+        if ranges.is_empty() {
+            return Err("No supported audio input config found".to_string());
         }
 
-        // Prefer 16kHz native to avoid resampling entirely
-        if let Some(c) = supported_configs
-            .iter()
-            .find(|c| c.min_sample_rate().0 <= 16000 && c.max_sample_rate().0 >= 16000)
-        {
-            return Ok((*c).with_sample_rate(cpal::SampleRate(16000)).config());
+        let in_range = |r: &cpal::SupportedStreamConfigRange, target: u32| {
+            r.min_sample_rate().0 <= target && r.max_sample_rate().0 >= target
+        };
+        let is_pcm = |r: &cpal::SupportedStreamConfigRange| {
+            matches!(
+                r.sample_format(),
+                SampleFormat::F32 | SampleFormat::I16 | SampleFormat::U16
+            )
+        };
+
+        // Pra cada taxa preferida: tenta F32 primeiro, depois qualquer PCM.
+        for target in [16000u32, 48000u32] {
+            if let Some(r) = ranges
+                .iter()
+                .find(|r| r.sample_format() == SampleFormat::F32 && in_range(r, target))
+            {
+                return Ok(r.with_sample_rate(cpal::SampleRate(target)));
+            }
+            if let Some(r) = ranges.iter().find(|r| is_pcm(r) && in_range(r, target)) {
+                return Ok(r.with_sample_rate(cpal::SampleRate(target)));
+            }
         }
-        // Fallback to 48kHz (common on desktops, good quality)
-        if let Some(c) = supported_configs
-            .iter()
-            .find(|c| c.min_sample_rate().0 <= 48000 && c.max_sample_rate().0 >= 48000)
-        {
-            return Ok((*c).with_sample_rate(cpal::SampleRate(48000)).config());
+
+        // Fallback: primeiro PCM na sua taxa máxima; senão o primeiro range.
+        if let Some(r) = ranges.iter().find(|r| is_pcm(r)) {
+            return Ok(r.with_max_sample_rate());
         }
-        Ok(supported_configs[0].with_max_sample_rate().config())
+        Ok(ranges[0].with_max_sample_rate())
     }
 
     pub fn start(
@@ -118,29 +203,41 @@ impl AudioCapture {
         let host = cpal::default_host();
 
         let device = match &device_name {
-            Some(name) => {
-                host.input_devices()
-                    .map_err(|e| format!("Device error: {}", e))?
-                    .find(|d| d.name().map(|n| &n == name).unwrap_or(false))
-                    .ok_or_else(|| format!("Device '{}' not found", name))?
-            }
-            None => {
-                host.default_input_device()
-                    .ok_or("No default input device available".to_string())?
-            }
+            Some(name) => host
+                .input_devices()
+                .map_err(|e| format!("Device error: {}", e))?
+                .find(|d| d.name().map(|n| &n == name).unwrap_or(false))
+                .ok_or_else(|| format!("Device '{}' not found", name))?,
+            None => host
+                .default_input_device()
+                .ok_or("No default input device available".to_string())?,
         };
 
         let actual_name = device.name().unwrap_or_else(|_| "Unknown".into());
-        #[cfg(debug_assertions)]
-        eprintln!("[audio] mic device: {}", actual_name);
 
-        let config = Self::find_best_config(&device)?;
-        let sample_rate = config.sample_rate.0;
-        let channels = config.channels;
+        // Validação cedo: se o device não tem config usável, falha AGORA (a UI
+        // mostra o erro) em vez de spawnar uma thread que morre em silêncio.
+        let supported = Self::find_best_config(&device)?;
         #[cfg(debug_assertions)]
-        eprintln!("[audio] mic config: sr={}, ch={}", sample_rate, channels);
+        eprintln!(
+            "[audio] mic device: {} | config sr={} ch={} fmt={:?}",
+            actual_name,
+            supported.sample_rate().0,
+            supported.channels(),
+            supported.sample_format()
+        );
+        crate::applog::log_line(
+            &app_handle,
+            &format!(
+                "audio.start: mic device='{}' sr={} ch={} fmt={:?}",
+                actual_name,
+                supported.sample_rate().0,
+                supported.channels(),
+                supported.sample_format()
+            ),
+        );
 
-        // Spawn mic thread
+        // Spawn mic thread. stop_flag=true => rodando; stop() seta false.
         let stop_flag = Arc::new(AtomicBool::new(true));
         let mic_tx = sinks.mic_tx;
 
@@ -149,7 +246,7 @@ impl AudioCapture {
             .spawn({
                 let stop_flag_thread = stop_flag.clone();
                 let device_name = device_name.clone();
-                let app_for_thread = app_handle.clone();
+                let app = app_handle.clone();
                 move || {
                     let host = cpal::default_host();
 
@@ -158,14 +255,24 @@ impl AudioCapture {
                             let mut devices = match host.input_devices() {
                                 Ok(d) => d,
                                 Err(e) => {
-                                    eprintln!("[audio] failed to list input devices: {}", e);
+                                    crate::applog::log_line(
+                                        &app,
+                                        &format!("mic-thread: list devices ERROR: {}", e),
+                                    );
+                                    emit_recording_failed(&app);
                                     return;
                                 }
                             };
-                            match devices.find(|d| d.name().map(|n| &n == name).unwrap_or(false)) {
+                            match devices
+                                .find(|d| d.name().map(|n| &n == name).unwrap_or(false))
+                            {
                                 Some(d) => d,
                                 None => {
-                                    eprintln!("[audio] input device '{}' not found", name);
+                                    crate::applog::log_line(
+                                        &app,
+                                        &format!("mic-thread: device '{}' not found", name),
+                                    );
+                                    emit_recording_failed(&app);
                                     return;
                                 }
                             }
@@ -173,88 +280,130 @@ impl AudioCapture {
                         None => match host.default_input_device() {
                             Some(d) => d,
                             None => {
-                                eprintln!("[audio] no default input device available");
+                                crate::applog::log_line(
+                                    &app,
+                                    "mic-thread: no default input device",
+                                );
+                                emit_recording_failed(&app);
                                 return;
                             }
                         },
                     };
 
-                    let config = match AudioCapture::find_best_config(&device) {
+                    let supported = match AudioCapture::find_best_config(&device) {
                         Ok(c) => c,
                         Err(e) => {
-                            eprintln!("[audio] failed to find best config: {}", e);
+                            crate::applog::log_line(
+                                &app,
+                                &format!("mic-thread: find_config ERROR: {}", e),
+                            );
+                            emit_recording_failed(&app);
                             return;
                         }
                     };
+                    let sample_format = supported.sample_format();
+                    let config: cpal::StreamConfig = supported.config();
                     let sr = config.sample_rate.0;
-                    let ch = config.channels;
+                    let ch = config.channels as usize;
 
-                    let mut resampler = match MonoResampler::new(sr, 16000) {
+                    let resampler = match MonoResampler::new(sr, 16000) {
                         Ok(r) => r,
                         Err(e) => {
-                            eprintln!("[audio] failed to create resampler: {}", e);
+                            crate::applog::log_line(
+                                &app,
+                                &format!("mic-thread: resampler ERROR (sr={}): {}", sr, e),
+                            );
+                            emit_recording_failed(&app);
                             return;
                         }
                     };
 
-                    let chunk_size = (sr as usize / 10) * ch as usize;
+                    let chunk_size = (sr as usize / 10) * ch; // ~100ms
                     let mic_buf: Arc<Mutex<Vec<f32>>> =
                         Arc::new(Mutex::new(Vec::with_capacity(chunk_size * 2)));
-                    let mic_buf_clone = mic_buf.clone();
 
-                    let stop_flag_stream = stop_flag_thread.clone();
-                    let stream = match device.build_input_stream(
-                        &config,
-                        move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                            if !stop_flag_stream.load(Ordering::SeqCst) {
-                                return;
-                            }
-                            if let Ok(mut b) = mic_buf_clone.lock() {
-                                b.extend_from_slice(data);
-                                if b.len() >= chunk_size {
-                                    let chunk: Vec<f32> = b.drain(..chunk_size).collect();
-                                    let mono = downmix_to_mono(&chunk, ch as usize);
-                                    let resampled = resampler.process(&mono);
-                                    let i16_samples = f32_to_i16(&resampled);
-                                    let _ = mic_tx.try_send(i16_samples);
-                                }
-                            }
-                        },
-                        |err| {
-                            #[cfg(debug_assertions)]
-                            eprintln!("[audio] mic stream error: {}", err)
-                        },
-                        None,
-                    ) {
+                    // build_mic_stream consome mic_buf/resampler/mic_tx; mover o
+                    // mesmo binding em braços de match diferentes é permitido
+                    // (só um braço executa).
+                    let built = match sample_format {
+                        SampleFormat::F32 => build_mic_stream::<f32>(
+                            &device,
+                            &config,
+                            stop_flag_thread.clone(),
+                            mic_buf,
+                            resampler,
+                            ch,
+                            chunk_size,
+                            mic_tx,
+                        ),
+                        SampleFormat::I16 => build_mic_stream::<i16>(
+                            &device,
+                            &config,
+                            stop_flag_thread.clone(),
+                            mic_buf,
+                            resampler,
+                            ch,
+                            chunk_size,
+                            mic_tx,
+                        ),
+                        SampleFormat::U16 => build_mic_stream::<u16>(
+                            &device,
+                            &config,
+                            stop_flag_thread.clone(),
+                            mic_buf,
+                            resampler,
+                            ch,
+                            chunk_size,
+                            mic_tx,
+                        ),
+                        other => {
+                            crate::applog::log_line(
+                                &app,
+                                &format!("mic-thread: unsupported sample format {:?}", other),
+                            );
+                            emit_recording_failed(&app);
+                            return;
+                        }
+                    };
+
+                    let stream = match built {
                         Ok(s) => s,
                         Err(e) => {
-                            eprintln!("[audio] failed to build input stream: {}", e);
-                            emit_recording_failed(&app_for_thread);
+                            crate::applog::log_line(
+                                &app,
+                                &format!("mic-thread: build_input_stream ERROR: {}", e),
+                            );
+                            emit_recording_failed(&app);
                             return;
                         }
                     };
 
                     if let Err(e) = stream.play() {
-                        eprintln!("[audio] failed to start stream: {}", e);
-                        emit_recording_failed(&app_for_thread);
+                        crate::applog::log_line(
+                            &app,
+                            &format!("mic-thread: play ERROR: {}", e),
+                        );
+                        emit_recording_failed(&app);
                         return;
                     }
 
-                    // Keep thread alive until stop flag is set
+                    crate::applog::log_line(
+                        &app,
+                        &format!("mic-thread: stream playing (mic aberto) fmt={:?} sr={}", sample_format, sr),
+                    );
+
+                    // Mantém a thread viva (e o stream) até o stop flag virar false.
                     while stop_flag_thread.load(Ordering::SeqCst) {
                         std::thread::sleep(std::time::Duration::from_millis(100));
                     }
 
-                    // Stream is dropped here, stopping ALSA device
                     drop(stream);
+                    crate::applog::log_line(&app, "mic-thread: stopped");
                 }
             })
             .map_err(|e| format!("spawn mic thread: {}", e))?;
 
-        let mic_stream = MicStream {
-            stop_flag,
-            join,
-        };
+        let mic_stream = MicStream { stop_flag, join };
 
         if let Ok(mut guard) = self.mic.lock() {
             *guard = Some(mic_stream);
@@ -278,12 +427,7 @@ impl AudioCapture {
             if let (Some(source), Some(system_tx)) = (source, sinks.system_tx) {
                 let flag = Arc::new(AtomicBool::new(true));
 
-                match system_audio::SystemAudioCapture::start(
-                    &source,
-                    16000,
-                    system_tx,
-                    flag,
-                ) {
+                match system_audio::SystemAudioCapture::start(&source, 16000, system_tx, flag) {
                     Ok(capture) => {
                         #[cfg(debug_assertions)]
                         eprintln!("[audio] system audio capture started");
@@ -295,11 +439,16 @@ impl AudioCapture {
                     Err(e) => {
                         #[cfg(debug_assertions)]
                         eprintln!("[audio] failed to start system audio capture: {}", e);
+                        crate::applog::log_line(
+                            &app_handle,
+                            &format!("audio.start: system audio ERROR: {}", e),
+                        );
                     }
                 }
             } else {
                 #[cfg(debug_assertions)]
                 eprintln!("[audio] no system audio source found");
+                crate::applog::log_line(&app_handle, "audio.start: no system audio source found");
             }
         }
 

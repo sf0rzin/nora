@@ -1,6 +1,7 @@
 // NB: `windows_subsystem = "windows"` mora em main.rs (crate-root do binario). Aqui na lib
 // ele nao tem efeito sobre o subsistema do .exe.
 
+mod applog;
 mod audio_capture;
 mod audio_resample;
 mod auth_bridge;
