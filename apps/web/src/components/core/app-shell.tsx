@@ -133,7 +133,7 @@ function NoraWordmark() {
   return (
     <span
       role="img"
-      aria-label="NORA"
+      aria-label="Nora"
       style={{
         fontFamily: "var(--font-sans), system-ui, sans-serif",
         fontWeight: 500,
@@ -305,7 +305,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className={`app${viewportLocked ? " app--viewport" : ""}`}>
       <aside className="side">
         <div className="side-brand">
-          <Link href={"/chat" as Route} aria-label="NORA — nova sessão" style={{ display: "inline-flex", alignItems: "center" }}>
+          <Link href={"/chat" as Route} aria-label="Nora — nova sessão" style={{ display: "inline-flex", alignItems: "center" }}>
             <NoraWordmark />
           </Link>
           <span className="plan-badge">Core</span>
@@ -318,7 +318,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button type="button" className="mhead-btn" aria-label="Abrir menu" onClick={() => setDrawerOpen(true)}>
             <BurgerIcon />
           </button>
-          <Link href={"/dashboard" as Route} aria-label="NORA" style={{ display: "inline-flex", alignItems: "center" }}>
+          <Link href={"/dashboard" as Route} aria-label="Nora" style={{ display: "inline-flex", alignItems: "center" }}>
             <NoraWordmark />
           </Link>
           <span className="grow" />

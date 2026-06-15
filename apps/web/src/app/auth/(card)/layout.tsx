@@ -20,7 +20,7 @@ export default function AuthCardLayout({ children }: { children: React.ReactNode
         padding: "40px 20px",
       }}
     >
-      <Link href="/auth/login" aria-label="NORA">
+      <Link href="/auth/login" aria-label="Nora">
         <NoraLogo size={24} animate={false} />
       </Link>
 
@@ -46,7 +46,7 @@ export default function AuthCardLayout({ children }: { children: React.ReactNode
           gap: 18,
         }}
       >
-        <span>© 2026 NORA</span>
+        <span>© 2026 Nora</span>
         <a href="#" style={{ color: "var(--muted)" }}>
           Privacidade
         </a>

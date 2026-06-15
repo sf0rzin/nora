@@ -701,7 +701,7 @@ export default function UploadMeetingPage() {
         <ChipField
           id="p-input"
           label="Participantes"
-          help="Aparecem no detalhe da reunião e ajudam a NORA a atribuir action items."
+          help="Aparecem no detalhe da reunião e ajudam a Nora a atribuir action items."
           placeholder="Digite um nome e aperte Enter"
           values={participants}
           onChange={setParticipants}

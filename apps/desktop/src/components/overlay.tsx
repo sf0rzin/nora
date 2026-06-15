@@ -422,7 +422,7 @@ function HighlightsColumn({ onCollapse }: { onCollapse: () => void }) {
             color: "var(--muted)",
           }}
         >
-          NORA detectou
+          Nora detectou
           <span
             style={{
               padding: "0 7px",
@@ -478,7 +478,7 @@ function HighlightsColumn({ onCollapse }: { onCollapse: () => void }) {
             <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5 }}>
               {isAnalyzing
                 ? "Analisando a conversa…"
-                : "Decisões, tarefas e observações aparecem aqui conforme a NORA detecta."}
+                : "Decisões, tarefas e observações aparecem aqui conforme a Nora detecta."}
             </div>
           </div>
         ) : (
@@ -819,7 +819,7 @@ function ConfigDrawer({
                 lineHeight: 1.5,
               }}
             >
-              Barra flutuante com atalhos pra alternar entre NORA Desktop e a overlay.
+              Barra flutuante com atalhos pra alternar entre Nora Desktop e a overlay.
             </div>
           </div>
           <button
@@ -1253,7 +1253,7 @@ export function OverlayPage() {
               color: isRecording ? "var(--danger-ink)" : "var(--muted)",
             }}
           >
-            {isRecording ? "NORA · gravando" : "NORA Live"}
+            {isRecording ? "Nora · gravando" : "Nora Live"}
           </span>
           {isRecording && (
             <span

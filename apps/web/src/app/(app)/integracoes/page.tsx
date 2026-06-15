@@ -208,7 +208,7 @@ const PROVEDORES: Record<IntegrationProvider, { nome: string; desc: string; logo
   },
   telegram: {
     nome: 'Telegram',
-    desc: 'Manda o resumo das reuniões direto no seu chat — pareamento rápido com o bot do NORA.',
+    desc: 'Manda o resumo das reuniões direto no seu chat — pareamento rápido com o bot do Nora.',
     logo: <TelegramLogo />,
   },
   trello: {
@@ -335,7 +335,7 @@ function CardConector({
       onStatus(atualizado);
       onAviso({
         tipo: 'ok',
-        msg: 'Telegram conectado! O bot do NORA já pode mandar resumos no seu chat.',
+        msg: 'Telegram conectado! O bot do Nora já pode mandar resumos no seu chat.',
       });
     } catch (e) {
       if (e instanceof ApiRequestError && e.status === 409) {
@@ -561,7 +561,7 @@ function CardConector({
           }}
         >
           <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: 0, lineHeight: 1.55 }}>
-            1. Abra o link abaixo — ele manda <code>/start {pareamento.code}</code> pro bot do NORA.
+            1. Abra o link abaixo — ele manda <code>/start {pareamento.code}</code> pro bot do Nora.
             <br />
             2. Depois volte aqui e clique em “Verificar conexão”. O código vale por 10 minutos.
           </p>
@@ -807,7 +807,7 @@ function HubIntegracoes() {
         <div className="eyebrow">Conectores</div>
         <h1 className="h1">Integrações</h1>
         <p className="lede" style={{ marginTop: 8, maxWidth: 620 }}>
-          Conecte suas contas para o NORA Flows agir nelas — e-mail, agenda e mensagens reais.
+          Conecte suas contas para o Nora Flows agir nelas — e-mail, agenda e mensagens reais.
         </p>
       </header>
 

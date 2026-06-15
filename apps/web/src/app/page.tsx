@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { LandingPage } from "@/components/landing/landing-page";
 
 export const metadata: Metadata = {
-  title: "NORA — Conversas viram inteligência",
+  title: "Nora — Conversas viram inteligência",
   description:
-    "A NORA escuta, transcreve e extrai oportunidades, riscos e próximos passos das suas reuniões — calibrada ao catálogo da sua empresa, não a um genérico.",
+    "A Nora escuta, transcreve e extrai oportunidades, riscos e próximos passos das suas reuniões — calibrada ao catálogo da sua empresa, não a um genérico.",
 };
 
 /**

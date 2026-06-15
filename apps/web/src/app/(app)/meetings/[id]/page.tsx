@@ -124,7 +124,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           {meeting.processingStatus === "PROCESSING" ? (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "var(--ink)" }}>
-                <span className="status-dot status-dot--processing" />A NORA está analisando esta reunião.
+                <span className="status-dot status-dot--processing" />A Nora está analisando esta reunião.
               </div>
               <p style={{ fontSize: 13, color: "var(--muted)", margin: 0, lineHeight: 1.55 }}>
                 Resumo, decisões e action items aparecem aqui assim que a análise terminar.
@@ -149,7 +149,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
             <>
               <div style={{ fontSize: 14, color: "var(--ink)" }}>Esta reunião ainda não foi analisada.</div>
               <p style={{ fontSize: 13, color: "var(--muted)", margin: 0, lineHeight: 1.55 }}>
-                A NORA vai processar a transcrição e gerar resumo, decisões e action items. Você pode disparar a análise agora.
+                A Nora vai processar a transcrição e gerar resumo, decisões e action items. Você pode disparar a análise agora.
               </p>
               <div>
                 <ReprocessButton meetingId={meeting.id} label="Analisar agora" />
