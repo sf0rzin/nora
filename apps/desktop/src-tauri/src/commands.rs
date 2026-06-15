@@ -4,45 +4,15 @@ use crate::stt_sidecar::SidecarHandle;
 use crate::SidecarState;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 pub type CaptureState = Arc<Mutex<AudioCapture>>;
 
-/// Logger de arquivo best-effort pro fluxo de gravacao.
-///
-/// Em release o binario roda com `windows_subsystem = "windows"`, sem console —
-/// entao `eprintln!` some e o usuario fica sem nenhum sinal quando "clica
-/// iniciar e nada acontece". Esta funcao append uma linha em
-/// `<app_log_dir>/desktop.log` com um timestamp simples.
-///
-/// REGRA: NUNCA pode fazer o caller falhar. Qualquer erro de IO/resolucao de
-/// path e silenciosamente ignorado (a gravacao e mais importante que o log).
+/// Logger de arquivo do fluxo de gravação — agora vive em `crate::applog` pra ser
+/// compartilhado com a thread de áudio. Mantemos este alias fino pra não tocar
+/// nas dezenas de call sites abaixo.
 fn log_line(app_handle: &AppHandle, msg: &str) {
-    use std::io::Write;
-
-    // Timestamp relativo simples: segundos desde o UNIX epoch. Nao precisamos
-    // de wall-clock formatado — so de ordem + delta entre linhas pra debug.
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
-
-    // Resolve o dir de log; se falhar, desiste em silencio.
-    let Ok(dir) = app_handle.path().app_log_dir() else {
-        return;
-    };
-    // Cria o dir best-effort; ignora erro (open abaixo simplesmente falhara).
-    let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join("desktop.log");
-
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
-        // Ignora erro de escrita — best-effort.
-        let _ = writeln!(file, "[{:.3}] {}", ts, msg);
-    }
+    crate::applog::log_line(app_handle, msg);
 }
 
 #[tauri::command]
