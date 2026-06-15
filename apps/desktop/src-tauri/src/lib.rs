@@ -69,6 +69,12 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        // Auto-update: o plugin updater checa/baixa/instala releases assinados
+        // (pubkey + endpoint em tauri.conf.json). O plugin process expõe o
+        // relaunch() que o front chama depois de instalar. A UI fica na sidebar
+        // do web remoto (nora.systems) — ver capabilities/updater-remote.json.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(capture_state)
         .manage(sidecar_state)
         .manage(live_state)
