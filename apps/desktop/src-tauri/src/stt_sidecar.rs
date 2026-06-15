@@ -189,11 +189,13 @@ impl SidecarHandle {
             }
         });
 
-        // Espera o "ready" com timeout. 20s (era 5s) porque o cold-start do PyInstaller onefile
-        // (descompactar + scan de antivirus + handshake TLS com o Azure Speech) estoura 5s
-        // facilmente em rede lenta/laptop frio — exatamente o cenario de uma demo no FIAP.
-        // join.abort() dropa a task; o child Python e morto pelo kill_on_drop do Command (abaixo).
-        match tokio::time::timeout(tokio::time::Duration::from_secs(20), ready_rx).await {
+        // Espera o "ready" com timeout. 60s porque o cold-start do PyInstaller ONEFILE
+        // (extrai ~60MB pro temp + o Windows Defender escaneia os DLLs nativos do Azure
+        // Speech, unsigned, A CADA execucao) foi medido em ~24s nesta maquina — 20s estourava.
+        // Fix definitivo e empacotar o sidecar como ONEDIR (sem extracao em runtime); ate la,
+        // esta folga evita o timeout. join.abort() dropa a task; o child Python e morto pelo
+        // kill_on_drop do Command (abaixo).
+        match tokio::time::timeout(tokio::time::Duration::from_secs(60), ready_rx).await {
             Ok(Ok(())) => {}
             Ok(Err(_)) => {
                 join.abort();
@@ -201,7 +203,7 @@ impl SidecarHandle {
             }
             Err(_) => {
                 join.abort();
-                return Err("Sidecar startup timeout (20s)".into());
+                return Err("Sidecar startup timeout (60s)".into());
             }
         }
 
