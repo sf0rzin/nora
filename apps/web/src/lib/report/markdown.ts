@@ -89,7 +89,7 @@ export function meetingToMarkdown(detail: MeetingDetail): string {
   if (meta.length > 0) lines.push(meta.join("  \n"), "");
 
   if (!a) {
-    lines.push("> Esta reunião ainda não foi analisada pela NORA.", "");
+    lines.push("> Esta reunião ainda não foi analisada pela Nora.", "");
   } else {
     if (a.summary?.trim()) {
       lines.push("## Resumo", "", a.summary.trim(), "");
@@ -168,7 +168,7 @@ export function meetingToMarkdown(detail: MeetingDetail): string {
     if (c.rationale?.trim()) lines.push(c.rationale.trim(), "");
   }
 
-  lines.push("---", "", `_Gerado pelo NORA em ${formatDateTimePt(new Date().toISOString())}._`, "");
+  lines.push("---", "", `_Gerado pelo Nora em ${formatDateTimePt(new Date().toISOString())}._`, "");
 
   return lines.join("\n");
 }

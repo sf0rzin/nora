@@ -116,7 +116,7 @@ function TranscriptionAnimation() {
       </div>
       <div className="transcript-badge">
         <span className="transcript-dot" />
-        <span>NORA analisando…</span>
+        <span>Nora analisando…</span>
       </div>
     </div>
   );
@@ -145,7 +145,7 @@ function LeftPanel() {
         </Link>
       </div>
       <div className="left-foot">
-        <span>© 2026 NORA</span>
+        <span>© 2026 Nora</span>
         <div className="links">
           <a href="#">Privacidade</a>
           <a href="#">Termos</a>
@@ -299,7 +299,7 @@ function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; n
     <div className="right-inner">
       <div className="head">
         <h2>Bem-vindo de volta.</h2>
-        <p>Entre na sua conta NORA pra continuar.</p>
+        <p>Entre na sua conta Nora pra continuar.</p>
       </div>
 
       <div className="sso-row">
@@ -551,7 +551,7 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
       <div className="head" style={{ marginTop: 20 }}>
         {step.id === "email" && (
           <>
-            <h2>Crie sua conta NORA.</h2>
+            <h2>Crie sua conta Nora.</h2>
             <p>Grátis pra sempre. Sem cartão.</p>
           </>
         )}
@@ -743,7 +743,7 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
               />
               <span>
                 Li e aceito os <a href="#">Termos de Uso</a> e a{" "}
-                <a href="#">Política de Privacidade</a>. Entendo que NORA é LGPD-compliant e que
+                <a href="#">Política de Privacidade</a>. Entendo que Nora é LGPD-compliant e que
                 posso solicitar exclusão dos meus dados a qualquer momento.
               </span>
             </label>

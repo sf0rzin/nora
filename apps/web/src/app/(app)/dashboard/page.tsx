@@ -306,7 +306,7 @@ export default async function DashboardPage({
             <p style={{ fontSize: 13.5, color: "var(--muted)", margin: 0, lineHeight: 1.55 }}>
               {hasFilters
                 ? "Ajuste a busca ou limpe os filtros."
-                : "A NORA processa a transcrição e devolve resumo, decisões e action items em segundos."}
+                : "A Nora processa a transcrição e devolve resumo, decisões e action items em segundos."}
             </p>
           </div>
           {!hasFilters && (

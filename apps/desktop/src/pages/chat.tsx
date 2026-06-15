@@ -24,12 +24,12 @@ async function fakeAssistantReply(userText: string): Promise<string> {
   await new Promise((r) => setTimeout(r, 1100 + Math.random() * 600));
   const trimmed = userText.trim().toLowerCase();
   if (trimmed.startsWith("oi") || trimmed === "olá") {
-    return "Oi! O chat com a NORA tá em construção — em breve vou conseguir responder com base nas suas reuniões, action items e contexto do workspace.";
+    return "Oi! O chat com a Nora tá em construção — em breve vou conseguir responder com base nas suas reuniões, action items e contexto do workspace.";
   }
   if (trimmed.includes("totvs")) {
     return "Quando o chat estiver no ar, vou puxar a última reunião TOTVS, decisões registradas e action items pendentes — tudo passando pelo PII Shield antes de subir pra LLM.";
   }
-  return "Chat com a NORA em construção. Por enquanto, abra qualquer reunião pra ver o resumo, decisões e action items que ela já gera. Quando o endpoint estiver no ar essa conversa fica disponível.";
+  return "Chat com a Nora em construção. Por enquanto, abra qualquer reunião pra ver o resumo, decisões e action items que ela já gera. Quando o endpoint estiver no ar essa conversa fica disponível.";
 }
 
 function ThinkingDots() {
@@ -186,7 +186,7 @@ export function ChatPage() {
           id: idRef.current++,
           role: "assistant",
           content:
-            "Não consegui responder agora. O chat com a NORA ainda está sendo integrado — tenta de novo em alguns segundos.",
+            "Não consegui responder agora. O chat com a Nora ainda está sendo integrado — tenta de novo em alguns segundos.",
           ts: Date.now(),
         },
       ]);
@@ -317,7 +317,7 @@ export function ChatPage() {
                 letterSpacing: "0.04em",
               }}
             >
-              Chat NORA em construção · respostas reais em breve
+              Chat Nora em construção · respostas reais em breve
             </div>
           </div>
         ) : (

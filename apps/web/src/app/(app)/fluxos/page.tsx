@@ -138,7 +138,7 @@ export default function FluxosPage() {
         }}
       >
         <div>
-          <div className="eyebrow">NORA Flows</div>
+          <div className="eyebrow">Nora Flows</div>
           <h1 className="h1">Fluxos</h1>
           <p className="lede" style={{ marginTop: 8 }}>
             Automações que reagem às suas reuniões — gatilhos, condições e ações reais.
