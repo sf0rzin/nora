@@ -285,8 +285,10 @@ jobs:
       - name: Build Tauri app
         working-directory: apps/desktop
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ""
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          # createUpdaterArtifacts:true no tauri.conf exige a chave de assinatura
+          # no build (senão o tauri build falha). Mesmos secrets do desktop-release.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # A URL base da API é baked em build-time pelo build.rs (option_env!).
           # Sem isso o bundle aponta pro localhost (inútil contra o Azure). Setar
           # vars.NORA_API_BASE_URL no repo/environment pra sobrescrever o default.

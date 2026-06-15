@@ -18,6 +18,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
+import { DesktopUpdateButton } from "./desktop-update-button";
 import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { SESSION_USER_EVENT, clearSession, getCurrentUser, type SessionUser } from "@/lib/auth";
@@ -291,6 +292,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Suspense>
 
         <div style={{ flex: 1 }} />
+
+        {/* Só renderiza dentro do Nora Desktop quando há atualização assinada. */}
+        <DesktopUpdateButton />
 
         {userBlock}
       </>
