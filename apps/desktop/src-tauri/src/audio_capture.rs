@@ -66,6 +66,7 @@ fn build_mic_stream<T>(
     channels: usize,
     chunk_size: usize,
     mic_tx: tokio::sync::mpsc::Sender<Vec<i16>>,
+    app: AppHandle,
 ) -> Result<cpal::Stream, cpal::BuildStreamError>
 where
     T: cpal::SizedSample + SampleToF32 + Send + 'static,
@@ -89,9 +90,14 @@ where
             }
         },
         move |err| {
-            #[cfg(debug_assertions)]
-            eprintln!("[audio] mic stream error: {}", err);
-            let _ = err;
+            // Erros pós-play() do WASAPI (mic ocupado/exclusivo, endpoint
+            // invalidado) chegam SÓ aqui — nunca no retorno de play(). Sem isto o
+            // mic "abria" e ficava mudo sem nenhum sinal. Loga + reverte a UI.
+            crate::applog::log_line(
+                &app,
+                &format!("mic-thread: STREAM ERROR (callback): {}", err),
+            );
+            emit_recording_failed(&app);
         },
         None,
     )
@@ -175,11 +181,13 @@ impl AudioCapture {
             }
         }
 
-        // Fallback: primeiro PCM na sua taxa máxima; senão o primeiro range.
+        // Fallback: primeiro PCM na sua taxa máxima. Se não há NENHUM PCM
+        // suportado (F32/I16/U16), falha com erro claro em vez de devolver um
+        // formato (I32/F64/…) que o dispatch da thread não trata.
         if let Some(r) = ranges.iter().find(|r| is_pcm(r)) {
             return Ok(r.with_max_sample_rate());
         }
-        Ok(ranges[0].with_max_sample_rate())
+        Err("Nenhum formato PCM suportado (F32/I16/U16) neste device de entrada".to_string())
     }
 
     pub fn start(
@@ -335,6 +343,7 @@ impl AudioCapture {
                             ch,
                             chunk_size,
                             mic_tx,
+                            app.clone(),
                         ),
                         SampleFormat::I16 => build_mic_stream::<i16>(
                             &device,
@@ -345,6 +354,7 @@ impl AudioCapture {
                             ch,
                             chunk_size,
                             mic_tx,
+                            app.clone(),
                         ),
                         SampleFormat::U16 => build_mic_stream::<u16>(
                             &device,
@@ -355,6 +365,7 @@ impl AudioCapture {
                             ch,
                             chunk_size,
                             mic_tx,
+                            app.clone(),
                         ),
                         other => {
                             crate::applog::log_line(
