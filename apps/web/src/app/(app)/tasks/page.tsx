@@ -201,7 +201,7 @@ export default function TasksPage() {
             <>
               <p style={{ fontSize: 14, color: "var(--ink)", margin: "0 0 4px" }}>Nenhum action item por aqui.</p>
               <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0 }}>
-                Envie uma reunião pra NORA extrair os próximos passos automaticamente.
+                Envie uma reunião pra Nora extrair os próximos passos automaticamente.
               </p>
               <div style={{ marginTop: 16 }}>
                 <Link className="btn btn-primary btn-sm" href={"/meetings/upload" as Route}>

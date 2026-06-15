@@ -59,7 +59,7 @@ export function NoraLogo({
     <span
       className={`inline-flex items-center ${className}`}
       style={{ height: size, gap: wordmarkGap }}
-      aria-label="NORA"
+      aria-label="Nora"
       role="img"
     >
       <span
@@ -100,7 +100,7 @@ export function NoraLogo({
             transition: `opacity 0.5s var(--ease-out-expo) ${wordmarkDelayMs}ms, transform 0.5s var(--ease-out-expo) ${wordmarkDelayMs}ms`,
           }}
         >
-          NORA
+          Nora
         </span>
       )}
     </span>

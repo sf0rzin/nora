@@ -82,7 +82,7 @@ export function LandingDemo() {
           <div className="section-label">Demonstração</div>
           <h2 className="section-title">Da conversa à inteligência, palavra por palavra.</h2>
           <p className="section-subtitle">
-            A NORA classifica cada trecho — decisão, action item, PII, concorrente — e devolve tudo
+            A Nora classifica cada trecho — decisão, action item, PII, concorrente — e devolve tudo
             estruturado. Passe o mouse pra ver.
           </p>
         </div>

@@ -129,9 +129,9 @@ export function LandingHero() {
             <Link
               href={{ pathname: "/auth/signup", query: trimmed ? { q: prompt } : {} }}
               className={`hero-composer-send ${trimmed ? "is-active" : ""}`}
-              aria-label="Perguntar NORA"
+              aria-label="Perguntar Nora"
             >
-              Perguntar NORA
+              Perguntar Nora
               <svg
                 width="13"
                 height="13"

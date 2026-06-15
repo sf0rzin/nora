@@ -580,7 +580,7 @@ export function MeetingsPage() {
                     lineHeight: 1.55,
                   }}
                 >
-                  NORA captura o áudio, processa e devolve resumo, decisões e
+                  Nora captura o áudio, processa e devolve resumo, decisões e
                   action items.
                 </p>
               </div>

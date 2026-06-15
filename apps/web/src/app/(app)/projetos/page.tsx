@@ -89,7 +89,7 @@ function Header() {
     <header style={{ marginBottom: 8 }}>
       <h1 className="h1">Projetos</h1>
       <p className="lede" style={{ marginTop: 8, maxWidth: 600 }}>
-        A NORA agrupa reuniões e action items por tag — cada frente de trabalho num só lugar, sem preencher nada.
+        A Nora agrupa reuniões e action items por tag — cada frente de trabalho num só lugar, sem preencher nada.
       </p>
     </header>
   );
@@ -265,10 +265,10 @@ function EmptyView() {
       >
         <div style={{ maxWidth: 420 }}>
           <h2 style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 500, letterSpacing: "-0.018em", margin: "0 0 6px", color: "var(--ink)" }}>
-            Seus projetos aparecem aqui conforme você usa a NORA.
+            Seus projetos aparecem aqui conforme você usa a Nora.
           </h2>
           <p style={{ fontSize: 13.5, color: "var(--muted)", margin: 0, lineHeight: 1.55 }}>
-            Envie reuniões com tags — a NORA conecta os pontos e organiza tudo por projeto.
+            Envie reuniões com tags — a Nora conecta os pontos e organiza tudo por projeto.
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
@@ -282,7 +282,7 @@ function EmptyView() {
             href={"/chat" as Route}
             style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 16px", background: "var(--sidebar)", color: "var(--ink)", border: "1px solid var(--border)", borderRadius: 9, fontSize: 13, fontWeight: 500 }}
           >
-            Conversar com a NORA
+            Conversar com a Nora
           </Link>
         </div>
       </div>

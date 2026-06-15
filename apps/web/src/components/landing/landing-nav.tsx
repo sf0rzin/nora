@@ -16,7 +16,7 @@ export function LandingNav() {
     <nav className="nav">
       <div className="nav-inner">
         <div className="nav-left">
-          <Link href="/" aria-label="NORA — início" style={{ display: "inline-flex" }}>
+          <Link href="/" aria-label="Nora — início" style={{ display: "inline-flex" }}>
             <NoraLogo size={22} />
           </Link>
           <div className="nav-links">

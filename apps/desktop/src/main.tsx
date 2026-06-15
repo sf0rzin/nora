@@ -38,7 +38,7 @@ class ErrorBoundary extends React.Component<
                 margin: "0 0 12px",
               }}
             >
-              Algo travou no NORA Desktop.
+              Algo travou no Nora Desktop.
             </h1>
             <p style={{ fontSize: 13.5, color: "var(--muted)", lineHeight: 1.55, marginBottom: 14 }}>
               O frontend não conseguiu inicializar. Detalhes técnicos abaixo —

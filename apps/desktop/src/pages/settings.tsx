@@ -218,7 +218,7 @@ function ProfileSection() {
   const { user, logout } = useAuth();
   return (
     <>
-      <SectionHeader title="Perfil" subtitle="Como você aparece no NORA." />
+      <SectionHeader title="Perfil" subtitle="Como você aparece no Nora." />
 
       <Card pad className="flex items-center gap-5" style={{ marginBottom: 28 }}>
         <Avatar name={user?.displayName || "Você"} size={64} me />
@@ -308,11 +308,11 @@ function PrivacySection() {
       <>
         Indisponível no Linux. O display server (X11/Wayland) não oferece um mecanismo
         padronizado pra uma aplicação se auto-excluir de capturas de tela. Alternativa:
-        minimize a janela do NORA durante o compartilhamento.
+        minimize a janela do Nora durante o compartilhamento.
       </>
     ) : isWindows ? (
       <>
-        Oculta o NORA Desktop e a overlay de capturas de tela, OBS e compartilhamento.
+        Oculta o Nora Desktop e a overlay de capturas de tela, OBS e compartilhamento.
         Usa a API nativa do Windows (<code style={{ background: "var(--chip)", padding: "1px 5px", borderRadius: "var(--radius-sm)", fontSize: 11.5 }}>SetWindowDisplayAffinity</code>).
       </>
     ) : (
@@ -323,12 +323,12 @@ function PrivacySection() {
     <>
       <SectionHeader
         title="Privacidade e LGPD"
-        subtitle="Como o NORA Desktop protege sua tela e seus dados."
+        subtitle="Como o Nora Desktop protege sua tela e seus dados."
       />
 
       <SectionWrap label="Modo stealth">
         <ToggleRow
-          label="Esconder NORA de capturas de tela"
+          label="Esconder Nora de capturas de tela"
           helper={stealthHelper}
           checked={stealthMode}
           onChange={handleStealthToggle}
@@ -366,7 +366,7 @@ function PrivacySection() {
           }}
         >
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
-          <span style={{ color: "var(--success-ink)" }}>PII Shield ativo (gerenciado pelo NORA)</span>
+          <span style={{ color: "var(--success-ink)" }}>PII Shield ativo (gerenciado pelo Nora)</span>
         </div>
       </SectionWrap>
     </>
@@ -411,11 +411,11 @@ function AudioSection() {
         >
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
           <span style={{ color: "var(--success-ink)" }}>
-            Transcrição gerenciada pelo NORA
+            Transcrição gerenciada pelo Nora
           </span>
         </div>
         <p style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.6 }}>
-          Nenhuma configuração necessária. O NORA gerencia automaticamente os tokens de
+          Nenhuma configuração necessária. O Nora gerencia automaticamente os tokens de
           autorização para o Azure Speech Services usando o Token Broker do backend (ADR 0009).
         </p>
         {cleanupDone && (
@@ -427,7 +427,7 @@ function AudioSection() {
 
       <SectionWrap label="Captura de áudio do sistema">
         <p style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.6, marginBottom: 12 }}>
-          Pra capturar áudio de reuniões remotas (Meet, Zoom, Teams), o NORA combina o
+          Pra capturar áudio de reuniões remotas (Meet, Zoom, Teams), o Nora combina o
           microfone com o áudio do sistema. Em cada plataforma o suporte é diferente:
         </p>
         <ul className="flex flex-col gap-2 m-0 p-0" style={{ listStyle: "none", fontSize: 12.5, color: "var(--ink)" }}>
@@ -461,7 +461,7 @@ function AudioSection() {
 function AboutSection() {
   return (
     <>
-      <SectionHeader title="Sobre o NORA Desktop" subtitle="Informações do build atual." />
+      <SectionHeader title="Sobre o Nora Desktop" subtitle="Informações do build atual." />
 
       <SectionWrap label="Build">
         <InfoRow label="Versão" value="0.1.0" mono />
@@ -584,7 +584,7 @@ export function SettingsPage() {
             }}
           >
             <span>Alterações são salvas automaticamente.</span>
-            <span>NORA Desktop · 0.1.0</span>
+            <span>Nora Desktop · 0.1.0</span>
           </div>
         </div>
       </div>

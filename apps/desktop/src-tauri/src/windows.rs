@@ -1,5 +1,52 @@
 use tauri::{AppHandle, Manager, PhysicalPosition};
 
+#[cfg(target_os = "windows")]
+use tauri::WebviewWindow;
+
+/// Remove a borda/contorno que o DWM do Windows 11 desenha em volta de QUALQUER
+/// top-level window — inclusive janelas transparentes sem decoração (dock,
+/// overlay). Sem isso aparece um retângulo arredondado fantasma em volta da
+/// barra de vidro (bug reportado: "contorno como se fosse uma janela do
+/// Windows"). Pintamos a cor da borda como DWMWA_COLOR_NONE.
+///
+/// Best-effort: em versões antigas do Windows o atributo é ignorado, então
+/// só logamos o erro em debug e seguimos.
+#[cfg(target_os = "windows")]
+pub fn remove_window_border(window: &WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_BORDER_COLOR};
+
+    // DWMWA_COLOR_NONE — desliga o desenho da borda pelo DWM.
+    const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
+
+    let hwnd_raw = match window.hwnd() {
+        Ok(h) => h,
+        Err(e) => {
+            #[cfg(debug_assertions)]
+            eprintln!("[windows] remove_window_border: failed to get HWND: {}", e);
+            let _ = e;
+            return;
+        }
+    };
+    // Tauri depende do windows 0.61; nosso Cargo.toml usa 0.62 — reconstruímos o
+    // HWND da versão correta a partir do ponteiro bruto (mesmo padrão do stealth).
+    let hwnd = HWND(hwnd_raw.0);
+    let color = DWMWA_COLOR_NONE;
+
+    unsafe {
+        if let Err(e) = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_BORDER_COLOR,
+            &color as *const u32 as *const core::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        ) {
+            #[cfg(debug_assertions)]
+            eprintln!("[windows] DwmSetWindowAttribute(BORDER_COLOR) failed: {:?}", e);
+            let _ = e;
+        }
+    }
+}
+
 /// Mostra/esconde a janela de dock flutuante.
 ///
 /// A dock fica posicionada no topo-centro do monitor primário, com um
@@ -30,6 +77,11 @@ pub fn toggle_dock(app_handle: AppHandle, show: bool) -> Result<(), String> {
             let _ = window.set_position(PhysicalPosition { x, y });
         }
         let _ = window.show();
+        // Mata o contorno fantasma do DWM agora que a janela tem HWND e está
+        // visível (chamar com a janela escondida força o handle e pode pintar
+        // branco — mesmo cuidado do stealth).
+        #[cfg(target_os = "windows")]
+        remove_window_border(&window);
         // Não chamamos set_focus — queremos que o dock fique visível mas
         // sem roubar o foco do app em primeiro plano (Meet/Zoom/Teams).
     } else {
