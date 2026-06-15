@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "updater-remote",
+  "description": "Permite à UI web remota (nora.systems, carregada na janela principal) checar e instalar atualizações assinadas, e reiniciar o app depois. Escopo mínimo: só updater + restart. Endpoints e pubkey ficam fixos em tauri.conf.json, então conteúdo remoto não consegue redirecionar a origem da atualização.",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["https://nora.systems/*"]
+  },
+  "permissions": [
+    "updater:allow-check",
+    "updater:allow-download-and-install",
+    "process:allow-restart"
+  ]
+}
