@@ -3,7 +3,7 @@
 
 mod applog;
 mod audio_capture;
-mod audio_resample;
+pub mod audio_resample;
 mod auth_bridge;
 pub mod commands;
 mod http_proxy;

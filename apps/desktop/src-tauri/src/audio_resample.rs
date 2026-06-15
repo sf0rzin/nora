@@ -1,77 +1,62 @@
-use rubato::{Fft, FixedSync, Resampler};
-use audioadapter_buffers::owned::InterleavedOwned;
-
+/// Resampler mono streaming por interpolação linear.
+///
+/// Substituiu o rubato FFT (que dava panic "divide by zero" em synchro.rs ao
+/// construir 48000→16000 — matava a thread de áudio antes de abrir o mic). Pra
+/// STT a interp linear é mais que suficiente (fala vive bem abaixo do Nyquist de
+/// 16kHz) e é IMPOSSÍVEL panicar: nenhuma divisão por entrada do usuário.
+///
+/// Mantém estado entre chunks (`buf` + posição fracionária `pos`) pra continuidade
+/// no fluxo de áudio em tempo real.
 pub struct MonoResampler {
-    inner: Option<Fft<f32>>,
-    #[allow(dead_code)]
     src_sr: u32,
-    #[allow(dead_code)]
     dst_sr: u32,
-    leftover: Vec<f32>,
+    buf: Vec<f32>,
+    pos: f64,
 }
 
 impl MonoResampler {
     pub fn new(src_sr: u32, dst_sr: u32) -> Result<Self, String> {
-        if src_sr == dst_sr {
-            return Ok(Self {
-                inner: None,
-                src_sr,
-                dst_sr,
-                leftover: Vec::new(),
-            });
+        if src_sr == 0 || dst_sr == 0 {
+            return Err(format!("sample rate inválido: src={} dst={}", src_sr, dst_sr));
         }
-        let chunk_in = (src_sr as usize / 50).max(64); // ~20ms
-        let inner = Fft::<f32>::new(
-            src_sr as usize,
-            dst_sr as usize,
-            1, // 1 channel (mono)
-            chunk_in,
-            2, // subchunks
-            FixedSync::Input,
-        )
-        .map_err(|e| format!("rubato init: {}", e))?;
         Ok(Self {
-            inner: Some(inner),
             src_sr,
             dst_sr,
-            leftover: Vec::new(),
+            buf: Vec::new(),
+            pos: 0.0,
         })
     }
 
     /// Recebe mono f32 em src_sr, retorna mono f32 em dst_sr.
     pub fn process(&mut self, input: &[f32]) -> Vec<f32> {
-        let Some(resampler) = self.inner.as_mut() else {
+        if self.src_sr == self.dst_sr {
             return input.to_vec(); // bypass quando sr igual
-        };
-        self.leftover.extend_from_slice(input);
-        let chunk = resampler.input_frames_next();
-        let mut out = Vec::new();
-        while self.leftover.len() >= chunk {
-            let block: Vec<f32> = self.leftover.drain(..chunk).collect();
-            let input_buf = match InterleavedOwned::new_from(block, 1, chunk) {
-                Ok(buf) => buf,
-                Err(e) => {
-                    eprintln!("[audio_resample] InterleavedOwned::new_from failed: {}", e);
-                    break;
-                }
-            };
-            let mut output_buf = InterleavedOwned::new(0.0f32, 1, resampler.output_frames_next());
-            match resampler.process_into_buffer(
-                &input_buf,
-                &mut output_buf,
-                None,
-            ) {
-                Ok((_input_frames, output_frames)) => {
-                    // Extract data from output buffer
-                    let data = output_buf.take_data();
-                    out.extend_from_slice(&data[..output_frames]);
-                }
-                Err(e) => {
-                    eprintln!("[audio_resample] Resample error: {}", e);
-                    break;
-                }
-            }
         }
+
+        self.buf.extend_from_slice(input);
+        let ratio = self.src_sr as f64 / self.dst_sr as f64;
+
+        let n = self.buf.len();
+        let mut out = Vec::new();
+        let mut pos = self.pos;
+
+        // Precisa de buf[i] e buf[i+1] pra interpolar → para quando i+1 sai do buffer.
+        while (pos as usize) + 1 < n {
+            let i = pos as usize;
+            let frac = pos - i as f64;
+            let s = self.buf[i] as f64 * (1.0 - frac) + self.buf[i + 1] as f64 * frac;
+            out.push(s as f32);
+            pos += ratio;
+        }
+
+        // Descarta as amostras já consumidas, carregando a fração restante.
+        let drop = (pos as usize).min(n);
+        if drop > 0 {
+            self.buf.drain(0..drop);
+            pos -= drop as f64;
+        }
+        self.pos = pos;
+
         out
     }
 }
