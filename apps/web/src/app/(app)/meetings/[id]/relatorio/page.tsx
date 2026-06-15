@@ -172,7 +172,7 @@ export default async function MeetingReportPage({ params }: { params: Promise<{ 
 
           {!a && (
             <p style={{ marginTop: 28, fontSize: 13.5, color: "var(--muted)", lineHeight: 1.6 }}>
-              Esta reunião ainda não foi analisada pela NORA — o relatório completo fica disponível assim que a
+              Esta reunião ainda não foi analisada pela Nora — o relatório completo fica disponível assim que a
               análise terminar.
             </p>
           )}
@@ -322,7 +322,7 @@ export default async function MeetingReportPage({ params }: { params: Promise<{ 
           )}
 
           <div style={{ marginTop: 36, paddingTop: 12, borderTop: "1px solid var(--border)", fontSize: 10.5, color: "var(--muted)" }}>
-            Gerado pelo NORA em {generatedAt} · PII Shield aplicado a esta análise.
+            Gerado pelo Nora em {generatedAt} · PII Shield aplicado a esta análise.
           </div>
         </article>
       </div>

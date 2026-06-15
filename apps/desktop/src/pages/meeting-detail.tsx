@@ -408,7 +408,7 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
               marginBottom: 36,
             }}
           >
-            NORA está processando essa reunião — resumo, decisões e action items aparecem aqui em alguns segundos.
+            Nora está processando essa reunião — resumo, decisões e action items aparecem aqui em alguns segundos.
           </Card>
         )}
 
@@ -435,7 +435,7 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
                 Falha no processamento
               </div>
               <div style={{ fontSize: 12.5, color: "var(--danger-ink)", opacity: 0.85, lineHeight: 1.5 }}>
-                A NORA não conseguiu analisar essa transcrição. Ela já está salva —
+                A Nora não conseguiu analisar essa transcrição. Ela já está salva —
                 você pode reprocessar agora.
                 {reprocessError && (
                   <span style={{ display: "block", marginTop: 4, opacity: 0.95 }}>

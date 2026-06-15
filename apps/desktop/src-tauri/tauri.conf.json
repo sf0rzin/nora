@@ -1,7 +1,7 @@
 {
   "$schema": "gen/schemas/desktop-schema.json",
-  "productName": "NORA Desktop",
-  "version": "0.2.3",
+  "productName": "Nora Desktop",
+  "version": "0.2.4",
   "identifier": "com.nora.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "NORA Desktop",
+        "title": "Nora Desktop",
         "url": "https://nora.systems/dashboard",
         "width": 1200,
         "height": 800,
@@ -27,7 +27,7 @@
       {
         "label": "overlay",
         "url": "overlay.html",
-        "title": "NORA Live",
+        "title": "Nora Live",
         "width": 700,
         "height": 600,
         "minWidth": 520,
@@ -42,9 +42,9 @@
       {
         "label": "dock",
         "url": "dock.html",
-        "title": "NORA Dock",
+        "title": "Nora Dock",
         "width": 460,
-        "height": 52,
+        "height": 56,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

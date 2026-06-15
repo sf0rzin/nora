@@ -318,7 +318,7 @@ function ChatRoom() {
                 Como posso ajudar?
               </h1>
               <p style={{ fontSize: 14, color: "var(--muted)", margin: 0, lineHeight: 1.55 }}>
-                Pergunte sobre suas reuniões, action items ou projetos. A NORA usa o contexto do seu workspace.
+                Pergunte sobre suas reuniões, action items ou projetos. A Nora usa o contexto do seu workspace.
               </p>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", maxWidth: 580 }}>

@@ -89,7 +89,7 @@ export function NoraLogo({
             transition: "opacity 320ms ease 380ms, transform 320ms ease 380ms",
           }}
         >
-          NORA
+          Nora
         </span>
       )}
     </span>

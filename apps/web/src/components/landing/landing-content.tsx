@@ -65,7 +65,7 @@ export function LandingHowItWorks() {
           </div>
 
           <div className="step-card">
-            <span className="step-num">02 · NORA processa</span>
+            <span className="step-num">02 · Nora processa</span>
             <h3>Análise estruturada em 30s.</h3>
             <p>
               PII Shield redige dados pessoais. LLM extrai resumo, decisões e tasks com confiança
@@ -346,8 +346,8 @@ export function LandingPricing() {
 // ── FAQ ──
 const FAQS = [
   {
-    q: "NORA grava minhas reuniões?",
-    a: "Não. NORA processa transcrições que você sobe ou áudio que o app Desktop captura. Áudio temporário é descartado após a transcrição (padrão 30 dias). Você pode reduzir o TTL pra zero — apaga assim que termina.",
+    q: "Nora grava minhas reuniões?",
+    a: "Não. Nora processa transcrições que você sobe ou áudio que o app Desktop captura. Áudio temporário é descartado após a transcrição (padrão 30 dias). Você pode reduzir o TTL pra zero — apaga assim que termina.",
   },
   {
     q: "E a LGPD? Meus dados podem ser usados pra treinar modelos?",
@@ -363,7 +363,7 @@ const FAQS = [
   },
   {
     q: "Qual a diferença pro Gong / Otter / Fireflies?",
-    a: "Gong e Clari são caros, em inglês e usam conhecimento genérico. Otter e Fireflies só transcrevem. NORA aprende o vocabulário do seu workspace (produtos, concorrentes, glossário) e devolve análise estruturada — em português, com conformidade LGPD.",
+    a: "Gong e Clari são caros, em inglês e usam conhecimento genérico. Otter e Fireflies só transcrevem. Nora aprende o vocabulário do seu workspace (produtos, concorrentes, glossário) e devolve análise estruturada — em português, com conformidade LGPD.",
   },
   {
     q: "Posso integrar com Linear / Jira / CRM?",
@@ -504,7 +504,7 @@ export function LandingFooter() {
           </div>
         </div>
         <div className="footer-meta">
-          <span>© 2026 NORA · Construído em São Paulo</span>
+          <span>© 2026 Nora · Construído em São Paulo</span>
           <span>v1.11 · 21 ADRs aceitos</span>
         </div>
       </div>

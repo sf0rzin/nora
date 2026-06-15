@@ -315,7 +315,7 @@ function AccountSection() {
             style={{ maxWidth: 320 }}
           />
           <div className="field-help">
-            É como a NORA se refere a você nas análises e no chat.
+            É como a Nora se refere a você nas análises e no chat.
           </div>
         </div>
 
@@ -1028,7 +1028,7 @@ function CompanyContextSection() {
           margin: "0 0 18px",
         }}
       >
-        Esses dados entram em toda análise de reunião — quanto mais contexto, mais precisa a NORA
+        Esses dados entram em toda análise de reunião — quanto mais contexto, mais precisa a Nora
         fica sobre riscos, concorrentes e oportunidades.
       </p>
 
