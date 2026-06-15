@@ -1,0 +1,106 @@
+name: desktop-release
+
+# Build assinado + release do Nora Desktop com auto-update.
+#
+# Dispara por uma tag `desktop-v*` (ex.: desktop-v0.2.5) ou manualmente
+# (workflow_dispatch informando a tag). O tauri-action builda, ASSINA os
+# bundles com a chave do updater (secrets TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]),
+# cria a release no GitHub e gera/mescla o `latest.json` — que é o endpoint que
+# o app consulta (releases/latest/download/latest.json). prerelease:false pra a
+# release virar "Latest" e o endpoint resolver.
+#
+# Bootstrap: a primeira versão COM updater (0.2.5) precisa ser instalada à mão;
+# dela em diante o botão "Atualização disponível" na sidebar faz o resto.
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da release (ex.: desktop-v0.2.5). Precisa existir ou será criada."
+        required: true
+
+concurrency:
+  group: desktop-release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ""
+            sidecar_target: x86_64-pc-windows-msvc
+          - platform: ubuntu-latest
+            args: ""
+            sidecar_target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/desktop/sidecar/pyproject.toml
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
+
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Install sidecar deps
+        working-directory: apps/desktop/sidecar
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          python -m pip install pyinstaller
+
+      - name: Build sidecar
+        working-directory: apps/desktop/sidecar
+        run: python build_sidecar.py
+
+      - name: Build, sign and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Mesma URL baked em build-time do desktop-bundle (build.rs option_env!).
+          NORA_API_BASE_URL: ${{ vars.NORA_API_BASE_URL || 'https://nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: "Nora Desktop ${{ github.event.inputs.tag || github.ref_name }}"
+          releaseBody: "Atualização do Nora Desktop. A instalação a partir da v0.2.5 é automática pelo botão na sidebar."
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}
