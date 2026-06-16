@@ -48,6 +48,28 @@ def test_redacts_isolated_br_first_name():
     assert any(r.type == PiiType.PERSON_NAME for r in result.redactions)
 
 
+def test_redacts_accented_first_name_regression():
+    """Regressao (jun/2026, leak real em producao): nomes ACENTUADOS da lista
+    vazavam porque `_BR_TOP_NAMES` e escrita SEM acento e a comparacao era
+    `casefold()` sensivel a acento -- 'Patrícia' ('patrícia') nunca casava com
+    'Patricia' ('patricia'). O accent-fold (NFKD) corrige a classe inteira."""
+    for name in ("Patrícia", "Antônio", "André", "João", "Mário", "Mônica", "Vitória", "César"):
+        text = f"A {name} ficou de enviar o contrato"
+        result = pii_shield.redact(text)
+        assert name not in result.redacted_text, f"VAZOU nome acentuado: {name}"
+        assert any(
+            r.type == PiiType.PERSON_NAME for r in result.redactions
+        ), f"{name} nao gerou redacao PERSON_NAME"
+
+
+def test_accent_fold_does_not_break_negative_list():
+    """Termos da negative list continuam NAO sendo redigidos apos o accent-fold."""
+    text = "Vamos rodar no Azure com Python e Spring, integrando com Salesforce"
+    result = pii_shield.redact(text)
+    for term in ("Azure", "Python", "Spring", "Salesforce"):
+        assert term in result.redacted_text, f"{term} foi redigido por engano"
+
+
 def test_redacts_name_surname_sequence():
     """Padrao 2: 2 palavras Title Case consecutivas."""
     text = "Marina Alves do RH"

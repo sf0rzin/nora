@@ -11,10 +11,26 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
 
 from ..models import PiiRedactionV1, PiiType, Redaction
+
+
+def _fold(value: str) -> str:
+    """Normaliza para comparacao insensivel a ACENTO e caixa (NFKD + casefold).
+
+    CRITICO p/ PERSON_NAME: a lista `_BR_TOP_NAMES` e escrita SEM acento, mas
+    transcricoes reais trazem nomes acentuados (Patrícia, Antônio, André, João).
+    Sem o accent-fold, "Patrícia".casefold() ("patrícia") nunca casava com
+    "Patricia".casefold() ("patricia") da lista -> o nome vazava cru pro LLM.
+    Bug real encontrado em producao (jun/2026). ADR 0012.
+    """
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", value) if not unicodedata.combining(c)
+    ).casefold()
+
 
 # --------------------------------------------------------------------------- #
 # Padroes deterministicos: e-mail, CPF, CNPJ, cartao, telefone
@@ -176,7 +192,7 @@ _VALIDATORS: dict[int, callable] = {
 # padrao "nome isolado" (sem sobrenome). Sobrenomes nao precisam estar aqui --
 # `_NAME_SEQUENCE_RE` cobre "Marina Alves" via Title Case.
 _BR_TOP_NAMES: frozenset[str] = frozenset(
-    name.casefold()
+    _fold(name)
     for name in (
         # Masculinos
         "Adriano",
@@ -459,7 +475,7 @@ _BR_TOP_NAMES: frozenset[str] = frozenset(
 # Usado como filtro pos-match: se qualquer token do candidato bater aqui
 # (case-insensitive), descarta o match inteiro.
 _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
-    term.casefold()
+    _fold(term)
     for term in (
         # Produtos TOTVS e correlatos
         "TOTVS",
@@ -618,7 +634,7 @@ def _tokenize(value: str) -> list[str]:
 
 def _is_negative(value: str) -> bool:
     """Retorna True se qualquer token do candidato bater na negative list."""
-    return any(tok.casefold() in _PERSON_NAME_NEGATIVE_LIST for tok in _tokenize(value))
+    return any(_fold(tok) in _PERSON_NAME_NEGATIVE_LIST for tok in _tokenize(value))
 
 
 def _apply_basic_patterns(
@@ -716,7 +732,7 @@ def _redact_person_names(
         if _is_covered(m.start(), m.end()):
             continue
         token = m.group(0)
-        if token.casefold() not in _BR_TOP_NAMES:
+        if _fold(token) not in _BR_TOP_NAMES:
             continue
         if _is_negative(token):
             continue
