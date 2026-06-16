@@ -16,10 +16,18 @@ RUN groupadd --system nora && useradd --system --gid nora nora
 COPY packages/nlp-baseline /tmp/nlp-baseline
 RUN pip install --upgrade pip && pip install /tmp/nlp-baseline && rm -rf /tmp/nlp-baseline
 
-# Install worker
+# Install worker (puxa spacy como dependencia, ver pyproject.toml)
 COPY services/nlp-worker/pyproject.toml ./pyproject.toml
 COPY services/nlp-worker/src ./src
 RUN pip install .
+
+# Modelo NER pt-BR do PII Shield (PR #3 / ADR 0012). Baixado NO BUILD, nunca em
+# runtime — runtime offline e startup deterministico. Impacto:
+#   - pesos do modelo `pt_core_news_sm`: ~13 MB (wheel ~15-20 MB).
+#   - spacy + numpy/thinc no runtime: ~algumas centenas de MB de imagem.
+# Aceitavel pelo ganho de recall de PERSON_NAME. Se este passo falhar, o worker
+# ainda sobe: o shield degrada gracioso para so as heuristicas (pii_shield._load_ner).
+RUN python -m spacy download pt_core_news_sm
 
 USER nora
 EXPOSE 8001

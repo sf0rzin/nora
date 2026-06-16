@@ -18,6 +18,12 @@ dependencies = [
   "pydantic-settings>=2.5",
   "httpx>=0.27",
   "openai>=1.50",
+  # NER backstop do PII Shield (PR #3 / ADR 0012). spaCy carrega o modelo
+  # `pt_core_news_sm` (baixado no build do Docker, NUNCA em runtime) para pegar
+  # PERSON_NAME fora-da-lista/minuscula/ALL-CAPS/estrangeiro/sobrenome e reduzir
+  # FP de toponimo via LOC/GPE. Degrada gracioso se ausente: o shield segue so
+  # com as heuristicas deterministicas (ver pii_shield._load_ner).
+  "spacy>=3.7,<4",
 ]
 
 # uv (https://docs.astral.sh/uv) resolve `nlp-baseline` a partir do path local.

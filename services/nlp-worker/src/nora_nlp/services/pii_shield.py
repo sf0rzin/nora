@@ -4,18 +4,28 @@ Cobre os tipos basicos brasileiros (e-mail, telefone, CPF, CNPJ, cartao) e detec
 nomes proprios via regex heuristico + lista hardcoded de top nomes BR + negative list
 de termos tecnicos/produtos/empresas. ADDRESS fica para uma fatia futura.
 
+Sobre o determinismo: o gate DURO de PII continua sendo regex + DV/Luhn + lista
+hardcoded. O NER (spaCy `pt_core_news_sm`) entra como BACKSTOP defense-in-depth
+(ADR 0012, PR #3) para PERSON_NAME que a lista + regex Title-Case nao pegam (nomes
+minuscula/ALL-CAPS/estrangeiros/sobrenomes isolados) E para reduzir falso-positivo
+de toponimo (LOC/GPE) e org (ORG). Se o spaCy/modelo nao carregar, o shield degrada
+gracioso para SO as heuristicas (ver `_load_ner` + `_ner_spans`).
+
 A estrategia de PERSON_NAME e detalhada na docstring de `_redact_person_names`.
 """
 
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
 
 from ..models import PiiRedactionV1, PiiType, Redaction
+
+logger = logging.getLogger(__name__)
 
 
 def _fold(value: str) -> str:
@@ -610,6 +620,55 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
         "LGPD",
         "SOC",
         "ISO",
+        # ------------------------------------------------------------------- #
+        # Termos de negocio EN + expressoes PT-BR (PR #3). spaCy PT classifica
+        # mal varios destes (marca como PER, ou nao reconhece). Adicionamos os
+        # TOKENS individuais para que `_is_negative` descarte o match inteiro.
+        # REGRA: so tokens que NAO colidem com primeiro nome BR. NUNCA adicionar
+        # tokens tipo "Paulo"/"Toledo" (toponimo com colisao de nome) -- esses
+        # ficam por conta do LOC/GPE do NER, nao da negative list.
+        # ------------------------------------------------------------------- #
+        # Customer Success, Machine Learning, Data Science, Single Sign On,
+        # Service Level Agreement, Pull Request, Black Friday, Go Live.
+        "Customer",
+        "Success",
+        "Machine",
+        "Learning",
+        "Data",
+        "Science",
+        "Single",
+        "Agreement",
+        "Level",
+        "Service",
+        "Pull",
+        "Request",
+        "Friday",
+        "Black",
+        "Live",  # "Go Live" -- "Go" tambem nao e nome
+        "Go",
+        "Enterprise",  # "Plano Enterprise"
+        "Starter",  # "Plano Starter"
+        # Expressoes PT-BR: Segunda..Sexta Feira, Boa Tarde/Noite, Muito
+        # Obrigado, Nota Fiscal. So tokens sem colisao de nome ("Boa","Tarde",
+        # "Noite","Muito","Obrigado","Nota","Fiscal","Feira","Segunda","Sexta",
+        # "Terca","Quinta"). "Bom"/"Dia" tambem. NAO adicionamos "Quarta" para
+        # nao colidir? "Quarta" nao e nome BR comum; incluimos por completude.
+        "Feira",
+        "Segunda",
+        "Terca",
+        "Quarta",
+        "Quinta",
+        "Sexta",
+        "Boa",
+        "Bom",
+        "Tarde",
+        "Noite",
+        "Dia",
+        "Muito",
+        "Obrigado",
+        "Obrigada",
+        "Nota",
+        "Fiscal",
     )
 )
 
@@ -649,6 +708,233 @@ _WORD_RE = re.compile(r"\b[A-Za-zÁÉÍÓÚÂÊÔÀÃÕÇáéíóúâêôàãõ�
 # nomes sempre aparecem Title Case (capitalizacao automatica do dicador) ou
 # all-caps no contexto formal (que sao filtrados por `_PERSON_NAME_NEGATIVE_LIST`).
 _NAME_TOKEN_RE = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+\b")
+
+
+# --------------------------------------------------------------------------- #
+# NER backstop (spaCy pt_core_news_sm) -- defense-in-depth, PR #3 / ADR 0012
+# --------------------------------------------------------------------------- #
+#
+# Modelo `pt_core_news_sm`: ~13 MB de pesos (wheel ~15-20 MB), baixado no BUILD
+# do Docker (nunca em runtime). spaCy + numpy adicionam algumas centenas de MB
+# ao runtime do container -- aceitavel para o ganho de recall de PERSON_NAME.
+#
+# Carregamento: singleton lazy cacheado no modulo. So tok2vec + ner ficam
+# habilitados (parser/tagger/lemmatizer/attribute_ruler/morphologizer DESABILITADOS)
+# -- acelera muito a inferencia, ja que so precisamos de `doc.ents`.
+#
+# DEGRADACAO GRACIOSA (NAO-NEGOCIAVEL): se spaCy nao importar (ImportError) ou o
+# modelo nao carregar (OSError), `_load_ner` retorna None, loga UMA vez, e o shield
+# segue SO com as heuristicas. O worker NUNCA crasha por causa do NER.
+
+# Sentinela: distingue "ainda nao tentei carregar" (False) de "tentei e falhou"
+# (None) de "carregado" (objeto nlp). Evita re-tentar o load (e re-logar) a cada
+# request quando o modelo esta ausente.
+_NER_UNSET: object = object()
+_ner_nlp: object = _NER_UNSET
+_NER_LOAD_LOGGED = False
+
+# Labels de entidade do spaCy PT (`pt_core_news_sm`):
+#   PER          -> pessoa (candidato direto a redigir como PERSON_NAME)
+#   LOC/GPE/ORG  -> local/geopolitico/organizacao (spans candidatos a PROTEGER:
+#                   a heuristica Title-Case nao deve redigir "Sao Paulo",
+#                   "Rio de Janeiro", logradouros, "Customer Success" etc.)
+#   MISC         -> ruido (ALL-CAPS, termos EN). Nao protege nem redige sozinho.
+#
+# PORQUE NAO E SO "PER redige / LOC-GPE-ORG protege": o modelo `sm` e ruidoso e
+# rotula MUITO nome de pessoa fora-da-lista como ORG/LOC ("O Cleiton"->ORG,
+# "O Sampaio"->LOC, "A Priya"->ORG). Se protegessemos esses spans cegamente, o
+# nome VAZARIA (regressao dos casos 38-60). A discriminacao confiavel observada:
+#   - toponimo/termo real (proteger): MULTI-palavra ("Sao Paulo") OU single-token
+#     precedido por preposicao/nao-artigo ("Pelo Toledo", "Nota Fiscal").
+#   - pessoa (redigir): single-token Title-Case precedido por ARTIGO/pronome
+#     PT-BR ("O/A/Os/As <Nome>") ou por "com"/virgula -- padrao "o <Fulano>".
+# Por isso classificamos por (label + arity + token anterior), nao so por label.
+_NER_PERSON_LABELS = frozenset({"PER"})
+_NER_PROTECTED_LABELS = frozenset({"LOC", "GPE", "ORG"})
+
+# Artigos/pronomes PT-BR que, imediatamente antes de um proper-noun single-token,
+# sinalizam referencia a PESSOA ("o Cleiton", "a Wanderleia"). `_fold` ja remove
+# acento/caixa. "com" e cobertos a parte (preposicao de companhia).
+_NER_PERSON_LEADING = frozenset({"o", "a", "os", "as", "com"})
+
+# Heads de TOPONIMO/LOGRADOURO: primeira palavra (foldada) de um span LOC/GPE
+# multi-token que o caracteriza como LUGAR e nao pessoa. CRITICO p/ "Sao Paulo"
+# (o `sm` rotula LOC, mas "Paulo" esta em `_BR_TOP_NAMES` -> sem este gate o
+# Padrao 3 redigiria "Paulo" como pessoa). Distingue "Sao Paulo"/"Belo Horizonte"
+# (lugar -> protege) de "Marina Alves"/"Ana Paula" (pessoa -> NAO protege, mesmo
+# que o `sm` rotule LOC). So protegemos spans LOC/GPE multi-token cuja cabeca
+# esta aqui OU que nao tenham NENHUM token na lista de nomes (toponimo "puro").
+_TOPONYM_HEADS = frozenset(
+    _fold(h)
+    for h in (
+        # Cabecas geograficas
+        "Sao",
+        "Santa",
+        "Santo",
+        "Rio",
+        "Belo",
+        "Porto",
+        "Nova",
+        "Novo",
+        "Serra",
+        "Campo",
+        "Campos",
+        "Vila",
+        "Monte",
+        "Lago",
+        "Lagoa",
+        "Praia",
+        "Ponta",
+        "Foz",
+        "Oriente",
+        "Norte",
+        "Sul",
+        "Leste",
+        "Oeste",
+        # Logradouros
+        "Rua",
+        "Av",
+        "Avenida",
+        "Travessa",
+        "Alameda",
+        "Praca",
+        "Largo",
+        "Rodovia",
+        "Estrada",
+        "Viela",
+        "Ladeira",
+    )
+)
+
+
+def _load_ner() -> object | None:
+    """Carrega (uma vez) o pipeline spaCy de NER pt-BR; None se indisponivel.
+
+    Singleton lazy: cacheia o resultado no modulo (`_ner_nlp`). Em ImportError
+    (spaCy ausente) ou OSError (modelo `pt_core_news_sm` nao instalado), loga UMA
+    vez via WARNING e cacheia None -- o shield degrada para so as heuristicas e o
+    worker continua funcionando. Qualquer outra excecao inesperada tambem cai no
+    caminho gracioso (defense-in-depth: NER nunca derruba o shield).
+    """
+    global _ner_nlp, _NER_LOAD_LOGGED
+    if _ner_nlp is not _NER_UNSET:
+        return _ner_nlp  # ja resolvido (objeto nlp ou None)
+
+    try:
+        import spacy  # import tardio: so paga o custo se o NER for usado
+
+        _ner_nlp = spacy.load(
+            "pt_core_news_sm",
+            # So tok2vec + ner. O resto e peso morto para deteccao de entidade.
+            disable=["parser", "tagger", "lemmatizer", "attribute_ruler", "morphologizer"],
+        )
+    except Exception as exc:  # gracioso de proposito (ADR 0012): NER nunca derruba o shield
+        if not _NER_LOAD_LOGGED:
+            logger.warning(
+                "PII Shield: NER backstop indisponivel (%s: %s); seguindo so com "
+                "heuristicas deterministicas.",
+                type(exc).__name__,
+                exc,
+            )
+            _NER_LOAD_LOGGED = True
+        _ner_nlp = None
+    return _ner_nlp
+
+
+def _leading_token(text: str, start: int) -> str | None:
+    """Ultimo token alfabetico ANTES da posicao `start` (foldado), ou None.
+
+    Usado para o sinal "artigo + proper-noun = pessoa": olha a palavra imediata
+    a esquerda do span (ignorando espacos/pontuacao simples) e devolve `_fold`.
+    """
+    prefix = text[:start]
+    matches = list(_WORD_RE.finditer(prefix))
+    if not matches:
+        return None
+    # So conta como "imediatamente antes" se houver apenas espacos/pontuacao
+    # leve entre o token anterior e o span (evita casar palavra distante).
+    gap = prefix[matches[-1].end() :]
+    if re.search(r"[A-Za-zÁÉÍÓÚÂÊÔÀÃÕÇáéíóúâêôàãõç0-9]", gap):
+        return None
+    return _fold(matches[-1].group(0))
+
+
+def _is_toponym_span(value: str) -> bool:
+    """True se um span LOC/GPE multi-token deve PROTEGER (e lugar, nao pessoa).
+
+    Protege quando a CABECA do span e um head de toponimo/logradouro ("Sao",
+    "Belo", "Rio", "Rua"...) OU quando NENHUM token do span esta em `_BR_TOP_NAMES`
+    (toponimo "puro", sem colisao de nome). NAO protege "Marina Alves"/"Ana Paula"
+    (cabeca e nome, ha token-nome) -- assim o `sm` rotulando essas como LOC nao
+    deixa o nome vazar (o contrato deterministico vence).
+    """
+    tokens = _tokenize(value)
+    if not tokens:
+        return False
+    head = _fold(tokens[0])
+    if head in _TOPONYM_HEADS:
+        return True
+    return not any(_fold(tok) in _BR_TOP_NAMES for tok in tokens)
+
+
+def _ner_spans(text: str) -> tuple[list[tuple[int, int, str]], list[tuple[int, int]]]:
+    """Roda o NER sobre `text` e retorna (candidatos_pessoa, spans_protegidos).
+
+    - candidatos_pessoa: `(start, end, value)` a redigir como PERSON_NAME. Inclui:
+        (a) todas as entidades `PER`;
+        (b) entidades single-token LOC/GPE/ORG/MISC Title-Case precedidas por
+            artigo/pronome PT-BR ("o Cleiton", "a Wanderleia", "com Klaus") --
+            o `sm` mislabela muito nome fora-da-lista como ORG/LOC; este resgate
+            recupera o recall sem deixar "Sao Paulo" virar pessoa (multi-token).
+    - spans_protegidos: `(start, end)` de LOC/GPE que sao TOPONIMO/LOGRADOURO real
+        (ver `_is_toponym_span`) -- ranges onde a heuristica Title-Case nao deve
+        redigir ("Sao Paulo", "Rio de Janeiro", "Belo Horizonte", logradouros).
+        ORG NAO entra como protegido (termos de negocio EN ja estao na negative
+        list, e ORG e onde o `sm` mais mislabela pessoa).
+
+    O contrato deterministico vence: spans que contem nome conhecido ou nao sao
+    toponimo nao protegem nada -- recall de PERSON_NAME > precisao (vazamento e
+    irreversivel; over-redacao so piora UX).
+
+    Se o NER estiver indisponivel, retorna `([], [])` -- o caller cai 100% nas
+    heuristicas. Qualquer falha de inferencia tambem degrada para `([], [])`.
+    """
+    nlp = _load_ner()
+    if nlp is None:
+        return [], []
+    try:
+        doc = nlp(text)
+    except Exception as exc:  # inferencia nunca derruba o shield (defense-in-depth)
+        logger.warning("PII Shield: falha na inferencia NER (%s); ignorando.", type(exc).__name__)
+        return [], []
+
+    persons: list[tuple[int, int, str]] = []
+    protected: list[tuple[int, int]] = []
+    for ent in doc.ents:
+        span = (ent.start_char, ent.end_char)
+        if ent.label_ in _NER_PERSON_LABELS:
+            persons.append((ent.start_char, ent.end_char, ent.text))
+            continue
+
+        if ent.label_ not in _NER_PROTECTED_LABELS:
+            continue  # MISC e ruido: nem redige nem protege
+
+        # Resgate de pessoa mislabelada como ORG/LOC: single-token, Title-Case,
+        # precedido de artigo/pronome PT-BR. Distingue "o Cleiton" (pessoa) de
+        # "Pelo Toledo"/"Nota Fiscal" (preposicao/substantivo antes) e de
+        # "Sao Paulo" (multi-token -> nunca resgatado, cai no toponym check).
+        single_token = " " not in ent.text and _NAME_TOKEN_RE.fullmatch(ent.text) is not None
+        if single_token:
+            leading = _leading_token(text, ent.start_char)
+            if leading in _NER_PERSON_LEADING:
+                persons.append((ent.start_char, ent.end_char, ent.text))
+                continue
+
+        # Protege APENAS LOC/GPE que e toponimo/logradouro real. ORG nunca protege.
+        if ent.label_ in ("LOC", "GPE") and _is_toponym_span(ent.text):
+            protected.append(span)
+
+    return persons, protected
 
 
 # --------------------------------------------------------------------------- #
@@ -729,18 +1015,35 @@ def _redact_person_names(
 ) -> tuple[str, list[Redaction]]:
     """Detecta e redige nomes proprios sobre `text` (ja parcialmente redigido).
 
-    Aplica em ordem tres heuristicas, sempre pulando ranges ja cobertos:
+    Ordem das passadas (cada uma pula ranges ja cobertos / protegidos):
 
+    0. NER (spaCy): entidades `PER` viram claims de PERSON_NAME (com prioridade,
+       claimadas primeiro). Entidades `LOC`/`GPE`/`ORG` viram spans PROTEGIDOS --
+       as heuristicas Title-Case NAO redigem dentro deles (assim "Sao Paulo",
+       "Rio de Janeiro", logradouros e orgs param de virar [[PERSON_NAME]]).
+       Se o NER estiver indisponivel, esta passada e no-op e tudo cai nas
+       heuristicas (degradacao graciosa -- ADR 0012).
     1. Prefixo + Title Case (`Dr. Carlos Silva`).
     2. 2-4 palavras Title Case consecutivas (`Marina Alves`).
     3. Primeiro nome BR isolado contra a lista hardcoded (`Lucas`, `Marina`).
 
     A negative list filtra produtos/empresas/tecnologias antes de gerar o
-    placeholder. Cada ocorrencia recebe um numero novo (sem dedup -- decisao
-    explicita do escopo).
+    placeholder -- aplicada TAMBEM sobre as entidades PER do NER (spaCy as vezes
+    marca produto/termo de negocio como PER). Cada ocorrencia recebe um numero
+    novo (sem dedup -- decisao explicita do escopo).
+
+    O determinismo do contrato duro (regex + DV/Luhn + lista) permanece: o NER
+    so ADICIONA recall de PERSON_NAME e SUPRIME falso-positivo de toponimo/org.
     """
     person_matches: list[_Match] = []
     covered: list[tuple[int, int]] = []  # ranges (start, end) ja consumidos
+
+    # Passada 0: NER. PER -> candidatos; LOC/GPE/ORG -> protegidos.
+    ner_persons, protected_spans = _ner_spans(text)
+
+    def _is_protected(start: int, end: int) -> bool:
+        """True se [start,end) sobrepoe um span LOC/GPE/ORG (toponimo/org do NER)."""
+        return any(not (end <= ps or start >= pe) for ps, pe in protected_spans)
 
     def _is_covered(start: int, end: int) -> bool:
         return any(not (end <= cs or start >= ce) for cs, ce in covered)
@@ -749,17 +1052,31 @@ def _redact_person_names(
         person_matches.append(_Match(type=PiiType.PERSON_NAME, start=start, end=end, value=value))
         covered.append((start, end))
 
-    # Padrao 1: prefixo
+    # Passada 0: entidades PER do NER (prioridade -- claimadas antes das heuristicas).
+    # Aplica negative list + checagem de que o span ainda contem texto real (o
+    # texto ja foi parcialmente redigido; uma entidade que caiu sobre um
+    # placeholder e ignorada para nao redigir o placeholder de novo).
+    for start, end, value in ner_persons:
+        if _is_covered(start, end):
+            continue
+        if "[[" in value:  # entidade sobre placeholder ja redigido -- ignora
+            continue
+        if _is_negative(value):
+            continue
+        _claim(start, end, value)
+
+    # Padrao 1: prefixo. Pula matches dentro de span protegido (LOC/GPE/ORG).
     for m in _NAME_PREFIX_RE.finditer(text):
-        if _is_covered(m.start(), m.end()):
+        if _is_covered(m.start(), m.end()) or _is_protected(m.start(), m.end()):
             continue
         if _is_negative(m.group(0)):
             continue
         _claim(m.start(), m.end(), m.group(0))
 
-    # Padrao 2: sequencia Title Case (2-4 palavras)
+    # Padrao 2: sequencia Title Case (2-4 palavras). Pula spans protegidos --
+    # e aqui que "Sao Paulo"/"Rio de Janeiro"/logradouros deixam de virar nome.
     for m in _NAME_SEQUENCE_RE.finditer(text):
-        if _is_covered(m.start(), m.end()):
+        if _is_covered(m.start(), m.end()) or _is_protected(m.start(), m.end()):
             continue
         if _is_negative(m.group(0)):
             continue
@@ -770,7 +1087,7 @@ def _redact_person_names(
     # comuns do PT-BR ("rosa", "clara", "vera" — todos no _BR_TOP_NAMES como
     # nomes femininos mas tambem palavras genericas em minuscula).
     for m in _NAME_TOKEN_RE.finditer(text):
-        if _is_covered(m.start(), m.end()):
+        if _is_covered(m.start(), m.end()) or _is_protected(m.start(), m.end()):
             continue
         token = m.group(0)
         if _fold(token) not in _BR_TOP_NAMES:
