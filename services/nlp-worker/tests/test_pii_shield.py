@@ -342,3 +342,158 @@ def test_validate_card_rejects_wrong_length():
 def test_luhn_ok():
     assert pii_shield._luhn_ok("4111111111111111") is True
     assert pii_shield._luhn_ok("1234567890123456") is False
+
+
+# --------------------------------------------------------------------------- #
+# AUDITORIA 2026-06-16 (ADR 0012) — bypass de PII estruturada por formato.
+# Regressao dos casos 1,2,3,7,8,10 (PHONE), 11 (CNPJ), 12,13,14 (CPF) e 15
+# (cartao Diners) do relatorio `.challenge-build/pii-leak-hunt-report.md`.
+# Em todos: o numero ORIGINAL nao pode sobrar em `redacted_text`.
+# --------------------------------------------------------------------------- #
+
+
+def test_phone_isolated_ninth_digit_with_parens_redacted():
+    """Caso 1: 9o digito do celular ditado solto, com DDD em parenteses."""
+    text = "meu cel e (11) 9 8765-4321 anota"
+    result = pii_shield.redact(text)
+    assert "(11) 9 8765-4321" not in result.redacted_text
+    assert any(r.type == PiiType.PHONE for r in result.redactions)
+
+
+def test_phone_isolated_ninth_digit_no_parens_redacted():
+    """Caso 2: 9o digito solto, sem parenteses, separado por espaco."""
+    text = "cliente fone 11 9 8765 4321 anotado"
+    result = pii_shield.redact(text)
+    assert "11 9 8765 4321" not in result.redacted_text
+    assert any(r.type == PiiType.PHONE for r in result.redactions)
+
+
+def test_phone_international_br_with_isolated_nine_redacted():
+    """Caso 3: +55 (11) 9 9988-7766 — internacional BR com 9 solto."""
+    text = "+55 (11) 9 9988-7766 completo"
+    result = pii_shield.redact(text)
+    assert "+55 (11) 9 9988-7766" not in result.redacted_text
+    assert any(r.type == PiiType.PHONE for r in result.redactions)
+
+
+def test_phone_space_inside_parens_redacted():
+    """Caso 7: espacos internos no parentese — ( 11 ) 98765-4321."""
+    text = "( 11 ) 98765-4321 espaco no parentese"
+    result = pii_shield.redact(text)
+    assert "( 11 ) 98765-4321" not in result.redacted_text
+    assert any(r.type == PiiType.PHONE for r in result.redactions)
+
+
+def test_phone_ddd_with_leading_zero_redacted():
+    """Caso 8: DDD antigo com zero (3 digitos) — (011) 98765-4321."""
+    text = "fone (011) 98765-4321 antigo"
+    result = pii_shield.redact(text)
+    assert "(011) 98765-4321" not in result.redacted_text
+    assert any(r.type == PiiType.PHONE for r in result.redactions)
+
+
+def test_phone_slash_separator_redacted():
+    """Caso 10: separador barra — 11/98765/4321."""
+    text = "tel 11/98765/4321 barra"
+    result = pii_shield.redact(text)
+    assert "11/98765/4321" not in result.redacted_text
+    assert any(r.type == PiiType.PHONE for r in result.redactions)
+
+
+def test_phone_canonical_format_still_redacted():
+    """Anti-regressao: o formato canonico (11) 98888-7777 continua redigido."""
+    text = "no (11) 98888-7777 ok"
+    result = pii_shield.redact(text)
+    assert "(11) 98888-7777" not in result.redacted_text
+    assert any(r.type == PiiType.PHONE for r in result.redactions)
+
+
+def test_cnpj_dots_only_separator_redacted():
+    """Caso 11: CNPJ com PONTO entre todos os grupos — 11.222.333.0001.81."""
+    text = "cnpj 11.222.333.0001.81 so pontos"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == "cnpj [[CNPJ_1]] so pontos"
+    assert "11.222.333.0001.81" not in result.redacted_text
+    assert any(r.type == PiiType.CNPJ for r in result.redactions)
+
+
+def test_cpf_mixed_dot_and_space_separators_redacted():
+    """Caso 12: CPF misto pontos + espaco antes do DV — 111.444.777 35."""
+    text = "cpf 111.444.777 35 misto"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == "cpf [[CPF_1]] misto"
+    assert "111.444.777 35" not in result.redacted_text
+    assert any(r.type == PiiType.CPF for r in result.redactions)
+
+
+def test_cpf_slash_separators_redacted():
+    """Caso 13: CPF com barra — 111/444/777-35."""
+    text = "cpf com barra 111/444/777-35 estranho"
+    result = pii_shield.redact(text)
+    assert "111/444/777-35" not in result.redacted_text
+    assert any(r.type == PiiType.CPF for r in result.redactions)
+
+
+def test_cpf_hyphen_only_separators_redacted():
+    """Caso 14: CPF so com hifen entre grupos — 111-444-777-35."""
+    text = "cpf 111-444-777-35 so hifen"
+    result = pii_shield.redact(text)
+    assert "111-444-777-35" not in result.redacted_text
+    assert any(r.type == PiiType.CPF for r in result.redactions)
+
+
+def test_diners_14_digit_card_redacted():
+    """Caso 15: cartao Diners 14 digitos (4-4-4-2), Luhn valido — 3056 9309 0259 04."""
+    text = "diners 3056 9309 0259 04 cartao"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == "diners [[CREDIT_CARD_1]] cartao"
+    assert "3056 9309 0259 04" not in result.redacted_text
+    assert any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
+
+
+def test_diners_14_digit_card_raw_redacted():
+    """Diners 14 digitos sem separadores tambem passa (Luhn gate)."""
+    text = "30569309025904"
+    result = pii_shield.redact(text)
+    assert "30569309025904" not in result.redacted_text
+    assert any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
+
+
+# --------------------------------------------------------------------------- #
+# Anti-falso-positivo: os NOVOS patterns tolerantes (separador arbitrario)
+# so redigem com DV/Luhn valido. Numeros invalidos NAO sao redigidos.
+# (Os mesmos numeros invalidos da secao 2.4 do relatorio, mas em formato
+# nao-canonico — que e exatamente o que os patterns tolerantes governam.)
+# --------------------------------------------------------------------------- #
+
+
+def test_invalid_cpf_tolerant_separators_not_redacted():
+    """DV bloqueia: CPF invalido com separadores arbitrarios nao e redigido."""
+    for raw in ("100 000 000 50", "123 456 789 00", "999-888-777-66", "100/000/000-50"):
+        text = f"codigo {raw} lote"
+        result = pii_shield.redact(text)
+        assert raw in result.redacted_text, f"OVER-REDIGIDO (DV invalido deveria passar): {raw}"
+        assert not any(r.type == PiiType.CPF for r in result.redactions)
+
+
+def test_invalid_cnpj_dots_not_redacted():
+    """DV bloqueia: CNPJ invalido so-pontos nao e redigido."""
+    text = "registro 12.345.678.0001.00 talvez"
+    result = pii_shield.redact(text)
+    assert "12.345.678.0001.00" in result.redacted_text
+    assert not any(r.type == PiiType.CNPJ for r in result.redactions)
+
+
+def test_16_digit_tracking_code_not_treated_as_card():
+    """Anti-FP: codigo de pedido/rastreio de 16 digitos SEM Luhn valido nao vira cartao."""
+    text = "codigo de rastreio 7531594562130864 do pedido"
+    result = pii_shield.redact(text)
+    assert "7531594562130864" in result.redacted_text
+    assert not any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
+
+
+def test_14_digit_non_luhn_not_treated_as_card():
+    """Anti-FP: 14 digitos (mesmo grouping do Diners) sem Luhn nao vira cartao."""
+    text = "pedido 3056 9309 0259 09 invalido"  # ultimo digito quebra o Luhn
+    result = pii_shield.redact(text)
+    assert not any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
