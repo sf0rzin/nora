@@ -67,7 +67,7 @@
       "endpoints": [
         "https://github.com/sys0xFF/nora/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUzMTRGRjNGNkEyNjgyNjYKUldSbWdpWnFQLzhVNDVQUmVydUQ3aWYzNFN6cER4eDJhOXAzd3E5MUNYMDdXNEk5cE8yMjh1UzMK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ4OTlCQzQyRUFENTlCMTYKUldRV205WHFRcnlaMkU1d1N0V3BqQk5jTzYwMTdCR3NYT3hibklmY1puZzdnakFONEVOWTI3WXMK",
       "windows": {
         "installMode": "passive"
       }
