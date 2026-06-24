@@ -48,7 +48,7 @@ jobs:
     timeout-minutes: 15
     environment: dev # federated credential github-environment-dev (mesmo do deploy)
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Guard — confirmação explícita
         run: |
