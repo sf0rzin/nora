@@ -11,10 +11,26 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
 
 from ..models import PiiRedactionV1, PiiType, Redaction
+
+
+def _fold(value: str) -> str:
+    """Normaliza para comparacao insensivel a ACENTO e caixa (NFKD + casefold).
+
+    CRITICO p/ PERSON_NAME: a lista `_BR_TOP_NAMES` e escrita SEM acento, mas
+    transcricoes reais trazem nomes acentuados (Patrícia, Antônio, André, João).
+    Sem o accent-fold, "Patrícia".casefold() ("patrícia") nunca casava com
+    "Patricia".casefold() ("patricia") da lista -> o nome vazava cru pro LLM.
+    Bug real encontrado em producao (jun/2026). ADR 0012.
+    """
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", value) if not unicodedata.combining(c)
+    ).casefold()
+
 
 # --------------------------------------------------------------------------- #
 # Padroes deterministicos: e-mail, CPF, CNPJ, cartao, telefone
@@ -28,7 +44,24 @@ _EMAIL_RE = re.compile(r"(?<![\w@])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{
 # Telefones BR: com DDD obrigatorio (8 ou 9 digitos apos DDD). Conservador
 # de proposito: telefone sem DDD (98765-4321) e pequeno demais pra distinguir
 # de codigos/protocolos numericos sem falso-positivo massivo.
-_PHONE_RE = re.compile(r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?[\s.\-]?\d{4,5}[\s.\-]?\d{4}(?!\d)")
+#
+# Tolerancias (auditoria 2026-06-16, ADR 0012) -- todas SEM relaxar o
+# requisito de DDD (telefone nao tem DV, entao DDD obrigatorio segura o FP):
+#   - `(?:\+?55[\s.\-]?)?`        prefixo +55 internacional opcional.
+#   - `\(?\s*0?\d{2}\s*\)?`       parenteses com espaco interno ("( 11 )") e
+#                                 DDD com zero antigo de 3 digitos ("(011)").
+#   - `(?:9[\s.\-/]?)?`           9o digito do celular ditado SOLTO entre o DDD
+#                                 e o numero ("(11) 9 8765-4321") -- comum em
+#                                 transcricao speech-to-text.
+#   - `[\s.\-/]`                  separador `/` ("11/98765/4321") alem de espaco/
+#                                 ponto/hifen.
+# DEFERIDO (alto risco de FP sem DV -- ficam para uma fatia futura):
+#   - telefone SEM DDD ("99988-7766", "3003-1234"): pequeno demais p/ distinguir
+#     de codigos/protocolos numericos.
+#   - internacional NAO-BR ("+1 415 555 2671"): generalizar `\+\d{1,3}` explode FP.
+_PHONE_RE = re.compile(
+    r"(?<!\d)(?:\+?55[\s.\-]?)?\(?\s*0?\d{2}\s*\)?[\s.\-/]?(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)"
+)
 
 # CPF mascarado.
 _CPF_RE = re.compile(r"(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)")
@@ -40,6 +73,14 @@ _CPF_PARTIAL_RE = re.compile(r"(?<!\d)\d{8}-\d{2}(?!\d)")
 # CPF com grupos separados por ESPACO: "111 444 777 35" (3-3-3-2). A validacao de
 # DV (apos remover os espacos) evita redigir sequencias numericas aleatorias.
 _CPF_SPACED_RE = re.compile(r"(?<!\d)\d{3}\s\d{3}\s\d{3}\s\d{2}(?!\d)")
+# CPF TOLERANTE a separadores arbitrarios (auditoria 2026-06-16): 11 digitos
+# em grupos 3-3-3-2 com QUALQUER separador da classe `[.\-/\s]` entre cada grupo.
+# Cobre "111.444.777 35" (misto), "111/444/777-35" (barra) e "111-444-777-35"
+# (so hifen) -- formatos que os patterns rigidos acima nao casavam. O DV
+# (`_validate_cpf_separated`) e o gate: regex tolerante so vira redacao se o
+# digito verificador fechar, entao o FP em sequencias numericas e ~zero.
+# Superset dos patterns acima (que ficam por clareza/regressao; overlap-skip dedupe).
+_CPF_SEP_RE = re.compile(r"(?<!\d)\d{3}[.\-/\s]\d{3}[.\-/\s]\d{3}[.\-/\s]\d{2}(?!\d)")
 
 # CNPJ mascarado.
 _CNPJ_RE = re.compile(r"(?<!\d)\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}(?!\d)")
@@ -48,6 +89,10 @@ _CNPJ_RAW_RE = re.compile(r"(?<!\d)\d{14}(?!\d)")
 # CNPJ com grupos separados por ESPACO: "11 222 333 0001 81" (2-3-3-4-2). A
 # validacao de DV (apos remover os espacos) filtra falsos positivos.
 _CNPJ_SPACED_RE = re.compile(r"(?<!\d)\d{2}\s\d{3}\s\d{3}\s\d{4}\s\d{2}(?!\d)")
+# CNPJ com PONTO entre TODOS os grupos: "11.222.333.0001.81" (2.3.3.4.2). Os
+# patterns acima exigem `/` + `-` (mascara canonica) ou espaco; "so pontos" nao
+# casava (auditoria 2026-06-16). DV (`_validate_cnpj_separated`) e o gate.
+_CNPJ_DOTS_RE = re.compile(r"(?<!\d)\d{2}\.\d{3}\.\d{3}\.\d{4}\.\d{2}(?!\d)")
 
 # Cartoes — Amex tem 15 digitos com prefixo 34/37; demais tem 16 com 4x4.
 # Separadores aceitos: espaco, hifen e PONTO ("4111.1111.1111.1111"). A
@@ -55,6 +100,11 @@ _CNPJ_SPACED_RE = re.compile(r"(?<!\d)\d{2}\s\d{3}\s\d{3}\s\d{4}\s\d{2}(?!\d)")
 # o falso-positivo de qualquer sequencia generica de 16 digitos.
 _CARD_AMEX_RE = re.compile(r"(?<!\d)3[47]\d{2}[\s.\-]?\d{6}[\s.\-]?\d{5}(?!\d)")
 _CARD_RE = re.compile(r"(?<!\d)(?:\d{4}[\s.\-]?){3}\d{4}(?!\d)")
+# Diners Club (e algumas UnionPay): 14 digitos em grupos 4-4-4-2
+# ("3056 9309 0259 04"). O _CARD_RE generico so casa 16 digitos (4x4); este
+# cobre o comprimento 14. Luhn (`_validate_card`, agora aceitando len 14) e o
+# gate. A ancora `(?!\d)` impede casar um prefixo de cartao de 16 digitos.
+_CARD_DINERS_RE = re.compile(r"(?<!\d)\d{4}[\s.\-]?\d{4}[\s.\-]?\d{4}[\s.\-]?\d{2}(?!\d)")
 
 
 def _validate_cpf(digits: str) -> bool:
@@ -109,14 +159,15 @@ def _strip_separators(value: str) -> str:
 
 
 def _validate_card(value: str) -> bool:
-    """Valida um candidato a cartao: 15 (Amex) ou 16 digitos + Luhn valido.
+    """Valida um candidato a cartao: 14 (Diners), 15 (Amex) ou 16 digitos + Luhn.
 
     Recebe o match cru (com separadores espaco/ponto/hifen) e normaliza antes do
-    Luhn. Reduz falso-positivo de qualquer sequencia generica de 16 digitos
+    Luhn. Reduz falso-positivo de qualquer sequencia generica de 14-16 digitos
     (codigos de pedido, rastreio, NFE) que nao passa no digito verificador.
+    Comprimento 14 cobre Diners Club e algumas faixas UnionPay (auditoria 2026-06-16).
     """
     digits = _strip_separators(value)
-    if len(digits) not in (15, 16):
+    if len(digits) not in (14, 15, 16):
         return False
     return _luhn_ok(digits)
 
@@ -145,10 +196,13 @@ _BASIC_PATTERNS: list[tuple[PiiType, re.Pattern[str]]] = [
     (PiiType.CPF, _CPF_RE),
     (PiiType.CPF, _CPF_PARTIAL_RE),
     (PiiType.CPF, _CPF_SPACED_RE),  # "111 444 777 35" — exige DV
+    (PiiType.CPF, _CPF_SEP_RE),  # "111.444.777 35" / "111/444/777-35" / "111-444-777-35" — exige DV
     (PiiType.CNPJ, _CNPJ_RE),
     (PiiType.CNPJ, _CNPJ_SPACED_RE),  # "11 222 333 0001 81" — exige DV
+    (PiiType.CNPJ, _CNPJ_DOTS_RE),  # "11.222.333.0001.81" — exige DV
     (PiiType.CREDIT_CARD, _CARD_AMEX_RE),
     (PiiType.CREDIT_CARD, _CARD_RE),
+    (PiiType.CREDIT_CARD, _CARD_DINERS_RE),  # "3056 9309 0259 04" (14 dig) — exige Luhn
     (PiiType.CNPJ, _CNPJ_RAW_RE),  # raw com DV — antes de PHONE pra ganhar prioridade
     (PiiType.CPF, _CPF_RAW_RE),
     (PiiType.PHONE, _PHONE_RE),
@@ -160,9 +214,12 @@ _VALIDATORS: dict[int, callable] = {
     id(_CPF_RAW_RE): _validate_cpf,
     id(_CNPJ_RAW_RE): _validate_cnpj,
     id(_CPF_SPACED_RE): _validate_cpf_separated,
+    id(_CPF_SEP_RE): _validate_cpf_separated,
     id(_CNPJ_SPACED_RE): _validate_cnpj_separated,
+    id(_CNPJ_DOTS_RE): _validate_cnpj_separated,
     id(_CARD_AMEX_RE): _validate_card,
     id(_CARD_RE): _validate_card,
+    id(_CARD_DINERS_RE): _validate_card,
 }
 
 
@@ -176,7 +233,7 @@ _VALIDATORS: dict[int, callable] = {
 # padrao "nome isolado" (sem sobrenome). Sobrenomes nao precisam estar aqui --
 # `_NAME_SEQUENCE_RE` cobre "Marina Alves" via Title Case.
 _BR_TOP_NAMES: frozenset[str] = frozenset(
-    name.casefold()
+    _fold(name)
     for name in (
         # Masculinos
         "Adriano",
@@ -459,7 +516,7 @@ _BR_TOP_NAMES: frozenset[str] = frozenset(
 # Usado como filtro pos-match: se qualquer token do candidato bater aqui
 # (case-insensitive), descarta o match inteiro.
 _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
-    term.casefold()
+    _fold(term)
     for term in (
         # Produtos TOTVS e correlatos
         "TOTVS",
@@ -618,7 +675,7 @@ def _tokenize(value: str) -> list[str]:
 
 def _is_negative(value: str) -> bool:
     """Retorna True se qualquer token do candidato bater na negative list."""
-    return any(tok.casefold() in _PERSON_NAME_NEGATIVE_LIST for tok in _tokenize(value))
+    return any(_fold(tok) in _PERSON_NAME_NEGATIVE_LIST for tok in _tokenize(value))
 
 
 def _apply_basic_patterns(
@@ -716,7 +773,7 @@ def _redact_person_names(
         if _is_covered(m.start(), m.end()):
             continue
         token = m.group(0)
-        if token.casefold() not in _BR_TOP_NAMES:
+        if _fold(token) not in _BR_TOP_NAMES:
             continue
         if _is_negative(token):
             continue

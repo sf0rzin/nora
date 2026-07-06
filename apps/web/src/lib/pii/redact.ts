@@ -18,16 +18,29 @@ type PiiType = "EMAIL" | "PHONE" | "CPF" | "CNPJ" | "CREDIT_CARD";
 // Padrões espelhados 1:1 do worker. Flag `g` obrigatória para matchAll (que clona
 // o regex internamente — seguro reutilizar a instância de módulo entre chamadas).
 const EMAIL_RE = /(?<![\w@])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b/g;
-const PHONE_RE = /(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?[\s.\-]?\d{4,5}[\s.\-]?\d{4}(?!\d)/g;
+// Telefone BR (auditoria 2026-06-16): DDD obrigatório (telefone não tem DV).
+// Tolera prefixo +55, parênteses com espaço interno "( 11 )", DDD com zero "(011)",
+// 9º dígito do celular ditado SOLTO "(11) 9 8765-4321" e separador "/".
+// DEFERIDO: telefone SEM DDD e internacional não-BR (+1) — alto risco de FP sem DV.
+const PHONE_RE =
+  /(?<!\d)(?:\+?55[\s.\-]?)?\(?\s*0?\d{2}\s*\)?[\s.\-/]?(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)/g;
 const CPF_RE = /(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)/g;
 const CPF_PARTIAL_RE = /(?<!\d)\d{8}-\d{2}(?!\d)/g;
 const CPF_SPACED_RE = /(?<!\d)\d{3}\s\d{3}\s\d{3}\s\d{2}(?!\d)/g;
+// CPF tolerante a separador arbitrário (3-3-3-2 com [.\-/\s] entre cada grupo):
+// "111.444.777 35", "111/444/777-35", "111-444-777-35". DV é o gate.
+const CPF_SEP_RE = /(?<!\d)\d{3}[.\-/\s]\d{3}[.\-/\s]\d{3}[.\-/\s]\d{2}(?!\d)/g;
 const CNPJ_RE = /(?<!\d)\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}(?!\d)/g;
 const CNPJ_SPACED_RE = /(?<!\d)\d{2}\s\d{3}\s\d{3}\s\d{4}\s\d{2}(?!\d)/g;
+// CNPJ com ponto entre todos os grupos (2.3.3.4.2): "11.222.333.0001.81". DV é o gate.
+const CNPJ_DOTS_RE = /(?<!\d)\d{2}\.\d{3}\.\d{3}\.\d{4}\.\d{2}(?!\d)/g;
 const CNPJ_RAW_RE = /(?<!\d)\d{14}(?!\d)/g;
 const CPF_RAW_RE = /(?<!\d)\d{11}(?!\d)/g;
 const CARD_AMEX_RE = /(?<!\d)3[47]\d{2}[\s.\-]?\d{6}[\s.\-]?\d{5}(?!\d)/g;
 const CARD_RE = /(?<!\d)(?:\d{4}[\s.\-]?){3}\d{4}(?!\d)/g;
+// Diners Club (e algumas UnionPay): 14 dígitos em grupos 4-4-4-2
+// "3056 9309 0259 04". Luhn (validateCard, agora aceitando len 14) é o gate.
+const CARD_DINERS_RE = /(?<!\d)\d{4}[\s.\-]?\d{4}[\s.\-]?\d{4}[\s.\-]?\d{2}(?!\d)/g;
 
 function stripSeparators(value: string): string {
   return value.replace(/\D/g, "");
@@ -81,10 +94,10 @@ function luhnOk(digits: string): boolean {
   return total % 10 === 0;
 }
 
-/** Candidato a cartão: 15 (Amex) ou 16 dígitos + Luhn válido (após normalizar). */
+/** Candidato a cartão: 14 (Diners), 15 (Amex) ou 16 dígitos + Luhn válido. */
 function validateCard(value: string): boolean {
   const digits = stripSeparators(value);
-  return (digits.length === 15 || digits.length === 16) && luhnOk(digits);
+  return (digits.length === 14 || digits.length === 15 || digits.length === 16) && luhnOk(digits);
 }
 
 // Ordem importa (igual ao worker): mascarados/cartões primeiro, depois raw com DV,
@@ -95,10 +108,13 @@ const PATTERNS: Array<{ type: PiiType; re: RegExp; validate?: (raw: string) => b
   { type: "CPF", re: CPF_RE },
   { type: "CPF", re: CPF_PARTIAL_RE },
   { type: "CPF", re: CPF_SPACED_RE, validate: (v) => validateCpf(stripSeparators(v)) },
+  { type: "CPF", re: CPF_SEP_RE, validate: (v) => validateCpf(stripSeparators(v)) },
   { type: "CNPJ", re: CNPJ_RE },
   { type: "CNPJ", re: CNPJ_SPACED_RE, validate: (v) => validateCnpj(stripSeparators(v)) },
+  { type: "CNPJ", re: CNPJ_DOTS_RE, validate: (v) => validateCnpj(stripSeparators(v)) },
   { type: "CREDIT_CARD", re: CARD_AMEX_RE, validate: validateCard },
   { type: "CREDIT_CARD", re: CARD_RE, validate: validateCard },
+  { type: "CREDIT_CARD", re: CARD_DINERS_RE, validate: validateCard },
   { type: "CNPJ", re: CNPJ_RAW_RE, validate: validateCnpj },
   { type: "CPF", re: CPF_RAW_RE, validate: validateCpf },
   { type: "PHONE", re: PHONE_RE },
