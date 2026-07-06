@@ -57,9 +57,9 @@ def test_redacts_accented_first_name_regression():
         text = f"A {name} ficou de enviar o contrato"
         result = pii_shield.redact(text)
         assert name not in result.redacted_text, f"VAZOU nome acentuado: {name}"
-        assert any(
-            r.type == PiiType.PERSON_NAME for r in result.redactions
-        ), f"{name} nao gerou redacao PERSON_NAME"
+        assert any(r.type == PiiType.PERSON_NAME for r in result.redactions), (
+            f"{name} nao gerou redacao PERSON_NAME"
+        )
 
 
 def test_accent_fold_does_not_break_negative_list():
