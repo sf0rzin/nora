@@ -7,12 +7,12 @@
 
 <p align="center">
   <strong>Negotiation Observability &amp; Revenue Assistant</strong><br>
-  Plataforma SaaS de inteligência conversacional para reuniões.
+  Conversational-intelligence SaaS platform for meetings.
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-15171a.svg"></a>
-  <a href="#estado-atual"><img alt="Status: Em produção" src="https://img.shields.io/badge/Status-Em_produ%C3%A7%C3%A3o-2e7d32.svg"></a>
+  <a href="#current-state"><img alt="Status: In production" src="https://img.shields.io/badge/Status-In_production-2e7d32.svg"></a>
   <img alt="Java 21" src="https://img.shields.io/badge/Java-21-007396.svg">
   <img alt="Spring Boot 3.3" src="https://img.shields.io/badge/Spring_Boot-3.3-6db33f.svg">
   <img alt="Next.js 14" src="https://img.shields.io/badge/Next.js-14-000000.svg">
@@ -21,118 +21,118 @@
 
 ---
 
-NORA transforma transcrições de reuniões em **resumos, decisões, tarefas, riscos e
-oportunidades**, usando o **contexto da empresa cliente** (produtos, ICP, playbook,
-concorrentes). É construída como **produto comercial real**, atendendo também à parceria
-**FIAP Challenge 2026 × TOTVS**.
+NORA turns meeting transcripts into **summaries, decisions, tasks, risks and
+opportunities**, using the **client company's context** (products, ICP, playbook,
+competitors). It is built as a **real commercial product**, also serving the
+**FIAP Challenge 2026 × TOTVS** partnership.
 
-## Estado atual
+## Current state
 
-NORA está **em produção em Azure** (via Bicep IaC), com a vertical Web + API + Worker NLP
-funcional. O detalhamento por sub-fase e o histórico de entregas vivem no
-[roadmap](docs/product/roadmap.md); o status por user story, no
+NORA is **in production on Azure** (via Bicep IaC), with the Web + API + NLP Worker
+vertical functional. The per-sub-phase breakdown and the delivery history live in the
+[roadmap](docs/product/roadmap.md); the per-user-story status, in the
 [backlog](docs/product/backlog.md).
 
 ```
-Aplicação:  https://nora.systems
+Application:  https://nora.systems
 API:        https://api.nora.systems
 Health:     https://api.nora.systems/actuator/health
 ```
 
-O app **Core** é **chat-first**: o usuário conversa com a NORA sobre reuniões, action
-items e projetos. O chat tem **resposta em streaming** e **busca semântica (RAG) por
-embeddings** sobre as próprias reuniões, com provider de LLM e de embeddings agnóstico
-(ver [ADR 0004](docs/adr/0004-llm-provider-strategy.md)) e chaves 100% server-side num
-BFF. Além do chat, há inbox cronológico, detalhe da reunião (resumo, decisões, action
-items, riscos e oportunidades), Productivity Score e Customer Confidence.
+The **Core** app is **chat-first**: the user talks to NORA about meetings, action
+items and projects. The chat has **streaming responses** and **semantic search (RAG) via
+embeddings** over the meetings themselves, with a provider-agnostic LLM and embeddings
+provider (see [ADR 0004](docs/adr/0004-llm-provider-strategy.md)) and 100% server-side keys in a
+BFF. Besides the chat, there is a chronological inbox, the meeting detail (summary, decisions, action
+items, risks and opportunities), a Productivity Score and Customer Confidence.
 
-NORA conta ainda com um **console de operador (control plane)** para catálogo de
-modelos e telemetria de IA — ver [ADRs 0022–0025](docs/adr/README.md). As transcrições
-reais da TOTVS são processadas por um pipeline de Data Science em
+NORA also has an **operator console (control plane)** for the model
+catalog and AI telemetry — see [ADRs 0022–0025](docs/adr/README.md). The real
+TOTVS transcripts are processed by a Data Science pipeline in
 [`notebooks/`](notebooks/).
 
-## Documentação
+## Documentation
 
-A documentação canônica vive em `docs/`:
+The canonical documentation lives in `docs/`:
 
 ```
 docs/
-├── product/       # Visão, backlog (status real), roadmap, glossário
-├── engineering/   # Arquitetura, padrões, modelo de dados (Postgres + Oracle), contratos
-├── operations/    # Runbooks de deploy e operação (Azure, RLS cutover, control plane)
-├── challenge/     # Material acadêmico FIAP Challenge 2026
-├── api/           # Contratos HTTP + schemas de saída do LLM
-└── adr/           # Decisões arquiteturais (índice e contagem em adr/README.md)
+├── product/       # Vision, backlog (real status), roadmap, glossary
+├── engineering/   # Architecture, standards, data model (Postgres + Oracle), contracts
+├── operations/    # Deploy and operations runbooks (Azure, RLS cutover, control plane)
+├── challenge/     # FIAP Challenge 2026 academic material
+├── api/           # HTTP contracts + LLM output schemas
+└── adr/           # Architectural decisions (index and count in adr/README.md)
 ```
 
-**Ordem de leitura sugerida:**
+**Suggested reading order:**
 
-1. [Visão do produto](docs/product/vision.md) — o que NORA é e suas fronteiras
-2. [Roadmap](docs/product/roadmap.md) — histórico de entregas e próximas sub-fases
-3. [Arquitetura](docs/engineering/architecture.md) — fluxos end-to-end e racional da stack
-4. [Índice de ADRs](docs/adr/README.md) — decisões arquiteturais (fonte de verdade)
-5. [Glossário](docs/product/glossary.md) — termos canônicos da NORA
+1. [Product vision](docs/product/vision.md) — what NORA is and its boundaries
+2. [Roadmap](docs/product/roadmap.md) — delivery history and upcoming sub-phases
+3. [Architecture](docs/engineering/architecture.md) — end-to-end flows and stack rationale
+4. [ADR index](docs/adr/README.md) — architectural decisions (source of truth)
+5. [Glossary](docs/product/glossary.md) — NORA's canonical terms
 
-**Para operadores:** [runbook de deploy Azure](docs/operations/azure-deploy.md) ·
-[gaps de prontidão para produção](docs/operations/production-readiness-gaps.md).
+**For operators:** [Azure deploy runbook](docs/operations/azure-deploy.md) ·
+[production-readiness gaps](docs/operations/production-readiness-gaps.md).
 
-**Para agentes de IA (Claude Code, Copilot):** [`CLAUDE.md`](CLAUDE.md) ·
+**For AI agents (Claude Code, Copilot):** [`CLAUDE.md`](CLAUDE.md) ·
 [`.github/copilot-instructions.md`](.github/copilot-instructions.md).
 
-## Arquitetura
+## Architecture
 
 ```
                  ┌──────────────┐       ┌──────────────┐
-   Navegador ──▶ │   Web (BFF)  │ ────▶ │     API      │ ──▶ Postgres + pgvector
+   Browser   ──▶ │   Web (BFF)  │ ────▶ │     API      │ ──▶ Postgres + pgvector
                  │  Next.js 14  │       │ Spring Boot  │
                  └──────────────┘       └──────┬───────┘
-                                               │ HTTP interno
+                                               │ internal HTTP
                                         ┌──────▼───────┐
-                                        │  NLP Worker  │ ──▶ Provider LLM/embeddings
-                                        │   FastAPI    │     (PII Shield no último gate)
+                                        │  NLP Worker  │ ──▶ LLM/embeddings provider
+                                        │   FastAPI    │     (PII Shield at the last gate)
                                         └──────────────┘
 ```
 
-- **Web (BFF):** mantém as chaves server-side; sessão via cookies httpOnly.
-- **API:** DDD (domain / application / infrastructure / api), multi-tenancy por
-  `tenant_id`, IAM estilo AWS (Root + Users + Groups + Policies).
-- **Worker:** redige PII antes de qualquer chamada ao LLM e valida a saída com
-  JSON Schema strict + Pydantic.
+- **Web (BFF):** keeps the keys server-side; session via httpOnly cookies.
+- **API:** DDD (domain / application / infrastructure / api), multi-tenancy by
+  `tenant_id`, AWS-style IAM (Root + Users + Groups + Policies).
+- **Worker:** redacts PII before any LLM call and validates the output with
+  strict JSON Schema + Pydantic.
 
-## Estrutura do monorepo
+## Monorepo structure
 
 ```
-apps/web                   # Next.js 14 + TypeScript + Tailwind sem shadcn (ADR 0013) — app Core chat-first
-apps/admin                 # Console de operador (control plane): catálogo de modelos + telemetria
-apps/desktop               # Tauri 2 + Rust + sidecar Python (captura de áudio via Azure Speech)
+apps/web                   # Next.js 14 + TypeScript + Tailwind without shadcn (ADR 0013) — chat-first Core app
+apps/admin                 # Operator console (control plane): model catalog + telemetry
+apps/desktop               # Tauri 2 + Rust + Python sidecar (audio capture via Azure Speech)
 services/api               # Spring Boot 3 + Java 21 + DDD + Postgres + Flyway
-services/nlp-worker        # FastAPI + Pydantic + PII Shield + cliente de LLM/embeddings agnóstico
-packages/nlp-baseline      # TF-IDF interpretável em PT-BR (ADR 0010)
-packages/shared-contracts  # Contratos compartilhados (códigos de erro, tipos de PII, status)
-infra/bicep                # Infra como código (Azure Container Apps, Postgres, Key Vault, Speech)
-data/                      # Datasets sintéticos e amostras para testes
-notebooks/                 # Pipeline de Data Science das transcrições TOTVS (parser + TF-IDF + EDA)
-docs/                      # Documentação canônica (ver acima)
-.github/                   # Workflows de CI/CD e templates
+services/nlp-worker        # FastAPI + Pydantic + PII Shield + provider-agnostic LLM/embeddings client
+packages/nlp-baseline      # Interpretable PT-BR TF-IDF (ADR 0010)
+packages/shared-contracts  # Shared contracts (error codes, PII types, status)
+infra/bicep                # Infrastructure as code (Azure Container Apps, Postgres, Key Vault, Speech)
+data/                      # Synthetic datasets and samples for tests
+notebooks/                 # Data Science pipeline for the TOTVS transcripts (parser + TF-IDF + EDA)
+docs/                      # Canonical documentation (see above)
+.github/                   # CI/CD workflows and templates
 ```
 
 ## Stack
 
-| Camada | Tecnologia |
+| Layer | Technology |
 |---|---|
-| Frontend | Next.js 14.2 + TypeScript 5.6 + Tailwind 3.4 (sem shadcn — ADR 0013) |
+| Frontend | Next.js 14.2 + TypeScript 5.6 + Tailwind 3.4 (no shadcn — ADR 0013) |
 | Backend | Java 21 + Spring Boot 3.3 + DDD + JPA + Flyway |
-| Banco de dados | Postgres 16 (Azure Flexible Server). Modelo Oracle espelhado para a disciplina FIAP em [`data-model-oracle.md`](docs/engineering/data-model-oracle.md) |
-| Worker NLP | Python 3.12 + FastAPI + Pydantic 2 + cliente de LLM/embeddings agnóstico |
-| Desktop | Tauri 2 + Rust + sidecar Python (Azure Speech) |
+| Database | Postgres 16 (Azure Flexible Server). Oracle model mirrored for the FIAP course in [`data-model-oracle.md`](docs/engineering/data-model-oracle.md) |
+| NLP Worker | Python 3.12 + FastAPI + Pydantic 2 + provider-agnostic LLM/embeddings client |
+| Desktop | Tauri 2 + Rust + Python sidecar (Azure Speech) |
 | Cloud | Azure (Container Apps + Postgres Flexible + Key Vault + Speech) |
-| CI/CD | GitHub Actions (`ci.yml`, `build-images.yml`, `deploy-infra.yml` com OIDC, sem secrets) |
-| LLM | OpenAI `gpt-4o-mini` como padrão; provider agnóstico (ADR 0004). Embeddings via Gemini/OpenAI |
+| CI/CD | GitHub Actions (`ci.yml`, `build-images.yml`, `deploy-infra.yml` with OIDC, no secrets) |
+| LLM | OpenAI `gpt-4o-mini` as the default; provider-agnostic (ADR 0004). Embeddings via Gemini/OpenAI |
 
-> As versões exatas e onde verificá-las estão em
+> The exact versions and where to verify them are in
 > [`docs/engineering/architecture.md`](docs/engineering/architecture.md).
 
-## Pré-requisitos
+## Prerequisites
 
 - Java 21
 - Node.js 20 + npm
@@ -140,43 +140,43 @@ docs/                      # Documentação canônica (ver acima)
 - Docker / Docker Compose
 - Make
 
-## Setup rápido
+## Quick setup
 
 ```bash
-# 1. Clonar e criar arquivos de ambiente
+# 1. Clone and create the environment files
 git clone <repo-url> nora && cd nora
 make env
 
-# 2. Subir a infraestrutura local (Postgres + Adminer)
+# 2. Bring up the local infrastructure (Postgres + Adminer)
 make db-up
 
-# 3. Em terminais separados, rodar cada serviço
-make api-dev      # backend em http://localhost:8080
-make worker-dev   # worker em  http://localhost:8001
-make web-dev      # web em     http://localhost:3000
+# 3. In separate terminals, run each service
+make api-dev      # backend at http://localhost:8080
+make worker-dev   # worker at  http://localhost:8001
+make web-dev      # web at     http://localhost:3000
 ```
 
-Para ver todos os comandos: `make help`.
+To see all commands: `make help`.
 
-## Como contribuir
+## How to contribute
 
-NORA é operada pela **equipe Stratfy (PO) + múltiplos arquitetos Claude**. Colaboração
-externa é bem-vinda dentro do escopo declarado no [roadmap](docs/product/roadmap.md).
+NORA is operated by the **Stratfy team (PO) + multiple Claude architects**. External
+collaboration is welcome within the scope declared in the [roadmap](docs/product/roadmap.md).
 
-1. Leia o ADR relacionado em [`docs/adr/`](docs/adr/README.md) antes de propor mudança arquitetural.
+1. Read the related ADR in [`docs/adr/`](docs/adr/README.md) before proposing an architectural change.
 2. Branches: `feat/sub-X.Y-<slug>`, `feat/usZZ-<slug>`, `fix/<slug>`, `docs/<slug>`, `chore/<slug>`.
-3. Commits seguem [Conventional Commits](https://www.conventionalcommits.org/); PRs apontam para `main` e são integrados por squash.
-4. A CI deve passar antes do merge.
-5. ADRs aceitos são **imutáveis** — para mudar uma decisão, crie um ADR sucessor.
-6. Não faça commit de secrets — use `.env.example` para os nomes das variáveis.
+3. Commits follow [Conventional Commits](https://www.conventionalcommits.org/); PRs target `main` and are integrated by squash.
+4. CI must pass before merge.
+5. Accepted ADRs are **immutable** — to change a decision, create a successor ADR.
+6. Don't commit secrets — use `.env.example` for the variable names.
 
-## Segurança
+## Security
 
-Reporte vulnerabilidades por e-mail (não em issue público). Detalhes em
+Report vulnerabilities by email (not in a public issue). Details in
 [`SECURITY.md`](SECURITY.md).
 
-## Licença
+## License
 
-[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0) — ver
-[ADR 0017](docs/adr/0017-license-agpl-3.md). A equipe Stratfy mantém o copyright.
-Licenciamento comercial (dual-licensing) disponível mediante contato.
+[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0) — see
+[ADR 0017](docs/adr/0017-license-agpl-3.md). The Stratfy team holds the copyright.
+Commercial licensing (dual-licensing) available on request.
