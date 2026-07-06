@@ -75,3 +75,4 @@ Decisões parcialmente substituídas: ADR sucessor pode marcar `Substitui parcia
 | 0030 | NORA Flows: event bus in-process pós-commit + workflow engine | aceito |
 | 0031 | Integrações OAuth (Google) e armazenamento de tokens | aceito |
 | 0032 | Canvas do NORA Flows: React Flow estilizado com tokens NORA | aceito |
+| 0033 | Estratégia de PII no caminho do chat (estruturada no BFF + PERSON_NAME via worker) | aceito |

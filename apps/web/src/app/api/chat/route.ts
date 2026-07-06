@@ -13,8 +13,10 @@
  *    POST /internal/platform/usage (fire-and-forget).
  *
  * Contexto do workspace: best-effort de reuniões + action items (cookies da sessão),
- * injetado no system prompt. LGPD/PII (ADR 0012): o último gate de redação roda aqui
- * no BFF — contexto e mensagens passam pelo PII Shield (redactPii) antes de irem ao LLM.
+ * injetado no system prompt. LGPD/PII (ADR 0012): a redação estruturada roda aqui no
+ * BFF — a query da busca semântica (→ provider de embeddings), o contexto e as
+ * mensagens passam pelo PII Shield (redactPii) antes de sair para qualquer provider
+ * externo. Cobertura de PERSON_NAME no chat é o resíduo declarado no ADR 0033.
  */
 import { cookies } from "next/headers";
 
@@ -353,8 +355,13 @@ export async function POST(req: Request): Promise<Response> {
     .map((c) => `${c.name}=${c.value}`)
     .join("; ");
   // RAG: a última mensagem do usuário vira a query da busca semântica de reuniões.
+  // PII Shield (ADR 0012): a query passa pelo redactPii ANTES de ir ao backend, porque
+  // o /meetings/search a envia ao provedor de EMBEDDINGS (ex.: Gemini) — um provider
+  // externo distinto do de chat. Sem isso, CPF/e-mail/CNPJ/cartão digitados na pergunta
+  // vazariam crus para fora antes do gate de redação do histórico/contexto abaixo.
   const lastUserMsg = [...history].reverse().find((m) => m.role === "user")?.content ?? "";
-  const workspaceContext = await buildWorkspaceContext(cookieHeader, lastUserMsg);
+  const safeQuery = redactPii(lastUserMsg);
+  const workspaceContext = await buildWorkspaceContext(cookieHeader, safeQuery);
 
   // PII Shield (ADR 0012): redige PII estruturada do contexto (títulos de reuniões e
   // tarefas vêm crus do upload) e de cada mensagem do histórico ANTES de qualquer
