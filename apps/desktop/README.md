@@ -238,6 +238,30 @@ não escuta esse evento — o gancho está pronto, a UI de barra de progresso n�
 - **GPU**: Metal ligado por default no macOS. Vulkan/CUDA são opt-in explícito
   (`--features whisper-vulkan` / `whisper-cuda`) porque exigem SDK do fabricante
   na máquina de **build**, não só na de execução.
+- **macOS 11+**, e isto é *obrigatório*: `bundle.macOS.minimumSystemVersion` está
+  fixado em `"11.0"` no `tauri.conf.json`.
+
+#### Por que o piso do macOS está no `tauri.conf.json`, e não no CI
+
+O `ggml` do whisper.cpp usa `std::filesystem`, que a libc++ da Apple só expõe a
+partir do deployment target **10.15**. Com o default do Tauri (**10.13**) o clang
+aborta com `'path' is unavailable: introduced in macOS 10.15` em
+`ggml-backend-reg.cpp`, e o build script do `whisper-rs-sys` entra em pânico.
+
+**Setar `MACOSX_DEPLOYMENT_TARGET` no workflow não resolve** — foi tentado no
+[#358](https://github.com/sf0rzin/nora/pull/358) e falhou. O `tauri build`
+*exporta* essa variável a partir de `bundle.macOS.minimumSystemVersion` e
+sobrescreve o que estiver no ambiente. O valor precisa estar na config do Tauri,
+que é também onde vale para build local.
+
+`11.0` em vez de `10.15` porque o alvo é `aarch64-apple-darwin`: Apple Silicon
+não existe antes do macOS 11, então não há compatibilidade real sendo descartada.
+
+> Não tente documentar isso com uma chave `"//"` dentro de `bundle.macOS`. O
+> schema do Tauri rejeita campo desconhecido ali e derruba o build com
+> `unknown field '//'` — aconteceu no
+> [#359](https://github.com/sf0rzin/nora/pull/359). É por isso que a explicação
+> vive aqui.
 
 ### O que muda pro usuário
 
