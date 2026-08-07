@@ -51,8 +51,14 @@ jobs:
               - '**/*.md'
             desktop:
               - 'apps/desktop/**'
+            # O filtro `infra` deixou de observar infra/bicep/** e passou a observar a
+            # stack do Proxmox — o job `infra` (abaixo) trocou de conteúdo na migração.
+            # infra/bicep/** fica no repo como referência histórica até o cutover terminar,
+            # mas NÃO é mais validado no CI: sem `az bicep` e sem deploy, o lint só
+            # gastaria minuto de runner num artefato congelado.
             infra:
-              - 'infra/bicep/**'
+              - 'infra/proxmox/**'
+              - 'scripts/**'
 
   api:
     needs: changes
@@ -195,6 +201,18 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      # whisper-rs-sys compila o whisper.cpp com CMake + MSBuild, que gera caminhos scratch
+      # profundos e estoura o MAX_PATH de 260 chars do Windows (falha com `MSB6003: CL.exe
+      # could not be run / DirectoryNotFoundException`). Reproduzido localmente em 2026-08-07.
+      - name: Long paths + target dir curto (whisper.cpp/CMake)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\t | Out-Null
+          "CARGO_TARGET_DIR=C:\t\nora" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          git config --global core.longpaths true
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
+            -Name LongPathsEnabled -Value 1 -Type DWord -Force
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
@@ -211,9 +229,17 @@ jobs:
           mkdir -p binaries
           : > "binaries/nora-stt-sidecar-x86_64-pc-windows-msvc.exe"
 
-      - name: cargo check
+      # DUAS invocações de propósito: as duas configurações precisam compilar.
+      #  - sem feature: o caminho legado (sidecar Azure), ainda suportado na transição;
+      #  - com stt-local: o whisper.cpp embarcado (ADR 0035), que é o que vai pro release.
+      # Checar só uma delas deixa a outra apodrecer sem ninguém notar.
+      - name: cargo check (sem stt-local — caminho legado)
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked
+
+      - name: cargo check (com stt-local — whisper embarcado)
+        working-directory: apps/desktop/src-tauri
+        run: cargo check --locked --features stt-local
 
   # Build full do desktop (sidecar PyInstaller + Tauri bundle msi/dmg/deb/AppImage)
   # roda APENAS em push em main, gerando artifacts publicáveis. Em PR validation
@@ -290,10 +316,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # A URL base da API é baked em build-time pelo build.rs (option_env!).
-          # Sem isso o bundle aponta pro localhost (inútil contra o Azure). Setar
-          # vars.NORA_API_BASE_URL no repo/environment pra sobrescrever o default.
-          # Alinhado com NEXT_PUBLIC_API_BASE_URL em build-images.yml.
-          NORA_API_BASE_URL: ${{ vars.NORA_API_BASE_URL || 'https://nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io' }}
+          # Sem isso o bundle aponta pro localhost. Setar vars.NORA_API_BASE_URL no
+          # repo/environment pra sobrescrever o default.
+          # Alinhado com NEXT_PUBLIC_API_BASE_URL em build-images.yml — o fallback deixou
+          # de ser o FQDN do Azure Container Apps (morto) e passou a ser o domínio público
+          # servido pelo Cloudflare Tunnel. Mesma troca em desktop-release.yml.
+          NORA_API_BASE_URL: ${{ vars.NORA_API_BASE_URL || 'https://api.nora.systems' }}
         run: npx tauri build ${{ matrix.args }}
 
       - name: Upload artifacts
@@ -328,6 +356,24 @@ jobs:
           sys.exit(0 if ok else 1)
           PY
 
+  # ┌──────────────────────────────────────────────────────────────────────────────────┐
+  # │ O NOME DESTE JOB É CONTRATO — NÃO RENOMEIE.                                      │
+  # └──────────────────────────────────────────────────────────────────────────────────┘
+  # `infra` é `needs` do `ci-gate`, e o ci-gate é o ÚNICO required status check da branch
+  # protection da main (ADR 0027). Renomear o job aqui não quebra o gate diretamente (o
+  # required check é o ci-gate), mas quebra a lista de `needs` do ci-gate — e um `needs`
+  # apontando pra job inexistente é ERRO DE SINTAXE do workflow: nenhum run é criado, o
+  # ci-gate nunca reporta, e todo PR fica travado em "Expected — Waiting for status".
+  # Por isso a MIGRAÇÃO TROCOU O CONTEÚDO, NÃO O NOME.
+  #
+  # Antes: `az bicep build` de main.bicep + modules/*.bicep (validação do IaC do Azure).
+  # Agora: valida a stack que efetivamente vai pro ar (ADR 0034 / Proxmox + Compose):
+  #   1. `docker compose config -q` — o compose é a fonte da verdade do deploy. Pega YAML
+  #      inválido, `depends_on` pra serviço inexistente, chave desconhecida e interpolação
+  #      quebrada ANTES do merge, que é exatamente o papel que o bicep build tinha.
+  #   2. shellcheck nos scripts de operação — no modelo pull, o rollout e o cutover de RLS
+  #      são shell rodando no host (infra/proxmox/scripts/, scripts/). Esse shell deixou de
+  #      ser utilitário e virou caminho de produção; merece o mesmo lint que o IaC tinha.
   infra:
     needs: changes
     if: needs.changes.outputs.infra == 'true'
@@ -335,25 +381,102 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-      - name: Install Azure CLI + Bicep
+
+      # `docker compose config` FALHA em `${VAR:?mensagem}` quando a variável não existe —
+      # e o compose usa esse padrão de propósito em 6 lugares (POSTGRES_ADMIN_PASSWORD,
+      # JWT_SECRET, CLOUDFLARE_TUNNEL_TOKEN, GRAFANA_ADMIN_PASSWORD, CF_ACCESS_TEAM_DOMAIN,
+      # CF_ACCESS_AUD) pra impedir boot com segredo faltando. Os valores reais vivem
+      # cifrados em infra/proxmox/secrets.env.sops e só são decifrados no host (age key em
+      # /etc/nora/age.key). O CI só precisa provar que o GRAFO é válido, então injetamos
+      # placeholders óbvios. Nenhum valor real entra aqui — este arquivo é público.
+      - name: Gera .env de validação (placeholders — nenhum segredo real)
+        working-directory: infra/proxmox
         run: |
-          az bicep install
-          az bicep version
-      - name: Bicep build (main.bicep)
-        working-directory: infra/bicep
+          set -euo pipefail
+          cat > .env.ci <<'EOF'
+          POSTGRES_ADMIN_PASSWORD=ci-placeholder
+          POSTGRES_PLATFORM_ADMIN_PASSWORD=ci-placeholder
+          JWT_SECRET=ci-placeholder-jwt-secret-com-32-chars-ok
+          CLOUDFLARE_TUNNEL_TOKEN=ci-placeholder
+          GRAFANA_ADMIN_PASSWORD=ci-placeholder
+          CF_ACCESS_TEAM_DOMAIN=ci-placeholder.cloudflareaccess.com
+          CF_ACCESS_AUD=ci-placeholder-aud
+          EOF
+
+      - name: Compose config (stack base)
+        working-directory: infra/proxmox
         run: |
-          mkdir -p .bicep-out
-          az bicep build --file main.bicep --outdir .bicep-out
-          echo "Compiled main.json bytes: $(wc -c < .bicep-out/main.json)"
-      - name: Bicep lint (todos os módulos)
-        working-directory: infra/bicep
+          set -euo pipefail
+          docker compose --env-file .env.ci -f docker-compose.yml config -q
+          echo "docker-compose.yml válido (perfil default)."
+
+      # O profile `platform` (postgres-platform + admin, ADR 0022/0023) fica FORA do
+      # `config` default. Sem este segundo passe, um erro dentro desses dois serviços
+      # passaria batido no CI e só apareceria no host, no dia do flip do control plane.
+      - name: Compose config (profile platform)
+        working-directory: infra/proxmox
         run: |
-          set -e
-          for f in modules/*.bicep; do
-            echo "::group::Linting $f"
-            az bicep build --file "$f" --outdir .bicep-out
-            echo "::endgroup::"
-          done
+          set -euo pipefail
+          docker compose --env-file .env.ci -f docker-compose.yml --profile platform config -q
+          echo "docker-compose.yml válido (profile platform)."
+
+      # Confere que os serviços do contrato existem com o nome esperado. `config -q` valida
+      # sintaxe, não intenção: um serviço renomeado por engano (ex.: `otel` em vez de
+      # `otel-collector`) é YAML perfeitamente válido, mas quebra o OTEL_EXPORTER_OTLP_ENDPOINT
+      # dos 4 apps — que resolvem o collector por hostname interno.
+      - name: Contrato dos serviços (nomes = hostnames internos)
+        working-directory: infra/proxmox
+        run: |
+          set -euo pipefail
+          esperados="admin alloy api backup caddy cloudflared grafana loki otel-collector postgres postgres-platform prometheus web worker"
+          atuais=$(docker compose --env-file .env.ci -f docker-compose.yml --profile platform config --services | sort | tr '\n' ' ')
+          atuais=$(echo "$atuais" | xargs)
+          if [ "$atuais" != "$esperados" ]; then
+            echo "::error::Conjunto de serviços mudou."
+            echo "  esperado: $esperados"
+            echo "  atual:    $atuais"
+            echo "Se a mudança é intencional, atualize esta lista E o ADR 0034."
+            exit 1
+          fi
+          echo "14 serviços conferem com o contrato."
+
+      # shellcheck já vem instalado na imagem do ubuntu-latest — sem action de terceiro.
+      # `-x` segue os `source` entre scripts.
+      #
+      # Por que o gate é `-S warning` e não `-S style`: o nível `info` inclui SC2016
+      # ("expressions don't expand in single quotes"), que dispara em massa no
+      # scripts/dev-stop.sh — ele passa um bloco PowerShell inteiro como string
+      # single-quoted (linha 25), e os `$ports`/`$proc` de LÁ são variáveis do PowerShell,
+      # não do bash. São falsos positivos por construção. Gatear em info/style deixaria o
+      # job vermelho no primeiro merge por causa de um script legado correto — e um
+      # required check que "sempre falha" vira check que todo mundo ignora.
+      # error+warning já cobre o que importa aqui (SC2115 `rm -rf "$X/"` com X vazio,
+      # SC2164 `cd` sem `||exit`, redirect quebrado, uso de var não atribuída).
+      # Pra endurecer um script específico, use `# shellcheck enable=...` no topo dele.
+      - name: Shellcheck (scripts de operação)
+        run: |
+          set -euo pipefail
+          shellcheck --version
+          mapfile -t files < <(find scripts infra/proxmox -name '*.sh' -type f 2>/dev/null | sort)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::Nenhum .sh encontrado em scripts/ ou infra/proxmox/ — o filtro de path disparou este job, então isso indica script movido/apagado sem atualizar o CI."
+            exit 1
+          fi
+          printf 'Analisando %d script(s):\n' "${#files[@]}"
+          printf '  %s\n' "${files[@]}"
+          shellcheck -x -S warning "${files[@]}"
+          echo "shellcheck OK (gate: error+warning)."
+
+      # Passe informativo no nível mais rigoroso. NÃO falha o job — serve pra o achado
+      # aparecer no log e ser corrigido por decisão, não por bloqueio.
+      - name: Shellcheck — passe informativo (style, não bloqueia)
+        if: always()
+        run: |
+          set -uo pipefail
+          mapfile -t files < <(find scripts infra/proxmox -name '*.sh' -type f 2>/dev/null | sort)
+          [ "${#files[@]}" -eq 0 ] && exit 0
+          shellcheck -x -S style "${files[@]}" || true
+          exit 0
 
   # Gate agregador — é o ÚNICO status check exigido pela branch protection da main (ADR 0027).
   # Os jobs acima são condicionais por path (paths-filter): exigi-los diretamente como required

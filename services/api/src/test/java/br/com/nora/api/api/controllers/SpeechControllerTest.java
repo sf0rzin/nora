@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import br.com.nora.api.application.speech.SpeechException;
 import br.com.nora.api.application.speech.SpeechToken;
 import br.com.nora.api.application.speech.SpeechTokenService;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer;
@@ -25,6 +26,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 
+// @WebMvcTest ja inclui @ControllerAdvice no slice — o GlobalExceptionHandler entra sozinho.
 @WebMvcTest(SpeechController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class SpeechControllerTest {
@@ -89,5 +91,19 @@ class SpeechControllerTest {
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.region").value("eastus"));
+    }
+
+    /**
+     * Com nora.speech.provider=local o broker recusa. Tem que sair 410 GONE — nao 500 — para o
+     * desktop antigo tratar como sinal terminal e cair no STT local em vez de entrar em retry.
+     */
+    @Test
+    void shouldReturn410WhenProviderIsLocal() throws Exception {
+        when(speechTokenService.issueFor(any(), any(), eq((String) null)))
+                .thenThrow(new SpeechException.ProviderGone());
+
+        mockMvc.perform(post("/speech/token").contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.code").value("SPEECH_PROVIDER_GONE"));
     }
 }

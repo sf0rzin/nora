@@ -1,0 +1,582 @@
+# NORA — stack de produção self-hosted (Proxmox "beta", VM única + Docker Compose).
+#
+# Substitui o Azure Container Apps Environment do infra/bicep/main.bicep (ADR 0034).
+# Cada serviço aqui é o par 1:1 de um módulo `container-app.bicep`; as env vars foram
+# transcritas do range main.bicep:694-1540 (as 92 declarações, não só o bloco da API).
+#
+# Topologia:
+#
+#   Internet ──> Cloudflare edge ──(tunnel, saída-only)──> cloudflared
+#                                                              │
+#                                                            caddy            <- retry buffer
+#                                                        ┌─────┼─────┐           do rolling update
+#                                                       web   api   admin
+#                                                              │
+#                                                           worker (interno)
+#                                                              │
+#                                              postgres  +  postgres-platform
+#
+# Uso:  ./scripts/deploy.sh            (rollout health-gated de todos os serviços)
+#       docker compose --env-file .env up -d --wait
+#
+# NÃO exponha portas no host: todo tráfego entra pelo cloudflared. As únicas portas
+# publicadas são em 127.0.0.1 (debug local via SSH port-forward).
+
+name: nora
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+    tag: "{{.Name}}"
+
+x-restart: &default-restart
+  restart: unless-stopped
+
+networks:
+  edge:
+    driver: bridge
+  internal:
+    driver: bridge
+    internal: true   # sem rota pra internet: postgres e worker não saem sozinhos
+  data:
+    driver: bridge
+    internal: true
+
+volumes:
+  pgdata:
+  pgdata_platform:
+  grafana_data:
+  loki_data:
+  prometheus_data:
+  caddy_data:
+  caddy_config:
+
+services:
+  # ==========================================================================
+  # BORDA — cloudflared (ADR 0025, estendido de admin para toda a stack)
+  # ==========================================================================
+  # Substitui: ingress external do Container Apps + managed certificates + staticIp.
+  # O TLS do visitante é o Universal SSL da Cloudflare; a origem não precisa de cert
+  # (SSL mode Full, como já era — ver correção do audit sobre "janela sem TLS").
+  cloudflared:
+    image: cloudflare/cloudflared:2026.5.2
+    container_name: nora-cloudflared
+    <<: *default-restart
+    logging: *default-logging
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN obrigatorio}
+    networks: [edge]
+    depends_on:
+      caddy:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "cloudflared", "--version"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  # ==========================================================================
+  # BORDA — Caddy (roteamento por Host + buffer de retry no rolling update)
+  # ==========================================================================
+  # Por que existe: `docker compose up -d` derruba o container antigo ANTES de subir o
+  # novo (não há readiness gate como o `activeRevisionsMode: Single` do Container Apps).
+  # O boot do Spring com Flyway leva ~30s. `lb_try_duration` no Caddyfile converte esse
+  # 502 numa requisição lenta. Ver docs/operations/proxmox-deploy.md §rolling update.
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: nora-caddy
+    <<: *default-restart
+    logging: *default-logging
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      NORA_PUBLIC_DOMAIN: ${NORA_PUBLIC_DOMAIN:-nora.systems}
+    networks: [edge, internal]
+    healthcheck:
+      # NÃO usar `--spider` contra :2019/config/ da admin API: o `--spider` do wget do
+      # busybox emite HEAD, e aquele handler só trata GET/POST/PUT/PATCH/DELETE — HEAD
+      # cai no default e volta 405. O wget sai != 0, o container nunca fica healthy, e o
+      # cloudflared (`condition: service_healthy`) nunca sobe: a stack inteira fica
+      # inalcançável sem nenhum erro óbvio. O /healthz do bloco :80 é servido por
+      # `respond`, que atende HEAD sem reclamar. Ver caddy/Caddyfile:65-74 e :241-246.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==========================================================================
+  # DADOS — Postgres primário (substitui nora-pg-dev, B1ms Burstable)
+  # ==========================================================================
+  # Imagem pgvector/pgvector: a extensão fica DISPONÍVEL mas NÃO é criada. A V021
+  # guarda embeddings como JSON em TEXT e computa cosseno em Java justamente porque a
+  # allow-list do Azure bloqueava pgvector — sair do Azure destrava, mas trocar isso é
+  # refactor de RAG, não migração de infra. Ver ADR 0034 §escopo-excluido.
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: nora-postgres
+    <<: *default-restart
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: nora
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-nora_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD obrigatorio}
+      # Locale pt-BR consistente com o que o Flexible Server entregava.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"   # só loopback — acesso remoto via `ssh -L`
+    networks: [data]
+    shm_size: 256mb
+    command:
+      - postgres
+      - -c
+      - max_connections=100
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1536MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - log_min_duration_statement=1000
+      - -c
+      - log_connections=on
+      - -c
+      - log_disconnections=on
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-nora_admin} -d nora"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ==========================================================================
+  # DADOS — Postgres de plataforma (ADR 0022: blast radius isolado)
+  # ==========================================================================
+  # Server SEPARADO, como no Bicep (`postgresPlatform`, main.bicep:609). Numa VM única
+  # o isolamento é menor que no Azure, mas preserva o contrato PLATFORM_DATASOURCE_URL
+  # e mantém o dump/restore dos dois bancos independente.
+  postgres-platform:
+    image: pgvector/pgvector:pg16
+    container_name: nora-postgres-platform
+    <<: *default-restart
+    logging: *default-logging
+    profiles: ["platform"]
+    environment:
+      POSTGRES_DB: nora_platform
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-nora_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PLATFORM_ADMIN_PASSWORD:-${POSTGRES_ADMIN_PASSWORD}}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    volumes:
+      - pgdata_platform:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    networks: [data]
+    shm_size: 128mb
+    command:
+      - postgres
+      - -c
+      - max_connections=50
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - log_min_duration_statement=1000
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-nora_admin} -d nora_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ==========================================================================
+  # APP — NLP Worker (substitui nora-worker-dev; ingress internal, min 0 max 3)
+  # ==========================================================================
+  # Sem scale-to-zero: numa VM única o custo de manter 1 réplica de pé é irrelevante e
+  # elimina o cold start. O `--workers 2` do Dockerfile continua valendo.
+  worker:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sys0xff/nora}-worker:${WORKER_TAG:-latest}
+    container_name: nora-worker
+    <<: *default-restart
+    logging: *default-logging
+    environment:
+      NORA_ENV: ${NORA_ENV:-prod}
+      USE_LLM_STUB: ${USE_LLM_STUB:-false}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      # Observabilidade: OTLP para o collector local (substitui APPLICATIONINSIGHTS_CONNECTION_STRING).
+      OTEL_SERVICE_NAME: nora-worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      # Control plane (ADR 0024) — só com profile platform.
+      NORA_PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_INTERNAL_TOKEN:-}
+      NORA_API_BASE_URL: http://api:8080
+    networks: [internal]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1536M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ==========================================================================
+  # APP — API Spring Boot (substitui nora-api-dev; 1 vCPU / 2Gi, min 1)
+  # ==========================================================================
+  api:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sys0xff/nora}-api:${API_TAG:-latest}
+    container_name: nora-api
+    <<: *default-restart
+    logging: *default-logging
+    environment:
+      SPRING_PROFILES_ACTIVE: ${NORA_ENV:-prod}
+      NORA_ENV: ${NORA_ENV:-prod}
+
+      # ---- Datasource primário ----
+      # sslmode REMOVIDO de propósito: a imagem oficial do Postgres sobe com SSL OFF e
+      # `?sslmode=require` faz o Hikari falhar no boot. O tráfego não sai da bridge `data`,
+      # que é `internal: true`. Ver correção do audit sobre sslmode.
+      DATASOURCE_URL: jdbc:postgresql://postgres:5432/nora
+      DATASOURCE_USERNAME: ${DATASOURCE_USERNAME:-nora_admin}
+      DATASOURCE_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD obrigatorio}
+
+      # ---- RLS enforce (ADR 0026/0028) — flip separado, ver rls-cutover ----
+      NORA_RLS_ENFORCE: ${NORA_RLS_ENFORCE:-false}
+      SPRING_FLYWAY_URL: ${SPRING_FLYWAY_URL:-}
+      SPRING_FLYWAY_USER: ${SPRING_FLYWAY_USER:-}
+      SPRING_FLYWAY_PASSWORD: ${SPRING_FLYWAY_PASSWORD:-}
+      # Os TRÊS roles importam: nora_app (NOBYPASSRLS), nora_telemetry (BYPASSRLS) e o
+      # admin/owner. Sem o nora_telemetry o painel do operador vê 0 linhas EM SILÊNCIO.
+      NORA_TELEMETRY_DATASOURCE_URL: ${NORA_TELEMETRY_DATASOURCE_URL:-}
+      NORA_TELEMETRY_DATASOURCE_USERNAME: ${NORA_TELEMETRY_DATASOURCE_USERNAME:-}
+      NORA_TELEMETRY_DATASOURCE_PASSWORD: ${NORA_TELEMETRY_DATASOURCE_PASSWORD:-}
+
+      # ---- Auth ----
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET obrigatorio (min 32 chars)}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_RS256_PRIVATE_KEY_PEM: ${JWT_RS256_PRIVATE_KEY_PEM:-}
+      JWT_RS256_KID: ${JWT_RS256_KID:-nora-key-1}
+      AUTH_COOKIE_SECURE: "true"
+      AUTH_COOKIE_DOMAIN: ${NORA_PUBLIC_DOMAIN:-nora.systems}
+      EXPOSE_DEV_TOKENS: "false"
+
+      # ---- URLs públicas / CORS ----
+      CORS_ALLOWED_ORIGINS: https://${NORA_PUBLIC_DOMAIN:-nora.systems},https://www.${NORA_PUBLIC_DOMAIN:-nora.systems}
+      NORA_APP_PUBLIC_BASE_URL: https://${NORA_PUBLIC_DOMAIN:-nora.systems}
+      NORA_FRONTEND_BASE_URL: https://${NORA_PUBLIC_DOMAIN:-nora.systems}
+
+      # ---- Worker ----
+      NLP_WORKER_BASE_URL: http://worker:8001
+
+      # ---- Speech / STT ----
+      # `local`: o desktop transcreve com Whisper on-device (ADR 0035). POST /speech/token
+      # continua existindo e responde 410 GONE + SPEECH_PROVIDER_GONE — sinal terminal para o
+      # cliente antigo, em vez do 404 genérico (que ele leria como "API fora do ar" e viraria
+      # retry infinito). `azure` restaura o broker antigo sem revert de código, enquanto durar
+      # a transição. O SpeechRateLimiter vale nos dois modos.
+      NORA_SPEECH_PROVIDER: ${NORA_SPEECH_PROVIDER:-local}
+
+      # ---- Embeddings (RAG) ----
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
+      # ---- Email ----
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      NORA_EMAIL_FROM: ${NORA_EMAIL_FROM:-NORA <onboarding@resend.dev>}
+
+      # ---- LGPD (ADR 0029) ----
+      NORA_PRIVACY_RETENTION_DAYS: ${NORA_PRIVACY_RETENTION_DAYS:-0}
+      NORA_PRIVACY_RETENTION_CRON: ${NORA_PRIVACY_RETENTION_CRON:-0 30 3 * * *}
+
+      # ---- Observabilidade (OTel; substitui o agent do App Insights) ----
+      OTEL_SERVICE_NAME: nora-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: none
+
+      # ---- Integrações OAuth (ADR 0031). Redirect URIs derivam do domínio público. ----
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_REDIRECT_URI: https://api.${NORA_PUBLIC_DOMAIN:-nora.systems}/integrations/google/oauth/callback
+      SLACK_OAUTH_CLIENT_ID: ${SLACK_OAUTH_CLIENT_ID:-}
+      SLACK_OAUTH_CLIENT_SECRET: ${SLACK_OAUTH_CLIENT_SECRET:-}
+      SLACK_OAUTH_REDIRECT_URI: https://api.${NORA_PUBLIC_DOMAIN:-nora.systems}/integrations/slack/oauth/callback
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      GITHUB_OAUTH_REDIRECT_URI: https://api.${NORA_PUBLIC_DOMAIN:-nora.systems}/integrations/github/oauth/callback
+      NOTION_OAUTH_CLIENT_ID: ${NOTION_OAUTH_CLIENT_ID:-}
+      NOTION_OAUTH_CLIENT_SECRET: ${NOTION_OAUTH_CLIENT_SECRET:-}
+      NOTION_OAUTH_REDIRECT_URI: https://api.${NORA_PUBLIC_DOMAIN:-nora.systems}/integrations/notion/oauth/callback
+      TODOIST_OAUTH_CLIENT_ID: ${TODOIST_OAUTH_CLIENT_ID:-}
+      TODOIST_OAUTH_CLIENT_SECRET: ${TODOIST_OAUTH_CLIENT_SECRET:-}
+      TODOIST_OAUTH_REDIRECT_URI: https://api.${NORA_PUBLIC_DOMAIN:-nora.systems}/integrations/todoist/oauth/callback
+      LINEAR_OAUTH_CLIENT_ID: ${LINEAR_OAUTH_CLIENT_ID:-}
+      LINEAR_OAUTH_CLIENT_SECRET: ${LINEAR_OAUTH_CLIENT_SECRET:-}
+      LINEAR_OAUTH_REDIRECT_URI: https://api.${NORA_PUBLIC_DOMAIN:-nora.systems}/integrations/linear/oauth/callback
+      MS_OAUTH_CLIENT_ID: ${MS_OAUTH_CLIENT_ID:-}
+      MS_OAUTH_CLIENT_SECRET: ${MS_OAUTH_CLIENT_SECRET:-}
+      MS_OAUTH_REDIRECT_URI: https://api.${NORA_PUBLIC_DOMAIN:-nora.systems}/integrations/microsoft/oauth/callback
+      NORA_TELEGRAM_BOT_TOKEN: ${NORA_TELEGRAM_BOT_TOKEN:-}
+      TRELLO_API_KEY: ${TRELLO_API_KEY:-}
+      NORA_INTEGRATIONS_STATE_SECRET: ${NORA_INTEGRATIONS_STATE_SECRET:-}
+      # AES-256-GCM, 32 bytes base64. NUNCA passar "unset" aqui: o TokenCipher valida
+      # base64 e derruba o boot (foi o incidente de 2026-06-11 com KV-reference).
+      NORA_INTEGRATIONS_ENC_KEY: ${NORA_INTEGRATIONS_ENC_KEY:-}
+
+      # ---- Control plane (ADR 0022/0023/0024) ----
+      NORA_PLATFORM_ENABLED: ${NORA_PLATFORM_ENABLED:-false}
+      PLATFORM_DATASOURCE_URL: jdbc:postgresql://postgres-platform:5432/nora_platform
+      PLATFORM_DATASOURCE_USERNAME: ${DATASOURCE_USERNAME:-nora_admin}
+      PLATFORM_DATASOURCE_PASSWORD: ${POSTGRES_PLATFORM_ADMIN_PASSWORD:-${POSTGRES_ADMIN_PASSWORD}}
+      NORA_PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_INTERNAL_TOKEN:-}
+      NORA_PLATFORM_ADMIN_TOKEN: ${NORA_PLATFORM_ADMIN_TOKEN:-}
+      # Health do control plane: substitui a Query REST API do App Insights (KQL) pela
+      # Query API do Prometheus. Ver PrometheusHealthSource (ADR 0034).
+      NORA_PLATFORM_HEALTH_PROMETHEUS_URL: http://prometheus:9090
+      NORA_PLATFORM_HEALTH_WINDOW: ${NORA_PLATFORM_HEALTH_WINDOW:-PT1H}
+      NORA_PLATFORM_BUSINESS_ENABLED: ${NORA_PLATFORM_BUSINESS_ENABLED:-true}
+
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    networks: [internal, data]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2560M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      # failureThreshold 12 no Bicep era calibrado pro boot do Spring + Flyway (~30s).
+      retries: 12
+      start_period: 45s
+
+  # ==========================================================================
+  # APP — Web Next.js / BFF (substitui nora-web-dev; 1 vCPU / 2Gi, min 1)
+  # ==========================================================================
+  # ATENÇÃO: NEXT_PUBLIC_API_BASE_URL é baked no bundle em BUILD-TIME. Setar aqui NÃO
+  # muda o bundle. Se o domínio público mudar, é preciso rebuildar a imagem com o
+  # --build-arg (ver .github/workflows/build-images.yml). Como o domínio continua
+  # nora.systems, a imagem atual do GHCR serve sem rebuild.
+  web:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sys0xff/nora}-web:${WEB_TAG:-latest}
+    container_name: nora-web
+    <<: *default-restart
+    logging: *default-logging
+    environment:
+      NORA_ENV: ${NORA_ENV:-prod}
+      NEXT_PUBLIC_API_BASE_URL: https://api.${NORA_PUBLIC_DOMAIN:-nora.systems}
+      NEXT_PUBLIC_USE_MOCKS: "false"
+      OTEL_SERVICE_NAME: nora-web
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      # Chat do Core (BFF server-side, ADR 0004/0024). Chaves nunca vão pro browser.
+      LLM_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      LLM_KEY_OPENAI: ${OPENAI_API_KEY:-}
+      LLM_KEY_DEEPSEEK: ${DEEPSEEK_API_KEY:-}
+      LLM_KEY_GOOGLE: ${GEMINI_API_KEY:-}
+      NORA_PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_INTERNAL_TOKEN:-}
+    networks: [internal]
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ==========================================================================
+  # APP — Admin / control plane (substitui nora-admin-dev, ADR 0023/0025)
+  # ==========================================================================
+  # Continua sem rota pública direta: só chega via Caddy quando o cloudflared entrega
+  # o Host admin.<dominio>, e a Access Application da Cloudflare é quem autentica na
+  # borda. CF_ACCESS_AUD PRECISA estar preenchido — access.ts faz fail-OPEN quando
+  # vazio, e hoje em produção chega vazio (era `vars.` lendo um Secret).
+  admin:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sys0xff/nora}-admin:${ADMIN_TAG:-latest}
+    container_name: nora-admin
+    <<: *default-restart
+    logging: *default-logging
+    profiles: ["platform"]
+    environment:
+      NORA_ENV: ${NORA_ENV:-prod}
+      NORA_ADMIN_USE_MOCKS: "false"
+      PLATFORM_API_BASE_URL: http://api:8080
+      PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_ADMIN_TOKEN:-}
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:?CF_ACCESS_TEAM_DOMAIN obrigatorio - sem ele access.ts faz fail-open}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:?CF_ACCESS_AUD obrigatorio - sem ele access.ts faz fail-open}
+      OTEL_SERVICE_NAME: nora-admin
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    networks: [internal]
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ==========================================================================
+  # OBSERVABILIDADE — substitui Log Analytics + Application Insights
+  # ==========================================================================
+  # Cobertura equivalente exige DUAS pernas, não uma:
+  #   - traces/métricas (o que o -javaagent fazia)  -> otel-collector -> prometheus/tempo
+  #   - logs de stdout dos 4 apps (o que o appLogsConfiguration fazia) -> alloy -> loki
+  # Um OTel Collector sozinho NÃO cobre log shipping.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    container_name: nora-otel-collector
+    <<: *default-restart
+    logging: *default-logging
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:13133/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: nora-prometheus
+    <<: *default-restart
+    logging: *default-logging
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: nora-loki
+    <<: *default-restart
+    logging: *default-logging
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./observability/loki.yaml:/etc/loki/config.yaml:ro
+      - loki_data:/loki
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Alloy lê o socket do Docker e envia stdout/stderr de TODOS os containers pro Loki.
+  # Escolhido em vez do log driver `loki`: o plugin quebra `docker logs` e, em
+  # `mode=non-blocking`, descarta linhas em silêncio sob backpressure. Alloy tem WAL —
+  # backpressure vira atraso, não perda.
+  alloy:
+    image: grafana/alloy:v1.7.1
+    container_name: nora-alloy
+    <<: *default-restart
+    logging: *default-logging
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./observability/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [internal]
+    depends_on:
+      loki:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    container_name: nora-grafana
+    <<: *default-restart
+    logging: *default-logging
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD obrigatorio}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: https://grafana.${NORA_PUBLIC_DOMAIN:-nora.systems}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks: [internal]
+    depends_on:
+      - prometheus
+      - loki
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ==========================================================================
+  # BACKUP — substitui o PITR de 7 dias do Postgres Flexible Server
+  # ==========================================================================
+  # pg_dump lógico por hora + retenção; o PITR real fica por conta do snapshot da VM
+  # no Proxmox Backup Server (fora do compose). RTO passa de minutos para horas —
+  # mudança de SLA registrada no ADR 0034 §disponibilidade.
+  backup:
+    image: postgres:16-alpine
+    container_name: nora-backup
+    <<: *default-restart
+    logging: *default-logging
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_ADMIN_USER:-nora_admin}
+      PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD obrigatorio}
+      PLATFORM_PGHOST: postgres-platform
+      PLATFORM_PGPASSWORD: ${POSTGRES_PLATFORM_ADMIN_PASSWORD:-${POSTGRES_ADMIN_PASSWORD}}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-3600}
+    volumes:
+      - ${BACKUP_DIR:-/srv/nora/backups}:/backups
+      - ./backup/run-backup.sh:/usr/local/bin/run-backup.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/run-backup.sh"]
+    networks: [data]
+    depends_on:
+      postgres:
+        condition: service_healthy

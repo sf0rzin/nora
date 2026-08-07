@@ -29,16 +29,18 @@ NORA (Negotiation Observability & Revenue Assistant) is a SaaS conversational in
 5. **`docs/adr/`** — decisões arquiteturais durables (ver `docs/adr/README.md` para o índice canônico de ADRs)
 6. **`docs/product/glossary.md`** — termos NORA (Productivity Score, Customer Confidence, etc.)
 
-Para contexto operacional (deploy Azure, runbooks):
+Para contexto operacional (deploy self-hosted, runbooks):
 
-7. **`docs/operations/azure-deploy.md`** — runbook + armadilhas do Azure for Students
-8. **`docs/operations/production-readiness-gaps.md`** — gaps para promover dev → prod
+7. **`docs/operations/proxmox-deploy.md`** — runbook de deploy na VM Proxmox + as 9 armadilhas do self-hosted (**substitui o `azure-deploy.md`**)
+8. **`docs/operations/azure-decommission.md`** — ordem segura de desligamento da Azure (resgate dos dados → DNS → delete do RG)
+9. **`docs/operations/production-readiness-gaps.md`** — gaps de prod-readiness (os ancorados em Azure foram parcialmente substituídos pelo ADR 0034)
+10. **`docs/operations/azure-deploy.md`** — **histórico.** Runbook da era Azure + as 8 armadilhas do Azure for Students. Não operar por ele
 
 Para contexto acadêmico (FIAP Challenge):
 
-9. **`docs/challenge/fiap-challenge-2026.md`** — contexto FIAP, rubrica, deadlines
-10. **`docs/challenge/personas-e-mapa-de-empatia.md`** — 3 personas + mapa de empatia
-11. **`docs/challenge/diagrama-casos-de-uso.md`** — UML casos de uso
+11. **`docs/challenge/fiap-challenge-2026.md`** — contexto FIAP, rubrica, deadlines
+12. **`docs/challenge/personas-e-mapa-de-empatia.md`** — 3 personas + mapa de empatia
+13. **`docs/challenge/diagrama-casos-de-uso.md`** — UML casos de uso
 
 ## Operating multiple architects
 
@@ -50,14 +52,18 @@ See `Claude/50-coordenacao-arquitetos/00-papeis.md` (Obsidian vault) for current
 
 ## Current scope
 
-NORA is **deployed in Azure** as of 2026-05-13. Stack:
+NORA is **migrating off Azure to a self-hosted Proxmox VM** (ADR 0034, 2026-08-07).
+Production on Azure went **down** (522 on `nora.systems` / `api.nora.systems`; the Azure
+for Students subscription was most likely deactivated). Rescuing the Postgres data is the
+top priority — see `docs/operations/azure-decommission.md`. Stack:
 
 - **Web + Backend + NLP Worker + Desktop** vertical slice all functional
-- **Backend** is Spring Boot 3 (Java 21) + Postgres Flexible Server + Flyway, with **IAM AWS-style** (Root + Users + Groups + Policies) and **multi-tenancy** via `tenant_id` filter (ADR 0002)
+- **Backend** is Spring Boot 3 (Java 21) + Postgres 16 (`pgvector/pgvector:pg16` container) + Flyway, with **IAM AWS-style** (Root + Users + Groups + Policies) and **multi-tenancy** via `tenant_id` filter (ADR 0002) + RLS (ADR 0026/0028, **three** roles: `nora_app`, `nora_telemetry`, admin/owner)
 - **NLP Worker** is FastAPI (Python 3.12) with **PII Shield** (PERSON_NAME + EMAIL + CPF + CNPJ + PHONE + CREDIT_CARD per ADR 0012) and **JSON Schema strict** LLM output (ADR 0003) via **provider-agnostic client** (ADR 0004, default OpenAI `gpt-4o-mini`)
 - **Web** is Next.js 14 + TypeScript + **Tailwind cru, no shadcn** (ADR 0013) with editorial palette OKLCH + Inter + Instrument Serif fonts
-- **Desktop** is Tauri 2 + Rust + Python sidecar for Azure Speech (ADR 0008 + ADR 0009 Token Broker) — operated by a separate collaborator
-- **Infra** is Bicep IaC in `infra/bicep/` deployed via `deploy-infra.yml` GitHub Actions workflow with **OIDC federated credentials** (no client secrets)
+- **Desktop** is Tauri 2 + Rust with **Whisper STT running on-device** (ADR 0035 — the Python sidecar and the Azure Speech token broker are both removed) — operated by a separate collaborator
+- **Infra** is `infra/proxmox/docker-compose.yml` (compose project `nora`) on a single Debian VM: **Cloudflare Tunnel as the only ingress** (no inbound port), Caddy routing by Host, secrets in **SOPS + age**, observability via OTel Collector + Prometheus + Loki + Grafana. **Deploy is PULL** (`deploy-proxmox.yml` publishes an immutable release pointer; the host pulls) — never push, because the repo is public (ADR 0017)
+- `infra/bicep/` is **legacy** — the Azure infra it describes is being torn down
 
 For up-to-date status of each backlog story, see `docs/product/backlog.md` (DONE / PARTIAL / MISSING per US).
 
@@ -67,7 +73,7 @@ For up-to-date status of each backlog story, see `docs/product/backlog.md` (DONE
 |---|---|
 | Java | 21 |
 | Spring Boot | 3.3.5 |
-| Postgres | 16 (Flexible Server B1ms Burstable) |
+| Postgres | 16 (`pgvector/pgvector:pg16`; extensão pgvector **disponível mas não criada** — ver ADR 0034 §escopo excluído) |
 | Flyway | herdada de Spring Boot 3.3.5 |
 | Python (worker) | >= 3.12 |
 | FastAPI | >= 0.115 |
@@ -76,8 +82,12 @@ For up-to-date status of each backlog story, see `docs/product/backlog.md` (DONE
 | Next.js | 14.2.15 |
 | TypeScript | ^5.6 |
 | Tailwind CSS | ^3.4 |
-| Tauri (desktop) | 2 |
-| Bicep | builder padrão `az bicep build` |
+| Tauri (desktop) | 2 (STT on-device via `whisper-rs` — ADR 0035) |
+| Orquestração | Docker Compose (projeto `nora`, `infra/proxmox/docker-compose.yml`) |
+| Ingress | Cloudflare Tunnel (`cloudflared`) + Caddy 2.8 |
+| Segredos | SOPS + age (`secrets.env.sops`; chave privada só no host) |
+| Observabilidade | OTel Collector 0.115 + Prometheus 3.1 (30d) + Loki 3.3 + Alloy 1.7 + Grafana 11.5 |
+| Bicep | **legado** — `infra/bicep/` descreve a infra Azure em desligamento |
 
 Ver `docs/engineering/architecture.md` §1 para a tabela completa com onde verificar cada versão.
 
@@ -99,7 +109,7 @@ Ver `docs/engineering/architecture.md` §1 para a tabela completa com onde verif
 - **Implementar uma sub-fase ou story por branch.** Naming: `feat/sub-X.Y-<slug>` ou `feat/usZZ-<slug>` ou `fix/<slug>` ou `docs/<slug>`
 - **Referenciar IDs** (US##, Sub-fase 1.X, ADR NNNN, PR #) em commits e PR descriptions
 - **Antes de editar**, inspecionar os padrões existentes no módulo alvo (Grep/Glob)
-- **Após editar**, rodar o menor comando de verificação relevante (`mvn test`, `pytest`, `npm run typecheck`, `az bicep build`) e reportar passou/falhou
+- **Após editar**, rodar o menor comando de verificação relevante (`mvn test`, `pytest`, `npm run typecheck`, `docker compose -f infra/proxmox/docker-compose.yml config`) e reportar passou/falhou
 - **Atualizar docs** quando código diverge: doc é parte do produto, não acessório
 - **Obsidian vault** é obrigatório para mudanças não-triviais (ver skill `arquiteto-nora`)
 
@@ -121,6 +131,7 @@ Use **modelos Opus** para arquitetura, modelo de dados, revisão de segurança e
 
 | Data | Mudança |
 |---|---|
+| 2026-08-07 | Migração Azure → Proxmox (ADR 0034) e STT local (ADR 0035): "Current scope", tabela de Stack e ponteiros de `docs/operations/` atualizados. `azure-deploy.md` passa a ser histórico; `proxmox-deploy.md` e `azure-decommission.md` entram no lugar |
 | 1.0 / 2026-06-06 | Arquiteto NORA (Tech Lead): Reconciliação doc × código + padronização (auditoria pré-apresentação) |
 | 2026-05-14 | Reescrito durante Sub-fase 1.10 (Docs Refresh): nova estrutura `docs/` em subpastas (product/engineering/operations/challenge/security), referências atualizadas, ADRs novos linkados, estrutura multi-arquiteto documentada |
 | (anterior) 2026-05-02+ | Versão original criada com scaffolding inicial |

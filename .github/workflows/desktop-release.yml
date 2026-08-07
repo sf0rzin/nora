@@ -35,11 +35,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `--features stt-local` liga o STT embarcado (whisper.cpp via whisper-rs,
+          # ADR 0035). SEM esta flag o bundle sai com o caminho antigo do Azure Speech
+          # ativo — que depende de um `/speech/token` que hoje responde 410 GONE.
           - platform: windows-latest
-            args: ""
+            args: "--features stt-local"
             sidecar_target: x86_64-pc-windows-msvc
           - platform: ubuntu-latest
-            args: ""
+            args: "--features stt-local"
             sidecar_target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
@@ -60,6 +63,22 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+
+      # whisper-rs-sys compila o whisper.cpp com CMake + MSBuild. O CMake gera caminhos
+      # scratch profundos (…/out/build/CMakeFiles/CMakeScratch/TryCompile-XXXXXXX/
+      # cmTC_XXXXX.dir/Debug/cmTC_XXXXX.tlog) que estouram o MAX_PATH de 260 chars do
+      # Windows, e o MSBuild falha com `MSB6003: CL.exe could not be run /
+      # DirectoryNotFoundException`. Reproduzido localmente em 2026-08-07.
+      # Duas mitigações, ambas necessárias: target dir curto e long paths ligados.
+      - name: Windows — long paths + target dir curto (whisper.cpp/CMake)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\t | Out-Null
+          "CARGO_TARGET_DIR=C:\t\nora" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          git config --global core.longpaths true
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
+            -Name LongPathsEnabled -Value 1 -Type DWord -Force
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -93,7 +112,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Mesma URL baked em build-time do desktop-bundle (build.rs option_env!).
-          NORA_API_BASE_URL: ${{ vars.NORA_API_BASE_URL || 'https://nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io' }}
+          # Fallback migrado do FQDN do Azure Container Apps (morto) pro domínio público
+          # servido pelo Cloudflare Tunnel -> caddy -> api. Um bundle assinado e publicado
+          # carrega essa URL pra sempre: com o default antigo, toda release nova nascia
+          # apontando pra um host que não resolve.
+          NORA_API_BASE_URL: ${{ vars.NORA_API_BASE_URL || 'https://api.nora.systems' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: apps/desktop
