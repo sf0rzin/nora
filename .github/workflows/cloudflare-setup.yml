@@ -112,8 +112,13 @@ jobs:
           if [[ "$existing_content" == *.cfargotunnel.com ]]; then
             echo "::error::ABORT: CNAME $fqdn aponta pro Cloudflare Tunnel ($existing_content)."
             echo "::error::Sobrescrever derrubaria o admin (ADR 0025: origem do nora-admin e internal — so o tunel entra)."
-            echo "::error::Se voce realmente quer migrar pra ingress public, primeiro: (1) muda main.bicep p/ ingress external,"
-            echo "::error::(2) deleta o tunel via cloudflare-tunnel.yml + 'az containerapp ... remove sidecar', (3) re-roda este workflow."
+            # Pos-migracao (ADR 0034) o tunel deixou de ser sidecar de Container App e virou
+            # o servico `cloudflared` do infra/proxmox/docker-compose.yml. Nao ha mais
+            # "ingress public" pra migrar: NENHUM servico da stack publica porta — as unicas
+            # portas do compose sao 127.0.0.1 (loopback, debug via ssh -L). O tunel nao e
+            # uma opcao de exposicao, e a UNICA. Este input so existe por back-compat.
+            echo "::error::Nao ha caminho alternativo: na stack do Proxmox o tunel e o unico ingress"
+            echo "::error::(nenhum container publica porta na interface externa). Rode SEM admin_hostname."
             exit 1
           fi
           existing=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \

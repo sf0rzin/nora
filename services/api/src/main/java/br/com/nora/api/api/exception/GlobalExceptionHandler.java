@@ -262,6 +262,9 @@ public class GlobalExceptionHandler {
                     case "RATE_LIMIT_EXCEEDED" -> HttpStatus.TOO_MANY_REQUESTS;
                     case "INVALID_REGION" -> HttpStatus.BAD_REQUEST;
                     case "BROKER_ERROR" -> HttpStatus.BAD_GATEWAY;
+                    // 410, nao 500: o provider de nuvem saiu de proposito (STT local no
+                    // cliente). GONE e terminal — o desktop antigo para de tentar.
+                    case "SPEECH_PROVIDER_GONE" -> HttpStatus.GONE;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         ResponseEntity.BodyBuilder builder = ResponseEntity.status(status);
