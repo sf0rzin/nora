@@ -75,7 +75,7 @@ O NORA não está mais em fase de scaffolding nem de Sprint 1+2 puro de document
 
 - Web em produção dev: <https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io>
 - 14 recursos Azure provisionados no `rg-nora-dev` (centralus): Container Apps Env, 3 Container Apps (web + api + worker), Postgres Flexible, Key Vault, Storage Account, App Insights, Log Analytics, Azure Speech, 3 User-Assigned Identities (api/worker/web), e federated credentials no SP `sp-nora-github-deploy`
-- Pipeline `build-images.yml` publicando 3 imagens reais no GHCR (`ghcr.io/sys0xff/nora-{api,worker,web}`); deploy via `deploy-infra.yml` com OIDC
+- Pipeline `build-images.yml` publicando 3 imagens reais no GHCR (`ghcr.io/sf0rzin/nora-{api,worker,web}`); deploy via `deploy-infra.yml` com OIDC
 - IAM AWS-style operacional: Users + Groups + Policies + audit log com versionamento imutável de policies. PolicyEvaluator suporta `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan` e `DateLessThan` (operadores fora da lista e atributos ausentes resultam em `Deny`, fail-closed)
 - Productivity Score full-stack (ADR 0005): backend Spring + worker NLP + web 3 componentes (`MeetingGoalForm`, `MeetingProductivitySection`, `ProductivityScoreCard`)
 - PII Shield expandido: além de email/CPF/CNPJ/phone/credit card, cobre **PERSON_NAME (BR)** com lista de ~270 nomes brasileiros + negative list (ADR 0012)

@@ -202,7 +202,7 @@ services:
   # Sem scale-to-zero: numa VM única o custo de manter 1 réplica de pé é irrelevante e
   # elimina o cold start. O `--workers 2` do Dockerfile continua valendo.
   worker:
-    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sys0xff/nora}-worker:${WORKER_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sf0rzin/nora}-worker:${WORKER_TAG:-latest}
     container_name: nora-worker
     <<: *default-restart
     logging: *default-logging
@@ -218,7 +218,11 @@ services:
       # Control plane (ADR 0024) — só com profile platform.
       NORA_PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_INTERNAL_TOKEN:-}
       NORA_API_BASE_URL: http://api:8080
-    networks: [internal]
+    # `edge` NAO publica porta: nao ha `ports:` aqui e a unica entrada continua sendo
+    # cloudflared -> caddy. Ela existe porque as redes `internal` e `data` sao
+    # `internal: true`, o que bloqueia egress E resolucao de DNS externo. Sem isto a stack
+    # sobe com TODOS os healthchecks verdes (sao locais) e falha na primeira chamada real.
+    networks: [internal, edge]
     deploy:
       resources:
         limits:
@@ -235,7 +239,7 @@ services:
   # APP — API Spring Boot (substitui nora-api-dev; 1 vCPU / 2Gi, min 1)
   # ==========================================================================
   api:
-    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sys0xff/nora}-api:${API_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sf0rzin/nora}-api:${API_TAG:-latest}
     container_name: nora-api
     <<: *default-restart
     logging: *default-logging
@@ -358,7 +362,11 @@ services:
       NORA_PLATFORM_BUSINESS_ENABLED: ${NORA_PLATFORM_BUSINESS_ENABLED:-true}
 
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    networks: [internal, data]
+    # `edge` NAO publica porta: nao ha `ports:` aqui e a unica entrada continua sendo
+    # cloudflared -> caddy. Ela existe porque as redes `internal` e `data` sao
+    # `internal: true`, o que bloqueia egress E resolucao de DNS externo. Sem isto a stack
+    # sobe com TODOS os healthchecks verdes (sao locais) e falha na primeira chamada real.
+    networks: [internal, data, edge]
     depends_on:
       postgres:
         condition: service_healthy
@@ -385,7 +393,7 @@ services:
   # --build-arg (ver .github/workflows/build-images.yml). Como o domínio continua
   # nora.systems, a imagem atual do GHCR serve sem rebuild.
   web:
-    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sys0xff/nora}-web:${WEB_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sf0rzin/nora}-web:${WEB_TAG:-latest}
     container_name: nora-web
     <<: *default-restart
     logging: *default-logging
@@ -403,7 +411,11 @@ services:
       LLM_KEY_DEEPSEEK: ${DEEPSEEK_API_KEY:-}
       LLM_KEY_GOOGLE: ${GEMINI_API_KEY:-}
       NORA_PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_INTERNAL_TOKEN:-}
-    networks: [internal]
+    # `edge` NAO publica porta: nao ha `ports:` aqui e a unica entrada continua sendo
+    # cloudflared -> caddy. Ela existe porque as redes `internal` e `data` sao
+    # `internal: true`, o que bloqueia egress E resolucao de DNS externo. Sem isto a stack
+    # sobe com TODOS os healthchecks verdes (sao locais) e falha na primeira chamada real.
+    networks: [internal, edge]
     depends_on:
       api:
         condition: service_healthy
@@ -427,7 +439,7 @@ services:
   # borda. CF_ACCESS_AUD PRECISA estar preenchido — access.ts faz fail-OPEN quando
   # vazio, e hoje em produção chega vazio (era `vars.` lendo um Secret).
   admin:
-    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sys0xff/nora}-admin:${ADMIN_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sf0rzin/nora}-admin:${ADMIN_TAG:-latest}
     container_name: nora-admin
     <<: *default-restart
     logging: *default-logging
@@ -441,7 +453,11 @@ services:
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:?CF_ACCESS_AUD obrigatorio - sem ele access.ts faz fail-open}
       OTEL_SERVICE_NAME: nora-admin
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-    networks: [internal]
+    # `edge` NAO publica porta: nao ha `ports:` aqui e a unica entrada continua sendo
+    # cloudflared -> caddy. Ela existe porque as redes `internal` e `data` sao
+    # `internal: true`, o que bloqueia egress E resolucao de DNS externo. Sem isto a stack
+    # sobe com TODOS os healthchecks verdes (sao locais) e falha na primeira chamada real.
+    networks: [internal, edge]
     depends_on:
       api:
         condition: service_healthy
