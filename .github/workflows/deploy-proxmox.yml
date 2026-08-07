@@ -183,13 +183,13 @@ jobs:
             jq -n --arg sha "$SHA" --arg short "$SHORT" \
               --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               '{schema:"nora.release-pointer/v1", sha:$sha, short_sha:$short, ref:"main",
-                registry:"ghcr.io", image_prefix:"sys0xff/nora", built_at:$built_at,
+                registry:"ghcr.io", image_prefix:"sf0rzin/nora", built_at:$built_at,
                 mode:"rollback-full",
                 services:[
-                  {service:"api",    compose_var:"API_TAG",    tag:("sha-"+$short), image:("ghcr.io/sys0xff/nora-api:sha-"+$short)},
-                  {service:"worker", compose_var:"WORKER_TAG", tag:("sha-"+$short), image:("ghcr.io/sys0xff/nora-worker:sha-"+$short)},
-                  {service:"web",    compose_var:"WEB_TAG",    tag:("sha-"+$short), image:("ghcr.io/sys0xff/nora-web:sha-"+$short)},
-                  {service:"admin",  compose_var:"ADMIN_TAG",  tag:("sha-"+$short), image:("ghcr.io/sys0xff/nora-admin:sha-"+$short)}
+                  {service:"api",    compose_var:"API_TAG",    tag:("sha-"+$short), image:("ghcr.io/sf0rzin/nora-api:sha-"+$short)},
+                  {service:"worker", compose_var:"WORKER_TAG", tag:("sha-"+$short), image:("ghcr.io/sf0rzin/nora-worker:sha-"+$short)},
+                  {service:"web",    compose_var:"WEB_TAG",    tag:("sha-"+$short), image:("ghcr.io/sf0rzin/nora-web:sha-"+$short)},
+                  {service:"admin",  compose_var:"ADMIN_TAG",  tag:("sha-"+$short), image:("ghcr.io/sf0rzin/nora-admin:sha-"+$short)}
                 ]}' > pointer/release.json
             jq -r '.services[] | "\(.compose_var)=\(.tag)"' pointer/release.json > pointer/deploy.env
           fi
