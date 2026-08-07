@@ -218,16 +218,13 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
 
-      # tauri-build (build.rs) valida que o externalBin do sidecar EXISTE em disco. Este job
-      # não builda o sidecar PyInstaller (isso é do desktop-bundle, pesado) — então criamos um
-      # stub vazio só pra satisfazer a checagem de existência. cargo check não executa o binário,
-      # só precisa que o path exista pra compilar/checar o Rust do app.
-      - name: Stub do binario do sidecar (tauri-build checa existencia)
-        working-directory: apps/desktop/src-tauri
-        shell: bash
-        run: |
-          mkdir -p binaries
-          : > "binaries/nora-stt-sidecar-x86_64-pc-windows-msvc.exe"
+      # NÃO existe mais o passo de "stub do binário do sidecar" aqui, e isso é
+      # intencional: `externalBin` saiu do `tauri.conf.json` base (ADR 0035) e vive
+      # agora só no overlay opt-in `tauri.azure.conf.json`. Como o tauri-build resolve
+      # `externalBin` em BUILD SCRIPT, tê-lo no base fazia até um `cargo check` falhar
+      # com "resource path binaries/nora-stt-sidecar-<triple>.exe doesn't exist" —
+      # obrigando quem só quer typecheckar Rust a rodar PyInstaller antes. Com o base
+      # limpo, o stub virou dead code.
 
       # DUAS invocações de propósito: as duas configurações precisam compilar.
       #  - sem feature: o caminho legado (sidecar Azure), ainda suportado na transição;
@@ -241,9 +238,17 @@ jobs:
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked --features stt-local
 
-  # Build full do desktop (sidecar PyInstaller + Tauri bundle msi/dmg/deb/AppImage)
-  # roda APENAS em push em main, gerando artifacts publicáveis. Em PR validation
-  # esse build é overkill (15-20min cold-cache + fragil em 3 plataformas).
+  # Build full do desktop (Tauri bundle msi/dmg/deb/AppImage) — roda APENAS em push em
+  # main, gerando artifacts publicáveis. Em PR validation é overkill (15-20min
+  # cold-cache + frágil em 3 plataformas).
+  #
+  # NÃO builda mais o sidecar PyInstaller. Depois do ADR 0035 o `externalBin` saiu do
+  # `tauri.conf.json` base, então o bundle produzido aqui NÃO empacota o sidecar — e
+  # rodar PyInstaller nas 3 plataformas gerava um binário que ninguém consumia. Para
+  # empacotar o bundle legado com Azure Speech, use o overlay explícito:
+  #     cd apps/desktop/sidecar && python build_sidecar.py && cd ..
+  #     npx tauri build -- --config src-tauri/tauri.azure.conf.json
+  # A lógica do sidecar continua coberta pelos pytest do job `desktop-sidecar`.
   desktop-bundle:
     needs: changes
     if: ${{ (needs.changes.outputs.desktop == 'true' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
@@ -251,15 +256,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `--features stt-local` é obrigatório: sem ela o bundle sai com o caminho
+          # legado do Azure Speech ativo, dependendo de um /speech/token que agora
+          # responde 410 GONE. `label` só nomeia o artifact (era `sidecar_target`,
+          # renomeado porque não há mais sidecar neste job).
           - platform: ubuntu-latest
-            args: ""
-            sidecar_target: x86_64-unknown-linux-gnu
+            args: "--features stt-local"
+            label: x86_64-unknown-linux-gnu
           - platform: windows-latest
-            args: ""
-            sidecar_target: x86_64-pc-windows-msvc
+            args: "--features stt-local"
+            label: x86_64-pc-windows-msvc
           - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
-            sidecar_target: aarch64-apple-darwin
+            args: "--target aarch64-apple-darwin --features stt-local"
+            label: aarch64-apple-darwin
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     steps:
@@ -271,16 +280,28 @@ jobs:
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: apps/desktop/sidecar/pyproject.toml
-
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+
+      # whisper-rs-sys compila o whisper.cpp com CMake, que gera caminhos scratch
+      # profundos e pode estourar o MAX_PATH de 260 chars do Windows.
+      #
+      # Aqui, ao contrário do job `desktop-rust`, NÃO setamos CARGO_TARGET_DIR: este job
+      # sobe artifacts de `apps/desktop/src-tauri/target/**`, e mover o target dir
+      # deixaria o upload sem encontrar nada (falha silenciosa, porque
+      # `if-no-files-found: ignore`). Ficamos só com LongPathsEnabled, que basta porque
+      # o workspace do runner (`D:\a\nora\nora`) já é bem mais curto que um checkout
+      # local típico. Se algum dia estourar mesmo assim, a saída é setar
+      # CARGO_TARGET_DIR **e** derivar os paths de upload dele — não só o primeiro.
+      - name: Long paths (Windows, whisper.cpp/CMake)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          git config --global core.longpaths true
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
+            -Name LongPathsEnabled -Value 1 -Type DWord -Force
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -296,17 +317,6 @@ jobs:
       - name: Install frontend dependencies
         working-directory: apps/desktop
         run: npm ci
-
-      - name: Install sidecar deps
-        working-directory: apps/desktop/sidecar
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-          python -m pip install pyinstaller
-
-      - name: Build sidecar
-        working-directory: apps/desktop/sidecar
-        run: python build_sidecar.py
 
       - name: Build Tauri app
         working-directory: apps/desktop
@@ -327,12 +337,16 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nora-desktop-${{ matrix.sidecar_target }}
+          name: nora-desktop-${{ matrix.label }}
+          # O `target/**` do começo cobre os dois layouts: build nativo escreve em
+          # `target/release/bundle/`, e o build com `--target <triple>` (macOS) escreve
+          # em `target/<triple>/release/bundle/`. Sem o `**` inicial, o dmg do macOS
+          # não seria encontrado — e `if-no-files-found: ignore` esconderia isso.
           path: |
-            apps/desktop/src-tauri/target/release/bundle/**/*.deb
-            apps/desktop/src-tauri/target/release/bundle/**/*.AppImage
-            apps/desktop/src-tauri/target/release/bundle/**/*.msi
-            apps/desktop/src-tauri/target/release/bundle/**/*.dmg
+            apps/desktop/src-tauri/target/**/bundle/**/*.deb
+            apps/desktop/src-tauri/target/**/bundle/**/*.AppImage
+            apps/desktop/src-tauri/target/**/bundle/**/*.msi
+            apps/desktop/src-tauri/target/**/bundle/**/*.dmg
           if-no-files-found: ignore
 
   docs-link-check:

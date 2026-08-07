@@ -40,10 +40,8 @@ jobs:
           # ativo — que depende de um `/speech/token` que hoje responde 410 GONE.
           - platform: windows-latest
             args: "--features stt-local"
-            sidecar_target: x86_64-pc-windows-msvc
           - platform: ubuntu-latest
             args: "--features stt-local"
-            sidecar_target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     steps:
@@ -55,12 +53,6 @@ jobs:
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: apps/desktop/sidecar/pyproject.toml
-
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -69,13 +61,15 @@ jobs:
       # cmTC_XXXXX.dir/Debug/cmTC_XXXXX.tlog) que estouram o MAX_PATH de 260 chars do
       # Windows, e o MSBuild falha com `MSB6003: CL.exe could not be run /
       # DirectoryNotFoundException`. Reproduzido localmente em 2026-08-07.
-      # Duas mitigações, ambas necessárias: target dir curto e long paths ligados.
-      - name: Windows — long paths + target dir curto (whisper.cpp/CMake)
+      #
+      # NAO setamos CARGO_TARGET_DIR aqui: o tauri-action localiza os bundles sozinho
+      # pelo layout padrao do cargo, e mover o target dir arriscaria a release ASSINADA
+      # nao encontrar o que empacotar. O workspace do runner ja e curto; LongPathsEnabled
+      # cobre o resto. (No job desktop-rust do ci.yml, que nao sobe artifact, setamos.)
+      - name: Windows — long paths (whisper.cpp/CMake)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path C:\t | Out-Null
-          "CARGO_TARGET_DIR=C:\t\nora" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           git config --global core.longpaths true
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
             -Name LongPathsEnabled -Value 1 -Type DWord -Force
@@ -94,17 +88,6 @@ jobs:
       - name: Install frontend dependencies
         working-directory: apps/desktop
         run: npm ci
-
-      - name: Install sidecar deps
-        working-directory: apps/desktop/sidecar
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-          python -m pip install pyinstaller
-
-      - name: Build sidecar
-        working-directory: apps/desktop/sidecar
-        run: python build_sidecar.py
 
       - name: Build, sign and release
         uses: tauri-apps/tauri-action@v0
