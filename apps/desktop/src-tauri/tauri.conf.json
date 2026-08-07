@@ -87,20 +87,6 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "//": [
-        "11.0 e nao o default 10.13 do Tauri. O ggml do whisper.cpp (ADR 0035) usa",
-        "std::filesystem, que a libc++ da Apple so expoe a partir do deployment target",
-        "10.15 — com 10.13 o clang aborta com \"path is unavailable: introduced in",
-        "macOS 10.15\" em ggml-backend-reg.cpp e o build script do whisper-rs-sys entra",
-        "em panico.",
-        "",
-        "TEM que ser AQUI, nao no workflow: o `tauri build` EXPORTA",
-        "MACOSX_DEPLOYMENT_TARGET a partir deste campo, sobrescrevendo qualquer valor",
-        "que o CI tenha setado no ambiente. Foi exatamente o que aconteceu no PR #358.",
-        "",
-        "11.0 e nao 10.15 porque o alvo e aarch64-apple-darwin e Apple Silicon nao",
-        "existe antes do macOS 11 — nao estamos abrindo mao de compatibilidade real."
-      ],
       "minimumSystemVersion": "11.0"
     }
   }
