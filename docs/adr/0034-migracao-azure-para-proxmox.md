@@ -42,22 +42,24 @@ Causa provável: **a subscription Azure for Students foi desativada**. O benefí
 ou esgota crédito sem aviso operacional; recursos são parados e, depois de um prazo de retenção,
 excluídos. Não é falha de código nem de deploy — o `deploy-apps` funcionava em 06/07.
 
-### Os dados estão em risco
+### Não há dado a preservar — e isso simplifica tudo
 
-`nora-pg-dev-wgl3a3` guarda:
+O NORA é um **projeto educacional** (FIAP Challenge 2026 × TOTVS). Apesar de o `rg-nora-dev` servir
+`nora.systems` num domínio real e de a stack ser construída com padrões de produção, **não há dado
+de produção nem base de usuários** — e, por decisão do PO, não haverá: o produto não vai operar
+comercialmente nesta encarnação.
 
-- `transcripts.raw_text` — transcrição **bruta**, PII em repouso (o ADR 0029 é explícito sobre
-  isso: o PII Shield redige o que vai pra LLM, não o que fica no banco);
-- as análises (`meeting_analyses` + filhos), o Productivity Score (V012), o Customer Confidence
-  (V017), os embeddings da V021;
-- os tokens OAuth cifrados das integrações (ADR 0031) — cifrados em repouso, mas não recuperáveis
-  sem o banco.
+Consequência direta, e ela reordena a migração inteira: **o conteúdo dos dois Postgres do Azure é
+descartável.** Não há resgate de dados no caminho crítico, não há janela de retenção correndo contra
+o cronograma, e o decommission pode ser um `az group delete` sem cerimônia. A migração é uma
+mudança de plataforma, não uma operação de recuperação.
 
-**Não existe backup fora do Azure.** O PITR de 7 dias do Flexible Server é interno à subscription:
-morre junto com ela. Isso torna o resgate dos dados a tarefa de maior prioridade, acima de qualquer
-decisão de arquitetura — e é por isso que a ordem do
-[`azure-decommission.md`](../operations/azure-decommission.md) começa por dump verificado, não por
-migração.
+Vale registrar o que *seria* verdade num cenário comercial, porque a assimetria explica várias
+escolhas deste ADR que de outro modo pareceriam frouxas: `transcripts.raw_text` guarda transcrição
+bruta — PII em repouso, já que o PII Shield redige o que vai pra LLM e não o que fica no banco (ADR
+0029) — e os tokens OAuth das integrações (ADR 0031) são cifrados mas não recuperáveis sem o banco.
+Numa operação real, a perda da subscription seria incidente de dados, e o PITR de 7 dias do Flexible
+Server não ajudaria: ele é interno à subscription e morre junto com ela. Aqui, é só limpeza.
 
 ### Nunca houve um ADR declarando o Azure
 
@@ -258,21 +260,34 @@ deploy da API** em que a origem não responde (boot do Spring + Flyway ~30s; hea
 estouram o try duration ainda falham, e conexões em voo caem. Web e admin sofrem menos (boot mais
 curto), mas sofrem.
 
-**Perde-se o PITR gerenciado.** RPO sai de ~5 min (ADR 0016 Gap 3, apoiado no PITR do Flexible
-Server) para **até 1 hora** — o intervalo do `pg_dump`. RTO sai de **minutos** (restore PITR era um
-comando) para **horas**: provisionar/restaurar a VM, restaurar o dump lógico, subir a stack,
-verificar. A meta de RTO de 2h do ADR 0016 continua *alcançável*, mas por procedimento manual
-ensaiado — não por botão gerenciado. **Se o restore drill não for feito, a meta é ficção.**
+**Perde-se o PITR gerenciado — e aqui isso é aceitável, não uma dívida.** RPO sai de ~5 min (ADR
+0016 Gap 3, apoiado no PITR do Flexible Server) para **até 1 hora**, o intervalo do `pg_dump`. RTO
+sai de minutos para **horas**: provisionar/restaurar a VM, restaurar o dump lógico, subir a stack,
+verificar.
+
+Num produto comercial isso seria regressão séria e exigiria pgBackRest com WAL archiving. **Não é o
+caso deste projeto.** O NORA é educacional, sem dado de produção e sem base de usuários; o que o
+banco guarda é conteúdo de demonstração, reproduzível. `pg_dump` horário com retenção de 14 dias,
+mais snapshot da VM no Proxmox Backup Server, é **proporcional ao que está em jogo**. As metas de
+RPO/RTO do ADR 0016 foram escritas assumindo operação real; este ADR as **substitui por metas
+proporcionais**, em vez de manter no papel um número que ninguém vai sustentar.
+
+O `restore-drill.sh` continua valendo — não por risco de perda, mas porque um restore nunca testado
+é um procedimento que não existe, e o `production-readiness-gaps.md:67` já admitia que nenhum jamais
+foi feito. É barato fechar esse gap agora.
 
 **Host único = ponto único de falha.** Sem multi-AZ, sem failover, sem hipervisor redundante. Queda
-de energia ou de link doméstico derruba produção inteira, incluindo a observabilidade que diria que
+de energia ou de link doméstico derruba a stack inteira, incluindo a observabilidade que diria que
 ela caiu. O cenário C do ADR 0016 Gap 6 ("região Azure indisponível — MVP single-region aceita
-downtime") vira "single-**host** aceita downtime": mesmo veredito, blast radius maior,
-probabilidade maior.
+downtime") vira "single-**host** aceita downtime": mesmo veredito, blast radius maior, probabilidade
+maior. Para uma demo acadêmica com pitch agendado, o risco relevante não é o downtime médio — é
+**estar fora do ar no dia da apresentação**. A mitigação prática é ensaiar o boot da stack antes,
+não construir HA.
 
-**O SLO de 99,0% mensal (ADR 0016 Gap 4) fica aritmeticamente possível e materialmente
-insustentado.** São ~7h de budget por mês; ~45s por deploy da API mais qualquer evento de energia o
-consomem rápido. Nada nesta stack *garante* o número — apenas não o impede.
+**O SLO de 99,0% mensal (ADR 0016 Gap 4) deixa de fazer sentido e é retirado.** Era uma meta herdada
+de premissa comercial. Nada nesta stack o garante, ninguém está de plantão para defendê-lo, e
+mantê-lo no papel só produziria a ilusão de um compromisso. Fica registrado no lugar dele: **a stack
+é best-effort, com janela de ~45s por deploy da API e sem garantia durante quedas do host.**
 
 ### Segredos: o número AUMENTA (o resultado contraintuitivo)
 
@@ -324,10 +339,10 @@ do KV. **Não é equivalente a managed identity. É pior.** Aceito pelo preço e
 ## Alternativas Consideradas
 
 1. **Reativar / migrar para Pay-As-You-Go no Azure.** Custo real de ~R$110-180/mês numa stack sem
-   receita, e mantém a dependência de um provedor cujo desligamento já provou ser silencioso.
-   **Rejeitado como destino** — mas continua sendo o caminho mais rápido para **resgatar os dados**
-   (ver `docs/operations/azure-decommission.md`). Reativar para dar `pg_dump` não é o mesmo que
-   continuar hospedado.
+   receita, para um projeto educacional que já tem hardware ocioso disponível. Rejeitado: pagar
+   mensalidade por infraestrutura que o `beta` hospeda de graça não se justifica, e mantém a
+   dependência de um provedor cujo desligamento já provou ser silencioso. Sem dado a preservar, não
+   há sequer o argumento de reativar temporariamente para extrair um dump.
 2. **Outro PaaS (Fly.io / Render / Railway).** Preservaria readiness gate e backup gerenciado, e é
    honestamente a melhor alternativa se o Proxmox se mostrar caro em atenção humana. Rejeitado
    agora por custo em dinheiro e por não resolver a lição (continuar refém de uma plataforma).
@@ -354,18 +369,21 @@ do KV. **Não é equivalente a managed identity. É pior.** Aceito pelo preço e
 
 ## Plano de Aplicação
 
-Ordem obrigatória, detalhada em [`azure-decommission.md`](../operations/azure-decommission.md) e
-[`proxmox-deploy.md`](../operations/proxmox-deploy.md):
+Detalhado em [`proxmox-deploy.md`](../operations/proxmox-deploy.md) e
+[`azure-decommission.md`](../operations/azure-decommission.md). Como não há dado a preservar, a
+ordem é simples e não tem etapa irreversível até o passo 5:
 
-1. **Resgatar os dados primeiro** (dump verificado dos dois bancos, fora do Azure).
-2. Republicar as imagens `api` (troca do javaagent + `PrometheusHealthSource`) e as demais.
-3. Provisionar a VM, subir a stack, restaurar os dumps, verificar com tráfego real via hostnames de
-   teste.
-4. **Só então** apontar o DNS.
-5. **Só depois** desligar o resource group.
+1. Republicar as imagens `api` (troca do javaagent + `PrometheusHealthSource`) e as demais.
+2. Provisionar a VM, rodar o `bootstrap-host.sh`, cifrar os segredos.
+3. Subir a stack com banco **vazio** — o Flyway cria o schema do zero, e os roles do RLS saem do
+   `postgres/init/01-roles-and-db.sql`. Repovoar com dados de demonstração é passo de conteúdo, não
+   de migração.
+4. Verificar com tráfego real por um hostname de teste, e rodar o `restore-drill.sh` uma vez.
+5. Apontar o DNS e, depois, `az group delete`.
 
 ## Histórico
 
 | Data | Decisor | Mudança |
 |---|---|---|
-| 2026-08-07 | sys0xFF + Arquiteto NORA | Criação e aceite. Migração motivada por indisponibilidade de produção (522 desde ~julho/2026, subscription Azure for Students provavelmente desativada) e risco de perda de dados. Substitui 0009, substitui parcialmente 0016, altera 0022/0023/0026/0028/0029, estende 0025. |
+| 2026-08-07 | sys0xFF + Arquiteto NORA | Criação e aceite. Migração motivada pela indisponibilidade do ambiente Azure (522 desde ~julho/2026, subscription Azure for Students provavelmente desativada) e pela escolha de não pagar hospedagem para um projeto educacional que dispõe de hardware próprio. Substitui 0009, substitui parcialmente 0016, altera 0022/0023/0026/0028/0029, estende 0025. |
+| 2026-08-07 | sys0xFF | Correção de premissa, mesma data. A versão original tratava resgate de dados como caminho crítico e mantinha as metas de RPO/RTO e o SLO do ADR 0016. O PO esclareceu que o NORA é educacional, sem dado de produção nem base de usuários, e que não operará comercialmente. Removido o resgate do plano; RPO/RTO substituídos por metas proporcionais; SLO de 99,0% retirado em vez de mantido sem sustentação. |

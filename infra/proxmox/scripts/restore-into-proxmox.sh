@@ -2,7 +2,7 @@
 #
 # restore-into-proxmox.sh — restaura os dumps do Azure nos containers da stack local.
 #
-# Consome a saída do rescue-azure-data.sh e reidrata:
+# Consome dumps `pg_dump -Fc` (os que o serviço `backup` do compose gera) e reidrata:
 #   nora.dump           -> serviço `postgres`           (banco nora)
 #   nora_platform.dump  -> serviço `postgres-platform`  (banco nora_platform, profile platform)
 #
@@ -25,7 +25,7 @@
 #      entraram (V016). Rodar o R001 antes falha em "schema nora does not exist".
 #
 # VALIDAÇÃO FINAL (o restore só é bom se provado):
-#   - contagem de tabelas em public, comparada com o baseline <db>-counts.tsv do resgate
+#   - contagem de tabelas em public, comparada com o baseline <db>-counts.tsv, quando o backup gravou um
 #   - flyway_schema_history: última versão aplicada, zero migrations com success=false,
 #     e comparação com a maior V### presente no repo
 #   - smoke por tenant: linhas de meetings/users/meeting_analyses por tenant
@@ -59,11 +59,11 @@ usage() {
 $SCRIPT_NAME — restaura os dumps do Azure nos containers postgres/postgres-platform
 
 USO
-  $SCRIPT_NAME --from-dir <dir-do-resgate> [opções]
+  $SCRIPT_NAME --from-dir <dir-de-backup> [opções]
   $SCRIPT_NAME --dump <nora.dump> [--platform-dump <nora_platform.dump>] [opções]
 
 OPÇÕES
-  --from-dir <dir>        Diretório gerado pelo rescue-azure-data.sh. Procura
+  --from-dir <dir>        Diretório com os dumps (ex.: uma pasta de $BACKUP_DIR). Procura
                           nora.dump e nora_platform.dump dentro dele.
   --dump <arquivo>        Dump do banco primário (nora)
   --platform-dump <arq>   Dump do banco de plataforma (nora_platform)
@@ -90,7 +90,7 @@ IDEMPOTÊNCIA
   A criação de roles e o R001 são idempotentes por natureza.
 
 EXEMPLO
-  $SCRIPT_NAME --from-dir /srv/nora/rescue/20260807T031500Z --sops
+  $SCRIPT_NAME --from-dir /srv/nora/backups/20260807T031500Z --sops
 EOF
 }
 
@@ -234,7 +234,7 @@ verify_dump() {
   local file="$1" label="$2"
   log "$label: verificando $file"
 
-  # checksum, quando o resgate gravou um
+  # checksum, quando o backup gravou um
   local sumfile="$file.sha256"
   if [ -f "$sumfile" ]; then
     if command -v sha256sum >/dev/null 2>&1; then
@@ -382,7 +382,7 @@ validate_counts() {  # <serviço> <db> <baseline.tsv|""> <rótulo>
     return
   fi
 
-  log "$label: comparando contagem de linhas com o baseline do resgate..."
+  log "$label: comparando contagem de linhas com o baseline do backup..."
   local live drift=0 checked=0
   live="$(mktemp)"
   psql_in "$svc" "$db" -tA -F$'\t' -c \

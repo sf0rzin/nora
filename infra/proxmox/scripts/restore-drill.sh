@@ -98,7 +98,7 @@ USO
 OPÇÕES
   --dump <arquivo>       Dump do banco primário (default: o mais recente em --backup-dir)
   --platform-dump <arq>  Dump do nora_platform (default: o mais recente, se houver)
-  --from-dir <dir>       Diretório do rescue-azure-data.sh (usa nora.dump/nora_platform.dump
+  --from-dir <dir>       Diretório com dumps `pg_dump -Fc` (usa nora.dump/nora_platform.dump
                          e o baseline <db>-counts.tsv que estiver lá)
   --backup-dir <dir>     Onde procurar dumps (default: $BACKUP_DIR)
   --list                 Lista os backups disponíveis, com idade, e sai
@@ -125,7 +125,7 @@ EXEMPLOS
   $SCRIPT_NAME                                   # ensaio do backup mais recente
   $SCRIPT_NAME --list
   $SCRIPT_NAME --dump /srv/nora/backups/nora-20260807T030000Z.dump
-  $SCRIPT_NAME --from-dir /srv/nora/rescue/20260807T031500Z --note "pós-migração Azure"
+  $SCRIPT_NAME --from-dir /srv/nora/backups/20260807T031500Z --note "ensaio mensal"
 EOF
 }
 

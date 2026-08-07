@@ -2,7 +2,7 @@
 title: "Runbook — Desligamento da Azure (decommission)"
 owner: Arquiteto NORA (Tech Lead)
 status: approved
-version: 1.0
+version: 2.0
 last_reviewed: 2026-08-07
 ---
 
@@ -18,229 +18,107 @@ last_reviewed: 2026-08-07
 > Cloudflare (zona `nora.systems`), e a VM `nora-prod` já provisionada.
 
 > **Este documento é sobre ORDEM, não sobre comandos.** Cada comando aqui é trivial; o que
-> não é trivial é a sequência. Executar o passo 5 antes do passo 1 é irreversível e custa
-> os dados de produção. **Não pule etapas por pressa** — a pressa é justamente o estado
-> mental em que este runbook será lido.
+> não é trivial é a sequência. O passo 5 é irreversível — mas, neste projeto, o que ele
+> destrói é infraestrutura substituível, não dado insubstituível. Ver abaixo.
 
 ---
 
-## A ordem segura (leia antes de qualquer coisa)
+## O que este runbook NÃO precisa fazer
+
+**Não há dado a resgatar.** O NORA é um projeto educacional (FIAP Challenge 2026 × TOTVS):
+o `rg-nora-dev` serve um domínio real e foi construído com padrões de produção, mas **não
+há dado de produção nem base de usuários**, e por decisão do PO não haverá — o produto não
+vai operar comercialmente nesta encarnação. O conteúdo dos dois Postgres é material de
+demonstração, reproduzível.
+
+Isso elimina a parte mais cara e mais tensa de um decommission. Concretamente:
+
+- **Sem `pg_dump` no caminho crítico.** O banco no Proxmox nasce **vazio**: o Flyway cria o
+  schema do zero e os roles do RLS saem do `postgres/init/01-roles-and-db.sql`.
+- **Sem relógio de retenção.** Se a assinatura já expirou e a Azure já apagou tudo, não se
+  perdeu nada. Não há urgência a gerenciar.
+- **Sem cópias de PII circulando.** Não existe dump a cifrar, guardar em dois lugares,
+  registrar quem tem acesso e destruir em 90 dias.
+- **Sem reativar a assinatura.** Não há motivo para pagar Pay-As-You-Go só para conseguir
+  extrair alguma coisa.
+
+> Se algum dia o NORA virar produto com titulares reais, **este runbook não serve mais**:
+> `transcripts.raw_text` guarda PII em repouso (ADR 0029) e os tokens OAuth (ADR 0031) não
+> são recuperáveis sem o banco. Nesse cenário, dump verificado antes de tudo volta a ser o
+> passo 1. A versão 1.0 deste documento, no histórico do git, tem esse procedimento.
+
+---
+
+## A ordem segura
 
 ```
-  1. RESGATAR os dados          <- primeiro, sempre. Antes de decidir qualquer coisa.
-  2. GUARDAR fora do Azure      <- um dump só no laptop não é backup
-  3. VALIDAR o Proxmox          <- servindo tráfego real, ainda SEM DNS
-  4. APONTAR o DNS              <- o cutover; reversível em minutos
-  5. OBSERVAR                   <- período de carência com a Azure ainda de pé
-  6. LIMPAR credenciais         <- GitHub Secrets/Variables + Entra
-  7. DELETAR o resource group   <- ponto de não-retorno
-  8. LIMPAR o repositório       <- Bicep, FQDNs hardcoded, docs
+  1. VALIDAR o Proxmox          <- servindo tráfego real, ainda SEM DNS
+  2. APONTAR o DNS              <- o cutover; reversível em minutos
+  3. OBSERVAR                   <- período de carência (só se a Azure ainda estiver de pé)
+  4. LIMPAR credenciais         <- GitHub Secrets/Variables + Entra
+  5. DELETAR o resource group   <- ponto de não-retorno
+  6. LIMPAR o repositório       <- Bicep, FQDNs hardcoded, docs
 ```
 
-**A regra:** nada é deletado enquanto o substituto não estiver provado. A Azure custa
-dinheiro parada, mas custa muito menos do que perder `transcripts.raw_text`.
+**A regra que sobra:** nada é deletado enquanto o substituto não estiver provado. Não pelo
+dado — pela capacidade de comparar comportamento entre o antigo e o novo quando algo sair
+diferente do esperado.
 
 | Passo | Reversível? | Como reverter |
 |---|---|---|
-| 1-3 | sim | não muda nada em produção |
-| 4 (DNS) | **sim, em minutos** | reapontar o CNAME (TTL 1 = auto) |
-| 5-6 | parcialmente | credenciais podem ser recriadas; federated credentials, refeitas |
-| **7 (delete do RG)** | **NÃO** | após o soft-delete/purge, os dados **não existem mais** |
-| 8 | sim | é código versionado |
+| 1 | sim | não muda nada em produção |
+| 2 (DNS) | **sim, em minutos** | reapontar o CNAME (TTL 1 = auto) |
+| 3-4 | parcialmente | credenciais podem ser recriadas; federated credentials, refeitas |
+| **5 (delete do RG)** | **NÃO** | mas o que se perde é infraestrutura declarada em `infra/bicep/`, recriável |
+| 6 | sim | é código versionado |
 
 ---
 
-## Passo 0 — Diagnóstico: a assinatura ainda está viva?
+## Passo 0 — Diagnóstico: em que cenário você está
 
-Antes de planejar, descubra em que cenário você está. **Isto define quanto tempo você tem.**
-
-```bash
-az login          # ou: az login --use-device-code
-az account show --query "{name:name, id:id, state:state}" -o table
-```
-
-| `state` | Significado | O que fazer |
-|---|---|---|
-| `Enabled` | assinatura ativa | siga o passo 1 normalmente |
-| `Warned` | crédito acabando / aviso de cobrança | **urgente** — resgate hoje |
-| `Disabled` / `Expired` / `PastDue` | recursos **suspensos** | ver §[Se a assinatura já estiver desativada](#assinatura-desativada) |
-
-Confirme também se os recursos ainda existem:
+Isto não define mais *quanto tempo você tem* — define apenas **quanto trabalho o
+decommission ainda dá**.
 
 ```bash
-az group show -n rg-nora-dev -o table
-az resource list -g rg-nora-dev --query "[].{name:name, type:type}" -o table
-az postgres flexible-server list -o table
+az account show --query "{nome:name, estado:state, id:id}" -o table
 ```
 
-O script de resgate já faz esse pré-voo sozinho e explica o remédio de cada falha:
+| `state` | O que fazer |
+|---|---|
+| `Enabled` | Siga o runbook inteiro. O RG existe e precisa ser deletado. |
+| `Disabled` / `Warned` | Nada urgente. Você pode reativar só para deletar o RG e parar qualquer cobrança residual, **ou simplesmente deixar expirar** — a Azure remove os recursos sozinha ao fim da retenção. Vá direto ao passo 4 (limpar credenciais) e ao 6 (limpar o repositório). |
+| `PastDue` | Há fatura em aberto. Resolva no portal antes, senão o `az group delete` falha. |
+| erro de login | A assinatura pode já ter sido removida. Confirme no portal; se sumiu, o decommission de infra está feito — restam os passos 4 e 6. |
+
+Confirme também se o ambiente ainda responde:
 
 ```bash
-infra/proxmox/scripts/rescue-azure-data.sh --check-only
+curl -s -o /dev/null -w '%{http_code}\n' https://api.nora.systems/actuator/health
+curl -s -o /dev/null -w '%{http_code}\n' \
+  https://nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io/actuator/health
 ```
 
-<a id="assinatura-desativada"></a>
-
-### Se a assinatura já estiver desativada
-
-Este é o cenário provável (ADR 0034 §Contexto: 522 no domínio público desde ~julho/2026).
-
-**O que acontece com uma assinatura desativada, em ordem:**
-
-1. Os recursos param. O Postgres **não aceita conexão** — não dá para dar `pg_dump`.
-2. A assinatura entra num **prazo de retenção**. A Microsoft documenta em torno de
-   **30 dias** para assinatura desabilitada por crédito expirado (e 30-90 dias para
-   cancelamento voluntário). **Confirme o prazo real no banner do Portal** —
-   Subscriptions → a assinatura → Overview: quando há prazo, ele aparece com data.
-3. Passado o prazo, os recursos são **excluídos permanentemente**. O PITR de 7 dias do
-   Flexible Server vai junto — ele é interno à assinatura.
-
-**Trate o prazo como menor do que o anunciado.** Não existe garantia operacional de aviso.
-
-**Para reativar** (é o que destrava o `pg_dump`):
-
-- Portal → Subscriptions → `Azure for Students` → Overview. Se o crédito expirou/zerou, a
-  reativação é via **Upgrade** para Pay-As-You-Go, com cartão. **O crédito estudantil não
-  volta** — você passa a pagar pelo que usar.
-- Confirme: `az account show --query state -o tsv` deve devolver `Enabled`.
-- O Flexible Server pode voltar `Stopped` (ele para sozinho após 7 dias de inatividade, e
-  ao suspender a assinatura). Ligue-o:
-
-```bash
-az postgres flexible-server start -g rg-nora-dev -n nora-pg-dev-wgl3a3
-# ou deixe o script fazer:
-infra/proxmox/scripts/rescue-azure-data.sh --start-if-stopped
-```
-
-> **O custo de reativar é o preço do resgate, não uma volta atrás na decisão.** Ligar a
-> assinatura por alguns dias para extrair um `pg_dump` é barato; é a alternativa 1 do
-> ADR 0034, aceita **como caminho de resgate** e rejeitada como destino. Depois do dump
-> verificado, desligue.
-
-**Se a reativação não for possível:** rode `--check-only` mesmo assim. Recursos em período
-de retenção às vezes ainda respondem ao control plane. Se nada responder, os dados estão
-perdidos e o Proxmox sobe **vazio** — nesse caso pule direto para o passo 3, e registre a
-perda (é informação de LGPD: os titulares não têm mais dado no sistema).
+Em 2026-08-07 os dois deram erro de conexão — origem fora do ar, não problema de
+Cloudflare. Se continuar assim, **pule o passo 3** (período de observação com a Azure de
+pé): não há nada de pé para observar, e não há rollback para a Azure.
 
 ---
 
-## Passo 1 — Resgatar os dados (PRIMEIRO)
+## Passo 1 — Validar o Proxmox servindo tráfego (ainda SEM DNS)
 
-**Esta é a tarefa de maior prioridade da migração inteira.** Acima de qualquer decisão de
-arquitetura.
+O procedimento completo está em [`proxmox-deploy.md`](proxmox-deploy.md) — aqui ficam
+apenas os **portões** que precisam estar verdes antes de mexer no DNS.
 
-O que está em risco em `nora-pg-dev-wgl3a3`:
+O banco nasce **vazio**. Não há restore de dados: o Flyway aplica as 26 migrations do zero
+no primeiro boot da API, e os três roles do RLS saem do
+`infra/proxmox/postgres/init/01-roles-and-db.sql`, que o initdb executa.
 
-- `transcripts.raw_text` — transcrição **bruta**, PII em repouso (ADR 0029);
-- as análises (`meeting_analyses` + filhos), Productivity Score (V012), Customer
-  Confidence (V017), embeddings (V021);
-- os tokens OAuth cifrados das integrações (ADR 0031) — cifrados, mas não recuperáveis sem
-  o banco;
-- o `flyway_schema_history`, que é o que prova a integridade do restore depois.
-
-**Não existe backup fora do Azure.**
-
-```bash
-# A senha vem de $PGPASSWORD, $PG_ADMIN_PASSWORD ou do Key Vault, nessa ordem.
-export PGPASSWORD='<senha do nora_admin>'
-
-infra/proxmox/scripts/rescue-azure-data.sh --out-dir /srv/nora/rescue
-```
-
-O script abre uma regra de firewall temporária para o seu IP e **a remove no trap EXIT**;
-usa cliente Postgres containerizado se o `pg_dump` local for de major version menor que o
-servidor (Debian 12 traz client 15, o servidor é 16 — falha clássica na hora errada); e
-grava tudo com `umask 077`, porque os dumps contêm PII.
-
-Se não tiver a senha:
-
-```bash
-az keyvault secret show --vault-name nora-kv-dev-wgl3a3 \
-  --name postgres-password --query value -o tsv
-```
-
-O GitHub **não permite ler** um Secret já cadastrado. Se o Key Vault também estiver
-inacessível, resete a senha do admin — é seguro, ninguém está usando o banco:
-
-```bash
-az postgres flexible-server update -g rg-nora-dev -n nora-pg-dev-wgl3a3 \
-  --admin-password '<nova-senha-forte>'
-```
-
-### Verificação do dump (obrigatória)
-
-**Um dump que não abre não é backup.** O script já faz isto, mas confira o resultado com
-os próprios olhos — é o único momento em que dá para voltar e refazer:
-
-```bash
-cd /srv/nora/rescue/<run-id>
-cat MANIFEST.txt
-
-# 1) o dump abre? (TOC não pode estar vazio)
-pg_restore --list nora.dump | grep -c ' TABLE DATA '
-
-# 2) o checksum bate?
-sha256sum -c nora.dump.sha256
-
-# 3) as contagens fazem sentido? (baseline que o restore vai comparar depois)
-head -20 nora-counts.tsv
-```
-
-Critérios de aceite, todos obrigatórios:
-
-- [ ] `nora.dump` existe, tem **mais de 1 KiB** e `pg_restore --list` devolve TOC não-vazio
-- [ ] `nora.dump.sha256` confere
-- [ ] `nora-counts.tsv` traz as tabelas que você espera (`tenants`, `meetings`,
-      `transcripts`, `meeting_analyses`) com contagem **plausível**, não zero
-- [ ] `nora_platform.dump` idem — **ou** a decisão consciente de abrir mão dele
-
-> **Sobre o `nora_platform`:** o control plane (ADR 0022) é largamente reconstruível — o
-> catálogo de modelos e as feature flags são recriados pela V001 de `db/platform` no
-> primeiro boot. Perde-se a **telemetria histórica de custo** (`usage_events`). O script
-> sai com código **3** nesse caso (sucesso parcial). Decida se vale insistir; não trave o
-> resgate do banco primário por causa dele.
-
-Exit codes do script: `0` tudo ok · `1` erro de pré-voo · `2` **nada extraído** (Azure
-indisponível) · `3` parcial.
-
----
-
-## Passo 2 — Guardar os dumps fora do Azure (e fora de uma máquina só)
-
-O dump no laptop de quem rodou o script é um ponto único de falha com PII dentro.
-
-- [ ] Copiar `/srv/nora/rescue/<run-id>/` para **pelo menos dois destinos** — um deles
-      offline (mídia física) ou em nuvem diferente da Azure.
-- [ ] Manter permissão restrita (`chmod 700` no diretório). O script já usa `umask 077`.
-- [ ] **Cifrar antes de mover para qualquer destino de terceiro.** O dump é PII bruta de
-      titulares reais (ADR 0029). `age -p nora.dump > nora.dump.age` resolve.
-- [ ] Registrar **onde** ficou e **quem** tem acesso.
-- [ ] **Definir a data de descarte** das cópias de resgate. Elas são uma cópia de dado
-      pessoal fora do sistema: quando o Proxmox estiver estável e com backup próprio
-      rodando, elas devem ser destruídas (`shred -u`). Sugestão: 90 dias após o go-live.
-
-> Não commite dump nenhum. Nem cifrado. O repositório é **público** (ADR 0017).
-
----
-
-## Passo 3 — Validar o Proxmox servindo tráfego (ainda SEM DNS)
-
-Só depois do dump verificado. O procedimento completo está em
-[`proxmox-deploy.md`](proxmox-deploy.md) — aqui ficam apenas os **portões** que precisam
-estar verdes antes de mexer no DNS.
-
-```bash
-infra/proxmox/scripts/restore-into-proxmox.sh --from-dir /srv/nora/rescue/<run-id> --sops
-```
-
-O script cria os **três** roles antes dos dados, restaura com `--no-owner
---no-privileges`, aplica o `R001__provision_app_roles.sql` **depois** (ele depende do
-schema `nora`, que só existe após o DDL entrar) e compara as contagens contra o
-`<db>-counts.tsv` do resgate.
+> O `restore-into-proxmox.sh` existe para o caminho de **recuperação a partir de um backup
+> do próprio Proxmox** (os dumps que o serviço `backup` gera), não para trazer nada da
+> Azure. Não é usado neste passo.
 
 Portões de saída (todos obrigatórios):
 
-- [ ] Contagens do restore **batem** com o baseline do resgate (sem `--allow-count-drift`)
 - [ ] `flyway_schema_history` na versão esperada, **zero** migrations com `success=false`
 - [ ] Os três roles corretos: `nora_app` = `rolbypassrls f`, `nora_telemetry` = `t`
 - [ ] Todos os serviços `healthy` em `docker compose -p nora ps`
@@ -252,11 +130,12 @@ Portões de saída (todos obrigatórios):
 - [ ] `CF_ACCESS_AUD` **não vazio** no container `admin`
 - [ ] Login real funcionando ponta a ponta
 
-**Se qualquer um falhar, pare.** A Azure ainda está de pé; não há pressa artificial.
+**Se qualquer um falhar, pare.** Nada aqui tem prazo: a Azure já está fora do ar, então não há
+nem serviço degradando nem cobrança correndo enquanto você investiga.
 
 ---
 
-## Passo 4 — Cutover de DNS
+## Passo 2 — Cutover de DNS
 
 Este é o corte. É reversível em minutos (TTL 1 = automático na Cloudflare), e é o passo
 que **resolve o 522**: hoje o DNS resolve para uma origem morta.
@@ -308,12 +187,12 @@ dig +short api.nora.systems
 ### Rollback do cutover
 
 Reapontar o hostname para o FQDN antigo do Container App (com a Azure ainda de pé). Por
-isso o passo 7 vem **depois** de um período de observação — a Azure é a sua rede de
-segurança durante o passo 5.
+isso o passo 5 vem **depois** de um período de observação — a Azure é a sua rede de
+segurança durante o passo 3.
 
 ---
 
-## Passo 5 — Período de observação (a Azure fica de pé)
+## Passo 3 — Período de observação (a Azure fica de pé)
 
 **Mínimo sugerido: 7 dias** com a stack nova servindo 100% do tráfego e a Azure ainda
 existindo (parada, mas não deletada).
@@ -344,13 +223,13 @@ az postgres flexible-server stop -g rg-nora-dev -n nora-pg-platform-dev-wgl3a3
 ```
 
 > **Parar não é deletar.** Enquanto o RG existir, um novo `pg_dump` ainda é possível (basta
-> `start`). É exatamente essa opção que o passo 7 elimina.
+> `start`). É exatamente essa opção que o passo 5 elimina.
 
 ---
 
-## Passo 6 — Limpar credenciais
+## Passo 4 — Limpar credenciais
 
-### 6.1 GitHub Secrets
+### 4.1 GitHub Secrets
 
 Estado antes da migração: **15 Secrets** e **1 Variable**
 (ver [`environment-secrets.md`](environment-secrets.md) §3). O `deploy-infra.yml` não
@@ -399,7 +278,7 @@ done
 gh secret list --repo sys0xFF/nora
 ```
 
-### 6.2 GitHub Variables
+### 4.2 GitHub Variables
 
 | Variable | Ação | Motivo |
 |---|---|---|
@@ -412,7 +291,7 @@ gh variable list --repo sys0xFF/nora
 gh variable set NORA_API_BASE_URL --body "https://api.nora.systems" --repo sys0xFF/nora
 ```
 
-### 6.3 Entra ID / App Registrations
+### 4.3 Entra ID / App Registrations
 
 **O delete do resource group NÃO apaga App Registration.** Elas vivem no Entra (tenant
 `fiap.com.br`), não na assinatura. Os *role assignments*, sim, morrem com o RG.
@@ -439,7 +318,7 @@ az ad app delete --id <APP_ID>
 > federated credentials uma a uma e os role assignments. Sem federated credential e sem
 > role, o app fica inerte mesmo que continue listado. Registre a pendência.
 
-### 6.4 Cloudflare
+### 4.4 Cloudflare
 
 - [ ] **Deletar o túnel antigo** do `nora-admin` (o connector rodava como sidecar no
       Container App e morre com o RG; o registro fica órfão no painel e confunde)
@@ -450,15 +329,25 @@ az ad app delete --id <APP_ID>
 
 ---
 
-## Passo 7 — Deletar o resource group (PONTO DE NÃO-RETORNO)
+## Passo 5 — Deletar o resource group (PONTO DE NÃO-RETORNO)
 
-**Não execute este passo sem os quatro itens abaixo marcados.**
+O que se perde aqui é **infraestrutura declarada em `infra/bicep/`** — recriável a partir
+do repositório — e o conteúdo descartável dos dois bancos. Não há dado insubstituível em
+jogo (ver §"O que este runbook NÃO precisa fazer"). Ainda assim, marque os itens: o valor
+da Azure de pé neste ponto não é backup, é **poder comparar comportamento** quando o
+Proxmox se comportar diferente do esperado.
 
-- [ ] Dump verificado, com checksum conferido, em **dois lugares** fora do Azure (passo 2)
-- [ ] Proxmox servindo 100% do tráfego há **pelo menos 7 dias** sem incidente (passo 5)
-- [ ] **Restore drill executado com sucesso** a partir do backup do Proxmox — não do dump
-      do Azure. Enquanto o drill não passou, a Azure ainda é o seu backup
-- [ ] Credenciais migradas e conferidas (passo 6)
+- [ ] Proxmox validado servindo tráfego real por hostname de teste (passo 1)
+- [ ] Proxmox servindo 100% do tráfego sem incidente (passo 3) — 7 dias é o ideal; para uma
+      demo acadêmica com data marcada, o critério real é *não fazer isto na véspera do pitch*
+- [ ] **Restore drill executado com sucesso** a partir do backup do Proxmox
+      (`scripts/restore-drill.sh`). Não porque a Azure seja rede de segurança — ela não é,
+      já está fora do ar — mas porque um restore nunca testado é um procedimento que não
+      existe, e o `production-readiness-gaps.md:67` já admitia esse gap
+- [ ] Credenciais migradas e conferidas (passo 4)
+
+> Se a assinatura já estiver desativada e os recursos já removidos, este passo é no-op.
+> Confirme com `az group show --name rg-nora-dev` e siga para o passo 6.
 
 ```bash
 az group delete --name rg-nora-dev --yes --no-wait
@@ -494,7 +383,7 @@ az cognitiveservices account purge --location centralus \
 
 ### Depois do RG: a assinatura
 
-- **Se foi feito upgrade para Pay-As-You-Go só para o resgate:** cancele a assinatura
+- **Se foi feito upgrade para Pay-As-You-Go em algum momento:** cancele a assinatura
   agora, senão ela continua cobrando (mesmo vazia, há custos residuais).
   Portal → Subscriptions → Cancel subscription.
 - **Se a assinatura já estava desativada:** não faça nada. Ela expira sozinha.
@@ -506,23 +395,23 @@ az resource list --query "[?contains(name, 'nora')].{name:name, rg:resourceGroup
 
 ---
 
-## Passo 8 — Limpar o repositório
+## Passo 6 — Limpar o repositório
 
 Depois do RG deletado, o código que referencia Azure vira armadilha para quem chegar
 depois: comandos que parecem válidos e apontam para o nada.
 
-### 8.1 O FQDN hardcoded em quatro lugares
+### 6.1 O FQDN hardcoded em quatro lugares
 
-`nora-pg-dev-wgl3a3.postgres.database.azure.com` (ADR 0034 §8):
+`nora-pg-dev-wgl3a3.postgres.database.azure.com` (ADR 0034):
 
 | Arquivo | Ação |
 |---|---|
-| `infra/bicep/main.dev.bicepparam:140` | sai com o Bicep (§8.2) |
+| `infra/bicep/main.dev.bicepparam:140` | sai com o Bicep (§6.2) |
 | `.github/workflows/rls-cutover.yml:40` | o workflow inteiro sai — dependia de firewall rule do runner e de OIDC. O flip do RLS passa a ser `psql` local (`proxmox-deploy.md` §Flip do RLS enforce) |
 | `docs/operations/rls-cutover-runbook.md:69` | trocar o host por `postgres` e **remover o `?sslmode=require`** (armadilha 1 — derruba o Hikari no boot) |
-| `docs/operations/azure-deploy.md:398` | não editar: vira documento histórico (§8.3) |
+| `docs/operations/azure-deploy.md:398` | não editar: vira documento histórico (§6.3) |
 
-### 8.2 Infra e workflows
+### 6.2 Infra e workflows
 
 - [ ] `infra/bicep/` — remover. É a referência mais perigosa: descreve uma infra que não
       existe mais e ainda "compila".
@@ -534,7 +423,7 @@ depois: comandos que parecem válidos e apontam para o nada.
 grep -rn "azure/login\|AZURE_CLIENT_ID\|azurecontainerapps.io" .github/ infra/ || echo "limpo"
 ```
 
-### 8.3 Documentação
+### 6.3 Documentação
 
 - [ ] `docs/operations/azure-deploy.md` → marcar como **histórico** no cabeçalho
       (`status: historical`) e apontar para `proxmox-deploy.md`. **Não deletar:** as 8
@@ -552,16 +441,11 @@ grep -rn "azure/login\|AZURE_CLIENT_ID\|azurecontainerapps.io" .github/ infra/ |
 ## Checklist final
 
 ```
-RESGATE
-  [ ] az account show --query state          -> Enabled (ou reativado)
-  [ ] rescue-azure-data.sh                   -> exit 0 (ou 3 consciente)
-  [ ] pg_restore --list                      -> TOC não-vazio
-  [ ] sha256sum -c                           -> OK
-  [ ] cópia em 2 destinos fora do Azure, cifrada
-  [ ] data de descarte das cópias definida
+DIAGNÓSTICO  (sem resgate: não há dado a preservar — ver §"O que este runbook NÃO precisa fazer")
+  [ ] az account show --query state          -> anotado; define quanto trabalho resta
 
 PROXMOX
-  [ ] restore-into-proxmox.sh                -> contagens batendo
+  [ ] stack sobe com banco VAZIO             -> Flyway cria o schema do zero
   [ ] flyway_schema_history                  -> versão esperada, 0 falhas
   [ ] 3 roles                                -> nora_app=f, nora_telemetry=t
   [ ] todos os serviços healthy
@@ -574,10 +458,10 @@ DNS
   [ ] TXT asuid/asuid.www removidos
   [ ] nenhum registro para *.azurecontainerapps.io
 
-OBSERVAÇÃO (>= 7 dias)
+OBSERVAÇÃO (pular se a Azure já estiver fora do ar — não há o que observar)
   [ ] sem erro relevante no Loki
   [ ] backup horário gerando dump
-  [ ] RESTORE DRILL executado com sucesso
+  [ ] RESTORE DRILL executado com sucesso   <- fecha o gap do production-readiness-gaps.md:67
   [ ] Container Apps zerados / Postgres parado (economia)
 
 CREDENCIAIS
@@ -605,4 +489,5 @@ REPOSITÓRIO
 
 | Data | Mudança |
 |---|---|
-| 2026-08-07 | v1.0 — criado com o ADR 0034. Ordem segura de desligamento: resgate verificado dos dados → validação do Proxmox → cutover de DNS → observação → limpeza de credenciais → delete do RG → limpeza do repo. Inclui o cenário de assinatura já desativada (prazo de retenção) e o inventário de GitHub Secrets/Variables e App Registrations do Entra. |
+| 2026-08-07 | v1.0 — criado com o ADR 0034. Ordem segura de desligamento em 8 passos, começando por resgate verificado dos dados. |
+| 2026-08-07 | v2.0 — correção de premissa. O PO esclareceu que o NORA é educacional, sem dado de produção nem base de usuários, e que não operará comercialmente. Removidos os passos de resgate e de guarda de dumps (e o `rescue-azure-data.sh`); o runbook cai de 8 para 6 passos e o banco no Proxmox passa a nascer vazio. O procedimento de resgate, se algum dia voltar a ser necessário, está na v1.0 no histórico do git. |

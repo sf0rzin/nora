@@ -382,9 +382,9 @@ cat <<EOF
 
     1. Cifrar os segredos com a chave age acima  ->  secrets.env.sops
     2. Criar o Cloudflare Tunnel e pegar o TUNNEL_TOKEN
-    3. Resgatar os dados do Azure                ->  scripts/rescue-azure-data.sh
+    3. (banco nasce VAZIO — o Flyway cria o schema; nada a resgatar do Azure)
     4. Primeiro deploy                           ->  scripts/deploy.sh
-    5. Restaurar os dados                        ->  scripts/restore-into-proxmox.sh
+    5. Restaurar de um backup, se precisar          ->  scripts/restore-into-proxmox.sh
     6. Ensaiar o restore (nunca foi testado)     ->  scripts/restore-drill.sh
     7. Só então:  systemctl start nora-deploy.timer
 

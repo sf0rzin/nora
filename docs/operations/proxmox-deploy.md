@@ -15,8 +15,9 @@ last_reviewed: 2026-08-07
 > ficou na Azure está em [`azure-decommission.md`](azure-decommission.md).
 >
 > **Pré-requisitos:** acesso ao Proxmox "beta", conta Cloudflare com a zona `nora.systems`,
-> `sops` + `age` na máquina do operador, `gh` CLI, e o dump verificado do Postgres da Azure
-> (ver `azure-decommission.md` §1 — **não comece por aqui se os dados ainda não foram resgatados**).
+> `sops` + `age` na máquina do operador e `gh` CLI. **Não é preciso trazer nada da Azure:** o
+> NORA é um projeto educacional sem dado de produção, então o banco nasce vazio e o Flyway cria o
+> schema do zero (ver `azure-decommission.md` §"O que este runbook NÃO precisa fazer").
 
 > **Ambiente único, de novo.** Como no Azure, existe **um** ambiente vivo. Não há staging. A VM se
 > chama `nora-prod` desde o começo — o rename cosmético que ficou pendente no Azure (`dev` = produção)
@@ -595,11 +596,12 @@ novo que a imagem.
 ./scripts/deploy.sh --platform --tag sha-xxxxxxx
 ```
 
-> Na prática os passos 1 a 5 acima estão automatizados em
-> `./scripts/restore-into-proxmox.sh --from-dir <dir-do-resgate> --sops`, que cria os roles
-> antes dos dados, restaura com `--no-owner --no-privileges`, aplica o R001 **depois** e
-> compara as contagens contra o baseline `<db>-counts.tsv` gerado pelo resgate. Use o
-> script; a sequência manual acima é o que ele faz, para quando algo falhar no meio.
+> **Só faça isto se estiver recuperando de um backup.** No primeiro deploy o banco nasce vazio e
+> não há nada a restaurar. Quando for o caso, os passos 1 a 5 acima estão automatizados em
+> `./scripts/restore-into-proxmox.sh --from-dir <dir-de-backup> --sops` (os dumps que o serviço
+> `backup` gera em `$BACKUP_DIR`), que cria os roles antes dos dados, restaura com `--no-owner
+> --no-privileges` e aplica o R001 **depois**. Use o script; a sequência manual acima é o que ele
+> faz, para quando algo falhar no meio.
 
 ### 7. Verificar
 
