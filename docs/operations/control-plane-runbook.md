@@ -25,7 +25,7 @@ last_reviewed: 2026-06-06
 
 ## Pré-requisitos
 
-- Imagem `ghcr.io/sys0xff/nora-admin:latest` publicada e **Public** no GHCR (o Container App não
+- Imagem `ghcr.io/sf0rzin/nora-admin:latest` publicada e **Public** no GHCR (o Container App não
   tem creds de registry). A CI publica em push para `main` que toca `apps/admin/**`.
 - `CLOUDFLARE_API_TOKEN` (conta `nora.systems`) com **Cloudflare Tunnel: Edit** + **DNS: Edit** +
   **Zone: Read**. É o mesmo token do `cloudflare-setup.yml`, com Tunnel:Edit adicionado.
@@ -56,7 +56,7 @@ Roda o workflow **`cloudflare-tunnel.yml`** (Actions → Run workflow). Ele é i
 > Não há origem do Azure para contornar. Defesa em profundidade: rede (Access) + transporte (Tunnel)
 > + app (validação do `Cf-Access-Jwt-Assertion` no Next, Tier 2) + serviço (admin token).
 
-## Passo 3 — GitHub Secrets + Variable (repo `sys0xFF/nora`)
+## Passo 3 — GitHub Secrets + Variable (repo `sf0rzin/nora`)
 
 ```
 # Secrets:

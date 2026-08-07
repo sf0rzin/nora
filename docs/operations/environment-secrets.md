@@ -9,7 +9,7 @@ last_reviewed: 2026-06-06
 # NORA — Cartografia de Secrets & Environment Variables
 
 > **Documento operacional.** Última varredura: 2026-06-03 (auditoria sênior).
-> Repo: `https://github.com/sys0xFF/nora.git` · Branch default: `main` · Environment GitHub: `dev` (sem protection rules, **vazio** — todos os secrets estão a nível de repositório).
+> Repo: `https://github.com/sf0rzin/nora.git` · Branch default: `main` · Environment GitHub: `dev` (sem protection rules, **vazio** — todos os secrets estão a nível de repositório).
 >
 > **Objetivo:** entender o que cada secret faz, como obter/regerar cada um, e onde ele mora (GitHub Secret vs GitHub Variable vs `.env.local`). Inclui checklist de recriação do zero.
 >
@@ -193,9 +193,9 @@ Apenas para referência (não auditado). Não compartilha secrets de servidor. V
 4. Service Principal + role Contributor **escopado no RG** (não na subscription):
    `az role assignment create --assignee <appId> --role Contributor --scope /subscriptions/<sub>/resourceGroups/rg-nora-dev`
 5. **Federated credentials** (3 subjects — sem senha):
-   - `repo:sys0xFF/nora:ref:refs/heads/main`
-   - `repo:sys0xFF/nora:pull_request`
-   - `repo:sys0xFF/nora:environment:dev` (obrigatório porque o job `deploy` usa `environment: dev`)
+   - `repo:sf0rzin/nora:ref:refs/heads/main`
+   - `repo:sf0rzin/nora:pull_request`
+   - `repo:sf0rzin/nora:environment:dev` (obrigatório porque o job `deploy` usa `environment: dev`)
    Via portal: App Registration → Certificates & secrets → Federated credentials → Add. Issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`.
    Docs: https://learn.microsoft.com/azure/developer/github/connect-from-azure-openid-connect
 

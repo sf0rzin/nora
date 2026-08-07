@@ -273,9 +273,9 @@ for s in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID \
          OPENAI_API_KEY DEEPSEEK_API_KEY GEMINI_API_KEY RESEND_API_KEY \
          NORA_PLATFORM_INTERNAL_TOKEN NORA_PLATFORM_ADMIN_TOKEN \
          CLOUDFLARE_TUNNEL_TOKEN CF_ACCESS_AUD; do
-  gh secret delete "$s" --repo sys0xFF/nora
+  gh secret delete "$s" --repo sf0rzin/nora
 done
-gh secret list --repo sys0xFF/nora
+gh secret list --repo sf0rzin/nora
 ```
 
 ### 4.2 GitHub Variables
@@ -287,8 +287,8 @@ gh secret list --repo sys0xFF/nora
 | `NORA_API_BASE_URL` | **CRIAR se não existir** | usada no bundle do desktop. Hoje **não existe**, e o app cai num fallback hardcoded para o FQDN do Azure — que está morto. Deixar assim entrega um desktop que não conecta |
 
 ```bash
-gh variable list --repo sys0xFF/nora
-gh variable set NORA_API_BASE_URL --body "https://api.nora.systems" --repo sys0xFF/nora
+gh variable list --repo sf0rzin/nora
+gh variable set NORA_API_BASE_URL --body "https://api.nora.systems" --repo sf0rzin/nora
 ```
 
 ### 4.3 Entra ID / App Registrations

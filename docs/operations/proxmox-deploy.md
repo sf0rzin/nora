@@ -414,7 +414,7 @@ sudo ufw allow from 192.168.0.0/16 to any port 22 proto tcp
 sudo ufw --force enable
 
 # --- código ---
-git clone https://github.com/sys0xFF/nora.git /opt/nora
+git clone https://github.com/sf0rzin/nora.git /opt/nora
 ```
 
 > O `ufw` é redundante com "não publicar portas", e é justamente por isso que vale: protege contra o
