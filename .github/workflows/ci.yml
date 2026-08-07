@@ -321,14 +321,11 @@ jobs:
       - name: Build Tauri app
         working-directory: apps/desktop
         env:
-          # O ggml do whisper.cpp usa std::filesystem, disponível só a partir do
-          # macOS 10.15 — sem isto o clang aborta com "'path' is unavailable:
-          # introduced in macOS 10.15" em ggml-backend-reg.cpp e o build script do
-          # whisper-rs-sys entra em pânico. 11.0 porque é o piso real do alvo
-          # aarch64-apple-darwin (Apple Silicon não existe antes disso), então não
-          # estamos abrindo mão de compatibilidade que existisse.
-          # Ignorado em Windows e Linux.
-          MACOSX_DEPLOYMENT_TARGET: "11.0"
+          # NAO sete MACOSX_DEPLOYMENT_TARGET aqui: o `tauri build` EXPORTA essa variavel
+          # a partir de `bundle.macOS.minimumSystemVersion` do tauri.conf.json e sobrescreve
+          # o que estiver no ambiente (foi o que derrubou o #358). O piso de 11.0 exigido
+          # pelo whisper.cpp mora la, que e tambem onde vale para build local.
+          #
           # createUpdaterArtifacts:true no tauri.conf exige a chave de assinatura
           # no build (senão o tauri build falha). Mesmos secrets do desktop-release.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
