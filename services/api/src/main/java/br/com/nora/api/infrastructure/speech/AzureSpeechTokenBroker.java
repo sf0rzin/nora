@@ -4,11 +4,20 @@ import br.com.nora.api.application.ports.Clock;
 import br.com.nora.api.application.speech.SpeechException;
 import br.com.nora.api.application.speech.SpeechToken;
 import br.com.nora.api.application.speech.ports.SpeechTokenBroker;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+/**
+ * Adaptador legado: troca a subscription key pelo token de curta duracao do STS regional da Azure.
+ *
+ * <p>Fora do caminho default desde a saida do Azure — o default e {@code LocalSttNoopBroker}
+ * ({@code nora.speech.provider=local}). Mantido, e nao deletado, para que o rollback da migracao de
+ * STT seja uma env var ({@code NORA_SPEECH_PROVIDER=azure}) e nao um revert de codigo.
+ */
 @Component
+@ConditionalOnProperty(name = "nora.speech.provider", havingValue = "azure")
 public class AzureSpeechTokenBroker implements SpeechTokenBroker {
 
     private final SpeechProperties props;

@@ -1,133 +1,300 @@
 name: rls-cutover
 
-# Provisiona os roles de runtime do RLS enforce (ADR 0028) no Postgres do ambiente.
+# Etapa 2 do cutover de RLS enforce (ADR 0026 / ADR 0028): provisionar os roles de runtime.
 #
-# Roda o script idempotente `db/operational/R001` como ADMIN do Postgres (nora_admin),
-# criando:
-#   - nora_app        (LOGIN, NOBYPASSRLS) — role de runtime da API sob enforce
-#   - nora_telemetry  (LOGIN, BYPASSRLS)   — leitura agregada cross-tenant (operador)
-# + os GRANTs e DEFAULT PRIVILEGES (ver R001).
+# ============================================================================
+# DECISAO: ESTE WORKFLOW NAO CONECTA MAIS EM BANCO NENHUM.
+# Ele VALIDA o R001 num Postgres efemero e EMITE o runbook. Quem executa contra o
+# banco real e infra/proxmox/scripts/rls-cutover.sh, rodando NO HOST.
+# ============================================================================
 #
-# É a ETAPA 2 da sequência de cutover do ADR 0028 (a 1 foi mergear o mecanismo, default OFF).
-# NÃO liga o enforce — isso é a etapa 3 (flip do `rlsEnforce=true` no bicepparam → deploy-infra).
-# Rodar este workflow tem ZERO impacto no app rodando: os roles ficam OCIOSOS até o flip.
-# É idempotente — pode rodar de novo sem efeito colateral.
+# POR QUE (nao e preferencia — nao existe caminho de rede):
+#   A versao anterior fazia `azure/login`, abria uma regra de firewall temporaria pro IP
+#   do runner no Postgres Flexible Server e falava com o FQDN publico
+#   `nora-pg-dev-wgl3a3.postgres.database.azure.com` (hardcoded na linha 40, consumido por
+#   tres invocacoes de psql). No Proxmox nada disso existe: o Postgres esta na bridge
+#   `data` (internal: true) e publica so 127.0.0.1:5432 — loopback do host. Nao ha
+#   firewall pra abrir porque nao ha porta pra abrir.
 #
-# Pré-requisitos (GitHub Secrets — ver rls-cutover-runbook.md):
-#   - AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID  (OIDC, já existem)
-#   - PG_ADMIN_PASSWORD          senha do nora_admin (já existe)
-#   - NORA_APP_PASSWORD          senha FORTE a criar pro nora_app (a MESMA que o deploy injeta no KV)
-#   - RLS_TELEMETRY_PASSWORD     senha FORTE a criar pro nora_telemetry
+#   As tres alternativas pra manter o psql no runner seriam tunel reverso, VPN no runner
+#   ou runner self-hosted. Todas reintroduzem exatamente o que a migracao pro modelo pull
+#   eliminou num repo PUBLICO (ADR 0017). O deploy virou pull; esta operacao segue junto.
 #
-# Segurança: a senha admin nunca sai do GitHub (OIDC + secret). A regra de firewall do runner
-# é temporária e removida no final (sempre, mesmo em falha).
+#   Entre as duas opcoes propostas — (a) workflow que so gera o SQL, (b) remover o
+#   workflow e mover tudo pro script — escolhemos um HIBRIDO, porque cada metade paga
+#   uma conta diferente:
+#     * o SCRIPT no host (infra/proxmox/scripts/rls-cutover.sh) e o unico lugar com
+#       acesso ao banco, entao a EXECUCAO tem que morar la;
+#     * o WORKFLOW continua util pelo que so o CI faz bem: aplica o R001 num Postgres
+#       descartavel e PROVA que os tres roles saem com as flags certas ANTES de alguem
+#       rodar isso em producao — alem de manter o registro auditavel de quem pediu o
+#       cutover e quando, que o ADR 0028 exige.
+#   Remover o workflow inteiro custaria as duas coisas e nao economizaria nada, ja que
+#   ele nao guarda mais segredo algum.
+#
+# O QUE SAIU DAQUI:
+#   - `azure/login` e `permissions: id-token: write`
+#   - o FQDN do Azure hardcoded
+#   - abrir/fechar firewall no Flexible Server
+#   - os Secrets PG_ADMIN_PASSWORD / NORA_APP_PASSWORD / RLS_TELEMETRY_PASSWORD.
+#     Um workflow que nao conecta em banco nao tem motivo pra guardar senha de banco.
+#     As senhas agora vivem cifradas em infra/proxmox/secrets.env.sops (SOPS + age), e a
+#     chave privada so existe no host em /etc/nora/age.key. Ver README-migracao.md pra
+#     lista do que deletar.
+#
+# SAO TRES ROLES, NAO DOIS:
+#   1. nora_admin / owner  — DDL + Flyway. Ja existe; e quem RODA o R001.
+#   2. nora_app            — LOGIN, NOBYPASSRLS. Runtime da API.
+#   3. nora_telemetry      — LOGIN, BYPASSRLS. Painel do operador (cross-tenant).
+#   Esquecer o 3 nao gera erro: a leitura cai sob RLS e o painel mostra ZERO. Fail-closed
+#   silencioso. O job `validate-r001` abaixo falha se qualquer um dos tres nao sair certo.
+#
+# NAO liga o enforce (etapa 3 = NORA_RLS_ENFORCE=true no .env do host + recriar a api).
 
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Digite PROVISION para confirmar a criação dos roles no Postgres'
+        description: 'Digite PLAN para gerar o plano de cutover'
         required: true
         default: ''
+      target_db:
+        description: 'Banco alvo no host (default: nora)'
+        required: false
+        default: 'nora'
 
+# Sem `id-token: write`: nao ha mais login federado em cloud nenhuma.
 permissions:
-  id-token: write
   contents: read
 
-env:
-  AZURE_RG: rg-nora-dev
-  PG_SERVER: nora-pg-dev-wgl3a3
-  PG_HOST: nora-pg-dev-wgl3a3.postgres.database.azure.com
-  PG_DB: nora
-  PG_ADMIN_USER: nora_admin
+concurrency:
+  group: rls-cutover-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  provision-roles:
-    name: Provisiona roles RLS (R001)
+  validate-r001:
+    name: Valida R001 num Postgres efemero
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: dev # federated credential github-environment-dev (mesmo do deploy)
+    timeout-minutes: 10
+
+    # Mesma imagem do compose do host (pgvector/pgvector:pg16) — validar num Postgres
+    # diferente do de producao testaria outro banco.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: nora
+          POSTGRES_USER: nora_admin
+          POSTGRES_PASSWORD: efemero-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nora_admin -d nora"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: nora_admin
+      PGDATABASE: nora
+      PGPASSWORD: efemero-ci
+      R001: services/api/src/main/resources/db/operational/R001__provision_app_roles.sql
+
     steps:
       - uses: actions/checkout@v6
 
       - name: Guard — confirmação explícita
+        env:
+          CONFIRM: ${{ inputs.confirm }}
         run: |
-          if [ "${{ github.event.inputs.confirm }}" != "PROVISION" ]; then
-            echo "::error::Confirmação inválida. Digite exatamente PROVISION para rodar."
+          set -euo pipefail
+          if [ "$CONFIRM" != "PLAN" ]; then
+            echo "::error::Confirmação inválida. Digite exatamente PLAN."
             exit 1
           fi
 
-      - name: Guard — secrets obrigatórios presentes
-        env:
-          PG_ADMIN_PASSWORD: ${{ secrets.PG_ADMIN_PASSWORD }}
-          NORA_APP_PASSWORD: ${{ secrets.NORA_APP_PASSWORD }}
-          RLS_TELEMETRY_PASSWORD: ${{ secrets.RLS_TELEMETRY_PASSWORD }}
-        run: |
-          miss=0
-          [ -z "$PG_ADMIN_PASSWORD" ]      && { echo "::error::PG_ADMIN_PASSWORD vazio"; miss=1; }
-          [ -z "$NORA_APP_PASSWORD" ]      && { echo "::error::NORA_APP_PASSWORD vazio — gere e sete antes (runbook)"; miss=1; }
-          [ -z "$RLS_TELEMETRY_PASSWORD" ] && { echo "::error::RLS_TELEMETRY_PASSWORD vazio — gere e sete antes (runbook)"; miss=1; }
-          exit $miss
-
-      - uses: azure/login@v3
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       - name: Instala psql client
         run: |
+          set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client
 
-      - name: Abre firewall temporário pro runner
-        id: fw
+      # O R001 faz GRANT em objetos que as migrations Flyway criam (schema nora,
+      # nora.current_tenant_id(), users, meetings, meeting_analyses). Num banco vazio ele
+      # falharia por objeto inexistente, não por defeito próprio.
+      #
+      # Criamos aqui o MÍNIMO que o R001 referencia. Isto é fixture de validação, não
+      # cópia do schema — se o R001 passar a tocar uma tabela nova, este step falha de
+      # propósito: é o sinal de que o runbook e a fixture precisam acompanhar.
+      - name: Fixture mínima (objetos que o R001 referencia)
         run: |
-          RUNNER_IP=$(curl -s --max-time 15 ifconfig.me)
-          if [ -z "$RUNNER_IP" ]; then echo "::error::não obteve IP do runner"; exit 1; fi
-          RULE="gh-cutover-${{ github.run_id }}"
-          echo "rule=$RULE" >> "$GITHUB_OUTPUT"
-          az postgres flexible-server firewall-rule create \
-            -g "$AZURE_RG" -n "$PG_SERVER" --rule-name "$RULE" \
-            --start-ip-address "$RUNNER_IP" --end-ip-address "$RUNNER_IP" -o none
-          echo "Firewall aberto pra $RUNNER_IP (regra $RULE)"
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA IF NOT EXISTS nora;
+          CREATE OR REPLACE FUNCTION nora.current_tenant_id() RETURNS uuid
+            LANGUAGE sql STABLE AS
+            $$ SELECT nullif(current_setting('nora.current_tenant_id', true), '')::uuid $$;
+          CREATE TABLE IF NOT EXISTS users            (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
+          CREATE TABLE IF NOT EXISTS meetings         (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL);
+          CREATE TABLE IF NOT EXISTS meeting_analyses (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL);
+          ALTER TABLE meetings ENABLE ROW LEVEL SECURITY;
+          DROP POLICY IF EXISTS meetings_tenant_isolation ON meetings;
+          CREATE POLICY meetings_tenant_isolation ON meetings
+            USING (tenant_id = nora.current_tenant_id());
+          SQL
+          echo "Fixture criada."
 
-      - name: Roda R001 (provisiona roles como admin)
-        env:
-          PGPASSWORD: ${{ secrets.PG_ADMIN_PASSWORD }}
-          APP_PW: ${{ secrets.NORA_APP_PASSWORD }}
-          TEL_PW: ${{ secrets.RLS_TELEMETRY_PASSWORD }}
+      - name: Aplica o R001 (idempotente)
         run: |
-          # Senhas passadas CRUAS (sem aspas): o R001 usa :'app_password' que já as
-          # transforma em literal SQL com escaping correto (psql quoted-variable).
-          psql "host=$PG_HOST port=5432 dbname=$PG_DB user=$PG_ADMIN_USER sslmode=require" \
-            --set ON_ERROR_STOP=1 \
-            -v app_password="$APP_PW" \
-            -v telemetry_password="$TEL_PW" \
-            -f services/api/src/main/resources/db/operational/R001__provision_app_roles.sql
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 \
+            -v app_password='ci-app-pw' \
+            -v telemetry_password='ci-tel-pw' \
+            -f "$R001"
+          echo "Segunda aplicação — prova de idempotência:"
+          psql -v ON_ERROR_STOP=1 \
+            -v app_password='ci-app-pw' \
+            -v telemetry_password='ci-tel-pw' \
+            -f "$R001"
 
-      - name: Smoke — roles criados corretamente
-        env:
-          PGPASSWORD: ${{ secrets.PG_ADMIN_PASSWORD }}
-          APP_PW: ${{ secrets.NORA_APP_PASSWORD }}
+      - name: Assert — os TRÊS roles
         run: |
-          set -e
-          echo "== flags dos roles (esperado: nora_app bypassrls=f, nora_telemetry=t) =="
-          psql "host=$PG_HOST port=5432 dbname=$PG_DB user=$PG_ADMIN_USER sslmode=require" \
-            --set ON_ERROR_STOP=1 -t -A -F'|' \
-            -c "SELECT rolname, rolcanlogin, rolbypassrls FROM pg_roles WHERE rolname IN ('nora_app','nora_telemetry') ORDER BY rolname"
-          echo "== nora_app conecta + lê tabela EXEMPT (users) + tabela ENFORCED sob tenant aleatório (0 linhas, sem erro) =="
-          PGPASSWORD="$APP_PW" psql "host=$PG_HOST port=5432 dbname=$PG_DB user=nora_app sslmode=require" \
-            --set ON_ERROR_STOP=1 -t -A <<'SQL'
+          set -euo pipefail
+
+          echo "== role 1/3: owner (DDL/Flyway) =="
+          owner=$(psql -tAc "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database()")
+          echo "  owner=$owner"
+          [ "$owner" = "nora_admin" ] || { echo "::error::owner inesperado: $owner"; exit 1; }
+
+          echo "== roles 2/3 e 3/3: flags =="
+          psql -tA -F'|' -c \
+            "SELECT rolname, rolcanlogin, rolbypassrls FROM pg_roles
+              WHERE rolname IN ('nora_app','nora_telemetry') ORDER BY rolname"
+
+          ok=$(psql -tAc \
+            "SELECT count(*) FROM pg_roles
+              WHERE (rolname='nora_app'       AND rolcanlogin AND NOT rolbypassrls)
+                 OR (rolname='nora_telemetry' AND rolcanlogin AND     rolbypassrls)")
+          if [ "$ok" != "2" ]; then
+            echo "::error::Flags erradas (esperado 2 matches, veio $ok)."
+            echo "::error::nora_app precisa ser NOBYPASSRLS; nora_telemetry precisa ser BYPASSRLS."
+            exit 1
+          fi
+
+          echo "== nora_app: NOBYPASSRLS => RLS vale (0 linhas sob tenant aleatório, sem erro) =="
+          PGPASSWORD=ci-app-pw psql -U nora_app -tA <<'SQL'
           SELECT 'users_visiveis=' || count(*) FROM users;
           SET nora.current_tenant_id = '00000000-0000-0000-0000-000000000000';
           SELECT 'meetings_do_tenant_random=' || count(*) FROM meetings;
           SQL
-          echo "Smoke OK — nora_app é NOBYPASSRLS e a RLS está ativa."
 
-      - name: Fecha firewall temporário
-        if: always() && steps.fw.outputs.rule != ''
+          # O workflow antigo NUNCA testava isto: conferia as flags do nora_telemetry em
+          # pg_roles e parava aí. Um GRANT SELECT ausente em meeting_analyses não aparece
+          # em pg_roles — aparece como painel do operador zerado, sem erro nenhum.
+          echo "== nora_telemetry: conecta e LÊ meeting_analyses (o smoke que faltava) =="
+          tel=$(PGPASSWORD=ci-tel-pw psql -U nora_telemetry -tAc "SELECT count(*) FROM meeting_analyses")
+          echo "  meeting_analyses visíveis = $tel"
+          case "$tel" in
+            ''|*[!0-9]*) echo "::error::nora_telemetry não conseguiu ler meeting_analyses."; exit 1 ;;
+          esac
+
+          echo "OK — os três roles conferem."
+
+      - name: Gera o runbook de execução no host
+        env:
+          TARGET_DB: ${{ inputs.target_db }}
         run: |
-          az postgres flexible-server firewall-rule delete \
-            -g "$AZURE_RG" -n "$PG_SERVER" --rule-name "${{ steps.fw.outputs.rule }}" --yes -o none || true
-          echo "Firewall ${{ steps.fw.outputs.rule }} removido."
+          set -euo pipefail
+          mkdir -p out
+          db="${TARGET_DB:-nora}"
+          cp "$R001" out/
+          cat > out/RUNBOOK.md <<EOF
+          # RLS cutover — etapa 2 (provisionar roles)
+
+          Gerado por \`rls-cutover.yml\` run \`${GITHUB_RUN_ID}\`, commit \`${GITHUB_SHA}\`.
+          O R001 deste commit foi aplicado num Postgres efêmero e os TRÊS roles foram
+          verificados. Nenhum banco real foi tocado por este workflow.
+
+          ## Executar (no host Proxmox, como quem opera a stack)
+
+          \`\`\`bash
+          cd /srv/nora/repo/infra/proxmox
+          git fetch --all && git checkout ${GITHUB_SHA}
+
+          # Segredos: SOPS + age. A chave privada só existe aqui, em /etc/nora/age.key.
+          # Decifra pra tmpfs — nunca pra disco.
+          sops -d secrets.env.sops > /dev/shm/nora.env
+          set -a; . /dev/shm/nora.env; set +a
+
+          ./scripts/rls-cutover.sh --dry-run --db ${db}   # confere pré-requisitos
+          ./scripts/rls-cutover.sh --yes     --db ${db}   # provisiona
+
+          shred -u /dev/shm/nora.env
+          \`\`\`
+
+          ## Os TRÊS roles
+
+          | # | Role | Flags | Papel | Se faltar |
+          |---|---|---|---|---|
+          | 1 | \`nora_admin\` (owner) | — | DDL + Flyway; roda o R001 | \`ALTER DEFAULT PRIVILEGES\` não cobre migrations futuras |
+          | 2 | \`nora_app\` | LOGIN, **NOBYPASSRLS** | runtime da API | o enforce não vale nada |
+          | 3 | \`nora_telemetry\` | LOGIN, **BYPASSRLS** | painel do operador | painel mostra **ZERO em silêncio** |
+
+          ## Etapa 3 — ligar o enforce (SEPARADA, depois de validar a 2)
+
+          No \`.env\` do host:
+
+          \`\`\`dotenv
+          NORA_RLS_ENFORCE=true
+          DATASOURCE_USERNAME=nora_app
+          DATASOURCE_PASSWORD=<NORA_APP_PASSWORD>
+          NORA_TELEMETRY_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${db}
+          NORA_TELEMETRY_DATASOURCE_USERNAME=nora_telemetry
+          NORA_TELEMETRY_DATASOURCE_PASSWORD=<NORA_TELEMETRY_PASSWORD>
+          SPRING_FLYWAY_USER=nora_admin
+          \`\`\`
+
+          Depois \`docker compose up -d --wait api\`.
+
+          > A JDBC URL **não** leva \`?sslmode=require\`: a imagem oficial sobe com SSL OFF
+          > e o Hikari falha no boot. O tráfego não sai da bridge \`data\` (internal: true).
+          EOF
+          echo "runbook gerado."
+
+      - name: Upload do plano
+        uses: actions/upload-artifact@v4
+        with:
+          name: rls-cutover-plan-${{ github.run_id }}
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## RLS cutover — plano validado"
+            echo ""
+            echo "R001 aplicado **duas vezes** num Postgres efêmero (\`pgvector/pgvector:pg16\`,"
+            echo "mesma imagem do host) e os **três** roles verificados. Nenhum banco real tocado."
+            echo ""
+            echo "| # | Role | Flags esperadas |"
+            echo "|---|---|---|"
+            echo "| 1 | \`nora_admin\` (owner) | roda o R001; dono das tabelas |"
+            echo "| 2 | \`nora_app\` | LOGIN, NOBYPASSRLS |"
+            echo "| 3 | \`nora_telemetry\` | LOGIN, BYPASSRLS |"
+            echo ""
+            echo "### Executar no host"
+            echo ""
+            echo '```bash'
+            echo "cd /srv/nora/repo/infra/proxmox"
+            echo "sops -d secrets.env.sops > /dev/shm/nora.env"
+            echo "set -a; . /dev/shm/nora.env; set +a"
+            echo "./scripts/rls-cutover.sh --yes"
+            echo "shred -u /dev/shm/nora.env"
+            echo '```'
+            echo ""
+            echo "Passo-a-passo completo no artefato \`rls-cutover-plan-${GITHUB_RUN_ID}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
