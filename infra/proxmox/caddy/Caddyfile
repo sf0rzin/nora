@@ -1,0 +1,251 @@
+# =============================================================================
+# NORA — Caddy: roteamento por Host + buffer de retry do rolling update.
+# =============================================================================
+#
+# Posição na topologia:
+#
+#   Internet -> Cloudflare edge (TLS) -> cloudflared (tunnel) -> CADDY -> apps
+#
+# ## Por que NÃO há TLS aqui
+#
+# O TLS do visitante termina na borda da Cloudflare (Universal SSL). O
+# cloudflared abre uma conexão de SAÍDA para a Cloudflare e entrega a
+# requisição em HTTP puro para `caddy:80`, tudo dentro das bridges do Docker
+# (a `internal` é `internal: true`). Não existe porta inbound publicada nesta
+# VM. Por isso `auto_https off`: sem isso o Caddy veria os nomes de host
+# abaixo, tentaria emitir certificado via ACME e falharia em loop (não há
+# :443 alcançável de fora), além de redirecionar 80 -> 443 e derrubar o túnel.
+#
+# ## Por que este arquivo é o coração do rolling update
+#
+# `docker compose up -d` DERRUBA o container antigo ANTES de subir o novo —
+# não existe readiness gate como o `activeRevisionsMode: Single` do Container
+# Apps. A API leva ~45s para subir (JVM + Flyway; é o `start_period: 45s` do
+# healthcheck no compose). Nessa janela o nome `api` ou não resolve (NXDOMAIN,
+# o container sumiu) ou resolve para um IP que recusa conexão.
+#
+# Sem configuração, cada uma dessas requisições vira um 502 imediato. Com
+# `lb_try_duration`, o Caddy SEGURA a requisição e fica retentando o dial a
+# cada `lb_try_interval` até o upstream aceitar. O usuário vê uma requisição
+# lenta em vez de um erro — que é exatamente a troca que se quer num deploy.
+#
+# O retry cobre falha de DIAL (connection refused E falha de DNS), que é
+# justamente o que acontece na recriação do container. Não há health check
+# ativo de propósito: com um único upstream, um `health_uri` errado marcaria o
+# backend como down para sempre e transformaria o buffer numa parede.
+#
+# ## Validar antes de subir
+#
+#   docker run --rm -v "$PWD/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+#     caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile
+#
+# Recarregar sem downtime (o Caddy é o único que não pode piscar):
+#   docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+# =============================================================================
+
+{
+	# ---- Admin API + /metrics (:2019) -------------------------------------
+	# Bind em 0.0.0.0, NÃO em loopback. Duas razões, e a segunda é obrigatória:
+	#
+	#   1. O healthcheck do compose (docker-compose.yml:101) roda DE DENTRO
+	#      deste container e funcionaria com loopback.
+	#   2. O job `caddy` do ../observability/prometheus.yml faz scrape em
+	#      `caddy:2019` DE FORA, a partir do container do Prometheus. Com o
+	#      default do Caddy (`admin localhost:2019`) esse scrape dá connection
+	#      refused e o painel de borda do Grafana fica "No data" sem erro.
+	#
+	# O trade-off é real: a admin API reconfigura o proxy inteiro em runtime,
+	# e 0.0.0.0 a expõe para todo container das redes `edge` e `internal`.
+	# Aceitável porque nenhuma das duas tem rota da internet (`internal` é
+	# `internal: true`; na `edge` só existe o cloudflared) e nenhuma porta
+	# :2019 é publicada no host. Se um dia entrar container de terceiro na
+	# `internal`, isto vira `admin localhost:2019` + um exporter dedicado.
+	admin 0.0.0.0:2019
+
+	# ATENÇÃO ao healthcheck do compose:
+	#     wget --quiet --tries=1 --spider http://localhost:2019/config/
+	# `--spider` do busybox emite HEAD, e o handler de /config/ da admin API do
+	# Caddy só trata GET/POST/PUT/PATCH/DELETE — HEAD cai no default e volta
+	# 405, o que faz o wget sair != 0 e o container NUNCA ficar healthy (e o
+	# cloudflared, que tem `condition: service_healthy`, nunca subir).
+	# Trocar por um GET de verdade, ou apontar para o /healthz do bloco :80
+	# lá embaixo (esse é servido por `respond`, que responde HEAD sem reclamar):
+	#     test: ["CMD", "wget", "-qO-", "http://localhost:2019/config/"]
+	#     test: ["CMD", "wget", "--spider", "-q", "http://localhost/healthz"]
+
+	# ---- Sem TLS na origem ------------------------------------------------
+	# Desliga ACME e o redirect automático 80 -> 443. Ver cabeçalho.
+	auto_https off
+
+	# ---- Logs em JSON no stdout ------------------------------------------
+	# O Alloy lê o socket do Docker e manda o stdout de todo container para o
+	# Loki. Logar em arquivo aqui seria invisível para o pipeline.
+	# `level INFO`: DEBUG no Caddy é extremamente verboso e polui o Loki.
+	log {
+		output stdout
+		format json
+		level INFO
+	}
+
+	# ---- Encerramento ------------------------------------------------------
+	# Conexões SSE ficam abertas indefinidamente. Sem um limite, o Caddy
+	# esperaria por elas no shutdown e `docker compose stop` só terminaria no
+	# SIGKILL, depois do timeout inteiro do Docker.
+	grace_period 15s
+
+	servers {
+		# O client real vem atrás de cloudflared, que está numa bridge
+		# privada. Sem isto o Caddy trataria o IP do cloudflared como cliente
+		# e ignoraria o X-Forwarded-For. (O IP público do visitante também
+		# chega no header `Cf-Connecting-Ip`; para usá-lo como client_ip nos
+		# logs, acrescente `client_ip_headers Cf-Connecting-Ip` aqui.)
+		trusted_proxies static private_ranges
+
+		# Desde o Caddy 2.7 as métricas por-handler são OPT-IN (custo de
+		# cardinalidade). SEM esta linha, :2019/metrics responde 200 mas só
+		# com métricas de runtime Go — nenhuma `caddy_http_request_*`. O
+		# scrape do Prometheus "funciona" e o dashboard fica vazio: é a falha
+		# silenciosa que ../observability/prometheus.yml avisa no job `caddy`.
+		#
+		# Limite conhecido: o label é `server` (srv0, srv1...), não o Host.
+		# Como web/api/admin/grafana entram todos pelo mesmo listener :80,
+		# isto dá o AGREGADO da borda, não RED por serviço.
+		metrics
+	}
+}
+
+# NOTA sobre compressão: NÃO há `encode` neste arquivo, de propósito. A
+# Cloudflare já comprime na borda, e comprimir um `text/event-stream` no
+# caminho é a forma mais fácil de reintroduzir buffering no chat.
+
+# =============================================================================
+# APEX + WWW -> web:3000
+# =============================================================================
+# Next.js (SSR + BFF). O `/api/chat` do BFF faz streaming token a token, então
+# esta rota também precisa de `flush_interval -1`.
+http://{$NORA_PUBLIC_DOMAIN:nora.systems}, http://www.{$NORA_PUBLIC_DOMAIN:nora.systems} {
+	log
+
+	reverse_proxy web:3000 {
+		# --- buffer do rolling update ---
+		lb_try_duration 60s
+		lb_try_interval 500ms
+
+		# --- streaming ---
+		# -1 = repassa cada byte imediatamente, sem buffer intermediário.
+		# Sem isto o chat só "aparece" quando a resposta inteira termina.
+		flush_interval -1
+
+		# O TLS terminou na Cloudflare; o app precisa saber que a origem
+		# pública é https para montar URLs absolutas e cookies Secure.
+		header_up X-Forwarded-Proto https
+
+		transport http {
+			# Dial curto para o ciclo de retry girar rápido durante o boot.
+			dial_timeout 2s
+			# Tempo até o PRIMEIRO byte do header da resposta. Não limita a
+			# duração do stream depois que ele começa.
+			response_header_timeout 120s
+		}
+	}
+}
+
+# =============================================================================
+# api.<domínio> -> api:8080
+# =============================================================================
+# Spring Boot. Rota mais sensível ao rolling update: é a que leva ~45s para
+# ficar de pé (JVM + Flyway) e a que serve SSE do chat.
+http://api.{$NORA_PUBLIC_DOMAIN:nora.systems} {
+	log
+
+	reverse_proxy api:8080 {
+		# --- buffer do rolling update ---
+		# 60s > os 45s de `start_period` do healthcheck da API no compose.
+		# Margem deliberada: um Flyway com migration nova demora mais.
+		lb_try_duration 60s
+		lb_try_interval 500ms
+
+		# --- streaming (SSE do chat) ---
+		flush_interval -1
+
+		header_up X-Forwarded-Proto https
+
+		transport http {
+			dial_timeout 2s
+			response_header_timeout 120s
+		}
+	}
+}
+
+# =============================================================================
+# admin.<domínio> -> admin:3002   (profile `platform`)
+# =============================================================================
+# Console do operador. A autenticação acontece na BORDA, na Access Application
+# da Cloudflare; o cloudflared injeta o header `Cf-Access-Jwt-Assertion` e o
+# admin o valida contra o JWKS (CF_ACCESS_TEAM_DOMAIN + CF_ACCESS_AUD).
+# O Caddy repassa headers de entrada sem filtrar — não remova esse header.
+#
+# Com o profile `platform` DESLIGADO este bloco continua existindo e o
+# upstream `admin` não resolve: a requisição vai retentar por 60s e devolver
+# 502. É o comportamento correto (falha visível), mas não confunda com bug.
+http://admin.{$NORA_PUBLIC_DOMAIN:nora.systems} {
+	log
+
+	reverse_proxy admin:3002 {
+		lb_try_duration 60s
+		lb_try_interval 500ms
+
+		# Next.js: sem streaming crítico, mas manter o comportamento uniforme
+		# evita surpresa em rota nova que use SSE.
+		flush_interval -1
+
+		header_up X-Forwarded-Proto https
+
+		transport http {
+			dial_timeout 2s
+			response_header_timeout 120s
+		}
+	}
+}
+
+# =============================================================================
+# grafana.<domínio> -> grafana:3000
+# =============================================================================
+# GF_SERVER_ROOT_URL já está setado como https://grafana.<domínio> no compose,
+# então o Grafana monta os links corretamente. O upgrade de WebSocket (Live /
+# streaming de painéis) é tratado nativamente pelo reverse_proxy.
+http://grafana.{$NORA_PUBLIC_DOMAIN:nora.systems} {
+	log
+
+	reverse_proxy grafana:3000 {
+		lb_try_duration 60s
+		lb_try_interval 500ms
+		flush_interval -1
+
+		header_up X-Forwarded-Proto https
+
+		transport http {
+			dial_timeout 2s
+			response_header_timeout 120s
+		}
+	}
+}
+
+# =============================================================================
+# CATCH-ALL — qualquer outro Host na :80
+# =============================================================================
+# Pega Host desconhecido, acesso por IP direto na bridge e scanner interno.
+# Responde 404 seco em vez de vazar qual serviço existe atrás.
+# `:80` (sem host) é o endereço menos específico possível: os blocos com host
+# acima sempre vencem no roteamento; este só recebe o que sobra.
+:80 {
+	# Conveniência de operação: `docker compose exec <svc> wget -qO- http://caddy/healthz`
+	# confirma que o Caddy está roteando, sem depender da admin API.
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	handle {
+		respond "not found" 404
+	}
+}

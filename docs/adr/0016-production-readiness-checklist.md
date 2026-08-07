@@ -1,8 +1,9 @@
 # 0016 — Production-readiness checklist e separação `rg-nora-prod`
 
-- Status: proposto (aceita formalmente na Sub-fase 1.12 quando implementação começa)
+- Status: parcialmente substituído por 0034 (as premissas ancoradas em Azure caem: Gap 1 `prod.bicepparam`/SP separado, Gap 3 RPO/RTO apoiado no PITR do Flexible Server, Gap 4 alertas via Azure Monitor/App Insights, Gap 7 rotação via Key Vault. Gap 2 e Gap 6 continuam válidos com outro substrato; Gap 5 foi entregue pelo ADR 0029)
 - Data: 2026-05-14
 - Decisores: Tech Lead (Stratfy aprova plano antes de execução em 1.12)
+- Relacionado: ADR 0034 (migração para Proxmox — redefine substrato, RPO/RTO e rotação de segredos)
 
 ## Contexto
 

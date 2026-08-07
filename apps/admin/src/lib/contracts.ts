@@ -58,9 +58,9 @@ export interface CostSummary {
   rows: CostRow[];
 }
 
-/** Saúde por serviço (App Insights, janela ~1h). Espelha HealthSnapshot do backend. */
+/** Saúde por serviço (Prometheus, janela ~1h). Espelha HealthSnapshot do backend. */
 export interface ServiceHealth {
-  role: string; // cloud_RoleName (nora-api, nora-web, nora-worker...)
+  role: string; // label `job` do Prometheus (nora-api, nora-web, nora-worker...)
   requests: number;
   failed: number;
   failureRate: number; // 0..1
@@ -69,7 +69,9 @@ export interface ServiceHealth {
 
 export interface HealthSnapshot {
   window: string; // ex.: "1h"
-  source: string; // "appinsights" | "unavailable"
+  // Nome do adaptador que respondeu: "prometheus" (ADR 0034; antes "application-insights")
+  // ou "unavailable". A UI só ramifica em "unavailable" — o resto é rótulo.
+  source: string;
   services: ServiceHealth[];
   degraded: boolean; // alguma failureRate > 5%
   note: string | null;

@@ -61,7 +61,9 @@
   },
   "plugins": {
     "nora": {
-      "apiBaseUrl": "http://localhost:8080"
+      "apiBaseUrl": "http://localhost:8080",
+      "sttBackend": "local",
+      "whisperModel": "small"
     },
     "updater": {
       "endpoints": [
@@ -77,7 +79,6 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/nora-stt-sidecar"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

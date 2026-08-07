@@ -12,7 +12,48 @@ crate-type = ["lib", "cdylib", "staticlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+# ============================================================================
+# FEATURES — selecao de backend de STT
+# ============================================================================
+# Durante a transicao Azure -> local os DOIS backends compilam por default. O
+# backend efetivo e escolhido em RUNTIME (env `NORA_STT_BACKEND`, ver stt.rs),
+# nao em build-time; a feature so controla se o codigo entra no binario.
+#
+# Para um build "local puro" (sem o sidecar Python no bundle):
+#   cargo build --no-default-features --features stt-local
+#
+# Aceleracao de GPU: `whisper-metal` e ligada automaticamente no macOS pela
+# secao [target.'cfg(target_os = "macos")'.dependencies] abaixo. Vulkan/CUDA
+# ficam opt-in explicito porque exigem SDK do fabricante na maquina de BUILD
+# (nao so na de execucao) — ligar por default quebraria o CI dos tres alvos.
+#   cargo build --features whisper-vulkan     # Windows/Linux com Vulkan SDK
+#   cargo build --features whisper-cuda       # Windows/Linux com CUDA Toolkit
+#
+# CPU e sempre o fallback: sem nenhuma feature de GPU o whisper.cpp roda em CPU.
+[features]
+default = ["stt-local", "stt-azure"]
+
+# STT local, in-process, via whisper.cpp (crate whisper-rs).
+stt-local = ["dep:whisper-rs", "dep:sha2"]
+
+# STT via sidecar Python + Azure Speech SDK. LEGADO — mantido atras de flag
+# durante a transicao. Remover junto com apps/desktop/sidecar/ quando o local
+# estiver validado em hardware real nos tres alvos.
+stt-azure = []
+
+# `?` = "se a dep opcional estiver ativa, ligue a feature dela" — sem o `?` a
+# feature de GPU force-ativaria o whisper-rs mesmo com stt-local desligada.
+whisper-vulkan = ["whisper-rs?/vulkan"]
+whisper-cuda = ["whisper-rs?/cuda"]
+whisper-openblas = ["whisper-rs?/openblas"]
+
 [dependencies]
+# Pinado em "=0.16.0" de proposito: whisper-rs vendora o whisper.cpp como
+# submodulo e mudanca de minor ja trocou a API de FullParams/State no passado
+# (0.13 -> 0.14 renomeou o gate de log). Bump so com cargo check nos 3 alvos.
+whisper-rs = { version = "=0.16.0", optional = true }
+sha2 = { version = "0.10", optional = true }
+
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-shell = "2"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "multipart"], default-features = false }
@@ -38,6 +79,12 @@ raw-window-handle = "0.6"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
+# Metal por default no macOS: o Cargo faz UNIAO das features desta secao com a
+# de [dependencies], entao o build macOS ganha "metal" e os outros nao. O
+# whisper.cpp cai pra CPU sozinho se o device Metal nao inicializar, entao isso
+# nao quebra Intel antigo. Nao vale pra CoreML: o encoder CoreML exige um
+# .mlmodelc gerado por modelo, que nao baixamos (ver whisper_model.rs).
+whisper-rs = { version = "=0.16.0", features = ["metal"], optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", features = [
