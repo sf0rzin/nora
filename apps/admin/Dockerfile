@@ -2,13 +2,13 @@
 # Console interno do operador (Next standalone). Atrás de Easy Auth + IP allowlist no ACA.
 
 # --- deps ---
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # --- build ---
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
@@ -16,7 +16,7 @@ COPY . .
 RUN npm run build
 
 # --- runtime (standalone) ---
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3002
 RUN addgroup -S nora && adduser -S nora -G nora
