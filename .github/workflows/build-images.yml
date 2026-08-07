@@ -12,7 +12,7 @@ name: build-images
 #   - workflow_dispatch: rebuild de todos manualmente
 #
 # Imagens publicadas:
-#   - ghcr.io/sys0xff/nora-{api,worker,web,admin}:{latest, sha-XXXXXXX}
+#   - ghcr.io/sf0rzin/nora-{api,worker,web,admin}:{latest, sha-XXXXXXX}
 #
 # ROLLOUT (job release-pointer): substituiu o antigo `deploy-apps`, que fazia
 # `azure/login` + `az containerapp update` via OIDC. O modelo agora é PULL: este job só
@@ -68,7 +68,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: sys0xff/nora
+  IMAGE_PREFIX: sf0rzin/nora
 
 jobs:
   changes:

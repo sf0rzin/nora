@@ -71,7 +71,7 @@ last_reviewed: 2026-06-06
 
 ## G
 
-**GHCR** — GitHub Container Registry. Armazena imagens Docker `ghcr.io/sys0xff/nora-{api,worker,web}:{latest, sha-XXXXXXX, ref}`. Imagens Public (passo manual nas settings do GHCR). Build via `build-images.yml`.
+**GHCR** — GitHub Container Registry. Armazena imagens Docker `ghcr.io/sf0rzin/nora-{api,worker,web}:{latest, sha-XXXXXXX, ref}`. Imagens Public (passo manual nas settings do GHCR). Build via `build-images.yml`.
 
 ## I
 
