@@ -13,8 +13,8 @@ import org.springframework.web.client.RestClient;
  * Adaptador legado: troca a subscription key pelo token de curta duracao do STS regional da Azure.
  *
  * <p>Fora do caminho default desde a saida do Azure — o default e {@code LocalSttNoopBroker}
- * ({@code nora.speech.provider=local}). Mantido, e nao deletado, para que o rollback da migracao
- * de STT seja uma env var ({@code NORA_SPEECH_PROVIDER=azure}) e nao um revert de codigo.
+ * ({@code nora.speech.provider=local}). Mantido, e nao deletado, para que o rollback da migracao de
+ * STT seja uma env var ({@code NORA_SPEECH_PROVIDER=azure}) e nao um revert de codigo.
  */
 @Component
 @ConditionalOnProperty(name = "nora.speech.provider", havingValue = "azure")

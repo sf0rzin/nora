@@ -9,15 +9,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <p>{@code provider} escolhe o adaptador da porta {@code SpeechTokenBroker}:
  *
  * <ul>
- *   <li>{@code local} (default) — STT roda no cliente (Whisper local no desktop). O broker
- *       responde 410 GONE; nenhuma credencial de nuvem é necessária.
- *   <li>{@code azure} — comportamento anterior (STS regional da Azure). Preservado só para a
- *       janela de transição, enquanto houver cliente desktop antigo em campo.
+ *   <li>{@code local} (default) — STT roda no cliente (Whisper local no desktop). O broker responde
+ *       410 GONE; nenhuma credencial de nuvem é necessária.
+ *   <li>{@code azure} — comportamento anterior (STS regional da Azure). Preservado só para a janela
+ *       de transição, enquanto houver cliente desktop antigo em campo.
  * </ul>
  *
  * <p>O bloco {@code azure} continua sendo lido mesmo com {@code provider=local} porque {@code
- * azure.default-region} e {@code rate-limit} alimentam o {@code SpeechTokenService} antes de
- * chegar no broker — o rate limit vale para os dois providers.
+ * azure.default-region} e {@code rate-limit} alimentam o {@code SpeechTokenService} antes de chegar
+ * no broker — o rate limit vale para os dois providers.
  */
 @ConfigurationProperties(prefix = "nora.speech")
 public record SpeechProperties(String provider, Azure azure, RateLimit rateLimit) {

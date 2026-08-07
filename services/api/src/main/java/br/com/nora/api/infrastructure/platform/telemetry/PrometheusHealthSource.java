@@ -27,9 +27,9 @@ import reactor.util.function.Tuple3;
  * Lê saúde do sistema via Prometheus HTTP query API (telemetria (b), ADR 0024/0034).
  *
  * <p>Substitui o {@code AppInsightsHealthSource}, que fazia GET em {@code
- * api.applicationinsights.io/v1/apps/{id}/query} com KQL. Um OTel Collector é write-only e não
- * fala KQL, então a perna de LEITURA não migra trocando env var: as três agregações do KQL
- * viraram três instant queries PromQL contra a série que o opentelemetry-javaagent publica.
+ * api.applicationinsights.io/v1/apps/{id}/query} com KQL. Um OTel Collector é write-only e não fala
+ * KQL, então a perna de LEITURA não migra trocando env var: as três agregações do KQL viraram três
+ * instant queries PromQL contra a série que o opentelemetry-javaagent publica.
  *
  * <p>Tradução do KQL original — {@code requests | summarize requests=count(),
  * failed=countif(success=='False'), p95=percentile(duration,95) by cloud_RoleName}:
@@ -39,15 +39,15 @@ import reactor.util.function.Tuple3;
  *       (server-side), exposto no Prometheus como {@code http_server_request_duration_seconds_*}.
  *   <li>{@code count()} → {@code increase(..._count[janela])}.
  *   <li>{@code countif(success=='False')} → mesmo contador filtrado por {@code
- *       http_response_status_code=~"[45].."}. O App Insights marca a request como falha quando
- *       o responseCode é &gt;= 400, então 4xx entra na conta — manter isso preserva o número que
- *       o painel já mostrava.
+ *       http_response_status_code=~"[45].."}. O App Insights marca a request como falha quando o
+ *       responseCode é &gt;= 400, então 4xx entra na conta — manter isso preserva o número que o
+ *       painel já mostrava.
  *   <li>{@code percentile(duration,95)} → {@code histogram_quantile(0.95, ..._bucket)}. ATENÇÃO à
  *       unidade: o KQL devolvia MILISSEGUNDOS e o semconv estável do OTel usa SEGUNDOS — daí o
  *       {@code * 1000} antes de preencher {@code p95LatencyMs}.
- *   <li>{@code by cloud_RoleName} → {@code by (job)}. O exporter prometheusremotewrite do
- *       collector mapeia o resource {@code service.name} para o label {@code job}; os valores são
- *       os mesmos OTEL_SERVICE_NAME do compose (nora-api, nora-worker, nora-web, nora-admin).
+ *   <li>{@code by cloud_RoleName} → {@code by (job)}. O exporter prometheusremotewrite do collector
+ *       mapeia o resource {@code service.name} para o label {@code job}; os valores são os mesmos
+ *       OTEL_SERVICE_NAME do compose (nora-api, nora-worker, nora-web, nora-admin).
  * </ul>
  *
  * <p>Best-effort, igual ao adaptador anterior: sem {@code prometheus-url} configurada, ou se a

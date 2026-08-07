@@ -150,8 +150,8 @@ public class PlatformProperties {
     }
 
     /**
-     * Fonte de saúde (Prometheus HTTP query API, ADR 0034). Vazio = telemetria health
-     * unavailable — mesma degradação que a config do App Insights tinha antes (o endpoint
+     * Fonte de saúde (Prometheus HTTP query API, ADR 0034). Vazio = telemetria health unavailable —
+     * mesma degradação que a config do App Insights tinha antes (o endpoint
      * /admin/platform/telemetry/health continua respondendo 200).
      *
      * <p>Sem api-key: o Prometheus vive na bridge {@code internal} do compose, sem exposição

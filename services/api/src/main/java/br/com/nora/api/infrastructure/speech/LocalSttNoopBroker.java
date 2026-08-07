@@ -9,8 +9,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Adaptador no-op da porta {@code SpeechTokenBroker} para o STT local (ADR 0035 — Whisper
- * embarcado no Tauri, transcrevendo na máquina do cliente; sucessor do ADR 0009).
+ * Adaptador no-op da porta {@code SpeechTokenBroker} para o STT local (ADR 0035 — Whisper embarcado
+ * no Tauri, transcrevendo na máquina do cliente; sucessor do ADR 0009).
  *
  * <p>ESTADO FINAL vs. ESTE PASSO. O ADR 0035 §"Impacto no código" manda apagar {@code
  * SpeechController}, {@code SpeechTokenService}, {@code AzureSpeechTokenBroker}, o rate limit e o
@@ -18,22 +18,22 @@ import org.springframework.stereotype.Component;
  * torna aquela deleção segura. Enquanto houver desktop antigo em campo chamando {@code
  * /speech/token}, a rota precisa responder algo interpretável; quando não houver, some tudo junto.
  *
- * <p>POR QUE A PORTA CONTINUA EXISTINDO NESTE PASSO, em vez de apagar broker, service, controller
- * e DTO de uma vez:
+ * <p>POR QUE A PORTA CONTINUA EXISTINDO NESTE PASSO, em vez de apagar broker, service, controller e
+ * DTO de uma vez:
  *
  * <ol>
  *   <li><b>Clientes antigos em campo.</b> O desktop já publicado chama {@code POST /speech/token}
  *       no boot da captura de voz. Sumir com a rota devolveria 404 genérico do Spring, que o
  *       cliente antigo não distingue de "API fora do ar" e transforma em retry infinito. Com a
- *       porta viva, a mesma rota responde 410 GONE + {@code SPEECH_PROVIDER_GONE} — sinal
- *       terminal e legível, que o cliente novo usa para cair direto no Whisper local.
- *   <li><b>Reversibilidade da migração.</b> {@code nora.speech.provider=azure} recoloca o
- *       {@code AzureSpeechTokenBroker} sem tocar em código. Se o Whisper local não performar no
- *       hardware de algum usuário, o rollback é uma env var, não um revert.
+ *       porta viva, a mesma rota responde 410 GONE + {@code SPEECH_PROVIDER_GONE} — sinal terminal
+ *       e legível, que o cliente novo usa para cair direto no Whisper local.
+ *   <li><b>Reversibilidade da migração.</b> {@code nora.speech.provider=azure} recoloca o {@code
+ *       AzureSpeechTokenBroker} sem tocar em código. Se o Whisper local não performar no hardware
+ *       de algum usuário, o rollback é uma env var, não um revert.
  *   <li><b>A porta não custa nada.</b> É uma interface de um método na camada de aplicação; o
- *       acoplamento com a Azure estava todo no adaptador de infraestrutura, que é exatamente o
- *       que este arquivo substitui. Apagar a porta junto seria jogar fora a abstração que tornou
- *       a troca barata.
+ *       acoplamento com a Azure estava todo no adaptador de infraestrutura, que é exatamente o que
+ *       este arquivo substitui. Apagar a porta junto seria jogar fora a abstração que tornou a
+ *       troca barata.
  * </ol>
  *
  * <p>A deleção definitiva de {@code /speech/token} (e do resto do bloco, como manda o ADR 0035)
