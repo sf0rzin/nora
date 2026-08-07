@@ -29,6 +29,7 @@ class AzureSpeechTokenBrokerTest {
         clock = () -> Instant.parse("2026-05-08T12:00:00Z");
         SpeechProperties props =
                 new SpeechProperties(
+                        SpeechProperties.PROVIDER_AZURE,
                         new SpeechProperties.Azure(
                                 "test-subscription-key",
                                 "brazilsouth",

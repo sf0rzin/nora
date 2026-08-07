@@ -63,7 +63,7 @@ export default async function TelemetriaPage() {
         <Aviso
           texto={
             health.note ??
-            "Application Insights não configurado neste ambiente (NORA_PLATFORM_HEALTH_APP_ID / NORA_PLATFORM_HEALTH_API_KEY)."
+            "Prometheus não configurado neste ambiente (NORA_PLATFORM_HEALTH_PROMETHEUS_URL)."
           }
         />
       ) : (

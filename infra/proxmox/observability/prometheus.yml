@@ -1,0 +1,198 @@
+# NORA — Prometheus
+# =============================================================================
+# Substitui a metade "métricas" do Application Insights (Metrics Explorer, gráficos
+# de Live Metrics, alertas de métrica) e é a fonte da PrometheusHealthSource que
+# aposenta o AppInsightsHealthSource.java (aquele fazia GET com KQL em
+# api.applicationinsights.io/v1/apps/{id}/query — não tem tradução automática;
+# é reescrita de classe Java, ver ADR 0034).
+#
+# RETENÇÃO: 30 dias, para bater com o `retentionInDays: 30` do Log Analytics.
+# Ela NÃO se declara aqui. Está na flag do docker-compose.yml:475:
+#     --storage.tsdb.retention.time=30d
+# Não existe chave `retention` no prometheus.yml. Se alguém tentar colocar uma,
+# o Prometheus falha o parse do config e não sobe.
+#
+# REMOTE-WRITE (recepção): também não se configura aqui. O bloco `remote_write` deste
+# arquivo é para ENVIAR para fora; RECEBER depende da flag do compose:
+#     --web.enable-remote-write-receiver          (docker-compose.yml:476)
+# que abre POST /api/v1/write. É por aí que entra tudo que o otel-collector empurra.
+#
+# Dois caminhos de dado, não um:
+#   1. PUSH  — otel-collector -> /api/v1/write  -> métricas de app (só a API tem SDK)
+#   2. SCRAPE — os jobs abaixo                  -> métricas de infra
+# Os apps não têm endpoint /metrics (a API não tem micrometer-registry-prometheus e o
+# actuator só expõe health,info). Não adianta criar job de scrape para api/web/worker/admin.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: nora-proxmox
+    env: prod
+
+# Sem Alertmanager na stack ainda. O alerting hoje é o do Grafana (unified alerting),
+# que consulta este Prometheus como datasource. Se um Alertmanager entrar no compose,
+# é aqui que ele é apontado.
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ["alertmanager:9093"]
+
+# rule_files: []
+
+scrape_configs:
+  # ---------------------------------------------------------------------------
+  # O próprio Prometheus — "quem vigia o vigia"
+  # ---------------------------------------------------------------------------
+  # prometheus_tsdb_head_series é o indicador de explosão de cardinalidade; numa VM
+  # única, é o que enche o disco antes da retenção de 30d ter chance de agir.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          component: observability
+
+  # ---------------------------------------------------------------------------
+  # OTel Collector — telemetria interna (porta 8888, NÃO 4317/4318)
+  # ---------------------------------------------------------------------------
+  # Sinal mais importante daqui: otelcol_exporter_send_failed_metric_points_total.
+  # Se esse contador sobe, o remote-write está falhando e o dashboard fica plano
+  # sem nenhum erro aparecer nos apps.
+  # Depende de `service.telemetry.metrics.address: 0.0.0.0:8888` no otel-collector.yaml
+  # (o default é localhost e o scrape daria connection refused).
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8888"]
+        labels:
+          component: observability
+
+  # ---------------------------------------------------------------------------
+  # Caddy — métricas de borda (o mais perto de "requests do Container Apps ingress")
+  # ---------------------------------------------------------------------------
+  # >>> ESTE JOB NÃO FUNCIONA COM O CADDYFILE COMO ESTÁ. <<<
+  #
+  # São DUAS pré-condições, e o caddy/Caddyfile de hoje NÃO atende NENHUMA das duas:
+  #
+  #   1) admin alcançável de fora do container.
+  #      O Caddyfile tem `admin localhost:2019` (caddy/Caddyfile:53) — ligado só ao
+  #      loopback. O healthcheck do compose (docker-compose.yml:101) funciona porque roda
+  #      DENTRO do container; um scrape vindo do Prometheus dá connection refused.
+  #      NÃO troque para `admin 0.0.0.0:2019` sem pensar: a admin API reconfigura o proxy
+  #      inteiro em runtime e passaria a ficar exposta para TODO container das redes
+  #      `edge` e `internal` — inclusive o cloudflared, que é quem recebe tráfego da
+  #      internet. Esse trade-off está documentado no próprio Caddyfile:47-53.
+  #      A saída sem esse custo é servir as métricas por um site block dedicado, que usa
+  #      o mesmo registro Prometheus mas NÃO expõe a admin API:
+  #
+  #          http://:2021 {
+  #              metrics /metrics
+  #          }
+  #
+  #      ...e então trocar o target abaixo para ["caddy:2021"]. (Não dá para usar :2019
+  #      no site block: 0.0.0.0:2019 colide com o 127.0.0.1:2019 do admin.)
+  #
+  #   2) bloco global `servers { metrics }` — ausente hoje.
+  #      Desde o Caddy 2.7 as métricas por-handler (caddy_http_*) são OPT-IN, por causa
+  #      de cardinalidade. Sem isso, o endpoint responde 200 mas só com métricas de
+  #      runtime Go e do admin — nenhum caddy_http_request_duration_seconds.
+  #
+  # As duas pré-condições não bloqueiam o mesmo conjunto de painéis, e a diferença importa
+  # na hora de priorizar:
+  #
+  #   - (1) sozinha derruba TUDO daqui, inclusive `caddy_reverse_proxy_upstreams_healthy`
+  #     — se o endpoint não é alcançável, não há scrape nenhum.
+  #   - (2) derruba só a família caddy_http_* ("Req/s na borda", "5xx/s na borda",
+  #     "Req/s por código HTTP", "Latência na borda"). O gauge de upstreams é registrado
+  #     pelo módulo reverse_proxy e NÃO depende do opt-in, então resolver só a (1) já
+  #     acende "Upstreams saudáveis (Caddy)" e "Upstreams saudáveis por destino".
+  #
+  # Isso é relevante porque esses dois painéis de upstream são a ÚNICA métrica com
+  # granularidade por serviço que cobre web e admin. Resolver a (1) é o maior ganho por
+  # linha alterada da stack inteira. Nada disso gera erro: é coleta desligada, não painel
+  # quebrado.
+  #
+  # Limitação real: os labels do Caddy são server/handler/code/method. `server` é o
+  # nome autogerado do listener (srv0, srv1...), NÃO o Host. Como web/api/admin/grafana
+  # compartilham o mesmo listener atrás do cloudflared, o Caddy dá o AGREGADO da borda,
+  # não RED por serviço. Quem separa por serviço é o `upstream` de
+  # caddy_reverse_proxy_upstreams_healthy — e só para saúde, não para latência.
+  - job_name: caddy
+    static_configs:
+      - targets: ["caddy:2019"]
+        labels:
+          component: edge
+
+  # ---------------------------------------------------------------------------
+  # cloudflared — saúde do túnel
+  # ---------------------------------------------------------------------------
+  # O `--metrics 0.0.0.0:2000` já está no command do compose (docker-compose.yml:68),
+  # então este lado está certo.
+  #
+  # >>> ESTE JOB NÃO FUNCIONA COM O COMPOSE COMO ESTÁ. <<<
+  # cloudflared está só na rede `edge` (docker-compose.yml:71) e o prometheus só na
+  # `internal` (docker-compose.yml:480). Não há rota entre eles: o scrape dá
+  # "no such host". Correção de uma linha no docker-compose.yml, no serviço cloudflared:
+  #
+  #     networks: [edge, internal]
+  #
+  # Isso NÃO expõe o cloudflared a mais nada — `internal` é internal: true e não tem
+  # rota para a internet; só adiciona a interface pelo lado de dentro.
+  #
+  # Métrica que vale: cloudflared_tunnel_ha_connections (esperado 4 — quatro conexões
+  # para o edge da Cloudflare). Cair para 0 é o 522 que derrubou nora.systems.
+  # Os contadores de request (cloudflared_tunnel_total_requests) NÃO são confiáveis:
+  # dependem do transporte e ficam zerados no caminho QUIC. Não construa painel em cima.
+  - job_name: cloudflared
+    static_configs:
+      - targets: ["cloudflared:2000"]
+        labels:
+          component: edge
+
+  # ---------------------------------------------------------------------------
+  # Loki — o alarme de que a retenção parou
+  # ---------------------------------------------------------------------------
+  # loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds
+  # envelhecendo = compactor parado = retenção de 720h não está apagando nada.
+  # Ver o aviso grande no loki.yaml.
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          component: observability
+
+  # ---------------------------------------------------------------------------
+  # Alloy — se o shipper de logs morrer, ninguém percebe pelos logs
+  # ---------------------------------------------------------------------------
+  # loki_write_dropped_entries_total > 0 é perda de log de verdade.
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+        labels:
+          component: observability
+
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]
+        labels:
+          component: observability
+
+  # ---------------------------------------------------------------------------
+  # NÃO CONFIGURADO — métricas por container (CPU/memória/restarts)
+  # ---------------------------------------------------------------------------
+  # É a lacuna equivalente ao painel "Metrics" do Container Apps. Não existe cAdvisor
+  # nem node-exporter no docker-compose.yml, então NÃO EXISTEM as séries
+  # container_cpu_usage_seconds_total / container_memory_working_set_bytes.
+  # O dashboard nora-overview não as usa de propósito — inventar essas queries só
+  # produziria painel vazio.
+  #
+  # Duas formas de fechar (escolha uma):
+  #   a) receiver docker_stats no otel-collector (ver otel-collector.yaml) — sem
+  #      container novo, mas exige montar o socket no collector;
+  #   b) cAdvisor como serviço do compose e descomentar o job abaixo.
+  #
+  # - job_name: cadvisor
+  #   static_configs:
+  #     - targets: ["cadvisor:8080"]
+  #       labels:
+  #         component: host
