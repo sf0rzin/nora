@@ -275,26 +275,104 @@ dos bloqueantes por isso.
 
 ### 1. Provisionar a VM no Proxmox
 
-Perfil alvo (dimensionado pelos limites do compose: api 2 vCPU/2.5 Gi, web 2/2 Gi, worker 1/1.5 Gi,
-admin 0.5/0.5 Gi, mais Postgres ×2 e a stack de observabilidade):
+#### O host `beta`, como ele realmente é
+
+Levantado por SSH em 2026-08-07 (`ssh beta`, entrada no `~/.ssh/config` → `142.132.199.184`,
+`root`, chave `hetzner-admin-ed25519`). Não são suposições:
+
+| | |
+|---|---|
+| Hypervisor | Proxmox VE **9.2.5**, kernel 7.0.14-8-pve, sobre **Debian 13 (trixie)** |
+| CPU | AMD Ryzen 9 5950X — 16 cores / **32 threads** |
+| RAM | **125 GB** total, ~49 GB disponíveis (a VM `windows11-beta` sozinha reserva 64 GB) |
+| Storage | `local-lvm` (LVM-thin) com **6,8 TB livres** (2,6% usado); `local` (dir) com 48 GB |
+| Bridge das VMs | `vmbr1` → `10.10.1.0/24`, gateway `10.10.1.1` |
+| Egress | `MASQUERADE` de `10.10.1.0/24` para `enp7s0`, `ip_forward=1` |
+| Inbound | **nenhum** — as VMs não têm IP público |
+| VMs existentes | 100 `windows11-beta`, 101 `ayla`, 102 `yara`, 103 `anglis`, 104 `edge`, 105 `passabola` |
+| Próximo VMID livre | **106** |
+| Imagem já disponível | `local:iso/noble-server-cloudimg-amd64.img` (Ubuntu 24.04) |
+
+> **A topologia valida o desenho, e não o contrário.** As VMs só têm saída NAT e zero entrada da
+> internet. O Cloudflare Tunnel não foi escolhido por conveniência — é o **único** jeito de publicar
+> a partir de `vmbr1` sem mexer em firewall do host nem em port-forward. Se um dia alguém propuser
+> "abrir a 443 direto", isso significa alterar o NAT do hypervisor que serve outras cinco VMs.
+
+#### Perfil da VM nova
+
+Dimensionado pelos limites do compose (api 2 vCPU/2,5 Gi, web 2/2 Gi, worker 1/1,5 Gi, admin
+0,5/0,5 Gi, mais os dois Postgres e a observabilidade):
 
 | Item | Valor | Nota |
 |---|---|---|
-| Nome | `nora-prod` | sem `-dev`; o erro de nomenclatura do Azure não se repete |
-| SO | Debian 13 (trixie) netinst, sem ambiente gráfico | Debian 12 serve |
-| vCPU | 6 (`host` CPU type) | `host` habilita AVX2 etc. — importante para o Postgres |
-| RAM | 16 GB, **sem ballooning** | ballooning + Postgres é receita de OOM imprevisível |
-| Disco | 100 GB, `scsi0` em `virtio-scsi-single`, **Discard** + **SSD emulation** | discard mantém o thin pool honesto |
-| Rede | `virtio`, bridge da LAN, **IP estático** ou reserva DHCP | o Tunnel é saída-only, mas o SSH precisa de endereço estável |
+| VMID / Nome | `106` / `nora-prod` | sem `-dev`; o erro de nomenclatura do Azure não se repete |
+| SO | Ubuntu 24.04 (cloudimg já em `local:iso`) ou Debian 13 | o `bootstrap-host.sh` detecta a distro e escolhe o repo Docker certo |
+| vCPU | 6, tipo `host` | sobra folga: o host tem 32 threads |
+| RAM | 16 GB, **sem ballooning** | cabe nos ~49 GB livres; ballooning + Postgres é OOM imprevisível |
+| Disco | 100 GB em `local-lvm`, `virtio-scsi-single`, **Discard** + **SSD emulation** | o thin pool tem 6,8 TB; discard o mantém honesto |
+| Rede | `virtio`, bridge **`vmbr1`**, IP estático **`10.10.1.30/24`**, gw `10.10.1.1` | siga o padrão das VMs existentes (`.21` yara, `.22` anglis, `.23` passabola) |
+| DNS | `1.1.1.1 8.8.8.8` | mesmo das outras VMs |
 | Boot | QEMU Guest Agent **ligado** | necessário para snapshot consistente |
-| Proteção | `Start at boot: yes`, `Protection: yes` | evita destruição acidental do único host |
+| Proteção | `Start at boot: yes`, `Protection: yes` | evita destruição acidental |
 
-Instalar apenas `SSH server` + `standard system utilities`. Sem swap gigante: 2 GB bastam (o
-OOM killer é preferível a thrashing com Postgres).
+```bash
+# no host beta, como root
+qm create 106 --name nora-prod --ostype l26 \
+  --cores 6 --cpu host --memory 16384 --balloon 0 \
+  --net0 virtio,bridge=vmbr1 --agent enabled=1 \
+  --scsihw virtio-scsi-single --onboot 1 --protection 1
+qm importdisk 106 /var/lib/vz/template/iso/noble-server-cloudimg-amd64.img local-lvm
+qm set 106 --scsi0 local-lvm:vm-106-disk-0,discard=on,iothread=1,ssd=1
+qm resize 106 scsi0 100G
+qm set 106 --ide2 local-lvm:cloudinit --boot order=scsi0 --serial0 socket --vga serial0
+qm set 106 --ipconfig0 ip=10.10.1.30/24,gw=10.10.1.1 --nameserver "1.1.1.1 8.8.8.8"
+qm set 106 --ciuser nora --sshkeys ~/.ssh/authorized_keys
+qm start 106
+```
 
-**Backup do hypervisor:** criar job no Proxmox Backup Server — modo **snapshot**, diário, retenção
-`keep-daily=7, keep-weekly=4`. Esse job é o que dá PITR de *host*; o `pg_dump` horário é o que dá
-PITR de *dado*. Os dois são necessários e cobrem falhas diferentes.
+Depois adicione ao seu `~/.ssh/config` local, seguindo o padrão das outras VMs — note que elas são
+alcançáveis a partir do host, não da internet:
+
+```
+Host nora-prod
+  HostName 10.10.1.30
+  User nora
+  ProxyJump beta
+  IdentityFile ~/.ssh/hetzner-admin-ed25519
+```
+
+#### Backup do hypervisor — não existe ainda, e precisa ser criado
+
+**Não há Proxmox Backup Server neste host.** O que existe é um job `vzdump` local chamado
+`ayla-daily`, e ele cobre **apenas a VM 101**:
+
+```
+vzdump: ayla-daily
+  storage local · mode snapshot · schedule 03:30
+  prune-backups keep-daily=7,keep-weekly=4
+  vmid 101
+```
+
+Uma VM nova **não entra nesse job automaticamente**. Sem criar um equivalente, a `nora-prod` fica
+sem backup de hypervisor nenhum — e aí o `pg_dump` horário do serviço `backup` vira a única linha
+de defesa, o que cobre perda de *dado* mas não perda de *VM*.
+
+Crie o job (Datacenter → Backup → Add, ou editando `/etc/pve/jobs.cfg`), com a mesma política:
+
+```
+vzdump: nora-daily
+  storage local
+  mode snapshot
+  schedule 03:30
+  prune-backups keep-daily=7,keep-weekly=4
+  vmid 106
+  notes-template NORA prod - backup automatico {{guestname}}
+```
+
+> Atenção ao espaço: o storage `local` tem **48 GB livres** e já guarda ~5 GB por backup da `ayla`.
+> Um snapshot de 100 GB da `nora-prod` não cabe lá. Ou aponte este job para `local-lvm`/um storage
+> dedicado, ou reduza o disco da VM, ou adicione um Proxmox Backup Server. **Decida isto antes do
+> go-live, não depois do primeiro backup falhar em silêncio.**
 
 ### 2. Bootstrap do host
 

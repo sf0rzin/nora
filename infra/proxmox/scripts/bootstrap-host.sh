@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# bootstrap-host.sh — prepara do zero a VM Debian que hospeda a stack NORA no Proxmox "beta".
+# bootstrap-host.sh — prepara do zero a VM (Debian ou Ubuntu) que hospeda a stack NORA no Proxmox "beta".
 #
 # Roda UMA vez por host (é idempotente: rodar de novo só reconcilia). Depois dele, o
 # operador só precisa de `deploy.sh`.
@@ -14,8 +14,8 @@
 #   Resultado: zero porta inbound, zero chave SSH no GitHub Secrets, zero runner.
 #
 # O que instala/configura:
-#   1. Pré-voo: Debian 12+, root, arquitetura, /dev/shm como tmpfs.
-#   2. Docker CE + plugin compose (repositório oficial da Docker, não o do Debian).
+#   1. Pré-voo: Debian ou Ubuntu, root, arquitetura, /dev/shm como tmpfs.
+#   2. Docker CE + plugin compose (repositório oficial da Docker, não o da distro).
 #   3. sops + age (binários oficiais do GitHub, com verificação de checksum).
 #   4. Usuário de serviço `nora` no grupo docker.
 #   5. Árvore /srv/nora/{state,backups,secrets} + /etc/nora com a chave age.
@@ -103,7 +103,7 @@ if [ -r /etc/os-release ]; then
   info "SO: ${PRETTY_NAME:-desconhecido}"
   case "${ID:-}" in
     debian|ubuntu) : ;;
-    *) warn "testado em Debian 12. '${ID:-?}' pode funcionar, mas você está fora do caminho trilhado." ;;
+    *) warn "suportados: Debian e Ubuntu. '${ID:-?}' pode funcionar, mas você está fora do caminho trilhado." ;;
   esac
 else
   warn "/etc/os-release ausente — não consigo identificar a distro."
@@ -152,17 +152,33 @@ elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1
   info "$(docker compose version)"
 else
   log "Instalando Docker CE + plugin compose"
-  # Repositório oficial da Docker: o docker.io do Debian é antigo e não traz o
+  # Repositório oficial da Docker: o docker.io das distros é antigo e não traz o
   # plugin `compose` v2, do qual o deploy.sh depende (`up -d --wait`).
+  #
+  # A distro NAO e fixa. O host `beta` e Proxmox VE 9.2.5 sobre Debian 13 (trixie), e a
+  # unica cloud image ja presente em `local:iso` e a Ubuntu Noble 24.04 — entao a VM
+  # pode nascer Ubuntu OU Debian dependendo do que for provisionado. O caminho do
+  # repositorio difere (`/linux/ubuntu` vs `/linux/debian`); usar o errado da 404 ou
+  # instala pacote de outra distro. Detecta em vez de assumir.
   run apt-get update -qq
   run apt-get install -y -qq ca-certificates curl gnupg
   run install -m 0755 -d /etc/apt/keyrings
+
+  DISTRO_ID="$(. /etc/os-release && echo "${ID:-debian}")"
+  CODENAME="$(. /etc/os-release && echo "${VERSION_CODENAME:-}")"
+  case "$DISTRO_ID" in
+    ubuntu) DOCKER_PATH=ubuntu; [ -n "$CODENAME" ] || CODENAME=noble ;;
+    debian) DOCKER_PATH=debian; [ -n "$CODENAME" ] || CODENAME=bookworm ;;
+    *) die "distro '$DISTRO_ID' sem repositorio Docker mapeado.
+       Instale o Docker a mao e rode de novo com --skip-docker." ;;
+  esac
+  info "Repositorio Docker: $DOCKER_PATH/$CODENAME"
+
   if [ ! -f /etc/apt/keyrings/docker.asc ]; then
-    run sh -c 'curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc'
+    run sh -c "curl -fsSL https://download.docker.com/linux/$DOCKER_PATH/gpg -o /etc/apt/keyrings/docker.asc"
     run chmod a+r /etc/apt/keyrings/docker.asc
   fi
-  CODENAME="$(. /etc/os-release && echo "${VERSION_CODENAME:-bookworm}")"
-  run sh -c "printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian %s stable\n' '$ARCH' '$CODENAME' > /etc/apt/sources.list.d/docker.list"
+  run sh -c "printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/%s %s stable\n' '$ARCH' '$DOCKER_PATH' '$CODENAME' > /etc/apt/sources.list.d/docker.list"
   run apt-get update -qq
   run apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   run systemctl enable --now docker
