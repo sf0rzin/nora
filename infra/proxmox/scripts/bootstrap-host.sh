@@ -321,7 +321,7 @@ WorkingDirectory=${PROXMOX_DIR}
 Environment=SOPS_AGE_KEY_FILE=${AGE_KEY_FILE}
 Environment=NORA_STATE_DIR=${STATE_DIR}
 Environment=BACKUP_DIR=${BACKUP_DIR}
-ExecStart=${SCRIPT_DIR}/deploy.sh --quiet
+ExecStart=${SCRIPT_DIR}/deploy.sh --if-changed
 TimeoutStartSec=900
 # O deploy.sh ja faz rollback por conta propria; nao reiniciar em loop.
 Restart=no
