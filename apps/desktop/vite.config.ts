@@ -8,16 +8,16 @@ export default defineConfig(async () => ({
   plugins: [react()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
   clearScreen: false,
   build: {
     rollupOptions: {
       input: {
-        main: path.resolve(__dirname, "index.html"),
-        overlay: path.resolve(__dirname, "overlay.html"),
-        dock: path.resolve(__dirname, "dock.html"),
+        main: path.resolve(import.meta.dirname, "index.html"),
+        overlay: path.resolve(import.meta.dirname, "overlay.html"),
+        dock: path.resolve(import.meta.dirname, "dock.html"),
       },
     },
   },

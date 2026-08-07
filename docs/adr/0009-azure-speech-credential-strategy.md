@@ -2,7 +2,7 @@
 
 ## Status
 
-Aceito
+Substituído por ADR 0035 (STT local: Whisper embarcado no Tauri, na máquina do cliente)
 
 ## Histórico de status
 
@@ -10,6 +10,7 @@ Aceito
 |---|---|---|
 | 2026-05-07 (criação) | Proposto | Esboço inicial |
 | 2026-05-12 | Aceito | Implementado via PR #29 (`SpeechController` + `AzureSpeechTokenBroker`); rate limit Bucket4j; `docs/adr/README.md` índice já marcava como aceito. Atualização desta linha trazida pela Sub-fase 1.10 (Docs Refresh) que reconciliou divergência menor entre status do doc e do índice |
+| 2026-08-07 | Substituído por 0035 | O ADR 0034 desliga a subscription Azure e com ela o recurso Azure Speech, removendo o substrato desta decisão. O ADR 0035 é a substituição funcional: o STT passa a rodar on-device (Whisper via `whisper-rs`), e o broker inteiro deixa de existir — endpoint `POST /speech/token`, rate limit Bucket4j, `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` e a renovação de token. Nota: a "Alternativa A — Proxy Server-Side" rejeitada aqui é o argumento que o ADR 0035 reusa para recusar Whisper self-hosted no servidor |
 
 ## Contexto
 
