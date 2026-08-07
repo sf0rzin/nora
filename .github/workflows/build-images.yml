@@ -30,10 +30,12 @@ name: build-images
 # existe no GHCR e o `docker compose pull` falharia. Serviço ausente do pointer = o host
 # mantém a tag que já está no `.env` dele.
 #
-# IMPORTANTE: por padrão, pacotes no GHCR ficam privados. Após o primeiro push,
-# ir em github.com/sys0xff/<package>/settings → "Change visibility" → Public
-# (o host puxa autenticado via `docker login ghcr.io` com PAT read:packages, então
-# público é conveniência, não requisito).
+# IMPORTANTE: por padrão, pacotes no GHCR nascem PRIVADOS. Para torná-los públicos:
+# github.com/users/sf0rzin/packages → (pacote) → Package settings → Change visibility.
+#
+# Não é obrigatório: o host autentica via `docker login ghcr.io` com um PAT de escopo
+# `read:packages` (GHCR_PULL_TOKEN no secrets.env.sops), feito pelo `ghcr_login()` do
+# infra/proxmox/scripts/deploy.sh. Público é conveniência, não requisito.
 
 on:
   push:

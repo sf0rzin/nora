@@ -349,8 +349,12 @@ probe_cmd() {
     api)               printf 'wget\t-q\t-O\t-\thttp://localhost:8080/actuator/health' ;;
     web)               printf 'wget\t-q\t--spider\thttp://localhost:3000' ;;
     admin)             printf 'wget\t-q\t--spider\thttp://localhost:3002/healthz' ;;
-    caddy)             printf 'wget\t-q\t--spider\thttp://localhost:2019/config/' ;;
-    otel-collector)    printf 'wget\t-q\t--spider\thttp://localhost:13133/' ;;
+    # caddy: /healthz do bloco :80, NAO a admin API em :2019 — o handler de /config/ so
+    # trata GET/POST/PUT/..., e o --spider do busybox emite HEAD, levando 405 (que o
+    # probe_once trata como falha real). Mesmo alvo do healthcheck do compose.
+    # otel-collector: imagem distroless, sem wget nem shell. return 2 = 'sem probe'.
+    caddy)             printf 'wget\t-q\t--spider\thttp://localhost/healthz' ;;
+    otel-collector)    return 2 ;;
     prometheus)        printf 'wget\t-q\t--spider\thttp://localhost:9090/-/healthy' ;;
     loki)              printf 'wget\t-q\t--spider\thttp://localhost:3100/ready' ;;
     grafana)           printf 'wget\t-q\t--spider\thttp://localhost:3000/api/health' ;;
@@ -613,9 +617,39 @@ rollback_service() {  # <serviço> — rollback explícito, via --rollback
 }
 
 # ---------------------------------------------------------------------------
+# Login no GHCR
+# ---------------------------------------------------------------------------
+# O namespace `sf0rzin` é novo, então os pacotes nasceram PRIVADOS — sem login o
+# `compose pull` leva 401/denied e o rollout morre no primeiro serviço.
+#
+# O secrets-bootstrap.sh já coleta e cifra o GHCR_PULL_TOKEN (PAT com apenas
+# `read:packages`), mas até agora ninguém o usava: o código só IMPRIMIA uma dica de
+# login DEPOIS do pull falhar. Se um dia os 4 pacotes forem tornados públicos, a
+# variável fica vazia e isto vira no-op — não é preciso desfazer nada.
+ghcr_login() {
+  local tok user
+  tok="$(envget GHCR_PULL_TOKEN)"
+  if [ -z "$tok" ]; then
+    info "GHCR_PULL_TOKEN vazio — assumindo pacotes públicos em $REGISTRY"
+    return 0
+  fi
+  # Sem GHCR_USER explícito, o owner do IMAGE_PREFIX serve (ex.: sf0rzin/nora -> sf0rzin).
+  user="$(envget GHCR_USER)"
+  [ -n "$user" ] || user="${IMAGE_PREFIX%%/*}"
+  if printf '%s' "$tok" | run docker login "$REGISTRY" -u "$user" --password-stdin >/dev/null 2>&1; then
+    info "autenticado em $REGISTRY como $user"
+  else
+    warn "docker login em $REGISTRY falhou (usuário: $user).
+       Se os pacotes forem privados, o pull vai falhar logo abaixo.
+       Confira o escopo do PAT: precisa de read:packages."
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Execução
 # ---------------------------------------------------------------------------
 prepare_env
+ghcr_login
 
 PG_USER_CACHE="$(envget POSTGRES_ADMIN_USER)"
 [ -n "$PG_USER_CACHE" ] || PG_USER_CACHE="nora_admin"
