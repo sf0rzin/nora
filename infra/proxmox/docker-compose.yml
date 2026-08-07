@@ -489,11 +489,15 @@ services:
     volumes:
       - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
     networks: [internal]
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:13133/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+    # SEM healthcheck, e isso é deliberado. A imagem do otel-collector-contrib é
+    # distroless: não tem shell, wget nem curl, então qualquer `test:` baseado neles
+    # nunca executa e o container fica `unhealthy` PARA SEMPRE — o `up -d --wait`
+    # aborta e o deploy.sh reprova um collector que está funcionando.
+    # Ninguém declara `depends_on` dele, e com `--wait` um serviço sem healthcheck é
+    # considerado pronto quando está `running`. A extensão health_check continua
+    # habilitada em observability/otel-collector.yaml e responde em :13133 — dá para
+    # sondar de fora (`docker compose exec prometheus wget -qO- otel-collector:13133`),
+    # só não de dentro.
 
   prometheus:
     image: prom/prometheus:v3.1.0
