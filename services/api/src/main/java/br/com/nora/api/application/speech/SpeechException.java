@@ -30,4 +30,18 @@ public class SpeechException extends RuntimeException {
             super("BROKER_ERROR", message);
         }
     }
+
+    /**
+     * O provider de fala em nuvem foi desativado (STT passou a rodar no cliente). Mapeado para 410
+     * GONE — sinal TERMINAL, ao contrario do 500/502 que um broker quebrado produziria e que o
+     * cliente antigo trataria como falha transitoria digna de retry.
+     */
+    public static class ProviderGone extends SpeechException {
+        public ProviderGone() {
+            super(
+                    "SPEECH_PROVIDER_GONE",
+                    "Cloud speech tokens are no longer issued. This client must use local"
+                            + " on-device speech-to-text.");
+        }
+    }
 }
