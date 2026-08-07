@@ -150,27 +150,26 @@ public class PlatformProperties {
     }
 
     /**
-     * Fonte de saúde (Application Insights REST query API). Vazio = telemetria health unavailable.
+     * Fonte de saúde (Prometheus HTTP query API, ADR 0034). Vazio = telemetria health unavailable —
+     * mesma degradação que a config do App Insights tinha antes (o endpoint
+     * /admin/platform/telemetry/health continua respondendo 200).
+     *
+     * <p>Sem api-key: o Prometheus vive na bridge {@code internal} do compose, sem exposição
+     * pública. A autenticação do painel é o token de admin da própria API.
      */
     public static class Health {
-        private String appInsightsAppId = "";
-        private String apiKey = "";
+        /** Base URL do Prometheus (ex.: http://prometheus:9090). Vazio = unavailable. */
+        private String prometheusUrl = "";
+
+        /** Janela ISO-8601 (ex.: PT1H). Traduzida para range vector do PromQL. */
         private String window = "PT1H";
 
-        public String getAppInsightsAppId() {
-            return appInsightsAppId;
+        public String getPrometheusUrl() {
+            return prometheusUrl;
         }
 
-        public void setAppInsightsAppId(String appInsightsAppId) {
-            this.appInsightsAppId = appInsightsAppId;
-        }
-
-        public String getApiKey() {
-            return apiKey;
-        }
-
-        public void setApiKey(String apiKey) {
-            this.apiKey = apiKey;
+        public void setPrometheusUrl(String prometheusUrl) {
+            this.prometheusUrl = prometheusUrl;
         }
 
         public String getWindow() {

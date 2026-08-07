@@ -173,12 +173,22 @@ nora:
   worker:
     base-url: ${NLP_WORKER_BASE_URL:http://localhost:8001}
   speech:
+    # ADR 0035 (sucessor do 0009): o STT saiu da nuvem e foi para o cliente.
+    # local  = STT roda no cliente (Whisper on-device no desktop). POST /speech/token responde
+    #          410 GONE com SPEECH_PROVIDER_GONE — sinal terminal para o cliente antigo.
+    # azure  = comportamento anterior (STS regional). Preservado só para a janela de transição;
+    #          o rollback do STT local é NORA_SPEECH_PROVIDER=azure, sem revert de código.
+    provider: ${NORA_SPEECH_PROVIDER:local}
+    # Bloco azure só é usado com provider=azure. `default-region` continua alimentando a
+    # validação de região do SpeechTokenService nos dois modos.
     azure:
       subscription-key: ${AZURE_SPEECH_KEY:}
       default-region: ${AZURE_SPEECH_REGION:brazilsouth}
       token-endpoint-template: "https://%s.api.cognitive.microsoft.com/sts/v1.0/issueToken"
       token-ttl-seconds: 540
       request-timeout-ms: 5000
+    # Vale para os DOIS providers: um desktop antigo em loop de retry contra o 410 continua
+    # limitado a 6 req/min por usuário.
     rate-limit:
       tokens-per-minute: 6
 
@@ -208,10 +218,11 @@ nora:
       provider: ${NORA_PLATFORM_FALLBACK_PROVIDER:openai}
       model: ${NORA_PLATFORM_FALLBACK_MODEL:gpt-4o-mini}
       base-url: ${NORA_PLATFORM_FALLBACK_BASE_URL:https://api.openai.com/v1}
-    # Telemetria de saúde (b): App Insights REST query API. Vazio = health "unavailable".
+    # Telemetria de saúde (b): Prometheus HTTP query API (ADR 0034; era App Insights + KQL).
+    # Vazio = health "unavailable" — o endpoint continua respondendo 200, com services vazio.
+    # Sem api-key: o Prometheus fica na bridge `internal` do compose, sem exposição pública.
     health:
-      app-insights-app-id: ${NORA_PLATFORM_HEALTH_APP_ID:}
-      api-key: ${NORA_PLATFORM_HEALTH_API_KEY:}
+      prometheus-url: ${NORA_PLATFORM_HEALTH_PROMETHEUS_URL:}
       window: ${NORA_PLATFORM_HEALTH_WINDOW:PT1H}
     # Telemetria de negócio (c) — cortável.
     business:

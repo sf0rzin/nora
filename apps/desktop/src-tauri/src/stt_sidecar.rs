@@ -8,25 +8,28 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 use base64::Engine;
 
 use crate::speech_token::fetch_speech_token;
-
-#[derive(Debug, serde::Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub struct TranscriptEvent {
-    pub session_id: String,
-    pub track: String,
-    pub speaker_id: Option<String>,
-    pub text: String,
-    pub is_final: bool,
-    pub offset_ms: u64,
-    pub duration_ms: Option<u64>,
-    pub confidence: Option<f32>,
-}
+use crate::stt::{speaker_id_for_track, SttBackend, TranscriptEvent};
 
 pub struct SidecarHandle {
     pub session_id: String,
     pub audio_tx: mpsc::Sender<Vec<i16>>,
     stop_tx: Option<oneshot::Sender<()>>,
+}
+
+impl SttBackend for SidecarHandle {
+    fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    fn audio_tx(&self) -> mpsc::Sender<Vec<i16>> {
+        self.audio_tx.clone()
+    }
+
+    fn stop(mut self: Box<Self>) {
+        if let Some(stop_tx) = self.stop_tx.take() {
+            let _ = stop_tx.send(());
+        }
+    }
 }
 
 impl Drop for SidecarHandle {
@@ -210,12 +213,6 @@ impl SidecarHandle {
             audio_tx,
             stop_tx: Some(stop_tx),
         })
-    }
-
-    pub fn stop(mut self) {
-        if let Some(stop_tx) = self.stop_tx.take() {
-            let _ = stop_tx.send(());
-        }
     }
 }
 
@@ -481,9 +478,17 @@ async fn run_sidecar(
                                             .unwrap_or(&session_id)
                                             .to_string(),
                                         track: track_label.clone(),
+                                        // O Azure diariza de verdade e manda
+                                        // "Guest-1"/"Guest-2"; isso e preservado.
+                                        // Quando vem nulo (protocol.py deixa
+                                        // `speaker_id: str | None`), cai no id
+                                        // por track — mesmo rotulo que o backend
+                                        // local usa, entao o SpeakerMap do front
+                                        // nao muda de comportamento.
                                         speaker_id: json.get("speaker_id")
                                             .and_then(|v| v.as_str())
-                                            .map(|s| s.to_string()),
+                                            .map(|s| s.to_string())
+                                            .or_else(|| speaker_id_for_track(&track_label)),
                                         text: json.get("text")
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("")

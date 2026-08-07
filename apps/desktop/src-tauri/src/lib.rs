@@ -8,10 +8,20 @@ pub mod commands;
 mod http_proxy;
 mod live_analysis;
 mod secrets;
+// `speech_token` so existe pro backend azure. No build local-puro
+// (`--no-default-features --features stt-local`) ele nem entra no binario — e
+// por isso que o app nao tem como falhar tentando falar com `/speech/token`.
+#[cfg(feature = "stt-azure")]
 mod speech_token;
+mod stt;
+#[cfg(feature = "stt-local")]
+mod stt_local;
+#[cfg(feature = "stt-azure")]
 mod stt_sidecar;
-#[cfg(test)]
+#[cfg(all(test, feature = "stt-azure"))]
 mod stt_sidecar_test;
+#[cfg(feature = "stt-local")]
+mod whisper_model;
 mod stealth_mode;
 mod system_audio;
 mod windows;
@@ -22,7 +32,26 @@ use stealth_mode::StealthModeState;
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::Manager;
 
-pub type SidecarState = Arc<Mutex<Vec<stt_sidecar::SidecarHandle>>>;
+/// Backends de STT vivos (um por track). `Box<dyn SttBackend>` porque o backend
+/// e escolhido em runtime — ver `stt::configured_backend`. O nome ficou
+/// `SidecarState` pra nao espalhar rename por todo lado; nem todo backend aqui e
+/// um sidecar (o local roda in-process).
+pub type SidecarState = Arc<Mutex<Vec<Box<dyn stt::SttBackend>>>>;
+
+/// Le uma chave de `plugins.nora` do `tauri.conf.json` embutido em build-time.
+///
+/// Existe porque env var em runtime nao chega num app aberto pelo Finder/Explorer:
+/// config de produto (backend de STT, tamanho do modelo) precisa vir do bundle.
+pub fn nora_config_str(key: &str) -> Option<String> {
+    const CONFIG_JSON: &str = include_str!("../tauri.conf.json");
+    let config: serde_json::Value = serde_json::from_str(CONFIG_JSON).ok()?;
+    config
+        .get("plugins")?
+        .get("nora")?
+        .get(key)?
+        .as_str()
+        .map(str::to_string)
+}
 
 /// Resolve a URL base da API uma vez (memoizada). Prioridade:
 /// 1) env `NORA_API_BASE_URL` injetada em build-time pelo build.rs (CI/produção);

@@ -1,0 +1,176 @@
+# NORA — Loki (single binary, filesystem)
+# =============================================================================
+# Substitui o Log Analytics Workspace: o destino do `appLogsConfiguration` do
+# Container Apps Environment. Onde antes ia stdout/stderr dos 4 apps para a tabela
+# ContainerAppConsoleLogs_CL, agora vai para cá, empurrado pelo Alloy.
+#
+# Escala alvo: uma VM, um binário, disco local. Sem S3, sem memberlist, sem anel
+# distribuído. `replication_factor: 1` e kvstore inmemory são deliberados — qualquer
+# outra coisa aqui é complexidade sem dono.
+#
+# =============================================================================
+# >>> LEIA ISTO ANTES DE MEXER EM RETENÇÃO <<<
+# =============================================================================
+# `limits_config.retention_period: 720h` SOZINHO NÃO APAGA NADA.
+#
+# Ao contrário do `retentionInDays: 30` do Log Analytics — onde o Azure tinha um
+# processo gerenciado varrendo o workspace — no Loki o retention_period é apenas uma
+# DECLARAÇÃO de política. Quem executa a política é o COMPACTOR, e ele ignora a
+# política inteira a menos que você ligue duas chaves explicitamente:
+#
+#     compactor:
+#       retention_enabled: true          <- sem isto, retention_period é decorativo
+#       delete_request_store: filesystem <- obrigatório quando retention_enabled: true
+#
+# O modo de falha é o pior possível: SILENCIOSO. O Loki sobe normal, responde /ready,
+# ingere log, serve query, e o dashboard fica verde. Só que nada nunca é apagado.
+# Você descobre semanas depois, quando o disco da VM enche, o Postgres não consegue
+# mais escrever WAL e a stack inteira cai — por causa de log velho.
+#
+# É pior ainda em `filesystem`: não há bucket lifecycle policy de rede de segurança
+# como haveria num S3/Azure Blob. Se o compactor não apagar, ninguém apaga.
+#
+# Nota de versão: em Loki < 3.0 a chave era `compactor.shared_store`. Ela foi REMOVIDA
+# no Loki 3.x. Config antiga copiada de tutorial ou faz o Loki recusar o boot ou
+# (dependendo do campo) deixa a retenção desligada. A imagem aqui é grafana/loki:3.3.2
+# (docker-compose.yml:488), então vale `delete_request_store`.
+#
+# Como CONFIRMAR que está funcionando (não confie no arquivo, confira a série):
+#   loki_compactor_runs_started_total                    deve crescer
+#   loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds
+#                                                        deve subir a cada ~10min
+# O job `loki` do prometheus.yml existe exatamente para isso.
+# =============================================================================
+
+auth_enabled: false   # tenant único; o Caddy/Cloudflare Access é quem autentica na borda
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: info
+  # Traces do Spring podem gerar linhas longas; o default de 4MB da grpc sobra.
+  grpc_server_max_recv_msg_size: 8388608
+  grpc_server_max_send_msg_size: 8388608
+
+common:
+  path_prefix: /loki          # volume loki_data (docker-compose.yml:495)
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    # tsdb + v13 é o único combo que suporta structured metadata, que por sua vez é
+    # requisito da ingestão OTLP nativa (/otlp/v1/logs, usada pelo otlphttp/loki do
+    # collector). Schema antigo (boltdb-shipper / v11) faria o endpoint OTLP rejeitar.
+    # `from` no passado: é o começo de validade do schema, não a data de criação.
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
+    cache_ttl: 24h
+  filesystem:
+    directory: /loki/chunks
+
+# -----------------------------------------------------------------------------
+# COMPACTOR — quem de fato executa a retenção (ver o aviso grande no topo)
+# -----------------------------------------------------------------------------
+compactor:
+  working_directory: /loki/compactor
+
+  # A chave que transforma retention_period de declaração em ação.
+  retention_enabled: true
+
+  # OBRIGATÓRIA quando retention_enabled: true. Sem ela o Loki aborta o boot com
+  # "delete_request_store should be configured when retention is enabled".
+  # Esse erro é uma sorte: é a única parte da retenção que falha barulhento em vez
+  # de falhar em silêncio.
+  delete_request_store: filesystem
+
+  compaction_interval: 10m
+  retention_delete_delay: 2h        # janela de arrependimento antes do delete físico
+  retention_delete_worker_count: 150
+  delete_request_cancel_period: 24h
+
+limits_config:
+  # 720h = 30 dias. Espelha `retentionInDays: 30` do Log Analytics e o
+  # --storage.tsdb.retention.time=30d do Prometheus. Os três números têm que andar
+  # juntos, senão a correlação métrica<->log tem buraco na ponta antiga.
+  #
+  # Repetindo porque é o ponto do arquivo: esta linha sozinha não apaga nada.
+  # Ela só tem efeito porque compactor.retention_enabled: true está acima.
+  retention_period: 720h
+
+  # Rejeita log com timestamp velho. Protege contra um Alloy que ficou dias parado
+  # e volta despejando backlog fora da janela — isso corromperia as taxas do dashboard.
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+
+  # Teto de ingestão. Numa VM única isto é o fusível: um app em loop de erro
+  # cuspindo stack trace não pode consumir o disco inteiro em uma tarde.
+  ingestion_rate_mb: 8
+  ingestion_burst_size_mb: 16
+  per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 20MB
+
+  # Guarda-corpo de cardinalidade. Cada combinação única de labels é um stream com
+  # índice próprio. O config.alloy mantém labels de baixa cardinalidade justamente
+  # para não bater aqui.
+  max_label_names_per_series: 15
+  max_streams_per_user: 5000
+  max_global_streams_per_user: 5000
+
+  max_query_series: 5000
+  max_query_parallelism: 16
+  # Habilita a API de volume (Grafana "Logs volume" acima do painel de logs).
+  volume_enabled: true
+  allow_structured_metadata: true
+
+# Retenção por stream (opcional). Exemplo: guardar menos log de infra que de app.
+# Só funciona porque o compactor está ligado — mesma dependência de sempre.
+#   limits_config:
+#     retention_stream:
+#       - selector: '{service="nora-postgres"}'
+#         priority: 1
+#         period: 168h
+
+pattern_ingester:
+  enabled: true    # alimenta o "Explain/Patterns" do Grafana; barato em single binary
+
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 128
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+  rule_path: /loki/rules-temp
+  enable_api: true
+  # Sem alertmanager_url: o alerting de log hoje é o unified alerting do Grafana
+  # em cima do datasource Loki, não o ruler do Loki.
+
+# Telemetria de uso para a Grafana Labs. Desligada, coerente com
+# GF_ANALYTICS_REPORTING_ENABLED: "false" no compose e com o repo ser público.
+analytics:
+  reporting_enabled: false

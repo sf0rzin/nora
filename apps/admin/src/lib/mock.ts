@@ -73,7 +73,7 @@ export const MOCK_COST: CostSummary = {
 
 export const MOCK_HEALTH: HealthSnapshot = {
   window: "1h",
-  source: "appinsights",
+  source: "prometheus",
   degraded: false,
   note: null,
   services: [

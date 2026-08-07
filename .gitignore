@@ -15,7 +15,15 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+# .env.ci: placeholders gerados pelo job `infra` do ci.yml pra rodar
+# `docker compose config` (o compose usa ${VAR:?} e falha sem as vars). Efemero no
+# runner, mas quem reproduz o passo local acaba com um .env.* nao-ignorado no git
+# status — e um .env.* rastreavel e o comeco de um segredo commitado por engano.
+.env.ci
 !.env.example
+# O arquivo CIFRADO do SOPS e versionado de proposito (a chave age vive so no host,
+# em /etc/nora/age.key). O `!` protege contra qualquer regra .env* futura.
+!infra/proxmox/secrets.env.sops
 
 # --- Logs / temporários ---
 *.log
