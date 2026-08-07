@@ -279,13 +279,22 @@ services:
       # ---- Worker ----
       NLP_WORKER_BASE_URL: http://worker:8001
 
-      # ---- Speech / STT ----
-      # `local`: o desktop transcreve com Whisper on-device (ADR 0035). POST /speech/token
-      # continua existindo e responde 410 GONE + SPEECH_PROVIDER_GONE — sinal terminal para o
-      # cliente antigo, em vez do 404 genérico (que ele leria como "API fora do ar" e viraria
-      # retry infinito). `azure` restaura o broker antigo sem revert de código, enquanto durar
-      # a transição. O SpeechRateLimiter vale nos dois modos.
+      # ---- Speech / STT (ADR 0035) ----
+      # `local`: o desktop transcreve com Whisper on-device. POST /speech/token continua
+      # existindo e responde 410 GONE + SPEECH_PROVIDER_GONE — sinal terminal para o cliente
+      # antigo, em vez do 404 genérico (que ele leria como "API fora do ar" e viraria retry
+      # infinito). O SpeechRateLimiter vale nos dois modos.
+      #
+      # `azure`: restaura o AzureSpeechTokenBroker. Esta é a ALAVANCA DE ROLLBACK do STT
+      # local — trocar o valor e redeployar, sem revert de código. Exige as duas vars abaixo
+      # preenchidas E o recurso Speech do Azure ainda existindo: depois do decommission
+      # (docs/operations/azure-decommission.md) o rollback deixa de existir.
+      #
+      # Os beans são mutuamente exclusivos por @ConditionalOnProperty. Um terceiro valor
+      # deixa a app SEM broker e o boot falha por dependência não satisfeita.
       NORA_SPEECH_PROVIDER: ${NORA_SPEECH_PROVIDER:-local}
+      AZURE_SPEECH_KEY: ${AZURE_SPEECH_KEY:-}
+      AZURE_SPEECH_REGION: ${AZURE_SPEECH_REGION:-brazilsouth}
 
       # ---- Embeddings (RAG) ----
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
