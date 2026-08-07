@@ -1,0 +1,34 @@
+{
+  "$schema": "gen/schemas/desktop-schema.json",
+  "//": [
+    "Overlay de config pro backend de STT LEGADO (Azure Speech via sidecar Python).",
+    "",
+    "O `tauri.conf.json` base NAO declara mais `externalBin`. O motivo e concreto:",
+    "`externalBin` e resolvido pelo tauri-build em BUILD SCRIPT, entao com ele no",
+    "base ate um `cargo check` falhava com \"resource path binaries/nora-stt-sidecar-",
+    "<triple>.exe doesn't exist\" — obrigando quem so quer typecheckar o Rust a",
+    "rodar PyInstaller antes. Com o backend local sendo o default, o sidecar Python",
+    "virou opcional e nao pode ser pre-requisito de compilacao.",
+    "",
+    "Uso (so quando for empacotar o bundle com o backend azure):",
+    "  cd apps/desktop/sidecar && python build_sidecar.py && cd ..",
+    "  pnpm tauri build -- --config src-tauri/tauri.azure.conf.json",
+    "",
+    "O Tauri v2 faz MERGE deste arquivo por cima do base; o que nao esta aqui e",
+    "herdado. `sttBackend` fica em azure porque um bundle que carrega o sidecar e,",
+    "por definicao, o bundle da transicao.",
+    "",
+    "ATENCAO: um binario compilado com a feature `stt-azure` mas empacotado SEM este",
+    "overlay nao encontra o sidecar em runtime. Isso degrada limpo — o",
+    "`resolve_sidecar_binary()` devolve None e o start_recording responde",
+    "\"Sidecar binary not found\" — nao e crash, mas tambem nao transcreve."
+  ],
+  "plugins": {
+    "nora": {
+      "sttBackend": "azure"
+    }
+  },
+  "bundle": {
+    "externalBin": ["binaries/nora-stt-sidecar"]
+  }
+}

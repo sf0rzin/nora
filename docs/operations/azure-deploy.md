@@ -1,14 +1,26 @@
 ---
-title: "Runbook — Deploy do NORA na Azure"
+title: "Runbook — Deploy do NORA na Azure (HISTÓRICO)"
 owner: Arquiteto NORA (Tech Lead)
-status: approved
+status: historical
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
 # Runbook — Deploy do NORA na Azure
 
-> **Audiência:** quem opera o deploy do NORA em Azure (Tech Lead hoje; futuros operadores).
+> **DOCUMENTO HISTÓRICO — NÃO OPERE POR ELE.**
+>
+> A produção saiu da Azure para uma VM Proxmox self-hosted
+> ([ADR 0034](../adr/0034-migracao-azure-para-proxmox.md)). O runbook vigente é
+> [`proxmox-deploy.md`](proxmox-deploy.md); o desligamento do que ficou na Azure está em
+> [`azure-decommission.md`](azure-decommission.md).
+>
+> Este arquivo é mantido por dois motivos: as **8 armadilhas do Azure for Students** são
+> registro de aprendizado citado pelo ADR 0034, e a descrição da stack antiga é a
+> referência para o inventário do decommission. Os comandos `az` abaixo apontam para
+> recursos que estão sendo destruídos.
+
+> **Audiência (à época):** quem opera o deploy do NORA em Azure.
 >
 > **Pré-requisitos:** subscription Azure ativa (atualmente "Azure for Students"), Az CLI 2.86+, Bicep CLI 0.43+, GitHub repo com permissões para criar workflows.
 
@@ -458,3 +470,4 @@ Resumo:
 |---|---|
 | 2026-05-14 | Runbook criado durante Sub-fase 1.10 (Docs Refresh). Cobre 8 armadilhas do Azure for Students catalogadas na Sub-fase 1.9. Promoção para prod fica como `docs/operations/production-readiness-gaps.md` |
 | 2026-06-06 | v1.0 (Arquiteto NORA / Tech Lead): Reconciliação doc x código + padronização (auditoria pré-apresentação) |
+| 2026-08-07 | Marcado como **histórico** (`status: historical`) pelo ADR 0034. Substituído por `proxmox-deploy.md`; desligamento em `azure-decommission.md`. Conteúdo preservado intacto — as 8 armadilhas são registro de aprendizado e o inventário da stack alimenta o decommission |

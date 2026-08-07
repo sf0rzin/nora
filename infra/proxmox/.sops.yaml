@@ -1,0 +1,90 @@
+# =============================================================================
+# NORA -- regra de criptografia SOPS (age) para os segredos da stack Proxmox.
+# =============================================================================
+#
+# Modelo: `secrets.env.sops` (CIFRADO) é versionado no git; a chave privada age
+# existe em UM lugar só, no host, em /etc/nora/age.key (chmod 600, root). O
+# deploy decifra para um `.env` em tmpfs, roda o compose e o arquivo em claro
+# some no próximo reboot -- nunca toca o disco.
+#
+# O repositório é PÚBLICO (ADR 0017). Um `.env` commitado por engano é
+# vazamento imediato e irreversível: rotacionar tudo é o único remédio. Este
+# arquivo existe para tornar o caminho cifrado o caminho mais fácil.
+#
+# -----------------------------------------------------------------------------
+# SETUP (uma vez por host)
+# -----------------------------------------------------------------------------
+#   # 1. gerar o par de chaves NO HOST que vai rodar a stack
+#   sudo mkdir -p /etc/nora
+#   age-keygen -o /etc/nora/age.key
+#   sudo chmod 600 /etc/nora/age.key
+#   sudo chown root:root /etc/nora/age.key
+#
+#   # 2. a chave PÚBLICA sai no stdout do age-keygen e também com:
+#   age-keygen -y /etc/nora/age.key        # -> age1...
+#
+#   # 3. colar essa pública no campo `age:` da creation_rule abaixo e commitar.
+#
+#   # 4. GUARDAR A PRIVADA FORA DO HOST. Se a VM morrer e a chave morrer junto,
+#   #    o secrets.env.sops vira lixo cifrado e todo segredo precisa ser
+#   #    regerado do zero. Cofre pessoal, papel no cofre físico, o que for --
+#   #    mas fora da máquina. Ver "múltiplos destinatários" no rodapé.
+#
+# -----------------------------------------------------------------------------
+# USO DIÁRIO
+# -----------------------------------------------------------------------------
+#   export SOPS_AGE_KEY_FILE=/etc/nora/age.key
+#
+#   # criar a partir do exemplo (preencher os valores ANTES de cifrar):
+#   cp secrets.env.example secrets.env
+#   $EDITOR secrets.env
+#   sops --encrypt --input-type dotenv --output-type dotenv \
+#        secrets.env > secrets.env.sops
+#   shred -u secrets.env        # não deixe a versão em claro para trás
+#
+#   # editar depois (abre em claro no $EDITOR, recifra ao salvar):
+#   sops --input-type dotenv --output-type dotenv secrets.env.sops
+#
+#   # decifrar para o tmpfs no deploy:
+#   install -d -m 0700 /run/nora
+#   sops --decrypt --input-type dotenv --output-type dotenv \
+#        secrets.env.sops > /run/nora/.env
+#   chmod 600 /run/nora/.env
+#   docker compose --env-file /run/nora/.env up -d --wait
+#
+# ATENÇÃO ao `--input-type dotenv`: a extensão do arquivo é `.sops`, e o SOPS
+# infere o formato pela extensão. Sem as duas flags ele trata o conteúdo como
+# binário/YAML e o resultado não é um dotenv utilizável. Elas não são opcionais.
+#
+# -----------------------------------------------------------------------------
+# ONDE ISSO É PROCURADO
+# -----------------------------------------------------------------------------
+# O SOPS procura o `.sops.yaml` a partir do DIRETÓRIO DE TRABALHO ATUAL, subindo
+# a árvore -- NÃO a partir do diretório do arquivo alvo. A diferença importa:
+#
+#   cd infra/proxmox && sops --encrypt ... secrets.env      # acha esta regra
+#   sops --encrypt ... infra/proxmox/secrets.env            # da raiz: NÃO acha
+#
+# Não existe `.sops.yaml` na raiz do repo, então o segundo comando morre com
+# "no matching creation rules found" (falha alto, não cifra errado — mas custa
+# tempo de debug). Rode sempre de dentro de `infra/proxmox/`, ou seja explícito:
+#
+#   sops --config infra/proxmox/.sops.yaml --encrypt ... infra/proxmox/secrets.env
+#
+# `path_regex` é ancorado só no final justamente para casar o caminho nas duas
+# formas: `secrets.env.sops` e `infra/proxmox/secrets.env.sops`.
+# =============================================================================
+
+creation_rules:
+  # ---- Segredos da stack Proxmox ------------------------------------------
+  - path_regex: secrets\.env\.sops$
+    # Chave PÚBLICA age do host de produção. TROCAR pelo valor real do
+    # `age-keygen -y /etc/nora/age.key` -- este placeholder não é uma chave
+    # válida, e é assim de propósito: o sops falha alto em vez de cifrar para
+    # um destinatário errado.
+    #
+    # Múltiplos destinatários: separe por vírgula. Fortemente recomendado ter
+    # ao menos DOIS (host + backup offline do operador), senão perder a VM =
+    # perder os segredos.
+    #   age: 'age1chave-do-host,age1chave-de-backup-do-operador'
+    age: 'age1TROQUE_ME_PELA_PUBLICA_DO_HOST_age_keygen_y_etc_nora_age_key'

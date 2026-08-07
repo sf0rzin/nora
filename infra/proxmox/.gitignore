@@ -1,0 +1,22 @@
+# Segredos da stack Proxmox — o repo é PÚBLICO (ADR 0017).
+#
+# O único arquivo de segredo versionado é o CIFRADO `secrets.env.sops`.
+# Tudo que possa estar em claro fica fora do git, inclusive o `secrets.env`
+# intermediário que o SOPS lê antes de cifrar (o .gitignore da raiz cobre
+# `.env`, mas NÃO cobriria `secrets.env`).
+
+.env
+env.defaults
+secrets.env
+secrets.env.decrypted
+*.env.plain
+
+# Chaves age nunca entram no repo (a privada mora em /etc/nora/age.key).
+*.age
+*.agekey
+age.key
+
+# Reforço explícito de que os exemplos DEVEM ser versionados.
+!.env.example
+!secrets.env.example
+!secrets.env.sops

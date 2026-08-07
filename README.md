@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-15171a.svg"></a>
-  <a href="#current-state"><img alt="Status: In production" src="https://img.shields.io/badge/Status-In_production-2e7d32.svg"></a>
+  <a href="#current-state"><img alt="Status: Migrating to self-hosted" src="https://img.shields.io/badge/Status-Migrating_to_self--hosted-b26a00.svg"></a>
   <img alt="Java 21" src="https://img.shields.io/badge/Java-21-007396.svg">
   <img alt="Spring Boot 3.3" src="https://img.shields.io/badge/Spring_Boot-3.3-6db33f.svg">
   <img alt="Next.js 14" src="https://img.shields.io/badge/Next.js-14-000000.svg">
@@ -28,16 +28,28 @@ competitors). It is built as a **real commercial product**, also serving the
 
 ## Current state
 
-NORA is **in production on Azure** (via Bicep IaC), with the Web + API + NLP Worker
-vertical functional. The per-sub-phase breakdown and the delivery history live in the
-[roadmap](docs/product/roadmap.md); the per-user-story status, in the
-[backlog](docs/product/backlog.md).
+**NORA is being migrated off Azure to a self-hosted Proxmox VM**
+([ADR 0034](docs/adr/0034-migracao-azure-para-proxmox.md)).
+
+The Azure deployment is **down**: `nora.systems` and `api.nora.systems` return 522, and the
+Container App FQDN does not connect either — the most likely cause is the *Azure for
+Students* subscription being deactivated. The public URLs below are therefore **not
+serving** until the DNS cutover described in
+[`azure-decommission.md`](docs/operations/azure-decommission.md) is done.
+
+The application itself is unchanged: the Web + API + NLP Worker vertical is functional and
+runs from the same GHCR images. What changes is the substrate — a single Debian VM with
+Docker Compose, Cloudflare Tunnel as the only ingress, and secrets in SOPS + age.
 
 ```
-Application:  https://nora.systems
-API:        https://api.nora.systems
+Application:  https://nora.systems          (pending DNS cutover)
+API:        https://api.nora.systems        (pending DNS cutover)
 Health:     https://api.nora.systems/actuator/health
 ```
+
+The per-sub-phase breakdown and the delivery history live in the
+[roadmap](docs/product/roadmap.md); the per-user-story status, in the
+[backlog](docs/product/backlog.md).
 
 The **Core** app is **chat-first**: the user talks to NORA about meetings, action
 items and projects. The chat has **streaming responses** and **semantic search (RAG) via
@@ -59,7 +71,7 @@ The canonical documentation lives in `docs/`:
 docs/
 ├── product/       # Vision, backlog (real status), roadmap, glossary
 ├── engineering/   # Architecture, standards, data model (Postgres + Oracle), contracts
-├── operations/    # Deploy and operations runbooks (Azure, RLS cutover, control plane)
+├── operations/    # Deploy and operations runbooks (Proxmox, Azure decommission, RLS cutover, control plane)
 ├── challenge/     # FIAP Challenge 2026 academic material
 ├── api/           # HTTP contracts + LLM output schemas
 └── adr/           # Architectural decisions (index and count in adr/README.md)
@@ -73,8 +85,10 @@ docs/
 4. [ADR index](docs/adr/README.md) — architectural decisions (source of truth)
 5. [Glossary](docs/product/glossary.md) — NORA's canonical terms
 
-**For operators:** [Azure deploy runbook](docs/operations/azure-deploy.md) ·
+**For operators:** [Proxmox deploy runbook](docs/operations/proxmox-deploy.md) ·
+[Azure decommission](docs/operations/azure-decommission.md) ·
 [production-readiness gaps](docs/operations/production-readiness-gaps.md).
+The [Azure deploy runbook](docs/operations/azure-deploy.md) is kept as **history**.
 
 **For AI agents (Claude Code, Copilot):** [`CLAUDE.md`](CLAUDE.md) ·
 [`.github/copilot-instructions.md`](.github/copilot-instructions.md).
@@ -83,7 +97,7 @@ docs/
 
 ```
                  ┌──────────────┐       ┌──────────────┐
-   Browser   ──▶ │   Web (BFF)  │ ────▶ │     API      │ ──▶ Postgres + pgvector
+   Browser   ──▶ │   Web (BFF)  │ ────▶ │     API      │ ──▶ Postgres 16
                  │  Next.js 14  │       │ Spring Boot  │
                  └──────────────┘       └──────┬───────┘
                                                │ internal HTTP
@@ -104,12 +118,13 @@ docs/
 ```
 apps/web                   # Next.js 14 + TypeScript + Tailwind without shadcn (ADR 0013) — chat-first Core app
 apps/admin                 # Operator console (control plane): model catalog + telemetry
-apps/desktop               # Tauri 2 + Rust + Python sidecar (audio capture via Azure Speech)
+apps/desktop               # Tauri 2 + Rust — audio capture + on-device Whisper STT (ADR 0035)
 services/api               # Spring Boot 3 + Java 21 + DDD + Postgres + Flyway
 services/nlp-worker        # FastAPI + Pydantic + PII Shield + provider-agnostic LLM/embeddings client
 packages/nlp-baseline      # Interpretable PT-BR TF-IDF (ADR 0010)
 packages/shared-contracts  # Shared contracts (error codes, PII types, status)
-infra/bicep                # Infrastructure as code (Azure Container Apps, Postgres, Key Vault, Speech)
+infra/proxmox              # Self-hosted stack: docker-compose, Caddy, cloudflared, observability, SOPS secrets
+infra/bicep                # LEGACY — Azure IaC (Container Apps, Postgres, Key Vault, Speech), being decommissioned
 data/                      # Synthetic datasets and samples for tests
 notebooks/                 # Data Science pipeline for the TOTVS transcripts (parser + TF-IDF + EDA)
 docs/                      # Canonical documentation (see above)
@@ -122,11 +137,12 @@ docs/                      # Canonical documentation (see above)
 |---|---|
 | Frontend | Next.js 14.2 + TypeScript 5.6 + Tailwind 3.4 (no shadcn — ADR 0013) |
 | Backend | Java 21 + Spring Boot 3.3 + DDD + JPA + Flyway |
-| Database | Postgres 16 (Azure Flexible Server). Oracle model mirrored for the FIAP course in [`data-model-oracle.md`](docs/engineering/data-model-oracle.md) |
+| Database | Postgres 16 (`pgvector/pgvector:pg16` container). Oracle model mirrored for the FIAP course in [`data-model-oracle.md`](docs/engineering/data-model-oracle.md) |
 | NLP Worker | Python 3.12 + FastAPI + Pydantic 2 + provider-agnostic LLM/embeddings client |
-| Desktop | Tauri 2 + Rust + Python sidecar (Azure Speech) |
-| Cloud | Azure (Container Apps + Postgres Flexible + Key Vault + Speech) |
-| CI/CD | GitHub Actions (`ci.yml`, `build-images.yml`, `deploy-infra.yml` with OIDC, no secrets) |
+| Desktop | Tauri 2 + Rust with on-device Whisper STT ([ADR 0035](docs/adr/0035-stt-local-whisper-no-cliente.md)) |
+| Cloud | **Self-hosted** — single Debian VM on Proxmox + Docker Compose, Cloudflare Tunnel as the only ingress, SOPS + age for secrets ([ADR 0034](docs/adr/0034-migracao-azure-para-proxmox.md)). Previously Azure Container Apps |
+| Observability | OTel Collector + Prometheus + Loki + Alloy + Grafana (self-hosted) |
+| CI/CD | GitHub Actions (`ci.yml`, `build-images.yml`, `deploy-proxmox.yml` — **pull-based**: the host pulls an immutable release pointer, no runner ever touches it) |
 | LLM | OpenAI `gpt-4o-mini` as the default; provider-agnostic (ADR 0004). Embeddings via Gemini/OpenAI |
 
 > The exact versions and where to verify them are in

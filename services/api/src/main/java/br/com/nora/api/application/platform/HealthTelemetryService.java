@@ -4,9 +4,9 @@ import br.com.nora.api.domain.platform.HealthSnapshot;
 import org.springframework.stereotype.Service;
 
 /**
- * Telemetria de saúde (frente (b), ADR 0024). Delega ao {@link HealthMetricsSource} (App Insights).
- * Não depende do banco de plataforma — funciona mesmo em modo degradado; a fonte devolve {@code
- * unavailable} quando não configurada.
+ * Telemetria de saúde (frente (b), ADR 0024). Delega ao {@link HealthMetricsSource} (hoje
+ * Prometheus, ADR 0034). Não depende do banco de plataforma — funciona mesmo em modo degradado; a
+ * fonte devolve {@code unavailable} quando não configurada.
  */
 @Service
 public class HealthTelemetryService {

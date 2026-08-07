@@ -35,12 +35,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `--features stt-local` liga o STT embarcado (whisper.cpp via whisper-rs,
+          # ADR 0035). SEM esta flag o bundle sai com o caminho antigo do Azure Speech
+          # ativo — que depende de um `/speech/token` que hoje responde 410 GONE.
           - platform: windows-latest
-            args: ""
-            sidecar_target: x86_64-pc-windows-msvc
+            args: "--features stt-local"
           - platform: ubuntu-latest
-            args: ""
-            sidecar_target: x86_64-unknown-linux-gnu
+            args: "--features stt-local"
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     steps:
@@ -52,14 +53,26 @@ jobs:
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: apps/desktop/sidecar/pyproject.toml
-
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+
+      # whisper-rs-sys compila o whisper.cpp com CMake + MSBuild. O CMake gera caminhos
+      # scratch profundos (…/out/build/CMakeFiles/CMakeScratch/TryCompile-XXXXXXX/
+      # cmTC_XXXXX.dir/Debug/cmTC_XXXXX.tlog) que estouram o MAX_PATH de 260 chars do
+      # Windows, e o MSBuild falha com `MSB6003: CL.exe could not be run /
+      # DirectoryNotFoundException`. Reproduzido localmente em 2026-08-07.
+      #
+      # NAO setamos CARGO_TARGET_DIR aqui: o tauri-action localiza os bundles sozinho
+      # pelo layout padrao do cargo, e mover o target dir arriscaria a release ASSINADA
+      # nao encontrar o que empacotar. O workspace do runner ja e curto; LongPathsEnabled
+      # cobre o resto. (No job desktop-rust do ci.yml, que nao sobe artifact, setamos.)
+      - name: Windows — long paths (whisper.cpp/CMake)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          git config --global core.longpaths true
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
+            -Name LongPathsEnabled -Value 1 -Type DWord -Force
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -76,24 +89,17 @@ jobs:
         working-directory: apps/desktop
         run: npm ci
 
-      - name: Install sidecar deps
-        working-directory: apps/desktop/sidecar
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-          python -m pip install pyinstaller
-
-      - name: Build sidecar
-        working-directory: apps/desktop/sidecar
-        run: python build_sidecar.py
-
       - name: Build, sign and release
         uses: tauri-apps/tauri-action@v0
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Mesma URL baked em build-time do desktop-bundle (build.rs option_env!).
-          NORA_API_BASE_URL: ${{ vars.NORA_API_BASE_URL || 'https://nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io' }}
+          # Fallback migrado do FQDN do Azure Container Apps (morto) pro domínio público
+          # servido pelo Cloudflare Tunnel -> caddy -> api. Um bundle assinado e publicado
+          # carrega essa URL pra sempre: com o default antigo, toda release nova nascia
+          # apontando pra um host que não resolve.
+          NORA_API_BASE_URL: ${{ vars.NORA_API_BASE_URL || 'https://api.nora.systems' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: apps/desktop

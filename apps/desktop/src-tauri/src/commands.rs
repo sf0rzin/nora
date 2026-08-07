@@ -1,12 +1,99 @@
 use crate::audio_capture::{AudioCapture, CaptureSinks, RecordingStatus};
-use crate::speech_token::fetch_speech_token;
-use crate::stt_sidecar::SidecarHandle;
+use crate::stt::{SttBackend, SttBackendKind};
 use crate::SidecarState;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, State};
 
 pub type CaptureState = Arc<Mutex<AudioCapture>>;
+
+/// Sobe UM backend de STT pra um track, ja resolvido por config.
+///
+/// O contrato de eventos pro front e identico nos dois caminhos (evento
+/// `transcript` com `TranscriptEvent`); a unica diferenca visivel aqui e que o
+/// caminho local nao precisa de token nenhum.
+async fn start_stt_backend(
+    app_handle: &AppHandle,
+    backend: SttBackendKind,
+    language: &str,
+    track_label: &str,
+    azure: Option<&crate::stt::AzureStartParams>,
+) -> Result<Box<dyn SttBackend>, String> {
+    match backend {
+        #[cfg(feature = "stt-local")]
+        SttBackendKind::Local => {
+            let h = crate::stt_local::LocalSttHandle::start(
+                app_handle.clone(),
+                language.to_string(),
+                track_label.to_string(),
+            )
+            .await?;
+            Ok(Box::new(h))
+        }
+        #[cfg(not(feature = "stt-local"))]
+        SttBackendKind::Local => Err("binario compilado sem a feature stt-local".to_string()),
+
+        #[cfg(feature = "stt-azure")]
+        SttBackendKind::Azure => {
+            let az = azure.ok_or("backend azure sem credenciais de speech token")?;
+            let h = crate::stt_sidecar::SidecarHandle::start(
+                app_handle.clone(),
+                az.region.clone(),
+                az.auth_token.clone(),
+                language.to_string(),
+                track_label.to_string(),
+                az.backend_url.clone(),
+                az.access_token.clone(),
+            )
+            .await?;
+            Ok(Box::new(h))
+        }
+        #[cfg(not(feature = "stt-azure"))]
+        SttBackendKind::Azure => {
+            let _ = azure;
+            Err("binario compilado sem a feature stt-azure".to_string())
+        }
+    }
+}
+
+/// Busca o token do Azure Speech e monta os parametros de start do sidecar.
+///
+/// So existe quando a feature `stt-azure` esta compilada: no build local-puro
+/// (`--no-default-features --features stt-local`) o modulo `crate::speech_token`
+/// nem entra no binario, entao referenciar `crate::speech_token::*` de um caminho
+/// nao-gated quebraria a compilacao. E tambem o motivo pelo qual o app nao tem
+/// como falhar no boot/start tentando falar com `/speech/token`.
+#[cfg(feature = "stt-azure")]
+async fn fetch_azure_params(
+    app_handle: &AppHandle,
+    backend_url: &str,
+    access_token: &str,
+) -> Result<crate::stt::AzureStartParams, String> {
+    match crate::speech_token::fetch_speech_token(
+        backend_url,
+        access_token,
+        None, // Use default region from backend
+    )
+    .await
+    {
+        Ok(t) => {
+            log_line(app_handle, "start_recording: speech token ok");
+            Ok(crate::stt::AzureStartParams {
+                region: t.region,
+                auth_token: t.token,
+                backend_url: backend_url.to_string(),
+                access_token: access_token.to_string(),
+            })
+        }
+        Err(e) => {
+            log_line(
+                app_handle,
+                &format!("start_recording: speech token ERROR: {}", e),
+            );
+            Err(format!("Failed to fetch speech token: {}", e))
+        }
+    }
+}
 
 /// Logger de arquivo best-effort pro fluxo de gravacao.
 ///
@@ -95,26 +182,33 @@ pub async fn start_recording(
     };
     let backend_url = crate::api_base_url();
 
-    let speech_token = match fetch_speech_token(
-        &backend_url,
-        &access_token,
-        None, // Use default region from backend
-    )
-    .await
-    {
-        Ok(t) => {
-            log_line(&app_handle, "start_recording: speech token ok");
-            t
-        }
-        Err(e) => {
-            log_line(
-                &app_handle,
-                &format!("start_recording: speech token ERROR: {}", e),
-            );
-            return Err(format!("Failed to fetch speech token: {}", e));
-        }
+    let backend = crate::stt::configured_backend();
+    log_line(
+        &app_handle,
+        &format!("start_recording: backend stt = {}", backend.as_str()),
+    );
+
+    // AZURE-ONLY. No backend local nao ha token a buscar: nenhuma chamada a
+    // `/speech/token`, nenhum round-trip de rede, e a gravacao nao depende de a
+    // API estar de pe. Este `if` e o que impede o app de morrer no start quando
+    // o backend esta fora do ar.
+    #[cfg(feature = "stt-azure")]
+    let azure_params = if backend == SttBackendKind::Azure {
+        Some(fetch_azure_params(&app_handle, &backend_url, &access_token).await?)
+    } else {
+        None
     };
-    
+
+    // Build local-puro: nao ha sequer o tipo de credencial a preencher.
+    #[cfg(not(feature = "stt-azure"))]
+    let azure_params: Option<crate::stt::AzureStartParams> = {
+        // `backend_url`/`access_token` seguem sendo resolvidos acima de proposito:
+        // a checagem de sessao continua valendo (o upload da reuniao vai precisar
+        // dela), so o round-trip do token e que desaparece.
+        let _ = (&backend_url, &access_token);
+        None
+    };
+
     let language = request.language.unwrap_or_else(|| "pt-BR".to_string());
     let capture_system = request.capture_system_audio.unwrap_or(false);
 
@@ -131,51 +225,46 @@ pub async fn start_recording(
         },
     };
 
-    // Start sidecars with auth token
-    let mic_sidecar = match SidecarHandle::start(
-        app_handle.clone(),
-        speech_token.region.clone(),
-        speech_token.token.clone(),
-        language.clone(),
-        "mic".to_string(),
-        backend_url.clone(),
-        access_token.clone(),
+    // Um backend por track. O track `mic` e o usuario local; o track `system` e
+    // o audio de loopback (participantes remotos). A atribuicao de falante e POR
+    // TRACK — ver crate::stt::SYSTEM_SPEAKER_ID.
+    let mic_sidecar = match start_stt_backend(
+        &app_handle,
+        backend,
+        &language,
+        "mic",
+        azure_params.as_ref(),
     )
     .await
     {
         Ok(s) => {
-            log_line(&app_handle, "start_recording: sidecar mic ok");
+            log_line(&app_handle, "start_recording: stt mic ok");
             s
         }
         Err(e) => {
-            log_line(
-                &app_handle,
-                &format!("start_recording: sidecar mic ERROR: {}", e),
-            );
+            log_line(&app_handle, &format!("start_recording: stt mic ERROR: {}", e));
             return Err(format!("Failed to start mic sidecar: {}", e));
         }
     };
 
     let system_sidecar = if capture_system {
-        match SidecarHandle::start(
-            app_handle.clone(),
-            speech_token.region,
-            speech_token.token,
-            language,
-            "system".to_string(),
-            backend_url,
-            access_token,
+        match start_stt_backend(
+            &app_handle,
+            backend,
+            &language,
+            "system",
+            azure_params.as_ref(),
         )
         .await
         {
             Ok(s) => {
-                log_line(&app_handle, "start_recording: sidecar system ok");
+                log_line(&app_handle, "start_recording: stt system ok");
                 Some(s)
             }
             Err(e) => {
                 log_line(
                     &app_handle,
-                    &format!("start_recording: sidecar system ERROR: {}", e),
+                    &format!("start_recording: stt system ERROR: {}", e),
                 );
                 return Err(format!("Failed to start system sidecar: {}", e));
             }
@@ -186,7 +275,7 @@ pub async fn start_recording(
 
     // Spawn bridge tasks to feed audio from channels to sidecars
     let mic_bridge = {
-        let sidecar = mic_sidecar.audio_tx.clone();
+        let sidecar = mic_sidecar.audio_tx();
         tokio::spawn(async move {
             while let Some(samples) = mic_rx.recv().await {
                 match sidecar.try_send(samples) {
@@ -202,7 +291,7 @@ pub async fn start_recording(
     };
 
     let system_bridge = if let Some(ref sidecar) = system_sidecar {
-        let tx = sidecar.audio_tx.clone();
+        let tx = sidecar.audio_tx();
         Some(tokio::spawn(async move {
             while let Some(samples) = system_rx.recv().await {
                 match tx.try_send(samples) {
@@ -304,7 +393,10 @@ pub fn stop_recording(
     let mut sidecars = sidecar_state.lock().map_err(|e| e.to_string())?;
     for sidecar in sidecars.drain(..) {
         #[cfg(debug_assertions)]
-        eprintln!("[commands] stopping sidecar session_id={}", sidecar.session_id);
+        eprintln!("[commands] stopping stt session_id={}", sidecar.session_id());
+        // Os dois backends fazem flush antes de encerrar, entao um ultimo evento
+        // `transcript` pode chegar depois deste ponto (comportamento identico ao
+        // `stop_continuous_recognition` do SDK Azure).
         sidecar.stop();
     }
 

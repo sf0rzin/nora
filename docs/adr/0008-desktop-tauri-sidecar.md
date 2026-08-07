@@ -1,8 +1,9 @@
 # 0008 — Desktop App com Tauri 2 + Sidecar Python
 
-- Status: aceito
+- Status: aceito (sidecar Python substituído por ADR 0035 — Whisper embarcado no Tauri/Rust; a decisão por Tauri 2 e a captura de áudio permanecem)
 - Data: 2026-05-07
 - Decisores: NORA Team
+- Relacionado: ADR 0035 (substitui a parte do sidecar Python desta decisão)
 
 ## Contexto
 

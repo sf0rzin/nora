@@ -32,6 +32,7 @@ class SpeechTokenServiceTest {
 
         props =
                 new SpeechProperties(
+                        SpeechProperties.PROVIDER_AZURE,
                         new SpeechProperties.Azure(
                                 "test-key",
                                 "brazilsouth",
