@@ -8,8 +8,12 @@
 # Um runner self-hosted persistente na rede doméstica executaria, por definição, código
 # de fork arbitrário dentro da LAN — qualquer pessoa abrindo um PR ganharia execução de
 # comando na VM que hospeda o Postgres de produção. Por isso NÃO existe runner aqui:
-# a VM PUXA (git pull + docker pull por digest) em vez de receber push do CI. O CI só
-# publica imagens no GHCR; quem decide o que roda é esta máquina.
+# a VM PUXA em vez de receber push do CI. O CI só publica imagens no GHCR; quem decide o
+# que roda é esta máquina.
+#
+# "Puxar" tem duas metades: `docker pull` por digest (sempre) e `git pull` do repo (só
+# com `--sync`, por ser mudança de CONFIGURAÇÃO e não de artefato). Sem `--sync`, uma
+# alteração no compose fica no git e não chega no host — o timer não a aplicaria nunca.
 #
 # COMO O ROLLOUT FUNCIONA
 # -----------------------
@@ -62,6 +66,8 @@ TAG=""
 DO_PULL=1
 DRY_RUN=0
 IF_CHANGED=0
+SYNC=0
+REPO_MOVED=0
 ROLLBACK_ONLY=0
 NO_ROLLBACK=0
 FORCE_PLATFORM=""
@@ -81,6 +87,11 @@ OPÇÕES
   --if-changed         Só faz deploy se o digest remoto da tag no GHCR diferir do
                        último digest registrado no estado. É o modo usado pelo timer
                        systemd (nora-deploy.timer) — sai 0 sem fazer nada quando não mudou.
+  --sync               Faz \`git pull --ff-only\` no repo do host ANTES de qualquer coisa.
+                       Sem isto o deploy só atualiza IMAGENS: mudança no compose, no
+                       Caddyfile ou nos scripts fica no git e nunca chega na máquina.
+                       Combinado com --if-changed, um HEAD que andou já é motivo de
+                       deploy — senão a config nova ficaria parada até a próxima imagem.
   --rollback           Volta os serviços selecionados para a tag anterior do estado
                        e sai (não faz pull de tag nova).
   --no-pull            Não roda \`docker compose pull\` (usa a imagem local).
@@ -128,6 +139,7 @@ while [ $# -gt 0 ]; do
       SELECTED+=("${_svcs[@]}"); shift 2 ;;
     --tag|-t)        TAG="${2:?--tag exige um valor}"; shift 2 ;;
     --if-changed)    IF_CHANGED=1; shift ;;
+    --sync)          SYNC=1; shift ;;
     --rollback)      ROLLBACK_ONLY=1; shift ;;
     --no-pull)       DO_PULL=0; shift ;;
     --no-rollback)   NO_ROLLBACK=1; shift ;;
@@ -649,8 +661,56 @@ ghcr_login() {
 }
 
 # ---------------------------------------------------------------------------
+# Sincronização do repo do host
+# ---------------------------------------------------------------------------
+# O rollout é PULL, mas até aqui só as IMAGENS eram puxadas. Mudança no compose, no
+# Caddyfile, no prometheus.yml ou nos próprios scripts ficava no git e nunca chegava
+# na máquina — o cabeçalho deste arquivo dizia "git pull + docker pull" e metade disso
+# não acontecia. `--sync` fecha essa metade.
+#
+# Continua sendo OPT-IN, e o timer NÃO usa: com ele ligado, um merge na main passaria a
+# reconfigurar produção sozinho. O rollback automático cobre tag de imagem, não compose
+# quebrado — então essa é uma decisão de operação, não um default.
+#
+# Sutileza: o pull pode substituir ESTE arquivo no meio da execução. O git escreve num
+# temporário e renomeia, então o bash continua lendo o inode antigo e a rodada atual usa
+# a versão ANTIGA do script — a nova só vale a partir da próxima. Se a mudança for no
+# próprio deploy.sh, rode duas vezes.
+REPO_ROOT="$(cd "$PROXMOX_DIR/../.." && pwd)"
+
+sync_repo() {
+  [ "$SYNC" -eq 1 ] || return 0
+  [ -d "$REPO_ROOT/.git" ] || { warn "--sync: $REPO_ROOT não é um repo git — pulando"; return 0; }
+
+  local owner antes depois
+  owner="$(stat -c %U "$REPO_ROOT")"
+  # Rodando sob sudo, um `git` de root num diretório de outro dono para em
+  # "detected dubious ownership". Puxar como o dono evita isso sem precisar mexer em
+  # safe.directory global.
+  local -a git_cmd=(git -C "$REPO_ROOT")
+  [ "$(id -un)" = "$owner" ] || git_cmd=(sudo -u "$owner" git -C "$REPO_ROOT")
+
+  antes="$("${git_cmd[@]}" rev-parse HEAD 2>/dev/null || echo desconhecido)"
+  log "--sync: git pull --ff-only em $REPO_ROOT (como $owner)"
+  # --ff-only de propósito: se houver mudança local, é para PARAR e o operador ver, não
+  # para mesclar sozinho em cima de um host de produção.
+  if ! run "${git_cmd[@]}" pull --ff-only; then
+    die "--sync: git pull falhou. Há mudança local em $REPO_ROOT? \`git -C $REPO_ROOT status\`"
+  fi
+  depois="$("${git_cmd[@]}" rev-parse HEAD 2>/dev/null || echo desconhecido)"
+
+  if [ "$antes" != "$depois" ]; then
+    REPO_MOVED=1
+    ok "repo atualizado: ${antes:0:7} -> ${depois:0:7}"
+  else
+    log "repo já estava em ${depois:0:7}"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Execução
 # ---------------------------------------------------------------------------
+sync_repo
 prepare_env
 ghcr_login
 
@@ -700,7 +760,11 @@ if [ "$ROLLBACK_ONLY" -eq 1 ]; then
 fi
 
 # --if-changed: compara o digest remoto com o registrado. É o que o timer usa.
-if [ "$IF_CHANGED" -eq 1 ]; then
+if [ "$IF_CHANGED" -eq 1 ] && [ "$REPO_MOVED" -eq 1 ]; then
+  hr
+  log "--if-changed: o repo andou (--sync), então a config pode ter mudado — deployando tudo"
+  log "  comparar digest de imagem não veria uma alteração no compose ou no Caddyfile."
+elif [ "$IF_CHANGED" -eq 1 ]; then
   hr
   log "--if-changed: comparando digests no GHCR"
   CHANGED=()
