@@ -31,6 +31,14 @@ export interface AccessResult {
   enforced: boolean;
   /** true = pode renderizar (em modo enforced, significa JWT válido). */
   ok: boolean;
+  /**
+   * E-mail extraído do JWT VERIFICADO. Só vem preenchido quando `enforced && ok` —
+   * é a única identidade de operador com prova criptográfica. O header
+   * `Cf-Access-Authenticated-User-Email` que o `getOperator()` lê carrega o mesmo
+   * dado, mas sem assinatura: serve para exibir, não para autorizar nem para
+   * carimbar auditoria.
+   */
+  email?: string;
 }
 
 export async function checkAccess(): Promise<AccessResult> {
@@ -50,13 +58,38 @@ export async function checkAccess(): Promise<AccessResult> {
   }
 
   try {
-    await jwtVerify(token, JWKS, {
+    const { payload } = await jwtVerify(token, JWKS, {
       issuer: `https://${TEAM_DOMAIN}`,
       audience: AUD,
     });
-    return { enforced: true, ok: true };
+    const email = typeof payload.email === "string" ? payload.email : undefined;
+    return { enforced: true, ok: true, email };
   } catch (err) {
     console.warn("[access] JWT do Access inválido:", (err as Error).message);
     return { enforced: true, ok: false };
   }
+}
+
+/** Erro de autorização. Nome estável para o caller distinguir de falha de rede/backend. */
+export class AccessDeniedError extends Error {
+  constructor() {
+    super("Acesso negado: requisição sem asserção válida do Cloudflare Access.");
+    this.name = "AccessDeniedError";
+  }
+}
+
+/**
+ * Gate para **server actions**. O `checkAccess()` do RootLayout NÃO cobre esse caminho:
+ * numa server action o Next executa a action primeiro e só depois re-renderiza a árvore,
+ * então o layout roda tarde demais para impedir o efeito colateral. Sem isto, um POST
+ * direto no endpoint da action — com o `Next-Action` id, que é público no bundle —
+ * executa a mutação sem passar por Access nenhum.
+ *
+ * Retorna o e-mail do JWT verificado quando está enforçando. Fora de enforce (dev/mocks)
+ * devolve `undefined` e o caller cai no operador de desenvolvimento.
+ */
+export async function requireAccess(): Promise<string | undefined> {
+  const access = await checkAccess();
+  if (access.enforced && !access.ok) throw new AccessDeniedError();
+  return access.email;
 }
