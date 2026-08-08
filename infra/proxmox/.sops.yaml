@@ -71,13 +71,20 @@
 #
 #   sops --config infra/proxmox/.sops.yaml --encrypt ... infra/proxmox/secrets.env
 #
-# `path_regex` é ancorado só no final justamente para casar o caminho nas duas
-# formas: `secrets.env.sops` e `infra/proxmox/secrets.env.sops`.
+# `path_regex` é ancorado só no final justamente para casar o caminho em
+# qualquer forma: `secrets.env`, `infra/proxmox/secrets.env.sops` ou o plaintext
+# temporário que o `secrets-bootstrap.sh` escreve em `/dev/shm/nora-secrets.*/`.
 # =============================================================================
 
 creation_rules:
   # ---- Segredos da stack Proxmox ------------------------------------------
-  - path_regex: secrets\.env\.sops$
+  # Casa com o arquivo EM CLARO (`secrets.env`, inclusive em /dev/shm) e com o
+  # cifrado (`secrets.env.sops`). O `.sops` opcional não é preciosismo: no
+  # `--encrypt` o sops testa a regra contra o caminho de ENTRADA, que é o
+  # plaintext. Uma regra ancorada só em `\.sops$` nunca casa ao cifrar e morre
+  # com "no matching creation rules found" -- inclusive pelo caminho descrito
+  # no cabeçalho deste arquivo.
+  - path_regex: secrets\.env(\.sops)?$
     # Chave PÚBLICA age do host de produção. TROCAR pelo valor real do
     # `age-keygen -y /etc/nora/age.key` -- este placeholder não é uma chave
     # válida, e é assim de propósito: o sops falha alto em vez de cifrar para

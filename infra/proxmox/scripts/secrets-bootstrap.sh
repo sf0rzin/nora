@@ -95,7 +95,7 @@ RLS_TELEMETRY_PASSWORD|gerado|b64:32
 CLOUDFLARE_TUNNEL_TOKEN|coletado|Connector token do tunnel nora-prod (Zero Trust > Networks > Tunnels)
 CF_ACCESS_TEAM_DOMAIN|coletado|ex.: stratfy.cloudflareaccess.com (nao e segredo)
 CF_ACCESS_AUD|coletado|AUD tag da Access Application do admin (nao e segredo)
-GHCR_PULL_TOKEN|coletado|PAT do GitHub com APENAS read:packages
+GHCR_PULL_TOKEN|opcional|vazio = assume pacotes publicos no GHCR (e o caso hoje)
 OPENAI_API_KEY|opcional|vazio = worker em modo stub e chat 503
 GEMINI_API_KEY|opcional|vazio = embeddings/RAG desligados
 DEEPSEEK_API_KEY|opcional|vazio = provider indisponivel no chat
@@ -219,7 +219,10 @@ trap 'rm -rf "$WORK"' EXIT
 PLAIN="$WORK/secrets.env"
 : > "$PLAIN"
 
+if [ -e /dev/tty ] && { : < /dev/tty; } 2>/dev/null; then TEM_TTY=1; else TEM_TTY=0; fi
+
 log "Montando o conjunto de segredos"
+if [ "$TEM_TTY" -eq 0 ]; then info "sem terminal: o que não vier do --from-file fica vazio"; fi
 echo
 
 declare -a RELATORIO=()
@@ -236,6 +239,12 @@ while IFS='|' read -r nome classe spec; do
     valor="${ATUAL[$nome]}"; origem="preservado"
   elif [ "$classe" = "gerado" ]; then
     valor="$(gerar "$spec")"; origem="gerado"
+  elif [ "$TEM_TTY" -eq 0 ]; then
+    # Sem terminal (ssh sem -t, cron, agente): não há como perguntar. Deixa
+    # vazio e segue -- o relatório final mostra o buraco, e o `--check` cobra
+    # o que for obrigatório. Perguntar aqui só produziria erro de /dev/tty
+    # repetido, uma linha por variável.
+    valor=""; origem="sem tty"
   else
     # Coletado ou opcional e ainda sem valor: pergunta SEM ECO.
     printf '  %s%s%s\n' "$C_YLW" "$nome" "$C_OFF"
