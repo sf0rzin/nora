@@ -348,7 +348,12 @@ probe_cmd() {
     worker)            printf 'python\t-c\timport urllib.request; urllib.request.urlopen("http://localhost:8001/healthz", timeout=5)' ;;
     api)               printf 'wget\t-q\t-O\t-\thttp://localhost:8080/actuator/health' ;;
     web)               printf 'wget\t-q\t--spider\thttp://localhost:3000' ;;
-    admin)             printf 'wget\t-q\t--spider\thttp://localhost:3002/healthz' ;;
+    # admin: 127.0.0.1 e nao `localhost`. O Next standalone faz bind IPv4-only, e o
+    # /etc/hosts do container resolve `localhost` tambem para ::1 -- o wget do BusyBox
+    # tenta o IPv6 primeiro e leva connection refused com o servidor no ar. Este probe e
+    # INDEPENDENTE do healthcheck do compose: corrigir la (docker-compose.yml) e deixar
+    # aqui faz o container ficar `healthy` e o deploy reprovar assim mesmo.
+    admin)             printf 'wget\t-q\t--spider\thttp://127.0.0.1:3002/healthz' ;;
     # caddy: /healthz do bloco :80, NAO a admin API em :2019 — o handler de /config/ so
     # trata GET/POST/PUT/..., e o --spider do busybox emite HEAD, levando 405 (que o
     # probe_once trata como falha real). Mesmo alvo do healthcheck do compose.
