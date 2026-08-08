@@ -619,25 +619,23 @@ rollback_service() {  # <serviço> — rollback explícito, via --rollback
 # ---------------------------------------------------------------------------
 # Login no GHCR
 # ---------------------------------------------------------------------------
-# O namespace `sf0rzin` é novo, então os pacotes nasceram PRIVADOS — sem login o
-# `compose pull` leva 401/denied e o rollout morre no primeiro serviço.
-#
-# O secrets-bootstrap.sh já coleta e cifra o GHCR_PULL_TOKEN (PAT com apenas
-# `read:packages`), mas até agora ninguém o usava: o código só IMPRIMIA uma dica de
-# login DEPOIS do pull falhar. Se um dia os 4 pacotes forem tornados públicos, a
-# variável fica vazia e isto vira no-op — não é preciso desfazer nada.
+# Os 4 pacotes em ghcr.io/sf0rzin/nora-* estão PÚBLICOS hoje (verificado com pull
+# anônimo da VM 106 em 2026-08-08), então o caminho normal é GHCR_PULL_TOKEN vazio e
+# esta função vira no-op. Ela existe para o dia em que algum pacote voltar a ser
+# privado: sem login o `compose pull` leva 401/denied e o rollout morre no primeiro
+# serviço, com uma mensagem que não diz "faça login".
 ghcr_login() {
   local tok user
   tok="$(envget GHCR_PULL_TOKEN)"
   if [ -z "$tok" ]; then
-    info "GHCR_PULL_TOKEN vazio — assumindo pacotes públicos em $REGISTRY"
+    log "GHCR_PULL_TOKEN vazio — assumindo pacotes públicos em $REGISTRY"
     return 0
   fi
   # Sem GHCR_USER explícito, o owner do IMAGE_PREFIX serve (ex.: sf0rzin/nora -> sf0rzin).
   user="$(envget GHCR_USER)"
   [ -n "$user" ] || user="${IMAGE_PREFIX%%/*}"
   if printf '%s' "$tok" | run docker login "$REGISTRY" -u "$user" --password-stdin >/dev/null 2>&1; then
-    info "autenticado em $REGISTRY como $user"
+    ok "autenticado em $REGISTRY como $user"
   else
     warn "docker login em $REGISTRY falhou (usuário: $user).
        Se os pacotes forem privados, o pull vai falhar logo abaixo.
