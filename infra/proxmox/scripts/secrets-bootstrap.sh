@@ -207,7 +207,18 @@ if [ -f "$SOPS_FILE" ]; then
   prev="$(mktemp)"
   sops --decrypt --input-type dotenv --output-type dotenv "$SOPS_FILE" > "$prev" 2>/dev/null \
     || warn "não consegui decifrar o existente; vou tratar como novo."
-  while IFS='=' read -r k v; do [ -n "${k:-}" ] && ATUAL["$k"]="$v"; done < "$prev"
+  # NÃO use `IFS='=' read -r k v` aqui. O bash descarta o delimitador FINAL da linha
+  # ao preencher a última variável, então um valor terminado em `=` perde esse `=` --
+  # que é justamente o padding de todo base64. Na prática: NORA_INTEGRATIONS_ENC_KEY
+  # ia de 44 para 43 chars (deixa de decodificar para 32 bytes e o TokenCipher derruba
+  # a API no boot) e o CLOUDFLARE_TUNNEL_TOKEN de 180 para 179 (o cloudflared não
+  # registra o túnel). Ou seja: reexecutar este script para acrescentar UMA chave
+  # corrompia, em silêncio, todo segredo já cifrado cujo valor terminasse em `=`.
+  while IFS= read -r linha; do
+    case "$linha" in ''|\#*) continue ;; esac
+    [ "${linha#*=}" != "$linha" ] || continue   # sem `=` não é linha de dotenv
+    ATUAL["${linha%%=*}"]="${linha#*=}"
+  done < "$prev"
   shred -u "$prev" 2>/dev/null || rm -f "$prev"
 fi
 
@@ -269,7 +280,13 @@ done <<< "$CATALOGO"
 # Sanidade que só se descobre em produção, tarde:
 enc="$(sed -n 's/^NORA_INTEGRATIONS_ENC_KEY=//p' "$PLAIN" | head -1)"
 if [ -n "$enc" ]; then
-  bytes="$(printf '%s' "$enc" | base64 -d 2>/dev/null | wc -c || echo 0)"
+  # `... | wc -c || echo 0` não substitui, CONCATENA: sob `pipefail` uma falha em
+  # qualquer estágio faz o `echo 0` rodar DEPOIS do `wc` já ter impresso, e `bytes`
+  # vira "32\n0" -- o `[ -eq ]` então morre com "integer expression expected" em vez
+  # de dar o diagnóstico. Decodifica para arquivo e conta separado.
+  base64 -d < <(printf '%s' "$enc") > "$WORK/enc.bin" 2>/dev/null || true
+  bytes="$(wc -c < "$WORK/enc.bin")"
+  rm -f "$WORK/enc.bin"
   [ "$bytes" -eq 32 ] || die "NORA_INTEGRATIONS_ENC_KEY não decodifica para 32 bytes ($bytes).
        O TokenCipher valida isso no boot e derruba a API. Regere com --regenerate."
 fi
@@ -283,6 +300,16 @@ sops --encrypt --input-type dotenv --output-type dotenv "$PLAIN" > "$SOPS_FILE.t
   || die "sops falhou ao cifrar. O .sops.yaml tem o recipient age deste host?"
 mv -f "$SOPS_FILE.tmp" "$SOPS_FILE"
 chmod 0644 "$SOPS_FILE"   # cifrado: pode ser versionado
+
+# Prova de ida e volta. Um segredo corrompido na montagem é invisível aqui dentro --
+# só aparece como container em CrashLoop, ou pior, como comportamento errado em
+# silêncio. Comparar byte a byte custa nada e fecha a classe inteira de bug.
+verif="$WORK/verify.env"
+sops --decrypt --input-type dotenv --output-type dotenv "$SOPS_FILE" > "$verif" 2>/dev/null \
+  || die "o arquivo recém-cifrado não decifra com a chave em $AGE_KEY_FILE."
+cmp -s "$PLAIN" "$verif" \
+  || die "o ciclo cifra/decifra não devolveu o mesmo conteúdo. NÃO use este arquivo."
+rm -f "$verif"
 
 echo
 log "Resultado (nomes e tamanhos — nenhum valor)"
