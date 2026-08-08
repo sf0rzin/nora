@@ -257,9 +257,20 @@ services:
 
       # ---- RLS enforce (ADR 0026/0028) — flip separado, ver rls-cutover ----
       NORA_RLS_ENFORCE: ${NORA_RLS_ENFORCE:-false}
-      SPRING_FLYWAY_URL: ${SPRING_FLYWAY_URL:-}
-      SPRING_FLYWAY_USER: ${SPRING_FLYWAY_USER:-}
-      SPRING_FLYWAY_PASSWORD: ${SPRING_FLYWAY_PASSWORD:-}
+      # O Flyway aponta SEMPRE para o admin/owner: ele precisa de DDL e precisa ser dono
+      # das tabelas para que o nora_app (não-owner) fique sujeito ao RLS. Depois do
+      # cutover o DATASOURCE_* passa a ser nora_app e estas três NÃO acompanham — é
+      # justamente essa separação que o ADR 0028 pede.
+      #
+      # Não use `${SPRING_FLYWAY_URL:-}` aqui. String vazia é uma variável DEFINIDA, e
+      # `spring.flyway.url` definido (mesmo vazio) satisfaz o FlywayUrlCondition: o Spring
+      # para de herdar o spring.datasource e monta um SimpleDriverDataSource próprio a
+      # partir de uma URL vazia. O boot morre em `Driver has not been set`, dentro do
+      # flywayInitializer, sem citar a variável culpada. O comentário no application.yml
+      # já avisava disso; o compose caiu no buraco assim mesmo, no primeiro deploy real.
+      SPRING_FLYWAY_URL: ${SPRING_FLYWAY_URL:-jdbc:postgresql://postgres:5432/nora}
+      SPRING_FLYWAY_USER: ${SPRING_FLYWAY_USER:-${DATASOURCE_USERNAME:-nora_admin}}
+      SPRING_FLYWAY_PASSWORD: ${SPRING_FLYWAY_PASSWORD:-${POSTGRES_ADMIN_PASSWORD}}
       # Os TRÊS roles importam: nora_app (NOBYPASSRLS), nora_telemetry (BYPASSRLS) e o
       # admin/owner. Sem o nora_telemetry o painel do operador vê 0 linhas EM SILÊNCIO.
       NORA_TELEMETRY_DATASOURCE_URL: ${NORA_TELEMETRY_DATASOURCE_URL:-}
