@@ -61,10 +61,28 @@ jobs:
       - name: Resolver zone id
         id: zone
         run: |
-          set -euo pipefail
-          resp="$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" "$CF_API/zones?name=$DOMAIN")"
-          zid="$(echo "$resp" | jq -r '.result[0].id // empty')"
-          [ -n "$zid" ] || { echo "::error::zona $DOMAIN não encontrada (token tem Zone:Read?)"; exit 1; }
+          set -uo pipefail
+          # Sem `-f`: com ele o curl sai 22 em qualquer 4xx e engole o corpo, que é onde
+          # a Cloudflare diz o que faltou. O corpo de erro da CF não contém segredo --
+          # traz código e mensagem ("Invalid API Token", "Authentication error").
+          resp="$(curl -sS -w '\n%{http_code}' -H "Authorization: Bearer $CF_TOKEN" \
+                    "$CF_API/zones?name=$DOMAIN")"
+          code="$(echo "$resp" | tail -1)"
+          body="$(echo "$resp" | sed '$d')"
+
+          if [ "$code" != "200" ]; then
+            echo "HTTP $code de GET /zones"
+            echo "$body" | jq -c '{success, errors, messages}' 2>/dev/null || echo "$body" | head -c 500
+            echo
+            echo "::error::o CLOUDFLARE_API_TOKEN não consegue ler a zona $DOMAIN."
+            echo "Permissões mínimas para este workflow: Zone:Zone:Read + Zone:DNS:Edit em $DOMAIN."
+            echo "Se o token for account-owned, ele NÃO se valida em /user/tokens/verify --"
+            echo "use /accounts/<account_id>/tokens/verify. Um 403 aqui é permissão, não formato."
+            exit 1
+          fi
+
+          zid="$(echo "$body" | jq -r '.result[0].id // empty')"
+          [ -n "$zid" ] || { echo "::error::token lê zonas, mas $DOMAIN não está entre elas."; exit 1; }
           echo "zone_id=$zid" >> "$GITHUB_OUTPUT"
           echo "zona $DOMAIN = $zid"
 
