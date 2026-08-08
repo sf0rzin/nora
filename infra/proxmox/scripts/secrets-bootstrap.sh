@@ -102,6 +102,7 @@ DEEPSEEK_API_KEY|opcional|vazio = provider indisponivel no chat
 RESEND_API_KEY|opcional|vazio = backend cai em LogEmailSender
 GOOGLE_OAUTH_CLIENT_ID|opcional|vazio = integracao Google Calendar nao conecta
 GOOGLE_OAUTH_CLIENT_SECRET|opcional|vazio = integracao Google Calendar nao conecta
+NORA_PLATFORM_ENABLED|opcional|true liga o profile 'platform' (admin + postgres-platform)
 CAT
 )
 
