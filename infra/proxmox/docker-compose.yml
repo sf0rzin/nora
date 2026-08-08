@@ -484,7 +484,10 @@ services:
           cpus: "0.5"
           memory: 512M
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3002/healthz"]
+      # 127.0.0.1, nao `localhost`: o Next standalone faz bind IPv4-only (0.0.0.0), mas o
+      # /etc/hosts do container resolve `localhost` tambem para ::1 e o wget do BusyBox
+      # tenta o IPv6 primeiro -- connection refused com o servidor no ar e respondendo.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3002/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
