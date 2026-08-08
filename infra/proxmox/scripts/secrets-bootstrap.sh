@@ -100,6 +100,8 @@ OPENAI_API_KEY|opcional|vazio = worker em modo stub e chat 503
 GEMINI_API_KEY|opcional|vazio = embeddings/RAG desligados
 DEEPSEEK_API_KEY|opcional|vazio = provider indisponivel no chat
 RESEND_API_KEY|opcional|vazio = backend cai em LogEmailSender
+GOOGLE_OAUTH_CLIENT_ID|opcional|vazio = integracao Google Calendar nao conecta
+GOOGLE_OAUTH_CLIENT_SECRET|opcional|vazio = integracao Google Calendar nao conecta
 CAT
 )
 
