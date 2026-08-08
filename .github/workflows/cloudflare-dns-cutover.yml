@@ -1,0 +1,150 @@
+name: cloudflare-dns-cutover
+
+# Aponta os hostnames públicos do NORA para o Cloudflare Tunnel do host Proxmox.
+#
+# POR QUE UM WORKFLOW NOVO E NÃO O cloudflare-tunnel.yml
+# ------------------------------------------------------
+# O `cloudflare-tunnel.yml` é da era Container Apps: ele CRIA um túnel e SOBRESCREVE a
+# configuração de ingress inteira com a topologia antiga (um hostname, origem em
+# `localhost:3002`). Rodá-lo hoje derrubaria as 5 rotas do túnel `nora-prod`. Este
+# workflow faz só DNS: não toca em túnel, ingress, Access, nem em nada além dos
+# registros listados.
+#
+# O QUE ELE FAZ
+# -------------
+# Para cada hostname, garante um CNAME proxied apontando para
+# `<tunnel_id>.cfargotunnel.com`. Registros A/AAAA anteriores (a origem Azure morta)
+# são substituídos -- um nome não pode ter A e CNAME ao mesmo tempo.
+#
+# Idempotente: se o registro já está certo, não faz chamada de escrita.
+#
+# SEGURANÇA
+# ---------
+# Roda com `apply: false` por padrão e só imprime o plano. DNS público é mudança
+# visível de fora e difícil de "não ter acontecido" -- vale ver o diff antes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tunnel_id:
+        description: 'UUID do Cloudflare Tunnel de destino'
+        required: true
+        default: '0aacc478-1eea-4953-bd0f-deb100e6e6cd'
+      hostnames:
+        description: 'Hostnames (CSV) a apontar para o túnel'
+        required: true
+        default: 'nora.systems,www.nora.systems,api.nora.systems,admin.nora.systems,grafana.nora.systems'
+      apply:
+        description: 'false = só mostra o plano; true = escreve no DNS'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CF_API: https://api.cloudflare.com/client/v4
+  DOMAIN: nora.systems
+
+jobs:
+  cutover:
+    name: cutover
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TUNNEL_ID: ${{ inputs.tunnel_id }}
+      HOSTNAMES: ${{ inputs.hostnames }}
+      APPLY: ${{ inputs.apply }}
+    steps:
+      - name: Resolver zone id
+        id: zone
+        run: |
+          set -euo pipefail
+          resp="$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" "$CF_API/zones?name=$DOMAIN")"
+          zid="$(echo "$resp" | jq -r '.result[0].id // empty')"
+          [ -n "$zid" ] || { echo "::error::zona $DOMAIN não encontrada (token tem Zone:Read?)"; exit 1; }
+          echo "zone_id=$zid" >> "$GITHUB_OUTPUT"
+          echo "zona $DOMAIN = $zid"
+
+      - name: Plano e execução
+        env:
+          ZONE_ID: ${{ steps.zone.outputs.zone_id }}
+        run: |
+          set -euo pipefail
+          target="${TUNNEL_ID}.cfargotunnel.com"
+          echo "destino: $target"
+          echo "modo: $([ "$APPLY" = true ] && echo 'APPLY (escreve)' || echo 'DRY-RUN (só plano)')"
+          echo
+
+          api() { curl -fsSL -H "Authorization: Bearer $CF_TOKEN" -H 'Content-Type: application/json' "$@"; }
+
+          mudou=0
+          IFS=',' read -ra NOMES <<< "$HOSTNAMES"
+          for nome in "${NOMES[@]}"; do
+            nome="$(echo "$nome" | tr -d '[:space:]')"
+            [ -n "$nome" ] || continue
+
+            # Todos os registros que ocupam este nome. A e CNAME são mutuamente
+            # exclusivos, então os A antigos precisam sair para o CNAME entrar.
+            recs="$(api "$CF_API/zones/$ZONE_ID/dns_records?name=$nome&per_page=100")"
+            n="$(echo "$recs" | jq '[.result[] | select(.type=="A" or .type=="AAAA" or .type=="CNAME")] | length')"
+            ja_ok="$(echo "$recs" | jq --arg t "$target" \
+              '[.result[] | select(.type=="CNAME" and .content==$t and .proxied==true)] | length')"
+
+            if [ "$ja_ok" -ge 1 ] && [ "$n" -eq 1 ]; then
+              printf '  %-26s ok (já aponta para o túnel)\n' "$nome"
+              continue
+            fi
+
+            atual="$(echo "$recs" | jq -r '[.result[] | select(.type=="A" or .type=="AAAA" or .type=="CNAME") | "\(.type):\(.content)"] | join(", ") // "nenhum"')"
+            printf '  %-26s %s  ->  CNAME:%s\n' "$nome" "${atual:-nenhum}" "$target"
+            mudou=$((mudou+1))
+            [ "$APPLY" = true ] || continue
+
+            corpo="$(jq -nc --arg n "$nome" --arg c "$target" \
+              '{type:"CNAME", name:$n, content:$c, ttl:1, proxied:true}')"
+
+            # Converte o PRIMEIRO registro existente e remove os demais; se não havia
+            # nenhum, cria. Converter em vez de apagar+criar evita a janela sem registro.
+            primeiro="$(echo "$recs" | jq -r '[.result[] | select(.type=="A" or .type=="AAAA" or .type=="CNAME")][0].id // empty')"
+            if [ -n "$primeiro" ]; then
+              api -X PUT "$CF_API/zones/$ZONE_ID/dns_records/$primeiro" --data "$corpo" > /dev/null
+              echo "$recs" | jq -r '[.result[] | select(.type=="A" or .type=="AAAA" or .type=="CNAME")][1:][].id' \
+                | while read -r extra; do
+                    [ -n "$extra" ] || continue
+                    api -X DELETE "$CF_API/zones/$ZONE_ID/dns_records/$extra" > /dev/null
+                    echo "      removido registro duplicado $extra"
+                  done
+            else
+              api -X POST "$CF_API/zones/$ZONE_ID/dns_records" --data "$corpo" > /dev/null
+            fi
+            echo "      aplicado"
+          done
+
+          echo
+          if [ "$mudou" -eq 0 ]; then
+            echo "nada a fazer — todos os hostnames já apontam para o túnel."
+          elif [ "$APPLY" = true ]; then
+            echo "$mudou hostname(s) atualizados."
+          else
+            echo "$mudou hostname(s) mudariam. Rode de novo com apply=true para escrever."
+          fi
+
+      - name: Verificação HTTP
+        if: ${{ inputs.apply }}
+        run: |
+          set -uo pipefail
+          echo "Aguardando propagação no edge (proxied: costuma ser segundos)..."
+          sleep 20
+          IFS=',' read -ra NOMES <<< "$HOSTNAMES"
+          for nome in "${NOMES[@]}"; do
+            nome="$(echo "$nome" | tr -d '[:space:]')"
+            [ -n "$nome" ] || continue
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "https://$nome/" || echo 000)"
+            printf '  %-26s HTTP %s\n' "$nome" "$code"
+          done
+          echo
+          echo "Referência: / e /www esperam 200, api espera 401 (sem sessão),"
+          echo "admin espera o login do Cloudflare Access, grafana espera 302 para /login."
