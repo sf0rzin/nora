@@ -68,7 +68,13 @@ services:
     command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN obrigatorio}
-    networks: [edge]
+    # `internal` não é para servir tráfego — é para o prometheus (que só vive nela)
+    # alcançar o :2000 de métricas. Sem ela o job `cloudflared` do prometheus.yml dá
+    # "no such host" e a stack perde justamente o sinal de que o túnel está de pé
+    # (cloudflared_tunnel_ha_connections; cair a 0 é o 522 que derrubou nora.systems).
+    # `internal: true` não tem rota para a internet, então isto não amplia a exposição
+    # do cloudflared — só acrescenta a interface pelo lado de dentro.
+    networks: [edge, internal]
     depends_on:
       caddy:
         condition: service_healthy

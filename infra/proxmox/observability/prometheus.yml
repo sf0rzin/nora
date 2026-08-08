@@ -129,15 +129,15 @@ scrape_configs:
   # O `--metrics 0.0.0.0:2000` já está no command do compose (docker-compose.yml:68),
   # então este lado está certo.
   #
-  # >>> ESTE JOB NÃO FUNCIONA COM O COMPOSE COMO ESTÁ. <<<
-  # cloudflared está só na rede `edge` (docker-compose.yml:71) e o prometheus só na
-  # `internal` (docker-compose.yml:480). Não há rota entre eles: o scrape dá
-  # "no such host". Correção de uma linha no docker-compose.yml, no serviço cloudflared:
+  # O cloudflared precisa estar em `edge` E `internal`: o prometheus só existe na
+  # `internal`, e sem uma interface comum o scrape morre em "no such host" (foi o que
+  # aconteceu no primeiro deploy da VM 106 — único alvo `down` de sete). Isso NÃO
+  # expõe o cloudflared a mais nada: `internal` é `internal: true` e não tem rota para
+  # a internet; só acrescenta a interface pelo lado de dentro.
   #
-  #     networks: [edge, internal]
-  #
-  # Isso NÃO expõe o cloudflared a mais nada — `internal` é internal: true e não tem
-  # rota para a internet; só adiciona a interface pelo lado de dentro.
+  # Se algum dia o cloudflared voltar a `networks: [edge]`, este job volta a falhar —
+  # e a falha é silenciosa no lugar errado: o túnel continua funcionando, só a métrica
+  # que prova que ele funciona é que some.
   #
   # Métrica que vale: cloudflared_tunnel_ha_connections (esperado 4 — quatro conexões
   # para o edge da Cloudflare). Cair para 0 é o 522 que derrubou nora.systems.
