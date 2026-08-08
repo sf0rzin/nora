@@ -20,10 +20,15 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 # HOSTNAME=0.0.0.0 nao e detalhe: o `server.js` do output standalone faz bind em
 # `process.env.HOSTNAME`, e o Docker preenche essa variavel com o ID do container. Sem
-# a linha abaixo o Next escuta SO no IP do container -- `localhost:3002` da "connection
-# refused", o HEALTHCHECK falha para sempre e o `up --wait` do deploy nunca conclui,
-# ainda que a app esteja no ar e o Caddy (que fala com `admin:3002`) consiga servir.
+# a linha abaixo o Next escuta SO no IP do container -- a sonda da "connection refused",
+# o HEALTHCHECK falha para sempre e o `up --wait` do deploy nunca conclui, ainda que a
+# app esteja no ar e o Caddy (que fala com `admin:3002`) consiga servir.
 # O `web` nao tem esse problema porque usa `next start`, que assume 0.0.0.0.
+#
+# E a sonda usa 127.0.0.1, nao `localhost`: com HOSTNAME=0.0.0.0 o listener e IPv4-only,
+# mas o /etc/hosts do container resolve `localhost` tambem para ::1 e o wget do BusyBox
+# tenta o IPv6 primeiro. O resultado e identico ao bug acima -- connection refused com o
+# servidor no ar -- e por isso mesmo facil de diagnosticar errado duas vezes.
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3002 HOSTNAME=0.0.0.0
 RUN addgroup -S nora && adduser -S nora -G nora
 COPY --from=build /app/public ./public
@@ -32,5 +37,5 @@ COPY --from=build /app/.next/static ./.next/static
 USER nora
 EXPOSE 3002
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:3002/healthz || exit 1
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3002/healthz || exit 1
 CMD ["node", "server.js"]
