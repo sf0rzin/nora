@@ -103,6 +103,34 @@ jobs:
           echo "tunnel_id=$tunnel_id" >> "$GITHUB_OUTPUT"
           echo "Tunnel ID: $tunnel_id"
 
+      # ---------------------------------------------------------------------
+      # TRAVA DE SEGURANÇA (2026-08-08)
+      # ---------------------------------------------------------------------
+      # O passo seguinte faz PUT em /configurations, e PUT SUBSTITUI o ingress inteiro
+      # pela topologia de UM hostname da era Container Apps. Se apontado para o túnel de
+      # produção (`nora-prod`, 5 hostnames -> caddy:80), ele apagaria as outras 4 rotas e
+      # tiraria nora.systems do ar — sem erro, com `success: true`.
+      #
+      # Esta trava lê a configuração ATUAL e aborta se houver mais de uma rota real. Para
+      # DNS não é preciso passar por aqui: use o `cloudflare-dns-cutover.yml`, que não
+      # toca em túnel.
+      - name: Guarda — não sobrescrever um túnel multi-rota
+        env:
+          TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
+        run: |
+          set -euo pipefail
+          atual="$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+            "$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID/configurations" || echo '{}')"
+          # A regra catch-all (sem hostname) não conta: ela existe em qualquer config.
+          rotas="$(echo "$atual" | jq '[.result.config.ingress[]? | select(.hostname)] | length')"
+          echo "rotas com hostname hoje neste túnel: ${rotas:-0}"
+          if [ "${rotas:-0}" -gt 1 ]; then
+            echo "$atual" | jq -r '.result.config.ingress[]? | select(.hostname) | "  - \(.hostname) -> \(.service)"'
+            echo "::error::este túnel serve ${rotas} hostnames. O passo seguinte substituiria TODOS por um só."
+            echo "Se a intenção era mexer em DNS, use o workflow cloudflare-dns-cutover.yml."
+            exit 1
+          fi
+
       - name: Configure tunnel route
         env:
           TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
