@@ -1,11 +1,16 @@
 import { headers } from "next/headers";
 
 /**
- * Identidade do operador. Em produção vem do Cloudflare Access (ADR 0025), que injeta
- * `Cf-Access-Authenticated-User-Email` nas requisições que passam pelo login. A asserção
- * (`Cf-Access-Jwt-Assertion`) já foi validada pelo gate em `lib/access.ts`, e a origem é
- * inalcançável de fora (Tunnel + ingress internal) — então confiar neste header é seguro.
+ * Identidade do operador para **exibição**. Em produção vem do Cloudflare Access (ADR 0025),
+ * que injeta `Cf-Access-Authenticated-User-Email` nas requisições que passam pelo login.
  * Em dev (sem Cloudflare) cai num operador fake.
+ *
+ * Este header NÃO é assinado. Ele é confiável no render de página, onde o RootLayout já
+ * validou o `Cf-Access-Jwt-Assertion` antes de renderizar. Não é confiável em server
+ * action: ali o Next executa a action antes do layout, e o endpoint da action é
+ * alcançável por POST direto de dentro da rede. Para autorizar ou para carimbar
+ * auditoria, use `requireAccess()` de `lib/access.ts`, que devolve o e-mail do JWT
+ * verificado.
  *
  * O nora-admin repassa `operator.email` pra API Spring (header de auditoria) pra registrar
  * "quem trocou o modelo". Legado: ainda lê `x-ms-client-principal` (Easy Auth) caso volte.
