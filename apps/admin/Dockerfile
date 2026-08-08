@@ -18,7 +18,13 @@ RUN npm run build
 # --- runtime (standalone) ---
 FROM node:22-alpine AS runtime
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3002
+# HOSTNAME=0.0.0.0 nao e detalhe: o `server.js` do output standalone faz bind em
+# `process.env.HOSTNAME`, e o Docker preenche essa variavel com o ID do container. Sem
+# a linha abaixo o Next escuta SO no IP do container -- `localhost:3002` da "connection
+# refused", o HEALTHCHECK falha para sempre e o `up --wait` do deploy nunca conclui,
+# ainda que a app esteja no ar e o Caddy (que fala com `admin:3002`) consiga servir.
+# O `web` nao tem esse problema porque usa `next start`, que assume 0.0.0.0.
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3002 HOSTNAME=0.0.0.0
 RUN addgroup -S nora && adduser -S nora -G nora
 COPY --from=build /app/public ./public
 COPY --from=build /app/.next/standalone ./
