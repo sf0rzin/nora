@@ -266,7 +266,19 @@ for d in "$STATE_DIR" "$BACKUP_DIR" "$SECRETS_DIR"; do
   run chown "$SERVICE_USER:$SERVICE_USER" "$d"
   info "$d"
 done
-run chmod 0750 "$BACKUP_DIR" "$SECRETS_DIR"
+run chmod 0750 "$SECRETS_DIR"
+
+# O serviço 'backup' roda como root (o compose sobrescreve o entrypoint e pula o gosu
+# da imagem), então o dump nasce com dono root. Sem o bit setgid o grupo do arquivo
+# também sai root, e nem quem está no grupo 'nora' consegue lê-lo — o dump fica
+# ilegível pro restore-drill.sh e pro operador.
+#
+# root:nora + 2750 faz todo arquivo criado aqui herdar o grupo 'nora'. Combinado com o
+# `umask 027` do run-backup.sh, o dump sai 0640 root:nora: legível por quem opera,
+# invisível pro resto. É exatamente o que ../backup/run-backup.sh:147-148 documenta e
+# o que o remédio do restore-drill.sh (`usermod -aG nora $USER`) pressupõe.
+run chown "root:$SERVICE_USER" "$BACKUP_DIR"
+run chmod 2750 "$BACKUP_DIR"
 
 run mkdir -p "$(dirname "$AGE_KEY_FILE")"
 if [ -f "$AGE_KEY_FILE" ]; then
