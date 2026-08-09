@@ -9,6 +9,7 @@ import br.com.nora.api.application.ports.GenericOAuthClient;
 import br.com.nora.api.application.ports.GoogleOAuthClient;
 import br.com.nora.api.application.ports.IntegrationConnectionRepository;
 import br.com.nora.api.application.ports.SlackOAuthClient;
+import br.com.nora.api.application.ports.TenantRlsContext;
 import br.com.nora.api.application.ports.TrelloApi;
 import br.com.nora.api.domain.integration.IntegrationConnection;
 import br.com.nora.api.domain.integration.IntegrationProvider;
@@ -37,6 +38,19 @@ class IntegrationServiceTest {
     private final OAuthStateCodec codec = new OAuthStateCodec("segredo-teste");
     private final Clock clock = () -> now;
 
+    /**
+     * Sem Postgres nem aspect neste teste unitario: o contrato exercitado aqui e o de aplicacao. A
+     * propagacao real do GUC esta coberta pelo IntegrationFlowIntegrationTest.
+     */
+    private final TenantRlsContext rlsContext =
+            new TenantRlsContext() {
+                @Override
+                public void set(UUID tenantId) {}
+
+                @Override
+                public void clear() {}
+            };
+
     private IntegrationService service() {
         return service(directory());
     }
@@ -51,6 +65,7 @@ class IntegrationServiceTest {
                 trello,
                 codec,
                 clock,
+                rlsContext,
                 "client-id-teste",
                 "http://localhost:8080/integrations/google/oauth/callback",
                 "slack-client-id-teste",
@@ -108,6 +123,7 @@ class IntegrationServiceTest {
                         trello,
                         codec,
                         clock,
+                        rlsContext,
                         "",
                         "",
                         "",
@@ -245,6 +261,7 @@ class IntegrationServiceTest {
                         trello,
                         codec,
                         clock,
+                        rlsContext,
                         "client-id-teste",
                         "http://localhost:8080/integrations/google/oauth/callback",
                         "",
@@ -532,6 +549,7 @@ class IntegrationServiceTest {
                         trello,
                         codec,
                         clock,
+                        rlsContext,
                         "",
                         "",
                         "",

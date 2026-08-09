@@ -6,6 +6,7 @@ import br.com.nora.api.application.ports.GoogleOAuthClient;
 import br.com.nora.api.application.ports.GoogleOAuthClient.TokenResponse;
 import br.com.nora.api.application.ports.IntegrationConnectionRepository;
 import br.com.nora.api.application.ports.SlackOAuthClient;
+import br.com.nora.api.application.ports.TenantRlsContext;
 import br.com.nora.api.application.ports.TrelloApi;
 import br.com.nora.api.domain.integration.IntegrationConnection;
 import br.com.nora.api.domain.integration.IntegrationProvider;
@@ -69,6 +70,7 @@ public class IntegrationService {
     private final TrelloApi trello;
     private final OAuthStateCodec stateCodec;
     private final Clock clock;
+    private final TenantRlsContext rlsContext;
     private final String googleClientId;
     private final String googleRedirectUri;
     private final String slackClientId;
@@ -85,6 +87,7 @@ public class IntegrationService {
             TrelloApi trello,
             OAuthStateCodec stateCodec,
             Clock clock,
+            TenantRlsContext rlsContext,
             @Value("${nora.integrations.google.client-id:}") String googleClientId,
             @Value("${nora.integrations.google.redirect-uri:}") String googleRedirectUri,
             @Value("${nora.integrations.slack.client-id:}") String slackClientId,
@@ -99,6 +102,7 @@ public class IntegrationService {
         this.trello = trello;
         this.stateCodec = stateCodec;
         this.clock = clock;
+        this.rlsContext = rlsContext;
         this.googleClientId = googleClientId;
         this.googleRedirectUri = googleRedirectUri;
         this.slackClientId = slackClientId;
@@ -161,11 +165,29 @@ public class IntegrationService {
     @Transactional
     public OAuthStateCodec.DecodedState handleCallback(
             IntegrationProvider provider, String code, String state) {
-        return switch (provider) {
-            case GOOGLE -> handleGoogleCallback(code, state);
-            case SLACK -> handleSlackCallback(code, state);
-            default -> handleGenericCallback(provider, code, state);
-        };
+        // `/integrations/*/oauth/callback` é público (SecurityConfig.PUBLIC_ENDPOINTS): chega por
+        // redirect do provedor, sem JWT, então o JwtAuthenticationFilter não populou o contexto de
+        // tenant que o TenantRlsAspect lê. V024 pôs RLS em integration_connections com
+        // `WITH CHECK (tenant_id = nora.current_tenant_id())`, e V020 montou a lista de isenções
+        // para fluxos sem JWT antes de V024 existir — esta tabela nunca entrou nela.
+        //
+        // Sem o GUC, com nora.security.rls.enforce=true o upsert bate no WITH CHECK e falha
+        // fechado: conectar qualquer integração pararia de funcionar no dia do cutover. O tenant
+        // vem do state assinado (HMAC, exp 10min), que é a credencial deste endpoint.
+        //
+        // Setar aqui basta: o `connections.upsert` é @Transactional, então o aspect dispara nele
+        // e aplica o SET LOCAL na transação já aberta por este método.
+        UUID tenantId = stateCodec.decode(state, clock.now()).tenantId();
+        rlsContext.set(tenantId);
+        try {
+            return switch (provider) {
+                case GOOGLE -> handleGoogleCallback(code, state);
+                case SLACK -> handleSlackCallback(code, state);
+                default -> handleGenericCallback(provider, code, state);
+            };
+        } finally {
+            rlsContext.clear();
+        }
     }
 
     /** Monta a URL de autorização do Google com state assinado (tenant/usuário embutidos). */
