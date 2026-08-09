@@ -62,6 +62,13 @@ public class AuthService {
      */
     private static final Duration REFRESH_REUSE_LEEWAY = Duration.ofSeconds(60);
 
+    /**
+     * Teto de saltos ao seguir a cadeia de rotacao em {@link #chainStillAlive}. Dentro da janela de
+     * 60s nao ha uso legitimo que rode mais que isto; o teto existe para o caso de {@code
+     * replacedById} formar um ciclo, que nada no schema impede.
+     */
+    private static final int REUSE_CHAIN_MAX_HOPS = 8;
+
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
     private final OneTimeTokenRepository tokenRepository;
@@ -437,9 +444,39 @@ public class AuthService {
                 || Duration.between(token.lastUsedAt(), now).compareTo(REFRESH_REUSE_LEEWAY) > 0) {
             return false;
         }
+        return chainStillAlive(token.replacedById(), REUSE_CHAIN_MAX_HOPS);
+    }
+
+    /**
+     * Anda para a frente na cadeia de rotacao a partir de {@code childId} e diz se ela termina num
+     * token vivo.
+     *
+     * <p>Olhar UM salto so nao chega. Um filho revogado significa duas coisas diferentes: ou a
+     * cadeia foi encerrada (logout, troca de senha) ou ele proprio ja rodou de novo -- que e o caso
+     * normal de varias abas. Com tres abas a atualizar quase juntas, o filho da primeira ja foi
+     * substituido quando a segunda reapresenta o pai; tratar isso como comprometimento revogava a
+     * family inteira e deslogava o usuario no meio de um uso legitimo.
+     *
+     * <p>A distincao esta no {@code replacedById}: revogado COM substituto = rotacionado, segue em
+     * frente; revogado SEM substituto = ponta morta, foi revogacao explicita. O teto de saltos
+     * existe porque {@code replacedById} vem do banco e nao ha nada no schema que impeca um ciclo.
+     */
+    private boolean chainStillAlive(UUID childId, int hopsLeft) {
+        if (hopsLeft <= 0) {
+            return false;
+        }
         return refreshTokenRepository
-                .findById(token.replacedById())
-                .map(child -> !child.isRevoked())
+                .findById(childId)
+                .map(
+                        child -> {
+                            if (!child.isRevoked()) {
+                                return true;
+                            }
+                            if (child.replacedById() == null) {
+                                return false; // revogado e nunca substituido: cadeia encerrada
+                            }
+                            return chainStillAlive(child.replacedById(), hopsLeft - 1);
+                        })
                 .orElse(false);
     }
 
