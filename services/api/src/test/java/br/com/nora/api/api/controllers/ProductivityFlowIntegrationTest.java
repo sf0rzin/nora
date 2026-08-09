@@ -261,14 +261,21 @@ class ProductivityFlowIntegrationTest {
         UUID meetingId = uploadMeeting(token, "Reuniao upsert 2");
         UUID tenantId = principalTenantId(token);
 
+        // purpose and every outcome need at least 3 characters (MeetingGoalRequest); "v1" and
+        // "x" get a 400 from @Valid and never reach the branch this test exists for.
         analysisService.run(meetingId, tenantId);
         assertThat(statusOf(meetingId, token)).isEqualTo("COMPLETED");
-        assertThat(
-                        putGoal(
-                                        meetingId,
-                                        token,
-                                        Map.of("purpose", "v1", "expectedOutcomes", List.of("x")))
-                                .getStatusCode())
+        ResponseEntity<String> first =
+                putGoal(
+                        meetingId,
+                        token,
+                        Map.of(
+                                "purpose",
+                                "Primeira versao do objetivo",
+                                "expectedOutcomes",
+                                List.of("definir escopo")));
+        assertThat(first.getStatusCode())
+                .as("first edit through the reprocess branch: %s", first.getBody())
                 .isEqualTo(HttpStatus.OK);
         assertThat(statusOf(meetingId, token))
                 .as("the first edit of an analysed meeting must queue a re-analysis")
@@ -282,7 +289,11 @@ class ProductivityFlowIntegrationTest {
                 putGoal(
                         meetingId,
                         token,
-                        Map.of("purpose", "v2", "expectedOutcomes", List.of("y")));
+                        Map.of(
+                                "purpose",
+                                "Segunda versao do objetivo",
+                                "expectedOutcomes",
+                                List.of("fechar contrato")));
         assertThat(second.getStatusCode())
                 .as("second edit through the reprocess branch: %s", second.getBody())
                 .isEqualTo(HttpStatus.OK);
@@ -291,7 +302,8 @@ class ProductivityFlowIntegrationTest {
         assertThat(detail.get("processingStatus").asText())
                 .as("the claim must have run on the second edit too, not been skipped")
                 .isEqualTo("PENDING");
-        assertThat(detail.get("goal").get("purpose").asText()).isEqualTo("v2");
+        assertThat(detail.get("goal").get("purpose").asText())
+                .isEqualTo("Segunda versao do objetivo");
         assertThat(detail.get("goal").get("expectedOutcomes").size()).isEqualTo(1);
     }
 
