@@ -23,9 +23,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Servico de aplicacao para reunioes (US07).
@@ -52,17 +55,26 @@ public class MeetingService {
     private final AuditPort audit;
     private final boolean autoDispatchAnalysis;
 
+    /**
+     * Template com PROPAGATION_REQUIRES_NEW, para escrever de dentro do {@code afterCommit} — onde
+     * a transação corrente já commitou e um {@code REQUIRED} se juntaria a ela sem nunca gravar.
+     */
+    private final TransactionTemplate newTransaction;
+
     public MeetingService(
             MeetingRepository meetings,
             TranscriptRepository transcripts,
             ObjectProvider<AnalysisService> analysisServiceProvider,
             AuditPort audit,
+            PlatformTransactionManager transactionManager,
             @Value("${nora.analysis.auto-dispatch:true}") boolean autoDispatchAnalysis) {
         this.meetings = meetings;
         this.transcripts = transcripts;
         this.analysisServiceProvider = analysisServiceProvider;
         this.audit = audit;
         this.autoDispatchAnalysis = autoDispatchAnalysis;
+        this.newTransaction = new TransactionTemplate(transactionManager);
+        this.newTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     @Transactional
@@ -155,10 +167,15 @@ public class MeetingService {
                     tenantId,
                     e);
             try {
-                // Fora da transação original (já commitada); o save do adapter abre a sua.
-                meetings.findByIdAndTenant(meetingId, tenantId)
-                        .map(m -> m.withStatus(ProcessingStatus.FAILED))
-                        .ifPresent(meetings::save);
+                // REQUIRES_NEW, não o @Transactional do adapter. No afterCommit a transação ainda
+                // é a corrente — commitada, mas não encerrada —, então um REQUIRED do adapter
+                // JUNTA-SE a ela em vez de abrir outra, e o save nunca chega a ser gravado. O
+                // meeting ficava PENDING para sempre e o log dizia que tinha sido marcado FAILED.
+                newTransaction.executeWithoutResult(
+                        status ->
+                                meetings.findByIdAndTenant(meetingId, tenantId)
+                                        .map(m -> m.withStatus(ProcessingStatus.FAILED))
+                                        .ifPresent(meetings::save));
             } catch (RuntimeException marking) {
                 // Marcar FAILED é best-effort: se também falhar, o meeting fica PENDING e o
                 // reprocess manual resolve. Propagar aqui só trocaria um erro por outro.
@@ -221,21 +238,39 @@ public class MeetingService {
     @Transactional
     public Meeting reprocess(
             UUID meetingId, UUID tenantId, java.util.function.Consumer<Meeting> authorize) {
-        // FOR UPDATE: a guarda de PROCESSING abaixo é um check-then-act. Com leitura sem lock,
-        // duas chamadas concorrentes leem o mesmo status pré-update, ambas passam e ambas agendam
-        // — dois pipelines de análise sobre o mesmo meeting, com cobrança de LLM dobrada e os
-        // efeitos externos da análise aplicados duas vezes. O lock serializa na linha, então a
-        // segunda transação só lê depois que a primeira gravou PENDING.
+        // Autoriza ANTES de tomar o lock. Tomá-lo primeiro deixava um chamador sem permissão
+        // segurar um lock de escrita na linha durante toda a avaliação de IAM (que vai ao banco),
+        // repetidamente — negação de serviço sobre uma reunião à escolha dele.
+        Meeting snapshot =
+                meetings.findByIdAndTenant(meetingId, tenantId)
+                        .orElseThrow(MeetingException.NotFound::new);
+        authorize.accept(snapshot);
+
+        // Só então serializa. A guarda abaixo é um check-then-act: sem lock, duas chamadas
+        // concorrentes leem o mesmo status pré-update, ambas passam e ambas agendam — dois
+        // pipelines sobre o mesmo meeting, LLM cobrado a dobrar e efeitos externos duplicados.
         Meeting meeting =
                 meetings.findByIdAndTenantForUpdate(meetingId, tenantId)
                         .orElseThrow(MeetingException.NotFound::new);
+        // Reavalia com a linha travada: entre o snapshot e o lock os atributos podem ter mudado,
+        // e é sobre eles que as conditions de IAM decidem.
         authorize.accept(meeting);
-        // Reprocessar é válido a partir de qualquer estado terminal/de espera (FAILED, COMPLETED
-        // -> "reanalisar", PENDING -> "analisar agora"). Só PROCESSING é barrado: a análise já está
-        // em andamento e reagendar criaria uma execução concorrente sobre o mesmo meeting.
-        if (meeting.processingStatus() == ProcessingStatus.PROCESSING) {
+
+        // Reprocessar é válido a partir de um estado terminal (FAILED, COMPLETED -> "reanalisar").
+        // PROCESSING e PENDING são barrados: nos dois casos já existe análise a caminho, e
+        // reagendar criaria uma execução concorrente.
+        //
+        // PENDING passava antes, com a intenção de "analisar agora" uma reunião que nunca chegou a
+        // ser despachada. Mas o lock não resolvia o duplo despacho por causa disso: o vencedor
+        // grava PENDING, e a segunda chamada — libertada pelo lock — lia PENDING e passava na
+        // guarda. Um duplo clique bastava. Barrar PENDING é seguro agora que um despacho rejeitado
+        // marca FAILED de verdade (ver dispatchOrMarkFailed): PENDING passou a significar mesmo
+        // "na fila", nunca "ficou esquecido".
+        if (meeting.processingStatus() == ProcessingStatus.PROCESSING
+                || meeting.processingStatus() == ProcessingStatus.PENDING) {
             throw new MeetingException.CannotReprocess(
-                    "A análise já está em andamento; aguarde concluir antes de reprocessar.");
+                    "A análise já está em andamento ou na fila; aguarde concluir antes de"
+                            + " reprocessar.");
         }
         ProcessingStatus previousStatus = meeting.processingStatus();
         Meeting updated = meeting.withStatus(ProcessingStatus.PENDING);

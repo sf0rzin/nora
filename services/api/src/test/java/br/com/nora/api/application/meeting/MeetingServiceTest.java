@@ -22,6 +22,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 class MeetingServiceTest {
 
@@ -38,7 +42,14 @@ class MeetingServiceTest {
         AuditPort noOpAudit = (a, b, c, d, e, f) -> {};
         service =
                 new MeetingService(
-                        meetingRepo, transcriptRepo, new NullAnalysisProvider(), noOpAudit, false);
+                        meetingRepo,
+                        transcriptRepo,
+                        new NullAnalysisProvider(),
+                        noOpAudit,
+                        // Sem banco neste teste: o template só é exercitado no caminho de
+                        // rejeição do executor, coberto pelos testes de integração.
+                        new NoOpTransactionManager(),
+                        false);
     }
 
     @Test
@@ -208,10 +219,58 @@ class MeetingServiceTest {
                 .isInstanceOf(MeetingException.CannotReprocess.class);
     }
 
+    @Test
+    void reprocessRejectedWhileAlreadyQueued() {
+        // PENDING passava antes, e era por isso que o lock nao impedia o duplo despacho: o
+        // vencedor grava PENDING, e a segunda chamada -- libertada pelo lock -- lia PENDING e
+        // passava na guarda. Um duplo clique agendava duas analises sobre a mesma reuniao.
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "queued", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        assertThat(m.processingStatus()).isEqualTo(ProcessingStatus.PENDING);
+
+        assertThatThrownBy(() -> service.reprocess(m.id(), tenant))
+                .isInstanceOf(MeetingException.CannotReprocess.class);
+    }
+
+    @Test
+    void reprocessRunsAuthorizationBeforeTakingTheRowLock() {
+        // Tomar o lock primeiro deixava um chamador sem permissao segurar um lock de escrita
+        // durante toda a avaliacao de IAM, em loop -- negacao de servico sobre uma reuniao a
+        // escolha dele. O callback tem de correr antes de qualquer FOR UPDATE.
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "guarded", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        meetingRepo.save(
+                m.withStatus(ProcessingStatus.PROCESSING).withStatus(ProcessingStatus.COMPLETED));
+        meetingRepo.forUpdateCalls = 0;
+
+        assertThatThrownBy(
+                        () ->
+                                service.reprocess(
+                                        m.id(),
+                                        tenant,
+                                        loaded -> {
+                                            throw new IllegalStateException("denied");
+                                        }))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(meetingRepo.forUpdateCalls)
+                .as("nenhum lock deve ter sido tomado quando a autorizacao falha")
+                .isZero();
+    }
+
     /* ---------- in-memory fakes ---------- */
 
     static final class InMemoryMeetingRepo implements MeetingRepository {
         private final Map<UUID, Meeting> store = new HashMap<>();
+
+        /** Quantas vezes o caminho com lock foi pedido. Ver o teste da ordem lock/autorizacao. */
+        int forUpdateCalls;
 
         @Override
         public int hardErase(UUID meetingId, UUID tenantId) {
@@ -237,7 +296,10 @@ class MeetingServiceTest {
 
         @Override
         public Optional<Meeting> findByIdAndTenantForUpdate(UUID id, UUID tenantId) {
-            // Fake single-thread: não há concorrência pra serializar, o lock é no-op aqui.
+            // Fake single-thread: não há concorrência pra serializar, o lock é no-op aqui. O
+            // contador existe para provar QUANDO o lock é pedido, que é o que importa em
+            // reprocessRunsAuthorizationBeforeTakingTheRowLock.
+            forUpdateCalls++;
             return findByIdAndTenant(id, tenantId);
         }
 
@@ -273,6 +335,24 @@ class MeetingServiceTest {
     }
 
     /** Provider que nunca devolve um AnalysisService — dispatch async vira no-op nos testes. */
+    /**
+     * Executa o callback sem transacao nenhuma. Este teste roda com repositorios em memoria; o
+     * REQUIRES_NEW so importa quando ha um transaction manager JPA de verdade, e essa parte esta
+     * coberta pelos testes de integracao.
+     */
+    static final class NoOpTransactionManager implements PlatformTransactionManager {
+        @Override
+        public TransactionStatus getTransaction(TransactionDefinition definition) {
+            return new SimpleTransactionStatus();
+        }
+
+        @Override
+        public void commit(TransactionStatus status) {}
+
+        @Override
+        public void rollback(TransactionStatus status) {}
+    }
+
     static final class NullAnalysisProvider implements ObjectProvider<AnalysisService> {
         @Override
         public AnalysisService getObject(Object... args) {
