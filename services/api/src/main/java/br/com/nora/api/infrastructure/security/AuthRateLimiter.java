@@ -32,10 +32,15 @@ import org.springframework.stereotype.Component;
  *
  * <ul>
  *   <li>Login: 10 / minute per origin (real humans rarely fail 10x/min)
- *   <li>Login: 10 / minute per (target e-mail, origin) — see {@link #allowLoginForEmail}
+ *   <li>Login: 5 / minute per (target e-mail, origin) — see {@link #allowLoginForEmail}
  *   <li>Reset request: 3 / 10 minutes per email (prevents reset spam)
  *   <li>Signup: 5 / minute per origin
  * </ul>
+ *
+ * <p>The per-account cap has to sit STRICTLY BELOW the per-origin one or it can never bind: a login
+ * consumes a token from both buckets, so at equal capacity the origin bucket always empties first
+ * and the account cap rejects nothing. It shipped at 10 against 10 and was therefore dead code
+ * pretending to be a control.
  *
  * <p>"Origin" is the client's network (/32 in IPv4, /64 in IPv6), not the exact address — see
  * {@link #clientKey}.
@@ -68,7 +73,7 @@ public class AuthRateLimiter {
 
     public AuthRateLimiter(
             @Value("${nora.security.rate-limit.login-per-minute:10}") long loginPerMinute,
-            @Value("${nora.security.rate-limit.login-per-minute-per-email:10}")
+            @Value("${nora.security.rate-limit.login-per-minute-per-email:5}")
                     long loginPerMinutePerEmail,
             @Value("${nora.security.rate-limit.signup-per-minute:5}") long signupPerMinute,
             @Value("${nora.security.rate-limit.reset-per-10-minutes:3}") long resetPer10Minutes,
@@ -177,7 +182,7 @@ public class AuthRateLimiter {
                         lastComma < 0 ? edgeIp.trim() : edgeIp.substring(lastComma + 1).trim());
             }
         }
-        return networkKey(PeerAddressFilter.peerAddress(request));
+        return networkKey(PeerAddressListener.peerAddress(request));
     }
 
     /**

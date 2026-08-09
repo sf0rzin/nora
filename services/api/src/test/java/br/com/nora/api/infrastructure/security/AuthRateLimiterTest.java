@@ -73,6 +73,27 @@ class AuthRateLimiterTest {
     }
 
     @Test
+    void theShippedDefaultsLetTheAccountCapActuallyBind() {
+        // The whole point of the account cap is to reject before the origin cap does. It shipped
+        // at 10 against 10, and since a login consumes a token from BOTH buckets the origin one
+        // always emptied first -- the account cap could never reject anything. This pins the
+        // relationship, not the numbers: whatever the defaults become, the account cap has to be
+        // the one that fires first for a single account attacked from a single origin.
+        AuthRateLimiter rl = new AuthRateLimiter(10, 5, 5, 3, EDGE_HEADER);
+        String victim = "alvo@cliente.com";
+        int accepted = 0;
+        for (int i = 0; i < 10; i++) {
+            MockHttpServletRequest req = request("203.0.113.9", null);
+            if (rl.allowLogin(req) && rl.allowLoginForEmail(req, victim)) {
+                accepted++;
+            }
+        }
+        assertThat(accepted)
+                .as("o teto por conta tem de morder antes do teto por origem")
+                .isEqualTo(5);
+    }
+
+    @Test
     void perEmailCapBindsTheSameAccountAcrossAttemptsFromOneOrigin() {
         AuthRateLimiter rl = limiter(100, 2);
         MockHttpServletRequest attacker = request("203.0.113.9", null);

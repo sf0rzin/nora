@@ -241,52 +241,58 @@ public class MeetingService {
     @Transactional
     public Meeting reprocess(
             UUID meetingId, UUID tenantId, java.util.function.Consumer<Meeting> authorize) {
-        // Authorize BEFORE taking the lock. Taking it first let a caller without permission hold a
-        // write lock on the row for the whole IAM evaluation (which hits the database),
-        // repeatedly — denial of service on a meeting of his choosing.
-        Meeting snapshot =
+        Meeting meeting =
                 meetings.findByIdAndTenant(meetingId, tenantId)
                         .orElseThrow(MeetingException.NotFound::new);
-        authorize.accept(snapshot);
-
-        // Only then serialize. The guard below is a check-then-act: without the lock, two
-        // concurrent calls read the same pre-update status, both pass and both schedule — two
-        // pipelines over the same meeting, LLM billed twice and duplicated external effects.
-        Meeting meeting =
-                meetings.findByIdAndTenantForUpdate(meetingId, tenantId)
-                        .orElseThrow(MeetingException.NotFound::new);
-        // Re-evaluate with the row locked: between the snapshot and the lock the attributes may
-        // have changed, and it is on those that the IAM conditions decide.
+        // Authorize before writing anything. This read is deliberately unlocked: holding a write
+        // lock through the IAM evaluation (which hits the database) let an unauthorized caller
+        // block a meeting of his choosing, in a loop.
         authorize.accept(meeting);
 
-        // Reprocessing is valid from a terminal state (FAILED, COMPLETED -> "re-analyse").
-        // PROCESSING and PENDING are blocked: in both cases an analysis is already on its way, and
-        // rescheduling would create a concurrent execution.
+        // One atomic statement decides both whether the transition is legal and whether WE made
+        // it. Reprocessing is valid from a terminal state (COMPLETED, FAILED -> "re-analyse");
+        // PROCESSING and PENDING already have an analysis on the way, and rescheduling would run
+        // a second pipeline over the same meeting.
         //
-        // PENDING used to pass, with the intent of "analyse now" a meeting that never got
-        // dispatched. But that is why the lock did not solve the double dispatch: the winner
-        // writes PENDING, and the second call — released by the lock — read PENDING and passed the
-        // guard. A double click was enough. Blocking PENDING is safe now that a rejected dispatch
-        // really does mark FAILED (see dispatchOrMarkFailed): PENDING has come to genuinely mean
-        // "queued", never "got forgotten".
-        if (meeting.processingStatus() == ProcessingStatus.PROCESSING
-                || meeting.processingStatus() == ProcessingStatus.PENDING) {
+        // This used to be read-then-check-then-write with a row lock in front. It did not work:
+        // the authorization read above puts the entity in the persistence context, and Hibernate
+        // then answers the SELECT ... FOR UPDATE from that managed instance without refreshing
+        // it, so the second transaction read the pre-lock status and passed the guard anyway.
+        // Letting the database evaluate the condition removes the window entirely.
+        if (meetings.claimForReanalysis(meetingId, tenantId) == 0) {
             throw new MeetingException.CannotReprocess(
                     "A análise já está em andamento ou na fila; aguarde concluir antes de"
                             + " reprocessar.");
         }
-        ProcessingStatus previousStatus = meeting.processingStatus();
-        Meeting updated = meeting.withStatus(ProcessingStatus.PENDING);
-        meetings.save(updated);
         audit.record(
                 tenantId,
                 meeting.ownerUserId(),
                 "meeting.reprocessed",
                 "MEETING",
                 meetingId,
-                Map.of("previousStatus", previousStatus.name()));
+                Map.of("previousStatus", meeting.processingStatus().name()));
         scheduleAnalysisAfterCommit(meetingId, tenantId);
-        return updated;
+        return meeting.withStatus(ProcessingStatus.PENDING);
+    }
+
+    /**
+     * Queues the analysis of a meeting whose goal just changed, when it had already been analysed.
+     *
+     * <p>Exists because {@code MeetingGoalService} used to write PENDING itself and dispatch
+     * nothing, leaving the meeting waiting for a user to press "re-analyse". That was already
+     * fragile and became a dead end once reprocess started rejecting PENDING: the productivity
+     * assessment had been deleted, the status said queued, and no path could put it back.
+     *
+     * <p>No authorization here — the caller has already checked {@code meeting:update} on this
+     * meeting. Returns false when the meeting was not in a terminal state, in which case the
+     * analysis already on its way will pick the new goal up.
+     */
+    boolean queueAnalysisAfterGoalChange(UUID meetingId, UUID tenantId) {
+        if (meetings.claimForReanalysis(meetingId, tenantId) == 0) {
+            return false;
+        }
+        scheduleAnalysisAfterCommit(meetingId, tenantId);
+        return true;
     }
 
     @Transactional(readOnly = true)

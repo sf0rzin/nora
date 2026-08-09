@@ -236,10 +236,9 @@ class MeetingServiceTest {
     }
 
     @Test
-    void reprocessRunsAuthorizationBeforeTakingTheRowLock() {
-        // Taking the lock first let a caller without permission hold a write lock for the whole
-        // IAM evaluation, in a loop -- denial of service over a meeting of his choosing. The
-        // callback has to run before any FOR UPDATE.
+    void reprocessAuthorizesBeforeItWritesAnything() {
+        // A caller without permission must not move the meeting, and must not spend a write on
+        // the row before being rejected.
         Meeting m =
                 service.upload(
                         new UploadCommand(
@@ -247,7 +246,7 @@ class MeetingServiceTest {
                                 List.of(), "linha"));
         meetingRepo.save(
                 m.withStatus(ProcessingStatus.PROCESSING).withStatus(ProcessingStatus.COMPLETED));
-        meetingRepo.forUpdateCalls = 0;
+        meetingRepo.claimCalls = 0;
 
         assertThatThrownBy(
                         () ->
@@ -259,9 +258,31 @@ class MeetingServiceTest {
                                         }))
                 .isInstanceOf(IllegalStateException.class);
 
-        assertThat(meetingRepo.forUpdateCalls)
-                .as("nenhum lock deve ter sido tomado quando a autorizacao falha")
+        assertThat(meetingRepo.claimCalls)
+                .as("nada deve ter sido reclamado quando a autorizacao falha")
                 .isZero();
+        assertThat(meetingRepo.findByIdAndTenant(m.id(), tenant).orElseThrow().processingStatus())
+                .isEqualTo(ProcessingStatus.COMPLETED);
+    }
+
+    @Test
+    void onlyOneOfTwoConcurrentReprocessesClaimsTheMeeting() {
+        // The real invariant: the transition is what gates the dispatch. The previous shape read
+        // the status, checked it and then wrote -- and a row lock did not close that window,
+        // because the authorization read had already put the entity in the persistence context
+        // and Hibernate served the locked SELECT from it without refreshing.
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "race", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        meetingRepo.save(
+                m.withStatus(ProcessingStatus.PROCESSING).withStatus(ProcessingStatus.COMPLETED));
+
+        service.reprocess(m.id(), tenant); // first click wins
+
+        assertThatThrownBy(() -> service.reprocess(m.id(), tenant)) // second finds it queued
+                .isInstanceOf(MeetingException.CannotReprocess.class);
     }
 
     /* ---------- in-memory fakes ---------- */
@@ -269,8 +290,8 @@ class MeetingServiceTest {
     static final class InMemoryMeetingRepo implements MeetingRepository {
         private final Map<UUID, Meeting> store = new HashMap<>();
 
-        /** How many times the locked path was requested. See the lock/authorization order test. */
-        int forUpdateCalls;
+        /** How many times the atomic claim was requested. See the authorization-order test. */
+        int claimCalls;
 
         @Override
         public int hardErase(UUID meetingId, UUID tenantId) {
@@ -295,12 +316,18 @@ class MeetingServiceTest {
         }
 
         @Override
-        public Optional<Meeting> findByIdAndTenantForUpdate(UUID id, UUID tenantId) {
-            // Fake single-thread: there is no concurrency to serialize, the lock is a no-op here.
-            // The counter exists to prove WHEN the lock is requested, which is what matters in
-            // reprocessRunsAuthorizationBeforeTakingTheRowLock.
-            forUpdateCalls++;
-            return findByIdAndTenant(id, tenantId);
+        public int claimForReanalysis(UUID id, UUID tenantId) {
+            claimCalls++;
+            Meeting m = store.get(id);
+            if (m == null || !m.tenantId().equals(tenantId)) {
+                return 0;
+            }
+            if (m.processingStatus() != ProcessingStatus.COMPLETED
+                    && m.processingStatus() != ProcessingStatus.FAILED) {
+                return 0;
+            }
+            store.put(id, m.withStatus(ProcessingStatus.PENDING));
+            return 1;
         }
 
         @Override

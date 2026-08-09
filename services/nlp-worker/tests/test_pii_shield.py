@@ -1,3 +1,5 @@
+import pytest
+
 from nora_nlp.models import PiiType
 from nora_nlp.services import pii_shield
 
@@ -178,10 +180,119 @@ def test_a_trimmed_prefix_claim_does_not_swallow_a_clean_sequence():
 
 
 def test_a_trim_never_splices_a_placeholder_into_a_surname():
-    """Regression: the cut fell at the match end, gluing the placeholder to the name tail."""
+    """Regression: the cut fell at the match end, gluing the placeholder to the name tail.
+
+    This asserted `"Núñez" in redacted_text` for a while -- refusing the cut left the surname
+    in the clear, and not-splicing was bought by not-redacting. Both halves are available now
+    that the letter classes cover Latin-1: no splice AND no leak.
+    """
     result = pii_shield.redact("Sr. Protheus Carlos Núñez")
     assert "]]ñez" not in result.redacted_text
-    assert "Núñez" in result.redacted_text
+    assert "Núñez" not in result.redacted_text
+    assert "Carlos" not in result.redacted_text
+    assert "Protheus" in result.redacted_text
+
+
+@pytest.mark.parametrize(
+    "text, surname",
+    [
+        ("Eng. Schürmann revisou o escopo.", "Schürmann"),
+        ("Dr. Núñez aprovou.", "Núñez"),
+        ("A Sra. Müller assinou.", "Müller"),
+        ("Cap. Sjöberg confirmou.", "Sjöberg"),
+    ],
+)
+def test_a_surname_outside_the_pt_br_alphabet_is_redacted_whole(text, surname):
+    """Regression: the letter classes only knew the PT-BR accents.
+
+    `[a-záéíóúâêôàãõç]+` stopped AT the foreign letter, so "Eng. Schürmann" matched as
+    "Eng. Sch" and the placeholder went out spliced into the middle of the surname --
+    "[[PERSON_NAME_1]]ürmann", which corrupts the text the model reads and leaks the tail in
+    the same stroke. Brazil is full of German, Spanish and Nordic surnames.
+    """
+    result = pii_shield.redact(text)
+    assert surname not in result.redacted_text
+    assert "]]" + surname[3:] not in result.redacted_text
+    assert "[[PERSON_NAME_1]]" in result.redacted_text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Precisamos da Lista de Campos do Protheus.",
+        "Falta o Relatorio de Vendas do Prado.",
+        "A conta e no Banco do Brasil.",
+        "Abrimos a Ordem de Servico da Cruz Azul.",
+    ],
+)
+def test_an_ordinary_genitive_phrase_is_not_a_person(text):
+    """Regression: the tail signal fired on business vocabulary.
+
+    A good third of `_BR_TOP_SURNAMES` doubles as an ordinary Portuguese noun -- Campos,
+    Cruz, Prado, Neves, Barros -- so any Title Case phrase ending in one was read as a
+    person. It mutilated the text AND filed the hash of a phrase that is nobody. The tail
+    signal now refuses a `<noun> da <noun>` chain that no given name opens.
+    """
+    result = pii_shield.redact(text)
+    assert "PERSON_NAME" not in result.redacted_text
+    assert result.redacted_text == text
+
+
+@pytest.mark.parametrize(
+    "text, name",
+    [
+        ("Edson Costa Protheus", "Costa"),
+        ("Wanderleia Martins ficou de responder.", "Martins"),
+        ("Osvaldo Pinheiro assumiu a frente.", "Pinheiro"),
+        ("Genoveva Silveira revisou.", "Silveira"),
+        ("Anastacio Magalhães comentou.", "Magalhães"),
+        ("Teodolinda Brandão respondeu.", "Brandão"),
+    ],
+)
+def test_the_tail_list_covers_the_most_common_brazilian_surnames(text, name):
+    """Regression: the list was missing names from the IBGE top 10, Costa and Martins among
+    them, so a full name built on one of them had no tail signal and left in the clear."""
+    assert name not in pii_shield.redact(text).redacted_text
+
+
+def test_a_job_title_does_not_cancel_the_given_name_after_it():
+    """A role has nobody in it; "Diretor Carlos da Silva" is a person.
+
+    Reading only token 0 gets one of the two wrong whichever way it is decided -- the head
+    signal has to look past a leading job title, and only then at a known given name.
+    """
+    person = pii_shield.redact("O Diretor Carlos da Silva decidiu.")
+    assert "Carlos" not in person.redacted_text
+    assert "Silva" not in person.redacted_text
+
+    role = pii_shield.redact("O Gerente de Contas Oracle respondeu.")
+    assert role.redacted_text == "O Gerente de Contas Oracle respondeu."
+
+
+def test_a_leftover_fragment_is_never_claimed_with_its_separating_space(monkeypatch):
+    """Regression: `_claim_free_parts` cut at the covered neighbour's edge and claimed the
+    gap as-is, filing `_hash(" Silva")` -- the hash of something nobody wrote, which is what
+    makes the redaction record auditable in the first place.
+
+    The hash is what the record carries, so the hash is what is inspected: every value that
+    reaches it has to be a name standing on its own, with no edge whitespace.
+    """
+    hashed: list[str] = []
+    real_hash = pii_shield._hash
+    monkeypatch.setattr(pii_shield, "_hash", lambda v: (hashed.append(v), real_hash(v))[1])
+
+    for probe in (
+        "Ribeiro Alves Dr. Ana Protheus",
+        "Ana Souza Protheus Carlos Silva e Dr. Nogueira de Protheus",
+        "Sr. Jose Protheus da Silva",
+        "Dr. Carlos Protheus Silva Protheus Marina Alves",
+    ):
+        pii_shield._redact_person_names(probe, {pii_shield.PiiType.PERSON_NAME: 0})
+
+    assert hashed, "the probes must claim something, otherwise this asserts nothing"
+    for value in hashed:
+        assert value == value.strip(), f"{value!r} carries an edge space"
+        assert pii_shield._is_a_name_on_its_own(value), f"{value!r} is not a name"
 
 
 def test_a_surname_is_enough_when_the_given_name_is_not_on_the_list():

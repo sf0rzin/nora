@@ -123,6 +123,16 @@ public class MeetingsController {
     public MeetingSearchResponse search(
             @RequestParam("q") String q, @RequestParam(name = "k", defaultValue = "5") int k) {
         AuthenticatedPrincipal principal = CurrentUser.require();
+        // Cheap pre-gate, the same one the listing does. Moving authorization to per-item removed
+        // it, and a caller with no meeting:read then reached `embeddings.search` before being
+        // refused — which bills an embedding call to the external provider and scans the tenant's
+        // vectors to build a result the caller was never going to be allowed to see.
+        authz.requireAnyAllow(
+                principal.userId(),
+                principal.tenantId(),
+                "meeting:read",
+                meetingResource(principal.tenantId(), null));
+
         int limit = Math.min(Math.max(k, 1), 10);
 
         // Loads the candidates and ONLY THEN authorizes, item by item, with the meeting's

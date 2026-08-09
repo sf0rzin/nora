@@ -615,17 +615,41 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
 )
 
 
+# Letters accepted inside a name token.
+#
+# These used to be a hand-written list of the PT-BR accents (`ÁÉÍÓÚÂÊÔÀÃÕÇ` /
+# `áéíóúâêôàãõç`). Brazil is full of surnames that do not fit in it -- German
+# (Schürmann, Müller), Spanish (Núñez, Peña), Nordic (Sjöberg) -- and the effect was
+# not merely missing them: `[a-záéíóúâêôàãõç]+` stopped AT the foreign letter, so
+# "Eng. Schürmann" matched as "Eng. Sch" and the placeholder was spliced into the
+# middle of the surname -> "[[PERSON_NAME_1]]ürmann", which leaks the tail in the clear
+# AND corrupts the text sent to the model. The ranges below are the whole Latin-1
+# letter block; U+00D7 and U+00F7 fall outside them by construction, being the
+# multiplication and division signs and not letters. `_fold` normalizes with NFKD,
+# so `ü` still compares equal to `u`.
+_UPPER = "A-ZÀ-ÖØ-Þ"
+_LOWER = "a-zß-öø-ÿ"
+
+_TITLE_WORD = f"[{_UPPER}][{_LOWER}]+"
+
 # Prefix (honorifics + job titles) followed by 1-5 Title Case words,
 # supporting PT-BR connectives (`da`, `de`, `do`, `das`, `dos`, `e`).
 # Captures "Dr. Carlos Silva", "Sra. Marina Alves", "Profa. Ana de Souza",
 # "Sr. Jose da Silva Pereira", "Eng. Joao", "Diretor Carlos da Silva", etc.
+#
+# The closing `\b` is not decoration: without it the match can still end inside a word
+# whenever the following letter falls outside `_LOWER` (`Ł`, `Š`, any non-Latin script),
+# and an end-of-match in mid-word is exactly what produces a spliced placeholder. With
+# the `\b` the engine backtracks to the last whole word instead -- it redacts less, never
+# a fragment. `_spans_without_negatives` re-checks the same invariant against the full
+# text, because the regex alone cannot see past its own match.
 _NAME_PREFIX_RE = re.compile(
     r"\b(?:Sr|Sra|Srta|Dr|Dra|Prof|Profa|Eng|Engenheiro|Engenheira|"
     r"Cap|Sgt|Gen|Pe|Padre|Diretor|Diretora|Coordenador|Coordenadora|"
     r"Gerente|Pres|Presidente)\.?\s+"
-    r"[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+"
-    r"(?:\s+(?:d[aeo]s?|e)\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+"
-    r"|\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+){0,4}"
+    f"{_TITLE_WORD}"
+    f"(?:\\s+(?:d[aeo]s?|e)\\s+{_TITLE_WORD}"
+    f"|\\s+{_TITLE_WORD}){{0,4}}\\b"
 )
 
 # 2-5 consecutive Title Case words, with support for PT-BR connectives
@@ -634,22 +658,20 @@ _NAME_PREFIX_RE = re.compile(
 # tokens ("TOTVS", "RM") are ignored for not having lowercase at the end --
 # avoids capturing acronyms as part of a compound name.
 _NAME_SEQUENCE_RE = re.compile(
-    r"\b[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+"
-    r"(?:\s+(?:d[aeo]s?|e)\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+"
-    r"|\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+){1,4}\b"
+    f"\\b{_TITLE_WORD}(?:\\s+(?:d[aeo]s?|e)\\s+{_TITLE_WORD}|\\s+{_TITLE_WORD}){{1,4}}\\b"
 )
 
 # Generic alphabetic token (used by `_tokenize` for the negative list — it can
 # be case-insensitive because we only check against the negative list, which also
 # uses casefold).
-_WORD_RE = re.compile(r"\b[A-Za-zÁÉÍÓÚÂÊÔÀÃÕÇáéíóúâêôàãõç]+\b")
+_WORD_RE = re.compile(f"[{_UPPER}{_LOWER}]+")
 
 # Isolated BR first name: ONLY matches Title Case (`Joao`, `Marina`). Matching
 # lowercase (`joao`, `rosa`, `clara`) produces massive false-positives on
 # common PT-BR nouns. In real corporate transcripts, first
 # names always appear Title Case (automatic capitalization by the dictation) or
 # all-caps in formal context (which are filtered by `_PERSON_NAME_NEGATIVE_LIST`).
-_NAME_TOKEN_RE = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+\b")
+_NAME_TOKEN_RE = re.compile(f"\\b{_TITLE_WORD}\\b")
 
 
 # --------------------------------------------------------------------------- #
@@ -807,6 +829,29 @@ _BR_TOP_SURNAMES: frozenset[str] = frozenset(
         "Rangel",
         "Vasconcelos",
         "Nogueira",
+        # Added after a review: the list was missing names from the IBGE TOP 10 --
+        # "Costa" and "Martins" among them --, so "Edson Costa" had no tail signal and
+        # left in the clear. Their absence was not a judgement call, it was an oversight.
+        "Costa",
+        "Martins",
+        "Barros",
+        "Pinheiro",
+        "Silveira",
+        "Correa",
+        "Magalhaes",
+        "Brandao",
+        "Cavalcanti",
+        "Maia",
+        "Viana",
+        "Brito",
+        "Queiroz",
+        "Pacheco",
+        "Figueiredo",
+        "Barreto",
+        "Mota",
+        "Motta",
+        "Amorim",
+        "Paiva",
     )
 )
 
@@ -855,15 +900,88 @@ def _spans_without_negatives(value: str, offset: int, text: str) -> list[tuple[i
     if len(runs) <= 1 and not any(
         _fold(t.group(0)) in _PERSON_NAME_NEGATIVE_LIST for t in _WORD_RE.finditer(value)
     ):
-        # No negative token at all: the match passes whole, as it always did.
-        return [(offset, offset + len(value))] if runs else []
+        # No negative token at all: the match passes whole, as it always did. It is NOT
+        # re-qualified -- an unsplit match is trusted because the regex itself is the signal,
+        # and demanding a known given name or surname here would drop every real name outside
+        # the two lists ("Kleber Zanchetta").
+        #
+        # The one thing still checked is the boundary. This branch used to return the span
+        # blind, and that is how "Eng. Schürmann" -- matched as "Eng. Sch" back when `_LOWER`
+        # could not see `ü` -- had its placeholder spliced into the middle of the surname. The
+        # regex now ends on a `\b`, so this is the second lock on the same door: any future
+        # letter outside `_LOWER` cuts the match short again, and here we refuse the cut
+        # rather than emit a fragment.
+        if not runs:
+            return []
+        # Tightened BEFORE the boundary is judged. The span handed in by `_claim_free_parts`
+        # ends wherever the covered neighbour begins, so it carries the separating space, and
+        # judging that end would read the neighbour's first letter as "mid-word" and drop a
+        # perfectly good name: "Ribeiro Alves Dr. Ana" lost "Ribeiro Alves" that way.
+        span = _tighten_to_tokens(offset, offset + len(value), text)
+        if span is None:
+            return []
+        if _is_a_genitive_chain(runs[0]):
+            # Not trusted after all -- fall through to the same qualification the split path
+            # uses. See `_is_a_genitive_chain`. Leaving this out made the decision depend on
+            # whether a product name happened to sit nearby: "Precisamos da Lista de Campos do
+            # Protheus" was rejected only because "Protheus" forced the slow path, while the
+            # identical "Falta o Relatorio de Vendas do Prado" went straight through here and
+            # became a PERSON_NAME. Same shape, opposite outcome, for no reason.
+            return _qualified_spans(runs, offset, text)
+        return [span]
 
+    return _qualified_spans(runs, offset, text)
+
+
+def _qualified_spans(
+    runs: list[list[re.Match[str]]], offset: int, text: str
+) -> list[tuple[int, int]]:
     spans: list[tuple[int, int]] = []
     for run in runs:
         span = _qualify_run(run, offset, text)
         if span is not None:
             spans.append(span)
     return spans
+
+
+def _has_a_person_head(run: list[re.Match[str]]) -> bool:
+    """Whether the run OPENS with something that only a person opens with."""
+    head = _fold(run[0].group(0))
+    if head in _BR_TOP_NAMES or head in _PERSON_ONLY_HONORIFICS:
+        return True
+    # A job title is not a person on its own -- "Gerente de Contas" is a role with nobody in
+    # it -- but it does not cancel the given name that follows it either. "Diretor Carlos da
+    # Silva" is a person, and reading only token 0 would throw him away.
+    if head in _NAME_HONORIFICS and len(run) > 1:
+        return _fold(run[1].group(0)) in _BR_TOP_NAMES
+    return False
+
+
+def _is_a_genitive_chain(run: list[re.Match[str]]) -> bool:
+    """A `<noun> da <noun> de <noun>` phrase with no given name opening it.
+
+    This is the shape of ordinary business vocabulary -- "Lista de Campos", "Relatorio de
+    Vendas", "Banco do Brasil" -- and roughly a third of the surname list doubles as an
+    ordinary Portuguese noun (Campos, Cruz, Rocha, Ramos, Reis, Prado, Neves, Barros...), so
+    such a phrase kept landing on the tail signal and coming out as a person. That mutilates
+    the text the model reads AND files the hash of a phrase that is nobody.
+
+    Brazilian full names use the very same connectives, but always AFTER a given name: the
+    traditional "Jose da Silva" form goes with a traditional given name, which is exactly what
+    `_BR_TOP_NAMES` covers. What falls in the gap is a person with an unlisted given name and a
+    connective ("Wanderleia de Albuquerque"); that one leaks, and it is the deliberate price of
+    not redacting ordinary vocabulary.
+    """
+    return not _has_a_person_head(run) and any(_fold(t.group(0)) in _NAME_CONNECTIVES for t in run)
+
+
+def _ends_on_a_word_boundary(end: int, text: str) -> bool:
+    """False when the cut falls in the middle of a word in the FULL text.
+
+    Checked against `text` and not against the match: the cut lands exactly at the end of
+    the match, so the character that tells whether it is mid-word is the one after it.
+    """
+    return end >= len(text) or not text[end].isalpha()
 
 
 def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int, int] | None:
@@ -887,23 +1005,59 @@ def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int,
     # names end in a surname, and that is a signal the head cannot give. It also keeps the
     # composite company name out: "Acme Software Solutions" trims to "Software Solutions", whose
     # last token is no surname, and "Acme Financeiro Pro" to "Financeiro Pro", likewise.
-    head = _fold(run[0].group(0))
-    tail = _fold(run[-1].group(0))
-    if (
-        head not in _BR_TOP_NAMES
-        and head not in _PERSON_ONLY_HONORIFICS
-        and tail not in _BR_TOP_SURNAMES
-    ):
-        return None
+    if not _has_a_person_head(run):
+        if _fold(run[-1].group(0)) not in _BR_TOP_SURNAMES:
+            return None
+        # Tail-only is the weak signal, and it is the one an ordinary business phrase trips.
+        if _is_a_genitive_chain(run):
+            return None
 
     start, end = offset + run[0].start(), offset + run[-1].end()
-    # The cut cannot end in the middle of a word. _WORD_RE only knows the letters of the declared
-    # class, so a surname with a letter outside it ("Núñez") makes the run end halfway -- and the
-    # placeholder went out glued to the tail: "[[PERSON_NAME_1]]ñez". The check is against the
-    # FULL TEXT, not against the match: the cut falls exactly at the end of the match.
-    if end < len(text) and text[end].isalpha():
+    # The cut cannot end in the middle of a word: a run ending at a letter `_WORD_RE` cannot
+    # see would send the placeholder out glued to the tail -- "[[PERSON_NAME_1]]ñez".
+    if not _ends_on_a_word_boundary(end, text):
         return None
     return start, end
+
+
+def _tighten_to_tokens(start: int, end: int, text: str) -> tuple[int, int] | None:
+    """Shrinks a span to its first and last name token, or None if nothing is left.
+
+    `_claim_free_parts` cuts a candidate at the edges of what is already covered, and the
+    leftover carries whatever fell in the gap: the separating space, a comma, an orphan
+    connective. Claimed as-is, the span swallowed that space into the placeholder and filed
+    `_hash(" Silva")` -- a hash of something nobody wrote, which defeats the point of the
+    redaction record being auditable.
+    """
+    tokens = list(_WORD_RE.finditer(text[start:end]))
+    while tokens and _fold(tokens[0].group(0)) in _NAME_CONNECTIVES:
+        tokens = tokens[1:]
+    while tokens and _fold(tokens[-1].group(0)) in _NAME_CONNECTIVES:
+        tokens = tokens[:-1]
+    if not tokens:
+        return None
+    lo, hi = start + tokens[0].start(), start + tokens[-1].end()
+    # Both edges, for the same reason: a covered span that ended in mid-word leaves the tail
+    # of that word as the fragment, and a tail that happens to be on the lists ("...costa")
+    # would otherwise be claimed from inside another word.
+    if lo > 0 and text[lo - 1].isalpha():
+        return None
+    return (lo, hi) if _ends_on_a_word_boundary(hi, text) else None
+
+
+def _is_a_name_on_its_own(value: str) -> bool:
+    """Whether the stretch still reads as a name once detached from its match.
+
+    A leftover fragment no longer has the context that justified the original match, so it
+    has to stand by itself: either the whole thing is one of the name shapes, or it is a
+    single token that the lists recognize. Anything else -- a stray connective, a lone
+    ordinary word -- is not claimed. Without this, `" de"` left over between two covered
+    spans became a PERSON_NAME.
+    """
+    if _NAME_PREFIX_RE.fullmatch(value) or _NAME_SEQUENCE_RE.fullmatch(value):
+        return True
+    folded = _fold(value)
+    return folded in _BR_TOP_NAMES or folded in _BR_TOP_SURNAMES
 
 
 def _apply_basic_patterns(
@@ -1000,7 +1154,13 @@ def _redact_person_names(
 
     def _qualify_and_claim(start: int, end: int) -> None:
         for s, e in _spans_without_negatives(text[start:end], start, text):
+            tightened = _tighten_to_tokens(s, e, text)
+            if tightened is None:
+                continue
+            s, e = tightened
             if _is_covered(s, e):
+                continue
+            if not _is_a_name_on_its_own(text[s:e]):
                 continue
             _claim(s, e, text[s:e])
 
