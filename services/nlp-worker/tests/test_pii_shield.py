@@ -184,6 +184,29 @@ def test_a_trim_never_splices_a_placeholder_into_a_surname():
     assert "Núñez" in result.redacted_text
 
 
+def test_a_surname_is_enough_when_the_given_name_is_not_on_the_list():
+    """Regressao: ler so o primeiro token deixava a maioria dos nomes BR passar em claro.
+
+    _BR_TOP_NAMES tem 300 nomes proprios; o pais tem muitos mais. Como todo nome completo
+    brasileiro termina em apelido, a cauda e o sinal que a cabeca nao consegue dar.
+    """
+    for text in (
+        "Edson Ribeiro Protheus decidiu",
+        "Anderson Nogueira Datasul aprovou",
+        "Wanderley Cavalcante Fluig assinou",
+    ):
+        result = pii_shield.redact(text)
+        assert result.redacted_text != text, text
+        assert any(r.type == PiiType.PERSON_NAME for r in result.redactions)
+
+
+def test_the_surname_signal_does_not_swallow_composite_company_names():
+    """Contraprova: o trecho que sobra tem de acabar em apelido, nao em palavra qualquer."""
+    for text in ("Acme Software Solutions fechou", "Acme Financeiro Pro subiu de preco"):
+        result = pii_shield.redact(text)
+        assert result.redacted_text == text, text
+
+
 def test_a_job_title_alone_is_not_a_person():
     """Regression: job title as a person signal redacted a phrase with nobody in it."""
     for text in ("Gerente de Contas Oracle confirmou o prazo", "Diretor Comercial Senior aprovou"):

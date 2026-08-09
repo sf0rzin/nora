@@ -718,6 +718,98 @@ _NAME_HONORIFICS: frozenset[str] = frozenset(
 # "Gerente de Contas", "Diretor Comercial" and "Presidente do Conselho" are roles that exist
 # with nobody in the middle, and accepting them as a person signal in the trimming path turned
 # a job-title phrase into a PERSON_NAME -- with the title's hash in the redaction record.
+# The most frequent Brazilian surnames (IBGE ordering, roughly). Used only as the TAIL signal in
+# `_qualify_run`: a Title Case stretch ending in one of these is a person, even when its first
+# token is outside the 300 given names in `_BR_TOP_NAMES`. Deliberately surnames only -- adding
+# given names here would just duplicate that list, and adding rare surnames buys little recall
+# while raising the chance of colliding with a company name.
+_BR_TOP_SURNAMES: frozenset[str] = frozenset(
+    _fold(s)
+    for s in (
+        "Silva",
+        "Santos",
+        "Oliveira",
+        "Souza",
+        "Sousa",
+        "Rodrigues",
+        "Ferreira",
+        "Alves",
+        "Pereira",
+        "Lima",
+        "Gomes",
+        "Ribeiro",
+        "Carvalho",
+        "Almeida",
+        "Lopes",
+        "Soares",
+        "Fernandes",
+        "Vieira",
+        "Barbosa",
+        "Rocha",
+        "Dias",
+        "Nascimento",
+        "Andrade",
+        "Moreira",
+        "Nunes",
+        "Marques",
+        "Machado",
+        "Mendes",
+        "Freitas",
+        "Cardoso",
+        "Ramos",
+        "Goncalves",
+        "Santana",
+        "Teixeira",
+        "Araujo",
+        "Correia",
+        "Cavalcante",
+        "Monteiro",
+        "Moura",
+        "Cunha",
+        "Pinto",
+        "Duarte",
+        "Medeiros",
+        "Castro",
+        "Campos",
+        "Batista",
+        "Miranda",
+        "Farias",
+        "Pires",
+        "Reis",
+        "Melo",
+        "Cruz",
+        "Azevedo",
+        "Coelho",
+        "Borges",
+        "Xavier",
+        "Aguiar",
+        "Bezerra",
+        "Macedo",
+        "Tavares",
+        "Guimaraes",
+        "Assuncao",
+        "Fonseca",
+        "Peixoto",
+        "Sampaio",
+        "Braga",
+        "Amaral",
+        "Neves",
+        "Leite",
+        "Rezende",
+        "Siqueira",
+        "Antunes",
+        "Bastos",
+        "Camargo",
+        "Caldeira",
+        "Sales",
+        "Prado",
+        "Padilha",
+        "Rangel",
+        "Vasconcelos",
+        "Nogueira",
+    )
+)
+
 _PERSON_ONLY_HONORIFICS: frozenset[str] = frozenset(
     _fold(h)
     for h in (
@@ -783,11 +875,25 @@ def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int,
         run = run[:-1]
     if len(run) < 2:
         return None
-    # Signal proper to a person. Job titles (Gerente, Diretor, Presidente) do NOT serve: alone
-    # they head phrases that are only a role, with nobody -- "Gerente de Contas Oracle" became a
-    # PERSON_NAME with a hash of "Gerente de Contas". An honorific only precedes people.
+    # A signal proper to a person, read from either end of the run.
+    #
+    # HEAD: a known BR given name, or an honorific. Job titles (Gerente, Diretor, Presidente) do
+    # NOT count: alone they head phrases that are only a role, with nobody in them --
+    # "Gerente de Contas Oracle" became a PERSON_NAME carrying a hash of "Gerente de Contas".
+    #
+    # TAIL: a common BR surname. Reading only the head left most real names on the floor, because
+    # _BR_TOP_NAMES holds 300 given names and the country has far more -- "Edson Ribeiro Protheus"
+    # went to the LLM in clear, which is the exact leak this trim exists to close. Brazilian full
+    # names end in a surname, and that is a signal the head cannot give. It also keeps the
+    # composite company name out: "Acme Software Solutions" trims to "Software Solutions", whose
+    # last token is no surname, and "Acme Financeiro Pro" to "Financeiro Pro", likewise.
     head = _fold(run[0].group(0))
-    if head not in _BR_TOP_NAMES and head not in _PERSON_ONLY_HONORIFICS:
+    tail = _fold(run[-1].group(0))
+    if (
+        head not in _BR_TOP_NAMES
+        and head not in _PERSON_ONLY_HONORIFICS
+        and tail not in _BR_TOP_SURNAMES
+    ):
         return None
 
     start, end = offset + run[0].start(), offset + run[-1].end()
