@@ -32,13 +32,20 @@ public class MeetingGoalService {
     private final MeetingGoalRepository goals;
     private final ProductivityAssessmentRepository assessments;
 
+    /**
+     * Owns the transition to PENDING and the dispatch — see {@code queueAnalysisAfterGoalChange}.
+     */
+    private final MeetingService meetingService;
+
     public MeetingGoalService(
             MeetingRepository meetings,
             MeetingGoalRepository goals,
-            ProductivityAssessmentRepository assessments) {
+            ProductivityAssessmentRepository assessments,
+            MeetingService meetingService) {
         this.meetings = meetings;
         this.goals = goals;
         this.assessments = assessments;
+        this.meetingService = meetingService;
     }
 
     /**
@@ -75,7 +82,10 @@ public class MeetingGoalService {
                         || meeting.processingStatus() == ProcessingStatus.FAILED;
         if (shouldReprocess) {
             assessments.deleteByMeetingId(meetingId, tenantId);
-            meetings.save(meeting.withStatus(ProcessingStatus.PENDING));
+            // Queue it for real. Writing PENDING here and dispatching nothing left the meeting
+            // waiting for a user to press "re-analyse" — and once reprocess started rejecting
+            // PENDING that became a dead end, with the productivity assessment already deleted.
+            shouldReprocess = meetingService.queueAnalysisAfterGoalChange(meetingId, tenantId);
         }
         return new GoalSaveResult(saved, shouldReprocess);
     }

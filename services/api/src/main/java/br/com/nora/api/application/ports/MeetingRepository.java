@@ -15,11 +15,15 @@ public interface MeetingRepository {
     Optional<Meeting> findByIdAndTenant(UUID id, UUID tenantId);
 
     /**
-     * Same lookup, taking a write lock on the row until the end of the transaction. For flows that
-     * read the state and decide to write based on it (reprocess), where two concurrent transactions
-     * would reach the same decision from the same stale state.
+     * Atomically moves a meeting from a terminal state (COMPLETED, FAILED) to PENDING. Returns 1
+     * when THIS caller performed the transition and 0 when it did not — because the meeting was
+     * already queued or running, or does not exist in the tenant.
+     *
+     * <p>The caller must dispatch the analysis only on 1. That is what keeps a double click from
+     * scheduling two pipelines over one meeting: the condition is evaluated by the database against
+     * the committed row, so of two concurrent statements only one can match.
      */
-    Optional<Meeting> findByIdAndTenantForUpdate(UUID id, UUID tenantId);
+    int claimForReanalysis(UUID id, UUID tenantId);
 
     /** Paginated list by tenant ordered by created_at desc. Page and size are 0-based. */
     PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size);

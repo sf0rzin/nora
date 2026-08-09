@@ -32,6 +32,7 @@ class MeetingServiceTest {
     private MeetingService service;
     private InMemoryMeetingRepo meetingRepo;
     private InMemoryTranscriptRepo transcriptRepo;
+    private RecordingAudit audit;
     private final UUID tenant = UUID.randomUUID();
     private final UUID owner = UUID.randomUUID();
 
@@ -39,13 +40,13 @@ class MeetingServiceTest {
     void setUp() {
         meetingRepo = new InMemoryMeetingRepo();
         transcriptRepo = new InMemoryTranscriptRepo();
-        AuditPort noOpAudit = (a, b, c, d, e, f) -> {};
+        audit = new RecordingAudit();
         service =
                 new MeetingService(
                         meetingRepo,
                         transcriptRepo,
                         new NullAnalysisProvider(),
-                        noOpAudit,
+                        audit,
                         // No database in this test: the template is only exercised on the
                         // executor's rejection path, covered by the integration tests.
                         new NoOpTransactionManager(),
@@ -236,10 +237,9 @@ class MeetingServiceTest {
     }
 
     @Test
-    void reprocessRunsAuthorizationBeforeTakingTheRowLock() {
-        // Taking the lock first let a caller without permission hold a write lock for the whole
-        // IAM evaluation, in a loop -- denial of service over a meeting of his choosing. The
-        // callback has to run before any FOR UPDATE.
+    void reprocessAuthorizesBeforeItWritesAnything() {
+        // A caller without permission must not move the meeting, and must not spend a write on
+        // the row before being rejected.
         Meeting m =
                 service.upload(
                         new UploadCommand(
@@ -247,30 +247,174 @@ class MeetingServiceTest {
                                 List.of(), "linha"));
         meetingRepo.save(
                 m.withStatus(ProcessingStatus.PROCESSING).withStatus(ProcessingStatus.COMPLETED));
-        meetingRepo.forUpdateCalls = 0;
+        meetingRepo.claimCalls = 0;
 
         assertThatThrownBy(
                         () ->
                                 service.reprocess(
                                         m.id(),
                                         tenant,
+                                        owner,
                                         loaded -> {
                                             throw new IllegalStateException("denied");
                                         }))
                 .isInstanceOf(IllegalStateException.class);
 
-        assertThat(meetingRepo.forUpdateCalls)
-                .as("nenhum lock deve ter sido tomado quando a autorizacao falha")
+        assertThat(meetingRepo.claimCalls)
+                .as("nada deve ter sido reclamado quando a autorizacao falha")
                 .isZero();
+        assertThat(meetingRepo.findByIdAndTenant(m.id(), tenant).orElseThrow().processingStatus())
+                .isEqualTo(ProcessingStatus.COMPLETED);
+    }
+
+    @Test
+    void theAuditTrailNamesTheCallerAndNotTheMeetingOwner() {
+        // The audit row carried meeting.ownerUserId(), which is only ever right when the person
+        // clicking "re-analyse" happens to be the uploader. Anyone else acted under the owner's
+        // name and left no trace of their own -- so an investigation into who is driving repeated
+        // billable re-analyses named the wrong user every time.
+        UUID caller = UUID.randomUUID();
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "audited", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        meetingRepo.save(
+                m.withStatus(ProcessingStatus.PROCESSING).withStatus(ProcessingStatus.COMPLETED));
+        audit.events.clear();
+
+        service.reprocess(m.id(), tenant, caller, loaded -> {});
+
+        RecordingAudit.Event event =
+                audit.events.stream()
+                        .filter(e -> e.action().equals("meeting.reprocessed"))
+                        .findFirst()
+                        .orElseThrow(() -> new AssertionError("no meeting.reprocessed audit row"));
+        assertThat(event.actorUserId()).isEqualTo(caller);
+        assertThat(event.actorUserId()).isNotEqualTo(owner);
+    }
+
+    @Test
+    void aWorkerFinishingDuringTheAuthorizationCheckDoesNotTurnIntoA500() {
+        // The status is read BEFORE the authorization callback, which in production does two
+        // database round trips. A worker committing PROCESSING -> COMPLETED inside that window
+        // left the claim to succeed legitimately while the returned object was still built from
+        // the stale snapshot: meeting.withStatus(PENDING) ran the domain state machine on
+        // PROCESSING, which forbids PROCESSING -> PENDING, and the IllegalStateException rolled
+        // back a claim that had already succeeded. A bare 500 on a legitimate re-analyse.
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "racy", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        meetingRepo.save(m.withStatus(ProcessingStatus.PROCESSING));
+
+        Meeting result =
+                service.reprocess(
+                        m.id(),
+                        tenant,
+                        owner,
+                        // Stands in for the worker finishing while the IAM evaluation is in
+                        // flight: the row moves to a terminal state after the snapshot was taken.
+                        loaded ->
+                                meetingRepo.save(
+                                        meetingRepo
+                                                .findByIdAndTenant(m.id(), tenant)
+                                                .orElseThrow()
+                                                .withStatus(ProcessingStatus.COMPLETED)));
+
+        assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.PENDING);
+        assertThat(meetingRepo.findByIdAndTenant(m.id(), tenant).orElseThrow().processingStatus())
+                .isEqualTo(ProcessingStatus.PENDING);
+
+        // The audit row must not assert a transition the database refuses. The snapshot said
+        // PROCESSING; the claim only fires from COMPLETED or FAILED, so which one it passed
+        // through is unknowable here -- and recording "previousStatus": "PROCESSING" filed a
+        // permanent claim that PROCESSING -> PENDING happened, which it cannot have.
+        RecordingAudit.Event event =
+                audit.events.stream()
+                        .filter(e -> e.action().equals("meeting.reprocessed"))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(event.payload()).containsEntry("previousStatus", "UNKNOWN");
+        assertThat(event.payload()).containsEntry("observedBeforeClaim", "PROCESSING");
+    }
+
+    @Test
+    void theAuditRecordsTheRealPreviousStatusWhenNothingMovedUnderIt() {
+        // Counter-proof: in the ordinary case the snapshot IS the previous status, and saying
+        // "UNKNOWN" everywhere would make the field useless.
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "calm", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        meetingRepo.save(
+                m.withStatus(ProcessingStatus.PROCESSING).withStatus(ProcessingStatus.COMPLETED));
+        audit.events.clear();
+
+        service.reprocess(m.id(), tenant, owner, loaded -> {});
+
+        RecordingAudit.Event event =
+                audit.events.stream()
+                        .filter(e -> e.action().equals("meeting.reprocessed"))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(event.payload()).containsEntry("previousStatus", "COMPLETED");
+        assertThat(event.payload()).doesNotContainKey("observedBeforeClaim");
+    }
+
+    @Test
+    void onlyOneOfTwoConcurrentReprocessesClaimsTheMeeting() {
+        // The real invariant: the transition is what gates the dispatch. The previous shape read
+        // the status, checked it and then wrote -- and a row lock did not close that window,
+        // because the authorization read had already put the entity in the persistence context
+        // and Hibernate served the locked SELECT from it without refreshing.
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "race", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        meetingRepo.save(
+                m.withStatus(ProcessingStatus.PROCESSING).withStatus(ProcessingStatus.COMPLETED));
+
+        service.reprocess(m.id(), tenant); // first click wins
+
+        assertThatThrownBy(() -> service.reprocess(m.id(), tenant)) // second finds it queued
+                .isInstanceOf(MeetingException.CannotReprocess.class);
     }
 
     /* ---------- in-memory fakes ---------- */
 
+    /** Keeps every audit call so a test can assert WHO was recorded, not just that it happened. */
+    static final class RecordingAudit implements AuditPort {
+        record Event(
+                UUID tenantId,
+                UUID actorUserId,
+                String action,
+                String entityType,
+                UUID entityId,
+                Map<String, Object> payload) {}
+
+        final List<Event> events = new ArrayList<>();
+
+        @Override
+        public void record(
+                UUID tenantId,
+                UUID actorUserId,
+                String action,
+                String entityType,
+                UUID entityId,
+                Map<String, Object> payload) {
+            events.add(new Event(tenantId, actorUserId, action, entityType, entityId, payload));
+        }
+    }
+
     static final class InMemoryMeetingRepo implements MeetingRepository {
         private final Map<UUID, Meeting> store = new HashMap<>();
 
-        /** How many times the locked path was requested. See the lock/authorization order test. */
-        int forUpdateCalls;
+        /** How many times the atomic claim was requested. See the authorization-order test. */
+        int claimCalls;
 
         @Override
         public int hardErase(UUID meetingId, UUID tenantId) {
@@ -295,12 +439,18 @@ class MeetingServiceTest {
         }
 
         @Override
-        public Optional<Meeting> findByIdAndTenantForUpdate(UUID id, UUID tenantId) {
-            // Fake single-thread: there is no concurrency to serialize, the lock is a no-op here.
-            // The counter exists to prove WHEN the lock is requested, which is what matters in
-            // reprocessRunsAuthorizationBeforeTakingTheRowLock.
-            forUpdateCalls++;
-            return findByIdAndTenant(id, tenantId);
+        public int claimForReanalysis(UUID id, UUID tenantId) {
+            claimCalls++;
+            Meeting m = store.get(id);
+            if (m == null || !m.tenantId().equals(tenantId)) {
+                return 0;
+            }
+            if (m.processingStatus() != ProcessingStatus.COMPLETED
+                    && m.processingStatus() != ProcessingStatus.FAILED) {
+                return 0;
+            }
+            store.put(id, m.withStatus(ProcessingStatus.PENDING));
+            return 1;
         }
 
         @Override

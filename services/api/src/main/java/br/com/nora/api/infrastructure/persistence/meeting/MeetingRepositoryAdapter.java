@@ -50,8 +50,8 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
 
     @Override
     @Transactional
-    public Optional<Meeting> findByIdAndTenantForUpdate(UUID id, UUID tenantId) {
-        return jpa.findByIdAndTenantIdForUpdate(id, tenantId).map(this::toDomain);
+    public int claimForReanalysis(UUID id, UUID tenantId) {
+        return jpa.claimForReanalysis(id, tenantId);
     }
 
     @Override

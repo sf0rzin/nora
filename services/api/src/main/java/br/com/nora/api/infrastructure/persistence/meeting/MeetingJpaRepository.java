@@ -1,13 +1,11 @@
 package br.com.nora.api.infrastructure.persistence.meeting;
 
-import jakarta.persistence.LockModeType;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -24,15 +22,30 @@ public interface MeetingJpaRepository extends JpaRepository<MeetingJpaEntity, UU
     Optional<MeetingJpaEntity> findByIdAndTenantId(UUID id, UUID tenantId);
 
     /**
-     * Same lookup, with {@code SELECT ... FOR UPDATE}. Used by reprocess: without the lock, two
-     * concurrent calls read the status BEFORE each other's update, both get past the PROCESSING
-     * guard and both schedule the analysis — two pipelines over the same meeting, doubled LLM
-     * billing and duplicated external effects. The lock serializes the transactions on the row.
+     * Atomically claims a meeting for re-analysis: moves it to PENDING and reports whether THIS
+     * caller is the one that moved it.
+     *
+     * <p>Replaces a read-then-check-then-write that a row lock was supposed to make safe. It never
+     * was. The caller reads the meeting once before the lock, to authorize on it, and that read
+     * puts the entity in the persistence context; Hibernate then serves the {@code SELECT ... FOR
+     * UPDATE} from that managed instance without refreshing its state. The lock was taken and the
+     * blocking did happen, but the second transaction still saw the pre-lock status, so a double
+     * click scheduled two pipelines anyway. The entity carries no {@code @Version} either, so
+     * nothing turned the stale read into an error — it failed silently.
+     *
+     * <p>A conditional UPDATE has no such gap: the database matches the WHERE against the committed
+     * row, so of two concurrent statements exactly one can find the meeting in a terminal state.
+     * Row count 1 means "you moved it, dispatch"; 0 means it was already queued, already running,
+     * or gone.
      */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT m FROM MeetingJpaEntity m WHERE m.id = :id AND m.tenantId = :tenantId")
-    Optional<MeetingJpaEntity> findByIdAndTenantIdForUpdate(
-            @Param("id") UUID id, @Param("tenantId") UUID tenantId);
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+            value =
+                    "UPDATE meetings SET processing_status = 'PENDING', updated_at = now() "
+                            + "WHERE id = :id AND tenant_id = :tenantId "
+                            + "AND processing_status IN ('COMPLETED', 'FAILED')",
+            nativeQuery = true)
+    int claimForReanalysis(@Param("id") UUID id, @Param("tenantId") UUID tenantId);
 
     @Query(
             "SELECT m FROM MeetingJpaEntity m "

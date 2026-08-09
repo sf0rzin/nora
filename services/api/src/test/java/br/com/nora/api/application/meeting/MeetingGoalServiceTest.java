@@ -39,7 +39,17 @@ class MeetingGoalServiceTest {
         meetingRepo = new InMemoryMeetingRepo();
         goalRepo = new InMemoryGoalRepo();
         assessmentRepo = new InMemoryAssessmentRepo();
-        service = new MeetingGoalService(meetingRepo, goalRepo, assessmentRepo);
+        // The goal flow no longer writes PENDING itself: it delegates the transition and the
+        // dispatch to MeetingService, so the meeting is actually queued and not just marked.
+        MeetingService meetingService =
+                new MeetingService(
+                        meetingRepo,
+                        new MeetingServiceTest.InMemoryTranscriptRepo(),
+                        new MeetingServiceTest.NullAnalysisProvider(),
+                        (a, b, c, d, e, f) -> {},
+                        new MeetingServiceTest.NoOpTransactionManager(),
+                        false);
+        service = new MeetingGoalService(meetingRepo, goalRepo, assessmentRepo, meetingService);
     }
 
     @Test
@@ -209,9 +219,17 @@ class MeetingGoalServiceTest {
         }
 
         @Override
-        public Optional<Meeting> findByIdAndTenantForUpdate(UUID id, UUID tenantId) {
-            // Fake single-thread: there is no concurrency to serialize, the lock is a no-op here.
-            return findByIdAndTenant(id, tenantId);
+        public int claimForReanalysis(UUID id, UUID tenantId) {
+            Meeting m = store.get(id);
+            if (m == null || !m.tenantId().equals(tenantId)) {
+                return 0;
+            }
+            if (m.processingStatus() != ProcessingStatus.COMPLETED
+                    && m.processingStatus() != ProcessingStatus.FAILED) {
+                return 0;
+            }
+            store.put(id, m.withStatus(ProcessingStatus.PENDING));
+            return 1;
         }
 
         @Override
