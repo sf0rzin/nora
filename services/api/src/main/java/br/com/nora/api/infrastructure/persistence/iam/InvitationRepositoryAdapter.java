@@ -17,12 +17,12 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Adapter JPA/native para a tabela {@code iam_user_invitations} + {@code iam_invitation_groups}
- * (US06, ADR 0011). Persistencia sem entidades JPA dedicadas — SQL nativo via EntityManager,
- * seguindo o padrao do {@code IamRepositoryAdapter}.
+ * JPA/native adapter for the {@code iam_user_invitations} + {@code iam_invitation_groups} tables
+ * (US06, ADR 0011). Persistence without dedicated JPA entities — native SQL via EntityManager,
+ * following the {@code IamRepositoryAdapter} pattern.
  *
- * <p>A coluna {@code token_hash} guarda o SHA-256 do token; o token cru nunca e persistido (mesmo
- * padrao de email_verification_tokens / password_reset_tokens / refresh_tokens).
+ * <p>The {@code token_hash} column stores the SHA-256 of the token; the raw token is never
+ * persisted (same pattern as email_verification_tokens / password_reset_tokens / refresh_tokens).
  */
 @Repository
 public class InvitationRepositoryAdapter implements InvitationRepository {
@@ -96,7 +96,7 @@ public class InvitationRepositoryAdapter implements InvitationRepository {
     @Override
     @Transactional
     public IamInvitation save(IamInvitation invitation) {
-        // Upsert manual: detecta pelo id se ja existe.
+        // Manual upsert: detects by id whether it already exists.
         Object existing =
                 em.createNativeQuery("SELECT id FROM iam_user_invitations WHERE id = :id")
                         .setParameter("id", invitation.id())
@@ -135,8 +135,8 @@ public class InvitationRepositoryAdapter implements InvitationRepository {
                         .executeUpdate();
             }
         } else {
-            // Update: apenas campos mutaveis (status/acceptedAt/acceptedUserId). Tenant/email/
-            // token_hash/invitedBy/invitedAt/expiresAt sao imutaveis no fluxo atual.
+            // Update: only mutable fields (status/acceptedAt/acceptedUserId). Tenant/email/
+            // token_hash/invitedBy/invitedAt/expiresAt are immutable in the current flow.
             em.createNativeQuery(
                             "UPDATE iam_user_invitations SET status = :status, accepted_at ="
                                     + " :acceptedAt, accepted_user_id = :acceptedUserId WHERE id ="

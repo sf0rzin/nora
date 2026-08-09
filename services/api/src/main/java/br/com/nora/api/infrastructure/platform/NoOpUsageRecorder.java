@@ -7,10 +7,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Recorder no-op ativo quando o control plane está desabilitado ({@code nora.platform.enabled}
- * ausente ou false — local/test/CI). Garante que AnalysisService e o controller /internal/usage
- * sempre tenham um bean {@link UsageRecorder}, sem depender do módulo platform. Mutuamente
- * exclusivo com {@code UsageTelemetryService} (ativo quando enabled=true).
+ * No-op recorder active when the control plane is disabled ({@code nora.platform.enabled} absent or
+ * false — local/test/CI). Guarantees that AnalysisService and the /internal/usage controller always
+ * have a {@link UsageRecorder} bean, without depending on the platform module. Mutually exclusive
+ * with {@code UsageTelemetryService} (active when enabled=true).
  */
 @Component
 @ConditionalOnProperty(name = "nora.platform.enabled", havingValue = "false", matchIfMissing = true)

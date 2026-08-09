@@ -1,21 +1,21 @@
 ---
-title: "Guia de estilo e templates de documentação"
-owner: Arquiteto NORA (Tech Lead)
+title: "Documentation style guide and templates"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
-aplica_se_a: "Todos os .md do repositório (docs/, README, CLAUDE.md, SECURITY.md)"
+aplica_se_a: "All .md files in the repository (docs/, README, CLAUDE.md, SECURITY.md)"
 ---
 
-# Guia de estilo e templates de documentação — NORA
+# Documentation style guide and templates — NORA
 
-> Padrão único para a documentação do NORA parecer (e ser) um produto real. Este
-> documento é a referência citada pelo diagnóstico [03](03-diagnostico-documentacao.md).
-> Foi escrito já no próprio padrão que descreve.
+> A single standard so that NORA's documentation looks like (and is) a real product. This
+> document is the reference cited by diagnosis [03](03-diagnostico-documentacao.md).
+> It was written following the very standard it describes.
 
-## 1. Front-matter obrigatório
+## 1. Mandatory front-matter
 
-Todo documento começa com YAML front-matter. Mínimo:
+Every document starts with YAML front-matter. Minimum:
 
 ```yaml
 ---
@@ -27,56 +27,56 @@ last_reviewed: AAAA-MM-DD
 ---
 ```
 
-Campos opcionais quando aplicável: `supersedes` / `superseded_by` (ADRs e contratos),
+Optional fields where applicable: `supersedes` / `superseded_by` (ADRs and contracts),
 `aplica_se_a`, `relacionado`.
 
-## 2. Fonte única de verdade (regra de ouro)
+## 2. Single source of truth (the golden rule)
 
-Cada fato vive em **um só lugar**; os demais documentos **linkam**, nunca recopiam.
+Each fact lives in **one place only**; the other documents **link**, never recopy.
 
-| Fato | Fonte única |
+| Fact | Single source |
 |---|---|
-| Índice e contagem de ADRs | `docs/adr/README.md` |
-| Intervalo de migrations | `docs/engineering/data-model.md` |
-| Status por user story | `docs/product/backlog.md` |
-| Termos canônicos | `docs/product/glossary.md` |
+| ADR index and count | `docs/adr/README.md` |
+| Migration range | `docs/engineering/data-model.md` |
+| Status per user story | `docs/product/backlog.md` |
+| Canonical terms | `docs/product/glossary.md` |
 
-> Exemplo do que **não** fazer: escrever "21 ADRs" em cinco documentos. Quando o número
-> muda, quatro ficam errados. Escreva "ver [índice de ADRs](docs/adr/README.md)".
+> Example of what **not** to do: writing "21 ADRs" in five documents. When the number
+> changes, four are wrong. Write "see the [ADR index](docs/adr/README.md)".
 
-## 3. Política de idioma
+## 3. Language policy
 
-- **PT-BR** é o idioma de prosa e de **todos os cabeçalhos**.
-- Termos técnicos em inglês são permitidos *inline* quando são o termo de mercado
-  (ex.: *deploy*, *endpoint*, *commit*, *pull request*), em itálico na primeira ocorrência.
-- Cabeçalhos não misturam idioma: use "Como trabalhamos", não "How To Work"; "Não
-  negociáveis", não "Non-Negotiables".
-- O glossário define a forma canônica de cada termo (ex.: "armadilhas" em vez de "pegadinhas").
+- **PT-BR** is the language of prose and of **all headings**.
+- Technical terms in English are allowed *inline* when they are the industry term
+  (e.g. *deploy*, *endpoint*, *commit*, *pull request*), in italics on first occurrence.
+- Headings do not mix languages: use "Como trabalhamos", not "How To Work"; "Não
+  negociáveis", not "Non-Negotiables".
+- The glossary defines the canonical form of each term (e.g. "armadilhas" instead of "pegadinhas").
 
-> **Transição futura para inglês (bilingual front door):** se/quando o repositório for
-> internacionalizado, o padrão-alvo é README em inglês (porta de entrada) + docs
-> profundos em PT-BR, migrados progressivamente. Não fazer antes da apresentação.
+> **Future transition to English (bilingual front door):** if/when the repository is
+> internationalized, the target standard is a README in English (front door) + deep
+> docs in PT-BR, migrated progressively. Do not do this before the presentation.
 
-## 4. Tom e registro
+## 4. Tone and register
 
-**Permitido:** voz impessoal/3ª pessoa, frases diretas, exemplos concretos ancorados em
-`caminho:linha`.
+**Allowed:** impersonal/third-person voice, direct sentences, concrete examples anchored to
+`path:line`.
 
-**Proibido:**
-- Gírias: "shipou", "nukar", "gambiarra", "pegadinhas", "tô mexendo", "pra/pro" (use
+**Forbidden:**
+- Slang: "shipou", "nukar", "gambiarra", "pegadinhas", "tô mexendo", "pra/pro" (use
   "para"/"pelo").
-- **Emoji como status semântico** (✅ ⬜ ⚠️ 🚨). Use uma coluna textual de status
-  (`Pendente` / `Em andamento` / `Concluído`) ou um rótulo `Atenção:` em texto.
-- Caracteres homóglifos (ex.: "а" cirílico em texto latino). Recomenda-se linter no CI.
+- **Emoji as semantic status** (✅ ⬜ ⚠️ 🚨). Use a textual status column
+  (`Pendente` / `Em andamento` / `Concluído`) or an `Atenção:` label in text.
+- Homoglyph characters (e.g. Cyrillic "а" in Latin text). A CI linter is recommended.
 
-## 5. Estrutura recomendada por tipo de documento
+## 5. Recommended structure per document type
 
-- **Documento de produto/engenharia**: front-matter → resumo de 1 parágrafo (*blockquote*)
-  → seções numeradas → "Histórico do documento" no fim.
-- **ADR**: ver template em §6.
-- **Runbook**: ver template em §7.
+- **Product/engineering document**: front-matter → 1-paragraph summary (*blockquote*)
+  → numbered sections → "Histórico do documento" at the end.
+- **ADR**: see the template in §6.
+- **Runbook**: see the template in §7.
 
-Todo documento termina com uma tabela de histórico:
+Every document ends with a history table:
 
 ```markdown
 ## Histórico do documento
@@ -86,9 +86,9 @@ Todo documento termina com uma tabela de histórico:
 | 1.0 | AAAA-MM-DD | <papel> | Criação |
 ```
 
-## 6. Template de ADR (MADR)
+## 6. ADR template (MADR)
 
-> Referência exemplar já no repositório: `docs/adr/0029-lgpd-operational.md`.
+> Exemplary reference already in the repository: `docs/adr/0029-lgpd-operational.md`.
 
 ```markdown
 # NNNN — Título da decisão
@@ -111,10 +111,10 @@ O que muda. **Incluir trade-offs negativos explícitos** (subseção "Negativas"
 Pelo menos uma alternativa real e por que foi rejeitada.
 ```
 
-Regras: ADR aceito é **imutável** (decisão obsoleta → ADR sucessor com `Status:
-substituído por NNNN` no original). Numeração sequencial de 4 dígitos, kebab-case.
+Rules: an accepted ADR is **immutable** (an obsolete decision → a successor ADR with `Status:
+substituído por NNNN` in the original). Sequential 4-digit numbering, kebab-case.
 
-## 7. Template de runbook
+## 7. Runbook template
 
 ```markdown
 ---
@@ -149,21 +149,21 @@ Como confirmar que deu certo.
 Como desfazer com segurança.
 ```
 
-## 8. Referências cruzadas
+## 8. Cross-references
 
-- Links **relativos** com âncora de seção: `[ADR 0029 — LGPD operacional](../adr/0029-lgpd-operational.md)`.
-- Ao citar ADR/migration, **verifique que o número existe** (linter de docs no CI).
-- Evite "ver acima/abaixo"; linke a seção.
+- **Relative** links with a section anchor: `[ADR 0029 — LGPD operacional](../adr/0029-lgpd-operational.md)`.
+- When citing an ADR/migration, **verify that the number exists** (docs linter in CI).
+- Avoid "see above/below"; link to the section.
 
-## 9. Linter de docs no CI (proposta)
+## 9. Docs linter in CI (proposal)
 
-Job que falha o PR quando:
-- Falta front-matter ou `last_reviewed` está acima de N dias.
-- Há link relativo quebrado ou ADR/migration citado que não existe.
-- Há gíria da lista-negra ou emoji em posição de status.
-- Há caractere homóglifo em texto latino.
+A job that fails the PR when:
+- Front-matter is missing or `last_reviewed` is older than N days.
+- There is a broken relative link or a cited ADR/migration that does not exist.
+- There is slang from the blacklist or emoji in a status position.
+- There is a homoglyph character in Latin text.
 
-## 10. Checklist de reconciliação (para o PULL_REQUEST_TEMPLATE)
+## 10. Reconciliation checklist (for the PULL_REQUEST_TEMPLATE)
 
 ```markdown
 - [ ] Docs vivos reconciliados (backlog/roadmap/vision/standards/data-model) se esta PR
@@ -173,8 +173,8 @@ Job que falha o PR quando:
 - [ ] Front-matter atualizado (last_reviewed).
 ```
 
-## Histórico do documento
+## Document history
 
-| Versão | Data | Autor | Mudança |
+| Version | Date | Author | Change |
 |---|---|---|---|
-| 1.0 | 2026-06-06 | Arquiteto NORA (Tech Lead) | Criação como parte da auditoria pré-apresentação |
+| 1.0 | 2026-06-06 | NORA Architect (Tech Lead) | Created as part of the pre-presentation audit |

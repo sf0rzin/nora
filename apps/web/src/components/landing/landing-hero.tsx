@@ -92,7 +92,7 @@ const SUGGESTIONS = [
   },
 ];
 
-/** Hero "Claude-style": headline + composer + soundwave + sugestões + logos. */
+/** Hero "Claude-style": headline + composer + soundwave + suggestions + logos. */
 export function LandingHero() {
   const [prompt, setPrompt] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);

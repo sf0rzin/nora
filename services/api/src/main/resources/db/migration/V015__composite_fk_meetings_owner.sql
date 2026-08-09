@@ -1,28 +1,28 @@
 -- Composite FK: meetings.(tenant_id, owner_user_id) -> users.(tenant_id, id).
 --
--- Antes: meetings.owner_user_id REFERENCES users(id). Atacante via ORM forge
--- (ex.: setando owner_user_id = uuid-de-user-de-outro-tenant em payload nao
--- validado) podia criar meeting com owner de tenant diferente, bypassing
--- isolamento ADR 0002. O backend filtra por tenant_id em todas as queries,
--- mas defense in depth no schema fecha o caminho.
+-- Before: meetings.owner_user_id REFERENCES users(id). An attacker via ORM forge
+-- (e.g. setting owner_user_id = uuid-of-user-from-another-tenant in an unvalidated
+-- payload) could create a meeting with an owner from a different tenant, bypassing
+-- ADR 0002 isolation. The backend filters by tenant_id in every query,
+-- but defense in depth in the schema closes the path.
 --
--- Agora: FK exige que (tenant_id, owner_user_id) do meeting bata com
--- (tenant_id, id) na linha de users. Insert com user de outro tenant = rejected
--- pelo Postgres com ForeignKeyViolation.
+-- Now: the FK requires the meeting's (tenant_id, owner_user_id) to match
+-- (tenant_id, id) on the users row. Insert with a user from another tenant = rejected
+-- by Postgres with ForeignKeyViolation.
 --
--- Implementacao em 2 passos pra suportar FK composto:
--- 1) Adicionar UNIQUE (tenant_id, id) em users (target precisa ser UNIQUE).
--- 2) Drop FK simples + recriar como composto.
+-- Implemented in 2 steps to support a composite FK:
+-- 1) Add UNIQUE (tenant_id, id) on users (the target must be UNIQUE).
+-- 2) Drop the simple FK + recreate it as composite.
 --
--- A primary key `id` continua sendo o PK simples (UUID v4 ja e globalmente unico);
--- o UNIQUE composto e apenas pra suportar a FK target.
+-- The primary key `id` remains the simple PK (UUID v4 is already globally unique);
+-- the composite UNIQUE exists only to support the FK target.
 
--- 1) UNIQUE composto em users pra suportar FK target.
--- Reusa o partial unique de email pra nao bloquear duplicates de id em
--- soft-deletes (que sao impossiveis na pratica porque UUIDv4, mas defensive).
+-- 1) Composite UNIQUE on users to support the FK target.
+-- Reuses the partial unique on email so id duplicates are not blocked on
+-- soft-deletes (impossible in practice because UUIDv4, but defensive).
 ALTER TABLE users ADD CONSTRAINT users_tenant_id_uk UNIQUE (tenant_id, id);
 
--- 2) Drop FK simples + recriar composto.
+-- 2) Drop the simple FK + recreate it as composite.
 ALTER TABLE meetings DROP CONSTRAINT meetings_owner_user_id_fkey;
 ALTER TABLE meetings ADD CONSTRAINT meetings_owner_user_id_fkey
     FOREIGN KEY (tenant_id, owner_user_id)

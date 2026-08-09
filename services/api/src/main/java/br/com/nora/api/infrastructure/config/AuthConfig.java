@@ -18,7 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** Wiring do AuthService. Mantem o servico de aplicacao livre de Spring. */
+/** AuthService wiring. Keeps the application service free of Spring. */
 @Configuration
 public class AuthConfig {
 

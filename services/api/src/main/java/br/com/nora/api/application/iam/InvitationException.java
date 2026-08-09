@@ -1,8 +1,8 @@
 package br.com.nora.api.application.iam;
 
 /**
- * Falhas do fluxo de convite (US06, ADR 0011). Cada {@code code} mapeia para um HTTP no {@code
- * GlobalExceptionHandler}.
+ * Failures of the invite flow (US06, ADR 0011). Each {@code code} maps to an HTTP status in the
+ * {@code GlobalExceptionHandler}.
  */
 public class InvitationException extends RuntimeException {
 

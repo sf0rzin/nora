@@ -4,12 +4,12 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Evento de domínio: a análise de uma reunião terminou com sucesso (meeting transicionou para
- * COMPLETED e a {@code MeetingAnalysis} já está persistida). Emitido por {@code
- * AnalysisService.run()} APÓS o commit da transição de status — listeners (ex.: WorkflowEngine do
- * NORA Flows) podem ler o estado completo do banco com segurança.
+ * Domain event: the analysis of a meeting finished successfully (the meeting transitioned to
+ * COMPLETED and the {@code MeetingAnalysis} is already persisted). Emitted by {@code
+ * AnalysisService.run()} AFTER the status transition commit — listeners (e.g. the NORA Flows
+ * WorkflowEngine) can safely read the complete state from the database.
  *
- * <p>Wire format do gatilho correspondente no Flows: {@code meeting.analysis_completed}.
+ * <p>Wire format of the matching trigger in Flows: {@code meeting.analysis_completed}.
  */
 public record MeetingAnalysisCompletedEvent(
         UUID tenantId, UUID meetingId, UUID analysisId, Instant occurredAt) {

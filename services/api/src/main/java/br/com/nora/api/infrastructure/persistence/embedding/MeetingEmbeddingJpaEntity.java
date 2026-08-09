@@ -7,7 +7,7 @@ import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/** Embedding (vetor JSON) de uma reunião, 1:1 com {@code meetings}. PK = meeting_id (V021). */
+/** Embedding (JSON vector) of a meeting, 1:1 with {@code meetings}. PK = meeting_id (V021). */
 @Entity
 @Table(name = "meeting_embeddings")
 public class MeetingEmbeddingJpaEntity {
@@ -26,7 +26,7 @@ public class MeetingEmbeddingJpaEntity {
     private int dim;
 
     @Column(nullable = false)
-    private String embedding; // JSON array de floats
+    private String embedding; // JSON array of floats
 
     @Column(name = "source_chars", nullable = false)
     private int sourceChars;

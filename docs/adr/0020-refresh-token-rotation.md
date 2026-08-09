@@ -1,53 +1,53 @@
-# 0020 — Rotação de refresh token + detecção de reuso (token families)
+# 0020 — Refresh token rotation + reuse detection (token families)
 
-- Status: aceito (ADR retroativo — decisão já implementada e mergeada; registro formal criado na auditoria 2026-05-21)
-- Data: 2026-05-21
-- Decisores: Tech Lead
-- Relacionado: Sub-fase 1.3 (refresh tokens stateful, PR #59); `data-model.md §2.24`
+- Status: accepted (retroactive ADR — decision already implemented and merged; formal record created in the 2026-05-21 audit)
+- Date: 2026-05-21
+- Deciders: Tech Lead
+- Related: Sub-phase 1.3 (stateful refresh tokens, PR #59); `data-model.md §2.24`
 
-## Contexto
+## Context
 
-A Sub-fase 1.3 (PR #59) introduziu refresh tokens stateful: access JWT curto (15 min) + refresh opaco de longa duração (30 dias, UUID, hash SHA-256 persistido em `refresh_tokens`, cookie httpOnly `nora_refresh`). Cada `/auth/refresh` renovava o access sem rotacionar o refresh.
+Sub-phase 1.3 (PR #59) introduced stateful refresh tokens: a short access JWT (15 min) + a long-lived opaque refresh token (30 days, UUID, SHA-256 hash persisted in `refresh_tokens`, httpOnly cookie `nora_refresh`). Each `/auth/refresh` renewed the access token without rotating the refresh token.
 
-**Problema (audit follow-up #3):** sem rotação, um refresh token era válido até expirar (30 dias). Se um atacante exfiltrasse o cookie (XSS residual, malware no device, proxy), poderia renovar access tokens livremente por até 30 dias — **sem detecção** — até a vítima fazer logout manual. O blast radius de um cookie vazado era enorme e silencioso.
+**Problem (audit follow-up #3):** without rotation, a refresh token was valid until it expired (30 days). If an attacker exfiltrated the cookie (residual XSS, malware on the device, a proxy), they could renew access tokens freely for up to 30 days — **without detection** — until the victim logged out manually. The blast radius of a leaked cookie was enormous and silent.
 
-## Decisão
+## Decision
 
-Adotar **rotação de refresh token com detecção de reuso baseada em token families** (V014).
+Adopt **refresh token rotation with reuse detection based on token families** (V014).
 
-### Modelo (V014)
+### Model (V014)
 
-- `refresh_tokens.family_id UUID NOT NULL` — tokens da mesma cadeia de rotação compartilham `family_id` (backfill: tokens existentes viram `family_id = id`).
-- `refresh_tokens.replaced_by_id UUID NULL REFERENCES refresh_tokens(id)` — quando rotacionado, aponta para o sucessor; `NULL` = token ativo da cadeia ou revogado sem sucessor (logout).
-- Índice `idx_refresh_tokens_family(family_id)` para revogar a cadeia inteira.
+- `refresh_tokens.family_id UUID NOT NULL` — tokens in the same rotation chain share a `family_id` (backfill: existing tokens become `family_id = id`).
+- `refresh_tokens.replaced_by_id UUID NULL REFERENCES refresh_tokens(id)` — when rotated, it points to the successor; `NULL` = the chain's active token or revoked without a successor (logout).
+- Index `idx_refresh_tokens_family(family_id)` to revoke the entire chain.
 
-### Comportamento
+### Behavior
 
-- **Rotação:** cada `/auth/refresh` valida o token apresentado, emite um **novo** token na **mesma `family_id`**, marca o anterior como revogado e seta seu `replaced_by_id` para o novo.
-- **Detecção de reuso:** se um token **já revogado** for apresentado, assume-se comprometimento (o legítimo já rotacionou; alguém está usando uma cópia antiga). Resposta: **revogar a family inteira** via `RefreshTokenRepository.revokeAllByFamilyId(familyId, now)` — atacante **e** vítima são deslogados, forçando re-login.
+- **Rotation:** each `/auth/refresh` validates the presented token, issues a **new** token in the **same `family_id`**, marks the previous one as revoked and sets its `replaced_by_id` to the new one.
+- **Reuse detection:** if an **already revoked** token is presented, compromise is assumed (the legitimate one has already rotated; someone is using an old copy). Response: **revoke the entire family** via `RefreshTokenRepository.revokeAllByFamilyId(familyId, now)` — attacker **and** victim are logged out, forcing a re-login.
 
-## Consequências
+## Consequences
 
-**Positivas:**
+**Positive:**
 
-- Blast radius de um cookie vazado cai de ~30 dias para uma janela de uso: assim que legítimo ou atacante rotaciona, o outro lado dispara a detecção e mata a family.
-- Detecção ativa de comprometimento (vs. expiração passiva): o reuso de um token revogado é sinal forte e acionável.
-- Padrão de mercado (OAuth 2.0 BCP / refresh token rotation) — familiar a quem revisa segurança B2B.
+- The blast radius of a leaked cookie drops from ~30 days to a usage window: as soon as either the legitimate user or the attacker rotates, the other side triggers detection and kills the family.
+- Active compromise detection (vs. passive expiration): reuse of a revoked token is a strong and actionable signal.
+- An industry standard (OAuth 2.0 BCP / refresh token rotation) — familiar to anyone reviewing B2B security.
 
-**Negativas / trade-offs:**
+**Negative / trade-offs:**
 
-- Falsos positivos possíveis em corridas legítimas (duas abas/dispositivos rotacionando "ao mesmo tempo" com o mesmo token antigo) ⇒ logout da family. Mitigação aceitável para o perfil de risco; janela é curta.
-- Estado extra por token (family + replaced_by). Cleanup de tokens antigos da cadeia é débito (hard-delete por retenção).
-- Clientes precisam tratar `REFRESH_TOKEN_INVALID` re-logando (já contemplado em `error-codes.md`).
+- False positives are possible in legitimate races (two tabs/devices rotating "at the same time" with the same old token) ⇒ family logout. An acceptable mitigation for the risk profile; the window is short.
+- Extra state per token (family + replaced_by). Cleanup of old tokens in the chain is debt (hard-delete by retention).
+- Clients need to handle `REFRESH_TOKEN_INVALID` by re-logging in (already covered in `error-codes.md`).
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Manter refresh sem rotação (status quo 1.3)** — rejeitado: cookie vazado = 30 dias de acesso silencioso.
-2. **Rotação sem detecção de reuso** (só emitir novo + revogar antigo) — rejeitado: rotaciona mas não reage ao reuso do antigo; perde a detecção de comprometimento, que é o maior ganho.
-3. **Encurtar a validade do refresh** (ex.: 24h) — rejeitado isoladamente: piora UX (re-login frequente) sem detectar comprometimento; rotação resolve melhor o trade-off segurança×UX.
+1. **Keep refresh without rotation (1.3 status quo)** — rejected: a leaked cookie = 30 days of silent access.
+2. **Rotation without reuse detection** (just issue a new one + revoke the old one) — rejected: it rotates but does not react to reuse of the old one; it loses compromise detection, which is the biggest gain.
+3. **Shorten the refresh validity** (e.g., 24h) — rejected on its own: it worsens UX (frequent re-login) without detecting compromise; rotation resolves the security×UX trade-off better.
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-05-21 | Tech Lead | ADR retroativo criado na auditoria doc×código. Decisão já implementada em `V014__refresh_token_rotation.sql` (audit follow-up #3, PR #116) + `RefreshTokenRepositoryAdapter.revokeAllByFamilyId` |
+| 2026-05-21 | Tech Lead | Retroactive ADR created in the doc×code audit. Decision already implemented in `V014__refresh_token_rotation.sql` (audit follow-up #3, PR #116) + `RefreshTokenRepositoryAdapter.revokeAllByFamilyId` |

@@ -1,11 +1,12 @@
 package br.com.nora.api.application.ports;
 
 /**
- * Porta para publicação de eventos de domínio (ex.: {@code MeetingAnalysisCompletedEvent}).
+ * Port for publishing domain events (e.g. {@code MeetingAnalysisCompletedEvent}).
  *
- * <p>Contrato: se houver transação ativa no momento da publicação, o evento só é entregue aos
- * listeners APÓS o commit (TransactionSynchronization). Sem transação ativa, a entrega é imediata.
- * Isso garante que listeners assíncronos leiam do banco o estado já commitado.
+ * <p>Contract: if there is an active transaction at publish time, the event is only delivered to
+ * listeners AFTER the commit (TransactionSynchronization). With no active transaction, delivery is
+ * immediate. This guarantees that asynchronous listeners read the already-committed state from the
+ * database.
  */
 public interface DomainEventPublisher {
 

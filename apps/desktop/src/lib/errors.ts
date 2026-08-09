@@ -1,7 +1,7 @@
 /**
- * Extrai uma mensagem amigável de um erro `unknown` pra exibir na UI.
- * Nunca faz JSON.stringify do erro cru (vazava estrutura interna na tela).
- * Ordem: Error.message → objeto com `message` string → fallback. Auditoria #63.
+ * Extracts a friendly message from an `unknown` error to show in the UI.
+ * Never JSON.stringify the raw error (it leaked internal structure on screen).
+ * Order: Error.message → object with a `message` string → fallback. Audit #63.
  */
 export function toUserMessage(err: unknown, fallback: string): string {
   if (err instanceof Error && err.message.trim()) return err.message;

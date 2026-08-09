@@ -4,10 +4,10 @@ import br.com.nora.api.application.integration.IntegrationException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * Conversão padrão de falha HTTP de provedor em {@code ProviderError} PT-BR: status + trecho do
- * corpo (≤300 chars), padrão do {@link GoogleWorkspaceClient}. Compartilhado pelos clients da onda
- * 1 (GitHub, Notion, Todoist, Linear) — os corpos de erro desses provedores são acionáveis e não
- * ecoam tokens.
+ * Standard conversion of a provider HTTP failure into a PT-BR {@code ProviderError}: status + body
+ * excerpt (≤300 chars), the {@link GoogleWorkspaceClient} pattern. Shared by the wave 1 clients
+ * (GitHub, Notion, Todoist, Linear) — these providers' error bodies are actionable and do not echo
+ * tokens.
  */
 final class ProviderErrors {
 
@@ -16,8 +16,8 @@ final class ProviderErrors {
     private ProviderErrors() {}
 
     /**
-     * @param provider wire name do provedor (ex.: {@code github})
-     * @param api rótulo da chamada que falhou (ex.: {@code issues})
+     * @param provider provider wire name (e.g. {@code github})
+     * @param api label of the call that failed (e.g. {@code issues})
      */
     static IntegrationException of(String provider, String api, Exception ex) {
         if (ex instanceof IntegrationException ie) {

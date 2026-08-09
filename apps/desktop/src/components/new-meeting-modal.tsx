@@ -46,8 +46,8 @@ export function NewMeetingModal({ open, onClose }: Props) {
     setSubmitting(true);
     setErr(null);
     try {
-      // Defaults: default mic + áudio do sistema ligado.
-      // O usuário ajusta dispositivos depois no drawer da overlay.
+      // Defaults: default mic + system audio on.
+      // The user adjusts devices later in the overlay drawer.
       await recording.start({
         title: title.trim(),
         description: description.trim(),

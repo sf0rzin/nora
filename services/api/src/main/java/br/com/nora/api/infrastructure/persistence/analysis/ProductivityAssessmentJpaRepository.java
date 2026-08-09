@@ -16,10 +16,10 @@ public interface ProductivityAssessmentJpaRepository
             UUID meetingId, UUID tenantId);
 
     /**
-     * Banda + score de produtividade por meeting, em UMA query (projeção escalar — não carrega a
-     * coleção de coverage). Para enriquecer a listagem sem N+1.
+     * Productivity band + score per meeting, in ONE query (scalar projection — does not load the
+     * coverage collection). For enriching the listing without N+1.
      *
-     * @return linhas {@code [meetingId, band, score]}
+     * @return rows {@code [meetingId, band, score]}
      */
     @Query(
             "SELECT p.meetingId, p.band, p.score FROM ProductivityAssessmentJpaEntity p "
@@ -28,9 +28,9 @@ public interface ProductivityAssessmentJpaRepository
             @Param("meetingIds") Collection<UUID> meetingIds, @Param("tenantId") UUID tenantId);
 
     /**
-     * Apaga assessment via native SQL para que o ON DELETE CASCADE do Postgres remova as coverages.
-     * Evita o ciclo de UPDATE assessment_id=NULL que o Hibernate tentaria com
-     * orphanRemoval+@JoinColumn unidirecional.
+     * Deletes the assessment via native SQL so that Postgres' ON DELETE CASCADE removes the
+     * coverages. Avoids the UPDATE assessment_id=NULL round that Hibernate would attempt with
+     * orphanRemoval + unidirectional @JoinColumn.
      */
     @Modifying
     @Query(

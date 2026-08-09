@@ -46,9 +46,9 @@ pub fn set_stealth_mode(
             set_stealth_for_window(&main, enabled)?;
         }
         if let Some(overlay) = app_handle.get_webview_window("overlay") {
-            // Só aplicamos stealth na overlay se ela estiver visível.
-            // Se estiver hidden, o hwnd() força criação do handle nativo e a janela
-            // aparece branca (bug reportado na VM Windows).
+            // We only apply stealth to the overlay if it is visible.
+            // If it is hidden, hwnd() forces creation of the native handle and the window
+            // shows up white (bug reported on the Windows VM).
             match overlay.is_visible() {
                 Ok(true) => {
                     #[cfg(debug_assertions)]
@@ -99,8 +99,8 @@ pub fn set_stealth_for_window(window: &WebviewWindow, enabled: bool) -> Result<(
     };
 
     let hwnd_raw = window.hwnd().map_err(|e| format!("Failed to get HWND: {}", e))?;
-    // Tauri depende do windows 0.61; nosso Cargo.toml usa 0.62.
-    // Reconstruímos o HWND da versão correta a partir do ponteiro bruto.
+    // Tauri depends on windows 0.61; our Cargo.toml uses 0.62.
+    // We rebuild the HWND of the correct version from the raw pointer.
     let hwnd = windows::Win32::Foundation::HWND(hwnd_raw.0);
 
     unsafe {

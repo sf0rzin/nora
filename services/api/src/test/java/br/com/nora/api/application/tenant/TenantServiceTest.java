@@ -22,7 +22,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** Unit tests do TenantService: validation, normalizacao, audit (US32). */
+/** Unit tests for TenantService: validation, normalization, audit (US32). */
 class TenantServiceTest {
 
     private final UUID tenantId = UUID.randomUUID();
@@ -85,7 +85,7 @@ class TenantServiceTest {
 
     @Test
     void updateWithNull_clearsRestriction_andEmitsAuditWithBothNulls() {
-        // pre-condicao: defina um valor.
+        // pre-condition: set a value.
         service.updateAllowedEmailDomain(tenantId, "acme.com", actor);
         iam.audits.clear();
 
@@ -160,7 +160,7 @@ class TenantServiceTest {
 
     @Test
     void domainPatternHelpersAreConsistent() {
-        // Sanity check da fronteira do dominio agregada (chamada direta do helper).
+        // Sanity check of the aggregate domain boundary (direct helper call).
         assertThat(Tenant.isValidEmailDomain(null)).isTrue();
         assertThat(Tenant.isValidEmailDomain("acme.com")).isTrue();
         assertThat(Tenant.isValidEmailDomain("a.io")).isTrue();
@@ -231,7 +231,7 @@ class TenantServiceTest {
                     new RecordedAudit(tenantId, actorUserId, action, targetType, targetId, copy));
         }
 
-        // ----- nao usados; lancam para denunciar uso indevido. -----
+        // ----- unused; they throw to flag improper use. -----
 
         @Override
         public IamGroup createGroup(

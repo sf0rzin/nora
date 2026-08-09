@@ -17,7 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** Wiring do InvitationService (US06). Mantemos o servico de aplicacao livre de Spring. */
+/** InvitationService wiring (US06). We keep the application service free of Spring. */
 @Configuration
 public class InvitationConfig {
 

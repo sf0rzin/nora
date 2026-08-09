@@ -1,28 +1,28 @@
 ---
 name: User Story
-about: Nova user story do backlog NORA
+about: New user story from the NORA backlog
 title: "[US-XX] "
 labels: [mvp]
 ---
 
 ## Story
 
-Como **<persona>**, eu quero **<ação>** para **<benefício>**.
+As a **<persona>**, I want **<action>** so that **<benefit>**.
 
-> Backlog ID: `US-XX` — ver `docs/product/backlog.md`
+> Backlog ID: `US-XX` — see `docs/product/backlog.md`
 
-## Critérios de Aceite
+## Acceptance Criteria
 
-- [ ] CA1
-- [ ] CA2
-- [ ] CA3
+- [ ] AC1
+- [ ] AC2
+- [ ] AC3
 
-## Arquivos Esperados
+## Expected Files
 
-- `caminho/arquivo1.ext`
-- `caminho/arquivo2.ext`
+- `path/file1.ext`
+- `path/file2.ext`
 
-## Como Testar
+## How to Test
 
 ```bash
 # comando(s) que validam a entrega
@@ -30,9 +30,9 @@ Como **<persona>**, eu quero **<ação>** para **<benefício>**.
 
 ## Definition of Done
 
-- [ ] Código revisado por humano (com apoio de IA se quiser)
-- [ ] Testes unitários cobrindo o caminho feliz e ao menos 1 borda
-- [ ] Multi-tenancy verificado (se a story toca dado tenant-bound)
-- [ ] Sem segredos commitados
-- [ ] Documentação atualizada (README do módulo / OpenAPI / ADR se aplicável)
-- [ ] CI verde
+- [ ] Code reviewed by a human (with AI support if desired)
+- [ ] Unit tests covering the happy path and at least 1 edge case
+- [ ] Multi-tenancy verified (if the story touches tenant-bound data)
+- [ ] No secrets committed
+- [ ] Documentation updated (module README / OpenAPI / ADR if applicable)
+- [ ] CI green

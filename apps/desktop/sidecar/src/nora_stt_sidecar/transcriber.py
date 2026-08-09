@@ -30,8 +30,8 @@ from .protocol import (
 
 logger = logging.getLogger("nora_stt_sidecar")
 
-# Constantes de áudio/segmentação (eram números mágicos espalhados). Auditoria #117.
-_TICKS_PER_MS = 10_000  # o SDK reporta tempos em unidades de 100ns
+# Audio/segmentation constants (were magic numbers scattered around). Audit #117.
+_TICKS_PER_MS = 10_000  # the SDK reports times in 100ns units
 _SAMPLE_RATE_HZ = 16_000
 _BITS_PER_SAMPLE = 16
 _CHANNELS = 1
@@ -87,7 +87,7 @@ class LiveTranscriber:
         speech_config = SpeechConfig(auth_token=self.auth_token, region=self.region)
         speech_config.speech_recognition_language = self.language
 
-        # Saída detalhada → NBest[0].Confidence (o SDK não expõe .confidence direto).
+        # Detailed output → NBest[0].Confidence (the SDK does not expose .confidence directly).
         speech_config.output_format = speechsdk.OutputFormat.Detailed
 
         # Enable diarization for intermediate results
@@ -150,8 +150,8 @@ class LiveTranscriber:
             )
     
     def _parse_confidence(self, result) -> float | None:
-        """Confidence vem do JSON detalhado (NBest[0].Confidence); o SDK não
-        expõe um atributo .confidence direto. Degrada pra None se ausente."""
+        """Confidence comes from the detailed JSON (NBest[0].Confidence); the SDK does
+        not expose a direct .confidence attribute. Degrades to None if absent."""
         try:
             data = json.loads(result.json)
         except (AttributeError, ValueError, TypeError):
@@ -168,7 +168,7 @@ class LiveTranscriber:
         result = evt.result
         cancellation_details = result.cancellation_details
 
-        # EndOfStream (fim normal) NÃO é erro: não emitir ErrorMessage nem reiniciar.
+        # EndOfStream (normal end) is NOT an error: do not emit ErrorMessage nor restart.
         if cancellation_details.reason != CancellationReason.Error:
             return
 
@@ -190,8 +190,8 @@ class LiveTranscriber:
             )
         )
 
-        # Reinicia só em erro de rede/serviço — e nunca depois de stop() (evita
-        # ressuscitar a sessão). Roda no thread de callback do SDK. Auditoria #113.
+        # Restart only on network/service error — and never after stop() (avoids
+        # resurrecting the session). Runs on the SDK callback thread. Audit #113.
         if error_code not in ("NETWORK", "SERVICE_UNAVAILABLE"):
             return
         if self._stopped or self._restart_count >= self._max_restarts:
@@ -204,12 +204,12 @@ class LiveTranscriber:
         )
         time.sleep(backoff)
         if self._stopped:
-            return  # stop() durante o backoff — não ressuscita
+            return  # stop() during the backoff — do not resurrect
 
         try:
             self._cleanup()
             self._setup_transcriber()
-            self._restart_count = 0  # reset após recuperação (auditoria #116)
+            self._restart_count = 0  # reset after recovery (audit #116)
             logger.info("Transcriber restarted successfully")
         except Exception as e:
             logger.error(f"Failed to restart transcriber: {e}")
@@ -223,8 +223,8 @@ class LiveTranscriber:
     
     def feed(self, pcm_bytes: bytes) -> None:
         """Feed PCM16LE audio data to the transcriber."""
-        # Captura a ref local: _cleanup() (restart/stop) pode zerar _push_stream
-        # entre o teste e o write, rodando no thread de callback. Auditoria #115.
+        # Capture the local ref: _cleanup() (restart/stop) can null out _push_stream
+        # between the test and the write, running on the callback thread. Audit #115.
         stream = self._push_stream
         if stream and self._started:
             stream.write(pcm_bytes)

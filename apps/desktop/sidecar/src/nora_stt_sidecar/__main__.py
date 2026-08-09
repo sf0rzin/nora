@@ -103,7 +103,7 @@ class SidecarApp:
             self._transcriber.feed(pcm_bytes)
         except Exception as e:
             logger.error(f"Failed to process audio: {e}")
-            # Avisa o Rust UMA vez por sessão (não floodar o IPC por frame). #123
+            # Warn Rust ONCE per session (do not flood the IPC per frame). #123
             if not self._audio_error_emitted:
                 self._audio_error_emitted = True
                 self._emit(
@@ -130,9 +130,9 @@ class SidecarApp:
         self._transcriber = None
     
     def _handle_signal(self, signum, frame) -> None:
-        """Handle SIGTERM/SIGINT — só sinaliza a parada. Chamar stop()/print() no
-        contexto do signal não é async-signal-safe; o cleanup roda no finally do
-        run() (stop() é idempotente). Auditoria #122."""
+        """Handle SIGTERM/SIGINT — only signals the stop. Calling stop()/print() in
+        the signal context is not async-signal-safe; the cleanup runs in the finally of
+        run() (stop() is idempotent). Audit #122."""
         self._running = False
     
     def run(self) -> None:

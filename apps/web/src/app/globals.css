@@ -5,15 +5,15 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Tailwind-style HSL part vars usados por classes shadcn legacy.
- * Renomeados pra `--tw-*` pra NAO colidirem com tokens da landing
- * (--border, --bg, --fg) que sao OKLCH em tokens.css.
+/* Tailwind-style HSL part vars used by legacy shadcn classes.
+ * Renamed to `--tw-*` so they do NOT collide with landing tokens
+ * (--border, --bg, --fg) which are OKLCH in tokens.css.
  *
- * Antes esse bloco redefinia `--border: 214 32% 91%` que tornava
- * `border: 1px solid var(--border)` invalido (raw HSL parts nao sao
- * cor valida fora de hsl()). Resultado: shorthand caia, Tailwind base
- * `*, ::before, ::after { border-width: 0 }` vencia, e bordas/dividers
- * sumiam em toda landing. */
+ * Before, this block redefined `--border: 214 32% 91%`, which made
+ * `border: 1px solid var(--border)` invalid (raw HSL parts are not a
+ * valid color outside hsl()). Result: the shorthand dropped, Tailwind base
+ * `*, ::before, ::after { border-width: 0 }` won, and borders/dividers
+ * disappeared across the whole landing. */
 @layer base {
   :root {
     --tw-background: 0 0% 100%;
@@ -42,7 +42,7 @@
   }
 }
 
-/* ── Chat: markdown das respostas da NORA ── */
+/* ── Chat: markdown of NORA's answers ── */
 .nora-prose > :first-child {
   margin-top: 0;
 }
@@ -139,7 +139,7 @@
   }
 }
 
-/* ── Início: linha de reunião (hover) ── */
+/* ── Início: meeting row (hover) ── */
 .nora-row {
   transition: background 120ms ease;
 }

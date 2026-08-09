@@ -1,8 +1,8 @@
 package br.com.nora.api.domain.customer;
 
 /**
- * Objecao levantada pelo cliente conforme avaliacao do worker. Imutavel, value object filho de
- * {@link CustomerConfidenceAssessment} (ADR 0015).
+ * Objection raised by the customer according to the worker's assessment. Immutable, child value
+ * object of {@link CustomerConfidenceAssessment} (ADR 0015).
  */
 public record Objection(
         ObjectionType type,

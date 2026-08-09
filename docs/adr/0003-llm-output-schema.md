@@ -1,37 +1,37 @@
-# 0003 — Saída do LLM via JSON Schema obrigatório
+# 0003 — LLM output via mandatory JSON Schema
 
-- Status: aceito
-- Data: 2026-05-02
-- Decisores: Time NORA
+- Status: accepted
+- Date: 2026-05-02
+- Deciders: NORA Team
 
-## Contexto
+## Context
 
-NORA depende de saídas estáveis do LLM para alimentar UI, dashboards, action items e auditoria. Texto livre quebra a aplicação, dificulta testes e impede evolução do prompt sem impacto no consumo a jusante.
+NORA depends on stable LLM outputs to feed the UI, dashboards, action items and auditing. Free text breaks the application, makes testing harder and prevents the prompt from evolving without impacting downstream consumption.
 
-A Azure OpenAI suporta `response_format: { type: "json_schema" }` em GPT-4o e similares.
+Azure OpenAI supports `response_format: { type: "json_schema" }` on GPT-4o and similar models.
 
-## Decisão
+## Decision
 
-Toda chamada do worker NLP que produz dados estruturados consumidos pela aplicação **deve**:
+Every NLP worker call that produces structured data consumed by the application **must**:
 
-1. Definir um JSON Schema versionado em `docs/api/llm-schemas/` (fonte da verdade) e espelhá-lo como Pydantic model no worker.
-2. Enviar o schema para a API com `response_format=json_schema` (modo estrito quando disponível).
-3. Validar a resposta com Pydantic antes de retornar para o backend. Se inválida, **rejeitar** (HTTP 502 da chamada interna) com retry limitado e log estruturado.
-4. Versionar prompts atrelados ao schema (`promptVersion`, `modelVersion` gravados em `meeting_analyses`).
-5. Quebras de schema incrementam a versão (`-v2`); a versão antiga continua suportada por pelo menos uma release para permitir reprocessamento idempotente.
+1. Define a versioned JSON Schema in `docs/api/llm-schemas/` (the source of truth) and mirror it as a Pydantic model in the worker.
+2. Send the schema to the API with `response_format=json_schema` (strict mode when available).
+3. Validate the response with Pydantic before returning it to the backend. If invalid, **reject** (HTTP 502 from the internal call) with limited retries and structured logging.
+4. Version prompts tied to the schema (`promptVersion`, `modelVersion` recorded in `meeting_analyses`).
+5. Schema breaks increment the version (`-v2`); the old version stays supported for at least one release to allow idempotent reprocessing.
 
-O backend Java valida novamente o payload no boundary HTTP via Bean Validation/DTOs gerados a partir do mesmo OpenAPI/Schema, evitando trust em serviço interno.
+The Java backend validates the payload again at the HTTP boundary via Bean Validation/DTOs generated from the same OpenAPI/Schema, avoiding trust in an internal service.
 
-## Consequências
+## Consequences
 
-- A UI nunca recebe campo desconhecido sem aviso.
-- Testes do worker conseguem usar fixtures de transcrição → JSON validado.
-- Mudança de modelo (ex.: GPT-4o → GPT-5) é trocada via configuração; o schema mantém a estabilidade.
-- Custo extra mínimo no prompt (instrução de schema cabe no system message).
-- Falhas de validação geram retries — observar custo se o LLM começar a errar com frequência (alarme).
+- The UI never receives an unknown field without warning.
+- Worker tests can use transcript fixtures → validated JSON.
+- A model change (e.g. GPT-4o → GPT-5) is swapped via configuration; the schema keeps stability.
+- Minimal extra prompt cost (the schema instruction fits in the system message).
+- Validation failures generate retries — watch the cost if the LLM starts erring frequently (alarm).
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-- **Texto livre + parsing por regex.** Rejeitado: frágil e hostil a manutenção.
-- **Function calling (tools).** Aceitável, mas mais verboso para um único output. Mantemos como opção futura para fluxos com múltiplas chamadas/tools.
-- **Confiar em "JSON mode" sem schema.** Rejeitado: garante JSON sintático, mas não a forma. Schema estrito previne campo faltante e enums inválidos.
+- **Free text + regex parsing.** Rejected: fragile and hostile to maintenance.
+- **Function calling (tools).** Acceptable, but more verbose for a single output. We keep it as a future option for flows with multiple calls/tools.
+- **Relying on "JSON mode" without a schema.** Rejected: it guarantees syntactic JSON, but not the shape. A strict schema prevents missing fields and invalid enums.

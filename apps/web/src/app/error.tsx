@@ -8,9 +8,9 @@ interface ErrorBoundaryProps {
 }
 
 /**
- * Error boundary root do App Router. Captura erros que escapam de Server
- * Components e Client Components. Sem este arquivo, Next servia tela default
- * "Internal Server Error" sem branding em prod.
+ * Root error boundary of the App Router. Catches errors escaping Server
+ * Components and Client Components. Without this file, Next served the default
+ * "Internal Server Error" screen with no branding in prod.
  */
 export default function RootError({ error, reset }: ErrorBoundaryProps) {
   useEffect(() => {

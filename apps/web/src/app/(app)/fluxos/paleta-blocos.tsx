@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * NORA Flows — paleta de blocos (coluna esquerda do editor).
+ * NORA Flows — block palette (left column of the editor).
  *
- * Blocos do catálogo v1 agrupados por seção. CLICK adiciona ao canvas
- * (o editor decide a posição). O gatilho desabilita quando já existe um
- * no canvas — o engine exige exatamente um por fluxo.
+ * v1 catalog blocks grouped by section. CLICK adds to the canvas
+ * (the editor decides the position). The trigger is disabled when one already
+ * exists on the canvas — the engine requires exactly one per flow.
  */
 import { CATALOGO, IconeKind, KIND_META, type BlocoMeta } from "./catalogo";
 

@@ -1,7 +1,7 @@
 package br.com.nora.api.api.dto.auth;
 
 /**
- * Resposta do reenvio de verificacao. {@code verificationDevToken} so vem preenchido com
- * EXPOSE_DEV_TOKENS=true (dev/CI) — em producao e sempre null.
+ * Verification resend response. {@code verificationDevToken} is only populated with
+ * EXPOSE_DEV_TOKENS=true (dev/CI) — in production it is always null.
  */
 public record ResendVerificationResponse(String message, String verificationDevToken) {}

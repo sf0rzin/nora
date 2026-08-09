@@ -13,19 +13,20 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.HandlerMapping;
 
 /**
- * Aplica {@link RequiresPermission} antes do handler: resolve o principal, monta o ARN do recurso e
- * chama o {@link AuthorizationService} (require ou requireAnyAllow). Roda depois do filter chain do
- * Spring Security (SecurityContext já populado). A {@code IamException.forbidden} lançada aqui é
- * roteada pelo GlobalExceptionHandler para 403 — mesmo caminho do authz.require manual.
+ * Applies {@link RequiresPermission} before the handler: resolves the principal, builds the
+ * resource ARN and calls the {@link AuthorizationService} (require or requireAnyAllow). Runs after
+ * the Spring Security filter chain (SecurityContext already populated). The {@code
+ * IamException.forbidden} thrown here is routed by the GlobalExceptionHandler to 403 — the same
+ * path as the manual authz.require.
  */
 @Component
 public class RequiresPermissionInterceptor implements HandlerInterceptor {
 
     private final AuthorizationService authz;
 
-    // @Lazy: a resolução do AuthorizationService é adiada para o 1º uso (request com
-    // @RequiresPermission). Sem isso, slices @WebMvcTest (que não carregam @Service) falhariam ao
-    // criar este interceptor no load do contexto. Em runtime real o bean está sempre presente.
+    // @Lazy: resolving the AuthorizationService is deferred to the 1st use (a request with
+    // @RequiresPermission). Without it, @WebMvcTest slices (which do not load @Service) would fail
+    // creating this interceptor at context load. In real runtime the bean is always present.
     public RequiresPermissionInterceptor(@Lazy AuthorizationService authz) {
         this.authz = authz;
     }
@@ -46,8 +47,8 @@ public class RequiresPermissionInterceptor implements HandlerInterceptor {
         try {
             resourceId = resolveId(request, ann.idParam());
         } catch (IllegalArgumentException malformed) {
-            // Id de path malformado: deixa o binding do @PathVariable retornar 400 (o método não
-            // chega a rodar mesmo). Não autoriza contra um ARN inventado.
+            // Malformed path id: let the @PathVariable binding return 400 (the method does not
+            // get to run anyway). Does not authorize against a made-up ARN.
             return true;
         }
 

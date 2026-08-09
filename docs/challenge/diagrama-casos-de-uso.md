@@ -1,34 +1,34 @@
 ---
-title: "Diagrama de Casos de Uso — NORA"
-owner: Arquiteto NORA (Tech Lead)
+title: "Use Case Diagram — NORA"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
-# Diagrama de Casos de Uso — NORA
+# Use Case Diagram — NORA
 
-> Documento de referência para a disciplina **Agile Methodology with Squad Framework**
-> Sprint 1+2 · FIAP Challenge 2026 × TOTVS · Engenharia de Software 2º Ano
+> Reference document for the **Agile Methodology with Squad Framework** course
+> Sprint 1+2 · FIAP Challenge 2026 × TOTVS · Software Engineering, 2nd Year
 
 ---
 
-## Atores
+## Actors
 
-| Ator | Tipo | Descrição |
+| Actor | Type | Description |
 |---|---|---|
-| **Visitante** | Primário | Usuário não autenticado que acessa o site/app |
-| **Usuário Core** | Primário | Profissional individual, plano B2C (Free ou Pro) |
-| **Usuário Enterprise** | Primário | Funcionário de empresa com acesso escopo-restrito |
-| **Admin Enterprise** | Primário | Root user da empresa; acesso irrestrito ao tenant |
-| **Serviço Externo** | Sistema | Integrações via MCP (Claude, calendário, tasks) |
-| **Provider de Identidade** | Sistema | Provedor externo de autenticação corporativa (SSO pós-MVP) |
+| **Visitor** | Primary | Unauthenticated user who accesses the site/app |
+| **Core User** | Primary | Individual professional, B2C plan (Free or Pro) |
+| **Enterprise User** | Primary | Company employee with scope-restricted access |
+| **Enterprise Admin** | Primary | Company root user; unrestricted access to the tenant |
+| **External Service** | System | Integrations via MCP (Claude, calendar, tasks) |
+| **Identity Provider** | System | External corporate authentication provider (SSO post-MVP) |
 
-> Observação: a NORA AI aparece no diagrama como **módulo interno**, não como ator externo UML.
+> Note: NORA AI appears in the diagram as an **internal module**, not as an external UML actor.
 
 ---
 
-## Diagrama
+## Diagram
 
 ```mermaid
 graph TD
@@ -154,176 +154,176 @@ graph TD
 
 ---
 
-## Descrição Narrativa dos Casos de Uso
+## Narrative Description of the Use Cases
 
-### UC01 — Criar conta
-**Ator principal:** Visitante
-**Pré-condição:** Usuário acessa o site pela primeira vez
-**Fluxo principal:**
-1. Visitante clica em "Criar conta"
-2. Preenche nome, e-mail e senha
-3. NORA valida e-mail (verificação por link)
-4. Conta Core (Free) é criada
-**Pós-condição:** Usuário autenticado com acesso ao painel Core
-
----
-
-### UC02 — Fazer login
-**Ator principal:** Usuário Core
-**Pré-condição:** Conta criada previamente
-**Fluxo principal:**
-1. Usuário acessa a tela de login
-2. Informa e-mail e senha
-3. NORA valida credenciais e retorna token JWT
-4. Usuário é redirecionado ao dashboard
+### UC01 — Create account
+**Primary actor:** Visitor
+**Pre-condition:** The user accesses the site for the first time
+**Main flow:**
+1. The visitor clicks "Criar conta"
+2. Fills in name, e-mail and password
+3. NORA validates the e-mail (verification by link)
+4. A Core (Free) account is created
+**Post-condition:** The user is authenticated with access to the Core panel
 
 ---
 
-### UC04 — Login SSO corporativo
-**Ator principal:** Usuário Enterprise / Admin Enterprise
-**Pré-condição:** Tenant configurado com domínio corporativo
-**Observação:** SSO é uma evolução Enterprise pós-MVP. No MVP, usuários Enterprise entram por convite e login e-mail/senha corporativo.
-**Fluxo principal:**
-1. Usuário acessa portal Enterprise pelo domínio da empresa
-2. É redirecionado para provider SSO (Google Workspace / Azure AD)
-3. Autenticação ocorre no provider externo
-4. NORA recebe callback e monta sessão com roles do tenant
-**Extensão:** Caso SSO não esteja configurado, fallback para login por e-mail corporativo
+### UC02 — Log in
+**Primary actor:** Core User
+**Pre-condition:** An account was previously created
+**Main flow:**
+1. The user goes to the login screen
+2. Enters e-mail and password
+3. NORA validates the credentials and returns a JWT token
+4. The user is redirected to the dashboard
 
 ---
 
-### UC05 — Upload de transcrição / gravação
-**Ator principal:** Usuário Core
-**Pré-condição:** Usuário autenticado
-**Fluxo principal:**
-1. Usuário acessa "Nova reunião"
-2. Faz upload de arquivo textual `.txt`, `.vtt` ou `.srt` no MVP
-3. NORA processa via pipeline NLP (UC23 → UC24 → UC25)
-4. Resultado disponível no painel em até 30 segundos
-**Extensão:** Upload de `.mp3/.mp4` entra pós-MVP e inclui transcrição automática (UC22)
+### UC04 — Corporate SSO login
+**Primary actor:** Enterprise User / Enterprise Admin
+**Pre-condition:** Tenant configured with a corporate domain
+**Note:** SSO is a post-MVP Enterprise evolution. In the MVP, Enterprise users come in by invitation and corporate e-mail/password login.
+**Main flow:**
+1. The user accesses the Enterprise portal through the company domain
+2. Is redirected to the SSO provider (Google Workspace / Azure AD)
+3. Authentication happens at the external provider
+4. NORA receives the callback and builds the session with the tenant roles
+**Extension:** If SSO is not configured, fall back to login by corporate e-mail
 
 ---
 
-### UC06 — Captura ao vivo via Desktop App
-**Ator principal:** Usuário Core
-**Pré-condição:** Desktop App instalado e autorizado a capturar áudio do sistema
-**Fluxo principal:**
-1. Usuário inicia reunião no Meet/Teams/Zoom
-2. Ativa captura na NORA Desktop App
-3. Áudio é transcrito em tempo real (streaming STT)
-4. Contexto e notas parciais aparecem no painel lateral
-5. Ao encerrar, NORA gera o relatório completo
+### UC05 — Upload of transcript / recording
+**Primary actor:** Core User
+**Pre-condition:** Authenticated user
+**Main flow:**
+1. The user goes to "Nova reunião"
+2. Uploads a text file `.txt`, `.vtt` or `.srt` in the MVP
+3. NORA processes it through the NLP pipeline (UC23 → UC24 → UC25)
+4. The result is available on the panel within 30 seconds
+**Extension:** `.mp3/.mp4` upload comes post-MVP and includes automatic transcription (UC22)
 
 ---
 
-### UC16 — Configurar contexto da empresa
-**Ator principal:** Admin Enterprise
-**Pré-condição:** Tenant ativo
-**Fluxo principal:**
-1. Admin acessa "Configurações > Contexto do produto"
-2. Descreve a empresa, produtos, glossário interno e stakeholders-chave
-3. NORA usa esse contexto como instrução base ao processar reuniões do tenant (UC26)
-4. Contexto é versionado (histórico de alterações)
+### UC06 — Live capture via Desktop App
+**Primary actor:** Core User
+**Pre-condition:** Desktop App installed and authorized to capture system audio
+**Main flow:**
+1. The user starts a meeting on Meet/Teams/Zoom
+2. Activates capture in the NORA Desktop App
+3. Audio is transcribed in real time (streaming STT)
+4. Context and partial notes appear in the side panel
+5. When it ends, NORA generates the full report
 
 ---
 
-### UC17 — Convidar e gerenciar usuários
-**Ator principal:** Root do tenant (Admin Enterprise)
-**Pré-condição:** Tenant ativo
-**Fluxo principal:**
-1. Root acessa "Configurações > IAM > Usuários"
-2. Convida usuário por e-mail corporativo
-3. (Opcional) adiciona o usuário a um ou mais grupos já existentes (ver UC18C)
-4. Usuário recebe convite, define senha e acessa apenas o que suas políticas IAM permitem
+### UC16 — Configure company context
+**Primary actor:** Enterprise Admin
+**Pre-condition:** Active tenant
+**Main flow:**
+1. The admin goes to "Configurações > Contexto do produto"
+2. Describes the company, products, internal glossary and key stakeholders
+3. NORA uses this context as the base instruction when processing the tenant's meetings (UC26)
+4. The context is versioned (change history)
 
 ---
 
-### UC18 — Criar grupos IAM
-**Ator principal:** Root do tenant
-**Pré-condição:** Tenant ativo
-**Fluxo principal:**
-1. Root acessa "Configurações > IAM > Grupos"
-2. Cria um novo grupo (ex.: "Vendas-SP", "Auditores")
-3. Grupo fica disponível para anexação de políticas (UC18B) e adição de membros (UC18C)
+### UC17 — Invite and manage users
+**Primary actor:** Tenant root (Enterprise Admin)
+**Pre-condition:** Active tenant
+**Main flow:**
+1. The root goes to "Configurações > IAM > Usuários"
+2. Invites a user by corporate e-mail
+3. (Optional) adds the user to one or more existing groups (see UC18C)
+4. The user receives the invitation, sets a password and accesses only what their IAM policies allow
 
 ---
 
-### UC18A — Criar e versionar políticas IAM (JSON)
-**Ator principal:** Root do tenant
-**Pré-condição:** Tenant ativo
-**Fluxo principal:**
-1. Root acessa "Configurações > IAM > Políticas"
-2. Cria política enviando documento JSON com `version` e `statements[]` (cada um com `effect`, `action[]`, `resource[]` e `condition` opcional)
-3. Sistema valida contra schema oficial e cria versão 1
-4. Cada alteração cria uma nova versão (histórico imutável)
-**Extensão:** Root pode partir de **templates** opcionais ("ReadOnlyAccess", "MeetingAnalystAccess") como ponto de partida.
+### UC18 — Create IAM groups
+**Primary actor:** Tenant root
+**Pre-condition:** Active tenant
+**Main flow:**
+1. The root goes to "Configurações > IAM > Grupos"
+2. Creates a new group (e.g. "Vendas-SP", "Auditores")
+3. The group becomes available for policy attachment (UC18B) and member addition (UC18C)
 
 ---
 
-### UC18B — Anexar políticas a grupos/usuários
-**Ator principal:** Root do tenant
-**Fluxo principal:**
-1. Root seleciona uma política
-2. Anexa a um ou mais grupos (recomendado) ou a um usuário específico
-3. Sistema atualiza permissões imediatamente; próximas requisições já refletem o novo estado
+### UC18A — Create and version IAM policies (JSON)
+**Primary actor:** Tenant root
+**Pre-condition:** Active tenant
+**Main flow:**
+1. The root goes to "Configurações > IAM > Políticas"
+2. Creates a policy by submitting a JSON document with `version` and `statements[]` (each with `effect`, `action[]`, `resource[]` and an optional `condition`)
+3. The system validates it against the official schema and creates version 1
+4. Each change creates a new version (immutable history)
+**Extension:** The root may start from optional **templates** ("ReadOnlyAccess", "MeetingAnalystAccess") as a starting point.
 
 ---
 
-### UC18C — Adicionar/remover usuários em grupos
-**Ator principal:** Root do tenant
-**Fluxo principal:**
-1. Root abre o grupo desejado
-2. Adiciona ou remove usuários membros
-3. Permissões resultantes são reavaliadas na próxima requisição de cada usuário afetado
+### UC18B — Attach policies to groups/users
+**Primary actor:** Tenant root
+**Main flow:**
+1. The root selects a policy
+2. Attaches it to one or more groups (recommended) or to a specific user
+3. The system updates permissions immediately; the next requests already reflect the new state
 
 ---
 
-### UC28 — Avaliar produtividade vs. objetivo declarado (opt-in)
-**Ator principal:** Usuário Core / Usuário Enterprise
-**Pré-condição:** Recurso de produtividade ativado pelo usuário ao subir a reunião
-**Fluxo principal:**
-1. No upload, o usuário declara o `purpose` da reunião e a lista de `expectedOutcomes` que precisavam ser tratados
-2. (Opcional) o usuário cola/edita um `projectStateSnapshot` descrevendo o que já está feito
-3. A NORA processa a reunião normalmente (UC23) e, ao final, avalia cobertura outcome-a-outcome (`ADDRESSED` / `PARTIAL` / `MISSED`)
-4. Calcula um Productivity Score (0–100), banda (`LOW` / `MEDIUM` / `HIGH`) e justificativa
-5. Resultado fica visível no detalhe da reunião
-**Extensão (pós-MVP):** Em vez do `projectStateSnapshot` manual, a NORA puxa o estado do projeto via MCP de Jira / Linear / Azure DevOps / GitHub Projects.
+### UC18C — Add/remove users in groups
+**Primary actor:** Tenant root
+**Main flow:**
+1. The root opens the desired group
+2. Adds or removes member users
+3. The resulting permissions are re-evaluated on the next request of each affected user
 
 ---
 
-### UC29 — Avaliar Customer Confidence (Enterprise)
-**Ator principal:** Usuário Enterprise (AE)
-**Pré-condição:** Reunião está vinculada a uma `customer_account`; tenant é Enterprise
-**Fluxo principal:**
-1. Após o resumo (UC23), o worker analisa sinais de compra e objeções na transcrição
-2. Calcula um Customer Confidence Score (0–100) e banda (`LOW` / `MEDIUM` / `HIGH`)
-3. Compara com a última avaliação da mesma conta para gerar `trend` (`IMPROVING` / `STABLE` / `DECLINING`)
-4. Persiste sinais e objeções com a citação textual
-**Resultado:** indicador disponível no detalhe da reunião e no painel da conta.
+### UC28 — Evaluate productivity vs. declared goal (opt-in)
+**Primary actor:** Core User / Enterprise User
+**Pre-condition:** The productivity feature was enabled by the user when uploading the meeting
+**Main flow:**
+1. At upload, the user declares the meeting's `purpose` and the list of `expectedOutcomes` that needed to be addressed
+2. (Optional) the user pastes/edits a `projectStateSnapshot` describing what is already done
+3. NORA processes the meeting normally (UC23) and, at the end, evaluates coverage outcome by outcome (`ADDRESSED` / `PARTIAL` / `MISSED`)
+4. Computes a Productivity Score (0–100), a band (`LOW` / `MEDIUM` / `HIGH`) and a justification
+5. The result is visible in the meeting detail
+**Extension (post-MVP):** Instead of the manual `projectStateSnapshot`, NORA pulls the project state via MCP from Jira / Linear / Azure DevOps / GitHub Projects.
 
 ---
 
-### UC30 — Atualizar Account Health Score (Enterprise)
-**Ator principal:** Sistema (disparado por UC29)
-**Pré-condição:** Existe um novo Customer Confidence persistido
-**Fluxo principal:**
-1. Sistema combina o Customer Confidence recente, riscos e oportunidades acumulados, recência de interação e tendência
-2. Calcula novo Account Health Score (0–100) com banda (`AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`)
-3. Persiste snapshot com referência à análise que disparou
-4. Se houve mudança de banda para pior, dispara alerta para os usuários autorizados (US51)
-**Resultado:** série temporal da saúde da conta atualizada.
+### UC29 — Evaluate Customer Confidence (Enterprise)
+**Primary actor:** Enterprise User (AE)
+**Pre-condition:** The meeting is linked to a `customer_account`; the tenant is Enterprise
+**Main flow:**
+1. After the summary (UC23), the worker analyzes buying signals and objections in the transcript
+2. Computes a Customer Confidence Score (0–100) and a band (`LOW` / `MEDIUM` / `HIGH`)
+3. Compares it with the last evaluation of the same account to generate a `trend` (`IMPROVING` / `STABLE` / `DECLINING`)
+4. Persists signals and objections with the verbatim quote
+**Result:** the indicator is available in the meeting detail and in the account panel.
 
 ---
 
-## Relacionamentos de Inclusão e Extensão
+### UC30 — Update Account Health Score (Enterprise)
+**Primary actor:** System (triggered by UC29)
+**Pre-condition:** A new Customer Confidence has been persisted
+**Main flow:**
+1. The system combines the recent Customer Confidence, accumulated risks and opportunities, interaction recency and trend
+2. Computes a new Account Health Score (0–100) with a band (`AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`)
+3. Persists a snapshot with a reference to the analysis that triggered it
+4. If the band changed for the worse, it triggers an alert to the authorized users (US51)
+**Result:** the account health time series is updated.
 
-| Caso de Uso | Relação | Dependência |
+---
+
+## Include and Extend Relationships
+
+| Use Case | Relationship | Dependency |
 |---|---|---|
-| UC05 (texto) | `<<include>>` | UC23 (Gerar resumo) |
-| UC05 (áudio), UC06 | `<<include>>` | UC22 (Transcrever áudio) |
-| UC22 | `<<include>>` | UC23 (Gerar resumo) |
-| UC23 | `<<include>>` | UC24 (Extrair tarefas) |
-| UC23 | `<<include>>` | UC25 (Indexar embeddings) |
-| UC23 | `<<extend>>` | UC26 (Injetar contexto — somente Enterprise) |
-| UC07, UC12 | `<<extend>>` | UC15/UC10 (Exportar — opcional) |
-| UC04 | `<<extend>>` | UC02 (fallback para login padrão) |
+| UC05 (text) | `<<include>>` | UC23 (Generate summary) |
+| UC05 (audio), UC06 | `<<include>>` | UC22 (Transcribe audio) |
+| UC22 | `<<include>>` | UC23 (Generate summary) |
+| UC23 | `<<include>>` | UC24 (Extract tasks) |
+| UC23 | `<<include>>` | UC25 (Index embeddings) |
+| UC23 | `<<extend>>` | UC26 (Inject context — Enterprise only) |
+| UC07, UC12 | `<<extend>>` | UC15/UC10 (Export — optional) |
+| UC04 | `<<extend>>` | UC02 (fallback to standard login) |

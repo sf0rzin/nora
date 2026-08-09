@@ -1,24 +1,24 @@
 ---
 name: Bug
-about: Reportar um defeito
+about: Report a defect
 title: "[BUG] "
 labels: [bug]
 ---
 
-## Descrição
+## Description
 
-## Reprodução
+## Reproduction
 
 1.
 2.
 3.
 
-## Comportamento Esperado
+## Expected Behavior
 
-## Comportamento Atual
+## Actual Behavior
 
-## Ambiente
+## Environment
 
-- Serviço:
-- Versão / commit:
-- SO / Browser:
+- Service:
+- Version / commit:
+- OS / Browser:

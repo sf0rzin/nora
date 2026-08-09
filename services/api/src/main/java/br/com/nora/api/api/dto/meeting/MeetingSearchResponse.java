@@ -4,9 +4,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Resultado da busca semântica (RAG): reuniões mais relevantes à query, ordenadas por similaridade.
- */
+/** Semantic search (RAG) result: meetings most relevant to the query, ordered by similarity. */
 public record MeetingSearchResponse(List<Item> items) {
 
     public record Item(

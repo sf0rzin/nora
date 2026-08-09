@@ -1,6 +1,6 @@
 package br.com.nora.api.domain.analysis;
 
-/** Sentimento global da reuniao. Espelha enum do schema meeting-analysis-v1. */
+/** Overall sentiment of the meeting. Mirrors the enum in the meeting-analysis-v1 schema. */
 public enum Sentiment {
     POSITIVE,
     NEUTRAL,

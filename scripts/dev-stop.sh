@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Para os servicos web/api/worker iniciados pelo `make dev`.
+# Stops the web/api/worker services started by `make dev`.
 #
-# Estrategia: identificar processos pela PORTA (3000, 8080, 8001), subir ate
-# o root da arvore (ex.: maven -> java, pnpm -> node, uvicorn-reloader ->
-# python) e matar a arvore inteira. Isso funciona melhor que tracking de PID
-# em ambientes onde Git Bash/MSYS, nohup e wrappers de processo confundem
-# o mapeamento entre PID do shell e PID real do Windows.
+# Strategy: identify processes by PORT (3000, 8080, 8001), climb up to
+# the root of the tree (e.g.: maven -> java, pnpm -> node, uvicorn-reloader ->
+# python) and kill the whole tree. This works better than PID tracking
+# in environments where Git Bash/MSYS, nohup and process wrappers confuse
+# the mapping between the shell PID and the real Windows PID.
 #
-# Funciona em:
+# Works on:
 #   - Windows (Git Bash + powershell + Get-NetTCPConnection / CIM)
-#   - Linux/macOS (lsof + ps recursivo)
+#   - Linux/macOS (lsof + recursive ps)
 set -u
 
 DEV_RUN_DIR="${DEV_RUN_DIR:-.run}"
@@ -21,7 +21,7 @@ is_windows() {
 
 stop_windows() {
   echo ">> [Windows] matando processos nas portas ${PORTS[*]}..."
-  # Heredoc com sintaxe powershell. Cuidado: variaveis $... sao do PS, nao do bash.
+  # Heredoc with powershell syntax. Careful: $... variables are PS's, not bash's.
   powershell -NoProfile -Command '
     $ports = @(3000, 8080, 8001)
     $wrappers = @("cmd.exe","mvn.cmd","mvnw.cmd","bash.exe","sh.exe",
@@ -60,7 +60,7 @@ stop_windows() {
   '
 }
 
-# Lista todos os descendentes (recursivo) de um PID via ps.
+# Lists all descendants (recursive) of a PID via ps.
 list_descendants() {
   local root=$1
   ps -A -o pid,ppid 2>/dev/null | awk -v root="$root" '

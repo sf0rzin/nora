@@ -32,16 +32,16 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Cobre US32 (corporate domain restriction). Cenarios:
+ * Covers US32 (corporate domain restriction). Scenarios:
  *
  * <ul>
- *   <li>Root atualiza o dominio com sucesso (200) e grava audit event.
- *   <li>Membro nao-Root sem policy recebe 403.
- *   <li>Dominio invalido devolve 422 (formato sintaticamente correto mas semanticamente rejeitado):
- *       {@code @invalid}, {@code acme}, {@code " "}.
- *   <li>GET /tenant/domain reflete o estado atual.
- *   <li>Membro com policy {@code tenant:domain:read} consegue ler; {@code tenant:domain:write}
- *       consegue escrever.
+ *   <li>Root updates the domain successfully (200) and writes an audit event.
+ *   <li>Non-Root member without a policy gets 403.
+ *   <li>Invalid domain returns 422 (syntactically correct format but semantically rejected): {@code
+ *       @invalid}, {@code acme}, {@code " "}.
+ *   <li>GET /tenant/domain reflects the current state.
+ *   <li>Member with the {@code tenant:domain:read} policy can read; {@code tenant:domain:write} can
+ *       write.
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -80,14 +80,14 @@ class TenantDomainIntegrationTest {
         String rootToken = signupAndLogin(rootEmail, "SenhaForte123", "Root Domain");
         UUID tenantId = readClaim(rootToken, "tenantId");
 
-        // Estado inicial: dominio nulo.
+        // Initial state: null domain.
         ResponseEntity<String> initialGet = authGet("/tenant/domain", rootToken);
         assertThat(initialGet.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode initialBody = mapper.readTree(initialGet.getBody());
         assertThat(initialBody.get("tenantId").asText()).isEqualTo(tenantId.toString());
         assertThat(initialBody.get("allowedEmailDomain").isNull()).isTrue();
 
-        // Update com dominio valido (e em MAIUSCULAS pra checar normalizacao).
+        // Update with a valid domain (and in UPPERCASE to check normalization).
         ResponseEntity<String> putResp =
                 putJsonAuth("/tenant/domain", Map.of("allowedEmailDomain", "ACME.com"), rootToken);
         assertThat(putResp.getStatusCode())
@@ -99,11 +99,11 @@ class TenantDomainIntegrationTest {
         assertThat(putBody.get("updatedAt").asText()).isNotBlank();
         assertThat(putBody.get("updatedBy").asText()).isNotBlank();
 
-        // GET reflete o novo estado.
+        // GET reflects the new state.
         JsonNode afterGet = mapper.readTree(authGet("/tenant/domain", rootToken).getBody());
         assertThat(afterGet.get("allowedEmailDomain").asText()).isEqualTo("acme.com");
 
-        // Audit event gravado.
+        // Audit event written.
         Integer auditCount =
                 jdbc.queryForObject(
                         "SELECT COUNT(*) FROM iam_audit_events "
@@ -112,7 +112,7 @@ class TenantDomainIntegrationTest {
                         tenantId);
         assertThat(auditCount).isEqualTo(1);
 
-        // Coluna persistida.
+        // Column persisted.
         String persisted =
                 jdbc.queryForObject(
                         "SELECT allowed_email_domain FROM tenants WHERE id = ?",
@@ -120,7 +120,7 @@ class TenantDomainIntegrationTest {
                         tenantId);
         assertThat(persisted).isEqualTo("acme.com");
 
-        // Clear (null) tambem deve ser aceito.
+        // Clear (null) must also be accepted.
         ResponseEntity<String> clearResp =
                 putJsonRaw("/tenant/domain", "{\"allowedEmailDomain\":null}", rootToken);
         assertThat(clearResp.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -159,7 +159,7 @@ class TenantDomainIntegrationTest {
                 insertActiveMember(tenantId, memberEmail, "SenhaForte123", "Member Pol");
         String memberToken = login(memberEmail, "SenhaForte123");
 
-        // Anexa policy de read-only.
+        // Attaches a read-only policy.
         String readDoc =
                 "{"
                         + "\"version\":\"2026-05-07\","
@@ -173,10 +173,10 @@ class TenantDomainIntegrationTest {
         String policyId = createPolicy(rootToken, "ReadTenantDomain", readDoc);
         attachPolicyToUser(rootToken, memberUserId, policyId);
 
-        // Pode ler.
+        // Can read.
         assertThat(authGetStatus("/tenant/domain", memberToken)).isEqualTo(HttpStatus.OK);
 
-        // Mas nao escrever.
+        // But cannot write.
         assertThat(
                         putJsonAuth(
                                         "/tenant/domain",
@@ -214,7 +214,7 @@ class TenantDomainIntegrationTest {
                         "/tenant/domain", Map.of("allowedEmailDomain", "memberco.io"), memberToken);
         assertThat(putResp.getStatusCode()).isEqualTo(HttpStatus.OK);
 
-        // Audit registra o membro como actor.
+        // Audit records the member as the actor.
         UUID auditActor =
                 jdbc.queryForObject(
                         "SELECT actor_user_id FROM iam_audit_events "
@@ -230,38 +230,38 @@ class TenantDomainIntegrationTest {
         String rootEmail = "root-domain-invalid@nora.dev";
         String rootToken = signupAndLogin(rootEmail, "SenhaForte123", "Root Inv");
 
-        // @invalid: nao pode comecar com @.
+        // @invalid: cannot start with @.
         ResponseEntity<String> r1 =
                 putJsonAuth("/tenant/domain", Map.of("allowedEmailDomain", "@invalid"), rootToken);
         assertThat(r1.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
         assertThat(mapper.readTree(r1.getBody()).get("code").asText())
                 .isEqualTo("TENANT_DOMAIN_INVALID");
 
-        // acme: sem TLD.
+        // acme: no TLD.
         ResponseEntity<String> r2 =
                 putJsonAuth("/tenant/domain", Map.of("allowedEmailDomain", "acme"), rootToken);
         assertThat(r2.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
 
-        // "   ": vazio apos trim trata como clear, retorna 200 com null.
+        // "   ": empty after trim is treated as a clear, returns 200 with null.
         ResponseEntity<String> r3 =
                 putJsonAuth("/tenant/domain", Map.of("allowedEmailDomain", "   "), rootToken);
         assertThat(r3.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(mapper.readTree(r3.getBody()).get("allowedEmailDomain").isNull()).isTrue();
 
-        // dominio com caracter invalido.
+        // domain with an invalid character.
         ResponseEntity<String> r4 =
                 putJsonAuth(
                         "/tenant/domain", Map.of("allowedEmailDomain", "acme com.br"), rootToken);
         assertThat(r4.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
 
-        // dominio com underscore.
+        // domain with an underscore.
         ResponseEntity<String> r5 =
                 putJsonAuth(
                         "/tenant/domain", Map.of("allowedEmailDomain", "acme_corp.com"), rootToken);
         assertThat(r5.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
     }
 
-    // ────────── helpers (copiados de IamScopingIntegrationTest para mantermos isolamento)
+    // ────────── helpers (copied from IamScopingIntegrationTest so we keep isolation)
     // ──────────
 
     private String signupAndLogin(String email, String pwd, String name) throws Exception {

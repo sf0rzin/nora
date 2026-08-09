@@ -1,6 +1,6 @@
 package br.com.nora.api.application.iam;
 
-/** Excecoes do subdominio IAM. Cada code mapeado para HTTP no GlobalExceptionHandler. */
+/** Exceptions of the IAM subdomain. Each code mapped to HTTP in the GlobalExceptionHandler. */
 public class IamException extends RuntimeException {
 
     private final String code;
@@ -35,8 +35,8 @@ public class IamException extends RuntimeException {
     }
 
     /**
-     * Usuario alvo do vinculo nao pertence ao tenant do chamador. Levantada ao traduzir a violacao
-     * do FK composto de V027 -- nao existe caminho legitimo que a produza.
+     * Target user of the binding does not belong to the caller's tenant. Raised when translating
+     * the composite FK violation from V027 -- there is no legitimate path that produces it.
      */
     public static IamException userNotInTenant() {
         return new IamException("IAM_USER_NOT_IN_TENANT", "Usuario nao pertence a este tenant.");

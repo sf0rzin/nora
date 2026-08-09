@@ -31,14 +31,14 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Servico de aplicacao para reunioes (US07).
+ * Application service for meetings (US07).
  *
- * <p>Regras chave:
+ * <p>Key rules:
  *
  * <ul>
- *   <li>Toda escrita/leitura recebe tenantId explicito vindo do JWT do chamador.
- *   <li>Upload cria meeting + transcript em uma unica transacao.
- *   <li>Apos commit do upload, dispara analise async via {@link AnalysisService#runAsync}.
+ *   <li>Every write/read receives an explicit tenantId coming from the caller's JWT.
+ *   <li>Upload creates meeting + transcript in a single transaction.
+ *   <li>After the upload commit, dispatches async analysis via {@link AnalysisService#runAsync}.
  * </ul>
  */
 @Service
@@ -46,7 +46,7 @@ public class MeetingService {
 
     private static final Logger LOG = LoggerFactory.getLogger(MeetingService.class);
 
-    /** Tamanho do lote ao varrer todas as meetings de um tenant para filtro IAM in-memory. */
+    /** Batch size when scanning all of a tenant's meetings for the in-memory IAM filter. */
     private static final int LIST_SCAN_BATCH = 200;
 
     private final MeetingRepository meetings;
@@ -56,8 +56,9 @@ public class MeetingService {
     private final boolean autoDispatchAnalysis;
 
     /**
-     * Template com PROPAGATION_REQUIRES_NEW, para escrever de dentro do {@code afterCommit} — onde
-     * a transação corrente já commitou e um {@code REQUIRED} se juntaria a ela sem nunca gravar.
+     * Template with PROPAGATION_REQUIRES_NEW, to write from inside {@code afterCommit} — where the
+     * current transaction has already committed and a {@code REQUIRED} would join it without ever
+     * writing.
      */
     private final TransactionTemplate newTransaction;
 
@@ -149,13 +150,14 @@ public class MeetingService {
     }
 
     /**
-     * Agenda a análise, tratando saturação do pool.
+     * Schedules the analysis, handling pool saturation.
      *
-     * <p>O executor de {@code AsyncConfig} tem fila 50 e {@code AbortPolicy}: cheio, o submit lança
-     * {@link RejectedExecutionException}. Vindo do {@code afterCommit}, essa exceção subia pro
-     * controller DEPOIS do commit — o cliente levava 500 sobre um meeting que existe, sem análise
-     * agendada e preso em PENDING para sempre. O javadoc do AsyncConfig já afirmava que "o caller
-     * trata e marca o meeting como FAILED"; este é o caller, e agora ele de fato trata.
+     * <p>The {@code AsyncConfig} executor has a queue of 50 and {@code AbortPolicy}: when full, the
+     * submit throws {@link RejectedExecutionException}. Coming from {@code afterCommit}, that
+     * exception bubbled up to the controller AFTER the commit — the client got a 500 about a
+     * meeting that exists, with no analysis scheduled and stuck in PENDING forever. The AsyncConfig
+     * javadoc already claimed that "the caller handles it and marks the meeting as FAILED"; this is
+     * the caller, and now it actually does handle it.
      */
     private void dispatchOrMarkFailed(AnalysisService svc, UUID meetingId, UUID tenantId) {
         try {
@@ -167,18 +169,19 @@ public class MeetingService {
                     tenantId,
                     e);
             try {
-                // REQUIRES_NEW, não o @Transactional do adapter. No afterCommit a transação ainda
-                // é a corrente — commitada, mas não encerrada —, então um REQUIRED do adapter
-                // JUNTA-SE a ela em vez de abrir outra, e o save nunca chega a ser gravado. O
-                // meeting ficava PENDING para sempre e o log dizia que tinha sido marcado FAILED.
+                // REQUIRES_NEW, not the adapter's @Transactional. In afterCommit the transaction
+                // is still the current one — committed, but not closed — so a REQUIRED from the
+                // adapter JOINS it instead of opening another, and the save is never written. The
+                // meeting stayed PENDING forever and the log said it had been marked FAILED.
                 newTransaction.executeWithoutResult(
                         status ->
                                 meetings.findByIdAndTenant(meetingId, tenantId)
                                         .map(m -> m.withStatus(ProcessingStatus.FAILED))
                                         .ifPresent(meetings::save));
             } catch (RuntimeException marking) {
-                // Marcar FAILED é best-effort: se também falhar, o meeting fica PENDING e o
-                // reprocess manual resolve. Propagar aqui só trocaria um erro por outro.
+                // Marking FAILED is best-effort: if that also fails, the meeting stays PENDING and
+                // a manual reprocess resolves it. Propagating here would only swap one error for
+                // another.
                 LOG.error("falha ao marcar meeting {} como FAILED", meetingId, marking);
             }
         }
@@ -193,15 +196,15 @@ public class MeetingService {
     }
 
     /**
-     * Variante para o controller quando a listagem precisa de filtro IAM com conditions por item
-     * antes de paginar. Devolve <b>todas</b> as meetings do tenant que casam os filtros baratos
-     * (search/status/data ja resolvidos no SQL), em ordem created_at desc, varrendo o banco em
-     * lotes — o controller aplica o filtro IAM e pagina in-memory.
+     * Variant for the controller when the listing needs an IAM filter with per-item conditions
+     * before paginating. Returns <b>all</b> of the tenant's meetings matching the cheap filters
+     * (search/status/date already resolved in SQL), in created_at desc order, scanning the database
+     * in batches — the controller applies the IAM filter and paginates in-memory.
      *
-     * <p>Sem teto silencioso: o cap antigo (500) descartava reunioes alem do limite, escondendo do
-     * usuario meetings que ele teria permissao de ver (tenant com &gt;500 reunioes). Otimizacao
-     * futura (performance, nao correcao): empurrar o predicado de attributes para o SQL via {@code
-     * meeting_attributes @>} + indice GIN (V008) quando algum tenant atingir escala.
+     * <p>No silent cap: the old cap (500) dropped meetings beyond the limit, hiding from the user
+     * meetings he would have permission to see (tenant with &gt;500 meetings). Future optimisation
+     * (performance, not correctness): push the attributes predicate into SQL via {@code
+     * meeting_attributes @>} + GIN index (V008) when some tenant reaches scale.
      */
     @Transactional(readOnly = true)
     public List<Meeting> listAllForAuthFilter(UUID tenantId, MeetingFilter filter) {
@@ -231,41 +234,41 @@ public class MeetingService {
     }
 
     /**
-     * Variante com callback de autorizacao executado dentro da mesma transacao apos resolver o
-     * meeting — evita TOCTOU entre check de authz e execucao. O callback recebe o meeting carregado
-     * e deve lancar caso a autorizacao falhe.
+     * Variant with an authorization callback executed inside the same transaction after resolving
+     * the meeting — avoids TOCTOU between the authz check and execution. The callback receives the
+     * loaded meeting and must throw if authorization fails.
      */
     @Transactional
     public Meeting reprocess(
             UUID meetingId, UUID tenantId, java.util.function.Consumer<Meeting> authorize) {
-        // Autoriza ANTES de tomar o lock. Tomá-lo primeiro deixava um chamador sem permissão
-        // segurar um lock de escrita na linha durante toda a avaliação de IAM (que vai ao banco),
-        // repetidamente — negação de serviço sobre uma reunião à escolha dele.
+        // Authorize BEFORE taking the lock. Taking it first let a caller without permission hold a
+        // write lock on the row for the whole IAM evaluation (which hits the database),
+        // repeatedly — denial of service on a meeting of his choosing.
         Meeting snapshot =
                 meetings.findByIdAndTenant(meetingId, tenantId)
                         .orElseThrow(MeetingException.NotFound::new);
         authorize.accept(snapshot);
 
-        // Só então serializa. A guarda abaixo é um check-then-act: sem lock, duas chamadas
-        // concorrentes leem o mesmo status pré-update, ambas passam e ambas agendam — dois
-        // pipelines sobre o mesmo meeting, LLM cobrado a dobrar e efeitos externos duplicados.
+        // Only then serialize. The guard below is a check-then-act: without the lock, two
+        // concurrent calls read the same pre-update status, both pass and both schedule — two
+        // pipelines over the same meeting, LLM billed twice and duplicated external effects.
         Meeting meeting =
                 meetings.findByIdAndTenantForUpdate(meetingId, tenantId)
                         .orElseThrow(MeetingException.NotFound::new);
-        // Reavalia com a linha travada: entre o snapshot e o lock os atributos podem ter mudado,
-        // e é sobre eles que as conditions de IAM decidem.
+        // Re-evaluate with the row locked: between the snapshot and the lock the attributes may
+        // have changed, and it is on those that the IAM conditions decide.
         authorize.accept(meeting);
 
-        // Reprocessar é válido a partir de um estado terminal (FAILED, COMPLETED -> "reanalisar").
-        // PROCESSING e PENDING são barrados: nos dois casos já existe análise a caminho, e
-        // reagendar criaria uma execução concorrente.
+        // Reprocessing is valid from a terminal state (FAILED, COMPLETED -> "re-analyse").
+        // PROCESSING and PENDING are blocked: in both cases an analysis is already on its way, and
+        // rescheduling would create a concurrent execution.
         //
-        // PENDING passava antes, com a intenção de "analisar agora" uma reunião que nunca chegou a
-        // ser despachada. Mas o lock não resolvia o duplo despacho por causa disso: o vencedor
-        // grava PENDING, e a segunda chamada — libertada pelo lock — lia PENDING e passava na
-        // guarda. Um duplo clique bastava. Barrar PENDING é seguro agora que um despacho rejeitado
-        // marca FAILED de verdade (ver dispatchOrMarkFailed): PENDING passou a significar mesmo
-        // "na fila", nunca "ficou esquecido".
+        // PENDING used to pass, with the intent of "analyse now" a meeting that never got
+        // dispatched. But that is why the lock did not solve the double dispatch: the winner
+        // writes PENDING, and the second call — released by the lock — read PENDING and passed the
+        // guard. A double click was enough. Blocking PENDING is safe now that a rejected dispatch
+        // really does mark FAILED (see dispatchOrMarkFailed): PENDING has come to genuinely mean
+        // "queued", never "got forgotten".
         if (meeting.processingStatus() == ProcessingStatus.PROCESSING
                 || meeting.processingStatus() == ProcessingStatus.PENDING) {
             throw new MeetingException.CannotReprocess(
@@ -288,14 +291,14 @@ public class MeetingService {
 
     @Transactional(readOnly = true)
     public Transcript getTranscript(UUID meetingId, UUID tenantId) {
-        // Garante escopo: a meeting precisa existir no tenant antes de devolver o texto.
+        // Enforces the scope: the meeting must exist in the tenant before returning the text.
         meetings.findByIdAndTenant(meetingId, tenantId).orElseThrow(MeetingException.NotFound::new);
         return transcripts
                 .findByMeetingAndTenant(meetingId, tenantId)
                 .orElseThrow(MeetingException.NotFound::new);
     }
 
-    /** Comando imutavel de upload. */
+    /** Immutable upload command. */
     public record UploadCommand(
             UUID tenantId,
             UUID ownerUserId,
@@ -309,7 +312,7 @@ public class MeetingService {
             String rawTranscript,
             Map<String, String> attributes) {
 
-        /** Compat: chamadas antigas sem attributes assumem mapa vazio. */
+        /** Compat: old calls without attributes assume an empty map. */
         public UploadCommand(
                 UUID tenantId,
                 UUID ownerUserId,

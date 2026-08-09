@@ -1,5 +1,5 @@
 /**
- * Pass-through: as rotas de auth não compartilham mais chrome aqui.
+ * Pass-through: the auth routes no longer share chrome here.
  * - login/signup → full-screen (AuthScreen).
  * - verify-email/reset/invites → card via route group `(card)/layout.tsx`.
  */

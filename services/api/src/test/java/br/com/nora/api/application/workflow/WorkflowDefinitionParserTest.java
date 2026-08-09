@@ -191,7 +191,7 @@ class WorkflowDefinitionParserTest {
                 .hasMessageContaining("owner/nome");
     }
 
-    /** Onda 2: outlook_send_email exige destinatário válido, igual send_email/gmail. */
+    /** Wave 2: outlook_send_email requires a valid recipient, same as send_email/gmail. */
     @Test
     void rejeitaOutlookSendEmailSemDestinatario() {
         Set<String> comOutlook = Set.of("outlook_send_email");
@@ -207,7 +207,7 @@ class WorkflowDefinitionParserTest {
                 .hasMessageContaining("params.to");
     }
 
-    /** Onda 2: trello_create_card exige a lista do board. */
+    /** Wave 2: trello_create_card requires the board list. */
     @Test
     void rejeitaTrelloCreateCardSemListId() {
         Set<String> comTrello = Set.of("trello_create_card");

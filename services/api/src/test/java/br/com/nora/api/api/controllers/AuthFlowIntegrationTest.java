@@ -25,7 +25,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-/** Teste end-to-end do fluxo completo US01 -> US02 -> US03 -> US04. */
+/** End-to-end test of the complete US01 -> US02 -> US03 -> US04 flow. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @Testcontainers
@@ -50,10 +50,10 @@ class AuthFlowIntegrationTest {
     @Autowired ObjectMapper mapper;
 
     /**
-     * O SimpleClientHttpRequestFactory padrao do TestRestTemplate usa HttpURLConnection legado, que
-     * estoura {@code HttpRetryException} ao receber 401 (caso esperado em login antes da
-     * verificacao). Trocamos pela implementacao baseada em Java 11 HttpClient, que trata 401
-     * normalmente.
+     * TestRestTemplate's default SimpleClientHttpRequestFactory uses the legacy HttpURLConnection,
+     * which throws {@code HttpRetryException} when it gets a 401 (an expected case on login before
+     * verification). We swap it for the Java 11 HttpClient-based implementation, which handles 401
+     * normally.
      */
     @BeforeEach
     void useJdkHttpClient() {
@@ -79,7 +79,7 @@ class AuthFlowIntegrationTest {
         String verifyToken = signup.get("emailVerificationDevToken").asText();
         assertThat(verifyToken).isNotBlank();
 
-        // US03 antes de verificar -> 401 EMAIL_NOT_VERIFIED
+        // US03 before verifying -> 401 EMAIL_NOT_VERIFIED
         JsonNode loginBefore =
                 postJson("/auth/login", Map.of("email", email, "password", "SenhaForte123"))
                         .read(HttpStatus.UNAUTHORIZED);
@@ -96,7 +96,7 @@ class AuthFlowIntegrationTest {
         assertThat(accessToken).isNotBlank();
         assertThat(login.get("tokenType").asText()).isEqualTo("Bearer");
 
-        // Endpoint privado aceita o token
+        // Private endpoint accepts the token
         HttpHeaders authHdr = new HttpHeaders();
         authHdr.set("Authorization", "Bearer " + accessToken);
         ResponseEntity<String> probe =
@@ -105,7 +105,8 @@ class AuthFlowIntegrationTest {
                         HttpMethod.GET,
                         new HttpEntity<>(authHdr),
                         String.class);
-        // Rota nao existe (404), mas o ponto e que NAO recebemos 401: passou pelo filtro JWT.
+        // The route does not exist (404), but the point is that we did NOT get 401: it passed the
+        // JWT filter.
         assertThat(probe.getStatusCode()).isNotEqualTo(HttpStatus.UNAUTHORIZED);
 
         // US04 step 1: request reset
@@ -121,13 +122,13 @@ class AuthFlowIntegrationTest {
                         Map.of("token", resetToken, "newPassword", "OutraSenha456"))
                 .read(HttpStatus.NO_CONTENT);
 
-        // Senha antiga falha
+        // Old password fails
         JsonNode oldPwd =
                 postJson("/auth/login", Map.of("email", email, "password", "SenhaForte123"))
                         .read(HttpStatus.UNAUTHORIZED);
         assertThat(oldPwd.get("code").asText()).isEqualTo("INVALID_CREDENTIALS");
 
-        // Nova senha funciona
+        // New password works
         postJson("/auth/login", Map.of("email", email, "password", "OutraSenha456"))
                 .read(HttpStatus.OK);
     }

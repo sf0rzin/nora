@@ -14,15 +14,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Servico de aplicacao para MeetingGoal e ProductivityAssessment (ADR 0005).
+ * Application service for MeetingGoal and ProductivityAssessment (ADR 0005).
  *
- * <p>Regras:
+ * <p>Rules:
  *
  * <ul>
- *   <li>Toda operacao recebe tenantId explicito vindo do JWT.
- *   <li>PUT cria ou atualiza idempotentemente (upsert por meetingId).
- *   <li>Atualizar goal apos analise marca o meeting como PENDING para reprocessamento.
- *   <li>DELETE remove goal e assessment vinculada (cascata logica).
+ *   <li>Every operation receives an explicit tenantId coming from the JWT.
+ *   <li>PUT creates or updates idempotently (upsert by meetingId).
+ *   <li>Updating the goal after analysis marks the meeting as PENDING for reprocessing.
+ *   <li>DELETE removes the goal and the linked assessment (logical cascade).
  * </ul>
  */
 @Service
@@ -42,9 +42,9 @@ public class MeetingGoalService {
     }
 
     /**
-     * Cria/atualiza o objetivo. Quando ja havia analise concluida, marca a meeting como PENDING
-     * para reprocessamento (o productivity assessment so e calculado pelo worker, e precisa do goal
-     * atualizado).
+     * Creates/updates the goal. When an analysis had already completed, marks the meeting as
+     * PENDING for reprocessing (the productivity assessment is only computed by the worker, and it
+     * needs the updated goal).
      */
     @Transactional
     public GoalSaveResult save(
@@ -80,10 +80,10 @@ public class MeetingGoalService {
         return new GoalSaveResult(saved, shouldReprocess);
     }
 
-    /** Remove goal + assessment. Idempotente: ausencia de goal e tratada como sucesso. */
+    /** Removes goal + assessment. Idempotent: a missing goal is treated as success. */
     @Transactional
     public void delete(UUID meetingId, UUID tenantId) {
-        // Garante escopo do tenant.
+        // Enforces the tenant scope.
         meetings.findByIdAndTenant(meetingId, tenantId).orElseThrow(MeetingException.NotFound::new);
         assessments.deleteByMeetingId(meetingId, tenantId);
         goals.deleteByMeetingId(meetingId, tenantId);
@@ -99,6 +99,6 @@ public class MeetingGoalService {
         return assessments.findByMeetingId(meetingId, tenantId);
     }
 
-    /** Resultado do save: o goal persistido e se houve trigger de reprocessamento. */
+    /** Save result: the persisted goal and whether reprocessing was triggered. */
     public record GoalSaveResult(MeetingGoal goal, boolean reprocessTriggered) {}
 }

@@ -1,35 +1,35 @@
 ---
-title: "Runbook — Deploy do NORA em Proxmox (self-hosted)"
-owner: Arquiteto NORA (Tech Lead)
+title: "Runbook — NORA deployment on Proxmox (self-hosted)"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.1
 last_reviewed: 2026-08-07
 ---
 
-# Runbook — Deploy do NORA em Proxmox (self-hosted)
+# Runbook — NORA deployment on Proxmox (self-hosted)
 
-> **Audiência:** quem opera o deploy do NORA na VM Proxmox (Tech Lead hoje; futuros operadores).
+> **Audience:** whoever operates the NORA deployment on the Proxmox VM (the Tech Lead today; future operators).
 >
-> **Substitui** [`azure-deploy.md`](azure-deploy.md), que passa a ser documento histórico.
-> A decisão está no [ADR 0034](../adr/0034-migracao-azure-para-proxmox.md); o desligamento do que
-> ficou na Azure está em [`azure-decommission.md`](azure-decommission.md).
+> **Supersedes** [`azure-deploy.md`](azure-deploy.md), which becomes a historical document.
+> The decision is in [ADR 0034](../adr/0034-migracao-azure-para-proxmox.md); shutting down what
+> remained on Azure is covered in [`azure-decommission.md`](azure-decommission.md).
 >
-> **Pré-requisitos:** acesso ao Proxmox "beta", conta Cloudflare com a zona `nora.systems`,
-> `sops` + `age` na máquina do operador e `gh` CLI. **Não é preciso trazer nada da Azure:** o
-> NORA é um projeto educacional sem dado de produção, então o banco nasce vazio e o Flyway cria o
-> schema do zero (ver `azure-decommission.md` §"O que este runbook NÃO precisa fazer").
+> **Prerequisites:** access to the "beta" Proxmox, a Cloudflare account with the `nora.systems` zone,
+> `sops` + `age` on the operator's machine, and the `gh` CLI. **Nothing needs to be brought over from Azure:**
+> NORA is an educational project with no production data, so the database starts empty and Flyway creates the
+> schema from scratch (see `azure-decommission.md` §"What this runbook does NOT need to do").
 
-> **Ambiente único, de novo.** Como no Azure, existe **um** ambiente vivo. Não há staging. A VM se
-> chama `nora-prod` desde o começo — o rename cosmético que ficou pendente no Azure (`dev` = produção)
-> não se repete aqui.
+> **A single environment, again.** As on Azure, there is **one** live environment. There is no staging. The VM is
+> named `nora-prod` from the start — the cosmetic rename that stayed pending on Azure (`dev` = production)
+> is not repeated here.
 
 ---
 
-## Visão geral
+## Overview
 
-Uma VM Debian no Proxmox roda toda a stack com Docker Compose (projeto `nora`), definida em
-[`infra/proxmox/docker-compose.yml`](../../infra/proxmox/docker-compose.yml) — **esse arquivo é a
-fonte da verdade**; este runbook é como operá-lo.
+A Debian VM on Proxmox runs the whole stack with Docker Compose (project `nora`), defined in
+[`infra/proxmox/docker-compose.yml`](../../infra/proxmox/docker-compose.yml) — **that file is the
+source of truth**; this runbook is how to operate it.
 
 ```
 Internet ──> Cloudflare edge ──(tunnel, saída-only)──> cloudflared
@@ -43,104 +43,104 @@ Internet ──> Cloudflare edge ──(tunnel, saída-only)──> cloudflared
                                            postgres  +  postgres-platform
 ```
 
-**Nenhuma porta inbound é aberta no host.** As únicas portas publicadas são em `127.0.0.1`
-(`5432` → postgres, `5433` → postgres-platform) para debug via `ssh -L`.
+**No inbound port is opened on the host.** The only published ports are on `127.0.0.1`
+(`5432` → postgres, `5433` → postgres-platform) for debugging via `ssh -L`.
 
-Mapa de substituição, para quem vem do Azure:
+Replacement map, for those coming from Azure:
 
 | Azure | Proxmox |
 |---|---|
-| Container Apps Environment + ingress externo + managed cert | `cloudflared` (Tunnel) + `caddy` (roteamento por Host) |
-| 3 Container Apps (api/worker/web) + `nora-admin` | 4 serviços do compose, mesmas env vars (transcritas de `main.bicep:694-1540`) |
+| Container Apps Environment + external ingress + managed cert | `cloudflared` (Tunnel) + `caddy` (Host-based routing) |
+| 3 Container Apps (api/worker/web) + `nora-admin` | 4 compose services, same env vars (transcribed from `main.bicep:694-1540`) |
 | Postgres Flexible Server B1ms | `pgvector/pgvector:pg16` (`nora`) |
-| 2º Flexible Server (ADR 0022) | `postgres-platform` (`nora_platform`), profile `platform` |
+| 2nd Flexible Server (ADR 0022) | `postgres-platform` (`nora_platform`), profile `platform` |
 | Key Vault + 3 User-Assigned Managed Identities | SOPS + age (`secrets.env.sops` + `/etc/nora/age.key`) |
 | App Insights (`-javaagent`) | `opentelemetry-javaagent.jar` → `otel-collector` → `prometheus` |
-| Log Analytics (`appLogsConfiguration`) | `alloy` (socket do Docker) → `loki` |
-| Workbook / Metrics Explorer | `grafana` em `grafana.<dom>` |
-| PITR 7 dias | `backup` (pg_dump horário, retenção 14d) + snapshot da VM no PBS |
-| `deploy-infra.yml` (push, OIDC) | `scripts/deploy.sh` no host (**PULL**) |
+| Log Analytics (`appLogsConfiguration`) | `alloy` (Docker socket) → `loki` |
+| Workbook / Metrics Explorer | `grafana` at `grafana.<dom>` |
+| PITR 7 days | `backup` (hourly pg_dump, 14d retention) + VM snapshot on PBS |
+| `deploy-infra.yml` (push, OIDC) | `scripts/deploy.sh` on the host (**PULL**) |
 
-### Bloqueantes antes de começar
+### Blockers before starting
 
-- [ ] **Imagem da API republicada com o javaagent trocado.** Trocar só
-      `OTEL_EXPORTER_OTLP_ENDPOINT` **não funciona**: o agent do App Insights exporta para o
-      endpoint Breeze da connection string e **ignora** a env OTLP. É preciso substituir o
-      `applicationinsights-agent.jar` pelo `opentelemetry-javaagent.jar` no
-      `services/api/Dockerfile` (linhas 16, 22-28, 39) e publicar uma tag nova no GHCR. Sem isso a
-      API sobe sem erro e **não emite telemetria nenhuma**.
-- [ ] **`PrometheusHealthSource` no lugar do `AppInsightsHealthSource`.** O antigo faz `GET` em
-      `api.applicationinsights.io/v1/apps/{id}/query` com **KQL**. O OTel Collector é write-only e
-      não fala KQL — é reescrita de classe Java, não troca de env.
-- [ ] **Dump verificado dos dois bancos**, fora do Azure (`azure-decommission.md` §1).
-- [ ] Arquivos de suporte presentes em `infra/proxmox/`: `caddy/Caddyfile`, `postgres/init/*.sql`,
+- [ ] **API image republished with the javaagent swapped.** Only changing
+      `OTEL_EXPORTER_OTLP_ENDPOINT` **does not work**: the App Insights agent exports to the
+      Breeze endpoint from the connection string and **ignores** the OTLP env var. You must replace
+      `applicationinsights-agent.jar` with `opentelemetry-javaagent.jar` in
+      `services/api/Dockerfile` (lines 16, 22-28, 39) and publish a new tag to GHCR. Without this the
+      API starts without error and **emits no telemetry at all**.
+- [ ] **`PrometheusHealthSource` in place of `AppInsightsHealthSource`.** The old one does a `GET` on
+      `api.applicationinsights.io/v1/apps/{id}/query` with **KQL**. The OTel Collector is write-only and
+      does not speak KQL — this is a Java class rewrite, not an env var change.
+- [ ] **Verified dump of both databases**, outside Azure (`azure-decommission.md` §1).
+- [ ] Supporting files present in `infra/proxmox/`: `caddy/Caddyfile`, `postgres/init/*.sql`,
       `observability/{otel-collector.yaml,prometheus.yml,loki.yaml,config.alloy,grafana/provisioning/}`,
       `backup/run-backup.sh`, `scripts/deploy.sh`.
 
 ---
 
-## As 9 armadilhas do self-hosted (CATALOGADAS)
+## The 9 self-hosting pitfalls (CATALOGUED)
 
-Mesmo espírito das 8 armadilhas do Azure for Students: cada uma custou tempo, e nenhuma dá erro
-óbvio. **Leia antes do primeiro deploy.**
+Same spirit as the 8 Azure for Students pitfalls: each one cost time, and none of them produces an
+obvious error. **Read before the first deployment.**
 
-### Armadilha 1 — `?sslmode=require` na JDBC URL derruba a API no boot
+### Pitfall 1 — `?sslmode=require` in the JDBC URL brings the API down at boot
 
-**Sintoma:** a API entra em restart loop; o log mostra o Hikari falhando antes do Flyway:
+**Symptom:** the API enters a restart loop; the log shows Hikari failing before Flyway:
 
 ```
 org.postgresql.util.PSQLException: The server does not support SSL.
 HikariPool-1 - Exception during pool initialization.
 ```
 
-**Causa:** a JDBC URL do Azure levava `?sslmode=require` porque o Flexible Server **exige** TLS. A
-imagem oficial do Postgres sobe com **SSL OFF** — o parâmetro herdado do Bicep faz o driver abortar
-o handshake.
+**Cause:** the Azure JDBC URL carried `?sslmode=require` because the Flexible Server **requires** TLS. The
+official Postgres image starts with **SSL OFF** — the parameter inherited from the Bicep makes the driver abort
+the handshake.
 
-**Fix:** a `DATASOURCE_URL` do compose **não tem** `sslmode`, de propósito:
+**Fix:** the compose `DATASOURCE_URL` **does not have** `sslmode`, on purpose:
 
 ```yaml
 DATASOURCE_URL: jdbc:postgresql://postgres:5432/nora
 ```
 
-Não é relaxamento de segurança: o tráfego não sai da bridge `data`, que é `internal: true`. Se
-alguém colar a URL do Azure por hábito, o boot quebra. Vale para
-`PLATFORM_DATASOURCE_URL`, `SPRING_FLYWAY_URL` e `NORA_TELEMETRY_DATASOURCE_URL` também.
+This is not a security relaxation: the traffic never leaves the `data` bridge, which is `internal: true`. If
+someone pastes the Azure URL out of habit, the boot breaks. The same applies to
+`PLATFORM_DATASOURCE_URL`, `SPRING_FLYWAY_URL` and `NORA_TELEMETRY_DATASOURCE_URL` as well.
 
-### Armadilha 2 — `initdb` só roda em VOLUME VAZIO
+### Pitfall 2 — `initdb` only runs on an EMPTY VOLUME
 
-**Sintoma:** os roles `nora_app` / `nora_telemetry` não existem, o painel do operador fica vazio, ou
-o flip do RLS falha. Nenhum erro no boot do Postgres — ele sobe limpo.
+**Symptom:** the `nora_app` / `nora_telemetry` roles do not exist, the operator panel is empty, or
+the RLS flip fails. No error at Postgres boot — it starts up cleanly.
 
-**Causa:** o entrypoint da imagem só executa `/docker-entrypoint-initdb.d/*` quando
-`PGDATA` está **vazio**. Se o volume `pgdata` já foi inicializado (um `up` anterior, um restore, um
-drill), os scripts são **silenciosamente ignorados**.
+**Cause:** the image's entrypoint only executes `/docker-entrypoint-initdb.d/*` when
+`PGDATA` is **empty**. If the `pgdata` volume has already been initialized (a previous `up`, a restore, a
+drill), the scripts are **silently ignored**.
 
-**Fix:** trate `postgres/init` como bootstrap de volume novo, nunca como migração. Para volume já
-existente, aplique à mão:
+**Fix:** treat `postgres/init` as new-volume bootstrap, never as a migration. For an already existing
+volume, apply it by hand:
 
 ```bash
 docker compose -p nora exec -T postgres psql -U nora_admin -d nora < infra/proxmox/postgres/init/01-roles-and-db.sql
 ```
 
-**Corolário importante:** depois de um `pg_restore`, `DEFAULT PRIVILEGES` **não** alcançam as
-tabelas restauradas (elas já existiam no dump). É obrigatório reaplicar os `GRANT` do R001 — ver
-§Restaurar os dados, passo 4.
+**Important corollary:** after a `pg_restore`, `DEFAULT PRIVILEGES` do **not** reach the
+restored tables (they already existed in the dump). Reapplying the R001 `GRANT`s is mandatory — see
+§Restoring the data, step 4.
 
-### Armadilha 3 — `internal: true` corta a saída do api/web/worker
+### Pitfall 3 — `internal: true` cuts off egress for api/web/worker
 
-**Sintoma:** a stack sobe **saudável** (todos os healthchecks verdes) e, no primeiro uso real,
-tudo que fala com o mundo dá timeout: análise LLM, embeddings, envio de e-mail pelo Resend, troca de
-código OAuth das integrações (ADR 0031), Telegram. O log mostra `UnknownHostException` ou timeout de
-conexão — não erro de credencial.
+**Symptom:** the stack comes up **healthy** (all healthchecks green) and, on the first real use,
+everything that talks to the outside world times out: LLM analysis, embeddings, sending e-mail via Resend,
+OAuth code exchange for the integrations (ADR 0031), Telegram. The log shows `UnknownHostException` or a
+connection timeout — not a credential error.
 
-**Causa:** as redes `internal` e `data` são `internal: true`. Isso não bloqueia só o inbound: bloqueia
-**egress e resolução de DNS externo** para qualquer container que esteja **apenas** nelas. O
-comentário do compose ("postgres e worker não saem sozinhos") descreve a intenção do `postgres`; o
-`worker`, o `api` e o `web` **precisam** sair (OpenAI, Gemini, Resend, endpoints de token dos 7
-providers OAuth).
+**Cause:** the `internal` and `data` networks are `internal: true`. That does not only block inbound: it blocks
+**egress and external DNS resolution** for any container that is **only** on them. The
+compose comment ("postgres and worker do not go out on their own") describes the intent for `postgres`; the
+`worker`, the `api` and the `web` **need** to go out (OpenAI, Gemini, Resend, token endpoints of the 7
+OAuth providers).
 
-**Fix:** dar saída — sem dar entrada — anexando `api`, `web` e `worker` também à `edge`:
+**Fix:** give egress — without giving ingress — by also attaching `api`, `web` and `worker` to `edge`:
 
 ```yaml
   worker:
@@ -151,66 +151,66 @@ providers OAuth).
     networks: [internal, edge]
 ```
 
-Estar na `edge` **não** publica porta nenhuma: não há `ports:` nesses serviços e o único caminho de
-entrada continua sendo `cloudflared → caddy`. `postgres`, `postgres-platform` e `backup` ficam **só**
-na `data` — esses realmente não saem.
+Being on `edge` does **not** publish any port: there is no `ports:` on those services and the only inbound
+path is still `cloudflared → caddy`. `postgres`, `postgres-platform` and `backup` stay **only**
+on `data` — those really do not go out.
 
-Verificação (falha antes do fix, passa depois):
+Verification (fails before the fix, passes after):
 
 ```bash
 docker compose -p nora exec worker python -c \
   "import urllib.request;print(urllib.request.urlopen('https://api.openai.com/v1/models',timeout=5).status)"
 ```
 
-### Armadilha 4 — `NEXT_PUBLIC_*` é baked em BUILD-TIME
+### Pitfall 4 — `NEXT_PUBLIC_*` is baked in at BUILD TIME
 
-**Sintoma:** você muda `NEXT_PUBLIC_API_BASE_URL` no `.env`, reinicia o `web`, e o browser continua
-chamando o endereço antigo. Nada no log indica o problema.
+**Symptom:** you change `NEXT_PUBLIC_API_BASE_URL` in the `.env`, restart `web`, and the browser keeps
+calling the old address. Nothing in the log points to the problem.
 
-**Causa:** o Next inlina `NEXT_PUBLIC_*` no bundle do cliente durante o `next build`. A env do
-runtime **não** altera JavaScript já compilado. O valor real está congelado na imagem publicada pelo
+**Cause:** Next inlines `NEXT_PUBLIC_*` into the client bundle during `next build`. The runtime env
+does **not** change already-compiled JavaScript. The real value is frozen into the image published by
 `build-images.yml` (via `--build-arg`).
 
-**Fix:** se o domínio público mudar, **rebuildar a imagem** com o build-arg novo e publicar tag
-nova. Não existe atalho por env.
+**Fix:** if the public domain changes, **rebuild the image** with the new build-arg and publish a new
+tag. There is no env-var shortcut.
 
-> Como o domínio continua `nora.systems`, **a imagem `web` que já está no GHCR serve sem rebuild**.
-> Isso só vira problema se alguém tentar validar a stack num domínio de teste.
+> Since the domain is still `nora.systems`, **the `web` image already in GHCR works without a rebuild**.
+> This only becomes a problem if someone tries to validate the stack on a test domain.
 
-### Armadilha 5 — `CF_ACCESS_AUD` vazio faz o admin FAIL-OPEN
+### Pitfall 5 — an empty `CF_ACCESS_AUD` makes the admin FAIL-OPEN
 
-**Sintoma:** nenhum. O `admin.<dom>` responde normalmente. A validação Tier 2 do ADR 0025
-simplesmente **não acontece**.
+**Symptom:** none. `admin.<dom>` responds normally. The ADR 0025 Tier 2 validation simply
+**does not happen**.
 
-**Causa:** `apps/admin/src/lib/access.ts` degrada para "edge-only" quando `CF_ACCESS_TEAM_DOMAIN` ou
-`CF_ACCESS_AUD` estão vazios — **fail-OPEN, em silêncio**. Em produção na Azure isso está ativo há
-meses: `CF_ACCESS_AUD` foi cadastrado como **Secret** mas é lido como `vars.` nos workflows, então
-chega vazio (ver `environment-secrets.md` §5.1).
+**Cause:** `apps/admin/src/lib/access.ts` degrades to "edge-only" when `CF_ACCESS_TEAM_DOMAIN` or
+`CF_ACCESS_AUD` are empty — **fail-OPEN, silently**. In production on Azure this has been active for
+months: `CF_ACCESS_AUD` was registered as a **Secret** but is read as `vars.` in the workflows, so it
+arrives empty (see `environment-secrets.md` §5.1).
 
-**Fix (já no compose):** as duas variáveis são obrigatórias com `:?` — sem elas o container `admin`
-**não sobe**:
+**Fix (already in the compose):** both variables are mandatory with `:?` — without them the `admin` container
+**does not start**:
 
 ```yaml
 CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:?... sem ele access.ts faz fail-open}
 CF_ACCESS_AUD:         ${CF_ACCESS_AUD:?... sem ele access.ts faz fail-open}
 ```
 
-Trocar fail-open silencioso por fail-closed barulhento é o ponto. Conferir depois do deploy:
+Trading silent fail-open for noisy fail-closed is the point. Check after the deployment:
 
 ```bash
 docker compose -p nora --profile platform exec admin printenv CF_ACCESS_AUD
 ```
 
-### Armadilha 6 — retenção do Loki NÃO apaga nada sem compactor
+### Pitfall 6 — Loki retention deletes NOTHING without a compactor
 
-**Sintoma:** o volume `loki_data` cresce até encher o disco da VM. Quando o disco enche, **o Postgres
-para de aceitar escrita** — a perda de log vira perda de dados.
+**Symptom:** the `loki_data` volume grows until it fills the VM disk. When the disk fills up, **Postgres
+stops accepting writes** — log loss turns into data loss.
 
-**Causa:** configurar `limits_config.retention_period` **não é suficiente**. No Loki, quem deleta é o
-**compactor**, e ele precisa estar explicitamente ligado com `retention_enabled: true`. Sem isso a
-retenção é só um filtro de consulta: os chunks continuam no disco para sempre.
+**Cause:** configuring `limits_config.retention_period` **is not enough**. In Loki, the thing that deletes is the
+**compactor**, and it has to be explicitly turned on with `retention_enabled: true`. Without that, retention
+is just a query filter: the chunks stay on disk forever.
 
-**Fix:** em `observability/loki.yaml`:
+**Fix:** in `observability/loki.yaml`:
 
 ```yaml
 limits_config:
@@ -221,99 +221,99 @@ compactor:
   delete_request_store: filesystem
 ```
 
-Alarme de disco (o Prometheus com `node_exporter` cobre) é obrigatório de qualquer forma — o
-compactor roda em ciclos e não protege contra um pico.
+A disk alarm (Prometheus with `node_exporter` covers this) is mandatory regardless — the
+compactor runs in cycles and does not protect against a spike.
 
-### Armadilha 7 — a janela de ~45s de 502 no rolling update
+### Pitfall 7 — the ~45s window of 502s during a rolling update
 
-Ver §[Rolling update](#rolling-update). É a consequência mais visível da migração e está registrada
-como perda no ADR 0034 §Disponibilidade — **não é bug, é o custo de trocar Container Apps por
+See §[Rolling update](#rolling-update). It is the most visible consequence of the migration and is recorded
+as a loss in ADR 0034 §Availability — **it is not a bug, it is the cost of trading Container Apps for
 Compose.**
 
-### Armadilha 8 — os TRÊS roles do RLS (omitir o `nora_telemetry` zera o painel EM SILÊNCIO)
+### Pitfall 8 — the THREE RLS roles (omitting `nora_telemetry` zeroes out the panel SILENTLY)
 
-**Sintoma:** o painel de telemetria do operador mostra **0 linhas**. Sem erro, sem 500, sem log.
+**Symptom:** the operator's telemetry panel shows **0 rows**. No error, no 500, no log.
 
-**Causa:** o RLS dos ADRs 0026/0028 depende de **três** roles, não dois:
+**Cause:** the RLS from ADRs 0026/0028 depends on **three** roles, not two:
 
-| Role | Flag | Uso |
+| Role | Flag | Use |
 |---|---|---|
-| `nora_app` | `NOBYPASSRLS` | runtime da aplicação — enxerga só o tenant do GUC |
-| `nora_telemetry` | **`BYPASSRLS`** | painel do operador — precisa atravessar tenants |
-| admin / owner | dono do schema | Flyway / DDL |
+| `nora_app` | `NOBYPASSRLS` | application runtime — sees only the GUC's tenant |
+| `nora_telemetry` | **`BYPASSRLS`** | operator panel — needs to cross tenants |
+| admin / owner | schema owner | Flyway / DDL |
 
-Se `NORA_TELEMETRY_DATASOURCE_*` não estiver preenchido, a API cai no datasource de runtime
-(`nora_app`), que é `NOBYPASSRLS`: as queries cross-tenant retornam **zero linhas sem erro**.
-Fail-closed silencioso — o modo de falha mais caro de diagnosticar.
+If `NORA_TELEMETRY_DATASOURCE_*` is not filled in, the API falls back to the runtime datasource
+(`nora_app`), which is `NOBYPASSRLS`: cross-tenant queries return **zero rows with no error**.
+Silent fail-closed — the most expensive failure mode to diagnose.
 
-**Fix:** provisionar os três no bootstrap (armadilha 2) e preencher as três variáveis. Conferência:
+**Fix:** provision all three at bootstrap (pitfall 2) and fill in all three variables. Check:
 
 ```bash
 docker compose -p nora exec postgres psql -U nora_admin -d nora -c \
   "select rolname, rolbypassrls from pg_roles where rolname in ('nora_app','nora_telemetry','nora_admin');"
 ```
 
-Esperado: `nora_app` = `f`, `nora_telemetry` = `t`.
+Expected: `nora_app` = `f`, `nora_telemetry` = `t`.
 
-### Armadilha 9 — o `-javaagent` do App Insights ignora a env OTLP
+### Pitfall 9 — the App Insights `-javaagent` ignores the OTLP env var
 
-**Sintoma:** você aponta `OTEL_EXPORTER_OTLP_ENDPOINT` para o collector local, a API sobe, o
-healthcheck passa — e o Prometheus/Grafana ficam **sem nenhum dado da API**.
+**Symptom:** you point `OTEL_EXPORTER_OTLP_ENDPOINT` at the local collector, the API starts, the
+healthcheck passes — and Prometheus/Grafana end up **with no data at all from the API**.
 
-**Causa:** `JAVA_TOOL_OPTIONS` carrega `-javaagent:/app/applicationinsights-agent.jar`
-(`services/api/Dockerfile:39`). Esse agent exporta para o endpoint **Breeze** da
-`APPLICATIONINSIGHTS_CONNECTION_STRING` e **não implementa** o exporter OTLP genérico. Com a
-connection string vazia, ele vira no-op silencioso — que é exatamente o que parece "estar
-funcionando".
+**Cause:** `JAVA_TOOL_OPTIONS` loads `-javaagent:/app/applicationinsights-agent.jar`
+(`services/api/Dockerfile:39`). That agent exports to the **Breeze** endpoint of the
+`APPLICATIONINSIGHTS_CONNECTION_STRING` and **does not implement** the generic OTLP exporter. With an empty
+connection string it becomes a silent no-op — which is exactly what looks like "working
+fine".
 
-**Fix:** trocar o JAR por `opentelemetry-javaagent.jar` e **republicar a imagem**. É o primeiro item
-dos bloqueantes por isso.
+**Fix:** swap the JAR for `opentelemetry-javaagent.jar` and **republish the image**. That is why it is the first
+item in the blockers.
 
 ---
 
-## Primeiro deploy do zero
+## First deployment from scratch
 
-### 1. Provisionar a VM no Proxmox
+### 1. Provision the VM on Proxmox
 
-#### O host `beta`, como ele realmente é
+#### The `beta` host, as it really is
 
-Levantado por SSH em 2026-08-07 (`ssh beta`, entrada no `~/.ssh/config` → `142.132.199.184`,
-`root`, chave `hetzner-admin-ed25519`). Não são suposições:
+Surveyed over SSH on 2026-08-07 (`ssh beta`, entry in `~/.ssh/config` → `142.132.199.184`,
+`root`, key `hetzner-admin-ed25519`). These are not assumptions:
 
 | | |
 |---|---|
-| Hypervisor | Proxmox VE **9.2.5**, kernel 7.0.14-8-pve, sobre **Debian 13 (trixie)** |
+| Hypervisor | Proxmox VE **9.2.5**, kernel 7.0.14-8-pve, on **Debian 13 (trixie)** |
 | CPU | AMD Ryzen 9 5950X — 16 cores / **32 threads** |
-| RAM | **125 GB** total, ~49 GB disponíveis (a VM `windows11-beta` sozinha reserva 64 GB) |
-| Storage | `local-lvm` (LVM-thin) com **6,8 TB livres** (2,6% usado); `local` (dir) com 48 GB |
-| Bridge das VMs | `vmbr1` → `10.10.1.0/24`, gateway `10.10.1.1` |
-| Egress | `MASQUERADE` de `10.10.1.0/24` para `enp7s0`, `ip_forward=1` |
-| Inbound | **nenhum** — as VMs não têm IP público |
-| VMs existentes | 100 `windows11-beta`, 101 `ayla`, 102 `yara`, 103 `anglis`, 104 `edge`, 105 `passabola` |
-| Próximo VMID livre | **106** |
-| Imagem já disponível | `local:iso/noble-server-cloudimg-amd64.img` (Ubuntu 24.04) |
+| RAM | **125 GB** total, ~49 GB available (the `windows11-beta` VM alone reserves 64 GB) |
+| Storage | `local-lvm` (LVM-thin) with **6.8 TB free** (2.6% used); `local` (dir) with 48 GB |
+| VM bridge | `vmbr1` → `10.10.1.0/24`, gateway `10.10.1.1` |
+| Egress | `MASQUERADE` from `10.10.1.0/24` to `enp7s0`, `ip_forward=1` |
+| Inbound | **none** — the VMs have no public IP |
+| Existing VMs | 100 `windows11-beta`, 101 `ayla`, 102 `yara`, 103 `anglis`, 104 `edge`, 105 `passabola` |
+| Next free VMID | **106** |
+| Image already available | `local:iso/noble-server-cloudimg-amd64.img` (Ubuntu 24.04) |
 
-> **A topologia valida o desenho, e não o contrário.** As VMs só têm saída NAT e zero entrada da
-> internet. O Cloudflare Tunnel não foi escolhido por conveniência — é o **único** jeito de publicar
-> a partir de `vmbr1` sem mexer em firewall do host nem em port-forward. Se um dia alguém propuser
-> "abrir a 443 direto", isso significa alterar o NAT do hypervisor que serve outras cinco VMs.
+> **The topology validates the design, not the other way around.** The VMs only have NAT egress and zero inbound
+> from the internet. The Cloudflare Tunnel was not chosen for convenience — it is the **only** way to publish
+> from `vmbr1` without touching the host firewall or port forwarding. If someone one day proposes
+> "just open 443 directly", that means changing the NAT of the hypervisor that serves five other VMs.
 
-#### Perfil da VM nova
+#### Profile of the new VM
 
-Dimensionado pelos limites do compose (api 2 vCPU/2,5 Gi, web 2/2 Gi, worker 1/1,5 Gi, admin
-0,5/0,5 Gi, mais os dois Postgres e a observabilidade):
+Sized from the compose limits (api 2 vCPU/2.5 Gi, web 2/2 Gi, worker 1/1.5 Gi, admin
+0.5/0.5 Gi, plus the two Postgres instances and the observability stack):
 
-| Item | Valor | Nota |
+| Item | Value | Note |
 |---|---|---|
-| VMID / Nome | `106` / `nora-prod` | sem `-dev`; o erro de nomenclatura do Azure não se repete |
-| SO | Ubuntu 24.04 (cloudimg já em `local:iso`) ou Debian 13 | o `bootstrap-host.sh` detecta a distro e escolhe o repo Docker certo |
-| vCPU | 6, tipo `host` | sobra folga: o host tem 32 threads |
-| RAM | 16 GB, **sem ballooning** | cabe nos ~49 GB livres; ballooning + Postgres é OOM imprevisível |
-| Disco | 100 GB em `local-lvm`, `virtio-scsi-single`, **Discard** + **SSD emulation** | o thin pool tem 6,8 TB; discard o mantém honesto |
-| Rede | `virtio`, bridge **`vmbr1`**, IP estático **`10.10.1.30/24`**, gw `10.10.1.1` | siga o padrão das VMs existentes (`.21` yara, `.22` anglis, `.23` passabola) |
-| DNS | `1.1.1.1 8.8.8.8` | mesmo das outras VMs |
-| Boot | QEMU Guest Agent **ligado** | necessário para snapshot consistente |
-| Proteção | `Start at boot: yes`, `Protection: yes` | evita destruição acidental |
+| VMID / Name | `106` / `nora-prod` | no `-dev`; the Azure naming mistake is not repeated |
+| OS | Ubuntu 24.04 (cloudimg already in `local:iso`) or Debian 13 | `bootstrap-host.sh` detects the distro and picks the right Docker repo |
+| vCPU | 6, type `host` | plenty of headroom: the host has 32 threads |
+| RAM | 16 GB, **no ballooning** | fits in the ~49 GB free; ballooning + Postgres is unpredictable OOM |
+| Disk | 100 GB on `local-lvm`, `virtio-scsi-single`, **Discard** + **SSD emulation** | the thin pool has 6.8 TB; discard keeps it honest |
+| Network | `virtio`, bridge **`vmbr1`**, static IP **`10.10.1.30/24`**, gw `10.10.1.1` | follow the pattern of the existing VMs (`.21` yara, `.22` anglis, `.23` passabola) |
+| DNS | `1.1.1.1 8.8.8.8` | same as the other VMs |
+| Boot | QEMU Guest Agent **enabled** | required for a consistent snapshot |
+| Protection | `Start at boot: yes`, `Protection: yes` | prevents accidental destruction |
 
 ```bash
 # no host beta, como root
@@ -330,8 +330,8 @@ qm set 106 --ciuser nora --sshkeys ~/.ssh/authorized_keys
 qm start 106
 ```
 
-Depois adicione ao seu `~/.ssh/config` local, seguindo o padrão das outras VMs — note que elas são
-alcançáveis a partir do host, não da internet:
+Then add it to your local `~/.ssh/config`, following the pattern of the other VMs — note that they are
+reachable from the host, not from the internet:
 
 ```
 Host nora-prod
@@ -341,10 +341,10 @@ Host nora-prod
   IdentityFile ~/.ssh/hetzner-admin-ed25519
 ```
 
-#### Backup do hypervisor — não existe ainda, e precisa ser criado
+#### Hypervisor backup — does not exist yet, and needs to be created
 
-**Não há Proxmox Backup Server neste host.** O que existe é um job `vzdump` local chamado
-`ayla-daily`, e ele cobre **apenas a VM 101**:
+**There is no Proxmox Backup Server on this host.** What exists is a local `vzdump` job called
+`ayla-daily`, and it covers **only VM 101**:
 
 ```
 vzdump: ayla-daily
@@ -353,11 +353,11 @@ vzdump: ayla-daily
   vmid 101
 ```
 
-Uma VM nova **não entra nesse job automaticamente**. Sem criar um equivalente, a `nora-prod` fica
-sem backup de hypervisor nenhum — e aí o `pg_dump` horário do serviço `backup` vira a única linha
-de defesa, o que cobre perda de *dado* mas não perda de *VM*.
+A new VM **does not join that job automatically**. Without creating an equivalent, `nora-prod` is left
+with no hypervisor backup at all — and then the hourly `pg_dump` of the `backup` service becomes the only line
+of defense, which covers loss of *data* but not loss of the *VM*.
 
-Crie o job (Datacenter → Backup → Add, ou editando `/etc/pve/jobs.cfg`), com a mesma política:
+Create the job (Datacenter → Backup → Add, or by editing `/etc/pve/jobs.cfg`), with the same policy:
 
 ```
 vzdump: nora-daily
@@ -369,12 +369,12 @@ vzdump: nora-daily
   notes-template NORA prod - backup automatico {{guestname}}
 ```
 
-> Atenção ao espaço: o storage `local` tem **48 GB livres** e já guarda ~5 GB por backup da `ayla`.
-> Um snapshot de 100 GB da `nora-prod` não cabe lá. Ou aponte este job para `local-lvm`/um storage
-> dedicado, ou reduza o disco da VM, ou adicione um Proxmox Backup Server. **Decida isto antes do
-> go-live, não depois do primeiro backup falhar em silêncio.**
+> Mind the space: the `local` storage has **48 GB free** and already holds ~5 GB per `ayla` backup.
+> A 100 GB snapshot of `nora-prod` will not fit there. Either point this job at `local-lvm`/a dedicated
+> storage, or shrink the VM's disk, or add a Proxmox Backup Server. **Decide this before
+> go-live, not after the first backup fails silently.**
 
-### 2. Bootstrap do host
+### 2. Host bootstrap
 
 ```bash
 ssh nora-prod
@@ -417,11 +417,11 @@ sudo ufw --force enable
 git clone https://github.com/sf0rzin/nora.git /opt/nora
 ```
 
-> O `ufw` é redundante com "não publicar portas", e é justamente por isso que vale: protege contra o
-> `-p 0.0.0.0:...` que alguém vai adicionar por engano num debug às 2h da manhã.
+> `ufw` is redundant with "don't publish ports", and that is exactly why it is worth it: it protects against the
+> `-p 0.0.0.0:...` that someone will add by mistake while debugging at 2 a.m.
 
-Limitar o journald e o log do Docker (o compose já define `max-size: 20m` / `max-file: 5` por
-container, mas o daemon precisa do default também):
+Limit journald and the Docker log (the compose already sets `max-size: 20m` / `max-file: 5` per
+container, but the daemon needs the default too):
 
 ```bash
 echo '{ "log-driver": "json-file", "log-opts": { "max-size": "20m", "max-file": "5" } }' | \
@@ -429,19 +429,19 @@ echo '{ "log-driver": "json-file", "log-opts": { "max-size": "20m", "max-file": 
 sudo systemctl restart docker
 ```
 
-### 3. Gerar a chave age e cifrar os segredos
+### 3. Generate the age key and encrypt the secrets
 
-**Na máquina do operador** (não no host — a chave privada é gerada uma vez e copiada):
+**On the operator's machine** (not on the host — the private key is generated once and copied):
 
 ```bash
 age-keygen -o age.key
 # Public key: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Guardar a **chave privada** em dois lugares offline (gerenciador de senhas + mídia física). Ela é
-o único material que decifra tudo — perdê-la significa recriar **todos** os segredos.
+Keep the **private key** in two offline places (password manager + physical media). It is
+the only material that decrypts everything — losing it means recreating **all** the secrets.
 
-Instalar no host:
+Install it on the host:
 
 ```bash
 scp age.key nora-prod:/tmp/age.key
@@ -450,7 +450,7 @@ ssh nora-prod 'sudo mv /tmp/age.key /etc/nora/age.key && \
                sudo chmod 400 /etc/nora/age.key'
 ```
 
-Declarar a chave pública em `infra/proxmox/.sops.yaml` (versionado):
+Declare the public key in `infra/proxmox/.sops.yaml` (version-controlled):
 
 ```yaml
 creation_rules:
@@ -458,7 +458,7 @@ creation_rules:
     age: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Montar o arquivo de segredos a partir do `.env.example` da stack e cifrar:
+Assemble the secrets file from the stack's `.env.example` and encrypt it:
 
 ```bash
 cd infra/proxmox
@@ -469,15 +469,15 @@ shred -u secrets.env
 git add .sops.yaml secrets.env.sops && git commit -m "chore(infra): segredos cifrados (SOPS+age)"
 ```
 
-**Dois planos, não um.** Só o que não pode vazar é cifrado; o resto fica em claro e
-legível no `env.defaults`. Cifrar configuração não-secreta faz cada troca de tag virar uma
-edição de arquivo cifrado com diff ilegível — e faz "perder" valores públicos (foi
-exatamente assim que o `CF_ACCESS_AUD` sumiu no Azure). O molde canônico é
-`infra/proxmox/secrets.env.example`; o mapa completo das variáveis do compose é o
-`.env.example` ao lado.
+**Two planes, not one.** Only what must not leak is encrypted; the rest stays in the clear and
+readable in `env.defaults`. Encrypting non-secret configuration turns every tag change into an
+edit of an encrypted file with an unreadable diff — and makes public values get "lost" (that is
+exactly how `CF_ACCESS_AUD` disappeared on Azure). The canonical template is
+`infra/proxmox/secrets.env.example`; the complete map of the compose variables is the
+`.env.example` next to it.
 
-**Inventário do `secrets.env`** — só segredo (ver ADR 0034 §Segredos: o número **aumenta**
-em relação ao Key Vault, porque sem managed identity cada `secretRef` vira valor estático):
+**Inventory of `secrets.env`** — secrets only (see ADR 0034 §Secrets: the number **increases**
+relative to Key Vault, because without managed identity each `secretRef` becomes a static value):
 
 ```dotenv
 # Borda
@@ -517,20 +517,20 @@ NORA_PLATFORM_ADMIN_TOKEN=          # OUTRO openssl rand -hex 32
 GRAFANA_ADMIN_PASSWORD=             # openssl rand -base64 24
 ```
 
-**Fica FORA do arquivo cifrado** (plano não-secreto, `env.defaults`): `NORA_PUBLIC_DOMAIN`,
-`NORA_ENV`, `POSTGRES_ADMIN_USER`, `DATASOURCE_USERNAME`, as URLs JDBC, `NORA_RLS_ENFORCE`,
-`NORA_EMAIL_FROM`, os `*_OAUTH_CLIENT_ID`, `NORA_PLATFORM_ENABLED`, **`CF_ACCESS_AUD` e
-`CF_ACCESS_TEAM_DOMAIN`** (identificadores públicos — armadilha 5) e as tags de rollout
-(`API_TAG`/`WORKER_TAG`/`WEB_TAG`/`ADMIN_TAG`, que o `deploy.sh --tag` sobrescreve).
+**Stays OUTSIDE the encrypted file** (non-secret plane, `env.defaults`): `NORA_PUBLIC_DOMAIN`,
+`NORA_ENV`, `POSTGRES_ADMIN_USER`, `DATASOURCE_USERNAME`, the JDBC URLs, `NORA_RLS_ENFORCE`,
+`NORA_EMAIL_FROM`, the `*_OAUTH_CLIENT_ID`s, `NORA_PLATFORM_ENABLED`, **`CF_ACCESS_AUD` and
+`CF_ACCESS_TEAM_DOMAIN`** (public identifiers — pitfall 5) and the rollout tags
+(`API_TAG`/`WORKER_TAG`/`WEB_TAG`/`ADMIN_TAG`, which `deploy.sh --tag` overrides).
 
-> **Nenhum valor pode ser a string `unset`.** Herança do Bicep, que gravava `'unset'` no
-> Key Vault quando um secret chegava vazio. Vazio é seguro; `unset` é fatal.
+> **No value may be the string `unset`.** Inherited from the Bicep, which wrote `'unset'` into the
+> Key Vault when a secret came in empty. Empty is safe; `unset` is fatal.
 
-> **`NORA_INTEGRATIONS_ENC_KEY`:** nunca colocar a string `unset` nem valor não-base64. O
-> `TokenCipher` valida base64 e **derruba o boot** — foi o incidente de 2026-06-11 com
-> KV-reference. Gerar com `openssl rand -base64 32`.
+> **`NORA_INTEGRATIONS_ENC_KEY`:** never put the string `unset` nor a non-base64 value there. The
+> `TokenCipher` validates base64 and **brings the boot down** — that was the 2026-06-11 incident with
+> the KV reference. Generate it with `openssl rand -base64 32`.
 
-Rotação de chave age (política do ADR 0016 Gap 7, agora sem Key Vault):
+Age key rotation (ADR 0016 Gap 7 policy, now without Key Vault):
 
 ```bash
 # adiciona a nova pública em .sops.yaml, depois:
@@ -539,14 +539,14 @@ sops updatekeys secrets.env.sops
 
 ### 4. Cloudflare Tunnel + Access Applications
 
-O `TUNNEL_TOKEN` do compose implica **túnel gerenciado remotamente**: a configuração de hostnames
-vive no painel/API da Cloudflare, não num `config.yml` local.
+The compose's `TUNNEL_TOKEN` implies a **remotely managed tunnel**: the hostname configuration
+lives in the Cloudflare dashboard/API, not in a local `config.yml`.
 
-1. **Criar o túnel** (Zero Trust → Networks → Tunnels → Create a tunnel → *Cloudflared*), nome
-   `nora-prod`. Copiar o **connector token** para `CLOUDFLARE_TUNNEL_TOKEN`.
+1. **Create the tunnel** (Zero Trust → Networks → Tunnels → Create a tunnel → *Cloudflared*), named
+   `nora-prod`. Copy the **connector token** into `CLOUDFLARE_TUNNEL_TOKEN`.
 
-2. **Public hostnames** — os quatro apontam para o **mesmo** serviço, porque quem faz o roteamento
-   por Host é o Caddy:
+2. **Public hostnames** — all four point to the **same** service, because the one doing Host-based
+   routing is Caddy:
 
    | Hostname | Service |
    |---|---|
@@ -556,54 +556,54 @@ vive no painel/API da Cloudflare, não num `config.yml` local.
    | `admin.nora.systems` | `http://caddy:80` |
    | `grafana.nora.systems` | `http://caddy:80` |
 
-   Adicionar um hostname cria automaticamente o CNAME **proxied** para
-   `<tunnel-id>.cfargotunnel.com`. **Não crie os hostnames públicos ainda** se quiser verificar
-   antes do cutover de DNS — ver §Verificar.
+   Adding a hostname automatically creates the **proxied** CNAME to
+   `<tunnel-id>.cfargotunnel.com`. **Do not create the public hostnames yet** if you want to verify
+   before the DNS cutover — see §Verify.
 
 3. **Access Applications** (Zero Trust → Access → Applications):
 
-   | Aplicação | Política | Observação |
+   | Application | Policy | Note |
    |---|---|---|
-   | `admin.nora.systems` | allowlist de e-mail + OTP/SSO | já existe (ADR 0025); reusar o **AUD** |
-   | `grafana.nora.systems` | allowlist de e-mail + OTP/SSO | **NOVA** — o Grafana passou a ter rota pública; sem Access ele fica exposto atrás de uma senha só |
+   | `admin.nora.systems` | e-mail allowlist + OTP/SSO | already exists (ADR 0025); reuse the **AUD** |
+   | `grafana.nora.systems` | e-mail allowlist + OTP/SSO | **NEW** — Grafana now has a public route; without Access it is exposed behind a single password |
 
-   O apex, `www` e `api` ficam **públicos** (são o produto).
+   The apex, `www` and `api` stay **public** (they are the product).
 
-4. **`CF_ACCESS_AUD`** = AUD tag da Access App do admin. Se estiver reaproveitando a do Azure, o
-   valor não muda. Cadastrar no `secrets.env` (armadilha 5).
+4. **`CF_ACCESS_AUD`** = the AUD tag of the admin Access App. If you are reusing the one from Azure, the
+   value does not change. Register it in `secrets.env` (pitfall 5).
 
-> **Cuidado herdado do ADR 0025:** o workflow `cloudflare-setup.yml` é dono da Access App/Policy/IdP
-> e **deve rodar sem `admin_hostname`** — com o parâmetro, ele sobrescreve o CNAME do túnel.
+> **Caveat inherited from ADR 0025:** the `cloudflare-setup.yml` workflow owns the Access App/Policy/IdP
+> and **must run without `admin_hostname`** — with that parameter, it overwrites the tunnel's CNAME.
 
-### 5. Primeiro deploy
+### 5. First deployment
 
 ```bash
 cd /opt/nora/infra/proxmox
 ./scripts/deploy.sh --platform --tag sha-xxxxxxx
 ```
 
-O `deploy.sh` faz, em ordem: decifra `secrets.env.sops` (SOPS + age) para um `.env` em
-**tmpfs** (`/dev/shm` — ele **recusa** rodar se `/dev/shm` não for tmpfs, para não encostar
-segredo no disco) → `docker compose pull` → `up -d --wait --no-deps` **serviço a serviço**,
-na ordem de dependência, respeitando o healthcheck → em falha de health, **rollback
-automático** para a tag anterior. O `.env` é sobrescrito e apagado no trap EXIT.
+`deploy.sh` does, in order: decrypts `secrets.env.sops` (SOPS + age) into a `.env` on
+**tmpfs** (`/dev/shm` — it **refuses** to run if `/dev/shm` is not tmpfs, so as not to let a
+secret touch the disk) → `docker compose pull` → `up -d --wait --no-deps` **service by service**,
+in dependency order, honoring the healthcheck → on a health failure, **automatic rollback**
+to the previous tag. The `.env` is overwritten and deleted in the EXIT trap.
 
-Flags que importam:
+Flags that matter:
 
-| Flag | Uso |
+| Flag | Use |
 |---|---|
-| `--tag sha-xxxxxxx` | tag das imagens de app a subir |
-| `--service api,web` | só estes serviços (repetível ou lista) |
-| `--if-changed` | só faz deploy se o digest remoto diferir — é o que o timer systemd chama |
-| `--rollback` | volta os serviços selecionados para a tag anterior registrada no estado |
-| `--no-rollback` | em falha de health, deixa quebrado para debug |
-| `--dry-run` | mostra o que faria |
+| `--tag sha-xxxxxxx` | tag of the app images to bring up |
+| `--service api,web` | only these services (repeatable or a list) |
+| `--if-changed` | only deploys if the remote digest differs — this is what the systemd timer calls |
+| `--rollback` | returns the selected services to the previous tag recorded in the state |
+| `--no-rollback` | on a health failure, leaves it broken for debugging |
+| `--dry-run` | shows what it would do |
 
-O estado de rollout (tag atual, tag anterior, digest, timestamp) fica em
-`/srv/nora/state/deploy-state.env` — é ele que torna o rollback possível sem você ter
-anotado nada.
+The rollout state (current tag, previous tag, digest, timestamp) lives in
+`/srv/nora/state/deploy-state.env` — it is what makes rollback possible without your having
+written anything down.
 
-Manual, quando precisar depurar o script:
+Manually, when you need to debug the script:
 
 ```bash
 sops --decrypt --input-type dotenv --output-type dotenv secrets.env.sops > /dev/shm/nora.env
@@ -613,18 +613,18 @@ docker compose -p nora --env-file ./env.defaults --env-file /dev/shm/nora.env \
 shred -u /dev/shm/nora.env
 ```
 
-> **Dois planos de configuração, de propósito.** `env.defaults` (não-secreto: domínio, tags
-> de imagem, toggles, retenção) e `secrets.env.sops` (só o que não pode vazar). O compose
-> aceita `--env-file` repetido e o **último vence**. Cifrar as tags de imagem faria cada
-> rollout virar uma edição de arquivo cifrado com diff ilegível — ver o cabeçalho de
+> **Two configuration planes, on purpose.** `env.defaults` (non-secret: domain, image
+> tags, toggles, retention) and `secrets.env.sops` (only what must not leak). Compose
+> accepts a repeated `--env-file` and the **last one wins**. Encrypting the image tags would make every
+> rollout an edit of an encrypted file with an unreadable diff — see the header of
 > `secrets.env.example`.
 
-> **Não** suba tudo de uma vez se for restaurar dados. Ver o passo seguinte.
+> **Do not** bring everything up at once if you are going to restore data. See the next step.
 
-### 6. Restaurar os dados vindos do Azure
+### 6. Restore the data coming from Azure
 
-**Ordem obrigatória.** Se a API subir antes do restore, o Flyway cria um schema virgem e o
-`pg_restore` colide com ele.
+**Mandatory order.** If the API comes up before the restore, Flyway creates a virgin schema and
+`pg_restore` collides with it.
 
 ```bash
 # 1) SÓ os bancos. O initdb roda aqui (volume vazio) e cria os roles do RLS.
@@ -644,16 +644,16 @@ docker compose -p nora exec postgres-platform \
   pg_restore -U nora_admin -d nora_platform --no-owner --no-acl --exit-on-error -v /tmp/nora_platform.dump
 ```
 
-**4) Reaplicar os GRANTs (obrigatório — armadilha 2).** `ALTER DEFAULT PRIVILEGES` só vale para
-objetos criados **depois**; as tabelas restauradas já existiam no dump e chegam **sem** as permissões
-do `nora_app` / `nora_telemetry`:
+**4) Reapply the GRANTs (mandatory — pitfall 2).** `ALTER DEFAULT PRIVILEGES` only applies to
+objects created **afterwards**; the restored tables already existed in the dump and arrive **without** the
+`nora_app` / `nora_telemetry` permissions:
 
 ```bash
 docker compose -p nora exec -T postgres psql -U nora_admin -d nora \
   < ../../services/api/src/main/resources/db/operational/R001__provision_app_roles.sql
 ```
 
-**5) Conferir antes de subir o resto:**
+**5) Check before bringing up the rest:**
 
 ```bash
 docker compose -p nora exec postgres psql -U nora_admin -d nora -c "
@@ -664,27 +664,27 @@ docker compose -p nora exec postgres psql -U nora_admin -d nora -c "
     from flyway_schema_history where success;"
 ```
 
-O `flyway_schema_history` **vem no dump**. Se a versão bater com a do repo, o Flyway do boot não vai
-reaplicar nada — é assim que se sabe que o restore está íntegro. Se estiver **atrás**, o Flyway vai
-migrar no primeiro boot da API (esperado); se estiver **à frente**, pare: o dump é de um código mais
-novo que a imagem.
+The `flyway_schema_history` **comes in the dump**. If the version matches the repo's, the Flyway run at boot will not
+reapply anything — that is how you know the restore is intact. If it is **behind**, Flyway will
+migrate on the API's first boot (expected); if it is **ahead**, stop: the dump is from code newer
+than the image.
 
 ```bash
 # 6) Agora sim, a stack inteira.
 ./scripts/deploy.sh --platform --tag sha-xxxxxxx
 ```
 
-> **Só faça isto se estiver recuperando de um backup.** No primeiro deploy o banco nasce vazio e
-> não há nada a restaurar. Quando for o caso, os passos 1 a 5 acima estão automatizados em
-> `./scripts/restore-into-proxmox.sh --from-dir <dir-de-backup> --sops` (os dumps que o serviço
-> `backup` gera em `$BACKUP_DIR`), que cria os roles antes dos dados, restaura com `--no-owner
-> --no-privileges` e aplica o R001 **depois**. Use o script; a sequência manual acima é o que ele
-> faz, para quando algo falhar no meio.
+> **Only do this if you are recovering from a backup.** On the first deployment the database starts empty and
+> there is nothing to restore. When it does apply, steps 1 through 5 above are automated in
+> `./scripts/restore-into-proxmox.sh --from-dir <dir-de-backup> --sops` (the dumps that the `backup`
+> service generates in `$BACKUP_DIR`), which creates the roles before the data, restores with `--no-owner
+> --no-privileges` and applies R001 **afterwards**. Use the script; the manual sequence above is what it
+> does, for when something fails midway.
 
-### 7. Verificar
+### 7. Verify
 
-**Antes de tocar no DNS.** O Caddy não publica porta, então a verificação é de dentro da rede
-`edge`, com o Host header certo:
+**Before touching DNS.** Caddy does not publish a port, so verification is from inside the `edge`
+network, with the right Host header:
 
 ```bash
 for h in nora.systems api.nora.systems admin.nora.systems grafana.nora.systems; do
@@ -694,10 +694,10 @@ for h in nora.systems api.nora.systems admin.nora.systems grafana.nora.systems; 
 done
 ```
 
-Esperado: `200` no apex, `200` na api (ou `401`/`404` conforme a rota raiz), `302`/`403` no admin
-(Access não está no caminho aqui — o gate é na borda), `200`/`302` no grafana.
+Expected: `200` on the apex, `200` on the api (or `401`/`404` depending on the root route), `302`/`403` on the admin
+(Access is not in the path here — the gate is at the edge), `200`/`302` on grafana.
 
-Health de cada serviço:
+Health of each service:
 
 ```bash
 docker compose -p nora ps --format 'table {{.Service}}\t{{.Status}}'
@@ -706,7 +706,7 @@ docker compose -p nora exec worker python -c \
   "import urllib.request;print(urllib.request.urlopen('http://localhost:8001/healthz').read())"
 ```
 
-Egress (armadilha 3) e observabilidade:
+Egress (pitfall 3) and observability:
 
 ```bash
 docker compose -p nora exec worker python -c \
@@ -721,7 +721,7 @@ docker compose -p nora exec loki wget -qO- \
   'http://localhost:3100/loki/api/v1/label/container/values' | jq
 ```
 
-RLS (armadilha 8) e segredos:
+RLS (pitfall 8) and secrets:
 
 ```bash
 docker compose -p nora exec postgres psql -U nora_admin -d nora -c \
@@ -729,26 +729,26 @@ docker compose -p nora exec postgres psql -U nora_admin -d nora -c \
 docker compose -p nora --profile platform exec admin printenv CF_ACCESS_AUD   # não pode ser vazio
 ```
 
-**Só depois disso** crie os public hostnames no túnel (§4.2) — esse é o cutover de DNS. A ordem
-completa de corte, incluindo o que fazer na Azure antes e depois, está em
+**Only after that** create the public hostnames on the tunnel (§4.2) — that is the DNS cutover. The
+complete cutover order, including what to do on Azure before and after, is in
 [`azure-decommission.md`](azure-decommission.md).
 
 ---
 
-## Operações comuns
+## Common operations
 
-### Rollout de uma versão nova
+### Rolling out a new version
 
-Tags imutáveis `sha-<short>` são o mecanismo. `latest` serve para bootstrap; **não** serve para
-rollout, porque não dá alvo de rollback.
+Immutable `sha-<short>` tags are the mechanism. `latest` is fine for bootstrap; it is **not** fine for
+rollout, because it gives no rollback target.
 
 ```bash
 cd /opt/nora && git pull
 ./infra/proxmox/scripts/deploy.sh --platform --tag sha-a1b2c3d
 ```
 
-A tag anterior **não precisa ser anotada**: o `deploy.sh` grava `<SVC>_PREV_TAG` em
-`/srv/nora/state/deploy-state.env` antes de trocar. Só um serviço:
+The previous tag **does not need to be written down**: `deploy.sh` records `<SVC>_PREV_TAG` in
+`/srv/nora/state/deploy-state.env` before switching. Just one service:
 
 ```bash
 ./infra/proxmox/scripts/deploy.sh --service api --tag sha-a1b2c3d
@@ -756,16 +756,16 @@ A tag anterior **não precisa ser anotada**: o `deploy.sh` grava `<SVC>_PREV_TAG
 
 <a id="rolling-update"></a>
 
-### Rolling update — a janela de ~45s
+### Rolling update — the ~45s window
 
-**Não existe rolling update de verdade nesta stack.** `docker compose up -d` **derruba o container
-antigo antes de subir o novo** — não há o readiness gate que o `activeRevisionsMode: Single` do
-Container Apps dava. O boot do Spring com Flyway leva ~30s (o healthcheck da `api` usa
-`start_period: 45s` e `retries: 12`, herdados do `failureThreshold: 12` do Bicep).
+**There is no real rolling update in this stack.** `docker compose up -d` **tears down the old
+container before bringing up the new one** — there is no readiness gate like the one
+`activeRevisionsMode: Single` gave in Container Apps. The Spring boot with Flyway takes ~30s (the `api`
+healthcheck uses `start_period: 45s` and `retries: 12`, inherited from the Bicep's `failureThreshold: 12`).
 
-Resultado prático: **~45s por deploy da API em que a origem não responde.**
+Practical result: **~45s per API deployment during which the origin does not respond.**
 
-Mitigação — não eliminação — no `caddy/Caddyfile`:
+Mitigation — not elimination — in `caddy/Caddyfile`:
 
 ```caddyfile
 api.{$NORA_PUBLIC_DOMAIN} {
@@ -779,24 +779,24 @@ api.{$NORA_PUBLIC_DOMAIN} {
 }
 ```
 
-O que isso **não** resolve, e é preciso saber:
+What this does **not** solve, and you need to know:
 
-- requisições que estouram o `lb_try_duration` **falham** (504 em vez de 502 — ainda é erro);
-- conexões **em voo** no momento do `stop` são cortadas;
-- **SSE / streaming do chat** quebra: o buffer de retry não reconstrói um stream já iniciado;
-- uploads longos são perdidos e precisam ser refeitos.
+- requests that exceed `lb_try_duration` **fail** (504 instead of 502 — still an error);
+- connections **in flight** at the moment of the `stop` are cut;
+- **SSE / chat streaming** breaks: the retry buffer does not rebuild an already-started stream;
+- long uploads are lost and have to be redone.
 
-**Prática recomendada:** deploy da API em janela de baixo tráfego; deploy de `web`/`admin` (boot
-curto) a qualquer hora. Um deploy só do `worker` não afeta o usuário — a API degrada com erro
-controlado.
+**Recommended practice:** deploy the API in a low-traffic window; deploy `web`/`admin` (short boot)
+at any time. A `worker`-only deployment does not affect the user — the API degrades with a
+controlled error.
 
-Deploy de um serviço só:
+Deploying a single service:
 
 ```bash
 ./infra/proxmox/scripts/deploy.sh --service web --tag sha-a1b2c3d
 ```
 
-### Ver logs
+### View logs
 
 ```bash
 docker compose -p nora logs -f --tail=200 api
@@ -804,9 +804,9 @@ docker compose -p nora logs -f --tail=200 api
 #   {container="nora-api"} |= "ERROR"
 ```
 
-### Conectar no Postgres
+### Connect to Postgres
 
-Sem exposição de rede: as portas estão em `127.0.0.1`.
+No network exposure: the ports are on `127.0.0.1`.
 
 ```bash
 ssh -L 15432:127.0.0.1:5432 nora-prod          # primário
@@ -814,60 +814,60 @@ ssh -L 15433:127.0.0.1:5433 nora-prod          # plataforma
 psql "host=127.0.0.1 port=15432 dbname=nora user=nora_admin"     # SEM sslmode (armadilha 1)
 ```
 
-Direto no host: `docker compose -p nora exec postgres psql -U nora_admin -d nora`.
+Directly on the host: `docker compose -p nora exec postgres psql -U nora_admin -d nora`.
 
-### Backup manual sob demanda
+### On-demand manual backup
 
-O serviço `backup` roda de hora em hora (`BACKUP_INTERVAL_SECONDS`, retenção
-`BACKUP_RETENTION_DAYS=14`) e grava em `/srv/nora/backups`. Para forçar agora:
+The `backup` service runs hourly (`BACKUP_INTERVAL_SECONDS`, retention
+`BACKUP_RETENTION_DAYS=14`) and writes to `/srv/nora/backups`. To force it now:
 
 ```bash
 docker compose -p nora exec backup /usr/local/bin/run-backup.sh --once
 ls -lh /srv/nora/backups | tail
 ```
 
-> **Backup no mesmo host não é backup.** Sincronize `/srv/nora/backups` para fora da VM (o job do
-> Proxmox Backup Server cobre o disco inteiro; um `rclone`/`rsync` para destino externo cobre o caso
-> "o Proxmox pegou fogo"). Enquanto os dumps só existirem na VM, o RPO real de uma perda de host é
-> **o último snapshot do PBS**, não a última hora.
+> **A backup on the same host is not a backup.** Sync `/srv/nora/backups` off the VM (the Proxmox
+> Backup Server job covers the whole disk; an `rclone`/`rsync` to an external destination covers the
+> "Proxmox caught fire" case). As long as the dumps only exist on the VM, the real RPO for a host loss is
+> **the last PBS snapshot**, not the last hour.
 
-### Flip do RLS enforce
+### RLS enforce flip
 
-Inalterado no design (ADR 0026/0028). O que muda é o endpoint: onde o
-[`rls-cutover-runbook.md`](rls-cutover-runbook.md) diz
-`nora-pg-dev-wgl3a3.postgres.database.azure.com`, leia `postgres` (dentro da rede `data`), e o
-provisionamento dos roles roda pelo `psql` local em vez do workflow `rls-cutover.yml` — que
-dependia de firewall rule do runner e OIDC, e não se aplica mais.
+Unchanged in design (ADR 0026/0028). What changes is the endpoint: where the
+[`rls-cutover-runbook.md`](rls-cutover-runbook.md) says
+`nora-pg-dev-wgl3a3.postgres.database.azure.com`, read `postgres` (inside the `data` network), and the
+role provisioning runs through the local `psql` instead of the `rls-cutover.yml` workflow — which
+depended on a runner firewall rule and OIDC, and no longer applies.
 
 ---
 
 ## Rollback
 
-Três níveis. Escolha pelo que quebrou, não pelo que é mais rápido.
+Three levels. Choose based on what broke, not on what is fastest.
 
-### Nível 1 — rollback de aplicação (imagem)
+### Level 1 — application rollback (image)
 
-Serve para bug de código. **Segundos a um minuto.**
+For a code bug. **Seconds to a minute.**
 
 ```bash
 ./infra/proxmox/scripts/deploy.sh --service api --rollback
 ```
 
-O `--rollback` lê `API_PREV_TAG` do `/srv/nora/state/deploy-state.env` — gravado
-automaticamente no rollout anterior. É por isso que `latest` é **proibido** no rollout: sem
-tag imutável não há alvo de rollback, e o estado não teria o que registrar.
+`--rollback` reads `API_PREV_TAG` from `/srv/nora/state/deploy-state.env` — written
+automatically during the previous rollout. That is why `latest` is **forbidden** in a rollout: without an
+immutable tag there is no rollback target, and the state would have nothing to record.
 
-Se o próprio `up --wait` falhar no health, o `deploy.sh` **já faz esse rollback sozinho**
-(a menos de `--no-rollback`).
+If `up --wait` itself fails on health, `deploy.sh` **already does this rollback by itself**
+(unless `--no-rollback`).
 
-### Nível 2 — rollback de schema (NÃO existe automático)
+### Level 2 — schema rollback (there is NO automatic one)
 
-> **Aviso.** Flyway é **forward-only** (`standards.md` §6: "migration nunca é editada depois de
-> aplicada"). Voltar a imagem **não volta o schema**. Se a migration nova for destrutiva
-> (`DROP COLUMN`, mudança de tipo com perda), a imagem antiga vai encontrar um banco que ela não
-> entende — e o rollback de Nível 1 **não resolve**; pode piorar.
+> **Warning.** Flyway is **forward-only** (`standards.md` §6: "a migration is never edited after being
+> applied"). Rolling the image back **does not roll the schema back**. If the new migration is destructive
+> (`DROP COLUMN`, a lossy type change), the old image will find a database it does not
+> understand — and the Level 1 rollback **does not fix it**; it may make things worse.
 
-Nesse caso o rollback é **restore de dado**:
+In that case, the rollback is a **data restore**:
 
 ```bash
 docker compose -p nora stop api web admin worker
@@ -880,55 +880,55 @@ docker compose -p nora exec -T postgres psql -U nora_admin -d nora \
 # só então: API_TAG de volta para a anterior + deploy
 ```
 
-Perde-se tudo que foi escrito desde o dump (**até 1 hora** — o RPO real desta stack, ADR 0034
-§Disponibilidade). Toda migration destrutiva deve, por isso, ser precedida de um backup manual.
+Everything written since the dump is lost (**up to 1 hour** — the real RPO of this stack, ADR 0034
+§Availability). Every destructive migration must therefore be preceded by a manual backup.
 
-### Nível 3 — rollback de host (snapshot do Proxmox)
+### Level 3 — host rollback (Proxmox snapshot)
 
-Só para quebra de **host** (upgrade de kernel, Docker corrompido, disco). Reverter o snapshot
-**descarta todos os dados escritos desde ele** — inclusive os dumps em `/srv/nora/backups`.
+Only for a **host** breakage (kernel upgrade, corrupted Docker, disk). Reverting the snapshot
+**discards all data written since it was taken** — including the dumps in `/srv/nora/backups`.
 
 ```
 Proxmox → nora-prod → Snapshots → selecionar → Rollback
 ```
 
-**Antes de reverter, copie `/srv/nora/backups` para fora da VM.** Sem isso você troca um problema de
-host por perda de dado.
+**Before reverting, copy `/srv/nora/backups` off the VM.** Without that you trade a host problem
+for data loss.
 
 ---
 
 ## Restore drill
 
-**Trimestral**, herdado do ADR 0016 Gap 3. O que muda: antes o RTO era garantido pelo PITR do
-Flexible Server; agora ele é **um procedimento manual**. Um RTO nunca medido é um chute.
+**Quarterly**, inherited from ADR 0016 Gap 3. What changes: previously the RTO was guaranteed by the Flexible
+Server's PITR; now it is **a manual procedure**. An RTO that is never measured is a guess.
 
-1. **Clonar** `nora-prod` no Proxmox (Full Clone) como `nora-drill`.
-2. **Isolar antes de ligar** — dois cuidados, nessa ordem:
-   - mover a NIC para uma bridge sem uplink (ou vlan isolada);
-   - **remover `CLOUDFLARE_TUNNEL_TOKEN` do `.env` do clone.** Se o clone subir com o token, ele
-     registra um **segundo connector no mesmo túnel** e a Cloudflare passa a balancear tráfego de
-     produção entre a VM real e o drill. Este é o erro mais perigoso do procedimento.
-3. **Cronometrar a partir daqui.** Apagar os volumes e restaurar do backup mais recente seguindo
-   §Restaurar os dados (passos 1 a 5).
-4. **Smoke** com o checklist de §Verificar: contagens de `tenants`/`meetings`/`transcripts` batendo
-   com a produção, `flyway_schema_history` na versão esperada, os três roles corretos, login
-   funcionando.
-5. **Parar o cronômetro. Registrar** na tabela abaixo: data, tamanho do dump, RTO medido, e o que
-   deu errado (sempre há algo).
-6. **Destruir** o clone.
+1. **Clone** `nora-prod` on Proxmox (Full Clone) as `nora-drill`.
+2. **Isolate before powering on** — two precautions, in this order:
+   - move the NIC to a bridge with no uplink (or an isolated vlan);
+   - **remove `CLOUDFLARE_TUNNEL_TOKEN` from the clone's `.env`.** If the clone comes up with the token, it
+     registers a **second connector on the same tunnel** and Cloudflare starts balancing production
+     traffic between the real VM and the drill. This is the most dangerous mistake in the procedure.
+3. **Start the clock here.** Delete the volumes and restore from the most recent backup following
+   §Restore the data (steps 1 through 5).
+4. **Smoke test** with the §Verify checklist: `tenants`/`meetings`/`transcripts` counts matching
+   production, `flyway_schema_history` at the expected version, the three roles correct, login
+   working.
+5. **Stop the clock. Record** in the table below: date, dump size, measured RTO, and what
+   went wrong (there is always something).
+6. **Destroy** the clone.
 
-| Data | Dump | RTO medido | Achados |
+| Date | Dump | Measured RTO | Findings |
 |---|---|---|---|
-| _(pendente — primeiro drill até 30 dias após o go-live)_ | | | |
+| _(pending — first drill within 30 days after go-live)_ | | | |
 
-> Se o RTO medido passar de 2h (a meta do ADR 0016 Gap 3), a meta está errada ou o procedimento
-> está. **Corrija um dos dois no mesmo dia** — não deixe a divergência documentada e viva.
+> If the measured RTO exceeds 2h (the ADR 0016 Gap 3 target), either the target is wrong or the procedure
+> is. **Fix one of the two the same day** — do not leave the divergence documented and alive.
 
 ---
 
-## Histórico
+## History
 
-| Data | Mudança |
+| Date | Change |
 |---|---|
-| 2026-08-07 | v1.0 — runbook criado com o ADR 0034. Substitui `azure-deploy.md`. Cobre provisionamento da VM, bootstrap, SOPS+age, Cloudflare Tunnel/Access, primeiro deploy, restore vindo da Azure, verificação, 9 armadilhas do self-hosted, rollback em 3 níveis e restore drill trimestral. |
-| 2026-08-07 | v1.1 — reconciliação com os arquivos reais de `infra/proxmox/`: nomes corretos (`postgres/init/01-roles-and-db.sql`, `R001__provision_app_roles.sql`), flags reais do `deploy.sh` (`--platform`, `--tag`, `--service`, `--rollback`, `--if-changed`) no lugar de `--profile platform` e da edição manual de `API_TAG`, estado de rollout em `/srv/nora/state/deploy-state.env`, tmpfs em `/dev/shm`, e separação dos dois planos de configuração (`env.defaults` vs. `secrets.env.sops`) no inventário de segredos. Referência ao `restore-into-proxmox.sh`. |
+| 2026-08-07 | v1.0 — runbook created together with ADR 0034. Supersedes `azure-deploy.md`. Covers VM provisioning, bootstrap, SOPS+age, Cloudflare Tunnel/Access, first deployment, restore coming from Azure, verification, the 9 self-hosting pitfalls, 3-level rollback and the quarterly restore drill. |
+| 2026-08-07 | v1.1 — reconciliation with the actual files in `infra/proxmox/`: correct names (`postgres/init/01-roles-and-db.sql`, `R001__provision_app_roles.sql`), the real `deploy.sh` flags (`--platform`, `--tag`, `--service`, `--rollback`, `--if-changed`) in place of `--profile platform` and manual editing of `API_TAG`, rollout state in `/srv/nora/state/deploy-state.env`, tmpfs on `/dev/shm`, and separation of the two configuration planes (`env.defaults` vs. `secrets.env.sops`) in the secrets inventory. Reference to `restore-into-proxmox.sh`. |

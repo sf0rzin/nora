@@ -4,7 +4,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/** Snapshot do MeetingGoal retornado no detalhe da reuniao (ADR 0005). */
+/** MeetingGoal snapshot returned in the meeting detail (ADR 0005). */
 public record MeetingGoalResponse(
         UUID id,
         UUID meetingId,

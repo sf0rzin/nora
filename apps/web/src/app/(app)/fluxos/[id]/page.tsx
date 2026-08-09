@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * NORA Flows — /fluxos/[id]: edita um fluxo existente.
- * Next 15: `params` chega como Promise em páginas client — desembrulha com use().
+ * NORA Flows — /fluxos/[id]: edits an existing flow.
+ * Next 15: `params` arrives as a Promise in client pages — unwrap it with use().
  */
 import { use } from "react";
 

@@ -1,11 +1,11 @@
 package br.com.nora.api.domain.chat;
 
-/** Autor de uma mensagem de chat: o usuário ou o assistente NORA. */
+/** Author of a chat message: the user or the NORA assistant. */
 public enum ChatRole {
     USER,
     ASSISTANT;
 
-    /** Converte o valor de transporte ({@code "user"}/{@code "assistant"}) no enum. */
+    /** Converts the wire value ({@code "user"}/{@code "assistant"}) into the enum. */
     public static ChatRole fromWire(String raw) {
         if (raw == null) {
             throw new IllegalArgumentException("role is required");
@@ -17,7 +17,7 @@ public enum ChatRole {
         };
     }
 
-    /** Valor de transporte usado na persistência e na API ({@code "user"}/{@code "assistant"}). */
+    /** Wire value used in persistence and in the API ({@code "user"}/{@code "assistant"}). */
     public String wire() {
         return name().toLowerCase();
     }

@@ -66,8 +66,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * Endpoints da reuniao (US07): upload de transcricao textual, listagem e detalhe. Tudo escopado por
- * tenant_id do JWT.
+ * Meeting endpoints (US07): text transcript upload, listing and detail. Everything scoped by the
+ * tenant_id from the JWT.
  */
 @RestController
 @RequestMapping("/meetings")
@@ -114,10 +114,10 @@ public class MeetingsController {
     }
 
     /**
-     * Busca semântica (RAG): retorna as reuniões mais RELEVANTES à query {@code q} por similaridade
-     * de embedding (não as mais recentes). Usado pelo chat pra montar contexto + citação. Vazio se
-     * o embedding estiver desligado (sem credencial) ou o tenant ainda não ter reuniões indexadas —
-     * o caller deve ter fallback. Spring roteia {@code /search} (literal) antes de {@code /{id}}.
+     * Semantic search (RAG): returns the meetings most RELEVANT to the {@code q} query by embedding
+     * similarity (not the most recent ones). Used by the chat to build context + citation. Empty if
+     * embedding is turned off (no credential) or the tenant has no indexed meetings yet — the
+     * caller must have a fallback. Spring routes {@code /search} (literal) before {@code /{id}}.
      */
     @GetMapping("/search")
     public MeetingSearchResponse search(
@@ -125,18 +125,18 @@ public class MeetingsController {
         AuthenticatedPrincipal principal = CurrentUser.require();
         int limit = Math.min(Math.max(k, 1), 10);
 
-        // Carrega os candidatos e SÓ ENTÃO autoriza, item a item, com os atributos da reunião
-        // em mãos. O `authz.require` sobre o ARN curinga que existia aqui avaliava a política
-        // com contexto vazio: um Deny condicional (por atributo da reunião) nunca casava, e um
-        // Allow incondicional liberava o tenant inteiro. Este endpoint alimenta o RAG do chat,
-        // então o vazamento sairia como título + summarySnippet no contexto do modelo.
-        // Mesma chamada que o GET /meetings usa — ver `list` mais abaixo.
+        // Loads the candidates and ONLY THEN authorizes, item by item, with the meeting's
+        // attributes in hand. The `authz.require` over the wildcard ARN that used to be here
+        // evaluated the policy with an empty context: a conditional Deny (by meeting attribute)
+        // never matched, and an unconditional Allow released the whole tenant. This endpoint feeds
+        // the chat's RAG, so the leak would come out as title + summarySnippet in the model's
+        // context. Same call GET /meetings uses — see `list` further below.
         List<Meeting> candidates = new ArrayList<>();
         for (UUID id : embeddings.search(principal.tenantId(), q, limit)) {
             try {
                 candidates.add(meetings.getById(id, principal.tenantId()));
             } catch (RuntimeException ignored) {
-                // embedding órfão (corrida com delete/erasure) — pula silenciosamente.
+                // orphan embedding (race with delete/erasure) — skips silently.
             }
         }
 
@@ -204,13 +204,13 @@ public class MeetingsController {
     }
 
     /**
-     * Preview de separacao de um arquivo .txt com varias reunioes concatenadas. Chama o worker
-     * {@code /split} e devolve as fronteiras propostas ({@code startLine}/{@code endLine} 1-based
-     * sobre o arquivo original) + previews ja redigidos pelo PII Shield. NAO cria reuniao e NAO
-     * persiste nada — a confirmacao e o fatiamento sao client-side.
+     * Split preview for a .txt file with several concatenated meetings. Calls the {@code /split}
+     * worker and returns the proposed boundaries ({@code startLine}/{@code endLine} 1-based over
+     * the original file) + previews already redacted by the PII Shield. Does NOT create a meeting
+     * and does NOT persist anything — the confirmation and the slicing are client-side.
      *
-     * <p>Aceita APENAS .txt por enquanto: VTT/SRT carregam timestamps/cues proprios e respondem 400
-     * com mensagem clara.
+     * <p>Accepts ONLY .txt for now: VTT/SRT carry their own timestamps/cues and answer 400 with a
+     * clear message.
      */
     @PostMapping(value = "/split-preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public SplitPreviewDtos.SplitPreviewResponse splitPreview(
@@ -224,10 +224,10 @@ public class MeetingsController {
                 meetingResource(principal.tenantId(), null));
 
         requireTxtFile(file);
-        // Pre-checa o tamanho ANTES do readFile: o readFile lanca
-        // IllegalArgumentException (mascarada como "Invalid request." em ingles),
-        // mas aqui queremos uma mensagem PT-BR clara (413). As demais defesas do
-        // upload normal (filename safety, content-type, magic bytes) seguem no readFile.
+        // Pre-checks the size BEFORE readFile: readFile throws
+        // IllegalArgumentException (masked as "Invalid request." in English),
+        // but here we want a clear PT-BR message (413). The other defenses of the
+        // normal upload (filename safety, content-type, magic bytes) stay in readFile.
         if (file != null && file.getSize() > MAX_UPLOAD_BYTES) {
             throw new MeetingException.FileTooLarge(MAX_UPLOAD_BYTES / (1024 * 1024));
         }
@@ -238,7 +238,7 @@ public class MeetingsController {
         return toApiSplitResponse(response);
     }
 
-    /** Split-preview e .txt-only: VTT/SRT ficam para uma fatia futura. */
+    /** Split-preview is .txt-only: VTT/SRT are left for a future slice. */
     private static void requireTxtFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new MeetingException.EmptyTranscript();
@@ -292,9 +292,9 @@ public class MeetingsController {
             @RequestParam(name = "from", required = false) String from,
             @RequestParam(name = "to", required = false) String to) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        // Pre-check: usuario precisa de meeting:read em pelo menos algum recurso do tenant.
-        // Sem isso, devolve 403 antes de tocar o banco. Filtragem fina por attributes acontece
-        // abaixo.
+        // Pre-check: the user needs meeting:read on at least some resource of the tenant.
+        // Without it, returns 403 before touching the database. Fine-grained filtering by
+        // attributes happens below.
         authz.requireAnyAllow(
                 principal.userId(),
                 principal.tenantId(),
@@ -305,18 +305,18 @@ public class MeetingsController {
         int safeSize = Math.min(100, Math.max(1, size));
         MeetingFilter filter = buildFilter(search, status, from, to);
 
-        // Caminho rapido: quando nenhuma policy do usuario consegue distinguir uma reuniao da
-        // outra dentro do tenant (sem condition, sem resource mais especifico que o curinga), a
-        // decisao de IAM e a mesma para todas — e o filtro por item, que obriga a carregar o
-        // tenant inteiro antes de paginar, nao muda nada. Nesse caso a paginacao fica no SQL e o
-        // custo passa a ser proporcional a PAGINA, nao ao tamanho do tenant.
+        // Fast path: when no policy of the user can tell one meeting from another inside the
+        // tenant (no condition, no resource more specific than the wildcard), the IAM decision is
+        // the same for all of them — and the per-item filter, which forces loading the whole
+        // tenant before paginating, changes nothing. In that case the pagination stays in SQL and
+        // the cost becomes proportional to the PAGE, not to the tenant's size.
         //
-        // Cobre os dois casos comuns: Root (que o filterAllowed ja deixava passar inteiro, depois
-        // de varrer tudo a toa) e o usuario com um Allow amplo de meeting:read.
+        // Covers the two common cases: Root (which filterAllowed already let through whole, after
+        // scanning everything for nothing) and the user with a broad meeting:read Allow.
         //
-        // `uniformDecision` devolve empty a qualquer duvida, e ai o caminho de baixo roda igual
-        // ao que sempre rodou. E otimizacao provada equivalente, nao heuristica: nunca amplia nem
-        // restringe o conjunto visivel.
+        // `uniformDecision` returns empty at any doubt, and then the path below runs exactly as it
+        // always ran. It is a provably equivalent optimization, not a heuristic: it never widens
+        // nor restricts the visible set.
         Optional<Boolean> uniform =
                 authz.uniformDecision(
                         principal.userId(),
@@ -324,10 +324,11 @@ public class MeetingsController {
                         "meeting:read",
                         meetingResource(principal.tenantId(), null));
 
-        // Offset em long, nos DOIS caminhos: `page` vem do query string sem teto superior, e
-        // `safePage * safeSize` em int estoura pra negativo já a partir de page≈21M com size=100.
-        // No caminho lento isso rebentava o subList; no rápido o Pageable leva o offset pro SQL,
-        // onde `PageableUtils.getOffsetAsInteger` estoura em IllegalArgumentException -> 500.
+        // Offset as long, on BOTH paths: `page` comes from the query string with no upper cap, and
+        // `safePage * safeSize` in int overflows to negative from page≈21M with size=100 onward.
+        // On the slow path that blew up the subList; on the fast one the Pageable carries the
+        // offset to SQL, where `PageableUtils.getOffsetAsInteger` blows up in
+        // IllegalArgumentException -> 500.
         long offset = (long) safePage * safeSize;
         boolean offsetBeyondInt = offset > Integer.MAX_VALUE;
 
@@ -335,11 +336,12 @@ public class MeetingsController {
         long totalItems;
         if (uniform.isPresent()) {
             if (Boolean.FALSE.equals(uniform.get())) {
-                // requireAnyAllow acima ja teria barrado; defensivo para nao paginar um Deny.
+                // requireAnyAllow above would already have blocked; defensive so we do not
+                // paginate a Deny.
                 pageMeetings = List.of();
                 totalItems = 0;
             } else if (offsetBeyondInt) {
-                // Página muito além do fim: devolve vazio com o total real, em vez de 500.
+                // Page far beyond the end: returns empty with the real total, instead of a 500.
                 pageMeetings = List.of();
                 totalItems = meetings.list(principal.tenantId(), filter, 0, 1).totalItems();
             } else {
@@ -349,12 +351,13 @@ public class MeetingsController {
                 totalItems = paged.totalItems();
             }
         } else {
-            // Caminho lento, inalterado: ha condition ou resource por reuniao em jogo, entao so
-            // avaliando item a item se sabe quantas sobram — e sem saber isso nao da para paginar.
+            // Slow path, unchanged: there is a condition or a per-meeting resource in play, so
+            // only by evaluating item by item do we know how many are left — and without knowing
+            // that there is no way to paginate.
             List<Meeting> candidates = meetings.listAllForAuthFilter(principal.tenantId(), filter);
-            // Filtro IAM por item resolvendo o bypass de Root + os statements do usuario UMA vez
-            // para toda a lista (antes: isAllowed por reuniao -> 2 queries IAM por item = N+1 no
-            // endpoint mais quente do produto).
+            // Per-item IAM filter resolving the Root bypass + the user's statements ONCE for the
+            // whole list (before: isAllowed per meeting -> 2 IAM queries per item = N+1 on the
+            // hottest endpoint of the product).
             List<Meeting> visible =
                     authz.filterAllowed(
                             principal.userId(),
@@ -369,8 +372,8 @@ public class MeetingsController {
             int toIdx = Math.min(fromIdx + safeSize, visible.size());
             pageMeetings = visible.subList(fromIdx, toIdx);
         }
-        // Enriquecimento em LOTE (2 queries agregadas) — antes era 1 analise completa por item
-        // (N+1 carregando 4 colecoes so pra contar). Participantes ja vem carregados na lista.
+        // BATCH enrichment (2 aggregated queries) — before it was 1 full analysis per item (N+1
+        // loading 4 collections just to count). Participants already come loaded in the list.
         List<UUID> pageIds = pageMeetings.stream().map(Meeting::id).toList();
         Map<UUID, AnalysisService.ListEnrichment> enrich =
                 analyses.enrichListItems(pageIds, principal.tenantId());
@@ -401,7 +404,7 @@ public class MeetingsController {
         return new MeetingListResponse(items, safePage, safeSize, totalItems, totalPages);
     }
 
-    /** Nomes dos participantes (até 12) para o stack de avatares na listagem. */
+    /** Participant names (up to 12) for the avatar stack in the listing. */
     private static List<String> participantNames(Meeting m) {
         if (m.participants() == null) {
             return List.of();
@@ -416,7 +419,7 @@ public class MeetingsController {
     @GetMapping("/{id}")
     public MeetingDetailResponse get(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        // Resolve primeiro (404 se de outro tenant) e usa attributes no context da authz.
+        // Resolves first (404 if from another tenant) and uses attributes in the authz context.
         Meeting m = meetings.getById(id, principal.tenantId());
         authz.require(
                 principal.userId(),
@@ -438,8 +441,8 @@ public class MeetingsController {
                         .findAssessment(m.id(), principal.tenantId())
                         .map(MeetingGoalResponseMapper::from)
                         .orElse(null);
-        // Customer Confidence (ADR 0015): no maximo um assessment por conta; o detalhe expoe o
-        // primeiro (uma reuniao tipicamente toca uma conta). Null para reunioes internas.
+        // Customer Confidence (ADR 0015): at most one assessment per account; the detail exposes
+        // the first one (a meeting typically touches one account). Null for internal meetings.
         CustomerConfidenceResponse confidenceDto =
                 customerConfidence.findViewByMeetingId(m.id(), principal.tenantId()).stream()
                         .findFirst()
@@ -471,8 +474,8 @@ public class MeetingsController {
     }
 
     /**
-     * Define ou atualiza o objetivo declarado da reuniao (ADR 0005). Quando a reuniao ja foi
-     * analisada, o status muda para PENDING para reprocessamento posterior.
+     * Sets or updates the declared goal of the meeting (ADR 0005). When the meeting has already
+     * been analyzed, the status changes to PENDING for later reprocessing.
      */
     @PutMapping("/{id}/goal")
     public ResponseEntity<MeetingGoalResponse> putGoal(
@@ -495,7 +498,7 @@ public class MeetingsController {
         return ResponseEntity.ok(MeetingGoalResponseMapper.from(result.goal()));
     }
 
-    /** Remove o objetivo + productivity vinculado (ADR 0005). Idempotente. */
+    /** Removes the goal + linked productivity (ADR 0005). Idempotent. */
     @DeleteMapping("/{id}/goal")
     public ResponseEntity<Void> deleteGoal(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
@@ -513,8 +516,8 @@ public class MeetingsController {
     @PostMapping("/{id}/reprocess")
     public ResponseEntity<MeetingUploadResponse> reprocess(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        // Reprocess autoriza com authz callback dentro da mesma transacao do service para evitar
-        // TOCTOU (attributes nao mudam entre check e execucao).
+        // Reprocess authorizes with an authz callback inside the service's own transaction to
+        // avoid TOCTOU (attributes do not change between check and execution).
         Meeting updated =
                 meetings.reprocess(
                         id,
@@ -686,20 +689,20 @@ public class MeetingsController {
         }
     }
 
-    // Cap defensivo de tamanho do arquivo: 10MB. Aligned com max-file-size do
-    // application.yml. Em prod, Spring rejeita antes via MaxUploadSizeExceededException
-    // (handler em GlobalExceptionHandler retorna 413).
+    // Defensive file size cap: 10MB. Aligned with max-file-size in
+    // application.yml. In prod, Spring rejects earlier via MaxUploadSizeExceededException
+    // (handler in GlobalExceptionHandler returns 413).
     private static final int MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-    // Extensoes aceitas alinhadas com TranscriptFormat (TXT, VTT, SRT).
+    // Accepted extensions aligned with TranscriptFormat (TXT, VTT, SRT).
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(".txt", ".vtt", ".srt");
-    // Content-Types validos para texto puro / legendas.
+    // Valid Content-Types for plain text / subtitles.
     private static final Set<String> ALLOWED_CONTENT_TYPES =
             Set.of(
                     "text/plain",
                     "text/vtt",
                     "application/x-subrip",
                     "text/srt",
-                    "application/octet-stream"); // alguns clientes mandam isso pra .vtt/.srt
+                    "application/octet-stream"); // some clients send this for .vtt/.srt
 
     private String readFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
@@ -708,8 +711,8 @@ public class MeetingsController {
         if (file.getSize() > MAX_UPLOAD_BYTES) {
             throw new IllegalArgumentException("uploaded file exceeds maximum allowed size (10MB)");
         }
-        // Filename safety: rejeitar nomes com path traversal ou caracteres
-        // perigosos (ex.: "../../etc/passwd", null bytes).
+        // Filename safety: reject names with path traversal or dangerous
+        // characters (e.g.: "../../etc/passwd", null bytes).
         String filename = file.getOriginalFilename();
         if (filename != null) {
             if (filename.contains("/") || filename.contains("\\") || filename.contains("\0")) {
@@ -723,18 +726,18 @@ public class MeetingsController {
                         "unsupported file extension; allowed: " + ALLOWED_EXTENSIONS);
             }
         }
-        // Content-Type check (defesa em profundidade — cliente pode mentir).
+        // Content-Type check (defense in depth — the client can lie).
         String ct = file.getContentType();
         if (ct != null) {
             String ctLower = ct.toLowerCase(java.util.Locale.ROOT);
-            // text/* generico aceito alem da whitelist (clientes variam muito).
+            // generic text/* accepted beyond the whitelist (clients vary a lot).
             if (!ctLower.startsWith("text/") && !ALLOWED_CONTENT_TYPES.contains(ctLower)) {
                 throw new IllegalArgumentException("unsupported content-type: " + ct);
             }
         }
         try {
             byte[] bytes = file.getBytes();
-            // Validacao de magic bytes: rejeita binarios disfarcados de .txt.
+            // Magic bytes validation: rejects binaries disguised as .txt.
             // PE (.exe Win): "MZ" (0x4D 0x5A). ELF (.so/.bin Linux): 0x7F 0x45 0x4C 0x46.
             // ZIP/PDF/etc: 0x50 0x4B (PK), 0x25 0x50 0x44 0x46 (PDF).
             if (bytes.length >= 4) {

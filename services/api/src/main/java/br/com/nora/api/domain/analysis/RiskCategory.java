@@ -1,6 +1,6 @@
 package br.com.nora.api.domain.analysis;
 
-/** Categoria fechada de risco identificada pela analise. */
+/** Closed risk category identified by the analysis. */
 public enum RiskCategory {
     COMPETITION,
     PRICE,

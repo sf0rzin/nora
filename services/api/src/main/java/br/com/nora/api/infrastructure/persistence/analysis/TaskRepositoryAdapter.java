@@ -18,9 +18,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Adapter para a tabela meeting_action_items vista como "tarefa do tenant" (US22-US24). Usa SQL
- * nativo para projetar uma linha achatada (com meeting_id e meeting title) sem precisar carregar a
- * agregada MeetingAnalysis inteira.
+ * Adapter for the meeting_action_items table seen as a "tenant task" (US22-US24). Uses native SQL
+ * to project a flattened row (with meeting_id and meeting title) without having to load the whole
+ * MeetingAnalysis aggregate.
  */
 @Repository
 public class TaskRepositoryAdapter implements TaskRepository {

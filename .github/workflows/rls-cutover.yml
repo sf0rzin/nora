@@ -1,55 +1,55 @@
 name: rls-cutover
 
-# Etapa 2 do cutover de RLS enforce (ADR 0026 / ADR 0028): provisionar os roles de runtime.
+# Stage 2 of the RLS enforce cutover (ADR 0026 / ADR 0028): provision the runtime roles.
 #
 # ============================================================================
-# DECISAO: ESTE WORKFLOW NAO CONECTA MAIS EM BANCO NENHUM.
-# Ele VALIDA o R001 num Postgres efemero e EMITE o runbook. Quem executa contra o
-# banco real e infra/proxmox/scripts/rls-cutover.sh, rodando NO HOST.
+# DECISION: THIS WORKFLOW NO LONGER CONNECTS TO ANY DATABASE.
+# It VALIDATES R001 on an ephemeral Postgres and EMITS the runbook. What runs against
+# the real database is infra/proxmox/scripts/rls-cutover.sh, running ON THE HOST.
 # ============================================================================
 #
-# POR QUE (nao e preferencia — nao existe caminho de rede):
-#   A versao anterior fazia `azure/login`, abria uma regra de firewall temporaria pro IP
-#   do runner no Postgres Flexible Server e falava com o FQDN publico
-#   `nora-pg-dev-wgl3a3.postgres.database.azure.com` (hardcoded na linha 40, consumido por
-#   tres invocacoes de psql). No Proxmox nada disso existe: o Postgres esta na bridge
-#   `data` (internal: true) e publica so 127.0.0.1:5432 — loopback do host. Nao ha
-#   firewall pra abrir porque nao ha porta pra abrir.
+# WHY (not a preference — there is no network path):
+#   The previous version did `azure/login`, opened a temporary firewall rule for the
+#   runner IP on the Postgres Flexible Server and talked to the public FQDN
+#   `nora-pg-dev-wgl3a3.postgres.database.azure.com` (hardcoded on line 40, consumed by
+#   three psql invocations). On Proxmox none of that exists: Postgres sits on the `data`
+#   bridge (internal: true) and publishes only 127.0.0.1:5432 — the host loopback. There
+#   is no firewall to open because there is no port to open.
 #
-#   As tres alternativas pra manter o psql no runner seriam tunel reverso, VPN no runner
-#   ou runner self-hosted. Todas reintroduzem exatamente o que a migracao pro modelo pull
-#   eliminou num repo PUBLICO (ADR 0017). O deploy virou pull; esta operacao segue junto.
+#   The three alternatives for keeping psql on the runner would be reverse tunnel, VPN on
+#   the runner or self-hosted runner. All reintroduce exactly what the move to the pull
+#   model eliminated in a PUBLIC repo (ADR 0017). The deploy became pull; so does this.
 #
-#   Entre as duas opcoes propostas — (a) workflow que so gera o SQL, (b) remover o
-#   workflow e mover tudo pro script — escolhemos um HIBRIDO, porque cada metade paga
-#   uma conta diferente:
-#     * o SCRIPT no host (infra/proxmox/scripts/rls-cutover.sh) e o unico lugar com
-#       acesso ao banco, entao a EXECUCAO tem que morar la;
-#     * o WORKFLOW continua util pelo que so o CI faz bem: aplica o R001 num Postgres
-#       descartavel e PROVA que os tres roles saem com as flags certas ANTES de alguem
-#       rodar isso em producao — alem de manter o registro auditavel de quem pediu o
-#       cutover e quando, que o ADR 0028 exige.
-#   Remover o workflow inteiro custaria as duas coisas e nao economizaria nada, ja que
-#   ele nao guarda mais segredo algum.
+#   Between the two proposed options — (a) a workflow that only generates the SQL, (b)
+#   drop the workflow and move everything into the script — we chose a HYBRID, because
+#   each half pays a different bill:
+#     * the SCRIPT on the host (infra/proxmox/scripts/rls-cutover.sh) is the only place
+#       with database access, so EXECUTION has to live there;
+#     * the WORKFLOW stays useful for what only CI does well: it applies R001 on a
+#       throwaway Postgres and PROVES the three roles come out with the right flags
+#       BEFORE anyone runs this in production — plus it keeps the auditable record of
+#       who asked for the cutover and when, which ADR 0028 requires.
+#   Removing the whole workflow would cost both things and save nothing, since it no
+#   longer holds any secret at all.
 #
-# O QUE SAIU DAQUI:
-#   - `azure/login` e `permissions: id-token: write`
-#   - o FQDN do Azure hardcoded
-#   - abrir/fechar firewall no Flexible Server
-#   - os Secrets PG_ADMIN_PASSWORD / NORA_APP_PASSWORD / RLS_TELEMETRY_PASSWORD.
-#     Um workflow que nao conecta em banco nao tem motivo pra guardar senha de banco.
-#     As senhas agora vivem cifradas em infra/proxmox/secrets.env.sops (SOPS + age), e a
-#     chave privada so existe no host em /etc/nora/age.key. Ver README-migracao.md pra
-#     lista do que deletar.
+# WHAT LEFT THIS FILE:
+#   - `azure/login` and `permissions: id-token: write`
+#   - the hardcoded Azure FQDN
+#   - opening/closing the firewall on the Flexible Server
+#   - the Secrets PG_ADMIN_PASSWORD / NORA_APP_PASSWORD / RLS_TELEMETRY_PASSWORD.
+#     A workflow that does not connect to a database has no reason to hold a db password.
+#     The passwords now live encrypted in infra/proxmox/secrets.env.sops (SOPS + age), and
+#     the private key only exists on the host at /etc/nora/age.key. See README-migracao.md
+#     for the list of what to delete.
 #
-# SAO TRES ROLES, NAO DOIS:
-#   1. nora_admin / owner  — DDL + Flyway. Ja existe; e quem RODA o R001.
-#   2. nora_app            — LOGIN, NOBYPASSRLS. Runtime da API.
-#   3. nora_telemetry      — LOGIN, BYPASSRLS. Painel do operador (cross-tenant).
-#   Esquecer o 3 nao gera erro: a leitura cai sob RLS e o painel mostra ZERO. Fail-closed
-#   silencioso. O job `validate-r001` abaixo falha se qualquer um dos tres nao sair certo.
+# THERE ARE THREE ROLES, NOT TWO:
+#   1. nora_admin / owner  — DDL + Flyway. Already exists; it is what RUNS R001.
+#   2. nora_app            — LOGIN, NOBYPASSRLS. API runtime.
+#   3. nora_telemetry      — LOGIN, BYPASSRLS. Operator panel (cross-tenant).
+#   Forgetting 3 raises no error: the read falls under RLS and the panel shows ZERO.
+#   Silent fail-closed. The `validate-r001` job below fails if any of the three is wrong.
 #
-# NAO liga o enforce (etapa 3 = NORA_RLS_ENFORCE=true no .env do host + recriar a api).
+# It does NOT turn on enforce (stage 3 = NORA_RLS_ENFORCE=true in the host .env + recreate api).
 
 on:
   workflow_dispatch:
@@ -63,7 +63,7 @@ on:
         required: false
         default: 'nora'
 
-# Sem `id-token: write`: nao ha mais login federado em cloud nenhuma.
+# No `id-token: write`: there is no federated login into any cloud anymore.
 permissions:
   contents: read
 
@@ -77,8 +77,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
-    # Mesma imagem do compose do host (pgvector/pgvector:pg16) — validar num Postgres
-    # diferente do de producao testaria outro banco.
+    # Same image as the host compose (pgvector/pgvector:pg16) — validating on a Postgres
+    # different from production would be testing another database.
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -121,13 +121,13 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client
 
-      # O R001 faz GRANT em objetos que as migrations Flyway criam (schema nora,
-      # nora.current_tenant_id(), users, meetings, meeting_analyses). Num banco vazio ele
-      # falharia por objeto inexistente, não por defeito próprio.
+      # R001 does GRANT on objects the Flyway migrations create (schema nora,
+      # nora.current_tenant_id(), users, meetings, meeting_analyses). On an empty database
+      # it would fail on a missing object, not on a defect of its own.
       #
-      # Criamos aqui o MÍNIMO que o R001 referencia. Isto é fixture de validação, não
-      # cópia do schema — se o R001 passar a tocar uma tabela nova, este step falha de
-      # propósito: é o sinal de que o runbook e a fixture precisam acompanhar.
+      # We create here the MINIMUM that R001 references. This is a validation fixture, not
+      # a copy of the schema — if R001 starts touching a new table, this step fails on
+      # purpose: that is the signal that the runbook and the fixture have to follow.
       - name: Fixture mínima (objetos que o R001 referencia)
         run: |
           set -euo pipefail
@@ -190,9 +190,9 @@ jobs:
           SELECT 'meetings_do_tenant_random=' || count(*) FROM meetings;
           SQL
 
-          # O workflow antigo NUNCA testava isto: conferia as flags do nora_telemetry em
-          # pg_roles e parava aí. Um GRANT SELECT ausente em meeting_analyses não aparece
-          # em pg_roles — aparece como painel do operador zerado, sem erro nenhum.
+          # The old workflow NEVER tested this: it checked nora_telemetry's flags in
+          # pg_roles and stopped there. A missing GRANT SELECT on meeting_analyses does
+          # not show in pg_roles — it shows as a zeroed operator panel, with no error.
           echo "== nora_telemetry: conecta e LÊ meeting_analyses (o smoke que faltava) =="
           tel=$(PGPASSWORD=ci-tel-pw psql -U nora_telemetry -tAc "SELECT count(*) FROM meeting_analyses")
           echo "  meeting_analyses visíveis = $tel"

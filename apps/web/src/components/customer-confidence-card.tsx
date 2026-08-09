@@ -11,7 +11,7 @@ const BAND_LABEL: Record<ConfidenceBand, string> = {
   HIGH: "Alta",
 };
 
-// Banda → cor de sinal (danger/warn/success), espelhando o Health Score.
+// Band → signal color (danger/warn/success), mirroring the Health Score.
 const BAND_COLOR: Record<ConfidenceBand, string> = {
   LOW: "var(--danger)",
   MEDIUM: "var(--warn)",
@@ -63,7 +63,7 @@ export interface CustomerConfidenceCardProps {
 export default function CustomerConfidenceCard({
   confidence,
 }: CustomerConfidenceCardProps) {
-  // Reuniões internas (sem conversa de cliente) não têm confidence: nada a renderizar.
+  // Internal meetings (no customer conversation) have no confidence: nothing to render.
   if (!confidence) return null;
 
   const { score, band, trend, accountName, rationale, buyingSignals, objections } =

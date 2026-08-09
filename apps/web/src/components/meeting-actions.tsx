@@ -7,9 +7,9 @@ import { useState } from "react";
 import { ApiRequestError, deleteMeeting, reprocessMeeting } from "@/lib/api/client";
 
 /**
- * Botao para re-disparar a analise de uma reuniao (POST /meetings/{id}/reprocess).
- * Usado tanto no bloco de erro (FAILED) quanto na zona de acoes do detalhe.
- * Espelha o que o Desktop ja faz.
+ * Button to re-trigger a meeting's analysis (POST /meetings/{id}/reprocess).
+ * Used both in the error block (FAILED) and in the detail's actions zone.
+ * Mirrors what the Desktop already does.
  */
 export function ReprocessButton({
   meetingId,
@@ -53,9 +53,9 @@ export function ReprocessButton({
 }
 
 /**
- * Zona de acoes destrutivas do detalhe da reuniao: reanalisar + apagar
- * permanentemente (LGPD, direito ao esquecimento — DELETE /privacy/meetings/{id}).
- * O apagar exige confirmacao por digitacao do titulo (typed-confirm).
+ * Destructive actions zone of the meeting detail: re-analyze + permanently
+ * delete (LGPD, right to be forgotten — DELETE /privacy/meetings/{id}).
+ * Deleting requires confirmation by typing the title (typed-confirm).
  */
 export function MeetingDangerZone({
   meetingId,
@@ -83,7 +83,7 @@ export function MeetingDangerZone({
       router.push("/dashboard" as Route);
       router.refresh();
     } catch (err) {
-      // 404 = ja nao existe no tenant: tratamos como sucesso idempotente.
+      // 404 = no longer exists in the tenant: we treat it as idempotent success.
       if (err instanceof ApiRequestError && err.status === 404) {
         router.push("/dashboard" as Route);
         return;

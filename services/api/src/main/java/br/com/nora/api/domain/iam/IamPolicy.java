@@ -3,7 +3,7 @@ package br.com.nora.api.domain.iam;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/** Policy IAM persistida (versao corrente). */
+/** Persisted IAM policy (current version). */
 public record IamPolicy(
         UUID id,
         UUID tenantId,

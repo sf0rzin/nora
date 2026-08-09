@@ -1,9 +1,9 @@
 /**
- * NORA Flows — layout da rota /fluxos.
+ * NORA Flows — layout of the /fluxos route.
  *
- * Centraliza os imports de CSS do builder: o stylesheet base do React Flow
- * (@xyflow/react) e os overrides com os tokens NORA (flows.css). Assim a
- * lista e o editor compartilham o mesmo bundle de estilos.
+ * Centralizes the builder's CSS imports: the React Flow base stylesheet
+ * (@xyflow/react) and the overrides with the NORA tokens (flows.css). This way
+ * the list and the editor share the same style bundle.
  */
 import "@xyflow/react/dist/style.css";
 import "./flows.css";

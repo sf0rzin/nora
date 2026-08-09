@@ -1,18 +1,18 @@
-/* NORA — design tokens (v3 · rebrand DM Sans / Claude Design bundle).
+/* NORA — design tokens (v3 · DM Sans rebrand / Claude Design bundle).
  *
- * Paleta CLARA cool-neutral ("OpenAI feel"). Os nomes primários abaixo
+ * LIGHT cool-neutral palette ("OpenAI feel"). The primary names below
  * (--canvas, --sidebar, --chip, --ink, --muted, --accent-ink, --accent-soft)
- * vêm direto do bundle do Claude Design e são usados pela landing v3 + telas
- * novas (login, core). Os nomes antigos (--bg, --surface, --fg, --paper, --brand…)
- * permanecem como ALIASES apontando pros novos, pra não quebrar telas já
- * implementadas (dashboard, meetings, IAM, settings).
+ * come straight from the Claude Design bundle and are used by landing v3 +
+ * new screens (login, core). The old names (--bg, --surface, --fg, --paper, --brand…)
+ * stay as ALIASES pointing at the new ones, so as not to break screens
+ * already implemented (dashboard, meetings, IAM, settings).
  *
- * Fontes: --font-sans / --font-mono são setadas via next/font em layout.tsx
- * (DM Sans / JetBrains Mono). --display e --sans são aliases pro DM Sans.
+ * Fonts: --font-sans / --font-mono are set via next/font in layout.tsx
+ * (DM Sans / JetBrains Mono). --display and --sans are aliases for DM Sans.
  */
 
 :root {
-  /* ── Surface (light) — tokens primários do design ── */
+  /* ── Surface (light) — primary design tokens ── */
   --canvas: #fdfdfc;
   --sidebar: #f7f7f5;
   --chip: #f0f0ee;
@@ -23,14 +23,14 @@
   --ink: #15171a;
   --muted: #6e7178;
 
-  /* ── Accent (azul saturado, menos pastel) ── */
+  /* ── Accent (saturated blue, less pastel) ── */
   --accent: oklch(0.58 0.16 248);
   --accent-ink: oklch(0.48 0.18 248);
   --accent-soft: oklch(0.95 0.04 248);
   --accent-glow: oklch(0.58 0.16 248 / 0.22);
   --accent-dim: oklch(0.7 0.12 248);
 
-  /* ── Sinal cores ── */
+  /* ── Signal colors ── */
   --success: oklch(0.55 0.16 155);
   --warn: oklch(0.65 0.16 70);
   --danger: oklch(0.55 0.2 25);
@@ -62,7 +62,7 @@
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-brand: cubic-bezier(0.2, 0.7, 0.2, 1);
 
-  /* ── Aliases de back-compat (telas pré-rebrand) ── */
+  /* ── Back-compat aliases (pre-rebrand screens) ── */
   --bg: var(--canvas);
   --bg-deep: var(--sidebar);
   --surface: #ffffff;
@@ -90,7 +90,7 @@
   --font-serif: var(--font-sans);
 }
 
-/* ── Dark theme reservado (sem UI toggle no MVP) ── */
+/* ── Dark theme reserved (no UI toggle in the MVP) ── */
 [data-theme="dark"] {
   --canvas: oklch(0.16 0.012 250);
   --sidebar: oklch(0.13 0.012 250);
@@ -119,7 +119,7 @@
   --gap: 32px;
 }
 
-/* ── Acessibilidade: reduzir movimento ── */
+/* ── Accessibility: reduce motion ── */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -14,20 +14,19 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 /**
- * Segundo datasource — banco de plataforma (ADR 0022). Gated por {@code
- * nora.platform.enabled=true}: em local/test/CI nada disto é criado (autoconfig single-datasource
- * do Boot fica intacto).
+ * Second datasource — platform database (ADR 0022). Gated by {@code nora.platform.enabled=true}: in
+ * local/test/CI none of this is created (Boot's single-datasource autoconfig stays intact).
  *
- * <p><b>Por que JdbcTemplate e não um 2º EntityManagerFactory:</b> a API não tem config explícita
- * de datasource hoje; um 2º EMF forçaria tornar o primário @Primary +
- * segmentar @EnableJpaRepositories, mexendo no JPA que já roda. Aqui expomos APENAS um {@link
- * NamedParameterJdbcTemplate} sobre um pool Hikari dedicado — o {@code HikariDataSource} <b>não</b>
- * é registrado como bean do tipo {@code DataSource}, então o autoconfig do datasource primário
- * <b>não</b> sofre backoff.
+ * <p><b>Why JdbcTemplate and not a 2nd EntityManagerFactory:</b> the API has no explicit datasource
+ * config today; a 2nd EMF would force making the primary one @Primary +
+ * segmenting @EnableJpaRepositories, touching the JPA that already runs. Here we expose ONLY a
+ * {@link NamedParameterJdbcTemplate} over a dedicated Hikari pool — the {@code HikariDataSource} is
+ * <b>not</b> registered as a bean of type {@code DataSource}, so the primary datasource autoconfig
+ * does <b>not</b> back off.
  *
- * <p><b>Soft-fail:</b> {@code initializationFailTimeout=-1} faz o pool não validar conexão no boot;
- * a migração roda num {@link ApplicationRunner} com try/catch. Banco de plataforma fora ⇒ API sobe
- * em modo degradado, sem derrubar o caminho do cliente.
+ * <p><b>Soft-fail:</b> {@code initializationFailTimeout=-1} makes the pool not validate a
+ * connection at boot; the migration runs in an {@link ApplicationRunner} with try/catch. Platform
+ * database down ⇒ API comes up in degraded mode, without taking down the customer path.
  */
 @Configuration
 @ConditionalOnProperty(name = "nora.platform.enabled", havingValue = "true")
@@ -47,8 +46,8 @@ public class PlatformDataSourceConfig {
         cfg.setMaximumPoolSize(ds.getMaxPoolSize());
         cfg.setPoolName("nora-platform-pool");
         cfg.setConnectionTimeout(ds.getConnectionTimeoutMs());
-        // -1: não tenta criar/validar conexão no startup (pool lazy). Boot não falha se o banco de
-        // plataforma estiver indisponível.
+        // -1: does not try to create/validate a connection at startup (lazy pool). Boot does not
+        // fail if the platform database is unavailable.
         cfg.setInitializationFailTimeout(-1);
         this.dataSource = new HikariDataSource(cfg);
         return new NamedParameterJdbcTemplate(this.dataSource);

@@ -8,38 +8,41 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Acesso de leitura/escrita às sessões de chat e suas mensagens. Toda operação é escopada por
- * tenant_id (ADR 0002) + user_id (cada usuário só acessa as próprias sessões).
+ * Read/write access to chat sessions and their messages. Every operation is scoped by tenant_id
+ * (ADR 0002) + user_id (each user only accesses their own sessions).
  */
 public interface ChatSessionRepository {
 
     /**
-     * Visão de listagem da sidebar: a sessão somada à contagem de mensagens e ao trecho da última
-     * mensagem. Achatada para evitar carregar todas as mensagens só para a lista.
+     * Sidebar listing view: the session plus the message count and the snippet of the last message.
+     * Flattened to avoid loading all messages just for the list.
      */
     record ChatSessionSummaryRow(ChatSession session, int messageCount, String lastSnippet) {}
 
-    /** Sessões do usuário no tenant, mais recentes primeiro (por updated_at desc). */
+    /** The user's sessions in the tenant, most recent first (by updated_at desc). */
     List<ChatSessionSummaryRow> listByUser(UUID tenantId, UUID userId);
 
-    /** Cria uma nova sessão (id já gerado no domínio/serviço). */
+    /** Creates a new session (id already generated in the domain/service). */
     void create(ChatSession session);
 
-    /** Sessão por id, restrita ao tenant + usuário dono. */
+    /** Session by id, restricted to the tenant + owning user. */
     Optional<ChatSession> findByIdForUser(UUID id, UUID tenantId, UUID userId);
 
-    /** Mensagens de uma sessão, em ordem cronológica (created_at asc). */
+    /** Messages of a session, in chronological order (created_at asc). */
     List<ChatMessage> listMessages(UUID sessionId, UUID tenantId);
 
-    /** Anexa uma mensagem (id já gerado). Não bumpa updated_at — o serviço o faz explicitamente. */
+    /**
+     * Appends a message (id already generated). Does not bump updated_at — the service does it
+     * explicitly.
+     */
     void appendMessage(ChatMessage message);
 
-    /** Atualiza o título e bumpa updated_at para {@code updatedAt}. */
+    /** Updates the title and bumps updated_at to {@code updatedAt}. */
     void updateTitle(UUID id, UUID tenantId, UUID userId, String title, OffsetDateTime updatedAt);
 
-    /** Bumpa updated_at para {@code updatedAt} (chamado ao anexar mensagem). */
+    /** Bumps updated_at to {@code updatedAt} (called when appending a message). */
     void touch(UUID id, UUID tenantId, UUID userId, OffsetDateTime updatedAt);
 
-    /** Remove a sessão (mensagens caem por ON DELETE CASCADE). */
+    /** Removes the session (messages go away via ON DELETE CASCADE). */
     void delete(UUID id, UUID tenantId, UUID userId);
 }

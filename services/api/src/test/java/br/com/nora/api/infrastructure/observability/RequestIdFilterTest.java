@@ -9,7 +9,8 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 /**
- * Garante o contrato do {@link RequestIdFilter}: gera/propaga o id, expõe no header e limpa o MDC.
+ * Ensures the {@link RequestIdFilter} contract: generates/propagates the id, exposes it in the
+ * header and clears the MDC.
  */
 class RequestIdFilterTest {
 
@@ -20,7 +21,7 @@ class RequestIdFilterTest {
         MockHttpServletRequest req = new MockHttpServletRequest();
         MockHttpServletResponse res = new MockHttpServletResponse();
 
-        // Captura o valor do MDC durante a cadeia (depois é limpo no finally).
+        // Captures the MDC value during the chain (it is cleared later in the finally).
         final String[] mdcDuringChain = new String[1];
         FilterChain chain =
                 (request, response) -> mdcDuringChain[0] = MDC.get(RequestIdFilter.MDC_KEY);
@@ -30,7 +31,7 @@ class RequestIdFilterTest {
         String header = res.getHeader(RequestIdFilter.HEADER);
         assertThat(header).isNotBlank();
         assertThat(mdcDuringChain[0]).isEqualTo(header);
-        // Limpou o MDC após o request (não vaza entre threads reusadas).
+        // Cleared the MDC after the request (does not leak across reused threads).
         assertThat(MDC.get(RequestIdFilter.MDC_KEY)).isNull();
     }
 
@@ -52,7 +53,7 @@ class RequestIdFilterTest {
     @Test
     void ignoresUnsafeIncomingHeader_andGeneratesInstead() throws Exception {
         MockHttpServletRequest req = new MockHttpServletRequest();
-        // Tentativa de log injection / valor muito curto: deve ser descartado e gerado um UUID.
+        // Log injection attempt / far too short value: must be discarded and a UUID generated.
         req.addHeader(RequestIdFilter.HEADER, "bad id\nINJECT");
         MockHttpServletResponse res = new MockHttpServletResponse();
 
@@ -62,7 +63,7 @@ class RequestIdFilterTest {
         filter.doFilter(req, res, chain);
 
         assertThat(seen[0]).isNotNull().doesNotContain("INJECT").doesNotContain("\n");
-        // UUID gerado tem 36 chars.
+        // A generated UUID has 36 chars.
         assertThat(seen[0]).hasSize(36);
     }
 
@@ -78,7 +79,7 @@ class RequestIdFilterTest {
         try {
             filter.doFilter(req, res, boom);
         } catch (Exception ignored) {
-            // esperado
+            // expected
         }
         assertThat(MDC.get(RequestIdFilter.MDC_KEY)).isNull();
     }

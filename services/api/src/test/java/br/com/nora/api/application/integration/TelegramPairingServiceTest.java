@@ -23,15 +23,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Pareamento Telegram: código por tenant (TTL 10 min), deep link do bot, verify que varre o
- * getUpdates (one-shot — cada update chega UMA vez, por isso o cache de /start vistos).
+ * Telegram pairing: code per tenant (TTL 10 min), bot deep link, verify that sweeps getUpdates
+ * (one-shot — each update arrives ONCE, hence the cache of seen /start).
  */
 class TelegramPairingServiceTest {
 
     private final UUID tenantId = UUID.randomUUID();
     private final UUID userId = UUID.randomUUID();
 
-    /** Relógio mutável pra simular expiração do código. */
+    /** Mutable clock to simulate expiry of the code. */
     private final Instant[] currentTime = {Instant.parse("2026-06-12T12:00:00Z")};
 
     private final Clock clock = () -> currentTime[0];
@@ -90,7 +90,7 @@ class TelegramPairingServiceTest {
         assertThatThrownBy(() -> service.verify(tenantId))
                 .isInstanceOf(IntegrationException.PairingPending.class)
                 .hasMessageContaining("ainda não recebi seu /start");
-        // Pareamento continua vivo — o usuário pode tentar de novo.
+        // Pairing stays alive — the user can try again.
         assertThatThrownBy(() -> service.verify(tenantId))
                 .isInstanceOf(IntegrationException.PairingPending.class);
     }
@@ -111,7 +111,7 @@ class TelegramPairingServiceTest {
         assertThat(saved.expiresAt()).isNull();
         assertThat(status.connected()).isTrue();
 
-        // Código consumido: verify de novo exige novo pareamento.
+        // Code consumed: verifying again requires a new pairing.
         assertThatThrownBy(() -> service.verify(tenantId))
                 .isInstanceOf(IntegrationException.ProviderError.class)
                 .hasMessageContaining("nenhum pareamento");
@@ -138,8 +138,8 @@ class TelegramPairingServiceTest {
     }
 
     /**
-     * getUpdates é one-shot: um /start absorvido durante o verify de OUTRO tenant fica no cache e
-     * casa no verify seguinte do tenant dono do código.
+     * getUpdates is one-shot: a /start absorbed during ANOTHER tenant's verify stays in the cache
+     * and matches on the next verify of the tenant that owns the code.
      */
     @Test
     void verify_startAbsorvidoEmPollDeOutroTenant_casaDepois() {
@@ -151,17 +151,17 @@ class TelegramPairingServiceTest {
         service.start(outroTenant, UUID.randomUUID());
         bot.incoming.add(new TelegramBotApi.StartCommand("123", meuPairing.code(), "Ana"));
 
-        // O outro tenant verifica primeiro: consome o getUpdates mas não casa o código.
+        // The other tenant verifies first: it consumes getUpdates but does not match the code.
         assertThatThrownBy(() -> service.verify(outroTenant))
                 .isInstanceOf(IntegrationException.PairingPending.class);
         assertThat(bot.incoming).isEmpty();
 
-        // Meu verify acha o /start no cache mesmo com o getUpdates já vazio.
+        // My verify finds the /start in the cache even with getUpdates already empty.
         ProviderStatus status = service.verify(tenantId);
         assertThat(status.connected()).isTrue();
     }
 
-    /** Polls subsequentes não devolvem updates já entregues (semântica do offset). */
+    /** Subsequent polls do not return already delivered updates (offset semantics). */
     private static final class FakeBot implements TelegramBotApi {
         final List<StartCommand> incoming = new ArrayList<>();
 

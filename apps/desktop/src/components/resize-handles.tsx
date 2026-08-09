@@ -2,16 +2,16 @@ import { useMemo } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 /**
- * Pegas de redimensionamento para a janela sem decoração nativa.
+ * Resize handles for the window without native decoration.
  *
- * Sem a borda do SO não há como arrastar as bordas pra redimensionar, então
- * desenhamos 8 áreas invisíveis (4 bordas + 4 cantos) que chamam
- * `startResizeDragging(direção)`. Isso é cross-platform (Windows/macOS/Linux —
- * usa o mesmo mecanismo de move/resize do WM, igual ao startDragging do título).
+ * Without the OS border there's no way to drag the edges to resize, so we
+ * draw 8 invisible areas (4 edges + 4 corners) that call
+ * `startResizeDragging(direction)`. This is cross-platform (Windows/macOS/Linux —
+ * uses the same WM move/resize mechanism as the titlebar's startDragging).
  *
- * Ficam num z-index abaixo dos botões de janela da titlebar (que sobem pra
- * z 50) pra não roubar o clique de fechar/maximizar no canto superior direito.
- * Some quando a janela está maximizada (não há o que redimensionar).
+ * They sit at a z-index below the titlebar's window buttons (which go up to
+ * z 50) so they don't steal the close/maximize click in the top right corner.
+ * They disappear when the window is maximized (nothing to resize).
  */
 type ResizeDir =
   | "North"
@@ -23,8 +23,8 @@ type ResizeDir =
   | "SouthEast"
   | "SouthWest";
 
-const EDGE = 5; // espessura das bordas
-const CORNER = 12; // tamanho dos cantos
+const EDGE = 5; // edge thickness
+const CORNER = 12; // corner size
 
 interface Handle {
   dir: ResizeDir;
@@ -33,12 +33,12 @@ interface Handle {
 }
 
 const HANDLES: Handle[] = [
-  // Bordas (entre os cantos)
+  // Edges (between the corners)
   { dir: "North", cursor: "ns-resize", style: { top: 0, left: CORNER, right: CORNER, height: EDGE } },
   { dir: "South", cursor: "ns-resize", style: { bottom: 0, left: CORNER, right: CORNER, height: EDGE } },
   { dir: "West", cursor: "ew-resize", style: { left: 0, top: CORNER, bottom: CORNER, width: EDGE } },
   { dir: "East", cursor: "ew-resize", style: { right: 0, top: CORNER, bottom: CORNER, width: EDGE } },
-  // Cantos
+  // Corners
   { dir: "NorthWest", cursor: "nwse-resize", style: { top: 0, left: 0, width: CORNER, height: CORNER } },
   { dir: "NorthEast", cursor: "nesw-resize", style: { top: 0, right: 0, width: CORNER, height: CORNER } },
   { dir: "SouthWest", cursor: "nesw-resize", style: { bottom: 0, left: 0, width: CORNER, height: CORNER } },

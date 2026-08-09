@@ -7,10 +7,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Resultado da analise NLP de uma reuniao (1-1 com Meeting). Imutavel.
+ * Result of the NLP analysis of a meeting (1-1 with Meeting). Immutable.
  *
- * <p>Espelha o schema canonico em {@code docs/api/llm-schemas/meeting-analysis-v1.schema.json}.
- * Carregado pelo backend a partir do response do worker.
+ * <p>Mirrors the canonical schema in {@code docs/api/llm-schemas/meeting-analysis-v1.schema.json}.
+ * Loaded by the backend from the worker response.
  */
 public final class MeetingAnalysis {
 
@@ -103,7 +103,7 @@ public final class MeetingAnalysis {
         this.createdAt = createdAt == null ? this.generatedAt : createdAt;
     }
 
-    /** Factory para criar uma analise nova (id gerado, createdAt = now). */
+    /** Factory to create a new analysis (generated id, createdAt = now). */
     public static MeetingAnalysis newAnalysis(
             UUID meetingId,
             UUID tenantId,
@@ -218,7 +218,7 @@ public final class MeetingAnalysis {
         return createdAt;
     }
 
-    /** Snippet curto (ate 240 chars) extraido do inicio do summary, sem markdown. */
+    /** Short snippet (up to 240 chars) taken from the start of the summary, without markdown. */
     public String summarySnippet() {
         String clean = summary.replaceAll("[#*_`>-]", " ").replaceAll("\\s+", " ").trim();
         return clean.length() <= 240 ? clean : clean.substring(0, 237) + "...";

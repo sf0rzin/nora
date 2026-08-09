@@ -1,6 +1,6 @@
-# Error Codes — Convenção
+# Error Codes — Convention
 
-O backend NORA retorna erros no formato:
+The NORA backend returns errors in the format:
 
 ```json
 {
@@ -12,28 +12,28 @@ O backend NORA retorna erros no formato:
 }
 ```
 
-`code` é a fonte da verdade pra UI tomar decisões (renderizar mensagem específica, disparar fluxo de refresh, etc.). `message` é fallback se o cliente não conhecer o code.
+`code` is the source of truth for the UI to make decisions (render a specific message, trigger a refresh flow, etc.). `message` is the fallback if the client does not know the code.
 
-## HTTP Status × code (atual)
+## HTTP Status × code (current)
 
 ### 400 BAD_REQUEST
-- `VALIDATION_FAILED` — payload inválido (Bean Validation, conversão de tipo)
-- `MALFORMED_REQUEST` — body JSON inválido
-- `TOKEN_INVALID` — one-time token de email-verify/password-reset inválido/usado/expirado
+- `VALIDATION_FAILED` — invalid payload (Bean Validation, type conversion)
+- `MALFORMED_REQUEST` — invalid JSON body
+- `TOKEN_INVALID` — email-verify/password-reset one-time token invalid/used/expired
 
 ### 401 UNAUTHORIZED
-- `UNAUTHENTICATED` — sem credencial (cliente deve fazer login)
-- `INVALID_CREDENTIALS` — email/senha errados
-- `EMAIL_NOT_VERIFIED` — login bloqueado até verificação
-- `REFRESH_TOKEN_INVALID` — refresh expirado/revogado → cliente faz logout local + redirect login
+- `UNAUTHENTICATED` — no credential (the client must log in)
+- `INVALID_CREDENTIALS` — wrong email/password
+- `EMAIL_NOT_VERIFIED` — login blocked until verification
+- `REFRESH_TOKEN_INVALID` — refresh expired/revoked → the client does a local logout + redirect to login
 
 ### 403 FORBIDDEN
 - `FORBIDDEN` — Spring Security access denied
-- `USER_DISABLED` — conta desativada
-- `IAM_FORBIDDEN` — policy IAM nega operação
+- `USER_DISABLED` — deactivated account
+- `IAM_FORBIDDEN` — an IAM policy denies the operation
 
 ### 404 NOT_FOUND
-- `NOT_FOUND` — endpoint inexistente
+- `NOT_FOUND` — non-existent endpoint
 - `MEETING_NOT_FOUND`
 - `ANALYSIS_MEETING_NOT_FOUND`
 - `TENANT_NOT_FOUND`
@@ -51,20 +51,20 @@ O backend NORA retorna erros no formato:
 - `IAM_NAME_TAKEN`
 - `INVITE_ALREADY_ACCEPTED`
 - `INVITE_DUPLICATE_PENDING`
-- `CONFLICT` (genérico — `DataIntegrityViolationException`)
+- `CONFLICT` (generic — `DataIntegrityViolationException`)
 
 ### 410 GONE
 - `INVITE_EXPIRED`
 
 ### 413 PAYLOAD_TOO_LARGE
-- `PAYLOAD_TOO_LARGE` — upload excede 10MB
-- `TRANSCRIPT_TOO_LARGE` — texto excede limite por meeting
+- `PAYLOAD_TOO_LARGE` — upload exceeds 10MB
+- `TRANSCRIPT_TOO_LARGE` — text exceeds the per-meeting limit
 
 ### 415 UNSUPPORTED_MEDIA_TYPE
 - `UNSUPPORTED_MEDIA_TYPE`
 
 ### 422 UNPROCESSABLE_ENTITY
-- `EMAIL_DOMAIN_NOT_ALLOWED` — invite recusado pelo allowed_email_domain
+- `EMAIL_DOMAIN_NOT_ALLOWED` — invite refused by the allowed_email_domain
 - `TENANT_DOMAIN_INVALID`
 
 ### 429 TOO_MANY_REQUESTS
@@ -72,15 +72,15 @@ O backend NORA retorna erros no formato:
 - `RATE_LIMITED` — auth endpoints (login/signup/reset)
 
 ### 500 INTERNAL_ERROR
-- `INTERNAL_ERROR` — fallback (qualquer Exception não tratada)
+- `INTERNAL_ERROR` — fallback (any unhandled Exception)
 
 ### 502 BAD_GATEWAY
-- `ANALYSIS_WORKER_UNAVAILABLE` — worker NLP down/timeout
-- `ANALYSIS_INVALID_RESPONSE` — worker retornou JSON inválido
-- `BROKER_ERROR` — Azure Speech STS retornou erro
+- `ANALYSIS_WORKER_UNAVAILABLE` — NLP worker down/timeout
+- `ANALYSIS_INVALID_RESPONSE` — the worker returned invalid JSON
+- `BROKER_ERROR` — Azure Speech STS returned an error
 
-## Convenções
-- `code` é UPPER_SNAKE_CASE, máximo 32 chars
-- Granularidade: códigos específicos vencem genéricos (`MEETING_NOT_FOUND` em vez de `NOT_FOUND` quando aplicável)
-- Quebra de contrato em `code` exige PR documentado (clientes podem switch nele)
-- `details[].field` usa caminho Bean Validation (ex.: `email`, `participants[0].email`)
+## Conventions
+- `code` is UPPER_SNAKE_CASE, maximum 32 chars
+- Granularity: specific codes beat generic ones (`MEETING_NOT_FOUND` instead of `NOT_FOUND` when applicable)
+- Breaking the `code` contract requires a documented PR (clients may switch on it)
+- `details[].field` uses the Bean Validation path (e.g. `email`, `participants[0].email`)

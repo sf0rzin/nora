@@ -18,8 +18,8 @@ const SUGGESTIONS = [
   "O que decidimos sobre o conector Protheus?",
 ];
 
-// Placeholder enquanto o backend de chat não existe.
-// Quando expor `/v1/chat` no backend, substituir aqui pela chamada real.
+// Placeholder while the chat backend doesn't exist.
+// When `/v1/chat` is exposed in the backend, replace this with the real call.
 async function fakeAssistantReply(userText: string): Promise<string> {
   await new Promise((r) => setTimeout(r, 1100 + Math.random() * 600));
   const trimmed = userText.trim().toLowerCase();

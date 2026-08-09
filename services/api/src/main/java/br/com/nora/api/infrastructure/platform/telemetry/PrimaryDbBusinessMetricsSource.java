@@ -11,21 +11,21 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * Métricas de negócio cross-tenant (telemetria (c), CORTÁVEL, ADR 0024). Lê o banco PRIMÁRIO, SEM
- * contexto de tenant — agregação operador-only e intencional (COUNT/COUNT DISTINCT em {@code
- * meeting_analyses}). v1 minimalista: contagens seguras (analyses + tenants ativos); médias
- * deixadas null pra não acoplar a schema de outros módulos. Bean não-gated (não toca o banco de
- * plataforma).
+ * Cross-tenant business metrics (telemetry (c), CUTTABLE, ADR 0024). Reads the PRIMARY database,
+ * WITHOUT tenant context — an operator-only, intentional aggregation (COUNT/COUNT DISTINCT on
+ * {@code meeting_analyses}). Minimal v1: safe counts (analyses + active tenants); averages left
+ * null so as not to couple to other modules' schemas. Non-gated bean (does not touch the platform
+ * database).
  *
- * <p><b>RLS enforce-safe (ADR 0019, ADR 0026):</b> sob {@code NORA_RLS_ENFORCE=true} o datasource
- * primário roda como {@code nora_app} (NOBYPASSRLS). Como esta leitura NÃO passa por
- * {@code @Transactional} (logo o {@code TenantRlsAspect} não seta o GUC), a policy {@code
- * tenant_isolation} seria fail-closed ⇒ {@code analyses=0/tenants=0} SILENCIOSO. Para evitar isso,
- * quando há um {@link #telemetryJdbc} dedicado configurado ({@code
- * nora.security.rls.telemetry.url}, role {@code nora_telemetry} BYPASSRLS — ver {@code
- * db/operational/R001__provision_app_roles.sql}), a agregação usa ESSE caminho. Sem ele
- * (dev/local/CI, ou prod antes do cutover), cai no {@code JdbcTemplate} primário, onde o owner
- * bypassa RLS — comportamento atual intacto.
+ * <p><b>RLS enforce-safe (ADR 0019, ADR 0026):</b> under {@code NORA_RLS_ENFORCE=true} the primary
+ * datasource runs as {@code nora_app} (NOBYPASSRLS). Since this read does NOT go through
+ * {@code @Transactional} (so the {@code TenantRlsAspect} does not set the GUC), the {@code
+ * tenant_isolation} policy would be fail-closed ⇒ SILENTLY {@code analyses=0/tenants=0}. To avoid
+ * that, when a dedicated {@link #telemetryJdbc} is configured ({@code
+ * nora.security.rls.telemetry.url}, role {@code nora_telemetry} BYPASSRLS — see {@code
+ * db/operational/R001__provision_app_roles.sql}), the aggregation uses THAT path. Without it
+ * (dev/local/CI, or prod before the cutover), it falls back to the primary {@code JdbcTemplate},
+ * where the owner bypasses RLS — current behavior intact.
  */
 @Component
 public class PrimaryDbBusinessMetricsSource implements BusinessMetricsSource {
@@ -40,15 +40,15 @@ public class PrimaryDbBusinessMetricsSource implements BusinessMetricsSource {
             @Qualifier("telemetryJdbcTemplate")
                     ObjectProvider<JdbcTemplate> telemetryJdbcProvider) {
         this.primaryJdbc = jdbcTemplate;
-        // Optional: presente só quando o datasource BYPASSRLS dedicado está configurado
-        // (TelemetryDataSourceConfig, gated por nora.security.rls.telemetry.url).
+        // Optional: present only when the dedicated BYPASSRLS datasource is configured
+        // (TelemetryDataSourceConfig, gated by nora.security.rls.telemetry.url).
         this.telemetryJdbc = telemetryJdbcProvider.getIfAvailable();
     }
 
     @Override
     public BusinessSnapshot fetch(OffsetDateTime from, OffsetDateTime to) {
-        // Prefere o caminho BYPASSRLS dedicado quando disponível (RLS enforce ligado);
-        // senão usa o primário (owner bypassa RLS em dev/prod-pré-cutover).
+        // Prefers the dedicated BYPASSRLS path when available (RLS enforce on);
+        // otherwise uses the primary one (owner bypasses RLS in dev/prod-pre-cutover).
         JdbcTemplate jdbc = telemetryJdbc != null ? telemetryJdbc : primaryJdbc;
         try {
             Long analyses =

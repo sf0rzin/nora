@@ -34,10 +34,10 @@ impl SttBackend for SidecarHandle {
 
 impl Drop for SidecarHandle {
     fn drop(&mut self) {
-        // Defesa contra leak de subprocess: se o `Vec<SidecarHandle>` for limpo sem
-        // passar por `stop()` (panic, logout, app close abrupto), o `stop_tx.take()`
-        // garante o sinal de cancelamento. Sem isso, o sidecar Python continua rodando
-        // ate o app fechar — quota Azure/CPU desperdicada.
+        // Defense against subprocess leak: if the `Vec<SidecarHandle>` is cleared without
+        // going through `stop()` (panic, logout, abrupt app close), the `stop_tx.take()`
+        // guarantees the cancellation signal. Without it, the Python sidecar keeps running
+        // until the app closes — wasted Azure quota/CPU.
         if let Some(tx) = self.stop_tx.take() {
             let _ = tx.send(());
         }
@@ -51,7 +51,7 @@ fn sidecar_binary_name() -> Option<String> {
     let os = std::env::consts::OS;     // windows, macos, linux
     let ext = if cfg!(target_os = "windows") { ".exe" } else { "" };
     
-    // Tenta nomes conhecidos (msvc, gnu, darwin, musl)
+    // Try known names (msvc, gnu, darwin, musl)
     let candidates: Vec<String> = match os {
         "windows" => vec![
             format!("nora-stt-sidecar-{}-pc-windows-msvc{}", arch, ext),
@@ -102,7 +102,7 @@ fn sidecar_binary_name() -> Option<String> {
         }
     }
     
-    // Fallback: primeiro nome da lista de candidatos (mesmo que não exista ainda)
+    // Fallback: first name in the candidate list (even if it does not exist yet)
     candidates.into_iter().next()
 }
 
@@ -117,10 +117,10 @@ fn resolve_sidecar_binary() -> Option<PathBuf> {
         }
     }
 
-    // 2. Relative to executable (packaged app). O Tauri (externalBin) coloca o binario AO LADO
-    // do exe com o triple REMOVIDO ("nora-stt-sidecar[.exe]") — esse e o caso real do build
-    // empacotado e precisa vir PRIMEIRO. As subpastas binaries/ cobrem empacotamentos custom
-    // que mantem o nome completo.
+    // 2. Relative to executable (packaged app). Tauri (externalBin) puts the binary NEXT TO
+    // the exe with the triple REMOVED ("nora-stt-sidecar[.exe]") — that is the real case of the
+    // packaged build and it has to come FIRST. The binaries/ subfolders cover custom packagings
+    // that keep the full name.
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
             let stripped = format!(
@@ -192,10 +192,10 @@ impl SidecarHandle {
             }
         });
 
-        // Espera o "ready" com timeout. 20s (era 5s) porque o cold-start do PyInstaller onefile
-        // (descompactar + scan de antivirus + handshake TLS com o Azure Speech) estoura 5s
-        // facilmente em rede lenta/laptop frio — exatamente o cenario de uma demo no FIAP.
-        // join.abort() dropa a task; o child Python e morto pelo kill_on_drop do Command (abaixo).
+        // Wait for the "ready" with a timeout. 20s (was 5s) because the PyInstaller onefile
+        // cold-start (unpack + antivirus scan + TLS handshake with Azure Speech) blows past 5s
+        // easily on a slow network/cold laptop — exactly the scenario of a demo at FIAP.
+        // join.abort() drops the task; the Python child is killed by the Command's kill_on_drop (below).
         match tokio::time::timeout(tokio::time::Duration::from_secs(20), ready_rx).await {
             Ok(Ok(())) => {}
             Ok(Err(_)) => {
@@ -228,12 +228,12 @@ async fn spawn_refresh_loop(
     mut cancel_rx: oneshot::Receiver<()>,
     initial_ttl_secs: Option<u64>,
 ) {
-    // Calcula intervalo de refresh baseado no TTL do token.
-    // Azure tokens duram ~10 min; usamos min(TTL - 60s_buffer, 300s_max).
-    // Se não soubermos o TTL, fallback para 5 minutos.
+    // Compute the refresh interval based on the token TTL.
+    // Azure tokens last ~10 min; we use min(TTL - 60s_buffer, 300s_max).
+    // If we do not know the TTL, fall back to 5 minutes.
     let compute_interval = |ttl: Option<u64>| -> tokio::time::Duration {
         let secs = ttl.map(|t| t.min(300)).unwrap_or(300);
-        tokio::time::Duration::from_secs(secs.max(30)) // mínimo 30s para não spammar
+        tokio::time::Duration::from_secs(secs.max(30)) // minimum 30s so we do not spam
     };
     let mut refresh_interval = compute_interval(initial_ttl_secs);
     
@@ -258,7 +258,7 @@ async fn spawn_refresh_loop(
                 loop {
                     match fetch_speech_token(&backend_url, &access_token, Some(&region)).await {
                         Ok(token_response) => {
-                            // Atualiza intervalo de refresh baseado no TTL real do token
+                            // Update the refresh interval based on the token's real TTL
                             let new_ttl = token_response.ttl_seconds();
                             refresh_interval = compute_interval(new_ttl);
                             #[cfg(debug_assertions)]
@@ -328,14 +328,14 @@ async fn run_sidecar(
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        // Mata o processo Python se este handle for dropado (ex.: join.abort() no timeout de
-        // startup, ou erro no meio). Sem isso, o sidecar PyInstaller fica orfao consumindo
-        // quota/sessao do Azure Speech.
+        // Kills the Python process if this handle is dropped (e.g.: join.abort() on the startup
+        // timeout, or an error midway). Without this, the PyInstaller sidecar is orphaned
+        // consuming Azure Speech quota/session.
         .kill_on_drop(true);
 
-    // CREATE_NO_WINDOW (0x08000000): o sidecar e um .exe console (PyInstaller). Num app GUI
-    // (windows_subsystem = "windows"), spawnar um console-subsystem child faz piscar uma janela
-    // de CMD preta na primeira gravacao. Esta flag suprime o console do filho no Windows.
+    // CREATE_NO_WINDOW (0x08000000): the sidecar is a console .exe (PyInstaller). In a GUI app
+    // (windows_subsystem = "windows"), spawning a console-subsystem child flashes a black CMD
+    // window on the first recording. This flag suppresses the child's console on Windows.
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
 
@@ -391,7 +391,7 @@ async fn run_sidecar(
         access_token,
         region.clone(),
         refresh_cancel_rx,
-        None, // TTL inicial desconhecido; será calculado no primeiro refresh
+        None, // initial TTL unknown; it will be computed on the first refresh
     ));
 
     // Writer task
@@ -478,13 +478,13 @@ async fn run_sidecar(
                                             .unwrap_or(&session_id)
                                             .to_string(),
                                         track: track_label.clone(),
-                                        // O Azure diariza de verdade e manda
-                                        // "Guest-1"/"Guest-2"; isso e preservado.
-                                        // Quando vem nulo (protocol.py deixa
-                                        // `speaker_id: str | None`), cai no id
-                                        // por track — mesmo rotulo que o backend
-                                        // local usa, entao o SpeakerMap do front
-                                        // nao muda de comportamento.
+                                        // Azure really diarizes and sends
+                                        // "Guest-1"/"Guest-2"; that is preserved.
+                                        // When it comes in null (protocol.py leaves
+                                        // `speaker_id: str | None`), it falls back to
+                                        // the per-track id — same label the local
+                                        // backend uses, so the front's SpeakerMap
+                                        // does not change behavior.
                                         speaker_id: json.get("speaker_id")
                                             .and_then(|v| v.as_str())
                                             .map(|s| s.to_string())

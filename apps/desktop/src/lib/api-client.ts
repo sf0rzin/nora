@@ -15,10 +15,10 @@ interface RequestOptions {
   headers?: Record<string, string>;
   auth?: boolean;
   /**
-   * Quantas vezes essa request já tentou refresh+retry depois de um 401.
-   * Capado em 1 (1 refresh por request) pra impedir loops infinitos caso
-   * o token novo também volte 401 (token revogado, IAM rule estranha etc).
-   * Não use diretamente — o api-client maneja.
+   * How many times this request already tried refresh+retry after a 401.
+   * Capped at 1 (1 refresh per request) to prevent infinite loops if
+   * the new token also comes back 401 (revoked token, odd IAM rule etc).
+   * Don't use directly — the api-client handles it.
    */
   _retryDepth?: number;
 }
@@ -56,13 +56,13 @@ class ApiClient {
       throw err;
     }
 
-    // body só em dev (Vite elimina em prod) — não vaza token no bundle. #98
+    // body only in dev (Vite strips it in prod) — no token leak in the bundle. #98
     if (import.meta.env.DEV) console.log("[api] response:", response.status, response.body);
 
     if (response.status === 401 && auth && _retryDepth === 0) {
-      // Uma única tentativa de refresh+retry. refreshAccessToken() é idempotente
-      // (mutex interno), então múltiplas requests 401-ando em paralelo coalescem
-      // num único refresh.
+      // A single refresh+retry attempt. refreshAccessToken() is idempotent
+      // (internal mutex), so multiple requests 401-ing in parallel coalesce
+      // into a single refresh.
       const newToken = await refreshAccessToken();
       if (newToken) {
         return this.request<T>(path, { ...options, _retryDepth: 1 });
@@ -75,7 +75,7 @@ class ApiClient {
     }
 
     if (response.status === 401 && auth && _retryDepth > 0) {
-      // Já tentamos uma vez. Não entra em loop — derruba sessão.
+      // We already tried once. Don't loop — kill the session.
       console.warn("[api] 401 após refresh — token novo também recusado");
       await logout();
       this.onUnauthorized?.();

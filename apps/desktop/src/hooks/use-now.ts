@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
 /**
- * Força re-render a cada `intervalMs` enquanto `active` — pra atualizar
- * relógios/timers sem guardar o "agora" em estado. Substitui os hacks de
- * forceTick/`void tick` espalhados (dock-bar, use-live-transcript). Auditoria #56/#96.
+ * Forces a re-render every `intervalMs` while `active` — to update
+ * clocks/timers without keeping "now" in state. Replaces the scattered
+ * forceTick/`void tick` hacks (dock-bar, use-live-transcript). Audit #56/#96.
  */
 export function useNow(active: boolean, intervalMs = 500): void {
   const [, force] = useState(0);
@@ -15,8 +15,8 @@ export function useNow(active: boolean, intervalMs = 500): void {
 }
 
 /**
- * Segundos decorridos desde `startedAt` (ms epoch), re-renderizando enquanto
- * `active`. Retorna 0 quando `startedAt` é null (preserva o gating original).
+ * Seconds elapsed since `startedAt` (ms epoch), re-rendering while
+ * `active`. Returns 0 when `startedAt` is null (preserves the original gating).
  */
 export function useElapsedSeconds(
   startedAt: number | null,

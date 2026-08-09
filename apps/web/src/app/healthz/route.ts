@@ -1,12 +1,12 @@
 /**
- * /healthz — endpoint de health check pro probe do Container App (ACA).
+ * /healthz — health check endpoint for the Container App (ACA) probe.
  *
- * O Bicep configura Startup/Readiness/Liveness probes em `/healthz` na porta 3000.
- * Sem essa rota, as revisões novas viravam ActivationFailed e o ACA caía na revisão
- * antiga (que serve o bundle errado).
+ * The Bicep configures Startup/Readiness/Liveness probes on `/healthz` at port 3000.
+ * Without this route, new revisions turned into ActivationFailed and ACA fell back to
+ * the old revision (which serves the wrong bundle).
  *
- * Mantém leve: status 200 imediato, sem dependências (DB, backend etc).
- * `force-static` evita revalidação por request.
+ * Keep it light: immediate 200 status, no dependencies (DB, backend etc).
+ * `force-static` avoids revalidation per request.
  */
 export const dynamic = "force-static";
 export const revalidate = false;

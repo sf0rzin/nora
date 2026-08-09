@@ -1,8 +1,8 @@
 package br.com.nora.api.domain.customer;
 
 /**
- * Tipo de objecao levantada pelo cliente na reuniao (ADR 0015). Espelha o enum {@code
- * objections.type} de {@code meeting-analysis-v1.schema.json}.
+ * Type of objection raised by the customer in the meeting (ADR 0015). Mirrors the {@code
+ * objections.type} enum of {@code meeting-analysis-v1.schema.json}.
  */
 public enum ObjectionType {
     PRICE,

@@ -4,9 +4,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Uma execução (disparo) de um workflow — real (evento de domínio) ou teste manual. O log passo a
- * passo vive em {@code logJson} (array de {at, nodeId, level, message}) e é o que a UI de histórico
- * mostra. Imutável.
+ * An execution (trigger) of a workflow — real (domain event) or manual test. The step-by-step log
+ * lives in {@code logJson} (array of {at, nodeId, level, message}) and is what the history UI
+ * shows. Immutable.
  */
 public record WorkflowExecution(
         UUID id,

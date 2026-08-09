@@ -1,7 +1,7 @@
-# Perfil local de desenvolvimento. Ativado por SPRING_PROFILES_ACTIVE=local.
+# Local development profile. Activated by SPRING_PROFILES_ACTIVE=local.
 
-# Dev convenience: carrega variaveis de `services/api/.env.local` automaticamente.
-# Em producao, variaveis de ambiente reais continuam tendo precedencia.
+# Dev convenience: automatically loads variables from `services/api/.env.local`.
+# In production, real environment variables still take precedence.
 springdotenv:
   filename: .env.local
   ignore-if-missing: true
@@ -11,7 +11,7 @@ spring:
     show-sql: false
 nora:
   security:
-    expose-dev-tokens: true   # retorna tokens de verificacao/reset no JSON para testes manuais
+    expose-dev-tokens: true   # returns verification/reset tokens in the JSON for manual testing
 logging:
   level:
     br.com.nora: DEBUG

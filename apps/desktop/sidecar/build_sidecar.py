@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Build script cross-platform para o NORA STT Sidecar.
+Cross-platform build script for the NORA STT Sidecar.
 
-Gera binário standalone em apps/desktop/src-tauri/binaries/
-usando PyInstaller. Detecta automaticamente a plataforma.
+Generates a standalone binary in apps/desktop/src-tauri/binaries/
+using PyInstaller. Detects the platform automatically.
 
-Uso:
+Usage:
     python build_sidecar.py
 
-Requisitos:
+Requirements:
     pip install pyinstaller
     pip install -e ".[dev]"
 """
@@ -21,7 +21,7 @@ from pathlib import Path
 
 
 def _normalize_machine(machine: str) -> str:
-    """Mapeia platform.machine() → triple usado pelo Rust/Tauri."""
+    """Maps platform.machine() → triple used by Rust/Tauri."""
     m = machine.lower()
     if m in ("amd64", "x86_64"):
         return "x86_64"
@@ -31,11 +31,11 @@ def _normalize_machine(machine: str) -> str:
 
 
 def detect_target() -> tuple[str, str]:
-    """Detecta sistema e target triple do Tauri.
+    """Detects the system and the Tauri target triple.
 
-    Sai com o nome batendo com o que `apps/desktop/src-tauri/src/stt_sidecar.rs`
-    constroi via `std::env::consts::ARCH` + `OS`. CI runners do GitHub Actions
-    em macos-latest sao ARM (aarch64) — o build NAO pode mais hardcodar x86_64.
+    Comes out with the name matching what `apps/desktop/src-tauri/src/stt_sidecar.rs`
+    builds via `std::env::consts::ARCH` + `OS`. GitHub Actions CI runners
+    on macos-latest are ARM (aarch64) — the build can NO longer hardcode x86_64.
     """
     system = platform.system().lower()
     arch = _normalize_machine(platform.machine())
@@ -84,18 +84,18 @@ def main() -> int:
         print("ERRO: PyInstaller falhou", file=sys.stderr)
         return result.returncode
 
-    # PyInstaller gera em dist/
+    # PyInstaller generates into dist/
     dist_dir = project_root / "dist"
     built_exe = dist_dir / expected_name
 
-    # No Windows, PyInstaller adiciona .exe automaticamente
+    # On Windows, PyInstaller adds .exe automatically
     if system == "windows":
         built_exe_with_ext = dist_dir / f"{expected_name}.exe"
         if built_exe_with_ext.exists():
             built_exe = built_exe_with_ext
 
     if not built_exe.exists():
-        # Procura qualquer arquivo gerado no dist
+        # Look for any file generated in dist
         candidates = list(dist_dir.iterdir()) if dist_dir.exists() else []
         print(f"ERRO: Binário esperado não encontrado: {built_exe}", file=sys.stderr)
         print(f"Conteúdo de {dist_dir}:", file=sys.stderr)
@@ -103,7 +103,7 @@ def main() -> int:
             print(f"  - {c.name}", file=sys.stderr)
         return 1
 
-    # Copia para src-tauri/binaries/
+    # Copy to src-tauri/binaries/
     dest = binaries_dir / built_exe.name
     shutil.copy2(built_exe, dest)
 

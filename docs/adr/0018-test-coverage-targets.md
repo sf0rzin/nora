@@ -1,79 +1,79 @@
-# 0018 — Test coverage targets por área crítica
+# 0018 — Test coverage targets per critical area
 
-- Status: aceito
-- Data: 2026-05-14
-- Decisores: Tech Lead
+- Status: accepted
+- Date: 2026-05-14
+- Deciders: Tech Lead
 
-## Contexto
+## Context
 
-Audit pré-Sub-fase 1.10 incluiu **§12 — Test Coverage** com medições reais:
+The pre-Sub-phase 1.10 audit included **§12 — Test Coverage** with real measurements:
 
-### Worker NLP (Python — pytest + pytest-cov)
-- **87% coverage total** (54 tests, 18.85s)
-- Áreas críticas >90%: `models.py` 100%, `pii_shield.py` 95%, `stub_analyzer.py` 91%, `baseline.py` 94%, `stub_live_analyzer.py` 95%, `llm_analyzer.py` 87%
-- Áreas baixas: `live_analyzer.py` 30%, `clients/llm.py` 47%, `routers/analyze.py` 58% (todas tem stubs em CI por design — chamadas LLM reais não rodam em CI)
+### NLP Worker (Python — pytest + pytest-cov)
+- **87% total coverage** (54 tests, 18.85s)
+- Critical areas >90%: `models.py` 100%, `pii_shield.py` 95%, `stub_analyzer.py` 91%, `baseline.py` 94%, `stub_live_analyzer.py` 95%, `llm_analyzer.py` 87%
+- Low areas: `live_analyzer.py` 30%, `clients/llm.py` 47%, `routers/analyze.py` 58% (all of them have stubs in CI by design — real LLM calls do not run in CI)
 
-### Backend Spring (Java — JUnit 5 + JaCoCo)
+### Spring Backend (Java — JUnit 5 + JaCoCo)
 - **67% instruction coverage** (174 tests; 53% branch coverage)
-- Áreas críticas >90%:
+- Critical areas >90%:
   - `InvitationService` 98.1%
   - `PolicyEvaluator` 95.8% (84% branches)
   - `AuthService` 93.2%
   - `AuthorizationService` 89.9% (100% branches)
-- Áreas baixas: `tenant` 40.4% (TenantContextController), `analysis` 47% (AnalysisService), `exception` 53.7% (GlobalExceptionHandler)
+- Low areas: `tenant` 40.4% (TenantContextController), `analysis` 47% (AnalysisService), `exception` 53.7% (GlobalExceptionHandler)
 
-### Web Next.js
-- **0% coverage efetivo** — `apps/web/package.json` não tem `test` script nem runner (vitest/jest/playwright). Sem suite
+### Next.js Web
+- **0% effective coverage** — `apps/web/package.json` has no `test` script and no runner (vitest/jest/playwright). No suite
 
-### Desktop sidecar Python
-- Coberto parcialmente em `apps/desktop/sidecar/tests/test_protocol.py` (NDJSON Rust↔Python contract). Coverage não medido neste audit (escopo do amigo Desktop)
+### Python Desktop sidecar
+- Partially covered in `apps/desktop/sidecar/tests/test_protocol.py` (NDJSON Rust↔Python contract). Coverage not measured in this audit (the Desktop friend's scope)
 
-## Decisão
+## Decision
 
-Estabelecer **targets de coverage por área** que **devem ser mantidos** (não regredir):
+Establish **coverage targets per area** that **must be maintained** (not regress):
 
-### Backend Spring
+### Spring Backend
 
-| Tier | Cobertura mínima |
+| Tier | Minimum coverage |
 |---|---|
-| **Áreas críticas** (IAM, Auth, PII, Speech, Analysis pipeline) | **>85% instruction sustained** |
-| Áreas não-críticas (controllers REST sem lógica complexa, DTOs, mappers) | **>60% instruction sustained** |
-| Branch coverage backend (geral) | **>70% sustained** (hoje 53%, gap a fechar na Sub-fase 1.12) |
+| **Critical areas** (IAM, Auth, PII, Speech, Analysis pipeline) | **>85% instruction sustained** |
+| Non-critical areas (REST controllers without complex logic, DTOs, mappers) | **>60% instruction sustained** |
+| Backend branch coverage (overall) | **>70% sustained** (today 53%, a gap to close in Sub-phase 1.12) |
 
-**Classes específicas marcadas "críticas"** (regressão abaixo de 85% bloqueia merge):
+**Specific classes marked as "critical"** (a regression below 85% blocks the merge):
 - `PolicyEvaluator`
 - `AuthorizationService`
 - `AuthService`
 - `InvitationService`
-- `RefreshTokenService` (criada na Sub-fase 1.3)
-- `PiiShield` (no backend, se houver — atualmente está só no worker)
+- `RefreshTokenService` (created in Sub-phase 1.3)
+- `PiiShield` (in the backend, if there is one — currently it is only in the worker)
 - `SpeechTokenService` (token broker — ADR 0009)
 - `AnalysisService` (worker proxy)
-- `MeetingGoalService` + `ProductivityAssessmentService` (criados na 1.8, próximo da 1.11 Customer Confidence)
+- `MeetingGoalService` + `ProductivityAssessmentService` (created in 1.8, close to 1.11 Customer Confidence)
 
-### Worker NLP
+### NLP Worker
 
-| Tier | Cobertura mínima |
+| Tier | Minimum coverage |
 |---|---|
-| Total | **>85% sustained** (hoje 87%) |
-| `pii_shield.py` | **>90%** (hoje 95%) |
-| `models.py` | **100%** (hoje 100%) — todos Pydantic models exercitados |
+| Total | **>85% sustained** (today 87%) |
+| `pii_shield.py` | **>90%** (today 95%) |
+| `models.py` | **100%** (today 100%) — all Pydantic models exercised |
 
-### Web Next.js (a partir da Sub-fase 1.12)
+### Next.js Web (from Sub-phase 1.12 onwards)
 
-| Tier | Cobertura mínima |
+| Tier | Minimum coverage |
 |---|---|
 | Auth flow pages | **>50% sustained** |
 | Dashboard + MeetingDetail + Tasks pages | **>40% sustained** |
-| Components compartilhados (PolicyEditor, ProductivityScoreCard, CustomerConfidenceCard) | **>60% sustained** |
+| Shared components (PolicyEditor, ProductivityScoreCard, CustomerConfidenceCard) | **>60% sustained** |
 
-Sub-fase 1.12 adiciona Vitest como runner + suites iniciais.
+Sub-phase 1.12 adds Vitest as the runner + initial suites.
 
 ### Desktop
 
-Targets ficam **escopo do amigo Desktop**. Tech Lead não dita; apenas recomenda em briefing de coordenação.
+Targets remain the **Desktop friend's scope**. The Tech Lead does not dictate; he only recommends in the coordination briefing.
 
-## Como medir
+## How to measure
 
 ### Backend
 ```bash
@@ -83,7 +83,7 @@ mvn -B test jacoco:report
 # CSV agregável em target/site/jacoco/jacoco.csv
 ```
 
-CI: `ci.yml` job `api` já roda `mvn -B verify` que inclui JaCoCo. Threshold mínimo configurado no `pom.xml` (Sub-fase 1.12 adiciona `jacoco-maven-plugin` `check` goal com regras).
+CI: the `ci.yml` job `api` already runs `mvn -B verify`, which includes JaCoCo. Minimum threshold configured in `pom.xml` (Sub-phase 1.12 adds the `jacoco-maven-plugin` `check` goal with rules).
 
 ### Worker
 ```bash
@@ -92,39 +92,39 @@ pip install pytest-cov  # adicionar a [dev] em pyproject.toml
 python -m pytest --cov=src --cov-report=term --cov-report=xml --cov-fail-under=85
 ```
 
-CI: `ci.yml` job `worker` rodará com `--cov-fail-under=85` (Sub-fase 1.12 adiciona).
+CI: the `ci.yml` job `worker` will run with `--cov-fail-under=85` (Sub-phase 1.12 adds it).
 
 ### Web
-Sub-fase 1.12: adicionar Vitest + `npm test -- --coverage` no `ci.yml` job `web`.
+Sub-phase 1.12: add Vitest + `npm test -- --coverage` to the `ci.yml` job `web`.
 
-## Consequências
+## Consequences
 
-**Positivas:**
-- Áreas críticas (IAM, Auth, PII) têm rede de segurança contra regressão
-- Reviewer técnico (recrutador TOTVS, code walkthrough) vê números concretos não-improvisados
-- Coverage targets viram **conversa explícita** em PR review ("essa mudança baixou PolicyEvaluator pra 84%, OK ou adicionamos teste?")
+**Positive:**
+- Critical areas (IAM, Auth, PII) have a safety net against regression
+- A technical reviewer (TOTVS recruiter, code walkthrough) sees concrete, non-improvised numbers
+- Coverage targets become an **explicit conversation** in PR review ("this change dropped PolicyEvaluator to 84%, is that OK or do we add a test?")
 
-**Negativas:**
-- Áreas baixas (tenant 40%, analysis 47%) **precisam atenção** na Sub-fase 1.12 antes de subir a barra geral
-- Web sem runner exige investimento em Vitest + suites (~1 dia agentic) — entra na 1.12
+**Negative:**
+- Low areas (tenant 40%, analysis 47%) **need attention** in Sub-phase 1.12 before raising the overall bar
+- The web without a runner requires investment in Vitest + suites (~1 agentic day) — it goes into 1.12
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Coverage total >80% obrigatório (sem distinção por área)** — rejeitado. Forçar 80% em controllers boilerplate gera testes sem valor (testando getter/setter). Diferenciação por criticidade é mais útil
-2. **Coverage como gate apenas opcional, sem fail no CI** — rejeitado. Sem enforcement, áreas críticas regridem silenciosamente
-3. **Mutation testing (PIT)** — mais rigoroso que line coverage mas overhead alto. Adicionado na agenda da Sub-fase 1.13+ se tração comercial justificar investimento
+1. **Mandatory >80% total coverage (no distinction by area)** — rejected. Forcing 80% on boilerplate controllers produces valueless tests (testing getter/setter). Differentiation by criticality is more useful
+2. **Coverage as an optional-only gate, with no CI failure** — rejected. Without enforcement, critical areas regress silently
+3. **Mutation testing (PIT)** — more rigorous than line coverage but high overhead. Added to the Sub-phase 1.13+ agenda if commercial traction justifies the investment
 
-## Plano de Aplicação
+## Application Plan
 
-- **Sub-fase 1.10 (este ADR)**: targets declarados, sem enforcement automático ainda
-- **Sub-fase 1.12** (Production Hardening):
-  - JaCoCo `check` goal com regras críticas
-  - pytest-cov `--cov-fail-under=85` em CI
-  - Vitest adicionado + thresholds web
-  - PR template com checkbox "coverage mantido ou subiu nas áreas declaradas críticas"
+- **Sub-phase 1.10 (this ADR)**: targets declared, with no automatic enforcement yet
+- **Sub-phase 1.12** (Production Hardening):
+  - JaCoCo `check` goal with critical rules
+  - pytest-cov `--cov-fail-under=85` in CI
+  - Vitest added + web thresholds
+  - PR template with the checkbox "coverage maintained or increased in the areas declared critical"
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-05-14 | Tech Lead | ADR criado durante Sub-fase 1.10 após audit §12 medir coverage real. Enforcement na Sub-fase 1.12 |
+| 2026-05-14 | Tech Lead | ADR created during Sub-phase 1.10 after audit §12 measured real coverage. Enforcement in Sub-phase 1.12 |

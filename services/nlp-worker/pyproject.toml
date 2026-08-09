@@ -3,14 +3,14 @@ name = "nora-nlp-worker"
 version = "0.1.0"
 description = "NORA NLP worker (FastAPI + Pydantic) responsavel por analisar transcricoes."
 requires-python = ">=3.12"
-# Dependencia ADICIONAL nao declarada em `dependencies`:
-#   - nlp-baseline (path local: ../../packages/nlp-baseline) --- ADR 0010.
-#     Eh importada por `nora_nlp.services.baseline`. Como nao esta no PyPI,
-#     instale antes do worker:
+# ADDITIONAL dependency not declared in `dependencies`:
+#   - nlp-baseline (local path: ../../packages/nlp-baseline) --- ADR 0010.
+#     It is imported by `nora_nlp.services.baseline`. Since it is not on PyPI,
+#     install it before the worker:
 #       pip install -e ../../packages/nlp-baseline
 #       pip install -e ".[dev]"
-#     O Makefile da raiz faz isso automaticamente em `make worker-setup`.
-#     Usuarios de uv tem o source declarado em [tool.uv.sources] abaixo.
+#     The root Makefile does this automatically in `make worker-setup`.
+#     uv users have the source declared in [tool.uv.sources] below.
 dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.32",
@@ -20,8 +20,8 @@ dependencies = [
   "openai>=1.50",
 ]
 
-# uv (https://docs.astral.sh/uv) resolve `nlp-baseline` a partir do path local.
-# Pip puro ignora esta secao --- veja o Makefile / README do worker.
+# uv (https://docs.astral.sh/uv) resolves `nlp-baseline` from the local path.
+# Plain pip ignores this section --- see the Makefile / the worker's README.
 [tool.uv.sources]
 nlp-baseline = { path = "../../packages/nlp-baseline", editable = true }
 
@@ -58,10 +58,10 @@ select = [
   "RUF", # ruff-specific
 ]
 ignore = [
-  "S101", # uso de assert é ok em testes
-  "S104", # bind 0.0.0.0 é esperado em servico containerizado
-  "B008", # Depends(...) em default e o padrao oficial do FastAPI
-  "UP042", # str+Enum mantido para compatibilidade com serializacao Pydantic v2
+  "S101", # using assert is fine in tests
+  "S104", # binding 0.0.0.0 is expected in a containerized service
+  "B008", # Depends(...) in a default is FastAPI's official pattern
+  "UP042", # str+Enum kept for compatibility with Pydantic v2 serialization
 ]
 
 [tool.ruff.lint.per-file-ignores]

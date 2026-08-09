@@ -17,8 +17,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Ação telegram_send_message: resumo HTML no chat pareado (chat_id é o "token" da conexão) — título
- * em b, contagens e até 5 próximos passos.
+ * telegram_send_message action: HTML summary in the paired chat (chat_id is the connection "token")
+ * — title in b, counts and up to 5 next steps.
  */
 class TelegramSendMessageActionTest {
 
@@ -66,7 +66,7 @@ class TelegramSendMessageActionTest {
         assertThat(html).contains("… e mais 2");
     }
 
-    /** Conteúdo dinâmico escapado — parse_mode HTML quebraria com < cru. */
+    /** Dynamic content escaped — parse_mode HTML would break with a raw <. */
     @Test
     void escapaHtmlDoConteudo() {
         String html =
@@ -82,7 +82,7 @@ class TelegramSendMessageActionTest {
         assertThat(html).contains("• Revisar &lt;script&gt; — P&amp;D");
     }
 
-    /** Captura envios em memória (substitui as chamadas HTTP reais à Bot API). */
+    /** Captures sends in memory (replaces the real HTTP calls to the Bot API). */
     static class RecordingTelegram extends TelegramBotHttpClient {
         record Message(String chatId, String html) {}
 

@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
 #
-# restore-into-proxmox.sh — restaura os dumps do Azure nos containers da stack local.
+# restore-into-proxmox.sh — restores the Azure dumps into the local stack's containers.
 #
-# Consome dumps `pg_dump -Fc` (os que o serviço `backup` do compose gera) e reidrata:
-#   nora.dump           -> serviço `postgres`           (banco nora)
-#   nora_platform.dump  -> serviço `postgres-platform`  (banco nora_platform, profile platform)
+# Consumes `pg_dump -Fc` dumps (the ones the compose `backup` service produces) and rehydrates:
+#   nora.dump           -> service `postgres`           (nora database)
+#   nora_platform.dump  -> service `postgres-platform`  (nora_platform database, platform profile)
 #
-# ORDEM (e por que ela importa):
+# ORDER (and why it matters):
 #
-#   1. ROLES ANTES DOS DADOS. Os três roles do ADR 0026/0028 são criados vazios primeiro:
-#        nora_app       LOGIN NOBYPASSRLS  -> runtime da API sob enforce
-#        nora_telemetry LOGIN BYPASSRLS    -> painel do operador, leitura cross-tenant
-#        (o admin/owner é o POSTGRES_USER do container, dono do schema e do Flyway)
-#      Sem eles no lugar, qualquer objeto do dump que referencie um role explode o restore
-#      no meio. E, mais grave: OMITIR o nora_telemetry não dá erro nenhum — o painel do
-#      operador simplesmente passa a ver ZERO linhas, em silêncio (fail-closed).
+#   1. ROLES BEFORE DATA. The three ADR 0026/0028 roles are created empty first:
+#        nora_app       LOGIN NOBYPASSRLS  -> API runtime under enforce
+#        nora_telemetry LOGIN BYPASSRLS    -> operator panel, cross-tenant read
+#        (the admin/owner is the container's POSTGRES_USER, owner of the schema and of Flyway)
+#      Without them in place, any dump object referencing a role blows the restore up
+#      halfway through. And worse: OMITTING nora_telemetry raises no error at all — the
+#      operator panel simply starts seeing ZERO rows, silently (fail-closed).
 #
-#   2. DADOS com --no-owner --no-privileges. O owner no Azure era `nora_admin` do Flexible
-#      Server; aqui o owner é o POSTGRES_USER do container. Mapear é justamente não carregar
-#      owner/ACL do dump e deixar tudo nascer do role que está conectado.
+#   2. DATA with --no-owner --no-privileges. On Azure the owner was the Flexible Server's
+#      `nora_admin`; here it is the container's POSTGRES_USER. Mapping is precisely not
+#      loading owner/ACL from the dump and letting it all be born from the connected role.
 #
-#   3. GRANTS DEPOIS. O R001 (db/operational) só roda no fim porque ele referencia o schema
-#      `nora` e a função nora.current_tenant_id(), que só existem DEPOIS que os dados/DDL
-#      entraram (V016). Rodar o R001 antes falha em "schema nora does not exist".
+#   3. GRANTS AFTERWARDS. R001 (db/operational) only runs at the end because it references
+#      the `nora` schema and the nora.current_tenant_id() function, which only exist AFTER
+#      the data/DDL went in (V016). Running R001 first fails with "schema nora does not exist".
 #
-# VALIDAÇÃO FINAL (o restore só é bom se provado):
-#   - contagem de tabelas em public, comparada com o baseline <db>-counts.tsv, quando o backup gravou um
-#   - flyway_schema_history: última versão aplicada, zero migrations com success=false,
-#     e comparação com a maior V### presente no repo
-#   - smoke por tenant: linhas de meetings/users/meeting_analyses por tenant
+# FINAL VALIDATION (a restore is only good once proven):
+#   - table count in public, compared against the <db>-counts.tsv baseline, when the backup wrote one
+#   - flyway_schema_history: last applied version, zero migrations with success=false,
+#     and comparison against the highest V### present in the repo
+#   - per-tenant smoke: meetings/users/meeting_analyses rows per tenant
 #
 set -euo pipefail
 
@@ -123,7 +123,7 @@ done
 umask 077
 
 # ---------------------------------------------------------------------------
-# Segredos: --sops (tmpfs) > --env-file > ambiente
+# Secrets: --sops (tmpfs) > --env-file > environment
 # ---------------------------------------------------------------------------
 TMP_ENV=""
 cleanup() {
@@ -180,7 +180,7 @@ if [ "$SKIP_ROLES" -eq 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Localização dos dumps
+# Locating the dumps
 # ---------------------------------------------------------------------------
 if [ -n "$FROM_DIR" ]; then
   [ -d "$FROM_DIR" ] || die "--from-dir não é um diretório: $FROM_DIR"
@@ -211,14 +211,14 @@ COMPOSE_ARGS=(--project-name "$COMPOSE_PROJECT" --project-directory "$PROXMOX_DI
 
 dc() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
 
-# svc_running <serviço> -> 0 se há container rodando
+# svc_running <service> -> 0 if there is a running container
 svc_running() {
   local cid
   cid="$(dc ps -q "$1" 2>/dev/null | head -1)"
   [ -n "$cid" ] && [ "$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null)" = "true" ]
 }
 
-# psql_in <serviço> <db> [args...] — psql dentro do container, como admin.
+# psql_in <service> <db> [args...] — psql inside the container, as admin.
 psql_in() {
   local svc="$1" db="$2"; shift 2
   local pw="$PG_PW"
@@ -228,13 +228,13 @@ psql_in() {
 }
 
 # ---------------------------------------------------------------------------
-# Verificação do dump ANTES de tocar no banco
+# Dump verification BEFORE touching the database
 # ---------------------------------------------------------------------------
 verify_dump() {
   local file="$1" label="$2"
   log "$label: verificando $file"
 
-  # checksum, quando o backup gravou um
+  # checksum, when the backup wrote one
   local sumfile="$file.sha256"
   if [ -f "$sumfile" ]; then
     if command -v sha256sum >/dev/null 2>&1; then
@@ -248,14 +248,14 @@ verify_dump() {
     warn "$label: sem arquivo .sha256 ao lado do dump"
   fi
 
-  # o dump abre?
+  # does the dump open?
   local toc
   toc="$(mktemp)"
   if command -v pg_restore >/dev/null 2>&1; then
     pg_restore --list "$file" > "$toc" 2>/dev/null \
       || die "$label: pg_restore --list falhou — dump inutilizável."
   else
-    # sem cliente local: usa o do container postgres
+    # no local client: use the one from the postgres container
     dc exec -T postgres sh -c 'cat > /tmp/verify.dump && pg_restore --list /tmp/verify.dump; rc=$?; rm -f /tmp/verify.dump; exit $rc' \
       < "$file" > "$toc" 2>/dev/null \
       || die "$label: pg_restore --list falhou (via container) — dump inutilizável."
@@ -268,12 +268,12 @@ verify_dump() {
 }
 
 # ---------------------------------------------------------------------------
-# Etapa 1 — ROLES (antes dos dados)
+# Step 1 — ROLES (before the data)
 # ---------------------------------------------------------------------------
 create_roles_bare() {
   log "criando roles (nora_app NOBYPASSRLS, nora_telemetry BYPASSRLS)..."
-  # Senhas passadas CRUAS via -v: o psql transforma :'var' em literal SQL escapado.
-  # (mesma convenção do R001 e do rls-cutover.yml — não colocar aspas em volta)
+  # Passwords passed RAW via -v: psql turns :'var' into an escaped SQL literal.
+  # (same convention as R001 and rls-cutover.yml — do not put quotes around them)
   psql_in postgres nora -v app_password="$APP_PW" -v telemetry_password="$TEL_PW" -q <<'SQL'
 SELECT 'CREATE ROLE nora_app LOGIN'
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nora_app')
@@ -296,22 +296,22 @@ apply_r001() {
     return 1
   }
   log "aplicando GRANTs/DEFAULT PRIVILEGES (R001)..."
-  # O R001 precisa rodar como o MESMO role que é dono das tabelas (o admin do container),
-  # porque ALTER DEFAULT PRIVILEGES é por-role-criador. Ver cabeçalho do R001.
+  # R001 has to run as the SAME role that owns the tables (the container admin),
+  # because ALTER DEFAULT PRIVILEGES is per-creator-role. See the R001 header.
   psql_in postgres nora -v app_password="$APP_PW" -v telemetry_password="$TEL_PW" -q < "$R001_SQL"
   ok "R001 aplicado"
 }
 
 # ---------------------------------------------------------------------------
-# Etapa 2 — DADOS
+# Step 2 — DATA
 # ---------------------------------------------------------------------------
-target_table_count() {  # <serviço> <db>
+target_table_count() {  # <service> <db>
   psql_in "$1" "$2" -tAc \
     "SELECT count(*) FROM information_schema.tables
       WHERE table_schema='public' AND table_type='BASE TABLE'" 2>/dev/null | tr -d '[:space:]'
 }
 
-restore_db() {  # <serviço> <db> <dump> <rótulo>
+restore_db() {  # <service> <db> <dump> <label>
   local svc="$1" db="$2" file="$3" label="$4"
   hr
   log "RESTAURANDO $label — $file -> serviço '$svc', banco '$db'"
@@ -333,7 +333,7 @@ restore_db() {  # <serviço> <db> <dump> <rótulo>
     warn "$label: $existing tabelas presentes — --force ativo, usando --clean --if-exists"
   fi
 
-  # Copia o dump para dentro do container. Evita depender de cliente local e habilita -j.
+  # Copies the dump into the container. Avoids depending on a local client and enables -j.
   local inner="/tmp/nora-restore-$db.dump"
   log "$label: copiando dump para o container..."
   dc cp "$file" "$svc:$inner" >/dev/null
@@ -365,12 +365,12 @@ restore_db() {  # <serviço> <db> <dump> <rótulo>
 }
 
 # ---------------------------------------------------------------------------
-# Etapa 3 — VALIDAÇÃO
+# Step 3 — VALIDATION
 # ---------------------------------------------------------------------------
 VALIDATION_FAILED=0
 vfail() { err "VALIDAÇÃO: $*"; VALIDATION_FAILED=1; }
 
-validate_counts() {  # <serviço> <db> <baseline.tsv|""> <rótulo>
+validate_counts() {  # <service> <db> <baseline.tsv|""> <label>
   local svc="$1" db="$2" baseline="$3" label="$4"
   local n
   n="$(target_table_count "$svc" "$db")"
@@ -418,7 +418,7 @@ validate_counts() {  # <serviço> <db> <baseline.tsv|""> <rótulo>
   fi
 }
 
-validate_flyway() {  # <serviço> <db> <rótulo> <dir-de-migrations|"">
+validate_flyway() {  # <service> <db> <label> <migrations-dir|"">
   local svc="$1" db="$2" label="$3" migdir="${4:-}"
 
   local exists
@@ -465,7 +465,7 @@ validate_flyway() {  # <serviço> <db> <rótulo> <dir-de-migrations|"">
   fi
 }
 
-validate_tenants_smoke() {  # <serviço> <db> <rótulo>
+validate_tenants_smoke() {  # <service> <db> <label>
   local svc="$1" db="$2" label="$3"
   local has_tenants
   has_tenants="$(psql_in "$svc" "$db" -tAc "SELECT to_regclass('public.tenants') IS NOT NULL" 2>/dev/null | tr -d '[:space:]')"
@@ -482,8 +482,8 @@ validate_tenants_smoke() {  # <serviço> <db> <rótulo>
   fi
 
   log "$label: smoke por tenant ($n tenants)"
-  # Conectado como owner/admin: RLS não se aplica (as policies são fail-closed só para
-  # roles não-owner sem a GUC nora.current_tenant_id). Aqui queremos justamente o total real.
+  # Connected as owner/admin: RLS does not apply (the policies are fail-closed only for
+  # non-owner roles without the nora.current_tenant_id GUC). Here we want exactly the real total.
   psql_in "$svc" "$db" -P pager=off -c \
     "SELECT t.slug,
             t.status,
@@ -494,7 +494,7 @@ validate_tenants_smoke() {  # <serviço> <db> <rótulo>
       ORDER BY t.slug" >&2
   ok "$label: smoke por tenant executado"
 
-  # Um tenant sem NENHUM usuário é sinal de restore parcial (FK users->tenants é RESTRICT).
+  # A tenant with NO user at all is a sign of a partial restore (FK users->tenants is RESTRICT).
   local orfaos
   orfaos="$(psql_in "$svc" "$db" -tAc \
     "SELECT count(*) FROM tenants t WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.tenant_id = t.id)" | tr -d '[:space:]')"
@@ -514,7 +514,7 @@ validate_roles() {
   printf '%s' "$out" | grep -q '^nora_telemetry|t|t$' \
     || vfail "nora_telemetry precisa ser LOGIN e BYPASSRLS (senão o painel do operador zera EM SILÊNCIO)."
 
-  # nora_app enxerga as tabelas? (prova de que os GRANTs do R001 pegaram)
+  # can nora_app see the tables? (proof that the R001 GRANTs took)
   local visiveis
   visiveis="$(dc exec -T -e PGPASSWORD="$APP_PW" postgres \
       psql -tAc "SELECT count(*) FROM information_schema.table_privileges
@@ -528,7 +528,7 @@ validate_roles() {
 }
 
 # ---------------------------------------------------------------------------
-# Execução
+# Execution
 # ---------------------------------------------------------------------------
 hr
 log "restore-into-proxmox — projeto compose '$COMPOSE_PROJECT'"
@@ -538,7 +538,7 @@ log "  primário:   $DUMP_PRIMARY"
 verify_dump "$DUMP_PRIMARY" "PRIMÁRIO"
 [ "$SKIP_PLATFORM" -eq 0 ] && verify_dump "$DUMP_PLATFORM" "PLATAFORMA"
 
-# 1) roles antes dos dados
+# 1) roles before the data
 if [ "$SKIP_ROLES" -eq 0 ]; then
   hr
   svc_running postgres || die "serviço 'postgres' não está rodando — suba a stack primeiro."
@@ -547,7 +547,7 @@ else
   log "--skip-roles: criação de roles pulada"
 fi
 
-# 2) dados
+# 2) data
 restore_db postgres nora "$DUMP_PRIMARY" "PRIMÁRIO" || die "restore do banco primário falhou."
 
 if [ "$SKIP_PLATFORM" -eq 0 ]; then
@@ -561,13 +561,13 @@ if [ "$SKIP_PLATFORM" -eq 0 ]; then
   fi
 fi
 
-# 3) grants depois (o R001 depende do schema nora, criado pela V016 que veio no dump)
+# 3) grants afterwards (R001 depends on the nora schema, created by V016 that came in the dump)
 if [ "$SKIP_ROLES" -eq 0 ]; then
   hr
   apply_r001 || VALIDATION_FAILED=1
 fi
 
-# 4) validação
+# 4) validation
 hr
 log "VALIDAÇÃO"
 BASELINE_PRIMARY=""
@@ -584,7 +584,7 @@ validate_tenants_smoke postgres nora "PRIMÁRIO"
 
 if [ "$SKIP_PLATFORM" -eq 0 ]; then
   validate_counts postgres-platform nora_platform "$BASELINE_PLATFORM" "PLATAFORMA"
-  # O Flyway de plataforma tem history table própria (locations classpath:db/platform).
+  # The platform Flyway has its own history table (locations classpath:db/platform).
   validate_flyway postgres-platform nora_platform "PLATAFORMA" ""
 fi
 

@@ -9,11 +9,11 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code uniformDecision} deixa o GET /meetings paginar no SQL em vez de varrer o tenant inteiro.
- * Se ele responder "uniforme" quando na verdade uma policy distingue duas reunioes, o endpoint
- * passa a mostrar reuniao que o usuario nao pode ver -- ou a esconder reuniao que ele pode. Estes
- * testes fixam a unica propriedade que torna a otimizacao aceitavel: ela concorda, item a item, com
- * o {@code isAllowed} que substitui.
+ * {@code uniformDecision} lets GET /meetings paginate in SQL instead of scanning the whole tenant.
+ * If it answers "uniform" when a policy actually distinguishes two meetings, the endpoint starts
+ * showing a meeting the user cannot see -- or hiding one they can. These tests pin the only
+ * property that makes the optimization acceptable: it agrees, item by item, with the {@code
+ * isAllowed} it replaces.
  */
 class PolicyEvaluatorUniformDecisionTest {
 
@@ -37,7 +37,7 @@ class PolicyEvaluatorUniformDecisionTest {
         return new PolicyStatement(Effect.ALLOW, List.of(ACTION), List.of(resource), condition);
     }
 
-    // ----------------------------------------------------------------- uniforme
+    // ----------------------------------------------------------------- uniform
 
     @Test
     void broadAllowIsUniformlyTrue() {
@@ -65,7 +65,7 @@ class PolicyEvaluatorUniformDecisionTest {
 
     @Test
     void statementForAnotherResourceTypeDoesNotBlockTheFastPath() {
-        // task/* nunca casa uma reuniao: irrelevante, nao discriminante.
+        // task/* never matches a meeting: irrelevant, not discriminating.
         String tasks = "nora:tenant/" + TENANT + ":task/*";
         assertThat(
                         PolicyEvaluator.uniformDecision(
@@ -87,11 +87,11 @@ class PolicyEvaluatorUniformDecisionTest {
                 .contains(true);
     }
 
-    // -------------------------------------------------------------- nao uniforme
+    // -------------------------------------------------------------- not uniform
 
     @Test
     void aConditionForcesPerItemEvaluation() {
-        // A condition le atributos da reuniao: muda de item para item.
+        // The condition reads meeting attributes: it changes from item to item.
         List<PolicyStatement> stmts =
                 List.of(allowIf(WILDCARD, Map.of("StringEquals", Map.of("dept", "eng"))));
         assertThat(PolicyEvaluator.uniformDecision(stmts, ACTION, WILDCARD)).isEmpty();
@@ -128,14 +128,14 @@ class PolicyEvaluatorUniformDecisionTest {
                 .isEmpty();
     }
 
-    // ------------------------------- wildcard no meio / inicio (bypass da 1a versao)
+    // ------------------------------- wildcard in the middle / start (1st version bypass)
 
     @Test
     void aDenyWithAWildcardBeforeTheDiscriminatingTailForcesPerItemEvaluation() {
-        // A 1a versao so olhava o literal ANTES do primeiro wildcard. Aqui esse literal e
-        // "nora:tenant/", que o prefixo do conjunto comeca por -- e a cauda ":meeting/<id>",
-        // que e justamente quem discrimina, nunca era examinada. O Deny sumia e a reuniao
-        // negada aparecia na listagem.
+        // The 1st version only looked at the literal BEFORE the first wildcard. Here that
+        // literal is "nora:tenant/", which the set prefix starts with -- and the tail
+        // ":meeting/<id>", which is exactly what discriminates, was never examined. The Deny
+        // vanished and the denied meeting showed up in the listing.
         String crossTenantDeny = "nora:tenant/*:meeting/aaaaaaaa-0000-4000-8000-000000000001";
         assertThat(
                         PolicyEvaluator.uniformDecision(
@@ -162,9 +162,9 @@ class PolicyEvaluatorUniformDecisionTest {
 
     @Test
     void aQuestionMarkMaskOverTheWholeSetForcesPerItemEvaluation() {
-        // Casa TODA reuniao real mas NAO casa a string sentinela "<prefix>*". A 1a versao
-        // decidia avaliando essa sentinela, entao respondia "permitido" com um Deny que na
-        // pratica negava tudo.
+        // Matches EVERY real meeting but does NOT match the sentinel string "<prefix>*". The
+        // 1st version decided by evaluating that sentinel, so it answered "allowed" with a Deny
+        // that in practice denied everything.
         String uuidMask = "nora:tenant/" + TENANT + ":meeting/????????-????-????-????-????????????";
         assertThat(
                         PolicyEvaluator.uniformDecision(
@@ -187,12 +187,12 @@ class PolicyEvaluatorUniformDecisionTest {
                 .contains(false);
     }
 
-    // ------------------------------------------------- equivalencia com isAllowed
+    // ------------------------------------------------- equivalence with isAllowed
 
     /**
-     * Formas de resource pattern que um admin pode escrever. Inclui de proposito wildcard no
-     * inicio, no meio e '?', que e a familia que a primeira versao desta otimizacao classificava
-     * mal -- o teste antigo so amostrava wildcard no fim e por isso passava com o bug.
+     * Resource pattern shapes an admin might write. Deliberately includes wildcards at the start,
+     * in the middle and '?', which is the family the first version of this optimization classified
+     * wrong -- the old test only sampled trailing wildcards and so passed with the bug.
      */
     private static final List<String> PATTERN_CORPUS =
             List.of(
@@ -219,9 +219,9 @@ class PolicyEvaluatorUniformDecisionTest {
 
     @Test
     void wheneverItAnswersTheAnswerMatchesIsAllowedForEveryMemberOfTheSet() {
-        // A unica propriedade que torna a otimizacao aceitavel: sempre que uniformDecision
-        // responde, a resposta unica tem de bater com a avaliacao individual de QUALQUER reuniao
-        // do tenant. Varre todos os pares do corpus, nos dois efeitos -- 2*13*13 = 338 conjuntos.
+        // The only property that makes the optimization acceptable: whenever uniformDecision
+        // answers, the single answer has to match the individual evaluation of ANY meeting of
+        // the tenant. Sweeps every pair of the corpus, in both effects -- 2*13*13 = 338 sets.
         int answered = 0;
         for (String p1 : PATTERN_CORPUS) {
             for (String p2 : PATTERN_CORPUS) {
@@ -234,7 +234,7 @@ class PolicyEvaluatorUniformDecisionTest {
                     Optional<Boolean> uniform =
                             PolicyEvaluator.uniformDecision(stmts, ACTION, WILDCARD);
                     if (uniform.isEmpty()) {
-                        continue; // recuou para o caminho item a item: sempre correto
+                        continue; // fell back to the item-by-item path: always correct
                     }
                     answered++;
                     for (String id : SAMPLE_IDS) {
@@ -249,8 +249,8 @@ class PolicyEvaluatorUniformDecisionTest {
                 }
             }
         }
-        // Guarda contra a otimizacao morrer sem ninguem reparar: se um refactor a tornar sempre
-        // `empty`, o teste acima passa vacuamente e o endpoint volta a varrer o tenant inteiro.
+        // Guard against the optimization dying unnoticed: if a refactor makes it always
+        // `empty`, the test above passes vacuously and the endpoint scans the whole tenant again.
         assertThat(answered)
                 .as("nenhum conjunto do corpus tomou o caminho rapido")
                 .isGreaterThan(20);

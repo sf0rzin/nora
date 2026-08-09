@@ -26,7 +26,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 
-// @WebMvcTest ja inclui @ControllerAdvice no slice — o GlobalExceptionHandler entra sozinho.
+// @WebMvcTest already includes @ControllerAdvice in the slice — GlobalExceptionHandler comes in on
+// its own.
 @WebMvcTest(SpeechController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class SpeechControllerTest {
@@ -94,8 +95,9 @@ class SpeechControllerTest {
     }
 
     /**
-     * Com nora.speech.provider=local o broker recusa. Tem que sair 410 GONE — nao 500 — para o
-     * desktop antigo tratar como sinal terminal e cair no STT local em vez de entrar em retry.
+     * With nora.speech.provider=local the broker refuses. It has to come out as 410 GONE — not 500
+     * — so the old desktop treats it as a terminal signal and falls back to local STT instead of
+     * going into retry.
      */
     @Test
     void shouldReturn410WhenProviderIsLocal() throws Exception {

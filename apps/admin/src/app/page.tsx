@@ -5,11 +5,11 @@ import { SERVICE_LABEL } from "@/lib/contracts";
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  // O gate do RootLayout não basta para leituras: o App Router faz renderização parcial e
-  // NÃO reinvoca o layout de um segmento pai inalterado numa navegação RSC client-side.
-  // Uma requisição com a router state tree já preenchida renderiza a página e devolve o
-  // payload RSC sem o checkAccess do layout jamais rodar. Mesma razão pela qual as server
-  // actions chamam requireAccess() (ver lib/access.ts) — aqui vale para as leituras.
+  // The RootLayout gate is not enough for reads: the App Router does partial rendering and
+  // does NOT reinvoke the layout of an unchanged parent segment on a client-side RSC navigation.
+  // A request with the router state tree already filled in renders the page and returns the
+  // RSC payload without the layout's checkAccess ever running. Same reason the server
+  // actions call requireAccess() (see lib/access.ts) — here it applies to the reads.
   await requireAccess();
 
   const [models, bindings, flags, cost] = await Promise.all([

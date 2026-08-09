@@ -1,18 +1,18 @@
 """Endpoint /analyze.
 
-Recebe transcricao + contexto do tenant, aplica PII Shield, calcula baseline
-TF-IDF interpretavel (ADR 0010) e delega a analise estruturada para o LLM
-(ou stub deterministico).
+Receives transcript + tenant context, applies PII Shield, computes the
+interpretable TF-IDF baseline (ADR 0010) and delegates the structured analysis
+to the LLM (or deterministic stub).
 
-Modos de operacao:
-- USE_LLM_STUB=true  -> stub deterministico (sem custo, para dev)
-- USE_LLM_STUB=false -> LLM real (provider agnostico, default OpenAI; ver ADR 0004)
+Operating modes:
+- USE_LLM_STUB=true  -> deterministic stub (no cost, for dev)
+- USE_LLM_STUB=false -> real LLM (provider agnostic, default OpenAI; see ADR 0004)
 
-Ordem do pipeline (sequencial):
-    1. PII Shield   --- ja remove email/CPF/CNPJ/etc. antes de tudo.
-    2. Baseline TF-IDF --- termos interpretaveis pre-LLM, sobre o texto redigido.
-    3. LLM analyze  --- gera summary/decisions/etc. com structured output.
-    4. anexa baseline_terms ao response.
+Pipeline order (sequential):
+    1. PII Shield   --- already strips email/CPF/CNPJ/etc. before anything else.
+    2. Baseline TF-IDF --- interpretable pre-LLM terms, over the redacted text.
+    3. LLM analyze  --- generates summary/decisions/etc. with structured output.
+    4. attaches baseline_terms to the response.
 """
 
 from __future__ import annotations
@@ -49,9 +49,9 @@ def analyze(req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> 
     redaction = pii_shield.redact(req.transcript)
     safe_req = req.model_copy(update={"transcript": redaction.redacted_text})
 
-    # Baseline TF-IDF sobre texto JA REDIGIDO --- garante que PII nao vaza pro
-    # ranking de termos. Falhas internas viram lista vazia (nunca derrubam a
-    # request); ver `services/baseline.py`.
+    # Baseline TF-IDF over ALREADY REDACTED text --- ensures PII does not leak
+    # into the term ranking. Internal failures become an empty list (never take
+    # down the request); see `services/baseline.py`.
     baseline_terms = baseline.extract_baseline_terms(redaction.redacted_text, top_n=10)
 
     if settings.use_llm_stub:
@@ -85,12 +85,12 @@ def analyze(req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> 
 
 @router.post("/split", response_model=SplitResponse, response_model_by_alias=True)
 def split(req: SplitRequest, settings: Settings = Depends(get_settings)) -> SplitResponse:
-    """Deteccao de fronteiras entre reunioes concatenadas num arquivo unico.
+    """Boundary detection between meetings concatenated in a single file.
 
-    Pipeline: PII Shield linha a linha → LLM (janelas + JSON Schema strict) →
-    validacao server-side das fronteiras. A redacao intra-linha garante que os
-    numeros de linha do texto redigido correspondem aos do arquivo original
-    (o fatiamento real e client-side). Nada e persistido aqui.
+    Pipeline: PII Shield line by line → LLM (windows + strict JSON Schema) →
+    server-side validation of the boundaries. Intra-line redaction ensures the
+    line numbers of the redacted text match those of the original file
+    (the real slicing is client-side). Nothing is persisted here.
     """
     redacted_lines, redactions = split_analyzer.redact_lines(req.transcript)
 
@@ -125,11 +125,11 @@ def split(req: SplitRequest, settings: Settings = Depends(get_settings)) -> Spli
 def analyze_live(
     req: LiveAnalyzeRequest, settings: Settings = Depends(get_settings)
 ) -> LiveAnalyzeResponse:
-    """Analise em tempo real de trechos parciais de reunioes.
+    """Real-time analysis of partial meeting chunks.
 
-    Pipeline: PII Shield → LLM (schema leve, 4 categorias).
-    Nao gera summary, sentiment, topics nem baseline TF-IDF.
-    Retorna apenas: decisions, nextSteps, observations, tasks.
+    Pipeline: PII Shield → LLM (light schema, 4 categories).
+    Does not generate summary, sentiment, topics or TF-IDF baseline.
+    Returns only: decisions, nextSteps, observations, tasks.
     """
     redaction = pii_shield.redact(req.transcript_chunk)
     safe_req = req.model_copy(update={"transcript_chunk": redaction.redacted_text})

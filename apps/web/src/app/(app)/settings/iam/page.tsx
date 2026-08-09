@@ -43,7 +43,7 @@ export default function IamPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // formularios
+  // forms
   const [groupName, setGroupName] = useState("");
   const [groupDesc, setGroupDesc] = useState("");
   const [policyName, setPolicyName] = useState("");
@@ -54,7 +54,7 @@ export default function IamPage() {
   const [attachUserId, setAttachUserId] = useState("");
   const [memberGroupId, setMemberGroupId] = useState("");
   const [memberUserId, setMemberUserId] = useState("");
-  // edicao de policy existente (PUT /iam/policies/{id} → nova versao)
+  // editing an existing policy (PUT /iam/policies/{id} → new version)
   const [editPolicyId, setEditPolicyId] = useState<string | null>(null);
   const [editPolicyDoc, setEditPolicyDoc] = useState("");
   const [editPolicyValid, setEditPolicyValid] = useState(true);
@@ -227,8 +227,8 @@ export default function IamPage() {
           onSubmit={(e) => {
             e.preventDefault();
             if (!policyName.trim()) return;
-            // Defesa em profundidade: o botao ja é desabilitado quando invalido,
-            // mas ainda assim re-parseamos antes de enviar — UX > backend round-trip.
+            // Defense in depth: the button is already disabled when invalid,
+            // but we still re-parse before sending — UX > backend round-trip.
             let parsed: unknown;
             try {
               parsed = JSON.parse(policyDoc);

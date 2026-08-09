@@ -6,9 +6,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
- * Payload de criação/edição de um workflow. O gatilho NÃO vem separado: é derivado do nó de gatilho
- * dentro da {@code definition} (grafo do canvas — uma fonte de verdade só). {@code active} nulo =
- * true (criar já ativo).
+ * Create/edit payload for a workflow. The trigger does NOT come separately: it is derived from the
+ * trigger node inside the {@code definition} (canvas graph — a single source of truth). {@code
+ * active} null = true (create already active).
  */
 public record WorkflowUpsertRequest(
         @NotBlank @Size(max = 120) String name, Boolean active, @NotNull JsonNode definition) {

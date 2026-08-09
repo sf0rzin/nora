@@ -1,8 +1,8 @@
-"""Contrato entre o canonical JSON Schema e o output do worker (ADR 0006).
+"""Contract between the canonical JSON Schema and the worker output (ADR 0006).
 
-Garante que (a) o schema canonico em docs/ e um JSON Schema valido e (b) a
-resposta do worker — incluindo o bloco customerConfidence com accountName —
-valida contra esse schema. Mantem models.py e o schema canonico em sincronia.
+Ensures that (a) the canonical schema in docs/ is a valid JSON Schema and (b) the
+worker response — including the customerConfidence block with accountName —
+validates against that schema. Keeps models.py and the canonical schema in sync.
 """
 
 from __future__ import annotations
@@ -40,22 +40,22 @@ def _stub_response(transcript_file: str, tenant: str) -> dict:
             "tenantContext": tenant_ctx,
         }
     )
-    # by_alias=True -> camelCase, igual ao que o backend recebe.
+    # by_alias=True -> camelCase, same as what the backend receives.
     return analyze(req).model_dump(by_alias=True, mode="json")
 
 
 def test_canonical_schema_is_valid_json_schema():
-    """O schema canonico precisa ser um Draft 2020-12 valido."""
+    """The canonical schema must be a valid Draft 2020-12."""
     Draft202012Validator.check_schema(_canonical_schema())
 
 
 def test_canonical_schema_declares_account_name():
-    """accountName foi adicionado as propriedades de customerConfidence (Slice 2)."""
+    """accountName was added to the customerConfidence properties (Slice 2)."""
     cc = _canonical_schema()["properties"]["customerConfidence"]
     account_name = cc["properties"]["accountName"]
     assert account_name["type"] == ["string", "null"]
     assert account_name["maxLength"] == 120
-    # A descricao nao deve mais marcar o campo como reservado/nao emitido.
+    # The description must no longer mark the field as reserved/not emitted.
     desc = cc["description"].upper()
     assert "RESERVADO" not in desc
     assert "AINDA NÃO EMITIDO" not in desc
@@ -71,21 +71,21 @@ def test_canonical_schema_declares_account_name():
     ],
 )
 def test_stub_response_validates_against_canonical_schema(transcript: str, tenant: str):
-    """Output do stub (com customerConfidence populado) valida contra o schema canonico."""
+    """Stub output (with customerConfidence populated) validates against the canonical schema."""
     validator = Draft202012Validator(_canonical_schema())
     body = _stub_response(transcript, tenant)
-    # Metadados nao fazem parte do schema canonico; o schema usa
-    # additionalProperties=false, entao removemos os campos extra do response.
+    # Metadata is not part of the canonical schema; the schema uses
+    # additionalProperties=false, so we drop the extra fields from the response.
     body.pop("metadata", None)
     body.pop("meetingId", None)
-    # Sanity: este transcript exercita o bloco customerConfidence (nao null).
+    # Sanity: this transcript exercises the customerConfidence block (not null).
     assert body["customerConfidence"] is not None
     errors = sorted(validator.iter_errors(body), key=lambda e: e.path)
     assert not errors, "\n".join(f"{list(e.path)}: {e.message}" for e in errors)
 
 
 def test_internal_meeting_response_validates_against_canonical_schema():
-    """customerConfidence = null tambem e valido contra o schema (campo nullable)."""
+    """customerConfidence = null is also valid against the schema (nullable field)."""
     transcript = (
         "[Ana] Bom dia time, vamos revisar o andamento das tarefas de hoje.\n"
         "[Bruno] Terminei o ajuste no layout da tela inicial ontem a noite.\n"
@@ -115,12 +115,12 @@ def test_internal_meeting_response_validates_against_canonical_schema():
 
 
 def test_strict_llm_schema_matches_canonical_enums():
-    """As enums do schema strict (llm.py) batem com o schema canonico (fonte da verdade)."""
+    """The strict schema enums (llm.py) match the canonical schema (source of truth)."""
     strict = build_json_schema_for_analysis()["properties"]["customerConfidence"]["properties"]
     canon = _canonical_schema()["properties"]["customerConfidence"]["properties"]
 
     assert strict["band"]["enum"] == canon["band"]["enum"]
-    # trend: strict carrega None na lista (serializa pra null, igual ao canonico).
+    # trend: strict carries None in the list (serializes to null, same as canonical).
     assert strict["trend"]["enum"] == canon["trend"]["enum"]
     strict_signal = strict["buyingSignals"]["items"]["properties"]["type"]["enum"]
     canon_signal = canon["buyingSignals"]["items"]["properties"]["type"]["enum"]

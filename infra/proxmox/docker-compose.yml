@@ -1,26 +1,26 @@
-# NORA — stack de produção self-hosted (Proxmox "beta", VM única + Docker Compose).
+# NORA — self-hosted production stack (Proxmox "beta", single VM + Docker Compose).
 #
-# Substitui o Azure Container Apps Environment do infra/bicep/main.bicep (ADR 0034).
-# Cada serviço aqui é o par 1:1 de um módulo `container-app.bicep`; as env vars foram
-# transcritas do range main.bicep:694-1540 (as 92 declarações, não só o bloco da API).
+# Replaces the Azure Container Apps Environment of infra/bicep/main.bicep (ADR 0034).
+# Every service here is the 1:1 counterpart of a `container-app.bicep` module; the env
+# vars were transcribed from main.bicep:694-1540 (all 92 declarations, not just the API block).
 #
-# Topologia:
+# Topology:
 #
-#   Internet ──> Cloudflare edge ──(tunnel, saída-only)──> cloudflared
+#   Internet ──> Cloudflare edge ──(tunnel, egress-only)──> cloudflared
 #                                                              │
 #                                                            caddy            <- retry buffer
-#                                                        ┌─────┼─────┐           do rolling update
+#                                                        ┌─────┼─────┐           of the rolling update
 #                                                       web   api   admin
 #                                                              │
-#                                                           worker (interno)
+#                                                           worker (internal)
 #                                                              │
 #                                              postgres  +  postgres-platform
 #
-# Uso:  ./scripts/deploy.sh            (rollout health-gated de todos os serviços)
+# Usage:  ./scripts/deploy.sh          (health-gated rollout of every service)
 #       docker compose --env-file .env up -d --wait
 #
-# NÃO exponha portas no host: todo tráfego entra pelo cloudflared. As únicas portas
-# publicadas são em 127.0.0.1 (debug local via SSH port-forward).
+# Do NOT expose ports on the host: all traffic comes in through cloudflared. The only
+# published ports are on 127.0.0.1 (local debug via SSH port-forward).
 
 name: nora
 
@@ -39,7 +39,7 @@ networks:
     driver: bridge
   internal:
     driver: bridge
-    internal: true   # sem rota pra internet: postgres e worker não saem sozinhos
+    internal: true   # no route to the internet: postgres and worker cannot get out on their own
   data:
     driver: bridge
     internal: true
@@ -55,11 +55,11 @@ volumes:
 
 services:
   # ==========================================================================
-  # BORDA — cloudflared (ADR 0025, estendido de admin para toda a stack)
+  # EDGE — cloudflared (ADR 0025, extended from admin to the whole stack)
   # ==========================================================================
-  # Substitui: ingress external do Container Apps + managed certificates + staticIp.
-  # O TLS do visitante é o Universal SSL da Cloudflare; a origem não precisa de cert
-  # (SSL mode Full, como já era — ver correção do audit sobre "janela sem TLS").
+  # Replaces: Container Apps external ingress + managed certificates + staticIp.
+  # The visitor's TLS is Cloudflare's Universal SSL; the origin needs no cert
+  # (SSL mode Full, as it already was — see the audit fix about the "window without TLS").
   cloudflared:
     image: cloudflare/cloudflared:2026.5.2
     container_name: nora-cloudflared
@@ -68,12 +68,12 @@ services:
     command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN obrigatorio}
-    # `internal` não é para servir tráfego — é para o prometheus (que só vive nela)
-    # alcançar o :2000 de métricas. Sem ela o job `cloudflared` do prometheus.yml dá
-    # "no such host" e a stack perde justamente o sinal de que o túnel está de pé
-    # (cloudflared_tunnel_ha_connections; cair a 0 é o 522 que derrubou nora.systems).
-    # `internal: true` não tem rota para a internet, então isto não amplia a exposição
-    # do cloudflared — só acrescenta a interface pelo lado de dentro.
+    # `internal` is not for serving traffic — it is so prometheus (which only lives on
+    # it) can reach the :2000 metrics. Without it the `cloudflared` job in prometheus.yml
+    # gives "no such host" and the stack loses precisely the signal that the tunnel is up
+    # (cloudflared_tunnel_ha_connections; dropping to 0 is the 522 that took nora.systems down).
+    # `internal: true` has no route to the internet, so this does not widen cloudflared's
+    # exposure — it only adds the interface on the inside.
     networks: [edge, internal]
     depends_on:
       caddy:
@@ -85,12 +85,12 @@ services:
       retries: 3
 
   # ==========================================================================
-  # BORDA — Caddy (roteamento por Host + buffer de retry no rolling update)
+  # EDGE — Caddy (Host-based routing + retry buffer during the rolling update)
   # ==========================================================================
-  # Por que existe: `docker compose up -d` derruba o container antigo ANTES de subir o
-  # novo (não há readiness gate como o `activeRevisionsMode: Single` do Container Apps).
-  # O boot do Spring com Flyway leva ~30s. `lb_try_duration` no Caddyfile converte esse
-  # 502 numa requisição lenta. Ver docs/operations/proxmox-deploy.md §rolling update.
+  # Why it exists: `docker compose up -d` tears the old container down BEFORE bringing the
+  # new one up (there is no readiness gate like Container Apps' `activeRevisionsMode: Single`).
+  # The Spring boot with Flyway takes ~30s. `lb_try_duration` in the Caddyfile turns that
+  # 502 into a slow request. See docs/operations/proxmox-deploy.md §rolling update.
   caddy:
     image: caddy:2.8-alpine
     container_name: nora-caddy
@@ -104,12 +104,12 @@ services:
       NORA_PUBLIC_DOMAIN: ${NORA_PUBLIC_DOMAIN:-nora.systems}
     networks: [edge, internal]
     healthcheck:
-      # NÃO usar `--spider` contra :2019/config/ da admin API: o `--spider` do wget do
-      # busybox emite HEAD, e aquele handler só trata GET/POST/PUT/PATCH/DELETE — HEAD
-      # cai no default e volta 405. O wget sai != 0, o container nunca fica healthy, e o
-      # cloudflared (`condition: service_healthy`) nunca sobe: a stack inteira fica
-      # inalcançável sem nenhum erro óbvio. O /healthz do bloco :80 é servido por
-      # `respond`, que atende HEAD sem reclamar. Ver caddy/Caddyfile:65-74 e :241-246.
+      # Do NOT use `--spider` against the admin API's :2019/config/: busybox wget's
+      # `--spider` issues HEAD, and that handler only deals with GET/POST/PUT/PATCH/DELETE —
+      # HEAD falls into the default and comes back 405. wget exits != 0, the container never
+      # becomes healthy, and cloudflared (`condition: service_healthy`) never comes up: the
+      # whole stack is unreachable with no obvious error. The /healthz of the :80 block is
+      # served by `respond`, which handles HEAD without complaining. See caddy/Caddyfile:65-74 and :241-246.
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/healthz"]
       interval: 15s
       timeout: 5s
@@ -117,12 +117,12 @@ services:
       start_period: 10s
 
   # ==========================================================================
-  # DADOS — Postgres primário (substitui nora-pg-dev, B1ms Burstable)
+  # DATA — primary Postgres (replaces nora-pg-dev, B1ms Burstable)
   # ==========================================================================
-  # Imagem pgvector/pgvector: a extensão fica DISPONÍVEL mas NÃO é criada. A V021
-  # guarda embeddings como JSON em TEXT e computa cosseno em Java justamente porque a
-  # allow-list do Azure bloqueava pgvector — sair do Azure destrava, mas trocar isso é
-  # refactor de RAG, não migração de infra. Ver ADR 0034 §escopo-excluido.
+  # pgvector/pgvector image: the extension is AVAILABLE but is NOT created. V021
+  # stores embeddings as JSON in TEXT and computes cosine in Java precisely because
+  # Azure's allow-list blocked pgvector — leaving Azure unblocks it, but changing that is
+  # a RAG refactor, not an infra migration. See ADR 0034 §escopo-excluido.
   postgres:
     image: pgvector/pgvector:pg16
     container_name: nora-postgres
@@ -132,13 +132,13 @@ services:
       POSTGRES_DB: nora
       POSTGRES_USER: ${POSTGRES_ADMIN_USER:-nora_admin}
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD obrigatorio}
-      # Locale pt-BR consistente com o que o Flexible Server entregava.
+      # pt-BR locale consistent with what the Flexible Server delivered.
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
     ports:
-      - "127.0.0.1:5432:5432"   # só loopback — acesso remoto via `ssh -L`
+      - "127.0.0.1:5432:5432"   # loopback only — remote access via `ssh -L`
     networks: [data]
     shm_size: 256mb
     command:
@@ -165,11 +165,11 @@ services:
       start_period: 30s
 
   # ==========================================================================
-  # DADOS — Postgres de plataforma (ADR 0022: blast radius isolado)
+  # DATA — platform Postgres (ADR 0022: isolated blast radius)
   # ==========================================================================
-  # Server SEPARADO, como no Bicep (`postgresPlatform`, main.bicep:609). Numa VM única
-  # o isolamento é menor que no Azure, mas preserva o contrato PLATFORM_DATASOURCE_URL
-  # e mantém o dump/restore dos dois bancos independente.
+  # SEPARATE server, as in the Bicep (`postgresPlatform`, main.bicep:609). On a single VM
+  # the isolation is weaker than on Azure, but it preserves the PLATFORM_DATASOURCE_URL
+  # contract and keeps dump/restore of the two databases independent.
   postgres-platform:
     image: pgvector/pgvector:pg16
     container_name: nora-postgres-platform
@@ -203,10 +203,10 @@ services:
       start_period: 30s
 
   # ==========================================================================
-  # APP — NLP Worker (substitui nora-worker-dev; ingress internal, min 0 max 3)
+  # APP — NLP Worker (replaces nora-worker-dev; internal ingress, min 0 max 3)
   # ==========================================================================
-  # Sem scale-to-zero: numa VM única o custo de manter 1 réplica de pé é irrelevante e
-  # elimina o cold start. O `--workers 2` do Dockerfile continua valendo.
+  # No scale-to-zero: on a single VM the cost of keeping 1 replica up is irrelevant and
+  # it removes the cold start. The Dockerfile's `--workers 2` still applies.
   worker:
     image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sf0rzin/nora}-worker:${WORKER_TAG:-latest}
     container_name: nora-worker
@@ -218,16 +218,16 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_API_KEY: ${OPENAI_API_KEY:-}
       LLM_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
-      # Observabilidade: OTLP para o collector local (substitui APPLICATIONINSIGHTS_CONNECTION_STRING).
+      # Observability: OTLP to the local collector (replaces APPLICATIONINSIGHTS_CONNECTION_STRING).
       OTEL_SERVICE_NAME: nora-worker
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-      # Control plane (ADR 0024) — só com profile platform.
+      # Control plane (ADR 0024) — only with the platform profile.
       NORA_PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_INTERNAL_TOKEN:-}
       NORA_API_BASE_URL: http://api:8080
-    # `edge` NAO publica porta: nao ha `ports:` aqui e a unica entrada continua sendo
-    # cloudflared -> caddy. Ela existe porque as redes `internal` e `data` sao
-    # `internal: true`, o que bloqueia egress E resolucao de DNS externo. Sem isto a stack
-    # sobe com TODOS os healthchecks verdes (sao locais) e falha na primeira chamada real.
+    # `edge` does NOT publish a port: there is no `ports:` here and the only entry point
+    # is still cloudflared -> caddy. It exists because the `internal` and `data` networks
+    # are `internal: true`, which blocks egress AND external DNS resolution. Without it the
+    # stack comes up with ALL healthchecks green (they are local) and fails on the first real call.
     networks: [internal, edge]
     deploy:
       resources:
@@ -242,7 +242,7 @@ services:
       start_period: 20s
 
   # ==========================================================================
-  # APP — API Spring Boot (substitui nora-api-dev; 1 vCPU / 2Gi, min 1)
+  # APP — Spring Boot API (replaces nora-api-dev; 1 vCPU / 2Gi, min 1)
   # ==========================================================================
   api:
     image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sf0rzin/nora}-api:${API_TAG:-latest}
@@ -253,32 +253,32 @@ services:
       SPRING_PROFILES_ACTIVE: ${NORA_ENV:-prod}
       NORA_ENV: ${NORA_ENV:-prod}
 
-      # ---- Datasource primário ----
-      # sslmode REMOVIDO de propósito: a imagem oficial do Postgres sobe com SSL OFF e
-      # `?sslmode=require` faz o Hikari falhar no boot. O tráfego não sai da bridge `data`,
-      # que é `internal: true`. Ver correção do audit sobre sslmode.
+      # ---- Primary datasource ----
+      # sslmode REMOVED on purpose: the official Postgres image comes up with SSL OFF and
+      # `?sslmode=require` makes Hikari fail at boot. Traffic never leaves the `data` bridge,
+      # which is `internal: true`. See the audit fix about sslmode.
       DATASOURCE_URL: jdbc:postgresql://postgres:5432/nora
       DATASOURCE_USERNAME: ${DATASOURCE_USERNAME:-nora_admin}
       DATASOURCE_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD obrigatorio}
 
-      # ---- RLS enforce (ADR 0026/0028) — flip separado, ver rls-cutover ----
+      # ---- RLS enforce (ADR 0026/0028) — separate flip, see rls-cutover ----
       NORA_RLS_ENFORCE: ${NORA_RLS_ENFORCE:-false}
-      # O Flyway aponta SEMPRE para o admin/owner: ele precisa de DDL e precisa ser dono
-      # das tabelas para que o nora_app (não-owner) fique sujeito ao RLS. Depois do
-      # cutover o DATASOURCE_* passa a ser nora_app e estas três NÃO acompanham — é
-      # justamente essa separação que o ADR 0028 pede.
+      # Flyway ALWAYS points at the admin/owner: it needs DDL and needs to own the
+      # tables so that nora_app (non-owner) is subject to RLS. After the cutover
+      # DATASOURCE_* becomes nora_app and these three do NOT follow — that separation
+      # is exactly what ADR 0028 asks for.
       #
-      # Não use `${SPRING_FLYWAY_URL:-}` aqui. String vazia é uma variável DEFINIDA, e
-      # `spring.flyway.url` definido (mesmo vazio) satisfaz o FlywayUrlCondition: o Spring
-      # para de herdar o spring.datasource e monta um SimpleDriverDataSource próprio a
-      # partir de uma URL vazia. O boot morre em `Driver has not been set`, dentro do
-      # flywayInitializer, sem citar a variável culpada. O comentário no application.yml
-      # já avisava disso; o compose caiu no buraco assim mesmo, no primeiro deploy real.
+      # Do not use `${SPRING_FLYWAY_URL:-}` here. An empty string is a DEFINED variable, and
+      # a defined `spring.flyway.url` (even empty) satisfies FlywayUrlCondition: Spring
+      # stops inheriting spring.datasource and builds its own SimpleDriverDataSource from
+      # an empty URL. The boot dies on `Driver has not been set`, inside the
+      # flywayInitializer, without naming the guilty variable. The comment in application.yml
+      # already warned about this; the compose fell into the hole anyway, on the first real deploy.
       SPRING_FLYWAY_URL: ${SPRING_FLYWAY_URL:-jdbc:postgresql://postgres:5432/nora}
       SPRING_FLYWAY_USER: ${SPRING_FLYWAY_USER:-${DATASOURCE_USERNAME:-nora_admin}}
       SPRING_FLYWAY_PASSWORD: ${SPRING_FLYWAY_PASSWORD:-${POSTGRES_ADMIN_PASSWORD}}
-      # Os TRÊS roles importam: nora_app (NOBYPASSRLS), nora_telemetry (BYPASSRLS) e o
-      # admin/owner. Sem o nora_telemetry o painel do operador vê 0 linhas EM SILÊNCIO.
+      # All THREE roles matter: nora_app (NOBYPASSRLS), nora_telemetry (BYPASSRLS) and the
+      # admin/owner. Without nora_telemetry the operator panel sees 0 rows SILENTLY.
       NORA_TELEMETRY_DATASOURCE_URL: ${NORA_TELEMETRY_DATASOURCE_URL:-}
       NORA_TELEMETRY_DATASOURCE_USERNAME: ${NORA_TELEMETRY_DATASOURCE_USERNAME:-}
       NORA_TELEMETRY_DATASOURCE_PASSWORD: ${NORA_TELEMETRY_DATASOURCE_PASSWORD:-}
@@ -292,7 +292,7 @@ services:
       AUTH_COOKIE_DOMAIN: ${NORA_PUBLIC_DOMAIN:-nora.systems}
       EXPOSE_DEV_TOKENS: "false"
 
-      # ---- URLs públicas / CORS ----
+      # ---- Public URLs / CORS ----
       CORS_ALLOWED_ORIGINS: https://${NORA_PUBLIC_DOMAIN:-nora.systems},https://www.${NORA_PUBLIC_DOMAIN:-nora.systems}
       NORA_APP_PUBLIC_BASE_URL: https://${NORA_PUBLIC_DOMAIN:-nora.systems}
       NORA_FRONTEND_BASE_URL: https://${NORA_PUBLIC_DOMAIN:-nora.systems}
@@ -301,18 +301,18 @@ services:
       NLP_WORKER_BASE_URL: http://worker:8001
 
       # ---- Speech / STT (ADR 0035) ----
-      # `local`: o desktop transcreve com Whisper on-device. POST /speech/token continua
-      # existindo e responde 410 GONE + SPEECH_PROVIDER_GONE — sinal terminal para o cliente
-      # antigo, em vez do 404 genérico (que ele leria como "API fora do ar" e viraria retry
-      # infinito). O SpeechRateLimiter vale nos dois modos.
+      # `local`: the desktop transcribes with on-device Whisper. POST /speech/token still
+      # exists and answers 410 GONE + SPEECH_PROVIDER_GONE — a terminal signal for the old
+      # client, instead of the generic 404 (which it would read as "API is down" and turn into
+      # an infinite retry). SpeechRateLimiter applies in both modes.
       #
-      # `azure`: restaura o AzureSpeechTokenBroker. Esta é a ALAVANCA DE ROLLBACK do STT
-      # local — trocar o valor e redeployar, sem revert de código. Exige as duas vars abaixo
-      # preenchidas E o recurso Speech do Azure ainda existindo: depois do decommission
-      # (docs/operations/azure-decommission.md) o rollback deixa de existir.
+      # `azure`: restores the AzureSpeechTokenBroker. This is the ROLLBACK LEVER of the local
+      # STT — change the value and redeploy, no code revert. It requires the two vars below
+      # filled in AND the Azure Speech resource still existing: after the decommission
+      # (docs/operations/azure-decommission.md) the rollback stops existing.
       #
-      # Os beans são mutuamente exclusivos por @ConditionalOnProperty. Um terceiro valor
-      # deixa a app SEM broker e o boot falha por dependência não satisfeita.
+      # The beans are mutually exclusive via @ConditionalOnProperty. A third value leaves
+      # the app WITHOUT a broker and the boot fails on an unsatisfied dependency.
       NORA_SPEECH_PROVIDER: ${NORA_SPEECH_PROVIDER:-local}
       AZURE_SPEECH_KEY: ${AZURE_SPEECH_KEY:-}
       AZURE_SPEECH_REGION: ${AZURE_SPEECH_REGION:-brazilsouth}
@@ -329,14 +329,14 @@ services:
       NORA_PRIVACY_RETENTION_DAYS: ${NORA_PRIVACY_RETENTION_DAYS:-0}
       NORA_PRIVACY_RETENTION_CRON: ${NORA_PRIVACY_RETENTION_CRON:-0 30 3 * * *}
 
-      # ---- Observabilidade (OTel; substitui o agent do App Insights) ----
+      # ---- Observability (OTel; replaces the App Insights agent) ----
       OTEL_SERVICE_NAME: nora-api
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
       OTEL_METRICS_EXPORTER: otlp
       OTEL_LOGS_EXPORTER: none
 
-      # ---- Integrações OAuth (ADR 0031). Redirect URIs derivam do domínio público. ----
+      # ---- OAuth integrations (ADR 0031). Redirect URIs derive from the public domain. ----
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       GOOGLE_OAUTH_REDIRECT_URI: https://api.${NORA_PUBLIC_DOMAIN:-nora.systems}/integrations/google/oauth/callback
@@ -361,8 +361,8 @@ services:
       NORA_TELEGRAM_BOT_TOKEN: ${NORA_TELEGRAM_BOT_TOKEN:-}
       TRELLO_API_KEY: ${TRELLO_API_KEY:-}
       NORA_INTEGRATIONS_STATE_SECRET: ${NORA_INTEGRATIONS_STATE_SECRET:-}
-      # AES-256-GCM, 32 bytes base64. NUNCA passar "unset" aqui: o TokenCipher valida
-      # base64 e derruba o boot (foi o incidente de 2026-06-11 com KV-reference).
+      # AES-256-GCM, 32 bytes base64. NEVER pass "unset" here: TokenCipher validates
+      # base64 and kills the boot (that was the 2026-06-11 incident with KV-reference).
       NORA_INTEGRATIONS_ENC_KEY: ${NORA_INTEGRATIONS_ENC_KEY:-}
 
       # ---- Control plane (ADR 0022/0023/0024) ----
@@ -372,17 +372,17 @@ services:
       PLATFORM_DATASOURCE_PASSWORD: ${POSTGRES_PLATFORM_ADMIN_PASSWORD:-${POSTGRES_ADMIN_PASSWORD}}
       NORA_PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_INTERNAL_TOKEN:-}
       NORA_PLATFORM_ADMIN_TOKEN: ${NORA_PLATFORM_ADMIN_TOKEN:-}
-      # Health do control plane: substitui a Query REST API do App Insights (KQL) pela
-      # Query API do Prometheus. Ver PrometheusHealthSource (ADR 0034).
+      # Control plane health: replaces the App Insights Query REST API (KQL) with the
+      # Prometheus Query API. See PrometheusHealthSource (ADR 0034).
       NORA_PLATFORM_HEALTH_PROMETHEUS_URL: http://prometheus:9090
       NORA_PLATFORM_HEALTH_WINDOW: ${NORA_PLATFORM_HEALTH_WINDOW:-PT1H}
       NORA_PLATFORM_BUSINESS_ENABLED: ${NORA_PLATFORM_BUSINESS_ENABLED:-true}
 
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    # `edge` NAO publica porta: nao ha `ports:` aqui e a unica entrada continua sendo
-    # cloudflared -> caddy. Ela existe porque as redes `internal` e `data` sao
-    # `internal: true`, o que bloqueia egress E resolucao de DNS externo. Sem isto a stack
-    # sobe com TODOS os healthchecks verdes (sao locais) e falha na primeira chamada real.
+    # `edge` does NOT publish a port: there is no `ports:` here and the only entry point
+    # is still cloudflared -> caddy. It exists because the `internal` and `data` networks
+    # are `internal: true`, which blocks egress AND external DNS resolution. Without it the
+    # stack comes up with ALL healthchecks green (they are local) and fails on the first real call.
     networks: [internal, data, edge]
     depends_on:
       postgres:
@@ -398,17 +398,17 @@ services:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
       interval: 15s
       timeout: 5s
-      # failureThreshold 12 no Bicep era calibrado pro boot do Spring + Flyway (~30s).
+      # failureThreshold 12 in the Bicep was calibrated for the Spring + Flyway boot (~30s).
       retries: 12
       start_period: 45s
 
   # ==========================================================================
-  # APP — Web Next.js / BFF (substitui nora-web-dev; 1 vCPU / 2Gi, min 1)
+  # APP — Web Next.js / BFF (replaces nora-web-dev; 1 vCPU / 2Gi, min 1)
   # ==========================================================================
-  # ATENÇÃO: NEXT_PUBLIC_API_BASE_URL é baked no bundle em BUILD-TIME. Setar aqui NÃO
-  # muda o bundle. Se o domínio público mudar, é preciso rebuildar a imagem com o
-  # --build-arg (ver .github/workflows/build-images.yml). Como o domínio continua
-  # nora.systems, a imagem atual do GHCR serve sem rebuild.
+  # WATCH OUT: NEXT_PUBLIC_API_BASE_URL is baked into the bundle at BUILD-TIME. Setting it
+  # here does NOT change the bundle. If the public domain changes, the image has to be
+  # rebuilt with the --build-arg (see .github/workflows/build-images.yml). Since the domain
+  # is still nora.systems, the current GHCR image serves without a rebuild.
   web:
     image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sf0rzin/nora}-web:${WEB_TAG:-latest}
     container_name: nora-web
@@ -420,7 +420,7 @@ services:
       NEXT_PUBLIC_USE_MOCKS: "false"
       OTEL_SERVICE_NAME: nora-web
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-      # Chat do Core (BFF server-side, ADR 0004/0024). Chaves nunca vão pro browser.
+      # Core chat (server-side BFF, ADR 0004/0024). Keys never go to the browser.
       LLM_API_KEY: ${OPENAI_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
       LLM_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
@@ -428,10 +428,10 @@ services:
       LLM_KEY_DEEPSEEK: ${DEEPSEEK_API_KEY:-}
       LLM_KEY_GOOGLE: ${GEMINI_API_KEY:-}
       NORA_PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_INTERNAL_TOKEN:-}
-    # `edge` NAO publica porta: nao ha `ports:` aqui e a unica entrada continua sendo
-    # cloudflared -> caddy. Ela existe porque as redes `internal` e `data` sao
-    # `internal: true`, o que bloqueia egress E resolucao de DNS externo. Sem isto a stack
-    # sobe com TODOS os healthchecks verdes (sao locais) e falha na primeira chamada real.
+    # `edge` does NOT publish a port: there is no `ports:` here and the only entry point
+    # is still cloudflared -> caddy. It exists because the `internal` and `data` networks
+    # are `internal: true`, which blocks egress AND external DNS resolution. Without it the
+    # stack comes up with ALL healthchecks green (they are local) and fails on the first real call.
     networks: [internal, edge]
     depends_on:
       api:
@@ -449,12 +449,12 @@ services:
       start_period: 20s
 
   # ==========================================================================
-  # APP — Admin / control plane (substitui nora-admin-dev, ADR 0023/0025)
+  # APP — Admin / control plane (replaces nora-admin-dev, ADR 0023/0025)
   # ==========================================================================
-  # Continua sem rota pública direta: só chega via Caddy quando o cloudflared entrega
-  # o Host admin.<dominio>, e a Access Application da Cloudflare é quem autentica na
-  # borda. CF_ACCESS_AUD PRECISA estar preenchido — access.ts faz fail-OPEN quando
-  # vazio, e hoje em produção chega vazio (era `vars.` lendo um Secret).
+  # Still with no direct public route: it is only reached via Caddy when cloudflared
+  # delivers the Host admin.<domain>, and Cloudflare's Access Application is what
+  # authenticates at the edge. CF_ACCESS_AUD MUST be filled in — access.ts does fail-OPEN
+  # when empty, and today in production it arrives empty (it was `vars.` reading a Secret).
   admin:
     image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sf0rzin/nora}-admin:${ADMIN_TAG:-latest}
     container_name: nora-admin
@@ -470,10 +470,10 @@ services:
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:?CF_ACCESS_AUD obrigatorio - sem ele access.ts faz fail-open}
       OTEL_SERVICE_NAME: nora-admin
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-    # `edge` NAO publica porta: nao ha `ports:` aqui e a unica entrada continua sendo
-    # cloudflared -> caddy. Ela existe porque as redes `internal` e `data` sao
-    # `internal: true`, o que bloqueia egress E resolucao de DNS externo. Sem isto a stack
-    # sobe com TODOS os healthchecks verdes (sao locais) e falha na primeira chamada real.
+    # `edge` does NOT publish a port: there is no `ports:` here and the only entry point
+    # is still cloudflared -> caddy. It exists because the `internal` and `data` networks
+    # are `internal: true`, which blocks egress AND external DNS resolution. Without it the
+    # stack comes up with ALL healthchecks green (they are local) and fails on the first real call.
     networks: [internal, edge]
     depends_on:
       api:
@@ -484,9 +484,9 @@ services:
           cpus: "0.5"
           memory: 512M
     healthcheck:
-      # 127.0.0.1, nao `localhost`: o Next standalone faz bind IPv4-only (0.0.0.0), mas o
-      # /etc/hosts do container resolve `localhost` tambem para ::1 e o wget do BusyBox
-      # tenta o IPv6 primeiro -- connection refused com o servidor no ar e respondendo.
+      # 127.0.0.1, not `localhost`: Next standalone binds IPv4-only (0.0.0.0), but the
+      # container's /etc/hosts also resolves `localhost` to ::1 and BusyBox wget tries
+      # IPv6 first -- connection refused with the server up and answering.
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3002/healthz"]
       interval: 30s
       timeout: 5s
@@ -494,12 +494,12 @@ services:
       start_period: 20s
 
   # ==========================================================================
-  # OBSERVABILIDADE — substitui Log Analytics + Application Insights
+  # OBSERVABILITY — replaces Log Analytics + Application Insights
   # ==========================================================================
-  # Cobertura equivalente exige DUAS pernas, não uma:
-  #   - traces/métricas (o que o -javaagent fazia)  -> otel-collector -> prometheus/tempo
-  #   - logs de stdout dos 4 apps (o que o appLogsConfiguration fazia) -> alloy -> loki
-  # Um OTel Collector sozinho NÃO cobre log shipping.
+  # Equivalent coverage requires TWO legs, not one:
+  #   - traces/metrics (what the -javaagent did)    -> otel-collector -> prometheus/tempo
+  #   - stdout logs of the 4 apps (what appLogsConfiguration did) -> alloy -> loki
+  # An OTel Collector alone does NOT cover log shipping.
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.115.1
     container_name: nora-otel-collector
@@ -509,15 +509,15 @@ services:
     volumes:
       - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
     networks: [internal]
-    # SEM healthcheck, e isso é deliberado. A imagem do otel-collector-contrib é
-    # distroless: não tem shell, wget nem curl, então qualquer `test:` baseado neles
-    # nunca executa e o container fica `unhealthy` PARA SEMPRE — o `up -d --wait`
-    # aborta e o deploy.sh reprova um collector que está funcionando.
-    # Ninguém declara `depends_on` dele, e com `--wait` um serviço sem healthcheck é
-    # considerado pronto quando está `running`. A extensão health_check continua
-    # habilitada em observability/otel-collector.yaml e responde em :13133 — dá para
-    # sondar de fora (`docker compose exec prometheus wget -qO- otel-collector:13133`),
-    # só não de dentro.
+    # NO healthcheck, and that is deliberate. The otel-collector-contrib image is
+    # distroless: it has no shell, no wget and no curl, so any `test:` based on them
+    # never runs and the container stays `unhealthy` FOREVER — `up -d --wait`
+    # aborts and deploy.sh fails a collector that is working fine.
+    # Nobody declares a `depends_on` on it, and with `--wait` a service without a
+    # healthcheck is considered ready once it is `running`. The health_check extension
+    # is still enabled in observability/otel-collector.yaml and answers on :13133 — it can
+    # be probed from outside (`docker compose exec prometheus wget -qO- otel-collector:13133`),
+    # just not from inside.
 
   prometheus:
     image: prom/prometheus:v3.1.0
@@ -556,10 +556,10 @@ services:
       retries: 5
       start_period: 30s
 
-  # Alloy lê o socket do Docker e envia stdout/stderr de TODOS os containers pro Loki.
-  # Escolhido em vez do log driver `loki`: o plugin quebra `docker logs` e, em
-  # `mode=non-blocking`, descarta linhas em silêncio sob backpressure. Alloy tem WAL —
-  # backpressure vira atraso, não perda.
+  # Alloy reads the Docker socket and sends stdout/stderr of ALL containers to Loki.
+  # Chosen over the `loki` log driver: the plugin breaks `docker logs` and, in
+  # `mode=non-blocking`, silently drops lines under backpressure. Alloy has a WAL —
+  # backpressure becomes delay, not loss.
   alloy:
     image: grafana/alloy:v1.7.1
     container_name: nora-alloy
@@ -603,11 +603,11 @@ services:
       start_period: 20s
 
   # ==========================================================================
-  # BACKUP — substitui o PITR de 7 dias do Postgres Flexible Server
+  # BACKUP — replaces the 7-day PITR of Postgres Flexible Server
   # ==========================================================================
-  # pg_dump lógico por hora + retenção; o PITR real fica por conta do snapshot da VM
-  # no Proxmox Backup Server (fora do compose). RTO passa de minutos para horas —
-  # mudança de SLA registrada no ADR 0034 §disponibilidade.
+  # Hourly logical pg_dump + retention; the real PITR is up to the VM snapshot on the
+  # Proxmox Backup Server (outside the compose). RTO goes from minutes to hours —
+  # an SLA change recorded in ADR 0034 §disponibilidade.
   backup:
     image: postgres:16-alpine
     container_name: nora-backup

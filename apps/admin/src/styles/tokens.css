@@ -1,6 +1,6 @@
-/* NORA — design tokens (compartilhados com apps/web · rebrand DM Sans).
- * Cópia enxuta dos tokens primários do bundle do Claude Design pra manter
- * o console do operador com a mesma identidade visual do app Core. */
+/* NORA — design tokens (shared with apps/web · DM Sans rebrand).
+ * Trimmed copy of the primary tokens from the Claude Design bundle, to keep
+ * the operator console on the same visual identity as the Core app. */
 
 :root {
   /* Surface (light) */
@@ -19,12 +19,12 @@
   --accent-ink: oklch(0.48 0.18 248);
   --accent-soft: oklch(0.95 0.04 248);
 
-  /* Sinais */
+  /* Signals */
   --success: oklch(0.55 0.16 155);
   --warn: oklch(0.65 0.16 70);
   --danger: oklch(0.55 0.2 25);
 
-  /* Fonts — tipografia única DM Sans (sem mono, decisão de design do Core) */
+  /* Fonts — single DM Sans typeface (no mono, Core design decision) */
   --sans: var(--font-sans);
   --display: var(--font-sans);
 

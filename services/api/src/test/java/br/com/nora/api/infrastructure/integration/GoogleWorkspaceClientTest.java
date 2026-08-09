@@ -19,14 +19,14 @@ class GoogleWorkspaceClientTest {
         assertThat(mime).startsWith("To: ana@empresa.com\r\n");
         assertThat(mime).contains("Content-Type: text/html; charset=UTF-8");
 
-        // Subject em RFC 2047 (B-encoding) por causa dos acentos.
+        // Subject in RFC 2047 (B-encoding) because of the accents.
         String expectedSubject =
                 Base64.getEncoder()
                         .encodeToString(
                                 "Reunião analisada — Açaí & Cia".getBytes(StandardCharsets.UTF_8));
         assertThat(mime).contains("Subject: =?UTF-8?B?" + expectedSubject + "?=");
 
-        // Corpo em base64 decodável de volta pro HTML original.
+        // Body in base64, decodable back to the original HTML.
         String body = mime.substring(mime.indexOf("\r\n\r\n") + 4).replaceAll("\\s", "");
         assertThat(new String(Base64.getMimeDecoder().decode(body), StandardCharsets.UTF_8))
                 .isEqualTo("<p>Olá</p>");
@@ -34,8 +34,8 @@ class GoogleWorkspaceClientTest {
 
     @Test
     void rfc3339_mantemSegundosZeradosExigidosPeloCalendar() {
-        // OffsetDateTime.toString() omitiria os segundos ("10:00-03:00") e o
-        // Calendar rejeita com 400.
+        // OffsetDateTime.toString() would omit the seconds ("10:00-03:00") and the
+        // Calendar rejects it with 400.
         OffsetDateTime semSegundos =
                 OffsetDateTime.of(2026, 6, 13, 10, 0, 0, 0, ZoneOffset.ofHours(-3));
 

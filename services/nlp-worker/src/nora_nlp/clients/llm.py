@@ -1,15 +1,15 @@
-"""Cliente LLM agnóstico de provider (default OpenAI direto).
+"""Provider-agnostic LLM client (default OpenAI direct).
 
-Conforme ADR 0004, o worker NORA fala com qualquer provider compatível com a
-API Chat Completions da OpenAI (OpenAI direto, Azure OpenAI, Groq, OpenRouter,
-Ollama, etc.). A escolha é feita por variáveis de ambiente:
+Per ADR 0004, the NORA worker talks to any provider compatible with OpenAI's
+Chat Completions API (OpenAI direct, Azure OpenAI, Groq, OpenRouter,
+Ollama, etc.). The choice is made through environment variables:
 
 - ``LLM_BASE_URL`` (default ``https://api.openai.com/v1``)
 - ``LLM_API_KEY``
 - ``LLM_MODEL``  (default ``gpt-4o-mini``)
 - ``LLM_TEMPERATURE``
 
-Usamos a SDK oficial ``openai`` apontando para a ``base_url`` configurada.
+We use the official ``openai`` SDK pointing at the configured ``base_url``.
 """
 
 from __future__ import annotations
@@ -25,11 +25,11 @@ logger = logging.getLogger(__name__)
 
 
 class LlmClient:
-    """Wrapper sobre a SDK OpenAI com base_url plugável."""
+    """Wrapper over the OpenAI SDK with a pluggable base_url."""
 
-    # Timeout total para uma chamada LLM. SDK default e 600s (10min) — em
-    # provider lento isso pendurava o worker por 10 minutos por request.
-    # 60s cobre p99 de gpt-4o-mini com prompts de ate ~10K tokens.
+    # Total timeout for one LLM call. SDK default is 600s (10min) — on a
+    # slow provider that hung the worker for 10 minutes per request.
+    # 60s covers the p99 of gpt-4o-mini with prompts up to ~10K tokens.
     _LLM_TIMEOUT_SECONDS = 60.0
 
     def __init__(self, settings: Settings) -> None:
@@ -39,8 +39,8 @@ class LlmClient:
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,
             timeout=self._LLM_TIMEOUT_SECONDS,
-            # max_retries=2 cobre falhas transitorias (429/5xx) com backoff
-            # exponencial da SDK. Caller continua tratando excecao final.
+            # max_retries=2 covers transient failures (429/5xx) with the SDK's
+            # exponential backoff. The caller still handles the final exception.
             max_retries=2,
         )
         self._model = settings.llm_model
@@ -65,7 +65,7 @@ class LlmClient:
         temperature: float | None = None,
         max_tokens: int = 4096,
     ) -> tuple[str, int, int]:
-        """Chama o modelo com JSON Schema strict. Retorna (json, in, out)."""
+        """Calls the model with a strict JSON Schema. Returns (json, in, out)."""
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
@@ -93,7 +93,7 @@ class LlmClient:
         temperature: float | None = None,
         max_tokens: int = 4096,
     ) -> tuple[str, int, int]:
-        """Fallback para JSON mode (sem strict schema)."""
+        """Fallback to JSON mode (no strict schema)."""
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
@@ -124,7 +124,7 @@ class LlmClient:
 
 
 def build_json_schema_for_analysis() -> dict[str, Any]:
-    """JSON Schema do MeetingAnalysisV1 para structured output strict."""
+    """MeetingAnalysisV1 JSON Schema for strict structured output."""
     return {
         "type": "object",
         "properties": {
@@ -228,8 +228,8 @@ def build_json_schema_for_analysis() -> dict[str, Any]:
                     "additionalProperties": False,
                 },
             },
-            # Productivity opcional (ADR 0005). Quando o usuario nao declarou goal,
-            # o prompt deve instruir o LLM a emitir productivity = null.
+            # Optional productivity (ADR 0005). When the user did not declare a goal,
+            # the prompt must instruct the LLM to emit productivity = null.
             "productivity": {
                 "type": ["object", "null"],
                 "properties": {
@@ -265,9 +265,9 @@ def build_json_schema_for_analysis() -> dict[str, Any]:
                 ],
                 "additionalProperties": False,
             },
-            # Customer Confidence opcional (ADR 0006 / ADR 0015). O prompt instrui
-            # o LLM a emitir o objeto apenas para conversas com cliente/lead/venda
-            # e null para reunioes internas (gating decidido pelo LLM).
+            # Optional Customer Confidence (ADR 0006 / ADR 0015). The prompt instructs
+            # the LLM to emit the object only for customer/lead/sales conversations
+            # and null for internal meetings (gating decided by the LLM).
             "customerConfidence": {
                 "type": ["object", "null"],
                 "properties": {

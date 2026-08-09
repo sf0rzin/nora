@@ -1,72 +1,72 @@
 name: deploy-proxmox
 
-# Publica o RELEASE POINTER da stack self-hosted (Proxmox + Docker Compose, ADR 0034).
+# Publishes the RELEASE POINTER of the self-hosted stack (Proxmox + Docker Compose, ADR 0034).
 #
 # ============================================================================
-# MODELO: PULL, NÃO PUSH. ESTE WORKFLOW NUNCA TOCA O HOST.
+# MODEL: PULL, NOT PUSH. THIS WORKFLOW NEVER TOUCHES THE HOST.
 # ============================================================================
 #
-# O que ele faz:              publica um ponteiro imutável "o SHA X está pronto".
-# O que ele NÃO faz:          conectar no host, rodar `docker compose`, mover arquivo.
+# What it does:              publishes an immutable pointer "SHA X is ready".
+# What it does NOT do:       connect to the host, run `docker compose`, move a file.
 #
-#   GitHub Actions                     |  Host Proxmox (VM `nora`)
+#   GitHub Actions                     |  Proxmox host (VM `nora`)
 #   -----------------------------------+------------------------------------------
 #   build-images.yml                   |
 #     -> push ghcr.io/...:sha-<short>  |
-#     -> artefato nora-release-pointer |
-#   deploy-proxmox.yml (aqui)          |
-#     -> tag git release/prod/<short>  |
-#     -> move release/prod/current     |
-#     -> (opcional) POST no webhook ---+--> agente de pull acorda
-#                                      |      1. lê release/prod/current (git ls-remote)
+#     -> artifact nora-release-pointer |
+#   deploy-proxmox.yml (here)          |
+#     -> git tag release/prod/<short>  |
+#     -> moves release/prod/current    |
+#     -> (optional) POST to webhook ---+--> pull agent wakes up
+#                                      |      1. reads release/prod/current (git ls-remote)
 #                                      |      2. docker login ghcr.io (PAT read:packages)
-#                                      |      3. merge do deploy.env no .env (tmpfs)
-#                                      |      4. sops -d secrets.env.sops (age key local)
+#                                      |      3. merges deploy.env into .env (tmpfs)
+#                                      |      4. sops -d secrets.env.sops (local age key)
 #                                      |      5. docker compose up -d --wait
 #
-# POR QUE PULL (não é preferência de estilo, é o repo ser público — ADR 0017):
-#   1. Runner self-hosted na rede doméstica executaria código de PR de fork arbitrário.
-#      Era exatamente o buraco do antigo deploy-infra.yml, que tinha trigger
-#      `pull_request` — em repo público isso é RCE na LAN por design.
-#   2. Push por SSH exigiria chave privada em GitHub Secret + porta 22 exposta (ou
-#      Tailscale/VPN no runner). Um segredo que abre shell no host, num repo público.
-#   3. Pull inverte a direção: a única conexão que existe sai do host. Zero porta
-#      inbound, zero credencial de host no GitHub. O que o GitHub pode fazer no pior
-#      caso é anunciar um ponteiro ruim — o agente valida antes de aplicar.
+# WHY PULL (not a style preference, it is the repo being public — ADR 0017):
+#   1. A self-hosted runner on the home network would execute arbitrary fork PR code.
+#      That was exactly the hole in the old deploy-infra.yml, which had a
+#      `pull_request` trigger — in a public repo that is RCE on the LAN by design.
+#   2. Push over SSH would require a private key in a GitHub Secret + port 22 exposed (or
+#      Tailscale/VPN on the runner). A secret that opens a shell on the host, in a public repo.
+#   3. Pull inverts the direction: the only connection that exists leaves the host. Zero
+#      inbound port, zero host credential on GitHub. The worst GitHub can do is
+#      announce a bad pointer — the agent validates before applying.
 #
-# NÃO EXISTE AQUI, DE PROPÓSITO:
-#   - `azure/login`, `id-token: write`     (Azure saiu de cena)
-#   - segredo de SSH / `appleboy/ssh-action`
+# DOES NOT EXIST HERE, ON PURPOSE:
+#   - `azure/login`, `id-token: write`     (Azure left the scene)
+#   - SSH secret / `appleboy/ssh-action`
 #   - `runs-on: self-hosted`
-#   - trigger `pull_request`               (nenhum caminho de deploy dispara em PR)
+#   - `pull_request` trigger               (no deploy path fires on a PR)
 #
-# POR QUE TAG GIT E NÃO GITHUB RELEASE:
-#   O `desktop-release.yml` é dono de `releases/latest` — o endpoint que o updater do
-#   Tauri consulta (`releases/latest/download/latest.json`). Criar Release pra stack
-#   faria a release da stack virar "Latest" e o app desktop tentaria se atualizar pra um
-#   asset que não é um bundle. Tag git não colide com nada, não expira (o artefato do
-#   Actions expira em 30 dias) e o host lê com `git ls-remote` sem autenticação num repo
-#   público.
+# WHY A GIT TAG AND NOT A GITHUB RELEASE:
+#   `desktop-release.yml` owns `releases/latest` — the endpoint the Tauri updater
+#   queries (`releases/latest/download/latest.json`). Creating a Release for the stack
+#   would make the stack release become "Latest" and the desktop app would try to update to
+#   an asset that is not a bundle. A git tag collides with nothing, does not expire (the
+#   Actions artifact expires in 30 days) and the host reads it with `git ls-remote` without
+#   authentication in a public repo.
 #
-# SEGURANÇA DAS TAGS: `release/prod/*` não casa com `desktop-v*` (único `on.push.tags`
-# do repo) e nenhum workflow dispara em branch por push de tag. Além disso, push feito
-# com o GITHUB_TOKEN não dispara novos workflow runs — não há loop possível.
+# TAG SAFETY: `release/prod/*` does not match `desktop-v*` (the repo's only `on.push.tags`)
+# and no workflow fires on a branch from a tag push. Beyond that, a push made
+# with the GITHUB_TOKEN does not trigger new workflow runs — no loop is possible.
 #
 # Secrets/Variables:
-#   - NORA_DEPLOY_WEBHOOK_URL  (Secret, OPCIONAL) endpoint publicado pelo Cloudflare
-#       Tunnel que só ACORDA o agente. Ausente = o agente cai no polling do
-#       release/prod/current (a notificação é otimização de latência, não requisito).
-#   - NORA_DEPLOY_WEBHOOK_TOKEN (Secret, OPCIONAL) bearer que o agente valida.
-#   Nenhum dos dois dá acesso ao host: o webhook não recebe comando, só um SHA que o
-#   agente confere contra a tag antes de agir.
+#   - NORA_DEPLOY_WEBHOOK_URL  (Secret, OPTIONAL) endpoint published by the Cloudflare
+#       Tunnel that only WAKES the agent. Absent = the agent falls back to polling
+#       release/prod/current (the notification is a latency optimization, not a requirement).
+#   - NORA_DEPLOY_WEBHOOK_TOKEN (Secret, OPTIONAL) bearer the agent validates.
+#   Neither gives access to the host: the webhook takes no command, only a SHA that the
+#   agent checks against the tag before acting.
 
 on:
-  # Encadeado no build-images: só faz sentido anunciar um SHA cujas imagens existem.
+  # Chained to build-images: it only makes sense to announce a SHA whose images exist.
   workflow_run:
     workflows: [build-images]
     types: [completed]
     branches: [main]
-  # Rollback / re-anúncio manual. `sha` vazio = HEAD da main.
+  # Manual rollback / re-announcement. Empty `sha` = HEAD of main.
   workflow_dispatch:
     inputs:
       sha:
@@ -79,11 +79,11 @@ on:
         default: ''
 
 permissions:
-  contents: write   # criar/mover as tags release/prod/*. Só isso.
-  actions: read     # baixar o artefato nora-release-pointer do run do build-images.
+  contents: write   # create/move the release/prod/* tags. That is all.
+  actions: read     # download the nora-release-pointer artifact from the build-images run.
 
-# Um pointer por vez. cancel-in-progress:false enfileira: cancelar um promote no meio
-# deixaria a tag imutável criada e a `current` apontando pro SHA anterior.
+# One pointer at a time. cancel-in-progress:false queues: cancelling a promote midway
+# would leave the immutable tag created and `current` pointing at the previous SHA.
 concurrency:
   group: nora-release-pointer-${{ github.ref }}
   cancel-in-progress: false
@@ -91,8 +91,8 @@ concurrency:
 jobs:
   promote:
     name: promote (publica release pointer)
-    # workflow_run dispara inclusive quando o build FALHOU — sem este guard, um build
-    # vermelho promoveria um SHA sem imagem no GHCR e o host quebraria no pull.
+    # workflow_run fires even when the build FAILED — without this guard, a red build
+    # would promote a SHA with no image in GHCR and the host would break on the pull.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
@@ -134,12 +134,12 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ steps.target.outputs.sha }}
-          # Precisa do histórico pra criar tag e validar que o SHA está em main.
+          # Needs the history to create the tag and validate the SHA is on main.
           fetch-depth: 0
 
-      # Defesa contra promover um commit que nunca passou pelo gate da main: só
-      # anunciamos SHA que é ancestral do refs/heads/main. Sem isso, um dispatch com
-      # um SHA de branch qualquer viraria pointer de produção.
+      # Defense against promoting a commit that never went through main's gate: we only
+      # announce a SHA that is an ancestor of refs/heads/main. Without this, a dispatch with
+      # a SHA from any branch would become a production pointer.
       - name: Guard — SHA pertence à main
         env:
           SHA: ${{ steps.target.outputs.sha }}
@@ -153,9 +153,9 @@ jobs:
           fi
           echo "OK — $SHA está em main."
 
-      # Baixa o pointer produzido pelo build-images do MESMO run. Em workflow_dispatch
-      # não há run associado, então o download é best-effort: o promote continua e o
-      # agente resolve as tags pelo SHA (as imagens já existem no GHCR — é rollback).
+      # Downloads the pointer produced by build-images from the SAME run. On workflow_dispatch
+      # there is no associated run, so the download is best-effort: the promote continues and
+      # the agent resolves the tags by SHA (the images already exist in GHCR — it is a rollback).
       - name: Baixa o artefato do build-images
         id: fetch
         if: github.event_name == 'workflow_run'
@@ -176,9 +176,9 @@ jobs:
           set -euo pipefail
           mkdir -p pointer
           if [ ! -f pointer/release.json ]; then
-            # Sem artefato (dispatch/rollback): emitimos um pointer FULL — todos os quatro
-            # serviços na mesma tag. Isso só é seguro porque o rollback aponta pra um SHA
-            # que JÁ foi construído; o step seguinte confirma no GHCR antes de publicar.
+            # No artifact (dispatch/rollback): we emit a FULL pointer — all four
+            # services on the same tag. That is only safe because the rollback points at a SHA
+            # that was ALREADY built; the next step confirms it in GHCR before publishing.
             echo "Sem artefato — gerando pointer full pro SHA $SHORT (modo rollback)."
             jq -n --arg sha "$SHA" --arg short "$SHORT" \
               --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -197,10 +197,10 @@ jobs:
           echo "count=$count" >> "$GITHUB_OUTPUT"
           cat pointer/release.json
 
-      # Confere que cada imagem anunciada EXISTE no GHCR antes de virar pointer.
-      # É a validação que o modelo pull exige: o host confia no ponteiro, então quem
-      # publica tem que garantir que ele resolve. Um manifest ausente aqui vira erro no
-      # CI; lá viraria stack meio no ar (uns serviços novos, outros não).
+      # Checks that every announced image EXISTS in GHCR before it becomes a pointer.
+      # It is the validation the pull model demands: the host trusts the pointer, so whoever
+      # publishes has to guarantee it resolves. A missing manifest here becomes an error in
+      # CI; there it would become a half-up stack (some services new, others not).
       - name: Verifica os manifests no GHCR
         if: steps.pointer.outputs.count != '0'
         env:
@@ -209,9 +209,9 @@ jobs:
           set -euo pipefail
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           fail=0
-          # `buildx imagetools inspect` e nao `docker manifest inspect`: o segundo ainda é
-          # experimental em parte das versões do CLI e falharia por flag, não por imagem
-          # ausente — um falso negativo que bloquearia todo deploy.
+          # `buildx imagetools inspect` and not `docker manifest inspect`: the latter is still
+          # experimental in some CLI versions and would fail on the flag, not on a missing
+          # image — a false negative that would block every deploy.
           while read -r img; do
             if docker buildx imagetools inspect "$img" > /dev/null 2>&1; then
               echo "  OK   $img"
@@ -223,11 +223,11 @@ jobs:
           [ "$fail" -eq 0 ] || { echo "::error::Pointer recusado — imagem faltando."; exit 1; }
           echo "Todos os manifests existem."
 
-      # Duas tags, papéis diferentes:
-      #   release/prod/<short>  IMUTÁVEL — o histórico de rollout, alvo de rollback.
-      #   release/prod/current  MÓVEL    — o que o agente consulta ("qual é o desejado?").
-      # A imutável é criada com `--no-force`: republicar o mesmo SHA é no-op, nunca
-      # reescreve histórico.
+      # Two tags, different roles:
+      #   release/prod/<short>  IMMUTABLE — the rollout history, the rollback target.
+      #   release/prod/current  MOVABLE   — what the agent queries ("which is the desired one?").
+      # The immutable one is created with `--no-force`: republishing the same SHA is a no-op,
+      # it never rewrites history.
       - name: Publica as tags release/prod/*
         if: steps.pointer.outputs.count != '0'
         env:
@@ -247,7 +247,7 @@ jobs:
             echo "Tag ${immutable} publicada."
           fi
 
-          # A `current` é intencionalmente móvel — é o único ref que o agente precisa ler.
+          # `current` is intentionally movable — it is the only ref the agent needs to read.
           git tag -f "release/prod/current" "$SHA" -m "current -> ${SHORT}"
           git push --force origin "refs/tags/release/prod/current"
           echo "release/prod/current -> ${SHORT}"
@@ -261,11 +261,11 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
-      # Notificação OPCIONAL. Só um "acorda e reconcilia" — não carrega comando nem
-      # credencial, e o agente confere o SHA contra a tag antes de aplicar. O endpoint é
-      # publicado pelo Cloudflare Tunnel (saída-only): continua sem porta inbound.
-      # Se falhar, NÃO falha o job: o pointer (tag) já está publicado e o polling do
-      # agente converge sozinho. Notificação é latência, não corretude.
+      # OPTIONAL notification. Just a "wake up and reconcile" — it carries no command nor
+      # credential, and the agent checks the SHA against the tag before applying. The endpoint
+      # is published by the Cloudflare Tunnel (egress-only): still no inbound port.
+      # If it fails, it does NOT fail the job: the pointer (tag) is already published and the
+      # agent's polling converges on its own. Notification is latency, not correctness.
       - name: Notifica o agente (webhook via Cloudflare Tunnel — opcional)
         if: steps.pointer.outputs.count != '0'
         continue-on-error: true
@@ -283,10 +283,10 @@ jobs:
           payload=$(jq -nc --arg sha "$SHA" --arg short "$SHORT" \
             --arg ref "release/prod/current" \
             '{event:"release-pointer", sha:$sha, short_sha:$short, git_ref:$ref}')
-          # Header opcional via ARRAY. `${VAR:+-H "Authorization: Bearer $VAR"}` sem array
-          # sofre word splitting e o curl recebe `-H`, `Authorization:`, `Bearer`, `<token>`
-          # como quatro argumentos — o header sai malformado e o token vaza pra um campo
-          # que não é o Authorization.
+          # Optional header via ARRAY. `${VAR:+-H "Authorization: Bearer $VAR"}` without an
+          # array suffers word splitting and curl receives `-H`, `Authorization:`, `Bearer`,
+          # `<token>` as four arguments — the header comes out malformed and the token leaks
+          # into a field that is not the Authorization.
           auth=()
           if [ -n "${WEBHOOK_TOKEN:-}" ]; then
             auth=(-H "Authorization: Bearer ${WEBHOOK_TOKEN}")

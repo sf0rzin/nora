@@ -1,25 +1,25 @@
 # %% [markdown]
-# # NORA — Transcrições TOTVS: limpeza, TF-IDF e EDA
+# # NORA — TOTVS transcripts: cleaning, TF-IDF and EDA
 #
-# Pipeline de Data Science sobre a base **`ANON_nome_transcricao.csv`** (transcrições
-# anonimizadas de agendas TOTVS, 2026). Cobre os itens da disciplina *Data Science &
-# Statistical Computing* do Challenge:
+# Data Science pipeline over the **`ANON_nome_transcricao.csv`** dataset (anonymized
+# transcripts of TOTVS meetings, 2026). Covers the items of the Challenge's *Data
+# Science & Statistical Computing* subject:
 #
-# 1. **Entendimento do problema** — transformar transcrições em inteligência acionável.
-# 2. **Ingestão e preparação** — limpeza textual rigorosa (lowercase, pontuação,
-#    stopwords, normalização) do formato `[LOCUTOR N]`.
-# 3. **Feature engineering com TF-IDF** — matriz TF-IDF + termos mais relevantes
-#    (reusa o `nlp_baseline.TfidfBaseline`, o MESMO usado no worker da NORA — ADR 0010).
-# 4. **Análise exploratória** — distribuições (formato, segmento, UF, NPS) + padrões.
-# 5. **Insights de negócio** — correlação linguagem × NPS (sinais de risco/oportunidade).
+# 1. **Problem understanding** — turn transcripts into actionable intelligence.
+# 2. **Ingestion and preparation** — strict text cleaning (lowercase, punctuation,
+#    stopwords, normalization) of the `[LOCUTOR N]` format.
+# 3. **Feature engineering with TF-IDF** — TF-IDF matrix + most relevant terms
+#    (reuses `nlp_baseline.TfidfBaseline`, the SAME one used in NORA's worker — ADR 0010).
+# 4. **Exploratory analysis** — distributions (format, segment, UF, NPS) + patterns.
+# 5. **Business insights** — language × NPS correlation (risk/opportunity signals).
 #
-# > Este arquivo está em formato *jupytext* (`# %%`): roda como script
-# > (`python notebooks/totvs_transcricoes_eda.py`) **e** abre como notebook no
+# > This file is in *jupytext* format (`# %%`): it runs as a script
+# > (`python notebooks/totvs_transcricoes_eda.py`) **and** opens as a notebook in
 # > Jupyter/Colab/VS Code.
 # >
-# > **Dados:** coloque o CSV em `data/private/totvs/ANON_nome_transcricao.csv`
-# > (pasta já no `.gitignore` — o dado da TOTVS NÃO é versionado) ou aponte via
-# > `TOTVS_CSV=/caminho/arquivo.csv`. Use `TOTVS_SAMPLE=N` pra amostrar N linhas.
+# > **Data:** put the CSV in `data/private/totvs/ANON_nome_transcricao.csv`
+# > (folder already in `.gitignore` — TOTVS data is NOT versioned) or point to it via
+# > `TOTVS_CSV=/caminho/arquivo.csv`. Use `TOTVS_SAMPLE=N` to sample N rows.
 
 # %%
 from __future__ import annotations
@@ -31,24 +31,24 @@ from pathlib import Path
 
 import pandas as pd
 
-# Reusa o baseline de NLP da própria NORA (consistência produção × notebook).
+# Reuses NORA's own NLP baseline (production × notebook consistency).
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "packages" / "nlp-baseline" / "src"))
 from nlp_baseline.normalize import normalize_text  # noqa: E402
 from nlp_baseline.tfidf import TfidfBaseline  # noqa: E402
 
 CSV_PATH = os.environ.get("TOTVS_CSV", str(ROOT / "data" / "private" / "totvs" / "ANON_nome_transcricao.csv"))
-SAMPLE_N = int(os.environ.get("TOTVS_SAMPLE", "5000"))  # 0 = base inteira
+SAMPLE_N = int(os.environ.get("TOTVS_SAMPLE", "5000"))  # 0 = whole dataset
 
 pd.set_option("display.max_colwidth", 80)
 pd.set_option("display.width", 120)
 
 # %% [markdown]
-# ## 1–2. Ingestão e preparação
+# ## 1–2. Ingestion and preparation
 #
-# Carregamos a base, normalizamos nomes de coluna (a base de produção usa
-# `FAIXA_FATURAMENTO_CLIENTE_EC`; o mock usa `..._CLIENTE`) e parseamos o campo
-# `ANON_TRANSCRICAO`, que vem no formato `[LOCUTOR N]: fala`.
+# We load the dataset, normalize column names (the production dataset uses
+# `FAIXA_FATURAMENTO_CLIENTE_EC`; the mock uses `..._CLIENTE`) and parse the
+# `ANON_TRANSCRICAO` field, which comes in the `[LOCUTOR N]: fala` format.
 
 # %%
 HEADER = [
@@ -58,20 +58,20 @@ HEADER = [
     "DT_ULTIMA_PESQUISA", "NOTA_NPS",
 ]
 
-# Fronteira de registro no export real: início de linha com "<id>,<data ISO>.
+# Record boundary in the real export: line start with "<id>,<ISO date>.
 _RECORD_BOUND = re.compile(r'(?m)^"(?=\d{3,},\d{4}-\d\d-\d\d)')
 
 
 def _parse_messy_export(path: str, sample_n: int) -> pd.DataFrame:
-    """Parser dedicado ao export malformado da TOTVS.
+    """Parser dedicated to the malformed TOTVS export.
 
-    O arquivo não é RFC-4180: cada registro é ``"<10 metadados>,""<transcrição>"",
-    <7 campos CRM>"`` — a transcrição tem aspas internas duplicadas e quebras de
-    linha sem fechamento limpo, então o parser de CSV padrão desalinha as colunas.
-    Aqui fatiamos por registro (regex de fronteira) e separamos:
-      * metadados: antes do primeiro ``""``;
-      * transcrição: o miolo (desfazendo ``""`` -> ``"``);
-      * CRM: após o último ``"",`` (UF, CNAE, unidade, segmento, faixa, data, NPS).
+    The file is not RFC-4180: each record is ``"<10 metadata>,""<transcript>"",
+    <7 CRM fields>"`` — the transcript has doubled inner quotes and line breaks
+    with no clean close, so the standard CSV parser misaligns the columns.
+    Here we slice per record (boundary regex) and split out:
+      * metadata: before the first ``""``;
+      * transcript: the middle (undoing ``""`` -> ``"``);
+      * CRM: after the last ``"",`` (UF, CNAE, unit, segment, band, date, NPS).
     """
     raw = Path(path).read_text(encoding="utf-8", errors="replace")
     body = raw.split("\n", 1)[1] if "\n" in raw else raw
@@ -110,9 +110,9 @@ def load_dataframe() -> pd.DataFrame:
             f"CSV não encontrado em {CSV_PATH}.\n"
             "Coloque a base em data/private/totvs/ ou aponte com TOTVS_CSV=/caminho.csv"
         )
-    # Sniff: export real da TOTVS começa cada registro com "<id>,<data> (malformado).
+    # Sniff: the real TOTVS export starts every record with "<id>,<date> (malformed).
     with open(CSV_PATH, encoding="utf-8", errors="replace") as fh:
-        fh.readline()  # pula header
+        fh.readline()  # skip header
         second = fh.readline()
     if re.match(r'^"\d{3,},\d{4}-\d\d-\d\d', second):
         df = _parse_messy_export(CSV_PATH, SAMPLE_N)
@@ -121,7 +121,7 @@ def load_dataframe() -> pd.DataFrame:
         if SAMPLE_N > 0:
             kwargs["nrows"] = SAMPLE_N
         df = pd.read_csv(CSV_PATH, **kwargs)
-    # Normaliza variações de nome de coluna entre base real e mock.
+    # Normalizes column-name variations between the real dataset and the mock.
     df = df.rename(columns={"FAIXA_FATURAMENTO_CLIENTE": "FAIXA_FATURAMENTO_CLIENTE_EC"})
     return df
 
@@ -130,12 +130,12 @@ SPEAKER_RE = re.compile(r"\[\s*LOCUTOR\s*\d+\s*\]\s*:?", re.IGNORECASE)
 
 
 def strip_speakers(text: object) -> str:
-    """Remove as marcações [LOCUTOR N] deixando só a fala."""
+    """Removes the [LOCUTOR N] markers, leaving only the speech."""
     return SPEAKER_RE.sub(" ", str(text or ""))
 
 
 def turn_count(text: object) -> int:
-    """Número de turnos de fala (quantas marcações [LOCUTOR N])."""
+    """Number of speech turns (how many [LOCUTOR N] markers)."""
     return len(SPEAKER_RE.findall(str(text or "")))
 
 
@@ -143,21 +143,21 @@ df = load_dataframe()
 print(f"Linhas: {len(df):,} | Colunas: {len(df.columns)}")
 print("Colunas:", list(df.columns))
 
-# Texto limpo (sem marcações de locutor) e features estruturais simples.
+# Clean text (without speaker markers) and simple structural features.
 df["transcricao_limpa"] = df["ANON_TRANSCRICAO"].map(strip_speakers)
 df["n_turnos"] = df["ANON_TRANSCRICAO"].map(turn_count)
 df["n_chars"] = df["transcricao_limpa"].str.len()
 
-# Documentos válidos pro TF-IDF (transcrição com conteúdo real).
+# Valid documents for TF-IDF (transcript with real content).
 valid = df[df["transcricao_limpa"].str.strip().str.len() > 20].copy()
 print(f"\nTranscrições com conteúdo útil: {len(valid):,} de {len(df):,}")
 print(f"Turnos por reunião — média {df['n_turnos'].mean():.1f}, mediana {df['n_turnos'].median():.0f}")
 print(f"Tamanho (chars) — média {df['n_chars'].mean():.0f}, mediana {df['n_chars'].median():.0f}")
 
 # %% [markdown]
-# ### Exemplo de normalização textual
-# O `normalize_text` (mesmo do worker) aplica lowercase, remove pontuação e acentos.
-# As stopwords PT-BR entram no `TfidfBaseline`.
+# ### Text normalization example
+# `normalize_text` (the worker's own) lowercases, strips punctuation and accents.
+# The PT-BR stopwords go into `TfidfBaseline`.
 
 # %%
 _amostra = valid["transcricao_limpa"].iloc[0][:280] if len(valid) else ""
@@ -165,9 +165,9 @@ print("ANTES:\n", _amostra)
 print("\nDEPOIS (normalize_text):\n", normalize_text(_amostra)[:280])
 
 # %% [markdown]
-# ## 4. Análise exploratória (EDA)
-# Distribuições das dimensões de negócio: formato, classificação do recurso,
-# reunião externa, segmento, UF e NPS.
+# ## 4. Exploratory analysis (EDA)
+# Distributions of the business dimensions: format, resource classification,
+# external meeting, segment, UF and NPS.
 
 # %%
 def show_counts(col: str, top: int = 10) -> None:
@@ -184,10 +184,10 @@ for c in ["FORMATO_MEETING", "STATUS_MEETING", "TP_RECURSO", "FLG_EXTERNO", "NOM
     show_counts(c)
 
 # %% [markdown]
-# ### NPS — distribuição e categorização
-# Classificamos cada cliente pela régua oficial do NPS: **Detrator (0–6)**,
-# **Neutro (7–8)** e **Promotor (9–10)**. É a base pra correlacionar o que se *fala*
-# nas reuniões com a *satisfação* do cliente.
+# ### NPS — distribution and bucketing
+# We classify each customer by the official NPS scale: **Detractor (0–6)**,
+# **Passive (7–8)** and **Promoter (9–10)**. It is the basis for correlating what is
+# *said* in the meetings with the customer's *satisfaction*.
 
 # %%
 def nps_bucket(v: object) -> str | float:
@@ -213,8 +213,8 @@ else:
 
 # %% [markdown]
 # ## 3. Feature engineering — TF-IDF
-# Matriz TF-IDF (unigramas + bigramas) sobre as transcrições limpas. Os mesmos
-# parâmetros do worker garantem que o termo do relatório é o termo que a NORA usa.
+# TF-IDF matrix (unigrams + bigrams) over the cleaned transcripts. The same
+# parameters as the worker guarantee the term in the report is the term NORA uses.
 
 # %%
 def top_terms_of(texts: list[str], top_n: int = 25, max_features: int = 800) -> list[tuple[str, float]]:
@@ -234,11 +234,11 @@ for term, score in overall:
     print(f"  {term:<28} {score:.4f}")
 
 # %% [markdown]
-# ## 5–6. Insights de negócio — linguagem × NPS
-# Comparamos os termos mais salientes entre **detratores** e **promotores**. Termos
-# fortes só nos detratores são candidatos a **sinais de risco/churn**; termos só nos
-# promotores, a **sinais de oportunidade/satisfação**. Isso alimenta o Customer
-# Confidence / Account Health da NORA (Enterprise).
+# ## 5–6. Business insights — language × NPS
+# We compare the most salient terms between **detractors** and **promoters**. Terms
+# strong only among detractors are candidates for **risk/churn signals**; terms only
+# among promoters, for **opportunity/satisfaction signals**. This feeds NORA's Customer
+# Confidence / Account Health (Enterprise).
 
 # %%
 if "NPS_CAT" in valid.columns:
@@ -267,10 +267,10 @@ else:
     print("(sem NPS — pulando correlação linguagem × satisfação)")
 
 # %% [markdown]
-# ## Bônus — NORA processando uma transcrição (LLM)
-# Fecha o ciclo da ponta-produto: uma transcrição REAL da TOTVS vira resumo +
-# decisões + action items + sinais estruturados — o mesmo que o worker da NORA
-# entrega no pipeline. Gated em `LLM_API_KEY` (não roda sem chave).
+# ## Bonus — NORA processing a transcript (LLM)
+# Closes the product-end loop: a REAL TOTVS transcript becomes summary +
+# decisions + action items + structured signals — the same thing NORA's worker
+# delivers in the pipeline. Gated on `LLM_API_KEY` (does not run without a key).
 
 # %%
 def nora_analyze(transcript: str) -> str | None:
@@ -315,9 +315,9 @@ if len(valid):
         print(out[:1800])
 
 # %% [markdown]
-# ### Conclusão
-# A base TOTVS é rica: além da transcrição, traz NPS, segmento, UF e faixa de
-# faturamento por reunião. Isso permite ir além do resumo — correlacionar **o que é
-# dito** com **a saúde do cliente**, exatamente a promessa do NORA Enterprise
-# (Customer Confidence + Account Health). O mesmo TF-IDF aqui roda no worker da NORA.
+# ### Conclusion
+# The TOTVS dataset is rich: besides the transcript, it brings NPS, segment, UF and
+# revenue band per meeting. That allows going beyond the summary — correlating **what
+# is said** with **customer health**, exactly the NORA Enterprise promise
+# (Customer Confidence + Account Health). The same TF-IDF here runs in NORA's worker.
 print("\nPipeline concluído.")

@@ -566,7 +566,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ----------------------------------------------------------------------------
-  # Tenant — contexto comercial + dominio
+  # Tenant — commercial context + domain
   # ----------------------------------------------------------------------------
   /tenant/context:
     get:
@@ -1035,7 +1035,7 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
 
   schemas:
-    # ---- erro ----
+    # ---- error ----
     Error:
       type: object
       required: [code, message, traceId, timestamp]
@@ -1052,7 +1052,7 @@ components:
               field: { type: string }
               issue: { type: string }
 
-    # ---- enums compartilhados ----
+    # ---- shared enums ----
     ProcessingStatus:
       type: string
       enum: [PENDING, PROCESSING, COMPLETED, FAILED]

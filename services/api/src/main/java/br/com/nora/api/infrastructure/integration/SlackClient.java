@@ -11,10 +11,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * Chamadas à Web API do Slack usadas pelas ações do Flows: {@code chat.postMessage} com o bot token
- * da workspace conectada. Sem SDK — payload mínimo e visível. O Slack responde HTTP 200 mesmo em
- * erro ({@code ok:false}); aqui isso vira {@code ProviderError} com mensagem acionável (ex.: bot
- * fora do canal → orienta o /invite).
+ * Calls to Slack's Web API used by the Flows actions: {@code chat.postMessage} with the connected
+ * workspace's bot token. No SDK — minimal, visible payload. Slack answers HTTP 200 even on an error
+ * ({@code ok:false}); here that becomes a {@code ProviderError} with an actionable message (e.g.
+ * bot outside the channel → points at /invite).
  */
 @Component
 public class SlackClient {
@@ -30,7 +30,7 @@ public class SlackClient {
         this.mapper = mapper;
     }
 
-    /** Posta mensagem no canal (nome {@code #vendas} ou id). Retorna o ts da mensagem. */
+    /** Posts a message to the channel ({@code #vendas} name or id). Returns the message ts. */
     public String postMessage(String botToken, String channel, String text) {
         try {
             String body =
@@ -50,7 +50,7 @@ public class SlackClient {
         } catch (IntegrationException ex) {
             throw ex;
         } catch (Exception ex) {
-            // Falha de transporte: só o status HTTP (o body pode ecoar dados sensíveis).
+            // Transport failure: HTTP status only (the body may echo sensitive data).
             String reason =
                     ex instanceof WebClientResponseException http
                             ? String.valueOf(http.getStatusCode().value())
@@ -59,7 +59,7 @@ public class SlackClient {
         }
     }
 
-    /** Erros comuns ganham orientação de correção — é o que o log da execução mostra ao usuário. */
+    /** Common errors get a fix hint — it is what the run log shows the user. */
     private static IntegrationException postError(String channel, String error) {
         String hint =
                 switch (error) {

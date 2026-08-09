@@ -17,10 +17,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Emite e valida JWTs HS256 com chave compartilhada (nora.security.jwt.secret).
+ * Issues and validates HS256 JWTs with a shared key (nora.security.jwt.secret).
  *
- * <p>Bean ativo quando {@code nora.security.jwt.algorithm} = HS256 (default). Para RS256 com chave
- * RSA + JWKS endpoint, ver {@link RsaJwtIssuer}.
+ * <p>Bean active when {@code nora.security.jwt.algorithm} = HS256 (default). For RS256 with an RSA
+ * key + JWKS endpoint, see {@link RsaJwtIssuer}.
  */
 @Component
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
@@ -37,9 +37,9 @@ public class JjwtJwtIssuer implements JwtIssuer {
     private final String issuer;
 
     /**
-     * Placeholder publico que NUNCA deve aparecer em runtime fora de teste/local. Mantido em
-     * sincronia com o default declarado em application.yml e .env.example apenas para que a
-     * validacao a seguir consiga rejeita-lo explicitamente.
+     * Public placeholder that must NEVER show up at runtime outside test/local. Kept in sync with
+     * the default declared in application.yml and .env.example only so that the validation below
+     * can reject it explicitly.
      */
     private static final String INSECURE_DEFAULT_SECRET = "change-me-please-min-32-chars-long-aaaa";
 
@@ -79,7 +79,7 @@ public class JjwtJwtIssuer implements JwtIssuer {
                 .compact();
     }
 
-    /** Valida assinatura/expiracao e retorna as claims principais para o filtro. */
+    /** Validates signature/expiration and returns the main claims for the filter. */
     public AuthenticatedPrincipal parse(String token) throws JwtException {
         Jws<Claims> jws =
                 Jwts.parser()

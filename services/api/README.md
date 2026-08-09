@@ -1,21 +1,21 @@
 # NORA API
 
-Backend Spring Boot 3 + Java 21 do projeto NORA.
+Spring Boot 3 + Java 21 backend of the NORA project.
 
-## Pre-requisitos
+## Prerequisites
 
 - Java 21
-- Maven 3.9+ (ou use Docker para build)
-- Postgres 16 rodando (use `make db-up` na raiz do repo)
+- Maven 3.9+ (or use Docker for the build)
+- Postgres 16 running (use `make db-up` at the repo root)
 
-## Configuracao local (.env.local)
+## Local configuration (.env.local)
 
-A API le automaticamente `services/api/.env.local` quando o profile `local` esta ativo.
+The API automatically reads `services/api/.env.local` when the `local` profile is active.
 
-- Copie `services/api/.env.example` para `services/api/.env.local`
-- Para envio real de e-mail (Resend), preencha `RESEND_API_KEY`. Se ficar vazio, a API usa `LogEmailSender` e imprime os links no log.
+- Copy `services/api/.env.example` to `services/api/.env.local`
+- For real e-mail sending (Resend), fill in `RESEND_API_KEY`. If it is left empty, the API uses `LogEmailSender` and prints the links to the log.
 
-## Comandos
+## Commands
 
 ```bash
 mvn spring-boot:run        # roda em http://localhost:8080
@@ -24,7 +24,7 @@ mvn spotless:apply         # formata o codigo
 mvn test                   # apenas testes (Testcontainers requer Docker)
 ```
 
-## Estrutura DDD
+## DDD structure
 
 ```
 src/main/java/br/com/nora/api/
@@ -35,14 +35,14 @@ src/main/java/br/com/nora/api/
   infrastructure/      # persistencia, seguranca, clients externos
 ```
 
-Regras detalhadas em `docs/engineering/standards.md`.
+Detailed rules in `docs/engineering/standards.md`.
 
-## Endpoints disponiveis no esqueleto
+## Endpoints available in the skeleton
 
-- `GET /healthz` (publico)
-- `GET /actuator/health` (publico)
-- demais rotas: protegidas por JWT (US01-US04). Ver OpenAPI em `/swagger-ui/index.html`.
+- `GET /healthz` (public)
+- `GET /actuator/health` (public)
+- all other routes: protected by JWT (US01-US04). See the OpenAPI at `/swagger-ui/index.html`.
 
 ## Multi-tenancy
 
-Toda nova entidade tenant-bound deve incluir `tenant_id`. Ver `docs/adr/0002-multi-tenancy.md` e `docs/engineering/data-model.md`.
+Every new tenant-bound entity must include `tenant_id`. See `docs/adr/0002-multi-tenancy.md` and `docs/engineering/data-model.md`.

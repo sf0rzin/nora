@@ -1,54 +1,54 @@
 #!/usr/bin/env bash
 #
-# restore-drill.sh — ensaio de restore num container DESCARTÁVEL, cronometrado.
+# restore-drill.sh — restore drill in a DISPOSABLE container, timed.
 #
-# POR QUE ESTE SCRIPT EXISTE
-# --------------------------
-# O ADR 0016 (Gap 3) declara RTO de 2h e RPO de 5 min. O RPO de 5 min morreu com o PITR
-# do Flexible Server: nesta stack o RPO é o BACKUP_INTERVAL_SECONDS (1h por default) —
-# está no ADR 0034 §disponibilidade. E o RTO de 2h nunca foi verificado: o
-# `docs/operations/production-readiness-gaps.md:67` diz, com todas as letras, "ninguém
-# testou um restore de fato".
+# WHY THIS SCRIPT EXISTS
+# ----------------------
+# ADR 0016 (Gap 3) declares an RTO of 2h and an RPO of 5 min. The 5 min RPO died with the
+# Flexible Server PITR: in this stack the RPO is BACKUP_INTERVAL_SECONDS (1h by default) —
+# it is in ADR 0034 §disponibilidade. And the 2h RTO was never verified:
+# `docs/operations/production-readiness-gaps.md:67` says, in so many words, "nobody
+# actually tested a restore".
 #
-# Um RTO que nunca foi medido não é um objetivo, é um chute. Este script mede.
+# An RTO that was never measured is not an objective, it is a guess. This script measures.
 #
-# O QUE ELE MEDE (e, mais importante, O QUE NÃO MEDE)
-# ---------------------------------------------------
-# MEDE — o caminho de recuperação do DADO, com o dump que existe agora:
-#     fase 1  subir um Postgres virgem                (proxy de "provisionar o banco")
-#     fase 2  provisionar os três roles do RLS
-#     fase 3  pg_restore do dump
-#     fase 4  validar (contagens, Flyway, smoke por tenant, GRANTs do nora_app)
+# WHAT IT MEASURES (and, more importantly, WHAT IT DOES NOT)
+# ----------------------------------------------------------
+# MEASURES — the DATA recovery path, with the dump that exists right now:
+#     phase 1  bring up a virgin Postgres              (proxy for "provision the database")
+#     phase 2  provision the three RLS roles
+#     phase 3  pg_restore of the dump
+#     phase 4  validate (counts, Flyway, per-tenant smoke, nora_app GRANTs)
 #
-# NÃO MEDE — e o RTO real é a SOMA de tudo isto:
-#     - detecção do incidente e decisão humana (na prática, o maior termo de todos)
-#     - provisionar/restaurar a VM no Proxmox, boot do host, `docker compose pull`
-#     - boot da stack (Spring + Flyway ~30s, ver ADR 0034 §disponibilidade)
-#     - DNS/Cloudflare Tunnel voltando a rotear
-#   O ensaio COMPLETO é o clone da VM descrito em proxmox-deploy.md §Restore drill.
-#   Este script é o pedaço que dá pra rodar toda semana sem clonar máquina — e é o
-#   pedaço que costuma esconder as surpresas (dump corrompido, role faltando, versão
-#   de Flyway divergente). Trate o número daqui como PISO do RTO, nunca como o RTO.
+# DOES NOT MEASURE — and the real RTO is the SUM of all this:
+#     - incident detection and human decision (in practice, the largest term of all)
+#     - provisioning/restoring the VM on Proxmox, host boot, `docker compose pull`
+#     - stack boot (Spring + Flyway ~30s, see ADR 0034 §disponibilidade)
+#     - DNS/Cloudflare Tunnel routing again
+#   The COMPLETE drill is the VM clone described in proxmox-deploy.md §Restore drill.
+#   This script is the piece that can be run every week without cloning a machine — and it
+#   is the piece that usually hides the surprises (corrupted dump, missing role, divergent
+#   Flyway version). Treat the number from here as the RTO FLOOR, never as the RTO.
 #
-# ISOLAMENTO
-# ----------
-# O container do drill sobe com `--network none`, nome próprio e volume anônimo. Ele
-# não fala com a stack, não entra nas redes do compose e não tem como se registrar no
-# túnel — o acidente mais perigoso do drill por clone de VM (um SEGUNDO connector no
-# mesmo túnel, fazendo a Cloudflare balancear tráfego de produção pro ensaio) é
-# impossível aqui por construção.
+# ISOLATION
+# ---------
+# The drill container comes up with `--network none`, its own name and an anonymous volume.
+# It does not talk to the stack, does not join the compose networks and has no way to
+# register on the tunnel — the most dangerous accident of the VM-clone drill (a SECOND
+# connector on the same tunnel, making Cloudflare balance production traffic into the drill)
+# is impossible here by construction.
 #
-# NÃO PRECISA DE SEGREDO. A imagem oficial do Postgres autentica conexão por socket
-# unix local com `trust`; o drill fala com o banco só por `docker exec`. Consequência:
-# o ensaio prova SCHEMA, DADO e GRANTS — não prova senha de role (isso é o
-# rls-cutover.sh, no banco real).
+# NO SECRET NEEDED. The official Postgres image authenticates local unix socket connections
+# with `trust`; the drill talks to the database only through `docker exec`. Consequence:
+# the drill proves SCHEMA, DATA and GRANTS — it does not prove role passwords (that is
+# rls-cutover.sh, on the real database).
 #
-# CÓDIGOS DE SAÍDA
-#   0  restore ok, validação ok, dentro do alvo de RTO
-#   1  erro de uso / pré-voo
-#   2  o RESTORE falhou — o backup não presta (é para isto que se ensaia)
-#   3  restaurou, mas a VALIDAÇÃO reprovou
-#   4  restaurou e validou, mas ESTOUROU o alvo de RTO
+# EXIT CODES
+#   0  restore ok, validation ok, within the RTO target
+#   1  usage / pre-flight error
+#   2  the RESTORE failed — the backup is no good (this is what the drill is for)
+#   3  restored, but the VALIDATION failed
+#   4  restored and validated, but BLEW the RTO target
 #
 set -euo pipefail
 
@@ -63,7 +63,7 @@ DRILL_LOG="${DRILL_LOG:-$STATE_DIR/restore-drills.tsv}"
 R001_SQL="${R001_SQL:-$REPO_ROOT/services/api/src/main/resources/db/operational/R001__provision_app_roles.sql}"
 MIGRATION_DIR="${MIGRATION_DIR:-$REPO_ROOT/services/api/src/main/resources/db/migration}"
 
-# Mesma imagem da produção: medir com outra versão de Postgres mede outra coisa.
+# Same image as production: measuring with another Postgres version measures another thing.
 DRILL_IMAGE="${DRILL_IMAGE:-pgvector/pgvector:pg16}"
 PG_USER="${POSTGRES_ADMIN_USER:-nora_admin}"
 PRIMARY_DB="nora"
@@ -181,10 +181,10 @@ umask 077
 case "$COMPARE_LIVE" in auto|yes|no) : ;; *) die "--compare-live aceita auto|yes|no" ;; esac
 
 # ---------------------------------------------------------------------------
-# Descoberta dos dumps
+# Dump discovery
 # ---------------------------------------------------------------------------
-# dump_epoch <arquivo> — instante do dump. Preferimos o timestamp do NOME (é UTC e
-# sobrevive a cópia/rsync, que mexe no mtime); mtime é o fallback.
+# dump_epoch <file> — the dump's instant. We prefer the timestamp in the NAME (it is UTC and
+# survives copy/rsync, which touches the mtime); mtime is the fallback.
 dump_epoch() {
   local f="$1" base stamp iso e
   base="$(basename "$f")"
@@ -196,7 +196,7 @@ dump_epoch() {
   stat -c %Y "$f" 2>/dev/null || printf '0'
 }
 
-latest_dump() {  # <dir> <prefixo-do-banco>
+latest_dump() {  # <dir> <database-prefix>
   ls -1 "$1/$2"-*.dump 2>/dev/null | sort | tail -1 || true
 }
 
@@ -250,7 +250,7 @@ if [ "$SKIP_PLATFORM" -eq 0 ] && { [ -z "$DUMP_PLATFORM" ] || [ ! -s "$DUMP_PLAT
 fi
 
 # ---------------------------------------------------------------------------
-# Pré-voo
+# Pre-flight
 # ---------------------------------------------------------------------------
 command -v docker >/dev/null 2>&1 || die "docker não encontrado. Rode o bootstrap-host.sh."
 docker info >/dev/null 2>&1 || die "o daemon do Docker não responde (usuário no grupo 'docker'?)."
@@ -267,16 +267,16 @@ log "  idade:       $(human_secs "$DUMP_AGE")   <- este é o RPO real neste inst
 log "  imagem:      $DRILL_IMAGE"
 log "  alvo de RTO: $(human_secs "$TARGET_RTO") (ADR 0016 Gap 3)"
 
-# O RPO declarado no ADR 0034 é "até 1 hora" (o BACKUP_INTERVAL_SECONDS). Um dump muito
-# mais velho que isso significa que o serviço de backup parou de produzir — e ninguém viu.
+# The RPO declared in ADR 0034 is "up to 1 hour" (the BACKUP_INTERVAL_SECONDS). A dump much
+# older than that means the backup service stopped producing — and nobody noticed.
 if [ "$DUMP_AGE" -gt 7200 ]; then
   warn "o backup mais recente tem $(human_secs "$DUMP_AGE"). O ADR 0034 promete RPO de até 1h."
   warn "Ou o serviço 'backup' está parado, ou os dumps estão sendo reprovados na verificação:"
   warn "  docker compose -p $COMPOSE_PROJECT logs --tail 50 backup"
 fi
 
-# Checksum antes de qualquer cronômetro: verificar integridade não faz parte do RTO,
-# faz parte de saber se o arquivo é um backup.
+# Checksum before any stopwatch: verifying integrity is not part of the RTO,
+# it is part of knowing whether the file is a backup at all.
 if [ -f "$DUMP_PRIMARY.sha256" ] && command -v sha256sum >/dev/null 2>&1; then
   if ( cd "$(dirname "$DUMP_PRIMARY")" && sha256sum -c --status "$(basename "$DUMP_PRIMARY").sha256" ); then
     ok "checksum do dump confere"
@@ -290,12 +290,12 @@ fi
 mkdir -p "$STATE_DIR" 2>/dev/null || warn "não consegui criar $STATE_DIR — histórico não será gravado"
 
 # ---------------------------------------------------------------------------
-# Container descartável
+# Disposable container
 # ---------------------------------------------------------------------------
 DRILL_NAME="nora-drill-$(date -u '+%Y%m%dT%H%M%SZ')-$$"
 DRILL_STARTED=0
 
-# Guarda-corpo: por mais improvável, um nome colidindo com a produção seria catastrófico.
+# Guardrail: however improbable, a name colliding with production would be catastrophic.
 case "$DRILL_NAME" in
   nora-postgres|nora-postgres-platform|nora-api|nora-web|nora-admin|nora-worker)
     die "nome de container do drill colidiu com um de produção — abortando" ;;
@@ -325,17 +325,17 @@ dpsql(){ local db="$1"; shift; docker exec -i "$DRILL_NAME" psql -v ON_ERROR_STO
 dq()   { local db="$1"; shift; docker exec -i "$DRILL_NAME" psql -tAq -U "$PG_USER" -d "$db" -c "$*" 2>/dev/null | tr -d '\r'; }
 
 # ===========================================================================
-# CRONÔMETRO LIGADO
+# STOPWATCH RUNNING
 # ===========================================================================
 T_START="$(now_ms)"
 
-# ---- FASE 1: subir um Postgres virgem -------------------------------------
+# ---- PHASE 1: bring up a virgin Postgres ----------------------------------
 hr
 log "FASE 1/4 — subindo Postgres descartável ($DRILL_IMAGE)"
 P1_A="$(now_ms)"
 
 DOCKER_RUN=(docker run -d --name "$DRILL_NAME"
-  --network none                     # isolamento total: não fala com a stack nem com o túnel
+  --network none                     # total isolation: talks neither to the stack nor to the tunnel
   --label nora.role=restore-drill
   --shm-size 256m
   -e POSTGRES_DB="$PRIMARY_DB"
@@ -378,10 +378,10 @@ done
 P1_B="$(now_ms)"
 ok "  banco virgem pronto em $(dur_s "$P1_A" "$P1_B")s"
 
-# ---- FASE 2: roles ANTES dos dados ----------------------------------------
-# Mesma ordem do restore-into-proxmox.sh, pelo mesmo motivo: objeto do dump que
-# referencia role inexistente estoura o restore no meio. E o nora_telemetry é o que
-# some sem dar erro nenhum, zerando o painel do operador em silêncio (ADR 0026/0028).
+# ---- PHASE 2: roles BEFORE the data ---------------------------------------
+# Same order as restore-into-proxmox.sh, for the same reason: a dump object that
+# references a nonexistent role blows up the restore halfway through. And nora_telemetry is
+# the one that goes missing without any error, zeroing the operator panel in silence (ADR 0026/0028).
 hr
 log "FASE 2/4 — provisionando os três roles do RLS"
 P2_A="$(now_ms)"
@@ -409,13 +409,13 @@ dpsql "$PRIMARY_DB" -q -v telemetry_password="$DRILL_TEL_PW" \
 P2_B="$(now_ms)"
 ok "  nora_app (NOBYPASSRLS) e nora_telemetry (BYPASSRLS) criados em $(dur_s "$P2_A" "$P2_B")s"
 
-# ---- FASE 3: o restore -----------------------------------------------------
+# ---- PHASE 3: the restore --------------------------------------------------
 hr
 log "FASE 3/4 — pg_restore"
 P3_A="$(now_ms)"
 RESTORE_RC=0
 
-restore_into() {  # <db> <arquivo> <rótulo>
+restore_into() {  # <db> <file> <label>
   local db="$1" file="$2" label="$3" inner="/tmp/drill-$1.dump" rc=0
   log "  $label: copiando $(human_bytes "$(file_size "$file")") para o container..."
   docker cp "$file" "$DRILL_NAME:$inner" >/dev/null || { err "  $label: docker cp falhou"; return 1; }
@@ -440,16 +440,16 @@ restore_into() {  # <db> <arquivo> <rótulo>
 restore_into "$PRIMARY_DB" "$DUMP_PRIMARY" "PRIMÁRIO" || RESTORE_RC=1
 
 if [ "$SKIP_PLATFORM" -eq 0 ] && [ "$RESTORE_RC" -eq 0 ]; then
-  # Fidelidade parcial, de propósito: em produção são DOIS servidores (ADR 0022, blast
-  # radius isolado). Aqui o nora_platform entra como um segundo BANCO no mesmo cluster.
-  # O que se mede — tempo e integridade do restore — não muda; o isolamento, sim.
+  # Partial fidelity, on purpose: in production there are TWO servers (ADR 0022, isolated
+  # blast radius). Here nora_platform comes in as a second DATABASE in the same cluster.
+  # What is measured — restore time and integrity — does not change; the isolation does.
   dpsql postgres -q -c "CREATE DATABASE $PLATFORM_DB" >/dev/null 2>&1 || true
   restore_into "$PLATFORM_DB" "$DUMP_PLATFORM" "PLATAFORMA" \
     || warn "  restore do nora_platform falhou — o control plane sobe degradado (admin -> 503)"
 fi
 
-# GRANTs depois dos dados: o R001 referencia o schema `nora` e a função
-# nora.current_tenant_id(), que só existem depois da V016 entrar com o dump.
+# GRANTs after the data: R001 references the `nora` schema and the function
+# nora.current_tenant_id(), which only exist after V016 comes in with the dump.
 if [ "$RESTORE_RC" -eq 0 ] && [ -f "$R001_SQL" ]; then
   log "  aplicando R001 (GRANTs + DEFAULT PRIVILEGES)..."
   if dpsql "$PRIMARY_DB" -q -v app_password="$DRILL_APP_PW" -v telemetry_password="$DRILL_TEL_PW" \
@@ -466,7 +466,7 @@ fi
 P3_B="$(now_ms)"
 [ "$RESTORE_RC" -eq 0 ] && ok "  restore concluído em $(dur_s "$P3_A" "$P3_B")s"
 
-# ---- FASE 4: validação -----------------------------------------------------
+# ---- PHASE 4: validation ---------------------------------------------------
 hr
 log "FASE 4/4 — validação"
 P4_A="$(now_ms)"
@@ -502,7 +502,7 @@ if [ "$RESTORE_RC" -eq 0 ]; then
     vfail "flyway_schema_history não existe — o dump veio de um banco não migrado"
   fi
 
-  # -- smoke por tenant --
+  # -- per-tenant smoke --
   if [ "$(dq "$PRIMARY_DB" "SELECT to_regclass('public.tenants') IS NOT NULL")" = "t" ]; then
     TENANTS="$(dq "$PRIMARY_DB" "SELECT count(*) FROM tenants")"
     TENANTS="${TENANTS:-0}"
@@ -522,7 +522,7 @@ if [ "$RESTORE_RC" -eq 0 ]; then
     vfail "tabela 'tenants' não existe — restore incompleto"
   fi
 
-  # -- roles: o ponto do ADR 0028 --
+  # -- roles: the point of ADR 0028 --
   roles_out="$(dq "$PRIMARY_DB" "SELECT rolname||':'||rolcanlogin::text||':'||rolbypassrls::text FROM pg_roles WHERE rolname IN ('nora_app','nora_telemetry') ORDER BY rolname")"
   printf '%s\n' "$roles_out" | sed 's/^/      /' >&2
   printf '%s' "$roles_out" | grep -q 'nora_app:t:f' \
@@ -530,7 +530,7 @@ if [ "$RESTORE_RC" -eq 0 ]; then
   printf '%s' "$roles_out" | grep -q 'nora_telemetry:t:t' \
     || vfail "nora_telemetry precisa ser LOGIN e BYPASSRLS (senão o painel do operador zera EM SILÊNCIO)"
 
-  # nora_app enxerga tabela? Prova que os GRANTs do R001 pegaram sobre o dump restaurado.
+  # Does nora_app see any table? Proves the R001 GRANTs took hold over the restored dump.
   vis="$(docker exec -i "$DRILL_NAME" psql -tAq -U nora_app -d "$PRIMARY_DB" \
           -c "SELECT count(*) FROM information_schema.table_privileges WHERE grantee='nora_app' AND privilege_type='SELECT'" 2>/dev/null | tr -d '[:space:]' || echo 0)"
   if [ "${vis:-0}" -gt 0 ]; then
@@ -539,7 +539,7 @@ if [ "$RESTORE_RC" -eq 0 ]; then
     vfail "nora_app sem GRANT nenhum — a API não subiria contra este restore"
   fi
 
-  # -- comparação com a produção viva (somente leitura) --
+  # -- comparison with live production (read only) --
   do_cmp=0
   if [ "$COMPARE_LIVE" = "yes" ]; then do_cmp=1
   elif [ "$COMPARE_LIVE" = "auto" ] && \
@@ -556,8 +556,8 @@ if [ "$RESTORE_RC" -eq 0 ]; then
       elif [ "$live" = "$drill" ]; then
         ok "    $t: $drill (igual à produção)"
       else
-        # Divergência aqui é ESPERADA: o dump é de até 1h atrás e a produção seguiu
-        # escrevendo. O que importa é a ORDEM DE GRANDEZA, não a igualdade.
+        # Divergence here is EXPECTED: the dump is up to 1h old and production kept
+        # writing. What matters is the ORDER OF MAGNITUDE, not equality.
         log "    $t: drill=$drill producao=$live (delta=$(( live - drill )) linhas escritas desde o dump)"
       fi
     done
@@ -570,7 +570,7 @@ P4_B="$(now_ms)"
 T_END="$(now_ms)"
 
 # ===========================================================================
-# RELATÓRIO
+# REPORT
 # ===========================================================================
 S1="$(dur_s "$P1_A" "$P1_B")"
 S2="$(dur_s "$P2_A" "$P2_B")"
@@ -601,7 +601,7 @@ printf '\n' >&2
 RTO_OK=1
 if [ "$TOTAL_INT" -gt "$TARGET_RTO" ]; then RTO_OK=0; fi
 
-# O aviso que impede este número de virar propaganda interna.
+# The warning that keeps this number from becoming internal propaganda.
 warn "ESTE NÚMERO É O PISO DO RTO, NÃO O RTO."
 warn "Não estão medidos aqui: detecção do incidente e decisão humana, restaurar a VM no"
 warn "Proxmox, boot do host, docker compose pull, boot da stack (Spring+Flyway ~30s) e a"
@@ -610,7 +610,7 @@ warn "§Restore drill — este script cobre a parte que dá pra repetir toda sem
 [ "$USE_TMPFS" -eq 1 ] && warn "E foi rodado com --tmpfs: some ainda mais do disco real."
 
 # ---------------------------------------------------------------------------
-# Histórico (append-only)
+# History (append-only)
 # ---------------------------------------------------------------------------
 VERDICT="OK"
 [ "$RESTORE_RC" -ne 0 ] && VERDICT="RESTORE_FALHOU"

@@ -8,10 +8,10 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
 /**
- * Leitura de feature flags pro console do operador (GET /admin/platform/flags, ADR 0024). A tabela
- * feature_flags já existe e alimenta o resolver; este service expõe a superfície de leitura que o
- * nora-admin consome. Exige o banco de plataforma usável (503 quando degradado/off; traduz queda de
- * runtime per-call).
+ * Feature flag reads for the operator console (GET /admin/platform/flags, ADR 0024). The
+ * feature_flags table already exists and feeds the resolver; this service exposes the read surface
+ * that nora-admin consumes. Requires the platform database to be usable (503 when degraded/off;
+ * translates a runtime outage per-call).
  */
 @Service
 public class FeatureFlagService {

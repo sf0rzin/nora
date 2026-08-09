@@ -1,13 +1,13 @@
-# NORA — provider de dashboards do Grafana
+# NORA — Grafana dashboard provider
 # =============================================================================
-# Carrega todo *.json desta pasta como dashboard. O provider ignora arquivos que não
-# sejam .json, então este próprio dashboards.yaml conviver no mesmo diretório é seguro.
+# Loads every *.json in this folder as a dashboard. The provider ignores files that are
+# not .json, so this dashboards.yaml living in the same directory is safe.
 #
-# `allowUiUpdates: false`: o dashboard fica read-only na interface. Isso é de propósito.
-# O caminho para mudar um painel é editar o nora-overview.json e redeployar — se a UI
-# pudesse salvar, a alteração viveria só no volume grafana_data, fora do git, e sumiria
-# na primeira recriação do volume. Para experimentar sem atrito: "Edit" -> mexer ->
-# "Export/Save JSON" e colar de volta no arquivo.
+# `allowUiUpdates: false`: the dashboard is read-only in the interface. That is on purpose.
+# The way to change a panel is to edit nora-overview.json and redeploy — if the UI
+# could save, the change would live only in the grafana_data volume, outside git, and would
+# vanish the first time the volume is recreated. To experiment without friction: "Edit" ->
+# tweak -> "Export/Save JSON" and paste it back into the file.
 
 apiVersion: 1
 
@@ -19,12 +19,12 @@ providers:
     type: file
     disableDeletion: false
     allowUiUpdates: false
-    # Recarrega do disco periodicamente. Com o arquivo montado :ro
-    # (docker-compose.yml:538), um `docker compose restart grafana` não é necessário
-    # para pegar mudança de dashboard — mas o bind mount só reflete o arquivo do host,
-    # então editar no host basta.
+    # Reloads from disk periodically. With the file mounted :ro
+    # (docker-compose.yml:538), a `docker compose restart grafana` is not needed
+    # to pick up a dashboard change — but the bind mount only reflects the host's file,
+    # so editing on the host is enough.
     updateIntervalSeconds: 30
     options:
       path: /etc/grafana/provisioning/dashboards
-      # false: um único folder "NORA", sem espelhar subpastas.
+      # false: a single "NORA" folder, without mirroring subfolders.
       foldersFromFilesStructure: false

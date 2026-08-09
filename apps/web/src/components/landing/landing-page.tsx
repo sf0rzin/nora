@@ -14,11 +14,11 @@ import {
 } from "./landing-content";
 
 /**
- * Landing pública v3 — port do bundle do Claude Design.
+ * Public landing v3 — port of the Claude Design bundle.
  *
- * Ordem das seções espelha `landing/app.jsx` do bundle: Nav · Hero · HowItWorks
- * · Features · Demo · Privacidade · Planos · FAQ · CTA · Footer. Estilos em
- * `landing-v2.css` (escopados sob `.nora-landing`); tokens em styles/tokens.css.
+ * Section order mirrors the bundle's `landing/app.jsx`: Nav · Hero · HowItWorks
+ * · Features · Demo · Privacy · Pricing · FAQ · CTA · Footer. Styles in
+ * `landing-v2.css` (scoped under `.nora-landing`); tokens in styles/tokens.css.
  */
 export function LandingPage() {
   return (

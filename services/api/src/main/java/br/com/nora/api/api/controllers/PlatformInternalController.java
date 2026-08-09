@@ -16,9 +16,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Endpoints serviço-a-serviço do control plane (contrato platform-control-plane.md §2). Protegidos
- * por token interno (chain @Order(1) em PlatformSecurityConfig). Hot-path: nunca 5xx — o resolver
- * faz fallback SOFT e o usage é fire-and-forget.
+ * Service-to-service control plane endpoints (platform-control-plane.md §2 contract). Protected by
+ * an internal token (chain @Order(1) in PlatformSecurityConfig). Hot path: never 5xx — the resolver
+ * does a SOFT fallback and the usage is fire-and-forget.
  */
 @RestController
 @RequestMapping("/internal/platform")
@@ -42,7 +42,7 @@ public class PlatformInternalController {
         return ResponseEntity.ok(resolver.resolve(service));
     }
 
-    /** POST /internal/platform/usage — fire-and-forget, sempre 202. */
+    /** POST /internal/platform/usage — fire-and-forget, always 202. */
     @PostMapping("/usage")
     public ResponseEntity<Void> usage(@Valid @RequestBody UsageRequest body) {
         usage.recordExternal(
@@ -65,7 +65,7 @@ public class PlatformInternalController {
         try {
             return UUID.fromString(s.trim());
         } catch (IllegalArgumentException ex) {
-            return null; // tenantId é dimensão best-effort — id malformado vira "sem tenant"
+            return null; // tenantId is a best-effort dimension — malformed id becomes "no tenant"
         }
     }
 

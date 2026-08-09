@@ -37,10 +37,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Fluxo end-to-end do hub de integrações OAuth (Fase 2 do GOAL): start → callback (state assinado)
- * → conexão persistida → ação gmail_send_email do Flows usando o token → disconnect. Google é
- * stubado nos ports; o resto do caminho (controller, service, RLS, cifra de token via adapter) é
- * real contra Postgres.
+ * End-to-end flow of the OAuth integrations hub (GOAL Phase 2): start → callback (signed state) →
+ * persisted connection → Flows gmail_send_email action using the token → disconnect. Google is
+ * stubbed at the ports; the rest of the path (controller, service, RLS, token encryption via the
+ * adapter) is real against Postgres.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -82,13 +82,13 @@ class IntegrationFlowIntegrationTest {
     void fluxoCompleto_startCallbackStatusAcaoDisconnect() throws Exception {
         String token = signupAndLogin("oauth-full@nora.dev", "SenhaForte123", "OAuth Full");
 
-        // 1) Status inicial: google configurado, não conectado.
+        // 1) Initial status: google configured, not connected.
         JsonNode before = authGet("/integrations", token).read(HttpStatus.OK);
         JsonNode googleBefore = providerNode(before, "google");
         assertThat(googleBefore.get("configured").asBoolean()).isTrue();
         assertThat(googleBefore.get("connected").asBoolean()).isFalse();
 
-        // 2) Start: URL de autorização com state assinado.
+        // 2) Start: authorization URL with signed state.
         JsonNode start =
                 postJson("/integrations/google/oauth/start", Map.of(), token).read(HttpStatus.OK);
         String authorizeUrl = start.get("authorizeUrl").asText();
@@ -97,8 +97,9 @@ class IntegrationFlowIntegrationTest {
         String state = queryParam(authorizeUrl, "state");
         assertThat(state).isNotBlank();
 
-        // 3) Callback (público, como o redirect do Google faria) → 302 pro front com sucesso.
-        // URI explícita: getForEntity(String) trata a string como template e re-encodaria o state.
+        // 3) Callback (public, as Google's redirect would do) → 302 to the front with success.
+        // Explicit URI: getForEntity(String) treats the string as a template and would re-encode
+        // the state.
         ResponseEntity<String> callback =
                 rest.exchange(
                         callbackUri(state, "code-abc"),
@@ -109,13 +110,13 @@ class IntegrationFlowIntegrationTest {
         assertThat(callback.getHeaders().getLocation())
                 .hasToString("http://localhost:3000/integracoes?connected=google");
 
-        // 4) Status: conectado com a conta identificada.
+        // 4) Status: connected with the account identified.
         JsonNode after = authGet("/integrations", token).read(HttpStatus.OK);
         JsonNode googleAfter = providerNode(after, "google");
         assertThat(googleAfter.get("connected").asBoolean()).isTrue();
         assertThat(googleAfter.get("externalAccount").asText()).isEqualTo("conta@gmail.com");
 
-        // 5) Ação gmail_send_email num workflow: POST /test (dados de exemplo, sem reunião).
+        // 5) gmail_send_email action in a workflow: POST /test (sample data, no meeting).
         String definition =
                 """
                 {
@@ -148,7 +149,7 @@ class IntegrationFlowIntegrationTest {
         assertThat(GMAIL.sent.get(0).accessToken()).isEqualTo("at-1");
         assertThat(GMAIL.sent.get(0).to()).isEqualTo("dest@empresa.com");
 
-        // 6) Disconnect → status volta a não conectado e a ação passa a falhar com clareza.
+        // 6) Disconnect → status goes back to not connected and the action starts failing clearly.
         ResponseEntity<String> disconnect =
                 rest.exchange(
                         "/integrations/google",
@@ -191,13 +192,13 @@ class IntegrationFlowIntegrationTest {
         String tokenA = signupAndLogin("oauth-a@nora.dev", "SenhaForte123", "A");
         String tokenB = signupAndLogin("oauth-b@nora.dev", "SenhaForte123", "B");
 
-        // A conecta.
+        // A connects.
         JsonNode start =
                 postJson("/integrations/google/oauth/start", Map.of(), tokenA).read(HttpStatus.OK);
         String state = queryParam(start.get("authorizeUrl").asText(), "state");
         rest.exchange(callbackUri(state, "x"), HttpMethod.GET, HttpEntity.EMPTY, String.class);
 
-        // B não vê a conexão de A.
+        // B does not see A's connection.
         JsonNode statusB = authGet("/integrations", tokenB).read(HttpStatus.OK);
         assertThat(providerNode(statusB, "google").get("connected").asBoolean()).isFalse();
     }
@@ -294,7 +295,7 @@ class IntegrationFlowIntegrationTest {
         }
     }
 
-    /** Captura envios Gmail em memória (substitui as chamadas HTTP reais ao Google). */
+    /** Captures Gmail sends in memory (replaces the real HTTP calls to Google). */
     static class RecordingGmail extends GoogleWorkspaceClient {
         record SentGmail(String accessToken, String to, String subject, String html) {}
 
@@ -351,7 +352,7 @@ class IntegrationFlowIntegrationTest {
             return GMAIL;
         }
 
-        /** E-mails Resend silenciados (sem rede) — este IT não os exercita. */
+        /** Resend emails silenced (no network) — this IT does not exercise them. */
         @Bean
         @Primary
         EmailSender silentEmailSender() {

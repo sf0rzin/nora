@@ -1,10 +1,10 @@
 /**
- * Canais Tauri emit/listen entre as janelas (main / overlay / dock).
- * Os VALORES são contrato de runtime — não renomear sem migrar todas as pontas.
- * Centraliza as strings que estavam hardcoded em vários arquivos. Auditoria #52.
+ * Tauri emit/listen channels between the windows (main / overlay / dock).
+ * The VALUES are a runtime contract — don't rename without migrating every end.
+ * Centralizes the strings that were hardcoded across several files. Audit #52.
  */
 export const EVENTS = {
-  /** Dock avisa overlay/main que sua visibilidade mudou (X do próprio dock). */
+  /** Dock tells overlay/main its visibility changed (the dock's own X). */
   DOCK_VISIBILITY_CHANGED: "nora://dock-visibility-changed",
 } as const;
 

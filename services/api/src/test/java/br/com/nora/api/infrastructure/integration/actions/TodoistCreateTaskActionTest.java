@@ -18,7 +18,9 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** Ação todoist_create_task: uma tarefa por action item; reunião sem itens é no-op honesto. */
+/**
+ * todoist_create_task action: one task per action item; meeting with no items is an honest no-op.
+ */
 class TodoistCreateTaskActionTest {
 
     private final IntegrationService integrations = mock(IntegrationService.class);
@@ -66,7 +68,7 @@ class TodoistCreateTaskActionTest {
         verifyNoInteractions(integrations);
     }
 
-    /** Garante que falha do provedor PROPAGA (engine grava FAILED). */
+    /** Ensures provider failure PROPAGATES (engine records FAILED). */
     @Test
     void falhaDoProvedorPropaga() {
         when(integrations.validAccessToken(any(), any())).thenReturn("td_token");
@@ -91,7 +93,7 @@ class TodoistCreateTaskActionTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
-    /** Captura criações de tarefa em memória (substitui as chamadas HTTP reais ao Todoist). */
+    /** Captures task creations in memory (replaces the real HTTP calls to Todoist). */
     static class RecordingTodoist extends TodoistClient {
         record Task(String token, String content, String description) {}
 

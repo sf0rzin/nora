@@ -27,7 +27,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 const PRIORITY_LABEL: Record<string, string> = { LOW: "Baixa", MEDIUM: "Média", HIGH: "Alta" };
 const PRIORITY_COLOR: Record<string, string> = { HIGH: "var(--danger)", MEDIUM: "var(--warn)", LOW: "var(--muted)" };
 
-// Datas em pt-BR (Intl, sem date-fns). Mantém o tom do protótipo: vence hoje /
+// Dates in pt-BR (Intl, no date-fns). Keeps the prototype's tone: vence hoje /
 // vence amanhã / venceu DD/mês / vence DD/mês.
 function fmtShortDate(iso: string): string {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
@@ -77,8 +77,8 @@ export default function TasksPage() {
     };
   }, [filter]);
 
-  // §3.11 — filtro consistente: ao mudar o status com filtro ativo, o item sai
-  // da lista se deixar de casar com o filtro selecionado.
+  // §3.11 — consistent filter: on a status change with an active filter, the
+  // item leaves the list if it stops matching the selected filter.
   function applyLocalUpdate(curr: TaskListItemDto[], updated: TaskListItemDto): TaskListItemDto[] {
     const mapped = curr.map((x) => (x.id === updated.id ? updated : x));
     if (filter === "ALL") return mapped;
@@ -125,9 +125,9 @@ export default function TasksPage() {
     }
   }
 
-  // Contadores por filtro. Quando o filtro é ALL temos a lista inteira; com
-  // filtro ativo só temos o subconjunto carregado, então mostramos a contagem
-  // disponível apenas para o filtro vigente.
+  // Counts per filter. When the filter is ALL we have the whole list; with an
+  // active filter we only have the loaded subset, so we show the available
+  // count for the current filter only.
   const counts = useMemo(() => {
     const base: Record<string, number | undefined> = {};
     if (filter === "ALL") {

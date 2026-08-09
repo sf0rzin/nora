@@ -10,11 +10,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 /**
- * Adaptador legado: troca a subscription key pelo token de curta duracao do STS regional da Azure.
+ * Legacy adapter: exchanges the subscription key for the short-lived token from Azure's regional
+ * STS.
  *
- * <p>Fora do caminho default desde a saida do Azure — o default e {@code LocalSttNoopBroker}
- * ({@code nora.speech.provider=local}). Mantido, e nao deletado, para que o rollback da migracao de
- * STT seja uma env var ({@code NORA_SPEECH_PROVIDER=azure}) e nao um revert de codigo.
+ * <p>Off the default path since leaving Azure — the default is {@code LocalSttNoopBroker} ({@code
+ * nora.speech.provider=local}). Kept, and not deleted, so that rolling back the STT migration is an
+ * env var ({@code NORA_SPEECH_PROVIDER=azure}) and not a code revert.
  */
 @Component
 @ConditionalOnProperty(name = "nora.speech.provider", havingValue = "azure")

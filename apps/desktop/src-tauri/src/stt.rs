@@ -1,29 +1,29 @@
-//! Contrato comum dos backends de speech-to-text do desktop.
+//! Common contract of the desktop speech-to-text backends.
 //!
-//! Existem dois, escolhidos em RUNTIME (nao em build-time):
+//! There are two, chosen at RUNTIME (not at build-time):
 //!
-//!   * `local` — whisper.cpp in-process, ver `stt_local.rs`. Padrao a partir da
-//!               saida do Azure. Nao usa rede, nao usa `/speech/token`, nao sobe
-//!               subprocesso.
-//!   * `azure` — sidecar Python + Azure Speech SDK, ver `stt_sidecar.rs`. LEGADO,
-//!               preservado atras da feature de Cargo `stt-azure` durante a
-//!               transicao.
+//!   * `local` — whisper.cpp in-process, see `stt_local.rs`. Default since
+//!               leaving Azure. Uses no network, no `/speech/token`, spawns no
+//!               subprocess.
+//!   * `azure` — Python sidecar + Azure Speech SDK, see `stt_sidecar.rs`. LEGACY,
+//!               kept behind the Cargo feature `stt-azure` during the
+//!               transition.
 //!
-//! O CONTRATO COM O FRONT NAO MUDA. Os dois emitem:
-//!   * `transcript` — payload `TranscriptEvent` (camelCase), consumido por
-//!     `use-live-transcript.tsx`, `use-recording.ts` e `overlay.tsx`;
-//!   * `stt-error`  — objeto JSON opaco com `code` e `message`.
+//! THE CONTRACT WITH THE FRONT DOES NOT CHANGE. Both emit:
+//!   * `transcript` — `TranscriptEvent` payload (camelCase), consumed by
+//!     `use-live-transcript.tsx`, `use-recording.ts` and `overlay.tsx`;
+//!   * `stt-error`  — opaque JSON object with `code` and `message`.
 //!
-//! Nenhum arquivo de `apps/desktop/src/` precisou mudar por causa desta troca.
+//! No file under `apps/desktop/src/` had to change because of this swap.
 
 use tokio::sync::mpsc;
 
-/// Evento emitido pro front a cada parcial/final de transcricao.
+/// Event emitted to the front on every partial/final of transcription.
 ///
-/// Serializado em camelCase: `sessionId`, `speakerId`, `isFinal`, `offsetMs`,
-/// `durationMs`. NAO existe campo `speaker` — o front le `payload.speaker` e
-/// sempre recebe `undefined`; isso e pre-existente e esta documentado em
-/// `SYSTEM_SPEAKER_ID` abaixo porque tem consequencia real.
+/// Serialized in camelCase: `sessionId`, `speakerId`, `isFinal`, `offsetMs`,
+/// `durationMs`. There is NO `speaker` field — the front reads `payload.speaker`
+/// and always gets `undefined`; this is pre-existing and is documented in
+/// `SYSTEM_SPEAKER_ID` below because it has a real consequence.
 #[derive(Debug, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
@@ -33,62 +33,63 @@ pub struct TranscriptEvent {
     pub speaker_id: Option<String>,
     pub text: String,
     pub is_final: bool,
-    /// Offset ABSOLUTO em ms desde o inicio da gravacao daquele track.
+    /// ABSOLUTE offset in ms since the start of that track's recording.
     ///
-    /// INVARIANTE: monotonico nao-decrescente por track. Ver a discussao de
-    /// re-decode em `stt_local.rs` — a armadilha do modo streaming e reprocessar
-    /// a mesma janela e emitir um offset menor que o do final anterior.
+    /// INVARIANT: monotonic non-decreasing per track. See the re-decode
+    /// discussion in `stt_local.rs` — the trap of streaming mode is reprocessing
+    /// the same window and emitting an offset smaller than the previous final's.
     pub offset_ms: u64,
     pub duration_ms: Option<u64>,
     pub confidence: Option<f32>,
 }
 
-/// `speaker_id` do track `mic`.
+/// `speaker_id` of the `mic` track.
 ///
-/// `None` de proposito, e isso esta correto: o front trata `track === "mic"`
-/// como o usuario local ANTES de olhar pro speaker_id — `getSpeakerName()`
-/// devolve "Eu" (use-recording.ts:228) e `getDisplayName()` devolve "Voce"
-/// (overlay.tsx:60) — e `detectedSpeakers` pula o track mic explicitamente
-/// (overlay.tsx:1115). Emitir um id aqui so poluiria o SpeakerMap com uma
-/// entrada renomeavel inutil.
+/// `None` on purpose, and that is correct: the front treats `track === "mic"`
+/// as the local user BEFORE looking at speaker_id — `getSpeakerName()`
+/// returns "Eu" (use-recording.ts:228) and `getDisplayName()` returns "Voce"
+/// (overlay.tsx:60) — and `detectedSpeakers` skips the mic track explicitly
+/// (overlay.tsx:1115). Emitting an id here would only pollute the SpeakerMap
+/// with a useless renameable entry.
 pub const MIC_SPEAKER_ID: Option<&str> = None;
 
-/// `speaker_id` do track `system` (participantes remotos da chamada).
+/// `speaker_id` of the `system` track (remote participants of the call).
 ///
-/// ================== DESVIO CONSCIENTE DA ESPECIFICACAO ==================
+/// ================== DELIBERATE DEVIATION FROM THE SPEC ==================
 ///
-/// A decisao de produto e "atribuicao por track, `speaker_id = None` dentro do
-/// track". Emitir literalmente `None` AQUI quebra em silencio dois consumidores
-/// que ja existem no front — o oposto do que a decisao queria preservar:
+/// The product decision is "attribution per track, `speaker_id = None` inside
+/// the track". Emitting literally `None` HERE silently breaks two consumers
+/// that already exist in the front — the opposite of what the decision wanted
+/// to preserve:
 ///
-///   1. `overlay.tsx:1111-1125` monta a lista renomeavel com
+///   1. `overlay.tsx:1111-1125` builds the renameable list with
 ///      `const id = l.speakerId || l.speaker; if (!id) continue;`
-///      O Rust nunca emite o campo `speaker` (nao existe em `TranscriptEvent`),
-///      entao com `speakerId` nulo `id` e `undefined` e a linha e PULADA:
-///      a UI de renomear falante fica permanentemente vazia.
+///      Rust never emits the `speaker` field (it does not exist in
+///      `TranscriptEvent`), so with a null `speakerId` `id` is `undefined` and
+///      the line is SKIPPED: the rename-speaker UI stays permanently empty.
 ///
-///   2. `use-recording.ts:255` deriva `participants` de
-///      `Object.entries(speakerMap)`, e `speakerMap` so ganha entrada quando o
-///      usuario renomeia alguem na UI do item 1. Sem linha pra renomear,
-///      `participants` fica sempre `undefined` no upload da reuniao.
+///   2. `use-recording.ts:255` derives `participants` from
+///      `Object.entries(speakerMap)`, and `speakerMap` only gains an entry when
+///      the user renames someone in the UI of item 1. With no line to rename,
+///      `participants` is always `undefined` on the meeting upload.
 ///
-///   3. `buildTranscript` (use-recording.ts:18) prefixa `[nome] ` so quando
-///      `getSpeakerName` devolve algo; com speakerId nulo e track != mic ele
-///      devolve `speaker` (undefined) e o TXT sai SEM prefixo nenhum nas falas
-///      remotas.
+///   3. `buildTranscript` (use-recording.ts:18) prefixes `[nome] ` only when
+///      `getSpeakerName` returns something; with a null speakerId and track !=
+///      mic it returns `speaker` (undefined) and the TXT comes out with NO
+///      prefix at all on the remote utterances.
 ///
-/// Um id ESTAVEL por track entrega exatamente o que a decisao de produto pediu
-/// — zero diarizacao online, zero churn de rotulo, um rotulo por track — e
-/// mantem os tres consumidores funcionando sem tocar em uma linha do front.
+/// A STABLE id per track delivers exactly what the product decision asked for
+/// — zero online diarization, zero label churn, one label per track — and
+/// keeps the three consumers working without touching a line of the front.
 ///
-/// O valor aparece cru na UI ate o usuario renomear (`speakerMap[id] || id`),
-/// por isso e uma string legivel em pt-BR e nao um UUID.
+/// The value shows up raw in the UI until the user renames it
+/// (`speakerMap[id] || id`), which is why it is a readable pt-BR string and not a UUID.
 ///
-/// Se um dia o front passar a tratar `speakerId === null && track === "system"`
-/// como um falante implicito, trocar isto por `None` volta a ser possivel.
+/// If one day the front starts treating `speakerId === null && track === "system"`
+/// as an implicit speaker, switching this back to `None` becomes possible again.
 pub const SYSTEM_SPEAKER_ID: &str = "Participantes";
 
-/// Resolve o `speaker_id` a emitir para um track. Ver constantes acima.
+/// Resolves the `speaker_id` to emit for a track. See the constants above.
 pub fn speaker_id_for_track(track: &str) -> Option<String> {
     match track {
         "system" => Some(SYSTEM_SPEAKER_ID.to_string()),
@@ -96,30 +97,30 @@ pub fn speaker_id_for_track(track: &str) -> Option<String> {
     }
 }
 
-/// Handle vivo de uma sessao de transcricao de UM track.
+/// Live handle of a transcription session of ONE track.
 ///
-/// Object-safe de proposito: `commands.rs` guarda `Vec<Box<dyn SttBackend>>` no
-/// state do Tauri, misturando backends se preciso. Metodos sincronos para nao
-/// arrastar `async-trait` (o unico ponto async e o `start`, que fica nas
-/// factories concretas).
+/// Object-safe on purpose: `commands.rs` keeps `Vec<Box<dyn SttBackend>>` in the
+/// Tauri state, mixing backends if needed. Synchronous methods so as not to
+/// drag in `async-trait` (the only async point is `start`, which lives in the
+/// concrete factories).
 pub trait SttBackend: Send {
-    /// Id da sessao daquele track. Usado so em log/diagnostico.
+    /// Id of that track's session. Used only in log/diagnostics.
     fn session_id(&self) -> &str;
 
-    /// Canal por onde o `audio_capture` empurra PCM 16 kHz / mono / i16.
+    /// Channel through which `audio_capture` pushes PCM 16 kHz / mono / i16.
     ///
-    /// O caller usa `try_send` e DROPA a amostra quando cheio: tempo real vale
-    /// mais que completude. Ver `commands.rs`.
+    /// The caller uses `try_send` and DROPS the sample when full: real time is
+    /// worth more than completeness. See `commands.rs`.
     fn audio_tx(&self) -> mpsc::Sender<Vec<i16>>;
 
-    /// Encerra a sessao. Consome o handle (`Box<Self>`) para impedir uso apos
-    /// o stop. Os backends fazem um flush final antes de morrer, entao PODE
-    /// haver um ultimo evento `transcript` depois desta chamada — o sidecar
-    /// Azure ja se comportava assim (`stop_continuous_recognition` faz flush).
+    /// Ends the session. Consumes the handle (`Box<Self>`) to prevent use after
+    /// the stop. The backends do a final flush before dying, so there MAY be
+    /// one last `transcript` event after this call — the Azure sidecar already
+    /// behaved this way (`stop_continuous_recognition` flushes).
     fn stop(self: Box<Self>);
 }
 
-/// Qual implementacao esta ativa.
+/// Which implementation is active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SttBackendKind {
     Local,
@@ -135,15 +136,15 @@ impl SttBackendKind {
     }
 }
 
-/// Backend efetivo, memoizado. Prioridade:
+/// Effective backend, memoized. Priority:
 ///
-/// 1. env `NORA_STT_BACKEND` em runtime — so funciona quando o app e lancado de
-///    um shell (dev). App aberto pelo Finder/Explorer NAO herda env do usuario.
-/// 2. `NORA_STT_BACKEND` injetada em build-time pelo `build.rs` (CI/release).
-/// 3. `plugins.nora.sttBackend` no `tauri.conf.json`.
-/// 4. Default: `local` se a feature `stt-local` estiver compilada, senao `azure`.
+/// 1. env `NORA_STT_BACKEND` at runtime — only works when the app is launched
+///    from a shell (dev). App opened from Finder/Explorer does NOT inherit the user env.
+/// 2. `NORA_STT_BACKEND` injected at build-time by `build.rs` (CI/release).
+/// 3. `plugins.nora.sttBackend` in `tauri.conf.json`.
+/// 4. Default: `local` if the `stt-local` feature is compiled in, else `azure`.
 ///
-/// Valor desconhecido cai no default com um aviso — nunca faz o app morrer.
+/// Unknown value falls back to the default with a warning — never kills the app.
 pub fn configured_backend() -> SttBackendKind {
     static KIND: std::sync::OnceLock<SttBackendKind> = std::sync::OnceLock::new();
     *KIND.get_or_init(|| {
@@ -168,8 +169,8 @@ pub fn configured_backend() -> SttBackendKind {
             }
         };
 
-        // Pediu um backend que nao foi compilado neste binario: degrada pro que
-        // existe em vez de estourar no meio da gravacao.
+        // Asked for a backend that was not compiled into this binary: degrade to
+        // the one that exists instead of blowing up mid-recording.
         let available = match resolved {
             SttBackendKind::Local => cfg!(feature = "stt-local"),
             SttBackendKind::Azure => cfg!(feature = "stt-azure"),
@@ -195,8 +196,8 @@ const fn default_backend() -> SttBackendKind {
     }
 }
 
-/// Credenciais que so o backend azure precisa. `None` no modo local — e por isso
-/// que `commands.rs` nao chama `fetch_speech_token` quando o backend e local.
+/// Credentials only the azure backend needs. `None` in local mode — that is why
+/// `commands.rs` does not call `fetch_speech_token` when the backend is local.
 #[allow(dead_code)]
 pub struct AzureStartParams {
     pub region: String,
@@ -216,8 +217,8 @@ mod tests {
 
     #[test]
     fn system_gera_id_estavel_e_nao_vazio() {
-        // Estabilidade e o ponto: dois eventos do mesmo track tem que cair no
-        // MESMO bucket do SpeakerMap, senao a overlay lista N falantes fantasma.
+        // Stability is the point: two events from the same track have to land in
+        // the SAME SpeakerMap bucket, else the overlay lists N phantom speakers.
         let a = speaker_id_for_track("system");
         let b = speaker_id_for_track("system");
         assert_eq!(a, b);

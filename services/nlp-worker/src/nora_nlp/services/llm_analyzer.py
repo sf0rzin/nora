@@ -1,15 +1,15 @@
-"""LLM Analyzer: pipeline de análise via cliente LLM agnóstico.
+"""LLM Analyzer: analysis pipeline via the agnostic LLM client.
 
 Pipeline:
-  1. Carrega prompt versionado de ``prompts/``.
-  2. Injeta tenant context JSON + transcrição no template.
-  3. Chama o LLM com structured output (JSON Schema strict).
-  4. Em caso de falha do strict, faz fallback para JSON mode.
-  5. Valida a resposta com Pydantic (``MeetingAnalysisV1``).
-  6. Retorna ``AnalyzeResponse`` com metadata de execução.
+  1. Loads the versioned prompt from ``prompts/``.
+  2. Injects tenant context JSON + transcript into the template.
+  3. Calls the LLM with structured output (strict JSON Schema).
+  4. On strict failure, falls back to JSON mode.
+  5. Validates the response with Pydantic (``MeetingAnalysisV1``).
+  6. Returns ``AnalyzeResponse`` with execution metadata.
 
-Provider configurado via ``LLM_BASE_URL`` / ``LLM_API_KEY`` / ``LLM_MODEL``
-(ADR 0004). Default: OpenAI direto com ``gpt-4o-mini``.
+Provider configured via ``LLM_BASE_URL`` / ``LLM_API_KEY`` / ``LLM_MODEL``
+(ADR 0004). Default: OpenAI direct with ``gpt-4o-mini``.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def _shield_field(value: str, counter: list[int]) -> str:
-    """Aplica PII Shield em campo individual, contabilizando redactions."""
+    """Applies PII Shield to an individual field, counting redactions."""
     if not value:
         return value
     out = pii_redact(value)
@@ -37,12 +37,12 @@ def _shield_field(value: str, counter: list[int]) -> str:
 
 
 def _build_goal_section(req: AnalyzeRequest, redaction_counter: list[int]) -> str:
-    """Renderiza secao do prompt com goal do usuario (ADR 0005).
+    """Renders the prompt section with the user's goal (ADR 0005).
 
-    Sem goal, retorna instrucao explicita ao LLM pra emitir productivity=null.
-    Aplica PII Shield em `purpose`, `expected_outcomes` e `project_state_snapshot`
-    porque sao campos de texto livre do usuario que iam crus pro LLM (violacao
-    do ADR 0012 antes deste PR).
+    Without a goal, returns an explicit instruction to the LLM to emit productivity=null.
+    Applies PII Shield to `purpose`, `expected_outcomes` and `project_state_snapshot`
+    because they are user free-text fields that went raw to the LLM (violation
+    of ADR 0012 before this PR).
     """
     if req.goal is None:
         return "Nenhum objetivo foi declarado para esta reuniao. DEVE emitir `productivity` = null."
@@ -74,16 +74,16 @@ def analyze(
     *,
     pii_redactions_applied: int = 0,
 ) -> AnalyzeResponse:
-    """Analisa transcrição via LLM com saída JSON estruturada."""
+    """Analyzes the transcript via LLM with structured JSON output."""
     started = time.monotonic()
 
     client = LlmClient(settings)
 
     system_prompt, user_template = load_prompt(req.options.prompt_version)
 
-    # tenant_context tem campos longos de texto livre (companyName, products,
-    # valueProposition, objectionHandling, glossary) — defesa-em-profundidade
-    # contra um tenant que cole PII no contexto comercial.
+    # tenant_context has long free-text fields (companyName, products,
+    # valueProposition, objectionHandling, glossary) — defense-in-depth
+    # against a tenant that pastes PII into the commercial context.
     extra_redactions = [0]
     ctx_dict = req.tenant_context.model_dump(by_alias=True)
     for k in ("companyName", "valueProposition", "idealCustomerProfile", "objectionHandling"):
@@ -141,8 +141,8 @@ def analyze(
             user_prompt=user_prompt,
         )
 
-    # NAO logar raw_json: pode conter PII residual que escapou do shield em
-    # forma de texto ecoado em sourceQuote. ADR 0012 (PII never logged).
+    # Do NOT log raw_json: it may contain residual PII that escaped the shield
+    # as text echoed in sourceQuote. ADR 0012 (PII never logged).
     logger.debug("LLM raw response: %d chars", len(raw_json))
 
     parsed = json.loads(raw_json)

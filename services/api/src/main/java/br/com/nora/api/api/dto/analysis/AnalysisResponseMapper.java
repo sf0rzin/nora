@@ -2,7 +2,7 @@ package br.com.nora.api.api.dto.analysis;
 
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
 
-/** Mapeia o agregado de dominio para o DTO de transporte HTTP. */
+/** Maps the domain aggregate to the HTTP transport DTO. */
 public final class AnalysisResponseMapper {
 
     private AnalysisResponseMapper() {}

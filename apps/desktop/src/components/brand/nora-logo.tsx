@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 
-// Espelha exatamente o logo canônico do web (apps/web/src/components/brand/nora-logo.tsx):
-// 5 barras [50,75,100,75,50]% da altura, largura/gap relativos ao size, wordmark DM Sans 600.
+// Mirrors exactly the canonical web logo (apps/web/src/components/brand/nora-logo.tsx):
+// 5 bars [50,75,100,75,50]% of the height, width/gap relative to size, DM Sans 600 wordmark.
 const HEIGHTS = [0.5, 0.75, 1.0, 0.75, 0.5];
 
 interface Props {
   size?: number;
   showText?: boolean;
-  /** "brand" = barras/texto em --ink (sobre fundo claro); "paper" = em --canvas (sobre fundo escuro). */
+  /** "brand" = bars/text in --ink (on a light background); "paper" = in --canvas (on a dark background). */
   variant?: "brand" | "paper";
   animate?: boolean;
   animKey?: number;

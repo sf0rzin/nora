@@ -1,6 +1,6 @@
 /**
- * NORA Flows — /fluxos/novo: cria um fluxo do zero.
- * O canvas já nasce com o gatilho "Reunião analisada" posicionado.
+ * NORA Flows — /fluxos/novo: creates a flow from scratch.
+ * The canvas is born with the "Reunião analisada" trigger already positioned.
  */
 import { EditorFluxo } from "../editor-fluxo";
 

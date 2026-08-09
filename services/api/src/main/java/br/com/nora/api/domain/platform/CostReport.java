@@ -5,8 +5,8 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
- * Relatório agregado de custo de IA (GET /admin/platform/telemetry/cost). Agrega usage_events por
- * tenant | model | service numa janela de tempo. Custo de eventos {@code status=stub} não conta.
+ * Aggregated AI cost report (GET /admin/platform/telemetry/cost). Aggregates usage_events by tenant
+ * | model | service over a time window. Cost of {@code status=stub} events does not count.
  */
 public record CostReport(
         OffsetDateTime from, OffsetDateTime to, String groupBy, List<Bucket> rows, Totals totals) {

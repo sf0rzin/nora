@@ -3,40 +3,40 @@ package br.com.nora.api.infrastructure.platform.telemetry;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Conexão dedicada (opcional) para a leitura operador-only de métricas de negócio cross-tenant
- * (telemetria (c), ADR 0024) quando o RLS enforce está ligado (ADR 0019, ADR 0026).
+ * Dedicated (optional) connection for the operator-only read of cross-tenant business metrics
+ * (telemetry (c), ADR 0024) when RLS enforce is on (ADR 0019, ADR 0026).
  *
- * <p><b>Por que existe:</b> {@code PrimaryDbBusinessMetricsSource} agrega {@code meeting_analyses}
- * SEM contexto de tenant (COUNT/COUNT DISTINCT cross-tenant). Sob {@code NORA_RLS_ENFORCE=true}, o
- * datasource primário roda como {@code nora_app} (NOBYPASSRLS) e, sem GUC de tenant setado, a
- * policy {@code tenant_isolation} é fail-closed ⇒ a query veria 0 linhas SILENCIOSAMENTE (painel
- * mostraria 0). Para preservar a leitura agregada, esta config aponta para um role {@code
- * nora_telemetry} (BYPASSRLS), provisionado por {@code
+ * <p><b>Why it exists:</b> {@code PrimaryDbBusinessMetricsSource} aggregates {@code
+ * meeting_analyses} WITHOUT tenant context (cross-tenant COUNT/COUNT DISTINCT). Under {@code
+ * NORA_RLS_ENFORCE=true}, the primary datasource runs as {@code nora_app} (NOBYPASSRLS) and, with
+ * no tenant GUC set, the {@code tenant_isolation} policy is fail-closed ⇒ the query would SILENTLY
+ * see 0 rows (the dashboard would show 0). To preserve the aggregated read, this config points at a
+ * {@code nora_telemetry} role (BYPASSRLS), provisioned by {@code
  * db/operational/R001__provision_app_roles.sql}.
  *
- * <p><b>Default vazio = desligado:</b> sem {@code url} setada (dev/local/test/CI, ou prod antes do
- * cutover de RLS), {@code PrimaryDbBusinessMetricsSource} cai no {@code JdbcTemplate} primário — o
- * comportamento atual (owner bypassa RLS) segue intacto. Liga-se via {@code
- * NORA_TELEMETRY_DATASOURCE_URL/USERNAME/PASSWORD} no MESMO passo de cutover do enforce.
+ * <p><b>Empty default = off:</b> with no {@code url} set (dev/local/test/CI, or prod before the RLS
+ * cutover), {@code PrimaryDbBusinessMetricsSource} falls back to the primary {@code JdbcTemplate} —
+ * current behavior (owner bypasses RLS) stays intact. It is turned on via {@code
+ * NORA_TELEMETRY_DATASOURCE_URL/USERNAME/PASSWORD} in the SAME enforce cutover step.
  */
 @ConfigurationProperties("nora.security.rls.telemetry")
 public class TelemetryDatasourceProperties {
 
-    /** JDBC URL do banco primário, conectando como o role BYPASSRLS. Vazio = desligado. */
+    /** JDBC URL of the primary database, connecting as the BYPASSRLS role. Empty = off. */
     private String url = "";
 
-    /** Role BYPASSRLS (ex.: nora_telemetry). */
+    /** BYPASSRLS role (e.g. nora_telemetry). */
     private String username = "";
 
-    /** Senha do role de telemetria (via Key Vault/secret em prod). */
+    /** Telemetry role password (via Key Vault/secret in prod). */
     private String password = "";
 
-    /** Pool pequeno: telemetria roda no scheduler, baixa concorrência. */
+    /** Small pool: telemetry runs on the scheduler, low concurrency. */
     private int maxPoolSize = 2;
 
     private long connectionTimeoutMs = 5_000;
 
-    /** True quando há um datasource de telemetria dedicado configurado (url não-vazia). */
+    /** True when a dedicated telemetry datasource is configured (non-empty url). */
     public boolean isConfigured() {
         return url != null && !url.isBlank();
     }

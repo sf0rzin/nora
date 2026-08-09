@@ -1,47 +1,48 @@
 ﻿"use client";
 
 /**
- * Upload de reuniao (Subfase 1.3 U)
+ * Meeting upload (Subphase 1.3 U)
  * -------------------------------------------------------------------------
- * Fluxo:
+ * Flow:
  *
  *   form -> uploading -> polling -> { completed | failed | timeout }
  *
- * Apos o POST `/meetings` (que retorna `{id, processingStatus: "PENDING"}`),
- * mostramos imediatamente o card "Transcricao enviada" com acoes livres
- * ("Enviar outra transcricao" / "Ir para o Inicio") — o usuario NAO fica
- * preso esperando a analise (feedback do PO, 2026-06-12: o redirect
- * automatico parecia travamento quando a analise demorava). O polling
- * continua em segundo plano so pra animar o status no card (na fila →
- * analisando → pronta, quando vira CTA "Ver analise"). Em `FAILED`
- * mostramos erro com cta "Tentar novamente".
+ * After the POST `/meetings` (which returns `{id, processingStatus: "PENDING"}`),
+ * we immediately show the "Transcricao enviada" card with free actions
+ * ("Enviar outra transcricao" / "Ir para o Inicio") — the user is NOT stuck
+ * waiting for the analysis (PO feedback, 2026-06-12: the automatic redirect
+ * looked like a freeze when the analysis took long). Polling keeps running
+ * in the background only to animate the status in the card (queued →
+ * analyzing → ready, when it becomes the "Ver analise" CTA). On `FAILED`
+ * we show an error with a "Tentar novamente" cta.
  *
- * O card tambem conecta com o NORA Flows: se o usuario tem fluxo ativo com
- * gatilho `meeting.analysis_completed`, avisamos que os fluxos vao disparar
- * quando a analise terminar; senao, sugerimos criar um em /fluxos.
+ * The card also hooks into NORA Flows: if the user has an active flow with
+ * the `meeting.analysis_completed` trigger, we warn that the flows will fire
+ * when the analysis finishes; otherwise, we suggest creating one at /fluxos.
  *
- * Timeout: 5 minutos (150 polls de 2s). Apos isso mostramos aviso com link
- * manual — nao paramos a analise no backend, apenas paramos de pollar.
+ * Timeout: 5 minutes (150 polls of 2s). After that we show a notice with a
+ * manual link — we do not stop the analysis in the backend, only the polling.
  *
- * Lote (multi-upload): a dropzone aceita varios arquivos. Com 1 arquivo o
- * fluxo acima permanece IDENTICO (mesmo card, mesmo status ao vivo). Com 2+
- * escondemos titulo/inicio/termino/formato (titulo deriva do nome de cada
- * arquivo e o formato da extensao; idioma/participantes/tags valem para
- * todos), enviamos com concorrencia 2 (BATCH_CONCURRENCY) e mostramos
- * progresso por arquivo com "Tentar de novo" individual ao final. O card do
- * lote NAO faz polling de N reunioes — as analises seguem em segundo plano
- * e o Inicio (que ja tem polling de PROCESSING) acompanha o progresso.
+ * Batch (multi-upload): the dropzone accepts several files. With 1 file the
+ * flow above stays IDENTICAL (same card, same live status). With 2+ we hide
+ * title/start/end/format (the title derives from each file's name and the
+ * format from the extension; language/participants/tags apply to all), we
+ * send with concurrency 2 (BATCH_CONCURRENCY) and show per-file progress
+ * with an individual "Tentar de novo" at the end. The batch card does NOT
+ * poll N meetings — the analyses keep running in the background and the
+ * Inicio (which already polls PROCESSING) tracks the progress.
  *
- * Decisoes:
- * - Mantemos `useState` + `setInterval` (sem react-query/swr) — o backlog
- *   pede zero libs novas e o caso de uso e pontual.
- * - Contador de polls vive num `useRef` pra nao recriar o `setInterval` a
- *   cada tick (state dependency reruns useEffect).
- * - Erro do polling (rede caida no GET) e tolerado ate o timeout: nao
- *   abortamos o polling no primeiro 5xx; backend ainda pode estar processando.
+ * Decisions:
+ * - We keep `useState` + `setInterval` (no react-query/swr) — the backlog
+ *   asks for zero new libs and the use case is one-off.
+ * - The poll counter lives in a `useRef` so the `setInterval` is not
+ *   recreated on every tick (state dependency reruns useEffect).
+ * - A polling error (network down on the GET) is tolerated until the
+ *   timeout: we do not abort polling on the first 5xx; the backend may
+ *   still be processing.
  *
- * Visual: porte do prototipo do Claude Design (upload.html) — dropzone com
- * drag&drop, chips de participantes/tags, campos opcionais de inicio/termino.
+ * Visual: port of the Claude Design prototype (upload.html) — dropzone with
+ * drag&drop, participant/tag chips, optional start/end fields.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -59,25 +60,25 @@ const FORMAT_BY_EXT: Record<string, Format> = {
   srt: "SRT",
 };
 
-/** Intervalo entre polls. 2s e tradeoff entre snappiness e carga no backend. */
+/** Interval between polls. 2s is a tradeoff between snappiness and backend load. */
 const POLL_INTERVAL_MS = 2_000;
-/** Maximo de polls antes de mostrar timeout (5 min @ 2s). */
+/** Max polls before showing timeout (5 min @ 2s). */
 const MAX_POLLS = 150;
-/** Uploads simultaneos no modo lote — 2 evita rajada de POSTs no backend. */
+/** Simultaneous uploads in batch mode — 2 avoids a burst of POSTs on the backend. */
 const BATCH_CONCURRENCY = 2;
-/** Limiar de confianca abaixo do qual mostramos o badge ambar de aviso. */
+/** Confidence threshold below which we show the amber warning badge. */
 const SPLIT_CONFIDENCE_WARN = 0.7;
 
 type Phase = "form" | "split-loading" | "split-confirm" | "uploading" | "polling" | "completed" | "failed" | "timeout";
 
-/** Estado da dica de notificacao via Flows no card pos-envio. */
+/** State of the Flows notification hint in the post-send card. */
 type FlowsHint = "loading" | "has-flows" | "no-flows" | "unavailable";
 
-/** Um arquivo do lote (modo 2+ arquivos). */
+/** One file of the batch (2+ files mode). */
 interface BatchItem {
   id: number;
   file: File;
-  /** Derivado do nome do arquivo (sem extensao), como no modo single. */
+  /** Derived from the file name (without extension), as in single mode. */
   title: string;
   format: Format;
   status: "queued" | "uploading" | "done" | "error";
@@ -85,8 +86,8 @@ interface BatchItem {
 }
 
 /**
- * Estado de um segmento na tela de confirmacao do split. Titulo editavel +
- * flag included (default true).
+ * State of a segment in the split confirmation screen. Editable title +
+ * included flag (default true).
  */
 interface ConfirmSegment {
   index: number;
@@ -98,7 +99,7 @@ interface ConfirmSegment {
   included: boolean;
 }
 
-/** Converte titulo em slug seguro para nome de arquivo (.txt). */
+/** Converts a title into a slug safe for a file name (.txt). */
 function slugify(title: string): string {
   return (
     title
@@ -112,8 +113,8 @@ function slugify(title: string): string {
 }
 
 /**
- * Fatia o arquivo original pelo intervalo de linhas (1-based, inclusivo).
- * Normaliza CRLF antes do split.
+ * Slices the original file by the line range (1-based, inclusive).
+ * Normalizes CRLF before the split.
  */
 function sliceFileLines(text: string, startLine: number, endLine: number): string {
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
@@ -146,41 +147,41 @@ export default function UploadMeetingPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Phase machine (modo single — 0 ou 1 arquivo)
+  // Phase machine (single mode — 0 or 1 file)
   const [phase, setPhase] = useState<Phase>("form");
   const [meetingId, setMeetingId] = useState<string | null>(null);
   const [pollingStatus, setPollingStatus] = useState<ProcessingStatus>("PENDING");
   const [pollingError, setPollingError] = useState<string | null>(null);
 
-  // Lote (2+ arquivos). `null` = fora do modo lote; o array existe a partir
-  // do submit e guarda o progresso de cada arquivo.
+  // Batch (2+ files). `null` = outside batch mode; the array exists from the
+  // submit on and holds the progress of each file.
   const [batchItems, setBatchItems] = useState<BatchItem[] | null>(null);
-  // Toggle "separar automaticamente" — visivel so com 1 .txt selecionado.
+  // "separar automaticamente" toggle — visible only with 1 .txt selected.
   const [splitEnabled, setSplitEnabled] = useState(false);
 
-  // Segmentos da tela de confirmacao do split.
+  // Segments of the split confirmation screen.
   const [splitSegments, setSplitSegments] = useState<ConfirmSegment[] | null>(null);
-  // Guard do "Criar N reunioes": ref pro bloqueio sincrono (duplo-clique /
-  // race pos-cancelamento) + state pro feedback visual (botao desabilitado).
+  // Guard for "Criar N reunioes": ref for the synchronous block (double-click
+  // / post-cancel race) + state for the visual feedback (disabled button).
   const splitSubmittingRef = useRef(false);
   const [splitSubmitting, setSplitSubmitting] = useState(false);
 
-  // Counter vive em ref pra nao recriar o interval a cada tick.
+  // Counter lives in a ref so the interval is not recreated on every tick.
   const pollCountRef = useRef(0);
-  // O toggle split so aparece com exatamente 1 arquivo .txt.
+  // The split toggle only appears with exactly 1 .txt file.
   const singleTxtFile =
     files.length === 1 && files[0].name.toLowerCase().endsWith(".txt")
       ? files[0]
       : null;
 
-  // Quando o arquivo muda para nao-.txt ou 2+, desabilita o toggle.
+  // When the file changes to non-.txt or 2+, disable the toggle.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!singleTxtFile) setSplitEnabled(false);
   }, [singleTxtFile]);
 
 
-  /** Espelha titulo/formato pro arquivo unico (comportamento single de sempre). */
+  /** Mirrors title/format for the single file (the usual single behavior). */
   function applySingleDefaults(f: File, opts?: { overwriteTitle?: boolean }) {
     setFormat(detectFormat(f.name));
     if (opts?.overwriteTitle || !title) setTitle(deriveTitle(f.name));
@@ -190,12 +191,12 @@ export default function UploadMeetingPage() {
     if (incoming.length === 0) return;
     let next: File[];
     if (files.length === 1 && incoming.length === 1) {
-      // 1 arquivo ja selecionado + 1 novo = TROCA ("clique pra trocar"),
-      // exatamente como o single-file sempre fez.
+      // 1 file already selected + 1 new = SWAP ("clique pra trocar"),
+      // exactly as single-file has always done.
       next = incoming;
     } else {
-      // Demais casos acumulam (permite arrastar em varias levas), com
-      // dedupe por nome+tamanho.
+      // Other cases accumulate (allows dragging in several rounds), with
+      // dedupe by name+size.
       next = [...files];
       for (const f of incoming) {
         if (!next.some((m) => m.name === f.name && m.size === f.size)) next.push(f);
@@ -203,16 +204,16 @@ export default function UploadMeetingPage() {
     }
     setFiles(next);
     if (next.length === 1) applySingleDefaults(next[0]);
-    // Limpa o input pra permitir re-selecionar os mesmos arquivos depois
-    // (o evento change nao dispararia com o mesmo value).
+    // Clear the input to allow re-selecting the same files later
+    // (the change event would not fire with the same value).
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function removeFile(index: number) {
     const next = files.filter((_, i) => i !== index);
     setFiles(next);
-    // De volta ao modo single: titulo/formato passam a refletir o arquivo
-    // restante (no lote o titulo vinha do nome de cada arquivo).
+    // Back to single mode: title/format now reflect the remaining file
+    // (in the batch the title came from each file's name).
     if (next.length === 1) applySingleDefaults(next[0], { overwriteTitle: true });
   }
 
@@ -252,10 +253,10 @@ export default function UploadMeetingPage() {
     }
   }
 
-  /** Volta da tela de confirmacao pro form com o arquivo mantido. */
+  /** Returns from the confirmation screen to the form keeping the file. */
   function cancelSplitConfirm() {
-    // Libera o guard: um confirmSplit em voo (await text()) ve o ref false e
-    // aborta antes de disparar uploads-fantasma.
+    // Release the guard: an in-flight confirmSplit (await text()) sees the ref
+    // false and aborts before firing phantom uploads.
     splitSubmittingRef.current = false;
     setSplitSubmitting(false);
     setSplitSegments(null);
@@ -263,26 +264,26 @@ export default function UploadMeetingPage() {
   }
 
   /**
-   * Confirma o split: fatia o arquivo client-side e injeta os segmentos no
-   * pool de lote do #253 (mesmo pool, mesma concorrencia, mesmo card).
+   * Confirms the split: slices the file client-side and injects the segments
+   * into the batch pool from #253 (same pool, same concurrency, same card).
    */
   async function confirmSplit(segments: ConfirmSegment[]) {
     if (!singleTxtFile) return;
     const included = segments.filter((s) => s.included);
     if (included.length === 0) return;
-    // Guard sincrono: bloqueia duplo-clique no "Criar N reunioes" (cada clique
-    // dispararia um runBatch e duplicaria os uploads). Setado ANTES do await.
+    // Synchronous guard: blocks double-click on "Criar N reunioes" (each click
+    // would fire a runBatch and duplicate the uploads). Set BEFORE the await.
     if (splitSubmittingRef.current) return;
     splitSubmittingRef.current = true;
     setSplitSubmitting(true);
 
     const text = await singleTxtFile.text();
-    // Cancelado durante a leitura (usuario clicou "Voltar")? Aborta sem upload.
+    // Cancelled during the read (user clicked "Voltar")? Abort with no upload.
     if (!splitSubmittingRef.current) return;
 
-    // Desambigua nomes: dois segmentos com titulos que geram o mesmo slug
-    // (ex.: "Reuniao" e "reuniao") nao podem virar o mesmo arquivo. O lote
-    // rastreia por id, mas nomes iguais confundiriam o card de progresso.
+    // Disambiguate names: two segments with titles that generate the same slug
+    // (e.g. "Reuniao" and "reuniao") cannot become the same file. The batch
+    // tracks by id, but equal names would confuse the progress card.
     const usedNames = new Set<string>();
     const items: BatchItem[] = included.map((seg, idx) => {
       const segText = sliceFileLines(text, seg.startLine, seg.endLine);
@@ -309,7 +310,7 @@ export default function UploadMeetingPage() {
     void runBatch(items);
   }
 
-  // ---------- Lote: envio com concorrencia limitada + retry individual ----------
+  // ---------- Batch: send with limited concurrency + individual retry ----------
 
   function patchBatchItem(id: number, patch: Partial<BatchItem>) {
     setBatchItems((prev) =>
@@ -330,8 +331,8 @@ export default function UploadMeetingPage() {
       });
       patchBatchItem(item.id, { status: "done" });
     } catch (err) {
-      // Falha de um arquivo NAO cancela os demais — o worker do pool segue
-      // pro proximo e o item ganha "Tentar de novo" no final.
+      // One file's failure does NOT cancel the others — the pool worker moves
+      // to the next and the item gets "Tentar de novo" at the end.
       patchBatchItem(item.id, {
         status: "error",
         error: err instanceof ApiRequestError ? err.message : "Falha no upload.",
@@ -372,7 +373,7 @@ export default function UploadMeetingPage() {
       setFormError("Selecione pelo menos um arquivo de transcrição.");
       return;
     }
-    // 1 arquivo .txt com split habilitado: tela de confirmacao.
+    // 1 .txt file with split enabled: confirmation screen.
     if (files.length === 1 && splitEnabled && singleTxtFile) {
       await callSplitPreview();
       return;
@@ -395,12 +396,12 @@ export default function UploadMeetingPage() {
         file,
       });
       setMeetingId(r.id);
-      // Backend ja devolve um status; usamos como ponto de partida.
+      // The backend already returns a status; we use it as a starting point.
       const initial = (r.processingStatus as ProcessingStatus) ?? "PENDING";
       setPollingStatus(initial);
       pollCountRef.current = 0;
-      // Edge case: se backend ja sinaliza terminal (COMPLETED/FAILED no POST),
-      // saltamos o polling.
+      // Edge case: if the backend already signals terminal (COMPLETED/FAILED
+      // on the POST), we skip the polling.
       if (initial === "COMPLETED") {
         setPhase("completed");
       } else if (initial === "FAILED") {
@@ -414,7 +415,7 @@ export default function UploadMeetingPage() {
     }
   }
 
-  // Polling do status. Roda enquanto phase === "polling".
+  // Status polling. Runs while phase === "polling".
   useEffect(() => {
     if (phase !== "polling" || !meetingId) return;
 
@@ -437,9 +438,9 @@ export default function UploadMeetingPage() {
           setPhase("failed");
         }
       } catch (err) {
-        // Tolerante a erros transientes: nao aborta o polling no primeiro
-        // 5xx. Atualizamos um campo de info caso o usuario queira saber,
-        // mas continuamos pollando ate o timeout.
+        // Tolerant of transient errors: does not abort the polling on the
+        // first 5xx. We update an info field in case the user wants to know,
+        // but we keep polling until the timeout.
         if (!cancelled) {
           setPollingError(
             err instanceof ApiRequestError
@@ -450,9 +451,9 @@ export default function UploadMeetingPage() {
       }
     }
 
-    // Primeira chamada e imediata (worker pode completar em <2s); demais
-    // ficam no intervalo. Mantemos a logica de cancelamento via `cancelled`
-    // pra evitar setState apos unmount.
+    // The first call is immediate (the worker may complete in <2s); the rest
+    // stay on the interval. We keep the cancellation logic via `cancelled`
+    // to avoid setState after unmount.
     void tick();
     const id = setInterval(() => {
       void tick();
@@ -464,10 +465,10 @@ export default function UploadMeetingPage() {
     };
   }, [phase, meetingId]);
 
-  // Dica de notificacao via Flows no card pos-envio: um fetch unico por envio
-  // (guard via ref pra nao refetchar a cada transicao de phase). Falha e
-  // tolerada — a dica simplesmente nao aparece. Vale pro single (pos-POST)
-  // e pro lote (a partir do submit — fluxos nao mudam durante o envio).
+  // Flows notification hint in the post-send card: a single fetch per send
+  // (guard via ref so it does not refetch on each phase transition). Failure is
+  // tolerated — the hint simply does not appear. Applies to single (post-POST)
+  // and to the batch (from the submit — flows do not change during the send).
   const [flowsHint, setFlowsHint] = useState<FlowsHint>("loading");
   const flowsHintFetchedRef = useRef(false);
   useEffect(() => {
@@ -492,7 +493,7 @@ export default function UploadMeetingPage() {
     };
   }, [phase, meetingId, batchItems]);
 
-  /** Volta pro form LIMPO — "Enviar outra transcrição" / "Enviar mais" começa do zero. */
+  /** Back to a CLEAN form — "Enviar outra transcrição" / "Enviar mais" starts from zero. */
   function resetToForm() {
     setPhase("form");
     setMeetingId(null);
@@ -514,7 +515,7 @@ export default function UploadMeetingPage() {
 
   // ---------- Render ----------
 
-  // Split-loading: spinner enquanto aguarda o split-preview.
+  // Split-loading: spinner while waiting for the split-preview.
   if (phase === "split-loading") {
     return (
       <div className="page page--narrow" style={{ maxWidth: 680 }}>
@@ -528,7 +529,7 @@ export default function UploadMeetingPage() {
     );
   }
 
-  // Split-confirm: tela de revisao dos segmentos detectados.
+  // Split-confirm: review screen for the detected segments.
   if (phase === "split-confirm" && splitSegments !== null) {
     return (
       <div className="page page--narrow" style={{ maxWidth: 680 }}>
@@ -546,8 +547,8 @@ export default function UploadMeetingPage() {
     );
   }
 
-  // Modo lote tem precedencia: `batchItems` so existe apos o submit com 2+
-  // arquivos (phase fica em "form" — a maquina single nao roda no lote).
+  // Batch mode takes precedence: `batchItems` only exists after the submit
+  // with 2+ files (phase stays "form" — the single machine does not run here).
   if (batchItems) {
     return (
       <div className="page page--narrow" style={{ maxWidth: 680 }}>
@@ -579,9 +580,9 @@ export default function UploadMeetingPage() {
     );
   }
 
-  // 2+ arquivos = modo lote no form: titulo/inicio/termino/formato somem
-  // (titulo vem do nome de cada arquivo, formato da extensao); idioma,
-  // participantes e tags valem para todos.
+  // 2+ files = batch mode in the form: title/start/end/format disappear
+  // (the title comes from each file's name, the format from the extension);
+  // language, participants and tags apply to all.
   const isBatchForm = files.length >= 2;
 
   return (
@@ -609,7 +610,7 @@ export default function UploadMeetingPage() {
 
         {isBatchForm && <FileList files={files} onRemove={removeFile} />}
 
-        {/* Toggle de split — visivel so com 1 arquivo .txt */}
+        {/* Split toggle — visible only with 1 .txt file */}
         {singleTxtFile && !isBatchForm && (
           <SplitToggle
             checked={splitEnabled}
@@ -740,7 +741,7 @@ export default function UploadMeetingPage() {
 }
 
 // ---------------------------------------------------------------------------
-// SplitToggle — checkbox discreto para habilitar a separacao automatica
+// SplitToggle — discreet checkbox to enable the automatic separation
 // ---------------------------------------------------------------------------
 
 function SplitToggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -773,7 +774,7 @@ function SplitToggle({ checked, onChange }: { checked: boolean; onChange: (v: bo
 }
 
 // ---------------------------------------------------------------------------
-// SplitConfirmScreen — tela de revisao dos segmentos detectados
+// SplitConfirmScreen — review screen for the detected segments
 // ---------------------------------------------------------------------------
 
 function SplitConfirmScreen({
@@ -860,7 +861,7 @@ function SplitConfirmScreen({
 }
 
 // ---------------------------------------------------------------------------
-// SegmentCard — um segmento editavel na tela de confirmacao
+// SegmentCard — one editable segment in the confirmation screen
 // ---------------------------------------------------------------------------
 
 function SegmentCard({ segment, onPatch }: { segment: ConfirmSegment; onPatch: (index: number, patch: Partial<ConfirmSegment>) => void }) {
@@ -972,7 +973,7 @@ function Breadcrumb() {
 }
 
 // ---------------------------------------------------------------------------
-// Dropzone — drag & drop + clique pra escolher arquivos (1 ou varios)
+// Dropzone — drag & drop + click to choose files (1 or several)
 // ---------------------------------------------------------------------------
 
 interface DropzoneProps {
@@ -1081,7 +1082,7 @@ function Dropzone({ files, isOver, inputRef, onOver, onDrop, onFileChange }: Dro
 }
 
 // ---------------------------------------------------------------------------
-// FileList — arquivos do lote no form (nome, tamanho, formato, remover)
+// FileList — batch files in the form (name, size, format, remove)
 // ---------------------------------------------------------------------------
 
 function FileList({ files, onRemove }: { files: File[]; onRemove: (index: number) => void }) {
@@ -1172,7 +1173,7 @@ function FileList({ files, onRemove }: { files: File[]; onRemove: (index: number
 }
 
 // ---------------------------------------------------------------------------
-// ChipField — input de chips (participantes / tags)
+// ChipField — chip input (participants / tags)
 // ---------------------------------------------------------------------------
 
 interface ChipFieldProps {
@@ -1301,7 +1302,7 @@ function ChipField({ id, label, help, placeholder, values, onChange }: ChipField
 }
 
 // ---------------------------------------------------------------------------
-// StatusCard — feedback visual durante upload + polling
+// StatusCard — visual feedback during upload + polling
 // ---------------------------------------------------------------------------
 
 interface StatusCardProps {
@@ -1323,9 +1324,9 @@ function StatusCard({
   pollingError,
   onRetry,
 }: StatusCardProps) {
-  // "uploading" = POST em andamento; "failed" = erro terminal. Os demais
-  // (polling/completed/timeout) compartilham o card "Transcrição enviada"
-  // com status ao vivo — o usuário fica livre desde o primeiro segundo.
+  // "uploading" = POST in flight; "failed" = terminal error. The rest
+  // (polling/completed/timeout) share the "Transcrição enviada" card
+  // with live status — the user is free from the first second on.
   if (phase === "uploading") {
     return (
       <CardFrame icon={<Spinner tone="accent" />} title="Enviando transcrição…" />
@@ -1361,7 +1362,7 @@ function StatusCard({
     );
   }
 
-  // Enviado: status da análise ao vivo + ações livres.
+  // Sent: live analysis status + free actions.
   const live =
     phase === "completed"
       ? { icon: <MiniCheck />, label: "Análise pronta." }
@@ -1431,8 +1432,8 @@ function StatusCard({
 }
 
 /**
- * Dica de notificacao via Flows — compartilhada entre o card single e o card
- * do lote. `plural` ajusta a frase pro caso de varias analises.
+ * Flows notification hint — shared between the single card and the batch
+ * card. `plural` adjusts the sentence for the case of several analyses.
  */
 function FlowsHintNote({ hint, plural = false }: { hint: FlowsHint; plural?: boolean }) {
   const noteStyle: React.CSSProperties = {
@@ -1472,9 +1473,9 @@ function FlowsHintNote({ hint, plural = false }: { hint: FlowsHint; plural?: boo
 }
 
 // ---------------------------------------------------------------------------
-// BatchCard — progresso do lote (2+ arquivos): por-arquivo + resumo final.
-// Sem polling de status das N reunioes — as analises seguem em segundo plano
-// e o Inicio (polling de PROCESSING) acompanha o progresso.
+// BatchCard — batch progress (2+ files): per-file + final summary.
+// No status polling of the N meetings — the analyses keep running in the
+// background and the Inicio (PROCESSING polling) tracks the progress.
 // ---------------------------------------------------------------------------
 
 interface BatchCardProps {
@@ -1639,7 +1640,7 @@ function CardFrame({
         textAlign: "center",
       }}
     >
-      {/* keyframe local do spinner — nao existe global noraSpin no design system */}
+      {/* local spinner keyframe — no global noraSpin exists in the design system */}
       <style>{"@keyframes noraSpin { to { transform: rotate(360deg); } }"}</style>
       {icon}
       <div>
@@ -1672,7 +1673,7 @@ function CardFrame({
   );
 }
 
-/** Spinner pequeno pro chip de status ao vivo. */
+/** Small spinner for the live status chip. */
 function MiniSpinner({ tone }: { tone: "accent" | "muted" }) {
   return (
     <span
@@ -1728,7 +1729,7 @@ function MiniX() {
 }
 
 // ---------------------------------------------------------------------------
-// Icones inline (sem libs novas — projeto ja usa SVG inline)
+// Inline icons (no new libs — the project already uses inline SVG)
 // ---------------------------------------------------------------------------
 
 function Spinner({ tone }: { tone: "accent" | "muted" }) {

@@ -4,7 +4,7 @@ import br.com.nora.api.domain.meeting.productivity.ExpectedOutcome;
 import br.com.nora.api.domain.meeting.productivity.MeetingGoal;
 import br.com.nora.api.domain.meeting.productivity.ProductivityAssessment;
 
-/** Mapeia agregados de productivity para os DTOs HTTP. */
+/** Maps productivity aggregates to the HTTP DTOs. */
 public final class MeetingGoalResponseMapper {
 
     private MeetingGoalResponseMapper() {}

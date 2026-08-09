@@ -1,17 +1,17 @@
-# NORA — datasources do Grafana (provisionados, não criados pela UI)
+# NORA — Grafana datasources (provisioned, not created through the UI)
 # =============================================================================
-# Montado read-only em docker-compose.yml:538. `editable: false` é intencional:
-# o volume grafana_data persiste, mas datasource criado/editado pela UI não está
-# versionado e some no dia em que o volume for recriado. Aqui, o arquivo é a verdade.
+# Mounted read-only in docker-compose.yml:538. `editable: false` is intentional:
+# the grafana_data volume persists, but a datasource created/edited through the UI is
+# not versioned and disappears the day the volume is recreated. Here, the file is the truth.
 #
-# Os `uid` são FIXOS e estáveis. O nora-overview.json referencia estes uids
-# literalmente; se alguém trocar, todo painel do dashboard quebra com
-# "Datasource nora-prometheus was not found". Não gere uid aleatório.
+# The `uid`s are FIXED and stable. nora-overview.json references these uids
+# literally; if someone changes them, every dashboard panel breaks with
+# "Datasource nora-prometheus was not found". Do not generate a random uid.
 
 apiVersion: 1
 
-# Remove datasources com estes nomes antes de aplicar. Evita duplicata do tipo
-# "Prometheus-1" quando alguém já criou um na mão pela UI.
+# Removes datasources with these names before applying. Avoids a duplicate of the
+# "Prometheus-1" kind when someone already created one by hand through the UI.
 deleteDatasources:
   - name: Prometheus
     orgId: 1
@@ -20,38 +20,38 @@ deleteDatasources:
 
 datasources:
   # ---------------------------------------------------------------------------
-  # Prometheus — métricas (default)
+  # Prometheus — metrics (default)
   # ---------------------------------------------------------------------------
-  # Default porque é o que a maior parte dos painéis usa e o que o "Explore" abre
-  # primeiro. Substitui o Metrics Explorer do Application Insights.
+  # Default because it is what most panels use and what "Explore" opens
+  # first. Replaces the Application Insights Metrics Explorer.
   - name: Prometheus
     uid: nora-prometheus
     type: prometheus
-    access: proxy          # o browser fala com o Grafana; o Grafana fala com o Prometheus
+    access: proxy          # the browser talks to Grafana; Grafana talks to Prometheus
     url: http://prometheus:9090
     isDefault: true
     editable: false
     jsonData:
-      # POST em vez de GET: queries do dashboard com regex de rota estouram o limite
-      # de URL em GET.
+      # POST instead of GET: dashboard queries with a route regex blow past the URL
+      # limit on GET.
       httpMethod: POST
-      # Bate com o scrape_interval do prometheus.yml. Sem isso o Grafana usa 15s
-      # chutado e o $__rate_interval pode ficar menor que o intervalo real de scrape,
-      # produzindo gráfico serrilhado com buracos.
+      # Matches the scrape_interval in prometheus.yml. Without this Grafana guesses 15s
+      # and $__rate_interval can end up smaller than the real scrape interval,
+      # producing a jagged graph with holes.
       timeInterval: 15s
       prometheusType: Prometheus
       prometheusVersion: 3.1.0
-      # Alerting é gerenciado pelo unified alerting do Grafana, não por rules
-      # carregadas do Prometheus (não há rule_files no prometheus.yml).
+      # Alerting is managed by Grafana's unified alerting, not by rules
+      # loaded from Prometheus (there are no rule_files in prometheus.yml).
       manageAlerts: false
       incrementalQuerying: true
 
   # ---------------------------------------------------------------------------
   # Loki — logs
   # ---------------------------------------------------------------------------
-  # Substitui a query de log do Log Analytics (as consultas KQL sobre
-  # ContainerAppConsoleLogs_CL). A linguagem muda de KQL para LogQL: nenhuma consulta
-  # salva do Azure é portável, todas precisam ser reescritas à mão.
+  # Replaces the Log Analytics log query (the KQL queries over
+  # ContainerAppConsoleLogs_CL). The language changes from KQL to LogQL: no saved query
+  # from Azure is portable, all of them have to be rewritten by hand.
   - name: Loki
     uid: nora-loki
     type: loki
@@ -60,13 +60,13 @@ datasources:
     isDefault: false
     editable: false
     jsonData:
-      # Teto do painel de logs. Acima disso o browser engasga antes do Loki.
+      # Cap of the logs panel. Above that the browser chokes before Loki does.
       maxLines: 1000
       timeout: 60
-      # SEM derivedFields para trace_id: seria o "pular do log para a transação" do
-      # App Insights, mas exige um datasource de traces (não há Tempo no compose) e
-      # trace_id no MDC do logback. Adicionar aqui hoje só criaria link quebrado.
-      # Quando existir Tempo, é este o bloco:
+      # NO derivedFields for trace_id: it would be App Insights' "jump from the log to
+      # the transaction", but it requires a traces datasource (there is no Tempo in the
+      # compose) and trace_id in logback's MDC. Adding it today would only create a broken link.
+      # When Tempo exists, this is the block:
       #   derivedFields:
       #     - name: TraceID
       #       matcherRegex: 'trace_id=(\w+)'

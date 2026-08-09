@@ -1,53 +1,53 @@
 ---
-title: "Padrões de Engenharia — NORA"
-owner: Arquiteto NORA (Tech Lead)
+title: "Engineering Standards — NORA"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
-# Padrões de Engenharia — NORA
+# Engineering Standards — NORA
 
-> Guia operacional para humanos e agentes de IA programando a NORA.
-> Define convenções, estrutura, padrões e ferramentas. Atualizado para refletir o **estado real do código** — não promessas.
-
----
-
-## 1. Princípios de Engenharia
-
-1. **Vertical slice antes de expansão.** Entregar um fluxo completo pequeno > abrir várias frentes incompletas.
-2. **Multi-tenant desde o primeiro commit.** Qualquer dado de cliente nasce com `tenant_id`. Não existe atalho.
-3. **Autorização no backend.** Filtro no frontend é UX; segurança real está em `AuthorizationService` + `PolicyEvaluator`.
-4. **Contrato antes da implementação.** Quando frontend, backend e worker interagem, o contrato vem primeiro (OpenAPI + JSON Schema + exemplos).
-5. **IA com saída estruturada.** LLM nunca retorna texto livre para a aplicação; sempre JSON Schema strict validado por Pydantic (ADR 0003).
-6. **Produto horizontal.** Zero regra hardcoded para TOTVS. Tenant configura seu próprio contexto.
-7. **Segurança por padrão.** PII é redigido antes de qualquer chamada LLM externa (ADR 0012).
-8. **Documentação viva.** Decisão durável → `docs/adr/`. Detalhe transitório → issue/PR/vault privado.
+> Operational guide for humans and AI agents programming NORA.
+> Defines conventions, structure, patterns and tooling. Updated to reflect the **actual state of the code** — not promises.
 
 ---
 
-## 2. Stack confirmada
+## 1. Engineering Principles
 
-| Camada | Stack | Padrão |
+1. **Vertical slice before expansion.** Delivering one small complete flow > opening several incomplete fronts.
+2. **Multi-tenant from the first commit.** Any customer data is born with a `tenant_id`. There is no shortcut.
+3. **Authorization in the backend.** Filtering in the frontend is UX; real security lives in `AuthorizationService` + `PolicyEvaluator`.
+4. **Contract before implementation.** When frontend, backend and worker interact, the contract comes first (OpenAPI + JSON Schema + examples).
+5. **AI with structured output.** The LLM never returns free text to the application; always strict JSON Schema validated by Pydantic (ADR 0003).
+6. **Horizontal product.** Zero hardcoded rules for TOTVS. Each tenant configures its own context.
+7. **Security by default.** PII is redacted before any external LLM call (ADR 0012).
+8. **Living documentation.** Durable decision → `docs/adr/`. Transient detail → issue/PR/private vault.
+
+---
+
+## 2. Confirmed stack
+
+| Layer | Stack | Pattern |
 |---|---|---|
-| **Web** | Next.js 14 + TypeScript 5 + React 18 + Tailwind CSS 3 (cru — **sem shadcn**, sem MUI, sem Chakra) | App Router, RSC quando fizer sentido, client components só para interação |
-| **Backend** | Java 21 + Spring Boot 3.3 + JPA + Flyway | DDD em camadas (domain/application/infrastructure/api), REST + OpenAPI, Bean Validation |
-| **Worker NLP** | Python 3.12 + FastAPI + Pydantic 2 + OpenAI SDK 1.50 | Pipelines pequenos, schemas explícitos, prompts versionados em `prompts/{version}.md` |
-| **Banco** | Postgres 16 + Flyway | Migrations versionadas `V###__nome.sql`, `tenant_id` em toda tabela tenant-bound |
-| **IA** | LLM agnóstico via env vars (default OpenAI `gpt-4o-mini`; Azure OpenAI em Enterprise) | JSON Schema strict, temperatura baixa, logs sem PII. ADR 0004. |
-| **Search/RAG** | pgvector + HTTP embedding client provider-agnóstico (Gemini/OpenAI) | Busca semântica entregue (PR #206, V021 `meeting_embeddings`); chat Core consome `/meetings/search` como contexto RAG |
-| **Auth** | JWT (JJWT 0.12) + refresh tokens stateful (V011); cookies HttpOnly | SSO Entra ID/SAML pós-MVP |
-| **Desktop** | Tauri 2 + Rust + sidecar Python | Captura áudio nativa; ADR 0008. Escopo de outro arquiteto. |
-| **Infra** | Azure (Container Apps + Postgres Flexible + KV + Storage) + Bicep | IaC declarativa; SP OIDC via GitHub Actions |
-| **CI/CD** | GitHub Actions: `ci.yml` + `build-images.yml` + `deploy-infra.yml` | Push GHCR; deploy automatizado para `dev` |
+| **Web** | Next.js 14 + TypeScript 5 + React 18 + Tailwind CSS 3 (raw — **no shadcn**, no MUI, no Chakra) | App Router, RSC when it makes sense, client components only for interaction |
+| **Backend** | Java 21 + Spring Boot 3.3 + JPA + Flyway | Layered DDD (domain/application/infrastructure/api), REST + OpenAPI, Bean Validation |
+| **NLP Worker** | Python 3.12 + FastAPI + Pydantic 2 + OpenAI SDK 1.50 | Small pipelines, explicit schemas, prompts versioned in `prompts/{version}.md` |
+| **Database** | Postgres 16 + Flyway | Versioned migrations `V###__name.sql`, `tenant_id` on every tenant-bound table |
+| **AI** | LLM-agnostic via env vars (default OpenAI `gpt-4o-mini`; Azure OpenAI in Enterprise) | Strict JSON Schema, low temperature, logs without PII. ADR 0004. |
+| **Search/RAG** | pgvector + provider-agnostic HTTP embedding client (Gemini/OpenAI) | Semantic search delivered (PR #206, V021 `meeting_embeddings`); Core chat consumes `/meetings/search` as RAG context |
+| **Auth** | JWT (JJWT 0.12) + stateful refresh tokens (V011); HttpOnly cookies | SSO Entra ID/SAML post-MVP |
+| **Desktop** | Tauri 2 + Rust + Python sidecar | Native audio capture; ADR 0008. Another architect's scope. |
+| **Infra** | Azure (Container Apps + Postgres Flexible + KV + Storage) + Bicep | Declarative IaC; SP OIDC via GitHub Actions |
+| **CI/CD** | GitHub Actions: `ci.yml` + `build-images.yml` + `deploy-infra.yml` | Push to GHCR; automated deploy to `dev` |
 
-### Decisão de Escopo MVP
+### MVP Scope Decision
 
-Foco no slice **Web + Backend + Worker NLP**. Desktop, SSO, upload de áudio/vídeo, MCPs completos e Salesforce nativo entram pós-MVP.
+Focus on the **Web + Backend + NLP Worker** slice. Desktop, SSO, audio/video upload, full MCPs and native Salesforce come post-MVP.
 
 ---
 
-## 3. Estrutura de pastas
+## 3. Folder structure
 
 ```text
 nora/
@@ -82,46 +82,46 @@ nora/
 └── README.md
 ```
 
-**Notas sobre a estrutura real:**
+**Notes about the real structure:**
 
-- **Não existe `apps/web/src/features/`** (a versão anterior do doc previa). O frontend usa `src/components/` flat + `src/app/` (App Router).
-- **`packages/shared-contracts/`** contém contratos compartilhados reais (`error-codes.md`, `pii-types.json`, `processing-status.json`, `README.md`); contratos HTTP completos vivem em `docs/api/`.
-- **MCPs (calendar, tasks, crm)** seguem deferidos pós-MVP via ADR 0014 (defer commercial gate) como conceito de roadmap. Não há pasta `mcp/` no monorepo. ADR 0001 (monorepo) menciona estrutura prevista; reativação condicional ao primeiro tenant pagante pedir integração.
+- **There is no `apps/web/src/features/`** (the previous version of the doc foresaw one). The frontend uses a flat `src/components/` + `src/app/` (App Router).
+- **`packages/shared-contracts/`** contains the real shared contracts (`error-codes.md`, `pii-types.json`, `processing-status.json`, `README.md`); full HTTP contracts live in `docs/api/`.
+- **MCPs (calendar, tasks, crm)** remain deferred post-MVP via ADR 0014 (defer commercial gate) as a roadmap concept. There is no `mcp/` folder in the monorepo. ADR 0001 (monorepo) mentions the foreseen structure; reactivation is conditional on the first paying tenant asking for an integration.
 
 ---
 
-## 4. Onde guardar cada informação
+## 4. Where to store each piece of information
 
-| Informação | Local |
+| Information | Location |
 |---|---|
-| Visão de produto (É/Não É, Faz/Não Faz, Geoffrey Moore) | `docs/product/vision.md` |
-| Backlog priorizado (MoSCoW + status real DONE/PARTIAL/MISSING) | `docs/product/backlog.md` |
-| Roadmap vivo (histórico sub-fases 1.0–1.10 + futuro 1.11+) | `docs/product/roadmap.md` |
-| Glossário NORA (termos canônicos: Productivity Score, Customer Confidence, IAM Policy, etc.) | `docs/product/glossary.md` |
-| Arquitetura técnica (DDD layers, fluxos end-to-end, stack rationale) | `docs/engineering/architecture.md` |
-| Pipeline de Data Science das transcrições TOTVS (EDA + TF-IDF + LLM) | `notebooks/totvs_transcricoes_eda.py` |
-| Padrões técnicos (este doc) | `docs/engineering/standards.md` |
-| Modelo de dados Postgres | `docs/engineering/data-model.md` |
-| Modelo de dados Oracle (entrega FIAP DB) | `docs/engineering/data-model-oracle.md` |
-| Runbook deploy Azure + 8 armadilhas (Sub-fase 1.9) | `docs/operations/azure-deploy.md` |
-| Production-readiness gaps (alvo Sub-fase 1.12) | `docs/operations/production-readiness-gaps.md` |
-| Material acadêmico FIAP Challenge 2026 (personas, casos de uso, rubrica) | `docs/challenge/` |
-| Decisões arquiteturais duráveis (índice canônico) | `docs/adr/NNNN-titulo.md` (índice em `docs/adr/README.md`) |
-| Contratos HTTP | `docs/api/openapi.yaml` (a gerar) ou via springdoc-openapi |
-| Exemplos de payload | `docs/api/examples/*.json` |
-| Schemas LLM | `docs/api/llm-schemas/*.schema.json` |
-| Prompts do worker | `services/nlp-worker/src/nora_nlp/prompts/{version}.md` |
-| Schemas Pydantic | `services/nlp-worker/src/nora_nlp/models.py` |
-| Dados sintéticos | `data/synthetic/` |
-| Notebooks acadêmicos | `notebooks/` |
-| Variáveis de ambiente exemplo | `.env.example` em cada app/service |
-| Segredos reais | **Nunca no Git.** `.env.local` em dev; Azure Key Vault em prod |
+| Product vision (Is/Is Not, Does/Does Not, Geoffrey Moore) | `docs/product/vision.md` |
+| Prioritized backlog (MoSCoW + real status DONE/PARTIAL/MISSING) | `docs/product/backlog.md` |
+| Living roadmap (history of sub-phases 1.0–1.10 + future 1.11+) | `docs/product/roadmap.md` |
+| NORA glossary (canonical terms: Productivity Score, Customer Confidence, IAM Policy, etc.) | `docs/product/glossary.md` |
+| Technical architecture (DDD layers, end-to-end flows, stack rationale) | `docs/engineering/architecture.md` |
+| Data Science pipeline for the TOTVS transcripts (EDA + TF-IDF + LLM) | `notebooks/totvs_transcricoes_eda.py` |
+| Technical standards (this doc) | `docs/engineering/standards.md` |
+| Postgres data model | `docs/engineering/data-model.md` |
+| Oracle data model (FIAP DB deliverable) | `docs/engineering/data-model-oracle.md` |
+| Azure deploy runbook + 8 pitfalls (Sub-phase 1.9) | `docs/operations/azure-deploy.md` |
+| Production-readiness gaps (target Sub-phase 1.12) | `docs/operations/production-readiness-gaps.md` |
+| FIAP Challenge 2026 academic material (personas, use cases, rubric) | `docs/challenge/` |
+| Durable architectural decisions (canonical index) | `docs/adr/NNNN-titulo.md` (index in `docs/adr/README.md`) |
+| HTTP contracts | `docs/api/openapi.yaml` (to be generated) or via springdoc-openapi |
+| Payload examples | `docs/api/examples/*.json` |
+| LLM schemas | `docs/api/llm-schemas/*.schema.json` |
+| Worker prompts | `services/nlp-worker/src/nora_nlp/prompts/{version}.md` |
+| Pydantic schemas | `services/nlp-worker/src/nora_nlp/models.py` |
+| Synthetic data | `data/synthetic/` |
+| Academic notebooks | `notebooks/` |
+| Example environment variables | `.env.example` in each app/service |
+| Real secrets | **Never in Git.** `.env.local` in dev; Azure Key Vault in prod |
 
 ---
 
 ## 5. Backend — Java/Spring Boot
 
-### Organização
+### Organization
 
 ```text
 services/api/src/main/java/br/com/nora/api/
@@ -153,20 +153,20 @@ services/api/src/main/java/br/com/nora/api/
     └── exception/         # GlobalExceptionHandler
 ```
 
-### Regras invioláveis
+### Inviolable rules
 
-- `domain/` **não** importa nada de Spring, JPA, HTTP, banco ou SDK externo.
-- `application/` depende de **portas** (interfaces) declaradas em `application/ports/`.
-- `infrastructure/` **implementa** as portas (adapters).
-- `api/` contém apenas controllers, DTOs e mappers. **Nenhuma regra de negócio em controller.**
-- Queries tenant-bound **sempre** filtram por `tenant_id` antes de `id`.
-- Toda chamada com risco de autorização passa por `AuthorizationService.require(...)` ou `requireAnyAllow(...)`.
+- `domain/` does **not** import anything from Spring, JPA, HTTP, the database or an external SDK.
+- `application/` depends on **ports** (interfaces) declared in `application/ports/`.
+- `infrastructure/` **implements** the ports (adapters).
+- `api/` contains only controllers, DTOs and mappers. **No business rule in a controller.**
+- Tenant-bound queries **always** filter by `tenant_id` before `id`.
+- Every call with an authorization risk goes through `AuthorizationService.require(...)` or `requireAnyAllow(...)`.
 
-### Padrões de API
+### API patterns
 
-- REST com OpenAPI (auto-gerada por springdoc).
-- JSON em `camelCase` na API pública.
-- Erros padronizados:
+- REST with OpenAPI (auto-generated by springdoc).
+- JSON in `camelCase` on the public API.
+- Standardized errors:
 
 ```json
 {
@@ -176,27 +176,27 @@ services/api/src/main/java/br/com/nora/api/
 }
 ```
 
-- Paginação padrão: `page`, `size`, `sort`.
-- Operações de upload/processamento retornam `processingStatus` (`PENDING`/`PROCESSING`/`COMPLETED`/`FAILED`).
-- Endpoints administrativos **sempre** validam autorização via `authz.require(action, resource)`.
+- Default pagination: `page`, `size`, `sort`.
+- Upload/processing operations return `processingStatus` (`PENDING`/`PROCESSING`/`COMPLETED`/`FAILED`).
+- Administrative endpoints **always** validate authorization via `authz.require(action, resource)`.
 
-### Padrões de teste
+### Testing patterns
 
-- Domain: testes JUnit puros, sem container Spring. Exemplo: `PolicyEvaluatorTest`.
-- Application: testes com mocks das portas.
-- Infrastructure: integration tests com Testcontainers (Postgres real).
-- API: `@SpringBootTest` ou `@WebMvcTest`. Cobertura mínima inclui caminhos de autorização negados (403/404).
+- Domain: pure JUnit tests, no Spring container. Example: `PolicyEvaluatorTest`.
+- Application: tests with mocked ports.
+- Infrastructure: integration tests with Testcontainers (real Postgres).
+- API: `@SpringBootTest` or `@WebMvcTest`. Minimum coverage includes denied authorization paths (403/404).
 
 ---
 
-## 6. Banco de dados
+## 6. Database
 
-### Convenções
+### Conventions
 
-- Tabelas em `snake_case` no plural: `tenants`, `meetings`, `meeting_analyses`.
-- Colunas em `snake_case`.
-- Chaves primárias: `id UUID PRIMARY KEY DEFAULT gen_random_uuid()` (extensão `pgcrypto`).
-- Campos auditáveis padrão:
+- Tables in plural `snake_case`: `tenants`, `meetings`, `meeting_analyses`.
+- Columns in `snake_case`.
+- Primary keys: `id UUID PRIMARY KEY DEFAULT gen_random_uuid()` (`pgcrypto` extension).
+- Standard auditable fields:
 
 ```sql
 id uuid primary key default gen_random_uuid(),
@@ -205,28 +205,28 @@ created_at timestamptz not null default now(),
 updated_at timestamptz not null default now()
 ```
 
-- Dados tenant-bound **sempre** têm `tenant_id` + índice composto por escopo de busca.
-- `email` usa `CITEXT` (case-insensitive) — extensão `citext` (V002:6).
+- Tenant-bound data **always** has `tenant_id` + a composite index for the search scope.
+- `email` uses `CITEXT` (case-insensitive) — `citext` extension (V002:6).
 
 ### Multi-tenancy
 
-- MVP: filtro obrigatório no backend + testes de isolamento (`IamScopingIntegrationTest`).
-- Produção: Postgres RLS — **schema entregue em V016**, **RLS completa + scope auth-aware em V019/V020** (`tenant_isolation` + `TenantRlsAspect`); o que resta é o cutover/enforcement operacional em prod (runbook em ADR 0026/0028), não o schema. Defesa em profundidade do filtro de app (ADR 0002).
-- Nunca buscar entidade tenant-bound só por `id`; sempre `(tenant_id, id)`.
-- Acesso fora do escopo retorna `403` ou `404` conforme risco de enumeração.
+- MVP: mandatory backend filter + isolation tests (`IamScopingIntegrationTest`).
+- Production: Postgres RLS — **schema delivered in V016**, **full RLS + auth-aware scope in V019/V020** (`tenant_isolation` + `TenantRlsAspect`); what remains is the operational cutover/enforcement in prod (runbook in ADR 0026/0028), not the schema. Defense in depth over the app filter (ADR 0002).
+- Never fetch a tenant-bound entity by `id` alone; always `(tenant_id, id)`.
+- Out-of-scope access returns `403` or `404` depending on the enumeration risk.
 
 ### Migrations
 
-- Flyway no backend.
-- Nome: `V001__create_tenants.sql`, `V002__create_users_and_roles.sql`, etc.
-- **Migration nunca é editada depois de aplicada** — sempre criar nova versão (forward-only).
-- Ver `docs/engineering/data-model.md` para o mapa completo de migrations (até V021: V018 hash do token de convite, V019/V020 RLS completa + scope auth-aware, V021 `meeting_embeddings`). Fonte única de verdade do schema.
+- Flyway in the backend.
+- Naming: `V001__create_tenants.sql`, `V002__create_users_and_roles.sql`, etc.
+- **A migration is never edited after being applied** — always create a new version (forward-only).
+- See `docs/engineering/data-model.md` for the full migration map (through V021: V018 invitation token hash, V019/V020 full RLS + auth-aware scope, V021 `meeting_embeddings`). Single source of truth for the schema.
 
 ---
 
 ## 7. NLP Worker — Python/FastAPI
 
-### Organização
+### Organization
 
 ```text
 services/nlp-worker/src/nora_nlp/
@@ -249,19 +249,19 @@ services/nlp-worker/src/nora_nlp/
 └── settings.py            # pydantic-settings
 ```
 
-### Pipeline de análise
+### Analysis pipeline
 
-1. Receber transcript + metadados (idioma, formato) + tenant_context.
-2. **PII Shield** — regex BR (EMAIL/CPF/CNPJ/PHONE/CREDIT_CARD/PERSON_NAME). Ver `services/pii_shield.py`.
-3. Normalizar texto, gerar baseline TF-IDF para interpretabilidade.
-4. Recuperar contexto vetorial via pgvector + embedding client provider-agnóstico (busca semântica entregue — PR #206, V021).
-5. Chamar LLM com prompt versionado e `response_format=json_schema` strict.
-6. Validar com Pydantic (`MeetingAnalysisV1`).
-7. Retornar JSON estruturado ao backend.
+1. Receive transcript + metadata (language, format) + tenant_context.
+2. **PII Shield** — BR regex (EMAIL/CPF/CNPJ/PHONE/CREDIT_CARD/PERSON_NAME). See `services/pii_shield.py`.
+3. Normalize text, generate a TF-IDF baseline for interpretability.
+4. Retrieve vector context via pgvector + provider-agnostic embedding client (semantic search delivered — PR #206, V021).
+5. Call the LLM with a versioned prompt and strict `response_format=json_schema`.
+6. Validate with Pydantic (`MeetingAnalysisV1`).
+7. Return structured JSON to the backend.
 
-### Saída estruturada
+### Structured output
 
-Schema canônico em `docs/api/llm-schemas/meeting-analysis-v1.schema.json`. Inclui:
+Canonical schema in `docs/api/llm-schemas/meeting-analysis-v1.schema.json`. It includes:
 
 - `summary` (markdown)
 - `decisions[]`
@@ -269,24 +269,24 @@ Schema canônico em `docs/api/llm-schemas/meeting-analysis-v1.schema.json`. Incl
 - `risks[]` (severity, category, sourceQuote)
 - `opportunities[]` (estimatedValue, category, sourceQuote)
 - `topics[]`, `sentimentOverall`
-- `productivity` (opcional, ADR 0005)
-- `customerConfidence` (opcional, ADR 0006/0015 — persistido full-stack desde #148; emitido só em conversas com cliente/lead)
+- `productivity` (optional, ADR 0005)
+- `customerConfidence` (optional, ADR 0006/0015 — persisted full-stack since #148; emitted only in conversations with a customer/lead)
 - `baselineTerms[]` (TF-IDF)
 - `piiRedactionApplied`
 
-### Regras
+### Rules
 
-- Prompt **versionado** em `prompts/{version}.md` com seções `## SYSTEM` e `## USER`.
-- Todo schema de saída tem teste com payload válido e inválido (`tests/`).
-- Temperatura baixa (0 a 0.3) para análise.
-- Nunca logar transcript bruto com PII.
-- Falha de LLM gera erro controlado, **não stack trace exposto**.
+- Prompt **versioned** in `prompts/{version}.md` with `## SYSTEM` and `## USER` sections.
+- Every output schema has a test with a valid and an invalid payload (`tests/`).
+- Low temperature (0 to 0.3) for analysis.
+- Never log the raw transcript with PII.
+- An LLM failure produces a controlled error, **not an exposed stack trace**.
 
 ---
 
-## 8. Frontend — Next.js (Tailwind cru)
+## 8. Frontend — Next.js (raw Tailwind)
 
-### Organização
+### Organization
 
 ```text
 apps/web/src/
@@ -309,72 +309,72 @@ apps/web/src/
     └── tokens.css         # paleta OKLCH + tipografia
 ```
 
-**Não existe `components/ui/` à la shadcn.** Componentes-base são escritos à mão usando classes Tailwind diretamente.
+**There is no `components/ui/` à la shadcn.** Base components are written by hand using Tailwind classes directly.
 
-### Regras
+### Rules
 
-- TypeScript estrito (`strict: true`).
-- **Validação:**
-  - Forms simples: HTML5 + `react-hook-form` quando necessário.
-  - Backend faz validação canônica (Bean Validation + JSON Schema do worker). Frontend é UX, não fonte da verdade.
-  - **Zod está declarado como dep mas é pouco usado no MVP.** Quando justificado (schemas complexos, união discriminada), tudo bem. Não é obrigatório.
-- Componentes de domínio em `components/` flat — não há `features/`.
-- Estado global só quando necessário; preferir estado local/server data via fetch direto.
-- Não duplicar regras de autorização no frontend como fonte de verdade. **Renderização condicional ≠ autorização.**
-- UI Enterprise deve ser densa, clara, operacional. Nada de landing page no dashboard.
+- Strict TypeScript (`strict: true`).
+- **Validation:**
+  - Simple forms: HTML5 + `react-hook-form` when necessary.
+  - The backend does the canonical validation (Bean Validation + the worker's JSON Schema). The frontend is UX, not the source of truth.
+  - **Zod is declared as a dependency but is barely used in the MVP.** When justified (complex schemas, discriminated unions), that's fine. It is not mandatory.
+- Domain components in a flat `components/` — there is no `features/`.
+- Global state only when necessary; prefer local state/server data via direct fetch.
+- Do not duplicate authorization rules in the frontend as a source of truth. **Conditional rendering ≠ authorization.**
+- Enterprise UI must be dense, clear, operational. No landing-page feel in the dashboard.
 
-### Mocks como default em dev
+### Mocks as the default in dev
 
-`apps/web/src/lib/api/client.ts` usa `NEXT_PUBLIC_USE_MOCKS=true` por default (também no CI). Para apontar para backend real, setar `NEXT_PUBLIC_USE_MOCKS=false` e `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080`.
-
----
-
-## 9. Testes
-
-| Camada | Testes mínimos |
-|---|---|
-| **Backend** | Unitários de domínio (puros), integração com Postgres via Testcontainers, integration tests de autorização tenant/scope (`IamScopingIntegrationTest`), WireMock para stubar worker |
-| **Worker** | Unitários de pipeline, validação de schemas (jsonschema), fixtures de transcrições sintéticas em `data/synthetic/` |
-| **Frontend** | (TBD — sem runner declarado no `package.json`). Sub-fase 1.11+ pode adicionar Vitest |
-| **Contratos** | Exemplos JSON válidos em `docs/api/examples/` para payloads worker↔API |
-
-### Metas de cobertura de testes (auditoria §12, ADR 0018)
-
-| Área | Target sustained |
-|---|---|
-| **Áreas críticas** (IAM, Auth, PII, LLM analyzer) | **> 85%** |
-| Demais áreas backend | > 60% |
-| Worker NLP | > 85% (atual: 87%) |
-| **Branch coverage backend** | > 70% (atual: 53%) |
-| Web Next.js | TBD (sem runner ainda; meta após Sub-fase 1.11+) |
-| Desktop sidecar Python | fora do escopo (outro arquiteto) |
-
-**Estado atual (2026-05-13):**
-
-- Worker NLP: **87%** linha (54 tests).
-- Backend Spring: **67%** linha / **53%** branch (174 tests). Áreas críticas já passam de 90% (`InvitationService` 98.1%, `PolicyEvaluator` 95.8%, `AuthService` 93.2%, `AuthorizationService` 89.9%).
-- Web: 0% (sem runner).
-
-> **Caveat (2026-05-21):** números medidos em 2026-05-13, **antes** da onda de hardening #114–#138 (RLS aspect, token rotation, RS256/JWKS, composite FK, auth audit) que tocou áreas críticas de Auth/IAM. **Re-medir** (`mvn verify` + `pytest`) antes de citar no pitch; o worker ainda não declara `pytest-cov` (adicionar — ADR 0018).
-
-### Definição de pronto
-
-Uma story só é DONE quando:
-
-- Código implementado.
-- Testes relevantes adicionados/atualizados (cobertura nas áreas críticas atinge targets).
-- Verificação local executada (`mvn test`, `pytest`, `npm run build`).
-- Sem segredo ou dado sensível no commit.
-- Documentação ajustada se mudou contrato, arquitetura ou escopo.
-- PR revisado por outra pessoa **ou por IA em modo review** + validação humana.
+`apps/web/src/lib/api/client.ts` uses `NEXT_PUBLIC_USE_MOCKS=true` by default (also in CI). To point at the real backend, set `NEXT_PUBLIC_USE_MOCKS=false` and `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080`.
 
 ---
 
-## 10. Git, Issues e PRs
+## 9. Testing
+
+| Layer | Minimum tests |
+|---|---|
+| **Backend** | Pure domain unit tests, integration with Postgres via Testcontainers, integration tests for tenant/scope authorization (`IamScopingIntegrationTest`), WireMock to stub the worker |
+| **Worker** | Pipeline unit tests, schema validation (jsonschema), synthetic transcript fixtures in `data/synthetic/` |
+| **Frontend** | (TBD — no runner declared in `package.json`). Sub-phase 1.11+ may add Vitest |
+| **Contracts** | Valid JSON examples in `docs/api/examples/` for worker↔API payloads |
+
+### Test coverage targets (audit §12, ADR 0018)
+
+| Area | Sustained target |
+|---|---|
+| **Critical areas** (IAM, Auth, PII, LLM analyzer) | **> 85%** |
+| Other backend areas | > 60% |
+| NLP Worker | > 85% (current: 87%) |
+| **Backend branch coverage** | > 70% (current: 53%) |
+| Web Next.js | TBD (no runner yet; target after Sub-phase 1.11+) |
+| Desktop Python sidecar | out of scope (another architect) |
+
+**Current state (2026-05-13):**
+
+- NLP Worker: **87%** line (54 tests).
+- Spring backend: **67%** line / **53%** branch (174 tests). Critical areas already exceed 90% (`InvitationService` 98.1%, `PolicyEvaluator` 95.8%, `AuthService` 93.2%, `AuthorizationService` 89.9%).
+- Web: 0% (no runner).
+
+> **Caveat (2026-05-21):** numbers measured on 2026-05-13, **before** the #114–#138 hardening wave (RLS aspect, token rotation, RS256/JWKS, composite FK, auth audit) that touched critical Auth/IAM areas. **Re-measure** (`mvn verify` + `pytest`) before quoting them in the pitch; the worker still does not declare `pytest-cov` (to be added — ADR 0018).
+
+### Definition of done
+
+A story is only DONE when:
+
+- The code is implemented.
+- Relevant tests were added/updated (coverage in critical areas reaches the targets).
+- Local verification was executed (`mvn test`, `pytest`, `npm run build`).
+- No secret or sensitive data in the commit.
+- Documentation adjusted if a contract, architecture or scope changed.
+- The PR was reviewed by another person **or by AI in review mode** + human validation.
+
+---
+
+## 10. Git, Issues and PRs
 
 ### Branches
 
-- `main`: sempre estável (deploys disparam daqui).
+- `main`: always stable (deploys are triggered from here).
 - `feat/us11-meeting-summary`, `feat/sub-1.10-docs-refresh`, `fix/tenant-scope-leak`, `docs/standards-refresh`.
 
 ### Commits
@@ -389,29 +389,29 @@ Conventional Commits:
 
 ### PRs
 
-Cada PR contém:
+Each PR contains:
 
-- Story/issue relacionada (ou Sub-fase X.Y se for tarefa estrutural).
-- O que mudou (resumo de 2-3 linhas).
-- Como foi testado.
-- Riscos de segurança/multi-tenant (mesmo que seja "nenhum, mudança visual").
-- Screenshots quando for UI.
+- The related story/issue (or Sub-phase X.Y if it is a structural task).
+- What changed (2-3 line summary).
+- How it was tested.
+- Security/multi-tenant risks (even if it is "none, visual change").
+- Screenshots when it is UI.
 
 ---
 
-## 11. Uso de IA no projeto
+## 11. Use of AI in the project
 
-### Antes de pedir código
+### Before asking for code
 
-Forneça ao agente:
+Provide the agent with:
 
-- Story ID do backlog (ou Sub-fase).
-- Arquivos relevantes ancorados (`path:linha` quando aplicável).
-- Escopo do que pode mudar.
-- Critério de aceite.
-- Comando de teste esperado (`mvn test`, `pytest -q`, etc.).
+- The backlog Story ID (or Sub-phase).
+- Relevant anchored files (`path:line` where applicable).
+- The scope of what may change.
+- The acceptance criteria.
+- The expected test command (`mvn test`, `pytest -q`, etc.).
 
-### Prompt recomendado
+### Recommended prompt
 
 ```text
 Você está no projeto NORA. Leia CLAUDE.md e docs/engineering/standards.md.
@@ -421,93 +421,93 @@ Adicione testes e explique como validar.
 Ancore cada afirmação técnica em path:linha ou ADR.
 ```
 
-### Divisão de modelos
+### Model split
 
-- **Modelos Opus**: arquitetura, revisão de segurança, modelagem de dados, refatorações críticas, desenho de contratos, ADRs.
-- **Modelos Sonnet**: implementação focada, testes, componentes de UI, CRUD, fixtures, documentação localizada.
+- **Opus models**: architecture, security review, data modeling, critical refactors, contract design, ADRs.
+- **Sonnet models**: focused implementation, tests, UI components, CRUD, fixtures, localized documentation.
 
 ---
 
-## 12. ADRs como referência
+## 12. ADRs as reference
 
-Decisões arquiteturais duráveis ficam em `docs/adr/NNNN-titulo.md`. Toda nova feature que tome decisão de difícil reversão (banco, framework, modelo de tenancy, formato de IA) **deve** criar ADR.
+Durable architectural decisions live in `docs/adr/NNNN-titulo.md`. Every new feature that makes a hard-to-reverse decision (database, framework, tenancy model, AI format) **must** create an ADR.
 
-O índice canônico e sempre atualizado dos ADRs está em **`docs/adr/README.md`** (fonte única de verdade); a tabela abaixo é um resumo de conveniência:
+The canonical and always up-to-date index of the ADRs is in **`docs/adr/README.md`** (single source of truth); the table below is a convenience summary:
 
-| ID | Decisão | Status |
+| ID | Decision | Status |
 |---|---|---|
-| 0001 | Monorepo com pastas por aplicação/serviço | aceito |
-| 0002 | Multi-tenancy: filtro de app no MVP, RLS em produção | aceito |
-| 0003 | Saída do LLM via JSON Schema strict obrigatório | aceito |
-| 0004 | Estratégia de provider LLM (agnóstica) | aceito |
-| 0005 | Productivity Score (opt-in por reunião) | aceito |
-| 0006 | Customer Confidence + Account Health | aceito (persistência: ADR 0015) |
-| 0007 | IAM AWS-style (Root + Users + Groups + Policies) | aceito |
-| 0008 | Desktop com Tauri 2 + sidecar Python | aceito |
-| 0009 | Speech Token Broker (Azure Speech credenciais) | aceito |
-| 0010 | Package `nlp-baseline` para TF-IDF PT-BR | aceito |
-| 0011 | Invite flow + corporate domain | aceito |
-| 0012 | PII PERSON_NAME (BR no MVP, NER pós) | aceito |
-| 0013 | Frontend CSS strategy (Tailwind cru, sem shadcn) | proposto (Design refina) |
-| 0014 | Defer post-MVP scope (US deferidas explicitamente) | aceito |
-| 0015 | Customer Confidence persistência mínima na Sub-fase 1.11 | aceito |
-| 0016 | Production-readiness backlog (Sub-fase 1.12) | proposto |
-| 0017 | License AGPL-3.0 | aceito |
-| 0018 | Test coverage targets por área crítica | aceito |
-| 0019 | Tenant isolation defense-in-depth (RLS + FK composta) | aceito |
-| 0020 | Refresh-token rotation + reuse detection | aceito |
-| 0021 | Soft-delete em entidades tenant-owned | aceito |
-| 0022 | Banco de plataforma separado + 2º datasource (control plane) | aceito |
-| 0023 | Identidade de operador (platform admin) separada do IAM por-tenant | aceito (Easy Auth substituído por ADR 0025) |
-| 0024 | Catálogo de modelos dinâmico + router por modalidade | aceito |
-| 0025 | Identidade de operador v2: Cloudflare Tunnel + Access | aceito |
-| 0026 | RLS completa, provisionamento de role versionado e cutover | parcialmente substituído por 0028 |
-| 0027 | Branch protection da `main` + CI gate obrigatório | aceito |
-| 0028 | RLS enforcement auth-aware: escopo por dado e cutover | aceito |
-| 0029 | LGPD operacional: direito ao esquecimento + retenção | aceito |
+| 0001 | Monorepo with folders per application/service | accepted |
+| 0002 | Multi-tenancy: app filter in the MVP, RLS in production | accepted |
+| 0003 | LLM output via mandatory strict JSON Schema | accepted |
+| 0004 | LLM provider strategy (agnostic) | accepted |
+| 0005 | Productivity Score (opt-in per meeting) | accepted |
+| 0006 | Customer Confidence + Account Health | accepted (persistence: ADR 0015) |
+| 0007 | AWS-style IAM (Root + Users + Groups + Policies) | accepted |
+| 0008 | Desktop with Tauri 2 + Python sidecar | accepted |
+| 0009 | Speech Token Broker (Azure Speech credentials) | accepted |
+| 0010 | `nlp-baseline` package for PT-BR TF-IDF | accepted |
+| 0011 | Invite flow + corporate domain | accepted |
+| 0012 | PII PERSON_NAME (BR in the MVP, NER later) | accepted |
+| 0013 | Frontend CSS strategy (raw Tailwind, no shadcn) | proposed (Design to refine) |
+| 0014 | Defer post-MVP scope (explicitly deferred USs) | accepted |
+| 0015 | Customer Confidence minimal persistence in Sub-phase 1.11 | accepted |
+| 0016 | Production-readiness backlog (Sub-phase 1.12) | proposed |
+| 0017 | License AGPL-3.0 | accepted |
+| 0018 | Test coverage targets per critical area | accepted |
+| 0019 | Tenant isolation defense-in-depth (RLS + composite FK) | accepted |
+| 0020 | Refresh-token rotation + reuse detection | accepted |
+| 0021 | Soft-delete on tenant-owned entities | accepted |
+| 0022 | Separate platform database + 2nd datasource (control plane) | accepted |
+| 0023 | Operator identity (platform admin) separate from per-tenant IAM | accepted (Easy Auth replaced by ADR 0025) |
+| 0024 | Dynamic model catalog + router by modality | accepted |
+| 0025 | Operator identity v2: Cloudflare Tunnel + Access | accepted |
+| 0026 | Full RLS, versioned role provisioning and cutover | partially superseded by 0028 |
+| 0027 | Branch protection on `main` + mandatory CI gate | accepted |
+| 0028 | Auth-aware RLS enforcement: scope by data and cutover | accepted |
+| 0029 | Operational LGPD: right to be forgotten + retention | accepted |
 
-Quando criar ADR:
+When to create an ADR:
 
-- Decisão difícil de reverter (banco, framework, modelo de tenancy, formato de IA).
-- Decisão que vai surpreender quem chegar depois.
-- Decisão tomada após descartar pelo menos **uma alternativa real**.
+- A decision that is hard to reverse (database, framework, tenancy model, AI format).
+- A decision that will surprise whoever arrives later.
+- A decision taken after discarding at least **one real alternative**.
 
 ---
 
-## 13. Notas técnicas relevantes (atualizações pós-MVP inicial)
+## 13. Relevant technical notes (post-initial-MVP updates)
 
-### PII Shield com PERSON_NAME (ADR 0012)
+### PII Shield with PERSON_NAME (ADR 0012)
 
-A versão atual cobre EMAIL, PHONE, CPF, CNPJ, CREDIT_CARD **e** PERSON_NAME (heurísticas + lista BR de ~270 nomes + negative list de ~80 termos). ADDRESS está fora de escopo MVP.
+The current version covers EMAIL, PHONE, CPF, CNPJ, CREDIT_CARD **and** PERSON_NAME (heuristics + a BR list of ~270 names + a negative list of ~80 terms). ADDRESS is out of MVP scope.
 
-Implementação: `services/nlp-worker/src/nora_nlp/services/pii_shield.py`.
+Implementation: `services/nlp-worker/src/nora_nlp/services/pii_shield.py`.
 
-### Refresh tokens stateful (Sub-fase 1.3 / PR #59)
+### Stateful refresh tokens (Sub-phase 1.3 / PR #59)
 
-Login emite dois cookies HttpOnly:
+Login issues two HttpOnly cookies:
 
 - `nora_access` — JWT (15 min), `SameSite=Lax`, `Path=/`.
-- `nora_refresh` — UUID opaco (30 dias), `SameSite=Strict`, `Path=/auth`. Persistido como SHA-256 hash em `refresh_tokens` (V011).
+- `nora_refresh` — opaque UUID (30 days), `SameSite=Strict`, `Path=/auth`. Persisted as a SHA-256 hash in `refresh_tokens` (V011).
 
-`POST /auth/refresh` rotaciona o access; `POST /auth/logout` revoga o refresh do cookie.
+`POST /auth/refresh` rotates the access token; `POST /auth/logout` revokes the refresh token from the cookie.
 
 ### Productivity Score & Customer Confidence
 
-- **Productivity Score (ADR 0005, Sub-fase 1.8)**: persistido (V012). Opt-in por reunião via `MeetingGoal`. UI renderiza `ProductivityScoreCard` apenas quando `productivity` está presente.
-- **Customer Confidence (ADR 0006/0015)**: **implementado full-stack** em **#148** (2026-05-21). Worker emite o bloco; backend persiste (V017) com trend autoritativo por conta (`CustomerConfidenceService`); `GET /meetings/{id}` retorna `customerConfidence`; UI `CustomerConfidenceCard` no MeetingDetail. Account Health agregado (US50-51) segue deferido (ADR 0014).
+- **Productivity Score (ADR 0005, Sub-phase 1.8)**: persisted (V012). Opt-in per meeting via `MeetingGoal`. The UI renders `ProductivityScoreCard` only when `productivity` is present.
+- **Customer Confidence (ADR 0006/0015)**: **implemented full-stack** in **#148** (2026-05-21). The worker emits the block; the backend persists it (V017) with an authoritative per-account trend (`CustomerConfidenceService`); `GET /meetings/{id}` returns `customerConfidence`; the `CustomerConfidenceCard` UI is in MeetingDetail. Aggregated Account Health (US50-51) remains deferred (ADR 0014).
 
 ### Speech Token Broker (ADR 0009)
 
-Desktop chama `POST /speech/token` (autenticado JWT) e recebe token efêmero (~9 min) emitido pelo backend usando `AZURE_SPEECH_KEY` do Key Vault. Desktop **nunca** vê a key. Rate limit 6 tokens/min/user (Bucket4j).
+The desktop calls `POST /speech/token` (JWT-authenticated) and receives an ephemeral token (~9 min) issued by the backend using `AZURE_SPEECH_KEY` from Key Vault. The desktop **never** sees the key. Rate limit of 6 tokens/min/user (Bucket4j).
 
-### CI web: alinhado em `npm` (resolvido 2026-05-21)
+### Web CI: aligned on `npm` (resolved 2026-05-21)
 
-O job `web` do `.github/workflows/ci.yml` usa **`npm ci`** (cache npm via `package-lock.json`), consistente com o `apps/web/Dockerfile` (`npm ci` → imagem deployada), o `Makefile` e o `package-lock.json` commitado. `apps/web` é projeto **npm** (não há `pnpm-lock.yaml` nem campo `packageManager`).
+The `web` job in `.github/workflows/ci.yml` uses **`npm ci`** (npm cache via `package-lock.json`), consistent with `apps/web/Dockerfile` (`npm ci` → deployed image), the `Makefile` and the committed `package-lock.json`. `apps/web` is an **npm** project (there is no `pnpm-lock.yaml` nor a `packageManager` field).
 
-Histórico: até 2026-05-21 o job usava `pnpm install --no-frozen-lockfile`, que **ignorava** o `package-lock.json` e resolvia uma árvore de dependências própria — ou seja, o CI validava algo potencialmente diferente do artifact que o Dockerfile builda e deploya. A doc anterior afirmava falsamente que "PR #73 unificou" para npm. Corrigido alinhando o CI ao npm.
+History: until 2026-05-21 the job used `pnpm install --no-frozen-lockfile`, which **ignored** `package-lock.json` and resolved its own dependency tree — that is, CI validated something potentially different from the artifact the Dockerfile builds and deploys. The previous doc falsely claimed that "PR #73 unified" it on npm. Fixed by aligning CI to npm.
 
 ---
 
-## 14. Qualidade esperada
+## 14. Expected quality
 
-A régua é alta: código limpo, modular, testável e pronto para evoluir. Uso de IA acelera implementação mas **não substitui** arquitetura, contratos claros e revisão humana. A NORA deve parecer um produto real desde a primeira demo funcional.
+The bar is high: clean, modular, testable code that is ready to evolve. Using AI speeds up implementation but **does not replace** architecture, clear contracts and human review. NORA must look like a real product from the very first working demo.

@@ -3,18 +3,18 @@
 /**
  * CorporateDomainCard (US32)
  * -------------------------------------------------------------------------
- * Bloco de configuracao do dominio corporativo do tenant. Renderizado no topo
- * da pagina settings/iam. Exibe estado atual e permite ao Root:
+ * Configuration block for the tenant corporate domain. Rendered at the top of
+ * the settings/iam page. Shows the current state and lets the Root:
  *
- * - Setar um dominio (ex: `acme.com`) para restringir convites futuros (US06).
- * - Limpar a restricao (envia `null`), liberando convites para qualquer dominio.
+ * - Set a domain (e.g.: `acme.com`) to restrict future invites (US06).
+ * - Clear the restriction (sends `null`), allowing invites for any domain.
  *
- * Regras importantes:
- * - Validacao client-side e UX-only — backend e fonte da verdade (ADR 0011).
- * - Em 422 (`TENANT_DOMAIN_INVALID`), mostra mensagem amigavel; outros erros
- *   sao mostrados crus.
- * - Skeleton enquanto carrega; mensagem clara em falha de fetch.
- * - Feedback inline (sem toast — projeto nao usa lib de toasts no MVP).
+ * Important rules:
+ * - Client-side validation is UX-only — the backend is the source of truth (ADR 0011).
+ * - On 422 (`TENANT_DOMAIN_INVALID`), shows a friendly message; other errors
+ *   are shown raw.
+ * - Skeleton while loading; clear message on fetch failure.
+ * - Inline feedback (no toast — the project does not use a toast lib in the MVP).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -26,22 +26,22 @@ import {
 } from "@/lib/api/client";
 
 /**
- * Regex de dominio (case-insensitive). Aceita "acme.com", "sub.acme.com.br".
- * Espelha a expectativa do backend (Tenant.isValidEmailDomain): pelo menos
- * dois labels separados por ponto, cada label comecando e terminando com
- * alfanumerico, hifens permitidos no meio.
+ * Domain regex (case-insensitive). Accepts "acme.com", "sub.acme.com.br".
+ * Mirrors the backend expectation (Tenant.isValidEmailDomain): at least
+ * two labels separated by a dot, each label starting and ending with an
+ * alphanumeric, hyphens allowed in the middle.
  *
- * Backend e fonte da verdade — se passar daqui mas o backend rejeitar (422),
- * exibimos a mensagem do backend.
+ * The backend is the source of truth — if it gets past here but the backend
+ * rejects it (422), we show the backend message.
  */
 const DOMAIN_REGEX = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i;
 
 /**
- * Valida o dominio com regras minimas (UX-only — backend re-valida).
+ * Validates the domain with minimal rules (UX-only — the backend re-validates).
  *
- * Retorna `null` quando ok ou uma mensagem de erro pronta para exibir.
- * Optamos por validacao manual ao inves de Zod aqui para nao puxar o bundle
- * de zod num componente pequeno — nenhum outro lugar do app importa zod hoje.
+ * Returns `null` when ok or an error message ready to display.
+ * We went with manual validation instead of Zod here so as not to pull the zod
+ * bundle into a small component — nowhere else in the app imports zod today.
  */
 function validateDomain(raw: string): string | null {
   const trimmed = raw.trim();
@@ -83,7 +83,7 @@ export default function CorporateDomainCard() {
     void load();
   }, [load]);
 
-  // Limpa mensagens transientes ao editar.
+  // Clears transient messages while editing.
   function onInputChange(value: string) {
     setInput(value);
     if (formError) setFormError(null);
@@ -105,7 +105,7 @@ export default function CorporateDomainCard() {
       );
       setStatus("loaded");
     } catch (err) {
-      // Backend valida tambem (defesa em profundidade). 422 -> TENANT_DOMAIN_INVALID.
+      // The backend validates too (defense in depth). 422 -> TENANT_DOMAIN_INVALID.
       if (err instanceof ApiRequestError && err.status === 422) {
         setFormError("Dominio invalido. Use formato como `acme.com.br`.");
       } else if (err instanceof ApiRequestError) {
@@ -129,8 +129,8 @@ export default function CorporateDomainCard() {
       setFormError(validationError);
       return;
     }
-    // Normaliza para lowercase no client (backend tambem normaliza, mas
-    // refletir aqui da feedback imediato).
+    // Normalize to lowercase on the client (the backend normalizes too, but
+    // reflecting it here gives immediate feedback).
     void persist({ allowedEmailDomain: trimmed.toLowerCase() });
   }
 

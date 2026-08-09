@@ -46,10 +46,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Fluxo end-to-end do NORA Flows (Fase 0 do GOAL): upload → análise COMPLETED → evento pós-commit →
- * WorkflowEngine → ação send_email executada de verdade (capturada pelo {@link
- * RecordingEmailSender}) → histórico de execução com log. Também cobre CRUD, validação de
- * definition, "Testar" síncrono, condições e isolamento de tenant.
+ * End-to-end NORA Flows path (GOAL Phase 0): upload → COMPLETED analysis → post-commit event →
+ * WorkflowEngine → send_email action actually executed (captured by {@link RecordingEmailSender}) →
+ * execution history with log. Also covers CRUD, definition validation, synchronous "Testar",
+ * conditions and tenant isolation.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -82,7 +82,7 @@ class WorkflowFlowIntegrationTest {
         EMAILS.workflowEmails.clear();
     }
 
-    /* =========================== cenário-âncora =========================== */
+    /* =========================== anchor scenario =========================== */
 
     @Test
     void uploadDisparaWorkflow_enviaEmailEGravaExecucao() throws Exception {
@@ -139,7 +139,7 @@ class WorkflowFlowIntegrationTest {
 
         String meetingId = uploadMeeting(token, "Reunião sem fluxo");
         runAnalysis(meetingId, token);
-        // Janela generosa pro listener async ter rodado se fosse rodar.
+        // Generous window for the async listener to have run if it were going to.
         Thread.sleep(1500);
 
         JsonNode executions =
@@ -174,7 +174,8 @@ class WorkflowFlowIntegrationTest {
                         .read(HttpStatus.CREATED);
         String workflowId = created.get("id").asText();
 
-        // Upload sem goal => análise sem productivity => condição "score < 70" NÃO satisfeita.
+        // Upload without goal => analysis without productivity => condition "score < 70"
+        // NOT satisfied.
         String meetingId = uploadMeeting(token, "Reunião sem goal");
         runAnalysis(meetingId, token);
 
@@ -186,7 +187,7 @@ class WorkflowFlowIntegrationTest {
         assertThat(EMAILS.workflowEmails).isEmpty();
     }
 
-    /* =========================== testar (síncrono) =========================== */
+    /* =========================== "Testar" (synchronous) =========================== */
 
     @Test
     void testar_comReuniaoAnalisada_usaDadosReais() throws Exception {
@@ -195,7 +196,7 @@ class WorkflowFlowIntegrationTest {
         String meetingId = uploadMeeting(token, "Kickoff Beta");
         runAnalysis(meetingId, token);
 
-        // Workflow criado DEPOIS da análise: a única execução vem do POST /test.
+        // Workflow created AFTER the analysis: the only execution comes from POST /test.
         JsonNode created =
                 postJson(
                                 "/workflows",
@@ -215,7 +216,7 @@ class WorkflowFlowIntegrationTest {
         assertThat(EMAILS.workflowEmails).hasSize(1);
         assertThat(EMAILS.workflowEmails.get(0).subject()).contains("Kickoff Beta");
 
-        // Execução do teste fica persistida no histórico.
+        // The test execution stays persisted in the history.
         JsonNode executions =
                 authGet("/workflows/" + workflowId + "/executions", token).read(HttpStatus.OK);
         assertThat(executions.size()).isEqualTo(1);
@@ -242,7 +243,7 @@ class WorkflowFlowIntegrationTest {
         assertThat(EMAILS.workflowEmails).hasSize(1);
     }
 
-    /* =========================== CRUD + validação =========================== */
+    /* =========================== CRUD + validation =========================== */
 
     @Test
     void crud_criaAtualizaDeleta() throws Exception {
@@ -290,7 +291,7 @@ class WorkflowFlowIntegrationTest {
     void definitionInvalida_retorna422() throws Exception {
         String token = signupAndLogin("flows-invalid@nora.dev", "SenhaForte123", "Invalid");
 
-        // Sem ação ligada ao gatilho.
+        // No action wired to the trigger.
         String semAcao =
                 """
                 {"nodes":[{"id":"t1","kind":"trigger","type":"meeting.analysis_completed"}],
@@ -302,7 +303,7 @@ class WorkflowFlowIntegrationTest {
         assertThat(mapper.readTree(resp.getBody()).get("code").asText())
                 .isEqualTo("WORKFLOW_INVALID_DEFINITION");
 
-        // send_email sem destinatário.
+        // send_email with no recipient.
         String semDestinatario =
                 """
                 {"nodes":[
@@ -315,7 +316,7 @@ class WorkflowFlowIntegrationTest {
         assertThat(resp2.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
     }
 
-    /* =========================== isolamento de tenant =========================== */
+    /* =========================== tenant isolation =========================== */
 
     @Test
     void crossTenant_retorna404() throws Exception {
@@ -415,9 +416,9 @@ class WorkflowFlowIntegrationTest {
     }
 
     /**
-     * Roda a análise SÍNCRONA (auto-dispatch é desligado no profile de teste, igual aos demais
-     * ITs). O evento pós-análise → listener async → engine continua assíncrono de verdade — por
-     * isso o {@link #awaitExecutions} polla.
+     * Runs the analysis SYNCHRONOUSLY (auto-dispatch is turned off in the test profile, same as the
+     * other ITs). The post-analysis event → async listener → engine is still genuinely asynchronous
+     * — that is why {@link #awaitExecutions} polls.
      */
     private void runAnalysis(String meetingId, String token) throws Exception {
         JsonNode detail = authGet("/meetings/" + meetingId, token).read(HttpStatus.OK);
@@ -522,7 +523,7 @@ class WorkflowFlowIntegrationTest {
         }
     }
 
-    /** Captura e-mails de workflow em memória — prova o envio real sem rede. */
+    /** Captures workflow e-mails in memory — proves the real send without network. */
     static class RecordingEmailSender implements EmailSender {
         record Sent(String to, String subject, String html) {}
 
@@ -557,7 +558,7 @@ class WorkflowFlowIntegrationTest {
             return EMAILS;
         }
 
-        /** Stub determinista do worker com action items (HIGH) pro e-mail/condições terem dados. */
+        /** Deterministic worker stub with action items (HIGH) so e-mail/conditions have data. */
         @Bean
         @Primary
         NlpWorkerClient stubWorker() {

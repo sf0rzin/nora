@@ -1,12 +1,12 @@
 /**
- * Camada de dados do console operador.
+ * Data layer of the operator console.
  *
- * Reads server-side contra a API Spring (/admin/platform/*), enviando o token de bridge
- * (X-Internal-Token) e — nas mutações — o e-mail do operador (X-Operator-Email, da identidade
- * Cloudflare Access) pra auditoria. Mocks só quando NORA_ADMIN_USE_MOCKS != "false" (dev local).
+ * Server-side reads against the Spring API (/admin/platform/*), sending the bridge token
+ * (X-Internal-Token) and — on mutations — the operator's e-mail (X-Operator-Email, from the
+ * Cloudflare Access identity) for auditing. Mocks only when NORA_ADMIN_USE_MOCKS != "false" (local dev).
  *
- * Nota de contrato: o ModelResponse do backend usa `displayName`/`priceInputPerMTok`; o contrato
- * do front usa `label`/`inputCostPer1M`. `toModel` é a camada anticorrupção que reconcilia os dois.
+ * Contract note: the backend's ModelResponse uses `displayName`/`priceInputPerMTok`; the front-end
+ * contract uses `label`/`inputCostPer1M`. `toModel` is the anticorruption layer that reconciles the two.
  */
 import type {
   BusinessSnapshot,
@@ -31,7 +31,7 @@ const USE_MOCKS = process.env.NORA_ADMIN_USE_MOCKS !== "false";
 const API_BASE_URL = (process.env.PLATFORM_API_BASE_URL ?? "http://localhost:8080").replace(/\/$/, "");
 const INTERNAL_TOKEN = process.env.PLATFORM_INTERNAL_TOKEN ?? "";
 
-// Shape cru do ModelResponse do backend (nomes divergem do contrato do front).
+// Raw shape of the backend's ModelResponse (names diverge from the front-end contract).
 interface RawModel {
   id: string;
   provider: string;
@@ -92,9 +92,9 @@ export async function getCost(from?: string, to?: string): Promise<CostSummary> 
   const raw = await platformGet<Partial<CostSummary> | null>(
     `/admin/platform/telemetry/cost?${qs.toString()}`,
   );
-  // Telemetria vazia (plataforma recém-criada) → a API agrega SUM de zero linhas e pode devolver
-  // null/ausente. Normaliza pra um CostSummary completo: o console mostra "$0.00 / 0 chamadas" em
-  // vez de crashar (toFixed em undefined).
+  // Empty telemetry (freshly created platform) → the API aggregates a SUM over zero rows and may return
+  // null/absent. Normalizes to a complete CostSummary: the console shows "$0.00 / 0 chamadas" instead
+  // of crashing (toFixed on undefined).
   return {
     from: raw?.from ?? from ?? "",
     to: raw?.to ?? to ?? "",
@@ -104,7 +104,7 @@ export async function getCost(from?: string, to?: string): Promise<CostSummary> 
   };
 }
 
-/** Saúde do sistema (App Insights via backend). `source: "unavailable"` quando sem credenciais. */
+/** System health (App Insights via backend). `source: "unavailable"` when there are no credentials. */
 export async function getHealth(): Promise<HealthSnapshot> {
   if (USE_MOCKS) return MOCK_HEALTH;
   const raw = await platformGet<Partial<HealthSnapshot> | null>(
@@ -119,7 +119,7 @@ export async function getHealth(): Promise<HealthSnapshot> {
   };
 }
 
-/** Métricas de negócio do banco primário. `enabled: false` quando desligado por flag. */
+/** Business metrics from the primary database. `enabled: false` when turned off by flag. */
 export async function getBusiness(from?: string, to?: string): Promise<BusinessSnapshot> {
   if (USE_MOCKS) return MOCK_BUSINESS;
   const qs = new URLSearchParams();
@@ -141,7 +141,7 @@ export async function getBusiness(from?: string, to?: string): Promise<BusinessS
   };
 }
 
-/** Resolve o modelo de uma binding (helper de UI). */
+/** Resolves the model of a binding (UI helper). */
 export function modelOf(models: LlmModel[], modelId: string): LlmModel | undefined {
   return models.find((m) => m.id === modelId);
 }
@@ -149,7 +149,7 @@ export function modelOf(models: LlmModel[], modelId: string): LlmModel | undefin
 export const ALL_SERVICES: ServiceKey[] = ["chat", "analysis", "multimodal"];
 
 // --------------------------------------------------------------------------- //
-// Mutações (server-side; exigem o e-mail do operador pra auditoria no backend)
+// Mutations (server-side; require the operator's e-mail for auditing in the backend)
 // --------------------------------------------------------------------------- //
 
 export interface NewModelInput {
@@ -164,7 +164,7 @@ export interface NewModelInput {
   priceCachedInputPerMTok?: number | null;
 }
 
-/** Troca o modelo (e enabled) de um serviço em runtime. PUT /admin/platform/config/{service}. */
+/** Switches a service's model (and enabled) at runtime. PUT /admin/platform/config/{service}. */
 export async function bindService(
   service: ServiceKey,
   modelId: string,
@@ -175,19 +175,19 @@ export async function bindService(
   await platformSend("PUT", `/admin/platform/config/${service}`, operator, { modelId, enabled });
 }
 
-/** Remove um modelo do catálogo. DELETE /admin/platform/models/{id}. */
+/** Removes a model from the catalog. DELETE /admin/platform/models/{id}. */
 export async function removeModel(id: string, operator: string): Promise<void> {
   if (USE_MOCKS) return;
   await platformSend("DELETE", `/admin/platform/models/${encodeURIComponent(id)}`, operator);
 }
 
-/** Cria um modelo no catálogo. POST /admin/platform/models. */
+/** Creates a model in the catalog. POST /admin/platform/models. */
 export async function createModel(input: NewModelInput, operator: string): Promise<void> {
   if (USE_MOCKS) return;
   await platformSend("POST", "/admin/platform/models", operator, { ...input, enabled: true });
 }
 
-// ---- transporte real (ativado quando NORA_ADMIN_USE_MOCKS=false) ----
+// ---- real transport (enabled when NORA_ADMIN_USE_MOCKS=false) ----
 
 async function platformGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {

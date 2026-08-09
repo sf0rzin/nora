@@ -1,12 +1,12 @@
-"""Tokenizacao PT-BR baseada em normalize + split simples + stopword filter.
+"""PT-BR tokenization based on normalize + simple split + stopword filter.
 
-Como o pipeline ja normaliza acentos por padrao, a tokenizacao casa com a
-versao *normalizada* das stopwords PT-BR para evitar falsos-negativos.
+Since the pipeline already normalizes accents by default, tokenization matches the
+*normalized* version of the PT-BR stopwords to avoid false negatives.
 
-Tokenizacao deliberadamente simples (split por whitespace) --- esse modulo
-serve como pre-processamento generico; quem precisa de ngramas usa o
-``TfidfVectorizer`` interno do ``TfidfBaseline`` (que tem ngram_range
-proprio e ja faz tokenizacao internamente).
+Deliberately simple tokenization (split on whitespace) --- this module
+serves as generic preprocessing; whoever needs ngrams uses the
+``TfidfVectorizer`` internal to ``TfidfBaseline`` (which has its own
+ngram_range and already tokenizes internally).
 """
 
 from __future__ import annotations
@@ -23,20 +23,20 @@ def tokenize_ptbr(
     remove_digits: bool = False,
     min_token_len: int = 2,
 ) -> list[str]:
-    """Tokeniza texto PT-BR aplicando normalizacao + split + filtragem.
+    """Tokenizes PT-BR text applying normalization + split + filtering.
 
     Args:
-        text: texto bruto.
-        remove_stopwords: filtra stopwords PT-BR (default True). Usa a lista
-            normalizada ou nao em funcao de ``strip_accents``.
-        strip_accents: remove acentos durante a normalizacao (default True).
-        remove_digits: remove digitos (default False --- numeros podem ser
-            sinal relevante em transcricoes de venda, ex.: "R$ 500 mil").
-        min_token_len: descarta tokens menores que esse tamanho (default 2,
-            para eliminar ruidos tipo letras soltas pos-quebra de palavra).
+        text: raw text.
+        remove_stopwords: filters PT-BR stopwords (default True). Uses the
+            normalized list or not depending on ``strip_accents``.
+        strip_accents: removes accents during normalization (default True).
+        remove_digits: removes digits (default False --- numbers can be a
+            relevant signal in sales transcripts, e.g.: "R$ 500 mil").
+        min_token_len: discards tokens shorter than this length (default 2,
+            to eliminate noise like stray letters after a word break).
 
     Returns:
-        Lista ordenada de tokens (preserva a ordem de ocorrencia).
+        Ordered list of tokens (preserves the order of occurrence).
     """
     if not text:
         return []

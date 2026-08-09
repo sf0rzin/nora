@@ -11,16 +11,16 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Criar issue no GitHub" do NORA Flows — issues REAIS no repositório informado, com a conta
- * GitHub conectada (OAuth). Params: {@code repo} (obrigatório, formato {@code owner/nome}) e {@code
- * title} opcional com placeholders ({{meeting.title}} etc.).
+ * NORA Flows "Criar issue no GitHub" action — REAL issues in the given repository, with the
+ * connected GitHub account (OAuth). Params: {@code repo} (required, {@code owner/nome} format) and
+ * an optional {@code title} with placeholders ({{meeting.title}} etc.).
  *
- * <p>Comportamento default (sem {@code title}): UMA issue por action item da reunião (título do
- * item; corpo com reunião/responsável/prioridade — o contexto do Flows não expõe sourceQuote nem
- * dueDate). Sem action items, uma issue única com o resumo. Com {@code title} custom: uma issue
- * única com esse título. Todas com a label {@code nora}.
+ * <p>Default behavior (no {@code title}): ONE issue per meeting action item (item title; body with
+ * meeting/assignee/priority — the Flows context exposes neither sourceQuote nor dueDate). With no
+ * action items, a single issue with the summary. With a custom {@code title}: a single issue with
+ * that title. All of them with the {@code nora} label.
  *
- * <p>Falha PROPAGA (contrato do {@link ActionExecutor}) — o engine grava FAILED no log.
+ * <p>A failure PROPAGATES ({@link ActionExecutor} contract) — the engine writes FAILED in the log.
  */
 @Component
 public class GitHubCreateIssueAction implements ActionExecutor {
@@ -69,7 +69,7 @@ public class GitHubCreateIssueAction implements ActionExecutor {
         return count + (count == 1 ? " issue criada" : " issues criadas") + " no GitHub em " + repo;
     }
 
-    /** Corpo da issue de um action item: reunião, responsável e prioridade + link no NORA. */
+    /** Body of an action item issue: meeting, assignee and priority + link in NORA. */
     static String itemBody(WorkflowEventContext.ActionItemView item, WorkflowEventContext ctx) {
         StringBuilder body =
                 new StringBuilder("**Reunião:** ").append(nullSafe(ctx.meetingTitle()));
@@ -83,7 +83,7 @@ public class GitHubCreateIssueAction implements ActionExecutor {
         return body.toString();
     }
 
-    /** Corpo da issue única (title custom ou reunião sem action items): resumo + link. */
+    /** Body of the single issue (custom title or meeting with no action items): summary + link. */
     static String summaryBody(WorkflowEventContext ctx) {
         StringBuilder body =
                 new StringBuilder("**Reunião:** ").append(nullSafe(ctx.meetingTitle()));

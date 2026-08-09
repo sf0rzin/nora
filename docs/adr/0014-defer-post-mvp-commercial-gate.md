@@ -1,81 +1,81 @@
 # 0014 — Defer post-MVP commercial gate
 
-- Status: aceito
-- Data: 2026-05-14
-- Decisores: Stratfy (PO), Tech Lead, Arquiteto Design
+- Status: accepted
+- Date: 2026-05-14
+- Deciders: Stratfy (PO), Tech Lead, Design Architect
 
-## Contexto
+## Context
 
-O backlog declara 57 stories (US01-US51 numeradas + 6 condicionais). Status real após Sub-fase 1.9 (deploy real Azure, 2026-05-13):
+The backlog declares 57 stories (US01-US51 numbered + 6 conditional). Actual status after Sub-phase 1.9 (real Azure deploy, 2026-05-13):
 
 - **28 DONE**
 - **5 PARTIAL**
-- **10 MISSING** (5 dos quais marcados W = Won't Have v1 no backlog original)
-- 9 categorizadas Should/Could/Won't
+- **10 MISSING** (5 of which are marked W = Won't Have v1 in the original backlog)
+- 9 categorized as Should/Could/Won't
 
-Velocidade de 10 sub-fases em ~10 dias agentic é insustentável por mais 10 sub-fases sem queima ou perda de foco. A revisão do Arquiteto Design no audit pré-Sub-fase 1.10 explicitou o risco:
+A pace of 10 sub-phases in ~10 agentic days is unsustainable for another 10 sub-phases without burnout or loss of focus. The Design Architect's review in the pre-Sub-phase 1.10 audit made the risk explicit:
 
-> "Pare de adicionar US. Backlog declara v1 fechada. Próximas sub-fases entregam só dentro do v1 declarado."
+> "Stop adding USs. The backlog declares v1 closed. The next sub-phases deliver only within the declared v1."
 
-3 planos do PO (memory `user_career.md`):
-- **Plano A** (TOTVS contrata): ~70% maduro, ~2 semanas pra demo-ready
-- **Plano B** (SaaS comercial): ~25%, exige co-founder de negócio
-- **Plano C** (LinkedIn/portfolio): já maduro
+The PO's 3 plans (memory `user_career.md`):
+- **Plan A** (TOTVS hires): ~70% mature, ~2 weeks to demo-ready
+- **Plan B** (commercial SaaS): ~25%, requires a business co-founder
+- **Plan C** (LinkedIn/portfolio): already mature
 
-Pasta `mcp/{calendar,tasks,crm}/` committed vazia projeta "incompleto" pra qualquer reviewer técnico que clone o repo.
+The `mcp/{calendar,tasks,crm}/` folder committed empty projects "incomplete" to any technical reviewer who clones the repo.
 
-## Decisão
+## Decision
 
-Declarar a **v1 do backlog fechada após Sub-fase 1.12 (Production Hardening)**. Lista de US explicitamente **deferidas** (não MISSING permanente, reativáveis com critério):
+Declare the backlog's **v1 closed after Sub-phase 1.12 (Production Hardening)**. List of USs explicitly **deferred** (not permanently MISSING, reactivatable under a criterion):
 
-| US | Title | Defer até | Quem decide reativar |
+| US | Title | Defer until | Who decides to reactivate |
 |---|---|---|---|
-| US05 | SSO Entra ID / SAML | Demo Plano A fechada OU 100 tenants Plano B | Stratfy (decisão comercial) |
-| US08 | Upload áudio/vídeo (Azure Speech upload) | Idem | Idem |
-| US15 | Busca semântica embeddings (AI Search) | Modelo de custo bater OU pitch FIAP justificar | Tech Lead (custo: AI Search Basic ~R$400/mês) |
-| US21 | Painel de tendências (Could) | Pós-demo Plano A | Arquiteto Design (valor UX) |
-| US25 | Export tarefas CSV/MD (Should) | Sub-fase 1.13+ | Tech Lead |
-| US33 | Métricas de uso do tenant (Should) | Plano B onboarding | Tech Lead |
-| US34 | Export relatório consolidado (Should) | Sub-fase 1.13+ | Tech Lead |
-| US41 | Templates de policy (Should) | Sub-fase 1.13+ | Tech Lead |
-| US43 | Simulador de policy (Should) | Sub-fase 1.13+ | Tech Lead |
-| US44 | Permission boundaries (Could) | Pós-demo Plano A | Tech Lead |
-| US47 | MCP project state (Won't) | Plano B integração | Stratfy |
-| US50 | Account Health Score agregado | Sub-fase 1.13+ (depois de US48-49 base estável via ADR 0015) | Tech Lead |
-| US51 | Alerta de mudança de banda | Sub-fase 1.13+ | Tech Lead |
+| US05 | SSO Entra ID / SAML | Plan A demo closed OR 100 Plan B tenants | Stratfy (commercial decision) |
+| US08 | Audio/video upload (Azure Speech upload) | Ditto | Ditto |
+| US15 | Semantic search with embeddings (AI Search) | Cost model adds up OR the FIAP pitch justifies it | Tech Lead (cost: AI Search Basic ~R$400/month) |
+| US21 | Trends panel (Could) | Post Plan A demo | Design Architect (UX value) |
+| US25 | Export tasks CSV/MD (Should) | Sub-phase 1.13+ | Tech Lead |
+| US33 | Tenant usage metrics (Should) | Plan B onboarding | Tech Lead |
+| US34 | Export consolidated report (Should) | Sub-phase 1.13+ | Tech Lead |
+| US41 | Policy templates (Should) | Sub-phase 1.13+ | Tech Lead |
+| US43 | Policy simulator (Should) | Sub-phase 1.13+ | Tech Lead |
+| US44 | Permission boundaries (Could) | Post Plan A demo | Tech Lead |
+| US47 | MCP project state (Won't) | Plan B integration | Stratfy |
+| US50 | Aggregated Account Health Score | Sub-phase 1.13+ (after the US48-49 base is stable via ADR 0015) | Tech Lead |
+| US51 | Band-change alert | Sub-phase 1.13+ | Tech Lead |
 
-**US48-49 (Customer Confidence base) tratadas separadamente em ADR 0015** — implementação mínima na 1.11.
+**US48-49 (Customer Confidence base) are handled separately in ADR 0015** — minimal implementation in 1.11.
 
-Pasta `mcp/{calendar,tasks,crm}/` removida da raiz do monorepo (ou movida pra `archive/mcp-future/` no `.gitignore`) — sinal visual de "incompleto" eliminado.
+The `mcp/{calendar,tasks,crm}/` folder is removed from the monorepo root (or moved to `archive/mcp-future/` in `.gitignore`) — the visual "incomplete" signal is eliminated.
 
-## Consequências
+## Consequences
 
-**Positivas:**
-- Backlog para de crescer durante a janela crítica pré-pitch (até 12/06)
-- Roadmap.md fica realista e priorizável
-- Stratfy e arquitetos focam em **polir o que existe** vs adicionar features que ninguém vê no MVP
-- Reviewers técnicos veem produto coerente, não "100 promessas inacabadas"
-- Plano C content tem foco (8 pegadinhas Azure, IAM AWS-style, PII BR, etc.) sem se diluir em "também tenho Y e Z"
+**Positive:**
+- The backlog stops growing during the critical pre-pitch window (until 12/06)
+- Roadmap.md becomes realistic and prioritizable
+- Stratfy and the architects focus on **polishing what exists** vs adding features nobody sees in the MVP
+- Technical reviewers see a coherent product, not "100 unfinished promises"
+- Plan C content has focus (8 Azure gotchas, AWS-style IAM, BR PII, etc.) without being diluted into "I also have Y and Z"
 
-**Negativas:**
-- Stratfy pode sentir tentação de "só essa eu adiciono" — disciplina precisa ser ativa
-- Se demo Plano A não fechar, lista de US deferidas precisa ser revisitada com clareza sobre quais reativar
-- Risco de "scope creep silencioso" — fixes que viram features. Mitigação: PR review pergunta "isso está no escopo da sub-fase declarada?"
+**Negative:**
+- Stratfy may feel the temptation of "just this one I'll add" — discipline needs to be active
+- If the Plan A demo does not close, the list of deferred USs needs to be revisited with clarity about which ones to reactivate
+- Risk of "silent scope creep" — fixes that turn into features. Mitigation: PR review asks "is this within the scope of the declared sub-phase?"
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Continuar expandindo backlog** — rejeitado pela razão do contexto (velocidade insustentável + fadiga da equipe + sinal visual "incompleto")
-2. **Deletar US deferidas do backlog** — rejeitado por perder rastreabilidade. Histórico vale.
-3. **Marcar W (Won't Have v1) em todas as deferidas** — meio caminho. Escolhemos **"Defer formal"** explícito porque é **reativável** com critério; W sugere "pra sempre".
+1. **Keep expanding the backlog** — rejected for the reason in the context (unsustainable pace + team fatigue + visual "incomplete" signal)
+2. **Delete the deferred USs from the backlog** — rejected because it loses traceability. History is worth keeping.
+3. **Mark W (Won't Have v1) on all deferred ones** — halfway there. We chose an explicit **"formal Defer"** because it is **reactivatable** under a criterion; W suggests "forever".
 
-## Plano de Aplicação
+## Application Plan
 
-1. **`docs/product/backlog.md`** atualizado: status real + marca explícita "DEFERRED — reativa quando X" nas 13 US listadas
-2. **`docs/product/roadmap.md`** descreve Sub-fase 1.11 e 1.12 com escopo declarado; sub-fases 1.13+ ficam abertas pendentes de tração
-3. **Skill `arquiteto-nora`** já tem anti-padrão "Aceitar scope creep ('já que tô mexendo aqui, vou adicionar Y') — escopo declarado é escopo executado" — referência explícita a este ADR
+1. **`docs/product/backlog.md`** updated: real status + an explicit "DEFERRED — reactivate when X" mark on the 13 listed USs
+2. **`docs/product/roadmap.md`** describes Sub-phase 1.11 and 1.12 with declared scope; sub-phases 1.13+ remain open pending traction
+3. The **`arquiteto-nora` skill** already has the anti-pattern "Accepting scope creep ('since I'm in here anyway, I'll add Y') — declared scope is executed scope" — an explicit reference to this ADR
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-05-14 | Stratfy (PO) | Aprovado em bloco após revisão do Arquiteto Design + recomendação Tech Lead. Critério reativação documentado por US |
+| 2026-05-14 | Stratfy (PO) | Approved as a block after the Design Architect's review + Tech Lead recommendation. Reactivation criterion documented per US |

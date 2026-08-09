@@ -1,15 +1,15 @@
 /**
- * Sincronização leve (mesma aba) da lista de sessões de chat.
+ * Lightweight (same-tab) sync of the chat session list.
  *
- * Quem muda sessões (criar no chat, renomear/apagar na sidebar) dispara
- * `notifySessionsChanged()`; quem exibe a lista (sidebar desktop + drawer
- * mobile) escuta o evento e refaz o fetch. Evita estado global/lib nova:
- * é só um CustomEvent no window.
+ * Whoever changes sessions (create in the chat, rename/delete in the sidebar) fires
+ * `notifySessionsChanged()`; whoever shows the list (desktop sidebar + mobile
+ * drawer) listens to the event and redoes the fetch. Avoids global state/a new lib:
+ * it is just a CustomEvent on the window.
  */
 
 export const SESSIONS_CHANGED_EVENT = "nora:sessions-changed";
 
-/** Avisa os listeners (sidebar) que a lista de sessões mudou. */
+/** Tells the listeners (sidebar) that the session list changed. */
 export function notifySessionsChanged(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(SESSIONS_CHANGED_EVENT));

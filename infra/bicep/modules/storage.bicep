@@ -1,6 +1,6 @@
 // Storage Account (Standard LRS)
-// Blob containers pra transcripts e uploads futuros (áudio/vídeo).
-// Public blob access desabilitado — acesso só via SAS ou managed identity.
+// Blob containers for transcripts and future uploads (audio/video).
+// Public blob access disabled — access only via SAS or managed identity.
 
 @description('Nome do storage account (3-24 chars, lowercase alfanumérico).')
 @minLength(3)
@@ -39,7 +39,7 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
     allowBlobPublicAccess: false
-    allowSharedKeyAccess: true // habilitado pra MVP; migrar pra managed identity quando estabilizar
+    allowSharedKeyAccess: true // enabled for the MVP; migrate to managed identity once it stabilizes
     publicNetworkAccess: 'Enabled'
     networkAcls: {
       defaultAction: 'Allow'

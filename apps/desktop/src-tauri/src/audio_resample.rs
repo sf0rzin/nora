@@ -38,10 +38,10 @@ impl MonoResampler {
         })
     }
 
-    /// Recebe mono f32 em src_sr, retorna mono f32 em dst_sr.
+    /// Receives mono f32 at src_sr, returns mono f32 at dst_sr.
     pub fn process(&mut self, input: &[f32]) -> Vec<f32> {
         let Some(resampler) = self.inner.as_mut() else {
-            return input.to_vec(); // bypass quando sr igual
+            return input.to_vec(); // bypass when sr is equal
         };
         self.leftover.extend_from_slice(input);
         let chunk = resampler.input_frames_next();
@@ -76,7 +76,7 @@ impl MonoResampler {
     }
 }
 
-/// Helper: F32 multi-canal interleaved → mono (média).
+/// Helper: multi-channel interleaved F32 → mono (average).
 pub fn downmix_to_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
     if channels <= 1 {
         return interleaved.to_vec();
@@ -87,7 +87,7 @@ pub fn downmix_to_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
         .collect()
 }
 
-/// Helper: f32 [-1.0, 1.0] → i16 PCM com clamp.
+/// Helper: f32 [-1.0, 1.0] → i16 PCM with clamp.
 pub fn f32_to_i16(samples: &[f32]) -> Vec<i16> {
     samples
         .iter()

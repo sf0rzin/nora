@@ -1,61 +1,61 @@
-//! STT local in-process com whisper.cpp (crate `whisper-rs`).
+//! Local in-process STT with whisper.cpp (crate `whisper-rs`).
 //!
-//! Substitui o sidecar Python + Azure Speech. Uma instancia por TRACK (`mic`,
-//! `system`), exatamente como eram os dois processos Python — mas os dois
-//! compartilham o mesmo `WhisperContext` (os pesos do modelo, ~465 MiB no
-//! `small`), cada um com seu proprio `WhisperState` (KV cache).
+//! Replaces the Python sidecar + Azure Speech. One instance per TRACK (`mic`,
+//! `system`), exactly like the two Python processes were — but both share the
+//! same `WhisperContext` (the model weights, ~465 MiB on `small`), each with
+//! its own `WhisperState` (KV cache).
 //!
 //! ============================================================================
-//! POR QUE "PSEUDO" REAL-TIME
+//! WHY "PSEUDO" REAL-TIME
 //! ============================================================================
-//! O Whisper e um modelo encoder-decoder de janela FIXA de 30 s. Ele nao tem
-//! estado incremental: nao existe "alimentar mais 100 ms e continuar de onde
-//! parou". Todo resultado sai de um decode COMPLETO de uma janela de audio.
+//! Whisper is an encoder-decoder model with a FIXED 30 s window. It has no
+//! incremental state: there is no "feed 100 ms more and continue where it left
+//! off". Every result comes from a COMPLETE decode of an audio window.
 //!
-//! Streaming aqui e, portanto, um loop de re-decode sobre uma janela deslizante:
+//! Streaming here is therefore a re-decode loop over a sliding window:
 //!
-//!   [------------ audio ja COMMITADO (virou `final`) ------------][== janela ==]
+//!   [--------- audio already COMMITTED (became `final`) ---------][== window ==]
 //!   0                                                    committed_ms         now
 //!                                                        ^
-//!                                                        offset de todo evento
+//!                                                        offset of every event
 //!
-//! A cada ~900 ms a janela e re-decodificada e o texto sai como `partial`. Quando
-//! o VAD ve silencio (ou a janela chega perto do teto de 30 s), a janela e
-//! decodificada uma ultima vez, sai como `final`, e `committed_ms` avanca.
-//!
-//! ============================================================================
-//! A ARMADILHA DO RE-DECODE: OFFSET QUE REGRIDE
-//! ============================================================================
-//! Cada re-decode reprocessa audio JA VISTO. Se o offset do evento fosse
-//! derivado do timestamp que o whisper devolve (que e relativo ao inicio da
-//! JANELA, nao da gravacao), o segundo decode da mesma janela emitiria um
-//! offset menor que o do final anterior — e a UI, que ordena e agrupa por
-//! tempo, embaralharia a conversa e duplicaria falas.
-//!
-//! Defesas, nesta ordem:
-//!   1. `committed_ms` e um contador MONOTONICO de audio ja finalizado. So
-//!      avanca, e avanca exatamente pelo numero de ms removidos da frente da
-//!      janela — inclusive silencio descartado, senao os offsets descolam do
-//!      relogio da gravacao.
-//!   2. `partial` sempre reporta `offset_ms = committed_ms` (o inicio da janela
-//!      nao commitada), nunca um timestamp interno do whisper. O texto do
-//!      parcial e o re-decode INTEIRO da janela; o front sobrescreve
-//!      `partials[track]`, entao revisao de texto e esperada e nao acumula.
-//!   3. `final` usa `committed_ms + t0_do_segmento`, mas passa por
-//!      `last_final_end_ms.max(...)`: um timestamp bagunçado do whisper e
-//!      clampado em vez de virar regressao.
-//!   4. `debug_assert` no ponto de emissao, pra quebrar o teste de dev se algum
-//!      caminho novo furar a invariante.
+//! Every ~900 ms the window is re-decoded and the text goes out as `partial`.
+//! When the VAD sees silence (or the window gets near the 30 s cap), the window
+//! is decoded one last time, goes out as `final`, and `committed_ms` advances.
 //!
 //! ============================================================================
-//! O QUE ESTE MODULO NAO FAZ
+//! THE RE-DECODE TRAP: OFFSET THAT REGRESSES
 //! ============================================================================
-//! * Diarizacao por falante. Whisper nao diariza; WhisperX/pyannote sao batch
-//!   por construcao. A atribuicao e POR TRACK — ver `stt::speaker_id_for_track`.
-//! * Confidence calibrada. Ver `segment_confidence` mais abaixo.
-//! * VAD neural. O VAD aqui e energia + noise floor adaptativo; o whisper.cpp
-//!   1.7+ ja expoe Silero VAD (`FullParams::enable_vad`), mas exige baixar um
-//!   segundo modelo (`ggml-silero-v5.1.2.bin`). Fica de melhoria.
+//! Every re-decode reprocesses audio ALREADY SEEN. If the event offset were
+//! derived from the timestamp whisper returns (which is relative to the start of
+//! the WINDOW, not of the recording), the second decode of the same window would
+//! emit an offset smaller than the previous final's — and the UI, which sorts
+//! and groups by time, would scramble the conversation and duplicate utterances.
+//!
+//! Defenses, in this order:
+//!   1. `committed_ms` is a MONOTONIC counter of already finalized audio. It
+//!      only advances, and advances by exactly the number of ms removed from the
+//!      front of the window — including discarded silence, otherwise the offsets
+//!      drift away from the recording clock.
+//!   2. `partial` always reports `offset_ms = committed_ms` (the start of the
+//!      uncommitted window), never an internal whisper timestamp. The partial's
+//!      text is the WHOLE re-decode of the window; the front overwrites
+//!      `partials[track]`, so text revision is expected and does not accumulate.
+//!   3. `final` uses `committed_ms + segment_t0`, but goes through
+//!      `last_final_end_ms.max(...)`: a garbled whisper timestamp is clamped
+//!      instead of becoming a regression.
+//!   4. `debug_assert` at the emission point, to break the dev test if some new
+//!      path punctures the invariant.
+//!
+//! ============================================================================
+//! WHAT THIS MODULE DOES NOT DO
+//! ============================================================================
+//! * Speaker diarization. Whisper does not diarize; WhisperX/pyannote are batch
+//!   by construction. Attribution is PER TRACK — see `stt::speaker_id_for_track`.
+//! * Calibrated confidence. See `segment_confidence` further below.
+//! * Neural VAD. The VAD here is energy + adaptive noise floor; whisper.cpp
+//!   1.7+ already exposes Silero VAD (`FullParams::enable_vad`), but it requires
+//!   downloading a second model (`ggml-silero-v5.1.2.bin`). Left as improvement.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -70,56 +70,56 @@ use crate::stt::{speaker_id_for_track, SttBackend, TranscriptEvent};
 use crate::whisper_model;
 
 // ============================================================================
-// Constantes de sintonia
+// Tuning constants
 // ============================================================================
 
 const SAMPLE_RATE: usize = 16_000;
 const MS_PER_SEC: u64 = 1_000;
 
-/// Frame do VAD: 30 ms. Mesmo tamanho que o WebRTC VAD usa.
+/// VAD frame: 30 ms. Same size the WebRTC VAD uses.
 const VAD_FRAME_SAMPLES: usize = SAMPLE_RATE * 30 / 1000;
 
-/// Piso absoluto de energia (RMS) abaixo do qual e sempre silencio, mesmo que o
-/// noise floor adaptativo tenha convergido pra baixo demais numa sala quieta.
+/// Absolute energy floor (RMS) below which it is always silence, even if the
+/// adaptive noise floor has converged too low in a quiet room.
 /// ~-44 dBFS.
 const ABS_SILENCE_RMS: f32 = 0.006;
 
-/// Quantas vezes acima do noise floor a energia precisa estar pra contar como fala.
+/// How many times above the noise floor the energy must be to count as speech.
 const VAD_SNR_FACTOR: f32 = 2.5;
 
-/// Silencio continuo que fecha um enunciado e dispara o `final`.
+/// Continuous silence that closes an utterance and fires the `final`.
 const SILENCE_COMMIT_MS: u64 = 700;
 
-/// Intervalo minimo entre dois `partial` do mesmo track.
+/// Minimum interval between two `partial` of the same track.
 const PARTIAL_EVERY_MS: u64 = 900;
 
-/// Audio minimo na janela pra valer um decode.
+/// Minimum audio in the window for a decode to be worth it.
 const MIN_DECODE_MS: u64 = 900;
 
-/// Fala minima na janela pra ela virar `final` em vez de ser descartada como ruido.
+/// Minimum speech in the window for it to become `final` instead of being discarded as noise.
 const MIN_COMMIT_SPEECH_MS: u64 = 350;
 
-/// Teto da janela. Abaixo dos 30 s do mel do whisper com folga: em 30 s cheios o
-/// modelo passa a truncar por dentro e os timestamps ficam sem sentido.
+/// Window cap. Comfortably below whisper's 30 s mel: at a full 30 s the model
+/// starts truncating internally and the timestamps become meaningless.
 const MAX_WINDOW_MS: u64 = 22_000;
 
-/// Whisper.cpp devolve ZERO segmentos pra menos de ~1 s de audio (`seek_end <
-/// seek_start + 100` em `whisper_full_with_state`). Todo decode e paddado com
-/// silencio ate aqui. O padding entra DEPOIS do audio real, entao nao desloca
-/// os timestamps dos segmentos.
+/// Whisper.cpp returns ZERO segments for less than ~1 s of audio (`seek_end <
+/// seek_start + 100` in `whisper_full_with_state`). Every decode is padded with
+/// silence up to here. The padding goes in AFTER the real audio, so it does not
+/// shift the segment timestamps.
 const MIN_PADDED_MS: u64 = 1_200;
 
-/// Contexto textual passado como `initial_prompt`. 224 chars ~ metade do
-/// `n_text_ctx` (448 tokens) do whisper, que e o teto recomendado pro prompt.
+/// Textual context passed as `initial_prompt`. 224 chars ~ half of whisper's
+/// `n_text_ctx` (448 tokens), which is the recommended cap for the prompt.
 const PROMPT_MAX_CHARS: usize = 224;
 
-/// Folga do canal PCM entre a task async e a thread de inferencia: 300 chunks de
-/// 100 ms = 30 s. Ver `AudioMsg::Gap` pro que acontece quando estoura.
+/// Slack of the PCM channel between the async task and the inference thread: 300
+/// chunks of 100 ms = 30 s. See `AudioMsg::Gap` for what happens when it overflows.
 const PCM_QUEUE_CHUNKS: usize = 300;
 
-/// Textos que o Whisper alucina em audio sem fala. A lista em pt-BR e curta e
-/// muito estavel (sao legendas de treino que vazaram pro modelo). Comparacao em
-/// lowercase, sem pontuacao final.
+/// Texts Whisper hallucinates on audio without speech. The pt-BR list is short
+/// and very stable (they are training subtitles that leaked into the model).
+/// Comparison in lowercase, without trailing punctuation.
 const HALLUCINATION_BLOCKLIST: &[&str] = &[
     "legendas pela comunidade amara.org",
     "legendas pela comunidade amara org",
@@ -137,11 +137,11 @@ const HALLUCINATION_BLOCKLIST: &[&str] = &[
     ".",
 ];
 
-/// Acima disto o segmento e tratado como "sem fala" e descartado.
+/// Above this the segment is treated as "no speech" and discarded.
 const NO_SPEECH_THRESHOLD: f32 = 0.75;
 
 // ============================================================================
-// Handle publico
+// Public handle
 // ============================================================================
 
 pub struct LocalSttHandle {
@@ -152,10 +152,10 @@ pub struct LocalSttHandle {
 
 impl Drop for LocalSttHandle {
     fn drop(&mut self) {
-        // Mesma defesa do SidecarHandle: se o Vec de backends for limpo sem
-        // passar por stop() (panic, logout, close abrupto), o sinal ainda sai e
-        // a thread de inferencia encerra. Sem isto ela ficaria queimando CPU ate
-        // o processo morrer.
+        // Same defense as SidecarHandle: if the Vec of backends is cleared
+        // without going through stop() (panic, logout, abrupt close), the signal
+        // still goes out and the inference thread ends. Without this it would
+        // keep burning CPU until the process dies.
         if let Some(tx) = self.stop_tx.take() {
             let _ = tx.send(());
         }
@@ -181,12 +181,12 @@ impl SttBackend for LocalSttHandle {
 }
 
 impl LocalSttHandle {
-    /// Sobe a transcricao local de UM track.
+    /// Brings up the local transcription of ONE track.
     ///
-    /// Bloqueia ate o modelo estar carregado — de proposito. Se o modelo precisa
-    /// ser baixado (primeiro uso), isto demora minutos e emite progresso em
-    /// `stt-model-progress`. Falhar aqui e melhor que aceitar audio e descobrir
-    /// no meio da reuniao que nao ha modelo.
+    /// Blocks until the model is loaded — on purpose. If the model has to be
+    /// downloaded (first use), this takes minutes and emits progress on
+    /// `stt-model-progress`. Failing here is better than accepting audio and
+    /// finding out mid-meeting that there is no model.
     pub async fn start(
         app: AppHandle,
         language: String,
@@ -198,8 +198,8 @@ impl LocalSttHandle {
         let model_path = whisper_model::ensure_model(&app, size).await?;
         let ctx = shared_context(&model_path).await?;
 
-        // create_state aloca o KV cache (dezenas de MiB). Fora do executor async
-        // porque e trabalho sincronico de dezenas de ms.
+        // create_state allocates the KV cache (tens of MiB). Outside the async
+        // executor because it is synchronous work of tens of ms.
         let ctx_for_state = Arc::clone(&ctx);
         let state = tokio::task::spawn_blocking(move || ctx_for_state.create_state())
             .await
@@ -210,15 +210,15 @@ impl LocalSttHandle {
         let (stop_tx, mut stop_rx) = oneshot::channel::<()>();
         let (pcm_tx, pcm_rx) = std::sync::mpsc::sync_channel::<AudioMsg>(PCM_QUEUE_CHUNKS);
 
-        // ---- Ponte async -> thread de inferencia -------------------------------
-        // Precisa existir porque a inferencia e CPU-bound e sincrona: rodar dentro
-        // do executor do tokio travaria as outras tasks (incluindo o outro track).
+        // ---- Async bridge -> inference thread ----------------------------------
+        // Has to exist because inference is CPU-bound and synchronous: running it
+        // inside tokio's executor would block the other tasks (including the other track).
         let bridge_session = session_id.clone();
         tokio::spawn(async move {
-            // Amostras descartadas por fila cheia. NAO podem sumir em silencio:
-            // se a inferencia atrasar, o audio some mas o RELOGIO nao para, e sem
-            // contabilizar o buraco todos os offsets seguintes ficariam adiantados
-            // em relacao ao audio real. O Gap avisa o motor.
+            // Samples dropped due to a full queue. They must NOT vanish silently:
+            // if inference falls behind, the audio disappears but the CLOCK does
+            // not stop, and without accounting for the hole every later offset
+            // would run ahead of the real audio. The Gap tells the engine.
             let mut pending_gap_samples: usize = 0;
 
             loop {
@@ -249,18 +249,18 @@ impl LocalSttHandle {
             eprintln!("[stt_local] bridge encerrada session={}", bridge_session);
             #[cfg(not(debug_assertions))]
             let _ = bridge_session;
-            // Dropar pcm_tx fecha o canal -> a thread faz o flush final e sai.
+            // Dropping pcm_tx closes the channel -> the thread does the final flush and exits.
         });
 
-        // ---- Thread de inferencia ----------------------------------------------
+        // ---- Inference thread --------------------------------------------------
         let worker_app = app.clone();
         let worker_session = session_id.clone();
         let worker_track = track_label.clone();
         let builder = std::thread::Builder::new()
             .name(format!("nora-whisper-{}", track_label))
-            // whisper.cpp e C++: a stack default de 2 MiB do Rust ja serve, mas
-            // subimos porque o decoder faz recursao rasa e algumas libs BLAS
-            // alocam buffers grandes na stack.
+            // whisper.cpp is C++: Rust's default 2 MiB stack is already enough,
+            // but we raise it because the decoder does shallow recursion and some
+            // BLAS libs allocate large buffers on the stack.
             .stack_size(4 * 1024 * 1024);
 
         builder
@@ -287,17 +287,17 @@ impl LocalSttHandle {
 
 enum AudioMsg {
     Pcm(Vec<i16>),
-    /// Buraco de `ms` no audio: a fila encheu e as amostras foram descartadas.
+    /// Hole of `ms` in the audio: the queue filled up and the samples were dropped.
     Gap { ms: u64 },
 }
 
 // ============================================================================
-// Contexto compartilhado entre os tracks
+// Context shared between the tracks
 // ============================================================================
 
-/// Cache de UM contexto (os pesos). `mic` e `system` chamam isto com o mesmo
-/// path, entao um slot basta — e a economia e grande: sem compartilhar, duas
-/// copias do `small` seriam ~930 MiB de RSS so de pesos.
+/// Cache of ONE context (the weights). `mic` and `system` call this with the
+/// same path, so one slot is enough — and the saving is big: without sharing,
+/// two copies of `small` would be ~930 MiB of RSS in weights alone.
 async fn shared_context(path: &std::path::Path) -> Result<Arc<WhisperContext>, String> {
     static CACHE: std::sync::OnceLock<
         tokio::sync::Mutex<Option<(std::path::PathBuf, Arc<WhisperContext>)>>,
@@ -315,9 +315,9 @@ async fn shared_context(path: &std::path::Path) -> Result<Arc<WhisperContext>, S
     let load_path = owned.clone();
     let loaded = tokio::task::spawn_blocking(move || {
         let mut params = WhisperContextParameters::default();
-        // `use_gpu` ja vem `true` quando alguma feature de GPU foi compilada
-        // (metal/cuda/vulkan). Sem elas fica `false` e roda em CPU. O whisper.cpp
-        // tambem cai pra CPU sozinho se o backend de GPU nao inicializar.
+        // `use_gpu` already comes in `true` when some GPU feature was compiled
+        // (metal/cuda/vulkan). Without them it is `false` and runs on CPU.
+        // whisper.cpp also falls back to CPU on its own if the GPU backend fails to init.
         params.use_gpu = params.use_gpu && !env_flag("NORA_WHISPER_FORCE_CPU");
         WhisperContext::new_with_params(&load_path, params)
     })
@@ -342,11 +342,11 @@ fn env_flag(name: &str) -> bool {
     )
 }
 
-/// Threads por track.
+/// Threads per track.
 ///
-/// Metade dos cores (teto 4) porque HA DOIS TRACKS decodificando ao mesmo tempo.
-/// Dar `min(4, cores)` pra cada — o default do whisper.cpp — coloca 8 threads
-/// num notebook de 4 cores e o oversubscribe deixa a latencia PIOR que com 2.
+/// Half the cores (cap 4) because THERE ARE TWO TRACKS decoding at the same time.
+/// Giving `min(4, cores)` to each — whisper.cpp's default — puts 8 threads on a
+/// 4-core laptop and the oversubscribe makes latency WORSE than with 2.
 fn inference_threads() -> i32 {
     static N: std::sync::OnceLock<i32> = std::sync::OnceLock::new();
     *N.get_or_init(|| {
@@ -364,10 +364,10 @@ fn inference_threads() -> i32 {
     })
 }
 
-/// `audio_ctx` reduzido corta o custo do encoder proporcionalmente (o encoder e
-/// a maior fatia do tempo numa janela curta), ao custo de qualidade. 0 = full
-/// (1500). Knob exposto porque o valor bom depende do hardware; nao ha default
-/// seguro pra todo mundo.
+/// A reduced `audio_ctx` cuts the encoder cost proportionally (the encoder is
+/// the biggest slice of the time in a short window), at the cost of quality.
+/// 0 = full (1500). Knob exposed because the good value depends on the hardware;
+/// there is no default that is safe for everyone.
 fn audio_ctx_override() -> i32 {
     static V: std::sync::OnceLock<i32> = std::sync::OnceLock::new();
     *V.get_or_init(|| {
@@ -380,18 +380,18 @@ fn audio_ctx_override() -> i32 {
 }
 
 // ============================================================================
-// VAD por energia
+// Energy-based VAD
 // ============================================================================
 
 struct EnergyVad {
-    /// Piso de ruido adaptativo. Sobe devagar, desce rapido — assim uma pausa
-    /// longa nao "ensina" o VAD a ignorar fala baixa depois.
+    /// Adaptive noise floor. Rises slowly, falls fast — that way a long pause
+    /// does not "teach" the VAD to ignore quiet speech afterwards.
     noise_floor: f32,
-    /// Silencio continuo no FIM da janela, em ms.
+    /// Continuous silence at the END of the window, in ms.
     silence_run_ms: u64,
-    /// Fala acumulada na janela atual, em ms.
+    /// Speech accumulated in the current window, in ms.
     speech_ms: u64,
-    /// Amostras da janela ja analisadas.
+    /// Samples of the window already analyzed.
     cursor: usize,
 }
 
@@ -405,9 +405,9 @@ impl EnergyVad {
         }
     }
 
-    /// Reanalisa do zero. Chamado depois de cortar a frente da janela: e mais
-    /// simples e mais correto que reindexar `cursor`, e custa um RMS sobre
-    /// poucos segundos de f32 (irrelevante perto de um decode).
+    /// Re-analyzes from scratch. Called after cutting the front of the window:
+    /// it is simpler and more correct than reindexing `cursor`, and costs one
+    /// RMS over a few seconds of f32 (irrelevant next to a decode).
     fn reset_window(&mut self) {
         self.silence_run_ms = 0;
         self.speech_ms = 0;
@@ -428,8 +428,8 @@ impl EnergyVad {
             if rms > threshold {
                 self.speech_ms += FRAME_MS;
                 self.silence_run_ms = 0;
-                // Sobe o piso bem devagar: fala continua nao pode elevar o piso
-                // a ponto de silenciar o proprio falante.
+                // Raise the floor very slowly: continuous speech must not raise
+                // the floor to the point of silencing the speaker itself.
                 self.noise_floor = self.noise_floor * 0.999 + rms * 0.001;
             } else {
                 self.silence_run_ms += FRAME_MS;
@@ -441,12 +441,12 @@ impl EnergyVad {
 }
 
 // ============================================================================
-// Motor de streaming
+// Streaming engine
 // ============================================================================
 
 struct DecodedSegment {
     text: String,
-    /// ms desde o inicio da JANELA (nao da gravacao).
+    /// ms since the start of the WINDOW (not of the recording).
     t0_ms: u64,
     t1_ms: u64,
     confidence: Option<f32>,
@@ -458,12 +458,12 @@ struct StreamEngine {
     track: String,
     session_id: String,
 
-    /// Audio ainda nao finalizado, f32 normalizado em [-1, 1].
+    /// Audio not yet finalized, f32 normalized in [-1, 1].
     window: Vec<f32>,
-    /// MONOTONICO. ms de audio ja finalizado; offset base de todo evento.
+    /// MONOTONIC. ms of audio already finalized; base offset of every event.
     committed_ms: u64,
-    /// MONOTONICO. Fim (offset+duracao) do ultimo `final` emitido. Clamp de
-    /// seguranca contra timestamp bagunçado do whisper.
+    /// MONOTONIC. End (offset+duration) of the last `final` emitted. Safety
+    /// clamp against a garbled whisper timestamp.
     last_final_end_ms: u64,
 
     vad: EnergyVad,
@@ -494,15 +494,15 @@ impl StreamEngine {
             match rx.recv_timeout(Duration::from_millis(100)) {
                 Ok(msg) => {
                     self.handle(app, msg);
-                    // Esvazia o que chegou enquanto o decode anterior rodava.
+                    // Drain what arrived while the previous decode was running.
                     while let Ok(more) = rx.try_recv() {
                         self.handle(app, more);
                     }
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                    // stop(): decodifica o que sobrou. Sem este flush a ultima
-                    // frase da reuniao — em geral a conclusao — se perde.
+                    // stop(): decode what is left. Without this flush the last
+                    // sentence of the meeting — usually the conclusion — is lost.
                     self.flush(app);
                     break;
                 }
@@ -527,9 +527,9 @@ impl StreamEngine {
                     "[stt_local] track={} BURACO de {}ms no audio (inferencia atrasada)",
                     self.track, ms
                 );
-                // Audio descontinuo: o que esta na janela nao pode ser
-                // concatenado com o que vem depois (viraria uma frase costurada
-                // de dois momentos). Fecha o que da e pula o relogio pelo buraco.
+                // Discontinuous audio: what is in the window cannot be
+                // concatenated with what comes after (it would become a sentence
+                // stitched from two moments). Close what we can and jump the clock by the hole.
                 if !self.window.is_empty() {
                     self.commit(app, None);
                 }
@@ -554,10 +554,10 @@ impl StreamEngine {
         let silence_closed = self.vad.silence_run_ms >= SILENCE_COMMIT_MS;
         let window_full = window_ms >= MAX_WINDOW_MS;
 
-        // Janela inteira sem fala util: descarta SEM decodificar. Alem de
-        // economizar CPU, isto evita a alucinacao classica do Whisper em
-        // silencio ("Legendas pela comunidade Amara.org"). O relogio avanca
-        // igual — o silencio faz parte da gravacao.
+        // Whole window without useful speech: discard WITHOUT decoding. Besides
+        // saving CPU, this avoids the classic Whisper hallucination on silence
+        // ("Legendas pela comunidade Amara.org"). The clock advances all the
+        // same — the silence is part of the recording.
         if silence_closed && self.vad.speech_ms < MIN_COMMIT_SPEECH_MS {
             self.drop_window(window_ms);
             return;
@@ -565,8 +565,8 @@ impl StreamEngine {
 
         if silence_closed || window_full {
             let boundary = if window_full && !silence_closed {
-                // Corte forcado no meio de uma fala: nao commita o ultimo
-                // segmento (quase sempre truncado no meio de uma palavra).
+                // Forced cut in the middle of an utterance: do not commit the
+                // last segment (almost always truncated mid-word).
                 Some(CutPolicy::KeepLastSegment)
             } else {
                 None
@@ -589,7 +589,7 @@ impl StreamEngine {
         self.commit(app, None);
     }
 
-    /// Descarta silencio da frente da janela mantendo o relogio coerente.
+    /// Discards silence from the front of the window keeping the clock coherent.
     fn drop_window(&mut self, window_ms: u64) {
         self.committed_ms += window_ms;
         self.last_final_end_ms = self.last_final_end_ms.max(self.committed_ms);
@@ -607,13 +607,13 @@ impl StreamEngine {
     // ------------------------------------------------------------------------
 
     fn decode(&mut self, single_segment: bool) -> Result<Vec<DecodedSegment>, String> {
-        // Clones locais: `set_language`/`set_initial_prompt` amarram o
-        // emprestimo ao FullParams, e o `full()` precisa de `&mut self.state`.
+        // Local clones: `set_language`/`set_initial_prompt` tie the borrow to
+        // FullParams, and `full()` needs `&mut self.state`.
         let language = self.language.clone();
         let prompt = self.prompt.clone();
 
         let strategy = if single_segment {
-            // Parcial: greedy puro, sem fallback de temperatura. Latencia > tudo.
+            // Partial: pure greedy, no temperature fallback. Latency > everything.
             SamplingStrategy::Greedy { best_of: 1 }
         } else {
             SamplingStrategy::Greedy { best_of: 2 }
@@ -629,16 +629,16 @@ impl StreamEngine {
         params.set_suppress_blank(true);
         params.set_single_segment(single_segment);
         params.set_no_speech_thold(0.6);
-        // `no_context = true` + prompt manual: a janela deslizante joga fora
-        // audio que o KV interno ainda referenciaria, entao deixar o whisper
-        // reaproveitar o contexto anterior produz repeticao em loop. O contexto
-        // vem do texto ja commitado, explicitamente.
+        // `no_context = true` + manual prompt: the sliding window throws away
+        // audio the internal KV would still reference, so letting whisper reuse
+        // the previous context produces repetition in a loop. The context comes
+        // from the already committed text, explicitly.
         params.set_no_context(true);
         if !prompt.is_empty() {
-            // NOTA: `set_initial_prompt` faz `CString::into_raw()` e nunca
-            // recupera o ponteiro — cada chamada vaza o tamanho do prompt
-            // (<= 224 bytes). ~1 parcial/s numa reuniao de 1 h da <1 MiB. Aceito
-            // conscientemente; corrigir exige patch upstream no whisper-rs.
+            // NOTE: `set_initial_prompt` does `CString::into_raw()` and never
+            // recovers the pointer — every call leaks the size of the prompt
+            // (<= 224 bytes). ~1 partial/s in a 1 h meeting gives <1 MiB.
+            // Knowingly accepted; fixing it requires an upstream patch in whisper-rs.
             params.set_initial_prompt(&prompt);
         }
         let actx = audio_ctx_override();
@@ -665,7 +665,7 @@ impl StreamEngine {
             if is_noise_text(&text) {
                 continue;
             }
-            // Centisegundos -> ms. Negativo nao deveria acontecer; clamp mesmo assim.
+            // Centiseconds -> ms. Negative should not happen; clamp anyway.
             let t0_ms = seg.start_timestamp().max(0) as u64 * 10;
             let t1_ms = (seg.end_timestamp().max(0) as u64 * 10).max(t0_ms);
             out.push(DecodedSegment {
@@ -693,9 +693,9 @@ impl StreamEngine {
         }
         self.last_partial_text = text.clone();
 
-        // Parcial reporta o inicio da janela nao commitada. NUNCA um timestamp
-        // interno do whisper: o texto e um re-decode da janela inteira e o front
-        // sobrescreve `partials[track]` a cada evento.
+        // Partial reports the start of the uncommitted window. NEVER an internal
+        // whisper timestamp: the text is a re-decode of the whole window and the
+        // front overwrites `partials[track]` on every event.
         self.emit(
             app,
             TranscriptEvent {
@@ -705,7 +705,7 @@ impl StreamEngine {
                 text,
                 is_final: false,
                 offset_ms: self.committed_ms,
-                // Azure tambem nao mandava duration/confidence em parcial.
+                // Azure did not send duration/confidence on partials either.
                 duration_ms: None,
                 confidence: None,
             },
@@ -722,8 +722,8 @@ impl StreamEngine {
             Ok(s) => s,
             Err(e) => {
                 self.emit_error(app, "decode_failed", &e);
-                // Nao trava a janela num decode quebrado: descarta e segue, senao
-                // ela cresce ate o teto e repete o mesmo erro pra sempre.
+                // Do not lock the window on a broken decode: discard and move on,
+                // else it grows to the cap and repeats the same error forever.
                 self.drop_window(window_ms);
                 return;
             }
@@ -734,12 +734,12 @@ impl StreamEngine {
             return;
         }
 
-        // Quanto da janela sai como commitado.
+        // How much of the window goes out as committed.
         let (emit_upto, consumed_ms) = match policy {
             Some(CutPolicy::KeepLastSegment) if segs.len() > 1 => {
                 let cut = segs[segs.len() - 2].t1_ms.min(window_ms);
-                // Corte degenerado (timestamps colados no zero): commita tudo em
-                // vez de nao avancar e reprocessar a mesma janela pra sempre.
+                // Degenerate cut (timestamps stuck at zero): commit everything
+                // instead of not advancing and reprocessing the same window forever.
                 if cut == 0 {
                     (segs.len(), window_ms)
                 } else {
@@ -786,7 +786,7 @@ impl StreamEngine {
             );
         }
 
-        // Avanca o relogio e corta a frente da janela.
+        // Advance the clock and cut the front of the window.
         self.committed_ms += consumed_ms;
         self.last_final_end_ms = self.last_final_end_ms.max(self.committed_ms);
         let consumed_samples = ms_to_samples(consumed_ms).min(self.window.len());
@@ -804,8 +804,8 @@ impl StreamEngine {
             self.prompt.push(' ');
         }
         self.prompt.push_str(text.trim());
-        // Corta pela ESQUERDA em fronteira de char (pt-BR tem acento: cortar por
-        // byte estoura o `CString`/UTF-8 mais adiante).
+        // Cut from the LEFT on a char boundary (pt-BR has accents: cutting by
+        // byte blows up the `CString`/UTF-8 further down).
         if self.prompt.chars().count() > PROMPT_MAX_CHARS {
             let skip = self.prompt.chars().count() - PROMPT_MAX_CHARS;
             self.prompt = self.prompt.chars().skip(skip).collect();
@@ -818,7 +818,7 @@ impl StreamEngine {
 
     fn emit_error(&self, app: &AppHandle, code: &str, message: &str) {
         eprintln!("[stt_local] track={} {}: {}", self.track, code, message);
-        // Mesmo shape do `error` do sidecar Python — o front nao distingue.
+        // Same shape as the Python sidecar's `error` — the front cannot tell them apart.
         let _ = app.emit(
             "stt-error",
             &serde_json::json!({
@@ -833,12 +833,12 @@ impl StreamEngine {
 }
 
 enum CutPolicy {
-    /// Nao commita o ultimo segmento: ele fica na janela pro proximo decode.
+    /// Does not commit the last segment: it stays in the window for the next decode.
     KeepLastSegment,
 }
 
 // ============================================================================
-// Helpers puros (testaveis sem modelo)
+// Pure helpers (testable without a model)
 // ============================================================================
 
 fn samples_to_ms(n: usize) -> u64 {
@@ -849,8 +849,8 @@ fn ms_to_samples(ms: u64) -> usize {
     ((ms * SAMPLE_RATE as u64) / MS_PER_SEC) as usize
 }
 
-/// Whisper.cpp descarta audio com menos de ~1 s. Padda com silencio no FIM
-/// (nunca no comeco: isso deslocaria todos os timestamps dos segmentos).
+/// Whisper.cpp discards audio shorter than ~1 s. Pads with silence at the END
+/// (never at the start: that would shift all the segment timestamps).
 fn pad_to_min(window: &[f32]) -> Vec<f32> {
     let min_samples = ms_to_samples(MIN_PADDED_MS);
     if window.len() >= min_samples {
@@ -862,7 +862,7 @@ fn pad_to_min(window: &[f32]) -> Vec<f32> {
     out
 }
 
-/// Filtro de alucinacao. `text` ja vem trimado.
+/// Hallucination filter. `text` already comes in trimmed.
 fn is_noise_text(text: &str) -> bool {
     if text.is_empty() {
         return true;
@@ -889,26 +889,26 @@ fn join_segments(segs: &[DecodedSegment]) -> String {
     out.trim().to_string()
 }
 
-/// Confidence de um segmento a partir das probabilidades dos tokens.
+/// Confidence of a segment from the token probabilities.
 ///
-/// ========================= NAO E CALIBRADA =========================
-/// O `confidence` do Azure vinha de `NBest[0].Confidence`: um score treinado,
-/// comparavel entre enunciados, com significado estatistico definido pelo
-/// servico. ISTO AQUI NAO E ISSO.
+/// ========================= IT IS NOT CALIBRATED =========================
+/// Azure's `confidence` came from `NBest[0].Confidence`: a trained score,
+/// comparable across utterances, with statistical meaning defined by the
+/// service. THIS HERE IS NOT THAT.
 ///
-/// O que e: `exp(media dos ln(p) dos tokens)`, ou seja, a media GEOMETRICA da
-/// probabilidade que o proprio decoder atribuiu aos tokens que ele mesmo
-/// escolheu. E o `avg_logprob` do Whisper, normalizado pra (0, 1].
+/// What it is: `exp(mean of the token ln(p))`, that is, the GEOMETRIC mean of
+/// the probability the decoder itself assigned to the tokens it itself chose.
+/// It is Whisper's `avg_logprob`, normalized to (0, 1].
 ///
-/// Consequencias praticas:
-///   * Um modelo confiantemente errado (alucinacao fluente) pontua ALTO. O caso
-///     classico em pt-BR e "Legendas pela comunidade Amara.org" com ~0.9.
-///   * A escala muda com o tamanho do modelo: 0.7 no `base` e 0.7 no `medium`
-///     nao querem dizer a mesma coisa.
-///   * Nao e comparavel com os valores historicos gravados pelo Azure. Qualquer
-///     threshold em cima disso precisa ser recalibrado com dados reais.
+/// Practical consequences:
+///   * A confidently wrong model (fluent hallucination) scores HIGH. The classic
+///     case in pt-BR is "Legendas pela comunidade Amara.org" with ~0.9.
+///   * The scale changes with model size: 0.7 on `base` and 0.7 on `medium`
+///     do not mean the same thing.
+///   * It is not comparable with the historical values recorded by Azure. Any
+///     threshold on top of this needs to be recalibrated with real data.
 ///
-/// Serve pra ordenar segmentos DENTRO da mesma sessao e pro mesmo modelo, e so.
+/// It is good for ordering segments WITHIN the same session and for the same model, and that is all.
 fn segment_confidence(seg: &whisper_rs::WhisperSegment<'_>) -> Option<f32> {
     let n = seg.n_tokens();
     let mut sum_ln = 0.0f64;
@@ -916,9 +916,9 @@ fn segment_confidence(seg: &whisper_rs::WhisperSegment<'_>) -> Option<f32> {
 
     for j in 0..n {
         let Some(tok) = seg.get_token(j) else { continue };
-        // Tokens especiais (`[_BEG_]`, `<|pt|>`, timestamps) entram na contagem
-        // com probabilidade ~1.0 e inflariam a media. Sao identificaveis pelo
-        // texto, que e como o proprio whisper.cpp os filtra quando
+        // Special tokens (`[_BEG_]`, `<|pt|>`, timestamps) enter the count with
+        // probability ~1.0 and would inflate the mean. They are identifiable by
+        // the text, which is how whisper.cpp itself filters them when
         // `print_special == false`.
         if let Ok(t) = tok.to_str_lossy() {
             if t.starts_with("[_") || t.starts_with("<|") {
@@ -953,7 +953,7 @@ mod tests {
         let curto = vec![0.5f32; 100];
         let padded = pad_to_min(&curto);
         assert_eq!(padded.len(), min);
-        // Padding vai no FIM: os 100 primeiros continuam sendo o audio real.
+        // Padding goes at the END: the first 100 are still the real audio.
         assert_eq!(&padded[..100], &curto[..]);
         assert_eq!(padded[min - 1], 0.0);
 
@@ -973,13 +973,13 @@ mod tests {
     #[test]
     fn vad_separa_silencio_de_fala() {
         let mut vad = EnergyVad::new();
-        // 1 s de silencio digital.
+        // 1 s of digital silence.
         let silencio = vec![0.0f32; SAMPLE_RATE];
         vad.ingest(&silencio);
         assert_eq!(vad.speech_ms, 0);
         assert!(vad.silence_run_ms >= 900, "silence_run={}", vad.silence_run_ms);
 
-        // 1 s de onda com amplitude bem acima do piso.
+        // 1 s of a wave with amplitude well above the floor.
         let mut buf = silencio.clone();
         for i in 0..SAMPLE_RATE {
             let t = i as f32 / SAMPLE_RATE as f32;
@@ -1013,21 +1013,21 @@ mod tests {
         assert_eq!(join_segments(&segs), "bom dia");
     }
 
-    /// O ponto central deste modulo. Simula a matematica de offset de tres
-    /// commits (incluindo um corte forcado que consome menos que a janela) e
-    /// verifica que a sequencia final nunca regride nem abre buraco.
+    /// The central point of this module. Simulates the offset math of three
+    /// commits (including a forced cut that consumes less than the window) and
+    /// checks that the final sequence never regresses nor opens a hole.
     #[test]
     fn offsets_de_final_nunca_regridem() {
         let mut committed_ms: u64 = 0;
         let mut last_end: u64 = 0;
         let mut emitidos: Vec<(u64, u64)> = Vec::new();
 
-        // (segmentos como (t0, t1) relativos a janela, ms consumidos do commit)
+        // (segments as (t0, t1) relative to the window, ms consumed by the commit)
         let commits: Vec<(Vec<(u64, u64)>, u64)> = vec![
             (vec![(0, 1_500), (1_500, 2_800)], 3_000),
-            // Corte forcado: janela de 22 s, so 18 s consumidos.
+            // Forced cut: 22 s window, only 18 s consumed.
             (vec![(0, 9_000), (9_000, 18_000)], 18_000),
-            // Timestamp bagunçado do whisper: t0 volta pra tras.
+            // Garbled whisper timestamp: t0 goes backwards.
             (vec![(0, 400)], 900),
         ];
 
@@ -1044,20 +1044,20 @@ mod tests {
             last_end = last_end.max(committed_ms);
         }
 
-        // Monotonicidade global da sequencia emitida.
+        // Global monotonicity of the emitted sequence.
         let mut prev = 0u64;
         for (off, _) in &emitidos {
             assert!(*off >= prev, "sequencia regrediu em {}", off);
             prev = *off;
         }
-        // O relogio bate com a soma do audio consumido.
+        // The clock matches the sum of the consumed audio.
         assert_eq!(committed_ms, 3_000 + 18_000 + 900);
     }
 
     #[test]
     fn gap_avanca_o_relogio_sem_regressao() {
-        // Um buraco de audio nao pode fazer o offset seguinte "voltar" pro
-        // tempo antigo: committed_ms tem que pular junto.
+        // An audio hole must not make the next offset "go back" to the old
+        // time: committed_ms has to jump along with it.
         let mut committed_ms: u64 = 5_000;
         let mut last_end: u64 = 5_000;
         let gap = 2_500;

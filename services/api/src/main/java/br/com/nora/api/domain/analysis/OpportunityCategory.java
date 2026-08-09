@@ -1,6 +1,6 @@
 package br.com.nora.api.domain.analysis;
 
-/** Categoria fechada de oportunidade comercial identificada pela analise. */
+/** Closed category of commercial opportunity identified by the analysis. */
 public enum OpportunityCategory {
     UPSELL,
     CROSS_SELL,

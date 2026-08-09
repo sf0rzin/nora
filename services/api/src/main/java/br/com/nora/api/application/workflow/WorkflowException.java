@@ -1,6 +1,6 @@
 package br.com.nora.api.application.workflow;
 
-/** Exceções de regra de negócio do agregado "Workflow" (NORA Flows). */
+/** Business-rule exceptions of the "Workflow" aggregate (NORA Flows). */
 public abstract class WorkflowException extends RuntimeException {
 
     private final String code;

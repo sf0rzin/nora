@@ -39,8 +39,8 @@ class IntegrationServiceTest {
     private final Clock clock = () -> now;
 
     /**
-     * Sem Postgres nem aspect neste teste unitario: o contrato exercitado aqui e o de aplicacao. A
-     * propagacao real do GUC esta coberta pelo IntegrationFlowIntegrationTest.
+     * No Postgres and no aspect in this unit test: the contract exercised here is the application
+     * one. The real GUC propagation is covered by IntegrationFlowIntegrationTest.
      */
     private final TenantRlsContext rlsContext =
             new TenantRlsContext() {
@@ -74,7 +74,7 @@ class IntegrationServiceTest {
                 "trello-api-key-teste");
     }
 
-    /** Diretório com os provedores genéricos (onda 1 + Microsoft) configurados. */
+    /** Directory with the generic providers (wave 1 + Microsoft) configured. */
     private static OAuthProviderDirectory directory() {
         return new OAuthProviderDirectory(
                 "github-id",
@@ -94,7 +94,7 @@ class IntegrationServiceTest {
                 "http://localhost:8080/integrations/microsoft/oauth/callback");
     }
 
-    /** Diretório vazio (nenhum provedor genérico configurado no ambiente). */
+    /** Empty directory (no generic provider configured in the environment). */
     private static OAuthProviderDirectory emptyDirectory() {
         return new OAuthProviderDirectory(
                 "", "", "", "", "", "", "", "", "", "", "", "", "", "", "");
@@ -172,7 +172,7 @@ class IntegrationServiceTest {
         IntegrationConnection updated =
                 repo.findByTenantAndProvider(tenantId, IntegrationProvider.GOOGLE).orElseThrow();
         assertThat(updated.accessToken()).isEqualTo("at-novo");
-        // Google não rotaciona refresh token por padrão — mantém o atual.
+        // Google does not rotate the refresh token by default — keeps the current one.
         assertThat(updated.refreshToken()).isEqualTo("rt-1");
     }
 
@@ -213,7 +213,7 @@ class IntegrationServiceTest {
         IntegrationConnection saved =
                 repo.findByTenantAndProvider(tenantId, IntegrationProvider.SLACK).orElseThrow();
         assertThat(saved.accessToken()).isEqualTo("xoxb-token-1");
-        // Bot token não expira: sem refresh token e sem expiresAt.
+        // Bot token does not expire: no refresh token and no expiresAt.
         assertThat(saved.refreshToken()).isNull();
         assertThat(saved.expiresAt()).isNull();
         assertThat(saved.externalAccount()).isEqualTo("Time NORA");
@@ -276,7 +276,7 @@ class IntegrationServiceTest {
         assertThat(naoConfigurado.configured()).isFalse();
     }
 
-    /* ==================== Provedores genéricos (onda 1) ==================== */
+    /* ==================== Generic providers (wave 1) ==================== */
 
     @Test
     void startGenerico_montaUrlComScopeExtrasEState() {
@@ -287,7 +287,7 @@ class IntegrationServiceTest {
         assertThat(github).contains("scope=repo");
         assertThat(github).contains("state=");
 
-        // Notion: sem scope (capabilities do app) e com owner=user.
+        // Notion: no scope (app capabilities) and with owner=user.
         String notion = service().start(IntegrationProvider.NOTION, tenantId, userId);
         assertThat(notion).startsWith("https://api.notion.com/v1/oauth/authorize?");
         assertThat(notion).doesNotContain("scope=");
@@ -407,7 +407,7 @@ class IntegrationServiceTest {
                 .isFalse();
     }
 
-    /* ==================== Microsoft (onda 2 — refresh genérico) ==================== */
+    /* ==================== Microsoft (wave 2 — generic refresh) ==================== */
 
     @Test
     void startMicrosoft_montaUrlComScopesEState() {
@@ -457,12 +457,12 @@ class IntegrationServiceTest {
         IntegrationConnection updated =
                 repo.findByTenantAndProvider(tenantId, IntegrationProvider.MICROSOFT).orElseThrow();
         assertThat(updated.accessToken()).isEqualTo("ms-at-novo");
-        // Microsoft rotaciona o refresh token a cada uso — a rotation é persistida.
+        // Microsoft rotates the refresh token on every use — the rotation is persisted.
         assertThat(updated.refreshToken()).isEqualTo("ms-rt-2");
         assertThat(updated.expiresAt()).isEqualTo(now.atOffset(ZoneOffset.UTC).plusSeconds(3599L));
     }
 
-    /** Skew de 60s: token a 30s do fim já renova (mesma semântica do Google). */
+    /** 60s skew: a token 30s from expiry already refreshes (same semantics as Google). */
     @Test
     void validAccessTokenMicrosoft_dentroDoSkew_renova() {
         seedMicrosoft("ms-at-beirando", "ms-rt-1", now.atOffset(ZoneOffset.UTC).plusSeconds(30));
@@ -471,7 +471,7 @@ class IntegrationServiceTest {
 
         assertThat(service().validAccessToken(tenantId, IntegrationProvider.MICROSOFT))
                 .isEqualTo("ms-at-novo");
-        // Refresh token não rotacionado pelo provedor — mantém o atual.
+        // Refresh token not rotated by the provider — keeps the current one.
         assertThat(
                         repo.findByTenantAndProvider(tenantId, IntegrationProvider.MICROSOFT)
                                 .orElseThrow()
@@ -489,7 +489,7 @@ class IntegrationServiceTest {
         assertThat(generic.refreshCalls).isZero();
     }
 
-    /* ==================== Trello (onda 2 — token colado) ==================== */
+    /* ==================== Trello (wave 2 — pasted token) ==================== */
 
     @Test
     void startTrello_montaUrlDeAuthorizeComKeyDoApp() {
@@ -498,7 +498,7 @@ class IntegrationServiceTest {
         assertThat(url).contains("key=trello-api-key-teste");
         assertThat(url).contains("response_type=token");
         assertThat(url).contains("expiration=never");
-        // Sem OAuth server-side: nenhum state/redirect — o usuário cola o token de volta.
+        // No server-side OAuth: no state/redirect — the user pastes the token back.
         assertThat(url).doesNotContain("state=");
     }
 

@@ -40,17 +40,17 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Cobre US06 fim-a-fim (ADR 0011): convite, aceite, listagem e revogacao. Cenarios:
+ * Covers US06 end-to-end (ADR 0011): invitation, acceptance, listing and revocation. Scenarios:
  *
  * <ul>
- *   <li>Root convida, e-mail vai pra fila, token aceita, user criado + JWT + groups anexados.
- *   <li>Domain mismatch quando tenant tem {@code allowedEmailDomain} configurado → 422.
- *   <li>Non-Root sem permissao IAM → 403.
- *   <li>Token inexistente → 404.
- *   <li>Token expirado → 410 e status persiste como EXPIRED.
- *   <li>Aceite repetido → 409.
- *   <li>Revogacao por Root → REVOKED + audit.
- *   <li>List filtrado por status.
+ *   <li>Root invites, email goes to the queue, token accepts, user created + JWT + groups attached.
+ *   <li>Domain mismatch when the tenant has {@code allowedEmailDomain} configured → 422.
+ *   <li>Non-Root without IAM permission → 403.
+ *   <li>Nonexistent token → 404.
+ *   <li>Expired token → 410 and status persists as EXPIRED.
+ *   <li>Repeated acceptance → 409.
+ *   <li>Revocation by Root → REVOKED + audit.
+ *   <li>List filtered by status.
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -90,7 +90,7 @@ class InvitationFlowIntegrationTest {
         String rootToken = signupAndLogin(rootEmail, "SenhaForte123", "Root Invite");
         UUID tenantId = readClaim(rootToken, "tenantId");
 
-        // Cria um grupo.
+        // Create a group.
         String groupId = createGroup(rootToken, "Vendas " + UUID.randomUUID());
 
         String inviteEmail = uniq("carlos");
@@ -114,7 +114,8 @@ class InvitationFlowIntegrationTest {
         assertThat(invBody.has("token")).as("token deve nao ser exposto na resposta").isFalse();
         UUID inviteId = UUID.fromString(invBody.get("id").asText());
 
-        // Token cru capturado do acceptUrl que o backend mandou ao e-mail (o banco so tem o hash).
+        // Raw token captured from the acceptUrl the backend sent to the email (the DB only has the
+        // hash).
         String token = captureInviteToken(inviteEmail);
         assertThat(token).isNotBlank();
 
@@ -127,7 +128,7 @@ class InvitationFlowIntegrationTest {
                         tenantId);
         assertThat(auditCount).isEqualTo(1);
 
-        // Aceite (PUBLIC, sem auth).
+        // Acceptance (PUBLIC, no auth).
         ResponseEntity<String> acceptResp =
                 postJson(
                                 "/iam/invites/" + token + "/accept",
@@ -142,7 +143,7 @@ class InvitationFlowIntegrationTest {
         assertThat(accBody.get("email").asText()).isEqualTo(inviteEmail);
         UUID acceptedUserId = UUID.fromString(accBody.get("userId").asText());
 
-        // User criado.
+        // User created.
         Integer userCount =
                 jdbc.queryForObject(
                         "SELECT COUNT(*) FROM users WHERE id = ? AND tenant_id = ?",
@@ -151,7 +152,7 @@ class InvitationFlowIntegrationTest {
                         tenantId);
         assertThat(userCount).isEqualTo(1);
 
-        // Anexo ao grupo aplicado.
+        // Group attachment applied.
         Integer memberCount =
                 jdbc.queryForObject(
                         "SELECT COUNT(*) FROM iam_user_groups WHERE user_id = ? AND group_id = ?",
@@ -160,7 +161,7 @@ class InvitationFlowIntegrationTest {
                         UUID.fromString(groupId));
         assertThat(memberCount).isEqualTo(1);
 
-        // Invite virou ACCEPTED.
+        // Invite became ACCEPTED.
         String status =
                 jdbc.queryForObject(
                         "SELECT status FROM iam_user_invitations WHERE id = ?",
@@ -184,7 +185,7 @@ class InvitationFlowIntegrationTest {
         String rootToken = signupAndLogin(rootEmail, "SenhaForte123", "Root Dom");
         UUID tenantId = readClaim(rootToken, "tenantId");
 
-        // Configura dominio do tenant.
+        // Configure the tenant's domain.
         ResponseEntity<String> putDomain =
                 putJsonAuth("/tenant/domain", Map.of("allowedEmailDomain", "acme.com"), rootToken);
         assertThat(putDomain.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -196,7 +197,7 @@ class InvitationFlowIntegrationTest {
         JsonNode body = mapper.readTree(inviteResp.getBody());
         assertThat(body.get("code").asText()).isEqualTo("EMAIL_DOMAIN_NOT_ALLOWED");
 
-        // Audit de invite NAO foi gravado.
+        // Invite audit was NOT recorded.
         Integer auditCount =
                 jdbc.queryForObject(
                         "SELECT COUNT(*) FROM iam_audit_events WHERE tenant_id = ? AND action ="
@@ -252,7 +253,7 @@ class InvitationFlowIntegrationTest {
         assertThat(inviteResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         UUID inviteId = UUID.fromString(mapper.readTree(inviteResp.getBody()).get("id").asText());
 
-        // Forca expires_at no passado direto via JDBC.
+        // Force expires_at into the past directly via JDBC.
         jdbc.update(
                 "UPDATE iam_user_invitations SET expires_at = NOW() - INTERVAL '1 hour' WHERE id"
                         + " = ?",
@@ -343,7 +344,7 @@ class InvitationFlowIntegrationTest {
         String rootEmail = uniq("root-list");
         String rootToken = signupAndLogin(rootEmail, "SenhaForte123", "Root List");
 
-        // 2 PENDING + 1 sera revogada.
+        // 2 PENDING + 1 will be revoked.
         String a =
                 inviteIdFromResponse(
                         postJsonAuth("/iam/users/invite", Map.of("email", uniq("a")), rootToken)
@@ -364,7 +365,7 @@ class InvitationFlowIntegrationTest {
         JsonNode pendingBody = mapper.readTree(pendingList.getBody());
         assertThat(pendingBody.get("items"))
                 .anySatisfy(node -> assertThat(node.get("id").asText()).isEqualTo(a));
-        // Garantir que B (revoked) nao aparece em PENDING.
+        // Ensure B (revoked) does not show up under PENDING.
         for (JsonNode item : pendingBody.get("items")) {
             assertThat(item.get("status").asText()).isEqualTo("PENDING");
         }
@@ -402,10 +403,10 @@ class InvitationFlowIntegrationTest {
     }
 
     /**
-     * Recupera o token cru do convite a partir do {@code acceptUrl} que o backend passou ao
-     * EmailSender — o mesmo canal do e-mail real. O banco guarda apenas o SHA-256 ({@code
-     * token_hash}), entao ler o token cru via JDBC nao e mais possivel (por design — hardening
-     * US06).
+     * Recovers the invitation's raw token from the {@code acceptUrl} the backend passed to the
+     * EmailSender — the same channel as the real email. The DB stores only the SHA-256 ({@code
+     * token_hash}), so reading the raw token via JDBC is no longer possible (by design — US06
+     * hardening).
      */
     private String captureInviteToken(String inviteEmail) {
         ArgumentCaptor<String> acceptUrl = ArgumentCaptor.forClass(String.class);

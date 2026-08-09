@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * Polling do detalhe da reunião enquanto a análise não termina.
+ * Polling of the meeting detail while the analysis has not finished.
  *
- * Espelha o ProcessingPoller do dashboard (Filters.tsx), mas no nível do
- * detalhe: enquanto o status for PENDING/PROCESSING, revalida o Server
- * Component via router.refresh() a cada 2,5s. Para após ~5min sem terminal
- * (COMPLETED/FAILED) e mostra um aviso discreto de timeout — sem reload
- * automático infinito.
+ * Mirrors the dashboard's ProcessingPoller (Filters.tsx), but at the detail
+ * level: while the status is PENDING/PROCESSING, it revalidates the Server
+ * Component via router.refresh() every 2.5s. Stops after ~5min without a
+ * terminal state (COMPLETED/FAILED) and shows a discreet timeout notice — no
+ * infinite automatic reload.
  */
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -21,8 +21,8 @@ export default function MeetingProcessingPoller({ status }: { status: Processing
   const router = useRouter();
   const active = status === "PENDING" || status === "PROCESSING";
   const [timedOut, setTimedOut] = useState(false);
-  // Início da espera persiste entre refreshes (o client component não remonta
-  // quando o Server Component revalida) — é o que permite medir o teto de 5min.
+  // Wait start persists across refreshes (the client component does not remount
+  // when the Server Component revalidates) — that is what measures the 5min cap.
   const startedAtRef = useRef<number | null>(null);
 
   useEffect(() => {

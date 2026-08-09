@@ -10,13 +10,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Endpoint publico que expoe a chave publica RSA via JWKS (RFC 7517).
+ * Public endpoint that exposes the RSA public key via JWKS (RFC 7517).
  *
- * <p>Validators externos (outros servicos que validam tokens emitidos pela NORA) buscam aqui a
- * chave publica em vez de precisar de segredo compartilhado. Em HS256 mode o controller nao e
- * registrado (bean condicional).
+ * <p>External validators (other services that validate tokens issued by NORA) fetch the public key
+ * here instead of needing a shared secret. In HS256 mode the controller is not registered
+ * (conditional bean).
  *
- * <p>Path padrao da spec: {@code /.well-known/jwks.json}.
+ * <p>Default path from the spec: {@code /.well-known/jwks.json}.
  */
 @RestController
 @org.springframework.boot.autoconfigure.condition.ConditionalOnBean(RsaJwtIssuer.class)
@@ -49,7 +49,8 @@ public class JwksController {
     }
 
     /**
-     * JWKS exige base64url *sem* padding. {@code BigInteger.toByteArray()} pode ter byte de sinal.
+     * JWKS requires base64url *without* padding. {@code BigInteger.toByteArray()} may carry a sign
+     * byte.
      */
     private static String base64Url(byte[] bytes) {
         byte[] stripped = bytes;

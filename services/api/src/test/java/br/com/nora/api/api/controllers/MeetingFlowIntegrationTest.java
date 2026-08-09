@@ -29,9 +29,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-/**
- * Fluxo end-to-end de upload de transcricao (US07): signup -> verify -> login -> upload -> list.
- */
+/** End-to-end transcript upload flow (US07): signup -> verify -> login -> upload -> list. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @Testcontainers
@@ -115,7 +113,7 @@ class MeetingFlowIntegrationTest {
         assertThat(detail.get("participants").get(0).get("displayName").asText())
                 .isEqualTo("Lucas");
 
-        // Tenant isolation: outro usuario, outro tenant => GET retorna 404
+        // Tenant isolation: different user, different tenant => GET returns 404
         String otherToken = signupAndLogin("otra@nora.dev", "SenhaForte123", "Other");
         ResponseEntity<String> cross = authGetRaw("/meetings/" + meetingId, otherToken);
         assertThat(cross.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);

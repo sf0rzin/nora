@@ -1,10 +1,10 @@
 import type { ReactElement } from "react";
 
 /**
- * Ícones do feed (12x12, strokeWidth 2) compartilhados entre o KIND_META da
- * overlay e o ICONS do overlay-notifications — eram SVGs duplicados nas duas
- * janelas. Auditoria desktop #40. (Não cobre info/warn/save-error — geometrias
- * próprias.)
+ * Feed icons (12x12, strokeWidth 2) shared between the overlay's KIND_META
+ * and overlay-notifications' ICONS — they were duplicated SVGs in the two
+ * windows. Desktop audit #40. (Does not cover info/warn/save-error — their own
+ * geometries.)
  */
 
 export function DecisionIcon(): ReactElement {

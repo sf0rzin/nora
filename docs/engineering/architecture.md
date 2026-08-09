@@ -1,61 +1,61 @@
 ---
-title: "Arquitetura — NORA"
-owner: Arquiteto NORA (Tech Lead)
+title: "Architecture — NORA"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
-# Arquitetura — NORA
+# Architecture — NORA
 
-> Visão técnica end-to-end da NORA: stack, camadas, fluxos e racional das decisões.
-> Cada afirmação aqui está ancorada em código (`path:linha`), migração Flyway ou ADR.
-> Quando algo está planejado mas não implementado, está marcado explicitamente.
+> End-to-end technical view of NORA: stack, layers, flows and the rationale behind the decisions.
+> Every statement here is anchored in code (`path:line`), a Flyway migration or an ADR.
+> When something is planned but not implemented, it is explicitly marked as such.
 
 ---
 
-## §1. Visão geral da stack
+## §1. Stack overview
 
-| Componente | Versão | Propósito | ADR / Origem |
+| Component | Version | Purpose | ADR / Source |
 |---|---|---|---|
 | **Backend** Java | 21 | Spring Boot 3.3.5 + DDD + JPA | `services/api/pom.xml:11,21` |
-| Spring Boot | 3.3.5 | Framework do backend | `services/api/pom.xml:11` |
-| Flyway | herdada do Spring Boot | Migrações versionadas Postgres | `services/api/pom.xml:60-66` |
-| Postgres | 16 | Banco transacional, multi-tenant | ADR 0002 |
-| JJWT | 0.12.6 | Emissão e parsing de JWT | `services/api/pom.xml:80-95` |
-| springdoc-openapi | 2.6.0 | Geração automática de spec OpenAPI | `services/api/pom.xml:73-76` |
+| Spring Boot | 3.3.5 | Backend framework | `services/api/pom.xml:11` |
+| Flyway | inherited from Spring Boot | Versioned Postgres migrations | `services/api/pom.xml:60-66` |
+| Postgres | 16 | Transactional, multi-tenant database | ADR 0002 |
+| JJWT | 0.12.6 | JWT issuance and parsing | `services/api/pom.xml:80-95` |
+| springdoc-openapi | 2.6.0 | Automatic OpenAPI spec generation | `services/api/pom.xml:73-76` |
 | Bucket4j | 8.10.1 | Rate limiting (Speech Token Broker) | `services/api/pom.xml:112-116` |
-| Testcontainers | 1.21.0 | Integração Postgres real nos testes | `services/api/pom.xml:27,131` |
-| WireMock | 3.9.1 | Stub do worker NLP em integration tests | `services/api/pom.xml:141-146` |
-| **Worker NLP** Python | ≥3.12 | FastAPI + Pydantic + OpenAI | `services/nlp-worker/pyproject.toml:5` |
-| FastAPI | ≥0.115 | API HTTP do worker | `services/nlp-worker/pyproject.toml:15` |
-| Pydantic | ≥2.9 | Validação de schemas de entrada/saída | `services/nlp-worker/pyproject.toml:17` |
-| OpenAI SDK | ≥1.50 | Cliente LLM (provider agnóstico) | `services/nlp-worker/pyproject.toml:20`, ADR 0004 |
-| nlp-baseline | 0.1.0 (path local) | Package TF-IDF PT-BR reaproveitável | `packages/nlp-baseline/`, ADR 0010 |
+| Testcontainers | 1.21.0 | Real Postgres integration in tests | `services/api/pom.xml:27,131` |
+| WireMock | 3.9.1 | NLP worker stub in integration tests | `services/api/pom.xml:141-146` |
+| **NLP Worker** Python | ≥3.12 | FastAPI + Pydantic + OpenAI | `services/nlp-worker/pyproject.toml:5` |
+| FastAPI | ≥0.115 | Worker HTTP API | `services/nlp-worker/pyproject.toml:15` |
+| Pydantic | ≥2.9 | Input/output schema validation | `services/nlp-worker/pyproject.toml:17` |
+| OpenAI SDK | ≥1.50 | LLM client (provider agnostic) | `services/nlp-worker/pyproject.toml:20`, ADR 0004 |
+| nlp-baseline | 0.1.0 (local path) | Reusable PT-BR TF-IDF package | `packages/nlp-baseline/`, ADR 0010 |
 | scikit-learn | ≥1.4 | TF-IDF baseline | `packages/nlp-baseline/pyproject.toml:11` |
 | **Web** Next.js | 14.2.15 | App Router + RSC | `apps/web/package.json:18` |
 | React | 18.3.1 | UI | `apps/web/package.json:19-20` |
-| TypeScript | ^5.6.3 | Tipagem estrita no frontend | `apps/web/package.json:39` |
-| Tailwind CSS | ^3.4.13 | Estilos. **Sem shadcn, sem MUI** | `apps/web/package.json:38` |
-| Monaco Editor (React) | ^4.7.0 | Editor JSON para policies IAM | `apps/web/package.json:15` |
-| react-markdown | ^10.1.0 | Render do `summary` da análise | `apps/web/package.json:21-22` |
-| **Desktop** Tauri | 2 | Wrapper nativo + captura áudio | `apps/desktop/src-tauri/Cargo.toml:15`, ADR 0008 |
-| Rust | edition 2021 | Captura sistêmica de áudio (WASAPI/CoreAudio) | `apps/desktop/src-tauri/Cargo.toml:6` |
+| TypeScript | ^5.6.3 | Strict typing on the frontend | `apps/web/package.json:39` |
+| Tailwind CSS | ^3.4.13 | Styling. **No shadcn, no MUI** | `apps/web/package.json:38` |
+| Monaco Editor (React) | ^4.7.0 | JSON editor for IAM policies | `apps/web/package.json:15` |
+| react-markdown | ^10.1.0 | Rendering of the analysis `summary` | `apps/web/package.json:21-22` |
+| **Desktop** Tauri | 2 | Native wrapper + audio capture | `apps/desktop/src-tauri/Cargo.toml:15`, ADR 0008 |
+| Rust | edition 2021 | System-wide audio capture (WASAPI/CoreAudio) | `apps/desktop/src-tauri/Cargo.toml:6` |
 | **Infra** Azure | — | Container Apps + Postgres Flexible + KV + Storage | `infra/bicep/main.bicep` |
-| Bicep | — | IaC declarativa | `infra/bicep/*.bicep` |
+| Bicep | — | Declarative IaC | `infra/bicep/*.bicep` |
 | GitHub Actions | — | CI/CD (ci.yml + build-images.yml + deploy-infra.yml) | `.github/workflows/*.yml` |
 
-Notas:
+Notes:
 
-- O monorepo vive em `apps/`, `services/`, `packages/` e `infra/` (ADR 0001). Os MCPs (calendar/tasks/crm) seguem como conceito de roadmap deferido; não há pasta `mcp/` no repositório.
-- Web roda em **Tailwind cru**: a paleta editorial e tokens estão em `apps/web/src/app/globals.css` e `apps/web/tailwind.config.ts`. Não há dependência de `@shadcn/ui`, MUI, Chakra ou similar.
-- Worker tem três modos de operação: `USE_LLM_STUB=true` (CI / dev sem LLM), `LLM_BASE_URL=https://api.openai.com/v1` (default MVP, OpenAI direto) e Azure OpenAI (Enterprise).
+- The monorepo lives in `apps/`, `services/`, `packages/` and `infra/` (ADR 0001). The MCPs (calendar/tasks/crm) remain a deferred roadmap concept; there is no `mcp/` folder in the repository.
+- Web runs on **raw Tailwind**: the editorial palette and tokens live in `apps/web/src/app/globals.css` and `apps/web/tailwind.config.ts`. There is no dependency on `@shadcn/ui`, MUI, Chakra or similar.
+- The worker has three operating modes: `USE_LLM_STUB=true` (CI / dev without LLM), `LLM_BASE_URL=https://api.openai.com/v1` (MVP default, OpenAI directly) and Azure OpenAI (Enterprise).
 
 ---
 
-## §2. Camadas DDD do backend
+## §2. Backend DDD layers
 
-O backend segue 4 camadas estritas, organizadas em `services/api/src/main/java/br/com/nora/api/`:
+The backend follows 4 strict layers, organized under `services/api/src/main/java/br/com/nora/api/`:
 
 ```
 domain/         <- regras puras, zero dependência de framework
@@ -64,76 +64,76 @@ infrastructure/ <- adapters: JPA, JJWT, HTTP clients, Azure SDK
 api/            <- controllers REST, DTOs, exception handlers
 ```
 
-### Regras invioláveis
+### Inviolable rules
 
-1. **`domain/` não conhece Spring, JPA, HTTP nem nenhum SDK externo.** Apenas POJOs/records e lógica de negócio.
-2. **`application/` orquestra casos de uso** e depende apenas de portas (interfaces) declaradas em `application/ports/`.
-3. **`infrastructure/` implementa as portas** com JPA, JJWT, clients HTTP, Azure SDK etc.
-4. **`api/` contém apenas controllers, DTOs e mappers.** Nenhuma regra de negócio em controller.
+1. **`domain/` knows nothing about Spring, JPA, HTTP or any external SDK.** Only POJOs/records and business logic.
+2. **`application/` orchestrates use cases** and depends only on ports (interfaces) declared in `application/ports/`.
+3. **`infrastructure/` implements the ports** with JPA, JJWT, HTTP clients, Azure SDK, etc.
+4. **`api/` contains only controllers, DTOs and mappers.** No business rules in a controller.
 
-### Exemplos canônicos
+### Canonical examples
 
-| Classe | Camada | Por quê |
+| Class | Layer | Why |
 |---|---|---|
-| `IamPolicy` (`domain/iam/IamPolicy.java`) | domain | Record imutável; lógica pura de validação |
-| `PolicyEvaluator` (`domain/iam/PolicyEvaluator.java:35`) | domain | Algoritmo IAM (Deny-first, wildcards) sem dependência externa |
-| `AuthorizationService` (`application/iam/AuthorizationService.java:17`) | application | Orquestra `UserRepository` + `IamRepository` (portas) |
-| `MeetingService` (`application/meeting/MeetingService.java`) | application | Upload, listagem, reprocessamento via repos |
-| `JjwtJwtIssuer` (`infrastructure/security/JjwtJwtIssuer.java`) | infrastructure | Implementa `JwtIssuer` (porta) com a lib JJWT |
-| `AzureSpeechTokenBroker` (`infrastructure/speech/AzureSpeechTokenBroker.java`) | infrastructure | Adapter HTTP para `/issueToken` Azure |
-| `MeetingsController` (`api/controllers/MeetingsController.java:64`) | api | Thin controller que delega a `MeetingService` |
+| `IamPolicy` (`domain/iam/IamPolicy.java`) | domain | Immutable record; pure validation logic |
+| `PolicyEvaluator` (`domain/iam/PolicyEvaluator.java:35`) | domain | IAM algorithm (Deny-first, wildcards) with no external dependency |
+| `AuthorizationService` (`application/iam/AuthorizationService.java:17`) | application | Orchestrates `UserRepository` + `IamRepository` (ports) |
+| `MeetingService` (`application/meeting/MeetingService.java`) | application | Upload, listing, reprocessing via repos |
+| `JjwtJwtIssuer` (`infrastructure/security/JjwtJwtIssuer.java`) | infrastructure | Implements `JwtIssuer` (port) with the JJWT library |
+| `AzureSpeechTokenBroker` (`infrastructure/speech/AzureSpeechTokenBroker.java`) | infrastructure | HTTP adapter for Azure `/issueToken` |
+| `MeetingsController` (`api/controllers/MeetingsController.java:64`) | api | Thin controller that delegates to `MeetingService` |
 
-### Por que DDD em camadas estritas
+### Why DDD in strict layers
 
-- **Testabilidade pura no domínio:** `PolicyEvaluator` tem 95.8% de cobertura (audit §12) porque não exige container Spring.
-- **Substituibilidade da infra:** trocar JJWT por outro provider de JWT é só implementar `JwtIssuer`. Idem para LLM (ADR 0004) e Speech.
-- **Onboarding previsível:** dev novo encontra a regra de negócio sempre em `application/` ou `domain/`, nunca em `infrastructure/` ou `api/`.
+- **Pure testability in the domain:** `PolicyEvaluator` has 95.8% coverage (audit §12) because it does not require a Spring container.
+- **Infrastructure substitutability:** swapping JJWT for another JWT provider is just implementing `JwtIssuer`. Same for LLM (ADR 0004) and Speech.
+- **Predictable onboarding:** a new dev always finds the business rule in `application/` or `domain/`, never in `infrastructure/` or `api/`.
 
 ---
 
 ## §3. Multi-tenancy
 
-Decisão raiz: **ADR 0002 — filtro de aplicação no MVP, RLS em produção.**
+Root decision: **ADR 0002 — application-level filter in the MVP, RLS in production.**
 
-### `tenant_id` é dado de primeira classe
+### `tenant_id` is a first-class piece of data
 
-Toda tabela tenant-bound carrega `tenant_id UUID NOT NULL` (o schema vai até `V021`; ver `docs/engineering/data-model.md` como fonte canônica). Conferido nas migrations:
+Every tenant-bound table carries `tenant_id UUID NOT NULL` (the schema goes up to `V021`; see `docs/engineering/data-model.md` as the canonical source). Verified in the migrations:
 
-- `tenants` (V001) — fonte
+- `tenants` (V001) — source
 - `users.tenant_id` (V002:10)
 - `meetings.tenant_id` (V004:7)
 - `transcripts.tenant_id` (V004:55)
 - `meeting_analyses.tenant_id` (V005:30)
-- `iam_*.tenant_id` (V006: 7 tabelas)
+- `iam_*.tenant_id` (V006: 7 tables)
 - `tenant_contexts.tenant_id UNIQUE` (V005:15)
 - `iam_user_invitations.tenant_id` (V010:5)
 - `refresh_tokens.tenant_id` (V011:6)
-- `meeting_goals.tenant_id` (V012:6) e demais tabelas de Productivity (V012)
+- `meeting_goals.tenant_id` (V012:6) and the remaining Productivity tables (V012)
 
-### Onde o `tenant_id` é injetado
+### Where `tenant_id` is injected
 
-O JWT emitido em `JjwtJwtIssuer` carrega `tenantId` no claim. Em cada request autenticado:
+The JWT issued by `JjwtJwtIssuer` carries `tenantId` in the claim. On every authenticated request:
 
-1. `JwtAuthenticationFilter` valida o token e popula `CurrentUser` com `AuthenticatedPrincipal(userId, tenantId, ...)`.
-2. Cada controller obtém o principal via `CurrentUser.require()` (exemplo: `MeetingsController.java:101`).
-3. Toda chamada a `MeetingService`, `AnalysisService`, `IamService` etc. recebe `tenantId` explicitamente; nunca há lookup global por `id`.
-4. `AuthorizationService.isAllowed(userId, tenantId, action, resource)` (`application/iam/AuthorizationService.java:27`) injeta o `tenantId` no `PolicyEvaluator`.
+1. `JwtAuthenticationFilter` validates the token and populates `CurrentUser` with `AuthenticatedPrincipal(userId, tenantId, ...)`.
+2. Each controller obtains the principal via `CurrentUser.require()` (example: `MeetingsController.java:101`).
+3. Every call to `MeetingService`, `AnalysisService`, `IamService` etc. receives `tenantId` explicitly; there is never a global lookup by `id`.
+4. `AuthorizationService.isAllowed(userId, tenantId, action, resource)` (`application/iam/AuthorizationService.java:27`) injects the `tenantId` into `PolicyEvaluator`.
 
-Em SQL, isso vira `WHERE tenant_id = :tenantId AND id = :id` — nunca apenas `WHERE id = :id`. Tentativas de acesso fora do escopo retornam 403 (ou 404, conforme risco de enumeração; ver `GlobalExceptionHandler`).
+In SQL this becomes `WHERE tenant_id = :tenantId AND id = :id` — never just `WHERE id = :id`. Attempts to access outside the scope return 403 (or 404, depending on enumeration risk; see `GlobalExceptionHandler`).
 
-### RLS — implementado no schema (V016 + V019/V020)
+### RLS — implemented in the schema (V016 + V019/V020)
 
-ADR 0002 prometia Row-Level Security em produção. **Entregue no schema em `V016__row_level_security.sql`** (não é mais "débito pendente"): policies `tenant_isolation` + `ENABLE ROW LEVEL SECURITY` em 10 tabelas tenant-owned (mais as 3 de V017: `customer_accounts`, `meeting_account_links`, `customer_confidence_assessments` → 13 no total), predicado `tenant_id = nora.current_tenant_id()` (lê o GUC de sessão `nora.current_tenant_id`). `V019`/`V020` completam a cobertura RLS e tornam o scope auth-aware. O `infrastructure/security/TenantRlsAspect` faz `SET LOCAL` por `@Transactional`.
+ADR 0002 promised Row-Level Security in production. **Delivered in the schema in `V016__row_level_security.sql`** (it is no longer "pending debt"): `tenant_isolation` policies + `ENABLE ROW LEVEL SECURITY` on 10 tenant-owned tables (plus the 3 from V017: `customer_accounts`, `meeting_account_links`, `customer_confidence_assessments` → 13 in total), with the predicate `tenant_id = nora.current_tenant_id()` (which reads the session GUC `nora.current_tenant_id`). `V019`/`V020` complete the RLS coverage and make the scope auth-aware. `infrastructure/security/TenantRlsAspect` performs the `SET LOCAL` per `@Transactional`.
 
-**Enforcement é opt-in:** owner/admin Postgres bypassa RLS por default (dev/Testcontainers ficam inertes — testes intocados). Em prod, ativar via role dedicado `nora_app` (`NOBYPASSRLS`) + flag `nora.security.rls.enforce=true`. É defesa em profundidade: mesmo que uma query esqueça o `WHERE tenant_id`, o RLS bloqueia. O que resta é o cutover/enforcement operacional em produção (runbook em ADR 0026/0028), não o schema. Ver `data-model.md §4`.
+**Enforcement is opt-in:** the Postgres owner/admin bypasses RLS by default (dev/Testcontainers stay inert — tests untouched). In prod, enable it via the dedicated `nora_app` role (`NOBYPASSRLS`) + the flag `nora.security.rls.enforce=true`. It is defense in depth: even if a query forgets the `WHERE tenant_id`, RLS blocks it. What remains is the operational cutover/enforcement in production (runbook in ADR 0026/0028), not the schema. See `data-model.md §4`.
 
 ---
 
-## §4. IAM AWS-style (ADR 0007)
+## §4. AWS-style IAM (ADR 0007)
 
-Modelo idêntico ao AWS IAM, escolhido por dar liberdade ao tenant Enterprise para modelar seu próprio org chart sem esperar roadmap NORA.
+A model identical to AWS IAM, chosen because it gives the Enterprise tenant the freedom to model their own org chart without waiting for the NORA roadmap.
 
-### Topologia
+### Topology
 
 ```
 Tenant
@@ -146,38 +146,38 @@ Tenant
 └── Users ⇄ Policies     (N:N, anexação direta opcional, `iam_user_policies`)
 ```
 
-Garantia de unicidade do Root: índice parcial `UNIQUE (tenant_id) WHERE is_root = TRUE` (V006:26-27).
+Root uniqueness guarantee: partial index `UNIQUE (tenant_id) WHERE is_root = TRUE` (V006:26-27).
 
-### Algoritmo de avaliação (`PolicyEvaluator.java:35`)
+### Evaluation algorithm (`PolicyEvaluator.java:35`)
 
-1. **Root bypass** (`AuthorizationService.java:41`): se `users.isRoot(userId, tenantId)`, retorna `ALLOW` imediatamente.
-2. **Coletar statements** aplicáveis (do próprio user + de todos os groups em que está).
-3. **Deny-first** (`PolicyEvaluator.java:91-93`): qualquer `Deny` que case Action+Resource+Condition vence.
-4. **Pelo menos um `Allow` casando** Action+Resource+Condition → retorna `ALLOW`.
-5. **Default deny** (linha 96): se nenhum `Allow` casou, retorna `false`.
+1. **Root bypass** (`AuthorizationService.java:41`): if `users.isRoot(userId, tenantId)`, it returns `ALLOW` immediately.
+2. **Collect applicable statements** (from the user itself + from all the groups it belongs to).
+3. **Deny-first** (`PolicyEvaluator.java:91-93`): any `Deny` matching Action+Resource+Condition wins.
+4. **At least one `Allow` matching** Action+Resource+Condition → returns `ALLOW`.
+5. **Default deny** (line 96): if no `Allow` matched, returns `false`.
 
 ### Wildcards
 
-- `*` casa zero-ou-mais caracteres
-- `?` casa exatamente um caractere
+- `*` matches zero-or-more characters
+- `?` matches exactly one character
 
-Aplicáveis em `action` e `resource`. Exemplo: `meeting:*` casa `meeting:read`, `meeting:upload`, `meeting:reprocess` etc. Implementação: `PolicyEvaluator.matches` (linhas 148-166), que converte o pattern em regex com `Pattern.quote` nos demais caracteres.
+Applicable in `action` and `resource`. Example: `meeting:*` matches `meeting:read`, `meeting:upload`, `meeting:reprocess`, etc. Implementation: `PolicyEvaluator.matches` (lines 148-166), which converts the pattern into a regex using `Pattern.quote` for the remaining characters.
 
 ### Conditions — fail-closed
 
-`PolicyEvaluator` (`matchesCondition`): operadores **não suportados** fazem o statement **não casar** (`return false`). Isso é fail-closed combinado com Default Deny — uma policy com operador ainda não implementado (ex.: `StringNotEquals`) **nega acesso**, não escala privilégio. Atributo ausente no contexto também é fail-closed.
+`PolicyEvaluator` (`matchesCondition`): **unsupported** operators make the statement **not match** (`return false`). This is fail-closed combined with Default Deny — a policy with an operator that is not implemented yet (e.g.: `StringNotEquals`) **denies access**, it does not escalate privilege. A missing attribute in the context is also fail-closed.
 
-Operadores suportados: `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (`SUPPORTED_CONDITION_OPERATORS` em `PolicyEvaluator.java`). Cobrem ~90% das policies reais. `StringIn` casa contra lista; `StringLike` usa wildcards `*`/`?`; os operadores de data parseiam ISO-8601 (offset ou data simples `yyyy-MM-dd`).
+Supported operators: `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (`SUPPORTED_CONDITION_OPERATORS` in `PolicyEvaluator.java`). They cover ~90% of real policies. `StringIn` matches against a list; `StringLike` uses the `*`/`?` wildcards; the date operators parse ISO-8601 (offset or plain date `yyyy-MM-dd`).
 
-### Pré-check de list-endpoints (`PolicyEvaluator.hasAnyAllow`, linhas 53-71)
+### Pre-check for list endpoints (`PolicyEvaluator.hasAnyAllow`, lines 53-71)
 
-Para `GET /meetings`, fazer uma chamada `isAllowed` por item seria caro. O `requireAnyAllow` em `AuthorizationService:70` faz pré-check: existe pelo menos um `Allow` para `meeting:read` ignorando conditions? Se sim, segue para filtragem fina por item. Se não, 403 imediato.
+For `GET /meetings`, making one `isAllowed` call per item would be expensive. `requireAnyAllow` in `AuthorizationService:70` does a pre-check: is there at least one `Allow` for `meeting:read` ignoring conditions? If yes, it proceeds to fine-grained per-item filtering. If not, immediate 403.
 
-### Catálogo de actions atual
+### Current action catalog
 
-Mapa exaustivo extraído dos controllers (Grep em `services/api/src/main/java/br/com/nora/api/api/controllers/`):
+Exhaustive map extracted from the controllers (Grep in `services/api/src/main/java/br/com/nora/api/api/controllers/`):
 
-| Recurso | Actions |
+| Resource | Actions |
 |---|---|
 | **meeting** | `meeting:upload`, `meeting:read`, `meeting:update`, `meeting:reprocess`, `meeting:analyze:live` |
 | **iam (groups/policies/audit)** | `iam:group:read`, `iam:group:create`, `iam:group:delete`, `iam:group:add-member`, `iam:group:remove-member`, `iam:policy:read`, `iam:policy:create`, `iam:policy:update`, `iam:policy:delete`, `iam:attachment:create`, `iam:attachment:delete`, `iam:audit:read` |
@@ -185,22 +185,22 @@ Mapa exaustivo extraído dos controllers (Grep em `services/api/src/main/java/br
 | **tenant** | `tenant:domain:read`, `tenant:domain:write` |
 | **task** | `task:read`, `task:write` |
 
-Resource canônico: `nora:tenant/{tenantId}:{recurso}/{instanceId|*}`. Exemplos:
+Canonical resource: `nora:tenant/{tenantId}:{recurso}/{instanceId|*}`. Examples:
 
 - `nora:tenant/abc-123:meeting/xyz-987`
 - `nora:tenant/abc-123:meeting/*` (list/upload)
-- `nora:tenant/abc-123:iam/*` (todas operações IAM)
+- `nora:tenant/abc-123:iam/*` (all IAM operations)
 
-### Versionamento e auditoria
+### Versioning and auditing
 
-- `iam_policy_versions` (V006:89-99): histórico imutável de cada edição (`PRIMARY KEY (policy_id, version)`)
-- `iam_audit_events` (V006:138-150): toda operação IAM grava actor, action, target e payload JSONB
+- `iam_policy_versions` (V006:89-99): immutable history of each edit (`PRIMARY KEY (policy_id, version)`)
+- `iam_audit_events` (V006:138-150): every IAM operation records actor, action, target and JSONB payload
 
 ---
 
 ## §5. LLM pipeline
 
-Fluxo de análise de reunião — disparado quando um upload chega ou via `POST /meetings/{id}/reprocess`.
+Meeting analysis flow — triggered when an upload arrives or via `POST /meetings/{id}/reprocess`.
 
 ```
 ┌──────────────┐    1. /analyze      ┌──────────────────┐
@@ -228,62 +228,62 @@ Fluxo de análise de reunião — disparado quando um upload chega ou via `POST 
                                      └──────────────────┘
 ```
 
-### Steps detalhados
+### Detailed steps
 
-1. **PII Shield** (`services/nlp-worker/src/nora_nlp/services/pii_shield.py`): redige email, phone, CPF, CNPJ, cartão e nomes próprios BR antes de qualquer chamada externa. Ver §6.
-2. **TF-IDF baseline** (`packages/nlp-baseline/src/nlp_baseline/`, ADR 0010): extrai termos top-N do texto para interpretabilidade acadêmica e enriquecimento do prompt.
-3. **LLM call** (`services/nlp-worker/src/nora_nlp/services/llm_analyzer.py:117`): `analyze()` carrega prompt versionado de `prompts/{version}.md`, monta system+user prompts, chama o cliente LLM agnóstico (`clients/llm.py`) com `response_format=json_schema` (modo strict — ADR 0003).
-4. **Validação Pydantic** (`models.py`, `MeetingAnalysisV1`): cada campo da resposta passa por validação estrita — score 0-100, enum bands, tamanhos, etc. Falha de schema é erro controlado, não stack trace exposto.
+1. **PII Shield** (`services/nlp-worker/src/nora_nlp/services/pii_shield.py`): redacts email, phone, CPF, CNPJ, credit card and BR proper names before any external call. See §6.
+2. **TF-IDF baseline** (`packages/nlp-baseline/src/nlp_baseline/`, ADR 0010): extracts the top-N terms from the text for academic interpretability and prompt enrichment.
+3. **LLM call** (`services/nlp-worker/src/nora_nlp/services/llm_analyzer.py:117`): `analyze()` loads the versioned prompt from `prompts/{version}.md`, assembles system+user prompts, and calls the agnostic LLM client (`clients/llm.py`) with `response_format=json_schema` (strict mode — ADR 0003).
+4. **Pydantic validation** (`models.py`, `MeetingAnalysisV1`): every field of the response goes through strict validation — score 0-100, enum bands, sizes, etc. A schema failure is a controlled error, not an exposed stack trace.
 
-### Provider agnóstico (ADR 0004)
+### Provider agnostic (ADR 0004)
 
-Variáveis: `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`. Default MVP: `https://api.openai.com/v1` + `gpt-4o-mini`. Enterprise/Azure OpenAI: aponta `LLM_BASE_URL` para o endpoint Azure e usa a key correspondente do Key Vault. CI usa `USE_LLM_STUB=true` (zero custo, stub determinístico em `services/stub_analyzer.py`).
+Variables: `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`. MVP default: `https://api.openai.com/v1` + `gpt-4o-mini`. Enterprise/Azure OpenAI: point `LLM_BASE_URL` at the Azure endpoint and use the corresponding key from Key Vault. CI uses `USE_LLM_STUB=true` (zero cost, deterministic stub in `services/stub_analyzer.py`).
 
-### JSON Schema strict obrigatório (ADR 0003)
+### Strict JSON Schema mandatory (ADR 0003)
 
-O schema canônico fica em `docs/api/llm-schemas/meeting-analysis-v1.schema.json` e é espelhado em `models.py` (Pydantic) + transmitido ao LLM via `response_format`. Falha no modo strict cai em fallback `json_object` (linha 7 do `llm_analyzer.py`). Saída livre nunca cruza fronteira de serviço.
+The canonical schema lives in `docs/api/llm-schemas/meeting-analysis-v1.schema.json` and is mirrored in `models.py` (Pydantic) + transmitted to the LLM via `response_format`. A failure in strict mode falls back to `json_object` (line 7 of `llm_analyzer.py`). Free-form output never crosses a service boundary.
 
 ---
 
 ## §6. PII Shield (ADR 0012)
 
-Pipeline determinístico antes de qualquer chamada ao LLM. Implementação em `services/nlp-worker/src/nora_nlp/services/pii_shield.py`.
+A deterministic pipeline that runs before any call to the LLM. Implementation in `services/nlp-worker/src/nora_nlp/services/pii_shield.py`.
 
-### Tipos cobertos
+### Covered types
 
-| Tipo | Detecção | Cobertura |
+| Type | Detection | Coverage |
 |---|---|---|
 | **EMAIL** | Regex `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}` | universal |
-| **PHONE** | Regex BR com DDD + opção +55 | BR |
-| **CPF** | Regex `\d{3}\.\d{3}\.\d{3}-\d{2}` formatado | BR |
-| **CNPJ** | Regex `\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}` formatado | BR |
-| **CREDIT_CARD** | Regex 4×4 dígitos | universal |
-| **PERSON_NAME** | 3 heurísticas: prefixos formais (Sr./Dr./Profa.) + Title Case sequence + lista hardcoded ~270 nomes BR + negative list ~80 termos (TOTVS, NORA, SAP, etc.) | BR (~80% cobertura) |
+| **PHONE** | BR regex with area code (DDD) + optional +55 | BR |
+| **CPF** | Formatted regex `\d{3}\.\d{3}\.\d{3}-\d{2}` | BR |
+| **CNPJ** | Formatted regex `\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}` | BR |
+| **CREDIT_CARD** | Regex 4×4 digits | universal |
+| **PERSON_NAME** | 3 heuristics: formal prefixes (Sr./Dr./Profa.) + Title Case sequence + hardcoded list of ~270 BR names + negative list of ~80 terms (TOTVS, NORA, SAP, etc.) | BR (~80% coverage) |
 
-**ADDRESS** está fora de escopo no MVP (ADR 0012; débito conhecido — audit §6).
+**ADDRESS** is out of scope in the MVP (ADR 0012; known debt — audit §6).
 
-### Pipeline de redação
+### Redaction pipeline
 
-Cada match vira um placeholder `[[TIPO_N]]` onde N é o índice incremental. Exemplo:
+Each match becomes a placeholder `[[TIPO_N]]` where N is the incremental index. Example:
 
 ```
 Antes:   "O Lucas me mandou um e-mail (lucas@acme.com) com o CPF 123.456.789-00"
 Depois:  "O [[PERSON_NAME_1]] me mandou um e-mail ([[EMAIL_1]]) com o CPF [[CPF_1]]"
 ```
 
-Mapeamento `placeholder → hash(SHA-256, primeiros 16 chars)` fica em `PiiRedactionV1` para auditoria sem reter o valor original. O número total de redações é gravado em `meeting_analyses.pii_redactions_applied` (V005:39).
+The mapping `placeholder → hash(SHA-256, first 16 chars)` is kept in `PiiRedactionV1` for auditing without retaining the original value. The total number of redactions is recorded in `meeting_analyses.pii_redactions_applied` (V005:39).
 
-### Por que regex + lista hardcoded em vez de NER
+### Why regex + a hardcoded list instead of NER
 
-ADR 0012: a solução cobre **bem** o mercado-alvo MVP (Brasil/TOTVS), evita a complexidade de modelos NER multi-idioma e zero dependência extra. Triggers de upgrade documentados (primeiro tenant não-BR; >5% transcrições não-pt-BR; bug report concreto).
+ADR 0012: the solution covers the MVP target market (Brazil/TOTVS) **well**, avoids the complexity of multi-language NER models and adds zero extra dependencies. Upgrade triggers are documented (first non-BR tenant; >5% non-pt-BR transcripts; a concrete bug report).
 
 ---
 
 ## §7. Speech Token Broker (ADR 0009)
 
-Desktop precisa transcrever em tempo real com Azure Speech sem expor a subscription key. Solução: **broker no backend** que emite tokens efêmeros.
+Desktop needs to transcribe in real time with Azure Speech without exposing the subscription key. Solution: a **broker in the backend** that issues ephemeral tokens.
 
-### Fluxo
+### Flow
 
 ```
 Desktop (Tauri)         Backend NORA              Azure Speech
@@ -301,76 +301,76 @@ Desktop (Tauri)         Backend NORA              Azure Speech
      |◀── partial / final transcription ──────────────│
 ```
 
-### Implementação
+### Implementation
 
-- **Endpoint**: `SpeechController.issueToken` (`services/api/src/main/java/br/com/nora/api/api/controllers/SpeechController.java:24-32`), `POST /speech/token` autenticado por JWT.
-- **Adapter Azure**: `AzureSpeechTokenBroker` em `infrastructure/speech/` chama o endpoint `/issueToken` Azure usando `AZURE_SPEECH_KEY` resolvida via Key Vault reference (`infra/bicep/`).
-- **Rate limit**: Bucket4j 6 tokens/minuto/usuário (audit §3, ADR 0009).
-- **TTL**: ~9-10 min (controlado pelo próprio Azure). Desktop renova a cada ~8 min em sessões longas.
+- **Endpoint**: `SpeechController.issueToken` (`services/api/src/main/java/br/com/nora/api/api/controllers/SpeechController.java:24-32`), `POST /speech/token` authenticated by JWT.
+- **Azure adapter**: `AzureSpeechTokenBroker` in `infrastructure/speech/` calls the Azure `/issueToken` endpoint using `AZURE_SPEECH_KEY` resolved via a Key Vault reference (`infra/bicep/`).
+- **Rate limit**: Bucket4j 6 tokens/minute/user (audit §3, ADR 0009).
+- **TTL**: ~9-10 min (controlled by Azure itself). Desktop renews every ~8 min in long sessions.
 
-A subscription key **nunca** sai do backend. Em caso de comprometimento de um Desktop, o blast radius é o token efêmero (10 min).
+The subscription key **never** leaves the backend. If a Desktop is compromised, the blast radius is the ephemeral token (10 min).
 
 ---
 
 ## §8. Productivity Score (ADR 0005)
 
-Feature **opt-in** ativada por reunião quando o usuário declara um `MeetingGoal` antes/depois do upload.
+An **opt-in** feature enabled per meeting when the user declares a `MeetingGoal` before/after the upload.
 
-### Modelagem
+### Modeling
 
-- `meeting_goals` (V012:14-23): 1:1 com `meetings`. Campos: `purpose` (texto livre), `project_state_snapshot` (opcional).
-- `meeting_goal_expected_outcomes` (V012:28-37): lista ordenada de outcomes esperados (N:1 com `meeting_goals`).
-- `meeting_productivity_assessments` (V012:42-58): 1:1 com `meetings`. Resultado gerado pelo worker: `score` (0-100), `band` (`LOW`/`MEDIUM`/`HIGH`), `off_topic_ratio`, `decision_density`, `rationale`.
-- `meeting_outcome_coverage` (V012:63-78): cobertura por outcome (`ADDRESSED`/`PARTIAL`/`MISSED` + `evidence`).
+- `meeting_goals` (V012:14-23): 1:1 with `meetings`. Fields: `purpose` (free text), `project_state_snapshot` (optional).
+- `meeting_goal_expected_outcomes` (V012:28-37): ordered list of expected outcomes (N:1 with `meeting_goals`).
+- `meeting_productivity_assessments` (V012:42-58): 1:1 with `meetings`. Result generated by the worker: `score` (0-100), `band` (`LOW`/`MEDIUM`/`HIGH`), `off_topic_ratio`, `decision_density`, `rationale`.
+- `meeting_outcome_coverage` (V012:63-78): coverage per outcome (`ADDRESSED`/`PARTIAL`/`MISSED` + `evidence`).
 
-### Comportamento
+### Behavior
 
-- **Sem `MeetingGoal`**, o campo `productivity` no schema é `null` (`meeting-analysis-v1.schema.json`); nada é persistido.
-- **Com `MeetingGoal`**, o worker injeta `purpose` + `expected_outcomes` no prompt, e o LLM emite o bloco `productivity` validado por Pydantic.
-- A UI renderiza `ProductivityScoreCard` (`apps/web/src/components/productivity-score-card.tsx`) apenas quando o assessment existe.
+- **Without a `MeetingGoal`**, the `productivity` field in the schema is `null` (`meeting-analysis-v1.schema.json`); nothing is persisted.
+- **With a `MeetingGoal`**, the worker injects `purpose` + `expected_outcomes` into the prompt, and the LLM emits the `productivity` block validated by Pydantic.
+- The UI renders `ProductivityScoreCard` (`apps/web/src/components/productivity-score-card.tsx`) only when the assessment exists.
 
-### Disclaimer obrigatório
+### Mandatory disclaimer
 
-A UI (e qualquer export futuro) **deve** exibir: *"Indicador da reunião, não dos participantes."* Razão: o score mede aderência da reunião ao objetivo declarado, não desempenho individual — risco de uso punitivo descritivo no ADR 0005.
+The UI (and any future export) **must** display: *"Indicador da reunião, não dos participantes."* Reason: the score measures the meeting's adherence to the declared goal, not individual performance — the risk of punitive use is described in ADR 0005.
 
 ---
 
-## §9. Customer Confidence (ADR 0006 + ADR 0015) — implementado full-stack (#148)
+## §9. Customer Confidence (ADR 0006 + ADR 0015) — implemented full-stack (#148)
 
-**Status atual: IMPLEMENTADO.** Foi entregue em PR #148 (2026-05-21) via ADR 0015: schema LLM → worker emite → backend persiste no pipeline → endpoint read → UI. Account Health **agregado** (US50-51) segue deferido (ADR 0014).
+**Current status: IMPLEMENTED.** It was delivered in PR #148 (2026-05-21) via ADR 0015: LLM schema → worker emits → backend persists in the pipeline → read endpoint → UI. **Aggregated** Account Health (US50-51) remains deferred (ADR 0014).
 
-### O que existe hoje
+### What exists today
 
-- **Schema LLM completo** em `docs/api/llm-schemas/meeting-analysis-v1.schema.json:117-167`:
+- **Complete LLM schema** in `docs/api/llm-schemas/meeting-analysis-v1.schema.json:117-167`:
   - `score` (0-100), `band` (`LOW`/`MEDIUM`/`HIGH`)
-  - `trend` (`IMPROVING`/`STABLE`/`DECLINING`, vs. última avaliação da mesma conta)
-  - `buyingSignals[]` (com `type` enum: `BUDGET_DISCUSSED`, `TIMELINE_DISCUSSED`, `STAKEHOLDER_INVOLVED`, `NEXT_STEP_REQUESTED`, `REFERENCE_REQUESTED`, `PROPOSAL_REQUESTED`, `OTHER`)
-  - `objections[]` (com `type` enum: `PRICE`, `TIMELINE`, `AUTHORITY`, `NEED`, `COMPETITOR_MENTION`, `TRUST`, `FEATURE_GAP`, `OTHER`)
+  - `trend` (`IMPROVING`/`STABLE`/`DECLINING`, vs. the last assessment of the same account)
+  - `buyingSignals[]` (with `type` enum: `BUDGET_DISCUSSED`, `TIMELINE_DISCUSSED`, `STAKEHOLDER_INVOLVED`, `NEXT_STEP_REQUESTED`, `REFERENCE_REQUESTED`, `PROPOSAL_REQUESTED`, `OTHER`)
+  - `objections[]` (with `type` enum: `PRICE`, `TIMELINE`, `AUTHORITY`, `NEED`, `COMPETITOR_MENTION`, `TRUST`, `FEATURE_GAP`, `OTHER`)
   - `rationale`
-- ADR 0006 aceito; o LLM já emite o bloco quando o tenant é Enterprise (e a reunião é externa).
+- ADR 0006 accepted; the LLM already emits the block when the tenant is Enterprise (and the meeting is external).
 
-### O que existe agora (pós-PR #148, 2026-05-21)
+### What exists now (post-PR #148, 2026-05-21)
 
-- **Tabelas Postgres (V017)**: `customer_accounts` (dedup por `LOWER(name)`), `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections` — todas tenant-owned com RLS (ver `data-model.md §2.29-2.33`). `account_health_snapshots` segue **não migrada** (US50-51 deferida via ADR 0014).
-- **Worker emite**: Pydantic `MeetingAnalysisV1.customer_confidence` (`models.py:252`) + stub + prompt + JSON Schema strict; emite só em conversas com cliente/lead (reunião interna → `null`).
-- **Persistência no pipeline**: `AnalysisService.java:127` → `CustomerConfidenceService.persist` faz get-or-create da conta (dedup case-insensitive), link idempotente reunião↔conta, calcula **trend server-side** (compara com a avaliação anterior da conta, banda morta ±5) e grava assessment + signals + objections. Escopado por tenant.
-- **Endpoint**: `GET /meetings/{id}` (`MeetingsController:239` → `findViewByMeetingId`) expande `MeetingDetailResponse` com `customerConfidence` quando presente.
-- **UI**: `CustomerConfidenceCard` renderizado em `meetings/[id]/page.tsx:182`.
+- **Postgres tables (V017)**: `customer_accounts` (dedup by `LOWER(name)`), `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections` — all tenant-owned with RLS (see `data-model.md §2.29-2.33`). `account_health_snapshots` remains **not migrated** (US50-51 deferred via ADR 0014).
+- **The worker emits**: Pydantic `MeetingAnalysisV1.customer_confidence` (`models.py:252`) + stub + prompt + strict JSON Schema; it emits only in conversations with a customer/lead (internal meeting → `null`).
+- **Persistence in the pipeline**: `AnalysisService.java:127` → `CustomerConfidenceService.persist` does a get-or-create of the account (case-insensitive dedup), an idempotent meeting↔account link, computes the **trend server-side** (comparing with the account's previous assessment, dead band ±5) and records the assessment + signals + objections. Scoped by tenant.
+- **Endpoint**: `GET /meetings/{id}` (`MeetingsController:239` → `findViewByMeetingId`) expands `MeetingDetailResponse` with `customerConfidence` when present.
+- **UI**: `CustomerConfidenceCard` rendered in `meetings/[id]/page.tsx:182`.
 
-> **Comentários stale (frozen):** o header de `V017__create_customer_confidence.sql` e o Javadoc de `CustomerConfidenceAssessment` foram escritos no Slice 1 do #148 e ainda dizem "worker não emite / sem wiring". O do `.sql` é **intencionalmente intocado** (migration é forward-only/imutável — `standards.md §6`); a realidade é o wiring acima.
+> **Stale comments (frozen):** the header of `V017__create_customer_confidence.sql` and the Javadoc of `CustomerConfidenceAssessment` were written in Slice 1 of #148 and still say "worker does not emit / no wiring". The one in the `.sql` is **intentionally untouched** (a migration is forward-only/immutable — `standards.md §6`); the reality is the wiring described above.
 
-### Decisão aplicada — ADR 0015 (aceito 2026-05-14, **aplicado em #148** 2026-05-21)
+### Applied decision — ADR 0015 (accepted 2026-05-14, **applied in #148** 2026-05-21)
 
-**ADR 0015 — Customer Confidence: persistência mínima viável** (substitui parcialmente ADR 0006). Voto Stratfy (PO) em bloco: **opção (a)** — implementar mínimo. Entregue em #148, com duas divergências do plano original:
+**ADR 0015 — Customer Confidence: minimum viable persistence** (partially supersedes ADR 0006). Stratfy (PO) block vote: **option (a)** — implement the minimum. Delivered in #148, with two divergences from the original plan:
 
-- A migration foi entregue como **V017** (o slot V013 planejado foi usado por soft-delete em #114).
-- Veio em 1 PR (não na branch dedicada `feat/sub-1.11-...` planejada).
+- The migration was delivered as **V017** (the planned V013 slot was used by soft-delete in #114).
+- It came in 1 PR (not in the planned dedicated branch `feat/sub-1.11-...`).
 
-Account Health agregado (US50-US51) **continua deferido** via ADR 0014. Alternativa (B) — remover Customer Health da landing — foi rejeitada: credibilidade da demo > esforço economizado. Detalhes em `docs/adr/0015-customer-confidence-minimal-persistence.md`.
+Aggregated Account Health (US50-US51) **remains deferred** via ADR 0014. Alternative (B) — removing Customer Health from the landing page — was rejected: demo credibility > effort saved. Details in `docs/adr/0015-customer-confidence-minimal-persistence.md`.
 
 ---
 
-## §10. Fluxo end-to-end "login → upload → análise → resultado"
+## §10. End-to-end flow "login → upload → analysis → result"
 
 ```mermaid
 sequenceDiagram
@@ -410,115 +410,115 @@ sequenceDiagram
     Note over Web: Render summary (markdown),<br/>decisions, action items,<br/>risks, opportunities,<br/>ProductivityScoreCard (se existe)
 ```
 
-Passo a passo verbal:
+Step by step in words:
 
-1. **Login** (`POST /auth/login`): autentica usuário, emite `nora_access` (JWT 15 min) e `nora_refresh` (UUID 30d, persistido em `refresh_tokens` — V011). Ambos cookies HttpOnly. Ver `AuthController.login`.
-2. **Upload** (`POST /meetings`, multipart): aceita `.txt`, `.vtt`, `.srt` (`ALLOWED_FORMATS` em `MeetingsController.java:66`). Cria meeting `PENDING` e dispara processamento assíncrono.
-3. **Backend → Worker** (`MeetingService.processAsync` → `AnalysisService.requestAnalysis`): monta `AnalyzeRequest` com transcript + tenant_context + opções.
-4. **Worker** (`/analyze`): PII Shield → TF-IDF baseline → LLM strict → Pydantic validate → retorna `AnalyzeResponse`.
-5. **Persistência**: backend salva `meeting_analyses` + filhos (`meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities`) + opcionalmente `meeting_productivity_assessments` + `meeting_outcome_coverage`. Atualiza `meetings.processing_status = COMPLETED`.
-6. **Polling do frontend**: o card "Processando" em `apps/web/src/app/(app)/meetings/[id]/page.tsx` faz polling a cada ~2s até `processing_status = COMPLETED`.
-7. **Render**: UI mostra summary (markdown via `react-markdown`), decisions, action items, risks/opportunities e, se presente, `ProductivityScoreCard`.
+1. **Login** (`POST /auth/login`): authenticates the user, issues `nora_access` (JWT 15 min) and `nora_refresh` (UUID 30d, persisted in `refresh_tokens` — V011). Both cookies HttpOnly. See `AuthController.login`.
+2. **Upload** (`POST /meetings`, multipart): accepts `.txt`, `.vtt`, `.srt` (`ALLOWED_FORMATS` in `MeetingsController.java:66`). Creates a `PENDING` meeting and triggers asynchronous processing.
+3. **Backend → Worker** (`MeetingService.processAsync` → `AnalysisService.requestAnalysis`): assembles the `AnalyzeRequest` with transcript + tenant_context + options.
+4. **Worker** (`/analyze`): PII Shield → TF-IDF baseline → strict LLM → Pydantic validate → returns `AnalyzeResponse`.
+5. **Persistence**: the backend saves `meeting_analyses` + children (`meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities`) + optionally `meeting_productivity_assessments` + `meeting_outcome_coverage`. It updates `meetings.processing_status = COMPLETED`.
+6. **Frontend polling**: the "Processando" card in `apps/web/src/app/(app)/meetings/[id]/page.tsx` polls every ~2s until `processing_status = COMPLETED`.
+7. **Render**: the UI shows the summary (markdown via `react-markdown`), decisions, action items, risks/opportunities and, if present, `ProductivityScoreCard`.
 
 ---
 
-## §11. Infra Azure
+## §11. Azure infrastructure
 
-Provisionada via Bicep (`infra/bicep/main.bicep`) e deployada por `deploy-infra.yml` (Service Principal OIDC). Detalhes operacionais (oito armadilhas do Azure for Students, comandos de recriação, troubleshooting) **vivem em `docs/operations/azure-deploy.md`** (a ser escrito pelo Tech Lead em paralelo).
+Provisioned via Bicep (`infra/bicep/main.bicep`) and deployed by `deploy-infra.yml` (Service Principal OIDC). Operational details (the eight Azure for Students pitfalls, recreation commands, troubleshooting) **live in `docs/operations/azure-deploy.md`** (to be written by the Tech Lead in parallel).
 
-### Resource Group `rg-nora-dev` — inventário atual
+### Resource Group `rg-nora-dev` — current inventory
 
-| Recurso | Nome / Endpoint | Tipo |
+| Resource | Name / Endpoint | Type |
 |---|---|---|
 | Container Apps Env | `nora-cae-dev` | `Microsoft.App/managedEnvironments` |
-| Container App | `nora-web-dev` | Next.js público |
-| Container App | `nora-api-dev` | Spring API público |
+| Container App | `nora-web-dev` | Public Next.js |
+| Container App | `nora-api-dev` | Public Spring API |
 | Container App | `nora-worker-dev` | FastAPI internal-only |
 | Postgres Flexible | `nora-pg-dev-wgl3a3` | B1ms, central US |
 | Key Vault | `nora-kv-dev-wgl3a3` | Standard |
 | Storage Account | `norastdevwgl3a3mz` | Standard_LRS |
 | Log Analytics | `nora-la-dev` | workspace-based |
-| App Insights | `nora-ai-dev` | conectado ao LA |
-| Speech | provisionado em PR #71 | `Microsoft.CognitiveServices` kind=`SpeechServices` |
-| User-Assigned MI (×3) | api/worker/web | Federada com Service Principal OIDC |
-| AI Search | **não utilizado** (`enableSearch=false`) | a busca semântica (US15) foi entregue via pgvector + HTTP embedding client, não Azure AI Search (PR #206, `V021`) |
+| App Insights | `nora-ai-dev` | connected to LA |
+| Speech | provisioned in PR #71 | `Microsoft.CognitiveServices` kind=`SpeechServices` |
+| User-Assigned MI (×3) | api/worker/web | Federated with Service Principal OIDC |
+| AI Search | **not used** (`enableSearch=false`) | semantic search (US15) was delivered via pgvector + an HTTP embedding client, not Azure AI Search (PR #206, `V021`) |
 
-Service Principal: `sp-nora-github-deploy` (audit §7), com 3 federated credentials (main, pull_request, environment:dev). Roles: `Contributor` + `Role Based Access Control Administrator` em `rg-nora-dev`.
+Service Principal: `sp-nora-github-deploy` (audit §7), with 3 federated credentials (main, pull_request, environment:dev). Roles: `Contributor` + `Role Based Access Control Administrator` on `rg-nora-dev`.
 
 ---
 
-## §12. Stack rationale — por que cada escolha
+## §12. Stack rationale — why each choice
 
 ### Postgres 16 (vs MongoDB / Cosmos DB)
 
-- ACID forte é mandatório (multi-tenant + IAM com versionamento de policy).
-- `tenant_id` por linha + RLS futuro é mais simples que reshard por collection.
-- JSONB cobre flexibilidade onde precisa (`iam_policies.document`, `tenant_contexts.document`, `meetings.attributes`) sem trocar de banco.
-- Já dominado pelo time; não há necessidade real de schema-less.
+- Strong ACID is mandatory (multi-tenant + IAM with policy versioning).
+- `tenant_id` per row + future RLS is simpler than resharding per collection.
+- JSONB covers flexibility where it is needed (`iam_policies.document`, `tenant_contexts.document`, `meetings.attributes`) without switching databases.
+- Already mastered by the team; there is no real need for schema-less.
 
 ### Spring Boot 3 (vs Quarkus / Micronaut)
 
-- Maturidade enterprise e ecossistema enorme (springdoc-openapi, Bucket4j, Testcontainers integration, JJWT).
-- Time familiar com Java/Spring; curva de aprendizado zero.
-- DDD em camadas estritas funciona bem no padrão Spring (controllers thin + services + repositories).
-- Suporte first-class a OIDC, OAuth2, validação Bean.
+- Enterprise maturity and a huge ecosystem (springdoc-openapi, Bucket4j, Testcontainers integration, JJWT).
+- Team familiar with Java/Spring; zero learning curve.
+- DDD in strict layers works well in the Spring pattern (thin controllers + services + repositories).
+- First-class support for OIDC, OAuth2, Bean validation.
 
 ### Flyway (vs Liquibase)
 
-- SQL nativo, sem XML/YAML intermediário. Migrations são SQL revisável e versionável.
-- Convenção `V001__nome.sql` é óbvia para qualquer dev que abrir o repo.
-- Spring Boot inicia Flyway automaticamente; zero setup.
+- Native SQL, without intermediate XML/YAML. Migrations are reviewable and versionable SQL.
+- The `V001__nome.sql` convention is obvious to any dev who opens the repo.
+- Spring Boot starts Flyway automatically; zero setup.
 
 ### Next.js 14 (vs Nuxt / Remix / SvelteKit)
 
-- App Router maduro; RSC (React Server Components) reduz JS no cliente.
-- TypeScript first-class.
-- Ecossistema React enorme (Monaco editor, react-markdown).
-- SSR/RSC se encaixa bem com o modelo "dashboard pesado em dados, leve em interação".
+- Mature App Router; RSC (React Server Components) reduces JS on the client.
+- First-class TypeScript.
+- Huge React ecosystem (Monaco editor, react-markdown).
+- SSR/RSC fits well with the "data-heavy, interaction-light dashboard" model.
 
-### Tailwind cru (vs shadcn / MUI / Chakra)
+### Raw Tailwind (vs shadcn / MUI / Chakra)
 
-- **Controle total da identidade visual**: a paleta editorial OKLCH, tipografia (Inter + Instrument Serif + JetBrains Mono) e densidade Enterprise da NORA precisam ser únicos. Libs prontas engessam.
-- Bundle menor: sem `@radix-ui`, sem theming engine externo.
-- Tokens declarados em `tailwind.config.ts` + CSS vars em `globals.css`. Refactor visual é diff cirúrgico.
-- Custo: cada componente é feito à mão. Mitigado pelo desktop sidecar simples e UI focada em poucos fluxos.
+- **Total control of the visual identity**: NORA's OKLCH editorial palette, typography (Inter + Instrument Serif + JetBrains Mono) and Enterprise density need to be unique. Off-the-shelf libraries constrain that.
+- Smaller bundle: no `@radix-ui`, no external theming engine.
+- Tokens declared in `tailwind.config.ts` + CSS vars in `globals.css`. A visual refactor is a surgical diff.
+- Cost: every component is handmade. Mitigated by the simple desktop sidecar and a UI focused on few flows.
 
 ### Tauri 2 (vs Electron)
 
-- Binário ~10× menor (sem runtime Node embarcado).
-- Captura de áudio sistêmica feita em Rust (`system_audio.rs` no `apps/desktop/src-tauri/`) com WASAPI no Windows, CoreAudio/BlackHole no macOS.
-- Sidecar Python (ADR 0008) roda o cliente Azure Speech localmente para baixa latência; protocolo NDJSON entre Rust e Python.
-- IPC tipado entre frontend (web view) e backend Rust via Tauri commands.
+- Binary ~10× smaller (no embedded Node runtime).
+- System-wide audio capture done in Rust (`system_audio.rs` in `apps/desktop/src-tauri/`) with WASAPI on Windows, CoreAudio/BlackHole on macOS.
+- The Python sidecar (ADR 0008) runs the Azure Speech client locally for low latency; NDJSON protocol between Rust and Python.
+- Typed IPC between the frontend (web view) and the Rust backend via Tauri commands.
 
-### OpenAI SDK direto (vs LangChain / LlamaIndex)
+### OpenAI SDK directly (vs LangChain / LlamaIndex)
 
-- Controle explícito do contrato (prompt versionado + JSON Schema strict — ADR 0003).
-- LangChain adicionaria camada de abstração que não compra nada para um pipeline de 1 chamada (PII → TF-IDF → LLM → validate).
-- ADR 0004 mantém provider agnóstico via env vars; trocar para Azure OpenAI ou outro endpoint compatível Chat Completions é só mudar `LLM_BASE_URL`.
+- Explicit control of the contract (versioned prompt + strict JSON Schema — ADR 0003).
+- LangChain would add an abstraction layer that buys nothing for a 1-call pipeline (PII → TF-IDF → LLM → validate).
+- ADR 0004 keeps the provider agnostic via env vars; switching to Azure OpenAI or another Chat Completions-compatible endpoint is just changing `LLM_BASE_URL`.
 
 ---
 
-## §13. Hardening de segurança entregue (audit follow-ups, pós-1.10)
+## §13. Security hardening delivered (audit follow-ups, post-1.10)
 
-Uma onda de hardening (PRs ~#114–#138, rotulados "audit follow-up #N") entrou em `main` após a Sub-fase 1.10. Documentada retroativamente em **ADR 0019** (RLS + FK composta), **ADR 0020** (token rotation) e **ADR 0021** (soft-delete):
+A hardening wave (PRs ~#114–#138, labeled "audit follow-up #N") landed in `main` after Sub-phase 1.10. Documented retroactively in **ADR 0019** (RLS + composite FK), **ADR 0020** (token rotation) and **ADR 0021** (soft-delete):
 
-- **RLS Postgres (V016)** — ver §3. Schema-level pronto; enforce opt-in (`nora_app` + flag).
-- **Soft-delete (V013)** — `deleted_at` + `@SQLRestriction` em `tenants/users/tenant_contexts/meetings`; UNIQUEs viraram parciais. O hard-delete para LGPD/retenção já está operacional (ADR 0029): `DELETE /privacy/meetings/{id}` (direito ao esquecimento) + `RetentionSweeper` agendado.
-- **Refresh-token rotation + reuse-detection (V014)** — `refresh_tokens.family_id`/`replaced_by_id`; cada `/auth/refresh` rotaciona; apresentar token revogado revoga a family inteira.
-- **Composite FK de isolamento (V015)** — `meetings.(tenant_id, owner_user_id) → users(tenant_id, id)`: bloqueia owner forjado de outro tenant no nível do schema (defesa em profundidade do ADR 0002).
-- **JWT RS256 + JWKS** — assinatura assimétrica; chave pública exposta em `GET /.well-known/jwks.json` (modo RSA).
-- **Audit log de auth expandido** — eventos de login/refresh/logout além do `iam_audit_events` (que era IAM-only).
-- **App Insights Java agent** — instrumentação wired no `services/api/Dockerfile`.
-- **Upload hardening** — checagem de magic-byte/extensão/path-traversal em `MeetingsController` antes de persistir transcript.
+- **Postgres RLS (V016)** — see §3. Schema-level ready; enforce opt-in (`nora_app` + flag).
+- **Soft-delete (V013)** — `deleted_at` + `@SQLRestriction` in `tenants/users/tenant_contexts/meetings`; UNIQUEs became partial. Hard-delete for LGPD/retention is already operational (ADR 0029): `DELETE /privacy/meetings/{id}` (right to be forgotten) + a scheduled `RetentionSweeper`.
+- **Refresh-token rotation + reuse-detection (V014)** — `refresh_tokens.family_id`/`replaced_by_id`; every `/auth/refresh` rotates; presenting a revoked token revokes the entire family.
+- **Composite isolation FK (V015)** — `meetings.(tenant_id, owner_user_id) → users(tenant_id, id)`: blocks a forged owner from another tenant at the schema level (defense in depth for ADR 0002).
+- **JWT RS256 + JWKS** — asymmetric signature; public key exposed at `GET /.well-known/jwks.json` (RSA mode).
+- **Expanded auth audit log** — login/refresh/logout events beyond `iam_audit_events` (which was IAM-only).
+- **App Insights Java agent** — instrumentation wired in `services/api/Dockerfile`.
+- **Upload hardening** — magic-byte/extension/path-traversal checking in `MeetingsController` before persisting the transcript.
 
-## Próximos refactors arquiteturais
+## Next architectural refactors
 
-Débitos técnicos catalogados, priorização e ADRs sucessores planejados ficam em **`docs/operations/production-readiness-gaps.md`** (escrito na Sub-fase 1.10; implementação ataca-se na Sub-fase 1.12 — Production Hardening, formalizada via ADR 0016). Resumo dos principais (estado em 2026-05-21):
+Catalogued technical debt, prioritization and planned successor ADRs live in **`docs/operations/production-readiness-gaps.md`** (written in Sub-phase 1.10; implementation is tackled in Sub-phase 1.12 — Production Hardening, formalized via ADR 0016). Summary of the main ones (state as of 2026-05-21):
 
-- **AUTH_FILTER_HARD_CAP**: **resolvido** (Sub-fase 1.11b) — teto silencioso de `500` removido; `MeetingService.listAllForAuthFilter` varre todas as meetings do tenant em lotes antes do filtro IAM in-memory. Pushdown SQL via `meeting_attributes @>` + GIN (V008) fica como otimização **de performance** futura (não correção), quando algum tenant atingir escala.
-- **PolicyEvaluator** operadores: **resolvido** (Sub-fase 1.11c) — `SUPPORTED_CONDITION_OPERATORS` agora cobre `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (fail-closed mantido para operador desconhecido e atributo ausente).
-- **RLS Postgres**: **entregue no schema (V016 + V019/V020)** — falta só o cutover/enforcement operacional em prod (role `nora_app` + flag; runbook em ADR 0026/0028). Ver §3/§13.
-- **`tenant_contexts.version`** (US31): coluna ausente; sem histórico de versão do contexto. Alvo Sub-fase 1.12.
-- **`audit_events` global** (não só IAM): auth já tem log próprio (§13); falta consolidar MEETING_UPLOAD, CONTEXT_UPDATE numa trilha única. Alvo Sub-fase 1.12.
-- **Customer Confidence**: **implementado full-stack** (PR #148, 2026-05-21) — V017 + worker emit + `AnalysisService` wiring (trend server-side) + `GET /meetings/{id}` + `CustomerConfidenceCard`. Dívida narrativa resolvida. Account Health **agregado** (US50-51) segue deferido (ADR 0014). Ver `docs/adr/0015-customer-confidence-minimal-persistence.md`.
-- **ADRs do hardening**: documentados retroativamente em ADR 0019 (RLS + FK composta), 0020 (refresh-token rotation), 0021 (soft-delete). Resta avaliar ADR para JWT RS256/JWKS (candidato).
+- **AUTH_FILTER_HARD_CAP**: **resolved** (Sub-phase 1.11b) — the silent cap of `500` was removed; `MeetingService.listAllForAuthFilter` scans all the tenant's meetings in batches before the in-memory IAM filter. SQL pushdown via `meeting_attributes @>` + GIN (V008) remains a future **performance** optimization (not a fix), for when some tenant reaches that scale.
+- **PolicyEvaluator** operators: **resolved** (Sub-phase 1.11c) — `SUPPORTED_CONDITION_OPERATORS` now covers `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (fail-closed kept for unknown operators and missing attributes).
+- **Postgres RLS**: **delivered in the schema (V016 + V019/V020)** — only the operational cutover/enforcement in prod is missing (role `nora_app` + flag; runbook in ADR 0026/0028). See §3/§13.
+- **`tenant_contexts.version`** (US31): column missing; no version history for the context. Target Sub-phase 1.12.
+- **Global `audit_events`** (not just IAM): auth already has its own log (§13); what is missing is consolidating MEETING_UPLOAD, CONTEXT_UPDATE into a single trail. Target Sub-phase 1.12.
+- **Customer Confidence**: **implemented full-stack** (PR #148, 2026-05-21) — V017 + worker emit + `AnalysisService` wiring (server-side trend) + `GET /meetings/{id}` + `CustomerConfidenceCard`. Narrative debt resolved. **Aggregated** Account Health (US50-51) remains deferred (ADR 0014). See `docs/adr/0015-customer-confidence-minimal-persistence.md`.
+- **Hardening ADRs**: documented retroactively in ADR 0019 (RLS + composite FK), 0020 (refresh-token rotation), 0021 (soft-delete). What remains is evaluating an ADR for JWT RS256/JWKS (candidate).

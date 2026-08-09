@@ -13,7 +13,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-/** Adapter JdbcTemplate do catálogo de modelos (banco de plataforma, ADR 0022). */
+/** JdbcTemplate adapter for the model catalog (platform database, ADR 0022). */
 @Repository
 @ConditionalOnProperty(name = "nora.platform.enabled", havingValue = "true")
 public class JdbcLlmModelRepository implements LlmModelRepository {

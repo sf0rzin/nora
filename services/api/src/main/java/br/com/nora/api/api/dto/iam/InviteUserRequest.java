@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Payload {@code POST /iam/users/invite}. Schema em {@code
+ * Payload {@code POST /iam/users/invite}. Schema in {@code
  * docs/api/examples/iam-invite-request.json}.
  */
 public record InviteUserRequest(

@@ -100,7 +100,7 @@ const BAND_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
   LOW: { bg: "rgba(190,44,44,0.12)", fg: "var(--danger)", label: "Baixa" },
 };
 
-/** Pill de produtividade (banda + score) — só aparece quando a reunião foi avaliada. */
+/** Productivity pill (band + score) — only shows when the meeting has been scored. */
 function ProductivityPill({ band, score }: { band?: string | null; score?: number | null }) {
   if (!band) return null;
   const s = BAND_STYLE[band] ?? BAND_STYLE.MEDIUM;
@@ -134,7 +134,7 @@ function initialsOf(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-/** Stack de avatares (iniciais) dos participantes, com overflow +N. */
+/** Stack of participant avatars (initials), with +N overflow. */
 function AvatarStack({ names }: { names?: string[] }) {
   if (!names || names.length === 0) return null;
   const shown = names.slice(0, 3);
@@ -207,7 +207,7 @@ function MeetingRow({ m }: { m: MeetingListItem }) {
   );
 }
 
-/** Constrói a query string preservando filtros e definindo a página alvo. */
+/** Builds the query string preserving filters and setting the target page. */
 function pageHref(filters: ListMeetingsParams, page: number): Route {
   const qs = new URLSearchParams();
   if (filters.search) qs.set("search", filters.search);

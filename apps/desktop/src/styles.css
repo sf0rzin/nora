@@ -2,10 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Design tokens — NORA editorial palette (claro, OKLCH) ─────────────
-   Fonte única de verdade do Desktop, espelhando apps/web/src/styles/tokens.css.
-   Toda cor/raio/sombra/timing vive aqui; componentes NUNCA hardcodam valores —
-   é o que mantém os tamanhos batendo entre as telas. */
+/* ── Design tokens — NORA editorial palette (light, OKLCH) ─────────────
+   Single source of truth for Desktop, mirroring apps/web/src/styles/tokens.css.
+   Every color/radius/shadow/timing lives here; components NEVER hardcode values —
+   that is what keeps the sizes matching across screens. */
 :root {
   --sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --display: "DM Sans", ui-sans-serif, system-ui, sans-serif;
@@ -32,39 +32,39 @@
   --warn-ink: #a37528;
   --danger: #c97766;
   --danger-ink: #a04c3e;
-  /* Soft danger (fundo/borda de banners de erro). Mesmos valores que estavam
-     hardcoded como rgba(201,119,102,…) em várias telas. Auditoria desktop #37. */
+  /* Soft danger (background/border of error banners). Same values that were
+     hardcoded as rgba(201,119,102,…) on several screens. Desktop audit #37. */
   --danger-soft-bg: rgba(201, 119, 102, 0.10);
   --danger-soft-border: rgba(201, 119, 102, 0.25);
 
-  /* Escala de raio — fim do 6/7/8/9/12/16 ad-hoc. Botões/inputs = --radius,
-     cards = --radius-md, modais = --radius-lg, pills = --radius-pill. */
+  /* Radius scale — end of the ad-hoc 6/7/8/9/12/16. Buttons/inputs = --radius,
+     cards = --radius-md, modals = --radius-lg, pills = --radius-pill. */
   --radius-sm: 6px;
   --radius: 9px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-pill: 999px;
 
-  /* Escala de elevação — uma só hierarquia de sombra (era inventada por componente). */
+  /* Elevation scale — a single shadow hierarchy (it used to be invented per component). */
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
   --shadow-md: 0 4px 12px -4px rgba(15, 23, 42, 0.10), 0 2px 6px -4px rgba(15, 23, 42, 0.08);
   --shadow-lg: 0 18px 42px -20px rgba(15, 23, 42, 0.28), 0 4px 12px rgba(15, 23, 42, 0.06);
   --shadow-xl: 0 32px 80px -24px rgba(15, 23, 42, 0.32), 0 8px 22px rgba(15, 23, 42, 0.06);
 
-  /* Easings padrão (espelham tokens.css do web). */
+  /* Default easings (mirror the web tokens.css). */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* Altura da titlebar custom — usada pelo layout das janelas e pelas resize handles. */
+  /* Height of the custom titlebar — used by the window layout and the resize handles. */
   --titlebar-h: 40px;
 }
 
-/* ── Primitivos de UI ──────────────────────────────────────────────────
-   Botão / card / input / icon-button com tamanhos FIXOS. Toda tela usa
-   estes em vez de estilo inline — é o que elimina os tamanhos divergentes.
-   Espelham .btn / .card / .input do apps/web/src/styles/components.css. */
+/* ── UI primitives ─────────────────────────────────────────────────────
+   Button / card / input / icon-button with FIXED sizes. Every screen uses
+   these instead of inline style — that is what kills the divergent sizes.
+   They mirror .btn / .card / .input from apps/web/src/styles/components.css. */
 
-/* Button — variantes primary/secondary/ghost/danger/accent; tamanhos md (default) e sm. */
+/* Button — primary/secondary/ghost/danger/accent variants; md (default) and sm sizes. */
 .ui-btn {
   display: inline-flex;
   align-items: center;
@@ -130,7 +130,7 @@ textarea.ui-input { resize: none; line-height: 1.5; }
 .ui-field-help { font-size: 11.5px; color: var(--muted); }
 .ui-field-help.is-err { color: var(--danger-ink); }
 
-/* Icon button — controle quadrado consistente (titlebar, toolbars). */
+/* Icon button — consistent square control (titlebar, toolbars). */
 .ui-icon-btn {
   display: grid;
   place-items: center;
@@ -156,9 +156,9 @@ body,
   margin: 0;
 }
 
-/* O background do body fica nas entry-point HTMLs (index.html canvas /
-   overlay.html transparente). Aqui só definimos no #root pra cobrir a janela
-   principal sem afetar a overlay transparente. */
+/* The body background lives in the entry-point HTMLs (index.html canvas /
+   overlay.html transparent). Here we only set it on #root to cover the main
+   window without affecting the transparent overlay. */
 #root {
   background: var(--canvas);
 }
@@ -179,7 +179,7 @@ body {
 ::selection { background: var(--accent-soft); }
 a { color: inherit; text-decoration: none; }
 
-/* Scrollbars discretas */
+/* Discreet scrollbars */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
@@ -188,11 +188,11 @@ a { color: inherit; text-decoration: none; }
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(15, 23, 42, 0.18); }
 
-/* Selects herdam tema claro */
+/* Selects inherit the light theme */
 select { color-scheme: light; }
 select option { background: var(--canvas); color: var(--ink); }
 
-/* Drag region Tauri pra janelas sem decorações (overlay) */
+/* Tauri drag region for windows without decorations (overlay) */
 [data-tauri-drag-region] {
   -webkit-app-region: drag;
   app-region: drag;
@@ -206,7 +206,7 @@ select option { background: var(--canvas); color: var(--ink); }
   app-region: no-drag;
 }
 
-/* ── Animações reutilizáveis ─────────────────────────────────────── */
+/* ── Reusable animations ─────────────────────────────────────────── */
 @keyframes panelIn {
   from { opacity: 0; transform: translateX(-6px) scaleX(0.985); }
   to   { opacity: 1; transform: translateX(0) scaleX(1); }
@@ -228,7 +228,7 @@ select option { background: var(--canvas); color: var(--ink); }
   50%      { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(201, 119, 102, 0); }
 }
 
-/* Live transcription animation no login (variant C) */
+/* Live transcription animation on the login (variant C) */
 @keyframes tLineCycle {
   0%   { opacity: 0; transform: translateY(8px); }
   6%   { opacity: 1; transform: translateY(0); }
@@ -249,15 +249,16 @@ select option { background: var(--canvas); color: var(--ink); }
 @keyframes badgeFadeIn {
   to { opacity: 1; }
 }
-/* Modal/palette — usadas pelo new-meeting-modal E pelo CloseConfirmDialog da
-   overlay; precisam estar aqui (não inline no modal) pra valer na janela overlay. */
+/* Modal/palette — used by the new-meeting-modal AND by the overlay's
+   CloseConfirmDialog; they must be here (not inline in the modal) to apply in the
+   overlay window. */
 @keyframes paletteFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes paletteSlideIn {
   from { opacity: 0; transform: translateY(-8px) scale(0.985); }
   to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
 
-/* ── Prose overrides (Markdown no Meeting Detail) ─────────────────── */
+/* ── Prose overrides (Markdown in the Meeting Detail) ─────────────── */
 .nora-prose {
   font-family: var(--sans);
   font-size: 14.5px;
@@ -285,7 +286,7 @@ select option { background: var(--canvas); color: var(--ink); }
   font-size: 12.5px;
 }
 
-/* ── Brand logo (5 barras DM Sans) ────────────────────────────────── */
+/* ── Brand logo (5 DM Sans bars) ──────────────────────────────────── */
 .nora-logo {
   display: inline-flex;
   align-items: center;

@@ -5,10 +5,10 @@ import { RecordingProvider } from "@/hooks/use-recording-context";
 import { LiveHighlightsProvider } from "@/hooks/use-live-highlights";
 import "./styles.css";
 
-// A dock agora controla a gravação nativa via useRecording, que depende do
-// RecordingProvider (estado do transcript) + LiveHighlightsProvider (análise ao
-// vivo). Sem esses providers o hook lança no mount. Os mesmos providers
-// envolvem a overlay, então as duas janelas compartilham a orquestração.
+// The dock now controls the native recording via useRecording, which depends on
+// RecordingProvider (transcript state) + LiveHighlightsProvider (live
+// analysis). Without those providers the hook throws on mount. The same providers
+// wrap the overlay, so both windows share the orchestration.
 ReactDOM.createRoot(document.getElementById("dock-root")!).render(
   <React.StrictMode>
     <RecordingProvider>

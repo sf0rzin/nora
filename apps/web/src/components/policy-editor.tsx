@@ -3,30 +3,30 @@
 /**
  * PolicyEditor
  * -------------------------------------------------------------------------
- * Editor especializado para documentos de policy IAM estilo AWS (ADR 0007).
+ * Specialized editor for AWS-style IAM policy documents (ADR 0007).
  *
- * Recursos:
- * - Monaco Editor com syntax highlight JSON nativo.
- * - JSON Schema NORA registrado (Effect / Action / Resource [/ Condition]).
- * - Squiggle vermelho em erros de schema/parse.
- * - Toolbar com botao "Formatar" e indicador de status (Válido / N erros).
- * - Mensagem de erro abaixo do editor com linha do primeiro problema.
- * - Tema dark (vs-dark) sincronizado com prefers-color-scheme do usuário.
- * - Fallback gracioso: cai para <textarea> se Monaco falhar de carregar
- *   (network, SSR esquisito, etc.). Sem quebrar a pagina.
+ * Features:
+ * - Monaco Editor with native JSON syntax highlighting.
+ * - NORA JSON Schema registered (Effect / Action / Resource [/ Condition]).
+ * - Red squiggle on schema/parse errors.
+ * - Toolbar with a "Formatar" button and status indicator (Válido / N erros).
+ * - Error message below the editor with the line of the first problem.
+ * - Dark theme (vs-dark) synced with the user's prefers-color-scheme.
+ * - Graceful fallback: falls back to <textarea> if Monaco fails to load
+ *   (network, weird SSR, etc.). Without breaking the page.
  *
- * Contrato:
+ * Contract:
  *   <PolicyEditor
  *      value={policyDoc}
  *      onChange={(value, isValid) => setPolicyDoc(value)}
  *      readOnly={false}
  *   />
  *
- * - `value`: string com o JSON cru (mantemos string, nao objeto, para
- *   preservar formatacao e permitir JSON intermediário invalido).
- * - `onChange(value, isValid)`: o caller decide se desabilita o submit
- *   olhando `isValid` (combinacao de parse-ok + schema-ok).
- * - `readOnly`: bloqueia edicao.
+ * - `value`: string with the raw JSON (we keep a string, not an object, to
+ *   preserve formatting and allow invalid intermediate JSON).
+ * - `onChange(value, isValid)`: the caller decides whether to disable submit
+ *   by looking at `isValid` (combination of parse-ok + schema-ok).
+ * - `readOnly`: blocks editing.
  */
 
 import dynamic from "next/dynamic";
@@ -35,12 +35,12 @@ import type { editor } from "monaco-editor";
 import type { OnMount, OnChange, Monaco } from "@monaco-editor/react";
 
 /**
- * JSON Schema (Draft-07) que descreve o documento de policy NORA.
+ * JSON Schema (Draft-07) describing the NORA policy document.
  *
- * Reflete ADR 0007: Effect/Action/Resource[/Condition]. As patterns nao
- * pretendem exaustividade — sao um primeiro guard de "obviamente errado"
- * (ex: faltar `effect`, escrever `Action` ao invés de `action`). O backend
- * permanece a fonte da verdade.
+ * Reflects ADR 0007: Effect/Action/Resource[/Condition]. The patterns do not
+ * aim for exhaustiveness — they are a first guard against "obviously wrong"
+ * (e.g. missing `effect`, writing `Action` instead of `action`). The backend
+ * remains the source of truth.
  */
 const POLICY_SCHEMA = {
   $schema: "http://json-schema.org/draft-07/schema#",
@@ -94,8 +94,8 @@ const POLICY_SCHEMA = {
 } as const;
 
 /**
- * Carregamento dinamico do Monaco. SSR desligado porque Monaco precisa de
- * `window` e `document`. Loading state mostra um placeholder enxuto.
+ * Dynamic loading of Monaco. SSR off because Monaco needs `window` and
+ * `document`. Loading state shows a lean placeholder.
  */
 const MonacoEditor = dynamic(
   async () => {
@@ -117,16 +117,16 @@ const MonacoEditor = dynamic(
 );
 
 export interface PolicyEditorProps {
-  /** String JSON crua. Mantida como string para preservar formatacao do usuario. */
+  /** Raw JSON string. Kept as a string to preserve the user's formatting. */
   value: string;
   /**
-   * Callback chamado a cada mudanca. `isValid` reflete parse JSON OK + schema
-   * sem erros — o caller deve usar essa flag para habilitar/desabilitar Save.
+   * Callback called on every change. `isValid` reflects JSON parse OK + schema
+   * with no errors — the caller should use this flag to enable/disable Save.
    */
   onChange: (value: string, isValid: boolean) => void;
-  /** Bloqueia edicao. Default false. */
+  /** Blocks editing. Default false. */
   readOnly?: boolean;
-  /** Altura em px. Default 400. */
+  /** Height in px. Default 400. */
   height?: number;
 }
 
@@ -138,9 +138,9 @@ interface MarkerSummary {
 }
 
 /**
- * Tenta detectar tema dark via media query. Usado para escolher entre
- * `vs` (light) e `vs-dark`. Os tokens de cor do globals.css `.dark` ainda
- * sao tratados pelo Tailwind no resto da UI; o Monaco tem tema proprio.
+ * Tries to detect a dark theme via media query. Used to choose between
+ * `vs` (light) and `vs-dark`. The color tokens from globals.css `.dark` are
+ * still handled by Tailwind in the rest of the UI; Monaco has its own theme.
  */
 function useIsDarkTheme(): boolean {
   const [isDark, setIsDark] = useState(false);
@@ -170,9 +170,9 @@ export default function PolicyEditor({
   const isDark = useIsDarkTheme();
 
   /**
-   * Valida sintaticamente o JSON. Schema validation propriamente dita roda
-   * dentro do Monaco e chega via onValidate -> markers. Aqui so capturamos
-   * "parseou ou nao" para casos onde Monaco ainda nao montou.
+   * Validates the JSON syntactically. Schema validation proper runs inside
+   * Monaco and arrives via onValidate -> markers. Here we only capture
+   * "parsed or not" for cases where Monaco has not mounted yet.
    */
   const parseValid = useMemo(() => {
     if (!value || !value.trim()) return false;
@@ -188,17 +188,17 @@ export default function PolicyEditor({
   const isValid = parseValid && schemaValid;
 
   /**
-   * Mantemos uma ref pro callback de onChange para evitar registrar handlers
-   * do Monaco a cada render. O caller espera ser notificado a cada keystroke
-   * com o isValid corrente.
+   * We keep a ref to the onChange callback to avoid registering Monaco
+   * handlers on every render. The caller expects to be notified on each
+   * keystroke with the current isValid.
    */
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
 
-  // Re-notifica o parent sempre que validade mudar (sem digitacao do usuário,
-  // ex: schema redefinido ou tema). Garante que Save reflita estado real.
+  // Re-notifies the parent whenever validity changes (without user typing,
+  // e.g. schema redefined or theme). Ensures Save reflects the real state.
   useEffect(() => {
     onChangeRef.current(value, isValid);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -208,7 +208,7 @@ export default function PolicyEditor({
     editorRef.current = mountedEditor;
     monacoRef.current = monaco;
 
-    // Registra schema NORA para validacao inline com squiggle.
+    // Registers the NORA schema for inline validation with squiggle.
     try {
       monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
         validate: true,
@@ -222,14 +222,14 @@ export default function PolicyEditor({
         ],
       });
     } catch {
-      // Se o schema falhar de registrar (improvavel), o editor ainda funciona
-      // como JSON puro. Nao quebrar a pagina.
+      // If the schema fails to register (unlikely), the editor still works
+      // as plain JSON. Do not break the page.
     }
   }, []);
 
   const handleChange: OnChange = useCallback((next) => {
     const safe = next ?? "";
-    // Re-parseia para feedback rapido — o markers state cobre schema.
+    // Re-parses for fast feedback — the markers state covers the schema.
     let nextIsValid = false;
     try {
       if (safe.trim()) {
@@ -241,16 +241,16 @@ export default function PolicyEditor({
       nextIsValid = false;
       setParseError(err instanceof Error ? err.message : "JSON inválido");
     }
-    // Schema markers serao atualizados pelo onValidate; aqui combinamos com o
-    // estado atual do markers ref pra dar feedback imediato.
+    // Schema markers will be updated by onValidate; here we combine with the
+    // current state of the markers ref to give immediate feedback.
     onChangeRef.current(safe, nextIsValid && monacoRef.current
       ? markersOk(monacoRef.current, editorRef.current)
       : nextIsValid);
   }, []);
 
   /**
-   * `onValidate` do Monaco entrega o array completo de markers (parse + schema).
-   * Convertimos em forma leve para renderizar a lista de erros.
+   * Monaco's `onValidate` delivers the full array of markers (parse + schema).
+   * We convert it into a lightweight shape to render the error list.
    */
   const handleValidate = useCallback((monacoMarkers: editor.IMarker[]) => {
     const summarized: MarkerSummary[] = monacoMarkers.map((m) => ({
@@ -263,8 +263,8 @@ export default function PolicyEditor({
   }, []);
 
   /**
-   * Botao "Formatar": chama a acao nativa do Monaco. Indenta com 2 espacos
-   * (default do JSON language service).
+   * "Formatar" button: calls Monaco's native action. Indents with 2 spaces
+   * (JSON language service default).
    */
   const handleFormat = useCallback(() => {
     const ed = editorRef.current;
@@ -273,16 +273,16 @@ export default function PolicyEditor({
   }, []);
 
   /**
-   * Captura erros do dynamic import / loader do Monaco e ativa fallback.
-   * Em produção raramente vai disparar — esta aqui para nao deixar o usuário
-   * com a pagina em branco se houver problema de CDN ou bundling.
+   * Captures errors from Monaco's dynamic import / loader and turns on the
+   * fallback. In production it will rarely fire — it is here so the user is
+   * not left with a blank page on a CDN or bundling problem.
    *
-   * Cobertura:
-   * 1. Listener `window.error` para falhas síncronas do loader (script error).
-   * 2. Listener `window.unhandledrejection` para promises rejeitadas (ex:
-   *    import dinâmico do Monaco falha).
-   * 3. Watchdog: se o `onMount` nao for chamado em 12s (tipico CDN slow ou
-   *    bloqueio de rede), assume falha e ativa fallback.
+   * Coverage:
+   * 1. `window.error` listener for synchronous loader failures (script error).
+   * 2. `window.unhandledrejection` listener for rejected promises (e.g.
+   *    Monaco's dynamic import fails).
+   * 3. Watchdog: if `onMount` is not called within 12s (typical slow CDN or
+   *    network block), assume failure and turn on the fallback.
    */
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -322,7 +322,7 @@ export default function PolicyEditor({
     };
   }, []);
 
-  // ------- Fallback: textarea cru se Monaco falhou -------
+  // ------- Fallback: raw textarea if Monaco failed -------
   if (monacoFailed) {
     return (
       <div className="space-y-2">
@@ -400,12 +400,12 @@ export default function PolicyEditor({
             formatOnPaste: true,
             wordWrap: "on",
             renderLineHighlight: "line",
-            // Schema validation é tratada via setDiagnosticsOptions em handleMount.
+            // Schema validation is handled via setDiagnosticsOptions in handleMount.
           }}
         />
       </div>
 
-      {/* Mensagem de erro abaixo */}
+      {/* Error message below */}
       {parseError && (
         <p className="text-xs text-red-600" role="alert" id={errorRegionId}>
           JSON inválido: {parseError}
@@ -434,15 +434,15 @@ function isFallbackValid(value: string): boolean {
 }
 
 /**
- * Consulta os markers atuais do model para decidir validade combinada.
- * Usado dentro de handleChange porque o `markers` do React state pode estar
- * defasado em 1 tick — o monaco em si tem a fonte mais recente.
+ * Queries the model's current markers to decide combined validity.
+ * Used inside handleChange because the React state `markers` can lag by
+ * 1 tick — monaco itself has the most recent source.
  */
 function markersOk(
   monaco: Monaco,
   ed: editor.IStandaloneCodeEditor | null,
 ): boolean {
-  if (!ed) return true; // sem editor pronto ainda — confia no parse
+  if (!ed) return true; // no editor ready yet — trust the parse
   const model = ed.getModel();
   if (!model) return true;
   const all = monaco.editor.getModelMarkers({ resource: model.uri });

@@ -6,20 +6,20 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Convite de usuario para um tenant (US06, ADR 0011).
+ * User invitation to a tenant (US06, ADR 0011).
  *
- * <p>Agregado imutavel — toda transicao de estado retorna nova instancia. As regras de negocio
- * ficam aqui: state transitions sao validas apenas quando o status atual permite, e a expiracao e
- * determinada pelo tempo do relogio fornecido pela camada de aplicacao.
+ * <p>Immutable aggregate — every state transition returns a new instance. The business rules live
+ * here: state transitions are valid only when the current status allows them, and expiry is
+ * determined by the clock time supplied by the application layer.
  *
- * <p>O agregado guarda apenas o {@code tokenHash} (SHA-256 do token cru), nunca o token em claro —
- * mesmo padrao de {@link br.com.nora.api.domain.identity.OneTimeToken} e {@link
- * br.com.nora.api.domain.identity.RefreshToken}. O token cru e a credencial do convidado para o
- * endpoint publico de aceite; ele existe apenas em memoria durante a criacao (para montar a URL do
- * e-mail) e nunca e persistido nem logado. Um dump do banco expoe somente o hash, irrecuperavel.
+ * <p>The aggregate keeps only the {@code tokenHash} (SHA-256 of the raw token), never the token in
+ * clear — same pattern as {@link br.com.nora.api.domain.identity.OneTimeToken} and {@link
+ * br.com.nora.api.domain.identity.RefreshToken}. The raw token is the invitee's credential for the
+ * public accept endpoint; it exists only in memory during creation (to build the e-mail URL) and is
+ * never persisted nor logged. A database dump exposes only the hash, unrecoverable.
  *
- * <p>{@code groupIds} pode estar vazio quando o invite nao anexa o user a nenhum grupo no aceite.
- * {@code acceptedAt} e {@code acceptedUserId} sao preenchidos apenas no aceite.
+ * <p>{@code groupIds} can be empty when the invite does not attach the user to any group on accept.
+ * {@code acceptedAt} and {@code acceptedUserId} are filled in only on accept.
  */
 public record IamInvitation(
         UUID id,
@@ -46,13 +46,13 @@ public record IamInvitation(
         groupIds = groupIds == null ? Set.of() : Set.copyOf(groupIds);
     }
 
-    /** Indica se o convite ja passou do prazo de aceite. */
+    /** Tells whether the invitation is already past the accept deadline. */
     public boolean isExpired(Instant now) {
         return !now.isBefore(expiresAt);
     }
 
     /**
-     * Marca o convite como aceito retornando uma nova instancia. So permitido a partir de {@code
+     * Marks the invitation as accepted, returning a new instance. Only allowed from {@code
      * PENDING}.
      */
     public IamInvitation accept(UUID userId, Instant acceptedAt) {
@@ -77,9 +77,9 @@ public record IamInvitation(
     }
 
     /**
-     * Marca o convite como revogado retornando uma nova instancia. So permitido a partir de {@code
-     * PENDING} — revogacao apos aceite/expiracao e no-op semantica e fica como erro de aplicacao
-     * para clarificar intencao.
+     * Marks the invitation as revoked, returning a new instance. Only allowed from {@code PENDING}
+     * — revoking after accept/expiry is semantically a no-op and is left as an application error to
+     * make the intent clear.
      */
     public IamInvitation revoke() {
         if (status != InvitationStatus.PENDING) {
@@ -101,8 +101,8 @@ public record IamInvitation(
     }
 
     /**
-     * Marca o convite como expirado retornando uma nova instancia. Usado no on-read expire (lazy)
-     * antes de listar/aceitar. So tem efeito a partir de {@code PENDING}.
+     * Marks the invitation as expired, returning a new instance. Used in the on-read expire (lazy)
+     * before listing/accepting. Only has effect from {@code PENDING}.
      */
     public IamInvitation markExpired() {
         if (status != InvitationStatus.PENDING) {

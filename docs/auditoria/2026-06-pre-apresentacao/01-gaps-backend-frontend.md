@@ -1,159 +1,159 @@
 ---
-title: "Lacunas back-end × front-end (web + admin)"
-owner: Arquiteto NORA (Tech Lead)
+title: "Back-end × front-end gaps (web + admin)"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
-escopo: "NORA Core — superfícies web (apps/web) e admin (apps/admin). Desktop fora de escopo."
+escopo: "NORA Core — web (apps/web) and admin (apps/admin) surfaces. Desktop out of scope."
 ---
 
-# Lacunas back-end × front-end (web + admin)
+# Back-end × front-end gaps (web + admin)
 
-> Capacidades que o **back-end** (Spring `services/api`) ou o **worker** expõem, mas que
-> o **front-end** (web e/ou admin) ainda não consome — ou consome apenas com *mock*.
-> Cada lacuna foi confirmada por **verificação adversarial**: um agente independente
-> tentou refutá-la procurando consumo real no front. Só as confirmadas estão aqui.
+> Capabilities that the **back-end** (Spring `services/api`) or the **worker** exposes, but
+> which the **front-end** (web and/or admin) does not yet consume — or consumes only with a *mock*.
+> Every gap was confirmed by **adversarial verification**: an independent agent
+> tried to refute it by looking for real consumption in the front end. Only the confirmed ones are here.
 
-## Legenda
+## Legend
 
-- **Severidade**: relevância de produto (alta / média / baixa).
-- **Demo 15/06**: `crítico` (bloqueia o fluxo da demo) · `desejável` (agrega valor, não bloqueia) · `pós-MVP`.
-- **Status front**: `ausente` · `parcial` (consumido de forma limitada) · `órfão` (wrapper existe no `api-client` mas sem nenhum *call-site*).
+- **Severity**: product relevance (high / medium / low).
+- **Demo 15/06**: `critical` (blocks the demo flow) · `desirable` (adds value, does not block) · `post-MVP`.
+- **Front status**: `absent` · `partial` (consumed in a limited way) · `orphan` (a wrapper exists in the `api-client` but with no *call-site*).
 
 ---
 
-## Visão geral priorizada
+## Prioritized overview
 
-| # | Capacidade | Endpoint | Superfície | Severidade | Demo 15/06 | Esforço |
+| # | Capability | Endpoint | Surface | Severity | Demo 15/06 | Effort |
 |---|---|---|---|---|---|---|
-| 1 | Reprocessar reunião FAILED/COMPLETED | `POST /meetings/{id}/reprocess` | web | **alta** | **crítico** | baixo |
-| 2 | Direito ao esquecimento (LGPD) | `DELETE /privacy/meetings/{id}` | web | **alta** | desejável | baixo |
-| 3 | Telemetria — métricas de negócio | `GET /admin/platform/telemetry/business` | admin | média | desejável | médio |
-| 4 | Telemetria — saúde do sistema | `GET /admin/platform/telemetry/health` | admin | média | desejável | médio |
-| 5 | Busca semântica em tela dedicada | `GET /meetings/search` | web | média | desejável | médio |
-| 6 | Editar documento de policy (versionar) | `PUT /iam/policies/{id}` | web | média | desejável | baixo |
-| 7 | Remover objetivo da reunião | `DELETE /meetings/{id}/goal` | web | média | desejável | baixo |
-| 8 | Detalhe de policy + membros de grupo | `GET /iam/policies/{id}`, `GET /iam/groups/{id}/members` | web | baixa | pós-MVP | médio |
-| 9 | Filtros de telemetria de custo (período/agrupamento) | `GET /admin/platform/telemetry/cost?groupBy` | admin | baixa | pós-MVP | baixo |
-| 10 | Campos `baseUrl`/`priceCachedInputPerMTok` no form de modelos | `POST /admin/platform/models` | admin | baixa | pós-MVP | baixo |
-| — | Live analysis (`POST /meetings/live-analyze`) | — | — | — | **não é gap do web** | — |
-| — | Speech token broker (`POST /speech/token`) | — | — | — | **não é gap do web** | — |
+| 1 | Reprocess FAILED/COMPLETED meeting | `POST /meetings/{id}/reprocess` | web | **high** | **critical** | low |
+| 2 | Right to be forgotten (LGPD) | `DELETE /privacy/meetings/{id}` | web | **high** | desirable | low |
+| 3 | Telemetry — business metrics | `GET /admin/platform/telemetry/business` | admin | medium | desirable | medium |
+| 4 | Telemetry — system health | `GET /admin/platform/telemetry/health` | admin | medium | desirable | medium |
+| 5 | Semantic search on a dedicated screen | `GET /meetings/search` | web | medium | desirable | medium |
+| 6 | Edit policy document (versioning) | `PUT /iam/policies/{id}` | web | medium | desirable | low |
+| 7 | Remove meeting goal | `DELETE /meetings/{id}/goal` | web | medium | desirable | low |
+| 8 | Policy detail + group members | `GET /iam/policies/{id}`, `GET /iam/groups/{id}/members` | web | low | post-MVP | medium |
+| 9 | Cost telemetry filters (period/grouping) | `GET /admin/platform/telemetry/cost?groupBy` | admin | low | post-MVP | low |
+| 10 | `baseUrl`/`priceCachedInputPerMTok` fields in the models form | `POST /admin/platform/models` | admin | low | post-MVP | low |
+| — | Live analysis (`POST /meetings/live-analyze`) | — | — | — | **not a web gap** | — |
+| — | Speech token broker (`POST /speech/token`) | — | — | — | **not a web gap** | — |
 
-> Os dois últimos itens foram **investigados e descartados** como gaps de produto: são
-> consumidos corretamente pelo Desktop (Tauri) e só fariam sentido nele. Documentados
-> na seção 3 para evitar que reapareçam como "pendência" em auditorias futuras.
-
----
-
-## 1. Crítico para 15/06
-
-### 1.1 Reprocessar reunião (web)
-
-- **Back-end**: `POST /meetings/{id}/reprocess` — `MeetingsController.java:344` (responde `202`).
-- **Status front**: ausente no web. **O Desktop já tem** (`apps/desktop/src/lib/meetings.ts:31` + botão real em `apps/desktop/src/pages/meeting-detail.tsx:253`).
-- **Evidência**: `apps/web/src/app/(app)/meetings/[id]/page.tsx:86` mostra apenas o texto estático *"A análise desta reunião falhou. Tente reprocessar."* — sem botão, sem handler. O `api-client` do web (`apps/web/src/lib/api/client.ts`) **não tem** wrapper `reprocessMeeting()`.
-- **Por que é crítico**: permite recuperar uma análise que falhar **ao vivo no palco**. É o único item que pode travar o fluxo da demo.
-- **Recomendação**: criar `reprocessMeeting(id)` no `api-client` (`POST /meetings/{id}/reprocess`) e adicionar o botão "Reprocessar" no bloco de erro de `meetings/[id]/page.tsx:81-89`, re-disparando o polling de status. Espelhar o que o Desktop já faz.
+> The last two items were **investigated and discarded** as product gaps: they are
+> correctly consumed by the Desktop (Tauri) and would only make sense there. Documented
+> in section 3 to prevent them from reappearing as a "pending item" in future audits.
 
 ---
 
-## 2. Desejáveis (agregam valor, não bloqueiam o fluxo)
+## 1. Critical for 15/06
 
-### 2.1 Direito ao esquecimento — LGPD (web)
+### 1.1 Reprocess meeting (web)
 
-- **Back-end**: `DELETE /privacy/meetings/{id}` — `PrivacyController.java:42` (ADR 0029, *gate* `meeting:update`). Faz hard-delete do meeting + cascade do PII bruto.
-- **Status front**: **ausente em todas as superfícies** (web e desktop). Nenhum *call-site* para `/privacy/meetings`.
-- **Por que importa**: a **landing anuncia explicitamente** a feature — `apps/web/src/components/landing/landing-content.tsx:149-150` ("Apaga tudo permanentemente em um clique. LGPD Art. 18") e o FAQ (linha 354). Hoje é só *copy* de marketing sem implementação: descompasso entre promessa pública e produto.
-- **Recomendação**: ação destrutiva "Apagar permanentemente" em `meetings/[id]` com modal de confirmação *typed-confirm* (digitar o título), tratando `404` sem vazar existência e redirecionando ao dashboard. Adicionar `deleteMeeting()` ao `api-client`. É também um ótimo diferencial de conformidade para mencionar na apresentação.
+- **Back-end**: `POST /meetings/{id}/reprocess` — `MeetingsController.java:344` (responds `202`).
+- **Front status**: absent on web. **The Desktop already has it** (`apps/desktop/src/lib/meetings.ts:31` + a real button at `apps/desktop/src/pages/meeting-detail.tsx:253`).
+- **Evidence**: `apps/web/src/app/(app)/meetings/[id]/page.tsx:86` shows only the static text *"A análise desta reunião falhou. Tente reprocessar."* — no button, no handler. The web `api-client` (`apps/web/src/lib/api/client.ts`) **does not have** a `reprocessMeeting()` wrapper.
+- **Why it is critical**: it makes it possible to recover an analysis that fails **live on stage**. It is the only item that can stall the demo flow.
+- **Recommendation**: create `reprocessMeeting(id)` in the `api-client` (`POST /meetings/{id}/reprocess`) and add a "Reprocessar" button to the error block of `meetings/[id]/page.tsx:81-89`, re-triggering the status polling. Mirror what the Desktop already does.
 
-### 2.2 Telemetria — métricas de negócio (admin)
+---
 
-- **Back-end**: `GET /admin/platform/telemetry/business` — `PlatformAdminController.java:162`. Retorna `analyses`, `tenantsActive`, `productivityAvg`, `customerConfidenceAvg` (ligado ponta-a-ponta até `PrimaryDbBusinessMetricsSource`).
-- **Status front**: *placeholder* estático. `apps/admin/src/app/telemetria/page.tsx:51-52` é um `<Placeholder>` "Próxima fatia"; `lib/data.ts` importa só `getCost`.
-- **Por que importa**: são exatamente os números "wow" (produtividade média, confiança média do cliente) que **vendem o produto numa apresentação**. O back-end já calcula tudo.
-- **Recomendação**: adicionar `getBusiness()` em `apps/admin/src/lib/data.ts` e renderizar os quatro indicadores na seção correspondente.
+## 2. Desirable (add value, do not block the flow)
 
-### 2.3 Telemetria — saúde do sistema (admin)
+### 2.1 Right to be forgotten — LGPD (web)
 
-- **Back-end**: `GET /admin/platform/telemetry/health` — `PlatformAdminController.java:157` (`HealthSnapshot`: requests / failed / failureRate / p95LatencyMs por *role*, via App Insights).
-- **Status front**: *placeholder* estático em `telemetria/page.tsx:48-49`. O path já consta como comentário em `apps/admin/src/lib/contracts.ts:11`.
-- **Recomendação**: `getHealth()` em `lib/data.ts` + render das métricas por *role*.
+- **Back-end**: `DELETE /privacy/meetings/{id}` — `PrivacyController.java:42` (ADR 0029, `meeting:update` *gate*). Performs a hard delete of the meeting + cascade of the raw PII.
+- **Front status**: **absent on every surface** (web and desktop). No *call-site* for `/privacy/meetings`.
+- **Why it matters**: the **landing page explicitly announces** the feature — `apps/web/src/components/landing/landing-content.tsx:149-150` ("Apaga tudo permanentemente em um clique. LGPD Art. 18") and the FAQ (line 354). Today it is only marketing *copy* with no implementation: a mismatch between the public promise and the product.
+- **Recommendation**: a destructive "Apagar permanentemente" action in `meetings/[id]` with a *typed-confirm* confirmation modal (type the title), handling `404` without leaking existence and redirecting to the dashboard. Add `deleteMeeting()` to the `api-client`. It is also an excellent compliance differentiator to mention in the presentation.
 
-### 2.4 Busca semântica em tela dedicada (web)
+### 2.2 Telemetry — business metrics (admin)
+
+- **Back-end**: `GET /admin/platform/telemetry/business` — `PlatformAdminController.java:162`. Returns `analyses`, `tenantsActive`, `productivityAvg`, `customerConfidenceAvg` (wired end-to-end down to `PrimaryDbBusinessMetricsSource`).
+- **Front status**: static *placeholder*. `apps/admin/src/app/telemetria/page.tsx:51-52` is a `<Placeholder>` "Próxima fatia"; `lib/data.ts` imports only `getCost`.
+- **Why it matters**: these are exactly the "wow" numbers (average productivity, average customer confidence) that **sell the product in a presentation**. The back-end already computes everything.
+- **Recommendation**: add `getBusiness()` in `apps/admin/src/lib/data.ts` and render the four indicators in the corresponding section.
+
+### 2.3 Telemetry — system health (admin)
+
+- **Back-end**: `GET /admin/platform/telemetry/health` — `PlatformAdminController.java:157` (`HealthSnapshot`: requests / failed / failureRate / p95LatencyMs per *role*, via App Insights).
+- **Front status**: static *placeholder* in `telemetria/page.tsx:48-49`. The path already appears as a comment in `apps/admin/src/lib/contracts.ts:11`.
+- **Recommendation**: `getHealth()` in `lib/data.ts` + rendering of the metrics per *role*.
+
+### 2.4 Semantic search on a dedicated screen (web)
 
 - **Back-end**: `GET /meetings/search?q&k` — `MeetingsController.java:115` (`MeetingSearchResponse`).
-- **Status front**: parcial. O endpoint é consumido **apenas pelo BFF do chat** como contexto RAG (`apps/web/src/app/api/chat/route.ts:154`), nunca por uma tela de resultados.
-- **Nuance verificada**: o campo "Buscar reuniões…" do dashboard **não** é este endpoint — `dashboard/Filters.tsx:66` faz filtro de substring via `GET /meetings?search=` (lista paginada), não busca vetorial. Os atalhos `/ buscar` e `Cmd+K` no rodapé do dashboard são `<kbd>` **decorativos** sem handler (`dashboard/page.tsx:228,231`).
-- **Recomendação** (opcional para a demo): campo de busca semântica (ou paleta `Cmd+K`) que chame `GET /meetings/search` e liste resultados com `summarySnippet`.
+- **Front status**: partial. The endpoint is consumed **only by the chat BFF** as RAG context (`apps/web/src/app/api/chat/route.ts:154`), never by a results screen.
+- **Verified nuance**: the dashboard's "Buscar reuniões…" field is **not** this endpoint — `dashboard/Filters.tsx:66` does substring filtering via `GET /meetings?search=` (paginated list), not vector search. The `/ buscar` and `Cmd+K` shortcuts in the dashboard footer are **decorative** `<kbd>` elements with no handler (`dashboard/page.tsx:228,231`).
+- **Recommendation** (optional for the demo): a semantic search field (or a `Cmd+K` palette) that calls `GET /meetings/search` and lists results with `summarySnippet`.
 
-### 2.5 Editar documento de policy IAM (web)
+### 2.5 Edit IAM policy document (web)
 
-- **Back-end**: `PUT /iam/policies/{id}` — `IamController.java:152` (cria nova versão).
-- **Status front**: **órfão**. O wrapper `updatePolicyDocument()` existe em `apps/web/src/lib/api/client.ts:475` mas **não tem nenhum chamador**. A tela de IAM (`settings/iam/page.tsx`) só importa `createPolicy`/`deletePolicy` — hoje "editar" significa excluir e recriar, **perdendo o versionamento**.
-- **Recomendação**: carregar o documento da policy de volta no editor Monaco e adicionar "Salvar alterações" chamando `PUT /iam/policies/{id}`.
+- **Back-end**: `PUT /iam/policies/{id}` — `IamController.java:152` (creates a new version).
+- **Front status**: **orphan**. The `updatePolicyDocument()` wrapper exists at `apps/web/src/lib/api/client.ts:475` but **has no caller**. The IAM screen (`settings/iam/page.tsx`) imports only `createPolicy`/`deletePolicy` — today "editing" means deleting and recreating, **losing the versioning**.
+- **Recommendation**: load the policy document back into the Monaco editor and add "Salvar alterações" calling `PUT /iam/policies/{id}`.
 
-### 2.6 Remover objetivo da reunião (web)
+### 2.6 Remove meeting goal (web)
 
 - **Back-end**: `DELETE /meetings/{id}/goal` — `MeetingsController.java:330`.
-- **Status front**: **órfão**. `deleteMeetingGoal()` existe em `client.ts:207` mas tem zero *call-sites*. Dá para criar/editar objetivo, mas nunca removê-lo pela interface.
-- **Recomendação**: botão "Remover objetivo" no `MeetingProductivitySection`/`MeetingGoalForm`. Wrapper já pronto — esforço mínimo.
+- **Front status**: **orphan**. `deleteMeetingGoal()` exists at `client.ts:207` but has zero *call-sites*. You can create/edit a goal, but never remove it through the interface.
+- **Recommendation**: a "Remover objetivo" button in `MeetingProductivitySection`/`MeetingGoalForm`. The wrapper is already there — minimal effort.
 
 ---
 
-## 3. Pós-MVP e itens investigados-e-descartados
+## 3. Post-MVP and investigated-and-discarded items
 
-### 3.1 Detalhe de policy + membros de grupo (web) — pós-MVP
+### 3.1 Policy detail + group members (web) — post-MVP
 
-- `GET /iam/groups/{id}/members` tem wrapper `listGroupMembers()` (`client.ts:442`) **sem call-site**; `GET /iam/policies/{id}` não tem nem wrapper. A UX atual de IAM pede colar UUIDs à mão (`settings/iam/page.tsx:185`). Construir um painel/*drawer* que liste membros e detalhe policies substitui a UX de protótipo.
+- `GET /iam/groups/{id}/members` has a `listGroupMembers()` wrapper (`client.ts:442`) **with no call-site**; `GET /iam/policies/{id}` does not even have a wrapper. The current IAM UX requires pasting UUIDs by hand (`settings/iam/page.tsx:185`). Building a panel/*drawer* that lists members and details policies would replace the prototype UX.
 
-### 3.2 Filtros de telemetria de custo (admin) — pós-MVP
+### 3.2 Cost telemetry filters (admin) — post-MVP
 
-- `getCost()` (`lib/data.ts:78`) fixa `groupBy="service"` e nunca passa `from`/`to`. O back-end suporta `groupBy={tenant|model|service}` e janela de período (`PlatformAdminController.java:148`). Adicionar seletor de período e *toggle* de agrupamento.
+- `getCost()` (`lib/data.ts:78`) hardcodes `groupBy="service"` and never passes `from`/`to`. The back-end supports `groupBy={tenant|model|service}` and a period window (`PlatformAdminController.java:148`). Add a period selector and a grouping *toggle*.
 
-### 3.3 Campos do form de modelos (admin) — pós-MVP
+### 3.3 Model form fields (admin) — post-MVP
 
-- O `AddModelForm` (`apps/admin/src/app/modelos/modelos-client.tsx`) não expõe `baseUrl` nem `priceCachedInputPerMTok`, embora `NewModelInput` (`lib/data.ts:113,118`) e o back-end (`PlatformAdminController.java:83`) os aceitem. Necessário para cadastrar provider self-hosted/proxy e precificar *cache hit*.
+- The `AddModelForm` (`apps/admin/src/app/modelos/modelos-client.tsx`) does not expose `baseUrl` or `priceCachedInputPerMTok`, even though `NewModelInput` (`lib/data.ts:113,118`) and the back-end (`PlatformAdminController.java:83`) accept them. Required to register a self-hosted/proxy provider and to price *cache hits*.
 
-### 3.4 Itens descartados como gaps de produto (são features do Desktop)
+### 3.4 Items discarded as product gaps (they are Desktop features)
 
-| Capacidade | Endpoint | Por que NÃO é gap do web |
+| Capability | Endpoint | Why it is NOT a web gap |
 |---|---|---|
-| Live analysis (overlay ao vivo) | `POST /meetings/live-analyze` (`MeetingsController.java:373`) | Consumido pelo Desktop (`apps/desktop/src-tauri/src/live_analysis.rs:103`). Só existiria no web se houvesse captura ao vivo no navegador — fora do produto. |
-| Speech token broker | `POST /speech/token` (`SpeechController.java:24`) | Consumido pelo Desktop (`speech_token.rs:30`, `stt_sidecar.rs:251`). O *broker* só faz sentido no cliente de captura de áudio. |
+| Live analysis (live overlay) | `POST /meetings/live-analyze` (`MeetingsController.java:373`) | Consumed by the Desktop (`apps/desktop/src-tauri/src/live_analysis.rs:103`). It would only exist on web if there were live capture in the browser — outside the product. |
+| Speech token broker | `POST /speech/token` (`SpeechController.java:24`) | Consumed by the Desktop (`speech_token.rs:30`, `stt_sidecar.rs:251`). The *broker* only makes sense in the audio capture client. |
 
-> Registrados aqui para que não voltem a aparecer como "pendência do web" em auditorias futuras.
+> Recorded here so that they do not show up again as a "web pending item" in future audits.
 
 ---
 
-## 4. Riscos de configuração da demo + *reverse gaps*
+## 4. Demo configuration risks + *reverse gaps*
 
-### 4.1 Checklist de configuração antes de apresentar
+### 4.1 Configuration checklist before presenting
 
-> Não são código a construir — são variáveis de ambiente que, se erradas, fazem o
-> produto exibir dados fictícios no palco.
+> These are not code to build — they are environment variables that, if wrong, make the
+> product display fictitious data on stage.
 
-- [ ] **Web**: `NEXT_PUBLIC_USE_MOCKS` **não** pode ser `true` (default já é `false`). Ligado, `listMeetings()`/`getMeeting()` servem *fixtures* JSON (`apps/web/src/fixtures/*.json`) em vez da API.
-- [ ] **Admin**: `NORA_ADMIN_USE_MOCKS=false` **explícito** (o default é mock!) **+** `PLATFORM_API_BASE_URL` **+** `PLATFORM_INTERNAL_TOKEN`. Sem isso, o console mostra catálogo fictício (`deepseek-v4-flash`, `gemini-3.5-flash`), custo fixo (`1.8423 USD / 412 calls`) e qualquer mutação (criar/remover modelo, *bind*) é um *no-op* silencioso.
-- [ ] Conferir `NEXT_PUBLIC_API_BASE_URL` apontando para a API correta.
+- [ ] **Web**: `NEXT_PUBLIC_USE_MOCKS` **must not** be `true` (the default is already `false`). When on, `listMeetings()`/`getMeeting()` serve JSON *fixtures* (`apps/web/src/fixtures/*.json`) instead of the API.
+- [ ] **Admin**: `NORA_ADMIN_USE_MOCKS=false` **explicitly** (the default is mock!) **+** `PLATFORM_API_BASE_URL` **+** `PLATFORM_INTERNAL_TOKEN`. Without this, the console shows a fictitious catalog (`deepseek-v4-flash`, `gemini-3.5-flash`), a fixed cost (`1.8423 USD / 412 calls`), and any mutation (create/remove model, *bind*) is a silent no-op.
+- [ ] Check that `NEXT_PUBLIC_API_BASE_URL` points to the correct API.
 
-### 4.2 *Reverse gaps* — o front mostra algo que o back-end não tem
+### 4.2 *Reverse gaps* — the front end shows something the back-end does not have
 
-A maioria é **honesta** (a UI declara "Em breve", não finge ter dados) — apenas registrada para transparência.
+Most are **honest** (the UI states "Em breve", it does not pretend to have data) — recorded only for transparency.
 
-| Item | Arquivo | Natureza |
+| Item | File | Nature |
 |---|---|---|
-| Página `/integrações` — catálogo de 8 conectores MCP | `app/(app)/integracoes/page.tsx` | Honesto: tudo "Em breve". Não há back-end de MCP. Manter como roadmap. |
-| Página `/projetos` — agrupamento automático | `app/(app)/projetos/page.tsx` | Honesto: *empty-state*, zero chamadas de API. Feature não implementada em nenhuma camada. |
-| Botões "Continuar com Microsoft" (SSO) | `components/auth/auth-screen.tsx` | Botão morto: mostra "ainda não disponível". Não há OAuth/SAML no back-end (US05 deferida). |
-| Hero composer da landing | `components/landing/landing-hero.tsx` | *Reverse gap* de marketing: o prompt vira `?q=` e leva para o signup. Esperado numa landing. |
-| Campo `role` no signup | `components/auth/auth-screen.tsx` | Coletado e **descartado**: `SignupRequest` só aceita `{email, password, displayName}`. Opcional adicionar ao DTO se quiser métricas de segmentação. |
-| Direito ao esquecimento na landing | `components/landing/landing-content.tsx` | **Ver item 2.1** — o back-end existe, o front não chama. Este é acionável. |
+| `/integrações` page — catalog of 8 MCP connectors | `app/(app)/integracoes/page.tsx` | Honest: everything is "Em breve". There is no MCP back-end. Keep as roadmap. |
+| `/projetos` page — automatic grouping | `app/(app)/projetos/page.tsx` | Honest: *empty-state*, zero API calls. Feature not implemented in any layer. |
+| "Continuar com Microsoft" buttons (SSO) | `components/auth/auth-screen.tsx` | Dead button: shows "ainda não disponível". There is no OAuth/SAML in the back-end (US05 deferred). |
+| Landing hero composer | `components/landing/landing-hero.tsx` | Marketing *reverse gap*: the prompt becomes `?q=` and leads to signup. Expected on a landing page. |
+| `role` field in signup | `components/auth/auth-screen.tsx` | Collected and **discarded**: `SignupRequest` only accepts `{email, password, displayName}`. Optionally add it to the DTO if segmentation metrics are wanted. |
+| Right to be forgotten on the landing page | `components/landing/landing-content.tsx` | **See item 2.1** — the back-end exists, the front end does not call it. This one is actionable. |
 
 ---
 
-## Resumo de esforço
+## Effort summary
 
-- **1 item crítico** de fluxo (reprocessar), baixo esforço.
-- **2 itens críticos de configuração** (mocks web + admin), sem código.
-- **6 itens desejáveis**, a maioria de baixo esforço (vários têm o wrapper pronto no `api-client`, só faltando o *call-site* na UI).
-- O fluxo Core (upload → análise → resumo/decisões/tarefas → chat RAG) está **completo e real**.
+- **1 critical flow item** (reprocess), low effort.
+- **2 critical configuration items** (web + admin mocks), no code.
+- **6 desirable items**, most of them low effort (several already have the wrapper in the `api-client`, only the *call-site* in the UI is missing).
+- The Core flow (upload → analysis → summary/decisions/tasks → RAG chat) is **complete and real**.

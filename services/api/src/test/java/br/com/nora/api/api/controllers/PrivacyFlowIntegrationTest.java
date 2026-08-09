@@ -31,9 +31,9 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * LGPD — direito ao esquecimento (ADR 0029): DELETE /privacy/meetings/{id} apaga DEFINITIVAMENTE o
- * meeting e, por cascade, o transcript (raw_text = PII em repouso). Prova ponta-a-ponta +
- * isolamento cross-tenant.
+ * LGPD — right to be forgotten (ADR 0029): DELETE /privacy/meetings/{id} PERMANENTLY deletes the
+ * meeting and, by cascade, the transcript (raw_text = PII at rest). End-to-end proof + cross-tenant
+ * isolation.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -74,22 +74,22 @@ class PrivacyFlowIntegrationTest {
         String meetingId = uploaded.get("id").asText();
         UUID tenantId = UUID.fromString(uploaded.get("tenantId").asText());
 
-        // O transcript (com PII bruta) existe antes do erasure.
+        // The transcript (with raw PII) exists before the erasure.
         assertThat(transcripts.findByMeetingAndTenant(UUID.fromString(meetingId), tenantId))
                 .as("transcript deveria existir antes do erasure")
                 .isPresent();
 
-        // Direito ao esquecimento → 204.
+        // Right to be forgotten → 204.
         assertThat(authDelete("/privacy/meetings/" + meetingId, token).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
 
-        // Meeting some (404) e a lista zera.
+        // The meeting is gone (404) and the list drops to zero.
         assertThat(authGetRaw("/meetings/" + meetingId, token).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
         JsonNode list = read(authGetRaw("/meetings", token), HttpStatus.OK);
         assertThat(list.get("totalItems").asInt()).isZero();
 
-        // O cascade purgou o transcript fisicamente — a PII em repouso não existe mais.
+        // The cascade physically purged the transcript — the PII at rest no longer exists.
         assertThat(transcripts.findByMeetingAndTenant(UUID.fromString(meetingId), tenantId))
                 .as("transcript (raw PII) deveria ter sido purgado pelo cascade")
                 .isEmpty();
@@ -109,11 +109,11 @@ class PrivacyFlowIntegrationTest {
                 upload(tokenA, "Reuniao do A", "conteudo do tenant A").get("id").asText();
 
         String tokenB = signupAndLogin("erase-b@nora.dev", "SenhaForte123", "B");
-        // B tenta apagar o meeting do A → 404 (não vaza existência cross-tenant).
+        // B tries to delete A's meeting → 404 (does not leak cross-tenant existence).
         assertThat(authDelete("/privacy/meetings/" + meetingId, tokenB).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
 
-        // O meeting do A continua intacto.
+        // A's meeting remains intact.
         assertThat(authGetRaw("/meetings/" + meetingId, tokenA).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
     }

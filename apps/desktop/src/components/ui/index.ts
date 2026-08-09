@@ -1,5 +1,5 @@
-// Primitivos de UI do NORA Desktop — fonte única de tamanho/estilo.
-// Importe daqui (ex.: `import { Button, Card, Input, Field, IconButton } from "../components/ui"`).
+// NORA Desktop UI primitives — single source of size/style.
+// Import from here (e.g.: `import { Button, Card, Input, Field, IconButton } from "../components/ui"`).
 export { Button } from "./button";
 export { Card } from "./card";
 export { Input, Textarea, Field } from "./input";

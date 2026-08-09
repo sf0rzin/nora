@@ -1,6 +1,6 @@
 package br.com.nora.api.domain.analysis;
 
-/** Estado simples para acompanhamento manual da action item (US22-US25, futuro). */
+/** Simple state for manual tracking of the action item (US22-US25, future). */
 public enum ActionItemStatus {
     OPEN,
     IN_PROGRESS,

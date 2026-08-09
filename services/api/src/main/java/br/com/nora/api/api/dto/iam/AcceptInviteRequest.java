@@ -4,9 +4,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
- * Payload {@code POST /iam/invites/{token}/accept}. Schema em {@code
- * docs/api/examples/iam-invite-accept-request.json}. {@code displayName} e opcional — se omitido,
- * usa o local-part do e-mail.
+ * Payload {@code POST /iam/invites/{token}/accept}. Schema in {@code
+ * docs/api/examples/iam-invite-accept-request.json}. {@code displayName} is optional — if omitted,
+ * uses the local-part of the e-mail.
  */
 public record AcceptInviteRequest(
         @Size(max = 120) String displayName,

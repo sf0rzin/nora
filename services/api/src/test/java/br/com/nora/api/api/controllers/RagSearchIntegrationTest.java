@@ -35,9 +35,9 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * RAG — busca semântica (GET /meetings/search). Stuba o {@link EmbeddingClient} com um embedding
- * determinístico (bag-of-words por hash), então overlap de palavras vira similaridade de cosseno.
- * Prova: a reunião RELEVANTE à query rankeia primeiro, e a busca é tenant-scoped.
+ * RAG — semantic search (GET /meetings/search). Stubs {@link EmbeddingClient} with a deterministic
+ * embedding (hash bag-of-words), so word overlap becomes cosine similarity. Proves: the meeting
+ * RELEVANT to the query ranks first, and the search is tenant-scoped.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -77,12 +77,12 @@ class RagSearchIntegrationTest {
         UUID idA = UUID.fromString(a.get("id").asText());
         UUID idB = UUID.fromString(b.get("id").asText());
 
-        // Indexa os resumos (texto distinto). No profile test o pipeline async não roda; indexamos
-        // direto pra controlar o conteúdo do embedding.
+        // Index the summaries (distinct text). In the test profile the async pipeline does not
+        // run; we index directly to control the embedding content.
         embeddings.index(idA, tenantId, "renovação de contrato e negociação de preço com a Acme");
         embeddings.index(idB, tenantId, "onboarding de novo cliente e configuração de suporte");
 
-        // Query semanticamente próxima de A.
+        // Query semantically close to A.
         JsonNode res =
                 read(authGet("/meetings/search?q=" + enc("renegociar o preço do contrato"), token));
         assertThat(res.get("items")).isNotEmpty();
@@ -101,7 +101,7 @@ class RagSearchIntegrationTest {
                 tenantA,
                 "informação confidencial do tenant A");
 
-        // Tenant B busca o mesmo termo → não vê nada do A.
+        // Tenant B searches the same term → sees nothing of A's.
         String tokenB = signupAndLogin("rag-b@nora.dev", "SenhaForte123", "B");
         JsonNode res =
                 read(authGet("/meetings/search?q=" + enc("informação confidencial"), tokenB));

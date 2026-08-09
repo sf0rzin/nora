@@ -13,10 +13,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * Adapter HTTP do OAuth v2 do Slack ({@code oauth.v2.access}). Sem SDK, espelhando o {@link
- * GoogleOAuthHttpClient}: um POST form e pronto. Particularidade do Slack: erro de API vem como
- * HTTP 200 com {@code {"ok":false,"error":"..."}} — viramos {@code ProviderError} com o campo
- * {@code error}, sem nunca logar/ecoar o token.
+ * HTTP adapter for Slack's OAuth v2 ({@code oauth.v2.access}). No SDK, mirroring {@link
+ * GoogleOAuthHttpClient}: one form POST and done. Slack quirk: an API error arrives as HTTP 200
+ * with {@code {"ok":false,"error":"..."}} — we turn it into a {@code ProviderError} carrying the
+ * {@code error} field, never logging/echoing the token.
  */
 @Component
 public class SlackOAuthHttpClient implements SlackOAuthClient {
@@ -74,7 +74,7 @@ public class SlackOAuthHttpClient implements SlackOAuthClient {
         }
     }
 
-    /** Status HTTP puro em falha de transporte — o body do Slack pode ecoar dados sensíveis. */
+    /** Bare HTTP status on transport failure — Slack's body may echo sensitive data. */
     private static String reason(Exception ex) {
         if (ex instanceof WebClientResponseException http) {
             return String.valueOf(http.getStatusCode().value());

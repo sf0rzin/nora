@@ -1,9 +1,9 @@
-/* NORA Landing v3 — port fiel do bundle do Claude Design
+/* NORA Landing v3 — faithful port of the Claude Design bundle
  * (landing/styles.css + styles-v2.css + privacy.css + feature-anims.css).
  *
- * Global, mas TODO seletor é escopado sob `.nora-landing` para não vazar
- * pro resto do app. Tokens (:root) vivem em styles/tokens.css. Resets globais
- * do protótipo (*, html, body) foram removidos — o app já tem os seus.
+ * Global, but EVERY selector is scoped under `.nora-landing` so it does not leak
+ * into the rest of the app. Tokens (:root) live in styles/tokens.css. Prototype
+ * global resets (*, html, body) were removed — the app already has its own.
  */
 
 .nora-landing {

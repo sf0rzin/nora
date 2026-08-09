@@ -1,9 +1,9 @@
-"""Stub deterministico do split de reunioes (USE_LLM_STUB=true).
+"""Deterministic stub of the meeting split (USE_LLM_STUB=true).
 
-Permite desenvolver a tela de confirmacao sem custo de LLM. Heuristica
-simples: linhas de cabecalho/separador abrem um novo segmento. Reusa a
-normalizacao server-side e o preview redigido do ``split_analyzer`` — o
-contrato de saida e identico ao do pipeline real.
+Allows developing the confirmation screen without LLM cost. Simple
+heuristic: header/separator lines open a new segment. Reuses the
+server-side normalization and the redacted preview from ``split_analyzer`` — the
+output contract is identical to the real pipeline's.
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ from typing import Any
 from ..models import SplitRequest, SplitResponse
 from .split_analyzer import assemble_segments
 
-# Linhas que indicam comeco de uma nova reuniao: separadores (===, ---, ###),
-# cabecalhos "Reuniao ..."/"Ata ..."/"Meeting ..." e linhas de data/hora.
+# Lines that indicate the start of a new meeting: separators (===, ---, ###),
+# headers "Reuniao ..."/"Ata ..."/"Meeting ..." and date/time lines.
 _BOUNDARY_RE = re.compile(
     r"^\s*(?:"
     r"={3,}.*"
@@ -47,7 +47,7 @@ def analyze(
     total_lines = len(redacted_lines)
 
     boundaries = [i + 1 for i, line in enumerate(redacted_lines) if _BOUNDARY_RE.match(line)]
-    # Fronteira na linha 1 e redundante (primeiro segmento sempre comeca em 1).
+    # A boundary on line 1 is redundant (the first segment always starts at 1).
     boundaries = [b for b in boundaries if b > 1]
 
     raw_segments: list[dict[str, Any]] = []

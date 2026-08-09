@@ -32,9 +32,9 @@ public class SpeechException extends RuntimeException {
     }
 
     /**
-     * O provider de fala em nuvem foi desativado (STT passou a rodar no cliente). Mapeado para 410
-     * GONE — sinal TERMINAL, ao contrario do 500/502 que um broker quebrado produziria e que o
-     * cliente antigo trataria como falha transitoria digna de retry.
+     * The cloud speech provider was decommissioned (STT now runs on the client). Mapped to 410 GONE
+     * — a TERMINAL signal, unlike the 500/502 a broken broker would produce and that the old client
+     * would treat as a transient failure worth retrying.
      */
     public static class ProviderGone extends SpeechException {
         public ProviderGone() {

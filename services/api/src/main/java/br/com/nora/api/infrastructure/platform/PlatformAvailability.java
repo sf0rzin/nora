@@ -4,11 +4,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.stereotype.Component;
 
 /**
- * Estado de disponibilidade do control plane (ADR 0022). Sempre presente (não-gated): quando a
- * plataforma está desabilitada fica {@code DISABLED}; quando habilitada começa {@code DEGRADED} e
- * vira {@code HEALTHY} após a migração Flyway bem-sucedida; se a migração falhar, permanece {@code
- * DEGRADED}. Admin endpoints exigem {@code HEALTHY}; o hot-path (llm-config/usage) faz
- * fallback/drop quando não está usable.
+ * Availability state of the control plane (ADR 0022). Always present (not gated): when the platform
+ * is disabled it stays {@code DISABLED}; when enabled it starts {@code DEGRADED} and becomes {@code
+ * HEALTHY} after a successful Flyway migration; if the migration fails, it stays {@code DEGRADED}.
+ * Admin endpoints require {@code HEALTHY}; the hot path (llm-config/usage) falls back/drops when it
+ * is not usable.
  */
 @Component
 public class PlatformAvailability {
@@ -34,7 +34,8 @@ public class PlatformAvailability {
     }
 
     /**
-     * True só quando habilitada E migrada — única condição em que o banco de plataforma é usável.
+     * True only when enabled AND migrated — the only condition in which the platform database is
+     * usable.
      */
     public boolean isUsable() {
         return state.get() == State.HEALTHY;

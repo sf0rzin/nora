@@ -218,11 +218,11 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
         setError("");
       }
     } catch (err: unknown) {
-      // Falha de polling em segundo plano NÃO derruba a tela já carregada.
-      // Só o load inicial (silent=false) seta o erro de página inteira — que é
-      // o que o gate `if (error || !meeting)` usa pra mostrar a tela de erro.
-      // Sem isso, um blip de rede / 401 durante o polling fazia a reunião
-      // sumir e voltar a cada 4s.
+      // A background polling failure does NOT tear down the already-loaded screen.
+      // Only the initial load (silent=false) sets the full-page error — which is
+      // what the `if (error || !meeting)` gate uses to show the error screen.
+      // Without this, a network blip / 401 during polling made the meeting
+      // disappear and come back every 4s.
       const apiErr = err as ApiError;
       if (aliveRef.current && !opts?.silent)
         setError(apiErr?.message || "Erro ao carregar reunião");
@@ -237,9 +237,9 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
     });
   }, [refetch]);
 
-  // Enquanto está PENDING/PROCESSING, faz polling pra refletir o resultado
-  // (sucesso OU falha) sem o usuário precisar sair e voltar. Para sozinho
-  // quando o status sai desses estados.
+  // While PENDING/PROCESSING, polls to reflect the result
+  // (success OR failure) without the user having to leave and come back. Stops on its own
+  // when the status leaves those states.
   useEffect(() => {
     const status = meeting?.processingStatus;
     if (status !== "PENDING" && status !== "PROCESSING") return;
@@ -255,10 +255,10 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
     setReprocessError("");
     try {
       await reprocessMeeting(meetingId);
-      // Otimista: volta pra PENDING e o polling acima assume daqui.
+      // Optimistic: back to PENDING and the polling above takes over from here.
       setMeeting((m) => (m ? { ...m, processingStatus: "PENDING" } : m));
-      // silent: um blip nesse refetch não deve derrubar a tela — o estado já
-      // está otimisticamente em PENDING e o polling reconcilia.
+      // silent: a blip in this refetch must not tear down the screen — the state is
+      // already optimistically at PENDING and the polling reconciles.
       await refetch({ silent: true });
     } catch (err: unknown) {
       const apiErr = err as ApiError;

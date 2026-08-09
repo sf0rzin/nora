@@ -16,13 +16,13 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * Adapter HTTP da Bot API do Telegram ({@code NORA_TELEGRAM_BOT_TOKEN}, bot ÚNICO do app). Sem SDK
- * — getMe (username cacheado), getUpdates one-shot (offset em memória; cada update chega uma vez) e
- * sendMessage em HTML.
+ * HTTP adapter for Telegram's Bot API ({@code NORA_TELEGRAM_BOT_TOKEN}, the app's SINGLE bot). No
+ * SDK — getMe (cached username), one-shot getUpdates (in-memory offset; each update arrives once)
+ * and sendMessage in HTML.
  *
- * <p>ATENÇÃO de segurança: o token do bot vai na URL ({@code /bot<token>/método}) — toda falha
- * passa por {@link #reason}, que NUNCA ecoa a URL (só status + description do envelope do
- * Telegram), diferente do padrão {@code ProviderErrors} dos demais clients.
+ * <p>Security WARNING: the bot token goes in the URL ({@code /bot<token>/método}) — every failure
+ * goes through {@link #reason}, which NEVER echoes the URL (only status + description from
+ * Telegram's envelope), unlike the {@code ProviderErrors} pattern of the other clients.
  */
 @Component
 public class TelegramBotHttpClient implements TelegramBotApi {
@@ -35,10 +35,10 @@ public class TelegramBotHttpClient implements TelegramBotApi {
     private final ObjectMapper mapper;
     private final String botToken;
 
-    /** Username do bot (getMe) — não muda durante a vida do processo. */
+    /** Bot username (getMe) — does not change during the process lifetime. */
     private volatile String cachedUsername;
 
-    /** Próximo update_id a pedir no getUpdates (one-shot; perder em restart é aceitável). */
+    /** Next update_id to ask for in getUpdates (one-shot; losing it on restart is acceptable). */
     private final AtomicLong nextOffset = new AtomicLong(0);
 
     public TelegramBotHttpClient(
@@ -95,7 +95,7 @@ public class TelegramBotHttpClient implements TelegramBotApi {
         return commands;
     }
 
-    /** Envia mensagem HTML pro chat pareado. Retorna o message_id. */
+    /** Sends an HTML message to the paired chat. Returns the message_id. */
     public String sendMessageHtml(String chatId, String html) {
         JsonNode result =
                 call(
@@ -112,7 +112,7 @@ public class TelegramBotHttpClient implements TelegramBotApi {
         return result.path("message_id").asText("?");
     }
 
-    /** Nome de exibição de quem mandou o /start (first_name [last_name] ou @username). */
+    /** Display name of whoever sent /start (first_name [last_name] or @username). */
     private static String from(JsonNode message) {
         JsonNode from = message.path("from");
         String first = from.path("first_name").asText("");
@@ -125,7 +125,7 @@ public class TelegramBotHttpClient implements TelegramBotApi {
         return username.isBlank() ? null : "@" + username;
     }
 
-    /** Chama um método da Bot API e devolve o {@code result} do envelope {@code ok/result}. */
+    /** Calls a Bot API method and returns the {@code result} of the {@code ok/result} envelope. */
     private JsonNode call(String methodAndQuery, Map<String, Object> jsonBody) {
         requireConfigured();
         try {
@@ -160,8 +160,8 @@ public class TelegramBotHttpClient implements TelegramBotApi {
     }
 
     /**
-     * Falha SEM ecoar a URL (carrega o token do bot): status + description do corpo quando o
-     * Telegram a mandou.
+     * Failure WITHOUT echoing the URL (it carries the bot token): status + body description when
+     * Telegram sent one.
      */
     private String reason(Exception ex) {
         if (ex instanceof WebClientResponseException httpEx) {
@@ -172,13 +172,13 @@ public class TelegramBotHttpClient implements TelegramBotApi {
                                 .path("description")
                                 .asText("");
             } catch (Exception ignored) {
-                // corpo não-JSON — fica só o status
+                // non-JSON body — only the status remains
             }
             return httpEx.getStatusCode().value()
                     + (description.isBlank() ? "" : " — " + description);
         }
-        // Mensagens de exceções de transporte não carregam a URL completa por padrão, mas por
-        // segurança nunca repassamos nada além da classe quando o token aparecer.
+        // Transport exception messages do not carry the full URL by default, but to be safe we
+        // never pass along anything beyond the class name when the token shows up.
         String message = ex.getMessage();
         return message != null && message.contains(botToken)
                 ? ex.getClass().getSimpleName()

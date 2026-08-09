@@ -16,9 +16,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /**
- * Tradutor de exceções do control plane (ADR 0022/0023/0024). @Order(HIGHEST_PRECEDENCE) garante
- * que estes handlers específicos vençam o catch-all Exception do GlobalExceptionHandler (que tem
- * ordem default). Reusa o {@link ErrorResponse} pra manter o formato de erro consistente.
+ * Translator of control plane exceptions (ADR 0022/0023/0024). @Order(HIGHEST_PRECEDENCE) ensures
+ * these specific handlers beat the catch-all Exception in GlobalExceptionHandler (which has the
+ * default order). Reuses {@link ErrorResponse} to keep the error format consistent.
  */
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)

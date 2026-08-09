@@ -24,9 +24,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Hub de integrações OAuth (NORA Flows Fase 2). O callback é PÚBLICO por design (redirect do
- * provedor; o state assinado identifica tenant/usuário e bloqueia forge) e sempre REDIRECIONA pro
- * front (/integracoes) com query de sucesso/erro — nunca devolve JSON pro navegador do usuário.
+ * OAuth integrations hub (NORA Flows Phase 2). The callback is PUBLIC by design (provider redirect;
+ * the signed state identifies tenant/user and blocks forgery) and always REDIRECTS to the front end
+ * (/integracoes) with a success/error query — it never returns JSON to the user's browser.
  */
 @RestController
 @RequestMapping("/integrations")
@@ -56,7 +56,7 @@ public class IntegrationsController {
         return integrations.status(principal.tenantId());
     }
 
-    /** Inicia o fluxo OAuth: devolve a URL de autorização pro front redirecionar. */
+    /** Starts the OAuth flow: returns the authorization URL for the front end to redirect to. */
     @PostMapping("/{provider}/oauth/start")
     public ResponseEntity<StartResponse> start(@PathVariable("provider") String provider) {
         AuthenticatedPrincipal principal = CurrentUser.require();
@@ -71,9 +71,9 @@ public class IntegrationsController {
     }
 
     /**
-     * Callback OAuth de QUALQUER provedor (público; redirect do navegador — o wildcard do
-     * SecurityConfig "integrations/&#42;/oauth/callback" cobre todos). Sempre redireciona pro
-     * front; o service roteia Google/Slack pros fluxos dedicados e os demais pro genérico.
+     * OAuth callback for ANY provider (public; browser redirect — the SecurityConfig wildcard
+     * "integrations/&#42;/oauth/callback" covers them all). Always redirects to the front end; the
+     * service routes Google/Slack to the dedicated flows and the rest to the generic one.
      */
     @GetMapping("/{provider}/oauth/callback")
     public ResponseEntity<Void> oauthCallback(
@@ -88,7 +88,7 @@ public class IntegrationsController {
             return redirect("/integracoes?error=integration_unknown_provider");
         }
         if (error != null && !error.isBlank()) {
-            // Usuário negou o consentimento (ou erro do provedor) — sem stack, sem 500.
+            // User denied consent (or provider error) — no stack, no 500.
             return redirect("/integracoes?error=" + error);
         }
         if (code == null || code.isBlank()) {
@@ -114,8 +114,8 @@ public class IntegrationsController {
     }
 
     /**
-     * Telegram (onda 2, SEM OAuth): gera o código de pareamento do tenant e devolve o deep link do
-     * bot ({@code t.me/<bot>?start=<código>}) pro hub exibir.
+     * Telegram (wave 2, NO OAuth): generates the tenant's pairing code and returns the bot deep
+     * link ({@code t.me/<bot>?start=<código>}) for the hub to display.
      */
     @PostMapping("/telegram/pairing/start")
     public TelegramPairingService.PairingStart telegramPairingStart() {
@@ -124,8 +124,9 @@ public class IntegrationsController {
     }
 
     /**
-     * Telegram: procura o {@code /start <código>} do tenant no getUpdates do bot e conclui a
-     * conexão. Sem o /start ainda = 409 {@code INTEGRATION_PAIRING_PENDING} com mensagem acionável.
+     * Telegram: looks for the tenant's {@code /start <código>} in the bot's getUpdates and
+     * completes the connection. No /start yet = 409 {@code INTEGRATION_PAIRING_PENDING} with an
+     * actionable message.
      */
     @PostMapping("/telegram/pairing/verify")
     public ProviderStatus telegramPairingVerify() {
@@ -134,8 +135,8 @@ public class IntegrationsController {
     }
 
     /**
-     * Trello (onda 2, sem OAuth server-side): valida o token que o usuário colou e persiste a
-     * conexão. Token inválido = 502 {@code INTEGRATION_PROVIDER_ERROR} com orientação.
+     * Trello (wave 2, no server-side OAuth): validates the token the user pasted and persists the
+     * connection. Invalid token = 502 {@code INTEGRATION_PROVIDER_ERROR} with guidance.
      */
     @PostMapping("/trello/token")
     public ProviderStatus saveTrelloToken(@RequestBody TrelloTokenRequest body) {

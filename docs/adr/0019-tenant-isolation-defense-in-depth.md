@@ -1,61 +1,61 @@
-# 0019 — Tenant isolation em profundidade: RLS Postgres + FK composta
+# 0019 — Tenant isolation in depth: Postgres RLS + composite FK
 
-- Status: aceito (ADR retroativo — decisão já implementada e mergeada; registro formal criado na auditoria 2026-05-21)
-- Data: 2026-05-21
-- Decisores: Tech Lead
-- Relacionado: ADR 0002 (multi-tenancy — filtro de app no MVP, RLS em prod)
+- Status: accepted (retroactive ADR — decision already implemented and merged; formal record created in the 2026-05-21 audit)
+- Date: 2026-05-21
+- Deciders: Tech Lead
+- Related: ADR 0002 (multi-tenancy — app filter in the MVP, RLS in prod)
 
-## Contexto
+## Context
 
-ADR 0002 estabeleceu o modelo de multi-tenancy: `tenant_id` em toda tabela tenant-owned + filtro na camada de aplicação (Spring), com **RLS Postgres prometido para produção** mas não implementado. O isolamento dependia inteiramente da disciplina do código: toda query precisa filtrar `tenant_id` antes de `id`. Dois furos foram identificados (audit follow-ups #5 e #7, 2026-05):
+ADR 0002 established the multi-tenancy model: `tenant_id` in every tenant-owned table + a filter in the application layer (Spring), with **Postgres RLS promised for production** but not implemented. Isolation depended entirely on code discipline: every query has to filter `tenant_id` before `id`. Two holes were identified (audit follow-ups #5 and #7, 2026-05):
 
-1. **Filtro esquecido**: um service/repository novo que esqueça o predicado `tenant_id` vaza dados entre tenants. O backend não tinha rede de segurança no banco.
-2. **Cross-tenant forge via ORM**: `meetings.owner_user_id REFERENCES users(id)` (FK simples) permitia, via payload não validado, criar um meeting com `owner_user_id` apontando para um user de **outro** tenant — o `tenant_id` do meeting e o do owner podiam divergir.
+1. **Forgotten filter**: a new service/repository that forgets the `tenant_id` predicate leaks data between tenants. The backend had no safety net in the database.
+2. **Cross-tenant forge via the ORM**: `meetings.owner_user_id REFERENCES users(id)` (a simple FK) allowed, via an unvalidated payload, creating a meeting with `owner_user_id` pointing to a user of **another** tenant — the meeting's `tenant_id` and the owner's could diverge.
 
-ADR 0002 deixou a forma concreta do RLS em aberto (esboçou `current_setting('app.tenant_id')`, sem definir aspecto/role/GUC). Estas decisões de implementação são duráveis e mereciam registro próprio — daí este ADR.
+ADR 0002 left the concrete form of RLS open (it sketched `current_setting('app.tenant_id')`, without defining the aspect/role/GUC). These implementation decisions are durable and deserved their own record — hence this ADR.
 
-## Decisão
+## Decision
 
-Adotar **defesa em profundidade** do isolamento por tenant em duas camadas no schema, complementando o filtro de aplicação (que continua sendo a primeira linha):
+Adopt **defense in depth** for tenant isolation in two layers in the schema, complementing the application filter (which remains the first line):
 
 ### 1. Row-Level Security (V016)
 
-- `CREATE POLICY tenant_isolation` + `ENABLE ROW LEVEL SECURITY` em 10 tabelas tenant-owned: `meetings`, `tenants`, `tenant_contexts`, `users`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses`, `meeting_participants`.
-- Predicado: `tenant_id = nora.current_tenant_id()` (em `tenants`, `id = nora.current_tenant_id()`), com `USING` + `WITH CHECK`.
-- Função `nora.current_tenant_id()` lê o GUC de sessão `nora.current_tenant_id` (schema `nora`), retornando `NULL` quando não setado ⇒ **fail-closed**: role sem `BYPASSRLS` vê 0 rows.
-- **GUC real é `nora.current_tenant_id`** (não `app.tenant_id` como o ADR 0002 esboçou — esta é a forma canônica).
-- `infrastructure/security/TenantRlsAspect` (`@ConditionalOnProperty(nora.security.rls.enforce=true)`, `@Order(LOWEST_PRECEDENCE)`) executa `SELECT set_config('nora.current_tenant_id', :tenantId, true)` (escopo local à transação, auto-reset no commit) no início de cada `@Transactional`, lendo o tenant do `TenantContextHolder`.
+- `CREATE POLICY tenant_isolation` + `ENABLE ROW LEVEL SECURITY` on 10 tenant-owned tables: `meetings`, `tenants`, `tenant_contexts`, `users`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses`, `meeting_participants`.
+- Predicate: `tenant_id = nora.current_tenant_id()` (on `tenants`, `id = nora.current_tenant_id()`), with `USING` + `WITH CHECK`.
+- The function `nora.current_tenant_id()` reads the session GUC `nora.current_tenant_id` (schema `nora`), returning `NULL` when not set ⇒ **fail-closed**: a role without `BYPASSRLS` sees 0 rows.
+- **The real GUC is `nora.current_tenant_id`** (not `app.tenant_id` as ADR 0002 sketched — this is the canonical form).
+- `infrastructure/security/TenantRlsAspect` (`@ConditionalOnProperty(nora.security.rls.enforce=true)`, `@Order(LOWEST_PRECEDENCE)`) executes `SELECT set_config('nora.current_tenant_id', :tenantId, true)` (scope local to the transaction, auto-reset on commit) at the start of every `@Transactional`, reading the tenant from the `TenantContextHolder`.
 
-**Enforcement é opt-in.** O owner/admin Postgres bypassa RLS por default — em dev e Testcontainers o app conecta como owner, então as policies ficam inertes e os testes seguem sem mudança. Para ativar enforcement real em prod: (1) `CREATE ROLE nora_app ... NOBYPASSRLS`; (2) grants nas tabelas tenant-owned; (3) connection string da API usando `nora_app`; (4) `nora.security.rls.enforce=true`.
+**Enforcement is opt-in.** The Postgres owner/admin bypasses RLS by default — in dev and Testcontainers the app connects as the owner, so the policies remain inert and the tests continue unchanged. To activate real enforcement in prod: (1) `CREATE ROLE nora_app ... NOBYPASSRLS`; (2) grants on the tenant-owned tables; (3) the API's connection string using `nora_app`; (4) `nora.security.rls.enforce=true`.
 
-### 2. FK composta de isolamento (V015)
+### 2. Composite isolation FK (V015)
 
-- `users` ganha `UNIQUE (tenant_id, id)` (a PK `id` continua simples; o UNIQUE existe só como alvo da FK).
-- `meetings.owner_user_id` deixa de ser `REFERENCES users(id)` e passa a **FK composta** `(tenant_id, owner_user_id) REFERENCES users(tenant_id, id) ON DELETE RESTRICT`.
-- Efeito: o Postgres rejeita (`ForeignKeyViolation`) qualquer meeting cujo `(tenant_id, owner_user_id)` não case com uma linha de `users` — owner de outro tenant é impossível no nível do schema.
+- `users` gains `UNIQUE (tenant_id, id)` (the PK `id` remains simple; the UNIQUE exists only as the FK's target).
+- `meetings.owner_user_id` stops being `REFERENCES users(id)` and becomes a **composite FK** `(tenant_id, owner_user_id) REFERENCES users(tenant_id, id) ON DELETE RESTRICT`.
+- Effect: Postgres rejects (`ForeignKeyViolation`) any meeting whose `(tenant_id, owner_user_id)` does not match a row in `users` — an owner from another tenant is impossible at the schema level.
 
-## Consequências
+## Consequences
 
-**Positivas:**
+**Positive:**
 
-- Isolamento deixa de depender só da disciplina de query: o banco é a última linha de defesa (RLS) e o relacionamento owner↔tenant é garantido por constraint (FK composta).
-- RLS é reversível/gradual: opt-in por flag + role, sem quebrar dev/testes.
-- Fail-closed: GUC ausente ⇒ 0 rows (não "todos os rows").
+- Isolation stops depending on query discipline alone: the database is the last line of defense (RLS) and the owner↔tenant relationship is guaranteed by a constraint (composite FK).
+- RLS is reversible/gradual: opt-in via flag + role, without breaking dev/tests.
+- Fail-closed: absent GUC ⇒ 0 rows (not "all rows").
 
-**Negativas / trade-offs:**
+**Negative / trade-offs:**
 
-- RLS só protege de fato quando o app roda como role `NOBYPASSRLS` — em dev fica inerte (risco de "passou no teste local mas a policy estava desligada"). Mitigação: um ambiente de CI/staging com `nora_app` exercitando RLS de verdade (débito).
-- O aspect adiciona um `SET LOCAL` por transação (custo desprezível) e exige que o tenant esteja no `TenantContextHolder` antes da tx.
-- FK composta exige o UNIQUE `(tenant_id, id)` em `users` (objeto extra no schema).
+- RLS only actually protects when the app runs as a `NOBYPASSRLS` role — in dev it stays inert (risk of "it passed the local test but the policy was switched off"). Mitigation: a CI/staging environment with `nora_app` exercising RLS for real (debt).
+- The aspect adds one `SET LOCAL` per transaction (negligible cost) and requires the tenant to be in the `TenantContextHolder` before the tx.
+- The composite FK requires the `UNIQUE (tenant_id, id)` on `users` (an extra object in the schema).
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Só filtro de aplicação (status quo do ADR 0002)** — rejeitado: um único `WHERE` esquecido vaza tenant; sem rede de segurança.
-2. **RLS sempre-on (sem flag/opt-in)** — rejeitado para já: quebraria Testcontainers/dev que conectam como owner; exigiria role dedicado em todo ambiente antes de valer a pena.
-3. **Validar owner↔tenant só na aplicação (sem FK composta)** — rejeitado: é exatamente o tipo de checagem que um endpoint novo pode esquecer; a constraint no schema é à prova de esquecimento.
+1. **Application filter only (ADR 0002's status quo)** — rejected: a single forgotten `WHERE` leaks a tenant; no safety net.
+2. **Always-on RLS (no flag/opt-in)** — rejected for now: it would break Testcontainers/dev, which connect as the owner; it would require a dedicated role in every environment before it was worth it.
+3. **Validating owner↔tenant only in the application (without the composite FK)** — rejected: it is exactly the kind of check a new endpoint can forget; the constraint in the schema is forgetting-proof.
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-05-21 | Tech Lead | ADR retroativo criado na auditoria doc×código. Decisão já implementada: RLS em `V016__row_level_security.sql` + `TenantRlsAspect` (audit follow-up #5, PR #138); FK composta em `V015__composite_fk_meetings_owner.sql` (audit follow-up #7, PR #137) |
+| 2026-05-21 | Tech Lead | Retroactive ADR created in the doc×code audit. Decision already implemented: RLS in `V016__row_level_security.sql` + `TenantRlsAspect` (audit follow-up #5, PR #138); composite FK in `V015__composite_fk_meetings_owner.sql` (audit follow-up #7, PR #137) |

@@ -1,36 +1,36 @@
 name: cloudflare-setup
 
-# Configura Cloudflare Access pra proteger admin.nora.systems com login obrigatorio
-# (allowlist por email). Roda manual via workflow_dispatch; idempotente — re-run apenas
-# reconcilia diff (upsert em Access App, Policy, IdP).
+# Configures Cloudflare Access to protect admin.nora.systems with mandatory login
+# (allowlist by email). Runs manually via workflow_dispatch; idempotent — a re-run only
+# reconciles the diff (upsert on Access App, Policy, IdP).
 #
 # Lanes (ADR 0025 — Cloudflare Tunnel + Access):
-#   - ESTE workflow e dono do Access App + Policy + IdP em admin.nora.systems.
-#   - cloudflare-tunnel.yml (lane irma) e dono do CNAME admin.nora.systems -> cfargotunnel.com.
-#   - ⚠️ NUNCA passe `admin_hostname` em produção: sobrescreveria o CNAME do tunel e
-#     derrubaria o acesso. Input mantido apenas para back-compat pre-ADR 0025; o step de
-#     CNAME tem guard que ABORTA se detectar tunel ativo.
+#   - THIS workflow owns the Access App + Policy + IdP on admin.nora.systems.
+#   - cloudflare-tunnel.yml (sibling lane) owns the CNAME admin.nora.systems -> cfargotunnel.com.
+#   - ⚠️ NEVER pass `admin_hostname` in production: it would overwrite the tunnel CNAME and
+#     take down access. The input is kept only for pre-ADR 0025 back-compat; the CNAME
+#     step has a guard that ABORTS if it detects an active tunnel.
 #
-# Secrets necessarios:
-#   - CLOUDFLARE_API_TOKEN  Token escopado em nora.systems. Permissoes minimas
-#                            (caminho critico — DNS + Access App + Policy funcionam):
+# Required secrets:
+#   - CLOUDFLARE_API_TOKEN  Token scoped to nora.systems. Minimum permissions
+#                            (critical path — DNS + Access App + Policy work):
 #                              Account: Access (Apps and Policies) Edit
 #                              Account: Access (Service Tokens) Edit
 #                              Zone: DNS Edit
 #                              Zone: Zone Read
-#                            Permissoes opcionais (full automation, inclui IdP):
+#                            Optional permissions (full automation, includes IdP):
 #                              Account: Access (Organizations, Identity Providers, and Groups) Edit
-#                            Sem a permissao opcional, o workflow degrada graciosamente:
-#                              - team_domain e construido do input (nao verificado via API)
-#                              - OTP IdP nao e criado (adicionar manualmente no painel CF)
+#                            Without the optional permission, the workflow degrades gracefully:
+#                              - team_domain is built from the input (not verified via API)
+#                              - the OTP IdP is not created (add it manually in the CF panel)
 #
-# Pre-requisito manual (uma vez):
-#   - Zero Trust habilitado na conta CF (https://one.dash.cloudflare.com/ -> onboarding,
-#     criar team com nome = input team_name). Plano Free serve.
+# Manual prerequisite (once):
+#   - Zero Trust enabled on the CF account (https://one.dash.cloudflare.com/ -> onboarding,
+#     create a team with name = input team_name). The Free plan works.
 #
-# Pos-step manual opcional (Google/GitHub OAuth):
-#   - Workflow tenta criar One-Time PIN como IdP fallback (sem OAuth).
-#   - Pra Google/GitHub OAuth, ver docs/operations/cloudflare-access.md.
+# Optional manual post-step (Google/GitHub OAuth):
+#   - The workflow tries to create One-Time PIN as a fallback IdP (no OAuth).
+#   - For Google/GitHub OAuth, see docs/operations/cloudflare-access.md.
 
 on:
   workflow_dispatch:
@@ -103,20 +103,21 @@ jobs:
         run: |
           set -euo pipefail
           fqdn="$SUBDOMAIN.$DOMAIN"
-          # Guard ADR 0025: se o CNAME ja aponta pro Cloudflare Tunnel (*.cfargotunnel.com),
-          # ABORTA. Sobrescrever derrubaria o admin (origem deixou de ser publica;
-          # o tunel e o unico caminho de entrada).
+          # ADR 0025 guard: if the CNAME already points at the Cloudflare Tunnel
+          # (*.cfargotunnel.com), ABORT. Overwriting would take down the admin (the origin
+          # stopped being public; the tunnel is the only way in).
           existing_content=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
             "$CF_API/zones/$ZONE_ID/dns_records?type=CNAME&name=$fqdn" \
             | jq -r '.result[0].content // empty')
           if [[ "$existing_content" == *.cfargotunnel.com ]]; then
             echo "::error::ABORT: CNAME $fqdn aponta pro Cloudflare Tunnel ($existing_content)."
             echo "::error::Sobrescrever derrubaria o admin (ADR 0025: origem do nora-admin e internal — so o tunel entra)."
-            # Pos-migracao (ADR 0034) o tunel deixou de ser sidecar de Container App e virou
-            # o servico `cloudflared` do infra/proxmox/docker-compose.yml. Nao ha mais
-            # "ingress public" pra migrar: NENHUM servico da stack publica porta — as unicas
-            # portas do compose sao 127.0.0.1 (loopback, debug via ssh -L). O tunel nao e
-            # uma opcao de exposicao, e a UNICA. Este input so existe por back-compat.
+            # Post-migration (ADR 0034) the tunnel stopped being a Container App sidecar and
+            # became the `cloudflared` service of infra/proxmox/docker-compose.yml. There is
+            # no "public ingress" left to migrate: NO service in the stack publishes a port —
+            # the only ports in the compose are 127.0.0.1 (loopback, debug via ssh -L). The
+            # tunnel is not an exposure option, it is the ONLY one. This input exists purely
+            # for back-compat.
             echo "::error::Nao ha caminho alternativo: na stack do Proxmox o tunel e o unico ingress"
             echo "::error::(nenhum container publica porta na interface externa). Rode SEM admin_hostname."
             exit 1
@@ -143,16 +144,16 @@ jobs:
       - name: Resolve team domain
         id: team
         env:
-          # Via env, nunca interpolado direto no script: `${{ }}` é expandido pelo template
-          # engine ANTES do shell existir, então um input com aspas/`;`/`$(...)` viraria
-          # comando executado com o CF_TOKEN do job em escopo. Mesmo padrão do step
-          # "Upsert CNAME" acima.
+          # Via env, never interpolated directly into the script: `${{ }}` is expanded by the
+          # template engine BEFORE the shell exists, so an input with quotes/`;`/`$(...)`
+          # would become a command executed with the job's CF_TOKEN in scope. Same pattern
+          # as the "Upsert CNAME" step above.
           TEAM_NAME: ${{ inputs.team_name }}
         run: |
           set -euo pipefail
-          # Tenta verificar via API. Se token nao tiver 'Access: Organizations Read',
-          # cai no input direto — steps subsequentes (Access App / Policy) validam
-          # funcionalmente se o team realmente existe.
+          # Tries to verify via API. If the token lacks 'Access: Organizations Read',
+          # falls back to the raw input — subsequent steps (Access App / Policy) validate
+          # functionally whether the team really exists.
           response=$(curl -sSL -H "Authorization: Bearer $CF_TOKEN" \
             "$CF_API/accounts/$CF_ACCOUNT_ID/access/organizations" \
             || echo '{"success":false,"errors":[{"code":-1,"message":"curl falhou"}]}')
@@ -199,7 +200,7 @@ jobs:
       - name: Upsert allowlist policy
         env:
           APP_ID: ${{ steps.app.outputs.app_id }}
-          # Ver nota no step "Resolve team domain": input nunca entra direto no script.
+          # See the note on the "Resolve team domain" step: input never goes straight into the script.
           ACCESS_EMAILS: ${{ inputs.access_emails }}
         run: |
           set -euo pipefail
@@ -232,9 +233,9 @@ jobs:
         id: otp_idp
         run: |
           set -euo pipefail
-          # OTP nao tem config externa — Cloudflare manda codigo pro email do operador.
-          # Endpoint precisa de 'Access: Organizations, IdPs, and Groups Edit' no token.
-          # Se o token nao tiver, skipa com warning (user adiciona via UI ou expande token).
+          # OTP has no external config — Cloudflare sends a code to the operator's email.
+          # The endpoint needs 'Access: Organizations, IdPs, and Groups Edit' on the token.
+          # If the token lacks it, skip with a warning (user adds it via UI or widens the token).
           response=$(curl -sSL -H "Authorization: Bearer $CF_TOKEN" \
             "$CF_API/accounts/$CF_ACCOUNT_ID/access/identity_providers" \
             || echo '{"success":false,"errors":[{"code":-1,"message":"curl falhou"}]}')

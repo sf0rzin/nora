@@ -36,7 +36,8 @@ class LocalSttNoopBrokerTest {
         assertThat(thrown)
                 .isInstanceOf(SpeechException.ProviderGone.class)
                 .hasMessageContaining("local");
-        // O código é o contrato com o cliente: é ele que o GlobalExceptionHandler traduz em 410.
+        // The code is the contract with the client: it is what GlobalExceptionHandler turns into
+        // a 410.
         assertThat(((SpeechException) thrown).code()).isEqualTo("SPEECH_PROVIDER_GONE");
     }
 
@@ -74,7 +75,7 @@ class LocalSttNoopBrokerTest {
         SpeechTokenService service =
                 new SpeechTokenService(broker, rateLimiter, localProps(), clock);
 
-        // 429 antes de 410: o rate limit protege o endpoint mesmo depois do provider sair.
+        // 429 before 410: the rate limit protects the endpoint even after the provider is gone.
         assertThatThrownBy(() -> service.issueFor(userId, UUID.randomUUID(), null))
                 .isInstanceOf(SpeechException.RateLimitExceeded.class);
     }

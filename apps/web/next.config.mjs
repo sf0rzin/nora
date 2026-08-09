@@ -1,18 +1,18 @@
 /** @type {import('next').NextConfig} */
 
-// Security headers (defesa em profundidade — auditoria frontend B2).
+// Security headers (defense in depth — B2 frontend audit).
 //
-// connect-src precisa cobrir a API real chamada pelo browser. O client web
-// (`src/lib/api/client.ts`, `src/lib/auth.ts`) faz fetch direto contra
-// NEXT_PUBLIC_API_BASE_URL, então derivamos a origin desse env em build-time
-// e a incluímos na policy. Os demais fetches do browser são contra a própria
-// origin ('self'): o BFF em /api/chat e o restante das rotas RSC/route-handler.
+// connect-src must cover the real API called by the browser. The web client
+// (`src/lib/api/client.ts`, `src/lib/auth.ts`) fetches directly against
+// NEXT_PUBLIC_API_BASE_URL, so we derive that env's origin at build time
+// and include it in the policy. The browser's other fetches go to its own
+// origin ('self'): the BFF at /api/chat and the rest of the RSC/route-handler routes.
 //
-// Em produção a API é servida em https://api.nora.systems (mesmo registrable
-// domain que nora.systems) para que os cookies de auth (Domain=nora.systems)
-// sejam enviados cross-subdomínio. NEXT_PUBLIC_API_BASE_URL aponta pra esse host;
-// chamar a API por um host fora de nora.systems faria o navegador rejeitar os
-// cookies (mismatch de Domain) e bloquear o login.
+// In production the API is served at https://api.nora.systems (same registrable
+// domain as nora.systems) so that the auth cookies (Domain=nora.systems)
+// are sent cross-subdomain. NEXT_PUBLIC_API_BASE_URL points at that host;
+// calling the API through a host outside nora.systems would make the browser
+// reject the cookies (Domain mismatch) and block login.
 function apiOrigin() {
   const raw = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (!raw) return null;
@@ -23,13 +23,13 @@ function apiOrigin() {
   }
 }
 
-// CSP entregue em **Report-Only** de propósito: o web usa Tailwind + estilos
-// inline + hidratação do Next (que injeta <style>/<script> inline), então uma
-// policy enforcing precisa ser observada antes de bloquear. Report-Only nunca
-// bloqueia request — só reporta violações no console do browser. Endurecer
-// para `Content-Security-Policy` (enforcing) depois de validar que não há
-// violações legítimas em produção (idealmente trocando 'unsafe-inline' por
-// nonce/hash no script-src).
+// CSP delivered as **Report-Only** on purpose: the web app uses Tailwind +
+// inline styles + Next hydration (which injects inline <style>/<script>), so an
+// enforcing policy has to be observed before it blocks. Report-Only never
+// blocks a request — it only reports violations in the browser console. Harden
+// to `Content-Security-Policy` (enforcing) after validating there are no
+// legitimate violations in production (ideally swapping 'unsafe-inline' for
+// nonce/hash in script-src).
 function contentSecurityPolicy() {
   const api = apiOrigin();
   const connectSrc = ["'self'", api].filter(Boolean).join(" ");

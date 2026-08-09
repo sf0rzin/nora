@@ -1,36 +1,36 @@
-# ADR 0009: Speech Token Broker — Estratégia de Credenciais Azure Speech
+# ADR 0009: Speech Token Broker — Azure Speech Credential Strategy
 
 ## Status
 
-Substituído por ADR 0035 (STT local: Whisper embarcado no Tauri, na máquina do cliente)
+Superseded by ADR 0035 (local STT: Whisper embedded in Tauri, on the client machine)
 
-## Histórico de status
+## Status history
 
-| Data | Status | Notas |
+| Date | Status | Notes |
 |---|---|---|
-| 2026-05-07 (criação) | Proposto | Esboço inicial |
-| 2026-05-12 | Aceito | Implementado via PR #29 (`SpeechController` + `AzureSpeechTokenBroker`); rate limit Bucket4j; `docs/adr/README.md` índice já marcava como aceito. Atualização desta linha trazida pela Sub-fase 1.10 (Docs Refresh) que reconciliou divergência menor entre status do doc e do índice |
-| 2026-08-07 | Substituído por 0035 | O ADR 0034 desliga a subscription Azure e com ela o recurso Azure Speech, removendo o substrato desta decisão. O ADR 0035 é a substituição funcional: o STT passa a rodar on-device (Whisper via `whisper-rs`), e o broker inteiro deixa de existir — endpoint `POST /speech/token`, rate limit Bucket4j, `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` e a renovação de token. Nota: a "Alternativa A — Proxy Server-Side" rejeitada aqui é o argumento que o ADR 0035 reusa para recusar Whisper self-hosted no servidor |
+| 2026-05-07 (creation) | Proposed | Initial draft |
+| 2026-05-12 | Accepted | Implemented via PR #29 (`SpeechController` + `AzureSpeechTokenBroker`); Bucket4j rate limit; the `docs/adr/README.md` index already marked it as accepted. This line's update was brought by Sub-phase 1.10 (Docs Refresh), which reconciled a minor divergence between the doc's status and the index's |
+| 2026-08-07 | Superseded by 0035 | ADR 0034 shuts down the Azure subscription and with it the Azure Speech resource, removing the substrate of this decision. ADR 0035 is the functional replacement: STT moves to running on-device (Whisper via `whisper-rs`), and the entire broker ceases to exist — the `POST /speech/token` endpoint, the Bucket4j rate limit, `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` and token renewal. Note: the "Alternative A — Server-Side Proxy" rejected here is the argument that ADR 0035 reuses to reject self-hosted Whisper on the server |
 
-## Contexto
+## Context
 
-A NORA Desktop precisa de acesso ao Azure Speech Services para transcrição em tempo real. O modelo inicial (BYO-key) exigia que o usuário configurasse sua própria subscription key da Azure no aplicativo desktop. Isso apresentava vários problemas:
+NORA Desktop needs access to Azure Speech Services for real-time transcription. The initial model (BYO-key) required the user to configure their own Azure subscription key in the desktop application. This presented several problems:
 
-1. **Exposição de credenciais**: A subscription key ficava armazenada no dispositivo do usuário (mesmo com criptografia)
-2. **Complexidade**: Usuários precisavam criar conta Azure e gerenciar keys
-3. **Custo**: Cada usuário precisava ter sua própria subscription Azure
-4. **Segurança**: Keys com longa duração expostas em múltiplos dispositivos
+1. **Credential exposure**: the subscription key was stored on the user's device (even if encrypted)
+2. **Complexity**: users had to create an Azure account and manage keys
+3. **Cost**: each user had to have their own Azure subscription
+4. **Security**: long-lived keys exposed on multiple devices
 
-## Decisão
+## Decision
 
-Implementar um **Speech Token Broker** no backend NORA que:
+Implement a **Speech Token Broker** in the NORA backend that:
 
-1. Guarda a subscription key Azure no servidor (nunca no cliente)
-2. Emite tokens de autorização efêmeros (10 minutos) sob demanda
-3. O cliente usa esses tokens para autenticar diretamente com Azure Speech
-4. Tokens são renovados automaticamente durante sessões longas
+1. Keeps the Azure subscription key on the server (never on the client)
+2. Issues ephemeral authorization tokens (10 minutes) on demand
+3. The client uses those tokens to authenticate directly with Azure Speech
+4. Tokens are renewed automatically during long sessions
 
-### Fluxo
+### Flow
 
 ```
 Cliente Desktop          Backend NORA           Azure Speech
@@ -47,60 +47,60 @@ Cliente Desktop          Backend NORA           Azure Speech
      |-- Audio Stream -------------------------------->|
 ```
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Segurança**: Subscription key nunca sai do servidor
-- **UX simplificada**: Usuário não precisa configurar nada
-- **Custo centralizado**: NORA gerencia o custo Azure
-- **Blast radius limitado**: Token vazado vale apenas 10 minutos
-- **Compliance**: Menor superfície de ataque LGPD
+- **Security**: the subscription key never leaves the server
+- **Simplified UX**: the user does not have to configure anything
+- **Centralized cost**: NORA manages the Azure cost
+- **Limited blast radius**: a leaked token is valid for only 10 minutes
+- **Compliance**: smaller LGPD attack surface
 
-### Negativas
+### Negative
 
-- **Dependência de rede**: Cliente precisa de internet para obter tokens
-- **Latência adicional**: +50-100ms no início da gravação
-- **Custo operacional**: NORA assume custo Azure Speech
-- **Complexidade backend**: Novo endpoint + rate limiting + broker
+- **Network dependency**: the client needs internet access to obtain tokens
+- **Additional latency**: +50-100ms at the start of recording
+- **Operational cost**: NORA takes on the Azure Speech cost
+- **Backend complexity**: new endpoint + rate limiting + broker
 
-## Alternativas Avaliadas
+## Alternatives Evaluated
 
-### A. Proxy Server-Side (Rejeitada)
+### A. Server-Side Proxy (Rejected)
 
-- **Descrição**: Todo áudio passa pelo backend NORA
-- **Problema**: Latência alta, custo de banda, ponto único de falha, LGPD complexo
-- **Veredito**: Não adequado para STT em tempo real
+- **Description**: all audio passes through the NORA backend
+- **Problem**: high latency, bandwidth cost, single point of failure, complex LGPD
+- **Verdict**: not suitable for real-time STT
 
-### B. BYO Key com Stronghold (Rejeitada)
+### B. BYO Key with Stronghold (Rejected)
 
-- **Descrição**: Criptografar key no disco com tauri-plugin-stronghold
-- **Problema**: Key ainda é exposta no momento de uso pelo SDK Speech
-- **Veredito**: Não resolve o problema fundamental
+- **Description**: encrypt the key on disk with tauri-plugin-stronghold
+- **Problem**: the key is still exposed at the moment the Speech SDK uses it
+- **Verdict**: does not solve the fundamental problem
 
-### C. Azure Key Vault no Cliente (Rejeitada)
+### C. Azure Key Vault on the Client (Rejected)
 
-- **Descrição**: Usar Key Vault para armazenar a key
-- **Problema**: Só desloca o problema para a credencial de acesso ao Vault
-- **Veredito**: Não resolve a exposição
+- **Description**: use Key Vault to store the key
+- **Problem**: it merely shifts the problem to the Vault access credential
+- **Verdict**: does not solve the exposure
 
-## Implementação
+## Implementation
 
 ### Backend
 
-- `POST /speech/token` — Endpoint autenticado com JWT
-- Rate limit: 6 tokens/minuto por usuário
-- Regiões permitidas: brazilsouth, eastus, westeurope, etc.
-- Timeout: 5s para chamada Azure
+- `POST /speech/token` — endpoint authenticated with JWT
+- Rate limit: 6 tokens/minute per user
+- Allowed regions: brazilsouth, eastus, westeurope, etc.
+- Timeout: 5s for the Azure call
 
 ### Desktop
 
-- Remove campos de configuração Azure da UI
-- Busca token automaticamente no início da gravação
-- Renova token a cada 8 minutos durante sessão
-- Sidecar Python usa `SpeechConfig(auth_token=...)`
+- Removes Azure configuration fields from the UI
+- Fetches the token automatically at the start of recording
+- Renews the token every 8 minutes during a session
+- The Python sidecar uses `SpeechConfig(auth_token=...)`
 
-## Referências
+## References
 
 - [Microsoft Docs — Authenticate with authorization token](https://learn.microsoft.com/azure/ai-services/speech-service/get-started-speech-to-text?pivots=programming-language-python#authenticate-using-an-authorization-token)
 - ADR 0008 — Desktop Tauri + Sidecar

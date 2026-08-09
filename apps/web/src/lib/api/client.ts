@@ -1,15 +1,15 @@
 ﻿/**
- * Cliente HTTP minimalista para a API do NORA.
+ * Minimal HTTP client for the NORA API.
  *
- * Por padrao em modo dev usa fixtures (NEXT_PUBLIC_USE_MOCKS=true). Quando false,
- * faz fetch real contra NEXT_PUBLIC_API_BASE_URL.
+ * By default in dev mode it uses fixtures (NEXT_PUBLIC_USE_MOCKS=true). When false,
+ * it does a real fetch against NEXT_PUBLIC_API_BASE_URL.
  *
- * Round 2 / Subfase 1.3 A:
- * - Auth e enviada via cookies httpOnly (`nora_access`, `nora_refresh`)
- *   setados pelo backend no /auth/login. `credentials: include` no fetch
- *   garante que sao enviados. Frontend nao precisa (nem consegue) ler.
- * - Interceptor 401: tenta `POST /auth/refresh` uma vez; se sucesso, repete
- *   a request original; se falhar, redireciona para /auth/login.
+ * Round 2 / Subphase 1.3 A:
+ * - Auth is sent via httpOnly cookies (`nora_access`, `nora_refresh`)
+ *   set by the backend on /auth/login. `credentials: include` on the fetch
+ *   guarantees they are sent. The frontend does not need (nor is able) to read them.
+ * - 401 interceptor: tries `POST /auth/refresh` once; on success, repeats
+ *   the original request; on failure, redirects to /auth/login.
  */
 
 import type {
@@ -36,8 +36,8 @@ import type {
   WorkflowResponse,
 } from './types';
 
-// Re-export para componentes consumirem direto de @/lib/api/client (parity
-// com GroupDto/PolicyDto etc., que sao declarados localmente neste modulo).
+// Re-export so components can consume straight from @/lib/api/client (parity
+// with GroupDto/PolicyDto etc., which are declared locally in this module).
 export type { AcceptInviteRequest, Invite, InviteListResponse, InviteStatus, InviteUserRequest };
 export type { ChatMessage, ChatSessionDetail, ChatSessionSummary };
 export type { WorkflowDefinition, WorkflowExecutionResponse, WorkflowResponse };
@@ -47,33 +47,33 @@ import meetingsListFixture from '@/fixtures/meetings-list-response.json';
 import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
 import { handleSessionExpired, sharedRefresh } from '@/lib/auth';
 
-// Default deve ser 'false' em prod. Antes era 'true' → se a build esquecesse de
-// setar NEXT_PUBLIC_USE_MOCKS, prod servia fixtures hardcoded. Agora qualquer
-// build sem setar explicitamente vai contra a API real (que falha rápido se
-// estiver mal configurada — preferível a servir lixo).
+// Default must be 'false' in prod. It used to be 'true' → if the build forgot to
+// set NEXT_PUBLIC_USE_MOCKS, prod served hardcoded fixtures. Now any build that
+// does not set it explicitly goes against the real API (which fails fast if
+// misconfigured — preferable to serving garbage).
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === 'true';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
 
 /**
- * Em Server Components / Route Handlers, `fetch` NÃO propaga cookies httpOnly
- * do browser automaticamente. Sem isso, qualquer fetch RSC (dashboard,
- * meeting detail) vai sem auth → 401 → notFound() → 404 visível pro user.
+ * In Server Components / Route Handlers, `fetch` does NOT propagate the browser's
+ * httpOnly cookies automatically. Without this, any RSC fetch (dashboard,
+ * meeting detail) goes without auth → 401 → notFound() → 404 visible to the user.
  *
- * Este helper detecta SSR (typeof window === 'undefined') e usa `next/headers`
- * dinamicamente para anexar o header `Cookie`. Em client, retorna {} (browser
- * envia automaticamente com `credentials: 'include'`).
+ * This helper detects SSR (typeof window === 'undefined') and uses `next/headers`
+ * dynamically to attach the `Cookie` header. On the client it returns {} (the browser
+ * sends them automatically with `credentials: 'include'`).
  */
 async function serverCookieHeader(): Promise<Record<string, string>> {
   if (typeof window !== 'undefined') return {};
   try {
-    // Import dinâmico evita carregar next/headers em client bundles.
+    // Dynamic import avoids loading next/headers into client bundles.
     const { cookies } = await import('next/headers');
     const all = (await cookies()).getAll();
     if (all.length === 0) return {};
     const cookieStr = all.map((c) => `${c.name}=${c.value}`).join('; ');
     return { Cookie: cookieStr };
   } catch {
-    // Fora de contexto de request (build, scripts) — sem cookies.
+    // Outside a request context (build, scripts) — no cookies.
     return {};
   }
 }
@@ -90,22 +90,22 @@ export class ApiRequestError extends Error {
 
 interface RequestOptions extends RequestInit {
   /**
-   * Quando `true`, nao tenta refresh+retry em 401 — usado em endpoints
-   * publicos onde 401 e um erro semantico (login com senha errada, refresh
-   * invalido etc).
+   * When `true`, does not try refresh+retry on 401 — used on public
+   * endpoints where 401 is a semantic error (login with the wrong password,
+   * invalid refresh etc).
    */
   skipAuth?: boolean;
-  /** Marcador interno: evita loop quando a propria call e a tentativa de retry. */
+  /** Internal marker: avoids a loop when the call itself is the retry attempt. */
   _isRetry?: boolean;
 }
 
 /**
- * Refresh single-flight: a promise compartilhada vive em `@/lib/auth`
- * (`sharedRefresh`) e e a MESMA aguardada pelo timer de refresh proativo.
- * Quando varias requests batem 401 simultaneamente — ou o timer dispara
- * junto — todas aguardam o mesmo POST /auth/refresh em vez de disparar N
- * requests redundantes (refresh duplicado com o mesmo cookie acionava a
- * reuse detection do backend e derrubava a sessao inteira).
+ * Single-flight refresh: the shared promise lives in `@/lib/auth`
+ * (`sharedRefresh`) and is the SAME one awaited by the proactive refresh timer.
+ * When several requests hit 401 simultaneously — or the timer fires at the
+ * same time — they all await the same POST /auth/refresh instead of firing N
+ * redundant requests (a duplicated refresh with the same cookie tripped the
+ * backend's reuse detection and dropped the whole session).
  */
 async function performRefresh(): Promise<boolean> {
   const result = await sharedRefresh();
@@ -130,16 +130,16 @@ async function request<T>(path: string, init?: RequestOptions): Promise<T> {
     cache: 'no-store',
   });
 
-  // Interceptor 401: 1 tentativa de refresh + retry. Pulado em endpoints
-  // publicos (skipAuth) e em retries (evita loop infinito).
+  // 401 interceptor: 1 refresh attempt + retry. Skipped on public
+  // endpoints (skipAuth) and on retries (avoids an infinite loop).
   if (resp.status === 401 && !init?.skipAuth && !init?._isRetry) {
     const refreshed = await performRefresh();
     if (refreshed) {
       return request<T>(path, { ...init, _isRetry: true });
     }
-    // Refresh tambem falhou: limpa estado e redireciona. handleSessionExpired
-    // chama window.location.href entao a Promise abaixo na pratica nunca
-    // resolve antes do unload. Mantemos o throw pra fluxo SSR e testes.
+    // Refresh also failed: clear state and redirect. handleSessionExpired
+    // calls window.location.href so in practice the Promise below never
+    // resolves before the unload. We keep the throw for the SSR flow and tests.
     await handleSessionExpired();
   }
 
@@ -157,7 +157,7 @@ async function request<T>(path: string, init?: RequestOptions): Promise<T> {
     );
   }
   if (resp.status === 204) return undefined as T;
-  // 2xx sem corpo (ex.: 202 do /auth/verify-email/resend) não pode quebrar no parse.
+  // 2xx with no body (e.g. 202 from /auth/verify-email/resend) must not break on parse.
   const text = await resp.text();
   if (!text) return undefined as T;
   return JSON.parse(text) as T;
@@ -237,13 +237,13 @@ export async function uploadMeeting(input: UploadMeetingInput) {
 
 
 /**
- * Analisa um arquivo .txt e detecta segmentos de multiplas reunioes.
- * Retorna os segmentos com titulo sugerido, linhas e preview — o fatiamento
- * real e feito client-side apos a confirmacao do usuario.
+ * Parses a .txt file and detects segments of multiple meetings.
+ * Returns the segments with a suggested title, lines and preview — the real
+ * slicing is done client-side after the user confirms.
  *
- * Erros esperados:
- * - 400: arquivo nao e .txt (mensagem PT-BR da API, exibir direto)
- * - 413: arquivo grande demais
+ * Expected errors:
+ * - 400: file is not .txt (PT-BR message from the API, show it directly)
+ * - 413: file too large
  */
 export async function splitPreview(file: File, language?: string): Promise<SplitPreviewResponse> {
   const fd = new FormData();
@@ -255,10 +255,10 @@ export async function splitPreview(file: File, language?: string): Promise<Split
   });
 }
 /**
- * Re-dispara o pipeline de analise de uma reuniao existente (POST 202).
- * Util para recuperar de um `FAILED` ou reanalisar um `COMPLETED`. O backend
- * volta o `processingStatus` para `PENDING`/`PROCESSING`; o caller deve refazer
- * o polling/refresh. O Desktop ja consome o mesmo endpoint.
+ * Re-fires the analysis pipeline of an existing meeting (POST 202).
+ * Useful to recover from a `FAILED` or to re-analyse a `COMPLETED`. The backend
+ * puts `processingStatus` back to `PENDING`/`PROCESSING`; the caller must redo
+ * the polling/refresh. Desktop already consumes the same endpoint.
  */
 export async function reprocessMeeting(
   meetingId: string,
@@ -269,12 +269,12 @@ export async function reprocessMeeting(
   );
 }
 
-// ---------- Privacidade / LGPD (ADR 0029) ----------
+// ---------- Privacy / LGPD (ADR 0029) ----------
 
 /**
- * Direito ao esquecimento (LGPD Art. 18): apaga DEFINITIVAMENTE a reuniao e todo
- * o PII em cascata (transcript bruto, participantes, analises). Irreversivel.
- * Retorna 204; 404 quando nao existe no tenant (nao vaza existencia cross-tenant).
+ * Right to be forgotten (LGPD Art. 18): PERMANENTLY deletes the meeting and all
+ * the PII in cascade (raw transcript, participants, analyses). Irreversible.
+ * Returns 204; 404 when it does not exist in the tenant (does not leak cross-tenant existence).
  */
 export async function deleteMeeting(meetingId: string): Promise<void> {
   return request<void>(`/privacy/meetings/${encodeURIComponent(meetingId)}`, {
@@ -286,8 +286,8 @@ export async function deleteMeeting(meetingId: string): Promise<void> {
 
 export interface LoginResponse {
   /**
-   * Só presente para clientes nativos. O web envia `X-NORA-Client: web` e recebe a
-   * sessão apenas via cookies httpOnly — o token NÃO vem no body (defesa contra XSS).
+   * Only present for native clients. Web sends `X-NORA-Client: web` and receives the
+   * session only via httpOnly cookies — the token does NOT come in the body (XSS defense).
    */
   accessToken?: string;
   tokenType: string;
@@ -301,7 +301,7 @@ export interface LoginResponse {
 export async function login(email: string, password: string) {
   return request<LoginResponse>(`/auth/login`, {
     method: 'POST',
-    // Declara-se cliente web: backend devolve a sessão só por cookie httpOnly (token fora do body).
+    // Declares itself a web client: backend returns the session only via httpOnly cookie (token out of the body).
     headers: { 'X-NORA-Client': 'web' },
     body: JSON.stringify({ email, password }),
   });
@@ -312,7 +312,7 @@ export async function signup(input: {
   password: string;
   displayName: string;
   companyName: string;
-  /** Intenção de uso coletada no onboarding (telemetria #156). */
+  /** Usage intent collected during onboarding (telemetry #156). */
   role: string;
 }) {
   return request<{
@@ -344,14 +344,14 @@ export async function confirmPasswordReset(token: string, newPassword: string) {
   });
 }
 
-// ---------- Conta & sessão (settings — abas Conta/Segurança) ----------
+// ---------- Account & session (settings — Account/Security tabs) ----------
 
-/** Dados do usuário autenticado — fonte de verdade do perfil (GET /auth/me). */
+/** Authenticated user data — source of truth for the profile (GET /auth/me). */
 export async function getMe(): Promise<MeResponse> {
   return request<MeResponse>(`/auth/me`);
 }
 
-/** Atualiza o perfil do usuário logado. 400 VALIDATION_FAILED quando blank. */
+/** Updates the logged-in user's profile. 400 VALIDATION_FAILED when blank. */
 export async function updateMe(input: { displayName: string }): Promise<MeResponse> {
   return request<MeResponse>(`/users/me`, {
     method: 'PATCH',
@@ -360,10 +360,10 @@ export async function updateMe(input: { displayName: string }): Promise<MeRespon
 }
 
 /**
- * Troca a senha do usuário logado (204). O backend revoga TODAS as sessões e
- * reemite cookies novos pro dispositivo atual — o usuário CONTINUA logado aqui.
- * 401 INVALID_CREDENTIALS = senha atual errada; 400 = nova senha fora da policy
- * (a `message` explica a regra).
+ * Changes the logged-in user's password (204). The backend revokes ALL sessions and
+ * reissues new cookies for the current device — the user STAYS logged in here.
+ * 401 INVALID_CREDENTIALS = wrong current password; 400 = new password outside the policy
+ * (the `message` explains the rule).
  */
 export async function changePassword(input: {
   currentPassword: string;
@@ -376,17 +376,17 @@ export async function changePassword(input: {
 }
 
 /**
- * Encerra TODAS as sessões, inclusive a atual (204 + cookies limpos pelo
- * backend). O caller deve limpar o estado local (`clearLocalSession`) e
- * mandar o usuário pro login.
+ * Ends ALL sessions, including the current one (204 + cookies cleared by the
+ * backend). The caller must clear the local state (`clearLocalSession`) and
+ * send the user to the login.
  */
 export async function logoutAllSessions(): Promise<void> {
   return request<void>(`/auth/logout-all`, { method: 'POST' });
 }
 
 /**
- * Reenvia o e-mail de verificação. **Endpoint público**, responde 202 sempre
- * (anti-enumeração) — a UI deve mostrar a mesma mensagem em qualquer caso.
+ * Resends the verification e-mail. **Public endpoint**, always answers 202
+ * (anti-enumeration) — the UI must show the same message in every case.
  */
 export async function resendVerificationEmail(email: string): Promise<void> {
   return request<void>(`/auth/verify-email/resend`, {
@@ -397,9 +397,9 @@ export async function resendVerificationEmail(email: string): Promise<void> {
 }
 
 /**
- * Exclui DEFINITIVAMENTE a conta + workspace + todos os dados (LGPD, direito
- * ao esquecimento). 204 e cookies limpos pelo backend. 401 = senha errada;
- * 409 ACCOUNT_TENANT_SHARED = workspace compartilhado (mostrar a `message`).
+ * PERMANENTLY deletes the account + workspace + all data (LGPD, right to be
+ * forgotten). 204 and cookies cleared by the backend. 401 = wrong password;
+ * 409 ACCOUNT_TENANT_SHARED = shared workspace (show the `message`).
  */
 export async function deleteAccount(input: { password: string }): Promise<void> {
   return request<void>(`/users/me`, {
@@ -408,14 +408,14 @@ export async function deleteAccount(input: { password: string }): Promise<void> 
   });
 }
 
-// ---------- Workspace / Tenant (settings — aba Workspace) ----------
+// ---------- Workspace / Tenant (settings — Workspace tab) ----------
 
-/** Workspace atual (GET /tenant). O slug é imutável — só meta info na UI. */
+/** Current workspace (GET /tenant). The slug is immutable — just meta info in the UI. */
 export async function getTenant(): Promise<TenantInfo> {
   return request<TenantInfo>(`/tenant`);
 }
 
-/** Renomeia o workspace (PUT /tenant/name). Slug não muda. */
+/** Renames the workspace (PUT /tenant/name). Slug does not change. */
 export async function renameTenant(input: { name: string }): Promise<TenantInfo> {
   return request<TenantInfo>(`/tenant/name`, {
     method: 'PUT',
@@ -452,14 +452,14 @@ export async function upsertTenantContext(
 
 // ---------- Tenant Domain (US32) ----------
 
-/** Estado atual do dominio corporativo do tenant (GET /tenant/domain). */
+/** Current state of the tenant's corporate domain (GET /tenant/domain). */
 export interface TenantDomain {
   tenantId: string;
-  /** Dominio normalizado (ex: "acme.com"). `null` quando nao ha restricao. */
+  /** Normalized domain (e.g. "acme.com"). `null` when there is no restriction. */
   allowedEmailDomain: string | null;
 }
 
-/** Resposta da atualizacao de dominio (PUT /tenant/domain). Inclui auditoria leve. */
+/** Domain update response (PUT /tenant/domain). Includes light auditing. */
 export interface TenantDomainUpdateResponse {
   tenantId: string;
   allowedEmailDomain: string | null;
@@ -467,7 +467,7 @@ export interface TenantDomainUpdateResponse {
   updatedBy: string;
 }
 
-/** Payload do PUT /tenant/domain. `null` remove a restricao. */
+/** Payload of PUT /tenant/domain. `null` removes the restriction. */
 export interface TenantDomainUpdateRequest {
   allowedEmailDomain: string | null;
 }
@@ -648,7 +648,7 @@ export async function listAuditEvents(limit = 50): Promise<AuditEventDto[]> {
 
 // ---------- IAM Invitations (US06, ADR 0011) ----------
 
-/** Cria um convite. Exige IAM `iam:user:invite`. */
+/** Creates an invite. Requires IAM `iam:user:invite`. */
 export async function inviteUser(req: InviteUserRequest): Promise<Invite> {
   return request<Invite>(`/iam/users/invite`, {
     method: 'POST',
@@ -656,16 +656,16 @@ export async function inviteUser(req: InviteUserRequest): Promise<Invite> {
   });
 }
 
-/** Lista convites do tenant atual; filtra por status quando informado. */
+/** Lists invites of the current tenant; filters by status when given. */
 export async function listInvites(status?: InviteStatus): Promise<InviteListResponse> {
   const qs = status ? `?status=${encodeURIComponent(status)}` : '';
   return request<InviteListResponse>(`/iam/invites${qs}`);
 }
 
 /**
- * Aceita um convite. **Endpoint publico**: o `token` na URL e a credencial,
- * portanto nao enviamos Bearer JWT (mesmo se o navegador tiver sessao de outro
- * tenant). Backend cria user, persiste senha e devolve `LoginResponse`.
+ * Accepts an invite. **Public endpoint**: the `token` in the URL is the credential,
+ * so we do not send a Bearer JWT (even if the browser has a session from another
+ * tenant). The backend creates the user, persists the password and returns `LoginResponse`.
  */
 export async function acceptInvite(
   token: string,
@@ -679,24 +679,24 @@ export async function acceptInvite(
   });
 }
 
-/** Revoga um convite PENDING. Exige IAM `iam:invite:revoke`. */
+/** Revokes a PENDING invite. Requires IAM `iam:invite:revoke`. */
 export async function revokeInvite(id: string): Promise<void> {
   return request<void>(`/iam/invites/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-// ---------- Chat sessions (persistência tenant + user scoped) ----------
+// ---------- Chat sessions (tenant + user scoped persistence) ----------
 //
-// Todas as sessões sao escopadas ao usuario logado (user_id do principal) dentro
-// do tenant atual (ADR 0002 + RLS ADR 0028). O usuario so enxerga as proprias
-// sessoes; o backend resolve user_id/tenant_id pelo contexto autenticado (cookies
-// httpOnly via `credentials: 'include'`, ja aplicado no helper `request`).
+// All sessions are scoped to the logged-in user (the principal's user_id) inside
+// the current tenant (ADR 0002 + RLS ADR 0028). The user only sees their own
+// sessions; the backend resolves user_id/tenant_id from the authenticated context
+// (httpOnly cookies via `credentials: 'include'`, already applied in the `request` helper).
 
-/** Lista as sessoes do usuario logado, mais recentes primeiro. */
+/** Lists the logged-in user's sessions, most recent first. */
 export async function listChatSessions(): Promise<ChatSessionSummary[]> {
   return request<ChatSessionSummary[]>(`/chat/sessions`);
 }
 
-/** Cria uma sessao. `title` e opcional; o backend pode derivar depois da 1a mensagem. */
+/** Creates a session. `title` is optional; the backend can derive it after the 1st message. */
 export async function createChatSession(title?: string): Promise<ChatSessionSummary> {
   return request<ChatSessionSummary>(`/chat/sessions`, {
     method: 'POST',
@@ -704,14 +704,14 @@ export async function createChatSession(title?: string): Promise<ChatSessionSumm
   });
 }
 
-/** Carrega uma sessao com o historico completo de mensagens. */
+/** Loads a session with the full message history. */
 export async function getChatSession(id: string): Promise<ChatSessionDetail> {
   return request<ChatSessionDetail>(`/chat/sessions/${encodeURIComponent(id)}`);
 }
 
 /**
- * Anexa uma mensagem a sessao. Bumpa `updatedAt`; se a sessao estiver sem titulo,
- * o backend deriva o titulo da 1a mensagem do usuario (~48 chars).
+ * Appends a message to the session. Bumps `updatedAt`; if the session has no title,
+ * the backend derives the title from the user's 1st message (~48 chars).
  */
 export async function appendChatMessage(
   id: string,
@@ -723,7 +723,7 @@ export async function appendChatMessage(
   });
 }
 
-/** Renomeia uma sessao. */
+/** Renames a session. */
 export async function renameChatSession(id: string, title: string): Promise<ChatSessionSummary> {
   return request<ChatSessionSummary>(`/chat/sessions/${encodeURIComponent(id)}`, {
     method: 'PATCH',
@@ -731,16 +731,16 @@ export async function renameChatSession(id: string, title: string): Promise<Chat
   });
 }
 
-/** Apaga definitivamente uma sessao (204). */
+/** Permanently deletes a session (204). */
 export async function deleteChatSession(id: string): Promise<void> {
   return request<void>(`/chat/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-// ---------- Busca semântica de reuniões (RAG) ----------
+// ---------- Semantic meeting search (RAG) ----------
 
 /**
- * Busca reunioes relevantes a uma query por similaridade semantica.
- * `k` controla quantos resultados retornar (default backend). Escopado ao tenant.
+ * Searches meetings relevant to a query by semantic similarity.
+ * `k` controls how many results to return (backend default). Scoped to the tenant.
  */
 export async function searchMeetings(
   q: string,
@@ -756,24 +756,24 @@ export async function searchMeetings(
   }>(`/meetings/search?${qs.toString()}`);
 }
 
-// ---------- NORA Flows — workflows de automação (ADR 0030) ----------
+// ---------- NORA Flows — automation workflows (ADR 0030) ----------
 //
-// CRUD + teste manual + histórico de execuções. Tudo escopado ao tenant pelo
-// backend (ADR 0002); o engine valida a definição no POST/PUT e devolve 422
-// `WORKFLOW_INVALID_DEFINITION` com mensagem PT-BR acionável quando o grafo
-// está inválido (sem gatilho, sem ação, com ciclo, params faltando etc.).
+// CRUD + manual test + execution history. Everything scoped to the tenant by the
+// backend (ADR 0002); the engine validates the definition on POST/PUT and returns 422
+// `WORKFLOW_INVALID_DEFINITION` with an actionable PT-BR message when the graph
+// is invalid (no trigger, no action, with a cycle, missing params etc.).
 
-/** Lista os fluxos do tenant atual. */
+/** Lists the flows of the current tenant. */
 export async function listWorkflows(): Promise<WorkflowResponse[]> {
   return request<WorkflowResponse[]>(`/workflows`);
 }
 
-/** Carrega um fluxo com a definição completa (nós + arestas + posições). */
+/** Loads a flow with the full definition (nodes + edges + positions). */
 export async function getWorkflow(id: string): Promise<WorkflowResponse> {
   return request<WorkflowResponse>(`/workflows/${encodeURIComponent(id)}`);
 }
 
-/** Cria um fluxo. `active` default true no backend quando omitido. */
+/** Creates a flow. `active` defaults to true in the backend when omitted. */
 export async function createWorkflow(input: {
   name: string;
   active?: boolean;
@@ -785,7 +785,7 @@ export async function createWorkflow(input: {
   });
 }
 
-/** Atualiza nome, estado ativo e definição de um fluxo existente. */
+/** Updates name, active state and definition of an existing flow. */
 export async function updateWorkflow(
   id: string,
   input: { name: string; active: boolean; definition: WorkflowDefinition },
@@ -796,15 +796,15 @@ export async function updateWorkflow(
   });
 }
 
-/** Apaga definitivamente um fluxo (204). */
+/** Permanently deletes a flow (204). */
 export async function deleteWorkflow(id: string): Promise<void> {
   return request<void>(`/workflows/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 /**
- * Executa o fluxo agora, de forma síncrona, contra a última reunião analisada
- * do tenant (ou dados de exemplo quando não há reunião). Retorna a execução
- * completa com o log linha a linha — inclusive envio REAL de e-mail.
+ * Runs the flow now, synchronously, against the tenant's last analysed meeting
+ * (or sample data when there is no meeting). Returns the full execution
+ * with the line-by-line log — including REAL e-mail sending.
  */
 export async function testWorkflow(id: string): Promise<WorkflowExecutionResponse> {
   return request<WorkflowExecutionResponse>(`/workflows/${encodeURIComponent(id)}/test`, {
@@ -812,27 +812,27 @@ export async function testWorkflow(id: string): Promise<WorkflowExecutionRespons
   });
 }
 
-/** Histórico de execuções do fluxo (máx. 50, mais recentes primeiro). */
+/** Execution history of the flow (max. 50, most recent first). */
 export async function listWorkflowExecutions(id: string): Promise<WorkflowExecutionResponse[]> {
   return request<WorkflowExecutionResponse[]>(`/workflows/${encodeURIComponent(id)}/executions`);
 }
 
-// ---------- Integrações OAuth (Google / Slack — NORA Flows Fase 2) ----------
+// ---------- OAuth integrations (Google / Slack — NORA Flows Phase 2) ----------
 //
-// Conectores por usuário: o backend guarda os tokens OAuth e expõe só o status.
-// O fluxo de conexão é um redirect completo: `authorizeUrl` → consent no
-// provedor → callback no backend → volta pra /integracoes?connected={provider}
-// ou /integracoes?error={codigo}.
+// Per-user connectors: the backend stores the OAuth tokens and exposes only the status.
+// The connection flow is a full redirect: `authorizeUrl` → consent at the
+// provider → callback in the backend → back to /integracoes?connected={provider}
+// or /integracoes?error={codigo}.
 
-/** Status de todos os conectores suportados pro usuário logado. */
+/** Status of every supported connector for the logged-in user. */
 export async function listIntegrations(): Promise<IntegrationStatus[]> {
   return request<IntegrationStatus[]>(`/integrations`);
 }
 
 /**
- * Inicia o OAuth do provedor; o caller deve redirecionar o browser pra
- * `authorizeUrl`. Erros: 422 `INTEGRATION_NOT_CONFIGURED` (servidor sem
- * credenciais OAuth — a `message` vem em PT-BR) e 404 provedor desconhecido.
+ * Starts the provider's OAuth; the caller must redirect the browser to
+ * `authorizeUrl`. Errors: 422 `INTEGRATION_NOT_CONFIGURED` (server without
+ * OAuth credentials — the `message` comes in PT-BR) and 404 unknown provider.
  */
 export async function startIntegrationOAuth(
   provider: IntegrationProvider,
@@ -843,15 +843,15 @@ export async function startIntegrationOAuth(
   );
 }
 
-/** Desconecta a conta do provedor e revoga os tokens guardados (204). */
+/** Disconnects the provider account and revokes the stored tokens (204). */
 export async function disconnectIntegration(provider: IntegrationProvider): Promise<void> {
   return request<void>(`/integrations/${encodeURIComponent(provider)}`, { method: 'DELETE' });
 }
 
 /**
- * Telegram (sem OAuth): gera o código de pareamento do tenant e devolve o
- * deep link do bot. O usuário abre o link, manda o /start e depois chama
- * `verifyTelegramPairing`. Erros: 422 sem NORA_TELEGRAM_BOT_TOKEN no servidor.
+ * Telegram (no OAuth): generates the tenant's pairing code and returns the
+ * bot's deep link. The user opens the link, sends /start and then calls
+ * `verifyTelegramPairing`. Errors: 422 without NORA_TELEGRAM_BOT_TOKEN on the server.
  */
 export async function startTelegramPairing(): Promise<TelegramPairingStart> {
   return request<TelegramPairingStart>(`/integrations/telegram/pairing/start`, {
@@ -860,9 +860,9 @@ export async function startTelegramPairing(): Promise<TelegramPairingStart> {
 }
 
 /**
- * Telegram: confere se o /start chegou e conclui a conexão. Erros: 409
- * `INTEGRATION_PAIRING_PENDING` (/start ainda não visto — a message orienta
- * tentar de novo) e 502 código expirado/pareamento não iniciado.
+ * Telegram: checks whether the /start arrived and completes the connection. Errors: 409
+ * `INTEGRATION_PAIRING_PENDING` (/start not seen yet — the message tells you to
+ * try again) and 502 expired code/pairing not started.
  */
 export async function verifyTelegramPairing(): Promise<IntegrationStatus> {
   return request<IntegrationStatus>(`/integrations/telegram/pairing/verify`, {
@@ -871,9 +871,9 @@ export async function verifyTelegramPairing(): Promise<IntegrationStatus> {
 }
 
 /**
- * Trello (sem OAuth server-side): envia o token que o usuário colou; o
- * backend valida no Trello antes de salvar. Erros: 502 token recusado
- * (message em PT-BR) e 422 sem TRELLO_API_KEY no servidor.
+ * Trello (no server-side OAuth): sends the token the user pasted; the
+ * backend validates it against Trello before saving. Errors: 502 token refused
+ * (message in PT-BR) and 422 without TRELLO_API_KEY on the server.
  */
 export async function saveTrelloToken(token: string): Promise<IntegrationStatus> {
   return request<IntegrationStatus>(`/integrations/trello/token`, {

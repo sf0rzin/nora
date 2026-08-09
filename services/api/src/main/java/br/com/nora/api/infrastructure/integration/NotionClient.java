@@ -11,10 +11,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
- * Chamadas à API do Notion usadas pela ação {@code notion_create_page} do Flows. Sem SDK — payload
- * mínimo e visível, versão pinada via {@code Notion-Version}. Falha vira {@code ProviderError} com
- * status + trecho do corpo (≤300 chars) — o corpo do Notion é acionável (ex.: página pai não
- * compartilhada com a integração).
+ * Calls to the Notion API used by the Flows {@code notion_create_page} action. No SDK — minimal,
+ * visible payload, version pinned via {@code Notion-Version}. A failure becomes a {@code
+ * ProviderError} with status + body excerpt (≤300 chars) — Notion's body is actionable (e.g. parent
+ * page not shared with the integration).
  */
 @Component
 public class NotionClient {
@@ -32,8 +32,9 @@ public class NotionClient {
     }
 
     /**
-     * Cria uma página filha de {@code parentPageId} com o título dado e os blocos de conteúdo
-     * (heading, parágrafo, bulleted list — montados pela ação). Retorna a URL da página criada.
+     * Creates a child page of {@code parentPageId} with the given title and the content blocks
+     * (heading, paragraph, bulleted list — assembled by the action). Returns the URL of the created
+     * page.
      */
     public String createPage(
             String accessToken, String parentPageId, String title, List<Object> children) {

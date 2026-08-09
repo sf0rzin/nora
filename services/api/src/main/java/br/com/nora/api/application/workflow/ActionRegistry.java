@@ -8,8 +8,8 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
- * Registry das ações disponíveis no NORA Flows. Spring injeta todos os beans {@link
- * ActionExecutor}; o tipo de cada um vira a chave usada no definition_json e na validação do save.
+ * Registry of the actions available in NORA Flows. Spring injects all {@link ActionExecutor} beans;
+ * each one's type becomes the key used in the definition_json and in the save validation.
  */
 @Component
 public class ActionRegistry {

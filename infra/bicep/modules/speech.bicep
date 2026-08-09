@@ -1,9 +1,9 @@
 // Azure Cognitive Services — Speech account.
-// Usado pelo backend (speech token broker) pra emitir token efêmero pro Desktop
-// Tauri sidecar que faz ConversationTranscriber com diarization (ADR 0009).
+// Used by the backend (speech token broker) to issue an ephemeral token for the Desktop
+// Tauri sidecar that runs ConversationTranscriber with diarization (ADR 0009).
 //
-// SKU S0 (Standard) é o mais barato com SLA. Free F0 existe mas é compartilhado
-// e tem rate limit baixo — não recomendado nem em dev.
+// SKU S0 (Standard) is the cheapest one with an SLA. Free F0 exists but is shared
+// and has a low rate limit — not recommended even in dev.
 
 @description('Nome do recurso Speech (2-64 chars, lowercase + hifen).')
 @minLength(2)
@@ -36,10 +36,10 @@ resource speech 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
     publicNetworkAccess: 'Enabled'
     networkAcls: {
       defaultAction: 'Allow'
-      // bypass NAO eh suportado pra kind 'SpeechServices' (apesar de outros
-      // Cognitive Services kinds aceitarem 'AzureServices'). Sem bypass aqui.
+      // bypass is NOT supported for kind 'SpeechServices' (even though other
+      // Cognitive Services kinds accept 'AzureServices'). No bypass here.
     }
-    disableLocalAuth: false // backend usa key auth pra emitir token efemero
+    disableLocalAuth: false // the backend uses key auth to issue the ephemeral token
   }
 }
 

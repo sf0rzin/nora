@@ -3,7 +3,7 @@ package br.com.nora.api.domain.iam;
 import java.util.List;
 import java.util.Objects;
 
-/** Documento de policy IAM estilo AWS. */
+/** AWS-style IAM policy document. */
 public record PolicyDocument(String version, List<PolicyStatement> statements) {
 
     public PolicyDocument {

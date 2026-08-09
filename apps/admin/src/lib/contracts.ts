@@ -1,9 +1,9 @@
 /**
- * Contratos do control plane — espelham as tabelas/endpoints do módulo de
- * plataforma da API Spring (design note do 4.8: llm_models, llm_config,
- * feature_flags, usage_events). MANTER EM PARIDADE com o backend.
+ * Control plane contracts — they mirror the tables/endpoints of the platform
+ * module of the Spring API (design note from 4.8: llm_models, llm_config,
+ * feature_flags, usage_events). KEEP IN PARITY with the backend.
  *
- * Endpoints consumidos (server-side, via token interno) quando o backend subir:
+ * Endpoints consumed (server-side, via internal token) once the backend is up:
  *   GET  /admin/platform/models
  *   POST /admin/platform/models           DELETE /admin/platform/models/{id}
  *   GET  /admin/platform/config           PUT    /admin/platform/config/{service}
@@ -18,8 +18,8 @@ export type ServiceKey = "chat" | "analysis" | "multimodal";
 export interface LlmModel {
   id: string;
   provider: string; // openai | deepseek | google ...
-  model: string; // identificador técnico (gpt-4o-mini, deepseek-v4-flash...)
-  label: string; // nome amigável
+  model: string; // technical identifier (gpt-4o-mini, deepseek-v4-flash...)
+  label: string; // friendly name
   modality: Modality;
   inputCostPer1M: number; // USD
   outputCostPer1M: number; // USD
@@ -27,7 +27,7 @@ export interface LlmModel {
   supportsStrictJsonSchema: boolean;
 }
 
-/** Binding por-serviço (qual modelo cada superfície usa). */
+/** Per-service binding (which model each surface uses). */
 export interface ServiceBinding {
   service: ServiceKey;
   modelId: string;
@@ -40,7 +40,7 @@ export interface FeatureFlag {
   description: string;
 }
 
-/** Agregado de custo (groupBy = model | service | tenant). */
+/** Cost aggregate (groupBy = model | service | tenant). */
 export interface CostRow {
   key: string;
   label: string;
@@ -58,9 +58,9 @@ export interface CostSummary {
   rows: CostRow[];
 }
 
-/** Saúde por serviço (Prometheus, janela ~1h). Espelha HealthSnapshot do backend. */
+/** Per-service health (Prometheus, ~1h window). Mirrors the backend's HealthSnapshot. */
 export interface ServiceHealth {
-  role: string; // label `job` do Prometheus (nora-api, nora-web, nora-worker...)
+  role: string; // Prometheus `job` label (nora-api, nora-web, nora-worker...)
   requests: number;
   failed: number;
   failureRate: number; // 0..1
@@ -68,16 +68,16 @@ export interface ServiceHealth {
 }
 
 export interface HealthSnapshot {
-  window: string; // ex.: "1h"
-  // Nome do adaptador que respondeu: "prometheus" (ADR 0034; antes "application-insights")
-  // ou "unavailable". A UI só ramifica em "unavailable" — o resto é rótulo.
+  window: string; // e.g.: "1h"
+  // Name of the adapter that answered: "prometheus" (ADR 0034; formerly "application-insights")
+  // or "unavailable". The UI only branches on "unavailable" — the rest is a label.
   source: string;
   services: ServiceHealth[];
-  degraded: boolean; // alguma failureRate > 5%
+  degraded: boolean; // some failureRate > 5%
   note: string | null;
 }
 
-/** Métricas de negócio agregadas do banco primário. Espelha BusinessSnapshot do backend. */
+/** Business metrics aggregated from the primary database. Mirrors the backend's BusinessSnapshot. */
 export interface BusinessSnapshot {
   from: string;
   to: string;

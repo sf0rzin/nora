@@ -1,10 +1,10 @@
-"""PII Shield baseline: regex deterministico aplicado antes de qualquer chamada ao LLM.
+"""PII Shield baseline: deterministic regex applied before any call to the LLM.
 
-Cobre os tipos basicos brasileiros (e-mail, telefone, CPF, CNPJ, cartao) e detecta
-nomes proprios via regex heuristico + lista hardcoded de top nomes BR + negative list
-de termos tecnicos/produtos/empresas. ADDRESS fica para uma fatia futura.
+Covers the basic Brazilian types (e-mail, phone, CPF, CNPJ, card) and detects
+proper names via heuristic regex + hardcoded list of top BR names + negative list
+of technical/product/company terms. ADDRESS is left for a future slice.
 
-A estrategia de PERSON_NAME e detalhada na docstring de `_redact_person_names`.
+The PERSON_NAME strategy is detailed in the docstring of `_redact_person_names`.
 """
 
 from __future__ import annotations
@@ -19,13 +19,13 @@ from ..models import PiiRedactionV1, PiiType, Redaction
 
 
 def _fold(value: str) -> str:
-    """Normaliza para comparacao insensivel a ACENTO e caixa (NFKD + casefold).
+    """Normalizes for ACCENT- and case-insensitive comparison (NFKD + casefold).
 
-    CRITICO p/ PERSON_NAME: a lista `_BR_TOP_NAMES` e escrita SEM acento, mas
-    transcricoes reais trazem nomes acentuados (Patrícia, Antônio, André, João).
-    Sem o accent-fold, "Patrícia".casefold() ("patrícia") nunca casava com
-    "Patricia".casefold() ("patricia") da lista -> o nome vazava cru pro LLM.
-    Bug real encontrado em producao (jun/2026). ADR 0012.
+    CRITICAL for PERSON_NAME: the `_BR_TOP_NAMES` list is written WITHOUT accents,
+    but real transcripts bring accented names (Patrícia, Antônio, André, João).
+    Without the accent-fold, "Patrícia".casefold() ("patrícia") never matched
+    "Patricia".casefold() ("patricia") from the list -> the name leaked raw to the LLM.
+    Real bug found in production (jun/2026). ADR 0012.
     """
     return "".join(
         c for c in unicodedata.normalize("NFKD", value) if not unicodedata.combining(c)
@@ -33,85 +33,85 @@ def _fold(value: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Padroes deterministicos: e-mail, CPF, CNPJ, cartao, telefone
+# Deterministic patterns: e-mail, CPF, CNPJ, card, phone
 # --------------------------------------------------------------------------- #
 
-# Email com (?<!\w) ancorando a esquerda evita catastrophic backtracking em
-# inputs grandes (medido empiricamente: 100KB de input era ~10s; com a ancora
-# bate microsegundos). Pre-filtro `'@' in text` acelera em entradas sem email.
+# Email with (?<!\w) anchoring on the left avoids catastrophic backtracking on
+# large inputs (measured empirically: 100KB of input was ~10s; with the anchor
+# it hits microseconds). Pre-filter `'@' in text` speeds up inputs with no email.
 _EMAIL_RE = re.compile(r"(?<![\w@])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b")
 
-# Telefones BR: com DDD obrigatorio (8 ou 9 digitos apos DDD). Conservador
-# de proposito: telefone sem DDD (98765-4321) e pequeno demais pra distinguir
-# de codigos/protocolos numericos sem falso-positivo massivo.
+# BR phones: DDD mandatory (8 or 9 digits after the DDD). Conservative
+# on purpose: a phone without DDD (98765-4321) is too small to tell apart
+# from numeric codes/protocols without massive false-positives.
 #
-# Tolerancias (auditoria 2026-06-16, ADR 0012) -- todas SEM relaxar o
-# requisito de DDD (telefone nao tem DV, entao DDD obrigatorio segura o FP):
-#   - `(?:\+?55[\s.\-]?)?`        prefixo +55 internacional opcional.
-#   - `\(?\s*0?\d{2}\s*\)?`       parenteses com espaco interno ("( 11 )") e
-#                                 DDD com zero antigo de 3 digitos ("(011)").
-#   - `(?:9[\s.\-/]?)?`           9o digito do celular ditado SOLTO entre o DDD
-#                                 e o numero ("(11) 9 8765-4321") -- comum em
-#                                 transcricao speech-to-text.
-#   - `[\s.\-/]`                  separador `/` ("11/98765/4321") alem de espaco/
-#                                 ponto/hifen.
-# DEFERIDO (alto risco de FP sem DV -- ficam para uma fatia futura):
-#   - telefone SEM DDD ("99988-7766", "3003-1234"): pequeno demais p/ distinguir
-#     de codigos/protocolos numericos.
-#   - internacional NAO-BR ("+1 415 555 2671"): generalizar `\+\d{1,3}` explode FP.
+# Tolerances (audit 2026-06-16, ADR 0012) -- all WITHOUT relaxing the
+# DDD requirement (a phone has no check digit, so a mandatory DDD holds the FP):
+#   - `(?:\+?55[\s.\-]?)?`        optional international +55 prefix.
+#   - `\(?\s*0?\d{2}\s*\)?`       parentheses with inner space ("( 11 )") and
+#                                 DDD with the old 3-digit zero ("(011)").
+#   - `(?:9[\s.\-/]?)?`           mobile 9th digit dictated LOOSE between the DDD
+#                                 and the number ("(11) 9 8765-4321") -- common in
+#                                 speech-to-text transcription.
+#   - `[\s.\-/]`                  separator `/` ("11/98765/4321") besides space/
+#                                 dot/hyphen.
+# DEFERRED (high FP risk without a check digit -- left for a future slice):
+#   - phone WITHOUT DDD ("99988-7766", "3003-1234"): too small to tell apart
+#     from numeric codes/protocols.
+#   - non-BR international ("+1 415 555 2671"): generalizing `\+\d{1,3}` explodes FP.
 _PHONE_RE = re.compile(
     r"(?<!\d)(?:\+?55[\s.\-]?)?\(?\s*0?\d{2}\s*\)?[\s.\-/]?(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)"
 )
 
-# CPF mascarado.
+# Masked CPF.
 _CPF_RE = re.compile(r"(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)")
-# CPF raw (11 digitos sem mascara). Validacao de DV no `_validate_cpf` filtra
-# falsos positivos (ex.: 12345678900 nao passa).
+# Raw CPF (11 digits, no mask). Check-digit validation in `_validate_cpf` filters
+# false positives (e.g.: 12345678900 does not pass).
 _CPF_RAW_RE = re.compile(r"(?<!\d)\d{11}(?!\d)")
-# CPF parcialmente mascarado (so com hifen, sem pontos): "12345678-09".
+# Partially masked CPF (hyphen only, no dots): "12345678-09".
 _CPF_PARTIAL_RE = re.compile(r"(?<!\d)\d{8}-\d{2}(?!\d)")
-# CPF com grupos separados por ESPACO: "111 444 777 35" (3-3-3-2). A validacao de
-# DV (apos remover os espacos) evita redigir sequencias numericas aleatorias.
+# CPF with groups separated by SPACE: "111 444 777 35" (3-3-3-2). The check-digit
+# validation (after stripping the spaces) avoids redacting random numeric sequences.
 _CPF_SPACED_RE = re.compile(r"(?<!\d)\d{3}\s\d{3}\s\d{3}\s\d{2}(?!\d)")
-# CPF TOLERANTE a separadores arbitrarios (auditoria 2026-06-16): 11 digitos
-# em grupos 3-3-3-2 com QUALQUER separador da classe `[.\-/\s]` entre cada grupo.
-# Cobre "111.444.777 35" (misto), "111/444/777-35" (barra) e "111-444-777-35"
-# (so hifen) -- formatos que os patterns rigidos acima nao casavam. O DV
-# (`_validate_cpf_separated`) e o gate: regex tolerante so vira redacao se o
-# digito verificador fechar, entao o FP em sequencias numericas e ~zero.
-# Superset dos patterns acima (que ficam por clareza/regressao; overlap-skip dedupe).
+# CPF TOLERANT to arbitrary separators (audit 2026-06-16): 11 digits
+# in 3-3-3-2 groups with ANY separator from the class `[.\-/\s]` between each group.
+# Covers "111.444.777 35" (mixed), "111/444/777-35" (slash) and "111-444-777-35"
+# (hyphen only) -- formats the rigid patterns above did not match. The check digit
+# (`_validate_cpf_separated`) is the gate: a tolerant regex only becomes a redaction
+# if the check digit closes, so the FP on numeric sequences is ~zero.
+# Superset of the patterns above (kept for clarity/regression; overlap-skip dedupe).
 _CPF_SEP_RE = re.compile(r"(?<!\d)\d{3}[.\-/\s]\d{3}[.\-/\s]\d{3}[.\-/\s]\d{2}(?!\d)")
 
-# CNPJ mascarado.
+# Masked CNPJ.
 _CNPJ_RE = re.compile(r"(?<!\d)\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}(?!\d)")
-# CNPJ raw (14 digitos sem mascara). Validacao de DV filtra falsos positivos.
+# Raw CNPJ (14 digits, no mask). Check-digit validation filters false positives.
 _CNPJ_RAW_RE = re.compile(r"(?<!\d)\d{14}(?!\d)")
-# CNPJ com grupos separados por ESPACO: "11 222 333 0001 81" (2-3-3-4-2). A
-# validacao de DV (apos remover os espacos) filtra falsos positivos.
+# CNPJ with groups separated by SPACE: "11 222 333 0001 81" (2-3-3-4-2). The
+# check-digit validation (after stripping the spaces) filters false positives.
 _CNPJ_SPACED_RE = re.compile(r"(?<!\d)\d{2}\s\d{3}\s\d{3}\s\d{4}\s\d{2}(?!\d)")
-# CNPJ com PONTO entre TODOS os grupos: "11.222.333.0001.81" (2.3.3.4.2). Os
-# patterns acima exigem `/` + `-` (mascara canonica) ou espaco; "so pontos" nao
-# casava (auditoria 2026-06-16). DV (`_validate_cnpj_separated`) e o gate.
+# CNPJ with a DOT between ALL groups: "11.222.333.0001.81" (2.3.3.4.2). The
+# patterns above require `/` + `-` (canonical mask) or space; "dots only" did not
+# match (audit 2026-06-16). The check digit (`_validate_cnpj_separated`) is the gate.
 _CNPJ_DOTS_RE = re.compile(r"(?<!\d)\d{2}\.\d{3}\.\d{3}\.\d{4}\.\d{2}(?!\d)")
 
-# Cartoes — Amex tem 15 digitos com prefixo 34/37; demais tem 16 com 4x4.
-# Separadores aceitos: espaco, hifen e PONTO ("4111.1111.1111.1111"). A
-# validacao de Luhn (`_validate_card`, apos remover separadores) reduz drasticamente
-# o falso-positivo de qualquer sequencia generica de 16 digitos.
+# Cards — Amex has 15 digits with prefix 34/37; the rest have 16 as 4x4.
+# Accepted separators: space, hyphen and DOT ("4111.1111.1111.1111"). The
+# Luhn validation (`_validate_card`, after stripping separators) drastically reduces
+# the false-positive rate of any generic 16-digit sequence.
 _CARD_AMEX_RE = re.compile(r"(?<!\d)3[47]\d{2}[\s.\-]?\d{6}[\s.\-]?\d{5}(?!\d)")
 _CARD_RE = re.compile(r"(?<!\d)(?:\d{4}[\s.\-]?){3}\d{4}(?!\d)")
-# Diners Club (e algumas UnionPay): 14 digitos em grupos 4-4-4-2
-# ("3056 9309 0259 04"). O _CARD_RE generico so casa 16 digitos (4x4); este
-# cobre o comprimento 14. Luhn (`_validate_card`, agora aceitando len 14) e o
-# gate. A ancora `(?!\d)` impede casar um prefixo de cartao de 16 digitos.
+# Diners Club (and some UnionPay): 14 digits in 4-4-4-2 groups
+# ("3056 9309 0259 04"). The generic _CARD_RE only matches 16 digits (4x4); this one
+# covers length 14. Luhn (`_validate_card`, now accepting len 14) is the
+# gate. The `(?!\d)` anchor prevents matching a prefix of a 16-digit card.
 _CARD_DINERS_RE = re.compile(r"(?<!\d)\d{4}[\s.\-]?\d{4}[\s.\-]?\d{4}[\s.\-]?\d{2}(?!\d)")
 
 
 def _validate_cpf(digits: str) -> bool:
-    """Valida CPF de 11 digitos via DV. Rejeita sequencias triviais (000.000.000-00 etc.)."""
+    """Validates 11-digit CPF via check digit. Rejects trivial sequences (000.000.000-00 etc.)."""
     if len(digits) != 11 or not digits.isdigit():
         return False
-    if digits == digits[0] * 11:  # 000... ate 999... — invalidos
+    if digits == digits[0] * 11:  # 000... to 999... — invalid
         return False
     for j in (9, 10):
         s = sum(int(digits[i]) * (j + 1 - i) for i in range(j))
@@ -124,7 +124,7 @@ def _validate_cpf(digits: str) -> bool:
 
 
 def _validate_cnpj(digits: str) -> bool:
-    """Valida CNPJ de 14 digitos via DV."""
+    """Validates a 14-digit CNPJ via check digit."""
     if len(digits) != 14 or not digits.isdigit():
         return False
     if digits == digits[0] * 14:
@@ -141,7 +141,7 @@ def _validate_cnpj(digits: str) -> bool:
 
 
 def _luhn_ok(digits: str) -> bool:
-    """Checa o digito verificador de Luhn (mod 10) de uma sequencia de digitos."""
+    """Checks the Luhn check digit (mod 10) of a digit sequence."""
     total = 0
     for i, ch in enumerate(reversed(digits)):
         n = int(ch)
@@ -154,17 +154,17 @@ def _luhn_ok(digits: str) -> bool:
 
 
 def _strip_separators(value: str) -> str:
-    """Remove tudo que nao for digito (espaco, ponto, hifen, barra)."""
+    """Removes everything that is not a digit (space, dot, hyphen, slash)."""
     return re.sub(r"\D", "", value)
 
 
 def _validate_card(value: str) -> bool:
-    """Valida um candidato a cartao: 14 (Diners), 15 (Amex) ou 16 digitos + Luhn.
+    """Validates a card candidate: 14 (Diners), 15 (Amex) or 16 digits + Luhn.
 
-    Recebe o match cru (com separadores espaco/ponto/hifen) e normaliza antes do
-    Luhn. Reduz falso-positivo de qualquer sequencia generica de 14-16 digitos
-    (codigos de pedido, rastreio, NFE) que nao passa no digito verificador.
-    Comprimento 14 cobre Diners Club e algumas faixas UnionPay (auditoria 2026-06-16).
+    Receives the raw match (with space/dot/hyphen separators) and normalizes before
+    the Luhn. Reduces false-positives from any generic 14-16 digit sequence
+    (order codes, tracking, NFE) that does not pass the check digit.
+    Length 14 covers Diners Club and some UnionPay ranges (audit 2026-06-16).
     """
     digits = _strip_separators(value)
     if len(digits) not in (14, 15, 16):
@@ -173,43 +173,44 @@ def _validate_card(value: str) -> bool:
 
 
 def _validate_cpf_separated(value: str) -> bool:
-    """Valida CPF cujo match contem separadores (espaco): normaliza e checa DV."""
+    """Validates CPF whose match has separators (space): normalizes and checks the check digit."""
     return _validate_cpf(_strip_separators(value))
 
 
 def _validate_cnpj_separated(value: str) -> bool:
-    """Valida CNPJ cujo match contem separadores (espaco): normaliza e checa DV."""
+    """Validates CNPJ whose match has separators (space): normalizes and checks the check digit."""
     return _validate_cnpj(_strip_separators(value))
 
 
-# Ordem importa: mascarados/cartoes primeiro (regex mais especifico), depois raw
-# com DV check (CPF/CNPJ raw), por ultimo telefone (mais ambiguo). Sem essa ordem,
-# PHONE_RE consome 11 digitos antes do CPF_RAW_RE poder identificar — tipo errado
-# no placeholder mas mesmo grau de protecao.
+# Order matters: masked/cards first (more specific regex), then raw
+# with check-digit check (raw CPF/CNPJ), phone last (most ambiguous). Without that
+# order, PHONE_RE eats 11 digits before CPF_RAW_RE can identify it — wrong type
+# in the placeholder but the same degree of protection.
 #
-# `_apply_basic_patterns` filtra raw/separado via `_validate_*`. Cartoes exigem
-# Luhn valido (`_validate_card`). Cartao Amex (15 digitos) vem ANTES do _CARD_RE
-# generico (16 digitos com 4x4). Os patterns separados por espaco (CPF/CNPJ) vem
-# junto dos mascarados, mas so sao aceitos com DV valido.
+# `_apply_basic_patterns` filters raw/separated via `_validate_*`. Cards require
+# a valid Luhn (`_validate_card`). The Amex card (15 digits) comes BEFORE the generic
+# _CARD_RE (16 digits with 4x4). The space-separated patterns (CPF/CNPJ) come
+# together with the masked ones, but are only accepted with a valid check digit.
 _BASIC_PATTERNS: list[tuple[PiiType, re.Pattern[str]]] = [
     (PiiType.EMAIL, _EMAIL_RE),
     (PiiType.CPF, _CPF_RE),
     (PiiType.CPF, _CPF_PARTIAL_RE),
-    (PiiType.CPF, _CPF_SPACED_RE),  # "111 444 777 35" — exige DV
-    (PiiType.CPF, _CPF_SEP_RE),  # "111.444.777 35" / "111/444/777-35" / "111-444-777-35" — exige DV
+    (PiiType.CPF, _CPF_SPACED_RE),  # "111 444 777 35" — requires check digit
+    # "111.444.777 35" / "111/444/777-35" / "111-444-777-35" — requires check digit
+    (PiiType.CPF, _CPF_SEP_RE),
     (PiiType.CNPJ, _CNPJ_RE),
-    (PiiType.CNPJ, _CNPJ_SPACED_RE),  # "11 222 333 0001 81" — exige DV
-    (PiiType.CNPJ, _CNPJ_DOTS_RE),  # "11.222.333.0001.81" — exige DV
+    (PiiType.CNPJ, _CNPJ_SPACED_RE),  # "11 222 333 0001 81" — requires check digit
+    (PiiType.CNPJ, _CNPJ_DOTS_RE),  # "11.222.333.0001.81" — requires check digit
     (PiiType.CREDIT_CARD, _CARD_AMEX_RE),
     (PiiType.CREDIT_CARD, _CARD_RE),
-    (PiiType.CREDIT_CARD, _CARD_DINERS_RE),  # "3056 9309 0259 04" (14 dig) — exige Luhn
-    (PiiType.CNPJ, _CNPJ_RAW_RE),  # raw com DV — antes de PHONE pra ganhar prioridade
+    (PiiType.CREDIT_CARD, _CARD_DINERS_RE),  # "3056 9309 0259 04" (14 dig) — requires Luhn
+    (PiiType.CNPJ, _CNPJ_RAW_RE),  # raw with check digit — before PHONE to gain priority
     (PiiType.CPF, _CPF_RAW_RE),
     (PiiType.PHONE, _PHONE_RE),
 ]
 
-# Patterns que exigem validacao (DV ou Luhn) para serem aceitos. Cartoes usam
-# Luhn; CPF/CNPJ (raw ou separados por espaco) usam digito verificador.
+# Patterns that require validation (check digit or Luhn) to be accepted. Cards use
+# Luhn; CPF/CNPJ (raw or space-separated) use the check digit.
 _VALIDATORS: dict[int, callable] = {
     id(_CPF_RAW_RE): _validate_cpf,
     id(_CNPJ_RAW_RE): _validate_cnpj,
@@ -224,18 +225,18 @@ _VALIDATORS: dict[int, callable] = {
 
 
 # --------------------------------------------------------------------------- #
-# PERSON_NAME -- listas e padroes
+# PERSON_NAME -- lists and patterns
 # --------------------------------------------------------------------------- #
 
-# Top primeiros nomes brasileiros (mix masculino + feminino + variantes comuns).
-# Curado a partir de levantamentos do IBGE/Censo + nomes recorrentes em transcricoes
-# corporativas pt-BR. Lista finita: cada termo serve como ancora para acionar o
-# padrao "nome isolado" (sem sobrenome). Sobrenomes nao precisam estar aqui --
-# `_NAME_SEQUENCE_RE` cobre "Marina Alves" via Title Case.
+# Top Brazilian first names (mix of male + female + common variants).
+# Curated from IBGE/Census surveys + names recurring in pt-BR corporate
+# transcripts. Finite list: each term works as an anchor to trigger the
+# "isolated name" pattern (without surname). Surnames do not need to be here --
+# `_NAME_SEQUENCE_RE` covers "Marina Alves" via Title Case.
 _BR_TOP_NAMES: frozenset[str] = frozenset(
     _fold(name)
     for name in (
-        # Masculinos
+        # Male
         "Adriano",
         "Alessandro",
         "Alex",
@@ -371,7 +372,7 @@ _BR_TOP_NAMES: frozenset[str] = frozenset(
         "Yago",
         "Yan",
         "Yuri",
-        # Femininos
+        # Female
         "Adriana",
         "Alessandra",
         "Alice",
@@ -511,14 +512,14 @@ _BR_TOP_NAMES: frozenset[str] = frozenset(
     )
 )
 
-# Termos que se parecem com nomes (Title Case ou primeiro nome) mas designam
-# produtos, empresas, tecnologias, frameworks ou conceitos -- jamais redigir.
-# Usado como filtro pos-match: se qualquer token do candidato bater aqui
-# (case-insensitive), descarta o match inteiro.
+# Terms that look like names (Title Case or first name) but designate
+# products, companies, technologies, frameworks or concepts -- never redact.
+# Used as a post-match filter: if any token of the candidate hits here
+# (case-insensitive), the whole match is discarded.
 _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
     _fold(term)
     for term in (
-        # Produtos TOTVS e correlatos
+        # TOTVS products and related
         "TOTVS",
         "Protheus",
         "RM",
@@ -526,7 +527,7 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
         "Logix",
         "Datasul",
         "Backoffice",
-        # ERP/CRM concorrentes
+        # Competing ERP/CRM
         "SAP",
         "Oracle",
         "Senior",
@@ -540,7 +541,7 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
         "NetSuite",
         "Workday",
         "ServiceNow",
-        # Big tech / nuvem
+        # Big tech / cloud
         "Azure",
         "Google",
         "Amazon",
@@ -554,7 +555,7 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
         "Claude",
         "Gemini",
         "Copilot",
-        # Ferramentas dev
+        # Dev tools
         "GitHub",
         "GitLab",
         "Bitbucket",
@@ -569,7 +570,7 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
         "Docker",
         "Kubernetes",
         "Jenkins",
-        # Stack tecnica (Oracle ja listado em "ERP/CRM concorrentes" acima)
+        # Technical stack (Oracle already listed under "Competing ERP/CRM" above)
         "Python",
         "Java",
         "Spring",
@@ -584,11 +585,11 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
         "MySQL",
         "Redis",
         "Kafka",
-        # Produto/empresa NORA
+        # NORA product/company
         "NORA",
         "Nora",
         "Acme",
-        # Termos genericos que podem aparecer Title Case e nao sao nomes
+        # Generic terms that may appear Title Case and are not names
         "Sprint",
         "Backlog",
         "MVP",
@@ -614,9 +615,9 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
 )
 
 
-# Prefixo (pronomes de tratamento + cargos) seguido de 1-5 palavras Title Case,
-# suportando conectivos PT-BR (`da`, `de`, `do`, `das`, `dos`, `e`).
-# Captura "Dr. Carlos Silva", "Sra. Marina Alves", "Profa. Ana de Souza",
+# Prefix (honorifics + job titles) followed by 1-5 Title Case words,
+# supporting PT-BR connectives (`da`, `de`, `do`, `das`, `dos`, `e`).
+# Captures "Dr. Carlos Silva", "Sra. Marina Alves", "Profa. Ana de Souza",
 # "Sr. Jose da Silva Pereira", "Eng. Joao", "Diretor Carlos da Silva", etc.
 _NAME_PREFIX_RE = re.compile(
     r"\b(?:Sr|Sra|Srta|Dr|Dra|Prof|Profa|Eng|Engenheiro|Engenheira|"
@@ -627,32 +628,32 @@ _NAME_PREFIX_RE = re.compile(
     r"|\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+){0,4}"
 )
 
-# 2-5 palavras Title Case consecutivas, com suporte a conectivos PT-BR
-# (`da`, `de`, `do`, `das`, `dos`, `e`) entre tokens. "Jose da Silva Pereira"
-# casa como um unico nome composto em vez de dois separados. Tokens em
-# all-caps ("TOTVS", "RM") sao ignorados por nao terem lowercase no final --
-# evita capturar acronimos como parte de um nome composto.
+# 2-5 consecutive Title Case words, with support for PT-BR connectives
+# (`da`, `de`, `do`, `das`, `dos`, `e`) between tokens. "Jose da Silva Pereira"
+# matches as a single compound name instead of two separate ones. All-caps
+# tokens ("TOTVS", "RM") are ignored for not having lowercase at the end --
+# avoids capturing acronyms as part of a compound name.
 _NAME_SEQUENCE_RE = re.compile(
     r"\b[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+"
     r"(?:\s+(?:d[aeo]s?|e)\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+"
     r"|\s+[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+){1,4}\b"
 )
 
-# Token alfabetico generico (usado por `_tokenize` para a negative list — pode
-# ser case-insensitive porque so checamos contra negative list que tambem usa
-# casefold).
+# Generic alphabetic token (used by `_tokenize` for the negative list — it can
+# be case-insensitive because we only check against the negative list, which also
+# uses casefold).
 _WORD_RE = re.compile(r"\b[A-Za-zÁÉÍÓÚÂÊÔÀÃÕÇáéíóúâêôàãõç]+\b")
 
-# Primeiro nome BR isolado: SO casa Title Case (`Joao`, `Marina`). Casar
-# minusculas (`joao`, `rosa`, `clara`) gera falso-positivo massivo em
-# substantivos comuns do PT-BR. Em transcricoes corporativas reais, primeiros
-# nomes sempre aparecem Title Case (capitalizacao automatica do dicador) ou
-# all-caps no contexto formal (que sao filtrados por `_PERSON_NAME_NEGATIVE_LIST`).
+# Isolated BR first name: ONLY matches Title Case (`Joao`, `Marina`). Matching
+# lowercase (`joao`, `rosa`, `clara`) produces massive false-positives on
+# common PT-BR nouns. In real corporate transcripts, first
+# names always appear Title Case (automatic capitalization by the dictation) or
+# all-caps in formal context (which are filtered by `_PERSON_NAME_NEGATIVE_LIST`).
 _NAME_TOKEN_RE = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÀÃÕÇ][a-záéíóúâêôàãõç]+\b")
 
 
 # --------------------------------------------------------------------------- #
-# Dataclasses e utilitarios
+# Dataclasses and utilities
 # --------------------------------------------------------------------------- #
 
 
@@ -669,12 +670,12 @@ def _hash(value: str) -> str:
 
 
 def _tokenize(value: str) -> list[str]:
-    """Quebra um candidato a nome em tokens alfabeticos (descarta prefixos com ponto)."""
+    """Breaks a name candidate into alphabetic tokens (discards prefixes with a dot)."""
     return [tok for tok in _WORD_RE.findall(value)]
 
 
 def _is_negative(value: str) -> bool:
-    """Retorna True se qualquer token do candidato bater na negative list."""
+    """Returns True if any token of the candidate hits the negative list."""
     return any(_fold(tok) in _PERSON_NAME_NEGATIVE_LIST for tok in _tokenize(value))
 
 
@@ -682,9 +683,9 @@ _NAME_CONNECTIVES: frozenset[str] = frozenset(
     _fold(c) for c in ("da", "de", "do", "das", "dos", "e")
 )
 
-# Pronomes de tratamento e cargos aceitos por `_NAME_PREFIX_RE`. Repetidos aqui como
-# conjunto porque, no caminho de recorte abaixo, o prefixo e o proprio sinal de que o
-# trecho restante e gente ("Dr. Carlos" continua valendo depois de tirar um produto).
+# Honorifics and job titles accepted by `_NAME_PREFIX_RE`. Repeated here as a
+# set because, in the trimming path below, the prefix is itself the signal that the
+# remaining stretch is a person ("Dr. Carlos" still holds after removing a product).
 _NAME_HONORIFICS: frozenset[str] = frozenset(
     _fold(h)
     for h in (
@@ -713,10 +714,10 @@ _NAME_HONORIFICS: frozenset[str] = frozenset(
     )
 )
 
-# Subconjunto que so aparece antes de uma PESSOA. Os cargos ficam de fora de proposito:
-# "Gerente de Contas", "Diretor Comercial" e "Presidente do Conselho" sao funcoes que existem
-# sem ninguem no meio, e aceita-los como sinal de pessoa no caminho de recorte transformava
-# frase de cargo em PERSON_NAME -- com direito a hash do cargo no registro de redacao.
+# Subset that only appears before a PERSON. Job titles are left out on purpose:
+# "Gerente de Contas", "Diretor Comercial" and "Presidente do Conselho" are roles that exist
+# with nobody in the middle, and accepting them as a person signal in the trimming path turned
+# a job-title phrase into a PERSON_NAME -- with the title's hash in the redaction record.
 _PERSON_ONLY_HONORIFICS: frozenset[str] = frozenset(
     _fold(h)
     for h in (
@@ -740,12 +741,12 @@ _PERSON_ONLY_HONORIFICS: frozenset[str] = frozenset(
 
 
 def _spans_without_negatives(value: str, offset: int, text: str) -> list[tuple[int, int]]:
-    """Todos os trechos do candidato que ainda valem como nome, da esquerda para a direita.
+    """All stretches of the candidate that still hold as a name, left to right.
 
-    Devolve lista porque um token negativo no MEIO separa dois nomes distintos: em
-    "Ana Souza Protheus Carlos Silva" sobram dois trechos limpos, e a versao anterior --
-    que ficava so com o maior via `max()`, primeiro em caso de empate -- descartava
-    "Carlos Silva" inteiro. O apelido saia em claro.
+    Returns a list because a negative token in the MIDDLE separates two distinct names: in
+    "Ana Souza Protheus Carlos Silva" two clean stretches remain, and the previous version --
+    which kept only the longest via `max()`, the first one on a tie -- discarded
+    "Carlos Silva" entirely. The surname went out in the clear.
     """
     runs: list[list[re.Match[str]]] = []
     current: list[re.Match[str]] = []
@@ -762,7 +763,7 @@ def _spans_without_negatives(value: str, offset: int, text: str) -> list[tuple[i
     if len(runs) <= 1 and not any(
         _fold(t.group(0)) in _PERSON_NAME_NEGATIVE_LIST for t in _WORD_RE.finditer(value)
     ):
-        # Sem token negativo nenhum: o match passa inteiro, como sempre passou.
+        # No negative token at all: the match passes whole, as it always did.
         return [(offset, offset + len(value))] if runs else []
 
     spans: list[tuple[int, int]] = []
@@ -774,26 +775,26 @@ def _spans_without_negatives(value: str, offset: int, text: str) -> list[tuple[i
 
 
 def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int, int] | None:
-    """Aceita um trecho limpo como nome, ou devolve None."""
-    # Conectivo orfao na ponta nao sustenta nome: "Ana Souza de" -> "Ana Souza".
+    """Accepts a clean stretch as a name, or returns None."""
+    # An orphan connective at the edge does not sustain a name: "Ana Souza de" -> "Ana Souza".
     while run and _fold(run[0].group(0)) in _NAME_CONNECTIVES:
         run = run[1:]
     while run and _fold(run[-1].group(0)) in _NAME_CONNECTIVES:
         run = run[:-1]
     if len(run) < 2:
         return None
-    # Sinal proprio de pessoa. Cargos (Gerente, Diretor, Presidente) NAO servem: sozinhos eles
-    # encabecam frases que sao so funcao, sem ninguem -- "Gerente de Contas Oracle" virava um
-    # PERSON_NAME com hash de "Gerente de Contas". Pronome de tratamento so precede gente.
+    # Signal proper to a person. Job titles (Gerente, Diretor, Presidente) do NOT serve: alone
+    # they head phrases that are only a role, with nobody -- "Gerente de Contas Oracle" became a
+    # PERSON_NAME with a hash of "Gerente de Contas". An honorific only precedes people.
     head = _fold(run[0].group(0))
     if head not in _BR_TOP_NAMES and head not in _PERSON_ONLY_HONORIFICS:
         return None
 
     start, end = offset + run[0].start(), offset + run[-1].end()
-    # O corte nao pode terminar no meio de uma palavra. O _WORD_RE so conhece as letras da classe
-    # declarada, entao um apelido com letra fora dela ("Núñez") faz o run acabar a meio -- e o
-    # placeholder saia colado na cauda: "[[PERSON_NAME_1]]ñez". A checagem e contra o TEXTO
-    # COMPLETO, nao contra o match: o corte cai justamente no fim do match.
+    # The cut cannot end in the middle of a word. _WORD_RE only knows the letters of the declared
+    # class, so a surname with a letter outside it ("Núñez") makes the run end halfway -- and the
+    # placeholder went out glued to the tail: "[[PERSON_NAME_1]]ñez". The check is against the
+    # FULL TEXT, not against the match: the cut falls exactly at the end of the match.
     if end < len(text) and text[end].isalpha():
         return None
     return start, end
@@ -802,21 +803,21 @@ def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int,
 def _apply_basic_patterns(
     text: str,
 ) -> tuple[str, list[Redaction], dict[PiiType, int]]:
-    """Aplica os 5 padroes deterministicos (email/CPF/CNPJ/cartao/telefone).
+    """Applies the 5 deterministic patterns (email/CPF/CNPJ/card/phone).
 
-    Retorna `(texto_intermediario, redactions, counters)`. O texto intermediario
-    ja contem placeholders no lugar de cada match -- e sobre ele que a etapa de
-    PERSON_NAME opera, garantindo que substrings de PII basico nao virem nomes
-    falsos.
+    Returns `(intermediate_text, redactions, counters)`. The intermediate text
+    already contains placeholders in place of each match -- it is over it that the
+    PERSON_NAME step operates, ensuring substrings of basic PII do not become
+    false names.
     """
     matches: list[_Match] = []
     for pii_type, pattern in _BASIC_PATTERNS:
         validator = _VALIDATORS.get(id(pattern))
         for m in pattern.finditer(text):
             raw = m.group(0)
-            # Pattern raw (CPF/CNPJ sem mascara): exige DV valido para evitar
-            # false positives em codigos numericos genericos (ID de pedido,
-            # rastreio, NFE etc.).
+            # Raw pattern (CPF/CNPJ without mask): requires a valid check digit to
+            # avoid false positives on generic numeric codes (order ID,
+            # tracking, NFE etc.).
             if validator is not None and not validator(raw):
                 continue
             matches.append(_Match(type=pii_type, start=m.start(), end=m.end(), value=raw))
@@ -829,7 +830,7 @@ def _apply_basic_patterns(
     cursor = 0
 
     for m in matches:
-        if m.start < cursor:  # overlap entre tipos -- ignora o segundo
+        if m.start < cursor:  # overlap between types -- ignores the second
             continue
         counters[m.type] += 1
         placeholder = f"[[{m.type.value}_{counters[m.type]}]]"
@@ -848,20 +849,20 @@ def _redact_person_names(
     text: str,
     counters: dict[PiiType, int],
 ) -> tuple[str, list[Redaction]]:
-    """Detecta e redige nomes proprios sobre `text` (ja parcialmente redigido).
+    """Detects and redacts proper names over `text` (already partially redacted).
 
-    Aplica em ordem tres heuristicas, sempre pulando ranges ja cobertos:
+    Applies three heuristics in order, always skipping ranges already covered:
 
-    1. Prefixo + Title Case (`Dr. Carlos Silva`).
-    2. 2-4 palavras Title Case consecutivas (`Marina Alves`).
-    3. Primeiro nome BR isolado contra a lista hardcoded (`Lucas`, `Marina`).
+    1. Prefix + Title Case (`Dr. Carlos Silva`).
+    2. 2-4 consecutive Title Case words (`Marina Alves`).
+    3. Isolated BR first name against the hardcoded list (`Lucas`, `Marina`).
 
-    A negative list filtra produtos/empresas/tecnologias antes de gerar o
-    placeholder. Cada ocorrencia recebe um numero novo (sem dedup -- decisao
-    explicita do escopo).
+    The negative list filters products/companies/technologies before generating the
+    placeholder. Each occurrence gets a new number (no dedup -- explicit
+    scope decision).
     """
     person_matches: list[_Match] = []
-    covered: list[tuple[int, int]] = []  # ranges (start, end) ja consumidos
+    covered: list[tuple[int, int]] = []  # ranges (start, end) already consumed
 
     def _is_covered(start: int, end: int) -> bool:
         return any(not (end <= cs or start >= ce) for cs, ce in covered)
@@ -871,13 +872,13 @@ def _redact_person_names(
         covered.append((start, end))
 
     def _claim_free_parts(start: int, end: int) -> None:
-        """Reclama o candidato, recortando o que ja esta coberto em vez de o descartar.
+        """Claims the candidate, trimming what is already covered instead of discarding it.
 
-        O `_is_covered` sozinho e all-or-nothing, e isso passou a perder nomes quando o
-        Padrao 1 comecou a reclamar spans RECORTADOS: um match do Padrao 2 inteiramente
-        limpo que apenas ENCOSTASSE nesse recorte era jogado fora por inteiro, e o apelido
-        saia em claro. Aqui sobra o que estiver livre, e cada pedaco livre volta a ser
-        validado como nome antes de ser reclamado.
+        `_is_covered` alone is all-or-nothing, and that started losing names when
+        Pattern 1 began claiming TRIMMED spans: a Pattern 2 match that was entirely
+        clean and merely TOUCHED that trim was thrown away whole, and the surname
+        went out in the clear. Here whatever is free remains, and each free piece is
+        validated again as a name before being claimed.
         """
         cursor = start
         for cs, ce in sorted(covered):
@@ -897,20 +898,20 @@ def _redact_person_names(
                 continue
             _claim(s, e, text[s:e])
 
-    # Padrao 1: prefixo (pronome de tratamento / cargo + nome)
+    # Pattern 1: prefix (honorific / job title + name)
     for m in _NAME_PREFIX_RE.finditer(text):
         for start, end in _spans_without_negatives(m.group(0), m.start(), text):
             _claim_free_parts(start, end)
 
-    # Padrao 2: sequencia Title Case (2-4 palavras)
+    # Pattern 2: Title Case sequence (2-4 words)
     for m in _NAME_SEQUENCE_RE.finditer(text):
         for start, end in _spans_without_negatives(m.group(0), m.start(), text):
             _claim_free_parts(start, end)
 
-    # Padrao 3: primeiro nome BR isolado (Title Case, contra lista hardcoded).
-    # _NAME_TOKEN_RE (Title Case only) evita falso-positivo em substantivos
-    # comuns do PT-BR ("rosa", "clara", "vera" — todos no _BR_TOP_NAMES como
-    # nomes femininos mas tambem palavras genericas em minuscula).
+    # Pattern 3: isolated BR first name (Title Case, against the hardcoded list).
+    # _NAME_TOKEN_RE (Title Case only) avoids false-positives on common
+    # PT-BR nouns ("rosa", "clara", "vera" — all in _BR_TOP_NAMES as
+    # female names but also generic lowercase words).
     for m in _NAME_TOKEN_RE.finditer(text):
         if _is_covered(m.start(), m.end()):
             continue
@@ -947,12 +948,12 @@ def _redact_person_names(
 
 
 def redact(text: str) -> PiiRedactionV1:
-    """Substitui PII por placeholders no formato `[[TIPO_N]]`.
+    """Replaces PII with placeholders in the `[[TYPE_N]]` format.
 
-    Fluxo em duas etapas:
-      1. Padroes deterministicos basicos (email/CPF/CNPJ/cartao/telefone).
-      2. Heuristicas de PERSON_NAME sobre o texto ja parcialmente redigido --
-         garante que ex. um nome dentro de um e-mail nao sera redigido de novo.
+    Two-stage flow:
+      1. Basic deterministic patterns (email/CPF/CNPJ/card/phone).
+      2. PERSON_NAME heuristics over the already partially redacted text --
+         ensures e.g. a name inside an e-mail will not be redacted again.
     """
     intermediate, basic_redactions, counters = _apply_basic_patterns(text)
     final_text, person_redactions = _redact_person_names(intermediate, counters)

@@ -1,105 +1,105 @@
-# 0016 — Production-readiness checklist e separação `rg-nora-prod`
+# 0016 — Production-readiness checklist and `rg-nora-prod` separation
 
-- Status: parcialmente substituído por 0034 (as premissas ancoradas em Azure caem: Gap 1 `prod.bicepparam`/SP separado, Gap 3 RPO/RTO apoiado no PITR do Flexible Server, Gap 4 alertas via Azure Monitor/App Insights, Gap 7 rotação via Key Vault. Gap 2 e Gap 6 continuam válidos com outro substrato; Gap 5 foi entregue pelo ADR 0029)
-- Data: 2026-05-14
-- Decisores: Tech Lead (Stratfy aprova plano antes de execução em 1.12)
-- Relacionado: ADR 0034 (migração para Proxmox — redefine substrato, RPO/RTO e rotação de segredos)
+- Status: partially superseded by 0034 (the Azure-anchored premises fall: Gap 1 `prod.bicepparam`/separate SP, Gap 3 RPO/RTO resting on Flexible Server PITR, Gap 4 alerts via Azure Monitor/App Insights, Gap 7 rotation via Key Vault. Gap 2 and Gap 6 remain valid on a different substrate; Gap 5 was delivered by ADR 0029)
+- Date: 2026-05-14
+- Deciders: Tech Lead (Stratfy approves the plan before execution in 1.12)
+- Related: ADR 0034 (migration to Proxmox — redefines the substrate, RPO/RTO and secret rotation)
 
-## Contexto
+## Context
 
-`rg-nora-dev` foi deployado com sucesso em 2026-05-13 (run 25815047515) após 8 pegadinhas Azure for Students catalogadas. Stack funcional, NORA real respondendo em `https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io`.
+`rg-nora-dev` was deployed successfully on 2026-05-13 (run 25815047515) after 8 catalogued Azure for Students gotchas. Functional stack, the real NORA responding at `https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io`.
 
-**Mas dev ≠ prod.** O Arquiteto Design no audit pré-Sub-fase 1.10 (§4.3) identificou 7 gaps de production-readiness que precisam endereçar antes de NORA receber tráfego comercial ou expor dados de cliente real (Plano A com TOTVS, Plano B com primeiros tenants).
+**But dev ≠ prod.** The Design Architect in the pre-Sub-phase 1.10 audit (§4.3) identified 7 production-readiness gaps that need addressing before NORA receives commercial traffic or exposes real customer data (Plan A with TOTVS, Plan B with the first tenants).
 
-Detalhes completos em `docs/operations/production-readiness-gaps.md`.
+Full details in `docs/operations/production-readiness-gaps.md`.
 
-## Decisão
+## Decision
 
-**Sub-fase 1.12 — Production Hardening** (após 1.11) implementa os 7 gaps de prod-readiness, formalizados neste ADR:
+**Sub-phase 1.12 — Production Hardening** (after 1.11) implements the 7 prod-readiness gaps, formalized in this ADR:
 
-### Gap 1 — Bicep `prod.bicepparam` separado
-- `infra/bicep/main.prod.bicepparam` com:
+### Gap 1 — Separate `prod.bicepparam` Bicep
+- `infra/bicep/main.prod.bicepparam` with:
   - `env = 'prod'`
-  - `location` (decidir: continuar `centralus` ou migrar `eastus` baseado em unit economics avançada)
-  - `enablePurgeProtection = true` no Key Vault
+  - `location` (to decide: stay on `centralus` or migrate to `eastus` based on advanced unit economics)
+  - `enablePurgeProtection = true` on the Key Vault
   - `enableSearch = true`
-  - SKUs prod-grade (Postgres GP tier ou D2ds_v5; AI Search Standard se justificar)
-  - `min replicas = 1` em **todas** as Container Apps (warm-up — scale-to-zero gera UX ruim em prod)
-- **Service Principal separado** `sp-nora-github-deploy-prod` (não reusar dev)
+  - Prod-grade SKUs (Postgres GP tier or D2ds_v5; AI Search Standard if justified)
+  - `min replicas = 1` on **all** Container Apps (warm-up — scale-to-zero produces bad UX in prod)
+- **Separate Service Principal** `sp-nora-github-deploy-prod` (do not reuse dev's)
 
 ### Gap 2 — Migrations safety strategy
-Escolha entre 3 estratégias (decidida na 1.12):
-- (a) Pre-flight check + manual approve (workflow `deploy-infra.yml` postа `flyway info` como summary; exige `gh workflow run` manual)
+Choice among 3 strategies (decided in 1.12):
+- (a) Pre-flight check + manual approve (the `deploy-infra.yml` workflow posts `flyway info` as a summary; requires a manual `gh workflow run`)
 - (b) Blue/Green via Container Apps revisions (traffic split 0→50→100)
-- (c) Migrations expand/contract (convenção V0XX_expand + V0YY_contract)
+- (c) Expand/contract migrations (V0XX_expand + V0YY_contract convention)
 
-**Inclinação inicial:** (a) pra MVP/Pilot, evoluir pra (c) em GA.
+**Initial leaning:** (a) for MVP/Pilot, evolving to (c) at GA.
 
-### Gap 3 — Backup RTO/RPO formalizado + restore drill
-- **RPO**: 5min (PITR Postgres suporta)
-- **RTO**: 2h (restore + redeploy Bicep)
-- Drill 1x/trimestre em ambiente espelho, documentado em `docs/operations/disaster-recovery-runbook.md`
+### Gap 3 — Formalized backup RTO/RPO + restore drill
+- **RPO**: 5min (Postgres PITR supports it)
+- **RTO**: 2h (restore + Bicep redeploy)
+- Drill once per quarter in a mirror environment, documented in `docs/operations/disaster-recovery-runbook.md`
 
 ### Gap 4 — Monitoring + alerting wired
-- **Alertas Azure Monitor → email do contato técnico da Stratfy + Slack futuro:**
-  - API `/actuator/health` non-200 por >2min
-  - Postgres connection failures >10/min ou CPU >80% sustained 5min
+- **Azure Monitor alerts → email of Stratfy's technical contact + Slack in the future:**
+  - API `/actuator/health` non-200 for >2min
+  - Postgres connection failures >10/min or CPU >80% sustained for 5min
   - Container Apps scale-up failed
   - Speech error rate >5%
-- **Dashboard "NORA prod overview"** no App Insights workbook
-- **SLO inicial:** API uptime 99.0% mensal, p95 latency `/meetings/{id}` <1.5s, LLM analysis 95% concluído em <60s
+- **"NORA prod overview" dashboard** in an App Insights workbook
+- **Initial SLO:** API uptime 99.0% monthly, p95 latency `/meetings/{id}` <1.5s, LLM analysis 95% completed in <60s
 
 ### Gap 5 — LGPD operational
-- Doc dedicado `docs/security/lgpd-operations.md`:
-  - Data retention policy (transcripts + análises retidos enquanto tenant ativo + 30 dias pós-cancelamento)
-  - Endpoint `DELETE /tenants/{tenantId}/me` (direito ao esquecimento user)
-  - Endpoint `DELETE /admin/tenants/{tenantId}` (Root only — exclui tenant completo cascata)
-  - DPO declarado em `SECURITY.md`
-  - Runbook de incidente: detecção → escalação → comunicação ANPD se >50 titulares afetados
+- Dedicated doc `docs/security/lgpd-operations.md`:
+  - Data retention policy (transcripts + analyses retained while the tenant is active + 30 days post-cancellation)
+  - Endpoint `DELETE /tenants/{tenantId}/me` (user's right to be forgotten)
+  - Endpoint `DELETE /admin/tenants/{tenantId}` (Root only — deletes the complete tenant in cascade)
+  - DPO declared in `SECURITY.md`
+  - Incident runbook: detection → escalation → ANPD communication if >50 data subjects are affected
 
 ### Gap 6 — Disaster recovery runbook
-`docs/operations/disaster-recovery-runbook.md` com 3 cenários:
-- (A) RG nukado — RTO 2-3h (purge KV/Speech + recreate + restore)
-- (B) Postgres corrompido — PITR restore, RTO 30min-1h
-- (C) Região Azure indisponível — MVP single-region aceita downtime; pós-GA: geo-redundância
+`docs/operations/disaster-recovery-runbook.md` with 3 scenarios:
+- (A) RG nuked — RTO 2-3h (purge KV/Speech + recreate + restore)
+- (B) Postgres corrupted — PITR restore, RTO 30min-1h
+- (C) Azure region unavailable — the single-region MVP accepts downtime; post-GA: geo-redundancy
 
 ### Gap 7 — Secrets rotation policy
-| Secret | Frequência | Método |
+| Secret | Frequency | Method |
 |---|---|---|
-| `postgres-password` | 90 dias | Script: novo password + `ALTER USER` + atualiza KV + revision restart |
-| `jwt-secret` | 180 dias | Atualiza KV + grace period 24h (logic de keyId no JWT — design futuro) |
-| `openai-api-key` | Quando rotacionado no dashboard OpenAI | Atualiza KV + restart api/worker |
-| `azure-speech-key` | 90 dias | `az cognitiveservices account keys regenerate` + KV + restart |
+| `postgres-password` | 90 days | Script: new password + `ALTER USER` + update KV + revision restart |
+| `jwt-secret` | 180 days | Update KV + 24h grace period (keyId logic in the JWT — future design) |
+| `openai-api-key` | When rotated in the OpenAI dashboard | Update KV + restart api/worker |
+| `azure-speech-key` | 90 days | `az cognitiveservices account keys regenerate` + KV + restart |
 
-Workflow `.github/workflows/rotate-secrets.yml` com cron mensal.
+Workflow `.github/workflows/rotate-secrets.yml` with a monthly cron.
 
-## Consequências
+## Consequences
 
-**Positivas:**
-- NORA pode operar comercialmente atendendo clientes brasileiros (LGPD compliance operacional)
-- Plano A TOTVS code-walkthrough mostra produto enterprise-grade
-- Plano B onboarding de primeiros tenants tem rede de segurança operacional
-- Backup + DR testados eliminam classe inteira de pesadelos noturnos
+**Positive:**
+- NORA can operate commercially serving Brazilian customers (operational LGPD compliance)
+- The Plan A TOTVS code-walkthrough shows an enterprise-grade product
+- Plan B onboarding of the first tenants has an operational safety net
+- Tested backup + DR eliminate an entire class of nighttime nightmares
 
-**Negativas:**
-- Sub-fase 1.12 estimada ~1-2 semanas agentic — significativo investimento
-- Postgres prod tier custa mais (~R$200-300/mês vs R$85 dev) — Unit Economics avançada na 1.12 modela
-- Secrets rotation exige manutenção contínua (workflows ativos, alerts quando falhar)
+**Negative:**
+- Sub-phase 1.12 estimated at ~1-2 agentic weeks — a significant investment
+- Prod-tier Postgres costs more (~R$200-300/month vs R$85 dev) — the advanced Unit Economics in 1.12 models this
+- Secrets rotation requires continuous maintenance (active workflows, alerts when it fails)
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Compartilhar `rg-nora-dev` pra prod** — rejeitado por blast radius (debug acidental pode derrubar prod)
-2. **Multi-region desde MVP** — rejeitado por complexity vs benefit pré-tração
-3. **Postgres read replica** — adiado, single instance OK pra escala inicial
+1. **Share `rg-nora-dev` for prod** — rejected because of blast radius (accidental debugging could take prod down)
+2. **Multi-region from the MVP** — rejected because of complexity vs benefit before traction
+3. **Postgres read replica** — deferred, a single instance is OK for the initial scale
 
-## Plano de Aplicação
+## Application Plan
 
-Sub-fase 1.12, branch `feat/sub-1.12-production-hardening`. Esforço total **~1-2 semanas agentic**. PR por gap (7 PRs sequenciais ou paralelos quando independentes).
+Sub-phase 1.12, branch `feat/sub-1.12-production-hardening`. Total effort **~1-2 agentic weeks**. One PR per gap (7 PRs, sequential or parallel when independent).
 
-Pré-requisito: Sub-fase 1.11 mergeada (Customer Confidence + AUTH_FILTER fix + PolicyEvaluator stringIn/Like).
+Prerequisite: Sub-phase 1.11 merged (Customer Confidence + AUTH_FILTER fix + PolicyEvaluator stringIn/Like).
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-05-14 | Tech Lead | ADR proposto durante Sub-fase 1.10 (Docs Refresh). Detalhamento em `docs/operations/production-readiness-gaps.md`. Aceitação formal quando Sub-fase 1.12 começar |
+| 2026-05-14 | Tech Lead | ADR proposed during Sub-phase 1.10 (Docs Refresh). Detailed in `docs/operations/production-readiness-gaps.md`. Formal acceptance when Sub-phase 1.12 begins |

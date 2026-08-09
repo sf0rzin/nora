@@ -1,6 +1,6 @@
 // PostgreSQL Flexible Server (Burstable B1ms)
-// Banco transacional do backend Spring. SKU mais barato disponível.
-// Public access habilitado pra MVP — migrar pra VNet integration em prod.
+// Transactional database of the Spring backend. Cheapest SKU available.
+// Public access enabled for the MVP — migrate to VNet integration in prod.
 
 @description('Nome do servidor (3-63 chars, lowercase + hífen).')
 @minLength(3)
@@ -79,10 +79,10 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
     }
     backup: {
       backupRetentionDays: backupRetentionDays
-      geoRedundantBackup: 'Disabled' // mais barato
+      geoRedundantBackup: 'Disabled' // cheaper
     }
     highAvailability: {
-      mode: 'Disabled' // HA dobra o custo; off em dev
+      mode: 'Disabled' // HA doubles the cost; off in dev
     }
     network: {
       publicNetworkAccess: 'Enabled'
@@ -103,10 +103,10 @@ resource database 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-0
   }
 }
 
-// IMPORTANTE: os recursos-filho abaixo sao ENCADEADOS via dependsOn de proposito.
-// O Flexible Server serializa operacoes de gerenciamento; sem o encadeamento o ARM
-// aplica database/firewall/configuration em PARALELO e o segundo write falha com
-// 'ServerIsBusy' (flakiness intermitente observada em deploys consecutivos no B1ms).
+// IMPORTANT: the child resources below are CHAINED via dependsOn on purpose.
+// The Flexible Server serializes management operations; without the chaining ARM
+// applies database/firewall/configuration in PARALLEL and the second write fails with
+// 'ServerIsBusy' (intermittent flakiness observed in consecutive deploys on the B1ms).
 resource allowAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2024-08-01' = if (allowAzureServices) {
   parent: server
   name: 'AllowAllAzureServicesAndResourcesWithinAzureIps'
@@ -133,9 +133,9 @@ resource customFirewallRules 'Microsoft.DBforPostgreSQL/flexibleServers/firewall
   }
 ]
 
-// Allow-list de extensions Postgres. Sem isso, CREATE EXTENSION falha com
+// Allow-list of Postgres extensions. Without it, CREATE EXTENSION fails with
 // 'extension X is not allow-listed for users in Azure Database for PostgreSQL'.
-// Pgcrypto + citext sao usadas pelo schema NORA (gen_random_uuid + email case-insensitive).
+// Pgcrypto + citext are used by the NORA schema (gen_random_uuid + case-insensitive email).
 resource extensionsConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = {
   parent: server
   name: 'azure.extensions'

@@ -1,14 +1,14 @@
--- V023 — NORA Flows: workflows (automações) + histórico de execuções.
+-- V023 — NORA Flows: workflows (automations) + execution history.
 --
--- Um workflow liga um GATILHO (evento de domínio, ex.: meeting.analysis_completed) a AÇÕES
--- (ex.: send_email), opcionalmente filtradas por CONDIÇÕES. O grafo completo (nós + arestas,
--- como desenhado no canvas) vive em definition_json; trigger_type é denormalizado para o
--- match O(1) do engine (índice parcial por tenant + trigger em workflows ativos).
+-- A workflow links a TRIGGER (domain event, e.g. meeting.analysis_completed) to ACTIONS
+-- (e.g. send_email), optionally filtered by CONDITIONS. The full graph (nodes + edges,
+-- as drawn on the canvas) lives in definition_json; trigger_type is denormalized for the
+-- engine's O(1) match (partial index by tenant + trigger on active workflows).
 --
--- workflow_executions guarda cada disparo (real ou teste manual) com o log passo a passo
--- (log_json: array de {at, nodeId, level, message}) — é o histórico que a UI mostra.
+-- workflow_executions stores each firing (real or manual test) with the step-by-step log
+-- (log_json: array of {at, nodeId, level, message}) — it is the history the UI shows.
 --
--- Escopo: ambas tenant-owned (ADR 0002) com RLS enforced (ADR 0028), mesmo padrão de V022.
+-- Scope: both tenant-owned (ADR 0002) with RLS enforced (ADR 0028), same pattern as V022.
 
 CREATE TABLE workflows (
     id              UUID PRIMARY KEY,
@@ -32,16 +32,16 @@ CREATE TABLE workflow_executions (
     finished_at TIMESTAMPTZ
 );
 
--- Listagem da página /fluxos: workflows do tenant, mais recentes primeiro.
+-- Listing for the /fluxos page: the tenant's workflows, most recent first.
 CREATE INDEX idx_workflows_tenant ON workflows (tenant_id);
--- Match do engine: workflows ATIVOS do tenant para um trigger (caminho quente do listener).
+-- Engine match: the tenant's ACTIVE workflows for a trigger (the listener's hot path).
 CREATE INDEX idx_workflows_tenant_trigger ON workflows (tenant_id, trigger_type) WHERE active;
 
 CREATE INDEX idx_workflow_executions_tenant ON workflow_executions (tenant_id);
--- Histórico de execuções de um workflow, mais recentes primeiro.
+-- Execution history of a workflow, most recent first.
 CREATE INDEX idx_workflow_executions_wf ON workflow_executions (workflow_id, created_at DESC);
 
--- RLS: tabelas de negócio tenant-owned → enforced (ADR 0028). Mesmo padrão de V019/V021/V022.
+-- RLS: tenant-owned business tables → enforced (ADR 0028). Same pattern as V019/V021/V022.
 ALTER TABLE workflows ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON workflows
     USING (tenant_id = nora.current_tenant_id())

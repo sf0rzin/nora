@@ -25,9 +25,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Fluxo end-to-end das Configurações do Core (GOAL Fase 3 item 10): GET /auth/me, PATCH /users/me,
- * POST /auth/password/change, POST /auth/logout-all, GET /tenant + PUT /tenant/name, POST
- * /auth/verify-email/resend e DELETE /users/me (LGPD hard-delete da conta + workspace pessoal).
+ * End-to-end flow of the Core Settings (GOAL Phase 3 item 10): GET /auth/me, PATCH /users/me, POST
+ * /auth/password/change, POST /auth/logout-all, GET /tenant + PUT /tenant/name, POST
+ * /auth/verify-email/resend and DELETE /users/me (LGPD hard-delete of the account + personal
+ * workspace).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -81,11 +82,11 @@ class SettingsFlowIntegrationTest {
                         .read(HttpStatus.OK);
         assertThat(updated.get("displayName").asText()).isEqualTo("Nome Novo");
 
-        // Sobrevive a reload: GET /auth/me lê do banco.
+        // Survives a reload: GET /auth/me reads from the database.
         JsonNode me = authGet("/auth/me", s.access()).read(HttpStatus.OK);
         assertThat(me.get("displayName").asText()).isEqualTo("Nome Novo");
 
-        // Blank é rejeitado.
+        // Blank is rejected.
         ResponseEntity<String> blank =
                 exchangeJsonRaw(
                         HttpMethod.PATCH, "/users/me", Map.of("displayName", "  "), s.access());
@@ -96,7 +97,7 @@ class SettingsFlowIntegrationTest {
     void passwordChange_exigeSenhaAtual_revogaSessoesEAtualizaCredencial() throws Exception {
         Session s = signupAndLogin("settings-pwd@nora.dev", "SenhaForte123", "Pwd");
 
-        // Senha atual errada → 401.
+        // Wrong current password → 401.
         ResponseEntity<String> wrong =
                 exchangeJsonRaw(
                         HttpMethod.POST,
@@ -105,7 +106,7 @@ class SettingsFlowIntegrationTest {
                         s.access());
         assertThat(wrong.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
 
-        // Troca de verdade → 204.
+        // Real change → 204.
         ResponseEntity<String> ok =
                 exchangeJsonRaw(
                         HttpMethod.POST,
@@ -113,14 +114,14 @@ class SettingsFlowIntegrationTest {
                         Map.of("currentPassword", "SenhaForte123", "newPassword", "NovaForte456"),
                         s.access());
         assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
-        // Dispositivo atual recebe cookies novos (não é deslogado).
+        // The current device gets fresh cookies (it is not logged out).
         assertThat(ok.getHeaders().get(HttpHeaders.SET_COOKIE)).isNotEmpty();
 
-        // Sessões antigas revogadas: o refresh token do login original morreu.
+        // Old sessions revoked: the refresh token from the original login is dead.
         ResponseEntity<String> oldRefresh = refreshWithBearer(s.refresh());
         assertThat(oldRefresh.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
 
-        // Senha antiga não loga mais; a nova sim.
+        // The old password no longer logs in; the new one does.
         ResponseEntity<String> oldLogin =
                 postJsonRaw(
                         "/auth/login",
@@ -137,7 +138,7 @@ class SettingsFlowIntegrationTest {
     @Test
     void logoutAll_revogaTodasAsSessoes() throws Exception {
         Session s1 = signupAndLogin("settings-all@nora.dev", "SenhaForte123", "All");
-        // Segunda sessão (outro dispositivo).
+        // Second session (another device).
         JsonNode login2 =
                 postJson(
                                 "/auth/login",
@@ -181,7 +182,7 @@ class SettingsFlowIntegrationTest {
         JsonNode after = authGet("/tenant", s.access()).read(HttpStatus.OK);
         assertThat(after.get("name").asText()).isEqualTo("Time Foguete");
 
-        // Blank rejeitado.
+        // Blank rejected.
         assertThat(
                         exchangeJsonRaw(
                                         HttpMethod.PUT,
@@ -194,7 +195,7 @@ class SettingsFlowIntegrationTest {
 
     @Test
     void resendVerification_reenviaParaNaoVerificado_eNaoVazaContas() throws Exception {
-        // Signup SEM verificar.
+        // Signup WITHOUT verifying.
         postJson(
                         "/auth/signup",
                         Map.of(
@@ -207,7 +208,7 @@ class SettingsFlowIntegrationTest {
                         null)
                 .read(HttpStatus.CREATED);
 
-        // Reenvio gera token novo (devToken exposto no profile de teste).
+        // Resend generates a new token (devToken exposed in the test profile).
         JsonNode resent =
                 postJson(
                                 "/auth/verify-email/resend",
@@ -217,7 +218,7 @@ class SettingsFlowIntegrationTest {
         String newToken = resent.get("verificationDevToken").asText();
         assertThat(newToken).isNotBlank();
 
-        // Token novo verifica e o login passa a funcionar.
+        // The new token verifies and login starts working.
         postJson("/auth/verify-email", Map.of("token", newToken), null).read(HttpStatus.NO_CONTENT);
         postJson(
                         "/auth/login",
@@ -225,7 +226,7 @@ class SettingsFlowIntegrationTest {
                         null)
                 .read(HttpStatus.OK);
 
-        // Já verificado e inexistente: mesma resposta 202 sem devToken (anti-enumeração).
+        // Already verified and unknown: same 202 response with no devToken (anti-enumeration).
         JsonNode verified =
                 postJson(
                                 "/auth/verify-email/resend",
@@ -243,7 +244,7 @@ class SettingsFlowIntegrationTest {
     void deleteAccount_exigeSenha_ePurgaContaEWorkspace() throws Exception {
         Session s = signupAndLogin("settings-del@nora.dev", "SenhaForte123", "Del");
 
-        // Senha errada → 401 e nada apagado.
+        // Wrong password → 401 and nothing deleted.
         ResponseEntity<String> wrong =
                 exchangeJsonRaw(
                         HttpMethod.DELETE,
@@ -253,7 +254,8 @@ class SettingsFlowIntegrationTest {
         assertThat(wrong.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         authGet("/auth/me", s.access()).read(HttpStatus.OK);
 
-        // Senha certa → 204 e a conta SOME (hard-delete em cascata do tenant pessoal).
+        // Right password → 204 and the account is GONE (cascading hard-delete of the personal
+        // tenant).
         ResponseEntity<String> ok =
                 exchangeJsonRaw(
                         HttpMethod.DELETE,
@@ -262,10 +264,10 @@ class SettingsFlowIntegrationTest {
                         s.access());
         assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
 
-        // JWT ainda é estaticamente válido, mas o usuário não existe mais → 401.
+        // The JWT is still statically valid, but the user no longer exists → 401.
         assertThat(authGetRaw("/auth/me", s.access()).getStatusCode())
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
-        // Login impossivel: credenciais apagadas.
+        // Login impossible: credentials deleted.
         assertThat(
                         postJsonRaw(
                                         "/auth/login",
@@ -277,7 +279,7 @@ class SettingsFlowIntegrationTest {
                                         null)
                                 .getStatusCode())
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
-        // E-mail liberado para um novo signup (esquecimento de verdade).
+        // E-mail freed up for a new signup (real erasure).
         postJson(
                         "/auth/signup",
                         Map.of(
@@ -325,7 +327,7 @@ class SettingsFlowIntegrationTest {
         return new Session(login.get("accessToken").asText(), login.get("refreshToken").asText());
     }
 
-    /** POST /auth/refresh usando o fallback Bearer (o cookie é o caminho do browser). */
+    /** POST /auth/refresh using the Bearer fallback (the cookie is the browser path). */
     private ResponseEntity<String> refreshWithBearer(String refreshToken) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(refreshToken);

@@ -1,6 +1,6 @@
 # NORA NLP Worker
 
-Servico interno (FastAPI) que analisa transcricoes e devolve uma `MeetingAnalysisV1` validada.
+Internal service (FastAPI) that analyses transcripts and returns a validated `MeetingAnalysisV1`.
 
 ## Quickstart
 
@@ -14,14 +14,14 @@ uvicorn nora_nlp.main:app --reload --port 8001
 ```
 
 Healthcheck: `GET http://localhost:8001/healthz`
-Análise:     `POST http://localhost:8001/analyze`
+Analysis:    `POST http://localhost:8001/analyze`
 
-## Modos de execucao
+## Execution modes
 
-- `USE_LLM_STUB=true` (padrao): usa o stub deterministico em `services/stub_analyzer.py`. Sem chamada externa, sem custo. Permite que o backend e o web evoluam sem depender do provedor de LLM.
-- `USE_LLM_STUB=false`: chama o provedor LLM real via `services/llm_analyzer.py`, configurado por `LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL` (default OpenAI direto, `gpt-4o-mini`). Ver ADR 0004.
+- `USE_LLM_STUB=true` (default): uses the deterministic stub in `services/stub_analyzer.py`. No external call, no cost. It lets the backend and the web evolve without depending on the LLM provider.
+- `USE_LLM_STUB=false`: calls the real LLM provider via `services/llm_analyzer.py`, configured by `LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL` (default OpenAI direct, `gpt-4o-mini`). See ADR 0004.
 
-## Estrutura
+## Structure
 
 ```
 src/nora_nlp/
@@ -44,7 +44,7 @@ tests/
   test_analyze_stub.py # roda contra data/synthetic/
 ```
 
-## Testes
+## Tests
 
 ```bash
 pytest                        # todos
@@ -52,7 +52,7 @@ pytest tests/test_pii_shield.py
 ruff check . && ruff format --check .
 ```
 
-## Politica de PII
+## PII policy
 
-Toda transcricao passa pelo `pii_shield.redact()` antes de qualquer chamada externa.
-O worker nunca persiste o texto cru fora do escopo da requisicao.
+Every transcript goes through `pii_shield.redact()` before any external call.
+The worker never persists the raw text outside the scope of the request.

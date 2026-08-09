@@ -1,6 +1,6 @@
 package br.com.nora.api.application.meeting;
 
-/** Excecoes do dominio de meetings. Mapeadas pelo GlobalExceptionHandler. */
+/** Exceptions of the meetings domain. Mapped by GlobalExceptionHandler. */
 public sealed class MeetingException extends RuntimeException
         permits MeetingException.NotFound,
                 MeetingException.TranscriptTooLarge,
@@ -41,7 +41,7 @@ public sealed class MeetingException extends RuntimeException
         }
     }
 
-    /** Split-preview aceita apenas .txt por enquanto (VTT/SRT tem timestamps proprios). */
+    /** Split-preview only accepts .txt for now (VTT/SRT have their own timestamps). */
     public static final class SplitUnsupportedFormat extends MeetingException {
         public SplitUnsupportedFormat() {
             super(
@@ -51,9 +51,9 @@ public sealed class MeetingException extends RuntimeException
     }
 
     /**
-     * Arquivo acima do limite de upload. Mensagem em PT-BR e voltada ao usuario (o handler de
-     * MeetingException devolve {@code getMessage()} direto, ao contrario do
-     * IllegalArgumentException que e mascarado por seguranca).
+     * File above the upload limit. The message is in PT-BR and user-facing (the MeetingException
+     * handler returns {@code getMessage()} directly, unlike IllegalArgumentException which is
+     * masked for security).
      */
     public static final class FileTooLarge extends MeetingException {
         public FileTooLarge(int maxMegabytes) {

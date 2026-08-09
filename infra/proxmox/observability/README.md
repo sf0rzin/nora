@@ -1,18 +1,18 @@
-# `observability/` — a stack que substitui Log Analytics + Application Insights
+# `observability/` — the stack that replaces Log Analytics + Application Insights
 
-Referenciada por `otel-collector.yaml` e pelo ADR 0034. Tudo aqui é montado `:ro` pelos
-serviços de observabilidade do `infra/proxmox/docker-compose.yml`, que é a fonte da
-verdade sobre portas, redes e imagens.
+Referenced by `otel-collector.yaml` and by ADR 0034. Everything here is mounted `:ro` by the
+observability services of `infra/proxmox/docker-compose.yml`, which is the source of
+truth about ports, networks and images.
 
-| arquivo | serviço | substitui |
+| file | service | replaces |
 |---|---|---|
-| `otel-collector.yaml` | `otel-collector` | o `applicationinsights-agent` como ponto de coleta de traces/métricas |
-| `prometheus.yml` | `prometheus` | Metrics Explorer / Live Metrics + a Query REST API (KQL) |
-| `loki.yaml` | `loki` | o Log Analytics Workspace (tabela `ContainerAppConsoleLogs_CL`) |
-| `config.alloy` | `alloy` | o `appLogsConfiguration` do Container Apps Environment |
-| `grafana/provisioning/**` | `grafana` | os blades de gráfico e as consultas salvas do portal |
+| `otel-collector.yaml` | `otel-collector` | the `applicationinsights-agent` as the collection point for traces/metrics |
+| `prometheus.yml` | `prometheus` | Metrics Explorer / Live Metrics + the Query REST API (KQL) |
+| `loki.yaml` | `loki` | the Log Analytics Workspace (`ContainerAppConsoleLogs_CL` table) |
+| `config.alloy` | `alloy` | the `appLogsConfiguration` of the Container Apps Environment |
+| `grafana/provisioning/**` | `grafana` | the chart blades and the portal's saved queries |
 
-## As duas pernas (uma não substitui a outra)
+## The two legs (one does not replace the other)
 
 ```
   api (javaagent OTel)  ──OTLP:4317──┐
@@ -23,102 +23,102 @@ verdade sobre portas, redes e imagens.
   TODO container ──stdout──> docker.sock ──> alloy ──push──> loki ────────────────────────┘
 ```
 
-O Collector é **write-only e não faz tail de stdout**. Sem o Alloy, três dos quatro apps
-não teriam sinal nenhum. Por isso são dois serviços, não um.
+The Collector is **write-only and does not tail stdout**. Without Alloy, three of the four apps
+would have no signal at all. That is why there are two services, not one.
 
-## Cobertura real, por app
+## Real coverage, per app
 
-Esta é a parte honesta do documento. **Não há paridade com o App Insights.**
+This is the honest part of the document. **There is no parity with App Insights.**
 
-| | logs | métricas | traces |
+| | logs | metrics | traces |
 |---|---|---|---|
-| **api** (Java) | sim (Alloy) | sim — `opentelemetry-javaagent` 2.30.0 | emitidos e **descartados** |
-| **worker** (Python) | sim (Alloy) | **não** | **não** |
-| **web** (Next.js) | sim (Alloy) | **não** | **não** |
-| **admin** (Next.js) | sim (Alloy) | **não** | **não** |
-| infra (caddy, cloudflared, pg, ...) | sim (Alloy) | parcial — ver pendências | n/a |
+| **api** (Java) | yes (Alloy) | yes — `opentelemetry-javaagent` 2.30.0 | emitted and **discarded** |
+| **worker** (Python) | yes (Alloy) | **no** | **no** |
+| **web** (Next.js) | yes (Alloy) | **no** | **no** |
+| **admin** (Next.js) | yes (Alloy) | **no** | **no** |
+| infra (caddy, cloudflared, pg, ...) | yes (Alloy) | partial — see open items | n/a |
 
-**A API é o único serviço instrumentado.** O `docker-compose.yml` seta
-`OTEL_SERVICE_NAME` e `OTEL_EXPORTER_OTLP_ENDPOINT` nos quatro apps, mas **env var sozinha
-não instrumenta nada**: worker, web e admin não têm SDK OTel instalado. As variáveis estão
-lá para que instalar o SDK um dia seja só adicionar a dependência — hoje elas são inertes.
+**The API is the only instrumented service.** The `docker-compose.yml` sets
+`OTEL_SERVICE_NAME` and `OTEL_EXPORTER_OTLP_ENDPOINT` on all four apps, but **an env var alone
+does not instrument anything**: worker, web and admin have no OTel SDK installed. The variables are
+there so that installing the SDK one day is just a matter of adding the dependency — today they are inert.
 
-Consequência prática: para worker, web e admin não existe taxa de requisição, latência p95
-nem taxa de erro *de verdade* em lugar nenhum desta stack. O que existe é (a) volume de
-log como sinal de "está vivo", (b) `caddy_reverse_proxy_upstreams_healthy` como sinal de
-"está aceitando conexão" — e (b) depende de uma pendência aberta, ver abaixo.
+Practical consequence: for worker, web and admin there is no *real* request rate, p95 latency
+or error rate anywhere in this stack. What does exist is (a) log volume as an "it is alive"
+signal, (b) `caddy_reverse_proxy_upstreams_healthy` as an "it is accepting connections" signal
+— and (b) depends on an open item, see below.
 
-### O que se perdeu do App Insights e não voltou
+### What was lost from App Insights and did not come back
 
-- **Transaction Search / Application Map / end-to-end transaction details.** Não há backend
-  de traces no compose (nem Tempo nem Jaeger). Os spans chegam no Collector e vão para o
-  exporter `debug`. A pipeline existe só para os apps não encherem o log com erro de
-  export. Isso é **regressão de funcionalidade**, não paridade.
-- **Correlação log ↔ trace.** Exigiria `trace_id` no MDC do logback, um datasource de
-  traces e `derivedFields` no datasource Loki. Nenhum dos três existe.
-- **CPU / memória / restarts por container** (o painel "Metrics" do Container Apps). Não há
-  cAdvisor nem o receiver `docker_stats` ligado. O dashboard **não inventa** essas queries
-  de propósito: `container_cpu_usage_seconds_total` não existe aqui e o painel ficaria
-  vazio. Ver a nota no fim do `prometheus.yml`.
-- **Consultas KQL salvas.** A linguagem passa a ser PromQL e LogQL. Nada é portável
-  automaticamente; toda consulta é reescrita à mão.
+- **Transaction Search / Application Map / end-to-end transaction details.** There is no traces
+  backend in the compose (neither Tempo nor Jaeger). The spans arrive at the Collector and go to the
+  `debug` exporter. The pipeline exists only so the apps do not fill the log with export
+  errors. This is a **functionality regression**, not parity.
+- **Log ↔ trace correlation.** It would require `trace_id` in the logback MDC, a traces
+  datasource and `derivedFields` in the Loki datasource. None of the three exists.
+- **CPU / memory / restarts per container** (the Container Apps "Metrics" panel). There is
+  neither cAdvisor nor the `docker_stats` receiver enabled. The dashboard **deliberately does not invent**
+  those queries: `container_cpu_usage_seconds_total` does not exist here and the panel would be
+  empty. See the note at the end of `prometheus.yml`.
+- **Saved KQL queries.** The language becomes PromQL and LogQL. Nothing is portable
+  automatically; every query is rewritten by hand.
 
-### O que já foi migrado (não está pendente)
+### What has already been migrated (it is not pending)
 
-- O `services/api/Dockerfile` **já** troca o `applicationinsights-agent` pelo
-  `opentelemetry-javaagent.jar` (`ARG OTEL_AGENT_VERSION=2.30.0`, linhas 30-33 e 49). Isso
-  era obrigatório: o agent do App Insights exporta para o endpoint Breeze da connection
-  string e **ignora** `OTEL_EXPORTER_OTLP_ENDPOINT`.
-- O caminho de **leitura** de telemetria já foi reescrito: `PrometheusHealthSource.java`
-  substitui o `AppInsightsHealthSource`, que fazia `GET api.applicationinsights.io/v1/apps/{id}/query`
-  com KQL e header `x-api-key`. O compose aponta `NORA_PLATFORM_HEALTH_PROMETHEUS_URL`
-  para `http://prometheus:9090`.
+- The `services/api/Dockerfile` **already** swaps the `applicationinsights-agent` for the
+  `opentelemetry-javaagent.jar` (`ARG OTEL_AGENT_VERSION=2.30.0`, lines 30-33 and 49). This
+  was mandatory: the App Insights agent exports to the Breeze endpoint of the connection
+  string and **ignores** `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- The telemetry **read** path has already been rewritten: `PrometheusHealthSource.java`
+  replaces `AppInsightsHealthSource`, which did `GET api.applicationinsights.io/v1/apps/{id}/query`
+  with KQL and an `x-api-key` header. The compose points `NORA_PLATFORM_HEALTH_PROMETHEUS_URL`
+  at `http://prometheus:9090`.
 
-> Os dois estão feitos **no fonte**. O que roda é a imagem do GHCR: se `API_TAG` apontar
-> para um build anterior à troca, o container ainda carrega o agent antigo e o dashboard
-> da API fica em "No data" sem um único erro. Confirme com
+> Both are done **in the source**. What runs is the GHCR image: if `API_TAG` points
+> to a build earlier than the swap, the container still loads the old agent and the API's
+> dashboard sits at "No data" without a single error. Confirm with
 > `docker compose exec api sh -c 'echo $JAVA_TOOL_OPTIONS'`.
 
-## Pendências que fazem a stack mentir em silêncio
+## Open items that make the stack lie silently
 
-Nenhuma destas gera erro. Todas produzem painel vazio ou perda de dado sem aviso.
+None of these raises an error. All of them produce an empty panel or data loss without warning.
 
-1. **Scrape do Caddy não funciona.** O `Caddyfile` tem `admin localhost:2019` (inalcançável
-   de fora do container) e não tem `servers { metrics }` (as `caddy_http_*` são opt-in
-   desde o Caddy 2.7). Com as duas pendentes, seis painéis de borda ficam em "No data" —
-   justamente os únicos que enxergam web e admin. Tornar o endpoint alcançável já acende
-   os dois painéis de `caddy_reverse_proxy_upstreams_healthy` (esse gauge não depende do
-   opt-in), que são a **única** métrica por serviço que cobre web/admin. É o maior ganho
-   por linha alterada da stack. Detalhe e correção sugerida — sem expor a admin API — no
-   job `caddy` do `prometheus.yml`.
-2. **Scrape do cloudflared não funciona.** O `cloudflared` está só na rede `edge` e o
-   `prometheus` só na `internal`; não há rota. Correção de uma linha no compose
-   (`networks: [edge, internal]`). Sem isso, `cloudflared_tunnel_ha_connections` — o sinal
-   que detecta exatamente o 522 que derrubou `nora.systems` — nunca é coletado.
-3. **O WAL do Alloy é volátil.** O compose passa `--storage.path=/var/lib/alloy/data` mas
-   não monta volume nesse caminho. O argumento "Alloy tem WAL, logo backpressure vira
-   atraso e não perda" vale para o **Loki cair**, mas **não** para recriação do container
-   do Alloy: `--force-recreate` apaga WAL e posições de leitura. Ver o cabeçalho do
+1. **The Caddy scrape does not work.** The `Caddyfile` has `admin localhost:2019` (unreachable
+   from outside the container) and does not have `servers { metrics }` (the `caddy_http_*` are opt-in
+   since Caddy 2.7). With both pending, six edge panels sit at "No data" —
+   precisely the only ones that see web and admin. Making the endpoint reachable already lights up
+   the two `caddy_reverse_proxy_upstreams_healthy` panels (that gauge does not depend on the
+   opt-in), which are the **only** per-service metric that covers web/admin. It is the biggest gain
+   per changed line in the stack. Detail and suggested fix — without exposing the admin API — in the
+   `caddy` job of `prometheus.yml`.
+2. **The cloudflared scrape does not work.** `cloudflared` is only on the `edge` network and
+   `prometheus` only on `internal`; there is no route. A one-line fix in the compose
+   (`networks: [edge, internal]`). Without it, `cloudflared_tunnel_ha_connections` — the signal
+   that detects exactly the 522 that took `nora.systems` down — is never collected.
+3. **Alloy's WAL is volatile.** The compose passes `--storage.path=/var/lib/alloy/data` but
+   does not mount a volume at that path. The argument "Alloy has a WAL, so backpressure becomes
+   delay and not loss" holds for **Loki going down**, but **not** for recreating the Alloy
+   container: `--force-recreate` erases the WAL and the read positions. See the header of
    `config.alloy`.
 
-## Retenção: três números que têm que andar juntos
+## Retention: three numbers that have to move together
 
-O `retentionInDays: 30` do Log Analytics vira **três** configurações em lugares diferentes:
+Log Analytics' `retentionInDays: 30` becomes **three** settings in different places:
 
-| onde | como | arquivo |
+| where | how | file |
 |---|---|---|
-| Prometheus | `--storage.tsdb.retention.time=30d` | `docker-compose.yml` (flag, **não** o `prometheus.yml`) |
+| Prometheus | `--storage.tsdb.retention.time=30d` | `docker-compose.yml` (flag, **not** `prometheus.yml`) |
 | Loki | `limits_config.retention_period: 720h` | `loki.yaml` |
 | Loki (executor) | `compactor.retention_enabled: true` + `delete_request_store: filesystem` | `loki.yaml` |
 
-**A terceira linha é a que ninguém lembra.** `retention_period` sozinho é uma declaração
-de política — quem executa é o compactor, e sem `retention_enabled: true` ele ignora a
-política inteira. O Loki sobe, responde `/ready`, ingere e consulta normalmente; só que
-nada nunca é apagado. Em `filesystem` não há lifecycle policy de bucket como rede de
-segurança: se o compactor não apagar, ninguém apaga. Você descobre quando o disco da VM
-enche, o Postgres não consegue mais escrever WAL e a stack cai por causa de log velho.
+**The third line is the one nobody remembers.** `retention_period` on its own is a policy
+declaration — the one that executes it is the compactor, and without `retention_enabled: true` it ignores the
+whole policy. Loki starts up, answers `/ready`, ingests and queries normally; it is just that
+nothing is ever deleted. On `filesystem` there is no bucket lifecycle policy as a safety
+net: if the compactor does not delete, nobody deletes. You find out when the VM's disk
+fills up, Postgres can no longer write the WAL and the stack goes down because of old logs.
 
-Confirme pela série, não pelo arquivo:
+Confirm via the series, not via the file:
 
 ```bash
 docker compose exec prometheus wget -qO- \
@@ -126,7 +126,7 @@ docker compose exec prometheus wget -qO- \
 # o timestamp tem que avançar a cada ~10min (compaction_interval)
 ```
 
-## Verificação rápida
+## Quick verification
 
 ```bash
 # 1. o collector está de pé e recebendo?
@@ -152,19 +152,19 @@ docker compose exec loki wget -qO- \
   'http://localhost:3100/loki/api/v1/label/service/values'
 ```
 
-Se **todos** os painéis do dashboard estiverem vazios, o problema não é app: é coleta.
-Comece pelo passo 1.
+If **all** the dashboard panels are empty, the problem is not the app: it is collection.
+Start at step 1.
 
-## Convenções que amarram os arquivos
+## Conventions that tie the files together
 
-- **`service.name` vira o label `job`.** O exporter `prometheusremotewrite` traduz o
-  resource attribute `service.name` para `job` — por isso as queries do dashboard filtram
-  por `job=~"$job"` e não por `service_name`.
-- **No Loki o label equivalente é `service`**, derivado do nome do container pelo
-  `config.alloy` e escolhido para bater exatamente com `OTEL_SERVICE_NAME` (`nora-api`,
-  `nora-worker`, `nora-web`, `nora-admin`). É o que permite pular de métrica para log sem
-  tradução mental. Todo stream leva também `project="nora"`.
-- **Os `uid` dos datasources são fixos** (`nora-prometheus`, `nora-loki`). O
-  `nora-overview.json` os referencia literalmente; trocar quebra todo painel.
-- **Dashboard é read-only na UI** (`allowUiUpdates: false`). Para mudar: editar o JSON e
-  redeployar. Edição pela interface viveria só no volume `grafana_data`, fora do git.
+- **`service.name` becomes the `job` label.** The `prometheusremotewrite` exporter translates the
+  `service.name` resource attribute into `job` — which is why the dashboard queries filter
+  by `job=~"$job"` and not by `service_name`.
+- **In Loki the equivalent label is `service`**, derived from the container name by
+  `config.alloy` and chosen to match `OTEL_SERVICE_NAME` exactly (`nora-api`,
+  `nora-worker`, `nora-web`, `nora-admin`). It is what allows jumping from metric to log without
+  mental translation. Every stream also carries `project="nora"`.
+- **The datasource `uid`s are fixed** (`nora-prometheus`, `nora-loki`). The
+  `nora-overview.json` references them literally; changing them breaks every panel.
+- **The dashboard is read-only in the UI** (`allowUiUpdates: false`). To change it: edit the JSON and
+  redeploy. Editing through the interface would live only in the `grafana_data` volume, outside git.

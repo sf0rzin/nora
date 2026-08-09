@@ -1,5 +1,5 @@
-// NB: `windows_subsystem = "windows"` mora em main.rs (crate-root do binario). Aqui na lib
-// ele nao tem efeito sobre o subsistema do .exe.
+// NB: `windows_subsystem = "windows"` lives in main.rs (crate-root of the binary). Here in the lib
+// it has no effect on the .exe subsystem.
 
 mod audio_capture;
 mod audio_resample;
@@ -8,9 +8,9 @@ pub mod commands;
 mod http_proxy;
 mod live_analysis;
 mod secrets;
-// `speech_token` so existe pro backend azure. No build local-puro
-// (`--no-default-features --features stt-local`) ele nem entra no binario — e
-// por isso que o app nao tem como falhar tentando falar com `/speech/token`.
+// `speech_token` only exists for the azure backend. In the pure-local build
+// (`--no-default-features --features stt-local`) it does not even enter the binary — that is
+// why the app has no way to fail trying to talk to `/speech/token`.
 #[cfg(feature = "stt-azure")]
 mod speech_token;
 mod stt;
@@ -32,16 +32,16 @@ use stealth_mode::StealthModeState;
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::Manager;
 
-/// Backends de STT vivos (um por track). `Box<dyn SttBackend>` porque o backend
-/// e escolhido em runtime — ver `stt::configured_backend`. O nome ficou
-/// `SidecarState` pra nao espalhar rename por todo lado; nem todo backend aqui e
-/// um sidecar (o local roda in-process).
+/// Live STT backends (one per track). `Box<dyn SttBackend>` because the backend
+/// is chosen at runtime — see `stt::configured_backend`. The name stayed
+/// `SidecarState` to avoid spreading a rename everywhere; not every backend here is
+/// a sidecar (the local one runs in-process).
 pub type SidecarState = Arc<Mutex<Vec<Box<dyn stt::SttBackend>>>>;
 
-/// Le uma chave de `plugins.nora` do `tauri.conf.json` embutido em build-time.
+/// Reads a `plugins.nora` key from the `tauri.conf.json` embedded at build-time.
 ///
-/// Existe porque env var em runtime nao chega num app aberto pelo Finder/Explorer:
-/// config de produto (backend de STT, tamanho do modelo) precisa vir do bundle.
+/// Exists because a runtime env var does not reach an app opened from Finder/Explorer:
+/// product config (STT backend, model size) has to come from the bundle.
 pub fn nora_config_str(key: &str) -> Option<String> {
     const CONFIG_JSON: &str = include_str!("../tauri.conf.json");
     let config: serde_json::Value = serde_json::from_str(CONFIG_JSON).ok()?;
@@ -53,9 +53,9 @@ pub fn nora_config_str(key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Resolve a URL base da API uma vez (memoizada). Prioridade:
-/// 1) env `NORA_API_BASE_URL` injetada em build-time pelo build.rs (CI/produção);
-/// 2) campo `plugins.nora.apiBaseUrl` do tauri.conf.json (default dev = localhost).
+/// Resolves the API base URL once (memoized). Priority:
+/// 1) env `NORA_API_BASE_URL` injected at build-time by build.rs (CI/production);
+/// 2) `plugins.nora.apiBaseUrl` field of tauri.conf.json (dev default = localhost).
 pub fn api_base_url() -> String {
     static URL: OnceLock<String> = OnceLock::new();
     URL.get_or_init(|| {
@@ -98,10 +98,10 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        // Auto-update: o plugin updater checa/baixa/instala releases assinados
-        // (pubkey + endpoint em tauri.conf.json). O plugin process expõe o
-        // relaunch() que o front chama depois de instalar. A UI fica na sidebar
-        // do web remoto (nora.systems) — ver capabilities/updater-remote.json.
+        // Auto-update: the updater plugin checks/downloads/installs signed releases
+        // (pubkey + endpoint in tauri.conf.json). The process plugin exposes the
+        // relaunch() the front end calls after installing. The UI lives in the sidebar
+        // of the remote web (nora.systems) — see capabilities/updater-remote.json.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(capture_state)
@@ -111,8 +111,8 @@ pub fn run() {
         .manage(http_proxy::ApiBaseUrl(base_url))
         .manage(secrets::SecretStore::new())
         .setup(|app| {
-            // Bandeja do sistema: ponto de entrada nativo pra abrir a janela
-            // principal (web) e disparar a gravacao (mostra a dock flutuante).
+            // System tray: native entry point to open the main window
+            // (web) and trigger the recording (shows the floating dock).
             use tauri::{
                 menu::{MenuBuilder, MenuItemBuilder},
                 tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},

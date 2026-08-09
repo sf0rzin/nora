@@ -10,7 +10,7 @@ const BAND_LABEL: Record<ProductivityBand, string> = {
   HIGH: "Alta",
 };
 
-// Banda → cor de sinal (success/warn/danger), espelhando o Health Score.
+// Band → signal color (success/warn/danger), mirroring the Health Score.
 const BAND_COLOR: Record<ProductivityBand, string> = {
   LOW: "var(--danger)",
   MEDIUM: "var(--warn)",

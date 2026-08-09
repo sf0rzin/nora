@@ -4,7 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 
-/** Payload de upsert do contexto do tenant. */
+/** Upsert payload for the tenant context. */
 public record TenantContextRequest(
         @NotBlank @Size(max = 200) String companyName,
         @Size(max = 200) String industry,

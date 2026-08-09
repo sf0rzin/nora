@@ -10,13 +10,13 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * POST JSON genérico usado pelas ações de webhook do Flows ({@code call_webhook} e {@code
- * discord_post_message}). Sem SDK — segue o padrão do {@link SlackClient}/{@link
- * GoogleWorkspaceClient}: WebClient direto, payload visível, timeout curto.
+ * Generic JSON POST used by the Flows webhook actions ({@code call_webhook} and {@code
+ * discord_post_message}). No SDK — follows the {@link SlackClient}/{@link GoogleWorkspaceClient}
+ * pattern: WebClient directly, visible payload, short timeout.
  *
- * <p>Contrato: 2xx retorna o status HTTP; qualquer outro status ou falha de transporte vira {@code
- * ProviderError} (o engine registra no log da execução e marca FAILED). O body da resposta nunca é
- * ecoado no erro — endpoints de terceiros podem devolver dados sensíveis.
+ * <p>Contract: 2xx returns the HTTP status; any other status or a transport failure becomes a
+ * {@code ProviderError} (the engine records it in the run log and marks FAILED). The response body
+ * is never echoed in the error — third-party endpoints may return sensitive data.
  */
 @Component
 public class WebhookHttpClient {
@@ -30,7 +30,8 @@ public class WebhookHttpClient {
     }
 
     /**
-     * POST JSON na URL. {@code provider} identifica a origem no erro (ex.: "webhook", "discord").
+     * JSON POST to the URL. {@code provider} identifies the source in the error (e.g. "webhook",
+     * "discord").
      */
     public int postJson(String provider, String url, Map<String, String> headers, Object body) {
         try {
@@ -50,7 +51,7 @@ public class WebhookHttpClient {
         } catch (IntegrationException ex) {
             throw ex;
         } catch (Exception ex) {
-            // Só o status HTTP no erro — nunca o body (pode ecoar dados sensíveis do endpoint).
+            // HTTP status only in the error — never the body (may echo sensitive endpoint data).
             String reason =
                     ex instanceof WebClientResponseException httpEx
                             ? "respondeu HTTP " + httpEx.getStatusCode().value()

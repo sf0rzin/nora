@@ -16,9 +16,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Adapter JDBC (via {@link EntityManager} + SQL nativo) dos workflows do NORA Flows (V023). Mesmo
- * estilo do {@code ChatSessionRepositoryAdapter}: sempre escopado por tenant_id (RLS, ADR 0028).
- * {@code definition_json} entra com CAST explícito para JSONB.
+ * JDBC adapter (via {@link EntityManager} + native SQL) for NORA Flows workflows (V023). Same style
+ * as {@code ChatSessionRepositoryAdapter}: always scoped by tenant_id (RLS, ADR 0028). {@code
+ * definition_json} goes in with an explicit CAST to JSONB.
  */
 @Repository
 public class WorkflowRepositoryAdapter implements WorkflowRepository {

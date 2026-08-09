@@ -11,12 +11,13 @@ import PrintButton from "./print-button";
 export const dynamic = "force-dynamic";
 
 /**
- * Versão paper do relatório da reunião — rota de impressão (GOAL item 14).
+ * Paper version of the meeting report — print route (GOAL item 14).
  *
- * Mesmos dados do detalhe, layout limpo A4 com CSS de impressão: o usuário
- * clica "Imprimir / salvar como PDF" e salva pelo diálogo nativo. O chrome do
- * shell (.side/.mhead/.drawer) é escondido via <style> escopado à rota — em
- * tela e na impressão — pra render limpo sem reestruturar o layout (app).
+ * Same data as the detail, clean A4 layout with print CSS: the user clicks
+ * "Imprimir / salvar como PDF" and saves via the native dialog. The shell
+ * chrome (.side/.mhead/.drawer) is hidden via a <style> scoped to the route —
+ * on screen and in print — for a clean render without restructuring the (app)
+ * layout.
  */
 
 const SEVERITY_LABEL: Record<Severity, string> = {
@@ -128,7 +129,7 @@ export default async function MeetingReportPage({ params }: { params: Promise<{ 
             boxShadow: "0 10px 32px -18px rgba(15, 23, 42, 0.18)",
           }}
         >
-          {/* Header NORA discreto */}
+          {/* Discreet NORA header */}
           <div
             style={{
               display: "flex",

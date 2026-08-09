@@ -1,35 +1,35 @@
 ---
-title: "RLS Enforce — Runbook de Cutover (ADR 0028)"
-owner: Arquiteto NORA (Tech Lead)
+title: "RLS Enforce — Cutover Runbook (ADR 0028)"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
-# RLS Enforce — Runbook de Cutover (ADR 0028)
+# RLS Enforce — Cutover Runbook (ADR 0028)
 
-Liga o **Row Level Security real** do Postgres como defesa em profundidade do `tenant_id`
-(além do filtro app-level, que já é 100% disciplinado). Companheiro operacional do
+Turns on Postgres **real Row Level Security** as defense in depth for `tenant_id`
+(on top of the app-level filter, which is already 100% disciplined). Operational companion to
 [ADR 0028](../adr/0028-rls-enforcement-auth-aware.md).
 
-> Atenção: o **flip ao vivo** muda como a API conecta no banco em produção. É reversível
-> (um redeploy), mas faça com atenção ao painel. Não pule o smoke.
+> Careful: the **live flip** changes how the API connects to the database in production. It is reversible
+> (one redeploy), but do it while watching the dashboard. Do not skip the smoke test.
 
-## Estado da sequência
+## Sequence status
 
-| Etapa | O quê | Status |
+| Step | What | Status |
 |---|---|---|
-| 1 | Mecanismo (V019/V020 + Flyway-admin + onboarding GUC + Bicep switch + teste-gate) | Concluído (PR #197), enforce **default OFF** |
-| 2 | Provisionar roles `nora_app` / `nora_telemetry` no Postgres | Pendente — `rls-cutover.yml` |
-| 3 | Flip `rlsEnforce=true` no bicepparam → deploy | Pendente — requer "go" do responsável |
-| 4 | Smoke ao vivo + monitorar | Pendente |
+| 1 | Mechanism (V019/V020 + Flyway-admin + onboarding GUC + Bicep switch + test gate) | Done (PR #197), enforce **default OFF** |
+| 2 | Provision the `nora_app` / `nora_telemetry` roles in Postgres | Pending — `rls-cutover.yml` |
+| 3 | Flip `rlsEnforce=true` in the bicepparam → deploy | Pending — requires a "go" from the owner |
+| 4 | Live smoke test + monitoring | Pending |
 
-Rodar a Etapa 2 tem **zero impacto** no app em execução — os roles ficam ociosos até o flip.
+Running Step 2 has **zero impact** on the running app — the roles stay idle until the flip.
 
-## Pré-requisitos (uma vez por ambiente)
+## Prerequisites (once per environment)
 
-Dois GitHub Secrets com senhas fortes (a senha do `nora_app` é a **mesma** usada pelo R001 e
-pelo deploy — fonte única de verdade é o secret):
+Two GitHub Secrets with strong passwords (the `nora_app` password is the **same** one used by R001 and
+by the deployment — the single source of truth is the secret):
 
 ```bash
 # Gerar e setar SEM ecoar o valor (hex = alfanumérico, sem dor de quoting):
@@ -38,28 +38,28 @@ openssl rand -hex 24 | gh secret set RLS_TELEMETRY_PASSWORD
 gh secret list | grep -E "NORA_APP_PASSWORD|RLS_TELEMETRY_PASSWORD"
 ```
 
-O `deploy-infra.yml` já injeta esses dois secrets como env vars (o bicepparam os lê via
-`readEnvironmentVariable` no flip). Já existem: `AZURE_*`, `PG_ADMIN_PASSWORD`.
+`deploy-infra.yml` already injects those two secrets as env vars (the bicepparam reads them via
+`readEnvironmentVariable` at the flip). Already existing: `AZURE_*`, `PG_ADMIN_PASSWORD`.
 
-## Etapa 2 — Provisionar roles (`rls-cutover.yml`)
+## Step 2 — Provision roles (`rls-cutover.yml`)
 
 ```bash
 gh workflow run rls-cutover.yml -f confirm=PROVISION
 gh run watch $(gh run list --workflow=rls-cutover.yml --limit 1 --json databaseId --jq '.[0].databaseId')
 ```
 
-O workflow (como **admin** `nora_admin`, via OIDC):
-1. roda o `db/operational/R001` → cria `nora_app` (NOBYPASSRLS) + `nora_telemetry` (BYPASSRLS)
+The workflow (as **admin** `nora_admin`, via OIDC):
+1. runs `db/operational/R001` → creates `nora_app` (NOBYPASSRLS) + `nora_telemetry` (BYPASSRLS)
    + GRANTs + DEFAULT PRIVILEGES;
-2. smoke: confere as flags dos roles, que o `nora_app` conecta, lê tabela **exempt** (`users`)
-   e que tabela **enforced** (`meetings`) sob tenant aleatório retorna 0 linhas sem erro;
-3. fecha a regra de firewall temporária do runner (sempre).
+2. smoke test: checks the role flags, that `nora_app` connects, reads an **exempt** table (`users`)
+   and that an **enforced** table (`meetings`) under a random tenant returns 0 rows without error;
+3. closes the runner's temporary firewall rule (always).
 
-É **idempotente** — pode re-rodar. Senha admin nunca sai do GitHub.
+It is **idempotent** — it can be re-run. The admin password never leaves GitHub.
 
-## Etapa 3 — Flip (requer "go" do responsável)
+## Step 3 — Flip (requires a "go" from the owner)
 
-Adicionar ao fim de `infra/bicep/main.dev.bicepparam`:
+Add at the end of `infra/bicep/main.dev.bicepparam`:
 
 ```bicep
 // ---- RLS enforce (ADR 0028) — flip do cutover ----
@@ -70,41 +70,41 @@ param rlsTelemetryDatasourceUrl = 'jdbc:postgresql://nora-pg-dev-wgl3a3.postgres
 param rlsTelemetryPassword = readEnvironmentVariable('RLS_TELEMETRY_PASSWORD')
 ```
 
-O que o flip liga no Container App `nora-api-dev` (via `main.bicep`):
-- `DATASOURCE_USERNAME=nora_app` + `DATASOURCE_PASSWORD`←KV `nora-app-password` (NOBYPASSRLS → RLS vale);
-- Flyway separado como **admin**: `SPRING_FLYWAY_USER=nora_admin` + senha←KV `postgres-password`
-  (DDL + dono das tabelas);
-- `NORA_RLS_ENFORCE=true` (liga o `TenantRlsAspect`);
-- caminho BYPASSRLS da telemetria: `NORA_TELEMETRY_DATASOURCE_*` como `nora_telemetry`
-  (painel operador segue agregando cross-tenant).
+What the flip turns on in the `nora-api-dev` Container App (via `main.bicep`):
+- `DATASOURCE_USERNAME=nora_app` + `DATASOURCE_PASSWORD`←KV `nora-app-password` (NOBYPASSRLS → RLS applies);
+- Flyway separated as **admin**: `SPRING_FLYWAY_USER=nora_admin` + password←KV `postgres-password`
+  (DDL + table owner);
+- `NORA_RLS_ENFORCE=true` (turns on the `TenantRlsAspect`);
+- the telemetry BYPASSRLS path: `NORA_TELEMETRY_DATASOURCE_*` as `nora_telemetry`
+  (the operator panel keeps aggregating cross-tenant).
 
-PR com **só** essa mudança → merge → `deploy-infra.yml` aplica. A API reinicia conectando
-como `nora_app`.
+A PR with **only** that change → merge → `deploy-infra.yml` applies it. The API restarts connecting
+as `nora_app`.
 
-> Não inclua o flip no mesmo PR do provisionamento: mergear o flip **antes** da Etapa 2 sobe
-> a API apontando para um `nora_app` que não existe → boot quebra.
+> Do not include the flip in the same PR as the provisioning: merging the flip **before** Step 2 brings
+> the API up pointing at a `nora_app` that does not exist → the boot breaks.
 
-## Etapa 4 — Smoke ao vivo
+## Step 4 — Live smoke test
 
-- **Auth (tabelas exempt):** signup → verificação de email → login → aceite de convite → reset de senha.
-- **Tabelas enforced:** upload de transcript → list/detail aparecem → análise async completa (COMPLETED).
-- **Isolamento:** tenant B **não** vê meeting/transcript do tenant A.
-- **Operador:** painel admin ainda agrega métricas (telemetria BYPASSRLS).
+- **Auth (exempt tables):** signup → email verification → login → invitation acceptance → password reset.
+- **Enforced tables:** transcript upload → list/detail show up → async analysis completes (COMPLETED).
+- **Isolation:** tenant B does **not** see tenant A's meeting/transcript.
+- **Operator:** the admin panel still aggregates metrics (BYPASSRLS telemetry).
 
-## Rollback (trivial, reversível)
+## Rollback (trivial, reversible)
 
-Remover as 4 linhas do flip do bicepparam (ou `param rlsEnforce = false`) → merge → redeploy.
-A API volta a conectar como `nora_admin` (bypassa RLS). O schema (V019/V020) e os roles ficam —
-sem efeito enquanto enforce está OFF.
+Remove the 4 flip lines from the bicepparam (or `param rlsEnforce = false`) → merge → redeploy.
+The API goes back to connecting as `nora_admin` (bypassing RLS). The schema (V019/V020) and the roles stay —
+with no effect while enforce is OFF.
 
-## Notas operacionais
+## Operational notes
 
-- **`ServerIsBusy` no `azure.extensions`:** o `deploy-infra.yml` reescreve o parâmetro
-  `azure.extensions` (já em `PGCRYPTO,CITEXT`) a cada deploy; em servidor B1ms ocupado dá
-  `ServerIsBusy` (no-op transiente). Remédio: confirmar `state=Ready` nos dois Postgres
-  (`az postgres flexible-server show ... --query state`) e re-rodar **uma** vez (não repetir em
-  excesso — cada tentativa reinicia o server e ocupa a próxima).
-- **Por que dois roles:** `nora_app` é NOBYPASSRLS (RLS vale para os dados de tenant); `nora_telemetry`
-  é BYPASSRLS (leitura agregada operador-only, cross-tenant intencional). Ver ADR 0028 §telemetria.
-- **Escopo auth-aware:** identidade (users/tenants/tokens/invitations) e IAM authz (groups/policies/…)
-  têm RLS **desabilitada** (V020) — auth é cross-tenant por design. Negócio/PII fica enforced.
+- **`ServerIsBusy` on `azure.extensions`:** `deploy-infra.yml` rewrites the `azure.extensions`
+  parameter (already at `PGCRYPTO,CITEXT`) on every deployment; on a busy B1ms server this yields
+  `ServerIsBusy` (a transient no-op). Remedy: confirm `state=Ready` on both Postgres servers
+  (`az postgres flexible-server show ... --query state`) and re-run **once** (do not repeat
+  excessively — each attempt restarts the server and keeps the next one busy).
+- **Why two roles:** `nora_app` is NOBYPASSRLS (RLS applies to tenant data); `nora_telemetry`
+  is BYPASSRLS (operator-only aggregate reads, intentionally cross-tenant). See ADR 0028 §telemetry.
+- **Auth-aware scope:** identity (users/tenants/tokens/invitations) and IAM authz (groups/policies/…)
+  have RLS **disabled** (V020) — auth is cross-tenant by design. Business/PII stays enforced.

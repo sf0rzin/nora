@@ -18,7 +18,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Ação mscalendar_create_event: follow-up no Outlook Calendar com defaults da calendar do Google.
+ * mscalendar_create_event action: follow-up in Outlook Calendar with the Google calendar defaults.
  */
 class MicrosoftCalendarCreateEventActionTest {
 
@@ -75,14 +75,14 @@ class MicrosoftCalendarCreateEventActionTest {
         assertThat(event.end()).isEqualTo(event.start().plusMinutes(45));
     }
 
-    /** Armadilha do Graph (igual Google Calendar): dateTime SEM segundos = 400. */
+    /** Graph gotcha (same as Google Calendar): dateTime WITHOUT seconds = 400. */
     @Test
     void graphLocal_sempreComSegundosESemOffset() {
         OffsetDateTime meiaHora = OffsetDateTime.parse("2026-06-13T10:00:00-03:00");
         assertThat(MicrosoftGraphClient.graphLocal(meiaHora)).isEqualTo("2026-06-13T10:00:00");
     }
 
-    /** Captura criações de evento em memória (substitui as chamadas HTTP reais ao Graph). */
+    /** Captures event creations in memory (replaces the real HTTP calls to Graph). */
     static class RecordingGraph extends MicrosoftGraphClient {
         record Event(
                 String token,

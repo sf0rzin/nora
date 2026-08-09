@@ -1,48 +1,48 @@
 ---
-title: "Contrato — Control Plane de Operador + Telemetria de IA"
-owner: Arquiteto NORA (Tech Lead)
+title: "Contract — Operator Control Plane + AI Telemetry"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
-# Contrato — Control Plane de Operador + Telemetria de IA
+# Contract — Operator Control Plane + AI Telemetry
 
-> **Nota de supersessão (2026-06-06):** a identidade de borda do operador descrita neste contrato
-> migrou de **Easy Auth (Entra)** para **Cloudflare Tunnel + Access** (ADR 0025). As menções a Easy
-> Auth / Entra / `X-MS-CLIENT-PRINCIPAL-*` abaixo permanecem para registro histórico do contrato
-> congelado; o mecanismo de autenticação do operador na borda é hoje o Cloudflare Access. O restante
-> do contrato (paths, tokens, headers `X-Internal-Token` / `X-Operator-Email`) permanece válido.
+> **Supersession note (2026-06-06):** the operator edge identity described in this contract
+> migrated from **Easy Auth (Entra)** to **Cloudflare Tunnel + Access** (ADR 0025). The mentions of Easy
+> Auth / Entra / `X-MS-CLIENT-PRINCIPAL-*` below remain as a historical record of the frozen
+> contract; the operator's authentication mechanism at the edge is today Cloudflare Access. The rest
+> of the contract (paths, tokens, `X-Internal-Token` / `X-Operator-Email` headers) remains valid.
 
-> **Status:** CONGELADO (v1) — 2026-05-28. Ponto de encaixe do app `nora-admin` (Next) e dos
-> hot-paths (worker / BFF de chat). Mudança de assinatura aqui exige acordo entre os dois arquitetos
-> + dono. Decisões de origem: design note + ruling de 2026-05-28 (ADRs 0022/0023/0024).
+> **Status:** FROZEN (v1) — 2026-05-28. Attachment point for the `nora-admin` app (Next) and for the
+> hot-paths (worker / chat BFF). Changing a signature here requires agreement between the two architects
+> + the owner. Originating decisions: design note + ruling of 2026-05-28 (ADRs 0022/0023/0024).
 
-## 1. Domínios de segurança
+## 1. Security domains
 
-São **três** superfícies distintas na API Spring (`nora-api`), separadas por path e por chain de
-segurança própria (a chain JWT por-tenant existente fica intacta):
+There are **three** distinct surfaces in the Spring API (`nora-api`), separated by path and by their own
+security chain (the existing per-tenant JWT chain stays intact):
 
-| Path | Quem chama | Auth | Header de identidade |
+| Path | Who calls | Auth | Identity header |
 |---|---|---|---|
-| `/internal/platform/**` | worker NLP, BFF de chat (web) | `X-Internal-Token` = **service token** | — |
-| `/admin/platform/**` | app `nora-admin` (Next), server-side | `X-Internal-Token` = **admin token** | `X-Operator-Email` (auditoria) |
-| (resto) | clientes/tenants | JWT/cookie `nora_access` (inalterado) | — |
+| `/internal/platform/**` | NLP worker, chat BFF (web) | `X-Internal-Token` = **service token** | — |
+| `/admin/platform/**` | `nora-admin` app (Next), server-side | `X-Internal-Token` = **admin token** | `X-Operator-Email` (auditing) |
+| (rest) | clients/tenants | JWT/cookie `nora_access` (unchanged) | — |
 
-**Easy Auth (Entra) + `ipSecurityRestrictions` vivem na borda do `nora-admin`**, não no Spring. O
-`nora-admin` autentica o operador (grupo Entra), lê `X-MS-CLIENT-PRINCIPAL-*` e chama o Spring
-server-side com o **admin token** + `X-Operator-Email`. O Spring **nunca** lê header de Easy Auth.
+**Easy Auth (Entra) + `ipSecurityRestrictions` live at the edge of `nora-admin`**, not in Spring. The
+`nora-admin` authenticates the operator (Entra group), reads `X-MS-CLIENT-PRINCIPAL-*` and calls Spring
+server-side with the **admin token** + `X-Operator-Email`. Spring **never** reads an Easy Auth header.
 
-**Tokens** (secrets KV, injetados como env no `nora-api`, worker e web conforme o caso):
-- `NORA_PLATFORM_INTERNAL_TOKEN` → habilita `/internal/platform/**`.
-- `NORA_PLATFORM_ADMIN_TOKEN` → habilita `/admin/platform/**`. Se não setado, cai no internal token
-  (com WARN no log). **Recomendado manter distintos** (least-privilege: vazamento do token do worker
-  não dá acesso a mutações de admin).
+**Tokens** (KV secrets, injected as env into `nora-api`, the worker and web as applicable):
+- `NORA_PLATFORM_INTERNAL_TOKEN` → enables `/internal/platform/**`.
+- `NORA_PLATFORM_ADMIN_TOKEN` → enables `/admin/platform/**`. If not set, it falls back to the internal token
+  (with a WARN in the log). **Recommended to keep them distinct** (least-privilege: a leak of the worker's token
+  does not grant access to admin mutations).
 
-Respostas de auth: token ausente/inválido → **401**. (Não usamos 403 aqui — não há modelo de
-permissão fina de operador no v1; é tudo-ou-nada por token.)
+Auth responses: missing/invalid token → **401**. (We do not use 403 here — there is no fine-grained operator
+permission model in v1; it is all-or-nothing by token.)
 
-`X-Internal-Token` comparado com `MessageDigest.isEqual` (constant-time). Tokens nunca logados.
+`X-Internal-Token` compared with `MessageDigest.isEqual` (constant-time). Tokens are never logged.
 
 ---
 
@@ -50,27 +50,27 @@ permissão fina de operador no v1; é tudo-ou-nada por token.)
 
 ### GET `/internal/platform/llm-config?service={chat|analysis|multimodal}`
 
-Resolve o modelo ativo por serviço (binding `llm_config` → `llm_models`), com **cache server-side
-~60s** e **fallback SOFT**.
+Resolves the active model per service (binding `llm_config` → `llm_models`), with **server-side cache
+~60s** and **SOFT fallback**.
 
-**200** (sempre 200 no hot-path, mesmo em fallback):
+**200** (always 200 on the hot-path, even on fallback):
 ```json
 { "provider": "deepseek", "model": "deepseek-v4-flash", "baseUrl": "https://api.deepseek.com/v1", "enabled": true }
 ```
 - `enabled` = `binding.enabled` AND `model.enabled` AND `featureFlag("service."+service).enabled`.
-- **Fallback SOFT** (retorna config do **env default** do serviço, `enabled` conforme feature flag),
-  acionado quando: plataforma desabilitada (`nora.platform.enabled=false`), banco de plataforma
-  fora, binding ausente, ou modelo desabilitado. **Nunca 5xx** — o consumidor não pode quebrar.
-- `service` inválido → **400**.
+- **SOFT fallback** (returns the config of the service's **env default**, with `enabled` according to the feature flag),
+  triggered when: the platform is disabled (`nora.platform.enabled=false`), the platform database is
+  down, the binding is missing, or the model is disabled. **Never 5xx** — the consumer must not break.
+- invalid `service` → **400**.
 
-> **Resolução de API key (não vem no contrato):** a chave do provider **não** trafega aqui (decisão
-> #C). O consumidor mapeia `provider → secret` localmente (env/KV). Trocar para um provider sem chave
-> provisionada exige deploy. Seeds com chave provisionada: OpenAI (já), **DeepSeek** e **Gemini**
-> (pendentes — dono provisiona no KV).
+> **API key resolution (not part of the contract):** the provider's key does **not** travel here (decision
+> #C). The consumer maps `provider → secret` locally (env/KV). Switching to a provider without a provisioned
+> key requires a deploy. Seeds with a provisioned key: OpenAI (already), **DeepSeek** and **Gemini**
+> (pending — the owner provisions them in KV).
 
 ### POST `/internal/platform/usage`
 
-Ingestão de evento de custo. **Fire-and-forget**: nunca bloqueia o caller, nunca propaga erro.
+Cost event ingestion. **Fire-and-forget**: it never blocks the caller, never propagates an error.
 
 **Request:**
 ```json
@@ -86,27 +86,27 @@ Ingestão de evento de custo. **Fire-and-forget**: nunca bloqueia o caller, nunc
   "status": "ok"
 }
 ```
-- `service` obrigatório. `tenantId` opcional (dimensão, não FK). `promptTokens`/`completionTokens`
-  ≥ 0. `status` ∈ `ok | error | stub | fallback` (string livre é normalizada; default `ok`).
-- `costUsd` é **best-effort**: o servidor **recalcula** a partir do pricing do catálogo quando
-  conhece `(provider, model)`; usa o `costUsd` do payload só como fallback.
+- `service` required. `tenantId` optional (a dimension, not an FK). `promptTokens`/`completionTokens`
+  ≥ 0. `status` ∈ `ok | error | stub | fallback` (a free-form string is normalized; default `ok`).
+- `costUsd` is **best-effort**: the server **recalculates** it from the catalog pricing when it
+  knows `(provider, model)`; it uses the payload's `costUsd` only as a fallback.
 
-**202 Accepted** (corpo vazio). Se a plataforma estiver off/fora, ainda **202** (evento descartado +
-log) — o caller não percebe. Validação inválida → **400**.
+**202 Accepted** (empty body). If the platform is off/down, still **202** (event discarded +
+log) — the caller does not notice. Invalid validation → **400**.
 
-> **Caminho da ANÁLISE não usa este endpoint:** a API emite o usage da análise **in-process**
-> (`AnalysisService` → `UsageRecorder`), porque já tem `tenantId` + tokens + modelo do `metadata` do
-> worker. Este POST é para o **BFF de chat** (e futuros callers externos como multimodal).
+> **The ANALYSIS path does not use this endpoint:** the API emits the analysis usage **in-process**
+> (`AnalysisService` → `UsageRecorder`), because it already has `tenantId` + tokens + model from the worker's
+> `metadata`. This POST is for the **chat BFF** (and future external callers such as multimodal).
 
 ---
 
-## 3. `/admin/platform/*` — console do operador (via nora-admin)
+## 3. `/admin/platform/*` — operator console (via nora-admin)
 
-Todos exigem **admin token**; gravam auditoria com `X-Operator-Email`.
+All of them require the **admin token**; they record an audit entry with `X-Operator-Email`.
 
-### Catálogo de modelos
+### Model catalog
 
-`GET /admin/platform/models` → **200** lista:
+`GET /admin/platform/models` → **200** list:
 ```json
 [{
   "id": "uuid", "provider": "openai", "model": "gpt-4o-mini", "displayName": "GPT-4o mini",
@@ -116,48 +116,48 @@ Todos exigem **admin token**; gravam auditoria com `X-Operator-Email`.
 }]
 ```
 
-`POST /admin/platform/models` → **201** (modelo criado). Body:
+`POST /admin/platform/models` → **201** (model created). Body:
 ```json
 { "provider":"groq","model":"llama-3.3-70b","displayName":"Llama 3.3 70B","baseUrl":"https://api.groq.com/openai/v1",
   "modality":"text","supportsStrictJsonSchema":false,"priceInputPerMTok":0.59,"priceOutputPerMTok":0.79,
   "priceCachedInputPerMTok":null,"enabled":true }
 ```
-- `modality` ∈ `text | multimodal`. Único `(provider, model)` → conflito **409**.
+- `modality` ∈ `text | multimodal`. Unique `(provider, model)` → conflict **409**.
 
-`DELETE /admin/platform/models/{id}` → **204**. Se o modelo estiver **bindado** em `llm_config` →
-**409** (desbinde antes). Id inexistente → **404**.
+`DELETE /admin/platform/models/{id}` → **204**. If the model is **bound** in `llm_config` →
+**409** (unbind first). Nonexistent id → **404**.
 
-### Seleção por serviço (binding)
+### Per-service selection (binding)
 
-`GET /admin/platform/config` → **200** todos os bindings:
+`GET /admin/platform/config` → **200** all bindings:
 ```json
 [{ "service":"chat","modelId":"uuid","provider":"deepseek","model":"deepseek-v4-flash","enabled":true,
    "updatedAt":"…","updatedBy":"op@nora" }]
 ```
 
-`PUT /admin/platform/config/{service}` → **200** (binding atualizado). Body:
+`PUT /admin/platform/config/{service}` → **200** (binding updated). Body:
 ```json
 { "modelId": "uuid", "enabled": true }
 ```
-- `service` ∈ `chat | analysis | multimodal`. `modelId` deve existir.
-- **Validações de router por modalidade (ADR 0024) + strict (ADR 0003):**
-  - `analysis` → modelo precisa `supportsStrictJsonSchema=true` senão **422**.
-  - `multimodal` → modelo precisa `modality=multimodal` senão **422**.
-  - `chat` → qualquer modalidade.
-- Invalida o cache de resolução (≤60s de propagação garantida de qualquer forma).
+- `service` ∈ `chat | analysis | multimodal`. `modelId` must exist.
+- **Router validations by modality (ADR 0024) + strict (ADR 0003):**
+  - `analysis` → the model needs `supportsStrictJsonSchema=true`, otherwise **422**.
+  - `multimodal` → the model needs `modality=multimodal`, otherwise **422**.
+  - `chat` → any modality.
+- Invalidates the resolution cache (≤60s of propagation guaranteed in any case).
 
 ### Feature flags
 
-`GET /admin/platform/flags` → **200** lista:
+`GET /admin/platform/flags` → **200** list:
 ```json
 [{ "key":"service.chat","enabled":true,"description":"Chat IA do plano Core (BFF /api/chat)",
    "updatedBy":"seed","updatedAt":"…" }]
 ```
-- **Keys têm prefixo `service.`** (`service.chat`, `service.analysis`, `service.multimodal`,
-  `service.search-embeddings`) — o resolver lê `service.{service}`. O consumidor mapeia o prefixo.
-- v1 read-only (sem PUT de toggle ainda). `updatedBy`/`updatedAt` são aditivos (ignoráveis).
+- **Keys have the `service.` prefix** (`service.chat`, `service.analysis`, `service.multimodal`,
+  `service.search-embeddings`) — the resolver reads `service.{service}`. The consumer maps the prefix.
+- v1 is read-only (no toggle PUT yet). `updatedBy`/`updatedAt` are additive (can be ignored).
 
-### Telemetria
+### Telemetry
 
 `GET /admin/platform/telemetry/cost?from={iso}&to={iso}&groupBy={tenant|model|service}` → **200**:
 ```json
@@ -165,46 +165,46 @@ Todos exigem **admin token**; gravam auditoria com `X-Operator-Email`.
   "rows":[{"key":"gpt-4o-mini","promptTokens":123456,"completionTokens":45678,"costUsd":1.234567,"events":42}],
   "totals":{"promptTokens":169134,"completionTokens":…,"costUsd":…,"events":…} }
 ```
-- `from`/`to` ISO-8601. Default: últimas 24h. `groupBy` default `model`. Eventos `status=stub` não
-  contam custo.
+- `from`/`to` ISO-8601. Default: last 24h. `groupBy` default `model`. Events with `status=stub` do not
+  count toward cost.
 
-`GET /admin/platform/telemetry/health` → **200** (lê Application Insights):
+`GET /admin/platform/telemetry/health` → **200** (reads Application Insights):
 ```json
 { "window":"PT1H","source":"application-insights","generatedAt":"…",
   "services":[{"role":"nora-api","requests":1234,"failed":3,"failureRate":0.0024,"p95LatencyMs":210}],
   "degraded":false }
 ```
-- Se o App Insights não estiver configurado/consulta falhar → **200** com `"source":"unavailable"` +
-  `"note"` (soft, para a UI não quebrar).
+- If App Insights is not configured / the query fails → **200** with `"source":"unavailable"` +
+  `"note"` (soft, so the UI does not break).
 
-`GET /admin/platform/telemetry/business?from={iso}&to={iso}` → **200** (cortável; cross-tenant
-operador-only):
+`GET /admin/platform/telemetry/business?from={iso}&to={iso}` → **200** (can be cut; cross-tenant
+operator-only):
 ```json
 { "from":"…","to":"…","enabled":true,
   "analyses":120,"tenantsActive":4,"productivityAvg":72.5,"customerConfidenceAvg":64.0 }
 ```
-- Se cortado/desligado → **200** com `"enabled":false`.
-- **v1:** `productivityAvg`/`customerConfidenceAvg` podem vir `null` (ainda não calculados); o
-  consumidor deve tolerar. `analyses`/`tenantsActive` são reais. Caveat RLS: ver runbook /
-  production-readiness-gaps (sob RLS enforce, esta leitura cross-tenant exige role BYPASSRLS).
+- If cut/turned off → **200** with `"enabled":false`.
+- **v1:** `productivityAvg`/`customerConfidenceAvg` may come back `null` (not computed yet); the
+  consumer must tolerate it. `analyses`/`tenantsActive` are real. RLS caveat: see the runbook /
+  production-readiness-gaps (under RLS enforce, this cross-tenant read requires a BYPASSRLS role).
 
 ---
 
-## 4. Notas de integração (para o outro Opus)
+## 4. Integration notes (for the other Opus)
 
-- **Worker** (`/analyze`): pode adicionar o bloco aditivo `usage:{model,promptTokens,completionTokens}`
-  na resposta — a API o ignora com segurança (Jackson tolerante) e mede a análise pelo `metadata`
-  que **já existe**. O bloco é bem-vindo mas **não é pré-requisito** para a telemetria da análise
-  funcionar.
-- **BFF de chat** (`route.ts`): para medir custo precisa de `stream_options.include_usage=true` +
-  capturar o frame `usage` antes do `[DONE]`, e então `POST /internal/platform/usage` com
-  `service:"chat"`, `tenantId` da sessão, tokens, `latencyMs`, `status`. Lê o modelo ativo via
+- **Worker** (`/analyze`): it may add the additive block `usage:{model,promptTokens,completionTokens}`
+  to the response — the API ignores it safely (Jackson is tolerant) and measures the analysis by the `metadata`
+  that **already exists**. The block is welcome but is **not a prerequisite** for the analysis telemetry
+  to work.
+- **Chat BFF** (`route.ts`): to measure cost it needs `stream_options.include_usage=true` +
+  capturing the `usage` frame before `[DONE]`, and then `POST /internal/platform/usage` with
+  `service:"chat"`, the session's `tenantId`, tokens, `latencyMs`, `status`. It reads the active model via
   `GET /internal/platform/llm-config?service=chat`.
-- **nora-admin** (Next): server-side adiciona `X-Internal-Token: <admin token>` e
-  `X-Operator-Email: <email do Easy Auth>` em toda chamada a `/admin/platform/**`. Nunca expõe o
-  token ao browser.
+- **nora-admin** (Next): server-side it adds `X-Internal-Token: <admin token>` and
+  `X-Operator-Email: <email do Easy Auth>` to every call to `/admin/platform/**`. It never exposes the
+  token to the browser.
 
-## 5. Versionamento
+## 5. Versioning
 
-v1. Campos podem ser **adicionados** (aditivo, não-breaking). Remoção/renome de campo ou mudança de
-status/semântica = v2 com acordo prévio.
+v1. Fields may be **added** (additive, non-breaking). Removing/renaming a field or changing
+status/semantics = v2 with prior agreement.

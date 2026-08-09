@@ -1,6 +1,6 @@
 package br.com.nora.api.application.task;
 
-/** Excecoes de regra de negocio para o agregado "Task" (action items extraidos). */
+/** Business-rule exceptions for the "Task" aggregate (extracted action items). */
 public abstract class TaskException extends RuntimeException {
 
     private final String code;

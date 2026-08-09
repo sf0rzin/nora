@@ -24,8 +24,8 @@ const SPEAKER_OVERRIDES_KEY = "nora.overlay.speaker-overrides";
 const HIGHLIGHTS_STORAGE_KEY = "nora.overlay.highlights-visible";
 
 function loadHighlightsPref(): boolean {
-  // Default: minimizado. Highlights aparecem como toasts e o usuário expande
-  // o painel se quiser ver o histórico.
+  // Default: minimized. Highlights show up as toasts and the user expands
+  // the panel if they want to see the history.
   try {
     const v = localStorage.getItem(HIGHLIGHTS_STORAGE_KEY);
     return v == null ? false : v === "1";
@@ -262,10 +262,10 @@ function PartialBubble({ text, isMe }: { text: string; isMe: boolean }) {
 }
 
 // ── Highlights feed (right panel) ──────────────────────────────────────
-// Um único feed cronológico, baixo em cor. Sem seções rígidas, sem blocos
-// coloridos por categoria: cada detecção é uma linha com um glifo monocromático
-// e um eyebrow do tipo. O azul de acento fica reservado só pro item mais
-// recente (cue de "acabou de detectar"), que esmaece ao chegar o próximo.
+// A single chronological feed, low on color. No rigid sections, no blocks
+// colored per category: each detection is a line with a monochrome glyph
+// and a type eyebrow. The accent blue is reserved for the most recent item
+// only (a "just detected" cue), which fades once the next one arrives.
 type FeedKind = "decision" | "nextStep" | "observation" | "task";
 
 const KIND_META: Record<FeedKind, { label: string; icon: React.ReactElement }> = {
@@ -302,8 +302,8 @@ function buildFeed(h: LiveHighlights): FeedRow[] {
       priority: t.priority,
       assignee: t.assignee,
     });
-  // Mais recente no topo. Sort estável mantém ordem de inserção em empates
-  // (itens da mesma rodada de análise compartilham ~o mesmo receivedAt).
+  // Most recent on top. Stable sort keeps insertion order on ties
+  // (items from the same analysis round share ~the same receivedAt).
   return rows.sort((a, b) => b.receivedAt - a.receivedAt);
 }
 
@@ -769,13 +769,13 @@ function ConfigDrawer({
         gap: 14,
       }}
     >
-      {/* Áudio */}
+      {/* Audio */}
       <AudioConfigSection
         currentMic={currentMic}
         currentSysAudio={currentSysAudio}
       />
 
-      {/* Janelas */}
+      {/* Windows */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3
@@ -858,7 +858,7 @@ function ConfigDrawer({
         </label>
       </div>
 
-      {/* Falantes */}
+      {/* Speakers */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3
@@ -950,9 +950,9 @@ export function OverlayPage() {
   const { items: notifications, push: pushNotification, dismiss: dismissNotification } =
     useNotifications();
 
-  // Arraste da overlay via startDragging() — funciona no WebKitGTK (Linux), onde
-  // data-tauri-drag-region / -webkit-app-region NÃO funcionam. Mesmo padrão do
-  // titlebar e do dock. Só botão esquerdo; os controles ficam fora da região.
+  // Overlay drag via startDragging() — works on WebKitGTK (Linux), where
+  // data-tauri-drag-region / -webkit-app-region do NOT work. Same pattern as the
+  // titlebar and the dock. Left button only; the controls sit outside the region.
   const overlayWin = useMemo(() => getCurrentWebviewWindow(), []);
   const onHeaderDragMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -1024,9 +1024,9 @@ export function OverlayPage() {
     saveHighlightsPref(next);
   };
 
-  // Reset de estado quando uma nova sessão de gravação começa. Unifica dois
-  // useEffect que tinham a MESMA guarda (auditoria #44) e zera `stopping` pra
-  // não ficar travado entre sessões depois de um Descartar (#32).
+  // State reset when a new recording session starts. Unifies two
+  // useEffect that had the SAME guard (audit #44) and zeroes `stopping` so it
+  // doesn't stay stuck between sessions after a Discard (#32).
   useEffect(() => {
     if (isRecording && lines.length === 0) {
       setOverrides({});
@@ -1069,8 +1069,8 @@ export function OverlayPage() {
     [pushNotification],
   );
 
-  // Erros do sidecar de STT (Rust emite "stt-error" com o payload cru do
-  // sidecar). Sem este listener o erro de transcrição sumia sem feedback.
+  // STT sidecar errors (Rust emits "stt-error" with the sidecar's raw
+  // payload). Without this listener the transcription error vanished silently.
   useTauriListener<{ message?: string; error?: string }>(
     "stt-error",
     (e) => {
@@ -1103,8 +1103,8 @@ export function OverlayPage() {
     setDockVisible(next);
     persistDockPref(next);
     invoke("toggle_dock", { show: next }).catch(() => {});
-    // Espelha pelo event bus pra qualquer outra janela aberta (e pra ativar
-    // o toast de "Dock escondido" via o mesmo listener que cobre o X do dock).
+    // Mirror over the event bus to any other open window (and to trigger
+    // the "Dock escondido" toast via the same listener that covers the dock's X).
     emit(EVENTS.DOCK_VISIBILITY_CHANGED, { visible: next }).catch(() => {});
   };
 
@@ -1126,9 +1126,9 @@ export function OverlayPage() {
 
   const groups = useMemo(() => groupLines(lines, overrides), [lines, overrides]);
 
-  // Um "digitando" por track (mic = eu/direita, system = convidado/esquerda).
-  // Ordena convidado antes de mim, então minha bolha fica por último (embaixo),
-  // como num chat. Cada parcial usa o SEU track — não o do último final.
+  // One "typing" per track (mic = me/right, system = guest/left).
+  // Sorts guest before me, so my bubble ends up last (at the bottom),
+  // like in a chat. Each partial uses ITS OWN track — not the last final's.
   const partialBubbles = useMemo(() => {
     return Object.entries(partials)
       .filter(([, text]) => text && text.trim().length > 0)
@@ -1138,9 +1138,9 @@ export function OverlayPage() {
   const partialKey = partialBubbles.map((p) => `${p.track}:${p.text.length}`).join("|");
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  // "Grudado no fim": só auto-scrolla quando o usuário já está no rodapé. Se ele
-  // rolou pra cima (pra reler o histórico enquanto fala), respeitamos a posição
-  // e não puxamos de volta a cada parcial. Quando ele volta pro fim, regruda.
+  // "Stuck to the bottom": only auto-scrolls when the user is already at the foot.
+  // If they scrolled up (to reread the history while talking), we respect the
+  // position and don't yank it back on every partial. Back at the end, it re-sticks.
   const pinnedToBottomRef = useRef(true);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 
@@ -1167,7 +1167,7 @@ export function OverlayPage() {
     if (pinnedToBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [groups.length, partialKey]);
 
-  // Nova sessão (linhas zeradas) — regruda no fim e some o botão.
+  // New session (lines zeroed) — re-stick to the bottom and hide the button.
   useEffect(() => {
     if (lines.length === 0) {
       pinnedToBottomRef.current = true;
@@ -1196,17 +1196,17 @@ export function OverlayPage() {
     }
   };
   const handleMinimize = () => {
-    // Esconde a overlay sem parar a gravação (toggle_overlay só dá window.hide).
-    // Garante o dock visível pra ter caminho de volta — e ele mostra o timer,
-    // deixando claro que a captura continua ativa. Restaura pelo botão
-    // "Mostrar overlay" do dock.
+    // Hides the overlay without stopping the recording (toggle_overlay only does window.hide).
+    // Keeps the dock visible so there's a way back — and it shows the timer,
+    // making it clear that capture is still active. Restore via the dock's
+    // "Mostrar overlay" button.
     if (!dockVisible) toggleDock(true);
     invoke("toggle_overlay", { show: false }).catch(() => {});
   };
   const handleCloseRequest = () => {
     if (isRecording) {
-      // Tem gravação rodando — não dá pra só esconder, vai vazar áudio
-      // capturando pra sempre. Pede confirmação.
+      // A recording is running — can't just hide it, it will leak audio
+      // capturing forever. Ask for confirmation.
       setCloseConfirm(true);
     } else {
       invoke("toggle_overlay", { show: false }).catch(() => {});
@@ -1219,9 +1219,9 @@ export function OverlayPage() {
     <div
       className="h-screen w-screen flex flex-col select-none overflow-hidden"
       style={{
-        // Sólido — sem rgba/backdrop-filter. WebKitGTK no Linux deixava
-        // pixels stale fora do raio dos cantos arredondados e blureava de
-        // forma inconsistente. Solid + box-shadow ainda dá o "flutuante".
+        // Solid — no rgba/backdrop-filter. WebKitGTK on Linux left stale
+        // pixels outside the radius of the rounded corners and blurred
+        // inconsistently. Solid + box-shadow still gives the "floating" look.
         background: "var(--canvas)",
         color: "var(--ink)",
         borderRadius: 10,

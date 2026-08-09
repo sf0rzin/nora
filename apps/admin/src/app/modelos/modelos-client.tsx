@@ -27,7 +27,7 @@ export function ModelosClient({
 
   async function setBinding(service: ServiceKey, modelId: string) {
     const m = byId.get(modelId);
-    // Guard: análise exige JSON Schema strict (ADR 0003). Bloqueia binding inválido antes do round-trip.
+    // Guard: analysis requires strict JSON Schema (ADR 0003). Blocks an invalid binding before the round-trip.
     if (service === "analysis" && m && !m.supportsStrictJsonSchema) {
       setNotice({ kind: "err", text: `"${m.label}" não suporta JSON Schema strict — não pode mover a Análise (ADR 0003).` });
       return;

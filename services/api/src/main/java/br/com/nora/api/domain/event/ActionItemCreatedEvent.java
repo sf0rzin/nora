@@ -5,11 +5,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Evento de domínio: um action item foi extraído por uma análise concluída. Emitido por {@code
- * AnalysisService.run()} APÓS o commit do COMPLETED, um evento POR item — workflows com o gatilho
- * correspondente executam uma vez por action item.
+ * Domain event: an action item was extracted by a completed analysis. Emitted by {@code
+ * AnalysisService.run()} AFTER the COMPLETED commit, one event PER item — workflows with the
+ * matching trigger run once per action item.
  *
- * <p>Wire format do gatilho correspondente no Flows: {@code action_item.created}.
+ * <p>Wire format of the matching trigger in Flows: {@code action_item.created}.
  */
 public record ActionItemCreatedEvent(
         UUID tenantId,

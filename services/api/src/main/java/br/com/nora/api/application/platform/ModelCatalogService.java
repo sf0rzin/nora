@@ -14,10 +14,10 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
 /**
- * CRUD do catálogo de modelos e bindings serviço→modelo (ADR 0024). Exige o banco de plataforma
- * usável (admin → 503 quando degradado/off no boot E quando o banco cai em runtime — ver {@link
- * #guarded}). Toda mutação é auditada com o e-mail do operador (X-Operator-Email). Aplica as
- * validações de router/strict do ADR 0024/0003 no binding.
+ * CRUD of the model catalog and the service→model bindings (ADR 0024). Requires the platform
+ * database to be usable (admin → 503 when degraded/off at boot AND when the database goes down at
+ * runtime — see {@link #guarded}). Every mutation is audited with the operator's e-mail
+ * (X-Operator-Email). Applies the router/strict validations of ADR 0024/0003 to the binding.
  */
 @Service
 public class ModelCatalogService {
@@ -167,10 +167,11 @@ public class ModelCatalogService {
     }
 
     /**
-     * Executa uma operação que toca o banco de plataforma traduzindo falha de runtime (banco caiu
-     * pós-boot) em {@link PlatformUnavailableException} → 503. Per-call (não degrada o estado
-     * permanentemente): quando o banco volta, a próxima chamada funciona. Exceções de domínio (Not
-     * Found/Conflict/Validation/Unavailable) propagam intactas para os status corretos.
+     * Runs an operation that touches the platform database, translating a runtime failure (database
+     * went down post-boot) into {@link PlatformUnavailableException} → 503. Per-call (does not
+     * degrade the state permanently): when the database comes back, the next call works. Domain
+     * exceptions (Not Found/Conflict/Validation/Unavailable) propagate intact to the correct
+     * statuses.
      */
     private <T> T guarded(Supplier<T> action) {
         try {
@@ -197,11 +198,11 @@ public class ModelCatalogService {
         try {
             auditProvider.getObject().record(operator, action, type, target, detail);
         } catch (RuntimeException ex) {
-            // Auditoria nunca derruba a operação.
+            // Auditing never brings the operation down.
         }
     }
 
-    /** Comando de criação de modelo (vindo do controller, já validado por bean validation). */
+    /** Model creation command (coming from the controller, already bean-validated). */
     public record NewModelCommand(
             String provider,
             String modelId,

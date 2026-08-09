@@ -10,25 +10,25 @@ import { setDockVisible } from "@/lib/dock-prefs";
 import { EVENTS } from "@/lib/desktop-events";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DOCK — controle de gravação flutuante (estilo Cluely, no tema CLARO da Nora).
+// DOCK — floating recording control (Cluely style, in Nora's LIGHT theme).
 //
-// A janela "dock" é transparent + decorations:false + alwaysOnTop + skipTaskbar.
-// Renderizamos UM elemento "barra" flutuante (não preenchemos a janela toda),
-// no tema PAPER (claro) da Nora — espelha os tokens de styles.css pra bater
-// exatamente com o web. A barra é o CONTROLE da gravação nativa; a transcrição
-// ao vivo aparece na janela OVERLAY. Toda a orquestração (start → acumula
-// transcript via eventos → parar → saveMeeting → upload) vem do hook
-// useRecording — esta UI só desenha os estados e dispara as ações dele.
+// The "dock" window is transparent + decorations:false + alwaysOnTop + skipTaskbar.
+// We render ONE floating "bar" element (we do not fill the whole window),
+// in Nora's PAPER (light) theme — it mirrors the styles.css tokens to match
+// the web exactly. The bar is the CONTROL of the native recording; the live
+// transcription shows up in the OVERLAY window. All the orchestration (start → accumulates
+// transcript via events → stop → saveMeeting → upload) comes from the
+// useRecording hook — this UI only draws the states and fires its actions.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Dimensões da janela (logical px) — compacto vs. expandido. A área Rust já
-// concede core:window:allow-set-size.
+// Window dimensions (logical px) — compact vs. expanded. The Rust side already
+// grants core:window:allow-set-size.
 const SIZE_COMPACT = { width: 460, height: 56 };
 const SIZE_EXPANDED = { width: 460, height: 308 };
 
-// Tema da barra — tokens claros da Nora (var(--…) de styles.css). Mantemos um
-// objeto local só pra os poucos valores translúcidos/glass que não existem como
-// token nomeado; todo o resto referencia as variáveis CSS direto.
+// Bar theme — Nora's light tokens (var(--…) from styles.css). We keep a local
+// object only for the few translucent/glass values that do not exist as a
+// named token; everything else references the CSS variables directly.
 const THEME = {
   bg: "rgba(253,253,252,0.86)",
   border: "1px solid var(--border)",
@@ -43,13 +43,13 @@ const THEME = {
   danger: "var(--danger-ink)",
 };
 
-/** Título padrão quando não há campo preenchido: "Reunião <data local>". */
+/** Default title when the field is not filled in: "Reunião <local date>". */
 function defaultTitle(): string {
   return "Reunião " + new Date().toLocaleString("pt-BR");
 }
 
-// Botão-ícone — ~28px, cor dim → hover ink + leve bg. `active` pinta no acento
-// Nora (estado ligado: stealth/config).
+// Icon button — ~28px, dim color → hover ink + light bg. `active` paints in the
+// Nora accent (on state: stealth/config).
 function DockIconButton({
   onClick,
   title,
@@ -97,7 +97,7 @@ function DockIconButton({
   );
 }
 
-// <select> claro pro painel expandido (seletor de microfone).
+// Light <select> for the expanded panel (microphone selector).
 const selectStyle: React.CSSProperties = {
   width: "100%",
   padding: "8px 28px 8px 10px",
@@ -125,13 +125,13 @@ export function DockBar() {
   const [stealth, setStealth] = useState(false);
   const [starting, setStarting] = useState(false);
   const [title, setTitle] = useState("");
-  // Exibe "Salvo" por alguns segundos após um upload bem-sucedido.
+  // Shows "Salvo" for a few seconds after a successful upload.
   const [showSaved, setShowSaved] = useState(false);
 
   const win = useRef(getCurrentWebviewWindow()).current;
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Carrega os dispositivos de áudio + estado inicial de stealth ao montar.
+  // Loads the audio devices + initial stealth state on mount.
   useEffect(() => {
     r.loadDevices().catch(() => {});
     invoke<boolean>("get_stealth_mode")
@@ -140,7 +140,7 @@ export function DockBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Redimensiona a janela do dock ao expandir/colapsar o painel de config.
+  // Resizes the dock window when expanding/collapsing the config panel.
   useEffect(() => {
     const { width, height } = expanded ? SIZE_EXPANDED : SIZE_COMPACT;
     win.setSize(new LogicalSize(width, height)).catch((e) =>
@@ -148,7 +148,7 @@ export function DockBar() {
     );
   }, [expanded, win]);
 
-  // Mostra "Salvo" quando saveMeeting resolve com sucesso (novo meetingId).
+  // Shows "Salvo" when saveMeeting resolves successfully (new meetingId).
   useEffect(() => {
     if (!r.savedMeetingId) return;
     setShowSaved(true);
@@ -159,11 +159,11 @@ export function DockBar() {
     };
   }, [r.savedMeetingId]);
 
-  // Arrastar a janela pelo fundo da barra. CRÍTICO: startDragging() captura o
-  // mouse nativamente, então se disparasse em QUALQUER mousedown ele engoliria
-  // o clique dos botões (o clique virava um drag e nenhum botão funcionava —
-  // bug reportado na v0.2.x). Por isso ignoramos mousedown que nasce em um
-  // elemento interativo; só o espaço vazio da barra arrasta.
+  // Drag the window by the bar's background. CRITICAL: startDragging() captures the
+  // mouse natively, so if it fired on ANY mousedown it would swallow the
+  // click on the buttons (the click became a drag and no button worked —
+  // bug reported in v0.2.x). That's why we ignore mousedown originating in an
+  // interactive element; only the bar's empty space drags.
   const onDragMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
@@ -180,7 +180,7 @@ export function DockBar() {
     setStealth(next);
     invoke("set_stealth_mode", { enabled: next }).catch((e) => {
       console.warn("[dock] set_stealth_mode failed:", e);
-      // Reverte o estado visual se o backend recusou (ex.: não-Windows).
+      // Reverts the visual state if the backend refused (e.g.: non-Windows).
       setStealth(!next);
     });
   };
@@ -193,15 +193,15 @@ export function DockBar() {
   const handleHide = () => {
     setDockVisible(false);
     invoke("toggle_dock", { show: false }).catch(() => {});
-    // localStorage não dispara `storage` entre webviews Tauri — avisa
-    // overlay/main pra sincronizar o toggle "Mostrar dock".
+    // localStorage does not fire `storage` across Tauri webviews — notifies
+    // overlay/main to sync the "Mostrar dock" toggle.
     emit(EVENTS.DOCK_VISIBILITY_CHANGED, { visible: false }).catch(() => {});
   };
 
   const handleStart = async () => {
     setStarting(true);
     try {
-      // O hook já chama toggle_overlay(show:true) ao iniciar.
+      // The hook already calls toggle_overlay(show:true) on start.
       await r.startRecording({
         deviceName: r.selectedDevice,
         captureSystemAudio,
@@ -226,8 +226,8 @@ export function DockBar() {
   })();
 
   return (
-    // Wrapper transparente que ocupa a janela; centraliza a barra e dá folga
-    // pra sombra não ser cortada.
+    // Transparent wrapper that fills the window; centers the bar and leaves slack
+    // so the shadow is not clipped.
     <div
       className="flex flex-col h-full w-full"
       style={{ padding: 7, fontFamily: "var(--sans)" }}
@@ -247,18 +247,18 @@ export function DockBar() {
           overflow: "hidden",
         }}
       >
-        {/* ── LINHA COMPACTA (sempre visível) ─────────────────────────── */}
+        {/* ── COMPACT ROW (always visible) ────────────────────────────── */}
         <div
           className="flex items-center gap-1.5 shrink-0"
           style={{ height: 42, padding: "0 8px 0 13px" }}
         >
-          {/* Logo Nora — barras ink (variant "brand") sobre o paper claro. */}
+          {/* Nora logo — ink bars (variant "brand") on the light paper. */}
           <span className="shrink-0" style={{ display: "inline-flex" }}>
             <NoraLogo size={16} showText={false} variant="brand" />
           </span>
 
-          {/* Botão REC: idle = círculo com ponto; gravando = quadrado vermelho
-              pulsante (parar). */}
+          {/* REC button: idle = circle with a dot; recording = pulsing red
+              square (stop). */}
           <RecButton
             recording={r.isRecording}
             starting={starting}
@@ -267,7 +267,7 @@ export function DockBar() {
             saving={r.isSaving}
           />
 
-          {/* Timer quando gravando. */}
+          {/* Timer while recording. */}
           {r.isRecording && (
             <span
               style={{
@@ -283,7 +283,7 @@ export function DockBar() {
             </span>
           )}
 
-          {/* Status / erro — linha pequena à esquerda das ações. */}
+          {/* Status / error — small line to the left of the actions. */}
           {statusLine && (
             <span
               className="truncate"
@@ -300,10 +300,10 @@ export function DockBar() {
             </span>
           )}
 
-          {/* Empurra as ações pra direita quando não há status preenchendo. */}
+          {/* Pushes the actions to the right when no status is filling in. */}
           {!statusLine && <span style={{ flex: 1 }} />}
 
-          {/* Ações compactas: stealth · config · fechar. */}
+          {/* Compact actions: stealth · config · close. */}
           <DockIconButton
             onClick={handleToggleStealth}
             title={stealth ? "Stealth ligado (invisível na captura)" : "Stealth desligado"}
@@ -336,9 +336,9 @@ export function DockBar() {
           </DockIconButton>
         </div>
 
-        {/* ── PAINEL EXPANDIDO (engrenagem ligada) ────────────────────── */}
+        {/* ── EXPANDED PANEL (gear on) ────────────────────────────────── */}
         {expanded && (
-          // onMouseDown stopPropagation: interações no painel não arrastam a janela.
+          // onMouseDown stopPropagation: interactions in the panel do not drag the window.
           <div
             onMouseDown={(e) => e.stopPropagation()}
             className="flex-1 min-h-0 overflow-y-auto"
@@ -351,7 +351,7 @@ export function DockBar() {
               gap: 12,
             }}
           >
-            {/* Microfone */}
+            {/* Microphone */}
             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 500, color: THEME.textDim, letterSpacing: "0.01em" }}>
                 Microfone
@@ -370,7 +370,7 @@ export function DockBar() {
               </select>
             </label>
 
-            {/* Título opcional da reunião */}
+            {/* Optional meeting title */}
             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 500, color: THEME.textDim, letterSpacing: "0.01em" }}>
                 Título (opcional)
@@ -407,7 +407,7 @@ export function DockBar() {
               onChange={handleToggleStealth}
             />
 
-            {/* Abrir overlay */}
+            {/* Open overlay */}
             <button
               type="button"
               onClick={handleOpenOverlay}
@@ -438,8 +438,8 @@ export function DockBar() {
   );
 }
 
-// Botão REC circular. Idle: anel com ponto. Gravando: quadrado vermelho
-// pulsante (parar). Mostra spinner discreto durante "Iniciando…"/"Salvando…".
+// Circular REC button. Idle: ring with a dot. Recording: pulsing red
+// square (stop). Shows a discreet spinner during "Iniciando…"/"Salvando…".
 function RecButton({
   recording,
   starting,
@@ -485,7 +485,7 @@ function RecButton({
       }}
     >
       {recording ? (
-        // Quadrado vermelho pulsante = parar.
+        // Pulsing red square = stop.
         <span
           style={{
             width: 11,
@@ -496,7 +496,7 @@ function RecButton({
           }}
         />
       ) : starting ? (
-        // Spinner enquanto inicia.
+        // Spinner while starting.
         <span
           style={{
             width: 12,
@@ -508,7 +508,7 @@ function RecButton({
           }}
         />
       ) : (
-        // Ponto = gravar.
+        // Dot = record.
         <span
           style={{
             width: 10,
@@ -522,7 +522,7 @@ function RecButton({
   );
 }
 
-// Toggle estilo switch no tema claro.
+// Switch-style toggle in the light theme.
 function ToggleRow({
   label,
   checked,
@@ -571,7 +571,7 @@ function ToggleRow({
   );
 }
 
-// ── Ícones (stroke currentColor) ────────────────────────────────────────────
+// ── Icons (stroke currentColor) ─────────────────────────────────────────────
 function GearIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">

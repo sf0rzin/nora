@@ -3,10 +3,10 @@ package br.com.nora.api.domain.meeting;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/** Texto bruto associado a uma reuniao (1-1). Carrega tenant_id para enforcement direto. */
+/** Raw text associated with a meeting (1-1). Carries tenant_id for direct enforcement. */
 public final class Transcript {
 
-    public static final int MAX_CHAR_COUNT = 1_000_000; // ~1 MB texto, suficiente para reuniao
+    public static final int MAX_CHAR_COUNT = 1_000_000; // ~1 MB of text, enough for a meeting
 
     private final UUID id;
     private final UUID meetingId;

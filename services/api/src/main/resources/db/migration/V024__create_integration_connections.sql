@@ -1,12 +1,12 @@
--- V024 — Conexões OAuth com provedores externos (NORA Flows Fase 2: Gmail/Calendar/Slack).
+-- V024 — OAuth connections to external providers (NORA Flows Phase 2: Gmail/Calendar/Slack).
 --
--- Uma linha por (tenant, provider): o Core é individual (1 usuário root por tenant), então a
--- conexão é tenant-level; user_id registra QUEM conectou (auditoria). Tokens ficam cifrados em
--- repouso pelo adapter (AES-GCM com chave de env — ver TokenCipher) — o banco nunca vê o token
--- em claro quando a chave está configurada.
+-- One row per (tenant, provider): Core is individual (1 root user per tenant), so the
+-- connection is tenant-level; user_id records WHO connected (audit). Tokens are encrypted at
+-- rest by the adapter (AES-GCM with a key from env — see TokenCipher) — the database never sees the
+-- token in the clear when the key is configured.
 --
--- RLS enforced (ADR 0028), mesmo padrão de V022/V023: tokens de um tenant são invisíveis para
--- qualquer sessão com outro GUC de tenant.
+-- RLS enforced (ADR 0028), same pattern as V022/V023: one tenant's tokens are invisible to
+-- any session with another tenant GUC.
 
 CREATE TABLE integration_connections (
     id               UUID PRIMARY KEY,

@@ -18,12 +18,13 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * Adapter HTTP da REST API do Trello (key do app via {@code TRELLO_API_KEY} + token colado pelo
- * usuário): valida o token na conexão ({@code GET /1/members/me}) e cria cards pela ação do Flows.
+ * HTTP adapter for Trello's REST API (app key via {@code TRELLO_API_KEY} + token pasted by the
+ * user): validates the token on connect ({@code GET /1/members/me}) and creates cards from the
+ * Flows action.
  *
- * <p>ATENÇÃO de segurança: key e token vão na query string — toda falha passa por {@link #reason},
- * que NUNCA ecoa a URL (só status + corpo curto do Trello, que não devolve credenciais), diferente
- * do padrão {@code ProviderErrors} dos demais clients.
+ * <p>Security WARNING: key and token go in the query string — every failure goes through {@link
+ * #reason}, which NEVER echoes the URL (only status + Trello's short body, which does not return
+ * credentials), unlike the {@code ProviderErrors} pattern of the other clients.
  */
 @Component
 public class TrelloHttpClient implements TrelloApi {
@@ -70,9 +71,9 @@ public class TrelloHttpClient implements TrelloApi {
     }
 
     /**
-     * Cria um card na lista. Retorna a URL curta do card.
+     * Creates a card in the list. Returns the card's short URL.
      *
-     * @param due prazo opcional (vai como meia-noite UTC do dia); nulo = card sem prazo
+     * @param due optional due date (goes as midnight UTC of that day); null = card with no due date
      */
     public String createCard(String token, String listId, String name, String desc, LocalDate due) {
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -105,9 +106,9 @@ public class TrelloHttpClient implements TrelloApi {
     }
 
     /**
-     * Falha SEM ecoar a URL (carrega key+token): status + corpo curto do Trello (mensagens tipo
-     * {@code invalid token} / {@code invalid value for idList} são acionáveis e não devolvem
-     * credenciais).
+     * Failure WITHOUT echoing the URL (it carries key+token): status + Trello's short body
+     * (messages like {@code invalid token} / {@code invalid value for idList} are actionable and do
+     * not return credentials).
      */
     private static String reason(Exception ex) {
         if (ex instanceof WebClientResponseException httpEx) {

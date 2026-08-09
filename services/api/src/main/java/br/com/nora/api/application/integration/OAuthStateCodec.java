@@ -15,14 +15,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Codifica/valida o parâmetro {@code state} do OAuth como token auto-contido assinado
- * (HMAC-SHA256): {@code base64url(tenantId:userId:provider:expEpoch:nonce):base64url(hmac)}. O
- * callback do provedor chega por redirect do navegador — o state assinado identifica tenant/usuário
- * sem depender de cookie e bloqueia CSRF/forge (assinatura) e replay tardio (exp 10 min).
+ * Encodes/validates the OAuth {@code state} parameter as a self-contained signed token
+ * (HMAC-SHA256): {@code base64url(tenantId:userId:provider:expEpoch:nonce):base64url(hmac)}. The
+ * provider callback arrives by browser redirect — the signed state identifies the tenant/user
+ * without relying on a cookie and blocks CSRF/forging (signature) and late replay (10 min exp).
  *
- * <p>Segredo via {@code NORA_INTEGRATIONS_STATE_SECRET}; sem env (dev), gera um por boot — states
- * não sobrevivem a restart, o que é aceitável em dev e impossível de esquecer em prod (o fluxo
- * quebra visível, não silencioso).
+ * <p>Secret via {@code NORA_INTEGRATIONS_STATE_SECRET}; without the env var (dev), it generates one
+ * per boot — states do not survive a restart, which is acceptable in dev and impossible to forget
+ * in prod (the flow breaks visibly, not silently).
  */
 @Component
 public class OAuthStateCodec {
@@ -61,7 +61,7 @@ public class OAuthStateCodec {
         return body + ":" + b64(hmac(body));
     }
 
-    /** Valida assinatura + expiração e devolve o contexto. Falha = {@code InvalidState}. */
+    /** Validates signature + expiry and returns the context. Failure = {@code InvalidState}. */
     public DecodedState decode(String state, Instant now) {
         if (state == null || state.isBlank()) {
             throw new IntegrationException.InvalidState();

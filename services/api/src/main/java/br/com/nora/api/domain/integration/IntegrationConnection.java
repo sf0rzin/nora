@@ -4,9 +4,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Conexão OAuth de um tenant com um provedor externo (Google, Slack). Tokens trafegam em claro no
- * domínio/aplicação e são cifrados em repouso pelo adapter de persistência. {@code externalAccount}
- * identifica a conta conectada (ex.: e-mail Google) para a UI do hub. Imutável.
+ * OAuth connection of a tenant with an external provider (Google, Slack). Tokens travel in clear in
+ * the domain/application and are encrypted at rest by the persistence adapter. {@code
+ * externalAccount} identifies the connected account (e.g. Google e-mail) for the hub UI. Immutable.
  */
 public record IntegrationConnection(
         UUID id,
@@ -39,7 +39,7 @@ public record IntegrationConnection(
         }
     }
 
-    /** Cópia com tokens novos (refresh rotation) e updated_at bumpado. */
+    /** Copy with new tokens (refresh rotation) and updated_at bumped. */
     public IntegrationConnection withTokens(
             String newAccessToken,
             String newRefreshToken,

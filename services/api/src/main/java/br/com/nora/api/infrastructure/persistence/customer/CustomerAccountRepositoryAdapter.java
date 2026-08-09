@@ -42,8 +42,8 @@ public class CustomerAccountRepositoryAdapter implements CustomerAccountReposito
     @Override
     @Transactional
     public void linkMeeting(UUID meetingId, UUID accountId, UUID tenantId) {
-        // Idempotente: PK composta (meeting_id, customer_account_id). ON CONFLICT DO NOTHING evita
-        // erro em re-link (ex.: reprocessamento da mesma reuniao).
+        // Idempotent: composite PK (meeting_id, customer_account_id). ON CONFLICT DO NOTHING
+        // avoids an error on re-link (e.g. reprocessing the same meeting).
         em.createNativeQuery(
                         "INSERT INTO meeting_account_links (meeting_id, customer_account_id, "
                                 + "tenant_id) VALUES (:m, :a, :t) ON CONFLICT DO NOTHING")

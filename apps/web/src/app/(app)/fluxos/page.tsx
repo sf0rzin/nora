@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * NORA Flows — lista de fluxos (/fluxos).
+ * NORA Flows — flow list (/fluxos).
  *
- * Automações do tenant: cada card mostra nome, gatilho, estado (ativo/pausado)
- * e a última atualização. Tudo vem do backend real (GET /workflows) — sem mock.
+ * Tenant automations: each card shows name, trigger, state (active/paused)
+ * and the last update. Everything comes from the real backend (GET /workflows) — no mock.
  */
 import Link from "next/link";
 import type { Route } from "next";
@@ -15,7 +15,7 @@ import { ApiRequestError, listWorkflows, type WorkflowResponse } from "@/lib/api
 import { metaDoBloco } from "./catalogo";
 import { tempoRelativo } from "./tempo-relativo";
 
-/** Ilustração do estado vazio — três nós ligados, no traço dos ícones do app. */
+/** Empty-state illustration — three connected nodes, in the app icons' stroke style. */
 function IlustracaoFluxo() {
   return (
     <svg
@@ -26,7 +26,7 @@ function IlustracaoFluxo() {
       aria-hidden
       style={{ display: "block" }}
     >
-      {/* arestas */}
+      {/* edges */}
       <path
         d="M44 42h18M96 42h18"
         stroke="var(--border-strong)"
@@ -34,13 +34,13 @@ function IlustracaoFluxo() {
         strokeLinecap="round"
         strokeDasharray="3 4"
       />
-      {/* gatilho */}
+      {/* trigger */}
       <rect x="8" y="26" width="36" height="32" rx="9" fill="var(--accent-soft)" stroke="var(--accent)" strokeWidth="1.5" />
       <path d="M27.5 33 22 41h4l-1.5 7L30 40h-4z" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinejoin="round" />
-      {/* condição */}
+      {/* condition */}
       <rect x="62" y="26" width="34" height="32" rx="9" fill="var(--canvas)" stroke="var(--border-strong)" strokeWidth="1.5" />
       <path d="M72 36h12l-4.5 5v4l-3-1.5v-2.5z" fill="none" stroke="var(--warn)" strokeWidth="1.5" strokeLinejoin="round" />
-      {/* ação */}
+      {/* action */}
       <rect x="114" y="26" width="28" height="32" rx="9" fill="var(--canvas)" stroke="var(--border-strong)" strokeWidth="1.5" />
       <path d="m134 36-9 9M134 36l-5.5 12-1.8-4.7-4.7-1.8z" fill="none" stroke="var(--success)" strokeWidth="1.4" strokeLinejoin="round" />
     </svg>

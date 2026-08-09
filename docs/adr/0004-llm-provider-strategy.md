@@ -1,70 +1,70 @@
-# 0004 — Estratégia de Provider de LLM (agnóstica, OpenAI como default)
+# 0004 — LLM Provider Strategy (agnostic, OpenAI as the default)
 
-- Status: aceito
-- Data: 2026-05-04
-- Decisores: Time NORA
-- Substitui parcialmente: 0001 (na parte que cita Azure OpenAI como provider único)
+- Status: accepted
+- Date: 2026-05-04
+- Deciders: NORA Team
+- Partially supersedes: 0001 (in the part that names Azure OpenAI as the single provider)
 
-## Contexto
+## Context
 
-A documentação inicial (`PROJECT.md`, ADR 0001) assumia **Azure OpenAI** como provider de LLM por causa da parceria Microsoft × TOTVS, da disponibilidade em região Brasil e do SLA enterprise.
+The initial documentation (`PROJECT.md`, ADR 0001) assumed **Azure OpenAI** as the LLM provider because of the Microsoft × TOTVS partnership, availability in the Brazil region and the enterprise SLA.
 
-Na prática, durante o setup do MVP, identificamos:
+In practice, during the MVP setup, we identified:
 
-1. **Acesso ao Azure OpenAI exige aprovação manual** da Microsoft via formulário corporativo. O processo é lento (dias a semanas) e tipicamente nega contas de estudante / contas individuais. Bloqueio real para o time começar a US11–US14 do backlog.
-2. O time não tem orçamento corporativo para destravar o acesso no prazo das Sprints 1+2.
-3. O consumo previsto do MVP é baixo: ordem de centenas a alguns milhares de análises de reunião durante todo o ciclo acadêmico. Custo total estimado abaixo de **US$ 5–10**.
-4. O contrato com o LLM já é estável (JSON Schemas em `docs/api/llm-schemas/` + ADR 0003). Trocar de provider não exige mudar o resto do sistema.
+1. **Access to Azure OpenAI requires manual approval** from Microsoft via a corporate form. The process is slow (days to weeks) and typically denies student / individual accounts. A real blocker for the team to start US11–US14 in the backlog.
+2. The team has no corporate budget to unblock access within the Sprint 1+2 timeframe.
+3. The MVP's projected consumption is low: on the order of hundreds to a few thousand meeting analyses over the entire academic cycle. Total estimated cost below **US$ 5–10**.
+4. The contract with the LLM is already stable (JSON Schemas in `docs/api/llm-schemas/` + ADR 0003). Switching provider does not require changing the rest of the system.
 
-Portanto, faz sentido tornar o worker **agnóstico de provider** e escolher o provider mais simples e barato para o MVP, mantendo Azure OpenAI como upgrade para Enterprise quando o acesso for aprovado.
+Therefore, it makes sense to make the worker **provider-agnostic** and choose the simplest and cheapest provider for the MVP, keeping Azure OpenAI as an upgrade for Enterprise once access is approved.
 
-## Decisão
+## Decision
 
-1. O worker NLP fala com **qualquer provider compatível com a API Chat Completions da OpenAI** (mesma SDK, mesmo formato de request/response). Isso cobre OpenAI direto, Azure OpenAI, Groq, OpenRouter, Together AI, Ollama local e quaisquer outros que sigam o padrão de fato.
-2. O **provider default no MVP é OpenAI direto** com o modelo `gpt-4o-mini`.
-3. As variáveis de ambiente do worker são generalizadas:
-   - `LLM_PROVIDER` (rótulo informativo: `openai`, `azure`, `groq`, `openrouter`, `ollama`, `together`, etc.)
+1. The NLP worker talks to **any provider compatible with OpenAI's Chat Completions API** (same SDK, same request/response format). That covers OpenAI direct, Azure OpenAI, Groq, OpenRouter, Together AI, local Ollama and any others that follow the de facto standard.
+2. The **default provider in the MVP is OpenAI direct** with the `gpt-4o-mini` model.
+3. The worker's environment variables are generalized:
+   - `LLM_PROVIDER` (informational label: `openai`, `azure`, `groq`, `openrouter`, `ollama`, `together`, etc.)
    - `LLM_BASE_URL`
    - `LLM_API_KEY`
    - `LLM_MODEL`
    - `LLM_TEMPERATURE`
-   - `USE_LLM_STUB` continua existindo e **continua sendo o padrão em CI e dev local**.
-4. Provider Azure OpenAI permanece **suportado e recomendado para tenants Enterprise** quando o acesso estiver aprovado — basta apontar `LLM_BASE_URL` para o endpoint Azure, ajustar o modelo/deployment e usar a `AZURE_OPENAI_API_KEY` no campo `LLM_API_KEY`.
-5. Embeddings e busca semântica seguem o mesmo princípio: **qualquer endpoint compatível com OpenAI Embeddings**. No MVP usamos `text-embedding-3-small` da OpenAI; em Enterprise, Azure OpenAI + Azure AI Search (ADR a parte quando essa parte entrar).
+   - `USE_LLM_STUB` continues to exist and **continues to be the default in CI and local dev**.
+4. The Azure OpenAI provider remains **supported and recommended for Enterprise tenants** once access is approved — just point `LLM_BASE_URL` at the Azure endpoint, adjust the model/deployment and use the `AZURE_OPENAI_API_KEY` in the `LLM_API_KEY` field.
+5. Embeddings and semantic search follow the same principle: **any endpoint compatible with OpenAI Embeddings**. In the MVP we use OpenAI's `text-embedding-3-small`; in Enterprise, Azure OpenAI + Azure AI Search (a separate ADR when that part comes in).
 
-## Por que OpenAI direto e não OpenRouter
+## Why OpenAI direct and not OpenRouter
 
-Avaliamos OpenRouter como alternativa para concentrar billing e ter flexibilidade de modelo. Foi rejeitado para o MVP:
+We evaluated OpenRouter as an alternative to consolidate billing and have model flexibility. It was rejected for the MVP:
 
-- **+5% de markup** sobre o preço do mesmo modelo na OpenAI.
-- Hop adicional → latência maior e mais um ponto de falha.
-- Structured Output strict (`response_format: json_schema`) tem suporte irregular dependendo do modelo escolhido — na OpenAI é first-class.
-- Vantagem real do OpenRouter (trocar provider sem mudar código) **já está coberta** pelo design agnóstico do worker. Se um dia quisermos OpenRouter, basta mudar o `.env`.
+- **+5% markup** over the price of the same model on OpenAI.
+- An extra hop → higher latency and one more point of failure.
+- Strict Structured Output (`response_format: json_schema`) has irregular support depending on the chosen model — on OpenAI it is first-class.
+- OpenRouter's real advantage (switching provider without changing code) **is already covered** by the worker's agnostic design. If we ever want OpenRouter, we just change the `.env`.
 
-## Por que Groq não é o default (e por que segue como fallback documentado)
+## Why Groq is not the default (and why it remains a documented fallback)
 
-Groq tem free tier excelente, é compatível com a SDK da OpenAI, e Llama 3.3 70B funciona bem em PT-BR. Continua sendo a opção recomendada para quem **não quer gastar nada**.
+Groq has an excellent free tier, is compatible with OpenAI's SDK, and Llama 3.3 70B works well in PT-BR. It remains the recommended option for anyone who **does not want to spend anything**.
 
-Não escolhemos como default porque:
+We did not pick it as the default because:
 
-- Free tier tem rate limits que podem incomodar em demos longas.
-- Structured Output strict em modelos open-source é menos confiável que em `gpt-4o-mini`.
-- Para o pitch e a entrega, a previsibilidade do JSON estruturado vale mais do que o custo zero.
+- The free tier has rate limits that can be annoying in long demos.
+- Strict Structured Output on open-source models is less reliable than on `gpt-4o-mini`.
+- For the pitch and the delivery, the predictability of structured JSON is worth more than zero cost.
 
-## Consequências
+## Consequences
 
-**Positivas**
-- Time desbloqueado para começar US11–US14 imediatamente, sem depender de aprovação Azure.
-- Custo total estimado do MVP < US$ 10. Cabe em uma compra única de US$ 5 de crédito na OpenAI.
-- Código continua portável: trocar de provider é mudança de `.env`, não de código.
-- Stub determinístico (`USE_LLM_STUB=true`) segue como default de CI e dev local — nenhum teste depende de chave externa.
+**Positive**
+- The team is unblocked to start US11–US14 immediately, without depending on Azure approval.
+- Total estimated MVP cost < US$ 10. It fits in a single US$ 5 credit purchase on OpenAI.
+- The code stays portable: switching provider is an `.env` change, not a code change.
+- The deterministic stub (`USE_LLM_STUB=true`) remains the default for CI and local dev — no test depends on an external key.
 
-**Negativas / trade-offs**
-- Saímos da promessa "tudo em Azure" do PROJECT.md original. Mitigado: documentamos que Azure volta a ser o provider de produção Enterprise quando aprovado, sem mudança de código.
-- Dependência de provider externo americano (OpenAI). Mitigado: os dados sensíveis já passam pelo PII Shield antes de qualquer chamada (ADR de PII).
+**Negative / trade-offs**
+- We move away from the "everything on Azure" promise of the original PROJECT.md. Mitigated: we document that Azure comes back as the Enterprise production provider once approved, with no code change.
+- Dependency on an external American provider (OpenAI). Mitigated: sensitive data already goes through the PII Shield before any call (PII ADR).
 
-## Operacional
+## Operational
 
-- Chaves vivem em `.env` local (nunca commitado) e em GitHub Actions Secrets para CI quando rodarmos integração (ainda não no MVP).
-- Estimativa de custo deve ser monitorada manualmente pelo dono da chave durante o ciclo da Sprint.
-- Quando o acesso Azure for aprovado para o tenant TOTVS, abrir nova ADR de migração e ajustar `.env` do ambiente Enterprise.
+- Keys live in the local `.env` (never committed) and in GitHub Actions Secrets for CI when we run integration (not in the MVP yet).
+- The cost estimate must be monitored manually by the key owner during the Sprint cycle.
+- When Azure access is approved for the TOTVS tenant, open a new migration ADR and adjust the Enterprise environment's `.env`.

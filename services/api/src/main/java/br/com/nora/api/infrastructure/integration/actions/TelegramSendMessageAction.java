@@ -10,18 +10,18 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Avisar no Telegram" do NORA Flows — mensagem REAL no chat pareado do tenant (bot do app; o
- * chat_id é o "token" da conexão, salvo no pareamento por código). Sem params: o texto é um resumo
- * formatado em HTML do Telegram — título em {@code <b>}, contagens da análise e até 5 próximos
- * passos + link da reunião.
+ * NORA Flows "Avisar no Telegram" action — REAL message in the tenant's paired chat (the app bot;
+ * the chat_id is the connection "token", saved during code pairing). No params: the text is a
+ * summary formatted in Telegram HTML — title in {@code <b>}, analysis counts and up to 5 next steps
+ * + the meeting link.
  *
- * <p>Falha PROPAGA (contrato do {@link ActionExecutor}) — ex.: usuário bloqueou o bot vira erro
- * claro no log da execução. Nunca finge sucesso.
+ * <p>A failure PROPAGATES ({@link ActionExecutor} contract) — e.g. a user who blocked the bot turns
+ * into a clear error in the run log. It never fakes success.
  */
 @Component
 public class TelegramSendMessageAction implements ActionExecutor {
 
-    /** Máximo de próximos passos listados na mensagem (chat, não relatório). */
+    /** Maximum next steps listed in the message (chat, not a report). */
     static final int MAX_ITEMS = 5;
 
     private final IntegrationService integrations;
@@ -45,7 +45,7 @@ public class TelegramSendMessageAction implements ActionExecutor {
         return "Mensagem enviada no Telegram";
     }
 
-    /** Resumo em HTML do Telegram (só tags suportadas: b/i/a; conteúdo dinâmico escapado). */
+    /** Summary in Telegram HTML (supported tags only: b/i/a; dynamic content escaped). */
     static String buildHtml(WorkflowEventContext ctx) {
         StringBuilder sb = new StringBuilder();
         sb.append("<b>").append(escape(ctx.meetingTitle())).append("</b>\n");
@@ -88,7 +88,7 @@ public class TelegramSendMessageAction implements ActionExecutor {
         return count == 1 ? singular : plural;
     }
 
-    /** Escape mínimo exigido pelo parse_mode HTML do Telegram. */
+    /** Minimal escaping required by Telegram's HTML parse_mode. */
     static String escape(String s) {
         return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }

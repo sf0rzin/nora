@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Porta de persistencia de reunioes. Toda consulta exige tenantId para enforcement. */
+/** Meeting persistence port. Every query requires tenantId for enforcement. */
 public interface MeetingRepository {
 
     Meeting save(Meeting meeting);
@@ -15,31 +15,31 @@ public interface MeetingRepository {
     Optional<Meeting> findByIdAndTenant(UUID id, UUID tenantId);
 
     /**
-     * Mesma busca, tomando lock de escrita na linha até o fim da transação. Para fluxos que leem o
-     * estado e decidem escrever com base nele (reprocess), onde duas transações concorrentes
-     * chegariam à mesma decisão a partir do mesmo estado obsoleto.
+     * Same lookup, taking a write lock on the row until the end of the transaction. For flows that
+     * read the state and decide to write based on it (reprocess), where two concurrent transactions
+     * would reach the same decision from the same stale state.
      */
     Optional<Meeting> findByIdAndTenantForUpdate(UUID id, UUID tenantId);
 
-    /** Lista paginada por tenant ordenada por created_at desc. Page e size sao 0-based. */
+    /** Paginated list by tenant ordered by created_at desc. Page and size are 0-based. */
     PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size);
 
     /**
-     * Hard-delete FISICO de um meeting (LGPD: direito ao esquecimento, ADR 0029). Ignora o
-     * soft-delete; o FK CASCADE purga transcript (raw_text = PII), participants, tags e analises.
-     * Retorna linhas afetadas (0 = nao existia no tenant).
+     * PHYSICAL hard-delete of a meeting (LGPD: right to be forgotten, ADR 0029). Ignores the
+     * soft-delete; the FK CASCADE purges transcript (raw_text = PII), participants, tags and
+     * analyses. Returns affected rows (0 = it did not exist in the tenant).
      */
     int hardErase(UUID meetingId, UUID tenantId);
 
     /**
-     * Hard-delete FISICO de meetings do tenant criados antes de {@code cutoff} (retencao, ADR
-     * 0029). Retorna quantos foram purgados.
+     * PHYSICAL hard-delete of the tenant's meetings created before {@code cutoff} (retention, ADR
+     * 0029). Returns how many were purged.
      */
     int purgeOlderThan(UUID tenantId, OffsetDateTime cutoff);
 
     /**
-     * Filtros opcionais para a listagem. Qualquer campo nulo significa "sem restricao". O search
-     * casa por substring case-insensitive sobre o titulo.
+     * Optional filters for the listing. Any null field means "no restriction". The search matches
+     * by case-insensitive substring over the title.
      */
     record MeetingFilter(
             String search, ProcessingStatus status, OffsetDateTime from, OffsetDateTime to) {

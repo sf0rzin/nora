@@ -6,14 +6,14 @@ Use these instructions for all coding work in this repository.
 
 NORA is a production-minded FIAP Challenge 2026 project: a conversational intelligence SaaS that transforms meeting transcripts into summaries, decisions, action items and business insights using tenant-specific product/company context.
 
-Always read and respect (estrutura nova pós-Sub-fase 1.10):
+Always read and respect (new structure after Sub-phase 1.10):
 
 - `CLAUDE.md`
-- `docs/product/vision.md` (produto + fronteiras)
+- `docs/product/vision.md` (product + boundaries)
 - `docs/product/backlog.md` (US tracking + MoSCoW)
-- `docs/engineering/architecture.md` (arquitetura end-to-end)
-- `docs/engineering/standards.md` (convenções de código)
-- `docs/adr/` (decisões duráveis — imutáveis)
+- `docs/engineering/architecture.md` (end-to-end architecture)
+- `docs/engineering/standards.md` (code conventions)
+- `docs/adr/` (durable decisions — immutable)
 
 ## MVP Boundary
 

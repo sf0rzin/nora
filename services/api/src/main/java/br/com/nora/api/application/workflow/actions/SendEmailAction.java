@@ -7,13 +7,13 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Enviar e-mail" do NORA Flows — e-mail REAL via a porta {@link EmailSender} (Resend em
- * produção, remetente NORA). Params: {@code to} (obrigatório, validado no save), {@code subject} e
- * {@code body} opcionais com placeholders (ver {@link WorkflowActionTemplates}). Sem subject/body,
- * monta um relatório-resumo padrão da reunião em HTML.
+ * NORA Flows "Send e-mail" action — REAL e-mail via the {@link EmailSender} port (Resend in
+ * production, NORA sender). Params: {@code to} (required, validated on save), {@code subject} and
+ * {@code body} optional with placeholders (see {@link WorkflowActionTemplates}). Without
+ * subject/body, it builds a default HTML summary report of the meeting.
  *
- * <p>Falha de envio PROPAGA (contrato do {@link ActionExecutor}) — o engine registra no log e a
- * execução fica FAILED. Nunca finge sucesso.
+ * <p>A send failure PROPAGATES ({@link ActionExecutor} contract) — the engine records it in the log
+ * and the execution ends up FAILED. It never fakes success.
  */
 @Component
 public class SendEmailAction implements ActionExecutor {

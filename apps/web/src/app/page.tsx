@@ -8,10 +8,10 @@ export const metadata: Metadata = {
 };
 
 /**
- * Rota raiz / landing publica.
+ * Root route / public landing.
  *
- * Visitantes nao autenticados veem a landing. Usuarios logados sao
- * redirecionados pra /dashboard pelo middleware antes de chegar aqui.
+ * Unauthenticated visitors see the landing. Logged-in users are
+ * redirected to /dashboard by the middleware before getting here.
  */
 export default function HomePage() {
   return <LandingPage />;

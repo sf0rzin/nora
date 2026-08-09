@@ -9,7 +9,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-/** Adapter JdbcTemplate de auditoria do operador (tabela platform_audit_log, ADR 0023). */
+/** JdbcTemplate adapter for operator auditing (platform_audit_log table, ADR 0023). */
 @Repository
 @ConditionalOnProperty(name = "nora.platform.enabled", havingValue = "true")
 public class JdbcPlatformAuditRepository implements PlatformAuditRepository {

@@ -3,17 +3,17 @@ package br.com.nora.api.application.workflow;
 import java.util.Map;
 
 /**
- * Porta das ações estilo MCP do NORA Flows. Cada adapter executa UM tipo de ação (ex.: {@code
- * send_email} via Resend; futuramente {@code gmail_send}, {@code calendar_create_event}, {@code
- * slack_post} via OAuth do usuário).
+ * Port for NORA Flows' MCP-style actions. Each adapter executes ONE action type (e.g. {@code
+ * send_email} via Resend; in the future {@code gmail_send}, {@code calendar_create_event}, {@code
+ * slack_post} via the user's OAuth).
  *
- * <p>Contrato: sucesso retorna uma mensagem curta PT-BR para o log da execução ("E-mail enviado
- * para x@y.z"). Falha DEVE propagar exceção — o {@link WorkflowEngine} captura, registra no log e
- * marca a execução como FAILED. Nunca finja sucesso.
+ * <p>Contract: success returns a short PT-BR message for the execution log ("E-mail enviado para
+ * x@y.z"). Failure MUST propagate an exception — the {@link WorkflowEngine} catches it, records it
+ * in the log and marks the execution as FAILED. Never fake success.
  */
 public interface ActionExecutor {
 
-    /** Identificador do tipo de ação no definition_json (ex.: {@code send_email}). */
+    /** Identifier of the action type in the definition_json (e.g. {@code send_email}). */
     String type();
 
     String execute(WorkflowEventContext context, Map<String, Object> params);

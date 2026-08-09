@@ -1,24 +1,24 @@
-// main.bicep — NORA infra orquestrador
+// main.bicep — NORA infra orchestrator
 //
-// Ordem de deploy:
-//   1. Log Analytics + App Insights (observabilidade)
+// Deploy order:
+//   1. Log Analytics + App Insights (observability)
 //   2. Storage Account
-//   3. Azure Speech (Cognitive Services) — emite key1 que vai pro KV
-//   4. User-Assigned Managed Identities (api, worker, web) — criadas ANTES do KV
-//      pra que role assignment + KV references nao tenham problema de ciclo de SystemAssigned
-//   5. Key Vault — com role assignments pras UAIs + secrets (postgres pwd, JWT, openai key, speech key)
+//   3. Azure Speech (Cognitive Services) — emits key1 that goes to the KV
+//   4. User-Assigned Managed Identities (api, worker, web) — created BEFORE the KV
+//      so that role assignment + KV references have no SystemAssigned cycle problem
+//   5. Key Vault — with role assignments for the UAIs + secrets (postgres pwd, JWT, openai key, speech key)
 //   6. Postgres Flexible Server
-//   7. Container Apps Environment (compartilhado)
-//   8. (opcional) Azure AI Search
-//   9. Container Apps (worker, api, web) — usam UAI + secret refs pro Key Vault
+//   7. Container Apps Environment (shared)
+//   8. (optional) Azure AI Search
+//   9. Container Apps (worker, api, web) — use UAI + secret refs to the Key Vault
 //
-// Uso:
+// Usage:
 //   az deployment group create \
 //     --resource-group rg-nora-dev \
 //     --template-file main.bicep \
 //     --parameters main.dev.bicepparam
 //
-// Ver README.md pra detalhes de ligar/desligar Search e custos.
+// See README.md for details on turning Search on/off and costs.
 
 targetScope = 'resourceGroup'
 
@@ -50,7 +50,7 @@ param tags object = {
 }
 
 // ============================================================
-// PARAMS — secrets (injetar via bicepparam ou --parameters CLI)
+// PARAMS — secrets (inject via bicepparam or --parameters CLI)
 // ============================================================
 
 @description('Usuario admin do Postgres.')
@@ -88,7 +88,7 @@ param resendApiKey string = ''
 @description('Email From usado pelo Resend (`Nome <email@dominio>`).')
 param noraEmailFrom string = 'NORA <onboarding@resend.dev>'
 
-// ---- Integracoes OAuth (NORA Flows Fase 2 — ADR 0031) ----
+// ---- OAuth integrations (NORA Flows Phase 2 — ADR 0031) ----
 
 @description('Google OAuth Client ID (Gmail/Calendar). Nao-secreto (vai como env puro). Vazio = hub mostra Google como "nao configurado" e o start retorna 422 (fail-visible).')
 param googleOauthClientId string = ''
@@ -104,8 +104,8 @@ param slackOauthClientId string = ''
 @secure()
 param slackOauthClientSecret string = ''
 
-// Onda 1 de provedores genericos (GitHub, Notion, Todoist, Linear) — mesmo contrato do Slack:
-// default vazio = conector "nao configurado" no hub, sem quebrar o deploy.
+// Wave 1 of generic providers (GitHub, Notion, Todoist, Linear) — same contract as Slack:
+// empty default = connector "not configured" in the hub, without breaking the deploy.
 
 @description('GitHub OAuth Client ID. Mesmo contrato do Slack.')
 param githubOauthClientId string = ''
@@ -135,7 +135,7 @@ param linearOauthClientId string = ''
 @secure()
 param linearOauthClientSecret string = ''
 
-// Onda 2 — tres modelos de conexao diferentes:
+// Wave 2 — three different connection models:
 
 @description('Microsoft OAuth Client ID (Outlook + Calendar via Graph; tenant common). Mesmo contrato do Slack.')
 param msOauthClientId string = ''
@@ -160,7 +160,7 @@ param integrationsStateSecret string = ''
 param integrationsEncKey string = ''
 
 // ============================================================
-// PARAMS — imagens
+// PARAMS — images
 // ============================================================
 
 @description('Imagem da API Spring Boot.')
@@ -194,7 +194,7 @@ param registryPassword string = ''
 param speechSku string = 'S0'
 
 // ============================================================
-// PARAMS — Azure AI Search (opcional)
+// PARAMS — Azure AI Search (optional)
 // ============================================================
 
 @description('Habilita Azure AI Search Basic. Cobra ~R$13-15/dia enquanto provisionado. Manter false durante dev; ligar ~14 dias antes do pitch.')
@@ -216,7 +216,7 @@ param searchSku string = 'basic'
 param postgresFirewallRules array = []
 
 // ============================================================
-// PARAMS — Control plane (ADR 0022/0023/0024). Gated por enablePlatform.
+// PARAMS — Control plane (ADR 0022/0023/0024). Gated by enablePlatform.
 // ============================================================
 
 @description('Liga o control plane: 2º Postgres (plataforma), UAI admin e Container App nora-admin. Default false — mantém a infra atual intacta até o image do nora-admin e o grupo Entra existirem.')
@@ -247,7 +247,7 @@ param easyAuthClientSecret string = ''
 @description('Allowlist de IPs (CIDR) do ingress do nora-admin. Formato: [{ name, ipAddressRange, action: "Allow" }]. Vazio = sem restricao de rede. Com Tunnel (ADR 0025) o ingress e internal — sem FQDN publico —, entao isto fica vazio.')
 param adminIpSecurityRestrictions array = []
 
-// ---- Operator identity v2: Cloudflare Tunnel + Access (ADR 0025, substitui Easy Auth do 0023) ----
+// ---- Operator identity v2: Cloudflare Tunnel + Access (ADR 0025, replaces Easy Auth from 0023) ----
 
 @description('Connector token do Cloudflare Tunnel do nora-admin. Vai pro KV (cloudflare-tunnel-token). Vazio = "unset" (cloudflared nao conecta — tunnel off). Gerado pelo workflow cloudflare-tunnel.yml e setado no Secret CLOUDFLARE_TUNNEL_TOKEN.')
 @secure()
@@ -262,7 +262,7 @@ param cfAccessTeamDomain string = ''
 @description('AUD tag da Access Application (admin.nora.systems). O nora-admin valida o audience do JWT do Access. Vazio = validacao de JWT degrada pra edge-only (origem ja protegida pelo tunnel + Access na borda).')
 param cfAccessAud string = ''
 
-// ---- Dominio publico customizado (Cloudflare -> custom domain, ver docs/operations/web-custom-domain.md) ----
+// ---- Custom public domain (Cloudflare -> custom domain, see docs/operations/web-custom-domain.md) ----
 
 @description('Dominio publico (apex). Vazio = usa o FQDN .azurecontainerapps.io (comportamento antigo). Ex.: nora.systems')
 param publicDomain string = ''
@@ -276,7 +276,7 @@ param wwwCertName string = ''
 @description('Nome do managed certificate (no env) para api.')
 param apiCertName string = ''
 
-// ---- RLS enforce (defesa em profundidade do tenant_id, ADR 0002/0019/0026) ----
+// ---- RLS enforce (defense in depth for tenant_id, ADR 0002/0019/0026) ----
 
 @description('Liga o enforce de Row Level Security no apiApp (NORA_RLS_ENFORCE). Default FALSE: o schema tem todas as policies (V016/V017/V018), mas o enforce SO vale com role NOBYPASSRLS na connection string. NAO ligar direto em prod — seguir a sequencia de cutover do ADR 0026 (provisionar nora_app/nora_telemetry via db/operational/R001 -> validar telemetria BYPASSRLS -> staging -> prod).')
 param rlsEnforce bool = false
@@ -296,7 +296,7 @@ param appDbUsername string = 'nora_app'
 param appDbPassword string = ''
 
 // ============================================================
-// NAMING — deterministico + unico onde precisa
+// NAMING — deterministic + unique where needed
 // ============================================================
 
 var nameSuffix = take(uniqueString(resourceGroup().id), 6)
@@ -381,7 +381,7 @@ module speech 'modules/speech.bicep' = {
 
 // ============================================================
 // MODULES — User-Assigned Managed Identities
-// (criadas antes do KV pra resolver ciclo de role assignment)
+// (created before the KV to resolve the role assignment cycle)
 // ============================================================
 
 module uaiApi 'modules/user-assigned-identity.bicep' = {
@@ -411,7 +411,7 @@ module uaiWeb 'modules/user-assigned-identity.bicep' = {
   }
 }
 
-// Control plane: UAI dedicada do nora-admin (ADR 0023). Só quando enablePlatform.
+// Control plane: dedicated nora-admin UAI (ADR 0023). Only when enablePlatform.
 module uaiAdmin 'modules/user-assigned-identity.bicep' = if (enablePlatform) {
   name: 'uaiAdmin'
   params: {
@@ -422,7 +422,7 @@ module uaiAdmin 'modules/user-assigned-identity.bicep' = if (enablePlatform) {
 }
 
 // ============================================================
-// MODULES — Key Vault (com role assignments pras UAIs + secrets)
+// MODULES — Key Vault (with role assignments for the UAIs + secrets)
 // ============================================================
 
 var keyVaultSecrets = {
@@ -440,8 +440,8 @@ var keyVaultSecrets = {
         name: 'openai-api-key'
         value: empty(openAiApiKey) ? 'unset' : openAiApiKey
       }
-      // Chaves por provider pro chat multi-provider (ADR 0024). Sempre no KV ('unset' quando
-      // vazias) — o web só as referencia se o provider for usado.
+      // Per-provider keys for the multi-provider chat (ADR 0024). Always in the KV ('unset' when
+      // empty) — the web only references them if the provider is used.
       {
         name: 'deepseek-api-key'
         value: empty(deepSeekApiKey) ? 'unset' : deepSeekApiKey
@@ -459,8 +459,8 @@ var keyVaultSecrets = {
         value: empty(resendApiKey) ? 'unset' : resendApiKey
       }
     ],
-    // Integracoes OAuth (ADR 0031): secrets criados SO quando setados — sem placeholder 'unset'
-    // (o TokenCipher rejeitaria "unset" como base64 e derrubaria o boot da API).
+    // OAuth integrations (ADR 0031): secrets created ONLY when set — no 'unset' placeholder
+    // (TokenCipher would reject "unset" as base64 and take down the API boot).
     empty(googleOauthClientSecret) ? [] : [
       {
         name: 'google-oauth-client-secret'
@@ -497,7 +497,7 @@ var keyVaultSecrets = {
         value: linearOauthClientSecret
       }
     ],
-    // Onda 2: Microsoft + Telegram (Trello API key e nao-secreta — vai como env puro).
+    // Wave 2: Microsoft + Telegram (Trello API key is non-secret — goes as a plain env).
     empty(msOauthClientSecret) ? [] : [
       {
         name: 'ms-oauth-client-secret'
@@ -522,7 +522,7 @@ var keyVaultSecrets = {
         value: integrationsEncKey
       }
     ],
-    // Control plane (ADR 0022/0023): secrets só quando enablePlatform.
+    // Control plane (ADR 0022/0023): secrets only when enablePlatform.
     enablePlatform ? [
       {
         name: 'postgres-platform-password'
@@ -545,15 +545,15 @@ var keyVaultSecrets = {
         value: empty(cloudflareTunnelToken) ? 'unset' : cloudflareTunnelToken
       }
     ] : [],
-    // RLS telemetria BYPASSRLS (ADR 0026): so quando a senha do nora_telemetry e
-    // fornecida (passo de cutover). Sem isso, nenhum secret extra e criado.
+    // BYPASSRLS telemetry RLS (ADR 0026): only when the nora_telemetry password is
+    // provided (cutover step). Without it, no extra secret is created.
     empty(rlsTelemetryPassword) ? [] : [
       {
         name: 'rls-telemetry-password'
         value: rlsTelemetryPassword
       }
     ],
-    // RLS enforce (ADR 0028): senha do nora_app criada no KV so quando fornecida (cutover).
+    // RLS enforce (ADR 0028): nora_app password created in the KV only when provided (cutover).
     empty(appDbPassword) ? [] : [
       {
         name: 'nora-app-password'
@@ -569,7 +569,7 @@ module keyVault 'modules/keyvault.bicep' = {
     name: kvName
     location: location
     tags: tags
-    enablePurgeProtection: false // dev — permite teardown rapido
+    enablePurgeProtection: false // dev — allows fast teardown
     secretsUserPrincipalIds: concat(
       [
         uaiApi.outputs.principalId
@@ -583,7 +583,7 @@ module keyVault 'modules/keyvault.bicep' = {
 }
 
 // ============================================================
-// MODULES — banco
+// MODULES — database
 // ============================================================
 
 module postgres 'modules/postgres.bicep' = {
@@ -604,8 +604,8 @@ module postgres 'modules/postgres.bicep' = {
   }
 }
 
-// Control plane: 2º Postgres SEPARADO (ADR 0022 — blast radius isolado). Reusa o módulo 1:1.
-// Server próprio B1ms; database nora_platform. Só quando enablePlatform.
+// Control plane: SEPARATE 2nd Postgres (ADR 0022 — isolated blast radius). Reuses the module 1:1.
+// Its own B1ms server; database nora_platform. Only when enablePlatform.
 module postgresPlatform 'modules/postgres.bicep' = if (enablePlatform) {
   name: 'postgresPlatform'
   params: {
@@ -640,7 +640,7 @@ module containerAppsEnv 'modules/container-apps-env.bicep' = {
   }
 }
 
-// ---- Search (condicional, antes das apps pra worker poder consumir endpoint) ----
+// ---- Search (conditional, before the apps so the worker can consume the endpoint) ----
 
 module searchService 'modules/search.bicep' = if (enableSearch) {
   name: 'searchService'
@@ -655,24 +655,24 @@ module searchService 'modules/search.bicep' = if (enableSearch) {
   }
 }
 
-// Helper: KV reference pra um secret. Container App referencia secret do KV via
-// keyVaultUrl + identity (UAI resource ID). ARM faz fetch on revision create.
+// Helper: KV reference for a secret. Container App references a KV secret via
+// keyVaultUrl + identity (UAI resource ID). ARM does the fetch on revision create.
 var kvUri = keyVault.outputs.uri
 
-// FQDNs deterministicos do Container Apps Environment.
-// Construidos antes das apps pra evitar ciclo (apiApp -> webApp.fqdn e webApp -> apiApp.fqdn).
+// Deterministic FQDNs of the Container Apps Environment.
+// Built before the apps to avoid a cycle (apiApp -> webApp.fqdn and webApp -> apiApp.fqdn).
 // Pattern: {appName}.{envDefaultDomain}
 var apiPublicFqdn = '${apiName}.${containerAppsEnv.outputs.defaultDomain}'
 var webPublicFqdn = '${webName}.${containerAppsEnv.outputs.defaultDomain}'
 var apiPublicUrl = 'https://${apiPublicFqdn}'
 var webPublicUrl = 'https://${webPublicFqdn}'
 
-// ---- Domínio público customizado (Cloudflare -> custom domain no Container App) ----
-// Quando publicDomain está setado (ex.: 'nora.systems'), web/api usam o domínio próprio:
-// web em nora.systems chama a API em api.nora.systems (mesmo registrable domain), então os
-// cookies de auth (Domain=nora.systems) são compartilhados cross-subdomínio. Os managed
-// certificates são criados via `az hostname bind` (ver docs/operations/web-custom-domain.md)
-// e referenciados aqui por nome. Vazio = usa só o FQDN .azurecontainerapps.io (comportamento antigo).
+// ---- Custom public domain (Cloudflare -> custom domain on the Container App) ----
+// When publicDomain is set (e.g.: 'nora.systems'), web/api use their own domain:
+// web on nora.systems calls the API on api.nora.systems (same registrable domain), so the
+// auth cookies (Domain=nora.systems) are shared cross-subdomain. The managed
+// certificates are created via `az hostname bind` (see docs/operations/web-custom-domain.md)
+// and referenced here by name. Empty = uses only the .azurecontainerapps.io FQDN (old behavior).
 var hasPublicDomain = !empty(publicDomain)
 var certBaseId = '${containerAppsEnv.outputs.id}/managedCertificates'
 var corsAllowedOrigins = hasPublicDomain ? 'https://${publicDomain},https://www.${publicDomain}' : webPublicUrl
@@ -687,10 +687,10 @@ var apiCustomDomains = hasPublicDomain ? [
   { name: 'api.${publicDomain}', bindingType: 'SniEnabled', certificateId: '${certBaseId}/${apiCertName}' }
 ] : []
 
-// ---- Worker NLP (internal ingress; api fala com ele) ----
+// ---- Worker NLP (internal ingress; the api talks to it) ----
 
-// Worker NLP consome LLM_* (ADR 0004). Bicep mantem secretRef chamado openai-api-key
-// para nao quebrar KV existente, mas a env exposta ao processo Python e LLM_API_KEY.
+// Worker NLP consumes LLM_* (ADR 0004). Bicep keeps the secretRef named openai-api-key
+// so as not to break the existing KV, but the env exposed to the Python process is LLM_API_KEY.
 var workerBaseEnv = [
   {
     name: 'USE_LLM_STUB'
@@ -712,7 +712,7 @@ var workerBaseEnv = [
     name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
     value: appInsights.outputs.connectionString
   }
-  // Role name diferencia api/worker/web no Application Map.
+  // Role name distinguishes api/worker/web in the Application Map.
   {
     name: 'OTEL_SERVICE_NAME'
     value: 'nora-worker'
@@ -734,8 +734,8 @@ var workerSearchEnv = enableSearch ? [
   }
 ] : []
 
-// Control plane: token + base da API pro worker ler /internal/platform/llm-config (ADR 0024).
-// O outro arquiteto pluga a leitura no hot-path; aqui só provisionamos as envs.
+// Control plane: token + API base so the worker can read /internal/platform/llm-config (ADR 0024).
+// The other architect wires the read into the hot-path; here we only provision the envs.
 var workerPlatformEnv = enablePlatform ? [
   {
     name: 'NORA_PLATFORM_INTERNAL_TOKEN'
@@ -796,7 +796,7 @@ module workerApp 'modules/container-app.bicep' = {
 
 // ---- API Spring Boot (external ingress) ----
 
-// Control plane (ADR 0022/0024): 2º datasource + tokens. Só quando enablePlatform.
+// Control plane (ADR 0022/0024): 2nd datasource + tokens. Only when enablePlatform.
 var apiPlatformSecrets = enablePlatform ? [
   {
     name: 'postgres-platform-password'
@@ -815,10 +815,10 @@ var apiPlatformSecrets = enablePlatform ? [
   }
 ] : []
 
-// Integracoes OAuth (ADR 0031): cada bloco so entra quando o respectivo param foi setado —
-// secretRef para secret inexistente derrubaria a revision, e placeholder 'unset' quebraria o
-// boot (TokenCipher valida base64). Redirect URIs derivam do dominio publico da API (PR #215):
-// precisam bater EXATAMENTE com os Authorized redirect URIs cadastrados no Google/Slack.
+// OAuth integrations (ADR 0031): each block only enters when the respective param was set —
+// a secretRef to a nonexistent secret would take down the revision, and an 'unset' placeholder would
+// break boot (TokenCipher validates base64). Redirect URIs derive from the API public domain (PR #215):
+// they must match EXACTLY the Authorized redirect URIs registered in Google/Slack.
 var apiIntegrationsEnv = union(
   empty(googleOauthClientId) || empty(googleOauthClientSecret) ? [] : [
     {
@@ -904,7 +904,7 @@ var apiIntegrationsEnv = union(
       value: '${apiBaseUrl}/integrations/linear/oauth/callback'
     }
   ],
-  // Onda 2 — Microsoft segue o contrato OAuth; Telegram e Trello sao um env so cada.
+  // Wave 2 — Microsoft follows the OAuth contract; Telegram and Trello are a single env each.
   empty(msOauthClientId) || empty(msOauthClientSecret) ? [] : [
     {
       name: 'MS_OAUTH_CLIENT_ID'
@@ -972,20 +972,20 @@ var apiPlatformEnv = enablePlatform ? [
   }
 ] : []
 
-// RLS enforce (ADR 0002/0019/0026). NORA_RLS_ENFORCE so liga o aspect; o enforce REAL
-// exige que DATASOURCE_USERNAME/PASSWORD apontem pro role nora_app (NOBYPASSRLS) —
-// passo de cutover separado e controlado (ver ADR 0026), NAO feito neste template.
-// Quando rlsTelemetryDatasourceUrl esta setada, injeta o caminho BYPASSRLS dedicado da
-// telemetria (role nora_telemetry) pra que o painel operador continue agregando
-// cross-tenant sob enforce (senao veria 0 linhas, fail-closed).
+// RLS enforce (ADR 0002/0019/0026). NORA_RLS_ENFORCE only turns on the aspect; the REAL
+// enforce requires DATASOURCE_USERNAME/PASSWORD to point at the nora_app role (NOBYPASSRLS) —
+// a separate, controlled cutover step (see ADR 0026), NOT done in this template.
+// When rlsTelemetryDatasourceUrl is set, injects the dedicated BYPASSRLS path of the
+// telemetry (role nora_telemetry) so the operator panel keeps aggregating
+// cross-tenant under enforce (otherwise it would see 0 rows, fail-closed).
 var apiRlsEnv = concat(
   rlsEnforce ? [
     {
       name: 'NORA_RLS_ENFORCE'
       value: 'true'
     }
-    // Flyway roda como ADMIN (DDL + dono das tabelas) enquanto o runtime e nora_app (ADR 0028).
-    // SPRING_FLYWAY_* mapeia pra spring.flyway.* (relaxed binding) — so existe quando setado aqui.
+    // Flyway runs as ADMIN (DDL + owner of the tables) while the runtime is nora_app (ADR 0028).
+    // SPRING_FLYWAY_* maps to spring.flyway.* (relaxed binding) — only exists when set here.
     {
       name: 'SPRING_FLYWAY_URL'
       value: postgres.outputs.jdbcUrl
@@ -1038,9 +1038,9 @@ var apiSecrets = {
         keyVaultUrl: '${kvUri}secrets/resend-api-key'
         identity: uaiApi.outputs.id
       }
-      // Embeddings RAG (US15/PR #206): a API consome OPENAI_API_KEY/GEMINI_API_KEY via
-      // secretRef no env — sem estas referencias o preflight do Container App falha com
-      // ContainerAppSecretRefNotFound (bug latente: nenhum deploy rodou desde o merge).
+      // RAG embeddings (US15/PR #206): the API consumes OPENAI_API_KEY/GEMINI_API_KEY via
+      // secretRef in the env — without these references the Container App preflight fails with
+      // ContainerAppSecretRefNotFound (latent bug: no deploy has run since the merge).
       {
         name: 'openai-api-key'
         keyVaultUrl: '${kvUri}secrets/openai-api-key'
@@ -1052,12 +1052,12 @@ var apiSecrets = {
         identity: uaiApi.outputs.id
       }
     ],
-    // Integracoes OAuth (ADR 0031): VALOR DIRETO no secret store do app (mesmo padrao do
-    // registry-password), condicionais a estarem setados. NAO usar keyVaultUrl aqui: na
-    // primeira ativacao com KV-reference a plataforma injetou valor corrompido (0x3F) e o
-    // TokenCipher derrubou o boot (revision ActivationFailed em 2026-06-11), apesar de
-    // `az containerapp secret list --show-values` exibir o valor correto. O KV continua
-    // guardando as copias (bloco kvSecrets) para operacao/rotacao.
+    // OAuth integrations (ADR 0031): DIRECT VALUE in the app secret store (same pattern as
+    // registry-password), conditional on being set. Do NOT use keyVaultUrl here: on the
+    // first activation with KV-reference the platform injected a corrupted value (0x3F) and
+    // TokenCipher took down the boot (revision ActivationFailed on 2026-06-11), even though
+    // `az containerapp secret list --show-values` showed the correct value. The KV keeps
+    // holding the copies (kvSecrets block) for operation/rotation.
     empty(googleOauthClientSecret) ? [] : [
       {
         name: 'google-oauth-client-secret'
@@ -1094,7 +1094,7 @@ var apiSecrets = {
         value: linearOauthClientSecret
       }
     ],
-    // Onda 2 (mesmo padrao de valor direto): Microsoft + Telegram.
+    // Wave 2 (same direct-value pattern): Microsoft + Telegram.
     empty(msOauthClientSecret) ? [] : [
       {
         name: 'ms-oauth-client-secret'
@@ -1126,7 +1126,7 @@ var apiSecrets = {
       }
     ],
     apiPlatformSecrets,
-    // RLS telemetria BYPASSRLS (ADR 0026): referencia o secret do KV so quando setado.
+    // BYPASSRLS telemetry RLS (ADR 0026): references the KV secret only when set.
     empty(rlsTelemetryPassword) ? [] : [
       {
         name: 'rls-telemetry-password'
@@ -1134,7 +1134,7 @@ var apiSecrets = {
         identity: uaiApi.outputs.id
       }
     ],
-    // RLS enforce (ADR 0028): senha do role nora_app, referenciada do KV so no cutover.
+    // RLS enforce (ADR 0028): nora_app role password, referenced from the KV only at cutover.
     empty(appDbPassword) ? [] : [
       {
         name: 'nora-app-password'
@@ -1159,7 +1159,7 @@ module apiApp 'modules/container-app.bicep' = {
     customDomains: apiCustomDomains
     cpu: '1'
     memory: '2Gi'
-    minReplicas: 1 // sempre pelo menos 1 — API e caminho critico
+    minReplicas: 1 // always at least 1 — the API is a critical path
     maxReplicas: 3
     envVars: concat([
       {
@@ -1170,12 +1170,12 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'NORA_ENV'
         value: env
       }
-      // Datasource — Spring espera DATASOURCE_* (nao DATABASE_*)
+      // Datasource — Spring expects DATASOURCE_* (not DATABASE_*)
       {
         name: 'DATASOURCE_URL'
         value: postgres.outputs.jdbcUrl
       }
-      // RLS enforce (ADR 0028): runtime conecta como nora_app (NOBYPASSRLS); senao, admin.
+      // RLS enforce (ADR 0028): runtime connects as nora_app (NOBYPASSRLS); otherwise, admin.
       {
         name: 'DATASOURCE_USERNAME'
         value: rlsEnforce ? appDbUsername : postgresAdminLogin
@@ -1188,8 +1188,8 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'JWT_SECRET'
         secretRef: 'jwt-secret'
       }
-      // Embeddings do RAG (busca semântica do chat). Provider-agnóstico (ADR 0004): o client usa
-      // GEMINI_API_KEY (default) ou OPENAI_API_KEY. 'unset' (KV vazio) = embeddings desligados.
+      // RAG embeddings (chat semantic search). Provider-agnostic (ADR 0004): the client uses
+      // GEMINI_API_KEY (default) or OPENAI_API_KEY. 'unset' (empty KV) = embeddings turned off.
       {
         name: 'GEMINI_API_KEY'
         secretRef: 'gemini-api-key'
@@ -1198,7 +1198,7 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'OPENAI_API_KEY'
         secretRef: 'openai-api-key'
       }
-      // Worker NLP base URL — Spring espera NLP_WORKER_BASE_URL
+      // Worker NLP base URL — Spring expects NLP_WORKER_BASE_URL
       {
         name: 'NLP_WORKER_BASE_URL'
         value: 'https://${workerApp.outputs.fqdn}'
@@ -1207,7 +1207,7 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
         value: appInsights.outputs.connectionString
       }
-      // Role name diferencia api/worker/web no Application Map.
+      // Role name distinguishes api/worker/web in the Application Map.
       {
         name: 'APPLICATIONINSIGHTS_ROLE_NAME'
         value: 'nora-api'
@@ -1232,8 +1232,8 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'AZURE_SPEECH_ENDPOINT'
         value: speech.outputs.endpoint
       }
-      // CORS + URLs publicas (apontam pro web Container App)
-      // FQDNs construidos via env.defaultDomain pra evitar ciclo apiApp <-> webApp
+      // CORS + public URLs (point to the web Container App)
+      // FQDNs built via env.defaultDomain to avoid the apiApp <-> webApp cycle
       {
         name: 'CORS_ALLOWED_ORIGINS'
         value: corsAllowedOrigins
@@ -1246,27 +1246,27 @@ module apiApp 'modules/container-app.bicep' = {
         name: 'NORA_FRONTEND_BASE_URL'
         value: frontendBaseUrl
       }
-      // Forca cookie auth seguro (HTTPS-only) — prod stack so usa HTTPS
+      // Forces secure auth cookie (HTTPS-only) — the prod stack only uses HTTPS
       {
         name: 'AUTH_COOKIE_SECURE'
         value: 'true'
       }
-      // Domain do cookie de auth. Web e api estao em subdominios irmaos do mesmo
-      // Container Apps env (ex.: salmonbeach-X.centralus.azurecontainerapps.io). Sem
-      // Domain explicito, o cookie fica scoped na api e o middleware do Next no
-      // dominio web nao enxerga -> redirect infinito. Setando pro registrable domain
-      // do env, web e api ficam "same-site" e compartilham o cookie.
+      // Auth cookie Domain. Web and api are on sibling subdomains of the same
+      // Container Apps env (e.g.: salmonbeach-X.centralus.azurecontainerapps.io). Without
+      // an explicit Domain, the cookie stays scoped to the api and the Next middleware on
+      // the web domain does not see it -> infinite redirect. Setting it to the env's
+      // registrable domain, web and api become "same-site" and share the cookie.
       {
         name: 'AUTH_COOKIE_DOMAIN'
         value: authCookieDomainValue
       }
-      // Bloqueia signup/reset retornar tokens crus em prod
+      // Blocks signup/reset from returning raw tokens in prod
       {
         name: 'EXPOSE_DEV_TOKENS'
         value: 'false'
       }
-      // Email Resend — se RESEND_API_KEY estiver vazio, app cai em LogEmailSender.
-      // Em prod queremos o sender real; KV mantem o secret quando setado via bicepparam.
+      // Resend email — if RESEND_API_KEY is empty, the app falls back to LogEmailSender.
+      // In prod we want the real sender; the KV holds the secret when set via bicepparam.
       {
         name: 'RESEND_API_KEY'
         secretRef: 'resend-api-key'
@@ -1287,14 +1287,14 @@ module apiApp 'modules/container-app.bicep' = {
 var webSecrets = {
   items: union(
     [
-      // Chat IA do Core (BFF /api/chat) consome a chave LLM server-side.
-      // Reusa o MESMO secret do KV que o worker usa (openai-api-key).
+      // Core AI chat (BFF /api/chat) consumes the LLM key server-side.
+      // Reuses the SAME KV secret the worker uses (openai-api-key).
       {
         name: 'openai-api-key'
         keyVaultUrl: '${kvUri}secrets/openai-api-key'
         identity: uaiWeb.outputs.id
       }
-      // Chat multi-provider (ADR 0024): chaves por provider lidas pelo BFF via LLM_KEY_<PROVIDER>.
+      // Multi-provider chat (ADR 0024): per-provider keys read by the BFF via LLM_KEY_<PROVIDER>.
       {
         name: 'deepseek-api-key'
         keyVaultUrl: '${kvUri}secrets/deepseek-api-key'
@@ -1322,7 +1322,7 @@ var webSecrets = {
   )
 }
 
-// Control plane: token pro BFF de chat chamar /internal/platform/{llm-config,usage} (ADR 0024).
+// Control plane: token so the chat BFF can call /internal/platform/{llm-config,usage} (ADR 0024).
 var webPlatformEnv = enablePlatform ? [
   {
     name: 'NORA_PLATFORM_INTERNAL_TOKEN'
@@ -1342,18 +1342,18 @@ module webApp 'modules/container-app.bicep' = {
     targetPort: 3000
     ingress: 'external'
     customDomains: webCustomDomains
-    // 0.25/0.5Gi + minReplicas 0 deixava o SSR do Next sufocado e com cold
-    // start visivel (site "lento" na demo). Saldo Azure autorizado pelo PO.
+    // 0.25/0.5Gi + minReplicas 0 left the Next SSR choked and with visible cold
+    // start (site "slow" in the demo). Azure balance authorized by the PO.
     cpu: '1'
     memory: '2Gi'
     minReplicas: 1
     maxReplicas: 3
     envVars: concat([
-      // NOTA: NEXT_PUBLIC_* sao baked in build-time no bundle Next. O Dockerfile do web
-      // ja hardcoda NEXT_PUBLIC_USE_MOCKS=false. Aqui injetamos a URL em runtime apenas
-      // para casos onde o build receba a variavel como build-arg ARG no Dockerfile
-      // (necessario para que o bundle final aponte pra prod). Nome do contrato e
-      // NEXT_PUBLIC_API_BASE_URL (alinhado com apps/web/src/lib/api/client.ts).
+      // NOTE: NEXT_PUBLIC_* are baked in at build-time into the Next bundle. The web Dockerfile
+      // already hardcodes NEXT_PUBLIC_USE_MOCKS=false. Here we inject the URL at runtime only
+      // for cases where the build receives the variable as a build-arg ARG in the Dockerfile
+      // (needed so the final bundle points to prod). The contract name is
+      // NEXT_PUBLIC_API_BASE_URL (aligned with apps/web/src/lib/api/client.ts).
       {
         name: 'NEXT_PUBLIC_API_BASE_URL'
         value: apiBaseUrl
@@ -1370,9 +1370,9 @@ module webApp 'modules/container-app.bicep' = {
         name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
         value: appInsights.outputs.connectionString
       }
-      // Chat IA do Core (BFF /api/chat) — provider-agnostic (ADR 0004). A chave
-      // fica server-side (secretRef), nunca no bundle do browser. Se openAiApiKey
-      // estiver vazio no deploy, o secret vale 'unset' e o chat retorna 503.
+      // Core AI chat (BFF /api/chat) — provider-agnostic (ADR 0004). The key
+      // stays server-side (secretRef), never in the browser bundle. If openAiApiKey
+      // is empty at deploy time, the secret is 'unset' and the chat returns 503.
       {
         name: 'LLM_API_KEY'
         secretRef: 'openai-api-key'
@@ -1385,9 +1385,9 @@ module webApp 'modules/container-app.bicep' = {
         name: 'LLM_MODEL'
         value: openAiModel
       }
-      // Chaves por provider pro chat multi-provider (ADR 0024). O BFF resolve o modelo ativo via
-      // /internal/platform/llm-config e escolhe a chave por LLM_KEY_<PROVIDER em MAIÚSCULO>. Os
-      // LLM_API_KEY/LLM_BASE_URL/LLM_MODEL acima seguem como default OpenAI (fallback).
+      // Per-provider keys for the multi-provider chat (ADR 0024). The BFF resolves the active model via
+      // /internal/platform/llm-config and picks the key by LLM_KEY_<PROVIDER in UPPERCASE>. The
+      // LLM_API_KEY/LLM_BASE_URL/LLM_MODEL above remain the OpenAI default (fallback).
       {
         name: 'LLM_KEY_OPENAI'
         secretRef: 'openai-api-key'
@@ -1409,10 +1409,10 @@ module webApp 'modules/container-app.bicep' = {
 
 // ============================================================
 // MODULES — Control plane: nora-admin (Next shell, ADR 0023 + ADR 0025)
-// Identidade de operador v2 (ADR 0025): ingress INTERNAL (sem FQDN público) + conector
-// cloudflared (sidecar) expõe o app via Cloudflare Tunnel atrás do Cloudflare Access.
-// Easy Auth (Entra) fica inerte (tenant FIAP bloqueou App Registration). Chama o Spring
-// /admin/platform/** server-side com o admin token. Só quando enablePlatform.
+// Operator identity v2 (ADR 0025): INTERNAL ingress (no public FQDN) + cloudflared
+// connector (sidecar) exposes the app via Cloudflare Tunnel behind Cloudflare Access.
+// Easy Auth (Entra) stays inert (FIAP tenant blocked App Registration). Calls Spring
+// /admin/platform/** server-side with the admin token. Only when enablePlatform.
 // ============================================================
 
 var tenantIssuer = '${environment().authentication.loginEndpoint}${subscription().tenantId}/v2.0'
@@ -1454,10 +1454,10 @@ module adminApp 'modules/container-app.bicep' = if (enablePlatform) {
     environmentId: containerAppsEnv.outputs.id
     image: adminImage
     containerName: 'admin'
-    // Next standalone escuta em 3002 (apps/admin/Dockerfile: PORT=3002 / EXPOSE 3002 / healthz).
+    // Next standalone listens on 3002 (apps/admin/Dockerfile: PORT=3002 / EXPOSE 3002 / healthz).
     targetPort: 3002
-    // ADR 0025: ingress INTERNAL — sem FQDN público. Acesso externo só via Cloudflare Tunnel
-    // (sidecar cloudflared) atrás do Cloudflare Access. minReplicas 1: o conector fica sempre de pé.
+    // ADR 0025: INTERNAL ingress — no public FQDN. External access only via Cloudflare Tunnel
+    // (cloudflared sidecar) behind Cloudflare Access. minReplicas 1: the connector stays always up.
     ingress: 'internal'
     cpu: '0.25'
     memory: '0.5Gi'
@@ -1472,13 +1472,13 @@ module adminApp 'modules/container-app.bicep' = if (enablePlatform) {
         name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
         value: appInsights.outputs.connectionString
       }
-      // Liga o data layer real do nora-admin (sai do mock).
+      // Turns on the real nora-admin data layer (out of the mock).
       {
         name: 'NORA_ADMIN_USE_MOCKS'
         value: 'false'
       }
-      // Nomes alinhados ao apps/admin/src/lib/data.ts (merged em #171). O token carrega o
-      // admin-bridge-token (chamadas server-side a /admin/platform/**).
+      // Names aligned with apps/admin/src/lib/data.ts (merged in #171). The token carries the
+      // admin-bridge-token (server-side calls to /admin/platform/**).
       {
         name: 'PLATFORM_API_BASE_URL'
         value: apiPublicUrl
@@ -1487,9 +1487,9 @@ module adminApp 'modules/container-app.bicep' = if (enablePlatform) {
         name: 'PLATFORM_INTERNAL_TOKEN'
         secretRef: 'admin-bridge-token'
       }
-      // Tier 2 (ADR 0025): o nora-admin valida (server-side, lib/access.ts) o header
-      // Cf-Access-Jwt-Assertion contra o JWKS do team domain, conferindo o audience. Vazios =
-      // validação degrada pra edge-only (origem já protegida pelo tunnel + Access na borda).
+      // Tier 2 (ADR 0025): nora-admin validates (server-side, lib/access.ts) the header
+      // Cf-Access-Jwt-Assertion against the team domain JWKS, checking the audience. Empty =
+      // validation degrades to edge-only (origin already protected by the tunnel + Access at the edge).
       {
         name: 'CF_ACCESS_TEAM_DOMAIN'
         value: cfAccessTeamDomain
@@ -1503,9 +1503,9 @@ module adminApp 'modules/container-app.bicep' = if (enablePlatform) {
     userAssignedIdentityId: uaiAdmin.?outputs.id ?? ''
     registry: registry
     ipSecurityRestrictions: adminIpSecurityRestrictions
-    // Sidecar cloudflared (ADR 0025): conecta ao Cloudflare Tunnel e encaminha pro Next em
-    // localhost:3002. Só quando o token existe — sem token, o admin sobe internal/inacessível
-    // (seguro) até o cloudflare-tunnel.yml rodar e o CLOUDFLARE_TUNNEL_TOKEN ser setado.
+    // cloudflared sidecar (ADR 0025): connects to the Cloudflare Tunnel and forwards to Next on
+    // localhost:3002. Only when the token exists — without a token, the admin comes up internal/unreachable
+    // (safe) until cloudflare-tunnel.yml runs and CLOUDFLARE_TUNNEL_TOKEN is set.
     sidecars: empty(cloudflareTunnelToken) ? [] : [
       {
         name: 'cloudflared'
@@ -1523,8 +1523,8 @@ module adminApp 'modules/container-app.bicep' = if (enablePlatform) {
         ]
       }
     ]
-    // Easy Auth (Entra) ficou inerte: tenant FIAP bloqueou App Registration (Authorization_RequestDenied).
-    // Substituído por Cloudflare Tunnel + Access (ADR 0025). Mantido como no-op (clientId vazio = {}).
+    // Easy Auth (Entra) went inert: FIAP tenant blocked App Registration (Authorization_RequestDenied).
+    // Replaced by Cloudflare Tunnel + Access (ADR 0025). Kept as a no-op (empty clientId = {}).
     easyAuth: empty(easyAuthClientId) ? {} : {
       enabled: true
       clientId: easyAuthClientId
@@ -1552,13 +1552,13 @@ output searchEndpoint string = enableSearch ? (searchService.?outputs.endpoint ?
 output speechEndpoint string = speech.outputs.endpoint
 output speechRegion string = speech.outputs.region
 
-// UAI principal IDs (uteis pra debug ou role assignments extras)
+// UAI principal IDs (useful for debug or extra role assignments)
 output apiUaiPrincipalId string = uaiApi.outputs.principalId
 output workerUaiPrincipalId string = uaiWorker.outputs.principalId
 output webUaiPrincipalId string = uaiWeb.outputs.principalId
 
-// Control plane (ADR 0022/0023) — vazios quando enablePlatform=false.
+// Control plane (ADR 0022/0023) — empty when enablePlatform=false.
 output platformPostgresFqdn string = postgresPlatform.?outputs.fqdn ?? ''
-// ADR 0025: nora-admin tem ingress internal (sem FQDN público). O acesso é pelo hostname do
-// Cloudflare (Tunnel + Access). O FQDN interno é nora-admin-dev.internal.<defaultDomain>.
+// ADR 0025: nora-admin has internal ingress (no public FQDN). Access is via the Cloudflare
+// hostname (Tunnel + Access). The internal FQDN is nora-admin-dev.internal.<defaultDomain>.
 output adminUrl string = enablePlatform ? 'https://admin.nora.systems' : ''

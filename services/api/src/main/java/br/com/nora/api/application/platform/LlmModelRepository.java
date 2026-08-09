@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Porta de persistência do catálogo de modelos (banco de plataforma, ADR 0022). */
+/** Persistence port for the model catalog (platform database, ADR 0022). */
 public interface LlmModelRepository {
 
     List<LlmModel> findAll();
@@ -14,11 +14,11 @@ public interface LlmModelRepository {
 
     Optional<LlmModel> findByProviderAndModel(String provider, String modelId);
 
-    /** Persiste um novo modelo e devolve a linha com id/timestamps preenchidos. */
+    /** Persists a new model and returns the row with id/timestamps filled in. */
     LlmModel insert(LlmModel model);
 
     void deleteById(UUID id);
 
-    /** True se o modelo está bindado em llm_config (impede DELETE — 409). */
+    /** True if the model is bound in llm_config (blocks DELETE — 409). */
     boolean isBound(UUID modelId);
 }

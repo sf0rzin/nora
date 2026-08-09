@@ -3,28 +3,28 @@ package br.com.nora.api.application.ports;
 import java.util.List;
 
 /**
- * Porta da Bot API do Telegram usada pelo pareamento (onda 2). O Telegram NÃO tem OAuth: o app tem
- * UM bot global ({@code NORA_TELEGRAM_BOT_TOKEN}) e cada tenant conecta provando posse de um código
- * curto — o usuário abre o deep link {@code t.me/<bot>?start=<código>} e o backend encontra a
- * mensagem {@code /start <código>} via {@code getUpdates}, guardando o {@code chat_id} como
- * conexão. A implementação infrastructure cuida do HTTP (e do offset em memória); nos testes é
- * stubada.
+ * Port for Telegram's Bot API used by the pairing (wave 2). Telegram has NO OAuth: the app has ONE
+ * global bot ({@code NORA_TELEGRAM_BOT_TOKEN}) and each tenant connects by proving possession of a
+ * short code — the user opens the deep link {@code t.me/<bot>?start=<code>} and the backend finds
+ * the {@code /start <code>} message via {@code getUpdates}, storing the {@code chat_id} as the
+ * connection. The infrastructure implementation handles the HTTP (and the in-memory offset); in
+ * tests it is stubbed.
  */
 public interface TelegramBotApi {
 
-    /** Username do bot (sem @), via {@code getMe} — cacheado pela implementação. */
+    /** Bot username (without @), via {@code getMe} — cached by the implementation. */
     String botUsername();
 
     /**
-     * Busca one-shot das mensagens {@code /start <payload>} recebidas pelo bot desde a última
-     * chamada ({@code getUpdates} com offset em memória). Mensagens sem payload são ignoradas.
+     * One-shot fetch of the {@code /start <payload>} messages received by the bot since the last
+     * call ({@code getUpdates} with an in-memory offset). Messages without a payload are ignored.
      */
     List<StartCommand> pollStartCommands();
 
     /**
-     * @param chatId chat de onde veio o /start (vira o access token da conexão)
-     * @param payload código que o deep link embutiu no /start
-     * @param fromDisplay nome de exibição de quem mandou (conta externa no hub); pode ser nulo
+     * @param chatId chat the /start came from (becomes the connection's access token)
+     * @param payload code the deep link embedded in the /start
+     * @param fromDisplay display name of the sender (external account in the hub); may be null
      */
     record StartCommand(String chatId, String payload, String fromDisplay) {}
 }

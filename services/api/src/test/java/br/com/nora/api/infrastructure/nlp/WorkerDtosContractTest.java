@@ -10,16 +10,17 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * Trava o contrato JSON enviado ao NLP worker. O worker valida com Pydantic {@code extra="forbid"}
- * (services/nlp-worker/src/nora_nlp/models.py) — qualquer chave fora da lista derruba a análise com
- * 422 em produção. Foi exatamente o que aconteceu quando a API enviava "commercialPlaybook" e
- * "keyFeatures" para um worker que só conhece "objectionHandling" e "keyDifferentiators".
+ * Locks the JSON contract sent to the NLP worker. The worker validates with Pydantic {@code
+ * extra="forbid"} (services/nlp-worker/src/nora_nlp/models.py) — any key outside the list brings
+ * the analysis down with a 422 in production. That is exactly what happened when the API was
+ * sending "commercialPlaybook" and "keyFeatures" to a worker that only knows "objectionHandling"
+ * and "keyDifferentiators".
  */
 class WorkerDtosContractTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    // Campos aceitos por TenantContext no worker (models.py, aliases camelCase).
+    // Fields accepted by TenantContext in the worker (models.py, camelCase aliases).
     private static final Set<String> WORKER_TENANT_CONTEXT_FIELDS =
             Set.of(
                     "companyName",
@@ -31,7 +32,7 @@ class WorkerDtosContractTest {
                     "objectionHandling",
                     "glossary");
 
-    // Campos aceitos por TenantProduct no worker.
+    // Fields accepted by TenantProduct in the worker.
     private static final Set<String> WORKER_PRODUCT_FIELDS =
             Set.of("name", "description", "keyDifferentiators");
 

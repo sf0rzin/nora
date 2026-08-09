@@ -7,9 +7,8 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
- * Agregado de tenant. No MVP cada usuario Core que faz signup ganha um tenant pessoal proprio (US01
- * + persona Lucas). Em Enterprise (US06, fora deste escopo) os usuarios sao convidados para um
- * tenant existente.
+ * Tenant aggregate. In the MVP each Core user who signs up gets their own personal tenant (US01 +
+ * Lucas persona). In Enterprise (US06, out of this scope) users are invited to an existing tenant.
  */
 public final class Tenant {
 
@@ -27,10 +26,10 @@ public final class Tenant {
     private static final Pattern SLUG_PATTERN = Pattern.compile("^[a-z0-9][a-z0-9-]{0,62}$");
 
     /**
-     * Regex de dominio corporativo (US32). Aceita {@code acme.com}, {@code sub.acme.com.br}, {@code
-     * a-b.io}. Rejeita inicio/fim com hifen, falta de TLD ({@code acme}), prefixo {@code @}, sufixo
-     * {@code .}, caracteres invalidos. Validacao espera o input ja normalizado (lowercase + trim)
-     * na camada de aplicacao.
+     * Corporate domain regex (US32). Accepts {@code acme.com}, {@code sub.acme.com.br}, {@code
+     * a-b.io}. Rejects leading/trailing hyphen, missing TLD ({@code acme}), {@code @} prefix,
+     * {@code .} suffix, invalid characters. Validation expects the input already normalized
+     * (lowercase + trim) in the application layer.
      */
     private static final Pattern EMAIL_DOMAIN_PATTERN =
             Pattern.compile(
@@ -64,7 +63,7 @@ public final class Tenant {
         this.updatedAt = Objects.requireNonNull(updatedAt);
     }
 
-    /** Construtor legado mantido para chamadas que ainda nao conhecem o campo opcional. */
+    /** Legacy constructor kept for callers that do not yet know the optional field. */
     public Tenant(
             UUID id,
             String name,
@@ -90,8 +89,8 @@ public final class Tenant {
     }
 
     /**
-     * Normaliza um dominio corporativo: trim + lowercase. Retorna {@code null} quando o input for
-     * {@code null} ou em branco apos normalizacao.
+     * Normalizes a corporate domain: trim + lowercase. Returns {@code null} when the input is
+     * {@code null} or blank after normalization.
      */
     public static String normalizeEmailDomain(String raw) {
         if (raw == null) {
@@ -102,8 +101,8 @@ public final class Tenant {
     }
 
     /**
-     * Valida um dominio corporativo ja normalizado. Retorna {@code true} se o input for {@code
-     * null} (sem restricao) ou casar o regex; {@code false} caso contrario.
+     * Validates an already normalized corporate domain. Returns {@code true} if the input is {@code
+     * null} (no restriction) or matches the regex; {@code false} otherwise.
      */
     public static boolean isValidEmailDomain(String normalized) {
         if (normalized == null) {
@@ -159,14 +158,13 @@ public final class Tenant {
     }
 
     /**
-     * Retorna uma nova instancia com o dominio corporativo atualizado, preservando os demais
-     * campos. {@code newDomain} pode ser {@code null} para limpar a restricao. O caller e
-     * responsavel por gravar via {@link
-     * br.com.nora.api.application.ports.TenantRepository#save(Tenant)}.
+     * Returns a new instance with the corporate domain updated, preserving the remaining fields.
+     * {@code newDomain} may be {@code null} to clear the restriction. The caller is responsible for
+     * persisting via {@link br.com.nora.api.application.ports.TenantRepository#save(Tenant)}.
      */
     /**
-     * Retorna uma nova instancia com o nome atualizado (renomear workspace nas configuracoes),
-     * preservando slug e demais campos. O caller grava via {@code TenantRepository.save}.
+     * Returns a new instance with the name updated (rename workspace in the settings), preserving
+     * slug and the remaining fields. The caller persists via {@code TenantRepository.save}.
      */
     public Tenant withName(String newName, Instant updatedAt) {
         return new Tenant(

@@ -20,12 +20,12 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/** Ação discord_post_message: validação do webhookUrl, embed e propagação de falha. */
+/** discord_post_message action: webhookUrl validation, embed and failure propagation. */
 class DiscordPostMessageActionTest {
 
     private static final String WEBHOOK = "https://discord.com/api/webhooks/123/abc";
 
-    // ── Validação do webhookUrl ──
+    // ── webhookUrl validation ──
 
     @Test
     void webhookUrl_aceitaDiscordEDiscordapp() {
@@ -136,7 +136,7 @@ class DiscordPostMessageActionTest {
         assertThat(passos.split("\n")).hasSize(DiscordPostMessageAction.MAX_ACTION_ITEMS);
     }
 
-    // ── Execução (HTTP mockado) ──
+    // ── Execution (mocked HTTP) ──
 
     @Test
     void execute_sucessoComStatus204() {

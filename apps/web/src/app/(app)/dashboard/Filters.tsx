@@ -31,7 +31,7 @@ export default function DashboardFilters({ defaults }: Props) {
     if (status) qs.set("status", status);
     if (from) qs.set("from", `${from}T00:00:00Z`);
     if (to) qs.set("to", `${to}T23:59:59Z`);
-    // Reaplicar filtros sempre volta pra página 1.
+    // Reapplying filters always goes back to page 1.
     const q = qs.toString();
     router.push((q ? `/dashboard?${q}` : "/dashboard") as Route);
   }
@@ -94,9 +94,9 @@ export default function DashboardFilters({ defaults }: Props) {
 }
 
 /**
- * Atualiza a lista enquanto houver reuniões em PROCESSING — espelha o polling
- * do upload (Subfase 1.3), mas no nível da lista. Sem libs novas: setInterval
- * + router.refresh() revalida o Server Component até nada mais estar analisando.
+ * Refreshes the list while there are meetings in PROCESSING — mirrors the upload
+ * polling (Subphase 1.3), but at the list level. No new libs: setInterval
+ * + router.refresh() revalidates the Server Component until nothing is analyzing.
  */
 const POLL_INTERVAL_MS = 4_000;
 

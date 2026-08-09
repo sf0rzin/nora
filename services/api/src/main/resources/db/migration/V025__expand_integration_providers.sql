@@ -1,8 +1,8 @@
--- V025 — Libera os provedores OAuth da onda 1 (GitHub, Notion, Todoist, Linear) no CHECK de
--- integration_connections.provider (V024 fixava google/slack).
+-- V025 — Allows the wave 1 OAuth providers (GitHub, Notion, Todoist, Linear) in the CHECK on
+-- integration_connections.provider (V024 pinned google/slack).
 --
--- Constraint nomeada pelo Postgres na criação inline (V024): integration_connections_provider_check.
--- Sem mudança de RLS/índices — só a lista de valores aceitos.
+-- Constraint named by Postgres on inline creation (V024): integration_connections_provider_check.
+-- No RLS/index change — only the list of accepted values.
 
 ALTER TABLE integration_connections
     DROP CONSTRAINT integration_connections_provider_check;

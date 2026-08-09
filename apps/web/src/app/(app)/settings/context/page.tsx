@@ -30,7 +30,7 @@ import { Avatar } from "@/components/core/avatar";
 interface ProductForm {
   name: string;
   description: string;
-  keyDifferentiators: string; // string separada por linha
+  keyDifferentiators: string; // newline-separated string
 }
 
 interface FormState {
@@ -78,7 +78,7 @@ function splitLines(s: string): string[] {
     .filter(Boolean);
 }
 
-// ── seções do hub (sem IAM: Core é individual) ──
+// ── hub sections (no IAM: Core is individual) ──
 const SECTIONS = ["conta", "seguranca", "workspace", "contexto"] as const;
 type Section = (typeof SECTIONS)[number];
 
@@ -106,7 +106,7 @@ function CheckIcon() {
   );
 }
 
-// ── força de senha (porte do protótipo §4.3) ──
+// ── password strength (port of the prototype §4.3) ──
 const STRENGTH_LABELS = ["—", "Fraca", "Razoável", "Boa", "Forte"];
 const STRENGTH_COLORS = [
   "var(--chip)",
@@ -127,7 +127,7 @@ function strengthOf(pw: string): number {
 }
 
 export default function TenantContextPage() {
-  // ── navegação interna do hub (hash) ──
+  // ── internal hub navigation (hash) ──
   const [section, setSection] = useState<Section>("conta");
 
   useEffect(() => {
@@ -174,17 +174,17 @@ export default function TenantContextPage() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Conta — perfil REAL (GET /auth/me + PATCH /users/me). O cookie
-   nora_user dá o fallback instantâneo enquanto o /auth/me carrega;
-   o /auth/me é a fonte de verdade (traz emailVerified, que o cookie
-   não tem). Salvar atualiza o cookie pra sidebar refletir na hora.
+   Account — REAL profile (GET /auth/me + PATCH /users/me). The
+   nora_user cookie is the instant fallback while /auth/me loads;
+   /auth/me is the source of truth (has emailVerified, the cookie
+   doesn't). Saving updates the cookie so the sidebar reflects it now.
    ───────────────────────────────────────────────────────────── */
 function AccountSection() {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [fallback, setFallback] = useState<SessionUser | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("");
-  // Não sobrescreve o que o usuário já digitou quando o /auth/me resolve.
+  // Does not overwrite what the user already typed when /auth/me resolves.
   const dirtyRef = useRef(false);
 
   const [saving, setSaving] = useState(false);
@@ -216,7 +216,7 @@ function AccountSection() {
     };
   }, []);
 
-  // Sucesso discreto: o "Salvo" some sozinho depois de alguns segundos.
+  // Discreet success: the "Salvo" disappears on its own after a few seconds.
   useEffect(() => {
     if (!saved) return;
     const t = setTimeout(() => setSaved(false), 3000);
@@ -241,7 +241,7 @@ function AccountSection() {
       setMe(updated);
       setDisplayName(updated.displayName);
       dirtyRef.current = false;
-      // Reflete na sidebar/orb na hora (cookie nora_user + evento).
+      // Reflects in the sidebar/orb immediately (nora_user cookie + event).
       updateSessionUser({ displayName: updated.displayName });
       setSaved(true);
     } catch (err) {
@@ -257,7 +257,7 @@ function AccountSection() {
     setResendNote(null);
     try {
       await resendVerificationEmail(email);
-      // 202 sempre (anti-enumeração) — mensagem única em qualquer caso.
+      // Always 202 (anti-enumeration) — single message in any case.
       setResendNote(
         "Se este e-mail estiver cadastrado e ainda não verificado, enviamos um novo link. Confira sua caixa de entrada.",
       );
@@ -397,10 +397,10 @@ function AccountSection() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Segurança — trocar senha REAL (POST /auth/password/change: revoga
-   todas as sessões e reemite cookies pro dispositivo atual) + sair
-   de todos os dispositivos (POST /auth/logout-all). O medidor de
-   força continua client-side (UX); a policy de verdade é do backend.
+   Security — REAL password change (POST /auth/password/change: revokes
+   every session and reissues cookies for the current device) + log out
+   of all devices (POST /auth/logout-all). The strength meter stays
+   client-side (UX); the real policy belongs to the backend.
    ───────────────────────────────────────────────────────────── */
 function SecuritySection() {
   const router = useRouter();
@@ -408,9 +408,9 @@ function SecuritySection() {
   const [pwNew, setPwNew] = useState("");
   const [pwConf, setPwConf] = useState("");
   const [changing, setChanging] = useState(false);
-  /** Erro específico do campo "Senha atual" (401 INVALID_CREDENTIALS). */
+  /** Error specific to the "Senha atual" field (401 INVALID_CREDENTIALS). */
   const [curError, setCurError] = useState<string | null>(null);
-  /** Erro geral (400 policy etc.) — mensagem do backend. */
+  /** General error (400 policy etc.) — message from the backend. */
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSuccess, setPwSuccess] = useState(false);
 
@@ -431,8 +431,8 @@ function SecuritySection() {
     setPwSuccess(false);
     try {
       await changePassword({ currentPassword: pwCur, newPassword: pwNew });
-      // 204: backend revogou TODAS as sessões mas reemitiu cookies pra cá —
-      // este dispositivo continua logado.
+      // 204: backend revoked ALL sessions but reissued cookies for here —
+      // this device stays logged in.
       setPwCur("");
       setPwNew("");
       setPwConf("");
@@ -455,7 +455,7 @@ function SecuritySection() {
     setLogoutError(null);
     try {
       await logoutAllSessions();
-      // Backend já limpou os cookies httpOnly — só resta o estado local.
+      // Backend already cleared the httpOnly cookies — only local state is left.
       clearLocalSession();
       router.replace("/auth/login" as Route);
     } catch (err) {
@@ -614,10 +614,10 @@ function SecuritySection() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Workspace — nome + slug + plano REAIS (GET /tenant + PUT
-   /tenant/name) e zona de perigo REAL (DELETE /users/me: apaga
-   conta + workspace + todos os dados, LGPD). Typed-confirm do
-   e-mail é a 1ª etapa de atrito; a senha confirma de verdade.
+   Workspace — REAL name + slug + plan (GET /tenant + PUT
+   /tenant/name) and REAL danger zone (DELETE /users/me: wipes
+   account + workspace + all data, LGPD). Typed-confirm of the
+   e-mail is the 1st friction step; the password is the real confirm.
    ───────────────────────────────────────────────────────────── */
 function formatPlan(plan: string): string {
   const p = plan.trim();
@@ -629,7 +629,7 @@ function WorkspaceSection() {
   const [tenant, setTenant] = useState<TenantInfo | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [wsName, setWsName] = useState("");
-  // Não sobrescreve o que o usuário já digitou quando o GET /tenant resolve.
+  // Does not overwrite what the user already typed when GET /tenant resolves.
   const dirtyRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -662,7 +662,7 @@ function WorkspaceSection() {
     };
   }, []);
 
-  // Sucesso discreto: o "Salvo" some sozinho depois de alguns segundos.
+  // Discreet success: the "Salvo" disappears on its own after a few seconds.
   useEffect(() => {
     if (!saved) return;
     const t = setTimeout(() => setSaved(false), 3000);
@@ -702,14 +702,14 @@ function WorkspaceSection() {
     setDelError(null);
     try {
       await deleteAccount({ password: delPw });
-      // 204: conta + workspace + dados apagados; backend já limpou os cookies.
+      // 204: account + workspace + data wiped; backend already cleared the cookies.
       clearLocalSession();
       window.location.assign("/");
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 401) {
         setDelError("Senha incorreta.");
       } else if (err instanceof ApiRequestError) {
-        // 409 ACCOUNT_TENANT_SHARED e afins: a message do backend explica.
+        // 409 ACCOUNT_TENANT_SHARED and the like: the backend message explains.
         setDelError(err.message);
       } else {
         setDelError("Falha ao excluir a conta. Tente de novo.");
@@ -918,9 +918,9 @@ function WorkspaceSection() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Contexto da empresa — LÓGICA REAL (GET/PUT /tenant/context).
-   Apenas re-skin: classes do design system, sem tocar no fluxo
-   de dados/API.
+   Company context — REAL LOGIC (GET/PUT /tenant/context).
+   Re-skin only: design system classes, without touching the
+   data/API flow.
    ───────────────────────────────────────────────────────────── */
 function CompanyContextSection() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -938,7 +938,7 @@ function CompanyContextSection() {
       .catch((err) => {
         if (cancelled) return;
         if (err instanceof ApiRequestError && err.status === 404) {
-          // ainda nao configurado; segue com form vazio
+          // not configured yet; carry on with an empty form
         } else {
           setError(err instanceof Error ? err.message : "Falha ao carregar contexto.");
         }
@@ -1192,7 +1192,7 @@ function CompanyContextSection() {
   );
 }
 
-/* ── estilos exclusivos do hub (não há classe em components.css) ── */
+/* ── hub-only styles (there is no class in components.css) ── */
 const SET_STYLES = `
 .set-layout { display: flex; gap: 40px; align-items: flex-start; }
 .set-nav {

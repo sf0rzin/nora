@@ -24,27 +24,28 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Hub de integrações OAuth (NORA Flows Fase 2). Fluxo comum aos provedores: {@code start*} monta a
- * URL de autorização com state assinado → usuário consente no provedor → {@code handle*Callback}
- * troca o code por tokens, identifica a conta e faz upsert da conexão do tenant.
+ * OAuth integrations hub (NORA Flows Phase 2). Flow shared by the providers: {@code start*} builds
+ * the authorization URL with a signed state → the user consents at the provider → {@code
+ * handle*Callback} exchanges the code for tokens, identifies the account and upserts the tenant's
+ * connection.
  *
- * <p>Google: {@code validGoogleAccessToken} é o que as ações (Gmail/Calendar) usam em runtime —
- * renova via refresh token quando expirado (rotation persistida). Escopos: gmail.send,
- * calendar.events e openid email.
+ * <p>Google: {@code validGoogleAccessToken} is what the actions (Gmail/Calendar) use at runtime —
+ * renews via refresh token when expired (rotation persisted). Scopes: gmail.send, calendar.events
+ * and openid email.
  *
- * <p>Slack: {@code validSlackBotToken} devolve o bot token ({@code xoxb-...}) — NÃO expira, sem
- * refresh. Escopos do bot: chat:write (postar) e channels:read (listar canais). Tudo tenant-scoped
- * (ADR 0002 + RLS).
+ * <p>Slack: {@code validSlackBotToken} returns the bot token ({@code xoxb-...}) — it does NOT
+ * expire, no refresh. Bot scopes: chat:write (post) and channels:read (list channels). Everything
+ * tenant-scoped (ADR 0002 + RLS).
  *
- * <p>Demais provedores OAuth (GitHub, Notion, Todoist, Linear — onda 1; Microsoft — onda 2): fluxo
- * OAuth2 code-flow padrão declarado no {@link OAuthProviderDirectory} e executado pelo client
- * genérico. {@code validAccessToken} devolve o token persistido; quando o config declara {@code
- * supportsRefresh} (Microsoft), renova com a mesma semântica do Google (skew 60s + rotation
- * persistida); senão, token expirado orienta reconexão.
+ * <p>Other OAuth providers (GitHub, Notion, Todoist, Linear — wave 1; Microsoft — wave 2): standard
+ * OAuth2 code-flow declared in {@link OAuthProviderDirectory} and executed by the generic client.
+ * {@code validAccessToken} returns the persisted token; when the config declares {@code
+ * supportsRefresh} (Microsoft), it renews with the same semantics as Google (60s skew + persisted
+ * rotation); otherwise an expired token tells the user to reconnect.
  *
- * <p>Onda 2 fora do OAuth: Telegram conecta por pareamento de código (ver {@code
- * TelegramPairingService}) e Trello por token colado pelo usuário ({@link #saveTrelloToken}) — o
- * start do Trello devolve a URL de authorize do próprio Trello pra abrir em nova aba.
+ * <p>Wave 2 outside OAuth: Telegram connects by code pairing (see {@code TelegramPairingService})
+ * and Trello by a token the user pastes ({@link #saveTrelloToken}) — Trello's start returns
+ * Trello's own authorize URL to open in a new tab.
  */
 @Service
 public class IntegrationService {
@@ -59,7 +60,7 @@ public class IntegrationService {
     private static final String SLACK_AUTH_URL = "https://slack.com/oauth/v2/authorize";
     private static final String SLACK_SCOPES = "chat:write,channels:read";
 
-    /** Margem antes do expiresAt para renovar proativamente (evita 401 em voo). */
+    /** Margin before expiresAt to renew proactively (avoids a 401 in flight). */
     private static final long REFRESH_SKEW_SECONDS = 60;
 
     private final IntegrationConnectionRepository connections;
@@ -111,7 +112,7 @@ public class IntegrationService {
         this.trelloApiKey = trelloApiKey;
     }
 
-    /** Status de cada provedor para o hub (conectado? qual conta?). */
+    /** Status of each provider for the hub (connected? which account?). */
     @Transactional(readOnly = true)
     public List<ProviderStatus> status(UUID tenantId) {
         List<IntegrationConnection> existing = connections.listByTenant(tenantId);
@@ -133,7 +134,7 @@ public class IntegrationService {
                 .toList();
     }
 
-    /** Status de UM provedor (resposta dos endpoints de pareamento/token do hub). */
+    /** Status of ONE provider (response of the hub's pairing/token endpoints). */
     @Transactional(readOnly = true)
     public ProviderStatus statusOf(UUID tenantId, IntegrationProvider provider) {
         Optional<IntegrationConnection> conn =
@@ -147,10 +148,11 @@ public class IntegrationService {
     }
 
     /**
-     * Inicia a conexão do provedor. Google/Slack têm fluxos dedicados; Trello devolve a URL de
-     * authorize do próprio Trello (o usuário copia o token gerado e cola no hub); Telegram NÃO
-     * passa por aqui (pareamento por código — {@code TelegramPairingService}) e cai no genérico,
-     * que falha {@code NotConfigured} por nunca estar no catálogo OAuth; o resto é genérico.
+     * Starts the provider connection. Google/Slack have dedicated flows; Trello returns Trello's
+     * own authorize URL (the user copies the generated token and pastes it into the hub); Telegram
+     * does NOT go through here (code pairing — {@code TelegramPairingService}) and falls into the
+     * generic path, which fails {@code NotConfigured} because it is never in the OAuth catalog; the
+     * rest is generic.
      */
     public String start(IntegrationProvider provider, UUID tenantId, UUID userId) {
         return switch (provider) {
@@ -161,31 +163,31 @@ public class IntegrationService {
         };
     }
 
-    /** Conclui o callback OAuth do provedor (mesmo roteamento do {@link #start}). */
+    /** Completes the provider's OAuth callback (same routing as {@link #start}). */
     @Transactional
     public OAuthStateCodec.DecodedState handleCallback(
             IntegrationProvider provider, String code, String state) {
-        // `/integrations/*/oauth/callback` é público (SecurityConfig.PUBLIC_ENDPOINTS): chega por
-        // redirect do provedor, sem JWT, então o JwtAuthenticationFilter não populou o contexto de
-        // tenant que o TenantRlsAspect lê. V024 pôs RLS em integration_connections com
-        // `WITH CHECK (tenant_id = nora.current_tenant_id())`, e V020 montou a lista de isenções
-        // para fluxos sem JWT antes de V024 existir — esta tabela nunca entrou nela.
+        // `/integrations/*/oauth/callback` is public (SecurityConfig.PUBLIC_ENDPOINTS): it arrives
+        // by redirect from the provider, without a JWT, so JwtAuthenticationFilter did not populate
+        // the tenant context that TenantRlsAspect reads. V024 put RLS on integration_connections
+        // with `WITH CHECK (tenant_id = nora.current_tenant_id())`, and V020 built the exemption
+        // list for flows without a JWT before V024 existed — this table never made it in.
         //
-        // Sem o GUC, com nora.security.rls.enforce=true o upsert bate no WITH CHECK e falha
-        // fechado: conectar qualquer integração pararia de funcionar no dia do cutover. O tenant
-        // vem do state assinado (HMAC, exp 10min), que é a credencial deste endpoint.
+        // Without the GUC, with nora.security.rls.enforce=true the upsert hits the WITH CHECK and
+        // fails closed: connecting any integration would stop working on cutover day. The tenant
+        // comes from the signed state (HMAC, 10min exp), which is this endpoint's credential.
         //
-        // Setar aqui basta: o `connections.upsert` é @Transactional, então o aspect dispara nele
-        // e aplica o SET LOCAL na transação já aberta por este método.
+        // Setting it here is enough: `connections.upsert` is @Transactional, so the aspect fires
+        // on it and applies the SET LOCAL on the transaction this method already opened.
         //
-        // A checagem de configuração vem ANTES do decode para não trocar o erro que o operador vê:
-        // num provider sem credencial, decodificar primeiro devolvia "state inválido" em vez de
-        // "provider não configurado", e o diagnóstico apontava para o lado errado.
+        // The configuration check comes BEFORE the decode so the error the operator sees does not
+        // change: on a provider without credentials, decoding first returned "state inválido"
+        // instead of "provider não configurado", and the diagnosis pointed at the wrong side.
         switch (provider) {
             case GOOGLE -> requireGoogleConfigured();
             case SLACK -> requireSlackConfigured();
             default -> {
-                /* generic: validado dentro do handler, que conhece o directory */
+                /* generic: validated inside the handler, which knows the directory */
             }
         }
         UUID tenantId = stateCodec.decode(state, clock.now()).tenantId();
@@ -201,7 +203,7 @@ public class IntegrationService {
         }
     }
 
-    /** Monta a URL de autorização do Google com state assinado (tenant/usuário embutidos). */
+    /** Builds Google's authorization URL with a signed state (tenant/user embedded). */
     public String startGoogle(UUID tenantId, UUID userId) {
         requireGoogleConfigured();
         String state = stateCodec.encode(tenantId, userId, IntegrationProvider.GOOGLE, clock.now());
@@ -221,8 +223,9 @@ public class IntegrationService {
     }
 
     /**
-     * Callback do Google: valida o state, troca o code por tokens e faz upsert da conexão. Retorna
-     * o tenant/usuário do state (o controller redireciona pro front).
+     * Google callback: validates the state, exchanges the code for tokens and upserts the
+     * connection. Returns the tenant/user from the state (the controller redirects to the front
+     * end).
      */
     @Transactional
     public OAuthStateCodec.DecodedState handleGoogleCallback(String code, String state) {
@@ -257,8 +260,9 @@ public class IntegrationService {
     }
 
     /**
-     * Access token Google VÁLIDO para uso imediato pelas ações do Flows. Renova (e persiste a
-     * rotation) quando expirado/perto de expirar. Lança {@code NotConnected} sem conexão.
+     * VALID Google access token for immediate use by the Flows actions. Renews (and persists the
+     * rotation) when expired/about to expire. Throws {@code NotConnected} when there is no
+     * connection.
      */
     @Transactional
     public String validGoogleAccessToken(UUID tenantId) {
@@ -290,7 +294,7 @@ public class IntegrationService {
         return updated.accessToken();
     }
 
-    /** Monta a URL de autorização do Slack (OAuth v2) com state assinado. */
+    /** Builds Slack's authorization URL (OAuth v2) with a signed state. */
     public String startSlack(UUID tenantId, UUID userId) {
         requireSlackConfigured();
         String state = stateCodec.encode(tenantId, userId, IntegrationProvider.SLACK, clock.now());
@@ -306,9 +310,9 @@ public class IntegrationService {
     }
 
     /**
-     * Callback do Slack: valida o state, troca o code pelo bot token e faz upsert da conexão. Bot
-     * token não expira — refreshToken/expiresAt ficam nulos por contrato; a workspace conectada
-     * (team name) vira a conta externa exibida no hub.
+     * Slack callback: validates the state, exchanges the code for the bot token and upserts the
+     * connection. The bot token does not expire — refreshToken/expiresAt stay null by contract; the
+     * connected workspace (team name) becomes the external account shown in the hub.
      */
     @Transactional
     public OAuthStateCodec.DecodedState handleSlackCallback(String code, String state) {
@@ -336,8 +340,8 @@ public class IntegrationService {
     }
 
     /**
-     * Bot token Slack para uso imediato pelas ações do Flows. Sem refresh (o token não expira):
-     * devolve o token persistido ou lança {@code NotConnected}.
+     * Slack bot token for immediate use by the Flows actions. No refresh (the token does not
+     * expire): returns the persisted token or throws {@code NotConnected}.
      */
     @Transactional(readOnly = true)
     public String validSlackBotToken(UUID tenantId) {
@@ -350,7 +354,7 @@ public class IntegrationService {
                 .accessToken();
     }
 
-    /** Monta a URL de autorização de um provedor genérico (code-flow padrão, state assinado). */
+    /** Builds a generic provider's authorization URL (standard code-flow, signed state). */
     private String startGeneric(IntegrationProvider provider, UUID tenantId, UUID userId) {
         OAuthProviderConfig config = requireGenericConfigured(provider);
         String state = stateCodec.encode(tenantId, userId, provider, clock.now());
@@ -376,10 +380,10 @@ public class IntegrationService {
     }
 
     /**
-     * Callback genérico: valida o state, troca o code pelos tokens e faz upsert da conexão. {@code
-     * refreshToken} só vem de provedores com {@code supportsRefresh} (Microsoft); {@code expiresAt}
-     * só é persistido quando o provedor informa {@code expires_in} (ex.: Linear ~10 anos, Microsoft
-     * ~1h).
+     * Generic callback: validates the state, exchanges the code for the tokens and upserts the
+     * connection. {@code refreshToken} only comes from providers with {@code supportsRefresh}
+     * (Microsoft); {@code expiresAt} is only persisted when the provider reports {@code expires_in}
+     * (e.g. Linear ~10 years, Microsoft ~1h).
      */
     @Transactional
     public OAuthStateCodec.DecodedState handleGenericCallback(
@@ -410,10 +414,10 @@ public class IntegrationService {
     }
 
     /**
-     * Access token de um provedor genérico para uso imediato pelas ações do Flows. Token dentro da
-     * validade (skew de 60s) volta direto. Expirado: provedores com {@code supportsRefresh}
-     * (Microsoft) renovam aqui — mesma semântica do {@link #validGoogleAccessToken} (rotation
-     * persistida); os demais orientam reconexão.
+     * Access token of a generic provider for immediate use by the Flows actions. A token still
+     * within validity (60s skew) is returned directly. Expired: providers with {@code
+     * supportsRefresh} (Microsoft) renew here — same semantics as {@link #validGoogleAccessToken}
+     * (rotation persisted); the rest tell the user to reconnect.
      */
     @Transactional
     public String validAccessToken(UUID tenantId, IntegrationProvider provider) {
@@ -451,9 +455,9 @@ public class IntegrationService {
     }
 
     /**
-     * URL de authorize do Trello (key do app + {@code response_type=token}): o hub abre em nova
-     * aba, o usuário copia o token que o Trello exibe e cola de volta ({@link #saveTrelloToken}).
-     * Sem OAuth server-side (o 1.0a do Trello não vale o custo) — por isso sem state.
+     * Trello authorize URL (app key + {@code response_type=token}): the hub opens it in a new tab,
+     * the user copies the token Trello shows and pastes it back ({@link #saveTrelloToken}). No
+     * server-side OAuth (Trello's 1.0a is not worth the cost) — hence no state.
      */
     public String startTrello() {
         requireTrelloConfigured();
@@ -463,9 +467,9 @@ public class IntegrationService {
     }
 
     /**
-     * Valida o token colado pelo usuário no Trello ({@code GET /1/members/me}) e persiste a conexão
-     * (cifrada como as demais; token com {@code expiration=never} — sem refresh/expiração). Token
-     * inválido = {@code ProviderError} claro, nada é salvo.
+     * Validates the token the user pasted from Trello ({@code GET /1/members/me}) and persists the
+     * connection (encrypted like the others; token with {@code expiration=never} — no
+     * refresh/expiry). An invalid token = a clear {@code ProviderError}, nothing is saved.
      */
     @Transactional
     public ProviderStatus saveTrelloToken(UUID tenantId, UUID userId, String token) {
@@ -510,7 +514,7 @@ public class IntegrationService {
         };
     }
 
-    /** O bot global do app está configurado? (token único — a conexão por tenant é o chat_id). */
+    /** Is the app's global bot configured? (single token — per-tenant connection is chat_id). */
     public boolean telegramConfigured() {
         return telegramBotToken != null && !telegramBotToken.isBlank();
     }
@@ -569,7 +573,8 @@ public class IntegrationService {
         try {
             return google.userEmail(accessToken);
         } catch (RuntimeException ex) {
-            // Conta sem e-mail visível não impede a conexão — o hub mostra "Conectado".
+            // An account with no visible e-mail does not block the connection — the hub shows
+            // "Conectado".
             LOG.warn("Não consegui resolver o e-mail da conta Google: {}", ex.getMessage());
             return null;
         }

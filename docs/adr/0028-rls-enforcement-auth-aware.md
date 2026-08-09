@@ -1,83 +1,83 @@
-# 0028 — RLS enforcement auth-aware: escopo por dado, Flyway-as-admin e cutover
+# 0028 — Auth-aware RLS enforcement: scope by data, Flyway-as-admin and cutover
 
-- Status: aceito
-- Data: 2026-06-04
-- Decisores: Arquiteto + Stratfy (PO)
-- Relacionado: substitui a parte de **design do enforce + cutover** do ADR 0026 (mantém o V019 e o role provisioning); estende ADR 0002 / 0019; relacionado a ADR 0024 (telemetria)
+- Status: accepted
+- Date: 2026-06-04
+- Deciders: Architect + Stratfy (PO)
+- Related: supersedes the **enforce design + cutover** part of ADR 0026 (keeps V019 and the role provisioning); extends ADR 0002 / 0019; related to ADR 0024 (telemetry)
 
-## Contexto
+## Context
 
-O ADR 0026 (proposto) entregou o V019 (policies de RLS em todas as ~30 tabelas tenant-owned, fechando o gap crítico de `transcripts`) + o script de roles `R001` + o caminho de telemetria BYPASSRLS. Mas, ao preparar o cutover de fato, uma investigação do código (2026-06-04) achou que **o design de enforce do 0026 estava incompleto e quebraria o app**. Três problemas:
+ADR 0026 (proposed) delivered V019 (RLS policies on all ~30 tenant-owned tables, closing the critical `transcripts` gap) + the `R001` roles script + the BYPASSRLS telemetry path. But, while preparing the actual cutover, a code investigation (2026-06-04) found that **the enforce design in 0026 was incomplete and would break the app**. Three problems:
 
-1. **Flyway-DDL.** O 0026 manda a API conectar como `nora_app` (NOBYPASSRLS), e o Flyway roda no boot da API. Mas `nora_app` só tem `USAGE` no schema (sem `CREATE`/`ALTER`) — o próximo deploy com uma migration nova **quebra a API no boot**. (As tabelas usam `ENABLE`, não `FORCE`, RLS — então o owner bypassa; quem cria a tabela é o owner.)
-2. **Switch de conexão ausente.** O `main.bicep` não tem como apontar o `DATASOURCE` da API pro `nora_app` (o próprio template admite). Ligar `rlsEnforce=true` sozinho é **no-op** (o aspect seta o GUC, mas a conexão admin bypassa).
-3. **🔴 Auth quebra sob enforce (o 0026 não viu).** `AuthService.login`/`signup` usam `UserRepository.findByEmail` — busca **global, cross-tenant** (achar o user por email *antes* de saber o tenant). O `TenantRlsAspect` só seta o GUC quando há tenant autenticado (`if tenantId != null`). Sob enforce com `nora_app`, requests não-autenticados (login, signup, aceite de convite, verificação de email, reset de senha) ficam **sem GUC → fail-closed → auth inteira quebra**.
+1. **Flyway-DDL.** 0026 has the API connect as `nora_app` (NOBYPASSRLS), and Flyway runs at API boot. But `nora_app` only has `USAGE` on the schema (no `CREATE`/`ALTER`) — the next deploy with a new migration **breaks the API at boot**. (The tables use `ENABLE`, not `FORCE`, RLS — so the owner bypasses; whoever creates the table is the owner.)
+2. **Missing connection switch.** `main.bicep` has no way to point the API's `DATASOURCE` at `nora_app` (the template itself admits this). Turning on `rlsEnforce=true` alone is a **no-op** (the aspect sets the GUC, but the admin connection bypasses it).
+3. **🔴 Auth breaks under enforce (0026 did not see this).** `AuthService.login`/`signup` use `UserRepository.findByEmail` — a **global, cross-tenant** lookup (find the user by email *before* knowing the tenant). The `TenantRlsAspect` only sets the GUC when there is an authenticated tenant (`if tenantId != null`). Under enforce with `nora_app`, unauthenticated requests (login, signup, invitation acceptance, email verification, password reset) end up **without a GUC → fail-closed → the whole auth breaks**.
 
-RLS só vale para roles **não-owner** e **NOBYPASSRLS**. O app precisa ser esse role para os dados de tenant, mas precisa de acesso cross-tenant para auth. Num único papel de conexão, isso conflita.
+RLS only applies to **non-owner** and **NOBYPASSRLS** roles. The app needs to be that role for tenant data, but it needs cross-tenant access for auth. With a single connection role, these conflict.
 
-## Decisão
+## Decision
 
-### 1. Escopo do enforce: por sensibilidade do dado, não "todas as tabelas"
+### 1. Enforce scope: by data sensitivity, not "all tables"
 
-RLS enforce vale para as tabelas de **dados de negócio + PII + autorização IAM** — onde está o valor da defesa em profundidade:
+RLS enforce applies to the tables of **business data + PII + IAM authorization** — where the value of defense in depth lies:
 
-- `transcripts` (PII bruta — prioridade), `meetings`, `meeting_analyses` + filhos (`meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities`, `meeting_participants`), `meeting_tags`, `meeting_goals`, `meeting_productivity_assessments`, `meeting_account_links`;
+- `transcripts` (raw PII — priority), `meetings`, `meeting_analyses` + children (`meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities`, `meeting_participants`), `meeting_tags`, `meeting_goals`, `meeting_productivity_assessments`, `meeting_account_links`;
 - `customer_accounts`, `customer_confidence_assessments`;
-- `tenant_contexts` (contexto company/product do tenant).
+- `tenant_contexts` (the tenant's company/product context).
 
-As tabelas de **IDENTIDADE** e de **AUTORIZAÇÃO IAM** ficam com **escopo de aplicação** (RLS desabilitada via `V020`):
+The **IDENTITY** and **IAM AUTHORIZATION** tables are left with **application scope** (RLS disabled via `V020`):
 
-- **Identidade** — auth é cross-tenant por natureza (lida/escrita sem contexto de tenant): `users` (login por email é global), `tenants`, `email_verification_tokens`, `password_reset_tokens`, `refresh_tokens`, `iam_user_invitations`.
-- **Autorização IAM** — config de autorização (não PII de cliente), escrita por fluxos de onboarding **sem JWT** (aceite de convite anexa o user a grupos → `iam_user_groups`; signup grava audit → `iam_audit_events`): `iam_groups`, `iam_policies`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events`. Exemptar elimina fiação de GUC nesses fluxos; o isolamento segue pelo `PolicyEvaluator` + queries tenant-scoped (disciplinado).
+- **Identity** — auth is cross-tenant by nature (read/written without tenant context): `users` (login by email is global), `tenants`, `email_verification_tokens`, `password_reset_tokens`, `refresh_tokens`, `iam_user_invitations`.
+- **IAM authorization** — authorization config (not customer PII), written by onboarding flows **without a JWT** (invitation acceptance attaches the user to groups → `iam_user_groups`; signup writes an audit record → `iam_audit_events`): `iam_groups`, `iam_policies`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events`. Exempting them eliminates GUC wiring in those flows; isolation continues via the `PolicyEvaluator` + tenant-scoped queries (disciplined).
 
-> Isto **revisa** o "100% das tabelas" do ADR 0026 para **"100% dos dados de negócio/PII; identidade com escopo de aplicação"** — a postura padrão de mercado para SaaS multi-tenant com signup self-service. O filtro `tenant_id` aplicacional nas tabelas de identidade já é 100% disciplinado (auditoria 2026-06-03), e o gap crítico (PII de `transcripts`) é fechado de verdade.
+> This **revises** the "100% of the tables" from ADR 0026 to **"100% of business data/PII; identity with application scope"** — the standard market posture for multi-tenant SaaS with self-service signup. The application-level `tenant_id` filter on the identity tables is already 100% disciplined (audit 2026-06-03), and the critical gap (`transcripts` PII) is genuinely closed.
 
 ### 2. Flyway-as-admin, runtime-as-nora_app
 
-A API runtime conecta como `nora_app` (NOBYPASSRLS → RLS vale), mas o **Flyway usa credenciais separadas de admin** (Spring Boot suporta `spring.flyway.{url,user,password}` independente do `spring.datasource`). O owner (admin) cria/altera o schema e **é dono das tabelas** (inclusive futuras) → `nora_app` (não-owner) é sujeito à RLS. Resolve o Flyway-DDL **e** a semântica de owner-bypass de uma vez. Default (sem as vars de Flyway setadas): Flyway = datasource (dev/test/pré-cutover intactos).
+The API runtime connects as `nora_app` (NOBYPASSRLS → RLS applies), but **Flyway uses separate admin credentials** (Spring Boot supports `spring.flyway.{url,user,password}` independently of `spring.datasource`). The owner (admin) creates/alters the schema and **owns the tables** (including future ones) → `nora_app` (non-owner) is subject to RLS. This solves the Flyway-DDL issue **and** the owner-bypass semantics in one go. Default (without the Flyway vars set): Flyway = datasource (dev/test/pre-cutover untouched).
 
-### 3. Pipeline de análise seta o tenant context (a única escrita enforced fora de request-com-JWT)
+### 3. The analysis pipeline sets the tenant context (the only enforced write outside a request-with-JWT)
 
-Com identidade + IAM exemptas, o **único** caminho que escreve em tabela enforced sem um JWT na thread é o **pipeline de análise**: `AnalysisService.run` (e a análise live) roda **async** num thread de executor — o `TenantContextHolder` (ThreadLocal) não é propagado, então o `TenantRlsAspect` não seta o GUC. Como o pipeline recebe o `tenantId`, ele chama o helper `TenantRlsContext.runWithTenant(tenantId, ...)` (executa `set_config('nora.current_tenant_id', ?, true)` na transação corrente) antes de ler o `transcript` e escrever `meeting_analyses` + filhos. Todas as demais tabelas enforced são tocadas só por requests autenticados (GUC setado pelo aspect). Lookups genuinamente cross-tenant (login por email, convite/token por hash) batem só em tabelas exemptas → funcionam sem GUC.
+With identity + IAM exempt, the **only** path that writes to an enforced table without a JWT on the thread is the **analysis pipeline**: `AnalysisService.run` (and the live analysis) runs **async** on an executor thread — the `TenantContextHolder` (ThreadLocal) is not propagated, so the `TenantRlsAspect` does not set the GUC. Since the pipeline receives the `tenantId`, it calls the helper `TenantRlsContext.runWithTenant(tenantId, ...)` (which executes `set_config('nora.current_tenant_id', ?, true)` in the current transaction) before reading the `transcript` and writing `meeting_analyses` + children. All other enforced tables are touched only by authenticated requests (GUC set by the aspect). Genuinely cross-tenant lookups (login by email, invitation/token by hash) only hit exempt tables → they work without a GUC.
 
-### 4. Bicep: switch de conexão + Flyway admin (enforce default OFF)
+### 4. Bicep: connection switch + Flyway admin (enforce default OFF)
 
-`main.bicep` ganha o param `appDbUsername` (default `nora_admin`) + secret `nora-app-password`. Quando `rlsEnforce=true`: `DATASOURCE_USERNAME=nora_app` + `DATASOURCE_PASSWORD=nora-app-password` (KV) + `FLYWAY_DATASOURCE_USERNAME/PASSWORD` = admin + `NORA_RLS_ENFORCE=true` + caminho de telemetria BYPASSRLS (do 0026). Default OFF mantém prod como está.
+`main.bicep` gains the param `appDbUsername` (default `nora_admin`) + the secret `nora-app-password`. When `rlsEnforce=true`: `DATASOURCE_USERNAME=nora_app` + `DATASOURCE_PASSWORD=nora-app-password` (KV) + `FLYWAY_DATASOURCE_USERNAME/PASSWORD` = admin + `NORA_RLS_ENFORCE=true` + BYPASSRLS telemetry path (from 0026). Default OFF keeps prod as it is.
 
-### 5. Prova obrigatória: teste de integração do app sob enforce
+### 5. Mandatory proof: app integration test under enforce
 
-Um teste (`RlsAppEnforcementIntegrationTest`, Testcontainers) **sobe o app sob enforce** (datasource = role NOBYPASSRLS, Flyway = admin, V020 aplicada) e valida, ponta-a-ponta: **signup, login, aceite de convite, verificação de email e reset de senha funcionam** E o isolamento cross-tenant **segura** (tenant A não vê `transcripts`/`meetings` de B). Esse teste é o "done" e a rede de segurança — o cutover ao vivo só acontece com ele verde.
+A test (`RlsAppEnforcementIntegrationTest`, Testcontainers) **boots the app under enforce** (datasource = NOBYPASSRLS role, Flyway = admin, V020 applied) and validates, end to end: **signup, login, invitation acceptance, email verification and password reset work** AND cross-tenant isolation **holds** (tenant A does not see B's `transcripts`/`meetings`). This test is the "done" and the safety net — the live cutover only happens with it green.
 
-### 6. Sequência de cutover (corrigida)
+### 6. Cutover sequence (corrected)
 
-1. Mergear esta sub-fase (V020 + Flyway-admin + onboarding GUC + Bicep + teste verde no CI). Enforce ainda OFF — zero mudança em prod.
-2. Provisionar roles: rodar `R001` como **admin** do Postgres (cria `nora_app` NOBYPASSRLS + `nora_telemetry` BYPASSRLS + grants). Popular `nora-app-password`, `rls-telemetry-password` no Key Vault.
-3. Flipar no `bicepparam`: `rlsEnforce=true` + `rlsTelemetryDatasourceUrl` → deploy. A API passa a conectar como `nora_app`; Flyway segue como admin.
-4. Smoke ao vivo: signup/login/convite/reset funcionam + 2 tenants isolados + painel operador ainda agregando.
-5. Rollback trivial: `rlsEnforce=false` no bicepparam + redeploy (volta pro admin; schema fica).
+1. Merge this sub-phase (V020 + Flyway-admin + onboarding GUC + Bicep + green test in CI). Enforce still OFF — zero change in prod.
+2. Provision roles: run `R001` as Postgres **admin** (creates `nora_app` NOBYPASSRLS + `nora_telemetry` BYPASSRLS + grants). Populate `nora-app-password`, `rls-telemetry-password` in Key Vault.
+3. Flip it in the `bicepparam`: `rlsEnforce=true` + `rlsTelemetryDatasourceUrl` → deploy. The API starts connecting as `nora_app`; Flyway continues as admin.
+4. Live smoke test: signup/login/invitation/reset work + 2 isolated tenants + operator dashboard still aggregating.
+5. Trivial rollback: `rlsEnforce=false` in the bicepparam + redeploy (back to admin; schema stays).
 
-## Consequências
+## Consequences
 
-**Positivas:**
-- Fecha o furo crítico (PII de `transcripts` legível cross-tenant sob enforce) **sem quebrar auth**.
-- Defesa em profundidade real onde importa (dados/PII/autz), com a única rede de segurança onde o app-filter pode falhar.
-- Flyway-as-admin resolve DDL + owner-bypass de forma idiomática (config Spring, sem job separado).
-- Cutover reversível e provado por teste de integração (não "torcer pra dar certo").
+**Positive:**
+- Closes the critical hole (`transcripts` PII readable cross-tenant under enforce) **without breaking auth**.
+- Real defense in depth where it matters (data/PII/authz), with the only safety net where the app filter can fail.
+- Flyway-as-admin solves DDL + owner-bypass idiomatically (Spring config, no separate job).
+- Reversible cutover, proven by an integration test (not "hope it works").
 
-**Negativas / trade-offs:**
-- Tabelas de identidade **não** têm rede de RLS — dependem do filtro aplicacional (já disciplinado). Aceito: auth é cross-tenant por design; alternativa (datasource bypass dedicado pro AuthService) é mais plumbing por ganho marginal nessas tabelas.
-- Onboarding precisa setar o GUC explicitamente — acoplamento pequeno e localizado (signup/invite), coberto por teste.
-- `V020` desabilita RLS em 6 tabelas que `V016`/`V019` habilitaram — registrado e justificado (não é regressão; é a correção do escopo).
+**Negative / trade-offs:**
+- Identity tables do **not** have an RLS net — they depend on the application-level filter (already disciplined). Accepted: auth is cross-tenant by design; the alternative (a dedicated bypass datasource for AuthService) is more plumbing for marginal gain on those tables.
+- Onboarding needs to set the GUC explicitly — a small, localized coupling (signup/invite), covered by a test.
+- `V020` disables RLS on 6 tables that `V016`/`V019` had enabled — recorded and justified (it is not a regression; it is the scope correction).
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Datasource BYPASSRLS dedicado pro AuthService** (rotear `findByEmail` etc.) — correto mas exige 2º EntityManager/adapter; mais plumbing por ganho marginal (identidade não é o alvo de PII). Preterido em favor de exemptar identidade.
-2. **Enforce em 100% (incl. identidade) + policies permissivas pra auth** — abriria as tabelas de identidade a quem não tem GUC (enumeração cross-tenant de users). Pior que escopo por dado.
-3. **`nora_app` com `CREATE` no schema (Flyway como nora_app)** — `nora_app` viraria owner das tabelas futuras → bypass de RLS nelas (owner-exempt). Fura o próprio enforce. Preterido por Flyway-as-admin.
-4. **Adiar pós-pitch** — o PO optou por fazer agora e direito (tempo disponível); o risco é mitigado pelo teste + enforce default OFF até o flip.
+1. **A dedicated BYPASSRLS datasource for AuthService** (routing `findByEmail` etc.) — correct but requires a 2nd EntityManager/adapter; more plumbing for marginal gain (identity is not the PII target). Passed over in favor of exempting identity.
+2. **Enforce on 100% (incl. identity) + permissive policies for auth** — this would open the identity tables to anyone without a GUC (cross-tenant enumeration of users). Worse than scoping by data.
+3. **`nora_app` with `CREATE` on the schema (Flyway as nora_app)** — `nora_app` would become the owner of future tables → RLS bypass on them (owner-exempt). It defeats the enforce itself. Passed over in favor of Flyway-as-admin.
+4. **Postponing until after the pitch** — the PO chose to do it now and do it right (time available); the risk is mitigated by the test + enforce default OFF until the flip.
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-06-04 | Arquiteto + Stratfy (PO) | Criação. Corrige o design de enforce do ADR 0026 após investigação achar 3 furos (Flyway-DDL, switch ausente, e auth quebrando sob enforce). Escopo por sensibilidade do dado (identidade com app-scope), Flyway-as-admin, onboarding seta GUC, Bicep switch, teste de app sob enforce como prova. Mantém V019 + R001 do 0026. |
+| 2026-06-04 | Architect + Stratfy (PO) | Creation. Fixes the enforce design of ADR 0026 after an investigation found 3 holes (Flyway-DDL, missing switch, and auth breaking under enforce). Scope by data sensitivity (identity with app-scope), Flyway-as-admin, onboarding sets the GUC, Bicep switch, app test under enforce as proof. Keeps V019 + R001 from 0026. |

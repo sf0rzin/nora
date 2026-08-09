@@ -1,6 +1,6 @@
 /**
- * Tipos TypeScript que espelham docs/api/openapi.yaml e os exemplos em
- * docs/api/examples/. Mudancas aqui devem manter paridade com o backend.
+ * TypeScript types mirroring docs/api/openapi.yaml and the examples in
+ * docs/api/examples/. Changes here must keep parity with the backend.
  */
 
 export type Sentiment = 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'MIXED';
@@ -21,11 +21,11 @@ export interface MeetingListItem {
   riskCount: number;
   opportunityCount: number;
   tags: string[];
-  /** Banda de produtividade quando avaliada; ausente/null caso contrário. */
+  /** Productivity band when assessed; absent/null otherwise. */
   productivityBand?: 'LOW' | 'MEDIUM' | 'HIGH' | null;
-  /** Score 0–100 quando avaliado. */
+  /** Score 0–100 when assessed. */
   productivityScore?: number | null;
-  /** Nomes dos participantes para o stack de avatares. */
+  /** Participant names for the avatar stack. */
   participants?: string[];
 }
 
@@ -82,9 +82,9 @@ export interface MeetingAnalysis {
   promptVersion?: string;
   generatedAt?: string;
   /**
-   * Metadados do pipeline de análise (espelha AnalysisResponse.Metadata no
-   * backend). `piiRedactionsApplied` é a contagem real de redações aplicadas
-   * pelo PII Shield (ADR 0012). Opcional: análises antigas podem não ter.
+   * Analysis pipeline metadata (mirrors AnalysisResponse.Metadata in the
+   * backend). `piiRedactionsApplied` is the real count of redactions applied
+   * by the PII Shield (ADR 0012). Optional: old analyses may not have it.
    */
   metadata?: { piiRedactionsApplied?: number; [k: string]: unknown };
 }
@@ -100,7 +100,7 @@ export interface Participant {
   isInternal?: boolean;
 }
 
-// Productivity Score (ADR 0005) — opt-in por reunião
+// Productivity Score (ADR 0005) — opt-in per meeting
 export type ProductivityBand = 'LOW' | 'MEDIUM' | 'HIGH';
 export type CoverageStatus = 'ADDRESSED' | 'PARTIAL' | 'MISSED';
 
@@ -125,8 +125,8 @@ export interface MeetingGoal {
   projectStateSnapshot: string | null;
 }
 
-// Customer Confidence (ADR 0015) — presente só em reuniões externas
-// (conversa com cliente/lead); null para reuniões internas.
+// Customer Confidence (ADR 0015) — present only in external meetings
+// (conversation with customer/lead); null for internal meetings.
 export type ConfidenceBand = 'LOW' | 'MEDIUM' | 'HIGH';
 export type ConfidenceTrend = 'IMPROVING' | 'STABLE' | 'DECLINING';
 
@@ -146,9 +146,9 @@ export interface Objection {
 export interface CustomerConfidence {
   score: number;
   band: ConfidenceBand;
-  /** Valor autoritativo server-side; null na primeira reunião da conta. */
+  /** Authoritative server-side value; null on the account's first meeting. */
   trend: ConfidenceTrend | null;
-  /** Nome da conta resolvida via get-or-create; pode ser null. */
+  /** Name of the account resolved via get-or-create; can be null. */
   accountName: string | null;
   rationale: string;
   buyingSignals: BuyingSignal[];
@@ -165,7 +165,7 @@ export interface MeetingDetail {
   language?: string;
   owner: UserRef;
   participants: Participant[];
-  /** Tags informadas no upload da reunião (podem estar vazias). */
+  /** Tags given on the meeting upload (may be empty). */
   tags?: string[];
   processingStatus: ProcessingStatus;
   analysis?: MeetingAnalysis;
@@ -184,20 +184,20 @@ export interface ApiError {
   details?: { field: string; issue: string }[];
 }
 
-// ---------- Split de transcrição (arquivo .txt com várias reuniões) ----------
+// ---------- Transcript split (.txt file with several meetings) ----------
 
 /**
- * Um segmento detectado pelo `POST /meetings/split-preview`. `startLine` e
- * `endLine` são 1-based e INCLUSIVOS sobre o arquivo ORIGINAL — o fatiamento
- * real é feito client-side após a confirmação do usuário. `preview` já vem
- * redigido pelo PII Shield do worker (nunca PII crua).
+ * A segment detected by `POST /meetings/split-preview`. `startLine` and
+ * `endLine` are 1-based and INCLUSIVE over the ORIGINAL file — the real
+ * slicing is done client-side after the user confirms. `preview` already comes
+ * redacted by the worker's PII Shield (never raw PII).
  */
 export interface SplitSegment {
   index: number;
   title: string;
   startLine: number;
   endLine: number;
-  /** 0..1 — abaixo de 0.7 a UI sugere conferir a divisão. */
+  /** 0..1 — below 0.7 the UI suggests checking the split. */
   confidence: number;
   preview: string;
 }
@@ -217,25 +217,25 @@ export interface SplitPreviewResponse {
   metadata: SplitPreviewMetadata;
 }
 
-// ---------- Conta & Workspace (settings — Conta/Segurança/Workspace) ----------
+// ---------- Account & Workspace (settings — Account/Security/Workspace) ----------
 
-/** Usuário autenticado (GET /auth/me; PATCH /users/me devolve o mesmo shape). */
+/** Authenticated user (GET /auth/me; PATCH /users/me returns the same shape). */
 export interface MeResponse {
   userId: string;
   tenantId: string;
   email: string;
   displayName: string;
-  /** Se o e-mail da conta já foi verificado (link enviado no signup). */
+  /** Whether the account e-mail has already been verified (link sent on signup). */
   emailVerified: boolean;
   /** ISO-8601. */
   createdAt: string;
 }
 
-/** Workspace (tenant) atual (GET /tenant; PUT /tenant/name devolve o mesmo shape). */
+/** Current workspace (tenant) (GET /tenant; PUT /tenant/name returns the same shape). */
 export interface TenantInfo {
   id: string;
   name: string;
-  /** Identificador imutável do workspace, definido no cadastro. */
+  /** Immutable workspace identifier, defined at signup. */
   slug: string;
   plan: string;
   /** ISO-8601. */
@@ -266,7 +266,7 @@ export interface InviteUserRequest {
 }
 
 export interface AcceptInviteRequest {
-  /** Opcional — backend usa local-part do e-mail se omitido. Max 120 chars. */
+  /** Optional — backend uses the e-mail local-part if omitted. Max 120 chars. */
   displayName?: string;
   password: string;
 }
@@ -278,23 +278,23 @@ export interface InviteListResponse {
   size: number;
 }
 
-// ---------- Chat sessions (persistência tenant + user scoped) ----------
+// ---------- Chat sessions (tenant + user scoped persistence) ----------
 
 /**
- * Resumo de uma sessão de chat, usado na lista lateral. Sempre escopado ao
- * usuário logado (user_id do principal) dentro do tenant (ADR 0002 + RLS ADR 0028).
+ * Summary of a chat session, used in the side list. Always scoped to the
+ * logged-in user (the principal's user_id) inside the tenant (ADR 0002 + RLS ADR 0028).
  */
 export interface ChatSessionSummary {
   id: string;
   title: string;
-  /** ISO-8601. Lista vem ordenada por este campo, mais recentes primeiro. */
+  /** ISO-8601. The list comes ordered by this field, most recent first. */
   updatedAt: string;
   messageCount: number;
-  /** Trecho curto da última mensagem, para preview na lista. */
+  /** Short excerpt of the last message, for the preview in the list. */
   lastSnippet?: string;
 }
 
-/** Uma mensagem dentro de uma sessão de chat. */
+/** A message inside a chat session. */
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -303,7 +303,7 @@ export interface ChatMessage {
   createdAt: string;
 }
 
-/** Sessão de chat completa, com o histórico de mensagens. */
+/** Full chat session, with the message history. */
 export interface ChatSessionDetail {
   id: string;
   title: string;
@@ -314,23 +314,23 @@ export interface ChatSessionDetail {
   messages: ChatMessage[];
 }
 
-// ---------- NORA Flows — workflows de automação (ADR 0030) ----------
+// ---------- NORA Flows — automation workflows (ADR 0030) ----------
 
-/** Papel de um nó dentro do grafo do fluxo. */
+/** Role of a node inside the flow graph. */
 export type WorkflowNodeKind = 'trigger' | 'condition' | 'action';
 
-/** Nó da definição persistida no backend (kind + type do catálogo + params). */
+/** Node of the definition persisted in the backend (kind + catalog type + params). */
 export interface WorkflowDefinitionNode {
   id: string;
   kind: WorkflowNodeKind;
-  /** Tipo do catálogo (ex.: `meeting.analysis_completed`, `send_email`). */
+  /** Catalog type (e.g. `meeting.analysis_completed`, `send_email`). */
   type: string;
   params?: Record<string, unknown>;
-  /** Posição do nó no canvas do builder (persistida pra reabrir igual). */
+  /** Node position on the builder canvas (persisted so it reopens the same). */
   position?: { x: number; y: number };
 }
 
-/** Aresta dirigida entre dois nós do fluxo. */
+/** Directed edge between two nodes of the flow. */
 export interface WorkflowDefinitionEdge {
   id: string;
   source: string;
@@ -338,19 +338,19 @@ export interface WorkflowDefinitionEdge {
 }
 
 /**
- * Definição completa do fluxo (grafo). O backend valida: exatamente 1 gatilho,
- * ao menos 1 ação, sem ciclos e params obrigatórios por tipo de nó.
+ * Full flow definition (graph). The backend validates: exactly 1 trigger,
+ * at least 1 action, no cycles and the params required per node type.
  */
 export interface WorkflowDefinition {
   nodes: WorkflowDefinitionNode[];
   edges: WorkflowDefinitionEdge[];
 }
 
-/** Workflow persistido, escopado ao tenant (ADR 0002). */
+/** Persisted workflow, scoped to the tenant (ADR 0002). */
 export interface WorkflowResponse {
   id: string;
   name: string;
-  /** Tipo do gatilho (derivado da definição pelo backend). */
+  /** Trigger type (derived from the definition by the backend). */
   triggerType: string;
   active: boolean;
   definition: WorkflowDefinition;
@@ -362,17 +362,17 @@ export interface WorkflowResponse {
 
 export type WorkflowExecutionStatus = 'RUNNING' | 'SUCCESS' | 'FAILED';
 
-/** Linha do log de uma execução de fluxo. */
+/** Log line of a flow execution. */
 export interface WorkflowExecutionLogEntry {
   /** ISO-8601. */
   at: string;
-  /** Nó que produziu a linha; null para mensagens do engine. */
+  /** Node that produced the line; null for engine messages. */
   nodeId: string | null;
   level: 'info' | 'error';
   message: string;
 }
 
-/** Execução de um fluxo (disparo real ou teste manual). */
+/** Execution of a flow (real trigger or manual test). */
 export interface WorkflowExecutionResponse {
   id: string;
   workflowId: string;
@@ -381,16 +381,16 @@ export interface WorkflowExecutionResponse {
   log: WorkflowExecutionLogEntry[];
   /** ISO-8601. */
   createdAt: string;
-  /** ISO-8601; null enquanto RUNNING. */
+  /** ISO-8601; null while RUNNING. */
   finishedAt: string | null;
 }
 
-// ---------- Integrações OAuth (NORA Flows Fase 2) ----------
+// ---------- OAuth integrations (NORA Flows Phase 2) ----------
 
 /**
- * Provedor de integração suportado pelo backend. Quase todos são OAuth;
- * exceções da onda 2: `telegram` (pareamento por código via bot) e
- * `trello` (token gerado pelo usuário e colado no hub).
+ * Integration provider supported by the backend. Almost all are OAuth;
+ * exceptions from wave 2: `telegram` (code pairing via bot) and
+ * `trello` (token generated by the user and pasted into the hub).
  */
 export type IntegrationProvider =
   | 'google'
@@ -403,25 +403,25 @@ export type IntegrationProvider =
   | 'telegram'
   | 'trello';
 
-/** Resposta do início do pareamento Telegram (POST /integrations/telegram/pairing/start). */
+/** Response of the Telegram pairing start (POST /integrations/telegram/pairing/start). */
 export interface TelegramPairingStart {
-  /** Deep link t.me/<bot>?start=<código> pro usuário abrir e mandar /start. */
+  /** Deep link t.me/<bot>?start=<code> for the user to open and send /start. */
   deepLink: string;
-  /** Código exibido no hub (mesmo payload do deep link). */
+  /** Code shown in the hub (same payload as the deep link). */
   code: string;
 }
 
 /**
- * Estado de um conector pro usuário logado (GET /integrations).
- * `configured` = o servidor tem credenciais OAuth do provedor (ambiente);
- * `connected` = o usuário autorizou a própria conta via OAuth.
+ * State of a connector for the logged-in user (GET /integrations).
+ * `configured` = the server has the provider's OAuth credentials (environment);
+ * `connected` = the user authorized their own account via OAuth.
  */
 export interface IntegrationStatus {
   provider: IntegrationProvider;
   configured: boolean;
   connected: boolean;
-  /** Conta externa conectada (ex.: e-mail Google); null quando desconectado. */
+  /** Connected external account (e.g. Google e-mail); null when disconnected. */
   externalAccount: string | null;
-  /** ISO-8601; null quando desconectado. */
+  /** ISO-8601; null when disconnected. */
   connectedAt: string | null;
 }

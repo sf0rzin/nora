@@ -1,15 +1,15 @@
 /**
- * NORA Flows — catálogo de blocos do builder (Fase 1 + ações de integração da Fase 2).
+ * NORA Flows — builder block catalog (Phase 1 + Phase 2 integration actions).
  *
- * Fonte única de verdade no front pros blocos que o engine aceita (ADR 0030).
- * O backend rejeita tipos desconhecidos, então NUNCA adicione um bloco aqui
- * sem o executor correspondente no engine (services/api).
+ * Single source of truth on the front end for the blocks the engine accepts (ADR 0030).
+ * The backend rejects unknown types, so NEVER add a block here without the
+ * corresponding executor in the engine (services/api).
  */
 import type { ReactNode } from "react";
 
 import type { WorkflowNodeKind } from "@/lib/api/types";
 
-/** Metadados visuais de cada papel de nó (gatilho/condição/ação). */
+/** Visual metadata for each node role (trigger/condition/action). */
 export const KIND_META: Record<
   WorkflowNodeKind,
   { rotulo: string; rotuloPlural: string; cor: string }
@@ -19,7 +19,7 @@ export const KIND_META: Record<
   action: { rotulo: "Ação", rotuloPlural: "Ações", cor: "var(--success)" },
 };
 
-/** Ícone do papel do nó — SVG inline 14px no padrão do app (stroke 1.7). */
+/** Node role icon — inline 14px SVG in the app's standard (stroke 1.7). */
 export function IconeKind({ kind, size = 14 }: { kind: WorkflowNodeKind; size?: number }): ReactNode {
   const comum = {
     width: size,
@@ -33,21 +33,21 @@ export function IconeKind({ kind, size = 14 }: { kind: WorkflowNodeKind; size?: 
   };
   switch (kind) {
     case "trigger":
-      // Raio — evento que dispara o fluxo.
+      // Bolt — event that fires the flow.
       return (
         <svg {...comum}>
           <path d="M13 2 4.5 13.5h6L11 22l8.5-11.5h-6z" />
         </svg>
       );
     case "condition":
-      // Funil — filtra o caminho da execução.
+      // Funnel — filters the execution path.
       return (
         <svg {...comum}>
           <path d="M3 5h18l-7 8v6l-4-2v-4z" />
         </svg>
       );
     case "action":
-      // Avião de papel — executa algo no mundo real.
+      // Paper plane — does something in the real world.
       return (
         <svg {...comum}>
           <path d="m22 2-11 11" />
@@ -57,7 +57,7 @@ export function IconeKind({ kind, size = 14 }: { kind: WorkflowNodeKind; size?: 
   }
 }
 
-/** Props comuns dos ícones por bloco — mesmo traço do IconeKind (stroke 1.7). */
+/** Common props for the per-block icons — same stroke as IconeKind (stroke 1.7). */
 function propsSvg(size: number) {
   return {
     width: size,
@@ -71,7 +71,7 @@ function propsSvg(size: number) {
   };
 }
 
-/** Envelope com seta de envio — ação "Enviar via Gmail". */
+/** Envelope with a send arrow — "Enviar via Gmail" action. */
 export function IconeGmail({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -83,7 +83,7 @@ export function IconeGmail({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
-/** Calendário com "+" — ação "Criar evento no Calendar". */
+/** Calendar with a "+" — "Criar evento no Calendar" action. */
 export function IconeCalendarMais({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -94,7 +94,7 @@ export function IconeCalendarMais({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
-/** Seta saindo da caixa — ação "Chamar webhook" (POST pra fora do NORA). */
+/** Arrow leaving the box — "Chamar webhook" action (POST out of NORA). */
 export function IconeWebhook({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -105,7 +105,7 @@ export function IconeWebhook({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
-/** Balão de chat com dois pontos — ação "Avisar no Discord". */
+/** Chat bubble with two dots — "Avisar no Discord" action. */
 export function IconeDiscord({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -115,7 +115,7 @@ export function IconeDiscord({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
-/** Círculo com "+" — ação "Criar issue no GitHub" (estilo issue aberta). */
+/** Circle with a "+" — "Criar issue no GitHub" action (open-issue style). */
 export function IconeGitHub({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -125,7 +125,7 @@ export function IconeGitHub({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
-/** Documento com linhas — ação "Criar página no Notion". */
+/** Document with lines — "Criar página no Notion" action. */
 export function IconeNotion({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -136,7 +136,7 @@ export function IconeNotion({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
-/** Quadrado com check — ação "Criar tarefa no Todoist". */
+/** Square with a check — "Criar tarefa no Todoist" action. */
 export function IconeTodoist({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -146,7 +146,7 @@ export function IconeTodoist({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
-/** Quadro kanban com três colunas — ação "Criar issue no Linear". */
+/** Kanban board with three columns — "Criar issue no Linear" action. */
 export function IconeLinear({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -156,7 +156,7 @@ export function IconeLinear({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
-/** Cerquilha (#) — ação "Postar no Slack" (canal). */
+/** Hash sign (#) — "Postar no Slack" action (channel). */
 export function IconeSlack({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -166,7 +166,7 @@ export function IconeSlack({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
-/** Envelope fechado — ação "Enviar pelo Outlook". */
+/** Closed envelope — "Enviar pelo Outlook" action. */
 export function IconeOutlook({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -176,7 +176,7 @@ export function IconeOutlook({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
-/** Calendário com check — ação "Evento no Outlook Calendar". */
+/** Calendar with a check — "Evento no Outlook Calendar" action. */
 export function IconeCalendarCheck({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -187,7 +187,7 @@ export function IconeCalendarCheck({ size = 14 }: { size?: number }): ReactNode 
   );
 }
 
-/** Avião de papel num círculo — ação "Avisar no Telegram". */
+/** Paper plane in a circle — "Avisar no Telegram" action. */
 export function IconeTelegram({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -197,7 +197,7 @@ export function IconeTelegram({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
-/** Board com duas listas (uma mais curta) — ação "Criar card no Trello". */
+/** Board with two lists (one shorter) — "Criar card no Trello" action. */
 export function IconeTrello({ size = 14 }: { size?: number }): ReactNode {
   return (
     <svg {...propsSvg(size)}>
@@ -207,20 +207,20 @@ export function IconeTrello({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
-/** Prefixos válidos de webhook de canal do Discord — mesma regra do backend. */
+/** Valid Discord channel webhook prefixes — same rule as the backend. */
 export const PREFIXOS_WEBHOOK_DISCORD = [
   "https://discord.com/api/webhooks/",
   "https://discordapp.com/api/webhooks/",
 ];
 
-/** true quando o valor é uma URL de webhook do Discord. */
+/** true when the value is a Discord webhook URL. */
 export function ehWebhookDiscord(valor: unknown): boolean {
   return (
     typeof valor === "string" && PREFIXOS_WEBHOOK_DISCORD.some((p) => valor.trim().startsWith(p))
   );
 }
 
-/** true quando o valor segue o formato owner/nome — mesma regra do backend. */
+/** true when the value follows the owner/nome format — same rule as the backend. */
 export function ehRepoGitHub(valor: unknown): boolean {
   return typeof valor === "string" && valor.trim().length > 0 && valor.trim().includes("/");
 }
@@ -233,19 +233,19 @@ const PRIORIDADE_ROTULO: Record<string, string> = {
 
 export interface BlocoMeta {
   kind: WorkflowNodeKind;
-  /** Tipo aceito pelo engine (NÃO renomear — contrato com o backend). */
+  /** Type accepted by the engine (do NOT rename — contract with the backend). */
   type: string;
   nome: string;
   descricao: string;
-  /** Params iniciais quando o bloco entra no canvas. */
+  /** Initial params when the block lands on the canvas. */
   paramsPadrao: Record<string, unknown>;
-  /** Linha de resumo dos params exibida dentro do nó (null = sem resumo). */
+  /** Summary line of the params shown inside the node (null = no summary). */
   resumo: (params: Record<string, unknown>) => string | null;
-  /** Ícone próprio do bloco; quando ausente, usa o ícone do papel (IconeKind). */
+  /** The block's own icon; when absent, uses the role icon (IconeKind). */
   Icone?: (props: { size?: number }) => ReactNode;
 }
 
-/** Catálogo v1 — exatamente os tipos que o engine executa hoje. */
+/** Catalog v1 — exactly the types the engine runs today. */
 export const CATALOGO: BlocoMeta[] = [
   {
     kind: "trigger",
@@ -444,12 +444,12 @@ export const CATALOGO: BlocoMeta[] = [
   },
 ];
 
-/** Trunca valores longos pro resumo do nó (ex.: ID de página do Notion). */
+/** Truncates long values for the node summary (e.g. Notion page ID). */
 function truncar(valor: string, max: number): string {
   return valor.length > max ? `${valor.slice(0, max)}…` : valor;
 }
 
-/** Host da URL pro resumo do nó (ex.: "hooks.exemplo.com"). */
+/** URL host for the node summary (e.g. "hooks.exemplo.com"). */
 function hostDaUrl(url: string): string {
   try {
     return new URL(url.trim()).host || "URL inválida";
@@ -458,7 +458,7 @@ function hostDaUrl(url: string): string {
   }
 }
 
-/** Resumo do calendar_create_event — ex.: "amanhã às 10h, 30min". */
+/** calendar_create_event summary — e.g. "amanhã às 10h, 30min". */
 function resumoEvento(p: Record<string, unknown>): string {
   const dias = typeof p.startInDays === "number" ? p.startInDays : 1;
   const hora = typeof p.hour === "number" ? p.hour : 10;
@@ -467,16 +467,16 @@ function resumoEvento(p: Record<string, unknown>): string {
   return `${quando} às ${hora}h, ${dur}min`;
 }
 
-/** Busca a meta de um bloco pelo tipo. Tipos fora do catálogo retornam undefined. */
+/** Looks up a block's meta by type. Types outside the catalog return undefined. */
 export function metaDoBloco(type: string): BlocoMeta | undefined {
   return CATALOGO.find((b) => b.type === type);
 }
 
 /**
- * Placeholders suportados pelo backend em subject/body das ações de e-mail
- * (send_email, gmail_send_email, outlook_send_email) e no title dos eventos
- * de calendário (calendar_create_event, mscalendar_create_event).
- * Renderizados como chips clicáveis no painel de parâmetros.
+ * Placeholders the backend supports in subject/body of the e-mail actions
+ * (send_email, gmail_send_email, outlook_send_email) and in the title of the
+ * calendar events (calendar_create_event, mscalendar_create_event).
+ * Rendered as clickable chips in the parameters panel.
  */
 export const PLACEHOLDERS_EMAIL: { token: string; dica: string }[] = [
   { token: "{{meeting.title}}", dica: "título da reunião" },

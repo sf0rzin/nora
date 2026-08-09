@@ -22,9 +22,9 @@ interface RecordingStatus {
 interface State {
   lines: LiveTranscriptLine[];
   /**
-   * Texto parcial ("digitando") por track. Cada sidecar (mic / system) emite
-   * seu próprio parcial concorrentemente — guardar uma string só fazia um
-   * sobrescrever o outro e a bolha aparecer no lado errado. Keyed por track.
+   * Partial text ("typing") per track. Each sidecar (mic / system) emits
+   * its own partial concurrently — keeping a single string made one
+   * overwrite the other and the bubble show up on the wrong side. Keyed by track.
    */
   partials: Record<string, string>;
   isRecording: boolean;
@@ -81,8 +81,8 @@ export function useLiveTranscript() {
           timestamp: Date.now(),
         };
         setState((prev) => {
-          // Limpa só o parcial DESTE track — o outro track pode ainda estar
-          // falando e seu "digitando" deve continuar visível.
+          // Clear only THIS track's partial — the other track may still be
+          // talking and its "typing" must stay visible.
           const { [track]: _drop, ...partials } = prev.partials;
           void _drop;
           return { ...prev, lines: [...prev.lines, line], partials };
@@ -95,13 +95,13 @@ export function useLiveTranscript() {
       }
     }));
 
-    // Limpa a transcrição quando uma sessão é descartada/salva/reiniciada.
-    // clear_live_highlights (Rust) emite 'clear-highlights' em todo
-    // stop/cancel/start — sem isso, reabrir a overlay mostrava o chat antigo.
-    // NÃO mexe em wasRecordingRef: no START o 'clear-highlights' chega DEPOIS
-    // do 'recording-status' true, então resetar o ref aqui quebraria a detecção
-    // de transição start/stop. As branches de recording-status são as donas
-    // desse flag; aqui só zeramos o buffer visível.
+    // Clears the transcript when a session is discarded/saved/restarted.
+    // clear_live_highlights (Rust) emits 'clear-highlights' on every
+    // stop/cancel/start — without it, reopening the overlay showed the old chat.
+    // Does NOT touch wasRecordingRef: on START the 'clear-highlights' arrives AFTER
+    // the 'recording-status' true, so resetting the ref here would break start/stop
+    // transition detection. The recording-status branches own that
+    // flag; here we only zero the visible buffer.
     attach(listen("clear-highlights", () => {
       setState((prev) => ({ ...prev, lines: [], partials: {} }));
     }));
@@ -123,7 +123,7 @@ export function useLiveTranscript() {
             sampleRate: s.sampleRate || 0,
           };
         }
-        // Stopped: drop partials (lines são limpas via 'clear-highlights')
+        // Stopped: drop partials (lines are cleared via 'clear-highlights')
         if (!s.isRecording && wasRecordingRef.current) {
           wasRecordingRef.current = false;
           return { ...prev, isRecording: false, partials: {} };
@@ -160,7 +160,7 @@ export function useLiveTranscript() {
     };
   }, []);
 
-  // Live-updating duration in seconds — useNow força o re-render do timer.
+  // Live-updating duration in seconds — useNow forces the timer re-render.
   useNow(state.isRecording && state.startedAt != null);
   const duration =
     state.startedAt == null ? 0 : Math.floor((Date.now() - state.startedAt) / 1000);

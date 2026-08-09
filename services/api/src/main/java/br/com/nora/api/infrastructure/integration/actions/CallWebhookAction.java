@@ -14,12 +14,11 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Chamar webhook" do NORA Flows — POST JSON genérico estilo n8n para uma URL do usuário, sem
- * credencial nenhuma. Param obrigatório: {@code url} (HTTPS apenas; validado no save E na
- * execução).
+ * NORA Flows "Chamar webhook" action — generic n8n-style JSON POST to a user URL, with no
+ * credential at all. Required param: {@code url} (HTTPS only; validated on save AND at run time).
  *
- * <p><strong>Contrato ESTÁVEL do payload</strong> (consumidores externos dependem dele — mudanças
- * só aditivas):
+ * <p><strong>STABLE payload contract</strong> (external consumers depend on it — additive changes
+ * only):
  *
  * <pre>{@code
  * {
@@ -32,15 +31,15 @@ import org.springframework.stereotype.Component;
  * }
  * }</pre>
  *
- * Campos null são OMITIDOS (ex.: {@code meeting.id} em execução de teste com dados de exemplo,
- * {@code assignee}/{@code dueDate} sem valor, o objeto {@code scores} inteiro quando nenhum score
- * existe). {@code actionItems} é sempre presente (lista vazia quando não há itens). Headers: {@code
- * X-Nora-Event: <tipo do evento>} e {@code User-Agent: NORA-Flows}.
+ * Null fields are OMITTED (e.g. {@code meeting.id} on a test run with sample data, {@code
+ * assignee}/{@code dueDate} with no value, the whole {@code scores} object when no score exists).
+ * {@code actionItems} is always present (empty list when there are no items). Headers: {@code
+ * X-Nora-Event: <tipo do evento>} and {@code User-Agent: NORA-Flows}.
  *
- * <p><strong>Guarda SSRF</strong>: rejeita {@code http://} e resolve o hostname rejeitando IPs
- * privados/loopback/link-local/metadata (10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, ::1,
- * fc00::/7). Falha (status não-2xx, timeout de 10s ou transporte) PROPAGA — contrato do {@link
- * ActionExecutor}, o engine grava FAILED no log.
+ * <p><strong>SSRF guard</strong>: rejects {@code http://} and resolves the hostname, rejecting
+ * private/loopback/link-local/metadata IPs (10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, ::1,
+ * fc00::/7). A failure (non-2xx status, 10s timeout or transport) PROPAGATES — {@link
+ * ActionExecutor} contract, the engine writes FAILED in the log.
  */
 @Component
 public class CallWebhookAction implements ActionExecutor {
@@ -79,8 +78,8 @@ public class CallWebhookAction implements ActionExecutor {
     }
 
     /**
-     * Guarda SSRF: só HTTPS e só hosts que resolvem para endereços públicos. Chamada na execução
-     * (último gate) — o save valida apenas o formato.
+     * SSRF guard: HTTPS only and only hosts that resolve to public addresses. Called at run time
+     * (last gate) — the save validates the format only.
      */
     static void validateUrl(String url) {
         URI uri;
@@ -117,8 +116,8 @@ public class CallWebhookAction implements ActionExecutor {
     }
 
     /**
-     * Endereços proibidos: loopback (127/8, ::1), privados (10/8, 172.16/12, 192.168/16),
-     * link-local/metadata (169.254/16, fe80::/10), wildcard, multicast e IPv6 unique-local
+     * Blocked addresses: loopback (127/8, ::1), private (10/8, 172.16/12, 192.168/16),
+     * link-local/metadata (169.254/16, fe80::/10), wildcard, multicast and IPv6 unique-local
      * (fc00::/7).
      */
     static boolean isBlockedAddress(InetAddress address) {
@@ -130,11 +129,11 @@ public class CallWebhookAction implements ActionExecutor {
             return true;
         }
         byte[] bytes = address.getAddress();
-        // IPv6 unique-local fc00::/7 — não coberto por isSiteLocalAddress (que é fec0::/10).
+        // IPv6 unique-local fc00::/7 — not covered by isSiteLocalAddress (which is fec0::/10).
         return bytes.length == 16 && (bytes[0] & 0xFE) == 0xFC;
     }
 
-    /** Monta o payload do contrato documentado na classe. Campos null são omitidos. */
+    /** Builds the payload of the contract documented on the class. Null fields are omitted. */
     static Map<String, Object> buildPayload(WorkflowEventContext ctx) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("event", ctx.eventType());

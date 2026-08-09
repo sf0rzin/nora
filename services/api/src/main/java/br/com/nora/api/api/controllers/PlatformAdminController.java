@@ -43,10 +43,10 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Console do operador (contrato platform-control-plane.md §3). Protegido por admin token
- * (chain @Order(2)); o e-mail do operador chega em X-Operator-Email (repassado pelo nora-admin a
- * partir do Easy Auth) e é gravado na auditoria. Operações que tocam o banco de plataforma devolvem
- * 503 quando degradado/off (via PlatformUnavailableException → PlatformExceptionHandler).
+ * Operator console (platform-control-plane.md §3 contract). Protected by an admin token
+ * (chain @Order(2)); the operator's e-mail arrives in X-Operator-Email (forwarded by nora-admin
+ * from Easy Auth) and is written to the audit log. Operations that touch the platform database
+ * return 503 when degraded/off (via PlatformUnavailableException → PlatformExceptionHandler).
  */
 @RestController
 @RequestMapping("/admin/platform")
@@ -73,7 +73,7 @@ public class PlatformAdminController {
         this.flags = flags;
     }
 
-    // ---------- catálogo ----------
+    // ---------- catalog ----------
 
     @GetMapping("/models")
     public List<ModelResponse> listModels() {
@@ -143,7 +143,7 @@ public class PlatformAdminController {
         return BindingResponse.from(b, model);
     }
 
-    // ---------- telemetria ----------
+    // ---------- telemetry ----------
 
     @GetMapping("/telemetry/cost")
     public CostReport cost(
@@ -173,7 +173,7 @@ public class PlatformAdminController {
         return v == null ? BigDecimal.ZERO : v;
     }
 
-    /** Janela [from, to). Default: últimas 24h. ISO-8601 (datetime ou date). Inválido → 400. */
+    /** Window [from, to). Default: last 24h. ISO-8601 (datetime or date). Invalid → 400. */
     private OffsetDateTime[] window(String from, String to) {
         OffsetDateTime resolvedTo =
                 parseOrNull(to) != null ? parseOrNull(to) : OffsetDateTime.now(ZoneOffset.UTC);

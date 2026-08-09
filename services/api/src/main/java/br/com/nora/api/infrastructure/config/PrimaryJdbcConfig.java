@@ -7,20 +7,20 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * {@link JdbcTemplate} explícito sobre o DataSource primário, nomeado {@code jdbcTemplate}.
+ * Explicit {@link JdbcTemplate} over the primary DataSource, named {@code jdbcTemplate}.
  *
- * <p><b>Por que existe:</b> o {@code JdbcTemplateAutoConfiguration} do Spring Boot é
- * {@code @ConditionalOnMissingBean(JdbcOperations.class)}. Quando o {@code telemetryJdbcTemplate}
+ * <p><b>Why it exists:</b> Spring Boot's {@code JdbcTemplateAutoConfiguration} is
+ * {@code @ConditionalOnMissingBean(JdbcOperations.class)}. When {@code telemetryJdbcTemplate}
  * ({@link br.com.nora.api.infrastructure.platform.telemetry.TelemetryDataSourceConfig}, ADR
- * 0026/0028) está ativo, ele já é um {@code JdbcOperations} — então o autoconfig <b>não</b> cria o
- * bean {@code jdbcTemplate} default, e o {@code PrimaryDbBusinessMetricsSource}
- * ({@code @Qualifier("jdbcTemplate")}) falha no boot por dependência insatisfeita.
+ * 0026/0028) is active, it already is a {@code JdbcOperations} — so the autoconfig does <b>not</b>
+ * create the default {@code jdbcTemplate} bean, and {@code PrimaryDbBusinessMetricsSource}
+ * ({@code @Qualifier("jdbcTemplate")}) fails at boot on an unsatisfied dependency.
  *
- * <p>Declarando o {@code jdbcTemplate} primário aqui (sem condição), o bean existe <b>sempre</b> —
- * com ou sem o datasource de telemetria. Os datasources de plataforma/telemetria não registram bean
- * do tipo {@code DataSource} (mantêm o {@code HikariDataSource} privado), então o {@code
- * DataSource} injetado aqui é o primário, sem ambiguidade. {@code @Primary} garante que injeções de
- * {@code JdbcTemplate} sem qualifier resolvam para o primário.
+ * <p>By declaring the primary {@code jdbcTemplate} here (with no condition), the bean <b>always</b>
+ * exists — with or without the telemetry datasource. The platform/telemetry datasources do not
+ * register a bean of type {@code DataSource} (they keep the {@code HikariDataSource} private), so
+ * the {@code DataSource} injected here is the primary one, with no ambiguity. {@code @Primary}
+ * guarantees that {@code JdbcTemplate} injections without a qualifier resolve to the primary one.
  */
 @Configuration
 public class PrimaryJdbcConfig {

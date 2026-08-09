@@ -11,12 +11,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
- * Adapter para a Resend API (https://resend.com/docs/api-reference/emails/send-email).
+ * Adapter for the Resend API (https://resend.com/docs/api-reference/emails/send-email).
  *
- * <p>Ativado quando {@code RESEND_API_KEY} esta presente OU {@code nora.email.provider=resend}.
- * Caso contrario o {@link LogEmailSender} permanece como default e nada de externo e chamado.
+ * <p>Enabled when {@code RESEND_API_KEY} is present OR {@code nora.email.provider=resend}.
+ * Otherwise {@link LogEmailSender} stays as the default and nothing external is called.
  *
- * <p>Free tier (3.000 e-mails/mes) cobre o MVP inteiro. Custos reais: zero ate o lancamento.
+ * <p>Free tier (3,000 e-mails/month) covers the whole MVP. Real costs: zero until launch.
  */
 @Component(value = "resendEmailSender")
 @ConditionalOnExpression("'${nora.email.resend.api-key:}'.length() > 0")
@@ -90,8 +90,8 @@ public class ResendEmailSender implements EmailSender {
 
     @Override
     public void sendWorkflowNotification(String toEmail, String subject, String htmlBody) {
-        // Sem try/catch de propósito: o WorkflowEngine registra a falha no log da execução
-        // (status FAILED). Engolir o erro aqui mostraria sucesso falso no histórico do fluxo.
+        // No try/catch on purpose: the WorkflowEngine records the failure in the execution log
+        // (status FAILED). Swallowing the error here would show false success in the flow history.
         Map<String, Object> body =
                 Map.of("from", fromAddress, "to", toEmail, "subject", subject, "html", htmlBody);
         http.post().bodyValue(body).retrieve().bodyToMono(String.class).block(TIMEOUT);
@@ -103,7 +103,7 @@ public class ResendEmailSender implements EmailSender {
         try {
             http.post().bodyValue(body).retrieve().bodyToMono(String.class).block(TIMEOUT);
         } catch (Exception ex) {
-            // Falha de envio nao deve quebrar o fluxo do usuario; logamos para investigar.
+            // A send failure must not break the user flow; we log it for investigation.
             LOG.error("Resend send failed to={} subject={}", to, subject, ex);
         }
     }

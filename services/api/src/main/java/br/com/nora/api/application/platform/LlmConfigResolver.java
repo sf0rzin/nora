@@ -15,13 +15,13 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
- * Resolve o modelo ativo por serviço no hot-path (ADR 0024). Cache Caffeine ~60s (mesmo padrão do
- * AuthRateLimiter). <b>Fallback SOFT</b>: qualquer falha (plataforma off/degradada, binding
- * ausente, exceção de query) devolve a config do env default — <b>nunca</b> lança, nunca derruba
- * chat/worker.
+ * Resolves the active model per service on the hot path (ADR 0024). Caffeine cache ~60s (same
+ * pattern as AuthRateLimiter). <b>SOFT fallback</b>: any failure (platform off/degraded, missing
+ * binding, query exception) returns the default env config — it <b>never</b> throws, never brings
+ * down chat/worker.
  *
- * <p>Não é gated: existe sempre, e degrada para o env quando os repos do banco de plataforma não
- * estão presentes/usáveis.
+ * <p>It is not gated: it always exists, and degrades to the env when the platform database repos
+ * are not present/usable.
  */
 @Service
 public class LlmConfigResolver {
@@ -62,14 +62,15 @@ public class LlmConfigResolver {
 
     private ResolvedLlmConfig resolveUncached(String service) {
         if (!availability.isUsable()) {
-            // Plataforma off/degradada: a flag vive no banco inalcançável — assume enabled=true.
+            // Platform off/degraded: the flag lives in the unreachable database — assume
+            // enabled=true.
             return fallback(true);
         }
         try {
             Optional<ResolvedLlmConfig> active = configProvider.getObject().resolveActive(service);
             if (active.isEmpty()) {
-                // Binding ausente mas plataforma HEALTHY: a feature flag É legível, então o env
-                // default respeita a flag (contrato §2: "enabled conforme feature flag").
+                // Binding missing but platform HEALTHY: the feature flag IS readable, so the env
+                // default honours the flag (contract §2: "enabled conforme feature flag").
                 return fallback(featureEnabled(service));
             }
             ResolvedLlmConfig r = active.get();

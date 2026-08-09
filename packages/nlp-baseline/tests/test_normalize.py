@@ -1,11 +1,11 @@
-"""Testes da funcao ``normalize_text``.
+"""Tests for the ``normalize_text`` function.
 
-Cobre os comportamentos prometidos no docstring:
+Covers the behaviors promised in the docstring:
 * lowercase
-* remocao de pontuacao
-* remocao opcional de digitos
-* normalizacao opcional de acentos
-* colapso de whitespace
+* punctuation removal
+* optional digit removal
+* optional accent normalization
+* whitespace collapsing
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def test_normalize_preserves_punctuation_when_disabled() -> None:
 
 def test_normalize_strips_accents_by_default() -> None:
     out = normalize_text("decisão estratégica também é açúcar")
-    # Sem acento depois do strip_accents=True (default)
+    # No accents after strip_accents=True (default)
     assert out == "decisao estrategica tambem e acucar"
 
 
@@ -56,7 +56,7 @@ def test_normalize_can_keep_accents() -> None:
 
 def test_normalize_can_remove_digits() -> None:
     out = normalize_text("contrato vale R$ 500 mil", remove_digits=True)
-    # "R$" vira espaco (S category), "500" vira espacos, sobra "contrato vale mil"
+    # "R$" becomes a space (S category), "500" becomes spaces, leaving "contrato vale mil"
     assert "500" not in out
     assert "contrato" in out
     assert "vale" in out
@@ -79,7 +79,7 @@ def test_normalize_strips_leading_trailing_whitespace() -> None:
 
 
 def test_normalize_handles_unicode_symbols() -> None:
-    # Emojis caem em categoria S* --> tratado como pontuacao
+    # Emojis fall into the S* category --> treated as punctuation
     out = normalize_text("vendido 😀 com sucesso", strip_accents=False)
     assert "😀" not in out
     assert "vendido" in out
@@ -88,5 +88,5 @@ def test_normalize_handles_unicode_symbols() -> None:
 
 def test_normalize_cedilha_becomes_c() -> None:
     out = normalize_text("açúcar")
-    # 'ç' + acentos viram 'c' apos strip_accents (NFD remove combining marks)
+    # 'ç' + accents become 'c' after strip_accents (NFD removes combining marks)
     assert out == "acucar"

@@ -1,7 +1,7 @@
--- V002: cria usuarios, papeis (roles) e ligacao usuario-papel.
--- Roles padrao MVP: ROOT, ADMIN, MANAGER, ANALYST, VIEWER (ver backlog US35 e docs/PROJECT.md secao RBAC).
--- is_system = true marca as roles padrao e impede edicao/remocao.
--- Roles customizadas (is_system = false) sao pos-MVP.
+-- V002: creates users, roles and the user-role link.
+-- Default MVP roles: ROOT, ADMIN, MANAGER, ANALYST, VIEWER (see backlog US35 and docs/PROJECT.md RBAC section).
+-- is_system = true marks the default roles and blocks editing/removal.
+-- Custom roles (is_system = false) are post-MVP.
 
 CREATE EXTENSION IF NOT EXISTS "citext";
 
@@ -32,7 +32,7 @@ CREATE TABLE roles (
     CONSTRAINT roles_code_chk CHECK (code IN ('ROOT', 'ADMIN', 'MANAGER', 'ANALYST', 'VIEWER'))
 );
 
--- Roles globais do sistema (tenant_id = NULL). Hierarquia logica: ROOT > ADMIN > MANAGER > ANALYST > VIEWER.
+-- Global system roles (tenant_id = NULL). Logical hierarchy: ROOT > ADMIN > MANAGER > ANALYST > VIEWER.
 INSERT INTO roles (code, description, is_system) VALUES
     ('ROOT',    'Superadmin global. Reservado para suporte interno NORA.', TRUE),
     ('ADMIN',   'Administrador do tenant. Acesso total dentro do tenant.', TRUE),

@@ -12,9 +12,9 @@ public interface MeetingGoalJpaRepository extends JpaRepository<MeetingGoalJpaEn
     Optional<MeetingGoalJpaEntity> findByMeetingIdAndTenantId(UUID meetingId, UUID tenantId);
 
     /**
-     * DELETE nativo dispara o ON DELETE CASCADE do Postgres sobre meeting_goal_expected_outcomes,
-     * evitando o ciclo UPDATE SET NULL que o Hibernate tentaria com orphanRemoval + @JoinColumn
-     * unidirecional.
+     * Native DELETE triggers Postgres' ON DELETE CASCADE over meeting_goal_expected_outcomes,
+     * avoiding the UPDATE SET NULL cycle Hibernate would attempt with orphanRemoval +
+     * unidirectional @JoinColumn.
      */
     @Modifying
     @Query(

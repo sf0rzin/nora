@@ -37,13 +37,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Orquestra o pipeline de analise: carrega transcricao + contexto + goal opcional, chama o worker,
- * persiste a analise (e o productivity assessment quando ha goal) e atualiza o processingStatus do
- * Meeting.
+ * Orchestrates the analysis pipeline: loads transcript + context + optional goal, calls the worker,
+ * persists the analysis (and the productivity assessment when there is a goal) and updates the
+ * Meeting's processingStatus.
  *
- * <p>{@link #runAsync(UUID, UUID)} e disparado depois do upload (fire-and-forget) e roda em uma
- * thread separada via @Async. Cada etapa muda o status do meeting (PROCESSING -> COMPLETED |
- * FAILED) em transacoes curtas e independentes.
+ * <p>{@link #runAsync(UUID, UUID)} is fired after the upload (fire-and-forget) and runs on a
+ * separate thread via @Async. Each step changes the meeting status (PROCESSING -> COMPLETED |
+ * FAILED) in short, independent transactions.
  */
 @Service
 public class AnalysisService {
@@ -91,14 +91,14 @@ public class AnalysisService {
     }
 
     /**
-     * Executa o pipeline em background. Chamada fire-and-forget pelo MeetingService apos o upload.
+     * Runs the pipeline in the background. Fire-and-forget call from MeetingService after upload.
      */
     @Async
     public void runAsync(UUID meetingId, UUID tenantId) {
-        // Sob RLS enforce (ADR 0028) esta thread de executor NAO herda o TenantContextHolder do
-        // request — propagamos o tenant explicitamente pra que o TenantRlsAspect aplique o GUC nas
-        // transacoes do pipeline (leitura de transcript + escrita de analise, tabelas enforced).
-        // Limpamos no finally (a thread do pool e reusada entre tasks).
+        // Under RLS enforce (ADR 0028) this executor thread does NOT inherit the request's
+        // TenantContextHolder — we propagate the tenant explicitly so that TenantRlsAspect applies
+        // the GUC on the pipeline transactions (transcript read + analysis write, enforced
+        // tables). We clear it in the finally (the pool thread is reused across tasks).
         rlsContext.set(tenantId);
         try {
             run(meetingId, tenantId);
@@ -115,16 +115,16 @@ public class AnalysisService {
     }
 
     /**
-     * Pipeline sincrono (testavel). Nao envolve a chamada externa em transacao para evitar manter
-     * conexoes Postgres ocupadas durante o roundtrip ao worker.
+     * Synchronous pipeline (testable). Does not wrap the external call in a transaction to avoid
+     * holding Postgres connections busy during the roundtrip to the worker.
      */
     public MeetingAnalysis run(UUID meetingId, UUID tenantId) {
         Meeting meeting = loadMeeting(meetingId, tenantId);
-        // `markStatus` persiste com novo status mas a referencia local `meeting`
-        // continua no estado antigo. Reatribuir o retorno garante que o
-        // `markStatusAndSnippet` abaixo encontre uma transicao valida na
-        // state machine (PROCESSING -> COMPLETED) em vez do antigo
-        // PENDING -> COMPLETED que seria rejeitado.
+        // `markStatus` persists with the new status but the local `meeting`
+        // reference stays in the old state. Reassigning the return value ensures
+        // that the `markStatusAndSnippet` below finds a valid transition in the
+        // state machine (PROCESSING -> COMPLETED) instead of the old
+        // PENDING -> COMPLETED that would be rejected.
         meeting = markStatus(meeting, ProcessingStatus.PROCESSING);
 
         Transcript transcript = loadTranscript(meetingId, tenantId);
@@ -142,14 +142,15 @@ public class AnalysisService {
         persistCustomerConfidence(meetingId, tenantId, result);
         emitUsage(tenantId, saved);
         markStatusAndSnippet(meeting, ProcessingStatus.COMPLETED, saved.summarySnippet());
-        // Eventos de domínio do NORA Flows: emitidos APÓS o commit do COMPLETED acima
-        // (markStatusAndSnippet é @Transactional e já retornou). Fail-soft: workflow nunca
-        // derruba nem reverte a análise.
+        // NORA Flows domain events: emitted AFTER the commit of the COMPLETED above
+        // (markStatusAndSnippet is @Transactional and has already returned). Fail-soft: workflow
+        // never takes down nor reverts the analysis.
         publishDomainEvents(meetingId, tenantId, saved);
-        // RAG: indexa só o RESUMO (summarySnippet), que já passou pelo PII Shield (foi
-        // gerado a partir da transcrição redigida). O título da reunião vem cru do upload e
-        // pode conter PII não redigida — por isso fica FORA do payload de embedding (ADR 0012).
-        // Best-effort — o EmbeddingService engole falhas e nunca derruba a análise.
+        // RAG: indexes ONLY the SUMMARY (summarySnippet), which has already been through the PII
+        // Shield (it was generated from the redacted transcript). The meeting title comes raw
+        // from the upload and may contain unredacted PII — that is why it stays OUT of the
+        // embedding payload (ADR 0012). Best-effort — the EmbeddingService swallows failures and
+        // never takes down the analysis.
         String snippet = saved.summarySnippet() == null ? "" : saved.summarySnippet().trim();
         if (!snippet.isEmpty()) {
             embeddings.index(meetingId, tenantId, snippet);
@@ -158,10 +159,10 @@ public class AnalysisService {
     }
 
     /**
-     * Emite os eventos de domínio do NORA Flows pós-COMPLETED: análise concluída + um evento por
-     * action item + um por risco de severidade ALTA (só o nível máximo vira alerta — risco
-     * baixo/médio é ruído como gatilho). Cada publish é fail-soft individualmente: falha em um
-     * evento não impede os demais e NUNCA derruba o pipeline.
+     * Emits the NORA Flows domain events post-COMPLETED: analysis completed + one event per action
+     * item + one per HIGH severity risk (only the top level becomes an alert — low/medium risk is
+     * noise as a trigger). Each publish is fail-soft individually: a failure in one event does not
+     * prevent the others and NEVER takes down the pipeline.
      */
     private void publishDomainEvents(UUID meetingId, UUID tenantId, MeetingAnalysis saved) {
         Instant occurredAt = Instant.now();
@@ -198,10 +199,10 @@ public class AnalysisService {
     }
 
     /**
-     * Emite telemetria de custo da análise in-process (ADR 0024). Usa o {@code metadata} que o
-     * worker já reporta (modelo + tokens + latência, persistidos no {@link MeetingAnalysis}).
-     * Tolerante: uma falha aqui NUNCA derruba o pipeline (o {@link UsageRecorder} é no-op quando o
-     * control plane está off e já é fail-soft quando on).
+     * Emits in-process cost telemetry for the analysis (ADR 0024). Uses the {@code metadata} the
+     * worker already reports (model + tokens + latency, persisted in the {@link MeetingAnalysis}).
+     * Tolerant: a failure here NEVER takes down the pipeline (the {@link UsageRecorder} is no-op
+     * when the control plane is off and is already fail-soft when on).
      */
     private void emitUsage(UUID tenantId, MeetingAnalysis a) {
         try {
@@ -223,9 +224,10 @@ public class AnalysisService {
     }
 
     /**
-     * Persiste o Customer Confidence opt-in (ADR 0015) quando o worker emitiu o bloco. Resiliente:
-     * uma falha aqui nao derruba a analise — a {@link MeetingAnalysis} ja foi gravada e o meeting
-     * ainda transiciona para COMPLETED (log + continua, igual a tolerancia do productivity).
+     * Persists the opt-in Customer Confidence (ADR 0015) when the worker emitted the block.
+     * Resilient: a failure here does not take down the analysis — the {@link MeetingAnalysis} has
+     * already been written and the meeting still transitions to COMPLETED (log + continue, same as
+     * the productivity tolerance).
      */
     private void persistCustomerConfidence(UUID meetingId, UUID tenantId, AnalysisResult result) {
         if (result.customerConfidence().isEmpty()) {
@@ -234,7 +236,7 @@ public class AnalysisService {
         try {
             customerConfidence.persist(tenantId, meetingId, result.customerConfidence().get());
         } catch (RuntimeException ex) {
-            // PII-safe: nao logar accountName nem quotes, apenas ids e a causa.
+            // PII-safe: do not log accountName nor quotes, only ids and the cause.
             LOG.warn(
                     "Falha ao persistir customer confidence meetingId={} tenantId={} cause={}",
                     meetingId,
@@ -274,19 +276,19 @@ public class AnalysisService {
 
     @Transactional(readOnly = true)
     public Optional<MeetingAnalysis> findByMeeting(UUID meetingId, UUID tenantId) {
-        // Garante escopo: meeting precisa existir no tenant.
+        // Ensures scope: meeting must exist in the tenant.
         meetings.findByIdAndTenant(meetingId, tenantId).orElseThrow(MeetingException.NotFound::new);
         return analyses.findByMeetingId(meetingId, tenantId);
     }
 
-    /** Recupera o productivity persistido (opt-in). Vazio quando nao ha. */
+    /** Retrieves the persisted productivity (opt-in). Empty when there is none. */
     @Transactional(readOnly = true)
     public Optional<ProductivityAssessment> findProductivity(UUID meetingId, UUID tenantId) {
         meetings.findByIdAndTenant(meetingId, tenantId).orElseThrow(MeetingException.NotFound::new);
         return assessments.findByMeetingId(meetingId, tenantId);
     }
 
-    /** Enriquecimento da linha da listagem: contagens + banda/score de produtividade. */
+    /** Listing row enrichment: counts + productivity band/score. */
     public record ListEnrichment(
             int actionItems,
             int risks,
@@ -295,9 +297,9 @@ public class AnalysisService {
             Integer productivityScore) {}
 
     /**
-     * Enriquece em LOTE os itens da listagem de reuniões: contagens (action items/risks/
-     * opportunities) e banda/score de produtividade, em DUAS queries agregadas para todo o conjunto
-     * de IDs — em vez de uma análise completa por item (N+1 que carregava 4 coleções).
+     * Enriches the meeting listing items in BATCH: counts (action items/risks/opportunities) and
+     * productivity band/score, in TWO aggregate queries for the whole set of IDs — instead of one
+     * full analysis per item (an N+1 that loaded 4 collections).
      */
     @Transactional(readOnly = true)
     public java.util.Map<UUID, ListEnrichment> enrichListItems(

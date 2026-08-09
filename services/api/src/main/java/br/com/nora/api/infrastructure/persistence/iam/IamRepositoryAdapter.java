@@ -27,8 +27,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Adapter unico do subdominio IAM. SQL nativo via EntityManager — evita criar 7 entidades JPA so
- * para tabelas de junção. As policies sao guardadas como JSONB em iam_policies.document.
+ * Single adapter for the IAM subdomain. Native SQL via EntityManager — avoids creating 7 JPA
+ * entities just for join tables. Policies are stored as JSONB in iam_policies.document.
  */
 @Repository
 public class IamRepositoryAdapter implements IamRepository {
@@ -160,7 +160,7 @@ public class IamRepositoryAdapter implements IamRepository {
     @Transactional
     public IamPolicy createPolicy(
             UUID tenantId, String name, String description, String documentJson, UUID createdBy) {
-        // Valida o JSON antes de persistir.
+        // Validates the JSON before persisting.
         parseDocument(documentJson);
 
         UUID id = UUID.randomUUID();

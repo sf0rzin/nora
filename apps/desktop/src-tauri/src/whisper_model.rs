@@ -1,23 +1,23 @@
-//! Resolucao, cache e download sob demanda do modelo GGML do whisper.cpp.
+//! Resolution, caching and on-demand download of the whisper.cpp GGML model.
 //!
-//! POR QUE NAO EMBUTIR NO BUNDLE
+//! WHY NOT SHIP IT IN THE BUNDLE
 //! -----------------------------
-//! `small` tem 465 MiB e `medium` 1.4 GiB. Somar isso ao .msi/.dmg/.AppImage
-//! (a) estoura o limite pratico de artefato do GitHub Release, (b) faz TODA
-//! atualizacao — inclusive um bugfix de CSS — rebaixar o modelo inteiro pelo
-//! updater, e (c) triplica o tempo de build no CI dos tres alvos. O modelo e
-//! baixado UMA vez, no primeiro uso, e fica no app data dir do usuario.
+//! `small` is 465 MiB and `medium` 1.4 GiB. Adding that to the .msi/.dmg/.AppImage
+//! (a) blows past the practical GitHub Release artifact limit, (b) makes EVERY
+//! update — even a CSS bugfix — re-download the whole model through the
+//! updater, and (c) triples the CI build time across the three targets. The model
+//! is downloaded ONCE, on first use, and stays in the user's app data dir.
 //!
-//! LAYOUT NO DISCO
-//! ---------------
-//!   <app_data_dir>/models/ggml-small.bin          modelo verificado
-//!   <app_data_dir>/models/ggml-small.bin.part     download em andamento
-//!   <app_data_dir>/models/ggml-small.bin.sha256   sentinela de verificacao
+//! ON-DISK LAYOUT
+//! --------------
+//!   <app_data_dir>/models/ggml-small.bin          verified model
+//!   <app_data_dir>/models/ggml-small.bin.part     download in progress
+//!   <app_data_dir>/models/ggml-small.bin.sha256   verification sentinel
 //!
-//! O `.part` so vira `.bin` DEPOIS do sha256 bater. Um download interrompido
-//! nunca e usado como modelo — na pior hipotese e refeito do zero (nao ha
-//! resume por Range: HuggingFace suporta, mas resume sem validar o ETag e como
-//! se corrompe arquivo em silencio).
+//! The `.part` only becomes `.bin` AFTER the sha256 matches. An interrupted
+//! download is never used as a model — worst case it is redone from scratch (there
+//! is no Range resume: HuggingFace supports it, but resuming without validating the
+//! ETag is how you corrupt a file in silence).
 
 use std::path::{Path, PathBuf};
 
@@ -25,28 +25,28 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncWriteExt;
 
-/// Evento Tauri de progresso do download. O front ainda nao escuta (nada quebra
-/// se ninguem escutar); e o gancho pronto pra barra de progresso na UI.
+/// Tauri download-progress event. The front end does not listen yet (nothing
+/// breaks if nobody listens); it is the hook ready for a progress bar in the UI.
 pub const MODEL_PROGRESS_EVENT: &str = "stt-model-progress";
 
-/// Repositorio oficial dos GGML do whisper.cpp. Trocavel por mirror interno via
-/// `NORA_WHISPER_MODEL_BASE_URL` (rede corporativa que bloqueia HF).
+/// Official whisper.cpp GGML repository. Swappable for an internal mirror via
+/// `NORA_WHISPER_MODEL_BASE_URL` (corporate network that blocks HF).
 const DEFAULT_BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelSize {
-    /// 74 MiB. So pra smoke test / CI — qualidade em pt-BR e ruim.
+    /// 74 MiB. Only for smoke test / CI — pt-BR quality is bad.
     Tiny,
-    /// 141 MiB. Aceitavel em pt-BR, roda folgado em CPU fraca.
+    /// 141 MiB. Acceptable in pt-BR, runs comfortably on a weak CPU.
     Base,
-    /// 465 MiB. DEFAULT: melhor troca qualidade/latencia em pt-BR num CPU comum.
+    /// 465 MiB. DEFAULT: best quality/latency trade-off in pt-BR on a common CPU.
     Small,
-    /// 1.4 GiB. Melhor qualidade, exige CPU forte ou GPU pra tempo real.
+    /// 1.4 GiB. Best quality, needs a strong CPU or a GPU for real time.
     Medium,
 }
 
-/// Metadados de um modelo. `sha256` e `size_bytes` vieram da API de
-/// paths-info do HuggingFace (`lfs.oid` = sha256 do blob), nao de memoria.
+/// Metadata for a model. `sha256` and `size_bytes` came from the HuggingFace
+/// paths-info API (`lfs.oid` = sha256 of the blob), not from memory.
 struct ModelSpec {
     file_name: &'static str,
     sha256: &'static str,
@@ -63,7 +63,7 @@ impl ModelSize {
         }
     }
 
-    /// Parse tolerante do valor de config. Desconhecido -> `Small` com aviso.
+    /// Tolerant parse of the config value. Unknown -> `Small` with a warning.
     pub fn parse(raw: &str) -> Self {
         match raw.trim().to_ascii_lowercase().as_str() {
             "tiny" => ModelSize::Tiny,
@@ -105,16 +105,16 @@ impl ModelSize {
         }
     }
 
-    /// Bytes que o download vai custar. Usado pelo evento de progresso e util
-    /// pra um prompt de confirmacao antes de baixar 1.5 GiB no `medium`.
-    #[allow(dead_code)] // sem consumidor ainda: a UI de progresso nao existe.
+    /// Bytes the download will cost. Used by the progress event and useful
+    /// for a confirmation prompt before pulling 1.5 GiB on `medium`.
+    #[allow(dead_code)] // no consumer yet: the progress UI does not exist.
     pub fn download_bytes(self) -> u64 {
         self.spec().size_bytes
     }
 }
 
-/// Tamanho configurado, memoizado. Mesma cadeia de prioridade do backend:
-/// env runtime -> env build-time -> `plugins.nora.whisperModel` -> `small`.
+/// Configured size, memoized. Same priority chain as the backend:
+/// runtime env -> build-time env -> `plugins.nora.whisperModel` -> `small`.
 pub fn configured_size() -> ModelSize {
     static SIZE: std::sync::OnceLock<ModelSize> = std::sync::OnceLock::new();
     *SIZE.get_or_init(|| {
@@ -138,13 +138,13 @@ pub struct ModelProgress {
     pub phase: &'static str,
     pub downloaded_bytes: u64,
     pub total_bytes: u64,
-    /// 0.0 a 100.0. Fica em 0 quando o total e desconhecido.
+    /// 0.0 to 100.0. Stays at 0 when the total is unknown.
     pub percent: f32,
     pub message: Option<String>,
 }
 
 fn emit(app: &AppHandle, p: ModelProgress) {
-    // Best-effort: janela fechada / front nao montado nao pode derrubar o download.
+    // Best-effort: a closed window / unmounted front end must not kill the download.
     let _ = app.emit(MODEL_PROGRESS_EVENT, &p);
 }
 
@@ -174,22 +174,22 @@ pub fn models_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// Serializa o download entre os tracks. `mic` e `system` sobem juntos no
-/// `start_recording`; sem isto os dois baixariam 465 MiB em paralelo pro mesmo
-/// `.part`. O lock cobre a checagem TAMBEM, nao so o download (check-then-act).
+/// Serializes the download across tracks. `mic` and `system` come up together in
+/// `start_recording`; without this both would pull 465 MiB in parallel into the
+/// same `.part`. The lock covers the check TOO, not just the download (check-then-act).
 fn download_lock() -> &'static tokio::sync::Mutex<()> {
     static LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
     LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
-/// Garante que o modelo esta em disco e verificado; devolve o caminho.
+/// Ensures the model is on disk and verified; returns the path.
 ///
-/// Idempotente e seguro pra chamar de varios tracks ao mesmo tempo. Na segunda
-/// chamada em diante o custo e um `metadata()` + leitura da sentinela.
+/// Idempotent and safe to call from several tracks at once. From the second
+/// call on the cost is a `metadata()` + reading the sentinel.
 pub async fn ensure_model(app: &AppHandle, size: ModelSize) -> Result<PathBuf, String> {
-    // Escape hatch: modelo proprio (quantizado q5_1, fine-tune em pt-BR, mirror
-    // offline). Pula download E checksum de proposito — quem aponta pra um
-    // arquivo local assume a responsabilidade por ele.
+    // Escape hatch: your own model (q5_1 quantized, pt-BR fine-tune, offline
+    // mirror). Skips download AND checksum on purpose — whoever points at a
+    // local file takes responsibility for it.
     if let Ok(raw) = std::env::var("NORA_WHISPER_MODEL_PATH") {
         let p = PathBuf::from(raw);
         if p.is_file() {
@@ -222,9 +222,9 @@ pub async fn ensure_model(app: &AppHandle, size: ModelSize) -> Result<PathBuf, S
         return Ok(final_path);
     }
 
-    // Arquivo existe mas nao passou na checagem barata: apaga em vez de tentar
-    // consertar. Um GGML truncado faz o whisper.cpp abortar dentro do C++, o que
-    // derruba o processo inteiro em vez de virar Result::Err.
+    // File exists but did not pass the cheap check: delete instead of trying to
+    // repair. A truncated GGML makes whisper.cpp abort inside the C++, which
+    // takes down the whole process instead of becoming a Result::Err.
     if final_path.exists() {
         eprintln!(
             "[whisper_model] {} existe mas falhou na verificacao — rebaixando",
@@ -259,10 +259,10 @@ pub async fn ensure_model(app: &AppHandle, size: ModelSize) -> Result<PathBuf, S
     }
 }
 
-/// Checagem barata do cache: arquivo com o tamanho exato + sentinela com o hash
-/// esperado. Re-hashear 465 MiB a cada `start_recording` custaria ~0.5 s de
-/// latencia pra confirmar algo que ja foi confirmado; a sentinela e escrita
-/// SOMENTE apos um sha256 completo bater.
+/// Cheap cache check: file with the exact size + sentinel with the expected
+/// hash. Re-hashing 465 MiB on every `start_recording` would cost ~0.5 s of
+/// latency to confirm something already confirmed; the sentinel is written
+/// ONLY after a full sha256 matches.
 fn is_usable(model: &Path, sentinel: &Path, expected_sha: &str, expected_len: u64) -> bool {
     let Ok(meta) = std::fs::metadata(model) else {
         return false;
@@ -288,9 +288,9 @@ async fn download_and_verify(
 ) -> Result<(), String> {
     eprintln!("[whisper_model] baixando {} -> {}", url, part_path.display());
 
-    // Cliente proprio: o `http_proxy::http_client()` tem timeout TOTAL de 30 s,
-    // que mata um download de 465 MiB. Aqui so limitamos o connect; o corpo pode
-    // demorar o quanto a rede do usuario precisar.
+    // Own client: `http_proxy::http_client()` has a TOTAL timeout of 30 s,
+    // which kills a 465 MiB download. Here we only cap the connect; the body can
+    // take as long as the user's network needs.
     let client = reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(15))
         .build()
@@ -318,8 +318,8 @@ async fn download_and_verify(
 
     let mut hasher = Sha256::new();
     let mut downloaded: u64 = 0;
-    // Throttle do evento: um emit por chunk de 8 KiB inundaria a IPC do webview
-    // com ~60k mensagens. Emite a cada ~1 MiB.
+    // Event throttle: one emit per 8 KiB chunk would flood the webview IPC
+    // with ~60k messages. Emits every ~1 MiB.
     let mut next_emit_at: u64 = 0;
 
     while let Some(chunk) = resp
@@ -341,8 +341,8 @@ async fn download_and_verify(
     file.flush()
         .await
         .map_err(|e| format!("flush do modelo: {e}"))?;
-    // fsync antes do rename: sem isto um crash/queda de energia logo apos o
-    // rename deixa um .bin com a sentinela valida e conteudo incompleto.
+    // fsync before the rename: without it a crash/power loss right after the
+    // rename leaves a .bin with a valid sentinel and incomplete content.
     file.sync_all()
         .await
         .map_err(|e| format!("fsync do modelo: {e}"))?;
@@ -358,8 +358,8 @@ async fn download_and_verify(
         ));
     }
     if downloaded != spec.size_bytes {
-        // Nao deveria acontecer se o sha bateu; e barato e pega mirror que
-        // devolve o arquivo certo com padding.
+        // Should not happen if the sha matched; it is cheap and catches a mirror
+        // that returns the right file with padding.
         return Err(format!(
             "tamanho do modelo {} nao confere: esperado {} bytes, obtido {}",
             spec.file_name, spec.size_bytes, downloaded
@@ -434,11 +434,11 @@ mod tests {
         let sentinel = dir.join("m.bin.sha256");
         std::fs::write(&model, b"1234").unwrap();
 
-        // Sem sentinela: inutilizavel mesmo com tamanho certo.
+        // No sentinel: unusable even with the right size.
         assert!(!is_usable(&model, &sentinel, "abc", 4));
         std::fs::write(&sentinel, "ABC").unwrap();
         assert!(is_usable(&model, &sentinel, "abc", 4));
-        // Tamanho divergente invalida mesmo com sentinela.
+        // A divergent size invalidates even with a sentinel.
         assert!(!is_usable(&model, &sentinel, "abc", 5));
 
         let _ = std::fs::remove_dir_all(&dir);

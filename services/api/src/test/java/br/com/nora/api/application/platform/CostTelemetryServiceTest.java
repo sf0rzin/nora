@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataAccessResourceFailureException;
 
-/** Agregação de custo: delega ao repo, valida groupBy (400), 503 quando off ou queda de runtime. */
+/** Cost aggregation: delegates to repo, validates groupBy (400), 503 when off or runtime down. */
 class CostTelemetryServiceTest {
 
     private final UsageEventRepository events = mock(UsageEventRepository.class);

@@ -5,9 +5,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Evento de uso de IA (tabela usage_events, ADR 0024). {@code tenantId} é dimensão de telemetria
- * (sem FK — a tabela tenants vive no banco primário). Em inserts, {@code id}/{@code occurredAt}
- * podem vir null (defaults do banco). {@code status}: ok | error | stub | fallback.
+ * AI usage event (usage_events table, ADR 0024). {@code tenantId} is a telemetry dimension (no FK —
+ * the tenants table lives in the primary database). On inserts, {@code id}/{@code occurredAt} may
+ * arrive null (database defaults). {@code status}: ok | error | stub | fallback.
  */
 public record UsageEvent(
         UUID id,

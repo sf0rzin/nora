@@ -9,39 +9,41 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Adaptador no-op da porta {@code SpeechTokenBroker} para o STT local (ADR 0035 — Whisper embarcado
- * no Tauri, transcrevendo na máquina do cliente; sucessor do ADR 0009).
+ * No-op adapter of the {@code SpeechTokenBroker} port for local STT (ADR 0035 — Whisper embedded in
+ * Tauri, transcribing on the client machine; successor to ADR 0009).
  *
- * <p>ESTADO FINAL vs. ESTE PASSO. O ADR 0035 §"Impacto no código" manda apagar {@code
- * SpeechController}, {@code SpeechTokenService}, {@code AzureSpeechTokenBroker}, o rate limit e o
- * bloco {@code nora.speech.*} inteiro. Esta classe NÃO contradiz isso: é o passo transitório que
- * torna aquela deleção segura. Enquanto houver desktop antigo em campo chamando {@code
- * /speech/token}, a rota precisa responder algo interpretável; quando não houver, some tudo junto.
+ * <p>FINAL STATE vs. THIS STEP. ADR 0035 §"Impact on the code" says to delete {@code
+ * SpeechController}, {@code SpeechTokenService}, {@code AzureSpeechTokenBroker}, the rate limit and
+ * the whole {@code nora.speech.*} block. This class does NOT contradict that: it is the
+ * transitional step that makes that deletion safe. While there are old desktops in the field
+ * calling {@code /speech/token}, the route needs to answer something interpretable; when there are
+ * none, it all goes away together.
  *
- * <p>POR QUE A PORTA CONTINUA EXISTINDO NESTE PASSO, em vez de apagar broker, service, controller e
- * DTO de uma vez:
+ * <p>WHY THE PORT STILL EXISTS AT THIS STEP, instead of deleting broker, service, controller and
+ * DTO all at once:
  *
  * <ol>
- *   <li><b>Clientes antigos em campo.</b> O desktop já publicado chama {@code POST /speech/token}
- *       no boot da captura de voz. Sumir com a rota devolveria 404 genérico do Spring, que o
- *       cliente antigo não distingue de "API fora do ar" e transforma em retry infinito. Com a
- *       porta viva, a mesma rota responde 410 GONE + {@code SPEECH_PROVIDER_GONE} — sinal terminal
- *       e legível, que o cliente novo usa para cair direto no Whisper local.
- *   <li><b>Reversibilidade da migração.</b> {@code nora.speech.provider=azure} recoloca o {@code
- *       AzureSpeechTokenBroker} sem tocar em código. Se o Whisper local não performar no hardware
- *       de algum usuário, o rollback é uma env var, não um revert.
- *   <li><b>A porta não custa nada.</b> É uma interface de um método na camada de aplicação; o
- *       acoplamento com a Azure estava todo no adaptador de infraestrutura, que é exatamente o que
- *       este arquivo substitui. Apagar a porta junto seria jogar fora a abstração que tornou a
- *       troca barata.
+ *   <li><b>Old clients in the field.</b> The already-shipped desktop calls {@code POST
+ *       /speech/token} when booting voice capture. Making the route disappear would return Spring's
+ *       generic 404, which the old client cannot tell apart from "API is down" and turns into an
+ *       infinite retry. With the port alive, the same route answers 410 GONE + {@code
+ *       SPEECH_PROVIDER_GONE} — a terminal, readable signal that the new client uses to fall
+ *       straight through to local Whisper.
+ *   <li><b>Reversibility of the migration.</b> {@code nora.speech.provider=azure} puts {@code
+ *       AzureSpeechTokenBroker} back without touching code. If local Whisper does not perform on
+ *       some user's hardware, the rollback is an env var, not a revert.
+ *   <li><b>The port costs nothing.</b> It is a one-method interface in the application layer; the
+ *       coupling to Azure was all in the infrastructure adapter, which is exactly what this file
+ *       replaces. Deleting the port along with it would throw away the abstraction that made the
+ *       swap cheap.
  * </ol>
  *
- * <p>A deleção definitiva de {@code /speech/token} (e do resto do bloco, como manda o ADR 0035)
- * fica para depois que a telemetria mostrar zero chamada por uma janela de retenção inteira.
+ * <p>The definitive deletion of {@code /speech/token} (and of the rest of the block, as ADR 0035
+ * mandates) waits until telemetry shows zero calls for a whole retention window.
  *
- * <p>Nota sobre o rate limit: o {@code SpeechTokenService} consome o {@code SpeechRateLimiter}
- * ANTES de chamar o broker. Isso é intencional — um cliente antigo em loop de retry continua
- * limitado a 6 req/min por usuário, e o 410 não vira um endpoint gratuito de martelar.
+ * <p>Note on the rate limit: {@code SpeechTokenService} consumes the {@code SpeechRateLimiter}
+ * BEFORE calling the broker. That is intentional — an old client in a retry loop stays limited to 6
+ * req/min per user, and the 410 does not become a free endpoint to hammer.
  */
 @Component
 @ConditionalOnProperty(name = "nora.speech.provider", havingValue = "local", matchIfMissing = true)

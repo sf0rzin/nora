@@ -1,19 +1,19 @@
 import { headers } from "next/headers";
 
 /**
- * Identidade do operador para **exibição**. Em produção vem do Cloudflare Access (ADR 0025),
- * que injeta `Cf-Access-Authenticated-User-Email` nas requisições que passam pelo login.
- * Em dev (sem Cloudflare) cai num operador fake.
+ * Operator identity for **display**. In production it comes from Cloudflare Access (ADR 0025),
+ * which injects `Cf-Access-Authenticated-User-Email` into requests that go through the login.
+ * In dev (no Cloudflare) it falls back to a fake operator.
  *
- * Este header NÃO é assinado. Ele é confiável no render de página, onde o RootLayout já
- * validou o `Cf-Access-Jwt-Assertion` antes de renderizar. Não é confiável em server
- * action: ali o Next executa a action antes do layout, e o endpoint da action é
- * alcançável por POST direto de dentro da rede. Para autorizar ou para carimbar
- * auditoria, use `requireAccess()` de `lib/access.ts`, que devolve o e-mail do JWT
- * verificado.
+ * This header is NOT signed. It is trustworthy in page render, where the RootLayout has
+ * already validated the `Cf-Access-Jwt-Assertion` before rendering. It is not trustworthy in a
+ * server action: there Next runs the action before the layout, and the action endpoint is
+ * reachable by a direct POST from inside the network. To authorize or to stamp
+ * audit records, use `requireAccess()` from `lib/access.ts`, which returns the e-mail from the
+ * verified JWT.
  *
- * O nora-admin repassa `operator.email` pra API Spring (header de auditoria) pra registrar
- * "quem trocou o modelo". Legado: ainda lê `x-ms-client-principal` (Easy Auth) caso volte.
+ * nora-admin forwards `operator.email` to the Spring API (audit header) to record
+ * "who switched the model". Legacy: it still reads `x-ms-client-principal` (Easy Auth) in case it comes back.
  */
 export interface Operator {
   email: string;
@@ -35,13 +35,13 @@ interface PrincipalClaim {
 export async function getOperator(): Promise<Operator> {
   const h = await headers();
 
-  // Caminho atual: Cloudflare Access (ADR 0025).
+  // Current path: Cloudflare Access (ADR 0025).
   const cfEmail = h.get("cf-access-authenticated-user-email");
   if (cfEmail) {
     return { email: cfEmail, name: cfEmail, authenticated: true };
   }
 
-  // Legado: Easy Auth (Entra) — inerte hoje, mantido por robustez.
+  // Legacy: Easy Auth (Entra) — inert today, kept for robustness.
   const raw = h.get("x-ms-client-principal");
   if (!raw) return DEV_OPERATOR;
   try {

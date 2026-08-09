@@ -2,9 +2,9 @@ import Link from "next/link";
 import { NoraLogo } from "@/components/brand/nora-logo";
 
 /**
- * Card chrome compartilhado pelas telas de auth "pequenas" (verify-email,
- * reset de senha, aceite de convite). Login e signup NÃO usam este layout —
- * são full-screen (componente AuthScreen), via route group à parte.
+ * Card chrome shared by the "small" auth screens (verify-email,
+ * password reset, invite acceptance). Login and signup do NOT use this layout —
+ * they are full-screen (AuthScreen component), via a separate route group.
  */
 export default function AuthCardLayout({ children }: { children: React.ReactNode }) {
   return (

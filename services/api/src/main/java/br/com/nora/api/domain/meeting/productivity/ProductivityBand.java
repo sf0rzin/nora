@@ -1,6 +1,8 @@
 package br.com.nora.api.domain.meeting.productivity;
 
-/** Banda derivada do Productivity Score (ADR 0005). Tunavel no worker, nao no dominio. */
+/**
+ * Band derived from the Productivity Score (ADR 0005). Tunable in the worker, not in the domain.
+ */
 public enum ProductivityBand {
     LOW,
     MEDIUM,

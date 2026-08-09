@@ -11,21 +11,21 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Guarda o endereço do PEER TCP antes que qualquer outro filtro o reescreva.
+ * Stores the TCP PEER address before any other filter rewrites it.
  *
- * <p>A aplicação roda com {@code server.forward-headers-strategy: framework}, que instala o {@code
- * ForwardedHeaderFilter} do Spring. Esse filtro embrulha o request de modo que {@code
- * getRemoteAddr()} passa a devolver o elemento mais à ESQUERDA do {@code X-Forwarded-For} — que é
- * justamente o segmento que o cliente escreve. Ou seja: depois dele, {@code getRemoteAddr()} não é
- * o endereço de quem conectou, é um valor escolhido pelo chamador.
+ * <p>The application runs with {@code server.forward-headers-strategy: framework}, which installs
+ * Spring's {@code ForwardedHeaderFilter}. That filter wraps the request so that {@code
+ * getRemoteAddr()} starts returning the LEFTMOST element of {@code X-Forwarded-For} — which is
+ * precisely the segment the client writes. That is: after it, {@code getRemoteAddr()} is not the
+ * address of whoever connected, it is a value chosen by the caller.
  *
- * <p>Isso torna {@code getRemoteAddr()} inutilizável como fallback do {@link AuthRateLimiter}: em
- * qualquer request sem o header da borda — ou com {@code nora.security.trusted-client-ip-header}
- * vazio, como nos testes — o atacante voltaria a escolher o próprio balde mandando um XFF novo a
- * cada tentativa, que é exatamente a falha que o limitador existe para fechar.
+ * <p>This makes {@code getRemoteAddr()} unusable as the {@link AuthRateLimiter} fallback: on any
+ * request without the edge header — or with {@code nora.security.trusted-client-ip-header} empty,
+ * as in the tests — the attacker would again pick their own bucket by sending a new XFF on every
+ * attempt, which is exactly the failure the limiter exists to close.
  *
- * <p>Rodando com {@link Ordered#HIGHEST_PRECEDENCE} este filtro vê o request cru e publica o peer
- * num atributo, imune ao embrulho posterior.
+ * <p>Running with {@link Ordered#HIGHEST_PRECEDENCE} this filter sees the raw request and publishes
+ * the peer in an attribute, immune to the later wrapping.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -34,8 +34,8 @@ public class PeerAddressFilter extends OncePerRequestFilter {
     static final String ATTRIBUTE = PeerAddressFilter.class.getName() + ".peer";
 
     /**
-     * Endereço do peer TCP, ou o {@code getRemoteAddr()} corrente quando o filtro não rodou (ex.:
-     * MockMvc standalone). Nunca {@code null}.
+     * TCP peer address, or the current {@code getRemoteAddr()} when the filter did not run (e.g.
+     * MockMvc standalone). Never {@code null}.
      */
     static String peerAddress(HttpServletRequest request) {
         Object stored = request.getAttribute(ATTRIBUTE);

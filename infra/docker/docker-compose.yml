@@ -6,9 +6,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-nora}
       POSTGRES_USER: ${POSTGRES_USER:-nora}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nora_dev}
-    # Bind explicito a 127.0.0.1: bd dev nao deve escutar na LAN da maquina.
-    # Override com `POSTGRES_BIND=0.0.0.0` em .env.local se precisar acessar de
-    # outro host (ex: testar a partir do telefone).
+    # Explicit bind to 127.0.0.1: a dev db must not listen on the machine's LAN.
+    # Override with `POSTGRES_BIND=0.0.0.0` in .env.local if you need to reach it from
+    # another host (e.g.: testing from the phone).
     ports:
       - "${POSTGRES_BIND:-127.0.0.1}:5432:5432"
     volumes:
@@ -22,7 +22,7 @@ services:
     mem_limit: 512m
 
   adminer:
-    # Pinado em versao especifica (4 generico tinha CVEs).
+    # Pinned to a specific version (generic 4 had CVEs).
     image: adminer:4.8.1
     container_name: nora-adminer
     ports:

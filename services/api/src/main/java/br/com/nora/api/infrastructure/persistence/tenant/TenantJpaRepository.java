@@ -9,7 +9,7 @@ public interface TenantJpaRepository extends JpaRepository<TenantJpaEntity, UUID
 
     boolean existsBySlug(String slug);
 
-    // @SQLRestriction(deleted_at IS NULL) na entidade filtra soft-deleted automaticamente.
+    // @SQLRestriction(deleted_at IS NULL) on the entity filters soft-deleted rows automatically.
     @Query("SELECT t.id FROM TenantJpaEntity t")
     List<UUID> findAllActiveIds();
 }

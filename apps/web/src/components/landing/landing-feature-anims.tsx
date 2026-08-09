@@ -407,7 +407,7 @@ const FEATURES = [
   },
 ];
 
-/** Grid de features com 6 mini-animações. */
+/** Features grid with 6 mini-animations. */
 export function LandingFeatures() {
   return (
     <section id="produto">

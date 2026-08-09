@@ -1,87 +1,87 @@
 # 0017 — License: AGPL-3.0
 
-- Status: aceito
-- Data: 2026-05-14
-- Decisores: Stratfy (PO — copyright atribuído individualmente aos membros conforme git history)
+- Status: accepted
+- Date: 2026-05-14
+- Deciders: Stratfy (PO — copyright attributed individually to the members according to the git history)
 
-## Contexto
+## Context
 
-NORA é repositório público (`github.com/sys0xFF/nora`) desde a Sub-fase 1.0. Até hoje **sem LICENSE declarado** na raiz.
+NORA has been a public repository (`github.com/sys0xFF/nora`) since Sub-phase 1.0. To this day **with no LICENSE declared** at the root.
 
-Implicações:
+Implications:
 
-1. **Legalmente, repo público sem LICENSE = "todos os direitos reservados" por default.** Ninguém pode usar, modificar, distribuir sem permissão explícita
-2. **A Stratfy trabalha com 3 cenários estratégicos pra NORA pós-pitch:**
-   - **Plano A** — Parceria/contratação institucional (TOTVS ou outra empresa contrata vendo NORA): LICENSE é **neutra** (entrega de código pode ser feita via dual-licensing comercial paralelo)
-   - **Plano B** — SaaS comercial operado pela própria Stratfy: LICENSE é **crítica**. Sem ela, qualquer empresa pode clonar e oferecer SaaS competitivo sem retorno pra equipe
-   - **Plano C** — Portfolio técnico / posicionamento profissional dos membros: LICENSE é **neutra** (código mostra capacidade técnica)
-3. **Recomendação Joint Tech Lead + Arquiteto Design (audit pré-Sub-fase 1.10):** AGPL-3.0
+1. **Legally, a public repo without a LICENSE = "all rights reserved" by default.** Nobody can use, modify or distribute it without explicit permission
+2. **Stratfy is working with 3 strategic scenarios for NORA after the pitch:**
+   - **Plan A** — Institutional partnership/hiring (TOTVS or another company hires after seeing NORA): the LICENSE is **neutral** (code delivery can be done via a parallel commercial dual-licensing)
+   - **Plan B** — Commercial SaaS operated by Stratfy itself: the LICENSE is **critical**. Without it, any company can clone it and offer a competing SaaS with no return for the team
+   - **Plan C** — Technical portfolio / professional positioning of the members: the LICENSE is **neutral** (the code shows technical capability)
+3. **Joint Tech Lead + Design Architect recommendation (pre-Sub-phase 1.10 audit):** AGPL-3.0
 
-## Decisão
+## Decision
 
 **LICENSE: GNU Affero General Public License v3.0 (AGPL-3.0)**.
 
-Arquivo `LICENSE` na raiz do repositório com texto oficial completo (https://www.gnu.org/licenses/agpl-3.0.txt).
+A `LICENSE` file at the repository root with the complete official text (https://www.gnu.org/licenses/agpl-3.0.txt).
 
-## Por que AGPL-3.0
+## Why AGPL-3.0
 
-### Proteção comercial (Plano B)
+### Commercial protection (Plan B)
 
-AGPL é **copyleft forte com cláusula network**. Diferença crítica vs GPL:
-- **GPL**: força disponibilizar código apenas quando código é **distribuído**
-- **AGPL**: força disponibilizar código quando código é **rodado como serviço de rede** (SaaS)
+AGPL is **strong copyleft with a network clause**. Critical difference vs GPL:
+- **GPL**: forces making the code available only when the code is **distributed**
+- **AGPL**: forces making the code available when the code is **run as a network service** (SaaS)
 
-Isto significa: **qualquer empresa que clone NORA e rode como SaaS competitor obrigatoriamente disponibiliza o próprio fork incluindo modificações**. Mata o risco de TOTVS (ou competidor) clonar e oferecer "TOTVS Reuniões Inteligentes" sem partilhar melhorias.
+This means: **any company that clones NORA and runs it as a competing SaaS is obliged to make its own fork available, including modifications**. It kills the risk of TOTVS (or a competitor) cloning it and offering "TOTVS Reuniões Inteligentes" without sharing improvements.
 
-### Compatível com Plano A (TOTVS contrata)
+### Compatible with Plan A (TOTVS hires)
 
-AGPL não impede a Stratfy de:
-- Vender direitos comerciais paralelos via dual-licensing
-- Aceitar parceria/contratação institucional que envolva o produto
-- Re-licenciar versões futuras se houver consenso entre os membros (copyright holders)
+AGPL does not prevent Stratfy from:
+- Selling parallel commercial rights via dual-licensing
+- Accepting an institutional partnership/hiring that involves the product
+- Re-licensing future versions if there is consensus among the members (copyright holders)
 
-A **Stratfy detém o copyright** (atribuído individualmente aos membros conforme git history). Decisões de re-licensing requerem consenso entre os contribuidores listados — não é unilateral por membro individual.
+**Stratfy holds the copyright** (attributed individually to the members according to the git history). Re-licensing decisions require consensus among the listed contributors — it is not unilateral by an individual member.
 
-### Compatível com Plano C (LinkedIn/portfolio)
+### Compatible with Plan C (LinkedIn/portfolio)
 
-AGPL é license bem reconhecida e respeitada pela comunidade dev. Não afeta uso de NORA como peça de portfolio técnico.
+AGPL is a license that is well recognized and respected by the dev community. It does not affect using NORA as a technical portfolio piece.
 
-### Outras Considerações
+### Other Considerations
 
-- **Comunidade**: AGPL é vista como copyleft mais agressiva mas legítima. Projetos famosos como MongoDB (até 2018), Mastodon, Nextcloud, Elastic (até 2021) usaram/usam AGPL
-- **Adoção corporativa**: algumas empresas evitam AGPL em produtos internos por medo de viral effect. Pra NORA isto é **feature, não bug** (queremos que fork comercial seja explicitamente declarado)
-- **Compatibility com Dependencies**: NORA usa Spring Boot (Apache 2.0), Next.js (MIT), Tailwind (MIT), OpenAI SDK (MIT), Tauri (Apache 2.0 / MIT). AGPL é compatível como "downstream license" (NORA inteira é AGPL; deps continuam com suas licenses originais)
+- **Community**: AGPL is seen as a more aggressive but legitimate copyleft. Famous projects such as MongoDB (until 2018), Mastodon, Nextcloud, Elastic (until 2021) used/use AGPL
+- **Corporate adoption**: some companies avoid AGPL in internal products for fear of the viral effect. For NORA this is a **feature, not a bug** (we want a commercial fork to be explicitly declared)
+- **Compatibility with Dependencies**: NORA uses Spring Boot (Apache 2.0), Next.js (MIT), Tailwind (MIT), OpenAI SDK (MIT), Tauri (Apache 2.0 / MIT). AGPL is compatible as a "downstream license" (all of NORA is AGPL; the deps keep their original licenses)
 
-## Consequências
+## Consequences
 
-**Positivas:**
-- Plano B protegido contra clone-and-compete
-- Stratfy mantém controle (copyright distribuído entre membros, decisões de re-licensing por consenso)
-- Dual-licensing futuro possível (comercial pra clientes enterprise + AGPL pra comunidade)
-- Sinal profissional pra reviewers técnicos
+**Positive:**
+- Plan B protected against clone-and-compete
+- Stratfy retains control (copyright distributed among the members, re-licensing decisions by consensus)
+- Future dual-licensing possible (commercial for enterprise customers + AGPL for the community)
+- A professional signal to technical reviewers
 
-**Negativas:**
-- Alguns potential adopters podem evitar AGPL (mas estes não seriam clientes Plano B viáveis de qualquer forma)
-- A Stratfy precisa garantir que todas as dependências adicionadas no futuro sejam AGPL-compatible (Apache 2.0, MIT, BSD, MPL OK; proprietárias não)
+**Negative:**
+- Some potential adopters may avoid AGPL (but those would not be viable Plan B customers anyway)
+- Stratfy must ensure that all dependencies added in the future are AGPL-compatible (Apache 2.0, MIT, BSD, MPL OK; proprietary ones not)
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **MIT** — permissivo demais. Qualquer um clona + vende sem retorno. Rejeitado pelo Plano B
-2. **Apache 2.0** — mais permissiva que MIT (inclui patente grant). Mesmo problema: clone-and-compete livre
-3. **GPL-3.0** — protege distribuição mas **não SaaS** (network clause ausente). Insuficiente pra Plano B
-4. **BUSL (Business Source License)** — protege comercialmente por X anos depois vira open. Hot atualmente (Sentry, MariaDB usam). Rejeitado porque adiciona complexidade legal sem benefit claro pra NORA agora; e community percebe BUSL com mais resistência que AGPL
-5. **Proprietário** — Stratfy controla 100%. Mas perde benefícios de comunidade (contribuições, visibilidade, Plano C tração). Rejeitado
-6. **Sem LICENSE (status quo)** — rejeitado: legal default "all rights reserved" + sinal não-profissional pra Plano A/C
+1. **MIT** — too permissive. Anyone clones + sells with no return. Rejected because of Plan B
+2. **Apache 2.0** — more permissive than MIT (includes a patent grant). Same problem: free clone-and-compete
+3. **GPL-3.0** — protects distribution but **not SaaS** (the network clause is absent). Insufficient for Plan B
+4. **BUSL (Business Source License)** — protects commercially for X years and then becomes open. Currently hot (Sentry, MariaDB use it). Rejected because it adds legal complexity with no clear benefit for NORA right now; and the community perceives BUSL with more resistance than AGPL
+5. **Proprietary** — Stratfy controls 100%. But it loses community benefits (contributions, visibility, Plan C traction). Rejected
+6. **No LICENSE (status quo)** — rejected: legal default of "all rights reserved" + an unprofessional signal for Plan A/C
 
-## Plano de Aplicação
+## Application Plan
 
-1. Criar `LICENSE` na raiz com texto AGPL-3.0 oficial
-2. Adicionar header curto em `README.md` raiz: "NORA é licenciado sob AGPL-3.0. Ver `LICENSE`"
-3. Notice no rodapé da landing pública (opcional, em coordenação com Arquiteto Design)
-4. Documentar em `SECURITY.md` que vulnerabilidades reportadas com responsible disclosure mantêm copyright dos contribuidores Stratfy (atribuído individualmente conforme git history)
+1. Create `LICENSE` at the root with the official AGPL-3.0 text
+2. Add a short header in the root `README.md`: "NORA is licensed under AGPL-3.0. See `LICENSE`"
+3. A notice in the footer of the public landing page (optional, coordinated with the Design Architect)
+4. Document in `SECURITY.md` that vulnerabilities reported with responsible disclosure keep the copyright of Stratfy's contributors (attributed individually according to the git history)
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-05-14 | Stratfy (PO) | LICENSE AGPL-3.0 confirmada após recomendação joint Tech Lead + Arquiteto Design no audit pré-Sub-fase 1.10 |
+| 2026-05-14 | Stratfy (PO) | AGPL-3.0 LICENSE confirmed after the joint Tech Lead + Design Architect recommendation in the pre-Sub-phase 1.10 audit |

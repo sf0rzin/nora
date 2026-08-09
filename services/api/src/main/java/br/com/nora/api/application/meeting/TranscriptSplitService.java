@@ -9,9 +9,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * Preview de separacao de um arquivo .txt com varias reunioes concatenadas (split). Apenas
- * orquestra a chamada ao worker {@code /split} e devolve as fronteiras propostas — NAO cria
- * reuniao, NAO persiste nada. A tela de confirmacao e o fatiamento real sao client-side.
+ * Split preview of a .txt file with several concatenated meetings (split). It only orchestrates the
+ * call to the {@code /split} worker and returns the proposed boundaries — it does NOT create a
+ * meeting, it does NOT persist anything. The confirmation screen and the real slicing are
+ * client-side.
  */
 @Service
 public class TranscriptSplitService {
@@ -25,10 +26,10 @@ public class TranscriptSplitService {
     }
 
     /**
-     * @param tenantId tenant do chamador (JWT) — usado apenas para log/observabilidade; o preview
-     *     nao toca dados do tenant.
-     * @param transcript conteudo do .txt (ja validado pelo controller: formato, tamanho).
-     * @param language ISO (ex: "pt-BR"); null/blank vira default.
+     * @param tenantId caller's tenant (JWT) — used only for logging/observability; the preview does
+     *     not touch tenant data.
+     * @param transcript content of the .txt (already validated by the controller: format, size).
+     * @param language ISO (e.g. "pt-BR"); null/blank falls back to the default.
      */
     public SplitDtos.SplitResponse preview(UUID tenantId, String transcript, String language) {
         if (transcript == null || transcript.isBlank()) {

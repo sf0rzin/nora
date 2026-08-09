@@ -1,12 +1,12 @@
-"""Testes da integracao nlp-baseline x worker.
+"""Tests for the nlp-baseline x worker integration.
 
-Cobre:
-* ``extract_baseline_terms`` retorna lista popular para transcricao PT-BR real
-* score eh sempre > 0
-* score eh sempre <= 1 (vide ``BaselineTerm.score`` constraint)
-* pipeline /analyze (stub mode) retorna ``baselineTerms`` populado
-* lista vazia para input degenerado (transcript vazio / muito curto)
-* nao quebra contrato existente (campo opcional, default vazio)
+Covers:
+* ``extract_baseline_terms`` returns a populated list for a real PT-BR transcript
+* score is always > 0
+* score is always <= 1 (see the ``BaselineTerm.score`` constraint)
+* the /analyze pipeline (stub mode) returns ``baselineTerms`` populated
+* empty list for degenerate input (empty / very short transcript)
+* does not break the existing contract (optional field, empty default)
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ def _read_meeting(name: str) -> str:
     return (DATA_DIR / "meetings" / name).read_text(encoding="utf-8")
 
 
-# ---------- Unitarios de extract_baseline_terms ----------
+# ---------- Unit tests for extract_baseline_terms ----------
 
 
 def test_extract_returns_list_of_baseline_term_for_real_transcript() -> None:
@@ -53,7 +53,7 @@ def test_extract_terms_have_positive_score() -> None:
 
 
 def test_extract_scores_are_in_valid_range() -> None:
-    """Schema constraint: score em [0, 1]."""
+    """Schema constraint: score in [0, 1]."""
     transcript = _read_meeting("05-northwind-renewal-churn-risco.txt")
     result = extract_baseline_terms(transcript, top_n=20)
     assert result
@@ -85,29 +85,29 @@ def test_extract_handles_top_n_zero() -> None:
 
 
 def test_extract_does_not_raise_on_stopwords_only_input() -> None:
-    # Texto so com stopwords --- vocabulario util nao se forma. Esperamos lista
-    # vazia (nao excecao).
+    # Text with stopwords only --- no useful vocabulary forms. We expect an empty
+    # list (not an exception).
     only_stopwords = "o a de e que para com no em do da pelo"
     assert extract_baseline_terms(only_stopwords, top_n=10) == []
 
 
 def test_extract_short_text_does_not_crash() -> None:
-    """Caso degenerado: texto muito curto. Nao pode levantar excecao."""
+    """Degenerate case: very short text. Must not raise an exception."""
     result = extract_baseline_terms("proposta comercial", top_n=10)
-    # Mesmo curto, deveria conseguir extrair algo (1 chunk).
-    # Mas se nao conseguir, ao menos retorna lista vazia.
+    # Even short, it should manage to extract something (1 chunk).
+    # But if it cannot, at least it returns an empty list.
     assert isinstance(result, list)
     for item in result:
         assert 0.0 <= item.score <= 1.0
 
 
 def test_extract_redacted_placeholders_dont_dominate() -> None:
-    """Sanidade: placeholders [[EMAIL_1]] etc nao dominam o ranking.
+    """Sanity: placeholders [[EMAIL_1]] etc do not dominate the ranking.
 
-    Apos PII redaction o transcript tem tokens tipo `[[EMAIL_1]]`. Como o
-    normalize remove pontuacao, viram `email` --- mas o TF-IDF deve continuar
-    capturando os termos de negocio. Testamos que pelo menos alguns termos
-    *nao* sao placeholders.
+    After PII redaction the transcript has tokens like `[[EMAIL_1]]`. Since
+    normalize strips punctuation, they become `email` --- but TF-IDF must keep
+    capturing the business terms. We test that at least some terms are
+    *not* placeholders.
     """
     transcript = (
         "[[EMAIL_1]] Marina nos enviou a proposta de renovacao. "
@@ -117,7 +117,7 @@ def test_extract_redacted_placeholders_dont_dominate() -> None:
     )
     result = extract_baseline_terms(transcript, top_n=10)
     terms = {t.term for t in result}
-    # Pelo menos um termo de negocio aparece (e nao soh placeholder reduzido)
+    # At least one business term shows up (and not just a reduced placeholder)
     business = {"proposta", "renovacao", "contrato", "anual", "desconto", "valor", "mensal"}
     assert terms & business, f"Esperava termos de negocio em {terms}"
 
@@ -154,7 +154,7 @@ def test_analyze_endpoint_returns_baseline_terms() -> None:
     resp = client.post("/analyze", json=payload)
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    # Campo presente (mesmo que vazio em casos degenerados)
+    # Field present (even if empty in degenerate cases)
     assert "baselineTerms" in body, f"keys disponiveis: {list(body.keys())}"
     terms = body["baselineTerms"]
     assert isinstance(terms, list)
@@ -168,7 +168,7 @@ def test_analyze_endpoint_returns_baseline_terms() -> None:
 
 
 def test_analyze_endpoint_does_not_break_existing_contract() -> None:
-    """O response continua tendo todos os campos antigos --- baselineTerms eh aditivo."""
+    """The response still has all the old fields --- baselineTerms is additive."""
     payload = _load_request(
         "05-northwind-renewal-churn-risco.txt",
         "northwind-fintech",
@@ -178,7 +178,7 @@ def test_analyze_endpoint_does_not_break_existing_contract() -> None:
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
-    # Campos pre-existentes mantidos
+    # Pre-existing fields kept
     for key in (
         "summary",
         "decisions",
@@ -192,5 +192,5 @@ def test_analyze_endpoint_does_not_break_existing_contract() -> None:
     ):
         assert key in body, f"campo pre-existente {key!r} sumiu do response"
 
-    # Campo novo presente
+    # New field present
     assert "baselineTerms" in body

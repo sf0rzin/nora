@@ -1,19 +1,19 @@
 "use client";
 
 /**
- * NORA Core — shell do app (sidebar chat-first + área principal).
+ * NORA Core — app shell (chat-first sidebar + main area).
  *
- * Porte visual do protótipo do Claude Design (shell.js) pro Next: navegação por
- * rotas (Link + usePathname), perfil do usuário a partir do cookie de sessão,
- * logout, command palette ⌘K com busca semântica e drawer mobile.
+ * Visual port of the Claude Design prototype (shell.js) to Next: route-based
+ * navigation (Link + usePathname), user profile from the session cookie,
+ * logout, ⌘K command palette with semantic search and mobile drawer.
  *
- * Nav do Core (Enterprise — IAM, contexto de tenant — fica fora daqui; é gateado
- * pra Enterprise, conforme a fronteira Core/Enterprise da vision).
+ * Core nav (Enterprise — IAM, tenant context — stays out of here; it is gated
+ * to Enterprise, per the Core/Enterprise boundary in the vision).
  *
- * Mudanças Stratfy aplicadas:
- *  - logo da sidebar é só a wordmark "Nora" (sem soundwave);
- *  - "Integrações" sai da nav principal e vira a categoria "Conectores";
- *  - bloco "Sessões" usa `.side-sec-label--tight` (label colado).
+ * Stratfy changes applied:
+ *  - the sidebar logo is only the "Nora" wordmark (no soundwave);
+ *  - "Integrações" leaves the main nav and becomes the "Conectores" category;
+ *  - the "Sessões" block uses `.side-sec-label--tight` (label pinned close).
  */
 import Link from "next/link";
 import type { Route } from "next";
@@ -129,7 +129,7 @@ function SearchIcon() {
   );
 }
 
-/** Wordmark "Nora" — sem soundwave (decisão Stratfy). DM Sans 500, -0.02em. */
+/** "Nora" wordmark — no soundwave (Stratfy decision). DM Sans 500, -0.02em. */
 function NoraWordmark() {
   return (
     <span
@@ -174,13 +174,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setUser(getCurrentUser());
-    // Perfil editado nas configurações (displayName) → sidebar reflete na hora.
+    // Profile edited in settings (displayName) → sidebar reflects it right away.
     const onUserUpdated = () => setUser(getCurrentUser());
     window.addEventListener(SESSION_USER_EVENT, onUserUpdated);
     return () => window.removeEventListener(SESSION_USER_EVENT, onUserUpdated);
   }, []);
 
-  // Fecha o drawer ao trocar de rota (navegação por link dentro dele).
+  // Closes the drawer on route change (link navigation from inside it).
   useEffect(() => {
     setDrawerOpen(false);
   }, [pathname]);
@@ -204,8 +204,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const openPalette = useCallback(() => setPaletteOpen(true), []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
 
-  // Atalhos globais (§3.9): ⌘K abre/fecha a palette; N → nova reunião;
-  // / → busca (foco no input #search-input se existir, senão abre a palette).
+  // Global shortcuts (§3.9): ⌘K opens/closes the palette; N → new meeting;
+  // / → search (focus the #search-input if it exists, otherwise open the palette).
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
@@ -272,7 +272,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 
-  /** Conteúdo compartilhado entre a sidebar desktop e o drawer mobile. */
+  /** Content shared between the desktop sidebar and the mobile drawer. */
   function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     return (
       <>
@@ -293,7 +293,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div style={{ flex: 1 }} />
 
-        {/* Só renderiza dentro do Nora Desktop quando há atualização assinada. */}
+        {/* Only renders inside Nora Desktop when there is a signed update. */}
         <DesktopUpdateButton />
 
         {userBlock}
@@ -301,8 +301,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  // Rotas que travam a viewport (composer fixo + scroll interno próprio).
-  // As demais páginas scrollam no documento — ver "Shell" em components.css.
+  // Routes that lock the viewport (fixed composer + their own inner scroll).
+  // The other pages scroll on the document — see "Shell" in components.css.
   const viewportLocked = pathname === "/chat" || pathname.startsWith("/chat/");
 
   return (
@@ -334,7 +334,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      {/* Drawer mobile */}
+      {/* Mobile drawer */}
       <div
         className={`drawer-veil${drawerOpen ? " is-open" : ""}`}
         onClick={() => setDrawerOpen(false)}

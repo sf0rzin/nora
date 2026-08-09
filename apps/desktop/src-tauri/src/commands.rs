@@ -7,11 +7,11 @@ use tauri::{AppHandle, Manager, State};
 
 pub type CaptureState = Arc<Mutex<AudioCapture>>;
 
-/// Sobe UM backend de STT pra um track, ja resolvido por config.
+/// Brings up ONE STT backend for a track, already resolved by config.
 ///
-/// O contrato de eventos pro front e identico nos dois caminhos (evento
-/// `transcript` com `TranscriptEvent`); a unica diferenca visivel aqui e que o
-/// caminho local nao precisa de token nenhum.
+/// The event contract for the front end is identical on both paths (`transcript`
+/// event with `TranscriptEvent`); the only difference visible here is that the
+/// local path does not need any token.
 async fn start_stt_backend(
     app_handle: &AppHandle,
     backend: SttBackendKind,
@@ -56,13 +56,13 @@ async fn start_stt_backend(
     }
 }
 
-/// Busca o token do Azure Speech e monta os parametros de start do sidecar.
+/// Fetches the Azure Speech token and assembles the sidecar start parameters.
 ///
-/// So existe quando a feature `stt-azure` esta compilada: no build local-puro
-/// (`--no-default-features --features stt-local`) o modulo `crate::speech_token`
-/// nem entra no binario, entao referenciar `crate::speech_token::*` de um caminho
-/// nao-gated quebraria a compilacao. E tambem o motivo pelo qual o app nao tem
-/// como falhar no boot/start tentando falar com `/speech/token`.
+/// Only exists when the `stt-azure` feature is compiled: in the pure-local build
+/// (`--no-default-features --features stt-local`) the `crate::speech_token` module
+/// does not even enter the binary, so referencing `crate::speech_token::*` from a
+/// non-gated path would break compilation. It is also the reason the app has no
+/// way to fail at boot/start trying to talk to `/speech/token`.
 #[cfg(feature = "stt-azure")]
 async fn fetch_azure_params(
     app_handle: &AppHandle,
@@ -95,30 +95,30 @@ async fn fetch_azure_params(
     }
 }
 
-/// Logger de arquivo best-effort pro fluxo de gravacao.
+/// Best-effort file logger for the recording flow.
 ///
-/// Em release o binario roda com `windows_subsystem = "windows"`, sem console —
-/// entao `eprintln!` some e o usuario fica sem nenhum sinal quando "clica
-/// iniciar e nada acontece". Esta funcao append uma linha em
-/// `<app_log_dir>/desktop.log` com um timestamp simples.
+/// In release the binary runs with `windows_subsystem = "windows"`, no console —
+/// so `eprintln!` vanishes and the user gets no signal at all when "I click
+/// start and nothing happens". This function appends a line to
+/// `<app_log_dir>/desktop.log` with a simple timestamp.
 ///
-/// REGRA: NUNCA pode fazer o caller falhar. Qualquer erro de IO/resolucao de
-/// path e silenciosamente ignorado (a gravacao e mais importante que o log).
+/// RULE: it can NEVER make the caller fail. Any IO/path resolution error is
+/// silently ignored (the recording matters more than the log).
 fn log_line(app_handle: &AppHandle, msg: &str) {
     use std::io::Write;
 
-    // Timestamp relativo simples: segundos desde o UNIX epoch. Nao precisamos
-    // de wall-clock formatado — so de ordem + delta entre linhas pra debug.
+    // Simple relative timestamp: seconds since the UNIX epoch. We do not need
+    // a formatted wall-clock — only order + delta between lines for debugging.
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs_f64())
         .unwrap_or(0.0);
 
-    // Resolve o dir de log; se falhar, desiste em silencio.
+    // Resolve the log dir; if it fails, give up silently.
     let Ok(dir) = app_handle.path().app_log_dir() else {
         return;
     };
-    // Cria o dir best-effort; ignora erro (open abaixo simplesmente falhara).
+    // Create the dir best-effort; ignore the error (the open below will simply fail).
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("desktop.log");
 
@@ -127,7 +127,7 @@ fn log_line(app_handle: &AppHandle, msg: &str) {
         .append(true)
         .open(&path)
     {
-        // Ignora erro de escrita — best-effort.
+        // Ignore write error — best-effort.
         let _ = writeln!(file, "[{:.3}] {}", ts, msg);
     }
 }
@@ -188,10 +188,10 @@ pub async fn start_recording(
         &format!("start_recording: backend stt = {}", backend.as_str()),
     );
 
-    // AZURE-ONLY. No backend local nao ha token a buscar: nenhuma chamada a
-    // `/speech/token`, nenhum round-trip de rede, e a gravacao nao depende de a
-    // API estar de pe. Este `if` e o que impede o app de morrer no start quando
-    // o backend esta fora do ar.
+    // AZURE-ONLY. On the local backend there is no token to fetch: no call to
+    // `/speech/token`, no network round-trip, and the recording does not depend on the
+    // API being up. This `if` is what keeps the app from dying at start when
+    // the backend is down.
     #[cfg(feature = "stt-azure")]
     let azure_params = if backend == SttBackendKind::Azure {
         Some(fetch_azure_params(&app_handle, &backend_url, &access_token).await?)
@@ -199,12 +199,12 @@ pub async fn start_recording(
         None
     };
 
-    // Build local-puro: nao ha sequer o tipo de credencial a preencher.
+    // Pure-local build: there is not even the credential type to fill in.
     #[cfg(not(feature = "stt-azure"))]
     let azure_params: Option<crate::stt::AzureStartParams> = {
-        // `backend_url`/`access_token` seguem sendo resolvidos acima de proposito:
-        // a checagem de sessao continua valendo (o upload da reuniao vai precisar
-        // dela), so o round-trip do token e que desaparece.
+        // `backend_url`/`access_token` keep being resolved above on purpose:
+        // the session check still applies (the meeting upload will need it),
+        // only the token round-trip is what disappears.
         let _ = (&backend_url, &access_token);
         None
     };
@@ -225,9 +225,9 @@ pub async fn start_recording(
         },
     };
 
-    // Um backend por track. O track `mic` e o usuario local; o track `system` e
-    // o audio de loopback (participantes remotos). A atribuicao de falante e POR
-    // TRACK — ver crate::stt::SYSTEM_SPEAKER_ID.
+    // One backend per track. The `mic` track is the local user; the `system` track is
+    // the loopback audio (remote participants). Speaker attribution is PER
+    // TRACK — see crate::stt::SYSTEM_SPEAKER_ID.
     let mic_sidecar = match start_stt_backend(
         &app_handle,
         backend,
@@ -280,10 +280,10 @@ pub async fn start_recording(
             while let Some(samples) = mic_rx.recv().await {
                 match sidecar.try_send(samples) {
                     Ok(()) => {}
-                    // Backpressure: sidecar não consome rápido o bastante. Dropa a
-                    // amostra (tempo real > completude) — esperado sob carga.
+                    // Backpressure: sidecar does not consume fast enough. Drops the
+                    // sample (real time > completeness) — expected under load.
                     Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {}
-                    // Sidecar morreu: encerra a bridge em vez de girar à toa.
+                    // Sidecar died: shut down the bridge instead of spinning for nothing.
                     Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => break,
                 }
             }
@@ -353,12 +353,12 @@ pub async fn start_recording(
         }
     }
 
-    // Bridge tasks ja foram spawnadas acima (mic_bridge / system_bridge sao
-    // JoinHandle de tokio::spawn). NAO chamamos `tokio::spawn(mic_bridge)` de
-    // novo — isso criaria uma segunda task que apenas faz await do JoinHandle
-    // e termina assim que o bridge termina, sem beneficio funcional.
-    // Mantemos os handles em escopo soltando-os via `let _ =` pra indicar
-    // intenco de fire-and-forget.
+    // Bridge tasks were already spawned above (mic_bridge / system_bridge are
+    // JoinHandle from tokio::spawn). We do NOT call `tokio::spawn(mic_bridge)`
+    // again — that would create a second task that only awaits the JoinHandle
+    // and ends as soon as the bridge ends, with no functional benefit.
+    // We keep the handles in scope, dropping them via `let _ =` to signal
+    // fire-and-forget intent.
     let _ = mic_bridge;
     if let Some(bridge) = system_bridge {
         let _ = bridge;
@@ -394,9 +394,9 @@ pub fn stop_recording(
     for sidecar in sidecars.drain(..) {
         #[cfg(debug_assertions)]
         eprintln!("[commands] stopping stt session_id={}", sidecar.session_id());
-        // Os dois backends fazem flush antes de encerrar, entao um ultimo evento
-        // `transcript` pode chegar depois deste ponto (comportamento identico ao
-        // `stop_continuous_recognition` do SDK Azure).
+        // Both backends flush before shutting down, so one last `transcript`
+        // event can arrive after this point (behavior identical to the Azure
+        // SDK's `stop_continuous_recognition`).
         sidecar.stop();
     }
 

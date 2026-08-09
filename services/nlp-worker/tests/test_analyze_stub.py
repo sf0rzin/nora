@@ -49,7 +49,7 @@ def test_analyze_returns_valid_response(transcript: str, tenant: str):
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
-    # Estrutura minima do schema
+    # Minimum schema structure
     assert body["meetingId"] == payload["meetingId"]
     assert isinstance(body["summary"], str) and len(body["summary"]) >= 30
     assert "decisions" in body
@@ -70,7 +70,7 @@ def test_analyze_acme_detects_competition_risk():
     resp = client.post("/analyze", json=payload)
     body = resp.json()
     categories = {r["category"] for r in body["risks"]}
-    # A reuniao menciona concorrente; esperamos pelo menos 1 risco identificado.
+    # The meeting mentions a competitor; we expect at least 1 identified risk.
     assert body["risks"], "Esperava ao menos 1 risco identificado."
     assert categories & {"COMPETITION", "PRICE"}
 
@@ -79,7 +79,7 @@ def test_analyze_acme_detects_competition_risk():
 
 
 def test_productivity_is_null_without_goal():
-    """Sem goal declarado, productivity vem null (ADR 0005 — opt-in)."""
+    """Without a declared goal, productivity comes back null (ADR 0005 — opt-in)."""
     payload = _load_request(
         "01-acme-discovery-lead-novo.txt",
         "acme-software",
@@ -91,7 +91,7 @@ def test_productivity_is_null_without_goal():
 
 
 def test_productivity_present_when_goal_declared():
-    """Com goal declarado, productivity vem populado com schema completo."""
+    """With a declared goal, productivity comes back populated with the full schema."""
     payload = _load_request(
         "01-acme-discovery-lead-novo.txt",
         "acme-software",
@@ -119,13 +119,13 @@ def test_productivity_present_when_goal_declared():
 
 
 def test_productivity_band_threshold_consistency():
-    """Banda derivada do score deve respeitar limites do ADR (LOW<40, MEDIUM 40-69, HIGH>=70)."""
+    """Band derived from the score must respect the ADR limits (LOW<40, MEDIUM 40-69, HIGH>=70)."""
     payload = _load_request(
         "01-acme-discovery-lead-novo.txt",
         "acme-software",
         "00000000-0000-4000-8000-000000000aaa",
     )
-    # Outcomes intencionalmente nao relacionados pra forcar MISSED → score baixo
+    # Outcomes intentionally unrelated to force MISSED → low score
     payload["goal"] = {
         "purpose": "Reuniao sobre topicos nao mencionados",
         "expectedOutcomes": [
@@ -180,7 +180,7 @@ _OBJECTION_TYPES = {
     ],
 )
 def test_customer_confidence_present_for_sales_conversation(transcript: str, tenant: str):
-    """Conversas com cliente/lead emitem customerConfidence com schema completo (ADR 0006)."""
+    """Client/lead conversations emit customerConfidence with the full schema (ADR 0006)."""
     payload = _load_request(transcript, tenant, "00000000-0000-4000-8000-000000000aaa")
     resp = client.post("/analyze", json=payload)
     assert resp.status_code == 200, resp.text
@@ -190,10 +190,10 @@ def test_customer_confidence_present_for_sales_conversation(transcript: str, ten
     assert 0 <= cc["score"] <= 100
     assert cc["band"] in {"LOW", "MEDIUM", "HIGH"}
     assert cc["trend"] in {"IMPROVING", "STABLE", "DECLINING", None}
-    # accountName e nullable (LLM detecta; stub nao parseia nome -> null).
+    # accountName is nullable (LLM detects it; stub does not parse the name -> null).
     assert cc["accountName"] is None or isinstance(cc["accountName"], str)
     assert isinstance(cc["rationale"], str) and len(cc["rationale"]) >= 10
-    # Banda derivada do score respeita limites do ADR (LOW<40, MEDIUM 40-69, HIGH>=70).
+    # Band derived from the score respects the ADR limits (LOW<40, MEDIUM 40-69, HIGH>=70).
     score, band = cc["score"], cc["band"]
     if score < 40:
         assert band == "LOW"
@@ -201,7 +201,7 @@ def test_customer_confidence_present_for_sales_conversation(transcript: str, ten
         assert band == "MEDIUM"
     else:
         assert band == "HIGH"
-    # Todo buyingSignal/objection precisa de quote + enum valido (regra do prompt).
+    # Every buyingSignal/objection needs a quote + valid enum (prompt rule).
     assert isinstance(cc["buyingSignals"], list)
     for sig in cc["buyingSignals"]:
         assert sig["type"] in _BUYING_SIGNAL_TYPES
@@ -214,17 +214,17 @@ def test_customer_confidence_present_for_sales_conversation(transcript: str, ten
 
 
 def test_customer_confidence_null_for_internal_meeting():
-    """Reuniao interna sem cues de venda emite customerConfidence = null (ADR 0006).
+    """Internal meeting with no sales cues emits customerConfidence = null (ADR 0006).
 
-    Gating decidido pelo conteudo (LLM no real; cue-based no stub): sem sinal de
-    compra nem objecao, o campo vem null — comprovando o contrato nullable.
+    Gating decided by content (LLM in real mode; cue-based in the stub): with no
+    buying signal nor objection, the field comes back null — proving the nullable contract.
     """
     payload = _load_request(
         "01-acme-discovery-lead-novo.txt",
         "acme-software",
         "00000000-0000-4000-8000-000000000aaa",
     )
-    # Substitui a transcricao por um alinhamento interno cue-free (daily de time).
+    # Replace the transcript with a cue-free internal alignment (team daily).
     payload["transcript"] = (
         "[Ana] Bom dia time, vamos revisar o andamento das tarefas de hoje.\n"
         "[Bruno] Terminei o ajuste no layout da tela inicial ontem a noite.\n"

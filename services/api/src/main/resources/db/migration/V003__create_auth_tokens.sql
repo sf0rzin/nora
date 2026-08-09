@@ -1,7 +1,7 @@
--- V003: tabelas de tokens de verificacao de e-mail e reset de senha + flag email_verified_at em users.
--- Stories: US01 (signup), US02 (verificacao por e-mail), US03 (login bloqueado se nao verificado), US04 (reset).
--- Tokens armazenados como hash SHA-256: o token cru so existe no e-mail enviado ao usuario.
--- Vazamento do banco nao permite reuso direto dos tokens.
+-- V003: e-mail verification and password reset token tables + email_verified_at flag on users.
+-- Stories: US01 (signup), US02 (e-mail verification), US03 (login blocked if not verified), US04 (reset).
+-- Tokens stored as a SHA-256 hash: the raw token only exists in the e-mail sent to the user.
+-- A database leak does not allow direct reuse of the tokens.
 
 ALTER TABLE users ADD COLUMN email_verified_at TIMESTAMPTZ;
 

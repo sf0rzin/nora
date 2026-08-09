@@ -1,7 +1,7 @@
--- V009: dominio corporativo do tenant (US32).
--- Restringe quais e-mails podem ser convidados ao tenant. NULL = sem restricao.
--- A validacao cruzada email -> domain ocorre no fluxo de convites (US06, fatia futura).
--- Ver ADR 0011-invite-flow-corporate-domain.md.
+-- V009: tenant corporate domain (US32).
+-- Restricts which e-mails can be invited to the tenant. NULL = no restriction.
+-- The cross validation email -> domain happens in the invite flow (US06, future slice).
+-- See ADR 0011-invite-flow-corporate-domain.md.
 
 ALTER TABLE tenants ADD COLUMN allowed_email_domain VARCHAR(255);
 

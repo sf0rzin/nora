@@ -1,43 +1,43 @@
-# 0002 — Estratégia de multi-tenancy
+# 0002 — Multi-tenancy strategy
 
-- Status: aceito
-- Data: 2026-05-02
-- Decisores: Time NORA
+- Status: accepted
+- Date: 2026-05-02
+- Deciders: NORA Team
 
-## Contexto
+## Context
 
-NORA é multi-tenant desde o dia 1. Cada empresa cliente é um tenant; nenhum dado pode vazar entre tenants. Existem três abordagens viáveis:
+NORA is multi-tenant from day 1. Each client company is a tenant; no data may leak between tenants. There are three viable approaches:
 
-1. **Banco por tenant** (separação física).
-2. **Schema por tenant** dentro do mesmo banco.
-3. **Schema único compartilhado com `tenant_id` em toda tabela tenant-bound**, opcionalmente com Row-Level Security.
+1. **Database per tenant** (physical separation).
+2. **Schema per tenant** within the same database.
+3. **Single shared schema with `tenant_id` in every tenant-bound table**, optionally with Row-Level Security.
 
-O time é pequeno e o MVP precisa entregar rápido sem comprometer a segurança.
+The team is small and the MVP needs to ship fast without compromising security.
 
-## Decisão
+## Decision
 
-Adotar **schema único compartilhado com coluna `tenant_id` obrigatória** em toda tabela tenant-bound, com a seguinte progressão:
+Adopt a **single shared schema with a mandatory `tenant_id` column** in every tenant-bound table, with the following progression:
 
-- **MVP**: o filtro `tenant_id = ?` é aplicado por uma camada de aplicação (interceptor/aspect no Spring) que recupera o tenant do JWT autenticado. Toda repository expõe apenas métodos que recebem o `tenantId` explicitamente. Testes de integração obrigatórios cobrem cenários de cross-tenant.
-- **Produção**: habilitar **Postgres Row-Level Security** em todas as tabelas tenant-bound, com policy baseada em `current_setting('app.tenant_id')` setado no início de cada conexão/transação.
+- **MVP**: the `tenant_id = ?` filter is applied by an application layer (a Spring interceptor/aspect) that retrieves the tenant from the authenticated JWT. Every repository exposes only methods that receive the `tenantId` explicitly. Mandatory integration tests cover cross-tenant scenarios.
+- **Production**: enable **Postgres Row-Level Security** on all tenant-bound tables, with a policy based on `current_setting('app.tenant_id')` set at the start of each connection/transaction.
 
-Tabelas globais (`system_plans`, etc.) ficam sem `tenant_id`.
+Global tables (`system_plans`, etc.) have no `tenant_id`.
 
-## Consequências
+## Consequences
 
-- Custo operacional baixo, escala bem para milhares de tenants.
-- Zero risco de "esquecer" o filtro em produção (a RLS impede).
-- Backups e migrations únicas.
-- Não atende clientes que exijam separação física do dado por contrato — esses migram para deployment dedicado no futuro.
-- Exige disciplina nos repositórios e testes específicos de isolamento.
+- Low operational cost, scales well to thousands of tenants.
+- Zero risk of "forgetting" the filter in production (RLS prevents it).
+- Single set of backups and migrations.
+- Does not serve clients whose contract requires physical data separation — those move to a dedicated deployment in the future.
+- Requires discipline in the repositories and specific isolation tests.
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-- **Banco por tenant.** Rejeitado: custo de provisionamento, complexidade de migrations e custo de Azure por banco.
-- **Schema por tenant.** Rejeitado: explosão de objetos no banco e complexidade de migrations multiplicadas pelo número de tenants.
+- **Database per tenant.** Rejected: provisioning cost, migration complexity and the Azure cost per database.
+- **Schema per tenant.** Rejected: explosion of database objects and migration complexity multiplied by the number of tenants.
 
-## Regras Acompanhantes
+## Accompanying Rules
 
-- Nunca buscar entidade tenant-bound só por `id`. Sempre `tenant_id + id`.
-- Um endpoint que retorna 404 cross-tenant **não deve** distinguir "não existe" de "não autorizado" para usuários sem privilégio elevado, evitando enumeração.
-- Toda nova tabela passa por checklist de PR: tem `tenant_id`? índice composto? teste de isolamento?
+- Never fetch a tenant-bound entity by `id` alone. Always `tenant_id + id`.
+- An endpoint returning a cross-tenant 404 **must not** distinguish "does not exist" from "not authorized" for users without elevated privilege, to avoid enumeration.
+- Every new table goes through a PR checklist: does it have `tenant_id`? A composite index? An isolation test?

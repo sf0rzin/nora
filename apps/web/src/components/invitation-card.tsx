@@ -3,22 +3,22 @@
 /**
  * InvitationCard (US06, ADR 0011)
  * -------------------------------------------------------------------------
- * Bloco de gestao de convites no settings/iam. Renderizado entre o
- * CorporateDomainCard e a lista de Groups. Permite ao admin com IAM
- * `iam:user:invite` / `iam:invite:read` / `iam:invite:revoke`:
+ * Invite management block in settings/iam. Rendered between the
+ * CorporateDomainCard and the Groups list. Allows an admin with IAM
+ * `iam:user:invite` / `iam:invite:read` / `iam:invite:revoke` to:
  *
- * - Filtrar convites por status (PENDING por padrao).
- * - Listar convites com email, status, datas e grupos.
- * - Criar novo convite via form inline (email + grupos + expiresInDays).
- * - Revogar convite PENDING via confirm() nativo.
+ * - Filter invites by status (PENDING by default).
+ * - List invites with email, status, dates and groups.
+ * - Create a new invite via inline form (email + groups + expiresInDays).
+ * - Revoke a PENDING invite via native confirm().
  *
- * Decisoes de UX:
- * - Filtro de status como <select>: mais simples que tabs sem lib de UI.
- * - Multi-select de grupos via checkboxes em lista, sem dropdown — quantidade
- *   de grupos costuma ser pequena no MVP e isso evita lib de combobox.
- * - Datas formatadas via Intl.DateTimeFormat('pt-BR') — sem date-fns.
- * - Confirm de revogacao via window.confirm() nativo — sem dialog lib.
- * - Validacao client-side e UX-only; backend e fonte da verdade (ADR 0011).
+ * UX decisions:
+ * - Status filter as a <select>: simpler than tabs without a UI lib.
+ * - Multi-select of groups via checkboxes in a list, no dropdown — the number
+ *   of groups is usually small in the MVP and this avoids a combobox lib.
+ * - Dates formatted via Intl.DateTimeFormat('pt-BR') — no date-fns.
+ * - Revoke confirm via native window.confirm() — no dialog lib.
+ * - Client-side validation is UX-only; backend is the source of truth (ADR 0011).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -72,7 +72,7 @@ function mapInviteError(err: unknown): string {
   if (!(err instanceof ApiRequestError)) {
     return "Erro ao enviar convite. Tente novamente.";
   }
-  // 422 — backend devolve mensagem util. Detecta caso especial de domain.
+  // 422 — backend returns a useful message. Detects the domain special case.
   if (err.status === 422) {
     const msg = err.payload?.message ?? "";
     const code = err.payload?.code ?? "";
@@ -125,14 +125,14 @@ export default function InvitationCard() {
     }
   }, []);
 
-  // Carrega grupos 1x (lookup id -> name) + invites na montagem.
+  // Loads groups once (lookup id -> name) + invites on mount.
   useEffect(() => {
     void (async () => {
       try {
         const gs = await listGroups();
         setGroups(gs);
       } catch {
-        // Lookup de nomes e best-effort — sem grupos, mostramos o id.
+        // Name lookup is best-effort — without groups, we show the id.
       }
     })();
   }, []);

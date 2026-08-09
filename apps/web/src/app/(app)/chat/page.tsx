@@ -1,16 +1,18 @@
 "use client";
 
 /**
- * NORA Core — Chat IA.
+ * NORA Core — AI Chat.
  *
- * Centro do Core: conversa com a NORA sobre as reuniões/action items/projetos do
- * workspace. Consome o stream de texto de `/api/chat` (server-side, OpenAI via
- * ADR 0004) e renderiza markdown nas respostas. A chave do LLM nunca toca o client.
+ * Center of the Core: talk to NORA about the workspace's meetings/action
+ * items/projects. Consumes the text stream from `/api/chat` (server-side, OpenAI
+ * via ADR 0004) and renders markdown in the answers. The LLM key never touches
+ * the client.
  *
- * Persistência: abrir com `?s={id}` carrega a sessão (getChatSession). A primeira
- * mensagem de uma conversa nova cria a sessão (createChatSession) e atualiza a URL;
- * cada troca (pergunta + resposta) é persistida via appendChatMessage. A geração
- * pode ser interrompida (AbortController) e reenviada após erro/interrupção.
+ * Persistence: opening with `?s={id}` loads the session (getChatSession). The
+ * first message of a new conversation creates the session (createChatSession) and
+ * updates the URL; each exchange (question + answer) is persisted via
+ * appendChatMessage. Generation can be interrupted (AbortController) and resent
+ * after an error/interruption.
  */
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -30,11 +32,11 @@ type Role = "user" | "assistant";
 interface Msg {
   role: Role;
   content: string;
-  /** Marca uma resposta cortada pelo usuário (botão parar) — habilita "Tentar de novo". */
+  /** Marks an answer cut off by the user (stop button) — enables "Tentar de novo". */
   interrupted?: boolean;
 }
 
-// §3.7 — sugestões genéricas de produto, sem cliente nem jargão interno.
+// §3.7 — generic product suggestions, no customer names and no internal jargon.
 const SUGGESTIONS = [
   "Resuma minha última reunião",
   "O que ficou pendente esta semana?",
@@ -61,14 +63,14 @@ function ChatRoom() {
   const [title, setTitle] = useState("Nova sessão");
   const [loading, setLoading] = useState(false);
 
-  // Sessão persistida. Vive em ref pra estar disponível dentro de `send` sem
-  // recriar o callback; o state só espelha pra UI/URL.
+  // Persisted session. Lives in a ref so it is available inside `send` without
+  // recreating the callback; the state only mirrors it for the UI/URL.
   const sessionIdRef = useRef<string | null>(sessionParam);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
-  // Hidrata a sessão quando aberta via ?s={id}.
+  // Hydrates the session when opened via ?s={id}.
   useEffect(() => {
     sessionIdRef.current = sessionParam;
     if (!sessionParam) {
@@ -110,24 +112,24 @@ function ChatRoom() {
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
   }, [input]);
 
-  // Persiste uma mensagem na sessão atual sem quebrar o fluxo se o back-end falhar.
+  // Persists a message in the current session without breaking the flow if the back-end fails.
   const persist = useCallback(async (role: Role, content: string) => {
     const id = sessionIdRef.current;
     if (!id) return;
     try {
       await appendChatMessage(id, { role, content });
-      // Sidebar viva: o título (derivado da 1ª mensagem), o snippet e a ordem
-      // por updatedAt mudam a cada mensagem persistida.
+      // Live sidebar: the title (derived from the 1st message), the snippet and
+      // the ordering by updatedAt change on every persisted message.
       notifySessionsChanged();
     } catch {
-      // Persistência é best-effort: a conversa segue mesmo se o histórico falhar.
+      // Persistence is best-effort: the conversation goes on even if history fails.
     }
   }, []);
 
   const run = useCallback(
     async (history: Msg[]) => {
       setBusy(true);
-      // bolha do assistant que vamos preenchendo conforme o stream chega.
+      // assistant bubble we keep filling in as the stream arrives.
       setMessages([...history, { role: "assistant", content: "" }]);
 
       const controller = new AbortController();
@@ -198,19 +200,19 @@ function ChatRoom() {
       const content = text.trim();
       if (!content || busy || loading) return;
 
-      // Cria a sessão na 1a mensagem de uma conversa nova e reflete na URL.
+      // Creates the session on the 1st message of a new conversation and reflects it in the URL.
       if (!sessionIdRef.current) {
         try {
           const created = await createChatSession();
           sessionIdRef.current = created.id;
           setTitle(created.title?.trim() || "Nova sessão");
-          // Sessão nova aparece na sidebar na hora, sem full reload.
+          // New session shows up in the sidebar right away, without a full reload.
           notifySessionsChanged();
           router.replace(`/chat?s=${encodeURIComponent(created.id)}` as Route, {
             scroll: false,
           });
         } catch {
-          // Sem persistência: a conversa segue em memória nesta aba.
+          // No persistence: the conversation goes on in memory in this tab.
         }
       }
 
@@ -223,7 +225,7 @@ function ChatRoom() {
     [busy, loading, messages, persist, run, router],
   );
 
-  // Reenvia a partir da última pergunta do usuário (após erro ou interrupção).
+  // Resends from the user's last question (after an error or interruption).
   const retry = useCallback(
     (assistantIndex: number) => {
       if (busy) return;

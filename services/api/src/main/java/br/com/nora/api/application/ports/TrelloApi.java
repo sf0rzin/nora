@@ -1,17 +1,18 @@
 package br.com.nora.api.application.ports;
 
 /**
- * Porta da REST API do Trello usada pela conexão por token colado (onda 2). O Trello 1.0a
- * server-side não vale o custo: o usuário gera o token na página de authorize do Trello (key do
- * nosso app + {@code response_type=token}) e cola no hub — o backend valida o token aqui antes de
- * persistir cifrado. A implementação infrastructure guarda a API key do app (env {@code
- * TRELLO_API_KEY}); nos testes é stubada.
+ * Port for Trello's REST API used by the pasted-token connection (wave 2). Server-side Trello 1.0a
+ * is not worth the cost: the user generates the token on Trello's authorize page (our app's key +
+ * {@code response_type=token}) and pastes it into the hub — the backend validates the token here
+ * before persisting it encrypted. The infrastructure implementation holds the app's API key (env
+ * {@code TRELLO_API_KEY}); in tests it is stubbed.
  */
 public interface TrelloApi {
 
     /**
-     * Valida o token colado chamando {@code GET /1/members/me} e devolve o nome de exibição do
-     * membro (conta externa no hub). Token inválido = {@code ProviderError} com orientação clara.
+     * Validates the pasted token by calling {@code GET /1/members/me} and returns the member's
+     * display name (external account in the hub). Invalid token = {@code ProviderError} with clear
+     * guidance.
      */
     String validateToken(String token);
 }

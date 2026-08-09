@@ -7,14 +7,13 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Porta de persistência do histórico de execuções de workflows. Toda consulta exige tenantId (ADR
- * 0002).
+ * Persistence port for the workflow execution history. Every query requires tenantId (ADR 0002).
  */
 public interface WorkflowExecutionRepository {
 
     void create(WorkflowExecution execution);
 
-    /** Finaliza uma execução: status terminal (SUCCESS/FAILED) + log completo + finished_at. */
+    /** Finishes an execution: terminal status (SUCCESS/FAILED) + full log + finished_at. */
     void finish(
             UUID id,
             UUID tenantId,
@@ -22,6 +21,6 @@ public interface WorkflowExecutionRepository {
             String logJson,
             OffsetDateTime finishedAt);
 
-    /** Histórico de um workflow, mais recente primeiro, limitado a {@code limit} linhas. */
+    /** History of a workflow, most recent first, limited to {@code limit} rows. */
     List<WorkflowExecution> listByWorkflow(UUID workflowId, UUID tenantId, int limit);
 }

@@ -14,20 +14,21 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * Aspect que aplica RLS Postgres no inicio de cada {@code @Transactional}.
+ * Aspect that applies Postgres RLS at the start of each {@code @Transactional}.
  *
- * <p>Le {@link TenantContextHolder#get()} e executa {@code SET LOCAL nora.current_tenant_id =
- * '<uuid>'} via {@link EntityManager}. O SET LOCAL e scoped a transacao corrente — auto-reseta no
- * commit/rollback. As policies criadas na migration V016 entao filtram rows automaticamente.
+ * <p>Reads {@link TenantContextHolder#get()} and runs {@code SET LOCAL nora.current_tenant_id =
+ * '<uuid>'} via {@link EntityManager}. The SET LOCAL is scoped to the current transaction —
+ * auto-resets on commit/rollback. The policies created in migration V016 then filter rows
+ * automatically.
  *
- * <p>Bean condicional: {@code nora.security.rls.enforce=true} ativa. Default off porque exige que o
- * app rode com role Postgres sem BYPASSRLS (ver V016 comments). Em tests/dev com Testcontainers o
- * app conecta como owner que bypassa RLS — aspect tambem fica inerte (ainda registrado mas efeito
- * zero).
+ * <p>Conditional bean: {@code nora.security.rls.enforce=true} activates it. Default off because it
+ * requires the app to run with a Postgres role without BYPASSRLS (see V016 comments). In tests/dev
+ * with Testcontainers the app connects as the owner, which bypasses RLS — the aspect is inert there
+ * too (still registered but zero effect).
  *
- * <p>Order: precisa rodar DENTRO da transacao (depois do {@code @Transactional} advice abrir a tx).
- * Spring {@code @Transactional} interceptor tem ordem {@code Ordered.LOWEST_PRECEDENCE}. Aspect com
- * ordem mais baixa (numericamente maior) executa por ULTIMO no entry — i.e., dentro da tx.
+ * <p>Order: it must run INSIDE the transaction (after the {@code @Transactional} advice opens the
+ * tx). Spring's {@code @Transactional} interceptor has order {@code Ordered.LOWEST_PRECEDENCE}. An
+ * aspect with lower order (numerically higher) runs LAST on entry — i.e. inside the tx.
  */
 @Aspect
 @Component
@@ -45,8 +46,8 @@ public class TenantRlsAspect {
     public Object setTenantOnTransaction(ProceedingJoinPoint pjp) throws Throwable {
         UUID tenantId = TenantContextHolder.get();
         if (tenantId != null) {
-            // Usar bind parameter pra evitar SQL injection (paranoia: tenantId vem de
-            // UUID parsed do JWT, ja seguro, mas defensive).
+            // Use a bind parameter to avoid SQL injection (paranoia: tenantId comes from
+            // a UUID parsed out of the JWT, already safe, but defensive).
             em.createNativeQuery("SELECT set_config('nora.current_tenant_id', ?, true)")
                     .setParameter(1, tenantId.toString())
                     .getSingleResult();

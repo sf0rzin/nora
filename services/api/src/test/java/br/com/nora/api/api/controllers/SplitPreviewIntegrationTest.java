@@ -44,8 +44,9 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Fluxo do split-preview (arquivo .txt com varias reunioes concatenadas): signup -> login -> POST
- * /meetings/split-preview com worker stubado. Preview NAO cria reuniao nem persiste nada.
+ * Split-preview flow (.txt file with several meetings concatenated): signup -> login -> POST
+ * /meetings/split-preview with a stubbed worker. Preview does NOT create a meeting nor persist
+ * anything.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -80,7 +81,7 @@ class SplitPreviewIntegrationTest {
     void splitPreviewReturnsSegmentsAndDoesNotPersistAnything() throws Exception {
         String token = signupAndLogin("split@nora.dev", "SenhaForte123", "Owner Split");
 
-        // Sem \n final: 4 linhas exatas (trailing newline viraria 5a linha vazia).
+        // No trailing \n: exactly 4 lines (a trailing newline would become an empty 5th line).
         String content =
                 "=== Reuniao A ===\n"
                         + "Fala da primeira reuniao.\n"
@@ -109,7 +110,7 @@ class SplitPreviewIntegrationTest {
         assertThat(body.get("metadata").get("promptVersion").asText())
                 .isEqualTo("meeting-split-v1");
 
-        // Preview nao persiste: nenhuma reuniao criada para o tenant.
+        // Preview does not persist: no meeting created for the tenant.
         JsonNode list = authGet("/meetings", token).read(HttpStatus.OK);
         assertThat(list.get("totalItems").asInt()).isZero();
     }
@@ -134,8 +135,8 @@ class SplitPreviewIntegrationTest {
     void splitPreviewRejectsTranscriptOverCharLimit() throws Exception {
         String token = signupAndLogin("splitbig@nora.dev", "SenhaForte123", "Owner Big");
 
-        // 2MB de texto: passa no max-file-size (10MB) mas estoura o cap de 1M chars
-        // do transcript (mesmo limite do upload normal / worker) => 413 da NOSSA validacao.
+        // 2MB of text: passes max-file-size (10MB) but blows the 1M char cap
+        // of the transcript (same limit as the normal upload / worker) => 413 from OUR validation.
         byte[] big = new byte[2 * 1024 * 1024];
         java.util.Arrays.fill(big, (byte) 'a');
         ResponseEntity<String> resp = multipartSplitPreview(token, "grande.txt", big);
@@ -149,16 +150,16 @@ class SplitPreviewIntegrationTest {
     void splitPreviewRejectsMultipartOverSpringLimit() throws Exception {
         String token = signupAndLogin("splithuge@nora.dev", "SenhaForte123", "Owner Huge");
 
-        // 11MB > max-file-size de 10MB: Spring/Tomcat rejeita antes do controller.
-        // Dependendo do container, a rejeicao vem como 413 OU como conexao abortada
-        // (Tomcat para de consumir o stream) — ambos provam que o payload nao entra.
+        // 11MB > the 10MB max-file-size: Spring/Tomcat rejects it before the controller.
+        // Depending on the container, the rejection comes as 413 OR as an aborted connection
+        // (Tomcat stops consuming the stream) — both prove the payload does not get in.
         byte[] huge = new byte[11 * 1024 * 1024];
         java.util.Arrays.fill(huge, (byte) 'a');
         try {
             ResponseEntity<String> resp = multipartSplitPreview(token, "enorme.txt", huge);
             assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
         } catch (org.springframework.web.client.ResourceAccessException expected) {
-            // conexao abortada pelo servidor durante o upload — rejeicao confirmada.
+            // connection aborted by the server during the upload — rejection confirmed.
         }
     }
 
@@ -252,8 +253,8 @@ class SplitPreviewIntegrationTest {
     }
 
     /**
-     * Stub determinista do worker para split: 2 segmentos fixos cobrindo 4 linhas, com preview ja
-     * "redigido" (placeholder de PII) — espelha o contrato do worker /split.
+     * Deterministic worker stub for split: 2 fixed segments covering 4 lines, with the preview
+     * already "redacted" (PII placeholder) — mirrors the worker /split contract.
      */
     @TestConfiguration
     static class StubWorkerConfig {
@@ -305,7 +306,8 @@ class SplitPreviewIntegrationTest {
                 @Override
                 public SplitDtos.SplitResponse split(String transcript, String language) {
                     int totalLines = transcript.split("\n", -1).length;
-                    // espelha o worker: trailing newline vira linha vazia coberta pela cauda.
+                    // mirrors the worker: a trailing newline becomes an empty line covered by the
+                    // tail.
                     return new SplitDtos.SplitResponse(
                             List.of(
                                     new SplitDtos.SegmentDto(

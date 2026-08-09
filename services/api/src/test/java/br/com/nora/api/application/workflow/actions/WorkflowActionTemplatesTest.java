@@ -46,7 +46,7 @@ class WorkflowActionTemplatesTest {
         assertThat(html).contains("<strong>Acme</strong>");
         assertThat(html).doesNotContain("**");
         assertThat(html).contains("Renovação — Acme &amp; Cia");
-        // Moldura: cabeçalho NORA, métricas, próximos passos, CTA e rodapé.
+        // Frame: NORA header, metrics, next steps, CTA and footer.
         assertThat(html).contains(">NORA</span>");
         assertThat(html).contains("Action items");
         assertThat(html).contains("Próximos passos");

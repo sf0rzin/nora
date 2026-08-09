@@ -44,20 +44,20 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Endpoints publicos de autenticacao.
+ * Public authentication endpoints.
  *
- * <p>Stories: US01 (signup), US02 (verificacao), US03 (login), US04 (reset). Round 2 / Subfase 1.3
- * A adiciona refresh + logout com cookies httpOnly.
+ * <p>Stories: US01 (signup), US02 (verification), US03 (login), US04 (reset). Round 2 / Subphase
+ * 1.3 A adds refresh + logout with httpOnly cookies.
  *
- * <p>Modelo de cookies:
+ * <p>Cookie model:
  *
  * <ul>
- *   <li>{@code nora_access} — JWT curto (15min). HttpOnly, SameSite=Lax, Path=/.
- *   <li>{@code nora_refresh} — opaque (30 dias). HttpOnly, SameSite=Strict, Path=/auth.
+ *   <li>{@code nora_access} — short-lived JWT (15min). HttpOnly, SameSite=Lax, Path=/.
+ *   <li>{@code nora_refresh} — opaque (30 days). HttpOnly, SameSite=Strict, Path=/auth.
  * </ul>
  *
- * <p>{@code accessToken} continua no JSON do login para manter compat com clientes antigos durante
- * a migracao; novos clientes devem ignorar e confiar nos cookies (ver brief Round 2 1.3 A).
+ * <p>{@code accessToken} stays in the login JSON to keep compat with old clients during the
+ * migration; new clients must ignore it and rely on the cookies (see brief Round 2 1.3 A).
  */
 @RestController
 @RequestMapping("/auth")
@@ -77,7 +77,8 @@ public class AuthController {
     }
 
     /**
-     * Cliente web declara-se via header {@code X-NORA-Client: web} (recebe sessão só por cookie).
+     * The web client declares itself via the {@code X-NORA-Client: web} header (gets the session by
+     * cookie only).
      */
     private static boolean isWebClient(HttpServletRequest req) {
         return "web".equalsIgnoreCase(req.getHeader("X-NORA-Client"));
@@ -115,16 +116,18 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(
             @Valid @RequestBody LoginRequest req, HttpServletRequest httpReq) {
-        // Dois tetos independentes: por origem e por conta alvo. Trocar de IP não zera o segundo.
+        // Two independent caps: by origin and by target account. Changing IP does not reset the
+        // second one.
         if (!rateLimiter.allowLogin(httpReq)
                 || !rateLimiter.allowLoginForEmail(httpReq, req.email())) {
             throw AuthException.rateLimited();
         }
         LoginResult result = authService.login(new LoginCommand(req.email(), req.password()));
 
-        // Cliente web (header X-NORA-Client: web) recebe a sessão SÓ via cookies httpOnly — os
-        // tokens ficam FORA do body pra um XSS não conseguir lê-los. Cliente nativo (desktop, sem
-        // o header) recebe os tokens no body (guarda no keyring; não usa cookie).
+        // Web client (X-NORA-Client: web header) gets the session ONLY via httpOnly cookies — the
+        // tokens stay OUT of the body so an XSS cannot read them. Native client (desktop, without
+        // the header) gets the tokens in the body (stores them in the keyring; does not use
+        // cookies).
         boolean nativeClient = !isWebClient(httpReq);
         LoginResponse body =
                 new LoginResponse(
@@ -151,8 +154,8 @@ public class AuthController {
     }
 
     /**
-     * Renova o access token. Le o refresh do cookie {@code nora_refresh} (Path=/auth). Retorna 401
-     * REFRESH_TOKEN_INVALID quando ausente/expirado/revogado.
+     * Renews the access token. Reads the refresh from the {@code nora_refresh} cookie (Path=/auth).
+     * Returns 401 REFRESH_TOKEN_INVALID when missing/expired/revoked.
      */
     @PostMapping("/refresh")
     public ResponseEntity<RefreshResponse> refresh(HttpServletRequest req) {
@@ -166,9 +169,9 @@ public class AuthController {
         }
         RefreshResult result = authService.refresh(refresh);
 
-        // Refresh rotation: cliente recebe um novo refresh cookie (o anterior foi revogado
-        // server-side). Sem reescrever o cookie, o cliente continuaria mandando o velho
-        // e bateria em reuse detection na proxima chamada.
+        // Refresh rotation: the client gets a new refresh cookie (the previous one was revoked
+        // server-side). Without rewriting the cookie, the client would keep sending the old one
+        // and would hit reuse detection on the next call.
         HttpHeaders headers = new HttpHeaders();
         AuthCookies.appendSetCookie(
                 headers,
@@ -179,9 +182,10 @@ public class AuthController {
                 cookies.buildRefreshCookie(
                         result.refreshTokenPlain(),
                         Duration.ofSeconds(result.refreshExpiresInSeconds())));
-        // Browser (refresh via cookie httpOnly): tokens NÃO voltam no body — um XSS não tem como
-        // apresentar o refresh por Bearer, então fica sem nada. Cliente nativo (Bearer): recebe no
-        // body (não usa cookie). Em ambos os casos os cookies foram reescritos acima.
+        // Browser (refresh via httpOnly cookie): tokens do NOT come back in the body — an XSS has
+        // no way to present the refresh via Bearer, so it gets nothing. Native client (Bearer):
+        // gets them in the body (does not use cookies). In both cases the cookies were rewritten
+        // above.
         return ResponseEntity.ok()
                 .headers(headers)
                 .body(
@@ -193,8 +197,8 @@ public class AuthController {
     }
 
     /**
-     * Idempotente: revoga apenas o refresh deste cookie e limpa cookies do cliente. Logout sem
-     * token = 204 (no-op). Nao retorna 401 mesmo sem credencial.
+     * Idempotent: revokes only the refresh from this cookie and clears the client's cookies. Logout
+     * without a token = 204 (no-op). Does not return 401 even without a credential.
      */
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletRequest req) {
@@ -206,7 +210,7 @@ public class AuthController {
         return ResponseEntity.noContent().headers(headers).build();
     }
 
-    /** Identidade do usuario autenticado (aba Conta das configuracoes). */
+    /** Identity of the authenticated user (Account tab in settings). */
     @GetMapping("/me")
     public MeResponse me() {
         AuthenticatedPrincipal principal = CurrentUser.require();
@@ -221,9 +225,9 @@ public class AuthController {
     }
 
     /**
-     * Troca de senha AUTENTICADA (aba Seguranca). Revoga todas as sessoes (OWASP) e emite um par
-     * novo pro dispositivo atual — os cookies sao reescritos na resposta, o usuario nao e deslogado
-     * aqui.
+     * AUTHENTICATED password change (Security tab). Revokes all sessions (OWASP) and issues a new
+     * pair for the current device — the cookies are rewritten in the response, the user is not
+     * logged out here.
      */
     @PostMapping("/password/change")
     public ResponseEntity<Void> changePassword(@Valid @RequestBody PasswordChangeRequest req) {
@@ -245,9 +249,9 @@ public class AuthController {
     }
 
     /**
-     * "Sair de todos os dispositivos": revoga TODOS os refresh tokens do usuario e limpa os cookies
-     * deste cliente. O access token atual segue valido ate expirar (15min) — aceitavel; o front
-     * redireciona pro login imediatamente.
+     * "Log out of all devices": revokes ALL of the user's refresh tokens and clears this client's
+     * cookies. The current access token stays valid until it expires (15min) — acceptable; the
+     * front end redirects to the login immediately.
      */
     @PostMapping("/logout-all")
     public ResponseEntity<Void> logoutAll() {
@@ -260,9 +264,9 @@ public class AuthController {
     }
 
     /**
-     * Reenvia o e-mail de verificacao (publico — usado quando o login falha com
-     * EMAIL_NOT_VERIFIED). Resposta 202 indistinguivel (anti-enumeracao), com o mesmo rate limit
-     * por e-mail do reset (mesmo vetor de abuso: inundar inbox alheio).
+     * Resends the verification e-mail (public — used when the login fails with EMAIL_NOT_VERIFIED).
+     * Indistinguishable 202 response (anti-enumeration), with the same per-email rate limit as the
+     * reset (same abuse vector: flooding someone else's inbox).
      */
     @PostMapping("/verify-email/resend")
     public ResponseEntity<ResendVerificationResponse> resendVerification(
@@ -282,12 +286,12 @@ public class AuthController {
     @PostMapping("/password/reset/request")
     public ResponseEntity<RequestPasswordResetResponse> requestPasswordReset(
             @Valid @RequestBody RequestPasswordResetRequest req) {
-        // Limita por email (em vez de IP) — spammer que muda IP nao consegue inundar
-        // o inbox da vitima. Em silencio se exceder (retorna a mesma 202 indistinguivel)
-        // pra nao vazar quais emails existem.
+        // Limits by email (instead of IP) — a spammer who changes IP cannot flood
+        // the victim's inbox. Silent when exceeded (returns the same indistinguishable 202)
+        // so it does not leak which emails exist.
         if (!rateLimiter.allowPasswordReset(req.email())) {
-            // Reply 202 indistinguivel pra nao vazar quais emails existem, mas WARN
-            // pra que ops veja o sinal — sem isso, ataque ficaria silencioso em prod.
+            // Indistinguishable 202 reply so it does not leak which emails exist, but WARN
+            // so ops sees the signal — without it, an attack would be silent in prod.
             LOG.warn(
                     "Password reset rate-limited for email-hash={}",
                     Integer.toHexString(req.email().toLowerCase(java.util.Locale.ROOT).hashCode()));
@@ -315,7 +319,7 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
-    /** Le um cookie por nome do request; retorna {@code null} se ausente. */
+    /** Reads a cookie by name from the request; returns {@code null} if absent. */
     private static String readCookie(HttpServletRequest req, String name) {
         Cookie[] all = req.getCookies();
         if (all == null) {

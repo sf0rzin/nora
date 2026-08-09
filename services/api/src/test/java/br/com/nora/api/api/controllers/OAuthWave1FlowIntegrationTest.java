@@ -37,11 +37,11 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Fluxo end-to-end dos provedores OAuth genéricos da onda 1 (GitHub como representante + Notion no
- * authorize): start → callback genérico (state assinado) → conexão persistida → ação
- * github_create_issue do Flows usando o token → disconnect. O token exchange e o GitHub são
- * stubados; o resto do caminho (controller genérico, service, RLS, cifra de token, migration V025)
- * é real contra Postgres.
+ * End-to-end flow of the wave 1 generic OAuth providers (GitHub as the representative + Notion in
+ * authorize): start → generic callback (signed state) → persisted connection → Flows'
+ * github_create_issue action using the token → disconnect. The token exchange and GitHub are
+ * stubbed; the rest of the path (generic controller, service, RLS, token encryption, migration
+ * V025) is real against Postgres.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -88,8 +88,8 @@ class OAuthWave1FlowIntegrationTest {
     void fluxoCompleto_startCallbackStatusAcaoDisconnect() throws Exception {
         String token = signupAndLogin("wave1-full@nora.dev", "SenhaForte123", "Wave1 Full");
 
-        // 1) Status inicial: github/notion configurados (props acima), não conectados;
-        //    todoist/linear sem credenciais = não configurados.
+        // 1) Initial status: github/notion configured (props above), not connected;
+        //    todoist/linear without credentials = not configured.
         JsonNode before = authGet("/integrations", token).read(HttpStatus.OK);
         assertThat(providerNode(before, "github").get("configured").asBoolean()).isTrue();
         assertThat(providerNode(before, "github").get("connected").asBoolean()).isFalse();
@@ -97,7 +97,7 @@ class OAuthWave1FlowIntegrationTest {
         assertThat(providerNode(before, "todoist").get("configured").asBoolean()).isFalse();
         assertThat(providerNode(before, "linear").get("configured").asBoolean()).isFalse();
 
-        // 2) Start GitHub: URL de autorização com scope repo e state assinado.
+        // 2) Start GitHub: authorization URL with scope repo and signed state.
         JsonNode start =
                 postJson("/integrations/github/oauth/start", Map.of(), token).read(HttpStatus.OK);
         String authorizeUrl = start.get("authorizeUrl").asText();
@@ -107,7 +107,7 @@ class OAuthWave1FlowIntegrationTest {
         String state = queryParam(authorizeUrl, "state");
         assertThat(state).isNotBlank();
 
-        // 2b) Start Notion: owner=user e sem scope (capabilities do app).
+        // 2b) Start Notion: owner=user and no scope (app capabilities).
         JsonNode notionStart =
                 postJson("/integrations/notion/oauth/start", Map.of(), token).read(HttpStatus.OK);
         assertThat(notionStart.get("authorizeUrl").asText())
@@ -115,7 +115,7 @@ class OAuthWave1FlowIntegrationTest {
                 .contains("owner=user")
                 .doesNotContain("scope=");
 
-        // 2c) Start de provedor não configurado falha visível (422).
+        // 2c) Start on an unconfigured provider fails visibly (422).
         assertThat(
                         postJson("/integrations/todoist/oauth/start", Map.of(), token)
                                 .response
@@ -123,7 +123,7 @@ class OAuthWave1FlowIntegrationTest {
                                 .value())
                 .isEqualTo(422);
 
-        // 3) Callback genérico (público) → 302 pro front com sucesso.
+        // 3) Generic callback (public) → 302 to the front end with success.
         ResponseEntity<String> callback =
                 rest.exchange(
                         callbackUri("github", state, "code-gh"),
@@ -134,11 +134,11 @@ class OAuthWave1FlowIntegrationTest {
         assertThat(callback.getHeaders().getLocation())
                 .hasToString("http://localhost:3000/integracoes?connected=github");
 
-        // 4) Status: conectado.
+        // 4) Status: connected.
         JsonNode after = authGet("/integrations", token).read(HttpStatus.OK);
         assertThat(providerNode(after, "github").get("connected").asBoolean()).isTrue();
 
-        // 5) Ação github_create_issue num workflow: POST /test (dados de exemplo).
+        // 5) github_create_issue action in a workflow: POST /test (sample data).
         String definition =
                 """
                 {
@@ -171,7 +171,7 @@ class OAuthWave1FlowIntegrationTest {
         assertThat(GITHUB.issues.get(0).repo()).isEqualTo("stratfy/nora");
         assertThat(GITHUB.issues.get(0).labels()).containsExactly("nora");
 
-        // 6) Disconnect → status volta a não conectado e a ação passa a falhar com clareza.
+        // 6) Disconnect → status goes back to not connected and the action starts failing clearly.
         ResponseEntity<String> disconnect =
                 rest.exchange(
                         "/integrations/github",
@@ -297,7 +297,7 @@ class OAuthWave1FlowIntegrationTest {
         }
     }
 
-    /** Captura criações de issue em memória (substitui as chamadas HTTP reais ao GitHub). */
+    /** Captures issue creations in memory (replaces the real HTTP calls to GitHub). */
     static class RecordingGitHub extends GitHubClient {
         record Issue(
                 String accessToken, String repo, String title, String body, List<String> labels) {}
@@ -319,7 +319,7 @@ class OAuthWave1FlowIntegrationTest {
     @TestConfiguration
     static class TestBeans {
 
-        /** Token exchange genérico stubado (sem rede). */
+        /** Generic token exchange stubbed out (no network). */
         @Bean
         @Primary
         GenericOAuthClient stubGenericOAuth() {
@@ -342,7 +342,7 @@ class OAuthWave1FlowIntegrationTest {
             return GITHUB;
         }
 
-        /** E-mails Resend silenciados (sem rede) — este IT não os exercita. */
+        /** Resend e-mails silenced (no network) — this IT does not exercise them. */
         @Bean
         @Primary
         EmailSender silentEmailSender() {

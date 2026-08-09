@@ -25,9 +25,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * API do NORA Flows: CRUD de workflows + teste manual + histórico de execuções. Escopo por
- * tenant_id do principal (ADR 0002 + RLS ADR 0028); autenticação exigida pelo SecurityConfig (rota
- * não pública). Sem gate IAM fino — Flows é recurso do Core individual (mesmo padrão do
+ * NORA Flows API: workflow CRUD + manual test + execution history. Scoped by the principal's
+ * tenant_id (ADR 0002 + RLS ADR 0028); authentication required by SecurityConfig (non-public
+ * route). No fine-grained IAM gate — Flows is an individual Core feature (same pattern as
  * ChatSessionController).
  */
 @RestController
@@ -88,7 +88,8 @@ public class WorkflowsController {
     }
 
     /**
-     * Executa o workflow agora (síncrono) e devolve a execução com o log — o "Testar" do canvas.
+     * Runs the workflow now (synchronous) and returns the execution with the log — the canvas
+     * "Test".
      */
     @PostMapping("/{id}/test")
     public WorkflowExecutionResponse test(@PathVariable("id") UUID id) {

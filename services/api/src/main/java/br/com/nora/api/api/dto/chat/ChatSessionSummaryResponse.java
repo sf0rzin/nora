@@ -6,9 +6,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Item da listagem de sessões de chat (sidebar) e corpo de criação/renomeação. Ordenado por {@code
- * updatedAt} desc na listagem. {@code createdAt} é incluído na resposta de criação; {@code
- * lastSnippet} é omitido quando vazio.
+ * Item of the chat session listing (sidebar) and body of create/rename. Ordered by {@code
+ * updatedAt} desc in the listing. {@code createdAt} is included in the create response; {@code
+ * lastSnippet} is omitted when empty.
  */
 @JsonInclude(Include.NON_NULL)
 public record ChatSessionSummaryResponse(

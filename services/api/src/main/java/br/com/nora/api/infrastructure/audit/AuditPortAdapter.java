@@ -7,8 +7,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /**
- * Default adapter: delega tudo para {@link IamRepository#recordAudit}, mantendo todos os eventos de
- * audit (IAM + auth + meeting + tenant) na mesma tabela {@code iam_audit_events}.
+ * Default adapter: delegates everything to {@link IamRepository#recordAudit}, keeping all audit
+ * events (IAM + auth + meeting + tenant) in the same {@code iam_audit_events} table.
  */
 @Component
 public class AuditPortAdapter implements AuditPort {

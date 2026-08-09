@@ -1,17 +1,17 @@
 # PR — NORA
 
-## Resumo
+## Summary
 
-> O que esse PR entrega? (1–3 linhas)
+> What does this PR deliver? (1–3 lines)
 
 Issue / Story: `#`
 
-## Mudanças Principais
+## Main Changes
 
 - [ ]
 - [ ]
 
-## Como Testar
+## How to Test
 
 ```bash
 # comandos
@@ -19,17 +19,17 @@ Issue / Story: `#`
 
 ## Checklist
 
-- [ ] Segue padrões em `docs/engineering/standards.md`
-- [ ] Mensagens de commit em **inglês**, no formato Conventional Commits (ver `CLAUDE.md` › Como trabalhamos)
-- [ ] Multi-tenancy preservada (filtro `tenant_id` ou RLS) — quando aplicável
-- [ ] PII Shield aplicado em entradas de usuário antes do LLM (ADR 0012) — quando aplicável
-- [ ] Sem segredos no diff
-- [ ] Testes adicionados ou atualizados
-- [ ] Contratos atualizados (`docs/api/openapi.yaml` / `docs/api/examples/*.json`) se houve mudança de API
-- [ ] Schema LLM versionado (`docs/api/llm-schemas/*-vN.schema.json`) se houve mudança de saída do worker
-- [ ] ADR criado se decisão durável (ver `docs/adr/README.md`)
-- [ ] CI verde
+- [ ] Follows the standards in `docs/engineering/standards.md`
+- [ ] Commit messages in **English**, in Conventional Commits format (see `CLAUDE.md` › How we work)
+- [ ] Multi-tenancy preserved (`tenant_id` filter or RLS) — when applicable
+- [ ] PII Shield applied to user input before the LLM (ADR 0012) — when applicable
+- [ ] No secrets in the diff
+- [ ] Tests added or updated
+- [ ] Contracts updated (`docs/api/openapi.yaml` / `docs/api/examples/*.json`) if the API changed
+- [ ] LLM schema versioned (`docs/api/llm-schemas/*-vN.schema.json`) if the worker output changed
+- [ ] ADR created if the decision is durable (see `docs/adr/README.md`)
+- [ ] CI green
 
-## Notas para Revisor
+## Notes for the Reviewer
 
 >

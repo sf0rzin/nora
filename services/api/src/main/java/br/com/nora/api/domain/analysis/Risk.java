@@ -1,6 +1,6 @@
 package br.com.nora.api.domain.analysis;
 
-/** Risco identificado pela analise. Severidade e categoria sao enums fechados. */
+/** Risk identified by the analysis. Severity and category are closed enums. */
 public record Risk(String text, Severity severity, RiskCategory category, String sourceQuote) {
 
     public Risk {

@@ -1,8 +1,8 @@
 package br.com.nora.api.domain.meeting.productivity;
 
 /**
- * Outcome esperado de uma reuniao (entrada do usuario). Imutavel, value object filho de {@link
- * MeetingGoal}. Posicao preservada para manter ordem de exibicao.
+ * Expected outcome of a meeting (user input). Immutable, value object child of {@link MeetingGoal}.
+ * Position preserved to keep display order.
  */
 public record ExpectedOutcome(String text, int position) {
 

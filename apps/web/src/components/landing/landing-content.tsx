@@ -105,7 +105,7 @@ export function LandingHowItWorks() {
   );
 }
 
-// ── Privacidade ──
+// ── Privacy ──
 const PROMISES = [
   {
     title: "Hosting Azure Brasil",

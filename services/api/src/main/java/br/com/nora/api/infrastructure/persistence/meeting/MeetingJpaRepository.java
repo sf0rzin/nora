@@ -14,20 +14,20 @@ import org.springframework.data.repository.query.Param;
 
 public interface MeetingJpaRepository extends JpaRepository<MeetingJpaEntity, UUID> {
 
-    // Resolucao de N+1 fica no nivel da entidade via @BatchSize(participants, tags),
-    // nao no repository. Tentar @EntityGraph(attributePaths={"participants","tags"})
-    // dispara MultipleBagFetchException no Hibernate 6 porque participants e tags
-    // sao List sem @OrderColumn (sao "bags") e Hibernate nao pode JOIN FETCH duas bags
-    // simultaneamente. @BatchSize agrupa a carga em ~N+1/batchSize queries — bom
-    // suficiente em listagens com paginacao tipica.
+    // N+1 resolution lives at the entity level via @BatchSize(participants, tags),
+    // not in the repository. Trying @EntityGraph(attributePaths={"participants","tags"})
+    // throws MultipleBagFetchException on Hibernate 6 because participants and tags
+    // are Lists without @OrderColumn (they are "bags") and Hibernate cannot JOIN FETCH two
+    // bags at once. @BatchSize groups the load into ~N+1/batchSize queries — good
+    // enough for listings with typical pagination.
 
     Optional<MeetingJpaEntity> findByIdAndTenantId(UUID id, UUID tenantId);
 
     /**
-     * Mesma busca, com {@code SELECT ... FOR UPDATE}. Usada pelo reprocess: sem o lock, duas
-     * chamadas concorrentes leem o status ANTES do update uma da outra, as duas passam pela guarda
-     * de PROCESSING e as duas agendam a análise — dois pipelines sobre o mesmo meeting, cobrança de
-     * LLM dobrada e efeitos externos duplicados. O lock serializa as transações na linha.
+     * Same lookup, with {@code SELECT ... FOR UPDATE}. Used by reprocess: without the lock, two
+     * concurrent calls read the status BEFORE each other's update, both get past the PROCESSING
+     * guard and both schedule the analysis — two pipelines over the same meeting, doubled LLM
+     * billing and duplicated external effects. The lock serializes the transactions on the row.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT m FROM MeetingJpaEntity m WHERE m.id = :id AND m.tenantId = :tenantId")
@@ -51,10 +51,11 @@ public interface MeetingJpaRepository extends JpaRepository<MeetingJpaEntity, UU
             @Param("toTs") OffsetDateTime toTs,
             Pageable pageable);
 
-    // ---- Hard-delete (LGPD: direito ao esquecimento + retenção, ADR 0021/0029) ----
-    // Native query = SQL cru: IGNORA o @SQLDelete (soft) e o @SQLRestriction (deleted_at IS NULL)
-    // da entidade — é um DELETE FÍSICO de verdade. O FK ON DELETE CASCADE (V004) propaga pra
-    // transcripts (raw_text = PII em repouso), participants, tags e meeting_analyses (+ filhos).
+    // ---- Hard-delete (LGPD: right to be forgotten + retention, ADR 0021/0029) ----
+    // Native query = raw SQL: IGNORES the entity's @SQLDelete (soft) and @SQLRestriction
+    // (deleted_at IS NULL) — it is a real PHYSICAL DELETE. The FK ON DELETE CASCADE (V004)
+    // propagates to transcripts (raw_text = PII at rest), participants, tags and meeting_analyses
+    // (+ children).
 
     @Modifying
     @Query(

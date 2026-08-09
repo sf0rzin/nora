@@ -46,30 +46,30 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Prova de que o app FUNCIONA sob RLS enforce REAL (ADR 0028) — não só o isolamento no nível do
- * banco (isso é o {@link RlsEnforcementIntegrationTest}), mas o app inteiro rodando como o role
- * NOBYPASSRLS, ponta-a-ponta pela API HTTP.
+ * Proof that the app WORKS under REAL RLS enforce (ADR 0028) — not just isolation at the database
+ * level (that is {@link RlsEnforcementIntegrationTest}), but the whole app running as the
+ * NOBYPASSRLS role, end-to-end through the HTTP API.
  *
- * <p>Setup que espelha o cutover de produção:
+ * <p>Setup that mirrors the production cutover:
  *
  * <ul>
- *   <li>o app runtime conecta como {@code nora_app_test} (NOBYPASSRLS → RLS vale de verdade);
- *   <li>o Flyway conecta como o owner/admin do container (DDL + dono das tabelas);
- *   <li>{@code nora.security.rls.enforce=true} → o {@code TenantRlsAspect} seta o GUC por
- *       transação.
+ *   <li>the runtime app connects as {@code nora_app_test} (NOBYPASSRLS → RLS really applies);
+ *   <li>Flyway connects as the container owner/admin (DDL + owner of the tables);
+ *   <li>{@code nora.security.rls.enforce=true} → the {@code TenantRlsAspect} sets the GUC per
+ *       transaction.
  * </ul>
  *
- * <p>O que isto garante e os ITs com conexão owner NÃO garantiriam:
+ * <p>What this guarantees and the ITs with an owner connection would NOT:
  *
  * <ol>
- *   <li><b>Auth não quebra</b> sob enforce: signup/verify/login operam em tabelas de IDENTIDADE que
- *       a V020 exemptou (senão fail-closed sem GUC). ⬅️ o furo que o ADR 0026 não viu.
- *   <li><b>Tabelas enforced funcionam</b> para o tenant autenticado (upload cria
- *       meeting/transcript/ participantes; list/detail leem) — o aspect seta o GUC a partir do JWT.
- *   <li><b>Isolamento real</b>: o tenant B NÃO enxerga o meeting do A — agora pelo Postgres, não só
- *       pelo filtro da aplicação.
- *   <li><b>Pipeline async</b> escreve sob enforce: a análise (thread de executor) completa,
- *       provando que o TaskDecorator propagou o tenant pro GUC fora da thread do request.
+ *   <li><b>Auth does not break</b> under enforce: signup/verify/login operate on IDENTITY tables
+ *       that V020 exempted (otherwise fail-closed without GUC). ⬅️ the hole ADR 0026 missed.
+ *   <li><b>Enforced tables work</b> for the authenticated tenant (upload creates
+ *       meeting/transcript/ participants; list/detail read) — the aspect sets the GUC from the JWT.
+ *   <li><b>Real isolation</b>: tenant B does NOT see A's meeting — now via Postgres, not just via
+ *       the application filter.
+ *   <li><b>Async pipeline</b> writes under enforce: the analysis (executor thread) completes,
+ *       proving the TaskDecorator propagated the tenant to the GUC outside the request thread.
  * </ol>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -90,8 +90,8 @@ class RlsAppEnforcementIntegrationTest {
 
     @DynamicPropertySource
     static void registerProps(DynamicPropertyRegistry registry) {
-        // Runtime = nora_app_test (NOBYPASSRLS, criado no @BeforeAll). Flyway = admin (owner do
-        // container). Enforce ON. Suppliers lazy — avaliados no context-load, com o container up.
+        // Runtime = nora_app_test (NOBYPASSRLS, created in @BeforeAll). Flyway = admin (owner of
+        // the container). Enforce ON. Suppliers lazy — evaluated at context-load, container up.
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", () -> APP_ROLE);
         registry.add("spring.datasource.password", () -> APP_PASSWORD);
@@ -99,9 +99,8 @@ class RlsAppEnforcementIntegrationTest {
         registry.add("spring.flyway.user", POSTGRES::getUsername);
         registry.add("spring.flyway.password", POSTGRES::getPassword);
         registry.add("nora.security.rls.enforce", () -> "true");
-        // O profile 'test' desliga o dispatch async (sem worker nos ITs). Ligamos aqui pra
-        // exercitar
-        // o pipeline async sob enforce (com o StubWorkerConfig fazendo o worker).
+        // The 'test' profile turns off the async dispatch (no worker in the ITs). We turn it on
+        // here to exercise the async pipeline under enforce (with StubWorkerConfig as the worker).
         registry.add("nora.analysis.auto-dispatch", () -> "true");
     }
 
@@ -109,9 +108,10 @@ class RlsAppEnforcementIntegrationTest {
     @Autowired ObjectMapper mapper;
 
     /**
-     * Cria o role NOBYPASSRLS ANTES do contexto Spring subir. {@code @BeforeAll} roda depois do
-     * Testcontainers iniciar o container, mas ANTES do context-load ({@code @DynamicPropertySource}
-     * + Flyway + pool da API) — então o role já existe quando a pool de runtime conecta como ele.
+     * Creates the NOBYPASSRLS role BEFORE the Spring context comes up. {@code @BeforeAll} runs
+     * after Testcontainers starts the container, but BEFORE the context-load
+     * ({@code @DynamicPropertySource} + Flyway + API pool) — so the role already exists when the
+     * runtime pool connects as it.
      */
     @BeforeAll
     static void createRuntimeRole() throws Exception {
@@ -140,10 +140,10 @@ class RlsAppEnforcementIntegrationTest {
     }
 
     /**
-     * Grants do nora_app (espelha o R001) — precisam do schema + da função {@code
-     * nora.current_tenant_id()}, criados pelo Flyway no context-load; rodam aqui (pós-load) uma
-     * vez. O app boota antes disso fazendo só {@code SELECT 1} de health (sem grant), então a pool
-     * sobe; os grants chegam antes da 1ª chamada de API.
+     * nora_app grants (mirrors R001) — they need the schema + the {@code nora.current_tenant_id()}
+     * function, created by Flyway at context-load; they run here (post-load) once. The app boots
+     * before that doing only a {@code SELECT 1} health check (without grant), so the pool comes up;
+     * the grants arrive before the 1st API call.
      */
     private static synchronized void grantRuntimeRoleOnce() throws Exception {
         if (granted) {
@@ -168,10 +168,10 @@ class RlsAppEnforcementIntegrationTest {
 
     @Test
     void authFlows_workUnderEnforce() throws Exception {
-        // Se a V020 não tivesse exemptado as tabelas de identidade, isto falharia (fail-closed).
+        // If V020 had not exempted the identity tables, this would fail (fail-closed).
         String token = signupAndLogin("auth-enforce@nora.dev", "SenhaForte123", "Auth Enforce");
         assertThat(token).isNotBlank();
-        // Leitura enforced autenticada (lista vazia) funciona — aspect setou o GUC do JWT.
+        // Authenticated enforced read (empty list) works — the aspect set the GUC from the JWT.
         JsonNode list = authGet("/meetings", token).read(HttpStatus.OK);
         assertThat(list.get("totalItems").asInt()).isZero();
     }
@@ -198,13 +198,13 @@ class RlsAppEnforcementIntegrationTest {
         assertThat(upload.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         String meetingId = mapper.readTree(upload.getBody()).get("id").asText();
 
-        // A enxerga (escrita+leitura em tabela enforced com o GUC do A).
+        // A sees it (write+read on an enforced table with A's GUC).
         JsonNode aList = authGet("/meetings", aToken).read(HttpStatus.OK);
         assertThat(aList.get("totalItems").asInt()).isEqualTo(1);
         JsonNode aDetail = authGet("/meetings/" + meetingId, aToken).read(HttpStatus.OK);
         assertThat(aDetail.get("title").asText()).isEqualTo("Reuniao secreta A");
 
-        // B (outro tenant) NÃO enxerga — isolamento garantido pelo Postgres, não só pela app.
+        // B (another tenant) does NOT see it — isolation guaranteed by Postgres, not just the app.
         String bToken = signupAndLogin("tenant-b@nora.dev", "SenhaForte123", "Tenant B");
         ResponseEntity<String> bCross = authGetRaw("/meetings/" + meetingId, bToken);
         assertThat(bCross.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -224,9 +224,9 @@ class RlsAppEnforcementIntegrationTest {
         assertThat(upload.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         String meetingId = mapper.readTree(upload.getBody()).get("id").asText();
 
-        // O pipeline async (thread de executor) escreve meeting_analyses sob enforce. Se o
-        // TaskDecorator não propagasse o tenant, a escrita seria fail-closed e o status nunca
-        // chegaria a COMPLETED (ficaria PROCESSING ou FAILED).
+        // The async pipeline (executor thread) writes meeting_analyses under enforce. If the
+        // TaskDecorator did not propagate the tenant, the write would be fail-closed and the
+        // status would never reach COMPLETED (it would stay PROCESSING or FAILED).
         String status = pollProcessingStatus(meetingId, token);
         assertThat(status).isEqualTo("COMPLETED");
         JsonNode detail = authGet("/meetings/" + meetingId, token).read(HttpStatus.OK);
@@ -321,10 +321,10 @@ class RlsAppEnforcementIntegrationTest {
     }
 
     /**
-     * Stub determinístico do worker NLP — não há worker rodando no IT. Faz a análise async
-     * completar (escrevendo {@code meeting_analyses} sob enforce), provando que o TaskDecorator
-     * propagou o tenant pro GUC na thread do executor. Nested @TestConfiguration auto-detectada
-     * pelo {@code @SpringBootTest}.
+     * Deterministic stub of the NLP worker — there is no worker running in the IT. Makes the async
+     * analysis complete (writing {@code meeting_analyses} under enforce), proving the TaskDecorator
+     * propagated the tenant to the GUC on the executor thread. Nested @TestConfiguration
+     * auto-detected by {@code @SpringBootTest}.
      */
     @TestConfiguration
     static class StubWorkerConfig {

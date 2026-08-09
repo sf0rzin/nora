@@ -35,13 +35,14 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Cobre US19: visibilidade de meetings e tasks controlada por IAM policies. Cenarios:
+ * Covers US19: visibility of meetings and tasks controlled by IAM policies. Scenarios:
  *
  * <ul>
- *   <li>Root acessa qualquer meeting (bypass).
- *   <li>Membro nao-Root sem policies recebe 403 em GET /meetings, GET /meetings/{id} e /tasks.
- *   <li>Membro com policy condicional (StringEquals em attributes) acessa apenas meetings que
- *       satisfazem a condition.
+ *   <li>Root accesses any meeting (bypass).
+ *   <li>A non-Root member without policies gets 403 on GET /meetings, GET /meetings/{id} and
+ *       /tasks.
+ *   <li>A member with a conditional policy (StringEquals on attributes) accesses only meetings that
+ *       satisfy the condition.
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -77,12 +78,12 @@ class IamScopingIntegrationTest {
     @Test
     void rootBypassesIam_memberWithoutPolicyIsForbidden_memberWithConditionPolicySeesOnlyMatching()
             throws Exception {
-        // 1. Root: signup auto-promove o primeiro usuario do tenant a Root (V006).
+        // 1. Root: signup auto-promotes the tenant's first user to Root (V006).
         String rootEmail = "root-iam@nora.dev";
         String rootToken = signupAndLogin(rootEmail, "SenhaForte123", "Root IAM");
         UUID tenantId = readClaim(rootToken, "tenantId");
 
-        // 2. Root faz upload de duas reunioes com attributes diferentes.
+        // 2. Root uploads two meetings with different attributes.
         String meetingVendas =
                 uploadMeeting(
                         rootToken,
@@ -96,23 +97,24 @@ class IamScopingIntegrationTest {
                         Map.of("department", "Suporte"),
                         "Carlos: ticket aberto.\nAna: vou ver.");
 
-        // Root acessa ambos via bypass.
+        // Root accesses both via bypass.
         assertThat(authGetStatus("/meetings/" + meetingVendas, rootToken)).isEqualTo(HttpStatus.OK);
         assertThat(authGetStatus("/meetings/" + meetingSuporte, rootToken))
                 .isEqualTo(HttpStatus.OK);
 
-        // 3. Cria um membro nao-Root no mesmo tenant (workaround: convite eh pos-MVP).
+        // 3. Create a non-Root member in the same tenant (workaround: invitation is post-MVP).
         String memberEmail = "member-iam@nora.dev";
         UUID memberUserId = insertActiveMember(tenantId, memberEmail, "SenhaForte123", "Member");
         String memberToken = login(memberEmail, "SenhaForte123");
 
-        // 4. Sem policies → 403 em qualquer endpoint protegido.
+        // 4. Without policies → 403 on any protected endpoint.
         assertThat(authGetStatus("/meetings", memberToken)).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(authGetStatus("/meetings/" + meetingVendas, memberToken))
                 .isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(authGetStatus("/tasks", memberToken)).isEqualTo(HttpStatus.FORBIDDEN);
 
-        // 5. Root cria policy: Allow meeting:read SE department=Vendas; e atribui ao membro.
+        // 5. Root creates a policy: Allow meeting:read IF department=Vendas; and attaches it to the
+        // member.
         String policyDoc =
                 "{"
                         + "\"version\":\"2026-05-07\","
@@ -127,16 +129,16 @@ class IamScopingIntegrationTest {
         String policyId = createPolicy(rootToken, "AllowVendasReadMeetings", policyDoc);
         attachPolicyToUser(rootToken, memberUserId, policyId);
 
-        // 6. Membro agora le a reuniao de Vendas (condition satisfeita)…
+        // 6. The member now reads the Vendas meeting (condition satisfied)…
         assertThat(authGetStatus("/meetings/" + meetingVendas, memberToken))
                 .isEqualTo(HttpStatus.OK);
 
-        // …mas continua bloqueado na de Suporte (condition falha).
+        // …but stays blocked on the Suporte one (condition fails).
         assertThat(authGetStatus("/meetings/" + meetingSuporte, memberToken))
                 .isEqualTo(HttpStatus.FORBIDDEN);
 
-        // 7. GET /meetings agora passa o pre-check (ha pelo menos uma allow possivel) e devolve
-        // apenas a reuniao de Vendas no array de items.
+        // 7. GET /meetings now passes the pre-check (there is at least one possible allow) and
+        // returns only the Vendas meeting in the items array.
         ResponseEntity<String> listResp = authGet("/meetings", memberToken);
         assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode listBody = mapper.readTree(listResp.getBody());
@@ -164,7 +166,7 @@ class IamScopingIntegrationTest {
         return body.get("accessToken").asText();
     }
 
-    /** Insere usuario ACTIVE, e-mail verificado, nao-Root no tenant indicado. */
+    /** Inserts an ACTIVE, email-verified, non-Root user into the given tenant. */
     private UUID insertActiveMember(UUID tenantId, String email, String pwd, String displayName) {
         UUID userId = UUID.randomUUID();
         String hash = passwordEncoder.encode(pwd);

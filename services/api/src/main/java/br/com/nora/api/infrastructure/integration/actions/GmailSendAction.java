@@ -9,10 +9,10 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Enviar e-mail via Gmail" do NORA Flows — envia PELA CONTA GOOGLE conectada do tenant (OAuth
- * real), diferente da {@code send_email} (Resend, remetente NORA). Params: {@code to}
- * (obrigatório), {@code subject}/{@code body} opcionais com os mesmos placeholders da send_email.
- * Sem conexão Google → exceção clara no log da execução (nunca finge sucesso).
+ * NORA Flows "Enviar e-mail via Gmail" action — sends FROM the tenant's connected GOOGLE ACCOUNT
+ * (real OAuth), unlike {@code send_email} (Resend, NORA as sender). Params: {@code to} (required),
+ * optional {@code subject}/{@code body} with the same placeholders as send_email. No Google
+ * connection → clear exception in the run log (never fakes success).
  */
 @Component
 public class GmailSendAction implements ActionExecutor {

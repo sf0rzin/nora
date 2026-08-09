@@ -4,9 +4,10 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Automação do NORA Flows. Pertence a um tenant (ADR 0002). O grafo desenhado no canvas (nós de
- * gatilho/condição/ação + arestas) vive serializado em {@code definitionJson}; {@code triggerType}
- * é derivado do nó de gatilho e denormalizado para o match rápido do engine. Imutável.
+ * NORA Flows automation. Belongs to a tenant (ADR 0002). The graph drawn on the canvas
+ * (trigger/condition/action nodes + edges) lives serialized in {@code definitionJson}; {@code
+ * triggerType} is derived from the trigger node and denormalized for the engine's fast match.
+ * Immutable.
  */
 public record Workflow(
         UUID id,

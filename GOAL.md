@@ -1,261 +1,261 @@
-# GOAL — NORA 100% REAL para o Pitch FIAP (deadline: 2026-06-15)
+# GOAL — NORA 100% REAL for the FIAP Pitch (deadline: 2026-06-15)
 
-> Documento-norte para um run autônomo PAREADO (Anthony + Fable 5 Ultracode 1M).
-> Leia este arquivo inteiro antes de editar qualquer linha. Depois leia CLAUDE.md
-> e os docs apontados nele (docs/product, docs/engineering, docs/adr).
+> Guiding document for a PAIRED autonomous run (Anthony + Fable 5 Ultracode 1M).
+> Read this entire file before editing a single line. Then read CLAUDE.md
+> and the docs it points to (docs/product, docs/engineering, docs/adr).
 
-## Norte (uma frase)
-Deixar NORA Core, Painel Administrador e Documentos **100% funcionais e de
-verdade** (zero botão morto, zero stub, zero "em breve") e entregar o
-recurso-estrela **NORA Flows**: um construtor VISUAL de automações estilo Google
-Stitch / n8n (canvas com fundo de grid + nós arrastáveis) onde o usuário liga
-GATILHOS (ex.: "Reunião analisada") a AÇÕES estilo MCP (ex.: "Enviar e-mail",
-"Enviar relatório", "Criar evento no Google Calendar") — com integrações
-EXTERNAS REAIS (OAuth de verdade), rodando ponta a ponta.
+## North star (one sentence)
+Make NORA Core, the Administrator Panel and Documents **100% functional and for
+real** (zero dead buttons, zero stubs, zero "coming soon") and deliver the
+flagship feature **NORA Flows**: a VISUAL automation builder in the style of Google
+Stitch / n8n (canvas with a grid background + draggable nodes) where the user wires
+TRIGGERS (e.g. "Meeting analyzed") to MCP-style ACTIONS (e.g. "Send email",
+"Send report", "Create event in Google Calendar") — with REAL EXTERNAL
+integrations (real OAuth), running end to end.
 
-## Definição de "REAL" (a barra desta entrega)
-- Um e-mail é REAL quando chega numa caixa de entrada de verdade.
-- Uma integração Google/Slack é REAL quando passa por OAuth de verdade e a ação
-  acontece na conta externa de verdade (e-mail enviado, evento criado, mensagem
-  postada).
-- Um botão é REAL quando persiste no backend e sobrevive a um reload.
-- NÃO existe "fingir que enviou", "toast de em breve" ou mock em tela de produção.
-- Modo mock/stub só é permitido em testes automatizados e em dev local explícito.
+## Definition of "REAL" (the bar for this delivery)
+- An email is REAL when it lands in an actual inbox.
+- A Google/Slack integration is REAL when it goes through real OAuth and the action
+  actually happens in the external account (email sent, event created, message
+  posted).
+- A button is REAL when it persists in the backend and survives a reload.
+- There is NO "pretend it was sent", no "coming soon" toast, no mock on a production screen.
+- Mock/stub mode is only allowed in automated tests and in explicit local dev.
 
-## Regra de ouro
-A cada commit, a branch builda e o caminho de demo funciona. Prefira UMA fatia
-vertical real terminada a duas pela metade. Qualidade nível produto comercial.
-
-================================================================================
-## MODO PAREADO + PROTOCOLO DE HANDOFF HUMANO
-================================================================================
-Você tem um colaborador humano (Anthony) disponível ~24/7, com Claude Max 20x e
-disposto a investir dinheiro em APIs/infra. Use isso: quando uma tarefa exigir um
-passo que só um humano faz, **PARE e peça**, com instrução copiável e exata.
-Nunca pule, nunca finja, nunca deixe stub no lugar.
-
-Peça handoff humano para (exemplos):
-- Criar/configurar projeto no **Google Cloud Console** (OAuth consent screen,
-  OAuth Client ID, escopos Gmail/Calendar, redirect URIs em nora.systems).
-- Completar um fluxo de **consentimento OAuth** no navegador (login Google/Slack).
-- Criar app/Bot token no **Slack** (workspace, scopes, install).
-- Colar um **secret** no cofre/vault (server-side) ou no .env local — nunca no repo.
-- **Aprovar um gasto** (upgrade de modelo, tier pago, novo recurso Azure) — diga
-  quanto e por quê antes.
-- **Verificar visualmente** um resultado externo real (e-mail recebido, evento no
-  calendário, mensagem no Slack) — peça print/confirmação.
-- Confirmar que a **chave OpenAI está viva** (chat/análise quebram com 502 se a
-  chave foi revogada — ver memória reference-rotacao-chaves-llm).
-
-Formato do pedido de handoff: bloco "🙋 HANDOFF HUMANO" com (1) o que preciso,
-(2) passos numerados exatos, (3) o que me devolver (token/URL/print), (4) o que
-eu faço quando você voltar. Depois siga trabalhando no que não depende disso.
+## Golden rule
+On every commit, the branch builds and the demo path works. Prefer ONE finished
+real vertical slice over two half-done ones. Commercial-product level quality.
 
 ================================================================================
-## SEGREDOS, CHAVES E GASTO
+## PAIRED MODE + HUMAN HANDOFF PROTOCOL
 ================================================================================
-- Nenhum secret no repo. Nomes de variáveis em .env.example; valores no
-  cofre/vault server-side (toolbelt do Anthony) ou .env (gitignored).
+You have a human collaborator (Anthony) available ~24/7, with Claude Max 20x and
+willing to spend money on APIs/infra. Use that: when a task requires a
+step only a human can do, **STOP and ask**, with an exact copy-pasteable instruction.
+Never skip, never pretend, never leave a stub in its place.
+
+Ask for a human handoff for (examples):
+- Creating/configuring a project in the **Google Cloud Console** (OAuth consent screen,
+  OAuth Client ID, Gmail/Calendar scopes, redirect URIs on nora.systems).
+- Completing an **OAuth consent** flow in the browser (Google/Slack login).
+- Creating an app/Bot token in **Slack** (workspace, scopes, install).
+- Pasting a **secret** into the vault (server-side) or into the local .env — never into the repo.
+- **Approving spend** (model upgrade, paid tier, new Azure resource) — say
+  how much and why beforehand.
+- **Visually verifying** a real external result (email received, calendar event,
+  Slack message) — ask for a screenshot/confirmation.
+- Confirming that the **OpenAI key is alive** (chat/analysis break with 502 if the
+  key was revoked — see memory reference-rotacao-chaves-llm).
+
+Handoff request format: a "🙋 HANDOFF HUMANO" block with (1) what I need,
+(2) exact numbered steps, (3) what to hand back to me (token/URL/screenshot), (4) what
+I do when you come back. Then keep working on whatever does not depend on it.
+
+================================================================================
+## SECRETS, KEYS AND SPEND
+================================================================================
+- No secrets in the repo. Variable names in .env.example; values in the
+  server-side vault (Anthony's toolbelt) or .env (gitignored).
 - Google OAuth Client Secret, Slack Bot Token, Resend API key, OpenAI key →
-  cofre/env, nunca commitados, nunca ecoados em log.
-- Redirect URIs de OAuth devem apontar para o domínio real (nora.systems / api.
-  nora.systems) e/ou localhost para dev — peça ao humano para registrá-los.
-- Ao precisar de gasto, declare custo estimado e peça aprovação (handoff).
+  vault/env, never committed, never echoed into a log.
+- OAuth redirect URIs must point at the real domain (nora.systems / api.
+  nora.systems) and/or localhost for dev — ask the human to register them.
+- When spend is needed, state the estimated cost and ask for approval (handoff).
 
 ================================================================================
-## SEQUÊNCIA (queime o risco cedo; branch sempre verde)
+## SEQUENCE (burn risk early; branch always green)
 ================================================================================
-Tudo abaixo é IN-SCOPE e precisa ficar REAL. A ordem existe para retirar risco
-primeiro e manter a demo viva — não para cortar escopo.
+Everything below is IN-SCOPE and needs to become REAL. The order exists to remove risk
+first and keep the demo alive — not to cut scope.
 
-### FASE 0 — Fundação + de-risk do mais assustador
-1. **Event bus real** no backend: `ApplicationEventPublisher` emitindo eventos
-   APÓS commit (TransactionSynchronization). Emitir `MeetingAnalysisCompletedEvent`
-   no ponto de conclusão de `AnalysisService.run()`.
-2. **Storage + engine do Flows** (migrations V023+: `workflows` +
-   `workflow_executions`, com tenant_id + RLS) e `WorkflowEngine` (listener async)
-   + `ActionExecutor` (porta + adapters).
-3. **Ação "Enviar e-mail" REAL** via `ResendEmailSender` (já existe) — provar o
-   pipeline evento→ação ponta a ponta por teste de integração, ANTES do canvas.
-4. **Spike OAuth Google (com handoff humano):** criar projeto Google Cloud, OAuth
-   client, redirect URIs, provar um "enviar e-mail via Gmail API" real num caminho
-   mínimo. Retira o maior risco enquanto há tempo de recuperar.
+### PHASE 0 — Foundation + de-risking the scariest part
+1. **Real event bus** in the backend: `ApplicationEventPublisher` emitting events
+   AFTER commit (TransactionSynchronization). Emit `MeetingAnalysisCompletedEvent`
+   at the completion point of `AnalysisService.run()`.
+2. **Flows storage + engine** (migrations V023+: `workflows` +
+   `workflow_executions`, with tenant_id + RLS) and `WorkflowEngine` (async listener)
+   + `ActionExecutor` (port + adapters).
+3. **REAL "Send email" action** via `ResendEmailSender` (already exists) — prove the
+   event→action pipeline end to end with an integration test, BEFORE the canvas.
+4. **Google OAuth spike (with human handoff):** create the Google Cloud project, OAuth
+   client, redirect URIs, prove a real "send email via Gmail API" on a minimal
+   path. Removes the biggest risk while there is still time to recover.
 
-### FASE 1 — Canvas + cenário-âncora ao vivo
-5. Rota `/fluxos` no Core: canvas com **fundo de grid**, nós arrastáveis
-   (quadradinhos: Gatilho / Condição / Ação), arestas conectando, sidebar de
-   parâmetros, botões **Salvar** e **Testar** (executa e mostra log de execução).
-6. **Cenário-âncora rodando ao vivo:** upload de transcrição → análise COMPLETED
-   → evento dispara o fluxo → e-mail real + relatório real. Histórico de execução
-   mostra sucesso com log.
+### PHASE 1 — Canvas + anchor scenario running live
+5. `/fluxos` route in Core: canvas with a **grid background**, draggable nodes
+   (little squares: Trigger / Condition / Action), edges connecting them, a parameter
+   sidebar, **Salvar** and **Testar** buttons (runs and shows the execution log).
+6. **Anchor scenario running live:** transcript upload → COMPLETED analysis
+   → the event fires the flow → real email + real report. Execution history
+   shows success with a log.
 
-### FASE 2 — Integrações MCP externas REAIS (OAuth de verdade)
-7. **Gmail** (enviar e-mail pela conta Google do usuário) — OAuth real, token
-   storage com refresh rotation, adapter MCP.
-8. **Google Calendar** (criar evento a partir de action item / reunião) — real.
-9. **Slack** (postar resumo/alerta num canal) — real.
-   Cada conector: fluxo OAuth real + armazenamento seguro de token + adapter por
-   trás da porta `ActionExecutor`. Hub de conectores em `integracoes/` vira real
-   (status "Conectado"/"Conectar", nunca "em breve").
+### PHASE 2 — REAL external MCP integrations (real OAuth)
+7. **Gmail** (send email through the user's Google account) — real OAuth, token
+   storage with refresh rotation, MCP adapter.
+8. **Google Calendar** (create an event from an action item / meeting) — real.
+9. **Slack** (post a summary/alert to a channel) — real.
+   Each connector: real OAuth flow + secure token storage + adapter behind
+   the `ActionExecutor` port. The connector hub in `integracoes/` becomes real
+   (status "Conectado"/"Conectar", never "em breve").
 
-### FASE 3 — Fechar 100% de Core / Admin / Documentos (zero stub)
-10. **Settings que salvam de verdade** + endpoints faltantes no backend:
-    - `GET /auth/me`, `PATCH /users/me` (displayName) → aba Conta.
-    - `POST /auth/password/change`, `POST /auth/logout-all` → aba Segurança.
-    - `GET /tenant`, `PUT /tenant/name` → aba Workspace.
-    - `DELETE /users/me` (LGPD, hard-delete) → Zona de perigo.
-    - `POST /auth/verify-email/resend` → reenvio de verificação.
-11. **Chat** sobrevive ao reload (sessionStorage mínimo ou rehidrata da sessão).
-12. **Dashboard**: paginação real (prev/next) + auto-refresh enquanto PROCESSING
-    (no dashboard e no detalhe da reunião).
-13. **Badge de PII** com contador real (`metadata.piiRedactionsApplied`).
-14. **Documentos**: tags completas (não só tags[0]); **export de relatório**
-    (Markdown e PDF) real a partir da análise.
-15. **Admin**: telemetria "Saúde do sistema" (latência/erro/throughput via App
-    Insights) e "Métricas de negócio" (reuniões/chats/conversão) com dados reais.
+### PHASE 3 — Close out 100% of Core / Admin / Documents (zero stubs)
+10. **Settings that actually save** + the missing backend endpoints:
+    - `GET /auth/me`, `PATCH /users/me` (displayName) → Account tab.
+    - `POST /auth/password/change`, `POST /auth/logout-all` → Security tab.
+    - `GET /tenant`, `PUT /tenant/name` → Workspace tab.
+    - `DELETE /users/me` (LGPD, hard-delete) → Danger zone.
+    - `POST /auth/verify-email/resend` → resend verification.
+11. **Chat** survives a reload (minimal sessionStorage or rehydrate from the session).
+12. **Dashboard**: real pagination (prev/next) + auto-refresh while PROCESSING
+    (on the dashboard and on the meeting detail).
+13. **PII badge** with a real counter (`metadata.piiRedactionsApplied`).
+14. **Documents**: complete tags (not just tags[0]); real **report export**
+    (Markdown and PDF) from the analysis.
+15. **Admin**: "Saúde do sistema" telemetry (latency/error/throughput via App
+    Insights) and "Métricas de negócio" (meetings/chats/conversion) with real data.
 
-### FASE 4 — Profundidade do Flows + polish
-16. Mais gatilhos (`action_item.created`, `meeting.risk_detected`,
-    `schedule.cron`), mais ações (criar tarefa, relatório consolidado), condições
+### PHASE 4 — Flows depth + polish
+16. More triggers (`action_item.created`, `meeting.risk_detected`,
+    `schedule.cron`), more actions (create task, consolidated report), conditions
     (Productivity Score < N, tag, priority, customerConfidence < N).
-17. Templates de fluxo prontos, dry-run/simulador, e refinamentos de UX
-    (stop/retry do chat, microcopy, estados vazios).
+17. Ready-made flow templates, dry-run/simulator, and UX refinements
+    (chat stop/retry, microcopy, empty states).
 
 ================================================================================
-## NORA FLOWS — ESPECIFICAÇÃO
+## NORA FLOWS — SPECIFICATION
 ================================================================================
 
-### Gatilhos (eventos de domínio emitidos pelo backend)
-- `meeting.analysis_completed` (âncora — emitir em AnalysisService, pós-commit)
+### Triggers (domain events emitted by the backend)
+- `meeting.analysis_completed` (the anchor — emit in AnalysisService, post-commit)
 - `action_item.created`
-- `meeting.risk_detected` (severidade alta)
-- `schedule.cron` (ex.: diário 9h — reusar padrão @Scheduled)
+- `meeting.risk_detected` (high severity)
+- `schedule.cron` (e.g. daily at 9am — reuse the @Scheduled pattern)
 
-### Condições (avaliador simples; sem condição = sempre dispara)
+### Conditions (simple evaluator; no condition = always fires)
 `Productivity Score < N`, `tag == X`, `priority == HIGH`,
 `customerConfidence.score < N`.
 
-### Ações (estilo MCP — porta `ActionExecutor` + adapters)
-- **Enviar e-mail** (interno, Resend) — REAL
-- **Enviar relatório** (gera resumo/relatório da reunião em MD/PDF e envia/baixa) — REAL
-- **Enviar e-mail via Gmail** (conta Google do usuário, OAuth) — REAL
-- **Criar evento no Google Calendar** (OAuth) — REAL
-- **Postar no Slack** (OAuth/Bot token) — REAL
-- **Criar tarefa** (action item) — REAL
+### Actions (MCP style — `ActionExecutor` port + adapters)
+- **Send email** (internal, Resend) — REAL
+- **Send report** (generates the meeting summary/report in MD/PDF and sends/downloads it) — REAL
+- **Send email via Gmail** (the user's Google account, OAuth) — REAL
+- **Create event in Google Calendar** (OAuth) — REAL
+- **Post to Slack** (OAuth/Bot token) — REAL
+- **Create task** (action item) — REAL
 
 ### Canvas (UI)
-Fundo de grid (Stitch/n8n), nós arrastáveis, arestas, sidebar de parâmetros,
-Salvar + Testar com log. Tailwind CRU + tokens OKLCH + DM Sans (ADR 0013). Avalie
-React Flow vs. canvas custom; decida e registre em ADR. Se React Flow, estilize
-com os tokens NORA (sem trazer outro design system).
+Grid background (Stitch/n8n), draggable nodes, edges, parameter sidebar,
+Save + Test with a log. Raw Tailwind + OKLCH tokens + DM Sans (ADR 0013). Evaluate
+React Flow vs. a custom canvas; decide and record it in an ADR. If React Flow, style it
+with the NORA tokens (without bringing in another design system).
 
-### Backend (DDD, respeitando camadas)
+### Backend (DDD, respecting the layers)
 - Migrations V023+: `workflows(id, tenant_id, name, trigger_type, definition_json,
   active, created_at)` + `workflow_executions(id, workflow_id, tenant_id,
-  event_type, status, log_json, created_at)` — tenant_id + RLS em ambas.
-- `WorkflowEngine` (listener async) casa eventos → workflows ativos do tenant →
-  avalia condições → executa ações via `ActionExecutor`.
-- Tokens OAuth: tabela segura por tenant/usuário, refresh rotation.
+  event_type, status, log_json, created_at)` — tenant_id + RLS on both.
+- `WorkflowEngine` (async listener) matches events → the tenant's active workflows →
+  evaluates conditions → executes actions via `ActionExecutor`.
+- OAuth tokens: a secure table per tenant/user, refresh rotation.
 - Endpoints: `GET/POST/PUT/DELETE /workflows`, `POST /workflows/{id}/test`,
-  `GET /workflows/{id}/executions`, mais callbacks OAuth
+  `GET /workflows/{id}/executions`, plus OAuth callbacks
   (`/integrations/{provider}/oauth/callback`). IAM + RLS + tenant_id.
-- **Registrar ADR** do event bus + workflow engine + estratégia de OAuth/token.
+- **Record an ADR** for the event bus + workflow engine + OAuth/token strategy.
 
 ================================================================================
-## RESTRIÇÕES INEGOCIÁVEIS (quebrar = reverter)
+## NON-NEGOTIABLE CONSTRAINTS (break one = revert)
 ================================================================================
-- **Tenant isolation**: tenant_id em toda tabela nova; filtro no backend + RLS. ADR 0002.
-- **PII nunca crua na LLM**: PIIShield é o último gate. ADR 0012.
-- **JSON Schema strict** em qualquer saída LLM nova. ADR 0003.
-- **Camadas DDD**: domain não conhece Spring/HTTP/SDK; application orquestra;
-  infrastructure adapta; api é fina.
-- **DM Sans única** + **Tailwind CRU (sem shadcn)** + tokens OKLCH via var(--token). ADR 0013.
-- **UI em PT-BR** (idioma do projeto até o pitch).
-- **Sem secrets no repo**; .env.example para nomes; valores no cofre/env.
-- **Spotless**: `mvn spotless:apply` antes de cada commit de backend (CI roda
-  spotless:check primeiro; GJF sozinho não corrige importOrder).
-- **Core individual SEM IAM** (decisão Stratfy).
-- **NÃO tocar no app desktop** (apps/desktop — colaborador separado).
-- **NÃO quebrar** auth, IAM, multitenancy nem o chat existentes.
+- **Tenant isolation**: tenant_id in every new table; backend filter + RLS. ADR 0002.
+- **PII never raw into the LLM**: PIIShield is the last gate. ADR 0012.
+- **JSON Schema strict** on any new LLM output. ADR 0003.
+- **DDD layers**: domain does not know Spring/HTTP/SDK; application orchestrates;
+  infrastructure adapts; api is thin.
+- **DM Sans only** + **raw Tailwind (no shadcn)** + OKLCH tokens via var(--token). ADR 0013.
+- **UI in PT-BR** (the project's language until the pitch).
+- **No secrets in the repo**; .env.example for the names; values in the vault/env.
+- **Spotless**: `mvn spotless:apply` before every backend commit (CI runs
+  spotless:check first; GJF alone does not fix importOrder).
+- **Individual Core WITHOUT IAM** (Stratfy decision).
+- **DO NOT touch the desktop app** (apps/desktop — separate collaborator).
+- **DO NOT break** the existing auth, IAM, multitenancy or chat.
 
 ================================================================================
-## ONDE MEXER (mapa real do código)
+## WHERE TO WORK (real code map)
 ================================================================================
-- Front Core:    apps/web/src/app/(app)/            (criar `fluxos/`)
-- Settings:      apps/web/src/app/(app)/settings/    (Conta/Segurança/Workspace)
+- Core front:    apps/web/src/app/(app)/            (create `fluxos/`)
+- Settings:      apps/web/src/app/(app)/settings/    (Account/Security/Workspace)
 - Chat:          apps/web/src/app/(app)/chat/page.tsx + apps/web/src/app/api/chat/route.ts
 - Dashboard:     apps/web/src/app/(app)/dashboard/page.tsx
-- Conectores:    apps/web/src/app/(app)/integracoes/page.tsx  (vira hub real)
+- Connectors:    apps/web/src/app/(app)/integracoes/page.tsx  (becomes a real hub)
 - API client:    apps/web/src/lib/api/client.ts + types.ts
 - Design system: apps/web/src/styles/tokens.css + components.css
 - Admin:         apps/admin/src/app/                 (telemetria/page.tsx → real)
 - Backend ctrls: services/api/src/main/java/br/com/nora/api/api/controllers/
 - Backend app:   services/api/src/main/java/br/com/nora/api/application/
-  (AnalysisService.run() = ponto de emissão de evento)
-- Reaproveitar:  infrastructure/email/ResendEmailSender.java (e-mail REAL),
-  infrastructure/config/AsyncConfig.java (propagação de tenant em threads),
+  (AnalysisService.run() = event emission point)
+- Reuse:         infrastructure/email/ResendEmailSender.java (REAL email),
+  infrastructure/config/AsyncConfig.java (tenant propagation across threads),
   application/privacy/RetentionSweeper.java (@Scheduled), domain/meeting (status).
-- Migrations:    services/api/src/main/resources/db/migration/ (próxima: V023+)
-- Worker:        services/nlp-worker/ (action items estruturados = combustível)
+- Migrations:    services/api/src/main/resources/db/migration/ (next: V023+)
+- Worker:        services/nlp-worker/ (structured action items = the fuel)
 
 ================================================================================
-## LOOP DE TRABALHO
+## WORK LOOP
 ================================================================================
-1. Pegue o item de maior prioridade ainda não feito (Fase 0 → 4 / DoD).
-2. Implemente a menor fatia vertical REAL (back+front juntos quando preciso).
-3. Verifique (comandos abaixo). Se precisar de passo humano, abra HANDOFF e siga
-   no que não depende dele.
-4. `mvn spotless:apply` (se backend). Commit pequeno referenciando IDs. Branch
-   sempre verde.
-5. Atualize docs/goals/progresso-pitch.md (o que ficou REAL, o que falta, riscos).
-6. Repita. Registre decisões duráveis em ADR. Pare quando o DoD estiver cumprido
-   ou não restar trabalho seguro sem handoff; entregue resumo + roteiro de demo +
-   riscos para revisão humana antes do palco.
+1. Take the highest-priority item not yet done (Phase 0 → 4 / DoD).
+2. Implement the smallest REAL vertical slice (back+front together when needed).
+3. Verify (commands below). If a human step is needed, open a HANDOFF and carry on
+   with whatever does not depend on it.
+4. `mvn spotless:apply` (if backend). Small commit referencing IDs. Branch
+   always green.
+5. Update docs/goals/progresso-pitch.md (what became REAL, what is missing, risks).
+6. Repeat. Record durable decisions in an ADR. Stop when the DoD is met
+   or no safe work remains without a handoff; deliver a summary + demo script +
+   risks for human review before the stage.
 
-### Verificação por fatia
+### Verification per slice
 - Backend:   `mvn -q -pl services/api test` + `mvn spotless:apply`
-- Worker:    `pytest` em services/nlp-worker
+- Worker:    `pytest` in services/nlp-worker
 - Web/Admin: `npm run typecheck` + `npm run build`
-- Infra:     `az bicep build` (se tocar infra)
-- REAL:      rode o app e dispare o caminho de verdade (e-mail chega, OAuth
-             completa, evento aparece) — peça verificação humana quando externo.
+- Infra:     `az bicep build` (if touching infra)
+- REAL:      run the app and trigger the real path (email arrives, OAuth
+             completes, event shows up) — ask for human verification when external.
 
 ================================================================================
-## ROTEIRO DE DEMO (15/06) — precisa rodar ao vivo
+## DEMO SCRIPT (06/15) — has to run live
 ================================================================================
-1. Login → Core. Mostra chat com sessões persistidas + dashboard de reuniões.
-2. Settings: edita nome / troca senha / renomeia workspace — tudo salva de verdade.
-3. NORA Flows: cria no canvas [Reunião analisada] → [Enviar e-mail] →
-   [Criar evento no Google Calendar]. Salva.
-4. Upload de uma transcrição. Análise termina. O fluxo dispara sozinho:
-   e-mail real chega + evento real aparece no Google Calendar.
-5. Abre histórico de execuções do fluxo: log verde, ponta a ponta.
-6. Admin: mostra modelos, custos e saúde do sistema com dados reais.
+1. Login → Core. Show chat with persisted sessions + the meetings dashboard.
+2. Settings: edit name / change password / rename workspace — everything really saves.
+3. NORA Flows: build on the canvas [Reunião analisada] → [Enviar e-mail] →
+   [Criar evento no Google Calendar]. Save.
+4. Upload a transcript. The analysis finishes. The flow fires by itself:
+   a real email arrives + a real event shows up in Google Calendar.
+5. Open the flow's execution history: green log, end to end.
+6. Admin: show models, costs and system health with real data.
 
 ================================================================================
-## PROMPT DE PARTIDA (cole como 1ª mensagem do run)
+## KICKOFF PROMPT (paste as the 1st message of the run)
 ================================================================================
-Você é o agente de engenharia do NORA, rodando PAREADO com o Anthony (disponível
-~24/7, com orçamento para APIs/infra) até o pitch (2026-06-15). Seu objetivo
-completo está em GOAL.md — leia INTEIRO primeiro, junto com CLAUDE.md e os docs
-apontados. Depois mapeie o estado atual antes de editar.
+You are NORA's engineering agent, running PAIRED with Anthony (available
+~24/7, with a budget for APIs/infra) until the pitch (2026-06-15). Your full
+objective is in GOAL.md — read it ENTIRELY first, along with CLAUDE.md and the docs
+it points to. Then map the current state before editing.
 
-Princípios:
-- TUDO precisa ficar REAL (ver "Definição de REAL"): zero stub, zero "em breve",
-  zero envio fingido. Integrações externas via OAuth de verdade.
-- Trabalhe na sequência do Goal (Fase 0 → 4), queimando risco cedo (event bus +
-  OAuth primeiro), sempre deixando a branch buildável e a demo viva.
-- Quando precisar de um passo humano (OAuth, Google Cloud, Slack app, colar
-  secret, aprovar gasto, verificar resultado externo), ABRA UM HANDOFF HUMANO com
-  instruções exatas e siga no que não depende dele. Não finja, não pule.
-- Para cada fatia: menor incremento real → verificação relevante (mvn test /
-  pytest / npm typecheck+build / az bicep build) → `mvn spotless:apply` se backend
-  → commit pequeno referenciando IDs → atualizar docs/goals/progresso-pitch.md.
-- Respeite TODAS as restrições inegociáveis (tenant isolation + RLS, PII, JSON
-  Schema strict, DDD, DM Sans + Tailwind cru + OKLCH, PT-BR, sem secrets,
-  spotless, Core sem IAM). NÃO toque no desktop. NÃO quebre auth/IAM/chat.
-- Registre decisões duráveis em ADR (event bus, workflow engine, OAuth/token).
+Principles:
+- EVERYTHING has to become REAL (see "Definition of REAL"): zero stubs, zero "coming soon",
+  zero fake sends. External integrations via real OAuth.
+- Work through the Goal in sequence (Phase 0 → 4), burning risk early (event bus +
+  OAuth first), always leaving the branch buildable and the demo alive.
+- When you need a human step (OAuth, Google Cloud, Slack app, pasting a
+  secret, approving spend, verifying an external result), OPEN A HUMAN HANDOFF with
+  exact instructions and carry on with whatever does not depend on it. Do not pretend, do not skip.
+- For each slice: smallest real increment → relevant verification (mvn test /
+  pytest / npm typecheck+build / az bicep build) → `mvn spotless:apply` if backend
+  → small commit referencing IDs → update docs/goals/progresso-pitch.md.
+- Respect ALL the non-negotiable constraints (tenant isolation + RLS, PII, JSON
+  Schema strict, DDD, DM Sans + raw Tailwind + OKLCH, PT-BR, no secrets,
+  spotless, Core without IAM). DO NOT touch the desktop. DO NOT break auth/IAM/chat.
+- Record durable decisions in an ADR (event bus, workflow engine, OAuth/token).
 
-Pare quando o Definition of Done estiver 100% cumprido ou só restar trabalho que
-dependa de handoff humano. Entregue: (1) o que ficou pronto e REAL, (2) o que
-ainda precisa de você, (3) roteiro de demo passo a passo, (4) riscos para o palco.
+Stop when the Definition of Done is 100% met or the only work left depends on a
+human handoff. Deliver: (1) what is done and REAL, (2) what still needs you,
+(3) a step-by-step demo script, (4) risks for the stage.

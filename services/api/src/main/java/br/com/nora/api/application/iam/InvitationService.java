@@ -33,23 +33,24 @@ import java.util.UUID;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Casos de uso do fluxo de convite por e-mail (US06, ADR 0011). Cobre criacao, listagem com on-read
- * expire, revogacao e aceite (que cria o user e devolve JWT).
+ * Use cases of the e-mail invite flow (US06, ADR 0011). Covers creation, listing with on-read
+ * expire, revocation and acceptance (which creates the user and returns a JWT).
  *
- * <p>Decisoes nao-obvias documentadas inline:
+ * <p>Non-obvious decisions documented inline:
  *
  * <ul>
- *   <li><b>Idempotencia:</b> se ja existe um invite PENDING nao-expirado pro mesmo e-mail no
- *       tenant, retornamos o existente sem criar um novo nem reenviar e-mail. Isso evita duplicar
- *       convites quando o frontend faz double-click ou o usuario clica em "reenviar" antes do
- *       refresh.
- *   <li><b>On-read expire:</b> ao listar/aceitar, qualquer invite PENDING com {@code expiresAt &lt;
- *       now} e atualizado para EXPIRED antes da resposta. Evita rodar job separado no MVP.
- *   <li><b>Token como secret:</b> persistimos apenas o SHA-256 do token (mesmo padrao dos demais
- *       one-time tokens — email-verification, password-reset, refresh). O token cru existe apenas
- *       em memoria durante {@link #inviteUser}, para montar o {@code acceptUrl} do e-mail; nunca o
- *       devolvemos em listagens, nunca o logamos e nunca o persistimos. No aceite, hasheamos o
- *       token recebido e fazemos lookup por hash (O(1) por indice). Um dump do banco expoe so o
+ *   <li><b>Idempotency:</b> if a non-expired PENDING invite already exists for the same e-mail in
+ *       the tenant, we return the existing one without creating a new one or resending the e-mail.
+ *       This avoids duplicating invites when the frontend double-clicks or the user clicks "resend"
+ *       before the refresh.
+ *   <li><b>On-read expire:</b> when listing/accepting, any PENDING invite with {@code expiresAt
+ *       &lt; now} is updated to EXPIRED before the response. Avoids running a separate job in the
+ *       MVP.
+ *   <li><b>Token as secret:</b> we persist only the SHA-256 of the token (same pattern as the other
+ *       one-time tokens — email-verification, password-reset, refresh). The raw token exists only
+ *       in memory during {@link #inviteUser}, to build the {@code acceptUrl} of the e-mail; we
+ *       never return it in listings, never log it and never persist it. On acceptance, we hash the
+ *       received token and look it up by hash (O(1) via index). A database dump exposes only the
  *       hash.
  * </ul>
  */
@@ -97,10 +98,11 @@ public class InvitationService {
     }
 
     /**
-     * Cria um convite (US06). Valida dominio corporativo, formato de e-mail, grupos do tenant,
-     * deduplica PENDINGs, gera token via {@link SecureTokenGenerator}, persiste e dispara e-mail.
+     * Creates an invite (US06). Validates corporate domain, e-mail format, tenant groups,
+     * deduplicates PENDINGs, generates a token via {@link SecureTokenGenerator}, persists and fires
+     * the e-mail.
      *
-     * @return o invite criado (ou o PENDING ja existente, em caso de idempotencia)
+     * @return the created invite (or the already existing PENDING, in case of idempotency)
      */
     @Transactional
     public IamInvitation inviteUser(
@@ -110,15 +112,15 @@ public class InvitationService {
             Set<UUID> groupIds,
             Integer expiresInDays) {
 
-        // 1. Tenant existe? Obtem dominio + nome.
+        // 1. Tenant exists? Gets domain + name.
         Tenant tenant =
                 tenants.findById(tenantId)
                         .orElseThrow(() -> new TenantException.NotFound(tenantId));
 
-        // 2. Email format. Reusa Email.of (lowercase + trim + regex).
+        // 2. Email format. Reuses Email.of (lowercase + trim + regex).
         Email email = parseEmail(rawEmail);
 
-        // 3. Restricao de dominio corporativo (US32).
+        // 3. Corporate domain restriction (US32).
         if (tenant.allowedEmailDomain() != null) {
             String domain = extractDomain(email.value());
             if (!tenant.allowedEmailDomain().equalsIgnoreCase(domain)) {
@@ -127,7 +129,7 @@ public class InvitationService {
             }
         }
 
-        // 4. Valida groupIds.
+        // 4. Validates groupIds.
         Set<UUID> normalizedGroups = normalizeGroups(groupIds);
         for (UUID gid : normalizedGroups) {
             iam.findGroup(gid, tenantId).orElseThrow(IamException::groupNotFound);
@@ -135,23 +137,23 @@ public class InvitationService {
 
         Instant now = clock.now();
 
-        // 5. Idempotencia: invite PENDING valido pro mesmo email -> retorna ele.
+        // 5. Idempotency: valid PENDING invite for the same email -> returns it.
         var existing = invitations.findPendingByEmail(tenantId, email.value());
         if (existing.isPresent() && !existing.get().isExpired(now)) {
             return existing.get();
         }
-        // Se existia um PENDING expirado, marca como EXPIRED para nao confundir (on-read).
+        // If an expired PENDING existed, mark it as EXPIRED so as not to confuse (on-read).
         existing.filter(inv -> inv.isExpired(now))
                 .ifPresent(inv -> invitations.save(inv.markExpired()));
 
-        // 6. Calcula expiresAt com clamping.
+        // 6. Computes expiresAt with clamping.
         int days = clampDays(expiresInDays);
         Instant expiresAt = now.plus(Duration.ofDays(days));
 
-        // 7. Gera token (cru + hash). Persistimos APENAS o SHA-256 (token.hash()) — mesmo padrao
-        //    de email-verification / password-reset / refresh. O token cru fica apenas em memoria
-        //    nesta chamada para montar o acceptUrl do e-mail; jamais e persistido. O lookup no
-        //    aceite hasheia o token recebido e busca pelo hash (O(1) por indice).
+        // 7. Generates token (raw + hash). We persist ONLY the SHA-256 (token.hash()) — same
+        //    pattern as email-verification / password-reset / refresh. The raw token stays only
+        //    in memory in this call to build the acceptUrl of the e-mail; it is never persisted.
+        //    Lookup on acceptance hashes the received token and searches by hash (O(1) via index).
         GeneratedToken token = tokenGenerator.generate();
 
         IamInvitation invite =
@@ -176,7 +178,7 @@ public class InvitationService {
         payload.put("groupIds", normalizedGroups.stream().map(UUID::toString).toList());
         iam.recordAudit(tenantId, invitedBy, "iam.user.invited", "INVITATION", saved.id(), payload);
 
-        // 9. E-mail. Renderiza link absoluto com token.
+        // 9. E-mail. Renders absolute link with token.
         String invitedByName = lookupDisplayName(invitedBy);
         String acceptUrl = settings.frontendBaseUrl() + "/auth/invites/accept/" + token.rawToken();
         emailSender.sendInvitation(email.value(), tenant.name(), invitedByName, acceptUrl, days);
@@ -185,20 +187,21 @@ public class InvitationService {
     }
 
     /**
-     * Aceita o convite, criando o user e devolvendo JWT (login automatico). Endpoint publico:
+     * Accepts the invite, creating the user and returning a JWT (automatic login). Public endpoint:
      * {@code POST /iam/invites/{token}/accept}.
      *
-     * <p>{@code noRollbackFor = InvitationException.class}: precisamos persistir o on-read expire
-     * ({@code markExpired}) mesmo quando a chamada termina lancando 410 INVITE_EXPIRED. Por padrao
-     * Spring rolla a transacao em qualquer RuntimeException, o que apagaria o UPDATE de status.
+     * <p>{@code noRollbackFor = InvitationException.class}: we need to persist the on-read expire
+     * ({@code markExpired}) even when the call ends up throwing 410 INVITE_EXPIRED. By default
+     * Spring rolls back the transaction on any RuntimeException, which would delete the status
+     * UPDATE.
      */
     @Transactional(noRollbackFor = InvitationException.class)
     public AcceptResult acceptInvite(String rawToken, String displayName, String password) {
         if (rawToken == null || rawToken.isBlank()) {
             throw InvitationException.inviteNotFound();
         }
-        // Lookup por hash: hasheamos o token cru recebido e buscamos pela coluna token_hash
-        // (indexada). O token cru nunca toca o banco.
+        // Lookup by hash: we hash the raw token received and search by the token_hash column
+        // (indexed). The raw token never touches the database.
         String tokenHash = tokenGenerator.hash(rawToken);
         IamInvitation invite =
                 invitations
@@ -207,7 +210,7 @@ public class InvitationService {
 
         Instant now = clock.now();
 
-        // Status: se nao for PENDING, ja foi consumido/cancelado/expirado.
+        // Status: if it is not PENDING, it was already consumed/cancelled/expired.
         if (invite.status() == InvitationStatus.ACCEPTED
                 || invite.status() == InvitationStatus.REVOKED) {
             throw InvitationException.inviteAlreadyAccepted();
@@ -215,21 +218,21 @@ public class InvitationService {
         if (invite.status() == InvitationStatus.EXPIRED) {
             throw InvitationException.inviteExpired();
         }
-        // PENDING porem com expiresAt passado: persiste EXPIRED e retorna 410.
+        // PENDING but with expiresAt in the past: persists EXPIRED and returns 410.
         if (invite.isExpired(now)) {
             invitations.save(invite.markExpired());
             throw InvitationException.inviteExpired();
         }
 
-        // Validacao de senha pelo dominio (mesma politica do signup).
+        // Password validation by the domain (same policy as signup).
         PasswordPolicy.validate(password);
         String safeDisplayName =
                 (displayName == null || displayName.isBlank())
                         ? invite.email().split("@")[0]
                         : displayName.trim();
 
-        // Detecta colisao: e-mail ja existe no banco (caso o invite tenha sido emitido contra
-        // um endereco que entretanto foi cadastrado por outro fluxo).
+        // Detects collision: e-mail already exists in the database (in case the invite was issued
+        // against an address that has meanwhile been registered by another flow).
         Email email = Email.of(invite.email());
         users.findByEmail(email)
                 .ifPresent(
@@ -237,7 +240,7 @@ public class InvitationService {
                             throw new AuthException.EmailAlreadyTaken();
                         });
 
-        // Cria o user no tenant do invite, ja verificado (passou pelo invite).
+        // Creates the user in the invite's tenant, already verified (it came via the invite).
         User newUser =
                 new User(
                         UUID.randomUUID(),
@@ -251,12 +254,12 @@ public class InvitationService {
                         now);
         User savedUser = users.save(newUser);
 
-        // Anexa aos grupos.
+        // Attaches to the groups.
         for (UUID gid : invite.groupIds()) {
             iam.addUserToGroup(savedUser.id(), gid, invite.tenantId(), invite.invitedBy());
         }
 
-        // Marca invite ACCEPTED.
+        // Marks invite ACCEPTED.
         IamInvitation accepted = invite.accept(savedUser.id(), now);
         invitations.save(accepted);
 
@@ -272,8 +275,8 @@ public class InvitationService {
                 accepted.id(),
                 auditPayload);
 
-        // Emite par access+refresh (Round 2 / Subfase 1.3 A): mesmo formato de AuthService.login.
-        // Roles default: vazia — IAM via policies.
+        // Issues access+refresh pair (Round 2 / Subphase 1.3 A): same format as AuthService.login.
+        // Default roles: empty — IAM via policies.
         String jwt = jwtIssuer.issue(savedUser, List.of(), settings.jwtTtl());
         GeneratedToken refresh = tokenGenerator.generate();
         refreshTokenRepository.save(
@@ -293,8 +296,8 @@ public class InvitationService {
     }
 
     /**
-     * Lista convites do tenant. Aplica on-read expire para qualquer PENDING vencido antes de
-     * devolver. Persistir o EXPIRED garante que a listagem subsequente seja consistente.
+     * Lists the tenant's invites. Applies on-read expire to any overdue PENDING before returning.
+     * Persisting the EXPIRED ensures the subsequent listing is consistent.
      */
     @Transactional
     public List<IamInvitation> listInvites(UUID tenantId, InvitationStatus statusFilter) {
@@ -313,7 +316,7 @@ public class InvitationService {
         return result;
     }
 
-    /** Revoga um convite PENDING. Aceita identidade do actor para fins de audit. */
+    /** Revokes a PENDING invite. Accepts the actor identity for audit purposes. */
     @Transactional
     public IamInvitation revokeInvite(UUID invitationId, UUID tenantId, UUID actorUserId) {
         IamInvitation invite =
@@ -349,7 +352,7 @@ public class InvitationService {
     private String extractDomain(String email) {
         int at = email.indexOf('@');
         if (at < 0 || at == email.length() - 1) {
-            // Email.of ja validou formato; isso e defensivo.
+            // Email.of has already validated the format; this is defensive.
             throw new InvitationException("INVITE_EMAIL_INVALID", "email missing domain");
         }
         return email.substring(at + 1).toLowerCase(Locale.ROOT);
@@ -386,9 +389,9 @@ public class InvitationService {
     }
 
     /**
-     * Resultado do aceite: principal + par access(JWT)+refresh(opaque) + TTLs. O refresh em {@code
-     * refreshTokenPlain} so existe na resposta inicial e no cookie httpOnly que o controller seta;
-     * em DB persiste apenas o hash.
+     * Acceptance result: principal + access(JWT)+refresh(opaque) pair + TTLs. The refresh in {@code
+     * refreshTokenPlain} only exists in the initial response and in the httpOnly cookie the
+     * controller sets; in the DB only the hash is persisted.
      */
     public record AcceptResult(
             User user,
@@ -398,9 +401,9 @@ public class InvitationService {
             long refreshExpiresInSeconds) {}
 
     /**
-     * Configuracao injetada (mantem o servico free of Spring). Round 2 / Subfase 1.3 A adiciona
-     * {@code refreshTokenTtl} para alinhar a janela do refresh emitido no aceite com a do login
-     * regular.
+     * Injected configuration (keeps the service free of Spring). Round 2 / Subphase 1.3 A adds
+     * {@code refreshTokenTtl} to align the window of the refresh issued on acceptance with that of
+     * the regular login.
      */
     public record InvitationSettings(
             String frontendBaseUrl, Duration jwtTtl, Duration refreshTokenTtl) {}

@@ -1,38 +1,38 @@
 #!/usr/bin/env bash
 #
-# bootstrap-host.sh — prepara do zero a VM (Debian ou Ubuntu) que hospeda a stack NORA no Proxmox "beta".
+# bootstrap-host.sh — prepares from scratch the VM (Debian or Ubuntu) that hosts the NORA stack on the "beta" Proxmox.
 #
-# Roda UMA vez por host (é idempotente: rodar de novo só reconcilia). Depois dele, o
-# operador só precisa de `deploy.sh`.
+# Runs ONCE per host (it is idempotent: running it again only reconciles). After it, the
+# operator only needs `deploy.sh`.
 #
-# POR QUE DEPLOY POR PULL, E NÃO PUSH (decisão do ADR 0034):
-#   O repositório é PÚBLICO (ADR 0017). Um runner self-hosted persistente nesta máquina
-#   executaria código de pull request de fork arbitrário dentro da rede doméstica — risco
-#   crítico, não hipotético. E o caminho alternativo (GitHub Actions com chave SSH) exigiria
-#   expor sshd à internet, porque runners GitHub-hosted não têm faixa de IP estável.
-#   Então a direção é invertida: o CI só faz build e push pro GHCR, e ESTE host puxa.
-#   Resultado: zero porta inbound, zero chave SSH no GitHub Secrets, zero runner.
+# WHY DEPLOY BY PULL, AND NOT PUSH (ADR 0034 decision):
+#   The repository is PUBLIC (ADR 0017). A persistent self-hosted runner on this machine
+#   would execute pull request code from an arbitrary fork inside the home network — a
+#   critical risk, not a hypothetical one. And the alternative path (GitHub Actions with an
+#   SSH key) would require exposing sshd to the internet, because GitHub-hosted runners have
+#   no stable IP range. So the direction is inverted: CI only does build and push to GHCR,
+#   and THIS host pulls. Result: zero inbound port, zero SSH key in GitHub Secrets, zero runner.
 #
-# O que instala/configura:
-#   1. Pré-voo: Debian ou Ubuntu, root, arquitetura, /dev/shm como tmpfs.
-#   2. Docker CE + plugin compose (repositório oficial da Docker, não o da distro).
-#   3. sops + age (binários oficiais do GitHub, com verificação de checksum).
-#   4. Usuário de serviço `nora` no grupo docker.
-#   5. Árvore /srv/nora/{state,backups,secrets} + /etc/nora com a chave age.
-#   6. Unidade systemd + timer que chama o deploy.sh (o agente de pull).
-#   7. Hardening básico: unattended-upgrades, sysctl, journald com limite de tamanho.
+# What it installs/configures:
+#   1. Pre-flight: Debian or Ubuntu, root, architecture, /dev/shm as tmpfs.
+#   2. Docker CE + compose plugin (Docker's official repository, not the distro's).
+#   3. sops + age (official GitHub binaries, with checksum verification).
+#   4. Service user `nora` in the docker group.
+#   5. Tree /srv/nora/{state,backups,secrets} + /etc/nora with the age key.
+#   6. systemd unit + timer that calls deploy.sh (the pull agent).
+#   7. Basic hardening: unattended-upgrades, sysctl, journald with a size cap.
 #
-# Uso:
-#   sudo ./bootstrap-host.sh                    # instala tudo
-#   sudo ./bootstrap-host.sh --skip-docker      # docker já existe
-#   sudo ./bootstrap-host.sh --check            # só diagnostica, não muda nada
+# Usage:
+#   sudo ./bootstrap-host.sh                    # installs everything
+#   sudo ./bootstrap-host.sh --skip-docker      # docker already exists
+#   sudo ./bootstrap-host.sh --check            # only diagnoses, changes nothing
 #
-# Depois deste script, siga docs/operations/proxmox-deploy.md §"primeiro deploy".
+# After this script, follow docs/operations/proxmox-deploy.md §"first deployment".
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Constantes (mesmos caminhos que deploy.sh espera — não divirja sem mudar lá)
+# Constants (same paths deploy.sh expects — do not diverge without changing it there)
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROXMOX_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -44,18 +44,18 @@ SECRETS_DIR="${SECRETS_DIR:-/srv/nora/secrets}"
 AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-/etc/nora/age.key}"
 SYSTEMD_DIR=/etc/systemd/system
 
-# Versões pinadas por reprodutibilidade. Bumpar conscientemente.
+# Versions pinned for reproducibility. Bump deliberately.
 SOPS_VERSION="${SOPS_VERSION:-3.9.4}"
 AGE_VERSION="${AGE_VERSION:-1.2.1}"
 
-# Intervalo do agente de pull. 5 min é folgado: o gargalo é o build no GitHub, não isto.
+# Pull agent interval. 5 min is generous: the bottleneck is the build on GitHub, not this.
 PULL_INTERVAL="${PULL_INTERVAL:-5min}"
 
 SKIP_DOCKER=0
 CHECK_ONLY=0
 
 # ---------------------------------------------------------------------------
-# Saída
+# Output
 # ---------------------------------------------------------------------------
 if [ -t 1 ]; then
   C_RED=$'\033[31m'; C_YLW=$'\033[33m'; C_GRN=$'\033[32m'; C_DIM=$'\033[2m'; C_OFF=$'\033[0m'
@@ -91,7 +91,7 @@ run() {
 }
 
 # ---------------------------------------------------------------------------
-# 1. Pré-voo
+# 1. Pre-flight
 # ---------------------------------------------------------------------------
 log "Pré-voo"
 
@@ -117,8 +117,8 @@ case "$ARCH" in
 esac
 info "Arquitetura: $ARCH"
 
-# /dev/shm PRECISA ser tmpfs: o deploy.sh decifra os segredos ali e se recusa a
-# escrever segredo em disco. Falhar aqui é muito melhor que falhar no primeiro deploy.
+# /dev/shm MUST be tmpfs: deploy.sh decrypts the secrets there and refuses to
+# write a secret to disk. Failing here is much better than failing on the first deploy.
 SHM_FS="$(findmnt -no FSTYPE /dev/shm 2>/dev/null || true)"
 if [ "$SHM_FS" != "tmpfs" ]; then
   die "/dev/shm não é tmpfs (fs='${SHM_FS:-inexistente}').
@@ -142,7 +142,7 @@ if [ "${DISK_GB:-0}" -lt 40 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Docker CE + plugin compose
+# 2. Docker CE + compose plugin
 # ---------------------------------------------------------------------------
 if [ "$SKIP_DOCKER" -eq 1 ]; then
   log "Docker: pulado (--skip-docker)"
@@ -152,14 +152,14 @@ elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1
   info "$(docker compose version)"
 else
   log "Instalando Docker CE + plugin compose"
-  # Repositório oficial da Docker: o docker.io das distros é antigo e não traz o
-  # plugin `compose` v2, do qual o deploy.sh depende (`up -d --wait`).
+  # Docker's official repository: the distros' docker.io is old and does not ship the
+  # `compose` v2 plugin, which deploy.sh depends on (`up -d --wait`).
   #
-  # A distro NAO e fixa. O host `beta` e Proxmox VE 9.2.5 sobre Debian 13 (trixie), e a
-  # unica cloud image ja presente em `local:iso` e a Ubuntu Noble 24.04 — entao a VM
-  # pode nascer Ubuntu OU Debian dependendo do que for provisionado. O caminho do
-  # repositorio difere (`/linux/ubuntu` vs `/linux/debian`); usar o errado da 404 ou
-  # instala pacote de outra distro. Detecta em vez de assumir.
+  # The distro is NOT fixed. The `beta` host is Proxmox VE 9.2.5 on Debian 13 (trixie), and
+  # the only cloud image already present in `local:iso` is Ubuntu Noble 24.04 — so the VM
+  # may be born Ubuntu OR Debian depending on what gets provisioned. The repository
+  # path differs (`/linux/ubuntu` vs `/linux/debian`); using the wrong one 404s or
+  # installs a package from another distro. Detect instead of assuming.
   run apt-get update -qq
   run apt-get install -y -qq ca-certificates curl gnupg
   run install -m 0755 -d /etc/apt/keyrings
@@ -184,8 +184,8 @@ else
   run systemctl enable --now docker
 fi
 
-# Limite de log do daemon: sem isso um container barulhento enche o disco antes do
-# Alloy sequer notar. O compose já define per-service, isto é a rede de segurança.
+# Daemon log cap: without it a noisy container fills the disk before Alloy even
+# notices. The compose already sets it per-service, this is the safety net.
 if [ "$CHECK_ONLY" -eq 0 ] && [ ! -f /etc/docker/daemon.json ]; then
   log "Configurando limites de log do daemon Docker"
   mkdir -p /etc/docker
@@ -203,7 +203,7 @@ fi
 # 3. sops + age
 # ---------------------------------------------------------------------------
 install_binary() {
-  # install_binary <nome> <url> <destino>
+  # install_binary <name> <url> <destination>
   local name="$1" url="$2" dest="$3" tmp
   if command -v "$name" >/dev/null 2>&1; then
     info "$name já instalado: $("$name" --version 2>&1 | head -1)"
@@ -243,11 +243,11 @@ else
   info "age já instalado"
 fi
 
-# Utilitários que os scripts usam
+# Utilities the scripts use
 run apt-get install -y -qq postgresql-client jq curl ca-certificates findutils
 
 # ---------------------------------------------------------------------------
-# 4. Usuário de serviço
+# 4. Service user
 # ---------------------------------------------------------------------------
 log "Usuário de serviço: $SERVICE_USER"
 if id "$SERVICE_USER" >/dev/null 2>&1; then
@@ -258,7 +258,7 @@ fi
 run usermod -aG docker "$SERVICE_USER"
 
 # ---------------------------------------------------------------------------
-# 5. Árvore de diretórios + chave age
+# 5. Directory tree + age key
 # ---------------------------------------------------------------------------
 log "Diretórios"
 for d in "$STATE_DIR" "$BACKUP_DIR" "$SECRETS_DIR"; do
@@ -268,15 +268,15 @@ for d in "$STATE_DIR" "$BACKUP_DIR" "$SECRETS_DIR"; do
 done
 run chmod 0750 "$SECRETS_DIR"
 
-# O serviço 'backup' roda como root (o compose sobrescreve o entrypoint e pula o gosu
-# da imagem), então o dump nasce com dono root. Sem o bit setgid o grupo do arquivo
-# também sai root, e nem quem está no grupo 'nora' consegue lê-lo — o dump fica
-# ilegível pro restore-drill.sh e pro operador.
+# The 'backup' service runs as root (the compose overrides the entrypoint and skips the
+# image's gosu), so the dump is born owned by root. Without the setgid bit the file's group
+# also comes out root, and not even someone in the 'nora' group can read it — the dump ends
+# up unreadable for restore-drill.sh and for the operator.
 #
-# root:nora + 2750 faz todo arquivo criado aqui herdar o grupo 'nora'. Combinado com o
-# `umask 027` do run-backup.sh, o dump sai 0640 root:nora: legível por quem opera,
-# invisível pro resto. É exatamente o que ../backup/run-backup.sh:147-148 documenta e
-# o que o remédio do restore-drill.sh (`usermod -aG nora $USER`) pressupõe.
+# root:nora + 2750 makes every file created here inherit the 'nora' group. Combined with
+# run-backup.sh's `umask 027`, the dump comes out 0640 root:nora: readable by whoever
+# operates, invisible to the rest. It is exactly what ../backup/run-backup.sh:147-148
+# documents and what restore-drill.sh's remedy (`usermod -aG nora $USER`) presupposes.
 run chown "root:$SERVICE_USER" "$BACKUP_DIR"
 run chmod 2750 "$BACKUP_DIR"
 
@@ -309,11 +309,11 @@ else
 EOF
 fi
 
-# O deploy.sh roda como root (precisa ler a chave age 0400) mas o compose usa o
-# socket do docker; o grupo já foi ajustado acima.
+# deploy.sh runs as root (it needs to read the 0400 age key) but the compose uses the
+# docker socket; the group was already adjusted above.
 
 # ---------------------------------------------------------------------------
-# 6. Agente de pull (systemd unit + timer)
+# 6. Pull agent (systemd unit + timer)
 # ---------------------------------------------------------------------------
 log "Agente de pull (systemd)"
 
@@ -327,7 +327,7 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-# Roda como root: precisa ler a chave age (0400 root) para decifrar os segredos.
+# Runs as root: needs to read the age key (0400 root) to decrypt the secrets.
 User=root
 WorkingDirectory=${PROXMOX_DIR}
 Environment=SOPS_AGE_KEY_FILE=${AGE_KEY_FILE}
@@ -335,7 +335,7 @@ Environment=NORA_STATE_DIR=${STATE_DIR}
 Environment=BACKUP_DIR=${BACKUP_DIR}
 ExecStart=${SCRIPT_DIR}/deploy.sh --if-changed
 TimeoutStartSec=900
-# O deploy.sh ja faz rollback por conta propria; nao reiniciar em loop.
+# deploy.sh already rolls back on its own; do not restart in a loop.
 Restart=no
 StandardOutput=journal
 StandardError=journal
@@ -351,7 +351,7 @@ Description=NORA — checa o GHCR por imagem nova a cada ${PULL_INTERVAL}
 [Timer]
 OnBootSec=2min
 OnUnitActiveSec=${PULL_INTERVAL}
-# Espalha o disparo para nao bater no GHCR no mesmo segundo que todo mundo.
+# Spreads the trigger so it does not hit GHCR the same second as everyone else.
 RandomizedDelaySec=60
 Persistent=true
 
@@ -369,13 +369,13 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Hardening básico
+# 7. Basic hardening
 # ---------------------------------------------------------------------------
 log "Hardening"
 
 run apt-get install -y -qq unattended-upgrades
 if [ "$CHECK_ONLY" -eq 0 ]; then
-  # journald sem limite enche o disco tanto quanto container barulhento.
+  # journald without a cap fills the disk just as much as a noisy container.
   mkdir -p /etc/systemd/journald.conf.d
   cat > /etc/systemd/journald.conf.d/nora.conf <<'CONF'
 [Journal]
@@ -385,22 +385,22 @@ CONF
   systemctl restart systemd-journald
 
   cat > /etc/sysctl.d/99-nora.conf <<'CONF'
-# Postgres + JVM sob memória apertada: preferir OOM-killar o culpado a travar tudo.
+# Postgres + JVM under tight memory: prefer OOM-killing the culprit over freezing everything.
 vm.overcommit_memory = 1
 vm.swappiness = 10
-# Muitas conexões curtas entre containers.
+# Many short-lived connections between containers.
 net.core.somaxconn = 1024
 net.ipv4.tcp_tw_reuse = 1
 CONF
   sysctl --quiet --load /etc/sysctl.d/99-nora.conf || warn "sysctl parcialmente aplicado."
 fi
 
-# Nenhuma regra de firewall inbound é necessária: o cloudflared abre conexão de SAÍDA.
-# Se você tiver ufw ativo, NÃO precisa liberar 80/443.
+# No inbound firewall rule is necessary: cloudflared opens an OUTBOUND connection.
+# If you have ufw active, you do NOT need to open 80/443.
 info "Sem porta inbound: o tráfego entra pelo Cloudflare Tunnel (saída-only)."
 
 # ---------------------------------------------------------------------------
-# Resumo
+# Summary
 # ---------------------------------------------------------------------------
 echo
 log "Bootstrap concluído"

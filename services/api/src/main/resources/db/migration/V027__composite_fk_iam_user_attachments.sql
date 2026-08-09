@@ -1,27 +1,27 @@
 -- Composite FK: iam_user_groups / iam_user_policies .(tenant_id, user_id) -> users.(tenant_id, id).
 --
--- Antes: as duas tabelas de vinculo tinham FKs independentes -- user_id -> users(id) e
--- tenant_id -> tenants(id) -- sem nada exigindo que as duas colunas descrevessem a MESMA
--- linha de users. Nada no banco impedia anexar um usuario do tenant A a um grupo/policy
--- registrado sob o tenant B: a linha satisfaz as duas FKs isoladamente.
+-- Before: the two link tables had independent FKs -- user_id -> users(id) and
+-- tenant_id -> tenants(id) -- with nothing requiring the two columns to describe the SAME
+-- users row. Nothing in the database prevented attaching a user from tenant A to a group/policy
+-- registered under tenant B: the row satisfies both FKs in isolation.
 --
--- No app, IamService.addUserToGroup e attachPolicyToUser validam que o GRUPO e a POLICY
--- pertencem ao tenant do chamador, mas nunca validam o userId. O grupo carrega permissoes,
--- entao um vinculo cross-tenant concede a um usuario de fora os direitos do tenant alvo.
+-- In the app, IamService.addUserToGroup and attachPolicyToUser validate that the GROUP and the POLICY
+-- belong to the caller's tenant, but never validate the userId. The group carries permissions,
+-- so a cross-tenant link grants an outside user the target tenant's rights.
 --
--- V015 fechou exatamente esta classe de furo para meetings.owner_user_id e ja criou o
--- UNIQUE (tenant_id, id) em users que serve de alvo -- estas duas tabelas nunca receberam
--- o equivalente. E o mesmo remedio, no mesmo formato.
+-- V015 closed exactly this class of hole for meetings.owner_user_id and already created the
+-- UNIQUE (tenant_id, id) on users that serves as the target -- these two tables never got
+-- the equivalent. It is the same remedy, in the same shape.
 --
--- Agora: o Postgres rejeita com ForeignKeyViolation qualquer insert cujo (tenant_id, user_id)
--- nao bata numa linha de users. Defense in depth: o check no IamService continua sendo a
--- primeira barreira e devolve erro de dominio; este e o piso que nao depende de ninguem
--- lembrar de escrever o check.
+-- Now: Postgres rejects with ForeignKeyViolation any insert whose (tenant_id, user_id)
+-- does not match a users row. Defense in depth: the check in IamService remains the
+-- first barrier and returns a domain error; this is the floor that does not depend on anyone
+-- remembering to write the check.
 --
--- Fora de escopo, de proposito: a coluna `attached_by`. Ela tambem referencia users(id),
--- mas e ON DELETE SET NULL, e um FK composto anularia as DUAS colunas ao remover o ator --
--- incluindo tenant_id, que e NOT NULL. Ficaria um FK que nao consegue executar a propria
--- acao de delete.
+-- Out of scope, on purpose: the `attached_by` column. It also references users(id),
+-- but it is ON DELETE SET NULL, and a composite FK would null BOTH columns when the actor is
+-- removed -- including tenant_id, which is NOT NULL. That would be an FK that cannot execute its
+-- own delete action.
 
 ALTER TABLE iam_user_groups DROP CONSTRAINT iam_user_groups_user_id_fkey;
 ALTER TABLE iam_user_groups ADD CONSTRAINT iam_user_groups_user_id_fkey

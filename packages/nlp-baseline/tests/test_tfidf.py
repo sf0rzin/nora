@@ -1,10 +1,10 @@
-"""Testes da classe ``TfidfBaseline``.
+"""Tests for the ``TfidfBaseline`` class.
 
-Cobre:
-* fit + top_terms (corpus minimo PT-BR sintetico)
-* top_terms_per_doc retorna termos relevantes do doc
-* multiplas instancias nao compartilham state
-* casos degenerados (corpus vazio, top_n=0, etc.)
+Covers:
+* fit + top_terms (minimal synthetic PT-BR corpus)
+* top_terms_per_doc returns relevant terms of the doc
+* multiple instances do not share state
+* degenerate cases (empty corpus, top_n=0, etc.)
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import pytest
 
 from nlp_baseline import TfidfBaseline
 
-# Corpus minimo PT-BR sintetico --- 4 documentos sobre reunioes/vendas.
+# Minimal synthetic PT-BR corpus --- 4 documents about meetings/sales.
 SAMPLE_CORPUS: list[str] = [
     "Cliente aprovou a proposta de renovacao do contrato anual.",
     "Vamos enviar a proposta comercial nova com desconto.",
@@ -37,7 +37,7 @@ def test_fit_raises_on_empty_corpus() -> None:
 def test_fit_raises_on_all_stopwords_corpus() -> None:
     baseline = TfidfBaseline()
     with pytest.raises(ValueError):
-        # Tudo stopword/pontuacao --- nao gera vocabulario.
+        # All stopwords/punctuation --- generates no vocabulary.
         baseline.fit(["o a de e", "para com o", "a e o"])
 
 
@@ -93,13 +93,13 @@ def test_top_terms_requires_fit() -> None:
 
 
 def test_top_terms_captures_domain_signal() -> None:
-    """Termo recorrente do corpus deveria aparecer no top."""
+    """A recurring corpus term should show up in the top."""
     baseline = TfidfBaseline()
     baseline.fit(SAMPLE_CORPUS)
     top = baseline.top_terms(top_n=20)
     terms = {t for t, _ in top}
-    # "proposta" aparece em 2/4 docs; "contrato" em 2/4; "renovacao" em 2/4.
-    # Pelo menos um desses tres deve subir no ranking.
+    # "proposta" appears in 2/4 docs; "contrato" in 2/4; "renovacao" in 2/4.
+    # At least one of these three must climb the ranking.
     assert terms & {"proposta", "contrato", "renovacao"}
 
 
@@ -117,7 +117,7 @@ def test_top_terms_per_doc_returns_terms_for_doc() -> None:
 def test_top_terms_per_doc_reflects_document_content() -> None:
     baseline = TfidfBaseline()
     baseline.fit(SAMPLE_CORPUS)
-    # Documento sobre concorrente --- "concorrente" ou "solucao" devem aparecer.
+    # Document about a competitor --- "concorrente" or "solucao" must show up.
     competitor_doc = SAMPLE_CORPUS[3]
     top = baseline.top_terms_per_doc(competitor_doc, top_n=10)
     terms = {t for t, _ in top}
@@ -137,7 +137,7 @@ def test_top_terms_per_doc_zero_returns_empty() -> None:
 
 
 def test_top_terms_per_doc_handles_unknown_words() -> None:
-    """Texto so com palavras fora do vocabulario retorna lista vazia."""
+    """Text with only out-of-vocabulary words returns an empty list."""
     baseline = TfidfBaseline()
     baseline.fit(SAMPLE_CORPUS)
     top = baseline.top_terms_per_doc("xyzfoobarbaz nadaqui", top_n=5)
@@ -145,7 +145,7 @@ def test_top_terms_per_doc_handles_unknown_words() -> None:
 
 
 def test_multiple_instances_have_independent_state() -> None:
-    """Sem state global --- instancias diferentes nao se interferem."""
+    """No global state --- different instances do not interfere with each other."""
     corpus_a = ["proposta comercial nova", "fechar negocio rapido"]
     corpus_b = ["risco churn cliente", "concorrente preco abaixo"]
 
@@ -157,12 +157,12 @@ def test_multiple_instances_have_independent_state() -> None:
 
     assert "proposta" in terms_a or "comercial" in terms_a or "negocio" in terms_a
     assert "risco" in terms_b or "concorrente" in terms_b or "churn" in terms_b
-    # Vocabularios disjuntos (verificacao indireta de isolamento)
+    # Disjoint vocabularies (indirect check of isolation)
     assert bl_a.feature_names != bl_b.feature_names
 
 
 def test_ngram_range_unigrams_only() -> None:
-    """Confere que ngram_range=(1,1) gera somente unigramas."""
+    """Checks that ngram_range=(1,1) generates only unigrams."""
     baseline = TfidfBaseline(ngram_range=(1, 1))
     baseline.fit(SAMPLE_CORPUS)
     for term in baseline.feature_names:
@@ -170,7 +170,7 @@ def test_ngram_range_unigrams_only() -> None:
 
 
 def test_ngram_range_bigrams_included() -> None:
-    """ngram_range=(1,2) deve gerar pelo menos um bigrama no corpus de teste."""
+    """ngram_range=(1,2) must generate at least one bigram in the test corpus."""
     baseline = TfidfBaseline(ngram_range=(1, 2))
     baseline.fit(SAMPLE_CORPUS)
     bigrams = [t for t in baseline.feature_names if " " in t]
@@ -203,7 +203,7 @@ def test_invalid_max_df_raises() -> None:
 
 
 def test_single_document_corpus_does_not_crash() -> None:
-    """Caso degenerado: 1 documento. Nao deve quebrar por causa de max_df."""
+    """Degenerate case: 1 document. Must not break because of max_df."""
     baseline = TfidfBaseline()
     baseline.fit(["proposta comercial nova com preco competitivo"])
     top = baseline.top_terms(top_n=5)

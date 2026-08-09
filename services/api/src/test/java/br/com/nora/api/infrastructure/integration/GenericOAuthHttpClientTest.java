@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** Parse das respostas do token endpoint genérico (GitHub/Notion/Todoist/Linear). */
+/** Parsing of the generic token endpoint responses (GitHub/Notion/Todoist/Linear). */
 class GenericOAuthHttpClientTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -55,7 +55,7 @@ class GenericOAuthHttpClientTest {
         assertThat(parsed.expiresInSeconds()).isEqualTo(315360000L);
     }
 
-    /** GitHub responde HTTP 200 com {"error": ...} em code inválido — vira ProviderError. */
+    /** GitHub answers HTTP 200 with {"error": ...} on an invalid code — becomes ProviderError. */
     @Test
     void erroComHttp200_viraProviderErrorComCodigo() throws Exception {
         assertThatThrownBy(
@@ -67,7 +67,7 @@ class GenericOAuthHttpClientTest {
                 .hasMessageContaining("bad_verification_code");
     }
 
-    /** Microsoft: refresh_token persiste e a conta vem do claim `email` do id_token. */
+    /** Microsoft: refresh_token persists and the account comes from the id_token `email` claim. */
     @Test
     void microsoft_refreshTokenEContaDoIdToken() throws Exception {
         String idToken = jwt("{\"email\":\"conta@outlook.com\",\"aud\":\"x\"}");
@@ -86,7 +86,7 @@ class GenericOAuthHttpClientTest {
         assertThat(parsed.externalAccount()).isEqualTo("conta@outlook.com");
     }
 
-    /** Conta corporativa sem claim `email` — cai no preferred_username. */
+    /** Corporate account with no `email` claim — falls back to preferred_username. */
     @Test
     void microsoft_semEmailCaiNoPreferredUsername() throws Exception {
         String idToken = jwt("{\"preferred_username\":\"ana@empresa.com\"}");
@@ -98,7 +98,7 @@ class GenericOAuthHttpClientTest {
         assertThat(parsed.externalAccount()).isEqualTo("ana@empresa.com");
     }
 
-    /** id_token malformado não derruba a conexão — só fica sem conta exibida. */
+    /** A malformed id_token does not take down the connection — it just shows no account. */
     @Test
     void microsoft_idTokenMalformado_naoQuebra() throws Exception {
         TokenResponse parsed =
@@ -109,7 +109,7 @@ class GenericOAuthHttpClientTest {
         assertThat(parsed.externalAccount()).isNull();
     }
 
-    /** Onda 1 continua sem refresh: campo ausente vira null (nada de string vazia). */
+    /** Wave 1 still has no refresh: missing field becomes null (no empty string). */
     @Test
     void onda1_semRefreshToken_continuaNull() throws Exception {
         TokenResponse parsed =
@@ -130,7 +130,7 @@ class GenericOAuthHttpClientTest {
                 .hasMessageContaining("sem access_token");
     }
 
-    /** JWT de teste: header e assinatura fake, payload real em base64url. */
+    /** Test JWT: fake header and signature, real payload in base64url. */
     private static String jwt(String payloadJson) {
         java.util.Base64.Encoder b64 = java.util.Base64.getUrlEncoder().withoutPadding();
         return b64.encodeToString(

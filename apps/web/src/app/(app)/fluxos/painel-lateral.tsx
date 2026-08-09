@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * NORA Flows — painel direito do editor (~300px).
+ * NORA Flows — right panel of the editor (~300px).
  *
- * Com nó selecionado: formulário de parâmetros do bloco + remover nó.
- * Sem seleção: tabs "Fluxo" (resumo + dicas) e "Execuções" (histórico real,
- * com log linha a linha — só em fluxo salvo).
+ * With a node selected: block parameters form + remove node.
+ * Without selection: tabs "Fluxo" (summary + tips) and "Execuções" (real history,
+ * with line-by-line log — only on a saved flow).
  */
 import Link from "next/link";
 import type { Route } from "next";
@@ -40,7 +40,7 @@ function valorTexto(params: Record<string, unknown>, chave: string): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-/** Nota dos blocos com OAuth: requer o provedor conectado no hub de integrações. */
+/** Note for OAuth blocks: requires the provider connected in the integrations hub. */
 function NotaRequerIntegracao({ provedor }: { provedor: string }) {
   return (
     <div className="notice" style={{ fontSize: 12, lineHeight: 1.5 }}>
@@ -56,7 +56,7 @@ function NotaRequerIntegracao({ provedor }: { provedor: string }) {
   );
 }
 
-/** Formulário do send_email/gmail_send_email/outlook_send_email: destinatário + assunto + corpo + placeholders. */
+/** send_email/gmail_send_email/outlook_send_email form: recipient + subject + body + placeholders. */
 function FormEmail({
   no,
   mostrarErros,
@@ -68,7 +68,7 @@ function FormEmail({
 }) {
   const subjectRef = useRef<HTMLInputElement | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
-  // Último campo de texto focado — destino dos placeholders clicados.
+  // Last focused text field — destination of the clicked placeholders.
   const ultimoFoco = useRef<"subject" | "body">("body");
 
   const to = valorTexto(no.data.params, "to");
@@ -82,7 +82,7 @@ function FormEmail({
       const ini = el.selectionStart ?? atual.length;
       const fim = el.selectionEnd ?? atual.length;
       onChange(campo, atual.slice(0, ini) + token + atual.slice(fim));
-      // devolve o foco e posiciona o cursor depois do token inserido
+      // gives focus back and puts the cursor after the inserted token
       requestAnimationFrame(() => {
         el.focus();
         const pos = ini + token.length;
@@ -187,10 +187,10 @@ function FormEmail({
 }
 
 /**
- * Formulário do calendar_create_event e do mscalendar_create_event: título +
- * agendamento relativo. Todos os params são opcionais — o backend aplica os
- * defaults na execução (amanhã às 10h, 30 minutos), então campos vazios não
- * bloqueiam o salvar. O provedor muda só a nota de integração (Google/Microsoft).
+ * calendar_create_event and mscalendar_create_event form: title +
+ * relative scheduling. All params are optional — the backend applies the
+ * defaults at execution time (tomorrow at 10h, 30 minutes), so empty fields do
+ * not block saving. The provider only changes the integration note (Google/Microsoft).
  */
 function FormEvento({
   no,
@@ -289,7 +289,7 @@ function FormEvento({
   );
 }
 
-/** Formulário do call_webhook: só a URL de destino (HTTPS, endereços internos bloqueados). */
+/** call_webhook form: just the target URL (HTTPS, internal addresses blocked). */
 function FormWebhook({
   no,
   mostrarErros,
@@ -328,7 +328,7 @@ function FormWebhook({
   );
 }
 
-/** Formulário do discord_post_message: URL do webhook do canal. */
+/** discord_post_message form: channel webhook URL. */
 function FormDiscord({
   no,
   mostrarErros,
@@ -369,7 +369,7 @@ function FormDiscord({
   );
 }
 
-/** Formulário do github_create_issue: repositório de destino (owner/nome). */
+/** github_create_issue form: target repository (owner/nome). */
 function FormGitHub({
   no,
   mostrarErros,
@@ -410,7 +410,7 @@ function FormGitHub({
   );
 }
 
-/** Formulário do notion_create_page: ID da página pai. */
+/** notion_create_page form: parent page ID. */
 function FormNotion({
   no,
   mostrarErros,
@@ -454,7 +454,7 @@ function FormNotion({
   );
 }
 
-/** Formulário do todoist_create_task: sem parâmetros — só a nota de conexão. */
+/** todoist_create_task form: no parameters — just the connection note. */
 function FormTodoist() {
   return (
     <>
@@ -466,7 +466,7 @@ function FormTodoist() {
   );
 }
 
-/** Formulário do linear_create_issue: chave do time (opcional). */
+/** linear_create_issue form: team key (optional). */
 function FormLinear({
   no,
   onChange,
@@ -497,7 +497,7 @@ function FormLinear({
   );
 }
 
-/** Formulário do slack_post_message: canal de destino (ex.: #vendas). */
+/** slack_post_message form: target channel (e.g. #vendas). */
 function FormSlack({
   no,
   mostrarErros,
@@ -539,7 +539,7 @@ function FormSlack({
   );
 }
 
-/** Formulário do telegram_send_message: sem parâmetros — só a nota de conexão. */
+/** telegram_send_message form: no parameters — just the connection note. */
 function FormTelegram() {
   return (
     <>
@@ -552,7 +552,7 @@ function FormTelegram() {
   );
 }
 
-/** Formulário do trello_create_card: ID da lista de destino. */
+/** trello_create_card form: target list ID. */
 function FormTrello({
   no,
   mostrarErros,
@@ -596,7 +596,7 @@ function FormTrello({
   );
 }
 
-/** Formulário de parâmetros por tipo de bloco. */
+/** Parameters form per block type. */
 function FormParams({
   no,
   mostrarErros,
@@ -761,7 +761,7 @@ function FormParams({
   );
 }
 
-/** Tab "Fluxo": resumo do grafo + dicas de uso do builder. */
+/** Tab "Fluxo": graph summary + builder usage tips. */
 function TabFluxo({ nos }: { nos: NoRF[] }) {
   const gatilho = nos.find((n) => n.data.kind === "trigger");
   const nomeGatilho = gatilho ? metaDoBloco(gatilho.data.blockType)?.nome ?? "—" : null;
@@ -828,7 +828,7 @@ function TabFluxo({ nos }: { nos: NoRF[] }) {
   );
 }
 
-/** Tab "Execuções": histórico real com log expandível. */
+/** Tab "Execuções": real history with expandable log. */
 function TabExecucoes({
   execucoes,
   carregando,
@@ -967,7 +967,7 @@ export function PainelLateral({
   expandida: string | null;
   onExpandir: (id: string | null) => void;
 }) {
-  // Nó selecionado → parâmetros do bloco.
+  // Selected node → block parameters.
   if (no) {
     const meta = metaDoBloco(no.data.blockType);
     const kindMeta = KIND_META[no.data.kind];
@@ -1031,7 +1031,7 @@ export function PainelLateral({
     );
   }
 
-  // Sem seleção → tabs Fluxo / Execuções.
+  // No selection → Fluxo / Execuções tabs.
   return (
     <aside className="flows-panel" aria-label="Painel do fluxo">
       <div className="flows-tabs" role="tablist">

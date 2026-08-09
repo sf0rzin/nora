@@ -5,22 +5,22 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Refresh token stateful com rotation + reuse detection (audit follow-up #3).
+ * Stateful refresh token with rotation + reuse detection (audit follow-up #3).
  *
- * <p>Token cru existe apenas no cookie httpOnly do navegador e em memoria efemera durante o login.
- * Persistencia armazena somente o SHA-256 hex ({@code tokenHash}). Vazamento do banco nao permite
- * reuso direto dos tokens.
+ * <p>The raw token exists only in the browser's httpOnly cookie and in ephemeral memory during
+ * login. Persistence stores only the SHA-256 hex ({@code tokenHash}). A database leak does not
+ * allow direct reuse of the tokens.
  *
- * <p>Estado:
+ * <p>State:
  *
  * <ul>
- *   <li>{@code revokedAt} != null -> revogado e nunca mais valido.
- *   <li>{@code expiresAt} no passado -> expirado pelo TTL longo (30 dias por padrao).
- *   <li>{@code lastUsedAt} marca o ultimo refresh.
- *   <li>{@code familyId} agrupa tokens da mesma cadeia de rotacao. Em /auth/refresh, geramos um
- *       filho com mesma family e revogamos o pai. Se um token revogado e reapresentado, revogamos a
- *       family inteira (reuse detection).
- *   <li>{@code replacedById} aponta para o sucessor quando o token e rotacionado (audit).
+ *   <li>{@code revokedAt} != null -> revoked and never valid again.
+ *   <li>{@code expiresAt} in the past -> expired by the long TTL (30 days by default).
+ *   <li>{@code lastUsedAt} marks the last refresh.
+ *   <li>{@code familyId} groups tokens of the same rotation chain. On /auth/refresh, we generate a
+ *       child with the same family and revoke the parent. If a revoked token is presented again, we
+ *       revoke the whole family (reuse detection).
+ *   <li>{@code replacedById} points to the successor when the token is rotated (audit).
  * </ul>
  */
 public final class RefreshToken {
@@ -59,7 +59,7 @@ public final class RefreshToken {
         this.replacedById = replacedById;
     }
 
-    /** Cria um refresh raiz: {@code familyId} = {@code id} (cada login comeca uma cadeia nova). */
+    /** Creates a root refresh: {@code familyId} = {@code id} (each login starts a new chain). */
     public static RefreshToken issueRoot(
             UUID id,
             UUID userId,
@@ -72,8 +72,8 @@ public final class RefreshToken {
     }
 
     /**
-     * Cria um filho na mesma cadeia: {@code familyId} herdado, {@code replacedById} parent->child
-     * deve ser setado externamente apos a criacao.
+     * Creates a child in the same chain: {@code familyId} inherited, the {@code replacedById}
+     * parent->child must be set externally after creation.
      */
     public static RefreshToken issueChild(
             UUID id,
@@ -99,7 +99,7 @@ public final class RefreshToken {
         return !isRevoked() && !isExpired(now);
     }
 
-    /** Idempotente: revogar duas vezes mantem o primeiro timestamp. */
+    /** Idempotent: revoking twice keeps the first timestamp. */
     public void revoke(Instant now) {
         if (this.revokedAt == null) {
             this.revokedAt = Objects.requireNonNull(now);

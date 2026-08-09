@@ -6,9 +6,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 
 /**
- * O application-test.yml afirmava que "a defesa anti brute-force fica testada via unit test do
- * AuthRateLimiter proprio" -- e nao existia teste nenhum. Estes cobrem o contrato que importa: de
- * onde vem a identidade do cliente, e o que sobra de protecao quando essa identidade e trocada.
+ * application-test.yml claimed that "the anti brute-force defence is tested via the
+ * AuthRateLimiter's own unit test" -- and there was no test at all. These cover the contract that
+ * matters: where the client identity comes from, and what is left of the protection when that
+ * identity is swapped.
  */
 class AuthRateLimiterTest {
 
@@ -20,7 +21,7 @@ class AuthRateLimiterTest {
 
     private static MockHttpServletRequest request(String edgeIp, String forwardedFor) {
         MockHttpServletRequest req = new MockHttpServletRequest();
-        req.setRemoteAddr("10.0.0.7"); // cloudflared na bridge privada: igual pra todo mundo
+        req.setRemoteAddr("10.0.0.7"); // cloudflared on the private bridge: same for everyone
         if (edgeIp != null) {
             req.addHeader(EDGE_HEADER, edgeIp);
         }
@@ -32,9 +33,9 @@ class AuthRateLimiterTest {
 
     @Test
     void forgingXForwardedForDoesNotBuyAFreshBucket() {
-        // Antes: clientKey lia o PRIMEIRO hop do XFF, que e exatamente o que o cliente escreve.
-        // Trocando o valor a cada request, cada tentativa caia num bucket novo e o teto de 2/min
-        // nunca disparava. Agora o XFF e ignorado, entao as tres tentativas dividem o bucket.
+        // Before: clientKey read the FIRST XFF hop, which is exactly what the client writes.
+        // Changing the value on every request, each attempt landed in a new bucket and the 2/min
+        // cap never fired. Now the XFF is ignored, so the three attempts share the bucket.
         AuthRateLimiter rl = limiter(2, 100);
 
         assertThat(rl.allowLogin(request("203.0.113.9", "1.2.3.1"))).isTrue();
@@ -44,8 +45,8 @@ class AuthRateLimiterTest {
 
     @Test
     void distinctEdgeIpsGetDistinctBuckets() {
-        // Contraprova: o limitador precisa continuar separando clientes de verdade, senao viraria
-        // um bucket global e derrubaria usuario legitimo.
+        // Counter-proof: the limiter must keep separating real clients, otherwise it would become
+        // a global bucket and take down legitimate users.
         AuthRateLimiter rl = limiter(1, 100);
 
         assertThat(rl.allowLogin(request("203.0.113.9", null))).isTrue();
@@ -63,8 +64,8 @@ class AuthRateLimiterTest {
 
     @Test
     void emptyHeaderNameForcesRemoteAddrAndIgnoresAForgedHeader() {
-        // Configuracao usada em teste/dev, onde nao ha borda Cloudflare: mesmo mandando o header,
-        // o cliente nao consegue escolher o proprio bucket.
+        // Configuration used in test/dev, where there is no Cloudflare edge: even sending the
+        // header, the client cannot choose its own bucket.
         AuthRateLimiter rl = new AuthRateLimiter(1, 100, 100, 100, "");
 
         assertThat(rl.allowLogin(request("203.0.113.9", null))).isTrue();
@@ -85,17 +86,17 @@ class AuthRateLimiterTest {
 
     @Test
     void oneAttackerCannotLockTheVictimOutOfTheirOwnAccount() {
-        // A primeira versao chaveava o balde SO no e-mail. Como o refill do Bucket4j e gradual,
-        // um atacante consumindo cada token assim que nascia trancava a conta da vitima para
-        // sempre -- brute force trocado por negacao de servico. Com a origem na chave, o atacante
-        // esgota apenas o proprio par (e-mail, origem).
+        // The first version keyed the bucket ONLY on the e-mail. Since the Bucket4j refill is
+        // gradual, an attacker consuming each token as soon as it was born locked the victim's
+        // account forever -- brute force swapped for denial of service. With the origin in the
+        // key, the attacker only exhausts its own (e-mail, origin) pair.
         AuthRateLimiter rl = limiter(100, 1);
         String victim = "alvo@cliente.com";
 
         assertThat(rl.allowLoginForEmail(request("203.0.113.9", null), victim)).isTrue();
         assertThat(rl.allowLoginForEmail(request("203.0.113.9", null), victim)).isFalse();
 
-        // A vitima, de outro endereco, entra normalmente.
+        // The victim, from another address, gets in normally.
         assertThat(rl.allowLoginForEmail(request("198.51.100.4", null), victim)).isTrue();
     }
 
@@ -115,12 +116,12 @@ class AuthRateLimiterTest {
         assertThat(rl.allowLoginForEmail(request("203.0.113.9", null), "  ")).isTrue();
     }
 
-    // --------------------------------------------------------- normalizacao de rede
+    // --------------------------------------------------------- network normalization
 
     @Test
     void addressesInTheSameIpv6SlashSixtyFourShareABucket() {
-        // Toda ligacao domestica ou VPS recebe um /64 delegado: sem normalizar, trocar de
-        // endereco dentro do proprio prefixo dava balde novo por request -- a mesma falha do XFF.
+        // Every home connection or VPS gets a delegated /64: without normalizing, changing the
+        // address inside your own prefix gave a new bucket per request -- same failure as the XFF.
         AuthRateLimiter rl = limiter(2, 100);
 
         assertThat(rl.allowLogin(request("2001:db8:a:b::1", null))).isTrue();
@@ -147,9 +148,10 @@ class AuthRateLimiterTest {
 
     @Test
     void aHostnameIsNeverResolvedAndAllSuchValuesShareOneBucket() {
-        // InetAddress.getByName resolveria DNS: um header com nome de host viraria um lookup por
-        // request, controlado pelo cliente, no caminho de login. Valor nao-literal cai num balde
-        // unico de lixo -- aceitar texto arbitrario como chave e deixar o cliente escolher balde.
+        // InetAddress.getByName would resolve DNS: a header with a host name would become one
+        // lookup per request, controlled by the client, on the login path. A non-literal value
+        // falls into a single junk bucket -- accepting arbitrary text as the key is letting the
+        // client choose its bucket.
         AuthRateLimiter rl = limiter(1, 100);
         assertThat(rl.allowLogin(request("evil.example.com", null))).isTrue();
         assertThat(rl.allowLogin(request("outro.example.com", null))).isFalse();

@@ -6,8 +6,8 @@ import java.time.OffsetDateTime;
 import org.springframework.stereotype.Service;
 
 /**
- * Telemetria de negócio (frente (c), CORTÁVEL, ADR 0024). Agrega cross-tenant do banco primário
- * (operador-only). Desligável via {@code nora.platform.business.enabled=false}.
+ * Business telemetry (track (c), CUTTABLE, ADR 0024). Aggregates cross-tenant from the primary
+ * database (operator-only). Can be switched off via {@code nora.platform.business.enabled=false}.
  */
 @Service
 public class BusinessTelemetryService {

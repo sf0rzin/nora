@@ -15,9 +15,9 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * Adapter HTTP do OAuth Google (token endpoint + userinfo). Sem SDK: dois POSTs e um GET — menos
- * dependência, mais visibilidade. Erros viram {@code IntegrationException.ProviderError} com o
- * código de erro do Google (sem vazar tokens em log).
+ * Google OAuth HTTP adapter (token endpoint + userinfo). No SDK: two POSTs and one GET — fewer
+ * dependencies, more visibility. Errors become {@code IntegrationException.ProviderError} with
+ * Google's error code (without leaking tokens in the log).
  */
 @Component
 public class GoogleOAuthHttpClient implements GoogleOAuthClient {
@@ -105,7 +105,7 @@ public class GoogleOAuthHttpClient implements GoogleOAuthClient {
         }
     }
 
-    /** Extrai o código de erro do Google sem ecoar o body inteiro (pode conter dados sensíveis). */
+    /** Extracts Google's error code without echoing the whole body (may contain sensitive data). */
     private String reason(Exception ex) {
         if (ex instanceof WebClientResponseException http) {
             String body = http.getResponseBodyAsString();
@@ -120,7 +120,7 @@ public class GoogleOAuthHttpClient implements GoogleOAuthClient {
                             + (desc.isBlank() ? "" : " (" + desc + ")");
                 }
             } catch (Exception ignored) {
-                // resposta não-JSON — cai no status puro abaixo
+                // non-JSON response — falls through to the pure status below
             }
             return String.valueOf(http.getStatusCode().value());
         }

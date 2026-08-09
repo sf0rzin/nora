@@ -34,18 +34,18 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Endpoints de convite por e-mail (US06, ADR 0011).
+ * E-mail invitation endpoints (US06, ADR 0011).
  *
  * <ul>
- *   <li>{@code POST /iam/users/invite} — cria invite, exige IAM {@code iam:user:invite}.
- *   <li>{@code POST /iam/invites/{token}/accept} — publico; cria user e devolve JWT.
- *   <li>{@code GET /iam/invites} — lista invites do tenant; exige {@code iam:invite:read}.
- *   <li>{@code DELETE /iam/invites/{id}} — revoga PENDING; exige {@code iam:invite:revoke}.
+ *   <li>{@code POST /iam/users/invite} — creates an invite, requires IAM {@code iam:user:invite}.
+ *   <li>{@code POST /iam/invites/{token}/accept} — public; creates the user and returns a JWT.
+ *   <li>{@code GET /iam/invites} — lists the tenant's invites; requires {@code iam:invite:read}.
+ *   <li>{@code DELETE /iam/invites/{id}} — revokes PENDING; requires {@code iam:invite:revoke}.
  * </ul>
  *
- * <p>O endpoint de aceite e publico porque o {@code token} e a credencial; quem possui o token
- * comprova ter acesso ao e-mail destinatario. O {@code SecurityConfig} libera o path em {@code
- * PUBLIC_ENDPOINTS}.
+ * <p>The accept endpoint is public because the {@code token} is the credential; whoever holds the
+ * token proves they have access to the recipient e-mail. {@code SecurityConfig} opens the path in
+ * {@code PUBLIC_ENDPOINTS}.
  */
 @RestController
 @RequestMapping("/iam")
@@ -88,8 +88,9 @@ public class InvitationController {
             @Valid @RequestBody AcceptInviteRequest body,
             HttpServletRequest httpReq) {
         AcceptResult result = service.acceptInvite(token, body.displayName(), body.password());
-        // Mesma regra do login: cliente web (header X-NORA-Client: web) recebe a sessão só por
-        // cookie httpOnly; tokens ficam fora do body. Cliente nativo (sem header) recebe no body.
+        // Same rule as the login: web client (X-NORA-Client: web header) gets the session only by
+        // httpOnly cookie; tokens stay out of the body. Native client (no header) gets them in the
+        // body.
         boolean nativeClient = !"web".equalsIgnoreCase(httpReq.getHeader("X-NORA-Client"));
         LoginResponse resp =
                 new LoginResponse(

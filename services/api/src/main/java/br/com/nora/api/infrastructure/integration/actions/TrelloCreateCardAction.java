@@ -10,13 +10,14 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Criar cards no Trello" do NORA Flows — cards REAIS na lista informada, com o token colado
- * pelo usuário na conexão. Params: {@code listId} (obrigatório, id da lista do board). Um card por
- * action item da reunião (name = título; desc = reunião + responsável + link; due = prazo do item
- * quando a análise extraiu).
+ * NORA Flows "Criar cards no Trello" action — REAL cards in the given list, with the token the user
+ * pasted on connect. Params: {@code listId} (required, id of the board's list). One card per
+ * meeting action item (name = title; desc = meeting + assignee + link; due = the item's due date
+ * when the analysis extracted one).
  *
- * <p>Reunião sem action items NÃO é falha: a ação registra honestamente que nada foi criado. Falha
- * de provedor PROPAGA (contrato do {@link ActionExecutor}) — o engine grava FAILED no log.
+ * <p>A meeting with no action items is NOT a failure: the action honestly records that nothing was
+ * created. A provider failure PROPAGATES ({@link ActionExecutor} contract) — the engine writes
+ * FAILED in the log.
  */
 @Component
 public class TrelloCreateCardAction implements ActionExecutor {
@@ -48,7 +49,7 @@ public class TrelloCreateCardAction implements ActionExecutor {
         return count + (count == 1 ? " card criado" : " cards criados") + " no Trello";
     }
 
-    /** Desc do card: reunião + responsável + link no NORA. */
+    /** Card desc: meeting + assignee + link in NORA. */
     static String description(WorkflowEventContext.ActionItemView item, WorkflowEventContext ctx) {
         StringBuilder desc =
                 new StringBuilder("Reunião: ")

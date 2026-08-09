@@ -1,40 +1,40 @@
 /**
- * NORA Core — Avatar gerado (gradiente orgânico desfocado, determinístico).
+ * NORA Core — Generated avatar (organic blurred gradient, deterministic).
  *
- * Estilo "macro fotografia fora de foco": 3 radial-gradients sobrepostos numa
- * cor base + blur pesado, tudo clipado no círculo. Sem asset externo e sem
- * aleatoriedade em runtime: um hash FNV-1a do seed (e-mail/id do usuário)
- * escolhe uma paleta curada e uma variação de posição dos gradientes — o
- * mesmo usuário sempre vê o mesmo avatar, em qualquer superfície do app.
+ * "Out-of-focus macro photography" style: 3 radial-gradients layered over a
+ * base color + heavy blur, all clipped to the circle. No external asset and no
+ * randomness at runtime: an FNV-1a hash of the seed (user e-mail/id) picks a
+ * curated palette and a variation of the gradient positions — the same user
+ * always sees the same avatar, on any surface of the app.
  *
- * Server-safe (sem hooks/efeitos): pode ser usado em Server e Client
+ * Server-safe (no hooks/effects): can be used in Server and Client
  * Components.
  */
 
 import type { CSSProperties } from "react";
 
-/** Paleta: [base, mancha 1, mancha 2, mancha 3] — espírito das referências
- *  do PO (coral/rosa, azuis, verdes, lavanda, âmbar, teal, rosé, céu). */
+/** Palette: [base, blob 1, blob 2, blob 3] — spirit of the PO's references
+ *  (coral/pink, blues, greens, lavender, amber, teal, rosé, sky). */
 const PALETAS: ReadonlyArray<readonly [string, string, string, string]> = [
-  // coral/rosa com respiros de azul e amarelo (ex1)
+  // coral/pink with breathers of blue and yellow (ex1)
   ["#ef9fb4", "#f8c39c", "#85b8dc", "#f6df9d"],
-  // azuis profundos com luz fria (ex2)
+  // deep blues with cold light (ex2)
   ["#4a8fd8", "#7fc3ee", "#2b6ac0", "#aedcf2"],
-  // verde fresco encostando no azul (ex3)
+  // fresh green touching on blue (ex3)
   ["#8cc678", "#c3e09b", "#67a8d8", "#5f9e54"],
   // lavanda
   ["#b3a3dd", "#d9c9f0", "#88a6e8", "#ead9ea"],
-  // âmbar
+  // amber
   ["#e6b569", "#f3d59c", "#d88c4c", "#f8e8c2"],
   // teal
   ["#56b5ad", "#8cdad2", "#3a8a9c", "#c2e9e1"],
   // rosé
   ["#e6a59c", "#f3c9c1", "#c47b92", "#f8e1d8"],
-  // céu
+  // sky
   ["#86b6e6", "#bcdaf3", "#6890c8", "#dceaf8"],
 ];
 
-/** Variações de composição: centros das 3 manchas sobre a base. */
+/** Composition variations: centers of the 3 blobs over the base. */
 const COMPOSICOES: ReadonlyArray<readonly [string, string, string]> = [
   ["22% 24%", "80% 64%", "58% 96%"],
   ["74% 22%", "20% 70%", "92% 88%"],
@@ -42,7 +42,7 @@ const COMPOSICOES: ReadonlyArray<readonly [string, string, string]> = [
   ["62% 14%", "16% 44%", "82% 92%"],
 ];
 
-/** Hash FNV-1a 32-bit — estável entre server e client. */
+/** FNV-1a 32-bit hash — stable between server and client. */
 function hashSeed(seed: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < seed.length; i++) {
@@ -58,9 +58,9 @@ export function Avatar({
   className,
   style,
 }: {
-  /** Identidade estável do usuário (e-mail/id). Vazio → paleta neutra azul. */
+  /** Stable user identity (e-mail/id). Empty → neutral blue palette. */
   seed?: string | null;
-  /** Diâmetro em px. */
+  /** Diameter in px. */
   size?: number;
   className?: string;
   style?: CSSProperties;
@@ -70,8 +70,8 @@ export function Avatar({
   const [base, m1, m2, m3] = paleta;
   const [p1, p2, p3] = COMPOSICOES[(h >>> 3) % COMPOSICOES.length];
 
-  // Blur proporcional ao diâmetro; camada interna maior que o círculo pra
-  // borda do desfoque nunca aparecer dentro do clip.
+  // Blur proportional to the diameter; inner layer larger than the circle so
+  // the blur edge never shows up inside the clip.
   const blur = Math.max(5, Math.round(size * 0.2));
 
   return (
@@ -102,7 +102,7 @@ export function Avatar({
           filter: `blur(${blur}px) saturate(1.12)`,
         }}
       />
-      {/* brilho sutil por cima do desfoque (acabamento do .user-orb antigo) */}
+      {/* subtle sheen on top of the blur (finish from the old .user-orb) */}
       <div
         style={{
           position: "absolute",

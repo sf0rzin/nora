@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/** Cobre transicoes de estado do agregado {@link IamInvitation} (US06). */
+/** Covers state transitions of the {@link IamInvitation} aggregate (US06). */
 class IamInvitationTest {
 
     private static final Instant T0 = Instant.parse("2026-05-11T10:00:00Z");
@@ -41,7 +41,7 @@ class IamInvitationTest {
         assertThat(accepted.acceptedAt()).isEqualTo(T_LATER);
         assertThat(accepted.acceptedUserId()).isEqualTo(userId);
         assertThat(accepted.groupIds()).isEqualTo(inv.groupIds());
-        // Original imutavel.
+        // Original is immutable.
         assertThat(inv.status()).isEqualTo(InvitationStatus.PENDING);
     }
 

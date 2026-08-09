@@ -10,16 +10,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Operações de privacidade/LGPD (ADR 0029): direito ao esquecimento (hard-erase) e retenção (purga
- * por idade).
+ * Privacy/LGPD operations (ADR 0029): right to be forgotten (hard-erase) and retention (purge by
+ * age).
  *
- * <p>Diferente do soft-delete default (ADR 0021), aqui o delete é FÍSICO: o FK {@code ON DELETE
- * CASCADE} (V004) remove o transcript ({@code raw_text} = PII em repouso), participants, tags e
- * análises do meeting. É a "exceção consciente" que o ADR 0021 já previa pra LGPD.
+ * <p>Unlike the default soft-delete (ADR 0021), here the delete is PHYSICAL: the FK {@code ON
+ * DELETE CASCADE} (V004) removes the meeting's transcript ({@code raw_text} = PII at rest),
+ * participants, tags and analyses. It is the "conscious exception" that ADR 0021 already foresaw
+ * for LGPD.
  *
- * <p>{@code @Transactional} garante que, sob RLS enforce (ADR 0028), o {@code TenantRlsAspect}
- * aplique o GUC {@code nora.current_tenant_id} na transação do delete — necessário porque {@code
- * meetings} é tabela enforced.
+ * <p>{@code @Transactional} guarantees that, under RLS enforce (ADR 0028), the {@code
+ * TenantRlsAspect} applies the GUC {@code nora.current_tenant_id} on the delete's transaction —
+ * necessary because {@code meetings} is an enforced table.
  */
 @Service
 public class PrivacyService {
@@ -33,9 +34,9 @@ public class PrivacyService {
     }
 
     /**
-     * Apaga DEFINITIVAMENTE um meeting e todo o PII em cascata (direito ao esquecimento). Lança
-     * {@link MeetingException.NotFound} se o meeting não existir no tenant (evita vazar existência
-     * cross-tenant).
+     * PERMANENTLY deletes a meeting and all cascading PII (right to be forgotten). Throws {@link
+     * MeetingException.NotFound} if the meeting does not exist in the tenant (avoids leaking
+     * cross-tenant existence).
      */
     @Transactional
     public void eraseMeeting(UUID meetingId, UUID tenantId) {
@@ -43,11 +44,11 @@ public class PrivacyService {
         if (rows == 0) {
             throw new MeetingException.NotFound();
         }
-        // PII-safe: só ids, nunca conteúdo.
+        // PII-safe: ids only, never content.
         LOG.info("LGPD erasure: meeting={} purgado (tenant={})", meetingId, tenantId);
     }
 
-    /** Purga meetings do tenant criados antes de {@code cutoff} (retenção). Retorna quantos. */
+    /** Purges the tenant's meetings created before {@code cutoff} (retention). Returns how many. */
     @Transactional
     public int purgeOlderThan(UUID tenantId, OffsetDateTime cutoff) {
         int rows = meetings.purgeOlderThan(tenantId, cutoff);

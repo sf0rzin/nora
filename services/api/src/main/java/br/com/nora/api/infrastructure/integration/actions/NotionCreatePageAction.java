@@ -12,11 +12,11 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Criar página no Notion" do NORA Flows — página REAL filha de {@code parentPageId}
- * (obrigatório; a página pai precisa estar compartilhada com a integração no Notion). Conteúdo:
- * título da reunião + heading "Resumo" + parágrafo do resumo + bulleted list dos action items.
+ * NORA Flows "Criar página no Notion" action — REAL page as a child of {@code parentPageId}
+ * (required; the parent page must be shared with the integration in Notion). Content: meeting title
+ * + "Resumo" heading + summary paragraph + bulleted list of the action items.
  *
- * <p>Falha PROPAGA (contrato do {@link ActionExecutor}) — o engine grava FAILED no log.
+ * <p>A failure PROPAGATES ({@link ActionExecutor} contract) — the engine writes FAILED in the log.
  */
 @Component
 public class NotionCreatePageAction implements ActionExecutor {
@@ -42,7 +42,7 @@ public class NotionCreatePageAction implements ActionExecutor {
         return "Página criada no Notion para a reunião \"" + ctx.meetingTitle() + "\"";
     }
 
-    /** Blocos da página: heading + parágrafo do resumo + bulleted list dos action items. */
+    /** Page blocks: heading + summary paragraph + bulleted list of the action items. */
     static List<Object> blocks(WorkflowEventContext ctx) {
         List<Object> blocks = new ArrayList<>();
         blocks.add(heading("Resumo"));

@@ -62,7 +62,7 @@ class RsaJwtIssuerTest {
         RsaJwtIssuer issuer = new RsaJwtIssuer(privateKeyPem, "nora-test-kid");
         String token = issuer.issue(newUser(), List.of(), Duration.ofMinutes(15));
 
-        // Decode header (parte 0) sem validar signature pra inspecionar kid.
+        // Decode header (part 0) without validating the signature to inspect kid.
         String headerB64 = token.split("\\.")[0];
         String headerJson = new String(Base64.getUrlDecoder().decode(headerB64));
         assertThat(headerJson).contains("\"kid\":\"nora-test-kid\"");

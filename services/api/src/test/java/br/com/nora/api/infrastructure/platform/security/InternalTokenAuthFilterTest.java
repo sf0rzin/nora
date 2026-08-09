@@ -13,8 +13,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
- * Token interno: autentica com a role do escopo quando bate; fail-closed (não autentica) quando
- * ausente, errado, ou quando o token esperado não foi configurado.
+ * Internal token: authenticates with the scope role when it matches; fail-closed (does not
+ * authenticate) when absent, wrong, or when the expected token was not configured.
  */
 class InternalTokenAuthFilterTest {
 

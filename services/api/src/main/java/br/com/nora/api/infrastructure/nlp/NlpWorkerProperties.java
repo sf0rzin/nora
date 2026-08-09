@@ -2,13 +2,13 @@ package br.com.nora.api.infrastructure.nlp;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/** Configuracao do cliente HTTP do NLP worker. Lido em application.yml -> nora.worker.* */
+/** Configuration for the NLP worker HTTP client. Read from application.yml -> nora.worker.* */
 @ConfigurationProperties(prefix = "nora.worker")
 public class NlpWorkerProperties {
 
     private String baseUrl = "http://localhost:8001";
 
-    /** Timeout total da chamada /analyze, em milissegundos. */
+    /** Total timeout for the /analyze call, in milliseconds. */
     private long timeoutMillis = 120_000L;
 
     public String getBaseUrl() {

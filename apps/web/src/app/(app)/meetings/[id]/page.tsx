@@ -38,8 +38,8 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   try {
     meeting = await getMeeting(id);
   } catch (err) {
-    // §3.4 — só some pra "não existe" em 404 real; outros erros (ex: 500)
-    // sobem pro error boundary em vez de mascarar a falha como ausência.
+    // §3.4 — only a real 404 becomes "does not exist"; other errors (ex: 500)
+    // go up to the error boundary instead of masking the failure as absence.
     if (err instanceof ApiRequestError && err.status === 404) {
       notFound();
     }
@@ -49,22 +49,22 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
 
   const a = meeting.analysis;
   const duration = durationLabel(meeting.durationSeconds);
-  // Tags do upload — exibidas todas (sem cortar); edição fica pra outra fatia.
+  // Upload tags — all shown (no truncation); editing is left for another slice.
   const tags = meeting.tags ?? [];
   const statusMeta = STATUS_META[meeting.processingStatus] ?? {
     label: meeting.processingStatus,
     color: "var(--accent-ink)",
   };
 
-  // PII Shield (ADR 0012): se o worker reportou a contagem de redações
-  // aplicadas, mostra o número real; análises antigas (sem metadata) mantêm
-  // o selo genérico de "aplicado".
+  // PII Shield (ADR 0012): if the worker reported the count of redactions
+  // applied, show the real number; old analyses (no metadata) keep the
+  // generic "applied" badge.
   const piiCount =
     typeof a?.metadata?.piiRedactionsApplied === "number" ? a.metadata.piiRedactionsApplied : null;
 
   return (
     <div className="page page--narrow">
-      {/* Enquanto PENDING/PROCESSING, revalida a página a cada 2,5s (máx ~5min). */}
+      {/* While PENDING/PROCESSING, revalidates the page every 2.5s (max ~5min). */}
       <MeetingProcessingPoller status={meeting.processingStatus} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--muted)", marginBottom: 22 }}>

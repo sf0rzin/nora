@@ -1,17 +1,17 @@
 /** @type {import('next').NextConfig} */
 
-// Security headers (defesa em profundidade — auditoria frontend B2).
+// Security headers (defense in depth — B2 frontend audit).
 //
-// O console admin chama a API Spring apenas server-side (BFF em `src/lib/data.ts`
-// via PLATFORM_API_BASE_URL — sem prefixo NEXT_PUBLIC_, logo nunca exposto ao
-// browser). Portanto o browser só conecta na própria origin: connect-src 'self'.
+// The admin console calls the Spring API server-side only (BFF in `src/lib/data.ts`
+// via PLATFORM_API_BASE_URL — no NEXT_PUBLIC_ prefix, so never exposed to the
+// browser). The browser therefore only connects to its own origin: connect-src 'self'.
 //
-// CSP entregue em **Report-Only** de propósito: o console usa Tailwind + estilos
-// inline + hidratação do Next (que injeta <style>/<script> inline), então uma
-// policy enforcing precisa ser observada antes de bloquear. Report-Only nunca
-// bloqueia request — só reporta violações no console do browser. Endurecer para
-// `Content-Security-Policy` (enforcing) depois de validar que não há violações
-// legítimas em produção (idealmente trocando 'unsafe-inline' por nonce/hash).
+// CSP delivered as **Report-Only** on purpose: the console uses Tailwind + inline
+// styles + Next hydration (which injects inline <style>/<script>), so an
+// enforcing policy has to be observed before it blocks. Report-Only never
+// blocks a request — it only reports violations in the browser console. Harden to
+// `Content-Security-Policy` (enforcing) after validating there are no legitimate
+// violations in production (ideally swapping 'unsafe-inline' for nonce/hash).
 const contentSecurityPolicy = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
@@ -44,7 +44,7 @@ const securityHeaders = [
 
 const nextConfig = {
   reactStrictMode: true,
-  // Console interno — standalone facilita imagem Docker enxuta.
+  // Internal console — standalone makes for a lean Docker image.
   output: "standalone",
   async headers() {
     return [

@@ -39,7 +39,7 @@ class NoraApiApplicationTests {
 
     @Test
     void contextLoads() {
-        // garante que o ApplicationContext sobe com Postgres real e Flyway aplicado.
+        // ensures the ApplicationContext comes up with a real Postgres and Flyway applied.
     }
 
     @Test

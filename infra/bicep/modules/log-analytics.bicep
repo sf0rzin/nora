@@ -1,6 +1,6 @@
 // Log Analytics Workspace
-// Backing store para Container Apps Environment + Application Insights.
-// Mantido em um módulo separado porque os dois consumidores precisam do mesmo workspaceId.
+// Backing store for Container Apps Environment + Application Insights.
+// Kept in a separate module because both consumers need the same workspaceId.
 
 @description('Nome do workspace.')
 param name string
@@ -29,8 +29,8 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
       enableLogAccessUsingOnlyResourcePermissions: true
     }
     workspaceCapping: {
-      // Cap de ingestão diária em GB. Evita surpresa de bill.
-      // -1 = sem cap. Pra dev MVP, 1 GB/dia é suficiente.
+      // Daily ingestion cap in GB. Avoids bill surprises.
+      // -1 = no cap. For dev MVP, 1 GB/day is enough.
       dailyQuotaGb: 1
     }
   }

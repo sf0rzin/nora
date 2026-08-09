@@ -1,229 +1,229 @@
 ---
-title: "Production Readiness — Análise de Gaps"
-owner: Arquiteto NORA (Tech Lead)
+title: "Production Readiness — Gap Analysis"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
-# Production Readiness — Análise de Gaps
+# Production Readiness — Gap Analysis
 
-> **Audiência:** Tech Lead + futuros operadores quando NORA promover do ambiente `rg-nora-dev` (atual, único) para `rg-nora-prod`.
+> **Audience:** Tech Lead + future operators when NORA is promoted from the `rg-nora-dev` environment (current, the only one) to `rg-nora-prod`.
 >
-> **Status:** descritivo (`docs/`). Implementação ataca-se na **Sub-fase 1.12 — Production Hardening**, formalizada via **ADR 0016 — Production Readiness Checklist** (a criar).
+> **Status:** descriptive (`docs/`). Implementation is tackled in **Sub-phase 1.12 — Production Hardening**, formalised via **ADR 0016 — Production Readiness Checklist** (to be created).
 >
-> **Contexto:** o ambiente `rg-nora-dev` atual (`centralus`, 14 recursos, 4 secrets no KV, 8 armadilhas Azure catalogadas) faz deploy do NORA com sucesso. Mas **dev ≠ prod**. Sete áreas têm gaps que precisam endereçar antes de NORA receber tráfego comercial ou expor dados de cliente real.
+> **Context:** the current `rg-nora-dev` environment (`centralus`, 14 resources, 4 secrets in the KV, 8 Azure pitfalls catalogued) deploys NORA successfully. But **dev ≠ prod**. Seven areas have gaps that need to be addressed before NORA takes commercial traffic or exposes real customer data.
 
 ---
 
-## Gap 1 — Bicep `prod.bicepparam` não existe
+## Gap 1 — Bicep `prod.bicepparam` does not exist
 
-**Situação atual:** `infra/bicep/main.dev.bicepparam` é único arquivo de parâmetros. Aponta para `rg-nora-dev`, region `centralus`, `enableSearch=false`, secrets vindos de env vars locais (gerados random para dev).
+**Current situation:** `infra/bicep/main.dev.bicepparam` is the only parameters file. It points to `rg-nora-dev`, region `centralus`, `enableSearch=false`, secrets coming from local env vars (generated randomly for dev).
 
-**Gap:** sem `main.prod.bicepparam`, deploy para prod hoje seria copy-paste manual de valores, com risco de mistura dev/prod e leak de secrets.
+**Gap:** without `main.prod.bicepparam`, deploying to prod today would be a manual copy-paste of values, with a risk of mixing dev/prod and leaking secrets.
 
-**Plano (Sub-fase 1.12):**
+**Plan (Sub-phase 1.12):**
 
-- Criar `infra/bicep/main.prod.bicepparam` parametrizado com:
+- Create `infra/bicep/main.prod.bicepparam` parameterised with:
   - `env = 'prod'`
-  - `location` (decidir região — provavelmente continua `centralus` por unit economics validada em pilot, ou migra para `eastus` se Postgres já tiver via offer expansion)
-  - `enablePurgeProtection = true` no KV (default `false` em dev para teardown rápido)
+  - `location` (decide the region — probably stays `centralus` because of unit economics validated in the pilot, or migrates to `eastus` if Postgres becomes available there via offer expansion)
+  - `enablePurgeProtection = true` on the KV (default `false` in dev for fast teardown)
   - `enableSearch = true`
-  - SKUs: Postgres provavelmente sobe para `Standard_D2ds_v5` ou GP tier (decidir baseado em unit economics avançada — 1.12 inclui modelo GA-conservative + GA-aggressive)
-  - `min replicas = 1` em **todas** as Container Apps (warm-up — scale-to-zero gera UX ruim em prod)
-- Secrets via env vars **de outro Service Principal escopado em `rg-nora-prod`** (não reusar SP de dev)
-- Bicep params validados via `az deployment group what-if` antes de `create`
+  - SKUs: Postgres probably moves up to `Standard_D2ds_v5` or the GP tier (to be decided based on advanced unit economics — 1.12 includes a GA-conservative + GA-aggressive model)
+  - `min replicas = 1` on **all** Container Apps (warm-up — scale-to-zero produces bad UX in prod)
+- Secrets via env vars **from another Service Principal scoped to `rg-nora-prod`** (do not reuse the dev SP)
+- Bicep params validated via `az deployment group what-if` before `create`
 
 ---
 
-## Gap 2 — Migrations safety strategy ausente
+## Gap 2 — Migrations safety strategy missing
 
-**Situação atual:** Flyway roda no startup do API Container App. Se migration falha mid-deploy, estado fica inconsistente, sem rollback automatizado. Em dev, basta destruir o RG. Em prod, **não**.
+**Current situation:** Flyway runs at the startup of the API Container App. If a migration fails mid-deploy, the state is left inconsistent, with no automated rollback. In dev, just destroy the RG. In prod, **no**.
 
-**Gap:** sem estratégia de safety, próximo deploy em prod com migration nova arriscando:
+**Gap:** without a safety strategy, the next prod deploy with a new migration risks:
 
-- Schema parcialmente aplicado, app não inicia, downtime indefinido
-- Rollback manual implica downtime longo
-- Cenário pior: migration aplica `ALTER TABLE` destrutivo (drop column), depois falha, dados perdidos
+- A partially applied schema, the app not starting, indefinite downtime
+- Manual rollback implying long downtime
+- Worst case: a migration applies a destructive `ALTER TABLE` (drop column), then fails, data lost
 
-**Plano (Sub-fase 1.12):**
+**Plan (Sub-phase 1.12):**
 
-Decidir entre 3 estratégias:
+Decide between 3 strategies:
 
-1. **Pre-flight check + manual approve:** workflow `deploy-infra.yml` faz `flyway info` (lista pendente) → posta como GitHub Actions summary → exige `gh workflow run` manual com input "I read the migrations and approve" antes de subir a nova revisão de Container App. Funciona para deploys de baixa frequência (1-3/semana em prod). **Custo:** 1 step manual.
-2. **Blue/Green deploy via revisions:** Container Apps já suporta múltiplas revisions em paralelo. Nova revision roda migration (se aplicável), valida `/actuator/health`, traffic split 0 → 50 → 100. Rollback = traffic 100 → 0. **Custo:** workflow mais complexo (~1 dia agentic), revisions têm custo extra.
-3. **Migrations expand/contract:** convenção de migrações com 2 fases — `V0XX_expand` (additive: adicionar coluna nullable, criar tabela nova) → deploy → `V0YY_contract` (cleanup: drop coluna velha) só após X dias de estabilidade. **Custo:** disciplina contínua, processo de PR, mas zero downtime.
+1. **Pre-flight check + manual approve:** the `deploy-infra.yml` workflow runs `flyway info` (lists what is pending) → posts it as a GitHub Actions summary → requires a manual `gh workflow run` with the input "I read the migrations and approve" before bringing up the new Container App revision. Works for low-frequency deploys (1-3/week in prod). **Cost:** 1 manual step.
+2. **Blue/Green deploy via revisions:** Container Apps already supports multiple revisions in parallel. The new revision runs the migration (if applicable), validates `/actuator/health`, traffic split 0 → 50 → 100. Rollback = traffic 100 → 0. **Cost:** a more complex workflow (~1 agentic day), revisions have an extra cost.
+3. **Expand/contract migrations:** a migration convention with 2 phases — `V0XX_expand` (additive: add a nullable column, create a new table) → deploy → `V0YY_contract` (cleanup: drop the old column) only after X days of stability. **Cost:** continuous discipline, a PR process, but zero downtime.
 
-Recomendação inicial: **opção (1)** para MVP/Pilot, evoluir para **(3)** em GA.
+Initial recommendation: **option (1)** for MVP/Pilot, evolving to **(3)** at GA.
 
-ADR 0016 documenta a escolha.
-
----
-
-## Gap 3 — Backup RTO/RPO não formalizados, restore não testado
-
-**Situação atual:** Postgres Flexible Server tem backup automático default (point-in-time recovery — PITR) com 7 dias de retenção. Storage Account tem soft-delete 7 dias (configurado no Bicep). Key Vault soft-delete 7 dias (configurado).
-
-**Gap:** ninguém testou um restore de fato. RTO (recovery time objective) e RPO (recovery point objective) não declarados em SLA interno.
-
-**Plano (Sub-fase 1.12):**
-
-1. **Documentar RTO/RPO targets:**
-   - RPO: **5 min** (max data perdida em incidente) — PITR do Postgres suporta
-   - RTO: **2h** (max tempo offline) — restore do Postgres flexible + redeploy via Bicep `prod.bicepparam`
-2. **Restore drill:** em ambiente isolado, executar:
-   - `az postgres flexible-server restore` apontando para timestamp T-1h
-   - Validar dados (count, integridade FKs, latest meeting)
-   - Validar app conecta no restore (atualizar `DATASOURCE_URL` temporário)
-   - Documentar tempo real medido em `docs/operations/disaster-recovery-runbook.md`
-3. **Definir frequência:** drill 1x/trimestre em ambiente espelho
+ADR 0016 documents the choice.
 
 ---
 
-## Gap 4 — Monitoring + alerting não wired
+## Gap 3 — Backup RTO/RPO not formalised, restore not tested
 
-**Situação atual:** Application Insights provisionado, recebendo telemetria das 3 Container Apps + Worker. Log Analytics workspace coletando logs. Mas:
+**Current situation:** Postgres Flexible Server has a default automatic backup (point-in-time recovery — PITR) with 7 days of retention. The Storage Account has 7-day soft-delete (configured in Bicep). Key Vault soft-delete 7 days (configured).
 
-- Nenhum **alerta** configurado (sem email/Slack notification)
-- Nenhum **dashboard** estruturado (precisa abrir Portal e construir consulta KQL ad-hoc)
-- Nenhum **SLO** declarado
+**Gap:** nobody has actually tested a restore. RTO (recovery time objective) and RPO (recovery point objective) are not declared in an internal SLA.
 
-**Gap:** quando o NORA cair em prod, ninguém vai saber até cliente reclamar.
+**Plan (Sub-phase 1.12):**
 
-**Plano (Sub-fase 1.12):**
+1. **Document RTO/RPO targets:**
+   - RPO: **5 min** (max data lost in an incident) — Postgres PITR supports it
+   - RTO: **2h** (max time offline) — restore of the Postgres flexible + redeploy via Bicep `prod.bicepparam`
+2. **Restore drill:** in an isolated environment, run:
+   - `az postgres flexible-server restore` pointing to timestamp T-1h
+   - Validate the data (count, FK integrity, latest meeting)
+   - Validate that the app connects to the restore (temporarily update `DATASOURCE_URL`)
+   - Document the real measured time in `docs/operations/disaster-recovery-runbook.md`
+3. **Define the frequency:** drill once per quarter in a mirror environment
 
-1. **Alertas críticos** (Azure Monitor) wired para email do contato técnico da Stratfy (e webhook Slack futuro):
-   - API Container App: `/actuator/health` non-200 por >2min
-   - Postgres: connection failures >10/min ou CPU >80% sustained 5min
+---
+
+## Gap 4 — Monitoring + alerting not wired
+
+**Current situation:** Application Insights is provisioned, receiving telemetry from the 3 Container Apps + Worker. Log Analytics workspace collecting logs. But:
+
+- No **alert** configured (no email/Slack notification)
+- No structured **dashboard** (you have to open the Portal and build an ad-hoc KQL query)
+- No **SLO** declared
+
+**Gap:** when NORA goes down in prod, nobody will know until a customer complains.
+
+**Plan (Sub-phase 1.12):**
+
+1. **Critical alerts** (Azure Monitor) wired to the email of Stratfy's technical contact (and a future Slack webhook):
+   - API Container App: `/actuator/health` non-200 for >2min
+   - Postgres: connection failures >10/min or CPU >80% sustained for 5min
    - Container Apps: scale-up failed (replica retries >3)
-   - Speech: error rate `Ocp-Apim-Subscription-Key` >5%
-2. **Dashboard "NORA prod overview"** no Application Insights workbook:
-   - Requests/min por endpoint
-   - Latência p50/p95/p99 do API
-   - Erros 5xx + 4xx
+   - Speech: `Ocp-Apim-Subscription-Key` error rate >5%
+2. **Dashboard "NORA prod overview"** in an Application Insights workbook:
+   - Requests/min per endpoint
+   - API p50/p95/p99 latency
+   - 5xx + 4xx errors
    - Postgres connections + slow queries
-   - Custos diários (via Cost Management API)
-3. **SLO inicial**:
-   - API uptime: 99.0% mensal (suporta ~7h downtime/mês — realista para single-region MVP)
-   - p95 latency `/meetings/{id}`: <1.5s
-   - LLM analysis async: 95% concluído em <60s
+   - Daily costs (via the Cost Management API)
+3. **Initial SLO**:
+   - API uptime: 99.0% monthly (allows ~7h downtime/month — realistic for a single-region MVP)
+   - p95 latency of `/meetings/{id}`: <1.5s
+   - Async LLM analysis: 95% completed in <60s
 
 ---
 
-## Gap 5 — LGPD operacional — ENTREGUE (ADR 0029)
+## Gap 5 — Operational LGPD — DELIVERED (ADR 0029)
 
-**Situação atual:** PII Shield no worker (redige email, CPF, CNPJ, telefone, cartão, person_name BR antes de enviar para o LLM). Multi-tenancy garante isolamento por `tenant_id`. Cookies httpOnly. A camada operacional de LGPD foi **entregue** via **ADR 0029**:
+**Current situation:** PII Shield in the worker (redacts email, CPF, CNPJ, phone, card, BR person_name before sending to the LLM). Multi-tenancy guarantees isolation by `tenant_id`. httpOnly cookies. The operational LGPD layer has been **delivered** via **ADR 0029**:
 
-- **Direito ao esquecimento:** endpoint `DELETE /privacy/meetings/{id}` (exclusão por titular/tenant).
-- **Retenção:** `RetentionSweeper` agendado aplica a política de retenção automaticamente.
-- **Cobertura:** `PrivacyFlowIntegrationTest` valida o fluxo end-to-end.
-- **DPO declarado** em `SECURITY.md` (contato: axonogenesis@proton.me).
+- **Right to be forgotten:** endpoint `DELETE /privacy/meetings/{id}` (deletion by data subject/tenant).
+- **Retention:** a scheduled `RetentionSweeper` applies the retention policy automatically.
+- **Coverage:** `PrivacyFlowIntegrationTest` validates the end-to-end flow.
+- **DPO declared** in `SECURITY.md` (contact: axonogenesis@proton.me).
 
-Este gap deixou de ser débito da Sub-fase 1.12.
+This gap is no longer Sub-phase 1.12 debt.
 
-**Resíduo (operacional, não bloqueante):**
+**Residue (operational, non-blocking):**
 
-1. **Data retention policy** documentada em ADR 0029:
-   - Transcripts: retidos enquanto tenant ativo + 30 dias pós-cancelamento
-   - Análises LLM: idem
-   - Logs Application Insights: 30 dias (padrão atual)
-   - Refresh tokens revogados: hard delete imediato
-2. Endpoint `DELETE /privacy/meetings/{id}` entregue (direito ao esquecimento por titular/tenant).
-3. Endpoint administrativo de exclusão de tenant completo (Root only) — refinamento operacional futuro.
-4. `docs/security/lgpd-operations.md` com runbook de incidente: detecção, escalação, comunicação ANPD se >50 titulares afetados — refinamento operacional futuro.
+1. **Data retention policy** documented in ADR 0029:
+   - Transcripts: retained while the tenant is active + 30 days after cancellation
+   - LLM analyses: same
+   - Application Insights logs: 30 days (current default)
+   - Revoked refresh tokens: immediate hard delete
+2. Endpoint `DELETE /privacy/meetings/{id}` delivered (right to be forgotten by data subject/tenant).
+3. Administrative endpoint for full tenant deletion (Root only) — future operational refinement.
+4. `docs/security/lgpd-operations.md` with an incident runbook: detection, escalation, ANPD communication if >50 data subjects are affected — future operational refinement.
 
 ---
 
-## Gap 6 — Disaster recovery cenário "RG deletado por engano"
+## Gap 6 — Disaster recovery scenario "RG deleted by mistake"
 
-**Situação atual:** Bicep IaC permite recriar infra. Postgres tem PITR. Storage tem soft-delete. **Mas** o teste empírico já mostrou (Sub-fase 1.9, vault `azure_access.md`) que recriar com mesmo nome esbarra em:
+**Current situation:** Bicep IaC allows recreating the infra. Postgres has PITR. Storage has soft-delete. **But** the empirical test has already shown (Sub-phase 1.9, vault `azure_access.md`) that recreating with the same name runs into:
 
-- KV soft-deleted reserva nome global 7 dias
-- Cognitive Services Speech idem
-- Postgres pode ter `LocationIsOfferRestricted` se região mudar
+- Soft-deleted KV reserves the global name for 7 days
+- Cognitive Services Speech the same
+- Postgres may hit `LocationIsOfferRestricted` if the region changes
 
-**Gap:** runbook DR não documentado. Em incidente real, recuperação seria improvisada.
+**Gap:** the DR runbook is not documented. In a real incident, recovery would be improvised.
 
-**Plano (Sub-fase 1.12):**
+**Plan (Sub-phase 1.12):**
 
-`docs/operations/disaster-recovery-runbook.md` com:
+`docs/operations/disaster-recovery-runbook.md` with:
 
-1. **Cenário A — RG destruído, dados perdidos:**
+1. **Scenario A — RG destroyed, data lost:**
    - Step 1: `az keyvault purge` + `az cognitiveservices account purge`
-   - Step 2: `az group create rg-nora-prod` (mesmo nome, nova location se necessário)
+   - Step 2: `az group create rg-nora-prod` (same name, new location if necessary)
    - Step 3: GitHub Actions `deploy-infra.yml` workflow_dispatch
-   - Step 4: Validar serviços UP
-   - Step 5: Restore Postgres backup mais recente
-   - **RTO estimado:** 2-3h
-2. **Cenário B — apenas Postgres corrompido:**
-   - PITR para timestamp pré-corrupção
+   - Step 4: Validate that services are UP
+   - Step 5: Restore the most recent Postgres backup
+   - **Estimated RTO:** 2-3h
+2. **Scenario B — only Postgres corrupted:**
+   - PITR to a pre-corruption timestamp
    - RTO: 30min-1h
-3. **Cenário C — região Azure inteira indisponível:**
-   - MVP single-region: aceita downtime
-   - Futuro (GA): geo-redundância via Postgres georeplica + Front Door
+3. **Scenario C — an entire Azure region unavailable:**
+   - Single-region MVP: accepts the downtime
+   - Future (GA): geo-redundancy via Postgres geo-replica + Front Door
 
 ---
 
-## Gap 7 — Secrets rotation policy ausente
+## Gap 7 — Secrets rotation policy missing
 
-**Situação atual:** Secrets atuais no KV:
-- `postgres-password` — gerado random na criação do SP
-- `jwt-secret` — gerado random
-- `openai-api-key` — vazio (worker em modo stub default)
-- `azure-speech-key` — vindo de `speech.listKeys().key1` (mudaria se membro da Stratfy rotacionar manualmente)
+**Current situation:** current secrets in the KV:
+- `postgres-password` — generated randomly when the SP was created
+- `jwt-secret` — generated randomly
+- `openai-api-key` — empty (worker in stub mode by default)
+- `azure-speech-key` — coming from `speech.listKeys().key1` (it would change if a Stratfy member rotated it manually)
 
-**Gap:** nenhum dos 4 tem **schedule de rotação** automatizado. Em prod, isso é exigência mínima de segurança.
+**Gap:** none of the 4 has an automated **rotation schedule**. In prod, that is a minimum security requirement.
 
-**Plano (Sub-fase 1.12):**
+**Plan (Sub-phase 1.12):**
 
-| Secret | Frequência rotação | Método |
+| Secret | Rotation frequency | Method |
 |---|---|---|
-| `postgres-password` | A cada 90 dias | Script: gera new password, `ALTER USER ... PASSWORD`, atualiza KV secret, força Container Apps a puxar nova versão (revision restart) |
-| `jwt-secret` | A cada 180 dias | Atualiza KV secret + grace period 24h para refresh tokens válidos persistirem (precisa logic de "JWT secret rotation com keyId" — design futuro) |
-| `openai-api-key` | Quando rotacionada manualmente no OpenAI dashboard pela Stratfy | Atualiza KV secret + restart api/worker |
-| `azure-speech-key` | A cada 90 dias | `az cognitiveservices account keys regenerate` + atualiza KV secret + restart api |
+| `postgres-password` | Every 90 days | Script: generates a new password, `ALTER USER ... PASSWORD`, updates the KV secret, forces the Container Apps to pull the new version (revision restart) |
+| `jwt-secret` | Every 180 days | Updates the KV secret + a 24h grace period so valid refresh tokens persist (needs "JWT secret rotation with keyId" logic — future design) |
+| `openai-api-key` | When rotated manually in the OpenAI dashboard by Stratfy | Updates the KV secret + restarts api/worker |
+| `azure-speech-key` | Every 90 days | `az cognitiveservices account keys regenerate` + updates the KV secret + restarts api |
 
-Workflow dedicado `.github/workflows/rotate-secrets.yml` com cron mensal pode automatizar parte.
+A dedicated workflow `.github/workflows/rotate-secrets.yml` with a monthly cron can automate part of it.
 
 ---
 
-## Resumo
+## Summary
 
-| Gap | Esforço | ADR sucessor? |
+| Gap | Effort | Successor ADR? |
 |---|---|---|
 | 1. Bicep prod.bicepparam | M | ADR 0016 |
-| 2. Migrations safety | M (decisão entre 3 estratégias) | ADR 0016 |
+| 2. Migrations safety | M (decision between 3 strategies) | ADR 0016 |
 | 3. RTO/RPO + restore drill | M (drill + doc) | — |
 | 4. Monitoring + alerting | M (alerts + workbook + SLO) | — |
-| 5. LGPD operacional — **entregue** | — (entregue via ADR 0029) | ADR 0029 |
+| 5. Operational LGPD — **delivered** | — (delivered via ADR 0029) | ADR 0029 |
 | 6. DR runbook | S (doc + dry run) | — |
 | 7. Secrets rotation | M (workflows + rotation scripts) | — |
-| 8. Control plane sob RLS enforce | S (role BYPASSRLS p/ telemetria de negócio) | ADR 0022 |
+| 8. Control plane under RLS enforce | S (BYPASSRLS role for business telemetry) | ADR 0022 |
 
-**Estimativa total Sub-fase 1.12 — Production Hardening: ~1-2 semanas agentic.**
+**Total estimate for Sub-phase 1.12 — Production Hardening: ~1-2 agentic weeks.**
 
-Pré-requisitos: itens de **código** da Sub-fase 1.11 já entregues — Customer Confidence (#148), AUTH_FILTER fix (teto silencioso de 500 removido via scan em lotes) e PolicyEvaluator (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`). Restam (e) seed e (f) roteiro de demo, que não bloqueiam 1.12.
-
----
-
-## Gap 8 — Control plane: telemetria de negócio quebra silenciosamente sob RLS enforce
-
-**Situação atual:** o control plane (ADR 0022/0024) tem a frente de telemetria de **negócio** (cortável) lendo o banco **primário** cross-tenant via `PrimaryDbBusinessMetricsSource` (`COUNT(*)` / `COUNT(DISTINCT tenant_id)` em `meeting_analyses`), **sem** contexto de tenant — agregação operador-only intencional. Funciona hoje porque o datasource primário roda como role owner (BYPASSRLS) com `NORA_RLS_ENFORCE=false`.
-
-**Gap:** quando o opt-in de RLS enforce (ADR 0019 — tenant isolation defense-in-depth; cutover operacional em ADR 0026/0028) for ativado (role `nora_app` NOBYPASSRLS + `NORA_RLS_ENFORCE=true`), essas queries rodam **sem GUC de tenant** (não há `@Transactional`, o `TenantRlsAspect` não dispara) ⇒ a policy `tenant_isolation` (fail-closed) esconde **todas** as linhas ⇒ `analyses=0`/`tenantsActive=0` **silencioso** (sem erro). O painel do operador mostraria "zero atividade" falso, sem sinal de que a leitura foi suprimida.
-
-**Plano (pré-requisito de ligar RLS enforce):**
-
-- Dar à leitura operador-only um caminho **BYPASSRLS** dedicado: ou uma role de telemetria com `BYPASSRLS`, ou uma view/função `SECURITY DEFINER` owned por role privilegiada com `GRANT SELECT` ao `nora_app`. A agregação cross-tenant é intencional e operador-only.
-- Alternativa mínima: detectar o estado e devolver `enabled:false` (em vez de `enabled:true` com zeros) quando a leitura cross-tenant não for possível — assim o operador vê "indisponível", não "zero real".
-- Documentado no Javadoc de `PrimaryDbBusinessMetricsSource` e no contrato (§3). Custo: S. **Não bloqueia o v1** (enforce=false hoje).
+Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Customer Confidence (#148), the AUTH_FILTER fix (silent 500 ceiling removed via batched scanning) and PolicyEvaluator (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`). Remaining are (e) seed and (f) demo script, which do not block 1.12.
 
 ---
 
-## Histórico
+## Gap 8 — Control plane: business telemetry breaks silently under RLS enforce
 
-| Data | Autor | Mudança |
+**Current situation:** the control plane (ADR 0022/0024) has the **business** telemetry front (cuttable) reading the **primary** database cross-tenant via `PrimaryDbBusinessMetricsSource` (`COUNT(*)` / `COUNT(DISTINCT tenant_id)` on `meeting_analyses`), **without** tenant context — an intentional operator-only aggregation. It works today because the primary datasource runs as the owner role (BYPASSRLS) with `NORA_RLS_ENFORCE=false`.
+
+**Gap:** when the RLS enforce opt-in (ADR 0019 — tenant isolation defense-in-depth; operational cutover in ADR 0026/0028) is activated (role `nora_app` NOBYPASSRLS + `NORA_RLS_ENFORCE=true`), these queries run **without a tenant GUC** (there is no `@Transactional`, so `TenantRlsAspect` does not fire) ⇒ the `tenant_isolation` policy (fail-closed) hides **all** rows ⇒ `analyses=0`/`tenantsActive=0` **silently** (no error). The operator's panel would show a false "zero activity", with no sign that the read was suppressed.
+
+**Plan (prerequisite for turning on RLS enforce):**
+
+- Give the operator-only read a dedicated **BYPASSRLS** path: either a telemetry role with `BYPASSRLS`, or a `SECURITY DEFINER` view/function owned by a privileged role with `GRANT SELECT` to `nora_app`. The cross-tenant aggregation is intentional and operator-only.
+- Minimal alternative: detect the state and return `enabled:false` (instead of `enabled:true` with zeros) when the cross-tenant read is not possible — that way the operator sees "unavailable", not "a real zero".
+- Documented in the Javadoc of `PrimaryDbBusinessMetricsSource` and in the contract (§3). Cost: S. **Does not block v1** (enforce=false today).
+
+---
+
+## History
+
+| Date | Author | Change |
 |---|---|---|
-| 2026-05-14 | Tech Lead | Doc criado durante Sub-fase 1.10 (Docs Refresh). Análise informada por revisão do Arquiteto Design no audit (§4.3) |
-| 2026-05-28 | Co-arquiteto (Opus) | Gap 8 adicionado: telemetria de negócio do control plane (ADR 0022) zera sob RLS enforce — pré-requisito de role BYPASSRLS antes de ligar o RLS enforce |
-| 2026-06-06 | Arquiteto NORA (Tech Lead) | Reconciliação doc x código + padronização (auditoria pré-apresentação): Gap 5 (LGPD operacional) marcado como entregue via ADR 0029; correção de referência ADR 0019 → ADR 0029 para LGPD |
+| 2026-05-14 | Tech Lead | Doc created during Sub-phase 1.10 (Docs Refresh). Analysis informed by the Design Architect's review in the audit (§4.3) |
+| 2026-05-28 | Co-architect (Opus) | Gap 8 added: the control plane's business telemetry (ADR 0022) goes to zero under RLS enforce — a BYPASSRLS role is a prerequisite before turning on RLS enforce |
+| 2026-06-06 | NORA Architect (Tech Lead) | Doc x code reconciliation + standardisation (pre-presentation audit): Gap 5 (operational LGPD) marked as delivered via ADR 0029; reference correction ADR 0019 → ADR 0029 for LGPD |

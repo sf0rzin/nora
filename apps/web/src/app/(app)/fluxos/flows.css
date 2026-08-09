@@ -1,15 +1,15 @@
 /* ═══════════════════════════════════════════════════════════════════
-   NORA Flows — estilos da rota /fluxos (lista + builder visual).
+   NORA Flows — styles for the /fluxos route (list + visual builder).
 
-   Camadas:
-   1. Lista de fluxos (cards clicáveis)
-   2. Layout do editor (topbar + paleta | canvas | painel)
-   3. Nós custom do canvas
-   4. Overrides do React Flow (@xyflow/react) com os tokens NORA —
-      sem tema dark, sem trazer o visual default da lib.
+   Layers:
+   1. Flow list (clickable cards)
+   2. Editor layout (topbar + palette | canvas | panel)
+   3. Custom canvas nodes
+   4. React Flow (@xyflow/react) overrides with the NORA tokens —
+      no dark theme, no pulling in the lib's default look.
    ═══════════════════════════════════════════════════════════════════ */
 
-/* ── 1. Lista ──────────────────────────────────────────────────── */
+/* ── 1. List ───────────────────────────────────────────────────── */
 .flows-card {
   display: flex;
   flex-direction: column;
@@ -22,7 +22,7 @@
   background: var(--sidebar);
 }
 
-/* ── 2. Layout do editor ───────────────────────────────────────── */
+/* ── 2. Editor layout ──────────────────────────────────────────── */
 .flows-editor {
   display: flex;
   flex-direction: column;
@@ -31,7 +31,7 @@
   background: var(--canvas);
 }
 @media (max-width: 720px) {
-  /* abaixo do breakpoint o app-main deixa de ter 100dvh e o mhead entra */
+  /* below the breakpoint app-main stops having 100dvh and the mhead comes in */
   .flows-editor {
     height: auto;
     min-height: calc(100dvh - 69px);
@@ -49,7 +49,7 @@
   flex-wrap: wrap;
 }
 
-/* input do nome estilo título: borda só no hover/focus */
+/* name input styled as a title: border only on hover/focus */
 .flows-name-input {
   font-family: var(--sans);
   font-size: 16.5px;
@@ -80,7 +80,7 @@
   border-color: var(--danger);
 }
 
-/* switch Ativo/Pausado */
+/* Ativo/Pausado switch */
 .flows-switch {
   display: inline-flex;
   align-items: center;
@@ -135,7 +135,7 @@
   min-height: 0;
 }
 
-/* paleta esquerda */
+/* left palette */
 .flows-palette {
   width: 240px;
   flex-shrink: 0;
@@ -202,7 +202,7 @@
   overflow: hidden;
 }
 
-/* canvas centro */
+/* center canvas */
 .flows-canvas {
   flex: 1;
   min-width: 0;
@@ -210,7 +210,7 @@
   position: relative;
 }
 
-/* painel direito */
+/* right panel */
 .flows-panel {
   width: 300px;
   flex-shrink: 0;
@@ -252,7 +252,7 @@
   cursor: not-allowed;
 }
 
-/* chips de placeholder clicáveis (send_email) */
+/* clickable placeholder chips (send_email) */
 .flows-ph {
   font-family: var(--sans);
   font-size: 10.5px;
@@ -270,7 +270,7 @@
   color: var(--accent-ink);
 }
 
-/* linha de execução no histórico */
+/* execution row in the history */
 .flows-exec {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -319,7 +319,7 @@
   color: var(--danger);
 }
 
-/* ── 3. Nós custom ─────────────────────────────────────────────── */
+/* ── 3. Custom nodes ───────────────────────────────────────────── */
 .flow-node {
   width: 220px;
   background: #fff;
@@ -361,7 +361,7 @@
   white-space: nowrap;
 }
 
-/* ── 4. Overrides React Flow (tokens NORA) ─────────────────────── */
+/* ── 4. React Flow overrides (NORA tokens) ─────────────────────── */
 .flows-canvas .react-flow {
   background: var(--canvas);
 }
@@ -418,7 +418,7 @@
   border-bottom: none;
 }
 
-/* atribuição da lib fica visível (MIT, manter por respeito) — só harmoniza */
+/* the lib attribution stays visible (MIT, keep it out of respect) — just harmonized */
 .flows-canvas .react-flow__attribution {
   background: transparent;
   color: var(--muted);
@@ -428,7 +428,7 @@
   color: var(--muted);
 }
 
-/* nó selecionado não ganha o outline default da lib (usamos o ring custom) */
+/* a selected node does not get the lib's default outline (we use the custom ring) */
 .flows-canvas .react-flow__node {
   cursor: grab;
 }
@@ -440,7 +440,7 @@
   outline: none;
 }
 
-/* ── Responsivo (canvas builder é desktop-first; mobile usável) ── */
+/* ── Responsive (canvas builder is desktop-first; mobile usable) ── */
 @media (max-width: 900px) {
   .flows-body {
     flex-direction: column;

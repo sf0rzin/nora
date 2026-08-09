@@ -16,22 +16,22 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Cliente do NLP Worker (FastAPI). Implementacao infrastructure faz a chamada HTTP /analyze e
- * retorna o agregado ja construido (sem id/createdAt persistido) junto com o productivity opt-in
- * (ADR 0005), quando ha goal declarado.
+ * NLP Worker (FastAPI) client. The infrastructure implementation makes the HTTP /analyze call and
+ * returns the already-built aggregate (without persisted id/createdAt) together with the
+ * productivity opt-in (ADR 0005), when there is a declared goal.
  */
 public interface NlpWorkerClient {
 
     /**
-     * Submete o texto ao worker e retorna a analise validada + productivity opt-in (quando ha
-     * goal).
+     * Submits the text to the worker and returns the validated analysis + productivity opt-in (when
+     * there is a goal).
      *
-     * @param meetingId id da reuniao (correlation id)
-     * @param tenantId id do tenant dono
-     * @param language ISO 639-1 (ex: "pt-BR"), pode ser null
-     * @param transcript texto bruto da transcricao (apos normalizacao do upload)
-     * @param tenantContext contexto comercial opcional usado no prompt
-     * @param goal objetivo declarado pelo usuario (opt-in). Quando ausente, o worker nao emite
+     * @param meetingId meeting id (correlation id)
+     * @param tenantId owning tenant id
+     * @param language ISO 639-1 (e.g. "pt-BR"), may be null
+     * @param transcript raw transcript text (after upload normalization)
+     * @param tenantContext optional commercial context used in the prompt
+     * @param goal goal declared by the user (opt-in). When absent, the worker does not emit
      *     productivity.
      */
     AnalysisResult analyze(
@@ -46,22 +46,22 @@ public interface NlpWorkerClient {
             String transcriptChunk, String language, WorkerDtos.LiveHighlights previousHighlights);
 
     /**
-     * Detecta fronteiras entre reunioes distintas concatenadas num unico arquivo .txt (preview de
-     * split). O worker aplica PII Shield linha a linha e devolve segmentos com {@code
-     * startLine}/{@code endLine} 1-based validos para o arquivo original; nada e persistido.
+     * Detects boundaries between distinct meetings concatenated into a single .txt file (split
+     * preview). The worker applies PII Shield line by line and returns segments with 1-based {@code
+     * startLine}/{@code endLine} valid for the original file; nothing is persisted.
      *
-     * <p>{@code default} que lanca: somente a implementacao HTTP real (e stubs de teste que
-     * exercitam split) precisam sobrescrever — os demais stubs de IT continuam compilando sem
-     * conhecer este fluxo.
+     * <p>A {@code default} that throws: only the real HTTP implementation (and test stubs that
+     * exercise split) need to override it — the other IT stubs keep compiling without knowing about
+     * this flow.
      */
     default SplitDtos.SplitResponse split(String transcript, String language) {
         throw new UnsupportedOperationException("split nao implementado por este client");
     }
 
     /**
-     * Resultado combinado: analise sempre presente, productivity opcional (so quando goal foi
-     * fornecido E o worker conseguiu calcular) e customerConfidence opcional (so para reunioes
-     * externas, quando o worker emite o bloco).
+     * Combined result: analysis always present, productivity optional (only when a goal was
+     * provided AND the worker managed to compute it) and customerConfidence optional (only for
+     * external meetings, when the worker emits the block).
      */
     record AnalysisResult(
             MeetingAnalysis analysis,
@@ -86,16 +86,17 @@ public interface NlpWorkerClient {
     }
 
     /**
-     * Carrier intermediario do bloco {@code customerConfidence} do worker (ADR 0015). NAO e o
-     * agregado de dominio: a {@code CustomerConfidenceAssessment} exige um {@code
-     * customerAccountId} que so existe depois do get-or-create da {@link
-     * br.com.nora.api.domain.customer.CustomerAccount} no backend. O service de aplicacao resolve a
-     * conta a partir de {@code accountName} e so entao constroi o agregado.
+     * Intermediate carrier for the worker's {@code customerConfidence} block (ADR 0015). It is NOT
+     * the domain aggregate: {@code CustomerConfidenceAssessment} requires a {@code
+     * customerAccountId} that only exists after the get-or-create of the {@link
+     * br.com.nora.api.domain.customer.CustomerAccount} in the backend. The application service
+     * resolves the account from {@code accountName} and only then builds the aggregate.
      *
-     * <p>{@code trend} aqui e o palpite do worker — o backend o IGNORA e recalcula server-side com
-     * base no historico da conta (backend e autoritativo, ver ADR 0015 / schema).
+     * <p>{@code trend} here is the worker's guess — the backend IGNORES it and recomputes it
+     * server-side based on the account's history (the backend is authoritative, see ADR 0015 /
+     * schema).
      *
-     * @param accountName nome do cliente/lead detectado (null/blank => reuniao interna, no-op)
+     * @param accountName name of the detected customer/lead (null/blank => internal meeting, no-op)
      */
     record CustomerConfidenceCarrier(
             String accountName,

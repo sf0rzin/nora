@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-// Design system v3 (Claude Design rebrand): DM Sans é a única família de UI
-// (sans + display). JetBrains Mono fica reservada só para contextos de código
-// (ex.: editor de policies). Ver docs/engineering/standards.md §8.
+// Design system v3 (Claude Design rebrand): DM Sans is the only UI family
+// (sans + display). JetBrains Mono is reserved only for code contexts
+// (e.g.: policies editor). See docs/engineering/standards.md §8.
 const dmSans = DM_Sans({
   subsets: ["latin"],
   variable: "--font-sans",

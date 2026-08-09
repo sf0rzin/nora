@@ -5,13 +5,13 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * DTOs de transporte do endpoint {@code /split} do NLP worker (deteccao de fronteiras entre
- * reunioes concatenadas num unico arquivo). Mesmo papel do {@link WorkerDtos}: apenas estes objetos
- * cruzam a fronteira HTTP com o worker; nao vazam para dominio/persistencia.
+ * Transport DTOs for the NLP worker's {@code /split} endpoint (detection of boundaries between
+ * meetings concatenated into a single file). Same role as {@link WorkerDtos}: only these objects
+ * cross the HTTP boundary with the worker; they do not leak into domain/persistence.
  *
- * <p>{@code startLine}/{@code endLine} sao 1-based e inclusivos, calculados sobre o arquivo
- * ORIGINAL (a redacao de PII no worker e intra-linha, entao os numeros valem para o arquivo que o
- * usuario subiu). {@code preview} ja vem REDIGIDO pelo PII Shield do worker (ADR 0012).
+ * <p>{@code startLine}/{@code endLine} are 1-based and inclusive, computed over the ORIGINAL file
+ * (PII redaction in the worker is intra-line, so the numbers hold for the file the user uploaded).
+ * {@code preview} already arrives REDACTED by the worker's PII Shield (ADR 0012).
  */
 public final class SplitDtos {
 

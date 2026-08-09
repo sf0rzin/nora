@@ -1,13 +1,13 @@
 import { forwardRef } from "react";
 
-/** Input de texto primitivo (foco com ring de --accent-glow). */
+/** Text input primitive (focus with a --accent-glow ring). */
 export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className = "", ...rest }, ref) {
     return <input ref={ref} className={["ui-input", className].filter(Boolean).join(" ")} {...rest} />;
   },
 );
 
-/** Textarea primitiva (mesmo visual do Input; sem resize por padrão). */
+/** Textarea primitive (same look as Input; no resize by default). */
 export const Textarea = forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
@@ -17,7 +17,7 @@ export const Textarea = forwardRef<
   );
 });
 
-/** Agrupador label + controle + ajuda, com gap consistente. */
+/** Grouper for label + control + help, with a consistent gap. */
 export function Field({
   label,
   help,

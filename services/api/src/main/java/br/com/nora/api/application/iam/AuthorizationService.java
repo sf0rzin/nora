@@ -11,7 +11,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * Avaliador de autorizacao para a aplicacao. Aplica o bypass de Root e roteia ao {@link
+ * Authorization evaluator for the application. Applies the Root bypass and routes to the {@link
  * PolicyEvaluator}.
  */
 @Service
@@ -30,8 +30,8 @@ public class AuthorizationService {
     }
 
     /**
-     * Versao com request context (usado para conditions que dependem de atributos do recurso, do
-     * usuario ou do request).
+     * Version with request context (used for conditions that depend on attributes of the resource,
+     * the user or the request).
      */
     public boolean isAllowed(
             UUID userId,
@@ -46,12 +46,12 @@ public class AuthorizationService {
         return PolicyEvaluator.isAllowed(stmts, action, resource, requestContext);
     }
 
-    /** Conveniencia: lanca {@link IamException#forbidden} caso a autorizacao falhe. */
+    /** Convenience: throws {@link IamException#forbidden} if authorization fails. */
     public void require(UUID userId, UUID tenantId, String action, String resource) {
         require(userId, tenantId, action, resource, Map.of());
     }
 
-    /** Conveniencia com request context: lanca {@link IamException#forbidden} caso negado. */
+    /** Convenience with request context: throws {@link IamException#forbidden} if denied. */
     public void require(
             UUID userId,
             UUID tenantId,
@@ -64,9 +64,8 @@ public class AuthorizationService {
     }
 
     /**
-     * Pre-check sem conditions: garante que o usuario tenha pelo menos um Allow para
-     * action+resource, ignorando conditions. Ideal para list-endpoints onde conditions sao
-     * avaliadas por item.
+     * Pre-check without conditions: ensures the user has at least one Allow for action+resource,
+     * ignoring conditions. Ideal for list-endpoints where conditions are evaluated per item.
      */
     public void requireAnyAllow(UUID userId, UUID tenantId, String action, String resource) {
         if (users.isRoot(userId, tenantId)) {
@@ -79,17 +78,17 @@ public class AuthorizationService {
     }
 
     /**
-     * Responde, ANTES de ir ao banco, se a decisao de {@code action} e a mesma para todo recurso
-     * coberto por {@code wildcardResource}. Presente = pode decidir de uma vez; {@code empty} = tem
-     * mesmo de avaliar item a item com {@link #filterAllowed}.
+     * Answers, BEFORE hitting the database, whether the decision for {@code action} is the same for
+     * every resource covered by {@code wildcardResource}. Present = can decide in one go; {@code
+     * empty} = really has to evaluate item by item with {@link #filterAllowed}.
      *
-     * <p>Serve para listagens. Filtrar item a item obriga a carregar o conjunto inteiro antes de
-     * paginar; quando nenhuma statement distingue dois itens do conjunto, esse scan produz sempre a
-     * mesma resposta e a paginacao pode ficar no SQL.
+     * <p>Serves listings. Filtering item by item forces loading the whole set before paginating;
+     * when no statement distinguishes two items of the set, that scan always produces the same
+     * answer and the pagination can stay in SQL.
      *
-     * <p>Root cai aqui como allow uniforme, que e literalmente o que {@link #filterAllowed} faz com
-     * ele: devolve a lista intacta. Antes disto, o endpoint de listagem varria o tenant todo para
-     * nao filtrar nada.
+     * <p>Root lands here as a uniform allow, which is literally what {@link #filterAllowed} does
+     * with it: returns the list intact. Before this, the listing endpoint scanned the entire tenant
+     * in order to filter nothing.
      */
     public Optional<Boolean> uniformDecision(
             UUID userId, UUID tenantId, String action, String wildcardResource) {
@@ -101,14 +100,14 @@ public class AuthorizationService {
     }
 
     /**
-     * Filtra in-memory uma coleção por permissão, resolvendo o bypass de Root e os statements do
-     * usuário UMA ÚNICA vez para todo o conjunto. Use em list-endpoints com conditions por item:
-     * evita o N+1 de chamar {@link #isAllowed} por elemento (que reconsulta {@code isRoot} + {@code
-     * collectStatementsForUser} a cada chamada). A semântica de avaliação é idêntica — mesmo {@link
-     * PolicyEvaluator}, mesmo bypass de Root.
+     * Filters a collection in-memory by permission, resolving the Root bypass and the user's
+     * statements ONE SINGLE time for the whole set. Use in list-endpoints with per-item conditions:
+     * avoids the N+1 of calling {@link #isAllowed} per element (which re-queries {@code isRoot} +
+     * {@code collectStatementsForUser} on every call). The evaluation semantics are identical —
+     * same {@link PolicyEvaluator}, same Root bypass.
      *
-     * @param resourceFn ARN do recurso para cada item
-     * @param contextFn atributos do recurso (conditions) para cada item
+     * @param resourceFn resource ARN for each item
+     * @param contextFn resource attributes (conditions) for each item
      */
     public <T> List<T> filterAllowed(
             UUID userId,

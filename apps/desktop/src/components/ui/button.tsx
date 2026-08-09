@@ -10,9 +10,9 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 /**
- * Botão primitivo do NORA Desktop. Tamanhos e estados (hover/focus/disabled)
- * vivem em `.ui-btn*` no styles.css — toda tela usa este componente em vez de
- * estilo inline, garantindo padding/raio/peso/altura idênticos em todo lugar.
+ * NORA Desktop button primitive. Sizes and states (hover/focus/disabled)
+ * live in `.ui-btn*` in styles.css — every screen uses this component instead of
+ * inline styling, guaranteeing identical padding/radius/weight/height everywhere.
  */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = "secondary", size = "md", block, className = "", type = "button", ...rest },

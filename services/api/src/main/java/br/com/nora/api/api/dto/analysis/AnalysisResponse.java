@@ -5,7 +5,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/** Payload da analise retornada no detalhe da reuniao. Espelha schema meeting-analysis-v1. */
+/** Analysis payload returned in the meeting detail. Mirrors schema meeting-analysis-v1. */
 public record AnalysisResponse(
         UUID id,
         UUID meetingId,

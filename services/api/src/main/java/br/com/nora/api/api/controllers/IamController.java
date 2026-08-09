@@ -32,10 +32,11 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Endpoints IAM estilo AWS (US35-US40). Exigem permissao {@code iam:*} no recurso {@code
- * nora:tenant/{tenantId}:iam/*}; Root do tenant tem bypass via {@link AuthorizationService}.
+ * AWS-style IAM endpoints (US35-US40). They require the {@code iam:*} permission on the {@code
+ * nora:tenant/{tenantId}:iam/*} resource; the tenant Root has a bypass via {@link
+ * AuthorizationService}.
  *
- * <p>O resource canonico para verificacao e {@code nora:tenant/{tenantId}:iam/*}.
+ * <p>The canonical resource for the check is {@code nora:tenant/{tenantId}:iam/*}.
  */
 @RestController
 @RequestMapping("/iam")

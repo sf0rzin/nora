@@ -27,12 +27,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * Motor do NORA Flows: casa eventos de domínio com os workflows ATIVOS do tenant, percorre o grafo
- * (gatilho → condições → ações) e registra cada passo em {@code workflow_executions.log_json}.
+ * NORA Flows engine: matches domain events with the tenant's ACTIVE workflows, walks the graph
+ * (trigger → conditions → actions) and records each step in {@code workflow_executions.log_json}.
  *
- * <p>Roda fora de request (listener async pós-commit) — quem chama é responsável por setar o tenant
- * no {@code TenantRlsContext} (igual ao pipeline de análise). Cada execução é isolada: falha em um
- * workflow não impede os demais do mesmo evento.
+ * <p>Runs outside a request (async post-commit listener) — the caller is responsible for setting
+ * the tenant in the {@code TenantRlsContext} (same as the analysis pipeline). Each execution is
+ * isolated: a failure in one workflow does not stop the others from the same event.
  */
 @Service
 public class WorkflowEngine {
@@ -67,7 +67,7 @@ public class WorkflowEngine {
         this.clock = clock;
     }
 
-    /** Entrada do gatilho-âncora: análise de reunião concluída (pós-commit). */
+    /** Entry point of the anchor trigger: meeting analysis completed (post-commit). */
     public void onMeetingAnalysisCompleted(MeetingAnalysisCompletedEvent event) {
         dispatchForMeeting(
                 event.tenantId(),
@@ -76,7 +76,7 @@ public class WorkflowEngine {
                 event.occurredAt());
     }
 
-    /** Entrada do gatilho "action item criado" (um evento por item; pós-commit). */
+    /** Entry point of the "action item created" trigger (one event per item; post-commit). */
     public void onActionItemCreated(ActionItemCreatedEvent event) {
         dispatchForMeeting(
                 event.tenantId(),
@@ -85,7 +85,7 @@ public class WorkflowEngine {
                 event.occurredAt());
     }
 
-    /** Entrada do gatilho "risco detectado" (só severidade ALTA é emitida; pós-commit). */
+    /** Entry point of the "risk detected" trigger (only HIGH severity is emitted; post-commit). */
     public void onMeetingRiskDetected(MeetingRiskDetectedEvent event) {
         dispatchForMeeting(
                 event.tenantId(),
@@ -95,8 +95,9 @@ public class WorkflowEngine {
     }
 
     /**
-     * Casa os workflows ATIVOS do tenant com o gatilho e executa cada um. O snapshot da reunião é o
-     * mesmo para qualquer gatilho derivado da análise — muda só o eventType registrado no log.
+     * Matches the tenant's ACTIVE workflows with the trigger and executes each one. The meeting
+     * snapshot is the same for any trigger derived from the analysis — only the eventType recorded
+     * in the log changes.
      */
     private void dispatchForMeeting(
             UUID tenantId, UUID meetingId, TriggerType trigger, Instant occurredAt) {
@@ -124,7 +125,8 @@ public class WorkflowEngine {
             try {
                 execute(workflow, ctx);
             } catch (RuntimeException ex) {
-                // execute() já registra a falha na execução; isto cobre erro antes do INSERT.
+                // execute() already records the failure on the execution; this covers an error
+                // before the INSERT.
                 LOG.error(
                         "Flows: execução do workflow {} falhou tenantId={} cause={}",
                         workflow.id(),
@@ -135,8 +137,8 @@ public class WorkflowEngine {
     }
 
     /**
-     * Executa um workflow contra um contexto (evento real ou "Testar" do canvas). Sempre persiste a
-     * execução com o log passo a passo — sucesso E falha ficam visíveis no histórico.
+     * Executes a workflow against a context (real event or the canvas' "Test"). Always persists the
+     * execution with the step-by-step log — success AND failure stay visible in the history.
      */
     public WorkflowExecution execute(Workflow workflow, WorkflowEventContext ctx) {
         ExecutionLogBuilder log = new ExecutionLogBuilder();
@@ -189,9 +191,9 @@ public class WorkflowEngine {
     }
 
     /**
-     * Percorre o grafo a partir do gatilho (BFS). Condição não satisfeita interrompe só aquele
-     * caminho; falha de ação marca a execução como FAILED mas deixa os demais ramos continuarem
-     * (cada ramo é independente, estilo n8n).
+     * Walks the graph from the trigger (BFS). An unsatisfied condition stops only that path; an
+     * action failure marks the execution as FAILED but lets the other branches carry on (each
+     * branch is independent, n8n-style).
      */
     private boolean walk(
             WorkflowDefinition definition,
@@ -212,7 +214,7 @@ public class WorkflowEngine {
             }
             switch (node.kind()) {
                 case TRIGGER -> {
-                    // Parser garante 1 gatilho; aresta apontando pra ele é ignorada.
+                    // Parser guarantees 1 trigger; an edge pointing at it is ignored.
                 }
                 case CONDITION -> {
                     ConditionEvaluator.Evaluation eval;
@@ -245,7 +247,8 @@ public class WorkflowEngine {
                         success = false;
                         log.error(
                                 node.id(), "Ação '" + node.type() + "' falhou: " + ex.getMessage());
-                        // Filhos deste ramo não executam — falha não se propaga como sucesso.
+                        // Children of this branch do not run — a failure does not propagate as
+                        // success.
                     }
                 }
             }

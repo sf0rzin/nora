@@ -18,11 +18,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Endpoints de configuracao geral do tenant (US32). Separado de {@code TenantContextController}
- * porque "contexto" cobre produto/concorrentes/glossario (subdominio comercial) enquanto o aqui
- * vivem flags de tenant (dominio corporativo, branding futuro, etc).
+ * General tenant settings endpoints (US32). Separate from {@code TenantContextController} because
+ * "context" covers product/competitors/glossary (commercial subdomain) whereas tenant flags
+ * (corporate domain, future branding, etc) live here.
  *
- * <p>Toda operacao exige permissao IAM. Root tem bypass via {@link AuthorizationService}.
+ * <p>Every operation requires an IAM permission. Root has a bypass via {@link
+ * AuthorizationService}.
  */
 @RestController
 @RequestMapping("/tenant")
@@ -36,7 +37,7 @@ public class TenantController {
         this.authz = authz;
     }
 
-    /** Workspace atual (aba Workspace das configuracoes). */
+    /** Current workspace (Workspace tab in settings). */
     @GetMapping
     public TenantResponse get() {
         AuthenticatedPrincipal p = CurrentUser.require();
@@ -50,7 +51,7 @@ public class TenantController {
                 tenant.createdAt());
     }
 
-    /** Renomeia o workspace. O slug e imutavel (vive em URLs/convites). */
+    /** Renames the workspace. The slug is immutable (it lives in URLs/invites). */
     @PutMapping("/name")
     public TenantResponse rename(@Valid @RequestBody TenantNameUpdateRequest body) {
         AuthenticatedPrincipal p = CurrentUser.require();

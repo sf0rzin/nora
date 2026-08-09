@@ -25,9 +25,9 @@ public class ProductivityAssessmentRepositoryAdapter implements ProductivityAsse
     @Override
     @Transactional
     public ProductivityAssessment save(ProductivityAssessment assessment) {
-        // Idempotente: substitui assessment existente do mesmo meeting/tenant. Usamos DELETE
-        // nativo para que o ON DELETE CASCADE do Postgres limpe as coverages sem o ciclo
-        // problematico de UPDATE SET NULL que o Hibernate tentaria via orphanRemoval.
+        // Idempotent: replaces an existing assessment for the same meeting/tenant. We use a
+        // native DELETE so that Postgres' ON DELETE CASCADE clears the coverages without the
+        // problematic UPDATE SET NULL round that Hibernate would attempt via orphanRemoval.
         jpa.deleteByMeetingIdAndTenantIdNative(assessment.meetingId(), assessment.tenantId());
         jpa.flush();
         ProductivityAssessmentJpaEntity entity = toEntity(assessment);
@@ -44,8 +44,9 @@ public class ProductivityAssessmentRepositoryAdapter implements ProductivityAsse
     @Override
     @Transactional
     public void deleteByMeetingId(UUID meetingId, UUID tenantId) {
-        // DELETE nativo para acionar ON DELETE CASCADE do Postgres direto, sem o ciclo
-        // UPDATE SET NULL que o Hibernate tentaria com @JoinColumn unidirecional + orphanRemoval.
+        // Native DELETE to trigger Postgres' ON DELETE CASCADE directly, without the
+        // UPDATE SET NULL round Hibernate would attempt with unidirectional @JoinColumn +
+        // orphanRemoval.
         jpa.deleteByMeetingIdAndTenantIdNative(meetingId, tenantId);
     }
 

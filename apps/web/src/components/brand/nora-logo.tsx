@@ -5,26 +5,26 @@ import { useEffect, useState } from "react";
 type Variant = "brand" | "paper";
 
 type Props = {
-  /** Altura total do logo em pixels (default 28). */
+  /** Total logo height in pixels (default 28). */
   size?: number;
-  /** Mostra wordmark "NORA" ao lado das barras (default true). */
+  /** Shows the "NORA" wordmark next to the bars (default true). */
   showWordmark?: boolean;
-  /** "brand" = barras azuis sobre fundo claro. "paper" = barras claras sobre fundo escuro. */
+  /** "brand" = blue bars on a light background. "paper" = light bars on a dark background. */
   variant?: Variant;
-  /** Anima ao montar; quando false, já entra estático. */
+  /** Animates on mount; when false, it comes in static. */
   animate?: boolean;
   className?: string;
 };
 
 /**
- * NoraLogo — logomark soundwave + wordmark.
+ * NoraLogo — soundwave logomark + wordmark.
  *
- * Conceito: o produto escuta conversas e cristaliza inteligência. As 7 barras
- * verticais em alturas variadas evocam uma waveform congelada. Animação on-mount
- * faz cada barra crescer do 0 à sua altura final em cascata; o wordmark "NORA"
- * aparece ao fim, sliding suavemente da esquerda.
+ * Concept: the product listens to conversations and crystallizes intelligence.
+ * The 7 vertical bars at varying heights evoke a frozen waveform. The on-mount
+ * animation grows each bar from 0 to its final height in a cascade; the "NORA"
+ * wordmark appears at the end, sliding smoothly in from the left.
  *
- * Respeita `prefers-reduced-motion` via CSS global em tokens.css.
+ * Respects `prefers-reduced-motion` via global CSS in tokens.css.
  */
 export function NoraLogo({
   size = 28,
@@ -41,11 +41,11 @@ export function NoraLogo({
     return () => clearTimeout(t);
   }, [animate]);
 
-  // Alturas (% do size) — soundwave simétrica com passos UNIFORMES até o pico
-  // central; todas as barras com a mesma espessura (pill). Ref. do PO.
+  // Heights (% of size) — symmetric soundwave with UNIFORM steps up to the
+  // central peak; every bar with the same thickness (pill). PO's reference.
   const heights = [50, 75, 100, 75, 50];
 
-  // Rebrand v3: barras pretas (--ink). "paper" = barras claras p/ fundo escuro.
+  // Rebrand v3: black bars (--ink). "paper" = light bars for dark background.
   const barColor = variant === "paper" ? "var(--canvas)" : "var(--ink)";
   const wordColor = variant === "paper" ? "var(--canvas)" : "var(--ink)";
 

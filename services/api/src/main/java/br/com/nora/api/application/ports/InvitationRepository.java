@@ -7,30 +7,30 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Porta de persistencia dos convites de usuario (US06). Todas as operacoes sao escopadas por
- * tenant. Persistimos apenas o SHA-256 do token (coluna {@code token_hash}, indexada); o token cru
- * nunca chega aqui.
+ * Persistence port for user invitations (US06). All operations are scoped by tenant. We persist
+ * only the SHA-256 of the token (column {@code token_hash}, indexed); the raw token never gets
+ * here.
  */
 public interface InvitationRepository {
 
-    /** Busca convite pelo SHA-256 do token (fluxo de aceite). Lookup O(1) por indice. */
+    /** Finds an invitation by the SHA-256 of the token (accept flow). O(1) lookup by index. */
     Optional<IamInvitation> findByTokenHash(String tokenHash);
 
-    /** Busca convite por id dentro do tenant (revogacao, lookup administrativo). */
+    /** Finds an invitation by id within the tenant (revocation, administrative lookup). */
     Optional<IamInvitation> findById(UUID invitationId, UUID tenantId);
 
     /**
-     * Retorna o convite PENDING ativo para o e-mail no tenant, se existir. Usado para idempotencia:
-     * evitar criar dois convites pendentes simultaneos para o mesmo destinatario.
+     * Returns the active PENDING invitation for the e-mail in the tenant, if any. Used for
+     * idempotency: avoid creating two simultaneous pending invitations for the same recipient.
      */
     Optional<IamInvitation> findPendingByEmail(UUID tenantId, String email);
 
-    /** Persiste o agregado (insert ou update). Retorna a instancia salva. */
+    /** Persists the aggregate (insert or update). Returns the saved instance. */
     IamInvitation save(IamInvitation invitation);
 
     /**
-     * Lista convites do tenant. Quando {@code status == null} retorna todos. Resultados sao
-     * ordenados por {@code invited_at} desc.
+     * Lists the tenant's invitations. When {@code status == null} returns all of them. Results are
+     * ordered by {@code invited_at} desc.
      */
     List<IamInvitation> listByTenant(UUID tenantId, InvitationStatus status);
 }

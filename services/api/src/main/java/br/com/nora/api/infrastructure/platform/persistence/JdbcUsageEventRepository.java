@@ -11,7 +11,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-/** Adapter JdbcTemplate de eventos de uso de IA (tabela usage_events, ADR 0024). */
+/** JdbcTemplate adapter for AI usage events (usage_events table, ADR 0024). */
 @Repository
 @ConditionalOnProperty(name = "nora.platform.enabled", havingValue = "true")
 public class JdbcUsageEventRepository implements UsageEventRepository {
@@ -44,8 +44,8 @@ public class JdbcUsageEventRepository implements UsageEventRepository {
 
     @Override
     public CostReport aggregate(OffsetDateTime from, OffsetDateTime to, String groupBy) {
-        // groupBy é whitelisted na camada de serviço (tenant|model|service). Mapeado aqui para
-        // expressões fixas — sem interpolar input do usuário.
+        // groupBy is whitelisted in the service layer (tenant|model|service). Mapped here to
+        // fixed expressions — no interpolation of user input.
         String keyExpr =
                 switch (groupBy) {
                     case "tenant" -> "COALESCE(tenant_id::text, '(sem tenant)')";

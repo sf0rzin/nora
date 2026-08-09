@@ -4,7 +4,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/** Item da listagem de reunioes. Mapeia docs/api/examples/meetings-list-response.json. */
+/** Item of the meeting listing. Maps docs/api/examples/meetings-list-response.json. */
 public record MeetingListItem(
         UUID id,
         String title,
@@ -17,9 +17,9 @@ public record MeetingListItem(
         int riskCount,
         int opportunityCount,
         List<String> tags,
-        /** Banda de produtividade (LOW/MEDIUM/HIGH) quando avaliada; null caso contrário. */
+        /** Productivity band (LOW/MEDIUM/HIGH) when assessed; null otherwise. */
         String productivityBand,
-        /** Score de produtividade (0-100) quando avaliado; null caso contrário. */
+        /** Productivity score (0-100) when assessed; null otherwise. */
         Integer productivityScore,
-        /** Nomes dos participantes para o stack de avatares (vazio quando não há). */
+        /** Participant names for the avatar stack (empty when there are none). */
         List<String> participants) {}

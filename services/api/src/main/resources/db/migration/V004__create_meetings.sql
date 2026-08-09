@@ -1,6 +1,6 @@
--- V004: cria reunioes (meetings) e suas dependencias diretas para o upload textual (US07).
--- analyses e action_items virao em V005 (US11/US12).
--- Toda tabela tenant-bound carrega tenant_id explicito (ver docs/adr/0002-multi-tenancy.md).
+-- V004: creates meetings and their direct dependencies for the text upload (US07).
+-- analyses and action_items will come in V005 (US11/US12).
+-- Every tenant-bound table carries an explicit tenant_id (see docs/adr/0002-multi-tenancy.md).
 
 CREATE TABLE meetings (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
