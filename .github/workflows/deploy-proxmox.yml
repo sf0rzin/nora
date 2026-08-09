@@ -160,7 +160,7 @@ jobs:
         id: fetch
         if: github.event_name == 'workflow_run'
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nora-release-pointer
           path: pointer
