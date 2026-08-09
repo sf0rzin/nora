@@ -84,6 +84,85 @@ public final class PolicyEvaluator {
         return anyAllow;
     }
 
+    /**
+     * Diz se a decisao para {@code action} e forcosamente a MESMA para todo recurso do conjunto
+     * descrito por {@code wildcardResource} (ex.: {@code nora:tenant/{t}:meeting/*} = todas as
+     * reunioes do tenant).
+     *
+     * <p>Existe para o caminho de listagem. Filtrar item a item obriga a carregar o conjunto
+     * inteiro do banco antes de paginar, porque so depois de avaliar cada item se sabe quantos
+     * sobram. Quando nenhuma statement consegue DISTINGUIR dois recursos do conjunto, esse trabalho
+     * todo produz sempre a mesma resposta -- e a decisao pode ser tomada uma vez, antes da query,
+     * deixando a paginacao para o SQL.
+     *
+     * <p>Uma statement distingue dois recursos do conjunto de duas maneiras:
+     *
+     * <ul>
+     *   <li><b>condition</b> -- le atributos do recurso, que variam item a item;
+     *   <li><b>resource mais especifico que o conjunto</b> -- {@code meeting/abc*} casa uns e
+     *       outros nao.
+     * </ul>
+     *
+     * <p>Devolve {@code empty} em qualquer duvida: o caller entao avalia item a item, exatamente
+     * como antes. E uma otimizacao que so dispara quando e demonstravelmente equivalente -- nunca
+     * amplia nem restringe o que o usuario ve.
+     */
+    public static Optional<Boolean> uniformDecision(
+            List<PolicyStatement> statements, String action, String wildcardResource) {
+        if (wildcardResource == null || !wildcardResource.endsWith("*")) {
+            return Optional.empty();
+        }
+        String prefix = wildcardResource.substring(0, wildcardResource.length() - 1);
+
+        if (statements != null) {
+            for (PolicyStatement s : statements) {
+                if (!matchesAction(s, action)) {
+                    continue;
+                }
+                if (s.condition() != null && !s.condition().isEmpty()) {
+                    return Optional.empty();
+                }
+                for (String pattern : s.resources()) {
+                    if (!nonDiscriminating(pattern, prefix)) {
+                        return Optional.empty();
+                    }
+                }
+            }
+        }
+        return Optional.of(isAllowed(statements, action, wildcardResource));
+    }
+
+    /**
+     * Um pattern e nao-discriminante sobre o conjunto {@code prefix + *} quando casa TODO o
+     * conjunto ou NENHUM elemento dele -- nos dois casos ele nao separa um item do outro.
+     */
+    private static boolean nonDiscriminating(String pattern, String prefix) {
+        int wild = firstWildcard(pattern);
+        String literal = wild < 0 ? pattern : pattern.substring(0, wild);
+
+        // Casa tudo: o trecho literal antes do primeiro wildcard nao chega a ser mais especifico
+        // que o prefixo comum do conjunto ("*", "nora:tenant/T:*", "nora:tenant/T:meeting/*").
+        if (wild >= 0 && prefix.startsWith(literal)) {
+            return true;
+        }
+        // Nao casa nada: os literais ja divergem antes de qualquer wildcard (outro tipo de
+        // recurso, outro tenant), entao o pattern e irrelevante para este conjunto.
+        int common = Math.min(literal.length(), prefix.length());
+        return !literal.regionMatches(0, prefix, 0, common);
+    }
+
+    private static int firstWildcard(String pattern) {
+        int star = pattern.indexOf('*');
+        int any = pattern.indexOf('?');
+        if (star < 0) {
+            return any;
+        }
+        if (any < 0) {
+            return star;
+        }
+        return Math.min(star, any);
+    }
+
     /** Avaliacao completa com request context (usado para conditions). */
     public static boolean isAllowed(
             List<PolicyStatement> statements,

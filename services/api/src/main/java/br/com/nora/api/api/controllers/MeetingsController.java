@@ -29,6 +29,7 @@ import br.com.nora.api.application.meeting.MeetingService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
 import br.com.nora.api.application.meeting.TranscriptSplitService;
 import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
+import br.com.nora.api.application.ports.MeetingRepository.PagedMeetings;
 import br.com.nora.api.domain.customer.CustomerConfidenceAssessment;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
@@ -46,6 +47,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -302,29 +304,64 @@ public class MeetingsController {
         int safePage = Math.max(0, page);
         int safeSize = Math.min(100, Math.max(1, size));
         MeetingFilter filter = buildFilter(search, status, from, to);
-        // Carrega todas as meetings do tenant que casam os filtros baratos, filtra por IAM
-        // (conditions por item) e pagina apos — totalItems reflete o conjunto realmente visivel.
-        List<Meeting> candidates = meetings.listAllForAuthFilter(principal.tenantId(), filter);
-        // Filtro IAM por item resolvendo o bypass de Root + os statements do usuario UMA vez para
-        // toda a lista (antes: isAllowed por reuniao -> 2 queries IAM por item = N+1 no endpoint
-        // mais quente do produto).
-        List<Meeting> visible =
-                authz.filterAllowed(
+
+        // Caminho rapido: quando nenhuma policy do usuario consegue distinguir uma reuniao da
+        // outra dentro do tenant (sem condition, sem resource mais especifico que o curinga), a
+        // decisao de IAM e a mesma para todas — e o filtro por item, que obriga a carregar o
+        // tenant inteiro antes de paginar, nao muda nada. Nesse caso a paginacao fica no SQL e o
+        // custo passa a ser proporcional a PAGINA, nao ao tamanho do tenant.
+        //
+        // Cobre os dois casos comuns: Root (que o filterAllowed ja deixava passar inteiro, depois
+        // de varrer tudo a toa) e o usuario com um Allow amplo de meeting:read.
+        //
+        // `uniformDecision` devolve empty a qualquer duvida, e ai o caminho de baixo roda igual
+        // ao que sempre rodou. E otimizacao provada equivalente, nao heuristica: nunca amplia nem
+        // restringe o conjunto visivel.
+        Optional<Boolean> uniform =
+                authz.uniformDecision(
                         principal.userId(),
                         principal.tenantId(),
                         "meeting:read",
-                        candidates,
-                        m -> meetingResource(principal.tenantId(), m.id()),
-                        Meeting::attributes);
+                        meetingResource(principal.tenantId(), null));
 
-        long totalItems = visible.size();
-        // Offset em long: `page` vem do query string sem teto superior, e `safePage * safeSize`
-        // em int estoura pra negativo já a partir de page≈21M com size=100. O Math.min preserva
-        // o negativo e o subList seguinte rebenta com IndexOutOfBounds -> 500.
-        long offset = (long) safePage * safeSize;
-        int fromIdx = (int) Math.min(offset, visible.size());
-        int toIdx = Math.min(fromIdx + safeSize, visible.size());
-        List<Meeting> pageMeetings = visible.subList(fromIdx, toIdx);
+        List<Meeting> pageMeetings;
+        long totalItems;
+        if (uniform.isPresent()) {
+            if (Boolean.FALSE.equals(uniform.get())) {
+                // requireAnyAllow acima ja teria barrado; defensivo para nao paginar um Deny.
+                pageMeetings = List.of();
+                totalItems = 0;
+            } else {
+                PagedMeetings paged =
+                        meetings.list(principal.tenantId(), filter, safePage, safeSize);
+                pageMeetings = paged.items();
+                totalItems = paged.totalItems();
+            }
+        } else {
+            // Caminho lento, inalterado: ha condition ou resource por reuniao em jogo, entao so
+            // avaliando item a item se sabe quantas sobram — e sem saber isso nao da para paginar.
+            List<Meeting> candidates = meetings.listAllForAuthFilter(principal.tenantId(), filter);
+            // Filtro IAM por item resolvendo o bypass de Root + os statements do usuario UMA vez
+            // para toda a lista (antes: isAllowed por reuniao -> 2 queries IAM por item = N+1 no
+            // endpoint mais quente do produto).
+            List<Meeting> visible =
+                    authz.filterAllowed(
+                            principal.userId(),
+                            principal.tenantId(),
+                            "meeting:read",
+                            candidates,
+                            m -> meetingResource(principal.tenantId(), m.id()),
+                            Meeting::attributes);
+
+            totalItems = visible.size();
+            // Offset em long: `page` vem do query string sem teto superior, e `safePage *
+            // safeSize` em int estoura pra negativo já a partir de page≈21M com size=100. O
+            // Math.min preserva o negativo e o subList seguinte rebenta com IndexOutOfBounds.
+            long offset = (long) safePage * safeSize;
+            int fromIdx = (int) Math.min(offset, visible.size());
+            int toIdx = Math.min(fromIdx + safeSize, visible.size());
+            pageMeetings = visible.subList(fromIdx, toIdx);
+        }
         // Enriquecimento em LOTE (2 queries agregadas) — antes era 1 analise completa por item
         // (N+1 carregando 4 colecoes so pra contar). Participantes ja vem carregados na lista.
         List<UUID> pageIds = pageMeetings.stream().map(Meeting::id).toList();

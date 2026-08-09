@@ -6,6 +6,7 @@ import br.com.nora.api.domain.iam.PolicyEvaluator;
 import br.com.nora.api.domain.iam.PolicyStatement;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -75,6 +76,28 @@ public class AuthorizationService {
         if (!PolicyEvaluator.hasAnyAllow(stmts, action, resource)) {
             throw IamException.forbidden(action);
         }
+    }
+
+    /**
+     * Responde, ANTES de ir ao banco, se a decisao de {@code action} e a mesma para todo recurso
+     * coberto por {@code wildcardResource}. Presente = pode decidir de uma vez; {@code empty} = tem
+     * mesmo de avaliar item a item com {@link #filterAllowed}.
+     *
+     * <p>Serve para listagens. Filtrar item a item obriga a carregar o conjunto inteiro antes de
+     * paginar; quando nenhuma statement distingue dois itens do conjunto, esse scan produz sempre a
+     * mesma resposta e a paginacao pode ficar no SQL.
+     *
+     * <p>Root cai aqui como allow uniforme, que e literalmente o que {@link #filterAllowed} faz com
+     * ele: devolve a lista intacta. Antes disto, o endpoint de listagem varria o tenant todo para
+     * nao filtrar nada.
+     */
+    public Optional<Boolean> uniformDecision(
+            UUID userId, UUID tenantId, String action, String wildcardResource) {
+        if (users.isRoot(userId, tenantId)) {
+            return Optional.of(true);
+        }
+        List<PolicyStatement> stmts = iam.collectStatementsForUser(userId, tenantId);
+        return PolicyEvaluator.uniformDecision(stmts, action, wildcardResource);
     }
 
     /**
