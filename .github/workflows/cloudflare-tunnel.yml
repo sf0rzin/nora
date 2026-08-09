@@ -18,8 +18,10 @@ name: cloudflare-tunnel
 #                             Zone:    Zone               Read
 #                           (mesmo token do cloudflare-setup.yml, com Tunnel:Edit adicionado)
 #
-# Saída: o connector token (pro Secret CLOUDFLARE_TUNNEL_TOKEN) e o AUD da Access App
-# (pra Variable CF_ACCESS_AUD) saem no log do step "Connector token + AUD".
+# Saída: o AUD da Access App (pra Variable CF_ACCESS_AUD) sai no log do último step.
+# O connector token NÃO sai: este repo é público (ADR 0017) e o log de um run é legível
+# por qualquer visitante. O step imprime o comando pro operador buscá-lo direto da API
+# e canalizá-lo pro `gh secret set`, sem o valor tocar em log algum.
 
 on:
   workflow_dispatch:
@@ -172,24 +174,40 @@ jobs:
               | jq '{success, name: .result.name, content: .result.content, proxied: .result.proxied}'
           fi
 
-      - name: Connector token + AUD
+      - name: AUD + instruções do connector token
         env:
           TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
         run: |
           set -euo pipefail
-          # Connector token (pro Secret CLOUDFLARE_TUNNEL_TOKEN). É sensível — vai pro log deste
-          # run (repo privado). Após copiar, rotacione recriando o túnel se precisar.
-          token=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
-            "$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID/token" | jq -r '.result')
-          # AUD da Access App admin.nora.systems (read-only — não muta o Access App da lane irmã).
+          # O connector token NÃO é buscado aqui, de propósito.
+          #
+          # Ele dá poder de registrar um connector no túnel de produção — quem o tiver
+          # passa a receber tráfego real dos hostnames de ../../infra/proxmox/cloudflared/config.yml.
+          # Este repositório é PÚBLICO (ADR 0017), e o log de um run é legível por qualquer
+          # visitante. Valor obtido em runtime não entra no mascaramento automático do Actions,
+          # que só cobre Secrets registrados — então imprimi-lo aqui seria publicá-lo.
+          #
+          # O caminho abaixo mantém o valor fora de qualquer log: o operador o busca direto
+          # da API e canaliza pro `gh secret set`, sem passar pelo terminal nem por um artifact.
+
+          # O AUD não é segredo: é o identificador público da Access App, usado só como
+          # `audience` esperado na validação do JWT. O repo já o guarda como Variable, não Secret.
           aud=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
             "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps?per_page=100" \
             | jq -r --arg fqdn "$SUBDOMAIN.$DOMAIN" '.result[] | select(.domain==$fqdn) | .aud' | head -1)
+
           echo "================ AÇÕES MANUAIS (PO) ================"
-          echo ">>> GitHub Secret  CLOUDFLARE_TUNNEL_TOKEN ="
-          echo "$token"
           echo ">>> GitHub Variable CF_ACCESS_AUD ="
           echo "${aud:-<Access App ainda sem AUD — rode cloudflare-setup.yml primeiro>}"
+          echo ""
+          echo ">>> GitHub Secret CLOUDFLARE_TUNNEL_TOKEN — rode na SUA máquina:"
+          echo ""
+          echo "    export CF_TOKEN=<o mesmo CLOUDFLARE_API_TOKEN>"
+          echo "    curl -fsSL -H \"Authorization: Bearer \$CF_TOKEN\" \\"
+          echo "      \"$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID/token\" \\"
+          echo "      | jq -r .result | gh secret set CLOUDFLARE_TUNNEL_TOKEN --repo ${{ github.repository }}"
+          echo ""
+          echo "    (o valor vai do curl direto pro secret — não aparece no shell nem no histórico)"
           echo "==================================================="
 
       - name: Summary
@@ -209,8 +227,8 @@ jobs:
             echo "| DNS | \`$SUBDOMAIN.$DOMAIN\` → \`$TUNNEL_ID.cfargotunnel.com\` (proxied) |"
             echo ""
             echo "### Próximos passos"
-            echo "1. Pega o **connector token** + **AUD** no log do step \`Connector token + AUD\`."
-            echo "2. Seta o **Secret** \`CLOUDFLARE_TUNNEL_TOKEN\` e a **Variable** \`CF_ACCESS_AUD\` no repo."
+            echo "1. Pega o **AUD** no log do step \`AUD + instruções do connector token\` e seta a **Variable** \`CF_ACCESS_AUD\`."
+            echo "2. Seta o **Secret** \`CLOUDFLARE_TUNNEL_TOKEN\` com o comando impresso nesse mesmo step — o token não sai no log, por ser repo público."
             echo "3. Merge do PR → \`deploy-infra.yml\` sobe o nora-admin (internal) + sidecar cloudflared."
             echo "4. **Lane Cloudflare:** garantir Access App + allowlist via \`cloudflare-setup.yml\` **SEM** \`admin_hostname\`."
             echo ""
