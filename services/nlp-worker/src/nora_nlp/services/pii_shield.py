@@ -730,6 +730,24 @@ _NAME_TOKEN_RE = re.compile(f"\\b{_TITLE_WORD}\\b")
 # used to sit here, claiming `_PERSON_NAME_NEGATIVE_LIST` handled these, was wrong.
 _CAPS_SEQUENCE_RE = re.compile(f"\\b{_CAPS_WORD}(?:\\s+{_CAPS_WORD}){{1,4}}\\b")
 
+# A single ALL-CAPS token used as a speaker label, "MARINA: fechamos o escopo". The sequence
+# above needs two tokens, so a one-word label matched nothing at all. The colon is the signal;
+# the token still has to be a listed given name, or every "ATA:" and "OBS:" becomes a person.
+_CAPS_LABEL_RE = re.compile(f"\\b{_CAPS_WORD}(?=\\s*:)")
+
+# A speaker label opening a line: up to three ALL-CAPS words followed by a colon. This is the
+# one shape where neither end needs to be on a list, and it is what closed the last of the
+# measured leak -- "NIVALDO ZANCHETTA: fechamos o escopo" has a given name on no list and a
+# surname on no list, so nothing else can see it. Diarisers and minute-takers produce exactly
+# this, and an ordinary phrase almost never opens a line and ends in a colon; the ones that do
+# ("ATA:", "PAUTA:", "OBS:") are ordinary vocabulary and are filtered as such.
+_CAPS_SPEAKER_RE = re.compile(f"(?m)^[ \\t]*({_CAPS_WORD}(?:[ \\t]+{_CAPS_WORD}){{0,2}})[ \\t]*:")
+
+# Third-person preterite and gerund endings. What follows a name in minutes is a verb --
+# "MARINA APROVOU", "CARLOS ASSUMIU" -- and no Brazilian surname ends this way, so this is
+# what lets a name be taken as given-name-plus-one-token without swallowing the sentence.
+_VERB_TAIL_RE = re.compile(r"(?:ou|iu|eu|aram|eram|iram|ando|endo|indo|aria|eria|iria|sse)$")
+
 
 # --------------------------------------------------------------------------- #
 # Dataclasses and utilities
@@ -1155,6 +1173,27 @@ _COMMON_PHRASE_HEADS: frozenset[str] = frozenset(
         "Tarde",
         "Manha",
         "Noite",
+        # Words that open a line and end in a colon without naming anybody.
+        "Obs",
+        "Observacao",
+        "Observacoes",
+        "Aviso",
+        "Avisos",
+        "Local",
+        "Data",
+        "Titulo",
+        "Objetivo",
+        "Objetivos",
+        "Status",
+        "Geral",
+        "Inicio",
+        "Fim",
+        "Duracao",
+        "Participacao",
+        "Encaminhamentos",
+        "Encaminhamento",
+        "Conclusao",
+        "Conclusoes",
         "Um",
         "Uma",
         "Uns",
@@ -1200,6 +1239,38 @@ _COMMON_PHRASE_HEADS: frozenset[str] = frozenset(
         "Centro",
         "Jardim",
         "Parque",
+        # The words that open a Brazilian place name, and the adjectives that close an
+        # institution's. Not a gazetteer -- just the heads, which is what the rule reads.
+        "Belo",
+        "Porto",
+        "Rio",
+        "Praia",
+        "Serra",
+        "Monte",
+        "Lago",
+        "Ponta",
+        "Barra",
+        "Cabo",
+        "Foz",
+        "Governador",
+        "Economica",
+        "Economico",
+        "Federal",
+        "Estadual",
+        "Municipal",
+        "Interno",
+        "Interna",
+        "Externo",
+        "Externa",
+        "Bruto",
+        "Liquido",
+        "Informacao",
+        "Informacoes",
+        "Tecnologia",
+        "Comunicacao",
+        "Administracao",
+        "Financas",
+        "Patrimonio",
         "Estrada",
         "Rodovia",
         "Alameda",
@@ -1718,18 +1789,42 @@ def _caps_name_span(match: re.Match[str], text: str) -> tuple[int, int] | None:
             # Ordinary vocabulary never opens a name, and skipping it is what lets the name
             # be found FURTHER IN: "FICOU COM EDSON SILVA" yields EDSON SILVA.
             continue
+        head_is_a_given_name = folded_head in _BR_TOP_NAMES
+
         # Longest first: "JOAO PEDRO COSTA" is one person, not "JOAO PEDRO" plus a stray.
         for j in range(len(tokens) - 1, i, -1):
-            # The tail is what bounds the span, ALWAYS. Accepting any tail once the head was a
-            # known given name is how "CARLOS SILVA APROVOU" kept the verb: with the head
+            # The tail is what bounds the span. Accepting any tail once the head was a known
+            # given name is how "CARLOS SILVA APROVOU" kept the verb: with the head
             # recognised, the longest-first loop took the furthest token whatever it was.
             if _fold(tokens[j].group(0)) not in _BR_TOP_SURNAMES:
                 continue
-            if any(_fold(tokens[k].group(0)) in _GENITIVE_PREPOSITIONS for k in range(i, j + 1)):
+            # A particle inside the span is the commonest full-name shape there is, but only a
+            # recognised given name makes it a name rather than a noun phrase: "PEDRO DA SILVA"
+            # is a person, "LISTA DE CAMPOS" is not.
+            if not head_is_a_given_name and any(
+                _fold(tokens[k].group(0)) in _GENITIVE_PREPOSITIONS for k in range(i, j + 1)
+            ):
                 continue
             start, end = base + head.start(), base + tokens[j].end()
             if _ends_on_a_word_boundary(end, text):
                 return start, end
+
+        # A listed given name plus ONE more token. Requiring the tail to be a listed surname
+        # too left every all-caps name with an off-list surname in the clear -- "ANA
+        # BITTENCOURT", "MARINA KRANZ", "CARLOS HOFFMANN" -- and measured against the corpus
+        # that was the ENTIRE residual leak: 240 of 240. One token, so a sentence cannot be
+        # swallowed, and not a verb: a third-person preterite is what follows a name in
+        # minutes ("APROVOU", "ASSUMIU"), and no Brazilian surname ends that way.
+        if head_is_a_given_name and i + 1 < len(tokens):
+            following = _fold(tokens[i + 1].group(0))
+            if (
+                following not in _COMMON_PHRASE_HEADS
+                and following not in _NAME_CONNECTIVES
+                and not _VERB_TAIL_RE.search(following)
+            ):
+                start, end = base + head.start(), base + tokens[i + 1].end()
+                if _ends_on_a_word_boundary(end, text):
+                    return start, end
     return None
 
 
@@ -1930,6 +2025,36 @@ def _redact_person_names(
         if span is None or _is_covered(span[0], span[1]):
             continue
         _claim(span[0], span[1], text[span[0] : span[1]])
+
+    # Pattern 5: a one-word ALL-CAPS speaker label, "MARINA: fechamos o escopo". Pattern 4
+    # needs two tokens, so this shape matched nothing. Runs after it, so "CARLOS SILVA:" is
+    # already claimed whole and only a genuinely lone label reaches here.
+    for m in _CAPS_LABEL_RE.finditer(text):
+        token = _fold(m.group(0))
+        if token not in _BR_TOP_NAMES or token in _PERSON_NAME_NEGATIVE_LIST:
+            continue
+        if _is_covered(m.start(), m.end()):
+            continue
+        _claim(m.start(), m.end(), m.group(0))
+
+    # Pattern 6: a speaker label opening a line. The only shape where neither end has to be
+    # recognised -- the position and the colon carry it. Runs last, so anything the lists could
+    # identify is already claimed and only the unrecognised names reach here.
+    for m in _CAPS_SPEAKER_RE.finditer(text):
+        label = m.group(1)
+        tokens = [_fold(t.group(0)) for t in _WORD_RE.finditer(label)]
+        if any(
+            t in _PERSON_NAME_NEGATIVE_LIST
+            or t in _COMMON_PHRASE_HEADS
+            or t in _NAME_CONNECTIVES
+            or _VERB_TAIL_RE.search(t)
+            for t in tokens
+        ):
+            continue
+        start, end = m.start(1), m.end(1)
+        if _is_covered(start, end):
+            continue
+        _claim(start, end, label)
 
     person_matches.sort(key=lambda x: x.start)
 

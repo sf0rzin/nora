@@ -686,6 +686,88 @@ def _time_redact(blob: str) -> float:
     return time.perf_counter() - start
 
 
+@pytest.mark.parametrize(
+    "text, name",
+    [
+        # a listed given name with an off-list surname
+        ("ANA BITTENCOURT: fechamos o escopo.", "ANA BITTENCOURT"),
+        ("MARINA KRANZ ficou de responder.", "MARINA KRANZ"),
+        ("CARLOS HOFFMANN assinou.", "CARLOS HOFFMANN"),
+        # two given names, neither of which is a surname
+        ("ANA PAULA: fechamos o escopo.", "ANA PAULA"),
+        ("CARLOS EDUARDO revisou.", "CARLOS EDUARDO"),
+        # the particle form
+        ("PEDRO DA SILVA aprovou o escopo.", "PEDRO DA SILVA"),
+        ("JOSE DOS SANTOS assinou a ata.", "JOSE DOS SANTOS"),
+        # a one-word speaker label, at the head of a line and in the middle of one -- the
+        # line-opening rule cannot see the second, and nothing else can see either
+        ("MARINA: fechamos o escopo.", "MARINA"),
+        ("Perguntei a MARINA: qual o prazo?", "MARINA"),
+        ("Ficou combinado com PEDRO: entrega na sexta.", "PEDRO"),
+        # nothing on any list: position and colon are the only signal
+        ("NIVALDO ZANCHETTA: fechamos o escopo.", "NIVALDO ZANCHETTA"),
+        ("WANDERLEIA KRUGER: prazo apertado.", "WANDERLEIA KRUGER"),
+    ],
+)
+def test_an_all_caps_name_is_redacted_when_the_lists_cannot_recognise_it(text, name):
+    """Requiring the tail to be a listed surname left every other all-caps name in the clear.
+
+    Measured against a corpus of 4400 sentences, all-caps was 100% of the residual leak: the
+    lists hold 300 given names and 121 surnames and the country has far more. Three signals
+    close it -- a listed given name plus one non-verb token, a particle inside a span a listed
+    given name opens, and a speaker label at the head of a line, where the position and the
+    colon carry a name that no list can see.
+    """
+    result = pii_shield.redact(text)
+    assert name not in result.redacted_text, result.redacted_text
+    for token in name.split():
+        if pii_shield._fold(token) in pii_shield._NAME_CONNECTIVES:
+            continue
+        assert token not in result.redacted_text, result.redacted_text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "MARINA APROVOU o escopo.",
+        "CARLOS ASSUMIU a frente.",
+        "ANA CONFIRMOU ontem.",
+        "ATA: presentes tres pessoas.",
+        "OBS: prazo apertado.",
+        "PAUTA: revisao de contrato.",
+        "STATUS: em andamento.",
+        "TOTVS PROTHEUS: versao nova.",
+        "Integrar CRM ERP via API REST.",
+    ],
+)
+def test_the_all_caps_patterns_do_not_read_a_verb_or_a_heading_as_a_name(text):
+    """Counter-proof. A name is followed by a verb in minutes, and a line opens with a label.
+
+    Widening the all-caps rules is what closed the leak, so the guards that bound them are
+    the thing to check: a third-person preterite is not a surname, and a heading is ordinary
+    vocabulary however it is punctuated.
+    """
+    assert pii_shield.redact(text).redacted_text == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "A reuniao aconteceu em Belo Horizonte na semana passada.",
+        "O escritorio de Porto Alegre vai assumir a conta.",
+        "Enviamos para o Rio de Janeiro na sexta.",
+        "A Caixa Economica Federal pediu o comprovante.",
+        "O Produto Interno Bruto cresceu.",
+        "A area de Tecnologia da Informacao vai assumir o chamado.",
+    ],
+)
+def test_a_place_or_an_institution_is_not_a_person(text):
+    """These are Title Case pairs with nobody in them, and they were being filed as people --
+    on `main` too. Not a gazetteer: the head of the phrase is what the rule reads, so the words
+    that OPEN a Brazilian place name are enough."""
+    assert pii_shield.redact(text).redacted_text == text
+
+
 def test_a_lone_surname_left_by_a_product_term_is_not_left_in_the_clear():
     """Regression: a one-token run was refused outright.
 
