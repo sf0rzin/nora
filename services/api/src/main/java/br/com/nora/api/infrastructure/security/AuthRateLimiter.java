@@ -5,7 +5,10 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import jakarta.servlet.http.HttpServletRequest;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Duration;
+import java.util.HexFormat;
 import java.util.Locale;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -27,11 +30,14 @@ import org.springframework.stereotype.Component;
  * produção.
  *
  * <ul>
- *   <li>Login: 10 / minuto por IP (humanidade real raramente erra 10x/min)
- *   <li>Login: 10 / minuto por e-mail alvo — teto que sobrevive à troca de IP
+ *   <li>Login: 10 / minuto por origem (humanidade real raramente erra 10x/min)
+ *   <li>Login: 10 / minuto por (e-mail alvo, origem) — ver {@link #allowLoginForEmail}
  *   <li>Reset request: 3 / 10 minutos por email (evita spam de reset)
- *   <li>Signup: 5 / minuto por IP
+ *   <li>Signup: 5 / minuto por origem
  * </ul>
+ *
+ * <p>"Origem" é a rede do cliente (/32 em IPv4, /64 em IPv6), não o endereço exato — ver {@link
+ * #clientKey}.
  *
  * <p>Ver {@link #clientKey} sobre por que a identificação por IP não usa X-Forwarded-For.
  */
@@ -40,6 +46,13 @@ public class AuthRateLimiter {
 
     /** Tamanho máximo do cache de buckets por endpoint. ~1MB heap por cache. */
     private static final long MAX_BUCKETS_PER_CACHE = 10_000;
+
+    /**
+     * Só dígitos/pontos (IPv4) ou hex/dois-pontos (IPv6, incl. a forma mista ::ffff:1.2.3.4). Serve
+     * de portão antes do {@code InetAddress}, que resolveria DNS para qualquer outra coisa.
+     */
+    private static final java.util.regex.Pattern IP_LITERAL =
+            java.util.regex.Pattern.compile("^[0-9A-Fa-f:.]{2,45}$");
 
     private final Cache<String, Bucket> loginBuckets;
     private final Cache<String, Bucket> loginEmailBuckets;
@@ -86,22 +99,29 @@ public class AuthRateLimiter {
     }
 
     /**
-     * Teto por conta alvo, independente de origem. O limite por IP sozinho não segura brute force:
-     * quem tem uma botnet ou um pool de saída troca de IP e recomeça com bucket limpo. Este aqui é
-     * o que amarra o custo de adivinhar a senha de UM e-mail conhecido.
+     * Teto por (conta alvo, origem). Fecha o buraco de trocar de IP e recomeçar do zero contra o
+     * MESMO e-mail, sem dar a terceiros o poder de gastar o orçamento da vítima.
      *
-     * <p>É throttle, não lockout: o bucket recarrega dentro da janela, então o pior que um atacante
-     * consegue é atrasar o login legítimo do alvo por um minuto — não trancar a conta. Lockout
-     * persistente seria trocar brute force por negação de serviço contra qualquer usuário cujo
-     * e-mail se conheça.
+     * <p><strong>Por que a chave inclui a origem.</strong> A primeira versão disto era um balde só
+     * por e-mail, descrito como "throttle, não lockout". Estava errado: o {@code Bandwidth.simple}
+     * do Bucket4j recarrega de forma gradual — 10/minuto é um token a cada 6s —, então bastava um
+     * atacante mandar uma tentativa a cada 6s, de um único IP e sem estourar o próprio teto, para
+     * consumir cada token no instante em que ele nascia. O dono da conta, com a senha certa, levava
+     * 429 para sempre. Era um lockout remoto de qualquer conta cujo e-mail se conheça — trocar
+     * brute force por negação de serviço não é troca aceitável.
+     *
+     * <p>Com a origem na chave, o atacante só consegue esgotar o próprio par (e-mail, IP): a
+     * vítima, vindo de outro endereço, tem o balde dela intacto. Contra um atacante distribuído
+     * este teto vale menos, mas aí quem limita é o balde por origem — e o custo por IP continua de
+     * pé porque {@link #clientKey} não é mais escolhível pelo cliente.
      */
-    public boolean allowLoginForEmail(String email) {
+    public boolean allowLoginForEmail(HttpServletRequest request, String email) {
         if (email == null || email.isBlank()) {
             // Sem e-mail não há o que limitar por conta; o bucket por IP ainda se aplica, e a
             // validação do @Valid rejeita o request logo em seguida.
             return true;
         }
-        String key = email.trim().toLowerCase(Locale.ROOT);
+        String key = email.trim().toLowerCase(Locale.ROOT) + "|" + clientKey(request);
         return bucketFor(loginEmailBuckets, key, loginPerMinutePerEmail, Duration.ofMinutes(1))
                 .tryConsume(1);
     }
@@ -148,9 +168,63 @@ public class AuthRateLimiter {
         if (!trustedClientIpHeader.isBlank()) {
             String edgeIp = request.getHeader(trustedClientIpHeader);
             if (edgeIp != null && !edgeIp.isBlank()) {
-                return edgeIp.trim();
+                // A Cloudflare manda um IP só, mas normalizar defende contra uma borda futura
+                // que anexe em vez de sobrescrever: o primeiro elemento seria de novo escolhível
+                // pelo cliente, então fica o ÚLTIMO, que é quem a borda escreveu.
+                int lastComma = edgeIp.lastIndexOf(',');
+                return networkKey(
+                        lastComma < 0 ? edgeIp.trim() : edgeIp.substring(lastComma + 1).trim());
             }
         }
-        return request.getRemoteAddr() == null ? "unknown" : request.getRemoteAddr();
+        return networkKey(PeerAddressFilter.peerAddress(request));
+    }
+
+    /**
+     * Agrupa o endereço na rede a que pertence: /32 em IPv4, /64 em IPv6.
+     *
+     * <p>Sem isto o balde é por endereço exato, e em IPv6 isso não limita nada: qualquer ligação
+     * doméstica ou VPS recebe um /64 delegado, ou seja 2^64 endereços de origem. Trocar de endereço
+     * dentro do próprio prefixo dava um balde novo por request, exatamente o problema que o
+     * X-Forwarded-For tinha. O /64 é a menor unidade que um operador atribui, então é o que
+     * corresponde a "um cliente".
+     *
+     * <p>Valor que não parseia como IP não vira chave: cai num balde comum de lixo, porque aceitar
+     * texto arbitrário como chave é o mesmo que deixar o cliente escolher o balde.
+     */
+    private static String networkKey(String rawIp) {
+        if (rawIp == null || rawIp.isBlank()) {
+            return "unknown";
+        }
+        String candidate = rawIp.trim();
+        // Forma [2001:db8::1]:443 e 1.2.3.4:443 — descarta a porta, mantém o endereço.
+        if (candidate.startsWith("[")) {
+            int close = candidate.indexOf(']');
+            if (close > 0) {
+                candidate = candidate.substring(1, close);
+            }
+        } else {
+            // Um único ':' num valor que também tem pontos é "ipv4:porta". Zero ':' é IPv4 puro;
+            // dois ou mais é IPv6 sem colchetes, onde os ':' são o próprio endereço.
+            int colon = candidate.indexOf(':');
+            if (colon >= 0 && colon == candidate.lastIndexOf(':') && candidate.indexOf('.') >= 0) {
+                candidate = candidate.substring(0, colon);
+            }
+        }
+        // SÓ literal. `InetAddress.getByName` resolve DNS quando recebe um nome, então um
+        // `CF-Connecting-IP: evil.example.com` viraria um lookup por request — resolução de nome
+        // controlada pelo cliente, no caminho de login.
+        if (!IP_LITERAL.matcher(candidate).matches()) {
+            return "unparseable";
+        }
+        try {
+            byte[] addr = InetAddress.getByName(candidate).getAddress();
+            if (addr.length == 16) {
+                // /64: os 8 primeiros bytes identificam a rede.
+                return HexFormat.of().formatHex(addr, 0, 8) + "::/64";
+            }
+            return InetAddress.getByAddress(addr).getHostAddress();
+        } catch (UnknownHostException e) {
+            return "unparseable";
+        }
     }
 }

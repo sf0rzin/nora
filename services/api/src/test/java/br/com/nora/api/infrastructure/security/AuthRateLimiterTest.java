@@ -72,31 +72,86 @@ class AuthRateLimiterTest {
     }
 
     @Test
-    void perEmailCapSurvivesIpRotation() {
-        // O teto por IP sozinho nao segura brute force distribuido: quem tem pool de saida troca
-        // de IP e recomeca limpo. O teto por conta alvo e o que amarra o custo de adivinhar a
-        // senha de um e-mail conhecido.
+    void perEmailCapBindsTheSameAccountAcrossAttemptsFromOneOrigin() {
         AuthRateLimiter rl = limiter(100, 2);
+        MockHttpServletRequest attacker = request("203.0.113.9", null);
 
-        assertThat(rl.allowLoginForEmail("alvo@cliente.com")).isTrue();
-        assertThat(rl.allowLoginForEmail("ALVO@cliente.com")).isTrue(); // mesma conta, outro casing
-        assertThat(rl.allowLoginForEmail(" alvo@cliente.com ")).isFalse();
+        assertThat(rl.allowLoginForEmail(attacker, "alvo@cliente.com")).isTrue();
+        assertThat(rl.allowLoginForEmail(request("203.0.113.9", null), "ALVO@cliente.com"))
+                .isTrue();
+        assertThat(rl.allowLoginForEmail(request("203.0.113.9", null), " alvo@cliente.com "))
+                .isFalse();
+    }
+
+    @Test
+    void oneAttackerCannotLockTheVictimOutOfTheirOwnAccount() {
+        // A primeira versao chaveava o balde SO no e-mail. Como o refill do Bucket4j e gradual,
+        // um atacante consumindo cada token assim que nascia trancava a conta da vitima para
+        // sempre -- brute force trocado por negacao de servico. Com a origem na chave, o atacante
+        // esgota apenas o proprio par (e-mail, origem).
+        AuthRateLimiter rl = limiter(100, 1);
+        String victim = "alvo@cliente.com";
+
+        assertThat(rl.allowLoginForEmail(request("203.0.113.9", null), victim)).isTrue();
+        assertThat(rl.allowLoginForEmail(request("203.0.113.9", null), victim)).isFalse();
+
+        // A vitima, de outro endereco, entra normalmente.
+        assertThat(rl.allowLoginForEmail(request("198.51.100.4", null), victim)).isTrue();
     }
 
     @Test
     void perEmailCapDoesNotLeakBetweenAccounts() {
         AuthRateLimiter rl = limiter(100, 1);
-
-        assertThat(rl.allowLoginForEmail("um@cliente.com")).isTrue();
-        assertThat(rl.allowLoginForEmail("um@cliente.com")).isFalse();
-        assertThat(rl.allowLoginForEmail("outro@cliente.com")).isTrue();
+        assertThat(rl.allowLoginForEmail(request("203.0.113.9", null), "um@cliente.com")).isTrue();
+        assertThat(rl.allowLoginForEmail(request("203.0.113.9", null), "um@cliente.com")).isFalse();
+        assertThat(rl.allowLoginForEmail(request("203.0.113.9", null), "outro@cliente.com"))
+                .isTrue();
     }
 
     @Test
     void missingEmailIsLeftToTheIpBucketAndTheValidator() {
         AuthRateLimiter rl = limiter(100, 1);
+        assertThat(rl.allowLoginForEmail(request("203.0.113.9", null), null)).isTrue();
+        assertThat(rl.allowLoginForEmail(request("203.0.113.9", null), "  ")).isTrue();
+    }
 
-        assertThat(rl.allowLoginForEmail(null)).isTrue();
-        assertThat(rl.allowLoginForEmail("  ")).isTrue();
+    // --------------------------------------------------------- normalizacao de rede
+
+    @Test
+    void addressesInTheSameIpv6SlashSixtyFourShareABucket() {
+        // Toda ligacao domestica ou VPS recebe um /64 delegado: sem normalizar, trocar de
+        // endereco dentro do proprio prefixo dava balde novo por request -- a mesma falha do XFF.
+        AuthRateLimiter rl = limiter(2, 100);
+
+        assertThat(rl.allowLogin(request("2001:db8:a:b::1", null))).isTrue();
+        assertThat(rl.allowLogin(request("2001:db8:a:b::2", null))).isTrue();
+        assertThat(rl.allowLogin(request("2001:db8:a:b::dead:beef", null))).isFalse();
+    }
+
+    @Test
+    void differentIpv6PrefixesGetDifferentBuckets() {
+        AuthRateLimiter rl = limiter(1, 100);
+        assertThat(rl.allowLogin(request("2001:db8:a:b::1", null))).isTrue();
+        assertThat(rl.allowLogin(request("2001:db8:a:b::2", null))).isFalse();
+        assertThat(rl.allowLogin(request("2001:db8:a:c::1", null))).isTrue();
+    }
+
+    @Test
+    void aPortSuffixDoesNotMintANewBucket() {
+        AuthRateLimiter rl = limiter(1, 100);
+        assertThat(rl.allowLogin(request("203.0.113.9:443", null))).isTrue();
+        assertThat(rl.allowLogin(request("203.0.113.9:1024", null))).isFalse();
+        assertThat(rl.allowLogin(request("[2001:db8:a:b::1]:443", null))).isTrue();
+        assertThat(rl.allowLogin(request("[2001:db8:a:b::9]:8443", null))).isFalse();
+    }
+
+    @Test
+    void aHostnameIsNeverResolvedAndAllSuchValuesShareOneBucket() {
+        // InetAddress.getByName resolveria DNS: um header com nome de host viraria um lookup por
+        // request, controlado pelo cliente, no caminho de login. Valor nao-literal cai num balde
+        // unico de lixo -- aceitar texto arbitrario como chave e deixar o cliente escolher balde.
+        AuthRateLimiter rl = limiter(1, 100);
+        assertThat(rl.allowLogin(request("evil.example.com", null))).isTrue();
+        assertThat(rl.allowLogin(request("outro.example.com", null))).isFalse();
     }
 }
