@@ -177,6 +177,17 @@ public class IntegrationService {
         //
         // Setar aqui basta: o `connections.upsert` é @Transactional, então o aspect dispara nele
         // e aplica o SET LOCAL na transação já aberta por este método.
+        //
+        // A checagem de configuração vem ANTES do decode para não trocar o erro que o operador vê:
+        // num provider sem credencial, decodificar primeiro devolvia "state inválido" em vez de
+        // "provider não configurado", e o diagnóstico apontava para o lado errado.
+        switch (provider) {
+            case GOOGLE -> requireGoogleConfigured();
+            case SLACK -> requireSlackConfigured();
+            default -> {
+                /* generic: validado dentro do handler, que conhece o directory */
+            }
+        }
         UUID tenantId = stateCodec.decode(state, clock.now()).tenantId();
         rlsContext.set(tenantId);
         try {
