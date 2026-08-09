@@ -627,17 +627,32 @@ def test_ordinary_labels_and_institutions_are_not_people(text):
 @pytest.mark.parametrize(
     "text, expected",
     [
-        ("Sala 11 - 98765 4321 reservada.", "Sala 11 - 98765 4321 reservada."),
-        ("faixa 11 - 3003 1234 do lote", "faixa 11 - 3003 1234 do lote"),
+        # Bounded, so an arbitrary run of separators is not a phone...
+        (
+            "Reservei a 11 ---- 98765 4321 para amanha.",
+            "Reservei a 11 ---- 98765 4321 para amanha.",
+        ),
+        ("protocolo 2024 e ordem 5566 pendente", "protocolo 2024 e ordem 5566 pendente"),
+        # ...but every real typing style still is, including the two the module's own
+        # docstring lists and a bound of 2 silently dropped.
         ("Meu telefone e 11 98765-4321.", "Meu telefone e [[PHONE_1]]."),
+        ("Me liga no 11  98765-4321.", "Me liga no [[PHONE_1]]."),
+        ("Contato 11 - 98765-4321 direto.", "Contato [[PHONE_1]] direto."),
+        ("Contato 11 / 98765-4321 direto.", "Contato [[PHONE_1]] direto."),
         ("Ligue para (11) 98765-4321 hoje.", "Ligue para [[PHONE_1]] hoje."),
+        ("Whatsapp +55 11 98765-4321 amanha.", "Whatsapp [[PHONE_1]] amanha."),
     ],
 )
-def test_the_phone_separator_does_not_swallow_a_sentence(text, expected):
-    """Regression: widening the DDD/number separator to `*` made any run of separators match.
+def test_the_phone_separator_is_bounded_but_covers_every_real_form(text, expected):
+    """Regression, in both directions.
 
-    "Sala 11 - 98765 4321" lost a room number and a numeric range to a PHONE placeholder. Two
-    characters covers every real typing style; more is a sentence, not a number.
+    Unbounded (`*`), a DDD followed by any run of separators was a phone. Bounded to two, the
+    " - " and " / " forms this module documents as supported stopped matching, which is a leak.
+    Three is what the real forms need.
+
+    A shape like "Sala 11 - 98765 4321" is admitted and that is deliberate: it is identical to
+    a real number and nothing in the text separates them, so the choice is between redacting a
+    room number and publishing a phone.
     """
     assert pii_shield.redact(text).redacted_text == expected
 

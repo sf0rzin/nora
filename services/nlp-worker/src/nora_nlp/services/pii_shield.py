@@ -77,17 +77,22 @@ _EMAIL_RE = re.compile(r"(?<![\w@])[a-zA-Z0-9._%+\-]{1,64}@[a-zA-Z0-9.\-]+\.[a-z
 #   - phone WITHOUT DDD ("99988-7766", "3003-1234"): too small to tell apart
 #     from numeric codes/protocols.
 #   - non-BR international ("+1 415 555 2671"): generalizing `\+\d{1,3}` explodes FP.
-#   - the DDD/number separator is `[\s.\-/]{0,2}` and NOT `*`. Widening it to `*` made a DDD
-#     followed by any run of separators a phone: "Sala 11 - 98765 4321 reservada" lost the room
-#     number and the range to a PHONE placeholder. Two characters is what a real typing style
-#     needs ("11  98765-4321", "11 -98765-4321"); more is a sentence, not a number.
+#   - the DDD/number separator is `[\s.\-/]{0,3}` and NOT `*`. Unbounded, a DDD followed by any
+#     run of separators became a phone and "Sala 11 - 98765 4321 reservada" lost the room number
+#     and the range to a placeholder. Three is what the real forms need -- "11  98765-4321",
+#     "11 - 98765-4321", and the "/" separator this file's own docstring lists as supported,
+#     "11 / 98765-4321". A tighter bound of 2 dropped the last two, which is a leak.
+#
+#     Three also still admits the contrived "Sala 11 - 98765 4321": that shape is identical to
+#     a real number and nothing in the text distinguishes them. Redacting a room number costs
+#     one phrase of context; missing a phone sends it to the model provider. Deliberate.
 #   - the bare-DDD branch keeps its optional trailing `)`, deliberately. "Ver o item (ramal 11)
 #     98765-4321" is a real number and dropping the branch left it in the clear; the cost is
 #     that the match carries a parenthesis belonging to the sentence and the hash differs from
 #     the same number typed "(11) 98765-4321". A leaked phone outweighs an odd hash.
 _PHONE_RE = re.compile(
     r"(?<!\d)(?:\+?55[\s.\-]?)?(?:\(\s*0?\d{2}\s*\)|0?\d{2}\)?)"
-    r"[\s.\-/]{0,2}(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)"
+    r"[\s.\-/]{0,3}(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)"
 )
 
 # Masked CPF.

@@ -31,7 +31,7 @@ const EMAIL_RE = /(?<![\w@])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b/g
 // this in step with `_PHONE_RE` in the worker; the whole point of the file is that it is a
 // mirror, and it silently stopped being one.
 const PHONE_RE =
-  /(?<!\d)(?:\+?55[\s.\-]?)?(?:\(\s*0?\d{2}\s*\)|0?\d{2})[\s.\-/]{0,2}(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)/g;
+  /(?<!\d)(?:\+?55[\s.\-]?)?(?:\(\s*0?\d{2}\s*\)|0?\d{2}\)?)[\s.\-/]{0,3}(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)/g;
 const CPF_RE = /(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)/g;
 const CPF_PARTIAL_RE = /(?<!\d)\d{8}-\d{2}(?!\d)/g;
 const CPF_SPACED_RE = /(?<!\d)\d{3}\s\d{3}\s\d{3}\s\d{2}(?!\d)/g;
