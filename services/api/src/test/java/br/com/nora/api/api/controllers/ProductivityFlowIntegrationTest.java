@@ -195,6 +195,84 @@ class ProductivityFlowIntegrationTest {
         assertThat(afterGoal.get("processingStatus").asText()).isEqualTo("PENDING");
     }
 
+    @Test
+    void puttingTheGoalTwiceReplacesItInsteadOfFailing() throws Exception {
+        // The upsert deletes the previous row with a NATIVE query, which the persistence context
+        // cannot see: the entity read moments earlier in the same transaction stays MANAGED under
+        // an id whose row is gone, and the save that follows carries that same assigned id -- no
+        // @Version, no Persistable, so it takes the merge branch and collides with the managed
+        // copy on that EntityKey. The endpoint documents itself as an idempotent upsert and every
+        // existing test only ever PUT once, so the second PUT was never exercised.
+        String token = signupAndLogin("upsert@nora.dev", "SenhaForte123", "Upsert");
+        UUID meetingId = uploadMeeting(token, "Reuniao upsert");
+
+        ResponseEntity<String> first =
+                putGoal(
+                        meetingId,
+                        token,
+                        Map.of(
+                                "purpose",
+                                "Primeira versao",
+                                "expectedOutcomes",
+                                List.of("outcome A", "outcome B")));
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+        UUID goalId = UUID.fromString(mapper.readTree(first.getBody()).get("id").asText());
+
+        ResponseEntity<String> second =
+                putGoal(
+                        meetingId,
+                        token,
+                        Map.of(
+                                "purpose",
+                                "Segunda versao",
+                                "expectedOutcomes",
+                                List.of("outcome C")));
+        assertThat(second.getStatusCode())
+                .as("the second PUT of an idempotent upsert must succeed: %s", second.getBody())
+                .isEqualTo(HttpStatus.OK);
+
+        JsonNode saved = mapper.readTree(second.getBody());
+        assertThat(saved.get("purpose").asText()).isEqualTo("Segunda versao");
+        assertThat(saved.get("expectedOutcomes").size()).isEqualTo(1);
+        assertThat(UUID.fromString(saved.get("id").asText()))
+                .as("the upsert keeps the goal id")
+                .isEqualTo(goalId);
+
+        // And the replacement is what a fresh read returns, not just what the write echoed back.
+        JsonNode detail = authGet("/meetings/" + meetingId, token).read(HttpStatus.OK);
+        assertThat(detail.get("goal").get("purpose").asText()).isEqualTo("Segunda versao");
+        assertThat(detail.get("goal").get("expectedOutcomes").size()).isEqualTo(1);
+    }
+
+    @Test
+    void puttingTheGoalTwiceOnACompletedMeetingQueuesOnlyOneReanalysis() throws Exception {
+        // Same path with the reprocess branch live: the second PUT flushes through
+        // claimForReanalysis, which is where the stale managed entity would surface as a
+        // StaleStateException on flush rather than at merge time.
+        String token = signupAndLogin("upsert2@nora.dev", "SenhaForte123", "Upsert2");
+        UUID meetingId = uploadMeeting(token, "Reuniao upsert 2");
+        analysisService.run(meetingId, principalTenantId(token));
+
+        assertThat(
+                        putGoal(
+                                        meetingId,
+                                        token,
+                                        Map.of("purpose", "v1", "expectedOutcomes", List.of("x")))
+                                .getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        ResponseEntity<String> second =
+                putGoal(
+                        meetingId,
+                        token,
+                        Map.of("purpose", "v2", "expectedOutcomes", List.of("y")));
+        assertThat(second.getStatusCode())
+                .as("second PUT on a completed meeting: %s", second.getBody())
+                .isEqualTo(HttpStatus.OK);
+
+        JsonNode detail = authGet("/meetings/" + meetingId, token).read(HttpStatus.OK);
+        assertThat(detail.get("goal").get("purpose").asText()).isEqualTo("v2");
+    }
+
     /* ---------- helpers ---------- */
 
     private UUID principalTenantId(String token) throws Exception {

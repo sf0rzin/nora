@@ -532,6 +532,7 @@ public class MeetingsController {
                 meetings.reprocess(
                         id,
                         principal.tenantId(),
+                        principal.userId(),
                         current ->
                                 authz.require(
                                         principal.userId(),

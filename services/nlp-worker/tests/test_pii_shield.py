@@ -1,3 +1,7 @@
+import re
+import time
+import unicodedata
+
 import pytest
 
 from nora_nlp.models import PiiType
@@ -212,7 +216,12 @@ def test_a_surname_outside_the_pt_br_alphabet_is_redacted_whole(text, surname):
     """
     result = pii_shield.redact(text)
     assert surname not in result.redacted_text
-    assert "]]" + surname[3:] not in result.redacted_text
+    # The anti-splice assertion has to look at the character AFTER the placeholder, not at a
+    # guessed tail. It was written `"]]" + surname[3:]`, which only happens to be the spliced
+    # tail for "Schurmann" (Sch|urmann): "Nunez"[3:] is "ez" but the splice is "nez", and
+    # "Sjoberg"[3:] is "berg" but the splice is "oberg". Two of the four cases passed against
+    # the parent commit while the placeholder WAS spliced and the tail WAS leaking.
+    assert not re.search(r"\]\]\w", result.redacted_text), result.redacted_text
     assert "[[PERSON_NAME_1]]" in result.redacted_text
 
 
@@ -239,20 +248,43 @@ def test_an_ordinary_genitive_phrase_is_not_a_person(text):
 
 
 @pytest.mark.parametrize(
-    "text, name",
+    "given, surname",
     [
-        ("Edson Costa Protheus", "Costa"),
-        ("Wanderleia Martins ficou de responder.", "Martins"),
-        ("Osvaldo Pinheiro assumiu a frente.", "Pinheiro"),
-        ("Genoveva Silveira revisou.", "Silveira"),
-        ("Anastacio Magalhães comentou.", "Magalhães"),
-        ("Teodolinda Brandão respondeu.", "Brandão"),
+        ("Edson", "Costa"),
+        ("Wanderleia", "Martins"),
+        ("Osvaldo", "Pinheiro"),
+        ("Genoveva", "Silveira"),
+        ("Anastacio", "Magalhães"),
+        ("Teodolinda", "Brandão"),
+        ("Jocimar", "Barros"),
+        ("Adilson", "Correa"),
     ],
 )
-def test_the_tail_list_covers_the_most_common_brazilian_surnames(text, name):
+def test_the_tail_list_covers_the_most_common_brazilian_surnames(given, surname):
     """Regression: the list was missing names from the IBGE top 10, Costa and Martins among
-    them, so a full name built on one of them had no tail signal and left in the clear."""
-    assert name not in pii_shield.redact(text).redacted_text
+    them, so a full name built on one of them had no tail signal and left in the clear.
+
+    Every case carries "Protheus". Without it the phrase is a clean 2-token Title Case
+    sequence, which `_spans_without_negatives` trusts whole WITHOUT ever consulting
+    `_BR_TOP_SURNAMES` -- so the earlier version of this test passed on Pattern 2 and only one
+    of its six cases actually exercised the list. Deleting Martins from the list left it
+    green. The negative term is what forces the qualification path where the tail is read.
+    """
+    result = pii_shield.redact(f"{given} {surname} Protheus")
+    assert given not in result.redacted_text
+    assert surname not in result.redacted_text
+    assert "Protheus" in result.redacted_text
+
+
+def test_the_surname_list_is_what_carries_that_test(monkeypatch):
+    """Counter-proof for the test above: empty the list and every case must fail.
+
+    Without this, a future edit that made the qualification path stop consulting
+    `_BR_TOP_SURNAMES` would go unnoticed -- the assertions would keep passing for some other
+    reason, which is exactly how the previous version of the test broke.
+    """
+    monkeypatch.setattr(pii_shield, "_BR_TOP_SURNAMES", frozenset())
+    assert pii_shield.redact("Edson Costa Protheus").redacted_text == "Edson Costa Protheus"
 
 
 def test_a_job_title_does_not_cancel_the_given_name_after_it():
@@ -292,7 +324,259 @@ def test_a_leftover_fragment_is_never_claimed_with_its_separating_space(monkeypa
     assert hashed, "the probes must claim something, otherwise this asserts nothing"
     for value in hashed:
         assert value == value.strip(), f"{value!r} carries an edge space"
-        assert pii_shield._is_a_name_on_its_own(value), f"{value!r} is not a name"
+
+
+def test_an_unqualified_leftover_fragment_is_not_claimed_as_a_person(monkeypatch):
+    """The fragment gate is load-bearing, shown by removing it.
+
+    This started as an assertion that every hashed value satisfies `_is_a_name_on_its_own`,
+    which is true by construction -- `_qualify_and_claim` only claims what passes that very
+    call, so the assertion re-applied the production gate to the production output and could
+    never fail. Deleting the gate left the whole suite green.
+
+    Mutating the gate off is what binds. "Contrato" is an ordinary noun; without the gate the
+    fragment left over between the start of the Pattern 2 match and the span Pattern 1 already
+    claimed is taken for a person and its hash filed.
+    """
+    probe = "Contrato Dr. Ana chegou."
+    assert pii_shield.redact(probe).redacted_text == "Contrato [[PERSON_NAME_1]] chegou."
+
+    monkeypatch.setattr(pii_shield, "_is_a_name_on_its_own", lambda value: True)
+    assert (
+        pii_shield.redact(probe).redacted_text == "[[PERSON_NAME_1]] [[PERSON_NAME_2]] chegou."
+    ), "the gate must be what keeps 'Contrato' out; if this line matches the one above it is inert"
+
+
+@pytest.mark.parametrize(
+    "text, leaked",
+    [
+        ("Osvaldo Pinheiro e Marina Alves ficaram de responder.", ["Osvaldo", "Pinheiro", "Alves"]),
+        ("Presentes: Edson Costa e Ana Souza.", ["Edson", "Costa", "Souza"]),
+        ("Kleber Almeida e Patricia Viana vao fechar o contrato.", ["Kleber", "Almeida", "Viana"]),
+    ],
+)
+def test_the_conjunction_e_joins_two_people_and_is_not_a_genitive(text, leaked):
+    """Regression introduced by the genitive gate itself.
+
+    `e` was in `_NAME_CONNECTIVES` alongside the genitive prepositions, so the gate read
+    "Osvaldo Pinheiro e Marina Alves" as one noun phrase with no given name at its head and
+    refused the whole run -- leaking both people, with only the bare token "Marina" caught by
+    Pattern 3. The outcome even flipped on word order: put the listed given name first and the
+    same two people were protected. `e` is a coordinating conjunction; in this corpus its job
+    is to join two DIFFERENT people.
+    """
+    result = pii_shield.redact(text)
+    for token in leaked:
+        assert token not in result.redacted_text, result.redacted_text
+
+
+def test_the_order_of_two_names_does_not_decide_whether_they_are_redacted():
+    a = pii_shield.redact("Osvaldo Pinheiro e Marina Alves ficaram de responder.").redacted_text
+    b = pii_shield.redact("Marina Alves e Osvaldo Pinheiro ficaram de responder.").redacted_text
+    assert a == b == "[[PERSON_NAME_1]] ficaram de responder."
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("O Protheus do Kleber Zanchetta travou.", "O Protheus do [[PERSON_NAME_1]] travou."),
+        ("A Sprint do Adilson Bueno atrasou.", "A Sprint do [[PERSON_NAME_1]] atrasou."),
+        ("O Backlog da Cleide Zanchetta esta cheio.", "O Backlog da [[PERSON_NAME_1]] esta cheio."),
+        ("O acesso ao Protheus de Jocimar Bonfim.", "O acesso ao Protheus de [[PERSON_NAME_1]]."),
+    ],
+)
+def test_a_product_name_beside_a_person_does_not_switch_the_redaction_off(text, expected):
+    """Regression: a negative-list term in the run suppressed a real name.
+
+    "O Protheus do Kleber Zanchetta travou" came out UNTOUCHED while the same sentence with
+    "sistema" in place of "Protheus" redacted correctly. A negative term forces the
+    qualification path, which demands a listed given name or surname -- and most real names
+    are on neither list, which is exactly why an unsplit match is trusted without them. A run
+    opening on a genitive preposition is what the negative term OWNS, and the owner of a
+    product is a person. "o Protheus do fulano" is everyday speech in these transcripts.
+    """
+    assert pii_shield.redact(text).redacted_text == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Dr. Antônio Gonçalves aprovou.",
+        "Patrícia Assunção revisou.",
+        "A Sra. Conceição Nogueira assinou.",
+    ],
+)
+def test_decomposed_input_is_redacted_exactly_like_composed_input(text):
+    """Regression: NFD input got the placeholder spliced into the middle of the name.
+
+    macOS filesystems and some ASR exports hand over decomposed text -- `A` + U+0301 instead
+    of `Á`. Every pattern here assumes one code point per letter, and both `\\b` and
+    `.isalpha()` treat a combining mark as a boundary, so NFD("Dr. Antônio Gonçalves aprovou.")
+    came out as "[[PERSON_NAME_1]]̂nio Gonçalves aprovou." -- name spliced, rest in the clear,
+    and `_hash` filing a value nobody wrote. pt-BR names are accent-dense.
+    """
+    composed = pii_shield.redact(unicodedata.normalize("NFC", text)).redacted_text
+    decomposed = pii_shield.redact(unicodedata.normalize("NFD", text)).redacted_text
+    assert composed == decomposed
+    assert not re.search(r"\]\]\w", decomposed), decomposed
+    assert "[[PERSON_NAME_1]]" in decomposed
+
+
+def test_the_boundary_guard_counts_a_combining_mark_as_inside_the_word():
+    """The second lock, tested where it is reachable.
+
+    `redact` normalizes to NFC, so nothing decomposed survives to reach
+    `_ends_on_a_word_boundary` -- mutating this guard off does not change any output of
+    `redact`, which means the test above cannot cover it. It is kept because the guard is
+    what makes the boundary rule true independently of who calls it, and an untested guard is
+    the kind of thing that gets "simplified" away. Asserted here directly instead of
+    pretending the end-to-end test reaches it.
+    """
+    decomposed = unicodedata.normalize("NFD", "Núñez")
+    assert decomposed[1] == "u" and unicodedata.combining(decomposed[2])
+    # A cut between the "u" and its own acute accent is inside the word.
+    assert not pii_shield._ends_on_a_word_boundary(2, decomposed)
+    # Control: the end of the string, and a cut before a space, are real boundaries.
+    assert pii_shield._ends_on_a_word_boundary(len(decomposed), decomposed)
+    assert pii_shield._ends_on_a_word_boundary(3, "Ana Souza")
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Ana Paula Silva-Costa assinou.", "[[PERSON_NAME_1]] assinou."),
+        ("Maria Luiza Nunes-Ferreira revisou.", "[[PERSON_NAME_1]] revisou."),
+    ],
+)
+def test_a_hyphenated_compound_surname_is_one_token(text, expected):
+    """Regression: the match stopped at the hyphen and the second half leaked.
+
+    `\\b` holds between a letter and `-`, and `-` is not `.isalpha()`, so the boundary guard
+    waved the cut through: "Ana Paula Silva-Costa" became "[[PERSON_NAME_1]]-Costa" -- a
+    corrupted token for the model and half the surname in the clear.
+    """
+    assert pii_shield.redact(text).redacted_text == expected
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("CARLOS SILVA: fechamos o escopo.", "[[PERSON_NAME_1]]: fechamos o escopo."),
+        ("ANA SOUZA ficou de responder.", "[[PERSON_NAME_1]] ficou de responder."),
+        ("Assinado por PATRICIA NOGUEIRA.", "Assinado por [[PERSON_NAME_1]]."),
+        (
+            "Presente: MARINA ALVES, JOAO PEDRO COSTA.",
+            "Presente: [[PERSON_NAME_1]], [[PERSON_NAME_2]].",
+        ),
+    ],
+)
+def test_an_all_caps_full_name_is_redacted(text, expected):
+    """Regression: all-caps names matched no pattern at all and went to the model whole.
+
+    Speaker labels and attendee lists come upper-cased out of most diarisers and out of
+    ordinary minute-taking, and this shield is fed the raw transcript. The docstring on
+    `_NAME_TOKEN_RE` claimed `_PERSON_NAME_NEGATIVE_LIST` handled them, which it cannot: that
+    list only ever SUPPRESSES a redaction.
+    """
+    assert pii_shield.redact(text).redacted_text == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Vamos usar TOTVS PROTHEUS no SAP.",
+        "Precisamos da NOTA FISCAL e do XML.",
+        "Integrar CRM ERP via API REST.",
+    ],
+)
+def test_an_all_caps_acronym_string_is_not_a_person(text):
+    """Counter-proof for the pattern above: all-caps alone is not a person signal.
+
+    An all-caps pair is more often an acronym string than a name, so unlike the Title Case
+    sequence this pattern is not trusted on its shape -- one end has to be on the name lists.
+    """
+    assert pii_shield.redact(text).redacted_text == text
+
+
+def test_a_placeholder_from_the_earlier_stage_is_not_read_as_an_all_caps_name():
+    """`[[EMAIL_1]]` is all-caps by construction -- a shape no other pattern could match."""
+    result = pii_shield.redact("Escreva para ana.souza@acme.com.br e para o CARLOS SILVA.")
+    assert result.redacted_text == "Escreva para [[EMAIL_1]] e para o [[PERSON_NAME_1]]."
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Meu telefone e 11 98765-4321.", "Meu telefone e [[PHONE_1]]."),
+        ("Contato: (11 98765-4321) urgente.", "Contato: ([[PHONE_1]]) urgente."),
+        ("Ligue para (11) 98765-4321 hoje.", "Ligue para [[PHONE_1]] hoje."),
+        ("Whatsapp +55 11 98765-4321 amanha.", "Whatsapp [[PHONE_1]] amanha."),
+    ],
+)
+def test_the_phone_pattern_does_not_swallow_the_character_before_it(text, expected):
+    """Regression: `\\(?\\s*` did not gate the inner space on the parenthesis.
+
+    An unparenthesised number ate the space in front of it -- "telefone e[[PHONE_1]]" --
+    destroying the word separator in the text the model reads and filing
+    `_hash(" 11 98765-4321")`. One phone number produced a different hash per typing style, so
+    the record could not be reconciled against the number it stands for. Same defect the
+    fragment gate was written for, left live in the basic-pattern path.
+    """
+    assert pii_shield.redact(text).redacted_text == expected
+
+
+def test_no_redaction_of_any_type_hashes_a_value_with_edge_whitespace():
+    """The auditability invariant, over BOTH stages.
+
+    The fragment test calls `_redact_person_names` directly and therefore never reaches
+    `_apply_basic_patterns`, where the phone pattern was breaking the same invariant.
+    """
+    probes = [
+        "Meu telefone e 11 98765-4321 e o CPF 529.982.247-25.",
+        "Contato: (11 98765-4321) urgente, cartao 4111 1111 1111 1111.",
+        "Escreva para ana.souza@acme.com.br ou ligue 11 3003-1234.",
+        "Ana Souza Protheus Carlos Silva e Dr. Nogueira de Protheus",
+        "CARLOS SILVA: o CNPJ e 11.222.333/0001-81.",
+    ]
+    hashed: list[str] = []
+    real_hash = pii_shield._hash
+    pii_shield._hash = lambda v: (hashed.append(v), real_hash(v))[1]
+    try:
+        for probe in probes:
+            pii_shield.redact(probe)
+    finally:
+        pii_shield._hash = real_hash
+
+    assert hashed
+    for value in hashed:
+        assert value == value.strip(), f"{value!r} carries edge whitespace"
+
+
+def test_redaction_stays_linear_in_the_size_of_the_transcript():
+    """Regression: `_is_covered` was a linear scan, making `redact` quadratic.
+
+    `AnalyzeRequest.transcript` allows 1_000_000 chars and `routers/analyze.py` calls this
+    synchronously, so the shape of the curve is a production concern, not a micro-benchmark:
+    a legal-size request took over a minute of pure CPU before the LLM call even started.
+
+    Wall-clock thresholds would be flaky on shared CI, so what is asserted is the RATIO --
+    doubling the input must not much more than double the work. Quadratic gives ~4x.
+    """
+    unit = "Reuniao com Ana Souza e Dr. Carlos Silva sobre o Protheus da Marina Alves. "
+
+    def elapsed(kb: int) -> float:
+        blob = unit * (kb * 1024 // len(unit))
+        best = min(_time_once(blob) for _ in range(3))
+        return best
+
+    def _time_once(blob: str) -> float:
+        start = time.perf_counter()
+        pii_shield.redact(blob)
+        return time.perf_counter() - start
+
+    small, large = elapsed(50), elapsed(200)
+    # 4x the input. Linear predicts ~4x the time; quadratic predicts ~16x.
+    assert large < small * 8, f"{small:.3f}s at 50KB vs {large:.3f}s at 200KB looks superlinear"
 
 
 def test_a_surname_is_enough_when_the_given_name_is_not_on_the_list():

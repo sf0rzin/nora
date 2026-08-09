@@ -16,7 +16,17 @@ public interface MeetingGoalJpaRepository extends JpaRepository<MeetingGoalJpaEn
      * avoiding the UPDATE SET NULL cycle Hibernate would attempt with orphanRemoval +
      * unidirectional @JoinColumn.
      */
-    @Modifying
+    /**
+     * {@code flushAutomatically} so nothing pending is silently discarded, and {@code
+     * clearAutomatically} because a native DELETE is invisible to the persistence context: the
+     * entity loaded by {@code findByMeetingIdAndTenantId} moments earlier stays MANAGED under an id
+     * whose row no longer exists. The upsert in the adapter then calls {@code save} with a fresh
+     * instance carrying that same assigned id, which — no {@code @Version}, no {@code Persistable}
+     * — takes the {@code merge} branch and collides with the managed copy still sitting on that
+     * {@code EntityKey}. Evicting everything right after the DELETE is what makes the second PUT of
+     * the idempotent upsert behave like the first.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(
             value =
                     "DELETE FROM meeting_goals WHERE meeting_id = :meetingId AND tenant_id = :tenantId",

@@ -230,17 +230,27 @@ public class MeetingService {
 
     @Transactional
     public Meeting reprocess(UUID meetingId, UUID tenantId) {
-        return reprocess(meetingId, tenantId, m -> {});
+        return reprocess(meetingId, tenantId, null, m -> {});
     }
 
     /**
      * Variant with an authorization callback executed inside the same transaction after resolving
      * the meeting — avoids TOCTOU between the authz check and execution. The callback receives the
      * loaded meeting and must throw if authorization fails.
+     *
+     * @param actorUserId who is asking. Written to the audit trail; {@code null} only for the
+     *     internal overload, which has no caller identity to record. This used to be omitted and
+     *     the audit row carried {@code meeting.ownerUserId()} instead — so a reprocess triggered by
+     *     anyone other than the uploader was filed under the uploader's name, and the actual caller
+     *     left no trace at all. An investigation into who is driving repeated billable re-analyses
+     *     named the wrong user every time.
      */
     @Transactional
     public Meeting reprocess(
-            UUID meetingId, UUID tenantId, java.util.function.Consumer<Meeting> authorize) {
+            UUID meetingId,
+            UUID tenantId,
+            UUID actorUserId,
+            java.util.function.Consumer<Meeting> authorize) {
         Meeting meeting =
                 meetings.findByIdAndTenant(meetingId, tenantId)
                         .orElseThrow(MeetingException.NotFound::new);
@@ -266,13 +276,24 @@ public class MeetingService {
         }
         audit.record(
                 tenantId,
-                meeting.ownerUserId(),
+                actorUserId != null ? actorUserId : meeting.ownerUserId(),
                 "meeting.reprocessed",
                 "MEETING",
                 meetingId,
                 Map.of("previousStatus", meeting.processingStatus().name()));
         scheduleAnalysisAfterCommit(meetingId, tenantId);
-        return meeting.withStatus(ProcessingStatus.PENDING);
+
+        // Re-read rather than derive from the snapshot taken before the claim.
+        //
+        // `meeting.withStatus(PENDING)` ran the domain state machine against a status read
+        // BEFORE the authorization callback, and that callback does two database round trips.
+        // A worker finishing in that window moves the row PROCESSING -> COMPLETED, the claim
+        // then legitimately succeeds, and the state machine rejects PROCESSING -> PENDING with
+        // an IllegalStateException — which is not a MeetingException, so it left the caller a
+        // bare 500 and rolled back a claim that had already succeeded, taking the audit row and
+        // the dispatch with it. The row is PENDING now; read it and say so.
+        return meetings.findByIdAndTenant(meetingId, tenantId)
+                .orElseThrow(MeetingException.NotFound::new);
     }
 
     /**

@@ -13,9 +13,14 @@ nora:
     # against the same loopback (127.0.0.1), and the default cap of 10 login/min blows up.
     # Anti brute-force defense is tested in AuthRateLimiterTest (client identity,
     # cap per IP and cap per target email), not here.
+    # The account cap stays STRICTLY BELOW the origin cap even here, where both are set high
+    # enough to be inert. Equal values are the dead configuration the cap shipped with -- a
+    # login spends a token from both buckets, so at parity the origin one always empties
+    # first and the account cap can never reject. Leaving the invariant violated in the
+    # profile every integration test runs under is how it stops being an invariant.
     rate-limit:
       login-per-minute: 100000
-      login-per-minute-per-email: 100000
+      login-per-minute-per-email: 99999
       signup-per-minute: 100000
       reset-per-10-minutes: 100000
     # Tests use MockMvc/RestAssured directly on the loopback, without the Cloudflare edge. Empty forces

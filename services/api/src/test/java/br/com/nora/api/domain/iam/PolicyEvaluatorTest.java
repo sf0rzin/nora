@@ -271,6 +271,54 @@ class PolicyEvaluatorTest {
     }
 
     @Test
+    void hasAnyAllowAcceptsAGrantWrittenOnOneSingleResource() {
+        // The pre-check is asked about a SET -- "nora:tenant/t1:meeting/*" -- and matchesResource
+        // only expanded wildcards on the statement side, comparing the other as a literal. A grant
+        // on one meeting produced the quoted regex of that ARN and was asked whether it matched
+        // the eight characters "meeting/*"; it did not. GET /meetings/search answered 403 for a
+        // user whose per-row check would have returned that very meeting.
+        var stmts = List.of(allow("meeting:read", "nora:tenant/t1:meeting/9c8f-1234"));
+
+        assertThat(PolicyEvaluator.hasAnyAllow(stmts, "meeting:read", "nora:tenant/t1:meeting/*"))
+                .as("the pre-check must not reject what the per-row check would serve")
+                .isTrue();
+        // ...and the per-row check on that same ARN does serve it, which is what makes the line
+        // above a real inconsistency and not a preference.
+        assertThat(
+                        PolicyEvaluator.isAllowed(
+                                stmts, "meeting:read", "nora:tenant/t1:meeting/9c8f-1234"))
+                .isTrue();
+    }
+
+    @Test
+    void hasAnyAllowStillRejectsAGrantOnAResourceOutsideTheSet() {
+        // Counter-proof: widening the match to set intersection must not turn the pre-check into
+        // a rubber stamp. A grant on another tenant shares no member with this set.
+        var stmts = List.of(allow("meeting:read", "nora:tenant/t2:meeting/9c8f-1234"));
+        assertThat(PolicyEvaluator.hasAnyAllow(stmts, "meeting:read", "nora:tenant/t1:meeting/*"))
+                .isFalse();
+        assertThat(PolicyEvaluator.hasAnyAllow(stmts, "meeting:read", "nora:tenant/t1:task/*"))
+                .isFalse();
+    }
+
+    @Test
+    void hasAnyAllowIsNotShortCircuitedByADenyOnASingleResourceOfTheSet() {
+        // An unconditional Deny only short-circuits when it covers EVERY member of the set. One
+        // meeting denied leaves the rest readable, and the per-row check is what excludes it.
+        var stmts =
+                List.of(
+                        allow("meeting:read", "nora:tenant/t1:meeting/*"),
+                        deny("meeting:read", "nora:tenant/t1:meeting/9c8f-1234"));
+        assertThat(PolicyEvaluator.hasAnyAllow(stmts, "meeting:read", "nora:tenant/t1:meeting/*"))
+                .isTrue();
+        assertThat(
+                        PolicyEvaluator.isAllowed(
+                                stmts, "meeting:read", "nora:tenant/t1:meeting/9c8f-1234"))
+                .as("the per-row check is what excludes the denied one")
+                .isFalse();
+    }
+
+    @Test
     void hasAnyAllowReturnsTrueForUnconditionalAllow() {
         var stmts = List.of(allow("meeting:read", "nora:tenant/t1:meeting/*"));
         assertThat(PolicyEvaluator.hasAnyAllow(stmts, "meeting:read", "nora:tenant/t1:meeting/*"))

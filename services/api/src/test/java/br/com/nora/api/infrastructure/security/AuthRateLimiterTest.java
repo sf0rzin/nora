@@ -2,7 +2,15 @@ package br.com.nora.api.infrastructure.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.InputStream;
+import java.lang.reflect.Constructor;
+import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.context.support.PropertySourcesPlaceholderConfigurer;
 import org.springframework.mock.web.MockHttpServletRequest;
 
 /**
@@ -76,21 +84,92 @@ class AuthRateLimiterTest {
     void theShippedDefaultsLetTheAccountCapActuallyBind() {
         // The whole point of the account cap is to reject before the origin cap does. It shipped
         // at 10 against 10, and since a login consumes a token from BOTH buckets the origin one
-        // always emptied first -- the account cap could never reject anything. This pins the
-        // relationship, not the numbers: whatever the defaults become, the account cap has to be
-        // the one that fires first for a single account attacked from a single origin.
-        AuthRateLimiter rl = new AuthRateLimiter(10, 5, 5, 3, EDGE_HEADER);
-        String victim = "alvo@cliente.com";
-        int accepted = 0;
-        for (int i = 0; i < 10; i++) {
-            MockHttpServletRequest req = request("203.0.113.9", null);
-            if (rl.allowLogin(req) && rl.allowLoginForEmail(req, victim)) {
-                accepted++;
+        // always emptied first -- the account cap could never reject anything.
+        //
+        // The limiter is built through a Spring context ON PURPOSE, with no properties set, so
+        // the @Value defaults in the constructor are what is under test. The first version of
+        // this passed the numbers positionally -- `new AuthRateLimiter(10, 5, ...)` -- which
+        // reads no shipped default at all: reverting the fix left it green, and the asserted 5
+        // was the same literal the test had just handed in. A test for a default has to make
+        // the default be resolved.
+        try (AnnotationConfigApplicationContext context =
+                new AnnotationConfigApplicationContext()) {
+            context.register(PropertySourcesPlaceholderConfigurer.class, AuthRateLimiter.class);
+            context.refresh();
+            AuthRateLimiter rl = context.getBean(AuthRateLimiter.class);
+
+            String victim = "alvo@cliente.com";
+            int passedTheOriginCap = 0;
+            int accepted = 0;
+            for (int i = 0; i < 50; i++) {
+                MockHttpServletRequest req = request(null, null);
+                if (!rl.allowLogin(req)) {
+                    continue;
+                }
+                passedTheOriginCap++;
+                if (rl.allowLoginForEmail(req, victim)) {
+                    accepted++;
+                }
+            }
+
+            // Both counted in the SAME pass -- a second loop would find the origin bucket
+            // already drained by the first and measure nothing. The exact numbers belong to the
+            // configuration; the invariant is that the account cap turns some of the attempts
+            // the origin cap let through into rejections. At equal caps the two counts are
+            // identical, which is the dead configuration this test exists for.
+            assertThat(accepted)
+                    .as("the account cap must reject before the origin cap empties")
+                    .isLessThan(passedTheOriginCap);
+            assertThat(accepted).as("the account cap must let something through").isPositive();
+        }
+    }
+
+    @Test
+    void theAccountCapIsConfiguredStrictlyBelowTheOriginCapInEveryShippedProfile()
+            throws Exception {
+        // Reads the two @Value defaults out of the constructor and compares them, so a revert
+        // of the default is caught even if the behavioural test above were somehow satisfied.
+        Constructor<?> ctor = AuthRateLimiter.class.getConstructors()[0];
+        long perOrigin = defaultOf(ctor, 0);
+        long perEmail = defaultOf(ctor, 1);
+        assertThat(perEmail)
+                .as(
+                        "login-per-minute-per-email (%d) must be < login-per-minute (%d)",
+                        perEmail, perOrigin)
+                .isLessThan(perOrigin);
+
+        // ...and the same invariant in the property files that ship with the application.
+        for (String resource : new String[] {"/application.yml", "/application-test.yml"}) {
+            try (InputStream in = AuthRateLimiterTest.class.getResourceAsStream(resource)) {
+                if (in == null) {
+                    continue;
+                }
+                String yaml = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                Long origin = valueOf(yaml, "login-per-minute");
+                Long email = valueOf(yaml, "login-per-minute-per-email");
+                if (origin != null && email != null) {
+                    assertThat(email)
+                            .as("%s sets the account cap at or above the origin cap", resource)
+                            .isLessThan(origin);
+                }
             }
         }
-        assertThat(accepted)
-                .as("o teto por conta tem de morder antes do teto por origem")
-                .isEqualTo(5);
+    }
+
+    /** The `:N` fallback of the `@Value` on constructor parameter `index`. */
+    private static long defaultOf(Constructor<?> ctor, int index) {
+        Value value = ctor.getParameters()[index].getAnnotation(Value.class);
+        assertThat(value).as("parameter %d carries no @Value", index).isNotNull();
+        Matcher m = Pattern.compile(":(\\d+)}$").matcher(value.value());
+        assertThat(m.find()).as("no numeric default in %s", value.value()).isTrue();
+        return Long.parseLong(m.group(1));
+    }
+
+    private static Long valueOf(String yaml, String key) {
+        Matcher m =
+                Pattern.compile("(?m)^\\s*" + Pattern.quote(key) + ":\\s*(\\d+)\\s*$")
+                        .matcher(yaml);
+        return m.find() ? Long.parseLong(m.group(1)) : null;
     }
 
     @Test

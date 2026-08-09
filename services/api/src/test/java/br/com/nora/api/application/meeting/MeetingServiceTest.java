@@ -32,6 +32,7 @@ class MeetingServiceTest {
     private MeetingService service;
     private InMemoryMeetingRepo meetingRepo;
     private InMemoryTranscriptRepo transcriptRepo;
+    private RecordingAudit audit;
     private final UUID tenant = UUID.randomUUID();
     private final UUID owner = UUID.randomUUID();
 
@@ -39,13 +40,13 @@ class MeetingServiceTest {
     void setUp() {
         meetingRepo = new InMemoryMeetingRepo();
         transcriptRepo = new InMemoryTranscriptRepo();
-        AuditPort noOpAudit = (a, b, c, d, e, f) -> {};
+        audit = new RecordingAudit();
         service =
                 new MeetingService(
                         meetingRepo,
                         transcriptRepo,
                         new NullAnalysisProvider(),
-                        noOpAudit,
+                        audit,
                         // No database in this test: the template is only exercised on the
                         // executor's rejection path, covered by the integration tests.
                         new NoOpTransactionManager(),
@@ -253,6 +254,7 @@ class MeetingServiceTest {
                                 service.reprocess(
                                         m.id(),
                                         tenant,
+                                        owner,
                                         loaded -> {
                                             throw new IllegalStateException("denied");
                                         }))
@@ -263,6 +265,67 @@ class MeetingServiceTest {
                 .isZero();
         assertThat(meetingRepo.findByIdAndTenant(m.id(), tenant).orElseThrow().processingStatus())
                 .isEqualTo(ProcessingStatus.COMPLETED);
+    }
+
+    @Test
+    void theAuditTrailNamesTheCallerAndNotTheMeetingOwner() {
+        // The audit row carried meeting.ownerUserId(), which is only ever right when the person
+        // clicking "re-analyse" happens to be the uploader. Anyone else acted under the owner's
+        // name and left no trace of their own -- so an investigation into who is driving repeated
+        // billable re-analyses named the wrong user every time.
+        UUID caller = UUID.randomUUID();
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "audited", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        meetingRepo.save(
+                m.withStatus(ProcessingStatus.PROCESSING).withStatus(ProcessingStatus.COMPLETED));
+        audit.events.clear();
+
+        service.reprocess(m.id(), tenant, caller, loaded -> {});
+
+        RecordingAudit.Event event =
+                audit.events.stream()
+                        .filter(e -> e.action().equals("meeting.reprocessed"))
+                        .findFirst()
+                        .orElseThrow(() -> new AssertionError("no meeting.reprocessed audit row"));
+        assertThat(event.actorUserId()).isEqualTo(caller);
+        assertThat(event.actorUserId()).isNotEqualTo(owner);
+    }
+
+    @Test
+    void aWorkerFinishingDuringTheAuthorizationCheckDoesNotTurnIntoA500() {
+        // The status is read BEFORE the authorization callback, which in production does two
+        // database round trips. A worker committing PROCESSING -> COMPLETED inside that window
+        // left the claim to succeed legitimately while the returned object was still built from
+        // the stale snapshot: meeting.withStatus(PENDING) ran the domain state machine on
+        // PROCESSING, which forbids PROCESSING -> PENDING, and the IllegalStateException rolled
+        // back a claim that had already succeeded. A bare 500 on a legitimate re-analyse.
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "racy", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        meetingRepo.save(m.withStatus(ProcessingStatus.PROCESSING));
+
+        Meeting result =
+                service.reprocess(
+                        m.id(),
+                        tenant,
+                        owner,
+                        // Stands in for the worker finishing while the IAM evaluation is in
+                        // flight: the row moves to a terminal state after the snapshot was taken.
+                        loaded ->
+                                meetingRepo.save(
+                                        meetingRepo
+                                                .findByIdAndTenant(m.id(), tenant)
+                                                .orElseThrow()
+                                                .withStatus(ProcessingStatus.COMPLETED)));
+
+        assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.PENDING);
+        assertThat(meetingRepo.findByIdAndTenant(m.id(), tenant).orElseThrow().processingStatus())
+                .isEqualTo(ProcessingStatus.PENDING);
     }
 
     @Test
@@ -286,6 +349,30 @@ class MeetingServiceTest {
     }
 
     /* ---------- in-memory fakes ---------- */
+
+    /** Keeps every audit call so a test can assert WHO was recorded, not just that it happened. */
+    static final class RecordingAudit implements AuditPort {
+        record Event(
+                UUID tenantId,
+                UUID actorUserId,
+                String action,
+                String entityType,
+                UUID entityId,
+                Map<String, Object> payload) {}
+
+        final List<Event> events = new ArrayList<>();
+
+        @Override
+        public void record(
+                UUID tenantId,
+                UUID actorUserId,
+                String action,
+                String entityType,
+                UUID entityId,
+                Map<String, Object> payload) {
+            events.add(new Event(tenantId, actorUserId, action, entityType, entityId, payload));
+        }
+    }
 
     static final class InMemoryMeetingRepo implements MeetingRepository {
         private final Map<UUID, Meeting> store = new HashMap<>();

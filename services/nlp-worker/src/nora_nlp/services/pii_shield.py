@@ -9,6 +9,7 @@ The PERSON_NAME strategy is detailed in the docstring of `_redact_person_names`.
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import re
 import unicodedata
@@ -48,8 +49,17 @@ _EMAIL_RE = re.compile(r"(?<![\w@])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{
 # Tolerances (audit 2026-06-16, ADR 0012) -- all WITHOUT relaxing the
 # DDD requirement (a phone has no check digit, so a mandatory DDD holds the FP):
 #   - `(?:\+?55[\s.\-]?)?`        optional international +55 prefix.
-#   - `\(?\s*0?\d{2}\s*\)?`       parentheses with inner space ("( 11 )") and
-#                                 DDD with the old 3-digit zero ("(011)").
+#   - `(?:\(\s*0?\d{2}\s*\)|0?\d{2})`
+#                                 parentheses with inner space ("( 11 )") and DDD with the
+#                                 old 3-digit zero ("(011)"). The two forms are ALTERNATIVES:
+#                                 written as `\(?\s*0?\d{2}\s*\)?` the inner `\s*` was not
+#                                 gated on the parenthesis, so an unparenthesised number ate
+#                                 the space in front of it -- "telefone e 11 98765-4321"
+#                                 became "telefone e[[PHONE_1]]", destroying the word
+#                                 separator in the text the model reads, and filing
+#                                 `_hash(" 11 98765-4321")`, an edge-space value nobody wrote.
+#                                 It also matched a half-open "(11 98765-4321)", swallowing the
+#                                 opening paren and leaving the closing one dangling.
 #   - `(?:9[\s.\-/]?)?`           mobile 9th digit dictated LOOSE between the DDD
 #                                 and the number ("(11) 9 8765-4321") -- common in
 #                                 speech-to-text transcription.
@@ -60,7 +70,8 @@ _EMAIL_RE = re.compile(r"(?<![\w@])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{
 #     from numeric codes/protocols.
 #   - non-BR international ("+1 415 555 2671"): generalizing `\+\d{1,3}` explodes FP.
 _PHONE_RE = re.compile(
-    r"(?<!\d)(?:\+?55[\s.\-]?)?\(?\s*0?\d{2}\s*\)?[\s.\-/]?(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)"
+    r"(?<!\d)(?:\+?55[\s.\-]?)?(?:\(\s*0?\d{2}\s*\)|0?\d{2})"
+    r"[\s.\-/]?(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)"
 )
 
 # Masked CPF.
@@ -630,7 +641,16 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
 _UPPER = "A-ZÀ-ÖØ-Þ"
 _LOWER = "a-zß-öø-ÿ"
 
-_TITLE_WORD = f"[{_UPPER}][{_LOWER}]+"
+# A hyphenated compound is ONE token. Without the `(?:-...)*` the match stopped at the hyphen
+# -- `\b` holds between a letter and `-` -- and `_ends_on_a_word_boundary` waved it through
+# because `-` is not `.isalpha()`, so "Ana Paula Silva-Costa" came out as
+# "[[PERSON_NAME_1]]-Costa": a corrupted token for the model and the second half of the
+# surname in the clear.
+_TITLE_WORD = f"[{_UPPER}][{_LOWER}]+(?:-[{_UPPER}][{_LOWER}]+)*"
+
+# An ALL-CAPS token, for the speaker labels and attendee lists that meeting minutes and
+# diarised transcripts are full of ("CARLOS SILVA: fechamos o escopo").
+_CAPS_WORD = f"[{_UPPER}]{{2,}}"
 
 # Prefix (honorifics + job titles) followed by 1-5 Title Case words,
 # supporting PT-BR connectives (`da`, `de`, `do`, `das`, `dos`, `e`).
@@ -668,10 +688,24 @@ _WORD_RE = re.compile(f"[{_UPPER}{_LOWER}]+")
 
 # Isolated BR first name: ONLY matches Title Case (`Joao`, `Marina`). Matching
 # lowercase (`joao`, `rosa`, `clara`) produces massive false-positives on
-# common PT-BR nouns. In real corporate transcripts, first
-# names always appear Title Case (automatic capitalization by the dictation) or
-# all-caps in formal context (which are filtered by `_PERSON_NAME_NEGATIVE_LIST`).
+# common PT-BR nouns.
+#
+# This used to say all-caps names were "filtered by `_PERSON_NAME_NEGATIVE_LIST`", which was
+# not true in any direction: that list holds products and acronyms, and its only effect
+# anywhere in the module is to SUPPRESS a redaction -- it can never cause one. All-caps full
+# names simply matched no pattern and went to the LLM whole. Pattern 4 covers them now.
 _NAME_TOKEN_RE = re.compile(f"\\b{_TITLE_WORD}\\b")
+
+# 2-5 consecutive ALL-CAPS words. Unlike the Title Case sequence this one is NOT trusted on
+# its own -- an all-caps pair is far more often an acronym string than a name -- so Pattern 4
+# only claims it when one end is on the name lists. See the pattern for why the docstring that
+# used to sit here, claiming `_PERSON_NAME_NEGATIVE_LIST` handled these, was wrong.
+_CAPS_SEQUENCE_RE = re.compile(f"\\b{_CAPS_WORD}(?:\\s+{_CAPS_WORD}){{1,4}}\\b")
+
+# The placeholders the basic-pattern stage already emitted. Pattern 4 has to skip them: they
+# are all-caps by construction ("[[EMAIL_1]]"), which is a shape none of the other patterns
+# could ever match.
+_PLACEHOLDER_RE = re.compile(r"\[\[[A-Z_]+_\d+\]\]")
 
 
 # --------------------------------------------------------------------------- #
@@ -703,6 +737,17 @@ def _is_negative(value: str) -> bool:
 
 _NAME_CONNECTIVES: frozenset[str] = frozenset(
     _fold(c) for c in ("da", "de", "do", "das", "dos", "e")
+)
+
+# The genitive prepositions ONLY. `e` is deliberately absent: it is a coordinating
+# conjunction, and in this corpus its job is to join two DIFFERENT people ("Osvaldo Pinheiro
+# e Marina Alves"). Counting it as a connective in `_is_a_genitive_chain` made that phrase
+# read as one noun phrase and refused it whole, leaking both names -- and the outcome flipped
+# on word order, since a listed given name at the head still qualified. The two sets are
+# separated so the edge-trimming can keep dropping an orphan `e` without the genitive test
+# ever seeing it.
+_GENITIVE_PREPOSITIONS: frozenset[str] = frozenset(
+    _fold(c) for c in ("da", "de", "do", "das", "dos")
 )
 
 # Honorifics and job titles accepted by `_NAME_PREFIX_RE`. Repeated here as a
@@ -966,13 +1011,17 @@ def _is_a_genitive_chain(run: list[re.Match[str]]) -> bool:
     such a phrase kept landing on the tail signal and coming out as a person. That mutilates
     the text the model reads AND files the hash of a phrase that is nobody.
 
-    Brazilian full names use the very same connectives, but always AFTER a given name: the
+    Brazilian full names use the very same prepositions, but always AFTER a given name: the
     traditional "Jose da Silva" form goes with a traditional given name, which is exactly what
     `_BR_TOP_NAMES` covers. What falls in the gap is a person with an unlisted given name and a
-    connective ("Wanderleia de Albuquerque"); that one leaks, and it is the deliberate price of
+    preposition ("Wanderleia de Albuquerque"); that one leaks, and it is the deliberate price of
     not redacting ordinary vocabulary.
+
+    Only the GENITIVE prepositions count -- see `_GENITIVE_PREPOSITIONS` for why `e` must not.
     """
-    return not _has_a_person_head(run) and any(_fold(t.group(0)) in _NAME_CONNECTIVES for t in run)
+    return not _has_a_person_head(run) and any(
+        _fold(t.group(0)) in _GENITIVE_PREPOSITIONS for t in run
+    )
 
 
 def _ends_on_a_word_boundary(end: int, text: str) -> bool:
@@ -980,12 +1029,40 @@ def _ends_on_a_word_boundary(end: int, text: str) -> bool:
 
     Checked against `text` and not against the match: the cut lands exactly at the end of
     the match, so the character that tells whether it is mid-word is the one after it.
+
+    A combining mark counts as inside the word. `.isalpha()` is False for U+0301 and friends,
+    so on NFD-decomposed input -- which macOS filesystems and some ASR exports produce -- the
+    guard waved through a cut between a letter and its own accent: NFD("Dr. Antônio Gonçalves")
+    came out as "[[PERSON_NAME_1]]̂nio Gonçalves". `redact` normalizes to NFC before any of
+    this runs, so that input should never arrive here; this is the second lock, for anything
+    that reaches the guard by another route.
+
+    A hyphen followed by a letter is inside the word too: "Silva-Costa" is one surname, and
+    cutting at the hyphen emitted "[[PERSON_NAME_1]]-Costa" -- a corrupted token AND the tail
+    in the clear.
     """
-    return end >= len(text) or not text[end].isalpha()
+    if end >= len(text):
+        return True
+    nxt = text[end]
+    if nxt.isalpha() or unicodedata.combining(nxt):
+        return False
+    return not (nxt == "-" and end + 1 < len(text) and text[end + 1].isalpha())
 
 
 def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int, int] | None:
     """Accepts a clean stretch as a name, or returns None."""
+    # "<thing> do <Person>" -- the run opened with a genitive preposition, which means the
+    # negative term that split it OWNS what follows, and what follows is therefore a person.
+    #
+    # Without this, a product name sitting next to a real name switched the redaction off:
+    # "O Protheus do Kleber Zanchetta travou" came out untouched, while the same sentence with
+    # "sistema" in place of "Protheus" redacted correctly. The reason is that a negative term
+    # forces this qualification path, and "Kleber Zanchetta" is on neither list -- whereas an
+    # unsplit match is trusted by `_spans_without_negatives` precisely because most real names
+    # are on neither list. "o Protheus do fulano" is everyday speech in these transcripts, and
+    # the negative list is full of the words that trigger it: Protheus, Sprint, Backlog, Jira.
+    possessive = bool(run) and _fold(run[0].group(0)) in _GENITIVE_PREPOSITIONS
+
     # An orphan connective at the edge does not sustain a name: "Ana Souza de" -> "Ana Souza".
     while run and _fold(run[0].group(0)) in _NAME_CONNECTIVES:
         run = run[1:]
@@ -1005,7 +1082,11 @@ def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int,
     # names end in a surname, and that is a signal the head cannot give. It also keeps the
     # composite company name out: "Acme Software Solutions" trims to "Software Solutions", whose
     # last token is no surname, and "Acme Financeiro Pro" to "Financeiro Pro", likewise.
-    if not _has_a_person_head(run):
+    #
+    # POSSESSIVE: the run is what a negative term owns ("Protheus do Kleber Zanchetta"), and
+    # the owner of a product is a person. This is the same trust the fast path extends to an
+    # unsplit match, granted here on the strength of the preposition.
+    if not possessive and not _has_a_person_head(run):
         if _fold(run[-1].group(0)) not in _BR_TOP_SURNAMES:
             return None
         # Tail-only is the weak signal, and it is the one an ordinary business phrase trips.
@@ -1122,14 +1203,29 @@ def _redact_person_names(
     scope decision).
     """
     person_matches: list[_Match] = []
-    covered: list[tuple[int, int]] = []  # ranges (start, end) already consumed
+    # Ranges already consumed, KEPT SORTED by start. Claims never overlap -- every path checks
+    # `_is_covered` first -- so the list is a set of disjoint intervals and a binary search
+    # answers both questions below.
+    #
+    # This was a plain list with a linear scan, which made `redact` quadratic in the number of
+    # claims. `AnalyzeRequest.transcript` allows 1_000_000 chars and `routers/analyze.py` calls
+    # this synchronously: measured on name-dense pt-BR text the cost went 0.13s at 25KB,
+    # 0.45s at 50KB, 1.84s at 100KB, 6.76s at 200KB -- 4x per doubling, with 37 million
+    # generator steps inside `_is_covered` alone at 100KB. A legal-size request occupied a
+    # worker thread for over a minute of pure CPU before the LLM call even started.
+    covered: list[tuple[int, int]] = []
 
     def _is_covered(start: int, end: int) -> bool:
-        return any(not (end <= cs or start >= ce) for cs, ce in covered)
+        # First interval that begins at or after `start`; only it and its predecessor can
+        # overlap [start, end), the intervals being disjoint and sorted.
+        i = bisect.bisect_left(covered, (start, -1))
+        if i < len(covered) and covered[i][0] < end:
+            return True
+        return i > 0 and covered[i - 1][1] > start
 
     def _claim(start: int, end: int, value: str) -> None:
         person_matches.append(_Match(type=PiiType.PERSON_NAME, start=start, end=end, value=value))
-        covered.append((start, end))
+        bisect.insort(covered, (start, end))
 
     def _claim_free_parts(start: int, end: int) -> None:
         """Claims the candidate, trimming what is already covered instead of discarding it.
@@ -1141,8 +1237,12 @@ def _redact_person_names(
         validated again as a name before being claimed.
         """
         cursor = start
-        for cs, ce in sorted(covered):
-            if ce <= cursor or cs >= end:
+        # Start at the last interval that could still reach `start`, not at the beginning.
+        i = max(0, bisect.bisect_left(covered, (start, -1)) - 1)
+        for cs, ce in covered[i:]:
+            if cs >= end:
+                break
+            if ce <= cursor:
                 continue
             if cs > cursor:
                 _qualify_and_claim(cursor, min(cs, end))
@@ -1188,6 +1288,30 @@ def _redact_person_names(
             continue
         _claim(m.start(), m.end(), token)
 
+    # Pattern 4: ALL-CAPS full name ("CARLOS SILVA: fechamos o escopo").
+    #
+    # Speaker labels and attendee lists come upper-cased out of most diarisers and out of
+    # ordinary minute-taking, and this shield is fed the raw transcript. None of the patterns
+    # above can see them: `_TITLE_WORD` requires lowercase after the first letter, so an
+    # all-caps full name matched nothing at all and went to the model whole.
+    #
+    # Unlike Pattern 2 this one is NOT trusted on its shape: an all-caps pair is more often an
+    # acronym string ("NOTA FISCAL", "CRM ERP") than a person, so one end has to be on the
+    # name lists. That is the same head-or-tail test `_qualify_run` applies, used here as the
+    # admission rule rather than as a fallback.
+    placeholders = [(m.start(), m.end()) for m in _PLACEHOLDER_RE.finditer(text)]
+    for m in _CAPS_SEQUENCE_RE.finditer(text):
+        if _is_covered(m.start(), m.end()):
+            continue
+        if any(not (m.end() <= ps or m.start() >= pe) for ps, pe in placeholders):
+            continue
+        tokens = [_fold(t.group(0)) for t in _WORD_RE.finditer(m.group(0))]
+        if len(tokens) < 2 or any(t in _PERSON_NAME_NEGATIVE_LIST for t in tokens):
+            continue
+        if tokens[0] not in _BR_TOP_NAMES and tokens[-1] not in _BR_TOP_SURNAMES:
+            continue
+        _claim(m.start(), m.end(), m.group(0))
+
     person_matches.sort(key=lambda x: x.start)
 
     redactions: list[Redaction] = []
@@ -1220,7 +1344,17 @@ def redact(text: str) -> PiiRedactionV1:
       1. Basic deterministic patterns (email/CPF/CNPJ/card/phone).
       2. PERSON_NAME heuristics over the already partially redacted text --
          ensures e.g. a name inside an e-mail will not be redacted again.
+
+    The input is normalized to NFC first. Decomposed text -- `A` + U+0301 rather than `Á` --
+    arrives from macOS filesystems and from some ASR exports, and every pattern here assumes
+    one code point per letter: `\\b` and `.isalpha()` both treat a combining mark as a
+    boundary, so NFD("Dr. Antônio Gonçalves aprovou.") came out as
+    "[[PERSON_NAME_1]]̂nio Gonçalves aprovou." -- the placeholder spliced into the name, the
+    rest of it in the clear, and `_hash` filing a value nobody wrote. pt-BR names are
+    accent-dense, so this is not an edge case in this corpus. NFC is also what the redacted
+    text should be on the way to the model.
     """
+    text = unicodedata.normalize("NFC", text)
     intermediate, basic_redactions, counters = _apply_basic_patterns(text)
     final_text, person_redactions = _redact_person_names(intermediate, counters)
     return PiiRedactionV1(

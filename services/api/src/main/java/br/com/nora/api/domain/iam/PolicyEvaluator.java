@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -59,29 +60,96 @@ public final class PolicyEvaluator {
     }
 
     /**
-     * Pre-check for list endpoints: returns true if there is any Allow for action+resource (without
-     * evaluating conditions) and there is no unconditional Deny covering the same action+resource.
-     * An unconditional Deny blocks every instance and cannot be overridden by context, so it
-     * short-circuits the pre-check.
+     * Pre-check for list endpoints: returns true if some Allow could apply to SOME resource in the
+     * set described by {@code resourceSet} (without evaluating conditions) and no unconditional
+     * Deny covers the WHOLE set. An unconditional Deny over the whole set blocks every instance and
+     * cannot be overridden by context, so it short-circuits the pre-check.
+     *
+     * <p><strong>Both sides are sets.</strong> {@code resourceSet} is a pattern too — the caller
+     * passes {@code nora:tenant/T:meeting/*}, meaning "any meeting of this tenant" — while {@link
+     * #matchesResource} only expands wildcards on the STATEMENT side and compares the other as a
+     * literal. So a grant written on one meeting, {@code nora:tenant/T:meeting/9c8f-...}, produced
+     * the quoted regex of that ARN and was asked whether it matched the eight characters {@code
+     * meeting/*}; it did not, the pre-check denied, and {@code GET /meetings/search} answered 403
+     * for a user whose per-row check twenty lines later would have returned that very meeting.
+     *
+     * <p>A pre-check must never reject what the per-row check would serve. It asks a weaker
+     * question than {@link #isAllowed}: not "does this statement cover this resource" but "can
+     * these two sets overlap at all" for Allow, and "does this statement cover every last member of
+     * the set" for the unconditional Deny short-circuit.
      */
     public static boolean hasAnyAllow(
-            List<PolicyStatement> statements, String action, String resource) {
+            List<PolicyStatement> statements, String action, String resourceSet) {
         if (statements == null || statements.isEmpty()) {
             return false;
         }
         boolean anyAllow = false;
         for (PolicyStatement s : statements) {
-            if (!matchesAction(s, action) || !matchesResource(s, resource)) {
+            if (!matchesAction(s, action)) {
                 continue;
             }
-            if (s.effect() == Effect.DENY && (s.condition() == null || s.condition().isEmpty())) {
+            boolean unconditional = s.condition() == null || s.condition().isEmpty();
+            if (s.effect() == Effect.DENY && unconditional && coversWholeSet(s, resourceSet)) {
                 return false;
             }
-            if (s.effect() == Effect.ALLOW) {
+            if (s.effect() == Effect.ALLOW && intersectsSet(s, resourceSet)) {
                 anyAllow = true;
             }
         }
         return anyAllow;
+    }
+
+    /**
+     * Whether any resource pattern of the statement can share a member with {@code resourceSet}.
+     */
+    private static boolean intersectsSet(PolicyStatement s, String resourceSet) {
+        for (String pattern : s.resources()) {
+            if (globsIntersect(pattern, resourceSet)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether some resource pattern of the statement covers EVERY member of {@code resourceSet}.
+     */
+    private static boolean coversWholeSet(PolicyStatement s, String resourceSet) {
+        for (String pattern : s.resources()) {
+            if (matches(pattern, resourceSet)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether two glob patterns describe overlapping sets of strings.
+     *
+     * <p>Exact for the shapes the ARNs use: one side is a literal or a literal followed by a single
+     * trailing {@code *}. The trailing star is dropped and the remaining prefix matched against the
+     * other pattern with {@link Matcher#hitEnd()} — true when the input ran out mid-pattern, i.e.
+     * when more characters could still complete a match, which is precisely what the star supplies.
+     */
+    private static boolean globsIntersect(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        return coversPrefixOf(a, b) || coversPrefixOf(b, a);
+    }
+
+    private static boolean coversPrefixOf(String pattern, String candidate) {
+        if (pattern.equals("*")) {
+            return true;
+        }
+        String prefix =
+                candidate.endsWith("*")
+                        ? candidate.substring(0, candidate.length() - 1)
+                        : candidate;
+        Matcher m = Pattern.compile(globRegex(pattern)).matcher(prefix);
+        // matches() covers the case where the pattern is satisfied by the prefix alone;
+        // hitEnd() the case where it would be satisfied by something the star can stand for.
+        return m.matches() || (candidate.endsWith("*") && m.hitEnd());
     }
 
     /**
@@ -344,6 +412,11 @@ public final class PolicyEvaluator {
         if (pattern.equals("*")) {
             return true;
         }
+        return value.matches(globRegex(pattern));
+    }
+
+    /** The anchored regex for a glob pattern: {@code *} is any run, {@code ?} is one character. */
+    private static String globRegex(String pattern) {
         StringBuilder rx = new StringBuilder("^");
         for (int i = 0; i < pattern.length(); i++) {
             char c = pattern.charAt(i);
@@ -353,7 +426,6 @@ public final class PolicyEvaluator {
                 default -> rx.append(Pattern.quote(String.valueOf(c)));
             }
         }
-        rx.append('$');
-        return value.matches(rx.toString());
+        return rx.append('$').toString();
     }
 }
