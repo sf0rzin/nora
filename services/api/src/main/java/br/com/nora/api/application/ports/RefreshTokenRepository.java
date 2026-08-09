@@ -17,6 +17,12 @@ public interface RefreshTokenRepository {
     Optional<RefreshToken> findByTokenHash(String tokenHash);
 
     /**
+     * Busca por id. Usado para inspecionar o filho apontado por {@code replacedById} e decidir se a
+     * cadeia de rotacao ainda esta viva.
+     */
+    Optional<RefreshToken> findById(UUID id);
+
+    /**
      * Lista somente tokens nao revogados; expirados podem aparecer e devem ser filtrados pelo
      * caller.
      */

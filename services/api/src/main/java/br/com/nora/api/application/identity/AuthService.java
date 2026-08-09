@@ -419,14 +419,28 @@ public class AuthService {
     }
 
     /**
-     * Reuso e benigno quando o token foi rotacionado de fato ({@code replacedById} preenchido —
-     * exclui revogacao por logout) e o primeiro uso ocorreu ha no maximo {@link
-     * #REFRESH_REUSE_LEEWAY}.
+     * Reuso e benigno quando o token foi rotacionado de fato ({@code replacedById} preenchido), o
+     * primeiro uso ocorreu ha no maximo {@link #REFRESH_REUSE_LEEWAY} <b>e</b> o filho que o
+     * substituiu continua valendo.
+     *
+     * <p>A ultima condicao e o que faz logout-all, troca e reset de senha valerem de verdade. Essas
+     * operacoes revogam apenas os tokens ainda NAO revogados ({@code revoked_at is null}), entao o
+     * pai — ja revogado pela propria rotacao — sobrevive intacto, com {@code replacedById}
+     * preenchido e o {@code lastUsedAt} antigo. Sem checar o filho, reapresentar esse pai dentro da
+     * janela de 60s emitia um par novo e ativo: a sessao que o usuario acabara de encerrar voltava
+     * a existir. Se o filho esta revogado, a cadeia inteira foi encerrada e nao ha corrida benigna
+     * possivel — e reuse.
      */
     private boolean isBenignReuse(RefreshToken token, Instant now) {
-        return token.replacedById() != null
-                && token.lastUsedAt() != null
-                && Duration.between(token.lastUsedAt(), now).compareTo(REFRESH_REUSE_LEEWAY) <= 0;
+        if (token.replacedById() == null
+                || token.lastUsedAt() == null
+                || Duration.between(token.lastUsedAt(), now).compareTo(REFRESH_REUSE_LEEWAY) > 0) {
+            return false;
+        }
+        return refreshTokenRepository
+                .findById(token.replacedById())
+                .map(child -> !child.isRevoked())
+                .orElse(false);
     }
 
     /** Carrega o dono do token e barra usuario desativado depois do login. */
