@@ -142,6 +142,12 @@ jobs:
 
       - name: Resolve team domain
         id: team
+        env:
+          # Via env, nunca interpolado direto no script: `${{ }}` é expandido pelo template
+          # engine ANTES do shell existir, então um input com aspas/`;`/`$(...)` viraria
+          # comando executado com o CF_TOKEN do job em escopo. Mesmo padrão do step
+          # "Upsert CNAME" acima.
+          TEAM_NAME: ${{ inputs.team_name }}
         run: |
           set -euo pipefail
           # Tenta verificar via API. Se token nao tiver 'Access: Organizations Read',
@@ -157,7 +163,7 @@ jobs:
           else
             err_code=$(echo "$response" | jq -r '.errors[0].code // "unknown"')
             err_msg=$(echo "$response" | jq -r '.errors[0].message // "unknown"')
-            team_domain="${{ inputs.team_name }}.cloudflareaccess.com"
+            team_domain="${TEAM_NAME}.cloudflareaccess.com"
             echo "::warning::API /access/organizations rejeitou (code=$err_code: $err_msg). Construindo team_domain do input: $team_domain"
             echo "::warning::Pra verificacao via API, adiciona 'Access: Organizations, IdPs, and Groups Read' no token CF."
             echo "::warning::Se o team realmente NAO existir, o step 'Upsert Access Application' vai falhar mais a frente."
@@ -193,9 +199,11 @@ jobs:
       - name: Upsert allowlist policy
         env:
           APP_ID: ${{ steps.app.outputs.app_id }}
+          # Ver nota no step "Resolve team domain": input nunca entra direto no script.
+          ACCESS_EMAILS: ${{ inputs.access_emails }}
         run: |
           set -euo pipefail
-          emails_json=$(echo "${{ inputs.access_emails }}" \
+          emails_json=$(printf '%s\n' "$ACCESS_EMAILS" \
             | tr ',' '\n' \
             | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
             | grep -v '^$' \
