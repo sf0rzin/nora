@@ -17,6 +17,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.RejectedExecutionException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -37,6 +40,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  */
 @Service
 public class MeetingService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(MeetingService.class);
 
     /** Tamanho do lote ao varrer todas as meetings de um tenant para filtro IAM in-memory. */
     private static final int LIST_SCAN_BATCH = 200;
@@ -123,11 +128,42 @@ public class MeetingService {
                     new TransactionSynchronization() {
                         @Override
                         public void afterCommit() {
-                            svc.runAsync(meetingId, tenantId);
+                            dispatchOrMarkFailed(svc, meetingId, tenantId);
                         }
                     });
         } else {
+            dispatchOrMarkFailed(svc, meetingId, tenantId);
+        }
+    }
+
+    /**
+     * Agenda a análise, tratando saturação do pool.
+     *
+     * <p>O executor de {@code AsyncConfig} tem fila 50 e {@code AbortPolicy}: cheio, o submit lança
+     * {@link RejectedExecutionException}. Vindo do {@code afterCommit}, essa exceção subia pro
+     * controller DEPOIS do commit — o cliente levava 500 sobre um meeting que existe, sem análise
+     * agendada e preso em PENDING para sempre. O javadoc do AsyncConfig já afirmava que "o caller
+     * trata e marca o meeting como FAILED"; este é o caller, e agora ele de fato trata.
+     */
+    private void dispatchOrMarkFailed(AnalysisService svc, UUID meetingId, UUID tenantId) {
+        try {
             svc.runAsync(meetingId, tenantId);
+        } catch (RejectedExecutionException e) {
+            LOG.error(
+                    "análise rejeitada pelo executor (pool saturado) meetingId={} tenantId={}",
+                    meetingId,
+                    tenantId,
+                    e);
+            try {
+                // Fora da transação original (já commitada); o save do adapter abre a sua.
+                meetings.findByIdAndTenant(meetingId, tenantId)
+                        .map(m -> m.withStatus(ProcessingStatus.FAILED))
+                        .ifPresent(meetings::save);
+            } catch (RuntimeException marking) {
+                // Marcar FAILED é best-effort: se também falhar, o meeting fica PENDING e o
+                // reprocess manual resolve. Propagar aqui só trocaria um erro por outro.
+                LOG.error("falha ao marcar meeting {} como FAILED", meetingId, marking);
+            }
         }
     }
 
@@ -185,8 +221,13 @@ public class MeetingService {
     @Transactional
     public Meeting reprocess(
             UUID meetingId, UUID tenantId, java.util.function.Consumer<Meeting> authorize) {
+        // FOR UPDATE: a guarda de PROCESSING abaixo é um check-then-act. Com leitura sem lock,
+        // duas chamadas concorrentes leem o mesmo status pré-update, ambas passam e ambas agendam
+        // — dois pipelines de análise sobre o mesmo meeting, com cobrança de LLM dobrada e os
+        // efeitos externos da análise aplicados duas vezes. O lock serializa na linha, então a
+        // segunda transação só lê depois que a primeira gravou PENDING.
         Meeting meeting =
-                meetings.findByIdAndTenant(meetingId, tenantId)
+                meetings.findByIdAndTenantForUpdate(meetingId, tenantId)
                         .orElseThrow(MeetingException.NotFound::new);
         authorize.accept(meeting);
         // Reprocessar é válido a partir de qualquer estado terminal/de espera (FAILED, COMPLETED

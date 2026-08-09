@@ -236,6 +236,12 @@ class MeetingServiceTest {
         }
 
         @Override
+        public Optional<Meeting> findByIdAndTenantForUpdate(UUID id, UUID tenantId) {
+            // Fake single-thread: não há concorrência pra serializar, o lock é no-op aqui.
+            return findByIdAndTenant(id, tenantId);
+        }
+
+        @Override
         public PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size) {
             List<Meeting> all = new ArrayList<>();
             for (Meeting m : store.values()) {

@@ -1,11 +1,13 @@
 package br.com.nora.api.infrastructure.persistence.meeting;
 
+import jakarta.persistence.LockModeType;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -20,6 +22,17 @@ public interface MeetingJpaRepository extends JpaRepository<MeetingJpaEntity, UU
     // suficiente em listagens com paginacao tipica.
 
     Optional<MeetingJpaEntity> findByIdAndTenantId(UUID id, UUID tenantId);
+
+    /**
+     * Mesma busca, com {@code SELECT ... FOR UPDATE}. Usada pelo reprocess: sem o lock, duas
+     * chamadas concorrentes leem o status ANTES do update uma da outra, as duas passam pela guarda
+     * de PROCESSING e as duas agendam a análise — dois pipelines sobre o mesmo meeting, cobrança de
+     * LLM dobrada e efeitos externos duplicados. O lock serializa as transações na linha.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT m FROM MeetingJpaEntity m WHERE m.id = :id AND m.tenantId = :tenantId")
+    Optional<MeetingJpaEntity> findByIdAndTenantIdForUpdate(
+            @Param("id") UUID id, @Param("tenantId") UUID tenantId);
 
     @Query(
             "SELECT m FROM MeetingJpaEntity m "
