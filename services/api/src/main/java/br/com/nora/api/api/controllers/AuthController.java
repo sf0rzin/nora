@@ -115,7 +115,8 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(
             @Valid @RequestBody LoginRequest req, HttpServletRequest httpReq) {
-        if (!rateLimiter.allowLogin(httpReq)) {
+        // Dois tetos independentes: por origem e por conta alvo. Trocar de IP não zera o segundo.
+        if (!rateLimiter.allowLogin(httpReq) || !rateLimiter.allowLoginForEmail(req.email())) {
             throw AuthException.rateLimited();
         }
         LoginResult result = authService.login(new LoginCommand(req.email(), req.password()));
