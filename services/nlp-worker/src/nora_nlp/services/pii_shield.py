@@ -40,7 +40,15 @@ def _fold(value: str) -> str:
 # Email with (?<!\w) anchoring on the left avoids catastrophic backtracking on
 # large inputs (measured empirically: 100KB of input was ~10s; with the anchor
 # it hits microseconds). Pre-filter `'@' in text` speeds up inputs with no email.
-_EMAIL_RE = re.compile(r"(?<![\w@])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b")
+#
+# The local part is bounded to 64, which is the RFC 5321 maximum and is also what stops the
+# backtracking. `-` is not a `\w`, so the left anchor succeeds after every hyphen: on
+# hyphen-dense text the unbounded `+` scanned to the end of the string from every one of them
+# and `redact` went quadratic -- 154KB of "Ana-B-" spent 4.8s inside this one pattern, on the
+# request thread, for a transcript cap of 1_000_000 chars. The `'@' in text` pre-filter the
+# comment above has always promised is applied in `_apply_basic_patterns` now; the bound is
+# what covers the case where the text does contain an address.
+_EMAIL_RE = re.compile(r"(?<![\w@])[a-zA-Z0-9._%+\-]{1,64}@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b")
 
 # BR phones: DDD mandatory (8 or 9 digits after the DDD). Conservative
 # on purpose: a phone without DDD (98765-4321) is too small to tell apart
@@ -69,9 +77,17 @@ _EMAIL_RE = re.compile(r"(?<![\w@])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{
 #   - phone WITHOUT DDD ("99988-7766", "3003-1234"): too small to tell apart
 #     from numeric codes/protocols.
 #   - non-BR international ("+1 415 555 2671"): generalizing `\+\d{1,3}` explodes FP.
+#   - the DDD/number separator is `[\s.\-/]{0,2}` and NOT `*`. Widening it to `*` made a DDD
+#     followed by any run of separators a phone: "Sala 11 - 98765 4321 reservada" lost the room
+#     number and the range to a PHONE placeholder. Two characters is what a real typing style
+#     needs ("11  98765-4321", "11 -98765-4321"); more is a sentence, not a number.
+#   - the bare-DDD branch keeps its optional trailing `)`, deliberately. "Ver o item (ramal 11)
+#     98765-4321" is a real number and dropping the branch left it in the clear; the cost is
+#     that the match carries a parenthesis belonging to the sentence and the hash differs from
+#     the same number typed "(11) 98765-4321". A leaked phone outweighs an odd hash.
 _PHONE_RE = re.compile(
-    r"(?<!\d)(?:\+?55[\s.\-]?)?(?:\(\s*0?\d{2}\s*\)|0?\d{2}\s*\)?)"
-    r"[\s.\-/]*(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)"
+    r"(?<!\d)(?:\+?55[\s.\-]?)?(?:\(\s*0?\d{2}\s*\)|0?\d{2}\)?)"
+    r"[\s.\-/]{0,2}(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)"
 )
 
 # Masked CPF.
@@ -709,11 +725,6 @@ _NAME_TOKEN_RE = re.compile(f"\\b{_TITLE_WORD}\\b")
 # used to sit here, claiming `_PERSON_NAME_NEGATIVE_LIST` handled these, was wrong.
 _CAPS_SEQUENCE_RE = re.compile(f"\\b{_CAPS_WORD}(?:\\s+{_CAPS_WORD}){{1,4}}\\b")
 
-# The placeholders the basic-pattern stage already emitted. Pattern 4 has to skip them: they
-# are all-caps by construction ("[[EMAIL_1]]"), which is a shape none of the other patterns
-# could ever match.
-_PLACEHOLDER_RE = re.compile(r"\[\[[A-Z_]+_\d+\]\]")
-
 
 # --------------------------------------------------------------------------- #
 # Dataclasses and utilities
@@ -1062,6 +1073,105 @@ _COMMON_PHRASE_HEADS: frozenset[str] = frozenset(
         "Participantes",
         "Convidado",
         "Convidados",
+        # Ordinary nouns that head an all-caps heading or a spreadsheet label. Without them
+        # "LOJA CAMPOS", "REGIONAL CAMPOS", "GALPAO PRADO", "OBRA CRUZ" were filed as people,
+        # a third of the surname list being ordinary nouns and place names.
+        "Loja",
+        "Lojas",
+        "Regional",
+        "Municipio",
+        "Produto",
+        "Produtos",
+        "Linha",
+        "Linhas",
+        "Categoria",
+        "Categorias",
+        "Terminal",
+        "Condominio",
+        "Galpao",
+        "Obra",
+        "Obras",
+        "Gestao",
+        "Seguro",
+        "Seguros",
+        "Bloco",
+        "Sala",
+        "Andar",
+        "Deposito",
+        "Almoxarifado",
+        "Frota",
+        "Veiculo",
+        "Turno",
+        "Escala",
+        "Lote",
+        "Lotes",
+        "Filial",
+        "Regiao",
+        "Zona",
+        "Distrito",
+        "Recursos",
+        "Gerencia",
+        "Controladoria",
+        "Inteligencia",
+        "Engenharia",
+        "Boleto",
+        "Demonstrativo",
+        "Comprovante",
+        "Livro",
+        "Salario",
+        "Certificado",
+        "Acordo",
+        "Assinatura",
+        "Copia",
+        "Prova",
+        "Sistema",
+        "Sistemas",
+        "Base",
+        "Bolsa",
+        "Tribunal",
+        "Assembleia",
+        "Ministerio",
+        "Associacao",
+        "Federacao",
+        "Delegacia",
+        "Secretaria",
+        "Prefeitura",
+        "Caixa",
+        "Imposto",
+        "Impostos",
+        "Lei",
+        "Leis",
+        "Carta",
+        "Cartas",
+        "Boa",
+        "Bom",
+        "Boas",
+        "Bons",
+        "Tarde",
+        "Manha",
+        "Noite",
+        "Um",
+        "Uma",
+        "Uns",
+        "Umas",
+        "Este",
+        "Esta",
+        "Estes",
+        "Estas",
+        "Esse",
+        "Essa",
+        "Esses",
+        "Essas",
+        "Aquele",
+        "Aquela",
+        "Nosso",
+        "Nossa",
+        "Nossos",
+        "Nossas",
+        "Seu",
+        "Sua",
+        "Seus",
+        "Suas",
         "Assunto",
         "Assuntos",
         "Tema",
@@ -1353,11 +1463,15 @@ def _trusted_span(run: list[re.Match[str]], offset: int, text: str) -> tuple[int
     # Eletronica" were being claimed as people, with the hash of the phrase filed, purely
     # because the regex shape fits.
     if _fold(run[0].group(0)) in _COMMON_PHRASE_HEADS:
-        if _fold(run[-1].group(0)) not in _BR_TOP_SURNAMES:
-            return None
-        # It DOES end on a surname, so a person is in there -- just not from the first word:
-        # "Contato Carlos Silva" swallowed "Contato" into the placeholder and into the hash.
-        # Drop the ordinary words in front and keep what is left, if two tokens survive.
+        # Drop the ordinary words in front and judge what is LEFT. "Contato Carlos Silva"
+        # swallowed "Contato" into the placeholder and into the hash; "Contas Medicas" has
+        # nothing behind the label at all.
+        #
+        # This was written the other way round -- refuse unless the last token is a listed
+        # surname, THEN strip -- and the refusal came first, so the stripping never ran for
+        # anything else. "Responsavel Bruno Zanchetta" lost the whole span and published the
+        # surname; with an unlisted given name too, "Cliente Wanderleia Kranz" published the
+        # entire name. Exactly the labels that precede a name in minutes.
         while len(run) > 1 and (
             _fold(run[0].group(0)) in _NAME_CONNECTIVES
             or _fold(run[0].group(0)) in _COMMON_PHRASE_HEADS
@@ -1435,7 +1549,14 @@ def _ends_on_a_word_boundary(end: int, text: str) -> bool:
     nxt = text[end]
     if nxt.isalpha() or unicodedata.combining(nxt):
         return False
-    return not (nxt == "-" and end + 1 < len(text) and text[end + 1].isupper())
+    if nxt != "-":
+        return True
+    # Only a Title Case continuation is the other half of a compound surname. An ALL-CAPS tail
+    # is a department suffix -- "Carlos Silva-TI", "Ana Souza-RH" is a standard speaker label --
+    # and refusing the span there dropped it whole, publishing the surname. A lowercase tail is
+    # a suffix ("Silva-jr") for the same reason. This mirrors `_TITLE_WORD`'s own hyphen branch,
+    # which joins `-[UPPER][lower]+` and nothing else.
+    return not re.match(f"-[{_UPPER}][{_LOWER}]", text[end : end + 3])
 
 
 def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int, int] | None:
@@ -1453,7 +1574,16 @@ def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int,
     possessive = bool(run) and _fold(run[0].group(0)) in _GENITIVE_PREPOSITIONS
 
     # An orphan connective at the edge does not sustain a name: "Ana Souza de" -> "Ana Souza".
-    while run and _fold(run[0].group(0)) in _NAME_CONNECTIVES:
+    # Ordinary vocabulary in front goes the same way, and for the same reason the fast path
+    # drops it: "Contrato de Marlene da Costa" was refused whole -- the genitive gate saw an
+    # ordinary head and a preposition -- and published the full name, while "Marlene da Costa"
+    # on its own redacted. The label in front cannot be what decides.
+    stripped_a_label = False
+    while run and (
+        _fold(run[0].group(0)) in _NAME_CONNECTIVES
+        or (len(run) > 1 and _fold(run[0].group(0)) in _COMMON_PHRASE_HEADS)
+    ):
+        stripped_a_label = stripped_a_label or (_fold(run[0].group(0)) in _COMMON_PHRASE_HEADS)
         run = run[1:]
     while run and _fold(run[-1].group(0)) in _NAME_CONNECTIVES:
         run = run[:-1]
@@ -1464,6 +1594,12 @@ def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int,
         # "Sr. Jose Protheus da Silva" came out as "[[PERSON_NAME_1]] Protheus da Silva" --
         # the surname in the clear, because the run around it was one token long. The
         # ordinary-vocabulary list is what keeps a lone "Campos" or "Prazo" out.
+        #
+        # ...but only when the token was alone to begin with. What survives the stripping of a
+        # noun phrase is that phrase's own last word, not a name: "Falta o Relatorio de Vendas
+        # do Prado" reduces to "Prado", which is on the surname list and is nobody here.
+        if stripped_a_label:
+            return None
         lone = _fold(run[0].group(0))
         if lone in _COMMON_PHRASE_HEADS or (
             lone not in _BR_TOP_NAMES and lone not in _BR_TOP_SURNAMES
@@ -1559,9 +1695,13 @@ def _caps_name_span(match: re.Match[str], text: str) -> tuple[int, int] | None:
     head-OR-tail rule read as people -- a third of the surname list doubles as an ordinary
     Portuguese noun.
     """
-    if "[[" in match.group(0) or "]]" in match.group(0):
-        # A placeholder from the basic-pattern stage is all-caps by construction.
-        return None
+    # There is deliberately NO guard against overlapping a placeholder from the basic-pattern
+    # stage. One was written, and three independent reviewers proved it unreachable: a
+    # placeholder is "[[TYPE_N]]", and `_CAPS_SEQUENCE_RE` needs `\s+` between its words, which
+    # the "_1]] [[" between two placeholders is not. Keeping it meant a test that certified a
+    # control that cannot fire -- the defect class this file has been chasing for five rounds.
+    # `test_a_placeholder_from_the_earlier_stage_is_not_read_as_an_all_caps_name` still asserts
+    # the OUTCOME end to end, which is the part that is real.
     tokens = list(_WORD_RE.finditer(match.group(0)))
     if any(_fold(t.group(0)) in _PERSON_NAME_NEGATIVE_LIST for t in tokens):
         return None
@@ -1614,7 +1754,10 @@ def _apply_basic_patterns(
     false names.
     """
     matches: list[_Match] = []
+    has_at = "@" in text
     for pii_type, pattern in _BASIC_PATTERNS:
+        if pattern is _EMAIL_RE and not has_at:
+            continue
         validator = _VALIDATORS.get(id(pattern))
         for m in pattern.finditer(text):
             raw = m.group(0)
@@ -1740,7 +1883,14 @@ def _redact_person_names(
     # _NAME_TOKEN_RE (Title Case only) avoids false-positives on common
     # PT-BR nouns ("rosa", "clara", "vera" — all in _BR_TOP_NAMES as
     # female names but also generic lowercase words).
+    widened_through = -1
     for m in _NAME_TOKEN_RE.finditer(text):
+        # Every token inside a hyphenated compound widens to the SAME compound, so widening
+        # each of them walks the whole chain again: `redact` went quadratic and 77KB of
+        # "Ana-B-Ana-B-..." took 51s, which extrapolates to hours at the 1_000_000-char
+        # transcript cap that `routers/analyze.py` hands straight to this function.
+        if m.start() < widened_through:
+            continue
         # Widened to the whole hyphenated compound before anything is decided. `_TITLE_WORD`
         # only joins a hyphen to an UPPERCASE continuation, so "Maria-do-Carmo" matched just
         # "Maria" and the placeholder went out spliced -- "[[PERSON_NAME_1]]-do-Carmo". And
@@ -1748,6 +1898,7 @@ def _redact_person_names(
         # "ana-paula", which is on no list of single given names, so a full name that used to
         # be redacted (as two separate tokens) leaked whole.
         start, end = _widen_over_hyphens(m.start(), m.end(), text)
+        widened_through = end
         if _is_covered(start, end):
             continue
         compound = text[start:end]

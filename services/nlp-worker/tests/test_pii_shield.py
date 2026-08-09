@@ -555,6 +555,122 @@ def test_the_fast_path_does_not_trust_a_phrase_that_opens_on_ordinary_vocabulary
     assert pii_shield.redact(text).redacted_text == text
 
 
+@pytest.mark.parametrize(
+    "text, name",
+    [
+        ("Responsavel Bruno Zanchetta assumiu.", ["Bruno", "Zanchetta"]),
+        ("Cliente Wanderleia Kranz cancelou.", ["Wanderleia", "Kranz"]),
+        ("Contato Kleber Zanchetta ligou.", ["Kleber", "Zanchetta"]),
+        ("Autor Edson Wanderlei revisou.", ["Edson", "Wanderlei"]),
+        ("Contrato de Marlene da Costa assinado.", ["Marlene", "Costa"]),
+        ("Proposta de Nivaldo da Silva enviada.", ["Nivaldo", "Silva"]),
+    ],
+)
+def test_an_ordinary_word_in_front_of_a_name_does_not_switch_the_shield_off(text, name):
+    """Regression: the label that PRECEDES a name in minutes was cancelling the redaction.
+
+    The ordinary-head branch was written as "refuse unless the last token is a listed surname,
+    THEN strip the label" -- and the refusal came first, so the stripping never ran for
+    anything else. "Responsavel Bruno Zanchetta" published the surname; with an unlisted given
+    name too, "Cliente Wanderleia Kranz" published the whole name. Both main and the parent
+    commit redacted every one of these. The genitive form went the same way through
+    `_qualify_run`: "Contrato de Marlene da Costa" leaked while "Marlene da Costa" did not.
+    """
+    result = pii_shield.redact(text)
+    for token in name:
+        assert token not in result.redacted_text, result.redacted_text
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Falei com Carlos Silva-TI ontem.", "Falei com [[PERSON_NAME_1]]-TI ontem."),
+        ("Contato Ana Souza-RH sobre o ponto.", "Contato [[PERSON_NAME_1]]-RH sobre o ponto."),
+    ],
+)
+def test_an_all_caps_department_suffix_is_not_half_a_surname(text, expected):
+    """Regression: "only a capital after the hyphen" refused the span and leaked the surname.
+
+    Name-hyphen-department is a standard Brazilian speaker label (-TI, -RH, -DP, -ADM). Only a
+    Title Case continuation is the other half of a compound surname, which is what
+    `_TITLE_WORD`'s own hyphen branch already says.
+    """
+    assert pii_shield.redact(text).redacted_text == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "LOJA CAMPOS fechou ontem.",
+        "REGIONAL CAMPOS foi fechada.",
+        "GALPAO PRADO liberado.",
+        "O calculo do Imposto de Renda mudou este ano.",
+        "A Bolsa de Valores fechou em alta.",
+        "Uma Boa Tarde a todos os presentes.",
+        # What is left after stripping a label is that phrase's own last word, not a name --
+        # "Prado" and "Rocha" are on the surname list and are nobody here.
+        "Falta o Relatorio de Vendas do Prado.",
+        "O Plano de Acao da Rocha.",
+    ],
+)
+def test_ordinary_labels_and_institutions_are_not_people(text):
+    """Inverting the genitive default traded a leak for a flood of false positives.
+
+    A third of the surname list doubles as an ordinary noun or place name, so headings and
+    institution names were deleted from the text the model reads and filed as people. Measured
+    over a corpus of business sentences containing nobody, the false-positive rate went from
+    18% of sentences clean on main to 88% clean here.
+    """
+    assert pii_shield.redact(text).redacted_text == text
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Sala 11 - 98765 4321 reservada.", "Sala 11 - 98765 4321 reservada."),
+        ("faixa 11 - 3003 1234 do lote", "faixa 11 - 3003 1234 do lote"),
+        ("Meu telefone e 11 98765-4321.", "Meu telefone e [[PHONE_1]]."),
+        ("Ligue para (11) 98765-4321 hoje.", "Ligue para [[PHONE_1]] hoje."),
+    ],
+)
+def test_the_phone_separator_does_not_swallow_a_sentence(text, expected):
+    """Regression: widening the DDD/number separator to `*` made any run of separators match.
+
+    "Sala 11 - 98765 4321" lost a room number and a numeric range to a PHONE placeholder. Two
+    characters covers every real typing style; more is a sentence, not a number.
+    """
+    assert pii_shield.redact(text).redacted_text == expected
+
+
+@pytest.mark.parametrize("prefix", ["", "contato a@b.com "])
+def test_a_hyphen_chain_does_not_make_redaction_quadratic(prefix):
+    """Two quadratics met on hyphen-dense text, and both are on the request path.
+
+    Pattern 3 widened over the whole chain once per token inside it. And `-` is not a `\\w`, so
+    the e-mail pattern's left anchor succeeded after every hyphen and its unbounded local part
+    scanned to the end of the string from each one. 154KB of "Ana-B-" took 4.8s; the transcript
+    cap is 1_000_000 chars and routers/analyze.py calls redact() synchronously.
+
+    The parametrisation matters: with no "@" the pre-filter skips the e-mail pattern entirely,
+    so only the bound on the local part covers the case where the text really does contain an
+    address.
+    """
+
+    def elapsed(units: int) -> float:
+        blob = prefix + "Ana-B-" * units
+        return min(_time_redact(blob) for _ in range(3))
+
+    small, large = elapsed(3200), elapsed(12800)
+    # 4x the input. Linear predicts ~4x; either quadratic predicts ~16x.
+    assert large < small * 8, f"{small:.3f}s vs {large:.3f}s looks quadratic again"
+
+
+def _time_redact(blob: str) -> float:
+    start = time.perf_counter()
+    pii_shield.redact(blob)
+    return time.perf_counter() - start
+
+
 def test_a_lone_surname_left_by_a_product_term_is_not_left_in_the_clear():
     """Regression: a one-token run was refused outright.
 

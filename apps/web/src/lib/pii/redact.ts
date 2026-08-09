@@ -22,8 +22,16 @@ const EMAIL_RE = /(?<![\w@])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b/g
 // Tolerates the +55 prefix, parentheses with an inner space "( 11 )", DDD with a zero "(011)",
 // the mobile's 9th digit dictated LOOSE "(11) 9 8765-4321" and the "/" separator.
 // DEFERRED: phone WITHOUT DDD and non-BR international (+1) — high FP risk without a check digit.
+//
+// The parenthesised and bare forms are ALTERNATIVES, and the DDD/number separator allows up to
+// two characters. Written as `\(?\s*0?\d{2}\s*\)?[\s.\-/]?` the inner `\s*` was not gated on the
+// parenthesis, so a bare number ate the space in front of it ("telefone e[[PHONE_1]]"), and one
+// separator was too few for "11  98765-4321" — which this file then forwarded raw to the
+// embeddings and chat providers while the worker's shield redacted the identical string. Keep
+// this in step with `_PHONE_RE` in the worker; the whole point of the file is that it is a
+// mirror, and it silently stopped being one.
 const PHONE_RE =
-  /(?<!\d)(?:\+?55[\s.\-]?)?\(?\s*0?\d{2}\s*\)?[\s.\-/]?(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)/g;
+  /(?<!\d)(?:\+?55[\s.\-]?)?(?:\(\s*0?\d{2}\s*\)|0?\d{2})[\s.\-/]{0,2}(?:9[\s.\-/]?)?\d{4,5}[\s.\-/]?\d{4}(?!\d)/g;
 const CPF_RE = /(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)/g;
 const CPF_PARTIAL_RE = /(?<!\d)\d{8}-\d{2}(?!\d)/g;
 const CPF_SPACED_RE = /(?<!\d)\d{3}\s\d{3}\s\d{3}\s\d{2}(?!\d)/g;
