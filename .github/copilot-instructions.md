@@ -31,6 +31,9 @@ Treat Desktop real-time capture, SSO, full MCP integrations, audio/video upload 
 - Never commit secrets or real credentials.
 - Add tests for meaningful behavior changes.
 - Prefer clear, explicit code over clever abstractions.
+- Write commit messages in English — subject and body — keeping Conventional Commits
+  (`type(scope): subject (#PR)`). Issues, PR descriptions and review threads may stay in
+  Portuguese; the rule covers commit text only.
 
 ## Documentation Rules
 

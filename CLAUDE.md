@@ -107,6 +107,7 @@ Ver `docs/engineering/architecture.md` §1 para a tabela completa com onde verif
 ## Como trabalhamos
 
 - **Implementar uma sub-fase ou story por branch.** Naming: `feat/sub-X.Y-<slug>` ou `feat/usZZ-<slug>` ou `fix/<slug>` ou `docs/<slug>`
+- **Mensagens de commit em inglês** — subject e corpo —, mantendo Conventional Commits: `type(scope): subject (#PR)`. Vale para humanos e agentes. Discussão, issues e PR descriptions seguem livres em português; a regra é só o texto do commit. O histórico anterior a 2026-08-09 é misto e fica como está — não reescrever
 - **Referenciar IDs** (US##, Sub-fase 1.X, ADR NNNN, PR #) em commits e PR descriptions
 - **Antes de editar**, inspecionar os padrões existentes no módulo alvo (Grep/Glob)
 - **Após editar**, rodar o menor comando de verificação relevante (`mvn test`, `pytest`, `npm run typecheck`, `docker compose -f infra/proxmox/docker-compose.yml config`) e reportar passou/falhou
