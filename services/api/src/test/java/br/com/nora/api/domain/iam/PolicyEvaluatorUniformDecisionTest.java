@@ -128,36 +128,139 @@ class PolicyEvaluatorUniformDecisionTest {
                 .isEmpty();
     }
 
-    // ------------------------------------------------- equivalencia com isAllowed
+    // ------------------------------- wildcard no meio / inicio (bypass da 1a versao)
 
     @Test
-    void whenUniformTheAnswerMatchesIsAllowedForEveryMemberOfTheSet() {
-        // A propriedade que sustenta a otimizacao. Para cada conjunto de statements que se declara
-        // uniforme, a resposta unica tem de bater com a avaliacao individual de qualquer reuniao.
-        String tenantWide = "nora:tenant/" + TENANT + ":*";
-        String tasks = "nora:tenant/" + TENANT + ":task/*";
-        List<List<PolicyStatement>> uniformSets =
-                List.of(
-                        List.of(allow(WILDCARD)),
-                        List.of(allow("*")),
-                        List.of(allow(tenantWide)),
-                        List.of(allow(WILDCARD), allow(tasks)),
-                        List.of(deny(WILDCARD)),
-                        List.of(allow(WILDCARD), deny(WILDCARD)),
-                        List.of());
+    void aDenyWithAWildcardBeforeTheDiscriminatingTailForcesPerItemEvaluation() {
+        // A 1a versao so olhava o literal ANTES do primeiro wildcard. Aqui esse literal e
+        // "nora:tenant/", que o prefixo do conjunto comeca por -- e a cauda ":meeting/<id>",
+        // que e justamente quem discrimina, nunca era examinada. O Deny sumia e a reuniao
+        // negada aparecia na listagem.
+        String crossTenantDeny = "nora:tenant/*:meeting/aaaaaaaa-0000-4000-8000-000000000001";
+        assertThat(
+                        PolicyEvaluator.uniformDecision(
+                                List.of(allow(WILDCARD), deny(crossTenantDeny)), ACTION, WILDCARD))
+                .isEmpty();
+    }
 
-        List<String> sampleIds =
-                List.of("abc", "00000000-0000-4000-8000-000000000001", "zzz-999", "a");
+    @Test
+    void aDenyWithALeadingWildcardForcesPerItemEvaluation() {
+        assertThat(
+                        PolicyEvaluator.uniformDecision(
+                                List.of(allow(WILDCARD), deny("*1")), ACTION, WILDCARD))
+                .isEmpty();
+    }
 
-        for (List<PolicyStatement> stmts : uniformSets) {
-            Optional<Boolean> uniform = PolicyEvaluator.uniformDecision(stmts, ACTION, WILDCARD);
-            assertThat(uniform).as("conjunto deveria ser uniforme: %s", stmts).isPresent();
-            for (String id : sampleIds) {
-                boolean perItem = PolicyEvaluator.isAllowed(stmts, ACTION, meeting(id), Map.of());
-                assertThat(perItem)
-                        .as("uniforme=%s mas item %s deu %s", uniform.get(), id, perItem)
-                        .isEqualTo(uniform.get());
+    @Test
+    void aDenyWithAWildcardInTheResourceTypeForcesPerItemEvaluation() {
+        String midWildcard = "nora:tenant/" + TENANT + ":*/aaaaaaaa-0000-4000-8000-000000000001";
+        assertThat(
+                        PolicyEvaluator.uniformDecision(
+                                List.of(allow(WILDCARD), deny(midWildcard)), ACTION, WILDCARD))
+                .isEmpty();
+    }
+
+    @Test
+    void aQuestionMarkMaskOverTheWholeSetForcesPerItemEvaluation() {
+        // Casa TODA reuniao real mas NAO casa a string sentinela "<prefix>*". A 1a versao
+        // decidia avaliando essa sentinela, entao respondia "permitido" com um Deny que na
+        // pratica negava tudo.
+        String uuidMask = "nora:tenant/" + TENANT + ":meeting/????????-????-????-????-????????????";
+        assertThat(
+                        PolicyEvaluator.uniformDecision(
+                                List.of(allow(WILDCARD), deny(uuidMask)), ACTION, WILDCARD))
+                .isEmpty();
+    }
+
+    @Test
+    void aSingleCharMaskThatMatchesNoRealMeetingForcesPerItemEvaluation() {
+        String oneChar = "nora:tenant/" + TENANT + ":meeting/?";
+        assertThat(PolicyEvaluator.uniformDecision(List.of(allow(oneChar)), ACTION, WILDCARD))
+                .isEmpty();
+    }
+
+    @Test
+    void aDenyOverTheWholeSetIsUniformlyFalseEvenWithABroadAllow() {
+        assertThat(
+                        PolicyEvaluator.uniformDecision(
+                                List.of(allow(WILDCARD), deny("*")), ACTION, WILDCARD))
+                .contains(false);
+    }
+
+    // ------------------------------------------------- equivalencia com isAllowed
+
+    /**
+     * Formas de resource pattern que um admin pode escrever. Inclui de proposito wildcard no
+     * inicio, no meio e '?', que e a familia que a primeira versao desta otimizacao classificava
+     * mal -- o teste antigo so amostrava wildcard no fim e por isso passava com o bug.
+     */
+    private static final List<String> PATTERN_CORPUS =
+            List.of(
+                    "*",
+                    "nora:tenant/" + TENANT + ":*",
+                    WILDCARD,
+                    "nora:tenant/" + TENANT + ":task/*",
+                    "nora:tenant/" + TENANT + ":meeting/aaaaaaaa-0000-4000-8000-000000000001",
+                    "nora:tenant/" + TENANT + ":meeting/aaa*",
+                    "nora:tenant/*:meeting/aaaaaaaa-0000-4000-8000-000000000001",
+                    "nora:tenant/" + TENANT + ":*/aaaaaaaa-0000-4000-8000-000000000001",
+                    "nora:tenant/" + TENANT + ":meeting/????????-????-????-????-????????????",
+                    "nora:tenant/" + TENANT + ":meeting/?",
+                    "*1",
+                    "*meeting*",
+                    "nora:tenant/99999999-9999-4999-8999-999999999999:meeting/*");
+
+    private static final List<String> SAMPLE_IDS =
+            List.of(
+                    "aaaaaaaa-0000-4000-8000-000000000001",
+                    "bbbbbbbb-0000-4000-8000-000000000002",
+                    "aaa-outra",
+                    "z");
+
+    @Test
+    void wheneverItAnswersTheAnswerMatchesIsAllowedForEveryMemberOfTheSet() {
+        // A unica propriedade que torna a otimizacao aceitavel: sempre que uniformDecision
+        // responde, a resposta unica tem de bater com a avaliacao individual de QUALQUER reuniao
+        // do tenant. Varre todos os pares do corpus, nos dois efeitos -- 2*13*13 = 338 conjuntos.
+        int answered = 0;
+        for (String p1 : PATTERN_CORPUS) {
+            for (String p2 : PATTERN_CORPUS) {
+                for (Effect effect : List.of(Effect.ALLOW, Effect.DENY)) {
+                    List<PolicyStatement> stmts =
+                            List.of(
+                                    allow(p1),
+                                    new PolicyStatement(
+                                            effect, List.of(ACTION), List.of(p2), Map.of()));
+                    Optional<Boolean> uniform =
+                            PolicyEvaluator.uniformDecision(stmts, ACTION, WILDCARD);
+                    if (uniform.isEmpty()) {
+                        continue; // recuou para o caminho item a item: sempre correto
+                    }
+                    answered++;
+                    for (String id : SAMPLE_IDS) {
+                        boolean perItem =
+                                PolicyEvaluator.isAllowed(stmts, ACTION, meeting(id), Map.of());
+                        assertThat(perItem)
+                                .as(
+                                        "allow(%s) + %s(%s): uniforme=%s mas o item %s deu %s",
+                                        p1, effect, p2, uniform.get(), id, perItem)
+                                .isEqualTo(uniform.get());
+                    }
+                }
             }
         }
+        // Guarda contra a otimizacao morrer sem ninguem reparar: se um refactor a tornar sempre
+        // `empty`, o teste acima passa vacuamente e o endpoint volta a varrer o tenant inteiro.
+        assertThat(answered)
+                .as("nenhum conjunto do corpus tomou o caminho rapido")
+                .isGreaterThan(20);
+    }
+
+    @Test
+    void theFastPathStillFiresForTheCommonPolicyShapes() {
+        assertThat(PolicyEvaluator.uniformDecision(List.of(allow(WILDCARD)), ACTION, WILDCARD))
+                .contains(true);
+        assertThat(PolicyEvaluator.uniformDecision(List.of(allow("*")), ACTION, WILDCARD))
+                .contains(true);
     }
 }

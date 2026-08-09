@@ -324,6 +324,13 @@ public class MeetingsController {
                         "meeting:read",
                         meetingResource(principal.tenantId(), null));
 
+        // Offset em long, nos DOIS caminhos: `page` vem do query string sem teto superior, e
+        // `safePage * safeSize` em int estoura pra negativo já a partir de page≈21M com size=100.
+        // No caminho lento isso rebentava o subList; no rápido o Pageable leva o offset pro SQL,
+        // onde `PageableUtils.getOffsetAsInteger` estoura em IllegalArgumentException -> 500.
+        long offset = (long) safePage * safeSize;
+        boolean offsetBeyondInt = offset > Integer.MAX_VALUE;
+
         List<Meeting> pageMeetings;
         long totalItems;
         if (uniform.isPresent()) {
@@ -331,6 +338,10 @@ public class MeetingsController {
                 // requireAnyAllow acima ja teria barrado; defensivo para nao paginar um Deny.
                 pageMeetings = List.of();
                 totalItems = 0;
+            } else if (offsetBeyondInt) {
+                // Página muito além do fim: devolve vazio com o total real, em vez de 500.
+                pageMeetings = List.of();
+                totalItems = meetings.list(principal.tenantId(), filter, 0, 1).totalItems();
             } else {
                 PagedMeetings paged =
                         meetings.list(principal.tenantId(), filter, safePage, safeSize);
@@ -354,10 +365,6 @@ public class MeetingsController {
                             Meeting::attributes);
 
             totalItems = visible.size();
-            // Offset em long: `page` vem do query string sem teto superior, e `safePage *
-            // safeSize` em int estoura pra negativo já a partir de page≈21M com size=100. O
-            // Math.min preserva o negativo e o subList seguinte rebenta com IndexOutOfBounds.
-            long offset = (long) safePage * safeSize;
             int fromIdx = (int) Math.min(offset, visible.size());
             int toIdx = Math.min(fromIdx + safeSize, visible.size());
             pageMeetings = visible.subList(fromIdx, toIdx);

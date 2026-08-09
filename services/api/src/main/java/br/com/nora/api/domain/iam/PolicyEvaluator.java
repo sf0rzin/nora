@@ -113,42 +113,78 @@ public final class PolicyEvaluator {
             return Optional.empty();
         }
         String prefix = wildcardResource.substring(0, wildcardResource.length() - 1);
+        if (statements == null || statements.isEmpty()) {
+            return Optional.of(false);
+        }
 
-        if (statements != null) {
-            for (PolicyStatement s : statements) {
-                if (!matchesAction(s, action)) {
-                    continue;
-                }
-                if (s.condition() != null && !s.condition().isEmpty()) {
+        // A decisao e derivada da ESTRUTURA das statements, nao de avaliar um ARN sintetico.
+        // Avaliar `isAllowed(..., prefix + "*")` seria errado: nessa chamada o `*` entra como
+        // valor, um caractere literal, entao casar esse texto nao e nem necessario nem
+        // suficiente para casar os membros reais do conjunto -- um Deny em `meeting/????...`
+        // nao casa a sentinela mas nega toda reuniao real.
+        boolean anyAllow = false;
+        for (PolicyStatement s : statements) {
+            if (!matchesAction(s, action)) {
+                continue;
+            }
+            if (s.condition() != null && !s.condition().isEmpty()) {
+                return Optional.empty();
+            }
+            boolean coversAll = false;
+            for (String pattern : s.resources()) {
+                Coverage coverage = classify(pattern, prefix);
+                if (coverage == Coverage.PARTIAL) {
                     return Optional.empty();
                 }
-                for (String pattern : s.resources()) {
-                    if (!nonDiscriminating(pattern, prefix)) {
-                        return Optional.empty();
-                    }
+                if (coverage == Coverage.ALL) {
+                    coversAll = true;
                 }
             }
+            if (!coversAll) {
+                continue; // so tem patterns que nao alcancam nenhum membro: irrelevante
+            }
+            if (s.effect() == Effect.DENY) {
+                return Optional.of(false); // Deny sobre todo o conjunto vence sempre
+            }
+            anyAllow = true;
         }
-        return Optional.of(isAllowed(statements, action, wildcardResource));
+        return Optional.of(anyAllow);
     }
 
-    /**
-     * Um pattern e nao-discriminante sobre o conjunto {@code prefix + *} quando casa TODO o
-     * conjunto ou NENHUM elemento dele -- nos dois casos ele nao separa um item do outro.
-     */
-    private static boolean nonDiscriminating(String pattern, String prefix) {
+    /** Como um resource pattern se relaciona com o conjunto {@code prefix + <qualquer id>}. */
+    private enum Coverage {
+        /** Casa TODO membro do conjunto. */
+        ALL,
+        /** Nao casa membro NENHUM. */
+        NONE,
+        /** Casa uns e outros nao — obriga a avaliar item a item. */
+        PARTIAL
+    }
+
+    private static Coverage classify(String pattern, String prefix) {
         int wild = firstWildcard(pattern);
         String literal = wild < 0 ? pattern : pattern.substring(0, wild);
 
-        // Casa tudo: o trecho literal antes do primeiro wildcard nao chega a ser mais especifico
-        // que o prefixo comum do conjunto ("*", "nora:tenant/T:*", "nora:tenant/T:meeting/*").
-        if (wild >= 0 && prefix.startsWith(literal)) {
-            return true;
-        }
-        // Nao casa nada: os literais ja divergem antes de qualquer wildcard (outro tipo de
-        // recurso, outro tenant), entao o pattern e irrelevante para este conjunto.
+        // Nenhum: o texto literal antes do primeiro wildcard ja diverge do prefixo comum, e todo
+        // membro do conjunto comeca por esse prefixo. Outro tipo de recurso, outro tenant.
         int common = Math.min(literal.length(), prefix.length());
-        return !literal.regionMatches(0, prefix, 0, common);
+        if (!literal.regionMatches(0, prefix, 0, common)) {
+            return Coverage.NONE;
+        }
+
+        // Todos: o pattern e EXATAMENTE `<literal>*`, com o literal sem passar do prefixo comum.
+        // A exigencia de o `*` ser o ultimo caractere e o que faltava: sem ela,
+        // `nora:tenant/*:meeting/<id>` passava por "casa tudo" so porque o literal
+        // `nora:tenant/` e prefixo do prefixo — e a cauda, que e justamente quem discrimina,
+        // nunca era olhada. Um Deny assim desaparecia sem deixar rasto.
+        if (wild >= 0
+                && wild == pattern.length() - 1
+                && pattern.charAt(wild) == '*'
+                && literal.length() <= prefix.length()) {
+            return Coverage.ALL;
+        }
+
+        return Coverage.PARTIAL;
     }
 
     private static int firstWildcard(String pattern) {
