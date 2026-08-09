@@ -1,9 +1,9 @@
 from typing import Literal
 from pydantic import BaseModel
 
-# NOTA: não há `model_config = ConfigDict(populate_by_name=True)`, então
-# `Field(alias="x")` com alias == nome do campo era no-op (validação e
-# model_dump_json(by_alias=True) usam o próprio nome). Removidos. Auditoria #125.
+# NOTE: there is no `model_config = ConfigDict(populate_by_name=True)`, so
+# `Field(alias="x")` with alias == field name was a no-op (validation and
+# model_dump_json(by_alias=True) use the name itself). Removed. Audit #125.
 
 
 class InboundMessage(BaseModel):

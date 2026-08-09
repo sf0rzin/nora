@@ -9,10 +9,10 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * {@code @Transactional} em todos os métodos: sob RLS enforce (ADR 0028) o {@code TenantRlsAspect}
- * só seta o GUC {@code nora.current_tenant_id} dentro de uma transação. Sem isso, leitura/escrita
- * de {@code transcripts} (tabela enforced) pelo pipeline de análise async rodaria sem GUC →
- * fail-closed (transcript "missing"). Espelha o {@code MeetingRepositoryAdapter}.
+ * {@code @Transactional} on every method: under RLS enforce (ADR 0028) the {@code TenantRlsAspect}
+ * only sets the GUC {@code nora.current_tenant_id} inside a transaction. Without it, reads/writes
+ * of {@code transcripts} (enforced table) by the async analysis pipeline would run without the GUC
+ * → fail-closed (transcript "missing"). Mirrors the {@code MeetingRepositoryAdapter}.
  */
 @Repository
 public class TranscriptRepositoryAdapter implements TranscriptRepository {

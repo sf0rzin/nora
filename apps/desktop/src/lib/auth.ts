@@ -7,8 +7,8 @@ import type {
   SessionUser,
 } from "./types";
 
-const JWT_REFRESH_MARGIN_MS = 10 * 60 * 1000; // 10 minutos
-const JWT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
+const JWT_REFRESH_MARGIN_MS = 10 * 60 * 1000; // 10 minutes
+const JWT_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 let refreshIntervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -51,8 +51,8 @@ export async function login(req: LoginRequest): Promise<SessionUser> {
     auth: false,
   });
 
-  // Defesa: backend fora do ar ou resposta inesperada (2xx sem corpo JSON) fazia
-  // o login estourar com "null is not an object". Mensagem clara em vez de crash.
+  // Defense: backend down or unexpected response (2xx with no JSON body) made
+  // login blow up with "null is not an object". Clear message instead of a crash.
   if (!response?.accessToken) {
     throw new Error(
       "Resposta de login inválida do servidor. Verifique se o backend está no ar.",
@@ -85,10 +85,10 @@ export async function logout(): Promise<void> {
   await secrets.delete(SECRET_KEYS.CURRENT_USER);
 }
 
-// Mutex único pro refresh — tanto o loop proativo (checkAndRefresh a cada 5min)
-// quanto o caminho reativo (api-client em 401) chamam refreshAccessToken().
-// Sem este mutex, ambos podem disparar /auth/refresh em paralelo com o mesmo
-// refresh token plain → backend detecta reuse e revoga a sessão.
+// Single mutex for the refresh — both the proactive loop (checkAndRefresh every 5min)
+// and the reactive path (api-client on 401) call refreshAccessToken().
+// Without this mutex, both can fire /auth/refresh in parallel with the same
+// plain refresh token → backend detects reuse and revokes the session.
 let inFlightRefresh: Promise<string | null> | null = null;
 
 export function refreshAccessToken(): Promise<string | null> {
@@ -109,8 +109,8 @@ export function refreshAccessToken(): Promise<string | null> {
         },
       });
 
-      // Defesa: se backend responder no formato antigo (sem tokens no body),
-      // aborta antes de gravar `undefined` no keyring.
+      // Defense: if the backend responds in the old format (no tokens in the body),
+      // abort before writing `undefined` into the keyring.
       if (!response?.accessToken) {
         console.error(
           "[auth] refresh response missing accessToken — backend likely on older RefreshResponse shape",
@@ -130,7 +130,7 @@ export function refreshAccessToken(): Promise<string | null> {
       return null;
     }
   })();
-  // Limpa o slot SEMPRE — sucesso, falha ou exceção — pra evitar trava perpétua.
+  // ALWAYS clear the slot — success, failure or exception — to avoid a perpetual lock.
   inFlightRefresh.finally(() => {
     inFlightRefresh = null;
   });
@@ -140,7 +140,7 @@ export function refreshAccessToken(): Promise<string | null> {
 export function startTokenRefreshLoop(): void {
   stopTokenRefreshLoop();
 
-  // Verificação imediata
+  // Immediate check
   void checkAndRefresh();
 
   refreshIntervalId = setInterval(() => {
@@ -162,7 +162,7 @@ async function checkAndRefresh(): Promise<void> {
   if (shouldRefresh(token)) {
     const newToken = await refreshAccessToken();
     if (!newToken) {
-      // Refresh falhou — token expirado ou revogado
+      // Refresh failed — token expired or revoked
       await handleAuthExpired();
     }
   }
@@ -181,7 +181,7 @@ export async function bootstrapSession(): Promise<SessionUser | null> {
   if (!token) return null;
 
   if (isTokenExpired(token)) {
-    // Tenta refresh antes de desistir
+    // Try a refresh before giving up
     const newToken = await refreshAccessToken();
     if (!newToken) {
       await logout();

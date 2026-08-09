@@ -1,34 +1,34 @@
-# 0011 — Invite-based onboarding com restrição opcional de corporate domain
+# 0011 — Invite-based onboarding with optional corporate domain restriction
 
-- Status: aceito
-- Data: 2026-05-11
-- Decisores: Stratfy (PO) + Claude Opus 4.7 (Tech Lead)
+- Status: accepted
+- Date: 2026-05-11
+- Deciders: Stratfy (PO) + Claude Opus 4.7 (Tech Lead)
 
-## Contexto
+## Context
 
-O MVP da NORA tem dois fluxos de onboarding declarados no backlog:
+The NORA MVP has two onboarding flows declared in the backlog:
 
-- **Core** (Lucas): self-signup com e-mail/senha (US01–US04). Já implementado.
-- **Enterprise** (Camila/Rafael): o Root do tenant convida usuários por e-mail
-  corporativo (US06). Sem self-signup. O audit pós-Subfase 1.0 confirmou que
-  **US06 não tem código** (nenhuma migration, nenhum endpoint, nenhuma página).
+- **Core** (Lucas): self-signup with email/password (US01–US04). Already implemented.
+- **Enterprise** (Camila/Rafael): the tenant's Root invites users by corporate
+  email (US06). No self-signup. The post-Sub-phase 1.0 audit confirmed that
+  **US06 has no code** (no migration, no endpoint, no page).
 
-Sem invite, o Root Enterprise hoje não consegue onboardar ninguém — workaround
-seria criar usuários manualmente via banco, o que quebra a promessa do
-produto (auditável, controlado, com permissões por IAM).
+Without invites, the Enterprise Root currently cannot onboard anyone — the workaround
+would be to create users manually via the database, which breaks the product's
+promise (auditable, controlled, with IAM permissions).
 
-Junto disso, a US32 (corporate domain) está no Must Have e também ausente:
-o Root quer restringir convites a um domínio (ex.: `acme.com`) para evitar
-que sub-admins acidentalmente convidem e-mail pessoal de alguém externo. Os
-dois — invite e domain restriction — são acoplados: o invite valida contra
-o domain quando ele existe.
+Alongside that, US32 (corporate domain) is in the Must Have and is also absent:
+the Root wants to restrict invites to a domain (e.g., `acme.com`) to prevent
+sub-admins from accidentally inviting someone external's personal email. The
+two — invite and domain restriction — are coupled: the invite validates against
+the domain when it exists.
 
-## Decisão
+## Decision
 
-**Adotar invite-based onboarding com token de uso único e restrição opcional
-de corporate domain.**
+**Adopt invite-based onboarding with a single-use token and an optional corporate
+domain restriction.**
 
-### Fluxo
+### Flow
 
 ```
 Root (ou user com iam:user:invite)
@@ -64,81 +64,81 @@ Backend valida token:
   - retorna JWT (login automático)
 ```
 
-### Configuração de domínio corporativo (US32)
+### Corporate domain configuration (US32)
 
-- Coluna nova `tenants.allowed_email_domain VARCHAR(255) NULL` (default NULL = sem restrição).
-- Endpoint `PUT /tenant/domain { allowedEmailDomain }` exige permissão IAM `tenant:domain:write`.
-- Validação no servidor: regex `^[a-z0-9.-]+\.[a-z]{2,}$`, lowercase, sem prefixo `@`.
-- Quando setado, `POST /iam/users/invite` rejeita email cujo domain não bate (HTTP 422 com código `EMAIL_DOMAIN_NOT_ALLOWED`).
+- New column `tenants.allowed_email_domain VARCHAR(255) NULL` (default NULL = no restriction).
+- Endpoint `PUT /tenant/domain { allowedEmailDomain }` requires the IAM permission `tenant:domain:write`.
+- Server-side validation: regex `^[a-z0-9.-]+\.[a-z]{2,}$`, lowercase, without the `@` prefix.
+- When set, `POST /iam/users/invite` rejects an email whose domain does not match (HTTP 422 with code `EMAIL_DOMAIN_NOT_ALLOWED`).
 
-### Status do invite
+### Invite status
 
-- `PENDING` — criado, ainda dentro do prazo
-- `ACCEPTED` — aceito, user criado
-- `EXPIRED` — passou de expiresAt sem aceite (transição via job ou check on-read)
-- `REVOKED` — Root cancelou via `DELETE /iam/invites/{id}` antes de aceite
+- `PENDING` — created, still within the deadline
+- `ACCEPTED` — accepted, user created
+- `EXPIRED` — passed expiresAt without acceptance (transition via job or check on-read)
+- `REVOKED` — Root cancelled it via `DELETE /iam/invites/{id}` before acceptance
 
-### Permissões IAM novas
+### New IAM permissions
 
-| Action | Resource | Usado em |
+| Action | Resource | Used in |
 |---|---|---|
-| `iam:user:invite` | `nora:tenant/{tid}:invite/*` | criar invite |
-| `iam:invite:read` | `nora:tenant/{tid}:invite/*` | listar invites |
-| `iam:invite:revoke` | `nora:tenant/{tid}:invite/{id}` | revogar |
-| `tenant:domain:write` | `nora:tenant/{tid}` | setar domain |
-| `tenant:domain:read` | `nora:tenant/{tid}` | ler domain |
+| `iam:user:invite` | `nora:tenant/{tid}:invite/*` | create invite |
+| `iam:invite:read` | `nora:tenant/{tid}:invite/*` | list invites |
+| `iam:invite:revoke` | `nora:tenant/{tid}:invite/{id}` | revoke |
+| `tenant:domain:write` | `nora:tenant/{tid}` | set domain |
+| `tenant:domain:read` | `nora:tenant/{tid}` | read domain |
 
-Root tem bypass por padrão (ver ADR 0007).
+Root has bypass by default (see ADR 0007).
 
-## Consequências
+## Consequences
 
-**Positivas:**
+**Positive:**
 
-- Root tem controle granular sobre quem entra no tenant.
-- Domain restriction protege contra convites acidentais a e-mails externos.
-- Token revogável a qualquer momento antes do aceite.
-- Auditável via `audit_events`: criação, aceite, expiração, revogação.
-- Reusa `EmailSender` port existente (pra password reset) — sem dependência nova.
-- Plugável: pra SSO futuro (US05), invite pode bypass set-password.
+- The Root has granular control over who joins the tenant.
+- Domain restriction protects against accidental invites to external emails.
+- The token is revocable at any time before acceptance.
+- Auditable via `audit_events`: creation, acceptance, expiration, revocation.
+- Reuses the existing `EmailSender` port (for password reset) — no new dependency.
+- Pluggable: for future SSO (US05), the invite can bypass set-password.
 
-**Negativas / custos:**
+**Negative / costs:**
 
-- Fluxo de 2 etapas (convite + aceite) — 1 ponto de fricção a mais que self-signup.
-- Depende de e-mail entregar — risco de spam folder ou MTA bouncing.
-  Mitigação: status `PENDING` visível ao Root, possível "reenviar invite".
-- Tokens em URL — risco de log/proxy expor. Mitigação: tokens são UUIDs longos,
-  uso único, expiram em 7 dias, e a URL não contém PII.
+- A 2-step flow (invite + acceptance) — 1 more friction point than self-signup.
+- Depends on email delivery — risk of the spam folder or MTA bouncing.
+  Mitigation: `PENDING` status visible to the Root, possible "resend invite".
+- Tokens in the URL — risk of a log/proxy exposing them. Mitigation: tokens are long UUIDs,
+  single-use, expire in 7 days, and the URL contains no PII.
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Magic link sem set password** — UX mais simples, mas força sessão sem
-   senha verificável. Rejeitado: usuário Enterprise precisa autenticar em
-   múltiplos dispositivos; senha + JWT é o padrão esperado pelo mercado B2B BR.
+1. **Magic link without set password** — simpler UX, but it forces a session without
+   a verifiable password. Rejected: the Enterprise user needs to authenticate on
+   multiple devices; password + JWT is the standard expected by the Brazilian B2B market.
 
-2. **Self-signup com domain whitelist (sem invite)** — qualquer e-mail
-   `@empresa.com` pode criar conta. Rejeitado: perde controle do Root sobre
-   quem entra, abre brecha pra ex-funcionário ainda com e-mail @empresa.com
-   acessar o tenant. Quebra promessa Enterprise.
+2. **Self-signup with a domain whitelist (no invite)** — any `@empresa.com`
+   email can create an account. Rejected: it loses the Root's control over
+   who joins, and opens a gap for a former employee still holding an @empresa.com email
+   to access the tenant. It breaks the Enterprise promise.
 
-3. **SSO direto (Entra ID/SAML)** — Rejeitado pra MVP. Está no roadmap como
-   US05 (pós-MVP). Quando vier, o invite continua válido pra usuários sem
-   SSO ou pra fluxos onde IT exige convite explícito antes da federação.
+3. **Direct SSO (Entra ID/SAML)** — Rejected for the MVP. It is on the roadmap as
+   US05 (post-MVP). When it arrives, the invite remains valid for users without
+   SSO or for flows where IT requires an explicit invite before federation.
 
-4. **Convite sem domain restriction** — Rejeitado: US32 está no Must Have e
-   é coupling natural com US06. Implementar separadamente dobra trabalho.
+4. **Invite without domain restriction** — Rejected: US32 is in the Must Have and
+   it is a natural coupling with US06. Implementing them separately doubles the work.
 
-## Regras Acompanhantes
+## Accompanying Rules
 
-- Toda criação/aceite/revogação/expiração de invite gera `audit_event` com
+- Every invite creation/acceptance/revocation/expiration generates an `audit_event` with
   actor, target email, tenantId, timestamp.
-- Convites expirados não são deletados — ficam em `iam_user_invitations`
-  com status `EXPIRED` pra rastreabilidade histórica.
-- Tokens nunca são logados em produção (PII).
-- `acceptedUserId` permite rastrear quem o invite virou — útil pra
-  auditoria pós-incidente ("quem convidou esse user e quando?").
-- Quando `allowedEmailDomain` é setado em tenant que já tem usuários, isso
-  **não revoga** usuários existentes — apenas restringe convites futuros.
+- Expired invites are not deleted — they remain in `iam_user_invitations`
+  with status `EXPIRED` for historical traceability.
+- Tokens are never logged in production (PII).
+- `acceptedUserId` makes it possible to trace who the invite became — useful for
+  post-incident auditing ("who invited this user and when?").
+- When `allowedEmailDomain` is set on a tenant that already has users, this
+  **does not revoke** existing users — it only restricts future invites.
 
-Ver contratos exatos em `docs/api/examples/`:
+See the exact contracts in `docs/api/examples/`:
 - `iam-invite-request.json`, `iam-invite-response.json`, `iam-invite-list-response.json`, `iam-invite-accept-request.json`
 - `tenant-domain-update-request.json`, `tenant-domain-update-response.json`

@@ -1,41 +1,41 @@
 name: build-images
 
-# Builda + pusha imagens Docker pra GHCR e PUBLICA o "release pointer" que o agente de
-# pull no host Proxmox consome. Este workflow NÃO fala com o host — ele não faz push de
-# deploy pra lugar nenhum (ADR 0034 / migração Azure -> Proxmox).
+# Builds + pushes Docker images to GHCR and PUBLISHES the "release pointer" that the pull
+# agent on the Proxmox host consumes. This workflow does NOT talk to the host — it pushes
+# no deploy anywhere (ADR 0034 / Azure -> Proxmox migration).
 #
 # Triggers:
-#   - push em main: rebuild dos serviços que mudaram (path filter) + release pointer
-#   - pull_request: SÓ build de validação (push:false — nenhuma imagem sai, nenhum
-#     pointer é publicado). Seguro em repo público: em PR de fork o GITHUB_TOKEN é
-#     read-only e o job release-pointer é barrado pelo guard de event/ref.
-#   - workflow_dispatch: rebuild de todos manualmente
+#   - push on main: rebuild of the services that changed (path filter) + release pointer
+#   - pull_request: ONLY a validation build (push:false — no image leaves, no pointer
+#     is published). Safe in a public repo: on a fork PR the GITHUB_TOKEN is read-only
+#     and the release-pointer job is blocked by the event/ref guard.
+#   - workflow_dispatch: rebuild everything manually
 #
-# Imagens publicadas:
+# Published images:
 #   - ghcr.io/sf0rzin/nora-{api,worker,web,admin}:{latest, sha-XXXXXXX}
 #
-# ROLLOUT (job release-pointer): substituiu o antigo `deploy-apps`, que fazia
-# `azure/login` + `az containerapp update` via OIDC. O modelo agora é PULL: este job só
-# ANUNCIA quais tags IMUTÁVEIS `sha-<short>` foram construídas; quem aplica é o agente no
-# host (ver .github/workflows/deploy-proxmox.yml e infra/proxmox/scripts/).
+# ROLLOUT (release-pointer job): replaced the old `deploy-apps`, which did
+# `azure/login` + `az containerapp update` via OIDC. The model is now PULL: this job only
+# ANNOUNCES which IMMUTABLE `sha-<short>` tags were built; the one applying them is the
+# agent on the host (see .github/workflows/deploy-proxmox.yml and infra/proxmox/scripts/).
 #
-# Por que a tag imutável continua sendo o mecanismo: `docker compose up -d` compara a
-# imagem RESOLVIDA do serviço. Com `:latest` a referência não muda, o Compose considera o
-# container up-to-date e NÃO recria nada — o código novo nunca entra. Trocar API_TAG pra
-# uma `sha-<short>` nova muda a referência e força a recriação. Mesmo racional de antes
-# (lá era "força revisão nova no Container App"), motor diferente.
+# Why the immutable tag is still the mechanism: `docker compose up -d` compares the
+# RESOLVED image of the service. With `:latest` the reference does not change, Compose
+# considers the container up-to-date and recreates NOTHING — the new code never lands.
+# Switching API_TAG to a new `sha-<short>` changes the reference and forces the recreate.
+# Same rationale as before (there it was "force a new Container App revision"), other engine.
 #
-# IMPORTANTE: só emitimos tag pros serviços que MUDARAM. Um serviço não-mudado não teve
-# imagem construída neste SHA — emitir `sha-<short>` pra ele apontaria pra uma tag que não
-# existe no GHCR e o `docker compose pull` falharia. Serviço ausente do pointer = o host
-# mantém a tag que já está no `.env` dele.
+# IMPORTANT: we only emit a tag for the services that CHANGED. An unchanged service had no
+# image built at this SHA — emitting `sha-<short>` for it would point at a tag that does
+# not exist in GHCR and `docker compose pull` would fail. Service absent from the pointer =
+# the host keeps the tag already in its `.env`.
 #
-# IMPORTANTE: por padrão, pacotes no GHCR nascem PRIVADOS. Para torná-los públicos:
-# github.com/users/sf0rzin/packages → (pacote) → Package settings → Change visibility.
+# IMPORTANT: by default, GHCR packages are born PRIVATE. To make them public:
+# github.com/users/sf0rzin/packages → (package) → Package settings → Change visibility.
 #
-# Não é obrigatório: o host autentica via `docker login ghcr.io` com um PAT de escopo
-# `read:packages` (GHCR_PULL_TOKEN no secrets.env.sops), feito pelo `ghcr_login()` do
-# infra/proxmox/scripts/deploy.sh. Público é conveniência, não requisito.
+# Not mandatory: the host authenticates via `docker login ghcr.io` with a PAT scoped
+# `read:packages` (GHCR_PULL_TOKEN in secrets.env.sops), done by `ghcr_login()` in
+# infra/proxmox/scripts/deploy.sh. Public is convenience, not a requirement.
 
 on:
   push:
@@ -60,9 +60,9 @@ on:
       - 'apps/*/Dockerfile'
   workflow_dispatch:
 
-# `id-token: write` REMOVIDO junto com o job deploy-apps: era exclusivamente pro
-# `azure/login` federado (OIDC). Sem Azure no caminho, nenhum job aqui precisa de token
-# OIDC — manter a permissão só ampliaria a superfície de um workflow de repo público.
+# `id-token: write` REMOVED along with the deploy-apps job: it existed exclusively for the
+# federated `azure/login` (OIDC). With no Azure in the path, no job here needs an OIDC
+# token — keeping the permission would only widen the surface of a public-repo workflow.
 permissions:
   contents: read
   packages: write
@@ -157,7 +157,7 @@ jobs:
 
       - uses: docker/build-push-action@v7
         with:
-          context: .  # repo root — Dockerfile do worker precisa de packages/nlp-baseline
+          context: .  # repo root — the worker Dockerfile needs packages/nlp-baseline
           file: services/nlp-worker/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
@@ -200,13 +200,13 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
           provenance: false
-          # NEXT_PUBLIC_* sao baked in build-time. Setar via NEXT_PUBLIC_API_BASE_URL aqui
-          # (override por workflow vars/secrets se for build pra ambiente diferente).
-          # Fallback agora é o domínio público servido por Cloudflare Tunnel -> caddy -> api
-          # (infra/proxmox/docker-compose.yml). O fallback antigo era o FQDN do Azure
-          # Container Apps, que está morto. Setar `vars.NEXT_PUBLIC_API_BASE_URL` pra trocar.
-          # ATENÇÃO: mudar o domínio público exige REBUILD desta imagem — setar a env no
-          # compose NÃO altera um bundle Next já compilado.
+          # NEXT_PUBLIC_* are baked in at build-time. Set via NEXT_PUBLIC_API_BASE_URL here
+          # (override by workflow vars/secrets if building for a different environment).
+          # The fallback is now the public domain served by Cloudflare Tunnel -> caddy -> api
+          # (infra/proxmox/docker-compose.yml). The old fallback was the Azure Container
+          # Apps FQDN, which is dead. Set `vars.NEXT_PUBLIC_API_BASE_URL` to change it.
+          # WARNING: changing the public domain requires a REBUILD of this image — setting
+          # the env in the compose does NOT alter an already compiled Next bundle.
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'https://api.nora.systems' }}
             NEXT_PUBLIC_USE_MOCKS=false
@@ -246,33 +246,34 @@ jobs:
           cache-to: type=gha,scope=admin,mode=max
           provenance: false
 
-  # ANUNCIA o rollout — não o executa. Substituiu o antigo `deploy-apps` (azure/login +
-  # `az containerapp update`). Aqui não há credencial de host, SSH, runner self-hosted nem
-  # porta inbound: o job só materializa "quais tags imutáveis existem pra este SHA" em dois
-  # formatos consumíveis pelo agente de pull rodando no Proxmox:
+  # ANNOUNCES the rollout — does not execute it. Replaced the old `deploy-apps` (azure/login
+  # + `az containerapp update`). There is no host credential, SSH, self-hosted runner nor
+  # inbound port here: the job only materializes "which immutable tags exist for this SHA" in
+  # two formats consumable by the pull agent running on the Proxmox:
   #
-  #   - artefato `nora-release-pointer` (release.json + deploy.env) — o agente baixa pela
-  #     API do Actions (GET /repos/{owner}/{repo}/actions/artifacts?name=nora-release-pointer)
-  #     com um PAT read-only e faz merge do deploy.env no .env do compose;
-  #   - step summary — leitura humana no run.
+  #   - artifact `nora-release-pointer` (release.json + deploy.env) — the agent downloads it
+  #     via the Actions API (GET /repos/{owner}/{repo}/actions/artifacts?name=nora-release-pointer)
+  #     with a read-only PAT and merges deploy.env into the compose .env;
+  #   - step summary — human reading in the run.
   #
-  # A publicação do "pointer canônico" de longa duração (tag git `release/prod/*`, que não
-  # expira em 90 dias como o artefato) é do deploy-proxmox.yml, que consome este artefato.
+  # Publishing the long-lived "canonical pointer" (git tag `release/prod/*`, which does not
+  # expire in 90 days like the artifact) belongs to deploy-proxmox.yml, which consumes this
+  # artifact.
   #
-  # Só entram no pointer os serviços que MUDARAM e cujo build passou. Serviço ausente = o
-  # host preserva a tag atual dele (ver comentário do cabeçalho: emitir sha-<short> pra um
-  # serviço não construído quebraria o `docker compose pull`).
+  # Only services that CHANGED and whose build passed enter the pointer. Absent service = the
+  # host preserves its current tag (see the header comment: emitting sha-<short> for a service
+  # that was not built would break `docker compose pull`).
   release-pointer:
     name: Publica release pointer (tags sha-<short>)
     needs: [changes, api, worker, web, admin]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Renomeado de `nora-azure-rollout-*`. O grupo continua existindo por um motivo que
-    # sobreviveu à migração: dois merges seguidos em main publicam dois pointers e o agente
-    # de pull consome "o mais recente" — sem serialização, a ordem de publicação pode
-    # inverter e o host convergir pro SHA mais ANTIGO. cancel-in-progress:false enfileira
-    # em vez de cancelar, então nenhum pointer é perdido.
+    # Renamed from `nora-azure-rollout-*`. The group still exists for a reason that survived
+    # the migration: two merges in a row on main publish two pointers and the pull agent
+    # consumes "the most recent" — without serialization, the publish order can invert and
+    # the host converge on the OLDER SHA. cancel-in-progress:false queues instead of
+    # cancelling, so no pointer is lost.
     concurrency:
       group: nora-release-pointer-${{ github.ref }}
       cancel-in-progress: false
@@ -297,7 +298,7 @@ jobs:
           : > pointer/deploy.env
           services_json='[]'
 
-          # publish <compose-var> <nome-da-imagem> <mudou> <resultado-do-build>
+          # publish <compose-var> <image-name> <changed> <build-result>
           publish() {
             local var=$1 name=$2 changed=$3 result=$4
             if [ "$changed" != "true" ] && [ "$EVENT" != "workflow_dispatch" ]; then
@@ -305,9 +306,9 @@ jobs:
               return
             fi
             if [ "$result" != "success" ]; then
-              # Warning, não erro: um build quebrado não pode arrastar o pointer dos
-              # serviços que passaram. O host aplica o parcial e o serviço quebrado
-              # continua na tag anterior (que está de pé).
+              # Warning, not error: a broken build must not drag down the pointer of the
+              # services that passed. The host applies the partial one and the broken
+              # service stays on the previous tag (which is up).
               echo "::warning::$name: build=$result — fora do pointer"
               return
             fi
@@ -340,8 +341,8 @@ jobs:
           echo "count=$count" >> "$GITHUB_OUTPUT"
           cat pointer/release.json
 
-      # Sempre sobe o artefato, inclusive vazio (services:[]): o agente distingue
-      # "nada mudou neste SHA" de "o workflow não rodou".
+      # Always upload the artifact, even empty (services:[]): the agent distinguishes
+      # "nothing changed at this SHA" from "the workflow did not run".
       - name: Upload do release pointer
         uses: actions/upload-artifact@v4
         with:
@@ -388,8 +389,8 @@ jobs:
           echo "| web | ${{ needs.web.result }} | ghcr.io/${{ env.IMAGE_PREFIX }}-web:sha-${GITHUB_SHA::7} |" >> $GITHUB_STEP_SUMMARY
           echo "| admin | ${{ needs.admin.result }} | ghcr.io/${{ env.IMAGE_PREFIX }}-admin:sha-${GITHUB_SHA::7} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          # Só as tags de serviços LISTADOS no release pointer existem no GHCR pra este SHA.
-          # NÃO documentar `docker pull :latest` aqui: com :latest a referência resolvida do
-          # serviço não muda e o `docker compose up -d` considera o container up-to-date —
-          # o container NÃO é recriado e o código novo nunca sobe. O rollout é por tag imutável.
+          # Only the tags of services LISTED in the release pointer exist in GHCR for this SHA.
+          # Do NOT document `docker pull :latest` here: with :latest the service's resolved
+          # reference does not change and `docker compose up -d` considers the container
+          # up-to-date — it is NOT recreated and the new code never ships. Rollout is by immutable tag.
           echo "Rollout via tag imutável \`sha-${GITHUB_SHA::7}\` — ver o job \`release-pointer\`." >> $GITHUB_STEP_SUMMARY

@@ -1,67 +1,67 @@
-# 0029 — LGPD operacional: direito ao esquecimento + retenção
+# 0029 — Operational LGPD: right to be forgotten + retention
 
-- Status: aceito
-- Data: 2026-06-05
-- Decisores: Arquiteto + Stratfy (PO)
-- Relacionado: concretiza o hard-delete previsto no ADR 0021 (soft-delete); opera sob o RLS enforce do ADR 0028; complementa o PII Shield (ADR 0012)
+- Status: accepted
+- Date: 2026-06-05
+- Deciders: Architect + Stratfy (PO)
+- Related: makes concrete the hard-delete foreseen in ADR 0021 (soft-delete); operates under the RLS enforce of ADR 0028; complements the PII Shield (ADR 0012)
 
-## Contexto
+## Context
 
-A auditoria de fundação apontou um gap de compliance: o NORA se posiciona **LGPD-first**, mas
-não tinha **retenção formal** nem **direito ao esquecimento**. O risco concreto: `transcripts.raw_text`
-guarda a transcrição **bruta** (PII em repouso) indefinidamente — o PII Shield (ADR 0012) só redige o
-que vai pra LLM, não o que fica no banco.
+The foundation audit pointed out a compliance gap: NORA positions itself as **LGPD-first**, but
+had neither **formal retention** nor a **right to be forgotten**. The concrete risk: `transcripts.raw_text`
+stores the **raw** transcription (PII at rest) indefinitely — the PII Shield (ADR 0012) only redacts what
+goes to the LLM, not what stays in the database.
 
-O ADR 0021 (soft-delete) já tinha previsto a saída: "hard-delete continua possível via native query
-explícita, para LGPD (direito ao esquecimento) e retenção. É a exceção consciente, não o default."
-Este ADR concretiza essa exceção.
+ADR 0021 (soft-delete) had already foreseen the way out: "hard-delete remains possible via an explicit
+native query, for LGPD (right to be forgotten) and retention. It is the conscious exception, not the default."
+This ADR makes that exception concrete.
 
-## Decisão
+## Decision
 
-Duas capacidades, ambas via **hard-delete físico** (não soft): uma native query `DELETE FROM meetings`
-ignora o `@SQLDelete`/`@SQLRestriction` da entidade, e o FK `ON DELETE CASCADE` (V004) propaga pra
-`transcripts` (raw PII), `meeting_participants`, `meeting_tags` e `meeting_analyses` (+ filhos).
+Two capabilities, both via **physical hard-delete** (not soft): a native `DELETE FROM meetings` query
+ignores the entity's `@SQLDelete`/`@SQLRestriction`, and the `ON DELETE CASCADE` FK (V004) propagates to
+`transcripts` (raw PII), `meeting_participants`, `meeting_tags` and `meeting_analyses` (+ children).
 
-### 1. Direito ao esquecimento — `DELETE /privacy/meetings/{id}`
+### 1. Right to be forgotten — `DELETE /privacy/meetings/{id}`
 
-Endpoint autenticado, escopado por tenant do JWT, gate `meeting:update` (mesmo da remoção destrutiva
-de goal). Apaga DEFINITIVAMENTE o meeting e todo o PII em cascata. 204 em sucesso; **404 se não existir
-no tenant** (não vaza existência cross-tenant). Auditável via log (só ids, nunca conteúdo).
+Authenticated endpoint, scoped by the JWT's tenant, gated by `meeting:update` (the same as the destructive
+removal of a goal). It PERMANENTLY deletes the meeting and all PII in cascade. 204 on success; **404 if it does
+not exist in the tenant** (does not leak cross-tenant existence). Auditable via log (ids only, never content).
 
-### 2. Retenção — sweeper agendado
+### 2. Retention — scheduled sweeper
 
-`RetentionSweeper` (`@Scheduled`, cron configurável) purga meetings mais antigos que
-`nora.privacy.retention-days`. **Desligado por default (`0`)**: retenção é destrutiva, então só liga por
-opt-in explícito do ambiente (`NORA_PRIVACY_RETENTION_DAYS`). Itera **por tenant** porque, sob RLS
-enforce (ADR 0028), a thread do scheduler não tem JWT — propaga o tenant via `TenantRlsContext` pra que
-o aspect aplique o GUC na transação da purga. A listagem de tenants funciona sem GUC (`tenants` é exempta
-da RLS na V020).
+`RetentionSweeper` (`@Scheduled`, configurable cron) purges meetings older than
+`nora.privacy.retention-days`. **Off by default (`0`)**: retention is destructive, so it is only turned on by
+explicit opt-in from the environment (`NORA_PRIVACY_RETENTION_DAYS`). It iterates **per tenant** because, under RLS
+enforce (ADR 0028), the scheduler thread has no JWT — it propagates the tenant via `TenantRlsContext` so that
+the aspect applies the GUC in the purge transaction. Listing tenants works without a GUC (`tenants` is exempt
+from RLS in V020).
 
-### 3. Prova obrigatória
+### 3. Mandatory proof
 
-`PrivacyFlowIntegrationTest` (Testcontainers) sobe o app e valida ponta-a-ponta: o erasure remove o
-meeting **e o transcript (raw PII) fisicamente** (assert direto no `TranscriptRepository`); 404 em meeting
-inexistente; tenant B não apaga meeting de A (e o de A permanece); exige autenticação.
+`PrivacyFlowIntegrationTest` (Testcontainers) boots the app and validates end to end: erasure removes the
+meeting **and the transcript (raw PII) physically** (direct assert on `TranscriptRepository`); 404 on a
+nonexistent meeting; tenant B does not delete a meeting of A (and A's remains); it requires authentication.
 
-## Consequências
+## Consequences
 
-- Fecha o gap de compliance: PII em repouso passa a ter caminho de remoção sob demanda + retenção opt-in.
-- Hard-delete é **irreversível** (sem lixeira) — proposital: direito ao esquecimento exige remoção real.
-- Sob RLS enforce, o cascade do FK roda no nível do banco (bypassa RLS dos filhos), então apagar o meeting
-  (que passa pela RLS do tenant) purga os filhos enforced corretamente.
+- Closes the compliance gap: PII at rest now has an on-demand removal path + opt-in retention.
+- Hard-delete is **irreversible** (no trash bin) — intentional: the right to be forgotten requires real removal.
+- Under RLS enforce, the FK cascade runs at the database level (bypassing the children's RLS), so deleting the meeting
+  (which goes through the tenant's RLS) purges the enforced children correctly.
 
-**Negativas / trade-offs:**
-- Erasure hoje é **por meeting**, não por **titular** (e-mail). Erasure por data-subject (varrer todos os
-  meetings em que uma pessoa participou) é o próximo incremento — depende de decidir a semântica (apagar o
-  meeting inteiro vs. anonimizar o participante num transcript compartilhado).
-- Retenção é **global** (uma janela pra todos os tenants). Retenção por-tenant/por-plano exige uma tabela de
-  config — deferido até billing existir.
-- O gate é `meeting:update`; um permission dedicado `privacy:erase` (mais restritivo) é hardening futuro.
+**Negative / trade-offs:**
+- Erasure today is **per meeting**, not per **data subject** (email). Data-subject erasure (sweeping all the
+  meetings a person participated in) is the next increment — it depends on deciding the semantics (delete the
+  entire meeting vs. anonymize the participant in a shared transcript).
+- Retention is **global** (one window for all tenants). Per-tenant/per-plan retention requires a config
+  table — deferred until billing exists.
+- The gate is `meeting:update`; a dedicated `privacy:erase` permission (more restrictive) is future hardening.
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-- **Anonimizar em vez de deletar** (substituir PII por placeholders no `raw_text`): preserva agregados, mas
-  é mais frágil (depende da cobertura do redator) e não é "esquecimento" de verdade. Rejeitado pro caso de
-  direito ao esquecimento; pode complementar a retenção no futuro.
-- **Soft-delete + purga depois**: adiciona latência ao esquecimento sem ganho — o ADR 0021 já cobre o
-  soft-delete pro fluxo normal; LGPD quer remoção física imediata.
+- **Anonymizing instead of deleting** (replacing PII with placeholders in `raw_text`): preserves aggregates, but
+  is more fragile (it depends on the redactor's coverage) and is not true "forgetting". Rejected for the
+  right-to-be-forgotten case; it may complement retention in the future.
+- **Soft-delete + purge later**: adds latency to forgetting with no gain — ADR 0021 already covers
+  soft-delete for the normal flow; LGPD wants immediate physical removal.

@@ -1,20 +1,20 @@
 # Prompts — NORA NLP Worker
 
-Cada arquivo `.md` aqui é um prompt versionado. Mudança de comportamento exige nova versão (ex.: `meeting-analysis-v2.md`).
+Each `.md` file here is a versioned prompt. A behaviour change requires a new version (e.g. `meeting-analysis-v2.md`).
 
-## Convenções
+## Conventions
 
-- **System prompt** define identidade e regras invioláveis.
-- **User prompt** carrega contexto do tenant + transcrição.
-- **Schema** é referenciado em `docs/api/llm-schemas/` e enviado como `response_format=json_schema` na chamada ao provedor LLM (default OpenAI; ver ADR 0004).
-- Variáveis usam `{{snake_case}}` para serem renderizadas via Jinja2/string.format.
-- Saída sempre validada com Pydantic antes de retornar ao backend.
+- The **system prompt** defines the identity and the inviolable rules.
+- The **user prompt** carries the tenant context + the transcript.
+- The **schema** is referenced in `docs/api/llm-schemas/` and sent as `response_format=json_schema` in the call to the LLM provider (default OpenAI; see ADR 0004).
+- Variables use `{{snake_case}}` so they can be rendered via Jinja2/string.format.
+- The output is always validated with Pydantic before being returned to the backend.
 
-## Versão atual
+## Current version
 
-| Prompt | Versão | Schema |
+| Prompt | Version | Schema |
 |---|---|---|
 | Meeting Analysis | v1 | `meeting-analysis-v1.schema.json` |
 | PII Shield | v1 | `pii-redaction-v1.schema.json` |
-| Live Highlights | v1 | inline em `live_analyzer._build_json_schema_for_live` |
-| Meeting Split | v1 | inline em `split_analyzer._build_json_schema_for_split` |
+| Live Highlights | v1 | inline in `live_analyzer._build_json_schema_for_live` |
+| Meeting Split | v1 | inline in `split_analyzer._build_json_schema_for_split` |

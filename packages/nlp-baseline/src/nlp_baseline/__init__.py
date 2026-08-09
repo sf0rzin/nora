@@ -1,12 +1,12 @@
-"""NLP Baseline (TF-IDF PT-BR) compartilhado entre worker NORA e notebook academico.
+"""NLP Baseline (TF-IDF PT-BR) shared between the NORA worker and the academic notebook.
 
-Decisao registrada na ADR 0010. O proposito do package eh fornecer uma
-implementacao unica e auditavel do baseline interpretavel exigido pelo plano
-academico (FIAP Challenge — `docs/challenge/fiap-challenge-2026.md`)
-reutilizavel em producao como step do pipeline do worker
+Decision recorded in ADR 0010. The purpose of the package is to provide a
+single auditable implementation of the interpretable baseline required by the
+academic plan (FIAP Challenge — `docs/challenge/fiap-challenge-2026.md`)
+reusable in production as a step of the worker pipeline
 (`services/nlp-worker/src/nora_nlp/services/baseline.py`).
 
-Uso minimo:
+Minimal usage:
 
     from nlp_baseline import TfidfBaseline
 

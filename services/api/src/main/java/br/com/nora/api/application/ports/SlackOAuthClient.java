@@ -1,24 +1,24 @@
 package br.com.nora.api.application.ports;
 
 /**
- * Porta do fluxo OAuth v2 do Slack (authorization code → bot token). Diferente do Google, o bot
- * token ({@code xoxb-...}) NÃO expira — não existe refresh. A implementação infrastructure fala com
- * slack.com/api; nos testes é stubada.
+ * Port for Slack's OAuth v2 flow (authorization code → bot token). Unlike Google, the bot token
+ * ({@code xoxb-...}) does NOT expire — there is no refresh. The infrastructure implementation talks
+ * to slack.com/api; in tests it is stubbed.
  */
 public interface SlackOAuthClient {
 
     /**
-     * Troca o authorization code pelo bot token da workspace.
+     * Exchanges the authorization code for the workspace's bot token.
      *
-     * @param code authorization code recebido no callback
-     * @param redirectUri DEVE ser idêntico ao usado na URL de autorização
+     * @param code authorization code received in the callback
+     * @param redirectUri MUST be identical to the one used in the authorization URL
      */
     TokenResponse exchangeCode(String code, String redirectUri);
 
     /**
-     * @param botToken token do bot ({@code xoxb-...}); não expira, sem refresh
-     * @param teamName nome da workspace conectada (vira a "conta externa" no hub)
-     * @param scope escopos concedidos ao bot (ex.: {@code chat:write,channels:read})
+     * @param botToken bot token ({@code xoxb-...}); does not expire, no refresh
+     * @param teamName name of the connected workspace (becomes the "external account" in the hub)
+     * @param scope scopes granted to the bot (e.g. {@code chat:write,channels:read})
      */
     record TokenResponse(String botToken, String teamName, String scope) {}
 }

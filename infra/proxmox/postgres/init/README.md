@@ -1,28 +1,28 @@
-# `postgres/init` — scripts de bootstrap do Postgres primário
+# `postgres/init` — bootstrap scripts of the primary Postgres
 
-Este diretório é montado em `/docker-entrypoint-initdb.d` no container `postgres`
-(banco `nora`). Só ele — o `postgres-platform` **não** monta nada aqui.
+This directory is mounted at `/docker-entrypoint-initdb.d` in the `postgres` container
+(database `nora`). Only that one — `postgres-platform` mounts **nothing** here.
 
-## A regra que morde: isto roda UMA vez
+## The rule that bites: this runs ONCE
 
-O entrypoint da imagem oficial executa os scripts deste diretório **apenas quando
-`PGDATA` está vazio**, ou seja, no primeiro boot com o volume `pgdata` recém-criado.
-Em todo boot seguinte o entrypoint encontra o cluster já inicializado, pula o
-diretório inteiro em silêncio e sobe o Postgres.
+The official image's entrypoint executes the scripts in this directory **only when
+`PGDATA` is empty**, that is, on the first boot with the `pgdata` volume freshly created.
+On every subsequent boot the entrypoint finds the cluster already initialised, silently skips
+the whole directory and starts Postgres.
 
-Consequências práticas:
+Practical consequences:
 
-- Editar `01-roles-and-db.sql` e dar `docker compose up -d` **não faz nada**.
-- Adicionar um `02-*.sql` num ambiente já em produção **não faz nada**.
-- Um erro em qualquer script **aborta o initdb**: o container não fica healthy,
-  o volume fica num estado meio-inicializado e a API nunca sobe (o healthcheck do
-  `postgres` é dependência de `depends_on` da `api`).
+- Editing `01-roles-and-db.sql` and running `docker compose up -d` **does nothing**.
+- Adding an `02-*.sql` in an environment already in production **does nothing**.
+- An error in any script **aborts initdb**: the container does not become healthy,
+  the volume stays in a half-initialised state and the API never starts (the `postgres`
+  healthcheck is a `depends_on` dependency of `api`).
 
-Ordem de execução: alfabética. Extensões `.sql`, `.sql.gz` e `.sh` são suportadas;
-os `.sql` rodam como o superuser `${POSTGRES_ADMIN_USER}` conectado em `nora`, com
-`ON_ERROR_STOP` ligado.
+Execution order: alphabetical. The `.sql`, `.sql.gz` and `.sh` extensions are supported;
+the `.sql` ones run as the superuser `${POSTGRES_ADMIN_USER}` connected to `nora`, with
+`ON_ERROR_STOP` enabled.
 
-## Como saber se rodou
+## How to know whether it ran
 
 ```bash
 docker compose logs postgres | grep -F 'NORA initdb'
@@ -31,13 +31,13 @@ docker compose exec -T postgres psql -U nora_admin -d nora \
   -c "\du nora_app" -c "\dx"
 ```
 
-Se `nora_app` e `nora_telemetry` aparecem em `\du`, e `pgcrypto`/`citext` em `\dx`,
-o script rodou.
+If `nora_app` and `nora_telemetry` appear in `\du`, and `pgcrypto`/`citext` in `\dx`,
+the script ran.
 
-## Banco já existente: o que fazer
+## Database already exists: what to do
 
-Os scripts foram escritos para serem **idempotentes**, então o caminho é aplicá-los
-à mão. Não recrie o volume só para "rodar o init" — isso apaga o banco.
+The scripts were written to be **idempotent**, so the way forward is to apply them
+by hand. Do not recreate the volume just to "run the init" — that erases the database.
 
 ```bash
 # do host, na pasta infra/proxmox:
@@ -45,28 +45,28 @@ docker compose exec -T postgres \
   psql -v ON_ERROR_STOP=1 -U nora_admin -d nora < postgres/init/01-roles-and-db.sql
 ```
 
-Rodar num banco já migrado é, na verdade, **melhor** do que no initdb: as tabelas
-existem, então os `GRANT ... ON ALL TABLES` e o `GRANT SELECT ON meeting_analyses`
-(o do `nora_telemetry`) deixam de ser no-op.
+Running it on an already-migrated database is in fact **better** than during initdb: the tables
+exist, so the `GRANT ... ON ALL TABLES` and the `GRANT SELECT ON meeting_analyses`
+(the `nora_telemetry` one) stop being no-ops.
 
-### O grant que fica pendente no primeiro boot
+### The grant that stays pending on the first boot
 
-`meeting_analyses` nasce na migration `V005`, depois do initdb. O script avisa com
-`WARNING` e segue. Feche o grant **após o primeiro `flyway migrate`**:
+`meeting_analyses` is created in migration `V005`, after initdb. The script warns with a
+`WARNING` and carries on. Close the grant **after the first `flyway migrate`**:
 
 ```bash
 docker compose exec -T postgres psql -U nora_admin -d nora \
   -c "GRANT SELECT ON meeting_analyses TO nora_telemetry"
 ```
 
-Sem esse grant o painel de negócio do operador retorna **zero** — sem erro, sem log,
-sem alerta. É a falha silenciosa mais cara desta stack.
+Without that grant the operator's business panel returns **zero** — no error, no log,
+no alert. It is the most expensive silent failure in this stack.
 
-### Senhas dos roles
+### Role passwords
 
-O compose não injeta `NORA_APP_PASSWORD` / `RLS_TELEMETRY_PASSWORD` no container do
-Postgres, então por padrão os dois roles nascem **sem senha** (fail-closed: com
-`scram-sha-256` um role sem senha não autentica). Defina-as no cutover de RLS:
+The compose does not inject `NORA_APP_PASSWORD` / `RLS_TELEMETRY_PASSWORD` into the Postgres
+container, so by default the two roles are created **without a password** (fail-closed: with
+`scram-sha-256` a role without a password does not authenticate). Set them during the RLS cutover:
 
 ```bash
 docker compose exec -T postgres psql -U nora_admin -d nora \
@@ -74,20 +74,20 @@ docker compose exec -T postgres psql -U nora_admin -d nora \
   -c "ALTER ROLE nora_telemetry WITH PASSWORD 'yyy'"
 ```
 
-E replique os mesmos valores no `.env` (`DATASOURCE_PASSWORD` via
-`NORA_APP_PASSWORD`, e `NORA_TELEMETRY_DATASOURCE_PASSWORD`). Sequência completa em
+And replicate the same values in the `.env` (`DATASOURCE_PASSWORD` via
+`NORA_APP_PASSWORD`, and `NORA_TELEMETRY_DATASOURCE_PASSWORD`). Full sequence in
 [`docs/operations/rls-cutover-runbook.md`](../../../../docs/operations/rls-cutover-runbook.md).
 
-## Relação com o `R001` da aplicação
+## Relationship with the application's `R001`
 
-A fonte da verdade da semântica dos roles é
+The source of truth for the semantics of the roles is
 [`services/api/src/main/resources/db/operational/R001__provision_app_roles.sql`](../../../../services/api/src/main/resources/db/operational/R001__provision_app_roles.sql)
-(ADR 0026 / 0028). O `01-roles-and-db.sql` é a adaptação dele para o momento do
-initdb, onde ainda não existe nenhuma tabela — a seção "Diferenças em relação ao
-R001" no cabeçalho do script lista item a item o que muda e por quê. Mudou o R001?
-Reavalie os dois arquivos juntos.
+(ADR 0026 / 0028). `01-roles-and-db.sql` is its adaptation for the initdb moment,
+where no table exists yet — the section "Diferenças em relação ao
+R001" in the script's header lists item by item what changes and why. Did R001 change?
+Re-evaluate the two files together.
 
-## Recomeçar do zero (destrutivo)
+## Starting over from scratch (destructive)
 
 ```bash
 docker compose down
@@ -95,5 +95,5 @@ docker volume rm nora_pgdata     # APAGA O BANCO
 docker compose up -d --wait
 ```
 
-Só faz sentido em ambiente descartável. Em produção, restaure de
-`${BACKUP_DIR}` (dump lógico horário) ou do snapshot do Proxmox Backup Server.
+It only makes sense in a disposable environment. In production, restore from
+`${BACKUP_DIR}` (hourly logical dump) or from the Proxmox Backup Server snapshot.

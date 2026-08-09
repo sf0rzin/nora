@@ -12,8 +12,8 @@ public interface CustomerAccountJpaRepository
     Optional<CustomerAccountJpaEntity> findByIdAndTenantId(UUID id, UUID tenantId);
 
     /**
-     * Match case-insensitive por nome dentro do tenant — espelha o UNIQUE index {@code
-     * idx_customer_accounts_tenant_name (tenant_id, LOWER(name))} usado no get-or-create.
+     * Case-insensitive match by name within the tenant — mirrors the UNIQUE index {@code
+     * idx_customer_accounts_tenant_name (tenant_id, LOWER(name))} used in the get-or-create.
      */
     @Query(
             "SELECT a FROM CustomerAccountJpaEntity a "

@@ -1,36 +1,37 @@
-"""Split Analyzer: deteccao de fronteiras entre reunioes num arquivo unico.
+"""Split Analyzer: boundary detection between meetings in a single file.
 
-O usuario sobe UM arquivo .txt com varias reunioes concatenadas; o worker
-propoe os pontos de corte (linhas 1-based) e o fatiamento real acontece
-client-side sobre o arquivo ORIGINAL. Por isso os numeros de linha do texto
-redigido precisam corresponder 1:1 aos do original — ver ``redact_lines``.
+The user uploads ONE .txt file with several concatenated meetings; the worker
+proposes the cut points (1-based lines) and the real slicing happens
+client-side over the ORIGINAL file. That is why the line numbers of the
+redacted text must match 1:1 those of the original — see ``redact_lines``.
 
 Pipeline:
-  1. PII Shield LINHA A LINHA (``redact_lines``) — redacao intra-linha.
-  2. Numera as linhas (1-based, formato ``N| texto``) e monta janelas.
-  3. LLM (gpt-4o-mini via cliente agnostico, ADR 0004) com JSON Schema strict
-     (ADR 0003) por janela; fallback para JSON mode.
-  4. Mescla as fronteiras das janelas (estrategia documentada em ``analyze``).
-  5. Normalizacao server-side (``normalize_segments``) — nunca confia no LLM.
-  6. Previews redigidos (~200 chars) + metadata de execucao.
+  1. PII Shield LINE BY LINE (``redact_lines``) — intra-line redaction.
+  2. Numbers the lines (1-based, format ``N| text``) and builds windows.
+  3. LLM (gpt-4o-mini via the agnostic client, ADR 0004) with strict JSON Schema
+     (ADR 0003) per window; fallback to JSON mode.
+  4. Merges the boundaries of the windows (strategy documented in ``analyze``).
+  5. Server-side normalization (``normalize_segments``) — never trusts the LLM.
+  6. Redacted previews (~200 chars) + execution metadata.
 
-Estrategia de janelas + merge (transcricao maior que o budget de contexto):
-  - Cada janela cobre linhas consecutivas ate ``_WINDOW_CHAR_BUDGET`` chars
-    (~60k tokens — folga ampla dentro dos 128k do gpt-4o-mini, descontando
-    prompt e saida).
-  - Se a janela detectou >= 2 segmentos, o ULTIMO esta provavelmente truncado
-    pelo limite da janela: ele e descartado e a proxima janela COMECA no
-    ``startLine`` dele — ou seja, o trecho truncado e re-analisado por inteiro
-    (este e o overlap entre janelas; as fronteiras aceitas sao sempre as da
-    janela que viu o segmento completo).
-  - Se a janela detectou 1 segmento so (nenhuma fronteira interna), a reuniao
-    provavelmente continua na proxima janela: o segmento fica "pendente" e e
-    fundido com o primeiro segmento da janela seguinte (titulo da janela que
-    viu o INICIO da reuniao prevalece; confidence vira o minimo das duas).
-  - Progresso garantido: a proxima janela sempre comeca depois do inicio da
-    atual; em caso degenerado cai para ``fim da janela + 1``.
+Window + merge strategy (transcript larger than the context budget):
+  - Each window covers consecutive lines up to ``_WINDOW_CHAR_BUDGET`` chars
+    (~60k tokens — ample slack within the 128k of gpt-4o-mini, discounting
+    prompt and output).
+  - If the window detected >= 2 segments, the LAST one is probably truncated
+    by the window limit: it is discarded and the next window STARTS at its
+    ``startLine`` — that is, the truncated stretch is re-analyzed in full
+    (this is the overlap between windows; the accepted boundaries are always
+    those of the window that saw the complete segment).
+  - If the window detected only 1 segment (no internal boundary), the meeting
+    probably continues in the next window: the segment stays "pending" and is
+    merged with the first segment of the following window (the title of the
+    window that saw the START of the meeting wins; confidence becomes the
+    minimum of the two).
+  - Guaranteed progress: the next window always starts after the beginning of
+    the current one; in the degenerate case it falls back to ``window end + 1``.
 
-Cap pragmatico: arquivos ate 1MB (mesmo limite do /analyze).
+Pragmatic cap: files up to 1MB (same limit as /analyze).
 """
 
 from __future__ import annotations
@@ -51,11 +52,11 @@ logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = "meeting-split-v1"
 
-# Budget de chars por janela (~60k tokens a ~4 chars/token). 1MB de transcript
-# vira no maximo ~5 janelas.
+# Char budget per window (~60k tokens at ~4 chars/token). 1MB of transcript
+# becomes at most ~5 windows.
 _WINDOW_CHAR_BUDGET = 240_000
 
-# Tamanho do preview redigido devolvido por segmento.
+# Size of the redacted preview returned per segment.
 _PREVIEW_MAX_CHARS = 200
 
 _TITLE_MAX_CHARS = 120
@@ -66,31 +67,31 @@ _WHITESPACE_RE = re.compile(r"\s+")
 
 
 # --------------------------------------------------------------------------- #
-# PII Shield linha a linha
+# PII Shield line by line
 # --------------------------------------------------------------------------- #
 
 
 def redact_lines(transcript: str) -> tuple[list[str], int]:
-    """Aplica o PII Shield linha a linha e retorna (linhas redigidas, contagem).
+    """Applies the PII Shield line by line and returns (redacted lines, count).
 
-    O shield global (``pii_shield.redact`` sobre o texto inteiro) pode casar
-    padroes ATRAVESSANDO ``\\n`` (telefone/CPF com ``\\s`` no regex, nomes
-    compostos quebrados em duas linhas), o que removeria quebras de linha e
-    quebraria o mapeamento 1:1 entre linhas do original e do texto redigido.
+    The global shield (``pii_shield.redact`` over the whole text) can match
+    patterns CROSSING ``\\n`` (phone/CPF with ``\\s`` in the regex, compound
+    names broken across two lines), which would remove line breaks and
+    break the 1:1 mapping between lines of the original and of the redacted text.
 
-    Redigir linha a linha garante redacao intra-linha: cada placeholder
-    substitui texto dentro da MESMA linha, entao ``startLine``/``endLine``
-    calculados sobre o texto redigido valem para o arquivo original — requisito
-    do fatiamento client-side. Custo: a numeracao dos placeholders reinicia a
-    cada linha (irrelevante aqui: o preview nao precisa de dedup global).
+    Redacting line by line guarantees intra-line redaction: each placeholder
+    replaces text inside the SAME line, so ``startLine``/``endLine``
+    computed over the redacted text hold for the original file — a requirement
+    of the client-side slicing. Cost: the placeholder numbering restarts on
+    every line (irrelevant here: the preview needs no global dedup).
     """
-    # Normaliza quebras de linha ANTES de numerar: CRLF (Windows) e CR (Mac
-    # classico) viram LF. O fatiamento client-side (sliceFileLines em
-    # apps/web/.../upload/page.tsx) faz exatamente a mesma normalizacao antes
-    # de cortar por startLine/endLine; sem isso, um arquivo com CR-solto teria
-    # contagem de linhas divergente entre worker e front e os cortes sairiam
-    # deslocados. (CRLF ja casava na contagem, mas deixava um \r residual no
-    # preview — removido aqui tambem.)
+    # Normalizes line breaks BEFORE numbering: CRLF (Windows) and CR (classic
+    # Mac) become LF. The client-side slicing (sliceFileLines in
+    # apps/web/.../upload/page.tsx) does exactly the same normalization before
+    # cutting by startLine/endLine; without it, a file with a loose CR would have
+    # a line count diverging between worker and front end and the cuts would come
+    # out shifted. (CRLF already matched in the count, but left a residual \r in
+    # the preview — removed here too.)
     normalized = transcript.replace("\r\n", "\n").replace("\r", "\n")
     lines = normalized.split("\n")
     redacted: list[str] = []
@@ -103,13 +104,13 @@ def redact_lines(transcript: str) -> tuple[list[str], int]:
 
 
 # --------------------------------------------------------------------------- #
-# Prompt helpers (load_prompt / render_template em services/prompt_utils.py)
+# Prompt helpers (load_prompt / render_template in services/prompt_utils.py)
 # --------------------------------------------------------------------------- #
 
 
 def _build_json_schema_for_split() -> dict[str, Any]:
-    """JSON Schema strict da saida do LLM (apenas fronteiras; preview/index sao
-    calculados server-side sobre o texto redigido)."""
+    """Strict JSON Schema of the LLM output (boundaries only; preview/index are
+    computed server-side over the redacted text)."""
     return {
         "type": "object",
         "properties": {
@@ -134,15 +135,15 @@ def _build_json_schema_for_split() -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# Validacao server-side (nao confiar no LLM)
+# Server-side validation (do not trust the LLM)
 # --------------------------------------------------------------------------- #
 
 
 def _clamp_window_segments(
     raw: list[dict[str, Any]], window_start: int, window_end: int
 ) -> list[dict[str, Any]]:
-    """Sanitiza segmentos de UMA janela: ints validos, clampados ao range da
-    janela, ordenados por startLine. Lixo (start > end apos clamp) e descartado.
+    """Sanitizes segments of ONE window: valid ints, clamped to the window
+    range, sorted by startLine. Garbage (start > end after clamp) is discarded.
     """
     cleaned: list[dict[str, Any]] = []
     for seg in raw:
@@ -167,17 +168,17 @@ def _clamp_window_segments(
 
 
 def normalize_segments(raw: list[dict[str, Any]], total_lines: int) -> list[dict[str, Any]]:
-    """Normaliza a lista global de segmentos para o contrato do endpoint:
+    """Normalizes the global list of segments to the endpoint contract:
 
-    - ordenados por ``startLine``;
-    - sem sobreposicao (overlap e cortado: o proximo passa a comecar depois do
-      fim do anterior; segmento engolido por inteiro e descartado);
-    - dentro de ``[1, total_lines]``;
-    - cobrindo o arquivo inteiro: buracos viram extensao do segmento ANTERIOR
-      (e o primeiro segmento e estendido ate a linha 1; o ultimo ate o fim);
-    - lista vazia vira 1 segmento unico cobrindo o arquivo (fallback).
+    - sorted by ``startLine``;
+    - without overlap (overlap is cut: the next one starts after the
+      end of the previous; a segment swallowed whole is discarded);
+    - within ``[1, total_lines]``;
+    - covering the whole file: holes become an extension of the PREVIOUS segment
+      (and the first segment is extended to line 1; the last one to the end);
+    - an empty list becomes 1 single segment covering the file (fallback).
 
-    1 segmento so tambem e resposta valida (arquivo de reuniao unica).
+    Only 1 segment is also a valid answer (single-meeting file).
     """
     cleaned: list[dict[str, Any]] = []
     for seg in raw:
@@ -206,16 +207,16 @@ def normalize_segments(raw: list[dict[str, Any]], total_lines: int) -> list[dict
     result: list[dict[str, Any]] = []
     for seg in cleaned:
         if not result:
-            seg["startLine"] = 1  # cabeca do arquivo sempre coberta
+            seg["startLine"] = 1  # head of the file always covered
             result.append(seg)
             continue
         prev = result[-1]
         if seg["startLine"] <= prev["endLine"]:
             seg["startLine"] = prev["endLine"] + 1
             if seg["startLine"] > seg["endLine"]:
-                continue  # engolido por inteiro pelo anterior
+                continue  # swallowed whole by the previous one
         elif seg["startLine"] > prev["endLine"] + 1:
-            prev["endLine"] = seg["startLine"] - 1  # buraco vira extensao do anterior
+            prev["endLine"] = seg["startLine"] - 1  # hole becomes extension of the previous
         result.append(seg)
 
     if not result:
@@ -228,12 +229,12 @@ def normalize_segments(raw: list[dict[str, Any]], total_lines: int) -> list[dict
             }
         ]
 
-    result[-1]["endLine"] = total_lines  # cauda do arquivo sempre coberta
+    result[-1]["endLine"] = total_lines  # tail of the file always covered
     return result
 
 
 def build_preview(redacted_lines: list[str], start_line: int, end_line: int) -> str:
-    """Primeiros ~200 chars do segmento JA REDIGIDO, em linha unica."""
+    """First ~200 chars of the ALREADY REDACTED segment, on a single line."""
     text = "\n".join(redacted_lines[start_line - 1 : end_line]).strip()
     text = _WHITESPACE_RE.sub(" ", text)
     return text[:_PREVIEW_MAX_CHARS]
@@ -243,8 +244,8 @@ def assemble_segments(
     raw_segments: list[dict[str, Any]],
     redacted_lines: list[str],
 ) -> list[SplitSegment]:
-    """Normaliza + materializa os ``SplitSegment`` finais (index 1-based,
-    preview redigido, titulo com fallback)."""
+    """Normalizes + materializes the final ``SplitSegment``s (1-based index,
+    redacted preview, title with fallback)."""
     total_lines = len(redacted_lines)
     normalized = normalize_segments(raw_segments, total_lines)
     segments: list[SplitSegment] = []
@@ -265,20 +266,20 @@ def assemble_segments(
 
 
 # --------------------------------------------------------------------------- #
-# Pipeline principal
+# Main pipeline
 # --------------------------------------------------------------------------- #
 
 
 def _window_end(numbered: list[str], start_line: int, char_budget: int) -> int:
-    """Ultima linha (1-based, inclusiva) da janela que comeca em ``start_line``.
+    """Last line (1-based, inclusive) of the window starting at ``start_line``.
 
-    Garante pelo menos 1 linha por janela mesmo que a linha sozinha estoure o
-    budget (linha patologicamente longa nao trava o loop).
+    Guarantees at least 1 line per window even if the line alone blows the
+    budget (a pathologically long line does not stall the loop).
     """
     consumed = 0
-    end = start_line - 1  # nenhuma linha consumida ainda
+    end = start_line - 1  # no line consumed yet
     for i in range(start_line - 1, len(numbered)):
-        line_cost = len(numbered[i]) + 1  # +1 pelo \n
+        line_cost = len(numbered[i]) + 1  # +1 for the \n
         if consumed + line_cost > char_budget and end >= start_line:
             break
         consumed += line_cost
@@ -293,7 +294,7 @@ def analyze(
     *,
     pii_redactions_applied: int = 0,
 ) -> SplitResponse:
-    """Detecta fronteiras de reunioes via LLM, em janelas se necessario."""
+    """Detects meeting boundaries via LLM, in windows if needed."""
     started = time.monotonic()
 
     client = LlmClient(settings)
@@ -304,7 +305,7 @@ def analyze(
     numbered = [f"{i + 1}| {line}" for i, line in enumerate(redacted_lines)]
 
     raw_segments: list[dict[str, Any]] = []
-    pending: dict[str, Any] | None = None  # segmento aberto da janela anterior
+    pending: dict[str, Any] | None = None  # open segment from the previous window
     tokens_in_total = 0
     tokens_out_total = 0
 
@@ -338,14 +339,14 @@ def analyze(
         tokens_in_total += tokens_in
         tokens_out_total += tokens_out
 
-        # NAO logar raw_json: ADR 0012 (PII never logged).
+        # Do NOT log raw_json: ADR 0012 (PII never logged).
         logger.debug("Split LLM raw response: %d chars (janela %d-%d)", len(raw_json), pos, end)
 
         parsed = json.loads(raw_json)
         win = _clamp_window_segments(parsed.get("segments") or [], pos, end)
 
-        # Funde o segmento pendente (janela anterior sem fronteira interna)
-        # com o primeiro desta janela: mesma reuniao continuando.
+        # Merges the pending segment (previous window without an internal
+        # boundary) with the first of this window: same meeting continuing.
         if pending is not None:
             if win:
                 first = win[0]
@@ -361,8 +362,8 @@ def analyze(
             break
 
         if len(win) >= 2:
-            # Ultimo segmento provavelmente truncado pela janela: re-analisa
-            # por inteiro na proxima janela (overlap controlado).
+            # Last segment probably truncated by the window: re-analyzes it
+            # in full in the next window (controlled overlap).
             tail = win[-1]
             raw_segments.extend(win[:-1])
             pos = tail["startLine"] if tail["startLine"] > pos else end + 1
@@ -370,8 +371,8 @@ def analyze(
             pending = win[0]
             pos = end + 1
         else:
-            # LLM nao devolveu nada util: trata a janela como reuniao unica
-            # sem titulo (normalize/fallback cuidam do resto).
+            # LLM returned nothing useful: treats the window as a single meeting
+            # without a title (normalize/fallback handle the rest).
             pending = {"title": "", "startLine": pos, "endLine": end, "confidence": 0.0}
             pos = end + 1
 

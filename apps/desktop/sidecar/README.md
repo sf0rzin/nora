@@ -1,12 +1,12 @@
 # NORA STT Sidecar
 
-Sidecar Python para transcrição de fala em tempo real com diarização usando Microsoft Speech SDK.
+Python sidecar for real-time speech transcription with diarization using the Microsoft Speech SDK.
 
-## Protocolo NDJSON
+## NDJSON Protocol
 
-O sidecar comunica via stdin/stdout usando NDJSON (uma linha JSON por mensagem, terminada por `\n`).
+The sidecar communicates via stdin/stdout using NDJSON (one JSON line per message, terminated by `\n`).
 
-### Entrada (Rust → Sidecar)
+### Input (Rust → Sidecar)
 
 ```json
 {"v":1,"type":"start","session_id":"<uuid>","azure_region":"eastus","azure_key":"<key>","language":"pt-BR","sample_rate":16000,"channels":1,"speakers_hint":2}
@@ -14,7 +14,7 @@ O sidecar comunica via stdin/stdout usando NDJSON (uma linha JSON por mensagem, 
 {"v":1,"type":"stop","session_id":"<uuid>"}
 ```
 
-### Saída (Sidecar → Rust)
+### Output (Sidecar → Rust)
 
 ```json
 {"v":1,"type":"ready","session_id":"<uuid>"}
@@ -24,22 +24,22 @@ O sidecar comunica via stdin/stdout usando NDJSON (uma linha JSON por mensagem, 
 {"v":1,"type":"stopped","session_id":"<uuid>"}
 ```
 
-## Instalação
+## Installation
 
 ```bash
 cd apps/desktop/sidecar
 pip install -e ".[dev]"
 ```
 
-## Uso
+## Usage
 
 ```bash
 python -m nora_stt_sidecar
 ```
 
-O sidecar lê NDJSON do stdin e escreve NDJSON no stdout. Logs vão para stderr.
+The sidecar reads NDJSON from stdin and writes NDJSON to stdout. Logs go to stderr.
 
-## Testes
+## Tests
 
 ```bash
 cd apps/desktop/sidecar
@@ -52,4 +52,4 @@ pytest
 python build/build_sidecar.py
 ```
 
-Gera binário standalone em `apps/desktop/src-tauri/binaries/`.
+Generates a standalone binary in `apps/desktop/src-tauri/binaries/`.

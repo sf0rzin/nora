@@ -16,8 +16,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
 /**
- * Resolver é o ponto mais crítico do fail-soft (ADR 0024): o hot-path NUNCA pode lançar nem ficar
- * sem config. Cobre os 3 caminhos de fallback, o kill-switch da feature flag e o cache 60s.
+ * The resolver is the most critical point of the fail-soft (ADR 0024): the hot-path can NEVER throw
+ * nor be left without config. Covers the 3 fallback paths, the feature flag kill-switch and the 60s
+ * cache.
  */
 class LlmConfigResolverTest {
 
@@ -93,8 +94,8 @@ class LlmConfigResolverTest {
                 new LlmConfigResolver(provider(cfg), provider(flags), healthy(p), p)
                         .resolve("chat");
 
-        assertThat(r.provider()).isEqualTo("openai"); // fallback do env
-        assertThat(r.enabled()).isFalse(); // respeita a feature flag (fix da revisão)
+        assertThat(r.provider()).isEqualTo("openai"); // env fallback
+        assertThat(r.enabled()).isFalse(); // respects the feature flag (review fix)
     }
 
     @Test

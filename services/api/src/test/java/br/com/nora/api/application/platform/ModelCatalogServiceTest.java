@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataAccessResourceFailureException;
 
-/** CRUD do catálogo + os guards do ADR 0024/0003 (strict no analysis, modality no multimodal). */
+/** Catalog CRUD + the ADR 0024/0003 guards (strict on analysis, modality on multimodal). */
 class ModelCatalogServiceTest {
 
     private final LlmModelRepository models = mock(LlmModelRepository.class);

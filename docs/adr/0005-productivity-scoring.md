@@ -1,25 +1,25 @@
-# 0005 — Productivity Score da reunião (opt-in, baseado em objetivo declarado)
+# 0005 — Meeting Productivity Score (opt-in, based on a declared goal)
 
-- Status: aceito
-- Data: 2026-05-07
-- Decisores: Time NORA
+- Status: accepted
+- Date: 2026-05-07
+- Deciders: NORA Team
 
-## Contexto
+## Context
 
-Em brainstorming do time surgiu a ideia de medir o quão produtiva foi uma reunião. Avaliar produtividade "no vácuo" (apenas pelo conteúdo da transcrição) gera resultados arbitrários — qualquer reunião pode parecer produtiva ou improdutiva conforme o gosto do leitor. O time refinou a ideia para um modelo **opt-in** em que o usuário declara o objetivo da reunião, transformando a avaliação em algo verificável.
+In a team brainstorm the idea came up of measuring how productive a meeting was. Assessing productivity "in a vacuum" (from the transcript content alone) produces arbitrary results — any meeting can look productive or unproductive depending on the reader's taste. The team refined the idea into an **opt-in** model in which the user declares the meeting's goal, turning the assessment into something verifiable.
 
-A integração com fontes externas de "estado do projeto" (Jira, Linear, Azure DevOps, GitHub Projects) é um caminho natural, mas exige MCPs e autenticação por tenant — fora do MVP.
+Integration with external sources of "project state" (Jira, Linear, Azure DevOps, GitHub Projects) is a natural path, but it requires MCPs and per-tenant authentication — out of scope for the MVP.
 
-## Decisão
+## Decision
 
-Adicionar um recurso opcional de **Productivity Score** com as seguintes propriedades:
+Add an optional **Productivity Score** feature with the following properties:
 
-1. **Opt-in por reunião.** Sem objetivo declarado, a NORA não tenta avaliar produtividade.
-2. **Entrada do usuário** ao subir a reunião (ou ao editar a reunião antes do reprocessamento):
-   - `purpose` (texto livre): "Refinement do épico X"
-   - `expectedOutcomes` (lista de strings): pontos que precisavam ser tratados/decididos
-   - `projectStateSnapshot` (texto opcional): "o que está feito" — manual no MVP; via MCP no pós-MVP
-3. **Saída do worker**, dentro do `meeting-analysis-v1.schema.json`:
+1. **Opt-in per meeting.** With no declared goal, NORA does not attempt to assess productivity.
+2. **User input** when uploading the meeting (or when editing the meeting before reprocessing):
+   - `purpose` (free text): "Refinement of epic X"
+   - `expectedOutcomes` (list of strings): points that needed to be addressed/decided
+   - `projectStateSnapshot` (optional text): "what is done" — manual in the MVP; via MCP post-MVP
+3. **Worker output**, inside `meeting-analysis-v1.schema.json`:
    ```json
    "productivity": {
      "score": 78,
@@ -33,41 +33,41 @@ Adicionar um recurso opcional de **Productivity Score** com as seguintes proprie
      "rationale": "..."
    }
    ```
-4. **Fórmula do score (v1):** combinação ponderada de:
-   - Cobertura de outcomes esperados (peso dominante): `% ADDRESSED + 0.5 × % PARTIAL`.
-   - Densidade de decisões (decisões por minuto, normalizada).
-   - Penalidade por `offTopicRatio` alto.
-   - Bonus por geração de action items concretos com responsável definido.
-5. **Banda derivada** a partir do score: `LOW` (<40), `MEDIUM` (40–69), `HIGH` (≥70). Tunável via configuração do worker, não hardcoded em domain.
-6. **Ausência de outcomes** = não emitir `productivity` no payload (o campo é nullable). Não inventar score sem gabarito.
+4. **Score formula (v1):** a weighted combination of:
+   - Coverage of expected outcomes (dominant weight): `% ADDRESSED + 0.5 × % PARTIAL`.
+   - Decision density (decisions per minute, normalized).
+   - Penalty for a high `offTopicRatio`.
+   - Bonus for generating concrete action items with a defined owner.
+5. **Band derived** from the score: `LOW` (<40), `MEDIUM` (40–69), `HIGH` (≥70). Tunable via worker configuration, not hardcoded in the domain.
+6. **Absence of outcomes** = do not emit `productivity` in the payload (the field is nullable). Do not invent a score without an answer key.
 
-**Persistência:** ver `docs/data-model.md` §2.19–§2.21 (`meeting_goals`, `meeting_productivity_assessments`, `meeting_outcome_coverage`).
+**Persistence:** see `docs/data-model.md` §2.19–§2.21 (`meeting_goals`, `meeting_productivity_assessments`, `meeting_outcome_coverage`).
 
-**Tier:** Core e Enterprise (não há motivo para limitar ao Enterprise — Core também ganha valor).
+**Tier:** Core and Enterprise (there is no reason to limit it to Enterprise — Core also gains value).
 
-## Consequências
+## Consequences
 
-**Positivas:**
+**Positive:**
 
-- Avaliação passa a ser **verificável**: o LLM compara o que aconteceu com o que o usuário pediu para acontecer.
-- Cria um hook natural para uma futura integração MCP de project state (US47), com dados estruturados.
-- Funciona já no MVP sem dependência de integração externa.
+- The assessment becomes **verifiable**: the LLM compares what happened with what the user asked to happen.
+- It creates a natural hook for a future project-state MCP integration (US47), with structured data.
+- It works in the MVP already, with no dependency on an external integration.
 
-**Negativas:**
+**Negative:**
 
-- Adiciona campos de input no upload e nova UI de exibição. Pequeno aumento de superfície.
-- Score calculado por LLM tem variância — precisa de prompt determinístico (temperatura baixa, exemplos few-shot) e idealmente validação humana periódica nos primeiros tenants.
-- Ao processar com `goal` declarado, o prompt fica maior → custo levemente maior por análise.
+- It adds input fields to the upload and a new display UI. A small increase in surface area.
+- A score computed by an LLM has variance — it needs a deterministic prompt (low temperature, few-shot examples) and ideally periodic human validation with the first tenants.
+- When processing with a declared `goal`, the prompt gets larger → slightly higher cost per analysis.
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Score sem objetivo declarado.** Rejeitado: subjetivo, indefensável.
-2. **Apenas qualitativo (Low/Medium/High sem número).** Rejeitado: usuários querem comparar reuniões; um número ajuda dashboards e tendências.
-3. **Productivity Score sempre ligado.** Rejeitado: força o usuário a declarar objetivo mesmo quando ele só quer um resumo rápido.
+1. **Score without a declared goal.** Rejected: subjective, indefensible.
+2. **Qualitative only (Low/Medium/High with no number).** Rejected: users want to compare meetings; a number helps dashboards and trends.
+3. **Productivity Score always on.** Rejected: it forces the user to declare a goal even when they just want a quick summary.
 
-## Regras Acompanhantes
+## Accompanying Rules
 
-- O recurso é estritamente opt-in. UI deve deixar claro que sem `expectedOutcomes` o score não será gerado.
-- Nunca usar o score como métrica de avaliação de pessoas — documentar isso na própria UI ("indicador da reunião, não dos participantes").
-- O `projectStateSnapshot` segue PII Shield: redação antes de enviar ao LLM.
-- A integração MCP (US47) entra como `Won't Have v1` no backlog; um novo ADR cobrirá o desenho do MCP `nora-mcp-projectstate` quando chegar a hora.
+- The feature is strictly opt-in. The UI must make it clear that without `expectedOutcomes` the score will not be generated.
+- Never use the score as a metric for evaluating people — document this in the UI itself ("an indicator of the meeting, not of the participants").
+- `projectStateSnapshot` follows the PII Shield: redaction before sending to the LLM.
+- The MCP integration (US47) enters the backlog as `Won't Have v1`; a new ADR will cover the design of the `nora-mcp-projectstate` MCP when the time comes.

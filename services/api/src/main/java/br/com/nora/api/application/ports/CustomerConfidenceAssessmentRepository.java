@@ -6,10 +6,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Persistencia do Customer Confidence Assessment (ADR 0015). Sempre escopada por tenant.
+ * Customer Confidence Assessment persistence (ADR 0015). Always scoped by tenant.
  *
- * <p>1-1 por par (meeting, account): uma reuniao pode tocar mais de uma conta, logo {@code
- * findByMeetingId} retorna uma lista (no maximo um assessment por conta).
+ * <p>1-1 per (meeting, account) pair: a meeting can touch more than one account, so {@code
+ * findByMeetingId} returns a list (at most one assessment per account).
  */
 public interface CustomerConfidenceAssessmentRepository {
 
@@ -18,13 +18,13 @@ public interface CustomerConfidenceAssessmentRepository {
     List<CustomerConfidenceAssessment> findByMeetingId(UUID meetingId, UUID tenantId);
 
     /**
-     * Avaliacao mais recente (por {@code created_at} desc) de uma conta, excluindo a reuniao
-     * informada. Usado para calcular o {@code trend} server-side: compara o score novo com o da
-     * ultima reuniao anterior da mesma conta. Vazio quando e a primeira reuniao da conta.
+     * Most recent assessment (by {@code created_at} desc) of an account, excluding the given
+     * meeting. Used to compute the {@code trend} server-side: compares the new score with the one
+     * from the account's previous meeting. Empty when it is the account's first meeting.
      *
-     * @param accountId conta alvo
-     * @param excludeMeetingId reuniao corrente (excluida para tolerar reprocessamento)
-     * @param tenantId tenant dono (filtro antes do id)
+     * @param accountId target account
+     * @param excludeMeetingId current meeting (excluded to tolerate reprocessing)
+     * @param tenantId owning tenant (filtered before the id)
      */
     Optional<CustomerConfidenceAssessment> findLatestByAccountId(
             UUID accountId, UUID excludeMeetingId, UUID tenantId);

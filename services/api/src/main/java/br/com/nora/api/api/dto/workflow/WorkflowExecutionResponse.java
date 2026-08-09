@@ -5,8 +5,8 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Uma execução do histórico de um workflow. {@code log} é o array de passos ({at, nodeId, level,
- * message}) que a UI renderiza linha a linha.
+ * One execution from a workflow's history. {@code log} is the array of steps ({at, nodeId, level,
+ * message}) that the UI renders line by line.
  */
 public record WorkflowExecutionResponse(
         UUID id,

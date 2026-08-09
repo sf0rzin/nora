@@ -5,9 +5,9 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Aliases legacy shadcn (subfases anteriores). Apontam pra
-        // `--tw-*` (HSL parts) e nao colidem com tokens OKLCH usados
-        // pela landing v2 (--bg, --fg, --border em tokens.css).
+        // Legacy shadcn aliases (earlier subphases). They point to
+        // `--tw-*` (HSL parts) and do not collide with the OKLCH tokens used
+        // by landing v2 (--bg, --fg, --border in tokens.css).
         background: "hsl(var(--tw-background))",
         foreground: "hsl(var(--tw-foreground))",
         primary: {

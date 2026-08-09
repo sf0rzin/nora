@@ -3,11 +3,11 @@ package br.com.nora.api.api.dto.meeting;
 import java.util.List;
 
 /**
- * Customer Confidence persistido (ADR 0015), retornado no detalhe da reuniao. Presente apenas para
- * reunioes externas (conversa com cliente/lead); null para reunioes internas.
+ * Persisted Customer Confidence (ADR 0015), returned in the meeting detail. Present only for
+ * external meetings (conversation with a customer/lead); null for internal meetings.
  *
- * <p>{@code trend} e o valor autoritativo calculado server-side (null na primeira reuniao da
- * conta). {@code accountName} e o nome da conta resolvida via get-or-create.
+ * <p>{@code trend} is the authoritative value computed server-side (null on the account's first
+ * meeting). {@code accountName} is the name of the account resolved via get-or-create.
  */
 public record CustomerConfidenceResponse(
         int score,
@@ -18,10 +18,10 @@ public record CustomerConfidenceResponse(
         List<BuyingSignalResponse> buyingSignals,
         List<ObjectionResponse> objections) {
 
-    /** Sinal de compra detectado (ADR 0015). */
+    /** Detected buying signal (ADR 0015). */
     public record BuyingSignalResponse(String type, String quote, Double weight) {}
 
-    /** Objecao levantada pelo cliente (ADR 0015). */
+    /** Objection raised by the customer (ADR 0015). */
     public record ObjectionResponse(
             String type, String quote, String severity, String competitor) {}
 }

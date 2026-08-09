@@ -1,7 +1,7 @@
 /**
- * /healthz — probe do Container App (mesma lição do nora-web: o ACA configura
- * Startup/Readiness/Liveness em /healthz; sem essa rota a revisão nova falha
- * e cai na antiga). 200 imediato, sem dependências.
+ * /healthz — Container App probe (same lesson as nora-web: ACA configures
+ * Startup/Readiness/Liveness on /healthz; without this route the new revision fails
+ * and falls back to the old one). Immediate 200, no dependencies.
  */
 export const dynamic = "force-static";
 export const revalidate = false;

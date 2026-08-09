@@ -6,20 +6,20 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Porta de persistência dos bindings serviço→modelo (tabela llm_config, ADR 0024). */
+/** Persistence port for the service→model bindings (llm_config table, ADR 0024). */
 public interface LlmConfigRepository {
 
     List<ServiceBinding> findAll();
 
     Optional<ServiceBinding> findByService(String service);
 
-    /** Cria ou atualiza o binding de um serviço. */
+    /** Creates or updates a service's binding. */
     ServiceBinding upsert(String service, UUID modelId, boolean enabled, String updatedBy);
 
     /**
-     * Resolve o modelo ativo de um serviço via join llm_config↔llm_models. {@code enabled} no
-     * resultado já combina binding.enabled AND model.enabled (feature flag é aplicada na camada de
-     * serviço).
+     * Resolves a service's active model via the llm_config↔llm_models join. {@code enabled} in the
+     * result already combines binding.enabled AND model.enabled (the feature flag is applied in the
+     * service layer).
      */
     Optional<ResolvedLlmConfig> resolveActive(String service);
 }

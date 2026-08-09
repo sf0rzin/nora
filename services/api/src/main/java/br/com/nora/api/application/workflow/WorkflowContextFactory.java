@@ -19,9 +19,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Monta o {@link WorkflowEventContext} a partir do estado COMMITADO no banco (o evento é publicado
- * pós-commit, então a leitura aqui é consistente). Para o "Testar" do canvas, usa a reunião
- * COMPLETED mais recente do tenant — ou dados sintéticos claramente marcados quando não há nenhuma.
+ * Builds the {@link WorkflowEventContext} from the state COMMITTED in the database (the event is
+ * published post-commit, so the read here is consistent). For the canvas' "Test", it uses the
+ * tenant's most recent COMPLETED meeting — or clearly marked synthetic data when there is none.
  */
 @Service
 public class WorkflowContextFactory {
@@ -100,8 +100,8 @@ public class WorkflowContextFactory {
     }
 
     /**
-     * Contexto para o "Testar" do canvas: a reunião COMPLETED mais recente do tenant, ou dados de
-     * exemplo (marcados como tal no log) quando o tenant ainda não tem nenhuma análise.
+     * Context for the canvas' "Test": the tenant's most recent COMPLETED meeting, or sample data
+     * (marked as such in the log) when the tenant does not have any analysis yet.
      */
     @Transactional(readOnly = true)
     public WorkflowEventContext latestCompletedOrSample(UUID tenantId, String eventType) {
@@ -114,7 +114,7 @@ public class WorkflowContextFactory {
                         .items();
         if (!latest.isEmpty()) {
             Meeting meeting = latest.get(0);
-            // A reunião pode estar COMPLETED com análise purgada (LGPD). Cai pro sample nesse caso.
+            // The meeting may be COMPLETED with the analysis purged (LGPD). Falls back to sample.
             if (analyses.findByMeetingId(meeting.id(), tenantId).isPresent()) {
                 return forMeeting(
                         tenantId, meeting.id(), eventType, OffsetDateTime.now(ZoneOffset.UTC));

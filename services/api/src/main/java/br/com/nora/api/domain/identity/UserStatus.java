@@ -1,6 +1,6 @@
 package br.com.nora.api.domain.identity;
 
-/** Status do usuario no tenant. Espelha o CHECK constraint da tabela users (V002). */
+/** User status in the tenant. Mirrors the CHECK constraint of the users table (V002). */
 public enum UserStatus {
     ACTIVE,
     INVITED,

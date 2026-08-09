@@ -5,10 +5,10 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Token de uso unico para verificacao de e-mail (US02) ou reset de senha (US04).
+ * Single-use token for e-mail verification (US02) or password reset (US04).
  *
- * <p>O campo {@code tokenHash} e o SHA-256 do token cru. Apenas o e-mail enviado ao usuario contem
- * o token cru. Isso evita que um vazamento do banco permita reuso direto.
+ * <p>The {@code tokenHash} field is the SHA-256 of the raw token. Only the e-mail sent to the user
+ * contains the raw token. That stops a database leak from allowing direct reuse.
  */
 public final class OneTimeToken {
 

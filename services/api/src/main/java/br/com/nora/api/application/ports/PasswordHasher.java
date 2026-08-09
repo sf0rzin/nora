@@ -1,6 +1,6 @@
 package br.com.nora.api.application.ports;
 
-/** Porta para hashing de senha. Implementada por BCrypt em produçao. */
+/** Port for password hashing. Implemented by BCrypt in production. */
 public interface PasswordHasher {
 
     String hash(String rawPassword);

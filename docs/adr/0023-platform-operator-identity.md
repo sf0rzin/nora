@@ -1,77 +1,77 @@
-# 0023 — Identidade de operador (platform admin), separada do IAM por-tenant
+# 0023 — Operator identity (platform admin), separate from the per-tenant IAM
 
-- Status: aceito (Easy Auth substituído por ADR 0025 — Cloudflare Tunnel/Access; demais decisões mantidas)
-- Data: 2026-05-28
-- Decisores: Co-arquitetos (Opus) + Stratfy (PO/dono)
-- Relacionado: ADR 0007 (IAM AWS-style por-tenant), ADR 0022 (banco de plataforma), ADR 0025 (substitui o Easy Auth desta decisão)
+- Status: accepted (Easy Auth superseded by ADR 0025 — Cloudflare Tunnel/Access; the remaining decisions stand)
+- Date: 2026-05-28
+- Deciders: Co-architects (Opus) + Stratfy (PO/owner)
+- Related: ADR 0007 (AWS-style per-tenant IAM), ADR 0022 (platform database), ADR 0025 (supersedes the Easy Auth part of this decision)
 
-## Contexto
+## Context
 
-O control plane (ADR 0022) é operado **pelos donos da plataforma**, não por clientes. O IAM existente
-(ADR 0007: Root + Users + Groups + Policies) é **por-tenant** — o JWT do NORA é tenant-scoped
-(`tenantId` no claim). Operadores de plataforma **não pertencem a nenhum tenant**; encaixá-los no IAM
-por-tenant seria errado conceitualmente e perigoso (mistura de planos).
+The control plane (ADR 0022) is operated **by the platform owners**, not by customers. The existing IAM
+(ADR 0007: Root + Users + Groups + Policies) is **per-tenant** — NORA's JWT is tenant-scoped
+(`tenantId` in the claim). Platform operators **do not belong to any tenant**; fitting them into the per-tenant
+IAM would be conceptually wrong and dangerous (mixing planes).
 
-Não há precedente no repo de Entra Easy Auth nem `ipSecurityRestrictions` — toda auth atual é JWT
-próprio (cookies httpOnly).
+There is no precedent in the repo for Entra Easy Auth or `ipSecurityRestrictions` — all current auth is our
+own JWT (httpOnly cookies).
 
-Decisão de produto já fechada com o dono: console do operador é um **app Next separado**
-(`apps/admin`), não a mesma imagem da API (a UI do NORA é Next/React; servir admin em Thymeleaf seria
-inconsistente no pitch).
+A product decision already settled with the owner: the operator console is a **separate Next app**
+(`apps/admin`), not the same image as the API (NORA's UI is Next/React; serving admin in Thymeleaf would be
+inconsistent in the pitch).
 
-## Decisão
+## Decision
 
-Identidade de operador **completamente separada** do IAM por-tenant, com **isolamento na borda** e
-**autenticação por token entre serviços**:
+Operator identity **completely separate** from the per-tenant IAM, with **isolation at the edge** and
+**token-based authentication between services**:
 
-1. **Borda (`nora-admin` Container App):** defesa em profundidade com **Entra Easy Auth** (grupo
-   "NORA Platform Admins") **E** `ipSecurityRestrictions` (allowlist de IP) no ingress. Os dois.
-   Apenas membros do grupo, vindo de IPs permitidos, alcançam o app.
-2. **`nora-admin` (Next) é o único que lê a identidade do operador** (`X-MS-CLIENT-PRINCIPAL-*`
-   injetado pelo Easy Auth). Chama a API Spring **server-side** com:
-   - `X-Internal-Token: <admin token>` (autoriza `/admin/platform/**`);
-   - `X-Operator-Email: <email do operador>` (auditoria — quem mudou o quê).
-3. **A API Spring não lê header de Easy Auth.** Protege `/internal/platform/**` e `/admin/platform/**`
-   por **token interno** (`InternalTokenAuthFilter`, comparação constant-time), em chains de segurança
-   próprias (`securityMatcher` + `@Order`), com a chain JWT por-tenant intacta.
-4. **Dois tokens, least-privilege:** `NORA_PLATFORM_INTERNAL_TOKEN` (worker/BFF → `/internal/*`) e
-   `NORA_PLATFORM_ADMIN_TOKEN` (nora-admin → `/admin/*`). Distintos por padrão; vazamento do token do
-   worker não dá acesso a mutações de admin. Secrets no Key Vault.
-5. **Grupo Entra + App Registration são passo MANUAL** (Bicep não cria grupo/app registration de
-   forma confiável). Documentado no runbook. Recomendação: App Registration com "assignment required"
-   + atribuir **apenas** o grupo → só membros recebem token do Easy Auth.
+1. **Edge (`nora-admin` Container App):** defense in depth with **Entra Easy Auth** (group
+   "NORA Platform Admins") **AND** `ipSecurityRestrictions` (IP allowlist) on the ingress. Both.
+   Only members of the group, coming from allowed IPs, reach the app.
+2. **`nora-admin` (Next) is the only one that reads the operator's identity** (`X-MS-CLIENT-PRINCIPAL-*`
+   injected by Easy Auth). It calls the Spring API **server-side** with:
+   - `X-Internal-Token: <admin token>` (authorizes `/admin/platform/**`);
+   - `X-Operator-Email: <email do operador>` (auditing — who changed what).
+3. **The Spring API does not read the Easy Auth header.** It protects `/internal/platform/**` and `/admin/platform/**`
+   with an **internal token** (`InternalTokenAuthFilter`, constant-time comparison), in their own security
+   chains (`securityMatcher` + `@Order`), with the per-tenant JWT chain intact.
+4. **Two tokens, least-privilege:** `NORA_PLATFORM_INTERNAL_TOKEN` (worker/BFF → `/internal/*`) and
+   `NORA_PLATFORM_ADMIN_TOKEN` (nora-admin → `/admin/*`). Distinct by default; a leak of the worker's
+   token does not grant access to admin mutations. Secrets in the Key Vault.
+5. **The Entra group + App Registration are a MANUAL step** (Bicep does not create a group/app registration
+   reliably). Documented in the runbook. Recommendation: an App Registration with "assignment required"
+   + assigning **only** the group → only members receive a token from Easy Auth.
 
-## Consequências
+## Consequences
 
-**Positivas:**
-- Planos separados: operador-dono nunca passa pelo IAM por-tenant; nenhum risco de cruzamento.
-- Defense in depth: rede (IP) + identidade (Entra) na borda; token entre serviços.
-- Spring fica simples: sem parsing de Easy Auth, sem 2ª instância só pra esconder endpoint. Auth de
-  `/admin/*` é o admin token; o isolamento real está na borda do `nora-admin`.
-- Browser nunca fala direto com o Spring (sem CORS extra, sem dupla Easy Auth).
+**Positive:**
+- Separate planes: the owner-operator never goes through the per-tenant IAM; no risk of crossover.
+- Defense in depth: network (IP) + identity (Entra) at the edge; a token between services.
+- Spring stays simple: no Easy Auth parsing, no 2nd instance just to hide an endpoint. Auth for
+  `/admin/*` is the admin token; the real isolation is at the `nora-admin` edge.
+- The browser never talks directly to Spring (no extra CORS, no double Easy Auth).
 
-**Negativas / trade-offs:**
-- `/admin/platform/**` no `nora-api` público é alcançável por quem tiver o admin token (o path não é
-  escondido por rede). Aceito: o token é o gate, e o isolamento de rede/identidade está na borda do
-  `nora-admin`. Mitigação futura: restringir `/admin/*` à origem interna.
-- Passo manual no Entra (grupo + app registration) — fora do IaC. Mitigado por runbook.
-- `X-Operator-Email` é confiado quando o admin token é válido (não é verificado contra o Entra no
-  Spring). Aceito: só o `nora-admin` (atrás do Easy Auth, que strippa headers do cliente) tem o admin
-  token e seta esse header.
+**Negative / trade-offs:**
+- `/admin/platform/**` on the public `nora-api` is reachable by anyone holding the admin token (the path is not
+  hidden by the network). Accepted: the token is the gate, and the network/identity isolation is at the
+  `nora-admin` edge. Future mitigation: restrict `/admin/*` to the internal origin.
+- A manual step in Entra (group + app registration) — outside of IaC. Mitigated by a runbook.
+- `X-Operator-Email` is trusted when the admin token is valid (it is not verified against Entra in
+  Spring). Accepted: only `nora-admin` (behind Easy Auth, which strips client headers) has the admin
+  token and sets that header.
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **`nora-admin` = mesma imagem da API (endpoints Thymeleaf/JSON gated por env)** — rejeitado: deixa
-   a UI órfã (NORA é Next), inconsistente no pitch, e exigiria 2ª instância Spring só pra esconder
+1. **`nora-admin` = the same image as the API (Thymeleaf/JSON endpoints gated by env)** — rejected: it leaves
+   the UI orphaned (NORA is Next), inconsistent in the pitch, and it would require a 2nd Spring instance just to hide an
    endpoint.
-2. **Easy Auth header trust no Spring** — rejeitado: acopla o Spring ao Easy Auth, abre risco de
-   spoofing de header em qualquer ingress sem Easy Auth na frente, e duplica a borda.
-3. **Operador no IAM por-tenant (tenant especial "platform")** — rejeitado: mistura planos, polui o
-   modelo tenant-scoped, e expõe o control plane ao mesmo blast radius do dado do cliente.
+2. **Easy Auth header trust in Spring** — rejected: it couples Spring to Easy Auth, opens a risk of
+   header spoofing on any ingress without Easy Auth in front, and duplicates the edge.
+3. **The operator in the per-tenant IAM (a special "platform" tenant)** — rejected: it mixes planes, pollutes the
+   tenant-scoped model, and exposes the control plane to the same blast radius as the customer's data.
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-05-28 | Co-arquitetos + Stratfy | Criação. Refino do dono: `nora-admin` é app Next separado; Spring por token interno (não Easy Auth). Exceção consciente ao ADR 0014 autorizada. |
-| 2026-06-01 | Arquiteto Control Plane + Stratfy | Easy Auth (Entra) substituído pelo **ADR 0025** (Cloudflare Tunnel + Access): tenant FIAP bloqueou a criação de App Registration (`Authorization_RequestDenied`). O token entre serviços, a separação de planos (operador ≠ IAM por-tenant) e o `X-Operator-Email` de auditoria seguem valendo. |
+| 2026-05-28 | Co-architects + Stratfy | Creation. Owner's refinement: `nora-admin` is a separate Next app; Spring via an internal token (not Easy Auth). A conscious exception to ADR 0014 authorized. |
+| 2026-06-01 | Control Plane Architect + Stratfy | Easy Auth (Entra) replaced by **ADR 0025** (Cloudflare Tunnel + Access): the FIAP tenant blocked the creation of an App Registration (`Authorization_RequestDenied`). The token between services, the separation of planes (operator ≠ per-tenant IAM) and the `X-Operator-Email` for auditing remain in force. |

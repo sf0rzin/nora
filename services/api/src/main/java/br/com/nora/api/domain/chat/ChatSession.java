@@ -4,10 +4,10 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Sessão de chat do assistente NORA. Pertence a um usuário (ownerUserId) dentro de um tenant
- * (tenantId, ADR 0002). O título pode ser nulo até a primeira mensagem do usuário, de onde é
- * derivado. As mensagens vivem em {@link ChatMessage} (referência por sessionId) para evitar
- * carregar a conversa inteira nas listagens. Imutável.
+ * Chat session of the NORA assistant. Belongs to a user (ownerUserId) inside a tenant (tenantId,
+ * ADR 0002). The title can be null until the first user message, from which it is derived. The
+ * messages live in {@link ChatMessage} (referenced by sessionId) to avoid loading the whole
+ * conversation in listings. Immutable.
  */
 public record ChatSession(
         UUID id,
@@ -17,13 +17,13 @@ public record ChatSession(
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt) {
 
-    /** Tamanho máximo do título derivado da primeira mensagem do usuário. */
+    /** Maximum length of the title derived from the first user message. */
     public static final int DERIVED_TITLE_MAX = 48;
 
     /**
-     * Deriva um título curto a partir do conteúdo da primeira mensagem do usuário: colapsa espaços,
-     * corta em {@value #DERIVED_TITLE_MAX} caracteres (com reticências quando trunca). Retorna
-     * {@code null} para conteúdo vazio — o título permanece indefinido nesse caso.
+     * Derives a short title from the content of the first user message: collapses whitespace, cuts
+     * at {@value #DERIVED_TITLE_MAX} characters (with an ellipsis when it truncates). Returns
+     * {@code null} for empty content — the title stays undefined in that case.
      */
     public static String deriveTitle(String firstUserMessage) {
         if (firstUserMessage == null) {

@@ -6,8 +6,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Endpoint publico de saude. Mantido separado do actuator para permitir uma resposta estavel mesmo
- * se o actuator estiver desabilitado.
+ * Public health endpoint. Kept separate from the actuator to allow a stable response even if the
+ * actuator is disabled.
  */
 @RestController
 public class HealthController {

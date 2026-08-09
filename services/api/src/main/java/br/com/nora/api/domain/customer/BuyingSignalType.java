@@ -1,8 +1,8 @@
 package br.com.nora.api.domain.customer;
 
 /**
- * Tipo de sinal de compra detectado na reuniao (ADR 0015). Espelha o enum {@code
- * buyingSignals.type} de {@code meeting-analysis-v1.schema.json}.
+ * Type of buying signal detected in the meeting (ADR 0015). Mirrors the {@code buyingSignals.type}
+ * enum of {@code meeting-analysis-v1.schema.json}.
  */
 public enum BuyingSignalType {
     BUDGET_DISCUSSED,

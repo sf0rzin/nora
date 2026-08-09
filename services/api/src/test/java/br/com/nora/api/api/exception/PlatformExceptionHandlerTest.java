@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-/** Mapeia exceções do control plane para os status corretos (503/404/409/422/400). */
+/** Maps control plane exceptions to the correct statuses (503/404/409/422/400). */
 class PlatformExceptionHandlerTest {
 
     private final PlatformExceptionHandler handler = new PlatformExceptionHandler();

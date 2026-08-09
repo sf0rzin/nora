@@ -2,7 +2,7 @@ package br.com.nora.api.domain.meeting;
 
 import java.util.Arrays;
 
-/** Formato suportado para transcricoes textuais (US07). */
+/** Supported format for text transcripts (US07). */
 public enum TranscriptFormat {
     TXT,
     VTT,

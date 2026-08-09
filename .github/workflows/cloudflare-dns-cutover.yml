@@ -1,27 +1,27 @@
 name: cloudflare-dns-cutover
 
-# Aponta os hostnames públicos do NORA para o Cloudflare Tunnel do host Proxmox.
+# Points NORA's public hostnames at the Proxmox host's Cloudflare Tunnel.
 #
-# POR QUE UM WORKFLOW NOVO E NÃO O cloudflare-tunnel.yml
-# ------------------------------------------------------
-# O `cloudflare-tunnel.yml` é da era Container Apps: ele CRIA um túnel e SOBRESCREVE a
-# configuração de ingress inteira com a topologia antiga (um hostname, origem em
-# `localhost:3002`). Rodá-lo hoje derrubaria as 5 rotas do túnel `nora-prod`. Este
-# workflow faz só DNS: não toca em túnel, ingress, Access, nem em nada além dos
-# registros listados.
+# WHY A NEW WORKFLOW AND NOT cloudflare-tunnel.yml
+# ------------------------------------------------
+# `cloudflare-tunnel.yml` is from the Container Apps era: it CREATES a tunnel and
+# OVERWRITES the whole ingress configuration with the old topology (one hostname, origin at
+# `localhost:3002`). Running it today would take down the 5 routes of the `nora-prod`
+# tunnel. This workflow does DNS only: it does not touch tunnel, ingress, Access, nor
+# anything beyond the listed records.
 #
-# O QUE ELE FAZ
-# -------------
-# Para cada hostname, garante um CNAME proxied apontando para
-# `<tunnel_id>.cfargotunnel.com`. Registros A/AAAA anteriores (a origem Azure morta)
-# são substituídos -- um nome não pode ter A e CNAME ao mesmo tempo.
+# WHAT IT DOES
+# ------------
+# For each hostname, it ensures a proxied CNAME pointing at
+# `<tunnel_id>.cfargotunnel.com`. Previous A/AAAA records (the dead Azure origin)
+# are replaced -- a name cannot have A and CNAME at the same time.
 #
-# Idempotente: se o registro já está certo, não faz chamada de escrita.
+# Idempotent: if the record is already right, it makes no write call.
 #
-# SEGURANÇA
-# ---------
-# Roda com `apply: false` por padrão e só imprime o plano. DNS público é mudança
-# visível de fora e difícil de "não ter acontecido" -- vale ver o diff antes.
+# SECURITY
+# --------
+# Runs with `apply: false` by default and only prints the plan. Public DNS is a change
+# visible from outside and hard to "not have happened" -- worth seeing the diff first.
 
 on:
   workflow_dispatch:
@@ -62,9 +62,9 @@ jobs:
         id: zone
         run: |
           set -uo pipefail
-          # Sem `-f`: com ele o curl sai 22 em qualquer 4xx e engole o corpo, que é onde
-          # a Cloudflare diz o que faltou. O corpo de erro da CF não contém segredo --
-          # traz código e mensagem ("Invalid API Token", "Authentication error").
+          # No `-f`: with it curl exits 22 on any 4xx and swallows the body, which is where
+          # Cloudflare says what was missing. CF's error body contains no secret --
+          # it carries a code and a message ("Invalid API Token", "Authentication error").
           resp="$(curl -sS -w '\n%{http_code}' -H "Authorization: Bearer $CF_TOKEN" \
                     "$CF_API/zones?name=$DOMAIN")"
           code="$(echo "$resp" | tail -1)"
@@ -104,8 +104,8 @@ jobs:
             nome="$(echo "$nome" | tr -d '[:space:]')"
             [ -n "$nome" ] || continue
 
-            # Todos os registros que ocupam este nome. A e CNAME são mutuamente
-            # exclusivos, então os A antigos precisam sair para o CNAME entrar.
+            # Every record occupying this name. A and CNAME are mutually
+            # exclusive, so the old A records must go for the CNAME to come in.
             recs="$(api "$CF_API/zones/$ZONE_ID/dns_records?name=$nome&per_page=100")"
             n="$(echo "$recs" | jq '[.result[] | select(.type=="A" or .type=="AAAA" or .type=="CNAME")] | length')"
             ja_ok="$(echo "$recs" | jq --arg t "$target" \
@@ -124,8 +124,9 @@ jobs:
             corpo="$(jq -nc --arg n "$nome" --arg c "$target" \
               '{type:"CNAME", name:$n, content:$c, ttl:1, proxied:true}')"
 
-            # Converte o PRIMEIRO registro existente e remove os demais; se não havia
-            # nenhum, cria. Converter em vez de apagar+criar evita a janela sem registro.
+            # Converts the FIRST existing record and removes the rest; if there was
+            # none, creates one. Converting instead of delete+create avoids the window
+            # with no record.
             primeiro="$(echo "$recs" | jq -r '[.result[] | select(.type=="A" or .type=="AAAA" or .type=="CNAME")][0].id // empty')"
             if [ -n "$primeiro" ]; then
               api -X PUT "$CF_API/zones/$ZONE_ID/dns_records/$primeiro" --data "$corpo" > /dev/null

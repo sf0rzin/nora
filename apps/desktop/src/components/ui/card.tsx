@@ -1,11 +1,11 @@
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-  /** Padding maior (20x22) para cards de seção. */
+  /** Larger padding (20x22) for section cards. */
   pad?: boolean;
 }
 
 /**
- * Container primitivo: borda + raio (--radius-md) + fundo canvas. Substitui os
- * cards com border-radius/padding inventados por tela (8/10/12 ad-hoc).
+ * Container primitive: border + radius (--radius-md) + canvas background. Replaces
+ * the cards with border-radius/padding invented per screen (ad-hoc 8/10/12).
  */
 export function Card({ pad, className = "", ...rest }: CardProps) {
   const cls = ["ui-card", pad ? "ui-card--pad" : "", className].filter(Boolean).join(" ");

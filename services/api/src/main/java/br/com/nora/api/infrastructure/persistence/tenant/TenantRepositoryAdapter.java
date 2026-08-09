@@ -55,12 +55,13 @@ public class TenantRepositoryAdapter implements TenantRepository {
     @Override
     @Transactional
     public void hardDelete(UUID tenantId) {
-        // Native queries de propósito (bypassa @SQLDelete/soft-delete) em ordem determinística:
-        // FKs legadas sem CASCADE bloqueiam o caminho direto — users.tenant_id é ON DELETE
-        // RESTRICT (V002), meetings têm FK composta para users (V015) e iam_user_invitations
-        // referencia users sem action (V010). Apagamos primeiro o que referencia users, depois
-        // users, e por fim o tenant — o resto (transcripts/análises/chat/workflows/tokens)
-        // cascateia das próprias tabelas-mãe. Tudo na MESMA transação: ou some tudo, ou nada.
+        // Native queries on purpose (bypasses @SQLDelete/soft-delete) in a deterministic order:
+        // legacy FKs without CASCADE block the direct path — users.tenant_id is ON DELETE
+        // RESTRICT (V002), meetings have a composite FK to users (V015) and iam_user_invitations
+        // references users with no action (V010). We delete first what references users, then
+        // users, and finally the tenant — the rest (transcripts/analyses/chat/workflows/tokens)
+        // cascades from their own parent tables. All in the SAME transaction: either everything
+        // goes, or nothing does.
         em.createNativeQuery("DELETE FROM meetings WHERE tenant_id = :id")
                 .setParameter("id", tenantId)
                 .executeUpdate();

@@ -21,13 +21,13 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * Adapter HTTP ÚNICO do token exchange dos provedores OAuth genéricos (onda 1: GitHub, Notion,
- * Todoist, Linear; onda 2: Microsoft). A configuração declarativa ({@link OAuthProviderConfig})
- * decide o estilo de autenticação (credenciais no corpo ou HTTP Basic), o formato do corpo (form ou
- * JSON), de onde sai a conta externa (corpo da resposta ou claim do id_token) e se há refresh.
- * Sempre manda {@code Accept: application/json} — o GitHub responde form-encoded sem isso. Erros
- * viram {@code ProviderError} só com o status HTTP (o corpo do provedor pode ecoar dados
- * sensíveis), espelhando Google/Slack.
+ * SINGLE HTTP adapter for the token exchange of the generic OAuth providers (wave 1: GitHub,
+ * Notion, Todoist, Linear; wave 2: Microsoft). The declarative configuration ({@link
+ * OAuthProviderConfig}) decides the authentication style (credentials in the body or HTTP Basic),
+ * the body format (form or JSON), where the external account comes from (response body or id_token
+ * claim) and whether there is refresh. Always sends {@code Accept: application/json} — GitHub
+ * responds form-encoded without it. Errors become {@code ProviderError} with only the HTTP status
+ * (the provider body may echo sensitive data), mirroring Google/Slack.
  */
 @Component
 public class GenericOAuthHttpClient implements GenericOAuthClient {
@@ -73,8 +73,8 @@ public class GenericOAuthHttpClient implements GenericOAuthClient {
     }
 
     /**
-     * Lê a resposta do token endpoint. Alguns provedores (GitHub) respondem HTTP 200 com {@code
-     * {"error": "..."}} em code inválido — vira {@code ProviderError} com o código de erro.
+     * Reads the token endpoint response. Some providers (GitHub) respond HTTP 200 with {@code
+     * {"error": "..."}} on an invalid code — becomes {@code ProviderError} with the error code.
      */
     static TokenResponse parse(JsonNode json, OAuthProviderConfig config) {
         String accessToken = json.path("access_token").asText(null);
@@ -95,7 +95,7 @@ public class GenericOAuthHttpClient implements GenericOAuthClient {
                 expiresIn);
     }
 
-    /** Conta externa: JSON Pointer no corpo (Notion) ou claim do id_token OIDC (Microsoft). */
+    /** External account: JSON Pointer in the body (Notion) or OIDC id_token claim (Microsoft). */
     private static String externalAccount(JsonNode json, OAuthProviderConfig config) {
         if (config.accountJsonPointer() != null) {
             return textAt(json, config.accountJsonPointer());
@@ -107,10 +107,11 @@ public class GenericOAuthHttpClient implements GenericOAuthClient {
     }
 
     /**
-     * Lê um claim do payload do id_token (JWT OIDC) SEM validar assinatura — o token veio direto do
-     * token endpoint via TLS, não do navegador. Fallback em {@code preferred_username} (Microsoft
-     * nem sempre emite {@code email} em contas corporativas). Qualquer malformação = null (a
-     * conexão não depende da conta exibida no hub).
+     * Reads a claim from the id_token payload (OIDC JWT) WITHOUT validating the signature — the
+     * token came straight from the token endpoint over TLS, not from the browser. Falls back to
+     * {@code preferred_username} (Microsoft does not always emit {@code email} for corporate
+     * accounts). Any malformation = null (the connection does not depend on the account shown in
+     * the hub).
      */
     static String idTokenClaim(String idToken, String claim) {
         if (idToken == null || idToken.isBlank()) {
@@ -187,7 +188,7 @@ public class GenericOAuthHttpClient implements GenericOAuthClient {
         return node.isTextual() && !node.asText().isBlank() ? node.asText() : null;
     }
 
-    /** Status HTTP puro em falha de transporte — o corpo pode ecoar dados sensíveis. */
+    /** Pure HTTP status on transport failure — the body may echo sensitive data. */
     private static String reason(Exception ex) {
         if (ex instanceof WebClientResponseException http) {
             return String.valueOf(http.getStatusCode().value());

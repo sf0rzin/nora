@@ -41,7 +41,7 @@ class PrometheusHealthSourceTest {
                 .formatted(job, value);
     }
 
-    /** Casa a query pelo trecho de PromQL que a diferencia das outras duas. */
+    /** Matches the query by the PromQL fragment that tells it apart from the other two. */
     private static void stub(WireMock wireMock, String promqlFragment, String body) {
         wireMock.register(
                 get(urlPathEqualTo("/api/v1/query"))
@@ -83,7 +83,7 @@ class PrometheusHealthSourceTest {
         assertThat(api.requests()).isEqualTo(1840L);
         assertThat(api.failed()).isEqualTo(12L);
         assertThat(api.failureRate()).isCloseTo(12d / 1840d, within(1e-9));
-        // Semconv estável do OTel mede em SEGUNDOS; o contrato do painel é em MILISSEGUNDOS.
+        // OTel stable semconv measures in SECONDS; the dashboard contract is in MILLISECONDS.
         assertThat(api.p95LatencyMs()).isCloseTo(412.0, within(1e-6));
     }
 

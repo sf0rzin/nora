@@ -10,9 +10,9 @@ interface ChipProps {
 }
 
 /**
- * Pill/chip (borderRadius 999) compartilhado — eram spans inline repetidos em
- * meeting-detail e meetings. Preserva fontSize/padding exatos por call site.
- * Auditoria desktop #66.
+ * Shared pill/chip (borderRadius 999) — they were inline spans repeated in
+ * meeting-detail and meetings. Preserves the exact fontSize/padding per call site.
+ * Desktop audit #66.
  */
 export function Chip({
   children,

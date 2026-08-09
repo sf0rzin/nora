@@ -6,13 +6,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Acumula as entradas do log de uma execução de workflow e serializa para o {@code log_json} (array
- * de {at, nodeId, level, message}) que a UI de histórico renderiza. Não thread-safe — uma instância
- * por execução.
+ * Accumulates the log entries of a workflow execution and serializes them to the {@code log_json}
+ * (array of {at, nodeId, level, message}) that the history UI renders. Not thread-safe — one
+ * instance per execution.
  */
 public final class ExecutionLogBuilder {
 
-    /** Uma linha do log. {@code level}: info | error. {@code nodeId} é nulo em linhas gerais. */
+    /** One log line. {@code level}: info | error. {@code nodeId} is null on general lines. */
     public record Entry(String at, String nodeId, String level, String message) {}
 
     private final List<Entry> entries = new ArrayList<>();
@@ -33,7 +33,7 @@ public final class ExecutionLogBuilder {
         try {
             return mapper.writeValueAsString(entries);
         } catch (Exception ex) {
-            // Nunca derruba a finalização da execução por causa do log.
+            // Never bring down the execution's finalization because of the log.
             return "[]";
         }
     }

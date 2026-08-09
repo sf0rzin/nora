@@ -5,15 +5,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  # Disparo manual pra gerar bundles publicaveis do Desktop (release) sob demanda,
-  # sem precisar de um commit dummy. Ver job desktop-bundle.
+  # Manual trigger to produce publishable Desktop bundles (release) on demand,
+  # without needing a dummy commit. See the desktop-bundle job.
   workflow_dispatch:
 
 permissions:
   contents: read
   pull-requests: read
 
-# Cancela rodadas anteriores do mesmo PR/branch quando um novo commit chega.
+# Cancels previous runs of the same PR/branch when a new commit arrives.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -51,11 +51,11 @@ jobs:
               - '**/*.md'
             desktop:
               - 'apps/desktop/**'
-            # O filtro `infra` deixou de observar infra/bicep/** e passou a observar a
-            # stack do Proxmox — o job `infra` (abaixo) trocou de conteúdo na migração.
-            # infra/bicep/** fica no repo como referência histórica até o cutover terminar,
-            # mas NÃO é mais validado no CI: sem `az bicep` e sem deploy, o lint só
-            # gastaria minuto de runner num artefato congelado.
+            # The `infra` filter stopped watching infra/bicep/** and now watches the
+            # Proxmox stack — the `infra` job (below) swapped content in the migration.
+            # infra/bicep/** stays in the repo as historical reference until the cutover
+            # ends, but is NOT validated in CI anymore: with no `az bicep` and no deploy,
+            # the lint would only burn runner minutes on a frozen artifact.
             infra:
               - 'infra/proxmox/**'
               - 'scripts/**'
@@ -109,11 +109,11 @@ jobs:
       - name: Tests
         working-directory: services/nlp-worker
         run: pytest
-      # Gate de cobertura escopado ao PII Shield (ADR 0012 + ADR 0018: >85% sustentado em
-      # IAM/Auth/PII). NAO impomos cobertura global do worker de proposito — llm.py e
-      # live_analyzer tem cobertura baixa e nao sao area critica de PII. Medido: ~96%;
-      # limite 90 passa com folga. FOLLOWUP: estender o gate a outras areas criticas exige
-      # subir a cobertura delas primeiro.
+      # Coverage gate scoped to the PII Shield (ADR 0012 + ADR 0018: >85% sustained on
+      # IAM/Auth/PII). We do NOT enforce global worker coverage on purpose — llm.py and
+      # live_analyzer have low coverage and are not PII-critical area. Measured: ~96%;
+      # the 90 limit passes with room to spare. FOLLOWUP: extending the gate to other
+      # critical areas requires raising their coverage first.
       - name: PII Shield coverage gate
         working-directory: services/nlp-worker
         run: >
@@ -150,9 +150,9 @@ jobs:
           NEXT_PUBLIC_USE_MOCKS: 'true'
         run: npm run build
 
-  # Job leve em PR: só sidecar tests (mais barato) + Python sanity check.
-  # O sidecar é a única parte com lógica de domínio testável fora do Tauri/Rust;
-  # o resto (TypeScript + Rust) é validado em release/main pela build full.
+  # Light job on PR: only sidecar tests (cheaper) + Python sanity check.
+  # The sidecar is the only part with testable domain logic outside Tauri/Rust;
+  # the rest (TypeScript + Rust) is validated on release/main by the full build.
   desktop-sidecar:
     needs: changes
     if: needs.changes.outputs.desktop == 'true'
@@ -174,9 +174,10 @@ jobs:
           pip install -e ".[dev]"
           pytest -v
 
-  # Compile-check do Rust do Desktop em PR (cargo check, sem bundle). O desktop-bundle (build
-  # full) so roda em push/main — sem este job um erro de compilacao no src-tauri so apareceria
-  # depois do merge. tauri-build le o frontendDist, entao buildamos o front (gera dist/) antes.
+  # Compile-check of the Desktop Rust on PR (cargo check, no bundle). desktop-bundle (full
+  # build) only runs on push/main — without this job a compile error in src-tauri would only
+  # show up after the merge. tauri-build reads frontendDist, so we build the front (produces
+  # dist/) first.
   desktop-rust:
     needs: changes
     if: needs.changes.outputs.desktop == 'true'
@@ -201,9 +202,9 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      # whisper-rs-sys compila o whisper.cpp com CMake + MSBuild, que gera caminhos scratch
-      # profundos e estoura o MAX_PATH de 260 chars do Windows (falha com `MSB6003: CL.exe
-      # could not be run / DirectoryNotFoundException`). Reproduzido localmente em 2026-08-07.
+      # whisper-rs-sys compiles whisper.cpp with CMake + MSBuild, which generates deep scratch
+      # paths and blows past Windows' 260-char MAX_PATH (fails with `MSB6003: CL.exe
+      # could not be run / DirectoryNotFoundException`). Reproduced locally on 2026-08-07.
       - name: Long paths + target dir curto (whisper.cpp/CMake)
         shell: pwsh
         run: |
@@ -218,18 +219,18 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
 
-      # NÃO existe mais o passo de "stub do binário do sidecar" aqui, e isso é
-      # intencional: `externalBin` saiu do `tauri.conf.json` base (ADR 0035) e vive
-      # agora só no overlay opt-in `tauri.azure.conf.json`. Como o tauri-build resolve
-      # `externalBin` em BUILD SCRIPT, tê-lo no base fazia até um `cargo check` falhar
-      # com "resource path binaries/nora-stt-sidecar-<triple>.exe doesn't exist" —
-      # obrigando quem só quer typecheckar Rust a rodar PyInstaller antes. Com o base
-      # limpo, o stub virou dead code.
+      # The "sidecar binary stub" step no longer exists here, and that is
+      # intentional: `externalBin` left the base `tauri.conf.json` (ADR 0035) and now
+      # lives only in the opt-in overlay `tauri.azure.conf.json`. Since tauri-build
+      # resolves `externalBin` in the BUILD SCRIPT, having it in the base made even a
+      # `cargo check` fail with "resource path binaries/nora-stt-sidecar-<triple>.exe
+      # doesn't exist" — forcing anyone who just wants to typecheck Rust to run
+      # PyInstaller first. With the base clean, the stub became dead code.
 
-      # DUAS invocações de propósito: as duas configurações precisam compilar.
-      #  - sem feature: o caminho legado (sidecar Azure), ainda suportado na transição;
-      #  - com stt-local: o whisper.cpp embarcado (ADR 0035), que é o que vai pro release.
-      # Checar só uma delas deixa a outra apodrecer sem ninguém notar.
+      # TWO invocations on purpose: both configurations need to compile.
+      #  - without the feature: the legacy path (Azure sidecar), still supported in the transition;
+      #  - with stt-local: the embedded whisper.cpp (ADR 0035), which is what goes to release.
+      # Checking only one of them lets the other rot with nobody noticing.
       - name: cargo check (sem stt-local — caminho legado)
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked
@@ -238,17 +239,17 @@ jobs:
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked --features stt-local
 
-  # Build full do desktop (Tauri bundle msi/dmg/deb/AppImage) — roda APENAS em push em
-  # main, gerando artifacts publicáveis. Em PR validation é overkill (15-20min
-  # cold-cache + frágil em 3 plataformas).
+  # Full desktop build (Tauri bundle msi/dmg/deb/AppImage) — runs ONLY on push to
+  # main, producing publishable artifacts. On PR validation it is overkill (15-20min
+  # cold-cache + fragile across 3 platforms).
   #
-  # NÃO builda mais o sidecar PyInstaller. Depois do ADR 0035 o `externalBin` saiu do
-  # `tauri.conf.json` base, então o bundle produzido aqui NÃO empacota o sidecar — e
-  # rodar PyInstaller nas 3 plataformas gerava um binário que ninguém consumia. Para
-  # empacotar o bundle legado com Azure Speech, use o overlay explícito:
+  # It no longer builds the PyInstaller sidecar. After ADR 0035 `externalBin` left the
+  # base `tauri.conf.json`, so the bundle produced here does NOT package the sidecar — and
+  # running PyInstaller on the 3 platforms produced a binary nobody consumed. To
+  # package the legacy bundle with Azure Speech, use the explicit overlay:
   #     cd apps/desktop/sidecar && python build_sidecar.py && cd ..
   #     npx tauri build -- --config src-tauri/tauri.azure.conf.json
-  # A lógica do sidecar continua coberta pelos pytest do job `desktop-sidecar`.
+  # The sidecar logic remains covered by the pytest of the `desktop-sidecar` job.
   desktop-bundle:
     needs: changes
     if: ${{ (needs.changes.outputs.desktop == 'true' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
@@ -256,10 +257,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `--features stt-local` é obrigatório: sem ela o bundle sai com o caminho
-          # legado do Azure Speech ativo, dependendo de um /speech/token que agora
-          # responde 410 GONE. `label` só nomeia o artifact (era `sidecar_target`,
-          # renomeado porque não há mais sidecar neste job).
+          # `--features stt-local` is mandatory: without it the bundle ships with the
+          # legacy Azure Speech path active, depending on a /speech/token that now
+          # answers 410 GONE. `label` only names the artifact (it was `sidecar_target`,
+          # renamed because there is no sidecar in this job anymore).
           - platform: ubuntu-latest
             args: "--features stt-local"
             label: x86_64-unknown-linux-gnu
@@ -285,16 +286,16 @@ jobs:
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
 
-      # whisper-rs-sys compila o whisper.cpp com CMake, que gera caminhos scratch
-      # profundos e pode estourar o MAX_PATH de 260 chars do Windows.
+      # whisper-rs-sys compiles whisper.cpp with CMake, which generates deep scratch
+      # paths and can blow past Windows' 260-char MAX_PATH.
       #
-      # Aqui, ao contrário do job `desktop-rust`, NÃO setamos CARGO_TARGET_DIR: este job
-      # sobe artifacts de `apps/desktop/src-tauri/target/**`, e mover o target dir
-      # deixaria o upload sem encontrar nada (falha silenciosa, porque
-      # `if-no-files-found: ignore`). Ficamos só com LongPathsEnabled, que basta porque
-      # o workspace do runner (`D:\a\nora\nora`) já é bem mais curto que um checkout
-      # local típico. Se algum dia estourar mesmo assim, a saída é setar
-      # CARGO_TARGET_DIR **e** derivar os paths de upload dele — não só o primeiro.
+      # Here, unlike the `desktop-rust` job, we do NOT set CARGO_TARGET_DIR: this job
+      # uploads artifacts from `apps/desktop/src-tauri/target/**`, and moving the target
+      # dir would leave the upload finding nothing (silent failure, because
+      # `if-no-files-found: ignore`). We keep only LongPathsEnabled, which suffices because
+      # the runner workspace (`D:\a\nora\nora`) is already much shorter than a typical
+      # local checkout. If it ever blows up anyway, the way out is to set
+      # CARGO_TARGET_DIR **and** derive the upload paths from it — not just the first.
       - name: Long paths (Windows, whisper.cpp/CMake)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
@@ -321,21 +322,21 @@ jobs:
       - name: Build Tauri app
         working-directory: apps/desktop
         env:
-          # NAO sete MACOSX_DEPLOYMENT_TARGET aqui: o `tauri build` EXPORTA essa variavel
-          # a partir de `bundle.macOS.minimumSystemVersion` do tauri.conf.json e sobrescreve
-          # o que estiver no ambiente (foi o que derrubou o #358). O piso de 11.0 exigido
-          # pelo whisper.cpp mora la, que e tambem onde vale para build local.
+          # Do NOT set MACOSX_DEPLOYMENT_TARGET here: `tauri build` EXPORTS that variable
+          # from `bundle.macOS.minimumSystemVersion` in tauri.conf.json and overwrites
+          # whatever is in the environment (that is what took down #358). The 11.0 floor
+          # required by whisper.cpp lives there, which is also where it holds for local build.
           #
-          # createUpdaterArtifacts:true no tauri.conf exige a chave de assinatura
-          # no build (senão o tauri build falha). Mesmos secrets do desktop-release.
+          # createUpdaterArtifacts:true in tauri.conf requires the signing key
+          # at build (otherwise tauri build fails). Same secrets as desktop-release.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # A URL base da API é baked em build-time pelo build.rs (option_env!).
-          # Sem isso o bundle aponta pro localhost. Setar vars.NORA_API_BASE_URL no
-          # repo/environment pra sobrescrever o default.
-          # Alinhado com NEXT_PUBLIC_API_BASE_URL em build-images.yml — o fallback deixou
-          # de ser o FQDN do Azure Container Apps (morto) e passou a ser o domínio público
-          # servido pelo Cloudflare Tunnel. Mesma troca em desktop-release.yml.
+          # The API base URL is baked in at build-time by build.rs (option_env!).
+          # Without it the bundle points at localhost. Set vars.NORA_API_BASE_URL in the
+          # repo/environment to override the default.
+          # Aligned with NEXT_PUBLIC_API_BASE_URL in build-images.yml — the fallback stopped
+          # being the Azure Container Apps FQDN (dead) and became the public domain
+          # served by the Cloudflare Tunnel. Same swap in desktop-release.yml.
           NORA_API_BASE_URL: ${{ vars.NORA_API_BASE_URL || 'https://api.nora.systems' }}
         run: npx tauri build ${{ matrix.args }}
 
@@ -343,10 +344,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nora-desktop-${{ matrix.label }}
-          # O `target/**` do começo cobre os dois layouts: build nativo escreve em
-          # `target/release/bundle/`, e o build com `--target <triple>` (macOS) escreve
-          # em `target/<triple>/release/bundle/`. Sem o `**` inicial, o dmg do macOS
-          # não seria encontrado — e `if-no-files-found: ignore` esconderia isso.
+          # The leading `target/**` covers both layouts: a native build writes to
+          # `target/release/bundle/`, and the build with `--target <triple>` (macOS) writes
+          # to `target/<triple>/release/bundle/`. Without the leading `**`, the macOS dmg
+          # would not be found — and `if-no-files-found: ignore` would hide that.
           path: |
             apps/desktop/src-tauri/target/**/bundle/**/*.deb
             apps/desktop/src-tauri/target/**/bundle/**/*.AppImage
@@ -376,23 +377,24 @@ jobs:
           PY
 
   # ┌──────────────────────────────────────────────────────────────────────────────────┐
-  # │ O NOME DESTE JOB É CONTRATO — NÃO RENOMEIE.                                      │
+  # │ THIS JOB'S NAME IS A CONTRACT — DO NOT RENAME IT.                                │
   # └──────────────────────────────────────────────────────────────────────────────────┘
-  # `infra` é `needs` do `ci-gate`, e o ci-gate é o ÚNICO required status check da branch
-  # protection da main (ADR 0027). Renomear o job aqui não quebra o gate diretamente (o
-  # required check é o ci-gate), mas quebra a lista de `needs` do ci-gate — e um `needs`
-  # apontando pra job inexistente é ERRO DE SINTAXE do workflow: nenhum run é criado, o
-  # ci-gate nunca reporta, e todo PR fica travado em "Expected — Waiting for status".
-  # Por isso a MIGRAÇÃO TROCOU O CONTEÚDO, NÃO O NOME.
+  # `infra` is a `needs` of `ci-gate`, and ci-gate is the ONLY required status check of
+  # main's branch protection (ADR 0027). Renaming the job here does not break the gate
+  # directly (the required check is ci-gate), but it breaks ci-gate's `needs` list — and a
+  # `needs` pointing at a nonexistent job is a workflow SYNTAX ERROR: no run is created,
+  # ci-gate never reports, and every PR hangs on "Expected — Waiting for status".
+  # That is why the MIGRATION SWAPPED THE CONTENT, NOT THE NAME.
   #
-  # Antes: `az bicep build` de main.bicep + modules/*.bicep (validação do IaC do Azure).
-  # Agora: valida a stack que efetivamente vai pro ar (ADR 0034 / Proxmox + Compose):
-  #   1. `docker compose config -q` — o compose é a fonte da verdade do deploy. Pega YAML
-  #      inválido, `depends_on` pra serviço inexistente, chave desconhecida e interpolação
-  #      quebrada ANTES do merge, que é exatamente o papel que o bicep build tinha.
-  #   2. shellcheck nos scripts de operação — no modelo pull, o rollout e o cutover de RLS
-  #      são shell rodando no host (infra/proxmox/scripts/, scripts/). Esse shell deixou de
-  #      ser utilitário e virou caminho de produção; merece o mesmo lint que o IaC tinha.
+  # Before: `az bicep build` of main.bicep + modules/*.bicep (validation of the Azure IaC).
+  # Now: validates the stack that actually goes live (ADR 0034 / Proxmox + Compose):
+  #   1. `docker compose config -q` — the compose is the source of truth of the deploy. It
+  #      catches invalid YAML, `depends_on` to a nonexistent service, unknown key and broken
+  #      interpolation BEFORE the merge, which is exactly the role bicep build had.
+  #   2. shellcheck on the operation scripts — in the pull model, the rollout and the RLS
+  #      cutover are shell running on the host (infra/proxmox/scripts/, scripts/). That shell
+  #      stopped being a utility and became a production path; it deserves the same lint the
+  #      IaC had.
   infra:
     needs: changes
     if: needs.changes.outputs.infra == 'true'
@@ -401,13 +403,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # `docker compose config` FALHA em `${VAR:?mensagem}` quando a variável não existe —
-      # e o compose usa esse padrão de propósito em 6 lugares (POSTGRES_ADMIN_PASSWORD,
+      # `docker compose config` FAILS on `${VAR:?message}` when the variable does not exist —
+      # and the compose uses that pattern on purpose in 6 places (POSTGRES_ADMIN_PASSWORD,
       # JWT_SECRET, CLOUDFLARE_TUNNEL_TOKEN, GRAFANA_ADMIN_PASSWORD, CF_ACCESS_TEAM_DOMAIN,
-      # CF_ACCESS_AUD) pra impedir boot com segredo faltando. Os valores reais vivem
-      # cifrados em infra/proxmox/secrets.env.sops e só são decifrados no host (age key em
-      # /etc/nora/age.key). O CI só precisa provar que o GRAFO é válido, então injetamos
-      # placeholders óbvios. Nenhum valor real entra aqui — este arquivo é público.
+      # CF_ACCESS_AUD) to prevent booting with a missing secret. The real values live
+      # encrypted in infra/proxmox/secrets.env.sops and are only decrypted on the host (age
+      # key in /etc/nora/age.key). CI only needs to prove the GRAPH is valid, so we inject
+      # obvious placeholders. No real value goes in here — this file is public.
       - name: Gera .env de validação (placeholders — nenhum segredo real)
         working-directory: infra/proxmox
         run: |
@@ -429,9 +431,9 @@ jobs:
           docker compose --env-file .env.ci -f docker-compose.yml config -q
           echo "docker-compose.yml válido (perfil default)."
 
-      # O profile `platform` (postgres-platform + admin, ADR 0022/0023) fica FORA do
-      # `config` default. Sem este segundo passe, um erro dentro desses dois serviços
-      # passaria batido no CI e só apareceria no host, no dia do flip do control plane.
+      # The `platform` profile (postgres-platform + admin, ADR 0022/0023) sits OUTSIDE the
+      # default `config`. Without this second pass, an error inside those two services
+      # would slip past CI and only show up on the host, on control plane flip day.
       - name: Compose config (profile platform)
         working-directory: infra/proxmox
         run: |
@@ -439,10 +441,10 @@ jobs:
           docker compose --env-file .env.ci -f docker-compose.yml --profile platform config -q
           echo "docker-compose.yml válido (profile platform)."
 
-      # Confere que os serviços do contrato existem com o nome esperado. `config -q` valida
-      # sintaxe, não intenção: um serviço renomeado por engano (ex.: `otel` em vez de
-      # `otel-collector`) é YAML perfeitamente válido, mas quebra o OTEL_EXPORTER_OTLP_ENDPOINT
-      # dos 4 apps — que resolvem o collector por hostname interno.
+      # Checks that the contract services exist under the expected name. `config -q` validates
+      # syntax, not intent: a service renamed by mistake (e.g. `otel` instead of
+      # `otel-collector`) is perfectly valid YAML, but breaks the OTEL_EXPORTER_OTLP_ENDPOINT
+      # of the 4 apps — which resolve the collector by internal hostname.
       - name: Contrato dos serviços (nomes = hostnames internos)
         working-directory: infra/proxmox
         run: |
@@ -459,19 +461,19 @@ jobs:
           fi
           echo "14 serviços conferem com o contrato."
 
-      # shellcheck já vem instalado na imagem do ubuntu-latest — sem action de terceiro.
-      # `-x` segue os `source` entre scripts.
+      # shellcheck ships preinstalled in the ubuntu-latest image — no third-party action.
+      # `-x` follows the `source` between scripts.
       #
-      # Por que o gate é `-S warning` e não `-S style`: o nível `info` inclui SC2016
-      # ("expressions don't expand in single quotes"), que dispara em massa no
-      # scripts/dev-stop.sh — ele passa um bloco PowerShell inteiro como string
-      # single-quoted (linha 25), e os `$ports`/`$proc` de LÁ são variáveis do PowerShell,
-      # não do bash. São falsos positivos por construção. Gatear em info/style deixaria o
-      # job vermelho no primeiro merge por causa de um script legado correto — e um
-      # required check que "sempre falha" vira check que todo mundo ignora.
-      # error+warning já cobre o que importa aqui (SC2115 `rm -rf "$X/"` com X vazio,
-      # SC2164 `cd` sem `||exit`, redirect quebrado, uso de var não atribuída).
-      # Pra endurecer um script específico, use `# shellcheck enable=...` no topo dele.
+      # Why the gate is `-S warning` and not `-S style`: the `info` level includes SC2016
+      # ("expressions don't expand in single quotes"), which fires en masse on
+      # scripts/dev-stop.sh — it passes an entire PowerShell block as a single-quoted
+      # string (line 25), and the `$ports`/`$proc` in THERE are PowerShell variables,
+      # not bash ones. They are false positives by construction. Gating at info/style would
+      # leave the job red on the first merge because of a correct legacy script — and a
+      # required check that "always fails" becomes a check everybody ignores.
+      # error+warning already covers what matters here (SC2115 `rm -rf "$X/"` with X empty,
+      # SC2164 `cd` without `||exit`, broken redirect, use of unassigned var).
+      # To harden a specific script, use `# shellcheck enable=...` at the top of it.
       - name: Shellcheck (scripts de operação)
         run: |
           set -euo pipefail
@@ -486,8 +488,8 @@ jobs:
           shellcheck -x -S warning "${files[@]}"
           echo "shellcheck OK (gate: error+warning)."
 
-      # Passe informativo no nível mais rigoroso. NÃO falha o job — serve pra o achado
-      # aparecer no log e ser corrigido por decisão, não por bloqueio.
+      # Informative pass at the strictest level. Does NOT fail the job — it exists so the
+      # finding shows up in the log and gets fixed by decision, not by blocking.
       - name: Shellcheck — passe informativo (style, não bloqueia)
         if: always()
         run: |
@@ -497,12 +499,12 @@ jobs:
           shellcheck -x -S style "${files[@]}" || true
           exit 0
 
-  # Gate agregador — é o ÚNICO status check exigido pela branch protection da main (ADR 0027).
-  # Os jobs acima são condicionais por path (paths-filter): exigi-los diretamente como required
-  # checks travaria o merge quando um job é "skipped" (PR que não toca aquela área — GitHub trata
-  # required check que nunca roda como pending eterno). Este gate SEMPRE roda, depende de todos os
-  # jobs de PR, e só falha se ALGUM deles falhou/foi cancelado (skipped = ok).
-  # desktop-bundle fica de fora de propósito (só roda em push em main, não é portão de PR).
+  # Aggregator gate — it is the ONLY status check required by main's branch protection (ADR 0027).
+  # The jobs above are conditional by path (paths-filter): requiring them directly as required
+  # checks would block the merge when a job is "skipped" (a PR that does not touch that area —
+  # GitHub treats a required check that never runs as eternally pending). This gate ALWAYS runs,
+  # depends on every PR job, and only fails if ANY of them failed/was cancelled (skipped = ok).
+  # desktop-bundle is left out on purpose (only runs on push to main, it is not a PR gate).
   ci-gate:
     name: ci-gate
     if: always()

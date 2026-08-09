@@ -1,101 +1,101 @@
 ---
-title: "Cloudflare Access — proteção do console operador"
-owner: Arquiteto NORA (Tech Lead)
+title: "Cloudflare Access — protecting the operator console"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
-# Cloudflare Access — proteção do console operador
+# Cloudflare Access — protecting the operator console
 
-Runbook para configurar e operar Cloudflare Access protegendo `admin.nora.systems` (console do nora-admin). Atualizado em 2026-06-02 pós-ADR 0025.
+Runbook for configuring and operating Cloudflare Access protecting `admin.nora.systems` (the nora-admin console). Updated on 2026-06-02 post-ADR 0025.
 
-> **Atenção — Modelo atual (ADR 0025): Cloudflare Tunnel + Access.** O `nora-admin` deixou de ter ingress público — o único caminho de entrada é via Cloudflare Tunnel (sidecar `cloudflared`). O CNAME `admin.nora.systems` aponta para `<tunnel-id>.cfargotunnel.com`, **não para o Azure**. Por isso:
+> **Attention — Current model (ADR 0025): Cloudflare Tunnel + Access.** `nora-admin` no longer has public ingress — the only entry path is via Cloudflare Tunnel (`cloudflared` sidecar). The CNAME `admin.nora.systems` points to `<tunnel-id>.cfargotunnel.com`, **not to Azure**. Because of that:
 >
-> - **Este workflow (`cloudflare-setup.yml`)** é dono do **Access App + Policy + IdP**.
-> - **Workflow irmão (`cloudflare-tunnel.yml`)** é dono do **CNAME + Tunnel + rota**.
-> - **NUNCA** passar `admin_hostname` no `cloudflare-setup.yml` — o step de CNAME tem guard que ABORTA se detectar o tunel. Input mantido apenas para back-compat.
+> - **This workflow (`cloudflare-setup.yml`)** owns the **Access App + Policy + IdP**.
+> - **The sibling workflow (`cloudflare-tunnel.yml`)** owns the **CNAME + Tunnel + route**.
+> - **NEVER** pass `admin_hostname` in `cloudflare-setup.yml` — the CNAME step has a guard that ABORTS if it detects the tunnel. The input is kept only for back-compat.
 >
-> Para túnel e ingress, ver `docs/operations/control-plane-runbook.md` e ADR 0025.
+> For tunnel and ingress, see `docs/operations/control-plane-runbook.md` and ADR 0025.
 
-## Por que Cloudflare Access
+## Why Cloudflare Access
 
-O console do operador (`nora-admin`) é a porta de entrada do control plane (ADR 0022/0023/0024). Easy Auth via Entra cobre autenticação, mas:
+The operator console (`nora-admin`) is the entry door of the control plane (ADR 0022/0023/0024). Easy Auth via Entra covers authentication, but:
 
-- Depende de App Registration manual + grupo Entra (passo demorado, ver `control-plane-runbook.md`)
-- Não dá log central de tentativas de acesso
-- Não oferece login com identidades externas (Google/GitHub) sem ADR adicional
+- It depends on a manual App Registration + Entra group (a slow step, see `control-plane-runbook.md`)
+- It gives no central log of access attempts
+- It does not offer login with external identities (Google/GitHub) without an additional ADR
 
-Cloudflare Access cobre essas três frentes na borda, **antes** da requisição chegar no Container App (ver ADR 0025 — a identidade do operador na borda migrou de Easy Auth/Entra para Cloudflare Tunnel + Access):
+Cloudflare Access covers those three fronts at the edge, **before** the request reaches the Container App (see ADR 0025 — the operator's identity at the edge migrated from Easy Auth/Entra to Cloudflare Tunnel + Access):
 
-- Login obrigatório por email (One-Time PIN por padrão; Google + GitHub opcionais)
-- Allowlist explícita (sem grupos Entra)
-- Log central de tentativas/denials no painel Zero Trust
-- Plano Free até 50 usuários
+- Mandatory login by email (One-Time PIN by default; Google + GitHub optional)
+- Explicit allowlist (no Entra groups)
+- Central log of attempts/denials in the Zero Trust panel
+- Free plan up to 50 users
 
-Easy Auth + Cloudflare Access coexistem: Cloudflare protege na borda da rede, Easy Auth protege na borda do app. Defesa em profundidade.
+Easy Auth + Cloudflare Access coexist: Cloudflare protects at the network edge, Easy Auth protects at the app edge. Defense in depth.
 
-## Estado atual
+## Current state
 
-| Item | Valor |
+| Item | Value |
 |---|---|
-| Domínio | `nora.systems` (registrar: Namecheap; nameservers: Cloudflare) |
+| Domain | `nora.systems` (registrar: Namecheap; nameservers: Cloudflare) |
 | Account ID | `76e6b917a3ef8fcaff2b20ffb2c8afd6` |
-| Hostname protegido | `admin.nora.systems` |
-| Identity provider default | One-Time PIN (email) |
-| Allowlist inicial | `axonogenesis@proton.me`, `gmaciel0204@gmail.com` |
+| Protected hostname | `admin.nora.systems` |
+| Default identity provider | One-Time PIN (email) |
+| Initial allowlist | `axonogenesis@proton.me`, `gmaciel0204@gmail.com` |
 
-## Configuração inicial (uma vez)
+## Initial configuration (one time)
 
-### 1. Habilitar Zero Trust na conta CF
+### 1. Enable Zero Trust on the CF account
 
-Passo manual no dashboard, **não tem API para criar team**:
+Manual step in the dashboard, **there is no API to create a team**:
 
 1. `https://one.dash.cloudflare.com/`
-2. Escolhe a conta de `nora.systems`
-3. Onboarding pede team name (vira `<name>.cloudflareaccess.com`) — sugestão: `stratfy`
-4. Escolhe plano **Free** (até 50 users, sem expiração)
-5. Cartão de crédito é solicitado mas não cobra até passar de 50 users
+2. Choose the `nora.systems` account
+3. Onboarding asks for a team name (becomes `<name>.cloudflareaccess.com`) — suggestion: `stratfy`
+4. Choose the **Free** plan (up to 50 users, no expiration)
+5. A credit card is requested but is not charged until you go past 50 users
 
-### 2. Criar API token escopado
+### 2. Create a scoped API token
 
 `dash.cloudflare.com` → My Profile → API Tokens → Create Custom Token.
 
-**Permissões mínimas (caminho crítico — DNS + Access App + Policy funcionam):**
+**Minimum permissions (critical path — DNS + Access App + Policy work):**
 
 - `Account` → `Access: Apps and Policies` → **Edit**
 - `Account` → `Access: Service Tokens` → **Edit**
 - `Zone` → `DNS` → **Edit**
 - `Zone` → `Zone` → **Read**
 
-**Permissão opcional (full automation, inclui criar IdP via workflow):**
+**Optional permission (full automation, includes creating the IdP via workflow):**
 
 - `Account` → `Access: Organizations, Identity Providers, and Groups` → **Edit**
 
-Sem a permissão opcional, o workflow degrada graciosamente: `team_domain` é construído do input (não verificado via API) e OTP IdP não é criado — usuário adiciona manualmente em 30s pelo painel (ver "Operação → Adicionar OTP IdP manualmente" abaixo).
+Without the optional permission, the workflow degrades gracefully: `team_domain` is built from the input (not verified via API) and the OTP IdP is not created — the user adds it manually in 30s from the panel (see "Operation → Adding the OTP IdP manually" below).
 
 **Scope:**
 
-- Account Resources: conta específica
-- Zone Resources: zona específica (`nora.systems`)
+- Account Resources: specific account
+- Zone Resources: specific zone (`nora.systems`)
 
-Cola o token como secret `CLOUDFLARE_API_TOKEN` no repo (`Settings → Secrets and variables → Actions`).
+Paste the token as the secret `CLOUDFLARE_API_TOKEN` in the repo (`Settings → Secrets and variables → Actions`).
 
-### 3. Rodar o workflow
+### 3. Run the workflow
 
-`.github/workflows/cloudflare-setup.yml` é `workflow_dispatch` e idempotente. Inputs:
+`.github/workflows/cloudflare-setup.yml` is `workflow_dispatch` and idempotent. Inputs:
 
-- `admin_hostname` — **LEGACY pré-ADR 0025. DEIXE VAZIO.** O CNAME hoje é gerenciado pelo `cloudflare-tunnel.yml`. O step tem guard que aborta se detectar `*.cfargotunnel.com` no CNAME existente (proteção contra derrubar o admin por engano).
-- `team_name` — nome do team (default `stratfy`); precisa coincidir com o team já criado no passo 1
-- `access_emails` — CSV de emails autorizados (default já tem os 2 operadores)
+- `admin_hostname` — **LEGACY, pre-ADR 0025. LEAVE IT EMPTY.** The CNAME today is managed by `cloudflare-tunnel.yml`. The step has a guard that aborts if it detects `*.cfargotunnel.com` in the existing CNAME (protection against taking the admin down by mistake).
+- `team_name` — team name (default `stratfy`); must match the team already created in step 1
+- `access_emails` — CSV of authorized emails (the default already has the 2 operators)
 
-O workflow faz upsert: garantir Access App, garantir policy de allowlist, garantir OTP IdP. Re-rodar é seguro.
+The workflow does an upsert: ensure the Access App, ensure the allowlist policy, ensure the OTP IdP. Re-running is safe.
 
-Pra configurar/reconciliar o **túnel** em si (CNAME → cfargotunnel + rota → sidecar), rodar o `cloudflare-tunnel.yml` (ver `control-plane-runbook.md`).
+To configure/reconcile the **tunnel** itself (CNAME → cfargotunnel + route → sidecar), run `cloudflare-tunnel.yml` (see `control-plane-runbook.md`).
 
-## Provedores de identidade — adicionar Google e/ou GitHub
+## Identity providers — adding Google and/or GitHub
 
-OTP por email funciona sem nenhum setup adicional. Google/GitHub OAuth precisam de OAuth Apps criados nos respectivos consoles.
+Email OTP works with no additional setup. Google/GitHub OAuth need OAuth Apps created in their respective consoles.
 
 ### Google
 
@@ -103,9 +103,9 @@ OTP por email funciona sem nenhum setup adicional. Google/GitHub OAuth precisam 
 2. Create Credentials → OAuth client ID → Web application
 3. Name: `Cloudflare Access — NORA admin`
 4. Authorized redirect URI: `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`
-5. Copia Client ID + Client Secret
-6. No painel Zero Trust → Settings → Authentication → Add new → Google
-7. Cola Client ID + Client Secret + clicar Save
+5. Copy Client ID + Client Secret
+6. In the Zero Trust panel → Settings → Authentication → Add new → Google
+7. Paste Client ID + Client Secret + click Save
 
 ### GitHub
 
@@ -113,54 +113,54 @@ OTP por email funciona sem nenhum setup adicional. Google/GitHub OAuth precisam 
 2. Application name: `Cloudflare Access — NORA admin`
 3. Homepage URL: `https://admin.nora.systems`
 4. Authorization callback URL: `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`
-5. Copia Client ID + gera Client Secret
-6. No painel Zero Trust → Settings → Authentication → Add new → GitHub
-7. Cola Client ID + Client Secret + Save
+5. Copy Client ID + generate Client Secret
+6. In the Zero Trust panel → Settings → Authentication → Add new → GitHub
+7. Paste Client ID + Client Secret + Save
 
-Depois de adicionar, edita a Access App para permitir os novos IdPs no campo `allowed_idps` (UI: Applications → nora-admin → Edit → Identity providers).
+After adding them, edit the Access App to allow the new IdPs in the `allowed_idps` field (UI: Applications → nora-admin → Edit → Identity providers).
 
-## Operação
+## Operation
 
-### Adicionar OTP IdP manualmente (se o workflow pulou a etapa)
+### Adding the OTP IdP manually (if the workflow skipped the step)
 
-Se o token não tem a permissão opcional, o workflow loga warning e pula a criação do OTP IdP. Adicionar manualmente (30s):
+If the token does not have the optional permission, the workflow logs a warning and skips creating the OTP IdP. Add it manually (30s):
 
-1. `https://one.dash.cloudflare.com/` → seleciona a conta
+1. `https://one.dash.cloudflare.com/` → select the account
 2. **Settings** → **Authentication**
-3. Em **Login methods**, clica **Add new**
-4. Escolhe **One-time PIN** → Save
+3. Under **Login methods**, click **Add new**
+4. Choose **One-time PIN** → Save
 
-Pronto. Login no `admin.nora.systems` agora pede email e Cloudflare manda código (allowlist do workflow continua valendo).
+Done. Logging in to `admin.nora.systems` now asks for an email and Cloudflare sends a code (the workflow's allowlist still applies).
 
-### Adicionar/remover operador
+### Adding/removing an operator
 
-Re-rodar o workflow com `access_emails` atualizado. Workflow faz upsert da policy.
+Re-run the workflow with an updated `access_emails`. The workflow upserts the policy.
 
-### Ver logs de acesso
+### Viewing access logs
 
-`one.dash.cloudflare.com` → Logs → Access → filtra por hostname `admin.nora.systems`.
+`one.dash.cloudflare.com` → Logs → Access → filter by hostname `admin.nora.systems`.
 
-Mostra cada tentativa de login (allow/deny), IP de origem, email, IdP usado.
+It shows each login attempt (allow/deny), source IP, email, and IdP used.
 
-### Suspender acesso temporariamente
+### Temporarily suspending access
 
-Painel Zero Trust → Access → Applications → nora-admin → Edit → desabilita policy ou troca decision para `deny`. Reverte pelo mesmo caminho.
+Zero Trust panel → Access → Applications → nora-admin → Edit → disable the policy or switch the decision to `deny`. Revert via the same path.
 
-## Solução de problemas
+## Troubleshooting
 
 ### `Zone status: pending nameserver update`
 
-Nameservers do Namecheap ainda não foram trocados pelos da Cloudflare. Painel Namecheap → Domain List → Manage → Nameservers → Custom DNS → cola os 2 NS dados pela Cloudflare (algo como `xxx.ns.cloudflare.com`). Propagação geralmente em 10-30 min.
+The Namecheap nameservers have not yet been switched to Cloudflare's. Namecheap panel → Domain List → Manage → Nameservers → Custom DNS → paste the 2 NS given by Cloudflare (something like `xxx.ns.cloudflare.com`). Propagation usually within 10-30 min.
 
-### Workflow loga warning em `Resolve team domain`
+### The workflow logs a warning at `Resolve team domain`
 
-Geralmente significa que o token escopado não tem `Access: Organizations, IdPs, and Groups Read` — endpoint `/access/organizations` retorna `10000 Authentication error`. Workflow degrada graciosamente: usa `team_name` do input para construir `team_domain`. Steps subsequentes (Access App, Policy) validam funcionalmente.
+This usually means the scoped token does not have `Access: Organizations, IdPs, and Groups Read` — the `/access/organizations` endpoint returns `10000 Authentication error`. The workflow degrades gracefully: it uses `team_name` from the input to build `team_domain`. Subsequent steps (Access App, Policy) validate functionally.
 
-Se Zero Trust também não estiver habilitado (raro, uma captura de tela do painel já confirmaria), os steps de Access App falhariam com erro claro. Solução: passo 1 da Configuração inicial.
+If Zero Trust is also not enabled (rare, a single screenshot of the panel would confirm it), the Access App steps would fail with a clear error. Solution: step 1 of the Initial configuration.
 
-### Login aceita mas página retorna 502/timeout
+### Login is accepted but the page returns 502/timeout
 
-No modelo ADR 0025 (Tunnel), 502 geralmente significa que o sidecar `cloudflared` não conectou no Cloudflare. Verificar:
+In the ADR 0025 model (Tunnel), a 502 usually means the `cloudflared` sidecar did not connect to Cloudflare. Check:
 
 ```bash
 # Réplicas do nora-admin (precisa ≥1 sempre — o sidecar não escala a zero):
@@ -170,15 +170,15 @@ az containerapp replica list -n nora-admin-dev -g rg-nora-dev --revision latest 
 az containerapp logs show -n nora-admin-dev -g rg-nora-dev --container cloudflared --tail 100
 ```
 
-Causas comuns:
-- `CLOUDFLARE_TUNNEL_TOKEN` secret faltando/errado → sidecar não conecta. Re-rodar `cloudflare-tunnel.yml`, copiar o connector token do log, atualizar o GitHub Secret, redeploy.
-- Container App escalou a zero → trocar `minReplicas` para `≥1` no Bicep do admin.
-- Túnel deletado/rotacionado mas DNS ainda aponta para o ID antigo → re-rodar `cloudflare-tunnel.yml` (recria DNS).
+Common causes:
+- `CLOUDFLARE_TUNNEL_TOKEN` secret missing/wrong → the sidecar does not connect. Re-run `cloudflare-tunnel.yml`, copy the connector token from the log, update the GitHub Secret, redeploy.
+- The Container App scaled to zero → switch `minReplicas` to `≥1` in the admin's Bicep.
+- The tunnel was deleted/rotated but DNS still points to the old ID → re-run `cloudflare-tunnel.yml` (it recreates the DNS).
 
-### Email não chega (OTP)
+### The email does not arrive (OTP)
 
-Cloudflare manda do remetente `noreply@notify.cloudflare.com`. Verificar spam, e que o email está na allowlist do workflow.
+Cloudflare sends from the sender `noreply@notify.cloudflare.com`. Check spam, and that the email is on the workflow's allowlist.
 
-## Revogar token
+## Revoking the token
 
-`dash.cloudflare.com` → My Profile → API Tokens → 3 pontos → Delete. Remover também o secret `CLOUDFLARE_API_TOKEN` do GitHub. Recriar via Configuração inicial passo 2 quando precisar de novo.
+`dash.cloudflare.com` → My Profile → API Tokens → 3 dots → Delete. Also remove the `CLOUDFLARE_API_TOKEN` secret from GitHub. Recreate it via step 2 of the Initial configuration when needed again.

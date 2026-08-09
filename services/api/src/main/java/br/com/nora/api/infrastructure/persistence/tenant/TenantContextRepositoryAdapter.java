@@ -102,7 +102,7 @@ public class TenantContextRepositoryAdapter implements TenantContextRepository {
                 e.getUpdatedAt());
     }
 
-    /** Formato JSON serializado em tenant_contexts.document. */
+    /** JSON format serialized in tenant_contexts.document. */
     public record ContextDocument(
             String companyName,
             String industry,

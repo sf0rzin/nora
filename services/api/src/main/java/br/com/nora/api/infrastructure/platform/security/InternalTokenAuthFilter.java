@@ -16,10 +16,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Autentica requests de /internal/platform/** e /admin/platform/** por token compartilhado
- * (X-Internal-Token), comparado em tempo constante (ADR 0023). Sem JWT, sem Easy Auth no Spring — a
- * borda (Easy Auth + IP allowlist) vive no nora-admin. Um filtro por chain, com o token esperado e
- * o escopo (service|admin) injetados.
+ * Authenticates requests to /internal/platform/** and /admin/platform/** by shared token
+ * (X-Internal-Token), compared in constant time (ADR 0023). No JWT, no Easy Auth in Spring — the
+ * edge (Easy Auth + IP allowlist) lives in nora-admin. One filter per chain, with the expected
+ * token and the scope (service|admin) injected.
  */
 public class InternalTokenAuthFilter extends OncePerRequestFilter {
 
@@ -51,8 +51,8 @@ public class InternalTokenAuthFilter extends OncePerRequestFilter {
         if (expectedToken == null || expectedToken.isBlank() || provided == null) {
             return false;
         }
-        // Compara digests SHA-256 (sempre 32 bytes) em tempo constante: remove o side-channel de
-        // tamanho do MessageDigest.isEqual sobre bytes crus de comprimentos diferentes.
+        // Compares SHA-256 digests (always 32 bytes) in constant time: removes the length
+        // side-channel of MessageDigest.isEqual over raw bytes of differing lengths.
         return MessageDigest.isEqual(sha256(expectedToken), sha256(provided));
     }
 

@@ -7,9 +7,9 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Objetivo declarado pelo usuario para uma reuniao (input opt-in do Productivity Score, ADR 0005).
+ * Goal declared by the user for a meeting (opt-in input for the Productivity Score, ADR 0005).
  *
- * <p>1-1 com {@code Meeting}: cada meeting tem no maximo um goal ativo. Imutavel.
+ * <p>1-1 with {@code Meeting}: each meeting has at most one active goal. Immutable.
  */
 public final class MeetingGoal {
 
@@ -83,8 +83,8 @@ public final class MeetingGoal {
     }
 
     /**
-     * Factory para criar um novo goal a partir de inputs do usuario (textos crus, sem position).
-     * Position eh atribuida automaticamente pela ordem da lista.
+     * Factory to create a new goal from user inputs (raw texts, no position). Position is assigned
+     * automatically by list order.
      */
     public static MeetingGoal create(
             UUID tenantId,
@@ -111,7 +111,7 @@ public final class MeetingGoal {
                 now);
     }
 
-    /** Devolve uma copia atualizada mantendo o id (para PUT idempotente). */
+    /** Returns an updated copy keeping the id (for idempotent PUT). */
     public MeetingGoal updated(
             String newPurpose,
             List<String> newExpectedOutcomesText,

@@ -5,8 +5,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Resposta de criacao e itens da listagem de convites (US06). Schema em {@code
- * docs/api/examples/iam-invite-response.json}. O campo {@code token} NUNCA e devolvido.
+ * Creation response and listing items for invites (US06). Schema in {@code
+ * docs/api/examples/iam-invite-response.json}. The {@code token} field is NEVER returned.
  */
 public record InviteResponse(
         UUID id,

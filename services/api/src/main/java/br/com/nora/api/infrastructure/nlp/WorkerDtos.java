@@ -6,8 +6,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * DTOs de transporte para o NLP worker. Apenas estes objetos sao serializados/deserializados na
- * fronteira HTTP; nao vazam para o resto do app.
+ * Transport DTOs for the NLP worker. Only these objects are serialized/deserialized at the HTTP
+ * boundary; they do not leak into the rest of the app.
  */
 public final class WorkerDtos {
 
@@ -71,10 +71,10 @@ public final class WorkerDtos {
             @JsonProperty("metadata") Metadata metadata) {}
 
     /**
-     * Bloco {@code customerConfidence} (ADR 0006/0015). Emitido pelo worker apenas para reunioes
-     * externas (conversa com cliente/lead); null para reunioes internas. {@code trend} vem como
-     * palpite do worker mas e ignorado no backend — a tendencia e recalculada server-side com base
-     * no historico da conta (backend e autoritativo).
+     * {@code customerConfidence} block (ADR 0006/0015). Emitted by the worker only for external
+     * meetings (conversation with a customer/lead); null for internal meetings. {@code trend} comes
+     * as the worker's guess but is ignored by the backend — the trend is recalculated server-side
+     * from the account history (the backend is authoritative).
      */
     public record CustomerConfidenceDto(
             @JsonProperty("score") Integer score,
@@ -139,7 +139,7 @@ public final class WorkerDtos {
             @JsonProperty("processingMillis") Integer processingMillis,
             @JsonProperty("piiRedactionsApplied") Integer piiRedactionsApplied) {}
 
-    // ---------- Live Analyze (analise em tempo real durante reuniao) ----------
+    // ---------- Live Analyze (real-time analysis during a meeting) ----------
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record LiveAnalyzeRequest(

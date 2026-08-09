@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
 #
-# deploy.sh — rollout PULL-BASED, health-gated, com rollback automático.
+# deploy.sh — PULL-BASED rollout, health-gated, with automatic rollback.
 #
-# POR QUE PULL E NÃO PUSH
-# -----------------------
-# O repositório é PÚBLICO (ADR 0017) e o `deploy-infra.yml` tem trigger `pull_request`.
-# Um runner self-hosted persistente na rede doméstica executaria, por definição, código
-# de fork arbitrário dentro da LAN — qualquer pessoa abrindo um PR ganharia execução de
-# comando na VM que hospeda o Postgres de produção. Por isso NÃO existe runner aqui:
-# a VM PUXA em vez de receber push do CI. O CI só publica imagens no GHCR; quem decide o
-# que roda é esta máquina.
+# WHY PULL AND NOT PUSH
+# ---------------------
+# The repository is PUBLIC (ADR 0017) and `deploy-infra.yml` has a `pull_request` trigger.
+# A persistent self-hosted runner on the home network would execute, by definition, code
+# from an arbitrary fork inside the LAN — anyone opening a PR would gain command execution
+# on the VM that hosts the production Postgres. That is why there is NO runner here:
+# the VM PULLS instead of receiving a push from CI. CI only publishes images to GHCR; what
+# runs is decided by this machine.
 #
-# "Puxar" tem duas metades: `docker pull` por digest (sempre) e `git pull` do repo (só
-# com `--sync`, por ser mudança de CONFIGURAÇÃO e não de artefato). Sem `--sync`, uma
-# alteração no compose fica no git e não chega no host — o timer não a aplicaria nunca.
+# "Pulling" has two halves: `docker pull` by digest (always) and `git pull` of the repo (only
+# with `--sync`, since it is a CONFIGURATION change and not an artifact one). Without `--sync`, a
+# change in the compose stays in git and never reaches the host — the timer would never apply it.
 #
-# COMO O ROLLOUT FUNCIONA
-# -----------------------
-#   1. Decifra secrets.env.sops (SOPS + age) para um .env em tmpfs (/dev/shm). Nunca em disco.
-#   2. `docker compose pull` das imagens alvo.
-#   3. `up -d --wait --no-deps` SERVIÇO A SERVIÇO, na ordem de dependência.
-#   4. Health validado POR DENTRO (`compose exec`), nunca pela URL pública. Um problema de
-#      DNS/cert/Cloudflare NÃO pode derrubar um deploy que subiu certo — e o inverso também:
-#      um 200 no edge cacheado não pode mascarar um container quebrado.
-#   5. Se o health falhar, ROLLBACK automático para a tag anterior (lida do container que
-#      estava rodando, não de um arquivo que pode ter driftado) e re-validação.
+# HOW THE ROLLOUT WORKS
+# ---------------------
+#   1. Decrypts secrets.env.sops (SOPS + age) into a .env on tmpfs (/dev/shm). Never on disk.
+#   2. `docker compose pull` of the target images.
+#   3. `up -d --wait --no-deps` SERVICE BY SERVICE, in dependency order.
+#   4. Health validated FROM THE INSIDE (`compose exec`), never via the public URL. A
+#      DNS/cert/Cloudflare problem must NOT take down a deploy that came up fine — and the
+#      inverse too: a cached 200 at the edge must not mask a broken container.
+#   5. If health fails, automatic ROLLBACK to the previous tag (read from the container that
+#      was running, not from a file that may have drifted) and re-validation.
 #
-# Tags imutáveis `sha-<short>` são o mecanismo de rollout (build-images.yml). `latest` é
-# aceito mas desencorajado: sem tag imutável não há rollback determinístico.
+# Immutable `sha-<short>` tags are the rollout mechanism (build-images.yml). `latest` is
+# accepted but discouraged: without an immutable tag there is no deterministic rollback.
 #
 set -euo pipefail
 
@@ -50,15 +50,15 @@ WAIT_TIMEOUT="${DEPLOY_WAIT_TIMEOUT:-180}"
 PROBE_RETRIES="${DEPLOY_PROBE_RETRIES:-20}"
 PROBE_INTERVAL="${DEPLOY_PROBE_INTERVAL:-5}"
 
-# Ordem de dependência (do compose): dados -> observabilidade -> worker -> api -> front -> borda.
-# A borda vem por último de propósito: o Caddy é o buffer de retry do rolling update e o
-# cloudflared depende dele; recriá-los antes derrubaria o tráfego durante o boot do Spring.
+# Dependency order (from the compose): data -> observability -> worker -> api -> front -> edge.
+# The edge comes last on purpose: Caddy is the retry buffer of the rolling update and
+# cloudflared depends on it; recreating them earlier would drop traffic during the Spring boot.
 ALL_SERVICES=(postgres postgres-platform otel-collector prometheus loki alloy grafana
               worker api web admin caddy cloudflared backup)
 
-# Serviços que têm imagem versionada por tag (os únicos com rollback por tag).
+# Services whose image is versioned by tag (the only ones with rollback by tag).
 APP_SERVICES=(api worker web admin)
-# Serviços que só existem sob o profile `platform`.
+# Services that only exist under the `platform` profile.
 PLATFORM_SERVICES=(postgres-platform admin)
 
 SELECTED=()
@@ -154,7 +154,7 @@ done
 
 umask 077
 
-# Validação dos serviços pedidos
+# Validation of the requested services
 if [ "${#SELECTED[@]}" -eq 0 ]; then
   SELECTED=("${ALL_SERVICES[@]}")
 else
@@ -174,7 +174,7 @@ if [ -n "$TAG" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Pré-voo
+# Pre-flight
 # ---------------------------------------------------------------------------
 command -v docker >/dev/null 2>&1 || die "docker não encontrado. Rode o bootstrap-host.sh."
 docker compose version >/dev/null 2>&1 || die "plugin 'docker compose' v2 ausente. Rode o bootstrap-host.sh."
@@ -184,14 +184,14 @@ docker info >/dev/null 2>&1 || die "o daemon do Docker não responde (permissão
 mkdir -p "$STATE_DIR" 2>/dev/null || die "não consegui criar $STATE_DIR (permissão?)."
 touch "$STATE_FILE" 2>/dev/null || die "não consegui escrever em $STATE_FILE."
 
-# Lock: dois deploys concorrentes (o timer + um operador) recriariam containers ao mesmo tempo.
+# Lock: two concurrent deploys (the timer + an operator) would recreate containers at the same time.
 if command -v flock >/dev/null 2>&1; then
   exec 9>"$LOCK_FILE"
   flock -n 9 || die "outro deploy já está rodando (lock: $LOCK_FILE). Aguarde ou remova se for órfão."
 fi
 
 # ---------------------------------------------------------------------------
-# Segredos -> tmpfs
+# Secrets -> tmpfs
 # ---------------------------------------------------------------------------
 ENV_FILE=""
 ENV_DIR=""
@@ -199,7 +199,7 @@ cleanup() {
   local rc=$?
   set +e
   if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
-    # Sobrescreve antes de remover: tmpfs não persiste, mas a página pode ser reaproveitada.
+    # Overwrite before removing: tmpfs does not persist, but the page can be reused.
     command -v shred >/dev/null 2>&1 && shred -u "$ENV_FILE" 2>/dev/null || rm -f "$ENV_FILE"
   fi
   [ -n "$ENV_DIR" ] && [ -d "$ENV_DIR" ] && rmdir "$ENV_DIR" 2>/dev/null
@@ -211,7 +211,7 @@ prepare_env() {
   [ -f "$SOPS_FILE" ] || die "arquivo de segredos não encontrado: $SOPS_FILE"
   command -v sops >/dev/null 2>&1 || die "sops não encontrado. Rode o bootstrap-host.sh."
 
-  # Exigimos tmpfs de verdade. Sem isso, o .env decifrado encostaria no disco.
+  # We demand a real tmpfs. Without it, the decrypted .env would touch the disk.
   local shm_fs=""
   if command -v findmnt >/dev/null 2>&1; then
     shm_fs="$(findmnt -no FSTYPE /dev/shm 2>/dev/null || true)"
@@ -243,7 +243,7 @@ prepare_env() {
   ok "segredos em tmpfs ($(grep -c '=' "$ENV_FILE" || echo 0) variáveis)"
 }
 
-# envget <CHAVE> — lê um valor do .env decifrado sem despejar tudo no ambiente do shell.
+# envget <KEY> — reads a value from the decrypted .env without dumping everything into the shell environment.
 envget() {
   local v
   v="$(sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" 2>/dev/null | tail -1)"
@@ -252,7 +252,7 @@ envget() {
 }
 
 # ---------------------------------------------------------------------------
-# Estado (tag anterior / digest)
+# State (previous tag / digest)
 # ---------------------------------------------------------------------------
 state_get() {
   local v
@@ -270,7 +270,7 @@ state_set() {
 
 svc_key() { printf '%s' "$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"; }
 
-# tag_var_for <serviço> -> nome da env var de tag do compose
+# tag_var_for <service> -> name of the compose tag env var
 tag_var_for() {
   case "$1" in
     api)    printf 'API_TAG' ;;
@@ -281,11 +281,11 @@ tag_var_for() {
   esac
 }
 
-image_ref_for() {  # <serviço> <tag>
+image_ref_for() {  # <service> <tag>
   printf '%s/%s-%s:%s' "$REGISTRY" "$IMAGE_PREFIX" "$1" "$2"
 }
 
-# running_tag <serviço> -> tag da imagem do container que está de pé (fonte da verdade)
+# running_tag <service> -> image tag of the container that is up (source of truth)
 running_tag() {
   local cid img
   cid="$(dc ps -q "$1" 2>/dev/null | head -1)"
@@ -297,9 +297,9 @@ running_tag() {
   esac
 }
 
-# remote_digest <repo-sem-registry> <tag> — digest do manifesto no GHCR, SEM baixar a imagem.
-# Usado pelo --if-changed: é o que transforma o timer num deploy por pull de verdade
-# (checa o digest da tag) em vez de um `docker pull` cego a cada 5 minutos.
+# remote_digest <repo-without-registry> <tag> — manifest digest on GHCR, WITHOUT downloading the image.
+# Used by --if-changed: it is what turns the timer into a real pull-based deploy
+# (checks the tag's digest) instead of a blind `docker pull` every 5 minutes.
 remote_digest() {
   local repo="$1" tag="$2" token digest
   command -v curl >/dev/null 2>&1 || { printf ''; return; }
@@ -318,7 +318,7 @@ remote_digest() {
   printf '%s' "$digest"
 }
 
-local_digest() {  # <serviço>
+local_digest() {  # <service>
   local cid img
   cid="$(dc ps -q "$1" 2>/dev/null | head -1)"
   [ -n "$cid" ] || { printf ''; return; }
@@ -332,7 +332,7 @@ local_digest() {  # <serviço>
 COMPOSE_ARGS=()
 dc() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
 
-run() {  # executa (ou só mostra, em --dry-run)
+run() {  # executes (or only shows, under --dry-run)
   if [ "$DRY_RUN" -eq 1 ]; then
     printf '[dry-run] %s\n' "$*" >&2
     return 0
@@ -341,16 +341,16 @@ run() {  # executa (ou só mostra, em --dry-run)
 }
 
 # ---------------------------------------------------------------------------
-# HEALTH POR DENTRO
+# HEALTH FROM THE INSIDE
 #
-# Regra: nunca usar https://<dominio> para decidir se o deploy deu certo. O ingress é
-# cloudflared -> caddy; um problema de DNS, de certificado ou do próprio túnel produz
-# 522/526 mesmo com todos os containers saudáveis. Validar por fora transformaria uma
-# falha de borda num rollback desnecessário — exatamente o oposto do que queremos.
+# Rule: never use https://<dominio> to decide whether the deploy worked. The ingress is
+# cloudflared -> caddy; a DNS problem, a certificate problem or one in the tunnel itself
+# produces 522/526 even with all containers healthy. Validating from the outside would turn
+# an edge failure into an unnecessary rollback — exactly the opposite of what we want.
 #
-# probe_cmd devolve o comando a rodar DENTRO do container. Quando o binário não existe
-# na imagem (distroless), o exec sai 126/127 e caímos para o healthcheck do próprio
-# Docker, que é igualmente interno.
+# probe_cmd returns the command to run INSIDE the container. When the binary does not exist
+# in the image (distroless), the exec exits 126/127 and we fall back to Docker's own
+# healthcheck, which is equally internal.
 # ---------------------------------------------------------------------------
 PG_USER_CACHE=""
 probe_cmd() {
@@ -360,28 +360,28 @@ probe_cmd() {
     worker)            printf 'python\t-c\timport urllib.request; urllib.request.urlopen("http://localhost:8001/healthz", timeout=5)' ;;
     api)               printf 'wget\t-q\t-O\t-\thttp://localhost:8080/actuator/health' ;;
     web)               printf 'wget\t-q\t--spider\thttp://localhost:3000' ;;
-    # admin: 127.0.0.1 e nao `localhost`. O Next standalone faz bind IPv4-only, e o
-    # /etc/hosts do container resolve `localhost` tambem para ::1 -- o wget do BusyBox
-    # tenta o IPv6 primeiro e leva connection refused com o servidor no ar. Este probe e
-    # INDEPENDENTE do healthcheck do compose: corrigir la (docker-compose.yml) e deixar
-    # aqui faz o container ficar `healthy` e o deploy reprovar assim mesmo.
+    # admin: 127.0.0.1 and not `localhost`. Next standalone binds IPv4-only, and the
+    # container's /etc/hosts resolves `localhost` to ::1 as well -- BusyBox's wget
+    # tries IPv6 first and gets connection refused with the server up. This probe is
+    # INDEPENDENT of the compose healthcheck: fixing it there (docker-compose.yml) and leaving
+    # it here makes the container go `healthy` and the deploy fail all the same.
     admin)             printf 'wget\t-q\t--spider\thttp://127.0.0.1:3002/healthz' ;;
-    # caddy: /healthz do bloco :80, NAO a admin API em :2019 — o handler de /config/ so
-    # trata GET/POST/PUT/..., e o --spider do busybox emite HEAD, levando 405 (que o
-    # probe_once trata como falha real). Mesmo alvo do healthcheck do compose.
-    # otel-collector: imagem distroless, sem wget nem shell. return 2 = 'sem probe'.
+    # caddy: /healthz of the :80 block, NOT the admin API on :2019 — the /config/ handler only
+    # handles GET/POST/PUT/..., and busybox's --spider issues HEAD, getting 405 (which
+    # probe_once treats as a real failure). Same target as the compose healthcheck.
+    # otel-collector: distroless image, no wget and no shell. return 2 = 'no probe'.
     caddy)             printf 'wget\t-q\t--spider\thttp://localhost/healthz' ;;
     otel-collector)    return 2 ;;
     prometheus)        printf 'wget\t-q\t--spider\thttp://localhost:9090/-/healthy' ;;
     loki)              printf 'wget\t-q\t--spider\thttp://localhost:3100/ready' ;;
     grafana)           printf 'wget\t-q\t--spider\thttp://localhost:3000/api/health' ;;
     cloudflared)       printf 'cloudflared\t--version' ;;
-    alloy|backup)      printf '' ;;   # sem probe próprio: valida por estado do container
+    alloy|backup)      printf '' ;;   # no own probe: validates by container state
     *)                 printf '' ;;
   esac
 }
 
-# docker_health <serviço> -> healthy | unhealthy | starting | none | absent
+# docker_health <service> -> healthy | unhealthy | starting | none | absent
 docker_health() {
   local cid st hs
   cid="$(dc ps -q "$1" 2>/dev/null | head -1)"
@@ -392,7 +392,7 @@ docker_health() {
   printf '%s' "$hs"
 }
 
-# probe_once <serviço> -> 0 saudável, 1 não saudável, 2 probe indisponível
+# probe_once <service> -> 0 healthy, 1 not healthy, 2 probe unavailable
 probe_once() {
   local svc="$1" cmd out rc
   cmd="$(probe_cmd "$svc")"
@@ -405,7 +405,7 @@ probe_once() {
     rc=$?
     set -e
     if [ "$rc" -eq 0 ]; then
-      # A API responde 200 mesmo em DOWN parcial em algumas configs — confere o status.
+      # The API answers 200 even on partial DOWN in some configs — check the status.
       if [ "$svc" = "api" ] && ! printf '%s' "$out" | grep -q '"status":"UP"'; then
         err "  api: /actuator/health respondeu sem status UP: $(printf '%s' "$out" | head -c 200)"
         return 1
@@ -413,7 +413,7 @@ probe_once() {
       return 0
     fi
     case "$rc" in
-      126|127) return 2 ;;   # binário do probe não existe na imagem
+      126|127) return 2 ;;   # the probe binary does not exist in the image
     esac
     case "$out" in
       *"executable file not found"*|*"no such file or directory"*) return 2 ;;
@@ -423,7 +423,7 @@ probe_once() {
   return 2
 }
 
-# healthy <serviço> -> 0/1, com retry
+# healthy <service> -> 0/1, with retry
 healthy() {
   local svc="$1" i rc hs
   for i in $(seq 1 "$PROBE_RETRIES"); do
@@ -444,7 +444,7 @@ healthy() {
     case "$rc" in
       0) ok "  $svc: health interno OK (tentativa $i)"; return 0 ;;
       2)
-        # Sem probe utilizável: cai para o healthcheck do container (também interno).
+        # No usable probe: falls back to the container healthcheck (also internal).
         if [ "$hs" = "healthy" ]; then
           ok "  $svc: sem probe próprio na imagem; healthcheck do Docker = healthy"
           return 0
@@ -463,9 +463,9 @@ healthy() {
   return 1
 }
 
-# Checagem extra de alcançabilidade serviço-a-serviço, de dentro da rede `internal`.
-# Prova DNS + rota + app juntos, ainda sem tocar a URL pública.
-reachable_from_caddy() {  # <host> <porta> <caminho>
+# Extra service-to-service reachability check, from inside the `internal` network.
+# Proves DNS + route + app together, still without touching the public URL.
+reachable_from_caddy() {  # <host> <port> <path>
   local host="$1" port="$2" path="$3"
   [ "$(docker_health caddy)" != "absent" ] || return 0
   set +e
@@ -481,9 +481,9 @@ reachable_from_caddy() {  # <host> <porta> <caminho>
 }
 
 # ---------------------------------------------------------------------------
-# Deploy de um serviço
+# Deploy of one service
 # ---------------------------------------------------------------------------
-bring_up() {  # <serviço>
+bring_up() {  # <service>
   local svc="$1" rc=0
   set +e
   run dc up -d --wait --no-deps --wait-timeout "$WAIT_TIMEOUT" "$svc"
@@ -492,7 +492,7 @@ bring_up() {  # <serviço>
   return $rc
 }
 
-deploy_service() {  # <serviço> -> 0 ok, 1 falhou (após tentativa de rollback)
+deploy_service() {  # <service> -> 0 ok, 1 failed (after a rollback attempt)
   local svc="$1"
   local tagvar prev_tag new_tag key
   tagvar="$(tag_var_for "$svc")"
@@ -543,7 +543,7 @@ deploy_service() {  # <serviço> -> 0 ok, 1 falhou (após tentativa de rollback)
     health_rc=1
   fi
 
-  # Checagem extra de rede interna para os serviços que o Caddy roteia.
+  # Extra internal network check for the services Caddy routes.
   if [ "$health_rc" -eq 0 ]; then
     case "$svc" in
       api)   reachable_from_caddy api 8080 /actuator/health ;;
@@ -606,7 +606,7 @@ deploy_service() {  # <serviço> -> 0 ok, 1 falhou (após tentativa de rollback)
   return 1
 }
 
-rollback_service() {  # <serviço> — rollback explícito, via --rollback
+rollback_service() {  # <service> — explicit rollback, via --rollback
   local svc="$1" tagvar key prev
   tagvar="$(tag_var_for "$svc")"
   key="$(svc_key "$svc")"
@@ -634,13 +634,13 @@ rollback_service() {  # <serviço> — rollback explícito, via --rollback
 }
 
 # ---------------------------------------------------------------------------
-# Login no GHCR
+# GHCR login
 # ---------------------------------------------------------------------------
-# Os 4 pacotes em ghcr.io/sf0rzin/nora-* estão PÚBLICOS hoje (verificado com pull
-# anônimo da VM 106 em 2026-08-08), então o caminho normal é GHCR_PULL_TOKEN vazio e
-# esta função vira no-op. Ela existe para o dia em que algum pacote voltar a ser
-# privado: sem login o `compose pull` leva 401/denied e o rollout morre no primeiro
-# serviço, com uma mensagem que não diz "faça login".
+# The 4 packages under ghcr.io/sf0rzin/nora-* are PUBLIC today (verified with an
+# anonymous pull from VM 106 on 2026-08-08), so the normal path is an empty GHCR_PULL_TOKEN
+# and this function becomes a no-op. It exists for the day some package goes back to
+# private: without login `compose pull` gets 401/denied and the rollout dies on the first
+# service, with a message that does not say "log in".
 ghcr_login() {
   local tok user
   tok="$(envget GHCR_PULL_TOKEN)"
@@ -648,7 +648,7 @@ ghcr_login() {
     log "GHCR_PULL_TOKEN vazio — assumindo pacotes públicos em $REGISTRY"
     return 0
   fi
-  # Sem GHCR_USER explícito, o owner do IMAGE_PREFIX serve (ex.: sf0rzin/nora -> sf0rzin).
+  # Without an explicit GHCR_USER, the IMAGE_PREFIX owner does (e.g.: sf0rzin/nora -> sf0rzin).
   user="$(envget GHCR_USER)"
   [ -n "$user" ] || user="${IMAGE_PREFIX%%/*}"
   if printf '%s' "$tok" | run docker login "$REGISTRY" -u "$user" --password-stdin >/dev/null 2>&1; then
@@ -661,21 +661,21 @@ ghcr_login() {
 }
 
 # ---------------------------------------------------------------------------
-# Sincronização do repo do host
+# Host repo synchronization
 # ---------------------------------------------------------------------------
-# O rollout é PULL, mas até aqui só as IMAGENS eram puxadas. Mudança no compose, no
-# Caddyfile, no prometheus.yml ou nos próprios scripts ficava no git e nunca chegava
-# na máquina — o cabeçalho deste arquivo dizia "git pull + docker pull" e metade disso
-# não acontecia. `--sync` fecha essa metade.
+# The rollout is PULL, but until here only the IMAGES were pulled. A change in the compose,
+# in the Caddyfile, in prometheus.yml or in the scripts themselves stayed in git and never
+# reached the machine — this file's header said "git pull + docker pull" and half of that
+# did not happen. `--sync` closes that half.
 #
-# Continua sendo OPT-IN, e o timer NÃO usa: com ele ligado, um merge na main passaria a
-# reconfigurar produção sozinho. O rollback automático cobre tag de imagem, não compose
-# quebrado — então essa é uma decisão de operação, não um default.
+# It stays OPT-IN, and the timer does NOT use it: with it on, a merge to main would start
+# reconfiguring production by itself. The automatic rollback covers image tags, not a broken
+# compose — so this is an operations decision, not a default.
 #
-# Sutileza: o pull pode substituir ESTE arquivo no meio da execução. O git escreve num
-# temporário e renomeia, então o bash continua lendo o inode antigo e a rodada atual usa
-# a versão ANTIGA do script — a nova só vale a partir da próxima. Se a mudança for no
-# próprio deploy.sh, rode duas vezes.
+# Subtlety: the pull can replace THIS file mid-execution. Git writes to a temporary file
+# and renames, so bash keeps reading the old inode and the current run uses the OLD version
+# of the script — the new one only takes effect from the next one. If the change is in
+# deploy.sh itself, run it twice.
 REPO_ROOT="$(cd "$PROXMOX_DIR/../.." && pwd)"
 
 sync_repo() {
@@ -684,16 +684,16 @@ sync_repo() {
 
   local owner antes depois
   owner="$(stat -c %U "$REPO_ROOT")"
-  # Rodando sob sudo, um `git` de root num diretório de outro dono para em
-  # "detected dubious ownership". Puxar como o dono evita isso sem precisar mexer em
-  # safe.directory global.
+  # Running under sudo, a root `git` in a directory owned by someone else stops at
+  # "detected dubious ownership". Pulling as the owner avoids that without having to touch
+  # a global safe.directory.
   local -a git_cmd=(git -C "$REPO_ROOT")
   [ "$(id -un)" = "$owner" ] || git_cmd=(sudo -u "$owner" git -C "$REPO_ROOT")
 
   antes="$("${git_cmd[@]}" rev-parse HEAD 2>/dev/null || echo desconhecido)"
   log "--sync: git pull --ff-only em $REPO_ROOT (como $owner)"
-  # --ff-only de propósito: se houver mudança local, é para PARAR e o operador ver, não
-  # para mesclar sozinho em cima de um host de produção.
+  # --ff-only on purpose: if there is a local change, it is to STOP and let the operator see,
+  # not to merge by itself on top of a production host.
   if ! run "${git_cmd[@]}" pull --ff-only; then
     die "--sync: git pull falhou. Há mudança local em $REPO_ROOT? \`git -C $REPO_ROOT status\`"
   fi
@@ -708,7 +708,7 @@ sync_repo() {
 }
 
 # ---------------------------------------------------------------------------
-# Execução
+# Execution
 # ---------------------------------------------------------------------------
 sync_repo
 prepare_env
@@ -717,7 +717,7 @@ ghcr_login
 PG_USER_CACHE="$(envget POSTGRES_ADMIN_USER)"
 [ -n "$PG_USER_CACHE" ] || PG_USER_CACHE="nora_admin"
 
-# Profile 'platform': auto pelo segredo, sobrescrevível por flag.
+# Profile 'platform': auto from the secret, overridable by flag.
 PLATFORM_ON=0
 if [ -n "$FORCE_PLATFORM" ]; then
   PLATFORM_ON="$FORCE_PLATFORM"
@@ -732,7 +732,7 @@ COMPOSE_ARGS=(--project-name "$COMPOSE_PROJECT" --project-directory "$PROXMOX_DI
               -f "$COMPOSE_FILE" --env-file "$ENV_FILE")
 [ "$PLATFORM_ON" -eq 1 ] && COMPOSE_ARGS+=(--profile platform)
 
-# Remove serviços de plataforma quando o profile está desligado.
+# Drops platform services when the profile is off.
 FINAL=()
 for s in "${ALL_SERVICES[@]}"; do
   contains "$s" "${SELECTED[@]}" || continue
@@ -752,14 +752,14 @@ log "serviços:  ${FINAL[*]}"
 [ -n "$TAG" ] && log "tag alvo:  $TAG"
 [ "$DRY_RUN" -eq 1 ] && log "MODO DRY-RUN — nada será alterado"
 
-# --rollback: só reverte e sai.
+# --rollback: only reverts and exits.
 if [ "$ROLLBACK_ONLY" -eq 1 ]; then
   rc=0
   for s in "${FINAL[@]}"; do rollback_service "$s" || rc=1; done
   exit "$rc"
 fi
 
-# --if-changed: compara o digest remoto com o registrado. É o que o timer usa.
+# --if-changed: compares the remote digest with the recorded one. It is what the timer uses.
 if [ "$IF_CHANGED" -eq 1 ] && [ "$REPO_MOVED" -eq 1 ]; then
   hr
   log "--if-changed: o repo andou (--sync), então a config pode ter mudado — deployando tudo"
@@ -800,8 +800,8 @@ fi
 FAILED=()
 for s in "${FINAL[@]}"; do
   if deploy_service "$s"; then
-    # Registra o digest remoto só depois do sucesso: assim uma falha é retentada
-    # no próximo ciclo do timer em vez de ficar marcada como "já feita".
+    # Record the remote digest only after success: this way a failure is retried
+    # on the next timer cycle instead of being marked as "already done".
     tagvar="$(tag_var_for "$s")"
     if [ -n "$tagvar" ] && [ "$DRY_RUN" -eq 0 ]; then
       key="$(svc_key "$s")"

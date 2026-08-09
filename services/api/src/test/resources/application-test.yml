@@ -9,17 +9,17 @@ nora:
       secret: test-secret-with-at-least-32-chars-aaaa
       expires-seconds: 3600
     expose-dev-tokens: true
-    # Rate limit altíssimo em test profile: dezenas de ITs rodam no mesmo JVM
-    # contra o mesmo loopback (127.0.0.1), e cap padrão de 10 login/min estoura.
-    # Defesa anti brute-force fica testada em AuthRateLimiterTest (identidade do cliente,
-    # teto por IP e teto por e-mail alvo), não aqui.
+    # Very high rate limit in the test profile: dozens of ITs run in the same JVM
+    # against the same loopback (127.0.0.1), and the default cap of 10 login/min blows up.
+    # Anti brute-force defense is tested in AuthRateLimiterTest (client identity,
+    # cap per IP and cap per target email), not here.
     rate-limit:
       login-per-minute: 100000
       login-per-minute-per-email: 100000
       signup-per-minute: 100000
       reset-per-10-minutes: 100000
-    # Testes usam MockMvc/RestAssured direto no loopback, sem borda Cloudflare. Vazio força
-    # o clientKey a cair no IP de conexão em vez de procurar um header que nunca chega.
+    # Tests use MockMvc/RestAssured directly on the loopback, without the Cloudflare edge. Empty forces
+    # the clientKey to fall back to the connection IP instead of looking for a header that never arrives.
     trusted-client-ip-header: ""
   app:
     public-base-url: http://localhost:3000

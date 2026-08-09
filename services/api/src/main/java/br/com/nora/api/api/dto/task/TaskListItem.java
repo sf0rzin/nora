@@ -6,7 +6,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/** Item da listagem de tarefas. */
+/** Item of the task listing. */
 @JsonInclude(Include.NON_NULL)
 public record TaskListItem(
         UUID id,

@@ -1,95 +1,95 @@
-# 0013 — Estratégia de CSS frontend (Tailwind cru, sem shadcn, tokens OKLCH)
+# 0013 — Frontend CSS strategy (raw Tailwind, no shadcn, OKLCH tokens)
 
-- Status: Proposto (esboço pelo Tech Lead; aguarda refino pelo Arquiteto Design)
-- Data: 2026-05-14
-- Decisores: Arquiteto Design (proprietário do escopo frontend)
+- Status: Proposed (drafted by the Tech Lead; awaiting refinement by the Design Architect)
+- Date: 2026-05-14
+- Deciders: Design Architect (owner of the frontend scope)
 
-> **NOTA**: este ADR é esboço do Tech Lead durante Sub-fase 1.10 (Docs Refresh). O Arquiteto Design refina/aceita formalmente. Sub-seções marcadas `[DESIGN refinar]` aguardam input dele.
+> **NOTE**: this ADR is a Tech Lead draft written during Sub-phase 1.10 (Docs Refresh). The Design Architect refines/formally accepts it. Subsections marked `[DESIGN refinar]` are awaiting his input.
 
-## Contexto
+## Context
 
-NORA web (`apps/web/`) é Next.js 14 + TypeScript + Tailwind CSS. **Não usa shadcn/ui nem nenhuma lib de componentes.**
+NORA web (`apps/web/`) is Next.js 14 + TypeScript + Tailwind CSS. **It does not use shadcn/ui or any component library.**
 
-Histórico:
-- Subfase 1.0-1.1: scaffolding original previu shadcn (rastros em `docs/development-standards.md` antigo)
-- Subfase 1.2: redesign visual editorial v1 → v2 (PRs #56, #58) trocou paleta HSL legacy shadcn por OKLCH editorial customizada
-- PR #66 detectou colisão `tokens.css` (OKLCH) × `globals.css` (HSL legacy resíduos)
+History:
+- Sub-phase 1.0-1.1: the original scaffolding assumed shadcn (traces in the old `docs/development-standards.md`)
+- Sub-phase 1.2: editorial visual redesign v1 → v2 (PRs #56, #58) swapped the legacy shadcn HSL palette for a custom editorial OKLCH one
+- PR #66 detected a collision between `tokens.css` (OKLCH) and `globals.css` (legacy HSL residue)
 
-Componentes UI atuais são **construídos em Tailwind cru** com utilitários + variants manuais. Paleta editorial customizada:
-- Tipografia: Inter (sans), Instrument Serif (display), JetBrains Mono (mono) — via `next/font`
-- Cores: tokens OKLCH semânticos (`--paper`, `--ink`, `--brand`, etc.) — `apps/web/src/styles/tokens.css`
-- Sem dependência de @radix-ui, headless-ui, ou similar
+The current UI components are **built in raw Tailwind** with utilities + manual variants. Custom editorial palette:
+- Typography: Inter (sans), Instrument Serif (display), JetBrains Mono (mono) — via `next/font`
+- Colors: semantic OKLCH tokens (`--paper`, `--ink`, `--brand`, etc.) — `apps/web/src/styles/tokens.css`
+- No dependency on @radix-ui, headless-ui, or similar
 
-Drift detectado no audit pré-Sub-fase 1.10:
-- `docs/development-standards.md` antigo listava shadcn/ui + Zod obrigatório (linhas 286-290) — **divergente da realidade**
+Drift detected in the pre-Sub-phase 1.10 audit:
+- The old `docs/development-standards.md` listed shadcn/ui + mandatory Zod (lines 286-290) — **divergent from reality**
 
-A revisão do Arquiteto Design no audit explicitou:
+The Design Architect's review in the audit made it explicit:
 
-> "Colisão tokens.css × globals.css (HSL legacy shadcn) descoberta em PR #66 mostrou que a decisão 'sem shadcn' precisa estar ESCRITA. Senão alguém amanhã reintroduz shadcn pq 'é padrão indústria' e dá ruim."
+> "The tokens.css × globals.css collision (legacy shadcn HSL) discovered in PR #66 showed that the 'no shadcn' decision needs to be WRITTEN DOWN. Otherwise someone reintroduces shadcn tomorrow because 'it's the industry standard' and it goes badly."
 
-## Decisão
+## Decision
 
-**Não adotar shadcn/ui (nem outra lib de componentes UI). Manter Tailwind cru + tokens OKLCH editoriais customizados.**
+**Do not adopt shadcn/ui (or any other UI component library). Keep raw Tailwind + custom editorial OKLCH tokens.**
 
-### Padrões declarados [DESIGN refinar]
+### Declared standards [DESIGN refinar]
 
-1. **Tokens semânticos em `tokens.css`**: OKLCH puros, naming editorial (`--paper`, `--ink`, `--brand-primary`, etc.) `[DESIGN refinar a lista completa de tokens com nomes definitivos]`
+1. **Semantic tokens in `tokens.css`**: pure OKLCH, editorial naming (`--paper`, `--ink`, `--brand-primary`, etc.) `[DESIGN refinar a lista completa de tokens com nomes definitivos]`
 
-2. **Classes utilitárias em `landing.module.css` (CSS Modules)** quando classe Tailwind ficaria gigante ou semanticamente repetida — wraps com `:global()` quando necessário pra escopar a seção
+2. **Utility classes in `landing.module.css` (CSS Modules)** when a Tailwind class would get huge or semantically repeated — wraps with `:global()` when needed to scope the section
 
-3. **styled-jsx em componentes complexos** por seção — `<style jsx global>` quando há sub-componente que precisa receber styling. Padrão do Next.js, zero deps adicionais
+3. **styled-jsx in complex components** per section — `<style jsx global>` when there is a sub-component that needs to receive styling. A Next.js standard, zero additional deps
 
-4. **HSL legacy renomeado** em `globals.css` pra `--tw-*` (não colidir com OKLCH); manter apenas o necessário pra Tailwind funcionar (`--background`, `--foreground` etc. mapeados pra tokens OKLCH)
+4. **Legacy HSL renamed** in `globals.css` to `--tw-*` (so as not to collide with OKLCH); keep only what is needed for Tailwind to work (`--background`, `--foreground`, etc. mapped to OKLCH tokens)
 
-5. **Componentes UI ficam em `components/`** (sem `components/ui/` separado tipo shadcn). Brand assets em `components/brand/`. Landing-specific em `components/landing/`
+5. **UI components live in `components/`** (no separate `components/ui/` in the shadcn style). Brand assets in `components/brand/`. Landing-specific ones in `components/landing/`
 
-## Por que não shadcn
+## Why not shadcn
 
-### Trade-off explícito
+### Explicit trade-off
 
-- **shadcn ganha em**: velocidade inicial, acessibilidade out-of-the-box (Radix), padronização visual entre páginas
-- **NORA perde se adotar**: paleta editorial customizada (Instrument Serif + OKLCH) **não é vendida com shadcn**; cada componente shadcn precisaria override pesado → mais código, menos consistência
+- **shadcn wins on**: initial speed, out-of-the-box accessibility (Radix), visual standardization across pages
+- **NORA loses if it adopts it**: the custom editorial palette (Instrument Serif + OKLCH) **does not come bundled with shadcn**; each shadcn component would need heavy overriding → more code, less consistency
 
-Pra design editorial diferenciado (NORA pitch é "produto distinto, não SaaS genérico"), shadcn vira **anti-pattern**.
+For a differentiated editorial design (the NORA pitch is "a distinct product, not generic SaaS"), shadcn becomes an **anti-pattern**.
 
-### Acessibilidade sem Radix
+### Accessibility without Radix
 
-Componentes do NORA precisam ARIA correto, keyboard navigation, focus states. Sem Radix, isso é trabalho manual mas viável:
-- `<button>` semântico (não `<div onClick>`)
-- `aria-label` em ícones-only
-- `:focus-visible` no Tailwind
-- `tabindex` correto
+NORA components need correct ARIA, keyboard navigation, focus states. Without Radix, this is manual work but feasible:
+- Semantic `<button>` (not `<div onClick>`)
+- `aria-label` on icon-only elements
+- `:focus-visible` in Tailwind
+- Correct `tabindex`
 
 [DESIGN refinar: checklist de acessibilidade obrigatório por tipo de componente — modal, dropdown, form, etc.]
 
-## Consequências
+## Consequences
 
-**Positivas:**
-- Controle total da paleta editorial (Instrument Serif + Inter + OKLCH não vende com shadcn)
-- Zero deps de UI lib (Radix, HeadlessUI, etc.) — bundle menor
-- Padrão "styled-jsx + CSS module pra utilities + Tailwind cru" estabelecido
-- Equipe pequena (Arquiteto Design solo + Tech Lead suporta) sem precisar aprender abstrações de uma lib externa
+**Positive:**
+- Full control of the editorial palette (Instrument Serif + Inter + OKLCH does not come with shadcn)
+- Zero UI lib deps (Radix, HeadlessUI, etc.) — smaller bundle
+- The "styled-jsx + CSS module for utilities + raw Tailwind" standard is established
+- A small team (Design Architect solo + Tech Lead supporting) does not need to learn an external library's abstractions
 
-**Negativas:**
-- Acessibilidade exige disciplina manual (sem Radix grátis)
-- Velocidade inicial menor que adopt shadcn
-- Não usar lib popular significa que dev novo precisa aprender padrão do projeto
+**Negative:**
+- Accessibility requires manual discipline (no free Radix)
+- Lower initial speed than adopting shadcn
+- Not using a popular library means a new dev has to learn the project's own pattern
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Adotar shadcn/ui** — rejeitado pelo trade-off paleta editorial vs setup default
-2. **CSS-in-JS lib (styled-components, emotion)** — rejeitado. Next.js `styled-jsx` cobre o caso sem dep extra
-3. **Migrar tudo pra CSS modules** — rejeitado. Seria refactor desnecessário grande pra ganho marginal
-4. **Adotar HeadlessUI ou Radix sem shadcn** — `[DESIGN refinar: avaliar se HeadlessUI/Radix isolados, sem styling shadcn, são úteis pra acessibilidade]`
+1. **Adopt shadcn/ui** — rejected because of the editorial palette vs default setup trade-off
+2. **CSS-in-JS lib (styled-components, emotion)** — rejected. Next.js `styled-jsx` covers the case without an extra dep
+3. **Migrate everything to CSS modules** — rejected. It would be a large unnecessary refactor for marginal gain
+4. **Adopt HeadlessUI or Radix without shadcn** — `[DESIGN refinar: avaliar se HeadlessUI/Radix isolados, sem styling shadcn, são úteis pra acessibilidade]`
 
-## Plano de Aplicação
+## Application Plan
 
-1. Documentar tokens editoriais em `docs/engineering/design-tokens.md` `[DESIGN escreve na Sub-fase 1.12 ou quando achar tempo]`
-2. PRs futuros que mexam em `apps/web/src/components/` ou `apps/web/src/styles/` referenciam este ADR no commit/PR description
-3. `docs/engineering/standards.md` atualizado pela Sub-fase 1.10 já remove menções a shadcn/Zod obrigatório
+1. Document the editorial tokens in `docs/engineering/design-tokens.md` `[DESIGN escreve na Sub-fase 1.12 ou quando achar tempo]`
+2. Future PRs that touch `apps/web/src/components/` or `apps/web/src/styles/` reference this ADR in the commit/PR description
+3. `docs/engineering/standards.md`, updated by Sub-phase 1.10, already removes mentions of shadcn/mandatory Zod
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-05-14 | Tech Lead | Esboço criado durante Sub-fase 1.10. Aguarda Arquiteto Design refinar seções marcadas `[DESIGN refinar]` |
+| 2026-05-14 | Tech Lead | Draft created during Sub-phase 1.10. Awaiting the Design Architect to refine the sections marked `[DESIGN refinar]` |

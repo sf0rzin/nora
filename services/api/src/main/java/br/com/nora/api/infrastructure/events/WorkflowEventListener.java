@@ -12,9 +12,9 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 /**
- * Liga o event bus ao {@link WorkflowEngine} do NORA Flows. Assíncrono (não atrasa o pipeline de
- * análise) e com tenant propagado explicitamente: sob RLS enforce (ADR 0028), a thread do executor
- * precisa do GUC do tenant para ler workflows e escrever execuções (mesmo cuidado do {@code
+ * Connects the event bus to NORA Flows' {@link WorkflowEngine}. Asynchronous (does not delay the
+ * analysis pipeline) and with the tenant propagated explicitly: under RLS enforce (ADR 0028), the
+ * executor thread needs the tenant GUC to read workflows and write executions (same care as {@code
  * AnalysisService.runAsync}).
  */
 @Component
@@ -37,7 +37,7 @@ public class WorkflowEventListener {
         try {
             engine.onMeetingAnalysisCompleted(event);
         } catch (RuntimeException ex) {
-            // Última linha de defesa: erro de workflow NUNCA volta pro pipeline de análise.
+            // Last line of defense: a workflow error NEVER goes back to the analysis pipeline.
             LOG.error(
                     "Flows: listener falhou meetingId={} tenantId={} cause={}",
                     event.meetingId(),
@@ -55,7 +55,7 @@ public class WorkflowEventListener {
         try {
             engine.onActionItemCreated(event);
         } catch (RuntimeException ex) {
-            // Última linha de defesa: erro de workflow NUNCA volta pro pipeline de análise.
+            // Last line of defense: a workflow error NEVER goes back to the analysis pipeline.
             LOG.error(
                     "Flows: listener falhou meetingId={} tenantId={} cause={}",
                     event.meetingId(),
@@ -73,7 +73,7 @@ public class WorkflowEventListener {
         try {
             engine.onMeetingRiskDetected(event);
         } catch (RuntimeException ex) {
-            // Última linha de defesa: erro de workflow NUNCA volta pro pipeline de análise.
+            // Last line of defense: a workflow error NEVER goes back to the analysis pipeline.
             LOG.error(
                     "Flows: listener falhou meetingId={} tenantId={} cause={}",
                     event.meetingId(),

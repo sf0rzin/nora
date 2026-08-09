@@ -19,10 +19,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Prova que as chains do control plane são escopadas por token interno SEM enfraquecer a chain JWT
- * por-tenant (catch-all). Plataforma OFF (default) basta: /internal/llm-config responde via
- * fallback SOFT (200), /admin responde 503 (auth ok, banco off), e um endpoint de tenant ignora o
- * token interno (401 — chain JWT intacta).
+ * Proves that the control plane chains are scoped by internal token WITHOUT weakening the
+ * per-tenant JWT chain (catch-all). Platform OFF (default) is enough: /internal/llm-config answers
+ * via SOFT fallback (200), /admin answers 503 (auth ok, database off), and a tenant endpoint
+ * ignores the internal token (401 — JWT chain intact).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -81,8 +81,8 @@ class PlatformSecurityIntegrationTest {
 
     @Test
     void chainSeparada_tenantEndpointIgnoraTokenInterno_401() {
-        // /meetings pertence à chain JWT por-tenant (catch-all). O token interno NÃO concede
-        // acesso.
+        // /meetings belongs to the per-tenant JWT chain (catch-all). The internal token does NOT
+        // grant access.
         assertThat(get("/meetings", "test-internal").getStatusCode())
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
     }

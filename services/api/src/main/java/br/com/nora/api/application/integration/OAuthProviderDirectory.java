@@ -10,11 +10,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Catálogo dos provedores OAuth genéricos (onda 1: GitHub, Notion, Todoist, Linear; onda 2:
- * Microsoft). URLs, escopos e particularidades de cada provedor ficam declarados AQUI; credenciais
- * vêm de env (nunca em código). Provedor sem client-id/secret no ambiente simplesmente não entra no
- * catálogo — o hub mostra "não configurado" e o start retorna 422 (fail-visible, mesmo contrato do
- * Google/Slack).
+ * Catalog of the generic OAuth providers (wave 1: GitHub, Notion, Todoist, Linear; wave 2:
+ * Microsoft). URLs, scopes and the quirks of each provider are declared HERE; credentials come from
+ * env (never in code). A provider without client-id/secret in the environment simply does not enter
+ * the catalog — the hub shows "não configurado" and start returns 422 (fail-visible, same contract
+ * as Google/Slack).
  */
 @Component
 public class OAuthProviderDirectory {
@@ -38,8 +38,8 @@ public class OAuthProviderDirectory {
             @Value("${nora.integrations.microsoft.client-id:}") String microsoftClientId,
             @Value("${nora.integrations.microsoft.client-secret:}") String microsoftClientSecret,
             @Value("${nora.integrations.microsoft.redirect-uri:}") String microsoftRedirectUri) {
-        // GitHub: token form-encoded por default — o client manda Accept: application/json.
-        // Token de OAuth App não expira; sem refresh.
+        // GitHub: token form-encoded by default — the client sends Accept: application/json.
+        // An OAuth App token does not expire; no refresh.
         register(
                 IntegrationProvider.GITHUB,
                 "https://github.com/login/oauth/authorize",
@@ -54,8 +54,8 @@ public class OAuthProviderDirectory {
                 null,
                 null,
                 false);
-        // Notion: sem scopes (capabilities do app), token endpoint usa HTTP Basic + corpo JSON,
-        // `owner=user` no authorize; a resposta traz workspace_name (vira a conta no hub).
+        // Notion: no scopes (app capabilities), the token endpoint uses HTTP Basic + JSON body,
+        // `owner=user` on authorize; the response carries workspace_name (becomes the hub account).
         register(
                 IntegrationProvider.NOTION,
                 "https://api.notion.com/v1/oauth/authorize",
@@ -70,7 +70,7 @@ public class OAuthProviderDirectory {
                 "/workspace_name",
                 null,
                 false);
-        // Todoist: token não expira; sem refresh.
+        // Todoist: token does not expire; no refresh.
         register(
                 IntegrationProvider.TODOIST,
                 "https://todoist.com/oauth/authorize",
@@ -85,7 +85,7 @@ public class OAuthProviderDirectory {
                 null,
                 null,
                 false);
-        // Linear: token de longa duração (expires_in ~10 anos); `actor=user` no authorize.
+        // Linear: long-lived token (expires_in ~10 years); `actor=user` on authorize.
         register(
                 IntegrationProvider.LINEAR,
                 "https://linear.app/oauth/authorize",
@@ -100,9 +100,10 @@ public class OAuthProviderDirectory {
                 null,
                 null,
                 false);
-        // Microsoft (Outlook + Calendar, onda 2): tenant `common` (conta pessoal ou corporativa),
-        // refresh REAL via offline_access (access token dura ~1h) e conta externa lida do claim
-        // `email` do id_token (escopos openid+email) — o corpo do token nao traz a conta.
+        // Microsoft (Outlook + Calendar, wave 2): `common` tenant (personal or work account), REAL
+        // refresh via offline_access (the access token lasts ~1h) and external account read from
+        // the id_token `email` claim (openid+email scopes) — the token body does not carry the
+        // account.
         register(
                 IntegrationProvider.MICROSOFT,
                 "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
@@ -119,12 +120,12 @@ public class OAuthProviderDirectory {
                 true);
     }
 
-    /** Config do provedor — vazio quando as credenciais não estão no ambiente. */
+    /** Provider config — empty when the credentials are not in the environment. */
     public Optional<OAuthProviderConfig> find(IntegrationProvider provider) {
         return Optional.ofNullable(configs.get(provider));
     }
 
-    /** O provedor genérico está configurado neste ambiente? */
+    /** Is the generic provider configured in this environment? */
     public boolean configured(IntegrationProvider provider) {
         return configs.containsKey(provider);
     }

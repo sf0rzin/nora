@@ -5,17 +5,17 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-/** Acessa o principal autenticado a partir do SecurityContext. */
+/** Accesses the authenticated principal from the SecurityContext. */
 public final class CurrentUser {
 
     private CurrentUser() {}
 
     /**
-     * Exige que haja um principal autenticado. Lanca {@link AuthenticationException} (401) — NAO
-     * {@link org.springframework.security.access.AccessDeniedException} (403) — porque a falha aqui
-     * e ausencia de credenciais (cookie expirado, sem cookie), nao falta de permissao. Sem essa
-     * distincao, o front nao consegue diferenciar "preciso renovar token" de "voce nao tem acesso a
-     * este recurso".
+     * Requires an authenticated principal. Throws {@link AuthenticationException} (401) — NOT
+     * {@link org.springframework.security.access.AccessDeniedException} (403) — because the failure
+     * here is absence of credentials (expired cookie, no cookie), not lack of permission. Without
+     * that distinction, the frontend cannot tell "I need to refresh the token" apart from "you do
+     * not have access to this resource".
      */
     public static AuthenticatedPrincipal require() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -28,9 +28,9 @@ public final class CurrentUser {
     }
 
     /**
-     * Sentinel de "nao autenticado" — usada porque {@code AuthenticationException} e abstract e o
-     * {@link org.springframework.security.web.authentication.HttpStatusEntryPoint} (configurado em
-     * {@code SecurityConfig}) responde 401 para qualquer subclasse propagada do filter chain.
+     * "Not authenticated" sentinel — used because {@code AuthenticationException} is abstract and
+     * {@link org.springframework.security.web.authentication.HttpStatusEntryPoint} (configured in
+     * {@code SecurityConfig}) answers 401 for any subclass propagated from the filter chain.
      */
     public static final class MissingAuthenticationException extends AuthenticationException {
         public MissingAuthenticationException(String message) {

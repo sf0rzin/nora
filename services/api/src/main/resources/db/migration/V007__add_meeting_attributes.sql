@@ -1,12 +1,12 @@
--- V007: adiciona campo attributes (JSONB) a tabela meetings.
+-- V007: adds the attributes field (JSONB) to the meetings table.
 --
--- attributes armazena pares chave/valor arbitrarios anexados a cada reuniao
--- (ex.: department=Vendas, region=BR-SP). Esses atributos sao lidos pelo
--- PolicyEvaluator via requestContext quando uma policy declara conditions
--- StringEquals (ADR 0007), permitindo escopo fino de visibilidade Enterprise
+-- attributes stores arbitrary key/value pairs attached to each meeting
+-- (e.g.: department=Vendas, region=BR-SP). These attributes are read by the
+-- PolicyEvaluator via requestContext when a policy declares StringEquals
+-- conditions (ADR 0007), allowing fine-grained Enterprise visibility scoping
 -- (US19).
 --
--- Default vazio para rows existentes preserva o comportamento atual: meetings
--- sem attributes simplesmente nao satisfazem conditions baseadas neles.
+-- An empty default for existing rows preserves current behaviour: meetings
+-- without attributes simply do not satisfy conditions based on them.
 ALTER TABLE meetings
     ADD COLUMN attributes JSONB NOT NULL DEFAULT '{}'::jsonb;

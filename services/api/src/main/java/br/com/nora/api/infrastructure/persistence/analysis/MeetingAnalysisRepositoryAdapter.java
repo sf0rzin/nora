@@ -33,7 +33,8 @@ public class MeetingAnalysisRepositoryAdapter implements MeetingAnalysisReposito
     @Override
     @Transactional
     public MeetingAnalysis save(MeetingAnalysis analysis) {
-        // Reprocessamento idempotente: se ja existe analise para o meeting, apaga antes de salvar.
+        // Idempotent reprocessing: if an analysis already exists for the meeting, delete it before
+        // saving.
         jpa.findByMeetingIdAndTenantId(analysis.meetingId(), analysis.tenantId())
                 .ifPresent(jpa::delete);
         jpa.flush();

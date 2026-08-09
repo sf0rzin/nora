@@ -1,24 +1,24 @@
 "use client";
 
 /**
- * Botão "Atualização disponível" da sidebar — só aparece dentro do Nora Desktop
- * (shell Tauri) quando há uma versão nova assinada publicada. No navegador comum
- * (nora.systems aberto no Chrome/etc.) o componente não renderiza nada.
+ * Sidebar "Atualização disponível" button — only shows up inside Nora Desktop
+ * (Tauri shell) when a new signed version has been published. In a plain browser
+ * (nora.systems opened in Chrome/etc.) the component renders nothing.
  *
- * O Desktop carrega esta UI web remota com `withGlobalTauri` ligado e uma
- * capability escopada (capabilities/updater-remote.json) que libera SÓ o updater
- * e o restart pra origem nora.systems. Endpoints e pubkey ficam fixos no
- * tauri.conf.json do app, então conteúdo remoto não consegue apontar a
- * atualização pra outro lugar — a verificação de assinatura é a garantia.
+ * The Desktop loads this remote web UI with `withGlobalTauri` on and a scoped
+ * capability (capabilities/updater-remote.json) that releases ONLY the updater
+ * and the restart to the nora.systems origin. Endpoints and pubkey are fixed in
+ * the app's tauri.conf.json, so remote content cannot point the update
+ * somewhere else — the signature check is the guarantee.
  *
- * Fluxo: check() na montagem → se houver update, mostra o botão → ao clicar,
- * downloadAndInstall() com progresso → relaunch().
+ * Flow: check() on mount → if there is an update, show the button → on click,
+ * downloadAndInstall() with progress → relaunch().
  */
 import { useEffect, useRef, useState } from "react";
 import type { Update, DownloadEvent } from "@tauri-apps/plugin-updater";
 
-// Com withGlobalTauri o app injeta __TAURI_INTERNALS__ (o que o invoke usa).
-// É o sinal mais confiável de "estou rodando dentro do Desktop".
+// With withGlobalTauri the app injects __TAURI_INTERNALS__ (what invoke uses).
+// It is the most reliable signal of "I am running inside the Desktop".
 function isDesktop(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -47,8 +47,8 @@ export function DesktopUpdateButton() {
           setPhase("available");
         }
       } catch {
-        // Sem release/latest.json publicado ainda, offline ou assinatura inválida:
-        // mantém escondido em vez de poluir a sidebar com erro.
+        // No release/latest.json published yet, offline or invalid signature:
+        // keep it hidden instead of polluting the sidebar with an error.
         if (!cancelled) setPhase("idle");
       }
     })();

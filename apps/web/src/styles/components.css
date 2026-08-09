@@ -1,21 +1,21 @@
 /* ═══════════════════════════════════════════════════════════════════
-   NORA Core — design system de componentes (porte do protótipo v3 do
-   Claude Design, jun/2026). Tokens em tokens.css; isto são as classes
-   reutilizáveis (shell, sidebar, tipografia, botões, inputs, cards,
-   command palette, drawer mobile). DM Sans única — sem mono (handoff §1).
+   NORA Core — component design system (port of the Claude Design v3
+   prototype, jun/2026). Tokens in tokens.css; these are the reusable
+   classes (shell, sidebar, typography, buttons, inputs, cards,
+   command palette, mobile drawer). DM Sans only — no mono (handoff §1).
 
-   Escopo: classes globais consumidas pelas páginas do app logado (porte
-   do redesign). As áreas auth (.nora-auth) e landing (.nora-landing) têm
-   CSS próprio escopado de maior especificidade — não são afetadas.
+   Scope: global classes consumed by the logged-in app pages (redesign
+   port). The auth (.nora-auth) and landing (.nora-landing) areas have
+   their own scoped CSS with higher specificity — they are not affected.
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ── Shell ─────────────────────────────────────────────────── */
-/* O documento é o scroller das páginas de conteúdo (Início, Projetos, …):
-   barra de rolagem na janela, scroll por teclado (espaço/PgDn/setas) e
-   restauração de posição do navegador funcionam — antes o scroll vivia num
-   .app-main de 100dvh e a página "não scrollava" fora do wheel. Rotas que
-   travam a viewport (chat) recebem .app--viewport no AppShell e mantêm o
-   scroll interno no .app-main, como era. */
+/* The document is the scroller for the content pages (Início, Projetos, …):
+   window scrollbar, keyboard scrolling (space/PgDn/arrows) and the browser's
+   scroll position restoration all work — before, the scroll lived in a
+   100dvh .app-main and the page "did not scroll" outside the wheel. Routes
+   that lock the viewport (chat) get .app--viewport in AppShell and keep the
+   internal scroll on .app-main, as it was. */
 .app { display: flex; min-height: 100dvh; background: var(--canvas); color: var(--ink); }
 .app-main { flex: 1; min-width: 0; }
 .app--viewport { height: 100dvh; }
@@ -51,10 +51,10 @@
   font-size: 10px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--muted); padding: 0 10px; margin: 14px 0 6px;
 }
-/* mudança Stratfy: sessões coladas no título da categoria (gap menor) */
+/* Stratfy change: sessions glued to the category title (smaller gap) */
 .side-sec-label--tight { margin: 16px 0 2px; }
 
-/* Sessão da sidebar com ações (renomear/apagar) reveladas no hover/focus da linha */
+/* Sidebar session with actions (rename/delete) revealed on row hover/focus */
 .side-session-row {
   display: flex; align-items: center; border-radius: 7px;
   transition: background 120ms ease;
@@ -113,7 +113,7 @@
 }
 .icon-btn:hover { background: rgba(0, 0, 0, 0.04); }
 
-/* ── Header + drawer mobile ────────────────────────────────── */
+/* ── Header + mobile drawer ────────────────────────────────── */
 .mhead {
   display: none; align-items: center; gap: 12px; padding: 12px 16px;
   background: var(--canvas); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 40;
@@ -139,12 +139,12 @@
 .drawer.is-open { transform: translateX(0); }
 .drawer .side-link { min-height: 44px; }
 
-/* ── Tipografia de página ──────────────────────────────────── */
+/* ── Page typography ───────────────────────────────────────── */
 .h1 { font-family: var(--display); font-size: 30px; font-weight: 500; letter-spacing: -0.025em; line-height: 1.1; color: var(--ink); margin: 0; }
 .lede { font-size: 14px; color: var(--muted); margin: 0; line-height: 1.6; text-wrap: pretty; }
 .eyebrow { font-size: 13px; color: var(--muted); margin: 0 0 6px; }
 
-/* Label de seção — DM Sans (migrado do mono, handoff §1) */
+/* Section label — DM Sans (migrated off mono, handoff §1) */
 .sec-label { font-family: var(--sans); font-size: 10.5px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0; }
 
 .section { margin-bottom: 36px; }
@@ -154,7 +154,7 @@
 }
 .section-count { font-size: 11px; font-weight: 500; letter-spacing: 0.04em; color: var(--muted); }
 
-/* ── Componentes ───────────────────────────────────────────── */
+/* ── Components ────────────────────────────────────────────── */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   padding: 9px 15px; border-radius: 9px; font-size: 13px; font-weight: 500;
@@ -212,7 +212,7 @@ kbd.kbd {
   border-radius: 4px; background: var(--canvas); color: var(--muted); letter-spacing: 0.02em;
 }
 
-/* menu pop pequeno (ancorado a um botão; ex.: Exportar do detalhe) */
+/* small pop menu (anchored to a button; e.g. Exportar on the detail) */
 .menu-pop {
   position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 176px;
   background: var(--canvas); border: 1px solid var(--border); border-radius: 10px;
@@ -237,7 +237,7 @@ kbd.kbd {
 @keyframes noraPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.8); } }
 .status-dot--processing { background: var(--accent); animation: noraPulse 1.4s ease-in-out infinite; }
 
-/* logo soundwave estática (empty states sem orb) */
+/* static soundwave logo (empty states without orb) */
 .wave { display: inline-flex; align-items: center; gap: 4px; }
 .wave span { display: block; width: 4px; border-radius: 2px; background: var(--ink); }
 @keyframes noraWaveBreathe {

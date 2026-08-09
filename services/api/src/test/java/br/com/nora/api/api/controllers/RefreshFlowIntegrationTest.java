@@ -28,15 +28,15 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Cobertura end-to-end do fluxo de refresh stateful (Round 2 / Subfase 1.3 A).
+ * End-to-end coverage of the stateful refresh flow (Round 2 / Subphase 1.3 A).
  *
  * <ul>
- *   <li>Login seta cookies httpOnly {@code nora_access} (Path=/, Lax) e {@code nora_refresh}
+ *   <li>Login sets httpOnly cookies {@code nora_access} (Path=/, Lax) and {@code nora_refresh}
  *       (Path=/auth, Strict).
- *   <li>{@code POST /auth/refresh} sem cookie -> 401 REFRESH_TOKEN_INVALID.
- *   <li>{@code POST /auth/refresh} com cookie valido -> 200 com novo cookie de access.
- *   <li>{@code POST /auth/logout} revoga o refresh; refresh subsequente falha com 401.
- *   <li>Login apos logout exige credenciais novamente (revogacao real, nao client-only).
+ *   <li>{@code POST /auth/refresh} without a cookie -> 401 REFRESH_TOKEN_INVALID.
+ *   <li>{@code POST /auth/refresh} with a valid cookie -> 200 with a new access cookie.
+ *   <li>{@code POST /auth/logout} revokes the refresh; a subsequent refresh fails with 401.
+ *   <li>Login after logout requires credentials again (real revocation, not client-only).
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -56,7 +56,7 @@ class RefreshFlowIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
-        // Refresh longo o suficiente pra o teste nao racear; access continua curto.
+        // Refresh long enough that the test does not race; access stays short.
         registry.add("nora.security.refresh-token.expires-seconds", () -> 3600);
     }
 
@@ -86,7 +86,7 @@ class RefreshFlowIntegrationTest {
         assertThat(access).contains("HttpOnly").contains("SameSite=Lax").contains("Path=/");
         assertThat(refresh).contains("HttpOnly").contains("SameSite=Strict").contains("Path=/auth");
 
-        // Body mantem accessToken pra back-compat.
+        // Body keeps accessToken for back-compat.
         JsonNode body = mapper.readTree(login.getBody());
         assertThat(body.get("accessToken").asText()).isNotBlank();
         assertThat(body.get("expiresInSeconds").asLong()).isGreaterThan(0);
@@ -107,7 +107,7 @@ class RefreshFlowIntegrationTest {
         ResponseEntity<String> login = postJson("/auth/login", basicAuth(email));
         assertThat(login.getStatusCode()).isEqualTo(HttpStatus.OK);
 
-        // Desktop nao usa cookie; le refreshToken do body.
+        // Desktop does not use a cookie; it reads refreshToken from the body.
         JsonNode loginBody = mapper.readTree(login.getBody());
         String refreshToken = loginBody.get("refreshToken").asText();
         assertThat(refreshToken).isNotBlank();
@@ -122,47 +122,47 @@ class RefreshFlowIntegrationTest {
         JsonNode body = mapper.readTree(r.getBody());
         assertThat(body.get("tokenType").asText()).isEqualTo("Bearer");
         assertThat(body.get("expiresInSeconds").asLong()).isGreaterThan(0);
-        // Tambem seta novo cookie de access (back-compat com web).
+        // Also sets a new access cookie (back-compat with web).
         assertThat(findCookie(setCookieHeaders(r), "nora_access")).isPresent();
     }
 
     @Test
     void refreshRotatesAndToleratesBenignReuseWithinLeeway() throws Exception {
-        // Audit follow-up #3 + corrida benigna (PR #238): cada /auth/refresh rotaciona o
-        // cookie. Reapresentar o cookie velho LOGO APOS a rotacao (multi-aba, timer +
-        // interceptor 401) e tratado como corrida benigna dentro da janela de 60s: emite um
-        // par novo na mesma family em vez de revogar tudo e deslogar o usuario. A revogacao
-        // da family fora da janela e coberta no AuthServiceTest (clock fake) — aqui o clock
-        // e real e nao da pra esperar 60s.
+        // Audit follow-up #3 + benign race (PR #238): every /auth/refresh rotates the
+        // cookie. Re-presenting the old cookie RIGHT AFTER the rotation (multi-tab, timer +
+        // 401 interceptor) is treated as a benign race inside the 60s window: it issues a
+        // new pair in the same family instead of revoking everything and logging the user out.
+        // The family revocation outside the window is covered in AuthServiceTest (fake clock) —
+        // here the clock is real and we cannot wait 60s.
         String email = "rt@nora.dev";
         registerAndVerify(email);
         ResponseEntity<String> login = postJson("/auth/login", basicAuth(email));
         List<String> loginCookies = setCookieHeaders(login);
         String oldRefresh = extractCookieValue(loginCookies, "nora_refresh");
 
-        // Primeira chamada de refresh
+        // First refresh call
         ResponseEntity<String> r1 =
                 postWithCookies("/auth/refresh", List.of("nora_refresh=" + oldRefresh));
         assertThat(r1.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode body1 = mapper.readTree(r1.getBody());
         assertThat(body1.get("tokenType").asText()).isEqualTo("Bearer");
         assertThat(body1.get("expiresInSeconds").asLong()).isGreaterThan(0);
-        // Setou um novo cookie de access E um novo cookie de refresh (rotation).
+        // Set a new access cookie AND a new refresh cookie (rotation).
         List<String> r1Cookies = setCookieHeaders(r1);
         assertThat(findCookie(r1Cookies, "nora_access")).isPresent();
         String newRefresh = extractCookieValue(r1Cookies, "nora_refresh");
         assertThat(newRefresh).isNotBlank().isNotEqualTo(oldRefresh);
 
-        // Reapresentar o refresh velho imediatamente = corrida benigna => 200 com par novo
-        // na mesma family ("segunda aba" segue logada com cookie proprio).
+        // Re-presenting the old refresh immediately = benign race => 200 with a new pair
+        // in the same family (the "second tab" stays logged in with its own cookie).
         ResponseEntity<String> reuse =
                 postWithCookies("/auth/refresh", List.of("nora_refresh=" + oldRefresh));
         assertThat(reuse.getStatusCode()).isEqualTo(HttpStatus.OK);
         String racedRefresh = extractCookieValue(setCookieHeaders(reuse), "nora_refresh");
         assertThat(racedRefresh).isNotBlank().isNotEqualTo(oldRefresh).isNotEqualTo(newRefresh);
 
-        // Ambos os filhos (rotacao normal e corrida) continuam validos na proxima rotacao —
-        // a family NAO foi revogada.
+        // Both children (normal rotation and race) remain valid on the next rotation —
+        // the family was NOT revoked.
         ResponseEntity<String> r2 =
                 postWithCookies("/auth/refresh", List.of("nora_refresh=" + newRefresh));
         assertThat(r2.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -181,7 +181,7 @@ class RefreshFlowIntegrationTest {
         ResponseEntity<String> logout =
                 postWithCookies("/auth/logout", List.of("nora_refresh=" + refreshCookieValue));
         assertThat(logout.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
-        // Cookies de limpeza foram setados.
+        // Clearing cookies were set.
         List<String> clearCookies = setCookieHeaders(logout);
         assertThat(clearCookies).hasSize(2);
         assertThat(
@@ -199,7 +199,7 @@ class RefreshFlowIntegrationTest {
                                                         && c.contains("Max-Age=0")))
                 .isTrue();
 
-        // Tentar refresh com o token revogado deve falhar 401.
+        // Trying to refresh with the revoked token must fail 401.
         ResponseEntity<String> r =
                 postWithCookies("/auth/refresh", List.of("nora_refresh=" + refreshCookieValue));
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
@@ -230,21 +230,21 @@ class RefreshFlowIntegrationTest {
         // Logout
         postWithCookies("/auth/logout", List.of("nora_refresh=" + refreshCookieValue));
 
-        // Login novo precisa de credentials (POST sem body -> 400 validation).
+        // A new login needs credentials (POST without body -> 400 validation).
         ResponseEntity<String> badLogin = postJson("/auth/login", Map.of());
         assertThat(badLogin.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
-        // Com credentials reais funciona e produz um refresh novo (diferente do revogado).
+        // Real credentials work and produce a new refresh (different from the revoked one).
         ResponseEntity<String> ok = postJson("/auth/login", basicAuth(email));
         assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.OK);
         String newRefresh = extractCookieValue(setCookieHeaders(ok), "nora_refresh");
         assertThat(newRefresh).isNotEqualTo(refreshCookieValue);
 
-        // Refresh velho continua invalido.
+        // The old refresh remains invalid.
         ResponseEntity<String> oldRefresh =
                 postWithCookies("/auth/refresh", List.of("nora_refresh=" + refreshCookieValue));
         assertThat(oldRefresh.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        // Novo refresh funciona.
+        // The new refresh works.
         ResponseEntity<String> newRefreshResp =
                 postWithCookies("/auth/refresh", List.of("nora_refresh=" + newRefresh));
         assertThat(newRefreshResp.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -301,7 +301,7 @@ class RefreshFlowIntegrationTest {
 
     private static String extractCookieValue(List<String> setCookies, String name) {
         String raw = findCookie(setCookies, name).orElseThrow();
-        // formato: name=value; Path=...; ...
+        // format: name=value; Path=...; ...
         String afterEq = raw.substring(name.length() + 1);
         int semi = afterEq.indexOf(';');
         return semi < 0 ? afterEq : afterEq.substring(0, semi);

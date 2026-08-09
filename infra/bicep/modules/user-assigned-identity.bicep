@@ -1,11 +1,11 @@
 // User-Assigned Managed Identity
 //
-// Pre-criada antes das Container Apps pra que role assignments possam ser
-// feitos ANTES da app referenciar Key Vault. Resolve o problema circular do
-// SystemAssigned (identity só existe depois da app, role só pode ser dado
-// depois disso, app não consegue puxar KV no startup sem role).
+// Pre-created before the Container Apps so that role assignments can be
+// done BEFORE the app references Key Vault. Solves the SystemAssigned circular
+// problem (the identity only exists after the app, the role can only be granted
+// after that, and the app cannot pull the KV at startup without the role).
 //
-// Cada Container App (api, worker, web) tem sua propria UAI dedicada.
+// Each Container App (api, worker, web) has its own dedicated UAI.
 
 @description('Nome da identidade (2-128 chars).')
 @minLength(2)

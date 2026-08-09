@@ -29,43 +29,43 @@ import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Servico de aplicacao para o fluxo completo de identidade do MVP: signup, verificacao de e-mail,
- * login, reset de senha. Stories: US01-US04 do backlog.
+ * Application service for the MVP's full identity flow: signup, e-mail verification, login,
+ * password reset. Stories: US01-US04 of the backlog.
  *
- * <p>Round 2 / Subfase 1.3 A adiciona refresh token stateful + emissao de par
- * access(JWT)+refresh(opaque) no login. Ver tambem {@link RefreshToken}.
+ * <p>Round 2 / Subphase 1.3 A adds a stateful refresh token + issuance of the
+ * access(JWT)+refresh(opaque) pair on login. See also {@link RefreshToken}.
  *
- * <p>Decisao de design (US01): cada signup Core cria um tenant pessoal proprio. O usuario fica como
- * primeiro membro desse tenant. Convite a tenant existente (US06) e Enterprise e tratado em outra
- * story.
+ * <p>Design decision (US01): each Core signup creates its own personal tenant. The user becomes the
+ * first member of that tenant. Invitation to an existing tenant (US06) and Enterprise is handled in
+ * another story.
  */
 public class AuthService {
 
     private static final Logger LOG = LoggerFactory.getLogger(AuthService.class);
 
-    /** Default roles do MVP. Movido para ca pra ser reusavel pelo refresh. */
+    /** MVP default roles. Moved here so it can be reused by the refresh. */
     private static final List<String> DEFAULT_ROLES = List.of("ADMIN");
 
     /**
-     * Janela de tolerancia para reuso BENIGNO de refresh token recem-rotacionado.
+     * Tolerance window for BENIGN reuse of a freshly rotated refresh token.
      *
-     * <p>Corridas legitimas acontecem em producao: o timer proativo do web e o interceptor 401
-     * disparam dois POST /auth/refresh simultaneos com o mesmo cookie, e cada aba do navegador tem
-     * timer proprio — a segunda aba reapresenta o cookie antigo logo apos a primeira rotacionar.
-     * Sem a janela, a reuse detection revogava a family inteira e deslogava o usuario em todas as
-     * abas (bug reportado em producao).
+     * <p>Legitimate races happen in production: the web's proactive timer and the 401 interceptor
+     * fire two simultaneous POST /auth/refresh with the same cookie, and each browser tab has its
+     * own timer — the second tab re-presents the old cookie right after the first one rotates.
+     * Without the window, reuse detection revoked the whole family and logged the user out in all
+     * tabs (bug reported in production).
      *
-     * <p>Dentro da janela, e somente quando o token foi rotacionado de fato ({@code replacedById}
-     * preenchido — token revogado por logout NAO entra aqui), tratamos como corrida e emitimos um
-     * par novo na mesma family. Fora dela, a protecao real contra roubo de token permanece: family
-     * inteira revogada.
+     * <p>Inside the window, and only when the token was actually rotated ({@code replacedById}
+     * filled in — a token revoked by logout does NOT come in here), we treat it as a race and issue
+     * a new pair in the same family. Outside it, the real protection against token theft remains:
+     * whole family revoked.
      */
     private static final Duration REFRESH_REUSE_LEEWAY = Duration.ofSeconds(60);
 
     /**
-     * Teto de saltos ao seguir a cadeia de rotacao em {@link #chainStillAlive}. Dentro da janela de
-     * 60s nao ha uso legitimo que rode mais que isto; o teto existe para o caso de {@code
-     * replacedById} formar um ciclo, que nada no schema impede.
+     * Cap on hops when following the rotation chain in {@link #chainStillAlive}. Within the 60s
+     * window there is no legitimate use that runs more than this; the cap exists in case {@code
+     * replacedById} forms a cycle, which nothing in the schema prevents.
      */
     private static final int REUSE_CHAIN_MAX_HOPS = 8;
 
@@ -110,7 +110,7 @@ public class AuthService {
 
     public record SignupCommand(
             String email, String password, String displayName, String companyName, String role) {
-        /** Atalho para signup pessoal: sem workspace nomeado nem role declarada. */
+        /** Shortcut for personal signup: no named workspace and no declared role. */
         public SignupCommand(String email, String password, String displayName) {
             this(email, password, displayName, null, null);
         }
@@ -119,11 +119,11 @@ public class AuthService {
     public record SignupResult(UUID userId, UUID tenantId, String emailVerificationDevToken) {}
 
     /**
-     * US01 + US02: cria tenant pessoal, usuario nao verificado e dispara e-mail de verificacao.
+     * US01 + US02: creates personal tenant, unverified user and fires the verification e-mail.
      *
-     * <p>Para conveniencia em dev/CI, retorna o token cru no {@code emailVerificationDevToken}
-     * apenas quando {@link AuthSettings#exposeDevTokens()} e {@code true}. Em producao esse campo
-     * vem null.
+     * <p>For convenience in dev/CI, returns the raw token in {@code emailVerificationDevToken} only
+     * when {@link AuthSettings#exposeDevTokens()} is {@code true}. In production that field comes
+     * back null.
      */
     @Transactional
     public SignupResult signup(SignupCommand cmd) {
@@ -155,7 +155,7 @@ public class AuthService {
                         now);
         User savedUser = userRepository.save(user);
 
-        // Primeiro usuario do tenant pessoal recem-criado vira o Root automaticamente (ADR 0007).
+        // First user of the freshly created personal tenant automatically becomes Root (ADR 0007).
         userRepository.markAsRoot(savedUser.id(), savedUser.tenantId());
 
         GeneratedToken token = tokenGenerator.generate();
@@ -176,8 +176,8 @@ public class AuthService {
         Map<String, Object> auditPayload = new HashMap<>();
         auditPayload.put("email", email.value());
         auditPayload.put("flow", "signup-personal");
-        // Telemetria de onboarding (#156): intenção de uso declarada no signup. Persistida no
-        // audit log (sem PII) para segmentar workspaces por individual/team/company no funil PLG.
+        // Onboarding telemetry (#156): usage intent declared at signup. Persisted in the audit
+        // log (no PII) to segment workspaces by individual/team/company in the PLG funnel.
         auditPayload.put(
                 "role",
                 (cmd.role() == null || cmd.role().isBlank())
@@ -209,7 +209,7 @@ public class AuthService {
             suffix++;
             candidate = base + "-" + suffix;
             if (suffix > 50) {
-                // Garantia anti-loop. A chance pratica de chegar aqui e ~zero.
+                // Anti-loop guard. The practical chance of getting here is ~zero.
                 candidate = base + "-" + UUID.randomUUID().toString().substring(0, 8);
                 break;
             }
@@ -224,7 +224,7 @@ public class AuthService {
                 now);
     }
 
-    // ----- US02: verificacao de e-mail -----
+    // ----- US02: e-mail verification -----
 
     @Transactional
     public void verifyEmail(String rawToken) {
@@ -250,9 +250,9 @@ public class AuthService {
     public record LoginCommand(String email, String password) {}
 
     /**
-     * Resultado do login: par access(JWT)+refresh(opaque). O refresh cru ({@code
-     * refreshTokenPlain}) so existe nesta resposta e no cookie httpOnly que o controller seta. O
-     * hash do refresh fica em {@code refresh_tokens}.
+     * Login result: access(JWT)+refresh(opaque) pair. The raw refresh ({@code refreshTokenPlain})
+     * only exists in this response and in the httpOnly cookie the controller sets. The refresh hash
+     * lives in {@code refresh_tokens}.
      */
     public record LoginResult(
             User user,
@@ -262,10 +262,10 @@ public class AuthService {
             long refreshExpiresInSeconds) {}
 
     /**
-     * US03: valida credenciais e emite par access + refresh.
+     * US03: validates credentials and issues an access + refresh pair.
      *
-     * <p>O access token e um JWT HS256 (curta vida, 15min default) com claims minimas. O refresh e
-     * um opaque token de alta entropia (256 bits), persistido como hash SHA-256.
+     * <p>The access token is an HS256 JWT (short lived, 15min default) with minimal claims. The
+     * refresh is a high-entropy opaque token (256 bits), persisted as a SHA-256 hash.
      */
     @Transactional
     public LoginResult login(LoginCommand cmd) {
@@ -286,7 +286,7 @@ public class AuthService {
         switch (user.status()) {
             case DISABLED -> throw new AuthException.UserDisabled();
             case ACTIVE, INVITED -> {
-                /* segue */
+                /* continue */
             }
         }
         if (!user.isEmailVerified()) {
@@ -304,8 +304,8 @@ public class AuthService {
     }
 
     /**
-     * Emite par access+refresh para um usuario ja autenticado (chamado por login interno e tambem
-     * pelo aceite de convite, que ja validou credenciais propriamente).
+     * Issues an access+refresh pair for an already authenticated user (called by internal login and
+     * also by the invite acceptance, which has already validated credentials properly).
      */
     @Transactional
     public LoginResult issueTokens(User user) {
@@ -328,11 +328,12 @@ public class AuthService {
                 settings.refreshTokenTtl().toSeconds());
     }
 
-    // ----- Round 2 / 1.3 A: refresh + logout (com rotation + reuse detection) -----
+    // ----- Round 2 / 1.3 A: refresh + logout (with rotation + reuse detection) -----
 
     /**
-     * Resultado de refresh: novo par access+refresh. O refresh anterior foi revogado nesta mesma
-     * transacao; cliente deve atualizar o cookie httpOnly com {@code refreshTokenPlain} retornado.
+     * Refresh result: new access+refresh pair. The previous refresh was revoked in this same
+     * transaction; the client must update the httpOnly cookie with the returned {@code
+     * refreshTokenPlain}.
      */
     public record RefreshResult(
             User user,
@@ -342,19 +343,19 @@ public class AuthService {
             long refreshExpiresInSeconds) {}
 
     /**
-     * Refresh com rotacao + reuse detection (audit follow-up #3 / OAuth2 best practice).
+     * Refresh with rotation + reuse detection (audit follow-up #3 / OAuth2 best practice).
      *
-     * <p>Caminho feliz: valida o token apresentado, revoga ele, emite um filho na mesma family,
-     * retorna o novo refresh raw pro cliente.
+     * <p>Happy path: validates the presented token, revokes it, issues a child in the same family,
+     * returns the new raw refresh to the client.
      *
-     * <p>Corrida benigna: token revogado por rotacao ({@code replacedById} preenchido) e usado ha
-     * menos de {@link #REFRESH_REUSE_LEEWAY} — timer proativo + interceptor 401 na mesma aba, ou
-     * outra aba reapresentando o cookie antigo. Emitimos um par novo na MESMA family, sem revogar
-     * nada.
+     * <p>Benign race: token revoked by rotation ({@code replacedById} filled in) and used less than
+     * {@link #REFRESH_REUSE_LEEWAY} ago — proactive timer + 401 interceptor in the same tab, or
+     * another tab re-presenting the old cookie. We issue a new pair in the SAME family, without
+     * revoking anything.
      *
-     * <p>Reuse detection: se o token apresentado ja esta revogado (e ainda dentro do TTL) fora da
-     * janela acima, assumimos cadeia comprometida (atacante exfiltrou o cookie e usou um token
-     * velho). Revogamos a family inteira e logamos WARN.
+     * <p>Reuse detection: if the presented token is already revoked (and still within the TTL)
+     * outside the window above, we assume a compromised chain (attacker exfiltrated the cookie and
+     * used an old token). We revoke the whole family and log WARN.
      */
     @Transactional
     public RefreshResult refresh(String refreshTokenPlain) {
@@ -370,9 +371,9 @@ public class AuthService {
 
         if (token.isRevoked() && !token.isExpired(now)) {
             if (!isBenignReuse(token, now)) {
-                // Reuse de token revogado e ainda nao expirado, fora da janela de corrida:
-                // cadeia comprometida. Revoga toda a family pra deslogar atacante + vitima
-                // simultaneamente.
+                // Reuse of a revoked and not yet expired token, outside the race window:
+                // compromised chain. Revokes the whole family to log out attacker + victim
+                // simultaneously.
                 int revoked = refreshTokenRepository.revokeAllByFamilyId(token.familyId(), now);
                 LOG.warn(
                         "Refresh token reuse detected family={} userId={} tokensRevoked={}",
@@ -381,10 +382,10 @@ public class AuthService {
                         revoked);
                 throw new AuthException.RefreshTokenInvalid();
             }
-            // Corrida benigna (multi-aba / timer + interceptor): emite par novo na mesma family
-            // sem revogar nada. O pai fica intocado de proposito — lastUsedAt continua ancorado
-            // no PRIMEIRO uso, entao a janela nao se estende a cada reuso (um atacante nao
-            // consegue manter o token velho vivo reapresentando-o a cada <60s).
+            // Benign race (multi-tab / timer + interceptor): issues a new pair in the same family
+            // without revoking anything. The parent is left untouched on purpose — lastUsedAt
+            // stays anchored to the FIRST use, so the window does not extend on each reuse (an
+            // attacker cannot keep the old token alive by re-presenting it every <60s).
             User user = loadActiveUser(token);
             LOG.info(
                     "Refresh reuse benigno dentro da janela family={} userId={}",
@@ -397,7 +398,7 @@ public class AuthService {
         }
         User user = loadActiveUser(token);
 
-        // Rotacao: emite filho na mesma family, marca pai como replaced_by_id, revoga pai.
+        // Rotation: issues child in the same family, marks parent as replaced_by_id, revokes it.
         GeneratedToken next = tokenGenerator.generate();
         UUID childId = UUID.randomUUID();
         RefreshToken child =
@@ -426,17 +427,17 @@ public class AuthService {
     }
 
     /**
-     * Reuso e benigno quando o token foi rotacionado de fato ({@code replacedById} preenchido), o
-     * primeiro uso ocorreu ha no maximo {@link #REFRESH_REUSE_LEEWAY} <b>e</b> o filho que o
-     * substituiu continua valendo.
+     * Reuse is benign when the token was actually rotated ({@code replacedById} filled in), the
+     * first use happened at most {@link #REFRESH_REUSE_LEEWAY} ago <b>and</b> the child that
+     * replaced it is still valid.
      *
-     * <p>A ultima condicao e o que faz logout-all, troca e reset de senha valerem de verdade. Essas
-     * operacoes revogam apenas os tokens ainda NAO revogados ({@code revoked_at is null}), entao o
-     * pai — ja revogado pela propria rotacao — sobrevive intacto, com {@code replacedById}
-     * preenchido e o {@code lastUsedAt} antigo. Sem checar o filho, reapresentar esse pai dentro da
-     * janela de 60s emitia um par novo e ativo: a sessao que o usuario acabara de encerrar voltava
-     * a existir. Se o filho esta revogado, a cadeia inteira foi encerrada e nao ha corrida benigna
-     * possivel — e reuse.
+     * <p>The last condition is what makes logout-all, password change and password reset really
+     * hold. Those operations revoke only the tokens still NOT revoked ({@code revoked_at is null}),
+     * so the parent — already revoked by the rotation itself — survives intact, with {@code
+     * replacedById} filled in and the old {@code lastUsedAt}. Without checking the child,
+     * re-presenting that parent within the 60s window issued a new and active pair: the session the
+     * user had just ended came back into existence. If the child is revoked, the whole chain was
+     * terminated and there is no possible benign race — it is reuse.
      */
     private boolean isBenignReuse(RefreshToken token, Instant now) {
         if (token.replacedById() == null
@@ -448,18 +449,20 @@ public class AuthService {
     }
 
     /**
-     * Anda para a frente na cadeia de rotacao a partir de {@code childId} e diz se ela termina num
-     * token vivo.
+     * Walks forward along the rotation chain starting from {@code childId} and says whether it ends
+     * in a live token.
      *
-     * <p>Olhar UM salto so nao chega. Um filho revogado significa duas coisas diferentes: ou a
-     * cadeia foi encerrada (logout, troca de senha) ou ele proprio ja rodou de novo -- que e o caso
-     * normal de varias abas. Com tres abas a atualizar quase juntas, o filho da primeira ja foi
-     * substituido quando a segunda reapresenta o pai; tratar isso como comprometimento revogava a
-     * family inteira e deslogava o usuario no meio de um uso legitimo.
+     * <p>Looking at ONE hop only is not enough. A revoked child means two different things: either
+     * the chain was terminated (logout, password change) or it has itself already rotated again --
+     * which is the normal multi-tab case. With three tabs refreshing almost together, the first
+     * one's child has already been replaced when the second re-presents the parent; treating that
+     * as a compromise revoked the whole family and logged the user out in the middle of a
+     * legitimate use.
      *
-     * <p>A distincao esta no {@code replacedById}: revogado COM substituto = rotacionado, segue em
-     * frente; revogado SEM substituto = ponta morta, foi revogacao explicita. O teto de saltos
-     * existe porque {@code replacedById} vem do banco e nao ha nada no schema que impeca um ciclo.
+     * <p>The distinction is in {@code replacedById}: revoked WITH a replacement = rotated, keep
+     * going; revoked WITHOUT a replacement = dead end, it was an explicit revocation. The hop cap
+     * exists because {@code replacedById} comes from the database and there is nothing in the
+     * schema that prevents a cycle.
      */
     private boolean chainStillAlive(UUID childId, int hopsLeft) {
         if (hopsLeft <= 0) {
@@ -473,27 +476,27 @@ public class AuthService {
                                 return true;
                             }
                             if (child.replacedById() == null) {
-                                return false; // revogado e nunca substituido: cadeia encerrada
+                                return false; // revoked and never replaced: chain terminated
                             }
                             return chainStillAlive(child.replacedById(), hopsLeft - 1);
                         })
                 .orElse(false);
     }
 
-    /** Carrega o dono do token e barra usuario desativado depois do login. */
+    /** Loads the token owner and blocks a user disabled after login. */
     private User loadActiveUser(RefreshToken token) {
         User user =
                 userRepository
                         .findById(token.userId())
                         .orElseThrow(AuthException.RefreshTokenInvalid::new);
         if (user.status() == br.com.nora.api.domain.identity.UserStatus.DISABLED) {
-            // Usuario desativado depois do login: refresh nao deve renovar.
+            // User disabled after login: refresh must not renew.
             throw new AuthException.RefreshTokenInvalid();
         }
         return user;
     }
 
-    /** Emite um par access+refresh como filho de uma family existente (caminho da corrida). */
+    /** Issues an access+refresh pair as a child of an existing family (race path). */
     private RefreshResult issueChildPair(User user, UUID familyId, Instant now) {
         GeneratedToken next = tokenGenerator.generate();
         refreshTokenRepository.save(
@@ -515,8 +518,8 @@ public class AuthService {
     }
 
     /**
-     * Logout pontual: revoga apenas o refresh token usado. Idempotente — token ausente ou ja
-     * revogado e tratado como sucesso (no-op).
+     * Single logout: revokes only the refresh token used. Idempotent — a missing or already revoked
+     * token is treated as success (no-op).
      */
     @Transactional
     public void logout(String refreshTokenPlain) {
@@ -535,7 +538,7 @@ public class AuthService {
                         });
     }
 
-    /** Logout total: revoga todos os refresh tokens ativos do usuario (ex: "sair de tudo"). */
+    /** Full logout: revokes all the user's active refresh tokens (e.g. "log out everywhere"). */
     @Transactional
     public int logoutAllSessions(UUID userId) {
         if (userId == null) {
@@ -544,15 +547,15 @@ public class AuthService {
         return refreshTokenRepository.revokeAllByUserId(userId, clock.now());
     }
 
-    // ----- Configuracoes (GOAL Fase 3): conta, senha autenticada, reenvio, exclusao -----
+    // ----- Settings (GOAL Phase 3): account, authenticated password, resend, deletion -----
 
-    /** Usuario autenticado atual (aba Conta). */
+    /** Current authenticated user (Account tab). */
     @Transactional(readOnly = true)
     public User me(UUID userId) {
         return userRepository.findById(userId).orElseThrow(AuthException.InvalidCredentials::new);
     }
 
-    /** Atualiza o nome de exibicao do proprio usuario (PATCH /users/me). */
+    /** Updates the user's own display name (PATCH /users/me). */
     @Transactional
     public User updateDisplayName(UUID userId, String displayName) {
         User user =
@@ -570,9 +573,10 @@ public class AuthService {
     }
 
     /**
-     * Troca de senha AUTENTICADA (aba Seguranca; distinta do reset por e-mail do US04). Exige a
-     * senha atual, valida a nova na policy, revoga TODAS as sessoes (OWASP — sessao roubada nao
-     * sobrevive a troca) e emite um par novo para o dispositivo atual continuar logado.
+     * AUTHENTICATED password change (Security tab; distinct from the e-mail reset of US04).
+     * Requires the current password, validates the new one against the policy, revokes ALL sessions
+     * (OWASP — a stolen session does not survive the change) and issues a new pair so the current
+     * device stays logged in.
      */
     @Transactional
     public LoginResult changePassword(UUID userId, String currentPassword, String newPassword) {
@@ -597,9 +601,9 @@ public class AuthService {
     }
 
     /**
-     * Reenvia o e-mail de verificacao (tela de login, quando o login falha com EMAIL_NOT_VERIFIED).
-     * Silencioso como o reset: e-mail inexistente ou ja verificado nao e distinguivel na resposta
-     * (anti-enumeracao).
+     * Resends the verification e-mail (login screen, when login fails with EMAIL_NOT_VERIFIED).
+     * Silent like the reset: a non-existent or already verified e-mail is not distinguishable in
+     * the response (anti-enumeration).
      */
     @Transactional
     public RequestPasswordResetResult resendVerificationEmail(String rawEmail) {
@@ -615,7 +619,7 @@ public class AuthService {
         }
         User user = maybeUser.get();
         Instant now = clock.now();
-        // So o ultimo token gerado vale (mesmo padrao do reset de senha).
+        // Only the last generated token is valid (same pattern as the password reset).
         tokenRepository.invalidateActiveForUser(user.id(), Purpose.EMAIL_VERIFICATION, now);
 
         GeneratedToken token = tokenGenerator.generate();
@@ -643,9 +647,9 @@ public class AuthService {
     }
 
     /**
-     * LGPD — exclusao DEFINITIVA da conta (zona de perigo). Exige a senha atual e que o tenant seja
-     * pessoal (1 usuario): o hard-delete do tenant CASCADE purga usuario, reunioes, transcricoes
-     * (PII), analises, chat, workflows e tokens. Irreversivel por design.
+     * LGPD — DEFINITIVE account deletion (danger zone). Requires the current password and that the
+     * tenant be personal (1 user): the tenant hard-delete CASCADE purges user, meetings,
+     * transcripts (PII), analyses, chat, workflows and tokens. Irreversible by design.
      */
     @Transactional
     public void deleteAccount(UUID userId, UUID tenantId, String password) {
@@ -660,21 +664,22 @@ public class AuthService {
         if (userRepository.countByTenant(tenantId) != 1) {
             throw new AuthException.AccountNotPersonal();
         }
-        // Sem audit persistido: a trilha pertence ao tenant e sera purgada junto (esquecimento
-        // total e o objetivo). Fica so o log operacional com ids, sem PII.
+        // No persisted audit: the trail belongs to the tenant and will be purged along with it
+        // (total forgetting is the goal). Only the operational log with ids remains, no PII.
         LOG.info("LGPD account deletion userId={} tenantId={}", userId, tenantId);
         tenantRepository.hardDelete(tenantId);
     }
 
-    // ----- US04: reset de senha -----
+    // ----- US04: password reset -----
 
     public record RequestPasswordResetCommand(String email) {}
 
     public record RequestPasswordResetResult(String devToken) {}
 
     /**
-     * US04 step 1: gera token de reset e dispara e-mail. Por seguranca, e-mails nao cadastrados
-     * sofrem o mesmo fluxo silenciosamente (mesma latencia, sem revelar existencia da conta).
+     * US04 step 1: generates the reset token and fires the e-mail. For security, unregistered
+     * e-mails go through the same flow silently (same latency, without revealing the account's
+     * existence).
      */
     @Transactional
     public RequestPasswordResetResult requestPasswordReset(RequestPasswordResetCommand cmd) {
@@ -686,13 +691,13 @@ public class AuthService {
         }
         var maybeUser = userRepository.findByEmail(email);
         if (maybeUser.isEmpty()) {
-            // Resposta indistinguivel para nao vazar quais e-mails existem no sistema.
+            // Indistinguishable response so as not to leak which e-mails exist in the system.
             return new RequestPasswordResetResult(null);
         }
         User user = maybeUser.get();
         Instant now = clock.now();
 
-        // Invalida tokens anteriores: so o ultimo gerado vale.
+        // Invalidates previous tokens: only the last generated one is valid.
         tokenRepository.invalidateActiveForUser(user.id(), Purpose.PASSWORD_RESET, now);
 
         GeneratedToken token = tokenGenerator.generate();
@@ -725,12 +730,12 @@ public class AuthService {
     public record ConfirmPasswordResetCommand(String token, String newPassword) {}
 
     /**
-     * US04 step 2: troca senha + invalida tokens ativos + revoga TODAS as sessoes ativas (refresh
-     * tokens) do usuario.
+     * US04 step 2: changes the password + invalidates active tokens + revokes ALL of the user's
+     * active sessions (refresh tokens).
      *
-     * <p>Revogar refresh tokens em reset e essencial: se um atacante roubou um refresh
-     * anteriormente e a vitima esta resetando a senha por suspeita, manter a sessao do atacante
-     * ativa por 30 dias (refresh TTL) anularia o efeito da reset. Padrao OWASP.
+     * <p>Revoking refresh tokens on reset is essential: if an attacker stole a refresh earlier and
+     * the victim is resetting the password out of suspicion, keeping the attacker's session active
+     * for 30 days (refresh TTL) would nullify the effect of the reset. OWASP standard.
      */
     @Transactional
     public void confirmPasswordReset(ConfirmPasswordResetCommand cmd) {
@@ -743,8 +748,8 @@ public class AuthService {
         Instant now = clock.now();
         user.changePasswordHash(passwordHasher.hash(cmd.newPassword()), now);
         userRepository.save(user);
-        // Revoga todos os refresh tokens ativos: invalida sessoes em qualquer device
-        // (vide docstring acima).
+        // Revokes all active refresh tokens: invalidates sessions on any device
+        // (see docstring above).
         int revokedSessions = refreshTokenRepository.revokeAllByUserId(user.id(), now);
         audit.record(
                 user.tenantId(),
@@ -775,7 +780,7 @@ public class AuthService {
         return token;
     }
 
-    /** Configuracoes injetaveis. Mantidas como record para nao acoplar a Spring no servico. */
+    /** Injectable settings. Kept as a record so as not to couple the service to Spring. */
     public record AuthSettings(
             String publicBaseUrl,
             Duration emailVerificationTtl,

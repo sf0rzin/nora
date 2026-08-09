@@ -4,7 +4,7 @@ import br.com.nora.api.domain.tenant.TenantContext;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Persistencia do contexto comercial do tenant (US14/US30). 1-1 com tenants. */
+/** Persistence of the tenant's commercial context (US14/US30). 1-1 with tenants. */
 public interface TenantContextRepository {
 
     TenantContext save(TenantContext context);

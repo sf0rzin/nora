@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** Ação linear_create_issue: team default vs teamKey e uma issue por action item. */
+/** linear_create_issue action: default team vs teamKey and one issue per action item. */
 class LinearCreateIssueActionTest {
 
     private final IntegrationService integrations = mock(IntegrationService.class);
@@ -80,7 +80,7 @@ class LinearCreateIssueActionTest {
         assertThat(linear.issues).isEmpty();
     }
 
-    /** Captura chamadas GraphQL em memória (substitui as chamadas HTTP reais ao Linear). */
+    /** Captures GraphQL calls in memory (replaces the real HTTP calls to Linear). */
     static class RecordingLinear extends LinearClient {
         record Issue(String token, String teamId, String title, String description) {}
 

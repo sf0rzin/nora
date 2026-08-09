@@ -18,10 +18,11 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
- * Configuracao base de seguranca.
+ * Base security configuration.
  *
- * <p>Politica padrao: tudo autenticado, exceto endpoints publicos. Filtro JWT instalado pelas
- * stories US01-US04: para cada request com header Authorization Bearer, popula o SecurityContext.
+ * <p>Default policy: everything authenticated, except public endpoints. JWT filter installed by
+ * stories US01-US04: for every request with an Authorization Bearer header, populates the
+ * SecurityContext.
  */
 @Configuration
 public class SecurityConfig {
@@ -48,22 +49,22 @@ public class SecurityConfig {
         "/auth/signup",
         "/auth/verify-email",
         "/auth/login",
-        // Round 2 / Subfase 1.3 A: refresh nao tem JWT valido quando chega (esse e o ponto);
-        // logout e idempotente — sem token = no-op em vez de 401.
+        // Round 2 / Subphase 1.3 A: refresh has no valid JWT when it arrives (that is the point);
+        // logout is idempotent — no token = no-op instead of 401.
         "/auth/refresh",
         "/auth/logout",
         "/auth/password/reset/request",
         "/auth/password/reset/confirm",
-        // GOAL Fase 3: reenvio de verificacao e para quem NAO consegue logar (EMAIL_NOT_VERIFIED)
-        // — publico por design, com rate limit por e-mail + resposta anti-enumeracao.
+        // GOAL Phase 3: verification resend is for those who CANNOT log in (EMAIL_NOT_VERIFIED)
+        // — public by design, with per-email rate limit + anti-enumeration response.
         "/auth/verify-email/resend",
-        // US06: aceite de convite usa o token como credencial — endpoint publico por design.
+        // US06: invitation acceptance uses the token as the credential — public endpoint by design.
         "/iam/invites/*/accept",
-        // NORA Flows Fase 2: callback OAuth chega por redirect do provedor (sem JWT garantido);
-        // o state assinado (HMAC, tenant/usuario embutidos, exp 10min) e a credencial.
+        // NORA Flows Phase 2: the OAuth callback arrives by provider redirect (no guaranteed JWT);
+        // the signed state (HMAC, tenant/user embedded, exp 10min) is the credential.
         "/integrations/*/oauth/callback",
-        // JWKS publico (RFC 7517): validators externos buscam aqui a chave publica RSA.
-        // Ativo so quando algorithm=RS256 (bean condicional); em HS256 retorna 404 natural.
+        // Public JWKS (RFC 7517): external validators fetch the RSA public key here.
+        // Active only when algorithm=RS256 (conditional bean); on HS256 it naturally returns 404.
         "/.well-known/jwks.json",
         "/v3/api-docs/**",
         "/swagger-ui/**",
@@ -108,9 +109,9 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        // OWASP 2023+ recomenda strength >= 12 para BCrypt. Default da SpringSec e 10.
-        // Strength 12 ~ 250ms por hash em hw moderno; aceitavel para login esporadico
-        // mas defesa real contra password cracking offline em caso de dump do DB.
+        // OWASP 2023+ recommends strength >= 12 for BCrypt. SpringSec's default is 10.
+        // Strength 12 ~ 250ms per hash on modern hw; acceptable for occasional login
+        // but real defense against offline password cracking in case of a DB dump.
         return new BCryptPasswordEncoder(12);
     }
 }

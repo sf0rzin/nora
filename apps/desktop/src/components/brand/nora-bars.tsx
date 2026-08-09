@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-// Same heights as NoraLogo — single source of truth pro soundwave da marca.
+// Same heights as NoraLogo — single source of truth for the brand soundwave.
 const HEIGHTS = [0.42, 0.78, 1.0, 0.66, 0.52];
 const BAR_W = 3;
 const BAR_GAP = 2.5;
@@ -20,10 +20,10 @@ interface Props {
 }
 
 /**
- * Stand-alone NORA soundwave — 5 bars com altura assimétrica fixa.
- * Usado no header da overlay, no dock e em qualquer lugar que precise da
- * marca sem o texto "NORA". O componente NoraLogo continua sendo o pacote
- * completo (bars + texto), mas internamente compartilha as mesmas heights.
+ * Stand-alone NORA soundwave — 5 bars with fixed asymmetric height.
+ * Used in the overlay header, in the dock and anywhere that needs the
+ * brand without the "NORA" text. The NoraLogo component is still the full
+ * package (bars + text), but internally shares the same heights.
  */
 export function NoraBars({
   size = 16,

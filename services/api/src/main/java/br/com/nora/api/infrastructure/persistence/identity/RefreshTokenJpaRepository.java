@@ -13,7 +13,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface RefreshTokenJpaRepository extends JpaRepository<RefreshTokenJpaEntity, UUID> {
 
-    /** Pessimistic write porque o caller atualiza {@code last_used_at} ou {@code revoked_at}. */
+    /** Pessimistic write because the caller updates {@code last_used_at} or {@code revoked_at}. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<RefreshTokenJpaEntity> findByTokenHash(String tokenHash);
 

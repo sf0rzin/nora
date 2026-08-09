@@ -10,10 +10,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
- * Chamadas à GraphQL API do Linear usadas pela ação {@code linear_create_issue} do Flows. Sem SDK —
- * queries mínimas e visíveis. O Linear responde HTTP 200 mesmo com erro GraphQL ({@code errors[]})
- * — aqui isso vira {@code ProviderError} com a primeira mensagem (≤300 chars); falha de transporte
- * segue o padrão status + corpo dos demais clients da onda 1.
+ * Calls to Linear's GraphQL API used by the Flows {@code linear_create_issue} action. No SDK —
+ * minimal, visible queries. Linear answers HTTP 200 even on a GraphQL error ({@code errors[]}) —
+ * here that becomes a {@code ProviderError} with the first message (≤300 chars); a transport
+ * failure follows the status + body pattern of the other wave 1 clients.
  */
 @Component
 public class LinearClient {
@@ -29,7 +29,7 @@ public class LinearClient {
         this.mapper = mapper;
     }
 
-    /** Id do primeiro team do workspace (default quando a ação não recebe {@code teamKey}). */
+    /** Id of the workspace's first team (default when the action gets no {@code teamKey}). */
     public String firstTeamId(String accessToken) {
         JsonNode data =
                 graphql(accessToken, "query { teams(first: 1) { nodes { id } } }", Map.of());
@@ -41,7 +41,7 @@ public class LinearClient {
         return node.asText();
     }
 
-    /** Resolve o id do team pela key (ex.: {@code ENG}). */
+    /** Resolves the team id by key (e.g. {@code ENG}). */
     public String teamIdByKey(String accessToken, String teamKey) {
         JsonNode data =
                 graphql(
@@ -57,7 +57,7 @@ public class LinearClient {
         return node.asText();
     }
 
-    /** Cria uma issue no team. Retorna a URL da issue criada. */
+    /** Creates an issue in the team. Returns the URL of the created issue. */
     public String createIssue(String accessToken, String teamId, String title, String description) {
         JsonNode data =
                 graphql(
@@ -78,7 +78,7 @@ public class LinearClient {
         return issueCreate.path("issue").path("url").asText("(issue criada)");
     }
 
-    /** POST GraphQL com Bearer token; devolve {@code data} ou lança {@code ProviderError}. */
+    /** GraphQL POST with Bearer token; returns {@code data} or throws {@code ProviderError}. */
     private JsonNode graphql(String accessToken, String query, Map<String, Object> variables) {
         try {
             String response =

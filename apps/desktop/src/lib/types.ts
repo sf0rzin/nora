@@ -15,8 +15,8 @@ export interface LoginResponse {
 }
 
 /**
- * Response shape de POST /auth/refresh. Mesmos campos de auth do LoginResponse,
- * sem a parte de user (refresh não muda a identidade da sessão).
+ * Response shape of POST /auth/refresh. Same auth fields as LoginResponse,
+ * without the user part (refresh doesn't change the session identity).
  */
 export interface RefreshResponse {
   accessToken: string;
@@ -93,8 +93,8 @@ export interface MeetingAnalysis {
 export interface Decision {
   id: string;
   text: string;
-  /** Opcional: nem todo backend/versão preenche. O guard `confidence !== undefined`
-   *  em meeting-detail só faz sentido com o tipo honesto. Auditoria #69. */
+  /** Optional: not every backend/version fills it. The `confidence !== undefined`
+   *  guard in meeting-detail only makes sense with an honest type. Audit #69. */
   confidence?: number;
 }
 

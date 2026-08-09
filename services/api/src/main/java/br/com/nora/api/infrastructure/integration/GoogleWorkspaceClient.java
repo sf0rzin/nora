@@ -15,9 +15,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * Chamadas às APIs Google Workspace usadas pelas ações do Flows: Gmail (enviar e-mail como o
- * usuário conectado) e Calendar (criar evento no calendário primário). Sem SDK — payloads mínimos e
- * visíveis. Falha vira {@code ProviderError} com o status (o engine registra no log da execução).
+ * Calls to the Google Workspace APIs used by the Flows actions: Gmail (send e-mail as the connected
+ * user) and Calendar (create an event in the primary calendar). No SDK — minimal, visible payloads.
+ * A failure becomes {@code ProviderError} with the status (the engine records it in the execution
+ * log).
  */
 @Component
 public class GoogleWorkspaceClient {
@@ -28,8 +29,8 @@ public class GoogleWorkspaceClient {
             "https://www.googleapis.com/calendar/v3/calendars/primary/events";
     private static final Duration TIMEOUT = Duration.ofSeconds(15);
 
-    // RFC3339 exige segundos; OffsetDateTime.toString() os omite quando zerados
-    // (ex.: "2026-06-13T10:00-03:00") e o Calendar responde 400.
+    // RFC3339 requires seconds; OffsetDateTime.toString() omits them when zero
+    // (e.g. "2026-06-13T10:00-03:00") and Calendar responds 400.
     private static final DateTimeFormatter RFC3339 =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx");
 
@@ -41,7 +42,7 @@ public class GoogleWorkspaceClient {
         this.mapper = mapper;
     }
 
-    /** Envia e-mail pela conta conectada. Retorna o id da mensagem no Gmail. */
+    /** Sends e-mail through the connected account. Returns the message id in Gmail. */
     public String sendGmail(String accessToken, String to, String subject, String htmlBody) {
         String raw = base64Url(buildMime(to, subject, htmlBody));
         try {
@@ -61,7 +62,7 @@ public class GoogleWorkspaceClient {
         }
     }
 
-    /** Cria evento no calendário primário. Retorna o link do evento (htmlLink). */
+    /** Creates an event in the primary calendar. Returns the event link (htmlLink). */
     public String createCalendarEvent(
             String accessToken,
             String title,
@@ -96,8 +97,8 @@ public class GoogleWorkspaceClient {
     }
 
     /**
-     * MIME RFC 2822 mínimo com HTML UTF-8. Subject em RFC 2047 (B-encoding) para acentos. "From:
-     * me" — o Gmail substitui pela conta autenticada.
+     * Minimal RFC 2822 MIME with UTF-8 HTML. Subject in RFC 2047 (B-encoding) for accents. "From:
+     * me" — Gmail replaces it with the authenticated account.
      */
     static String buildMime(String to, String subject, String htmlBody) {
         String encodedSubject =

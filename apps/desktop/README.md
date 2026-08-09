@@ -1,23 +1,23 @@
 # NORA Desktop
 
-Aplicativo desktop para captura de áudio em tempo real e transcrição de reuniões.
-A transcrição roda **localmente na máquina do usuário** (Whisper embarcado); o
-backend Azure Speech continua disponível como legado durante a transição.
+Desktop application for real-time audio capture and meeting transcription.
+Transcription runs **locally on the user's machine** (embedded Whisper); the
+Azure Speech backend remains available as legacy during the transition.
 
 ## Stack
 
 - **Frontend**: React 18 + TypeScript + Tailwind CSS
 - **Backend**: Tauri 2 (Rust)
-- **STT (default)**: `whisper.cpp` in-process via crate [`whisper-rs`](https://crates.io/crates/whisper-rs) — offline, sem rede
-- **STT (legado)**: sidecar Python com Azure Speech SDK, atrás da feature `stt-azure`
-- **Build**: Vite + Tauri CLI (+ PyInstaller só pro sidecar legado)
+- **STT (default)**: `whisper.cpp` in-process via the [`whisper-rs`](https://crates.io/crates/whisper-rs) crate — offline, no network
+- **STT (legacy)**: Python sidecar with the Azure Speech SDK, behind the `stt-azure` feature
+- **Build**: Vite + Tauri CLI (+ PyInstaller only for the legacy sidecar)
 
-## Pré-requisitos
+## Prerequisites
 
-> **Novo:** o `whisper.cpp` é compilado a partir do código-fonte C++ pelo build
-> script do `whisper-rs-sys`. Isso adiciona **CMake + um compilador C++** à lista
-> de pré-requisitos nos três alvos. Python passou a ser opcional (só é necessário
-> pro sidecar Azure legado).
+> **New:** `whisper.cpp` is compiled from C++ source by the `whisper-rs-sys` build
+> script. That adds **CMake + a C++ compiler** to the list of
+> prerequisites on all three targets. Python became optional (it is only needed
+> for the legacy Azure sidecar).
 
 ### Linux
 
@@ -34,17 +34,17 @@ sudo dnf install webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel p
 
 ### Windows
 
-- [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) com o workload **"Desktop development with C++"**
-- [CMake](https://cmake.org/download/) no `PATH`
+- [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with the **"Desktop development with C++"** workload
+- [CMake](https://cmake.org/download/) on the `PATH`
 - [Node.js 20](https://nodejs.org/)
 - [Rust](https://rustup.rs/)
-- Python 3.12 — **opcional**, só pro sidecar Azure legado
+- Python 3.12 — **optional**, only for the legacy Azure sidecar
 
-> **Caminho longo (MAX_PATH):** o MSBuild que o CMake usa por baixo ainda tem
-> partes limitadas a 260 caracteres. Se o repositório estiver num diretório
-> profundo (`C:\Users\<voce>\OneDrive\Desktop\...`), o build do `whisper-rs-sys`
-> falha com `error MSB6003 ... cmTC_xxxx.tlog` / `DirectoryNotFoundException`.
-> Não é erro de código. Contorne com um target dir curto:
+> **Long path (MAX_PATH):** the MSBuild that CMake uses underneath still has
+> parts limited to 260 characters. If the repository is in a deep
+> directory (`C:\Users\<you>\OneDrive\Desktop\...`), the `whisper-rs-sys` build
+> fails with `error MSB6003 ... cmTC_xxxx.tlog` / `DirectoryNotFoundException`.
+> It is not a code error. Work around it with a short target dir:
 >
 > ```powershell
 > $env:CARGO_TARGET_DIR = "C:\nrt"
@@ -52,12 +52,12 @@ sudo dnf install webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel p
 
 ### macOS
 
-- Xcode Command Line Tools: `xcode-select --install` (traz clang++ e make)
+- Xcode Command Line Tools: `xcode-select --install` (brings clang++ and make)
 - CMake: `brew install cmake`
 - Node.js 20, Rust
-- Python 3.12 — **opcional**, só pro sidecar Azure legado
+- Python 3.12 — **optional**, only for the legacy Azure sidecar
 
-## Desenvolvimento
+## Development
 
 ```bash
 # Na raiz do monorepo
@@ -71,13 +71,13 @@ pnpm install
 pnpm tauri dev
 ```
 
-Pra iterar rápido sem esperar o modelo grande:
+To iterate quickly without waiting for the large model:
 
 ```bash
 NORA_WHISPER_MODEL=tiny pnpm tauri dev
 ```
 
-## Build de Produção
+## Production Build
 
 ```bash
 # Linux / Windows / macOS — backend local (default), sem Python
@@ -87,20 +87,21 @@ pnpm tauri build
 pnpm tauri build --target aarch64-apple-darwin
 ```
 
-Backend Azure legado (precisa do sidecar Python e do overlay de config que
-declara o `externalBin`):
+Legacy Azure backend (requires the Python sidecar and the config overlay that
+declares `externalBin`):
 
 ```bash
 cd sidecar && pip install -e ".[dev]" && python build_sidecar.py && cd ..
 pnpm tauri build -- --config src-tauri/tauri.azure.conf.json
 ```
 
-> O `tauri.conf.json` base **não** declara mais `externalBin`. Com ele no base,
-> o `tauri-build` exigia o binário PyInstaller já em *build script* — ou seja,
-> nem `cargo check` rodava sem antes empacotar Python. Como o backend local é o
-> default, o sidecar não pode ser pré-requisito de compilação.
+> The base `tauri.conf.json` no longer declares `externalBin`. With it in the base,
+> `tauri-build` required the PyInstaller binary to exist already at *build script*
+> time — meaning not even `cargo check` would run without packaging Python
+> first. Since the local backend is the default, the sidecar cannot be a compilation
+> prerequisite.
 
-## Estrutura
+## Structure
 
 ```
 apps/desktop/
@@ -138,7 +139,7 @@ apps/desktop/
     └── sidecar-windows.spec      # PyInstaller spec (Windows)
 ```
 
-## Arquitetura
+## Architecture
 
 ```
 ┌───────────────────────────────────────────────────────┐
@@ -159,145 +160,145 @@ apps/desktop/
 └───────────────────────────────────────────────────────┘
 ```
 
-### Fluxo de Dados
+### Data Flow
 
-1. **Captura**: Rust (cpal) captura áudio do microfone e do sistema
-2. **Resampling**: converte para PCM 16 kHz / 16-bit / mono
-3. **Roteamento**: um backend de STT por track (`mic` e `system`), ambos por trás do trait `SttBackend`
-4. **Transcrição**: `whisper.cpp` in-process (default) ou sidecar Azure (legado)
-5. **UI**: os dois emitem o **mesmo** evento Tauri `transcript` — o frontend não distingue
+1. **Capture**: Rust (cpal) captures audio from the microphone and from the system
+2. **Resampling**: converts to PCM 16 kHz / 16-bit / mono
+3. **Routing**: one STT backend per track (`mic` and `system`), both behind the `SttBackend` trait
+4. **Transcription**: `whisper.cpp` in-process (default) or the Azure sidecar (legacy)
+5. **UI**: both emit the **same** Tauri `transcript` event — the frontend does not distinguish them
 
 ## Speech-to-Text (STT)
 
-### Escolha do backend
+### Backend selection
 
-Resolvido em **runtime**, nesta ordem de prioridade (`src/stt.rs`):
+Resolved at **runtime**, in this priority order (`src/stt.rs`):
 
-1. env `NORA_STT_BACKEND` (só funciona lançando o app de um terminal)
-2. env injetada em build-time pelo `build.rs` (CI/release)
-3. `plugins.nora.sttBackend` no `tauri.conf.json`
+1. env `NORA_STT_BACKEND` (only works when launching the app from a terminal)
+2. env injected at build time by `build.rs` (CI/release)
+3. `plugins.nora.sttBackend` in `tauri.conf.json`
 4. default: `local`
 
-Valor desconhecido cai no default com aviso — nunca derruba o app. Pedir um
-backend que não foi compilado degrada pro que existe.
+An unknown value falls back to the default with a warning — it never takes the app down. Asking for a
+backend that was not compiled degrades to whichever one exists.
 
 ```bash
 cargo build                                          # os dois backends no binário
 cargo build --no-default-features --features stt-local   # local puro, sem Python
 ```
 
-### Atribuição de falante: POR TRACK (não há diarização online)
+### Speaker attribution: PER TRACK (there is no online diarization)
 
-Decisão de produto consciente. O Whisper **não faz diarização**, e
-WhisperX/pyannote são batch por construção — não existe versão streaming
-honesta disso. Em vez de inventar rótulos instáveis que corromperiam a
-transcrição gravada com *churn* de nome:
+A deliberate product decision. Whisper **does not do diarization**, and
+WhisperX/pyannote are batch by construction — there is no honest streaming
+version of that. Instead of inventing unstable labels that would corrupt the
+recorded transcript with name *churn*:
 
-| Track    | Quem é                     | `speakerId` emitido |
+| Track    | Who it is                  | `speakerId` emitted |
 | -------- | -------------------------- | ------------------- |
-| `mic`    | o usuário local            | `null`              |
-| `system` | participantes remotos      | `"Participantes"`   |
+| `mic`    | the local user             | `null`              |
+| `system` | remote participants        | `"Participantes"`   |
 
-O `mic` manda `null` porque o frontend já trata `track === "mic"` como "Eu"/"Você"
-antes de olhar o `speakerId`. O `system` manda um id **estável e não-vazio**
-porque `overlay.tsx` pula linhas sem id (`if (!id) continue`) — com `null` ali a
-UI de renomear falante ficaria permanentemente vazia e `participants` nunca seria
-preenchido no upload. Renomear na overlay continua funcionando normalmente.
+`mic` sends `null` because the frontend already treats `track === "mic"` as "Me"/"You"
+before looking at `speakerId`. `system` sends a **stable, non-empty** id
+because `overlay.tsx` skips lines without an id (`if (!id) continue`) — with `null` there the
+speaker-rename UI would be permanently empty and `participants` would never be
+filled in on upload. Renaming in the overlay keeps working normally.
 
-**Consequência real:** numa chamada com 3 pessoas remotas, as três aparecem
-agrupadas sob um único rótulo. Isso é uma regressão frente à diarização do Azure
-(`Guest-1`/`Guest-2`) e é intencional.
+**Real consequence:** on a call with 3 remote people, all three appear
+grouped under a single label. This is a regression compared with Azure's diarization
+(`Guest-1`/`Guest-2`) and it is intentional.
 
-### Modelo
+### Model
 
-Baixado **sob demanda no primeiro uso** para `<app_data_dir>/models/`, com
-verificação de `sha256`. Nada de modelo embarcado no instalador.
+Downloaded **on demand on first use** into `<app_data_dir>/models/`, with
+`sha256` verification. No model is embedded in the installer.
 
-| Tamanho  | Download | RAM aprox. | Observação                                    |
-| -------- | -------- | ---------- | --------------------------------------------- |
-| `tiny`   | ~78 MB   | ~0.4 GB    | só smoke test/CI; qualidade ruim em pt-BR     |
-| `base`   | ~148 MB  | ~0.6 GB    | aceitável em pt-BR, roda em CPU fraca         |
-| `small`  | ~488 MB  | ~1.2 GB    | **default** — melhor troca em pt-BR           |
-| `medium` | ~1.5 GB  | ~3 GB      | melhor qualidade; exige CPU forte ou GPU      |
+| Size     | Download | Approx. RAM | Note                                          |
+| -------- | -------- | ----------- | --------------------------------------------- |
+| `tiny`   | ~78 MB   | ~0.4 GB     | smoke test/CI only; poor quality in pt-BR     |
+| `base`   | ~148 MB  | ~0.6 GB     | acceptable in pt-BR, runs on a weak CPU       |
+| `small`  | ~488 MB  | ~1.2 GB     | **default** — best trade-off in pt-BR         |
+| `medium` | ~1.5 GB  | ~3 GB       | best quality; requires a strong CPU or a GPU  |
 
-Os dois tracks **compartilham** um único `WhisperContext` (os pesos); só o KV
-cache é por track. Sem isso o `small` custaria ~930 MB só de pesos.
+The two tracks **share** a single `WhisperContext` (the weights); only the KV
+cache is per track. Without that, `small` would cost ~930 MB in weights alone.
 
-O progresso do download vai pro evento Tauri `stt-model-progress`
-(`checking` → `downloading` → `verifying` → `ready` | `error`). O frontend ainda
-não escuta esse evento — o gancho está pronto, a UI de barra de progresso não.
+Download progress goes to the Tauri `stt-model-progress` event
+(`checking` → `downloading` → `verifying` → `ready` | `error`). The frontend does not
+listen to that event yet — the hook is ready, the progress bar UI is not.
 
-### Requisitos de máquina
+### Machine requirements
 
-- **CPU**: 4 cores é o piso realista pro `small` com dois tracks simultâneos.
-  A inferência usa metade dos cores por track (teto 4) justamente porque há dois
-  decodificando ao mesmo tempo; dar `min(4, cores)` a cada um causa
-  *oversubscribe* e piora a latência.
-- **RAM**: modelo + KV cache + o webview do Tauri.
-- **Disco**: o tamanho do modelo, uma vez, no app data dir.
-- **GPU**: Metal ligado por default no macOS. Vulkan/CUDA são opt-in explícito
-  (`--features whisper-vulkan` / `whisper-cuda`) porque exigem SDK do fabricante
-  na máquina de **build**, não só na de execução.
-- **macOS 11+**, e isto é *obrigatório*: `bundle.macOS.minimumSystemVersion` está
-  fixado em `"11.0"` no `tauri.conf.json`.
+- **CPU**: 4 cores is the realistic floor for `small` with two simultaneous tracks.
+  Inference uses half the cores per track (capped at 4) precisely because there are two
+  decoding at the same time; giving `min(4, cores)` to each causes
+  *oversubscription* and worsens latency.
+- **RAM**: model + KV cache + the Tauri webview.
+- **Disk**: the size of the model, once, in the app data dir.
+- **GPU**: Metal is on by default on macOS. Vulkan/CUDA are explicit opt-in
+  (`--features whisper-vulkan` / `whisper-cuda`) because they require the vendor SDK
+  on the **build** machine, not just the runtime one.
+- **macOS 11+**, and this is *mandatory*: `bundle.macOS.minimumSystemVersion` is
+  pinned to `"11.0"` in `tauri.conf.json`.
 
-#### Por que o piso do macOS está no `tauri.conf.json`, e não no CI
+#### Why the macOS floor lives in `tauri.conf.json`, and not in CI
 
-O `ggml` do whisper.cpp usa `std::filesystem`, que a libc++ da Apple só expõe a
-partir do deployment target **10.15**. Com o default do Tauri (**10.13**) o clang
-aborta com `'path' is unavailable: introduced in macOS 10.15` em
-`ggml-backend-reg.cpp`, e o build script do `whisper-rs-sys` entra em pânico.
+whisper.cpp's `ggml` uses `std::filesystem`, which Apple's libc++ only exposes from
+deployment target **10.15** onward. With Tauri's default (**10.13**), clang
+aborts with `'path' is unavailable: introduced in macOS 10.15` in
+`ggml-backend-reg.cpp`, and the `whisper-rs-sys` build script panics.
 
-**Setar `MACOSX_DEPLOYMENT_TARGET` no workflow não resolve** — foi tentado no
-[#358](https://github.com/sf0rzin/nora/pull/358) e falhou. O `tauri build`
-*exporta* essa variável a partir de `bundle.macOS.minimumSystemVersion` e
-sobrescreve o que estiver no ambiente. O valor precisa estar na config do Tauri,
-que é também onde vale para build local.
+**Setting `MACOSX_DEPLOYMENT_TARGET` in the workflow does not fix it** — that was tried in
+[#358](https://github.com/sf0rzin/nora/pull/358) and failed. `tauri build`
+*exports* that variable from `bundle.macOS.minimumSystemVersion` and
+overwrites whatever is in the environment. The value has to be in the Tauri config,
+which is also where it applies for local builds.
 
-`11.0` em vez de `10.15` porque o alvo é `aarch64-apple-darwin`: Apple Silicon
-não existe antes do macOS 11, então não há compatibilidade real sendo descartada.
+`11.0` instead of `10.15` because the target is `aarch64-apple-darwin`: Apple Silicon
+does not exist before macOS 11, so no real compatibility is being discarded.
 
-> Não tente documentar isso com uma chave `"//"` dentro de `bundle.macOS`. O
-> schema do Tauri rejeita campo desconhecido ali e derruba o build com
-> `unknown field '//'` — aconteceu no
-> [#359](https://github.com/sf0rzin/nora/pull/359). É por isso que a explicação
-> vive aqui.
+> Do not try to document this with a `"//"` key inside `bundle.macOS`. The
+> Tauri schema rejects an unknown field there and takes the build down with
+> `unknown field '//'` — that happened in
+> [#359](https://github.com/sf0rzin/nora/pull/359). That is why the explanation
+> lives here.
 
-### O que muda pro usuário
+### What changes for the user
 
-| | Azure (antes) | Local (agora) |
+| | Azure (before) | Local (now) |
 | --- | --- | --- |
-| Rede | obrigatória | **não usa** |
-| `/speech/token` | a cada gravação | **não chama** |
-| Áudio sai da máquina | sim | **não** |
-| Custo por minuto | sim | zero |
-| Primeiro uso | imediato | baixa o modelo (~488 MB) |
-| Diarização | `Guest-1`/`Guest-2` | por track (ver acima) |
-| Latência | ~200-400 ms | pseudo-real-time, ~1 s por parcial |
-| `confidence` | calibrada (`NBest[0]`) | **não calibrada** (ver abaixo) |
+| Network | required | **not used** |
+| `/speech/token` | on every recording | **not called** |
+| Audio leaves the machine | yes | **no** |
+| Cost per minute | yes | zero |
+| First use | immediate | downloads the model (~488 MB) |
+| Diarization | `Guest-1`/`Guest-2` | per track (see above) |
+| Latency | ~200-400 ms | pseudo-real-time, ~1 s per partial |
+| `confidence` | calibrated (`NBest[0]`) | **not calibrated** (see below) |
 
-### Nota sobre `confidence`
+### Note on `confidence`
 
-O valor emitido é `exp(média dos ln(p) dos tokens)` — o `avg_logprob` do Whisper
-normalizado. **Não é comparável** com o `NBest[0].Confidence` do Azure, que era um
-score treinado. Uma alucinação fluente pontua **alto**, e a escala muda com o
-tamanho do modelo. Serve pra ordenar segmentos dentro da mesma sessão e do mesmo
-modelo, e só. Qualquer threshold em cima disso precisa ser recalibrado.
+The emitted value is `exp(mean of the tokens' ln(p))` — Whisper's `avg_logprob`
+normalized. It is **not comparable** with Azure's `NBest[0].Confidence`, which was a
+trained score. A fluent hallucination scores **high**, and the scale changes with the
+model size. It is good for ordering segments within the same session and the same
+model, and nothing else. Any threshold on top of it needs to be recalibrated.
 
-### Streaming: como funciona
+### Streaming: how it works
 
-O Whisper tem janela fixa de 30 s e **não tem estado incremental**. O streaming
-aqui é um loop de re-decode sobre janela deslizante com VAD por energia: a cada
-~900 ms a janela é redecodificada e sai um `partial`; quando o VAD vê ~700 ms de
-silêncio (ou a janela chega a 22 s), sai o `final` e o relógio avança.
+Whisper has a fixed 30 s window and **has no incremental state**. Streaming
+here is a re-decode loop over a sliding window with energy-based VAD: roughly every
+900 ms the window is re-decoded and a `partial` comes out; when the VAD sees ~700 ms of
+silence (or the window reaches 22 s), the `final` comes out and the clock advances.
 
-A armadilha é o **offset regredir** entre re-decodes. O contador `committed_ms` é
-monotônico e é o offset base de todo evento; os `final` passam por um clamp
-`last_final_end_ms.max(...)`. Detalhes em `src/stt_local.rs`.
+The trap is the **offset regressing** between re-decodes. The `committed_ms` counter is
+monotonic and is the base offset of every event; the `final`s go through a
+`last_final_end_ms.max(...)` clamp. Details in `src/stt_local.rs`.
 
-## Variáveis de Ambiente
+## Environment Variables
 
-Ver `.env.example` para a lista completa e comentada.
+See `.env.example` for the full, commented list.
 
 ```bash
 # URL da API NORA (default: http://localhost:8080)
@@ -308,121 +309,121 @@ NORA_STT_BACKEND=local        # local | azure
 NORA_WHISPER_MODEL=small      # tiny | base | small | medium
 ```
 
-> Um app aberto pelo Explorer/Finder **não herda env do shell**. Em produção o
-> valor efetivo vem do `tauri.conf.json` ou da env injetada em build-time.
+> An app opened from Explorer/Finder **does not inherit env from the shell**. In production the
+> effective value comes from `tauri.conf.json` or from the env injected at build time.
 
 ## CI/CD
 
-O workflow de CI builda automaticamente para todas as plataformas:
+The CI workflow builds automatically for all platforms:
 
-- Ubuntu (x86_64): `.deb` e `.AppImage`
+- Ubuntu (x86_64): `.deb` and `.AppImage`
 - Windows (x86_64): `.msi`
 - macOS (aarch64): `.dmg`
 
-Ver `.github/workflows/ci.yml` para detalhes.
+See `.github/workflows/ci.yml` for details.
 
-> **Pendência conhecida — `desktop-release.yml` ainda não foi ajustado.**
-> Compilar o `whisper.cpp` a partir do fonte muda os requisitos do CI e isso
-> **não foi validado em runner**:
+> **Known pending item — `desktop-release.yml` has not been adjusted yet.**
+> Compiling `whisper.cpp` from source changes the CI requirements and that
+> **has not been validated on a runner**:
 >
-> - O `timeout-minutes: 60` atual pode não bastar num *cache miss* frio: o build
->   C++ do ggml/whisper entra no caminho crítico dos dois runners.
-> - A matriz hoje é só `windows-latest` + `ubuntu-latest` — **não há runner
->   macOS**, então o caminho Metal nunca é exercitado pelo CI.
-> - Os passos de `setup-python` / `build_sidecar.py` viraram opcionais pro bundle
->   default, mas continuam no workflow.
-> - O `swatinem/rust-cache` cacheia o `target/`, o que inclui os artefatos C++ —
->   mas a chave invalida a cada mudança de `Cargo.lock`.
+> - The current `timeout-minutes: 60` may not be enough on a cold *cache miss*: the
+>   ggml/whisper C++ build lands on the critical path of both runners.
+> - The matrix today is only `windows-latest` + `ubuntu-latest` — **there is no macOS
+>   runner**, so the Metal path is never exercised by CI.
+> - The `setup-python` / `build_sidecar.py` steps became optional for the default
+>   bundle, but they are still in the workflow.
+> - `swatinem/rust-cache` caches `target/`, which includes the C++ artifacts —
+>   but the key is invalidated on every `Cargo.lock` change.
 
 ## Troubleshooting
 
-### Linux: Erro de áudio
+### Linux: Audio error
 
-Verifique se o PulseAudio está rodando:
+Check that PulseAudio is running:
 ```bash
 pactl info
 ```
 
-### macOS: Captura de áudio do sistema
+### macOS: System audio capture
 
-A captura do áudio do sistema (vozes de outros participantes em chamadas) atualmente requer
-o driver virtual **BlackHole**:
+Capturing system audio (the voices of other participants on calls) currently requires
+the **BlackHole** virtual driver:
 
-1. Instale o BlackHole 2ch: https://existential.audio/blackhole/
-2. Em **Audio MIDI Setup → Multi-Output Device**, crie um device combinando seus alto-falantes
-   e o BlackHole 2ch para continuar ouvindo o áudio enquanto o NORA captura.
-3. Selecione esse Multi-Output Device como saída do sistema durante a reunião.
-4. Na primeira execução, o macOS pedirá permissão de **Microphone** e (futuro) **Screen Recording**
-   em *Privacy & Security*. Aprove ambas.
+1. Install BlackHole 2ch: https://existential.audio/blackhole/
+2. In **Audio MIDI Setup → Multi-Output Device**, create a device combining your speakers
+   and BlackHole 2ch so you keep hearing the audio while NORA captures it.
+3. Select that Multi-Output Device as the system output during the meeting.
+4. On the first run, macOS will ask for **Microphone** and (in the future) **Screen Recording**
+   permission in *Privacy & Security*. Approve both.
 
-> **Roadmap (Issue #15):** suporte nativo via ScreenCaptureKit em macOS 13+ (sem driver virtual)
-> está planejado. As entitlements (`NSScreenCaptureUsageDescription`) e a detecção de versão
-> já estão no código; apenas a integração com a crate `screencapturekit` falta — requer
-> validação em hardware Apple.
+> **Roadmap (Issue #15):** native support via ScreenCaptureKit on macOS 13+ (no virtual driver)
+> is planned. The entitlements (`NSScreenCaptureUsageDescription`) and version detection
+> are already in the code; only the integration with the `screencapturekit` crate is missing — it requires
+> validation on Apple hardware.
 
-### Windows: `error MSB6003` / `DirectoryNotFoundException` ao compilar whisper.cpp
+### Windows: `error MSB6003` / `DirectoryNotFoundException` when compiling whisper.cpp
 
-Limite de 260 caracteres do MSBuild, não erro de código. Use um target dir curto:
+MSBuild's 260-character limit, not a code error. Use a short target dir:
 
 ```powershell
 $env:CARGO_TARGET_DIR = "C:\nrt"
 ```
 
-### Download do modelo falha ou trava
+### Model download fails or hangs
 
-O modelo vem do HuggingFace. Numa rede que bloqueia HF, aponte um mirror
-(o checksum continua sendo verificado):
+The model comes from HuggingFace. On a network that blocks HF, point at a mirror
+(the checksum is still verified):
 
 ```bash
 NORA_WHISPER_MODEL_BASE_URL=https://mirror.interno/whisper.cpp
 ```
 
-Para usar um arquivo local (pula download **e** checksum):
+To use a local file (skips the download **and** the checksum):
 
 ```bash
 NORA_WHISPER_MODEL_PATH=/caminho/ggml-small.bin
 ```
 
-Um `.bin` que falha na verificação é apagado e rebaixado do zero — não há resume.
-Cache em `<app_data_dir>/models/`; apagar essa pasta força novo download.
+A `.bin` that fails verification is deleted and re-downloaded from scratch — there is no resume.
+Cache in `<app_data_dir>/models/`; deleting that folder forces a fresh download.
 
-### Transcrição local muito lenta
+### Local transcription too slow
 
-Nesta ordem:
+In this order:
 
-1. Baixe o modelo: `NORA_WHISPER_MODEL=base` (ou `tiny` pra testar).
-2. Reduza o encoder: `NORA_WHISPER_AUDIO_CTX=768` (perde qualidade).
-3. Ajuste threads: `NORA_WHISPER_THREADS=N` — lembre que **há dois tracks**
-   decodificando ao mesmo tempo; subir demais piora.
-4. Desligue a captura de áudio do sistema se só precisa do seu microfone —
-   corta metade da carga de inferência.
+1. Downgrade the model: `NORA_WHISPER_MODEL=base` (or `tiny` for testing).
+2. Reduce the encoder: `NORA_WHISPER_AUDIO_CTX=768` (loses quality).
+3. Tune threads: `NORA_WHISPER_THREADS=N` — remember that **there are two tracks**
+   decoding at the same time; raising it too much makes things worse.
+4. Turn off system audio capture if you only need your microphone —
+   it cuts half the inference load.
 
-Se aparecer `BURACO de Nms no audio (inferencia atrasada)` no log, a máquina não
-está acompanhando o tempo real e áudio está sendo descartado.
+If `BURACO de Nms no audio (inferencia atrasada)` shows up in the log, the machine is not
+keeping up with real time and audio is being dropped.
 
-### Sidecar não encontrado
+### Sidecar not found
 
-> Só se aplica ao backend **azure** (legado). No backend local não há sidecar.
-> Se estiver vendo isso com `sttBackend: "local"`, algo forçou `NORA_STT_BACKEND=azure`.
+> Only applies to the **azure** (legacy) backend. There is no sidecar in the local backend.
+> If you are seeing this with `sttBackend: "local"`, something forced `NORA_STT_BACKEND=azure`.
 
-O sidecar deve estar em `src-tauri/binaries/` com o nome correto:
+The sidecar must be in `src-tauri/binaries/` with the correct name:
 - Linux x86_64: `nora-stt-sidecar-x86_64-unknown-linux-gnu`
 - Linux ARM64: `nora-stt-sidecar-aarch64-unknown-linux-gnu`
 - Windows x86_64: `nora-stt-sidecar-x86_64-pc-windows-msvc.exe`
 - macOS Intel: `nora-stt-sidecar-x86_64-apple-darwin`
 - macOS Apple Silicon: `nora-stt-sidecar-aarch64-apple-darwin`
 
-O `build_sidecar.py` detecta a plataforma automaticamente e gera o binário com o nome
-correto baseado em `platform.system()` + `platform.machine()`. Os specs PyInstaller
-correspondentes são `sidecar-linux.spec`, `sidecar-macos.spec` e `sidecar-windows.spec`.
+`build_sidecar.py` detects the platform automatically and generates the binary with the
+correct name based on `platform.system()` + `platform.machine()`. The corresponding
+PyInstaller specs are `sidecar-linux.spec`, `sidecar-macos.spec` and `sidecar-windows.spec`.
 
-### Build falha no Linux
+### Build fails on Linux
 
-Instale as dependências do sistema:
+Install the system dependencies:
 ```bash
 sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 ```
 
-## Licença
+## License
 
 MIT - NORA Team

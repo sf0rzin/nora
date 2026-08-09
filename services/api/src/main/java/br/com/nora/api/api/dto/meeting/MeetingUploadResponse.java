@@ -3,7 +3,7 @@ package br.com.nora.api.api.dto.meeting;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/** Resposta padrao apos upload (US07). Mapeia docs/api/examples/meeting-upload-response.json. */
+/** Standard response after upload (US07). Maps docs/api/examples/meeting-upload-response.json. */
 public record MeetingUploadResponse(
         UUID id,
         UUID tenantId,

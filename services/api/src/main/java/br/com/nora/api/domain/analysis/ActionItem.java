@@ -2,7 +2,7 @@ package br.com.nora.api.domain.analysis;
 
 import java.time.LocalDate;
 
-/** Tarefa derivada da reuniao. Status inicial e sempre OPEN. */
+/** Task derived from the meeting. Initial status is always OPEN. */
 public record ActionItem(
         String title,
         String assignee,
@@ -26,7 +26,7 @@ public record ActionItem(
         }
     }
 
-    /** Construtor de conveniencia para itens recem-extraidos pela analise (status OPEN). */
+    /** Convenience constructor for items just extracted by the analysis (status OPEN). */
     public static ActionItem fresh(
             String title,
             String assignee,

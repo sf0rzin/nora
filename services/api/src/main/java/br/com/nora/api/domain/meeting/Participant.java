@@ -1,6 +1,6 @@
 package br.com.nora.api.domain.meeting;
 
-/** Participante listado pelo usuario no upload da reuniao. */
+/** Participant listed by the user in the meeting upload. */
 public record Participant(String displayName, String email, boolean isInternal) {
 
     public Participant {

@@ -1,24 +1,24 @@
-# 0008 — Desktop App com Tauri 2 + Sidecar Python
+# 0008 — Desktop App with Tauri 2 + Python Sidecar
 
-- Status: aceito (sidecar Python substituído por ADR 0035 — Whisper embarcado no Tauri/Rust; a decisão por Tauri 2 e a captura de áudio permanecem)
-- Data: 2026-05-07
-- Decisores: NORA Team
-- Relacionado: ADR 0035 (substitui a parte do sidecar Python desta decisão)
+- Status: accepted (Python sidecar superseded by ADR 0035 — Whisper embedded in Tauri/Rust; the decision for Tauri 2 and the audio capture remain)
+- Date: 2026-05-07
+- Deciders: NORA Team
+- Related: ADR 0035 (supersedes the Python sidecar part of this decision)
 
-## Contexto
+## Context
 
-O MVP do NORA precisa capturar áudio de reuniões em tempo real no desktop dos usuários. A arquitetura deve:
+The NORA MVP needs to capture meeting audio in real time on users' desktops. The architecture must:
 
-- Funcionar em Windows, macOS e Linux
-- Capturar áudio do microfone e do sistema (loopback)
-- Transcrever em tempo real usando Azure Speech-to-Text
-- Empacotar tudo em um instalador nativo
+- Work on Windows, macOS and Linux
+- Capture audio from the microphone and from the system (loopback)
+- Transcribe in real time using Azure Speech-to-Text
+- Package everything into a native installer
 
-## Decisão
+## Decision
 
-Usar **Tauri 2** (Rust + WebView) como framework desktop, com um **sidecar Python** para o STT (Speech-to-Text).
+Use **Tauri 2** (Rust + WebView) as the desktop framework, with a **Python sidecar** for STT (Speech-to-Text).
 
-### Arquitetura
+### Architecture
 
 ```
 ┌─────────────────────────────────────────┐
@@ -35,65 +35,65 @@ Usar **Tauri 2** (Rust + WebView) como framework desktop, com um **sidecar Pytho
 └─────────────────────────────────────────┘
 ```
 
-### Componentes
+### Components
 
 1. **Frontend**: React + TypeScript + Tailwind
-2. **Backend Rust**: Tauri commands para captura de áudio e proxy HTTP
-3. **Sidecar Python**: Processo separado que roda o Azure Speech SDK
-4. **Empacotamento**: PyInstaller para o sidecar + Tauri bundler para o app
+2. **Rust backend**: Tauri commands for audio capture and HTTP proxying
+3. **Python sidecar**: separate process that runs the Azure Speech SDK
+4. **Packaging**: PyInstaller for the sidecar + Tauri bundler for the app
 
-## Consequências
+## Consequences
 
-### Positivas
+### Positive
 
-- **Tamanho reduzido**: App nativo ~5-15MB vs Electron ~150MB
-- **Performance**: Rust para captura de áudio, Python para STT
-- **Segurança**: Chaves Azure não ficam no código-fonte JS
-- **Multi-plataforma**: Windows, macOS, Linux com mesmo codebase
+- **Reduced size**: native app ~5-15MB vs Electron ~150MB
+- **Performance**: Rust for audio capture, Python for STT
+- **Security**: Azure keys are not in the JS source code
+- **Cross-platform**: Windows, macOS, Linux with the same codebase
 
-### Negativas
+### Negative
 
-- **Complexidade**: Dois runtimes (Rust + Python) para manter
-- **Sidecar**: Processo separado adiciona overhead de IPC
-- **Build**: Pipeline de build mais complexo (Rust + Python + Node)
+- **Complexity**: two runtimes (Rust + Python) to maintain
+- **Sidecar**: a separate process adds IPC overhead
+- **Build**: a more complex build pipeline (Rust + Python + Node)
 
-## Alternativas Consideradas
+## Alternatives Considered
 
 ### 1. Electron + Node.js
 
-- **Prós**: Ecossistema maduro, mais simples
-- **Contras**: Tamanho grande, performance inferior, segurança fraca
-- **Veredicto**: Descartado por tamanho e performance
+- **Pros**: mature ecosystem, simpler
+- **Cons**: large size, inferior performance, weak security
+- **Verdict**: discarded because of size and performance
 
 ### 2. Flutter Desktop
 
-- **Prós**: UI consistente, bom desempenho
-- **Contras**: Curva de aprendizado, ecossistema menor para desktop
-- **Veredicto**: Descartado por não termos expertise no time
+- **Pros**: consistent UI, good performance
+- **Cons**: learning curve, smaller ecosystem for desktop
+- **Verdict**: discarded because we have no expertise on the team
 
-### 3. Tauri + Rust puro (sem sidecar)
+### 3. Tauri + pure Rust (no sidecar)
 
-- **Prós**: Um runtime só, mais simples
-- **Contras**: Azure Speech SDK não tem crate Rust oficial madura
-- **Veredicto**: Descartado por falta de SDK Rust oficial
+- **Pros**: a single runtime, simpler
+- **Cons**: the Azure Speech SDK has no mature official Rust crate
+- **Verdict**: discarded due to the lack of an official Rust SDK
 
 ### 4. Tauri + WASM
 
-- **Prós**: Sem sidecar, tudo no processo principal
-- **Contras**: Azure Speech SDK não suporta WASM
-- **Veredicto**: Descartado por incompatibilidade técnica
+- **Pros**: no sidecar, everything in the main process
+- **Cons**: the Azure Speech SDK does not support WASM
+- **Verdict**: discarded due to technical incompatibility
 
-## Notas de Implementação
+## Implementation Notes
 
-### Sidecar Python
+### Python Sidecar
 
-- Usa `azure-cognitiveservices-speech` (SDK oficial Microsoft)
-- Comunicação via stdin/stdout com protocolo NDJSON (JSON Lines)
-- Empacotado com PyInstaller para binário standalone
-- Binário incluído no bundle Tauri via `externalBin`
-- **Entry point**: `nora_stt_sidecar_main.py` é um wrapper de 1 linha que delega para `nora_stt_sidecar.__main__:main()`
+- Uses `azure-cognitiveservices-speech` (official Microsoft SDK)
+- Communication via stdin/stdout with the NDJSON protocol (JSON Lines)
+- Packaged with PyInstaller into a standalone binary
+- Binary included in the Tauri bundle via `externalBin`
+- **Entry point**: `nora_stt_sidecar_main.py` is a 1-line wrapper that delegates to `nora_stt_sidecar.__main__:main()`
 
-### Captura de Áudio
+### Audio Capture
 
 - **Linux**: `cpal` + `parecord` (PulseAudio/PipeWire monitor)
 - **Windows**: `cpal` + WASAPI loopback
@@ -101,22 +101,22 @@ Usar **Tauri 2** (Rust + WebView) como framework desktop, com um **sidecar Pytho
 
 ### CI/CD
 
-- GitHub Actions com matrix: Ubuntu, Windows, macOS
-- Build do sidecar antes do build Tauri
-- Upload de artifacts para cada plataforma
-- **pytest** do sidecar roda no job desktop antes do build
+- GitHub Actions with a matrix: Ubuntu, Windows, macOS
+- Sidecar build before the Tauri build
+- Artifact upload for each platform
+- The sidecar's **pytest** runs in the desktop job before the build
 
-## Nota sobre Escopo do MVP
+## Note on MVP Scope
 
-O Desktop foi antecipado em relação ao boundary original do MVP (que previa apenas Web + Backend + Worker). A decisão de incluir o Desktop no Sprint 1+2 foi tomada para:
+The Desktop was brought forward relative to the original MVP boundary (which foresaw only Web + Backend + Worker). The decision to include the Desktop in Sprint 1+2 was taken in order to:
 
-1. **Diferenciação competitiva**: Captura em tempo real é um diferencial chave vs concorrentes
-2. **Validação técnica**: Provar que a arquitetura sidecar funciona end-to-end
-3. **Demo FIAP**: Ter uma demonstração visual forte para o Challenge
+1. **Competitive differentiation**: real-time capture is a key differentiator vs competitors
+2. **Technical validation**: prove that the sidecar architecture works end-to-end
+3. **FIAP demo**: have a strong visual demonstration for the Challenge
 
-O Desktop continua sendo **pós-MVP** em termos de maturidade (SSO, áudio/vídeo upload, MCPs completos), mas a fundação técnica foi estabelecida antecipadamente.
+The Desktop remains **post-MVP** in terms of maturity (SSO, audio/video upload, complete MCPs), but the technical foundation was established ahead of time.
 
-## Referências
+## References
 
 - [Tauri Documentation](https://tauri.app/)
 - [Azure Speech SDK Python](https://docs.microsoft.com/azure/cognitive-services/speech-service/)

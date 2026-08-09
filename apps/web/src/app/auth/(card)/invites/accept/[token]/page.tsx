@@ -1,20 +1,20 @@
 'use client';
 
 /**
- * Pagina publica de aceite de convite (US06, ADR 0011).
+ * Public invite acceptance page (US06, ADR 0011).
  *
- * Fluxo:
- *  1. Usuario clica em link enviado por e-mail: /auth/invites/accept/{token}
- *  2. Form pede displayName (opcional) + senha + confirmacao.
- *  3. POST /iam/invites/{token}/accept — backend cria user e devolve LoginResponse.
- *  4. Frontend persiste sessao via setSession() e redireciona para /dashboard.
+ * Flow:
+ *  1. User clicks a link sent by e-mail: /auth/invites/accept/{token}
+ *  2. Form asks for displayName (optional) + password + confirmation.
+ *  3. POST /iam/invites/{token}/accept — backend creates the user and returns LoginResponse.
+ *  4. Frontend persists the session via setSession() and redirects to /dashboard.
  *
- * Notas:
- *  - O `token` na URL e a credencial. Nunca logamos, mostramos ou expomos
- *    fora do payload de aceite.
- *  - Validacao client-side espelha PasswordPolicy.java (min 10, max 128,
- *    >=1 letra, >=1 digito). Backend e fonte da verdade.
- *  - Mensagens de erro sao mapeadas por status HTTP (404/409/410/422/403).
+ * Notes:
+ *  - The `token` in the URL is the credential. We never log, show or expose it
+ *    outside the accept payload.
+ *  - Client-side validation mirrors PasswordPolicy.java (min 10, max 128,
+ *    >=1 letter, >=1 digit). Backend is the source of truth.
+ *  - Error messages are mapped by HTTP status (404/409/410/422/403).
  */
 
 import { useParams, useRouter } from 'next/navigation';

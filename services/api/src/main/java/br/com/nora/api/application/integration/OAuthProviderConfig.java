@@ -4,29 +4,31 @@ import br.com.nora.api.domain.integration.IntegrationProvider;
 import java.util.Map;
 
 /**
- * Configuração declarativa de um provedor OAuth 2.0 code-flow padrão (onda 1: GitHub, Notion,
- * Todoist, Linear; onda 2: Microsoft). Adicionar um provedor novo = declarar este record no {@link
- * OAuthProviderDirectory} — o {@code GenericOAuthHttpClient} e o {@code IntegrationService} cobrem
- * o resto (authorize URL, troca do code, refresh opcional, persistência cifrada).
+ * Declarative configuration of a standard OAuth 2.0 code-flow provider (wave 1: GitHub, Notion,
+ * Todoist, Linear; wave 2: Microsoft). Adding a new provider = declaring this record in {@link
+ * OAuthProviderDirectory} — {@code GenericOAuthHttpClient} and {@code IntegrationService} cover the
+ * rest (authorize URL, code exchange, optional refresh, encrypted persistence).
  *
- * <p>Google e Slack NÃO passam por aqui: Google tem client dedicado histórico e Slack tem o
- * envelope {@code ok/error} próprio — ambos mantêm seus clients dedicados (ADR 0031).
+ * <p>Google and Slack do NOT go through here: Google has a historical dedicated client and Slack
+ * has its own {@code ok/error} envelope — both keep their dedicated clients (ADR 0031).
  *
- * @param scopes lista de escopos no formato do provedor; vazio quando os acessos vêm das
- *     capabilities do app (Notion)
- * @param tokenAuthStyle como o token endpoint autentica o app (credenciais no corpo ou HTTP Basic)
- * @param tokenRequestFormat formato do corpo do POST no token endpoint (form-urlencoded ou JSON)
- * @param extraAuthorizeParams parâmetros extras fixos da URL de autorização (ex.: {@code
- *     owner=user} no Notion, {@code actor=user} no Linear)
- * @param accountJsonPointer JSON Pointer no corpo da resposta do token com o nome da conta externa
- *     exibida no hub (ex.: {@code /workspace_name} no Notion); nulo = sem conta identificável
- * @param accountIdTokenClaim claim do {@code id_token} (JWT OIDC) com a conta externa quando ela
- *     não vem no corpo da resposta (ex.: {@code email} no Microsoft); exige escopos {@code openid
- *     email}; nulo = não usa id_token
- * @param supportsRefresh o provedor emite refresh token (ex.: Microsoft com {@code
- *     offline_access})? Quando true, o {@code IntegrationService} renova o access token expirado
- *     com a mesma semântica do Google (skew de 60s + rotation persistida); quando false, token
- *     expirado orienta reconexão
+ * @param scopes scope list in the provider's format; empty when access comes from the app's
+ *     capabilities (Notion)
+ * @param tokenAuthStyle how the token endpoint authenticates the app (credentials in the body or
+ *     HTTP Basic)
+ * @param tokenRequestFormat format of the POST body at the token endpoint (form-urlencoded or JSON)
+ * @param extraAuthorizeParams fixed extra parameters of the authorization URL (e.g. {@code
+ *     owner=user} on Notion, {@code actor=user} on Linear)
+ * @param accountJsonPointer JSON Pointer into the token response body holding the name of the
+ *     external account shown in the hub (e.g. {@code /workspace_name} on Notion); null = no
+ *     identifiable account
+ * @param accountIdTokenClaim claim of the {@code id_token} (OIDC JWT) holding the external account
+ *     when it does not come in the response body (e.g. {@code email} on Microsoft); requires the
+ *     {@code openid email} scopes; null = does not use id_token
+ * @param supportsRefresh does the provider issue a refresh token (e.g. Microsoft with {@code
+ *     offline_access})? When true, {@code IntegrationService} renews the expired access token with
+ *     the same semantics as Google (60s skew + persisted rotation); when false, an expired token
+ *     tells the user to reconnect
  */
 public record OAuthProviderConfig(
         IntegrationProvider provider,
@@ -43,15 +45,15 @@ public record OAuthProviderConfig(
         String accountIdTokenClaim,
         boolean supportsRefresh) {
 
-    /** Autenticação do app no token endpoint. */
+    /** How the app authenticates at the token endpoint. */
     public enum TokenAuthStyle {
-        /** client_id/client_secret no corpo da requisição (GitHub, Todoist, Linear, Microsoft). */
+        /** client_id/client_secret in the request body (GitHub, Todoist, Linear, Microsoft). */
         CLIENT_SECRET_BODY,
-        /** HTTP Basic com {@code base64(clientId:clientSecret)} (Notion). */
+        /** HTTP Basic with {@code base64(clientId:clientSecret)} (Notion). */
         HTTP_BASIC
     }
 
-    /** Formato do corpo do POST no token endpoint. */
+    /** Format of the POST body at the token endpoint. */
     public enum TokenRequestFormat {
         /** application/x-www-form-urlencoded (GitHub, Todoist, Linear, Microsoft). */
         FORM,

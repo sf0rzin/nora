@@ -17,12 +17,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Persiste o Customer Confidence emitido pelo worker (ADR 0015): resolve a conta de cliente
- * (get-or-create por nome, dedup case-insensitive), vincula reuniao&lt;-&gt;conta, calcula o trend
- * server-side (backend autoritativo) e grava a avaliacao + sinais + objecoes.
+ * Persists the Customer Confidence emitted by the worker (ADR 0015): resolves the customer account
+ * (get-or-create by name, case-insensitive dedup), links meeting&lt;-&gt;account, computes the
+ * trend server-side (backend is authoritative) and writes the assessment + signals + objections.
  *
- * <p>Sempre escopado por {@code tenantId} (ADR 0002). Reunioes internas (sem {@code accountName})
- * sao no-op: nenhuma conta criada.
+ * <p>Always scoped by {@code tenantId} (ADR 0002). Internal meetings (without {@code accountName})
+ * are a no-op: no account created.
  */
 @Service
 public class CustomerConfidenceService {
@@ -30,8 +30,8 @@ public class CustomerConfidenceService {
     private static final Logger LOG = LoggerFactory.getLogger(CustomerConfidenceService.class);
 
     /**
-     * Banda morta do trend: variacoes de score dentro de +/- {@value} pontos sao consideradas
-     * estaveis (STABLE), evitando ruido de pequenas oscilacoes entre reunioes.
+     * Trend dead band: score variations within +/- {@value} points are considered stable (STABLE),
+     * avoiding noise from small oscillations between meetings.
      */
     private static final int TREND_STABLE_BAND = 5;
 
@@ -49,17 +49,17 @@ public class CustomerConfidenceService {
     }
 
     /**
-     * Persiste o carrier do worker. No-op quando {@code accountName} e null/blank (reuniao
-     * interna). Caso contrario: get-or-create da conta, link idempotente reuniao&lt;-&gt;conta,
-     * trend recalculado e avaliacao gravada.
+     * Persists the worker carrier. No-op when {@code accountName} is null/blank (internal meeting).
+     * Otherwise: get-or-create of the account, idempotent meeting&lt;-&gt;account link, recomputed
+     * trend and assessment written.
      *
-     * @return a avaliacao persistida, ou vazio quando foi no-op
+     * @return the persisted assessment, or empty when it was a no-op
      */
     @Transactional
     public Optional<CustomerConfidenceAssessment> persist(
             UUID tenantId, UUID meetingId, CustomerConfidenceCarrier carrier) {
         if (carrier == null || carrier.accountName() == null || carrier.accountName().isBlank()) {
-            // Reuniao interna: o worker nao identificou cliente. Nenhuma conta/avaliacao criada.
+            // Internal meeting: worker did not identify a customer. No account/assessment created.
             return Optional.empty();
         }
 
@@ -90,7 +90,7 @@ public class CustomerConfidenceService {
         return Optional.of(saved);
     }
 
-    /** Recupera as avaliacoes da reuniao (no maximo uma por conta). Escopado por tenant. */
+    /** Retrieves the meeting assessments (at most one per account). Scoped by tenant. */
     @Transactional(readOnly = true)
     public List<CustomerConfidenceAssessment> findByMeetingId(UUID meetingId, UUID tenantId) {
         meetings.findByIdAndTenant(meetingId, tenantId).orElseThrow(MeetingException.NotFound::new);
@@ -98,9 +98,9 @@ public class CustomerConfidenceService {
     }
 
     /**
-     * View de leitura para o detalhe da reuniao: cada avaliacao ja com o nome da conta resolvido (o
-     * agregado de dominio so guarda {@code customerAccountId}). Mantem a resolucao do nome na
-     * camada de aplicacao, deixando o controller fino. Escopado por tenant.
+     * Read view for the meeting detail: each assessment already with the account name resolved (the
+     * domain aggregate only holds {@code customerAccountId}). Keeps the name resolution in the
+     * application layer, leaving the controller thin. Scoped by tenant.
      */
     @Transactional(readOnly = true)
     public List<ConfidenceView> findViewByMeetingId(UUID meetingId, UUID tenantId) {
@@ -117,7 +117,7 @@ public class CustomerConfidenceService {
                 .toList();
     }
 
-    /** Avaliacao + nome da conta resolvido, para projecao na API. */
+    /** Assessment + resolved account name, for projection in the API. */
     public record ConfidenceView(CustomerConfidenceAssessment assessment, String accountName) {}
 
     private CustomerAccount getOrCreateAccount(UUID tenantId, String name) {
@@ -126,8 +126,9 @@ public class CustomerConfidenceService {
     }
 
     /**
-     * Trend autoritativo do backend: compara o score novo com o da ultima reuniao anterior da mesma
-     * conta. Sem historico (primeira reuniao da conta) =&gt; null. O palpite do worker e ignorado.
+     * Backend-authoritative trend: compares the new score with the one from the last previous
+     * meeting of the same account. No history (first meeting of the account) =&gt; null. The
+     * worker's guess is ignored.
      */
     private ConfidenceTrend computeTrend(
             UUID tenantId, UUID meetingId, UUID accountId, int newScore) {

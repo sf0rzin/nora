@@ -6,7 +6,7 @@ import { checkAccess } from "@/lib/access";
 import { getOperator } from "@/lib/operator";
 import "./globals.css";
 
-// Tipografia única DM Sans (decisão de design do Core, 2026-06-09): nenhuma fonte mono no console.
+// Single typeface DM Sans (Core design decision, 2026-06-09): no mono font in the console.
 const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 
 export const metadata: Metadata = {
@@ -16,10 +16,10 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // Tier 2 (ADR 0025): valida o JWT do Cloudflare Access antes de renderizar qualquer página.
-  // /healthz é route handler (não passa por layout) — segue livre pro probe do Container App.
+  // Tier 2 (ADR 0025): validates the Cloudflare Access JWT before rendering any page.
+  // /healthz is a route handler (does not go through layout) — stays free for the Container App probe.
   const access = await checkAccess();
-  // Server-side: identidade do operador (Cloudflare Access em prod, fake em dev).
+  // Server-side: operator identity (Cloudflare Access in prod, fake in dev).
   const operator = await getOperator();
   return (
     <html lang="pt-BR" className={dmSans.variable}>

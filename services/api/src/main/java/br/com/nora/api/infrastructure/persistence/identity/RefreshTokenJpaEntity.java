@@ -7,7 +7,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
-/** Mapeamento JPA da tabela {@code refresh_tokens} (V011). */
+/** JPA mapping of the {@code refresh_tokens} table (V011). */
 @Entity
 @Table(name = "refresh_tokens")
 public class RefreshTokenJpaEntity {

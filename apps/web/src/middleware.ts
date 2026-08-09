@@ -14,17 +14,17 @@ const PROTECTED_PREFIXES = [
 const AUTH_PREFIXES = ['/auth'];
 
 /**
- * Middleware roda server-side e pode ler cookies httpOnly. Round 2 / 1.3 A
- * trocou `nora_token` (legivel pelo JS, vulneravel a XSS) por `nora_access`
- * (httpOnly). Mesma logica de protecao de rotas; so a fonte do token mudou.
+ * The middleware runs server-side and can read httpOnly cookies. Round 2 / 1.3 A
+ * swapped `nora_token` (JS-readable, vulnerable to XSS) for `nora_access`
+ * (httpOnly). Same route protection logic; only the token source changed.
  */
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get('nora_access')?.value;
 
-  // Landing publica: visitantes podem ver, mas usuarios logados
-  // sao redirecionados direto pro dashboard (evita fricao de re-entrar
-  // pela home pra chegar no produto).
+  // Public landing: visitors can see it, but logged-in users
+  // are redirected straight to the dashboard (avoids the friction of going back
+  // in through the home page to reach the product).
   if (pathname === '/' && token) {
     const url = req.nextUrl.clone();
     url.pathname = '/dashboard';
@@ -39,10 +39,10 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Usuario logado abrindo /auth/* -> redireciona pro dashboard.
-  // Excecoes: paginas com token na URL que precisam abrir mesmo com sessao
-  // ativa (ex: convidado pode ter sessao de outro tenant e estar aceitando
-  // um convite via link de e-mail).
+  // Logged-in user opening /auth/* -> redirects to the dashboard.
+  // Exceptions: pages with a token in the URL that must open even with an active
+  // session (e.g. an invitee may have a session from another tenant and be accepting
+  // an invite via an e-mail link).
   const isAuthPage = AUTH_PREFIXES.some((p) => pathname.startsWith(p));
   if (
     isAuthPage &&

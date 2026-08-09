@@ -1,8 +1,8 @@
-"""Stub deterministico do analisador em tempo real (live).
+"""Deterministic stub of the real-time (live) analyzer.
 
-Permite desenvolver a overlay sem custo de LLM. Aplica heuristicas simples
-para extrair decisoes, proximos passos, observacoes e tarefas de trechos
-parciais de reuniao.
+Allows developing the overlay without LLM cost. Applies simple heuristics
+to extract decisions, next steps, observations and tasks from partial
+meeting chunks.
 """
 
 from __future__ import annotations

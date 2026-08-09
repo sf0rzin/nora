@@ -49,10 +49,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Gatilhos extras do NORA Flows (Fase 4 do GOAL): uma análise COMPLETED com action items e riscos
- * emite, além do evento-âncora, {@code action_item.created} (um por item) e {@code
- * meeting.risk_detected} (só severidade ALTA). Cada gatilho casa apenas os workflows do seu tipo;
- * as execuções e os e-mails comprovam o roteamento.
+ * Extra NORA Flows triggers (GOAL Phase 4): a COMPLETED analysis with action items and risks emits,
+ * on top of the anchor event, {@code action_item.created} (one per item) and {@code
+ * meeting.risk_detected} (HIGH severity only). Each trigger matches only the workflows of its own
+ * type; the executions and the e-mails prove the routing.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -89,7 +89,7 @@ class TriggerEventsIntegrationTest {
     void analiseDisparaGatilhosDeActionItemERiscoAlto() throws Exception {
         String token = signupAndLogin("triggers@nora.dev", "SenhaForte123", "Triggers");
 
-        // Workflow por gatilho: action_item.created e meeting.risk_detected.
+        // One workflow per trigger: action_item.created and meeting.risk_detected.
         String actionWorkflowId =
                 createWorkflow(
                         token,
@@ -103,11 +103,11 @@ class TriggerEventsIntegrationTest {
                         triggerDefinition("meeting.risk_detected", "risk-dest@nora.dev"),
                         "meeting.risk_detected");
 
-        // Análise stub: 2 action items + 1 risco HIGH + 1 risco MEDIUM (não dispara).
+        // Stub analysis: 2 action items + 1 HIGH risk + 1 MEDIUM risk (does not fire).
         String meetingId = uploadMeeting(token, "Renovação Acme");
         runAnalysis(meetingId, token);
 
-        // action_item.created: uma execução POR item (2 itens no stub).
+        // action_item.created: one execution PER item (2 items in the stub).
         List<JsonNode> actionExecutions = awaitExecutions(actionWorkflowId, token, 2);
         assertThat(actionExecutions).hasSize(2);
         for (JsonNode execution : actionExecutions) {
@@ -117,9 +117,10 @@ class TriggerEventsIntegrationTest {
                     .contains("E-mail enviado para action-dest@nora.dev");
         }
 
-        // meeting.risk_detected: SÓ o risco HIGH dispara — exatamente uma execução.
+        // meeting.risk_detected: ONLY the HIGH risk fires — exactly one execution.
         List<JsonNode> riskExecutions = awaitExecutions(riskWorkflowId, token, 1);
-        // Janela extra: se o risco MEDIUM tivesse emitido evento, a execução já teria aparecido.
+        // Extra window: if the MEDIUM risk had emitted an event, the execution would already have
+        // shown up.
         Thread.sleep(750);
         riskExecutions = awaitExecutions(riskWorkflowId, token, 1);
         assertThat(riskExecutions).hasSize(1);
@@ -127,7 +128,7 @@ class TriggerEventsIntegrationTest {
         assertThat(riskExecutions.get(0).get("eventType").asText())
                 .isEqualTo("meeting.risk_detected");
 
-        // E-mails reais capturados: 2 do gatilho de action item + 1 do risco.
+        // Real e-mails captured: 2 from the action item trigger + 1 from the risk.
         assertThat(EMAILS.workflowEmails).hasSize(3);
         assertThat(
                         EMAILS.workflowEmails.stream()
@@ -145,7 +146,7 @@ class TriggerEventsIntegrationTest {
     void gatilhosExtrasNaoDisparamWorkflowDeOutroTipo() throws Exception {
         String token = signupAndLogin("triggers-iso@nora.dev", "SenhaForte123", "Iso");
 
-        // Workflow do gatilho-âncora: dispara UMA vez, não uma por action item/risco.
+        // Anchor-trigger workflow: fires ONCE, not once per action item/risk.
         String anchorWorkflowId =
                 createWorkflow(
                         token,
@@ -232,9 +233,9 @@ class TriggerEventsIntegrationTest {
     }
 
     /**
-     * Roda a análise SÍNCRONA (auto-dispatch desligado no profile de teste). Os eventos pós-análise
-     * → listeners async → engine continuam assíncronos de verdade — por isso o {@link
-     * #awaitExecutions} polla.
+     * Runs the analysis SYNCHRONOUSLY (auto-dispatch turned off in the test profile). The
+     * post-analysis events → async listeners → engine are still genuinely asynchronous — that is
+     * why {@link #awaitExecutions} polls.
      */
     private void runAnalysis(String meetingId, String token) throws Exception {
         JsonNode detail = authGet("/meetings/" + meetingId, token).read(HttpStatus.OK);
@@ -323,7 +324,7 @@ class TriggerEventsIntegrationTest {
         }
     }
 
-    /** Captura e-mails de workflow em memória — prova o envio real sem rede. */
+    /** Captures workflow e-mails in memory — proves the real send without network. */
     static class RecordingEmailSender implements EmailSender {
         record Sent(String to, String subject, String html) {}
 
@@ -358,7 +359,7 @@ class TriggerEventsIntegrationTest {
             return EMAILS;
         }
 
-        /** Stub determinista: 2 action items + risco HIGH (dispara) + risco MEDIUM (não). */
+        /** Deterministic stub: 2 action items + HIGH risk (fires) + MEDIUM risk (does not). */
         @Bean
         @Primary
         NlpWorkerClient stubWorker() {

@@ -52,13 +52,13 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Fluxo end-to-end do Customer Confidence (ADR 0015): upload -> analise stub que emite o bloco
- * customerConfidence -> conta auto-criada (dedup por nome) -> assessment persistido -> trend
- * recalculado server-side na 2a reuniao -> GET /meetings/{id} retorna customerConfidence. Cobre
- * tambem reuniao interna (sem accountName) => sem conta e campo null na resposta.
+ * End-to-end Customer Confidence flow (ADR 0015): upload -> stub analysis that emits the
+ * customerConfidence block -> auto-created account (dedup by name) -> persisted assessment -> trend
+ * recomputed server-side on the 2nd meeting -> GET /meetings/{id} returns customerConfidence. Also
+ * covers an internal meeting (no accountName) => no account and a null field in the response.
  *
- * <p>O worker e stubado por um bean @Primary (mesmo padrao do ProductivityFlowIntegrationTest); o
- * carrier de confidence emitido e controlado por {@link ConfidenceScript}.
+ * <p>The worker is stubbed by a @Primary bean (same pattern as ProductivityFlowIntegrationTest);
+ * the emitted confidence carrier is controlled by {@link ConfidenceScript}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -98,7 +98,7 @@ class CustomerConfidenceFlowIntegrationTest {
         UUID tenantId = principalTenantId(token);
         UUID meetingId = uploadMeeting(token, "Discovery Acme Corp");
 
-        // Worker emite confidence para a conta "Acme Corp" (score 70).
+        // Worker emits confidence for the "Acme Corp" account (score 70).
         script.set(carrier("Acme Corp", 70, ConfidenceBand.MEDIUM));
         analysisService.run(meetingId, tenantId);
 
@@ -108,7 +108,7 @@ class CustomerConfidenceFlowIntegrationTest {
         assertThat(cc.get("score").asInt()).isEqualTo(70);
         assertThat(cc.get("band").asText()).isEqualTo("MEDIUM");
         assertThat(cc.get("accountName").asText()).isEqualTo("Acme Corp");
-        // Primeira reuniao da conta => sem trend.
+        // First meeting for the account => no trend.
         assertThat(cc.get("trend").isNull()).isTrue();
         assertThat(cc.get("buyingSignals").size()).isEqualTo(1);
         assertThat(cc.get("buyingSignals").get(0).get("type").asText())
@@ -125,14 +125,14 @@ class CustomerConfidenceFlowIntegrationTest {
         String token = signupAndLogin("trend@nora.dev", "SenhaForte123", "Owner Trend");
         UUID tenantId = principalTenantId(token);
 
-        // 1a reuniao: conta "Globex" criada, score 50.
+        // 1st meeting: "Globex" account created, score 50.
         UUID meeting1 = uploadMeeting(token, "Call Globex #1");
         script.set(carrier("Globex", 50, ConfidenceBand.MEDIUM));
         analysisService.run(meeting1, tenantId);
         JsonNode d1 = authGet("/meetings/" + meeting1, token).read(HttpStatus.OK);
         assertThat(d1.get("customerConfidence").get("trend").isNull()).isTrue();
 
-        // 2a reuniao, mesma conta (case-insensitive "globex"), score 80 => IMPROVING.
+        // 2nd meeting, same account (case-insensitive "globex"), score 80 => IMPROVING.
         UUID meeting2 = uploadMeeting(token, "Call Globex #2");
         script.set(carrier("globex", 80, ConfidenceBand.HIGH));
         analysisService.run(meeting2, tenantId);
@@ -140,7 +140,7 @@ class CustomerConfidenceFlowIntegrationTest {
         JsonNode cc2 = d2.get("customerConfidence");
         assertThat(cc2.get("score").asInt()).isEqualTo(80);
         assertThat(cc2.get("trend").asText()).isEqualTo("IMPROVING");
-        // Dedup: nome canonico mantem o original ("Globex") da 1a criacao.
+        // Dedup: the canonical name keeps the original ("Globex") from the 1st creation.
         assertThat(cc2.get("accountName").asText()).isEqualTo("Globex");
     }
 
@@ -150,7 +150,7 @@ class CustomerConfidenceFlowIntegrationTest {
         UUID tenantId = principalTenantId(token);
         UUID meetingId = uploadMeeting(token, "Retro interna do time");
 
-        // Worker NAO emite confidence (reuniao interna).
+        // Worker does NOT emit confidence (internal meeting).
         script.set(null);
         analysisService.run(meetingId, tenantId);
 
@@ -168,7 +168,7 @@ class CustomerConfidenceFlowIntegrationTest {
         script.set(carrier("Initech", 60, ConfidenceBand.MEDIUM));
         analysisService.run(meetingA, tenantA);
 
-        // Tenant B nao enxerga a meeting de A => 404 no GET.
+        // Tenant B cannot see A's meeting => 404 on the GET.
         ResponseEntity<String> resp = authGetRaw("/meetings/" + meetingA, tokenB);
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
@@ -190,7 +190,7 @@ class CustomerConfidenceFlowIntegrationTest {
                         ObjectionSeverity.MEDIUM,
                         "Concorrente X",
                         0);
-        // trend abaixo e um palpite do worker; o backend o ignora.
+        // the trend below is a guess from the worker; the backend ignores it.
         return new CustomerConfidenceCarrier(
                 accountName,
                 score,
@@ -201,7 +201,7 @@ class CustomerConfidenceFlowIntegrationTest {
                 "rationale do stub para o customer confidence em teste integrado");
     }
 
-    /* ---------- helpers (espelham ProductivityFlowIntegrationTest) ---------- */
+    /* ---------- helpers (mirror ProductivityFlowIntegrationTest) ---------- */
 
     private UUID principalTenantId(String token) throws Exception {
         UUID meeting = uploadMeeting(token, "tmp tenant probe " + UUID.randomUUID());
@@ -300,8 +300,8 @@ class CustomerConfidenceFlowIntegrationTest {
     }
 
     /**
-     * Estado controlavel do bloco customerConfidence que o stub do worker deve emitir na proxima
-     * analise. Permite cada teste declarar o carrier (ou null para reuniao interna).
+     * Controllable state of the customerConfidence block that the worker stub should emit on the
+     * next analysis. Lets each test declare the carrier (or null for an internal meeting).
      */
     static final class ConfidenceScript {
         private final AtomicReference<CustomerConfidenceCarrier> next = new AtomicReference<>();
@@ -319,7 +319,7 @@ class CustomerConfidenceFlowIntegrationTest {
         }
     }
 
-    /** Stub determinista do worker. Emite o confidence definido por {@link ConfidenceScript}. */
+    /** Deterministic worker stub. Emits the confidence defined by {@link ConfidenceScript}. */
     @TestConfiguration
     static class StubWorkerConfig {
 

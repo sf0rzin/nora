@@ -3,20 +3,23 @@ package br.com.nora.api.infrastructure.platform;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Config do control plane (ADR 0022/0023/0024). Registrada via @ConfigurationPropertiesScan
- * (NoraApiApplication). Default {@code enabled=false} — em local/test/CI o módulo platform fica
- * inteiramente inerte (não conecta no banco de plataforma, não roda Flyway, não cria datasource).
+ * Control plane config (ADR 0022/0023/0024). Registered via @ConfigurationPropertiesScan
+ * (NoraApiApplication). Default {@code enabled=false} — in local/test/CI the platform module is
+ * entirely inert (does not connect to the platform database, does not run Flyway, does not create a
+ * datasource).
  */
 @ConfigurationProperties("nora.platform")
 public class PlatformProperties {
 
-    /** Liga o módulo platform (2º datasource, Flyway, admin/telemetria). Prod = true. */
+    /** Turns on the platform module (2nd datasource, Flyway, admin/telemetry). Prod = true. */
     private boolean enabled = false;
 
-    /** Token de serviço (worker/BFF → /internal/platform/**). */
+    /** Service token (worker/BFF → /internal/platform/**). */
     private String internalToken = "";
 
-    /** Token de admin (nora-admin → /admin/platform/**). Vazio = cai no internalToken (WARN). */
+    /**
+     * Admin token (nora-admin → /admin/platform/**). Empty = falls back to internalToken (WARN).
+     */
     private String adminToken = "";
 
     private final Datasource datasource = new Datasource();
@@ -48,7 +51,7 @@ public class PlatformProperties {
         this.adminToken = adminToken;
     }
 
-    /** Token efetivo para /admin/** — cai no internalToken se adminToken não setado. */
+    /** Effective token for /admin/** — falls back to internalToken if adminToken is not set. */
     public String adminTokenResolved() {
         return adminToken == null || adminToken.isBlank() ? internalToken : adminToken;
     }
@@ -69,7 +72,7 @@ public class PlatformProperties {
         return business;
     }
 
-    /** Conexão do banco de plataforma (PLATFORM_DATASOURCE_*). */
+    /** Platform database connection (PLATFORM_DATASOURCE_*). */
     public static class Datasource {
         private String url = "jdbc:postgresql://localhost:5433/nora_platform";
         private String username = "nora_platform";
@@ -118,7 +121,7 @@ public class PlatformProperties {
         }
     }
 
-    /** Config default de fallback SOFT do resolver (ADR 0024) — usada quando o catálogo falha. */
+    /** Default SOFT fallback config of the resolver (ADR 0024) — used when the catalog fails. */
     public static class Fallback {
         private String provider = "openai";
         private String model = "gpt-4o-mini";
@@ -150,18 +153,18 @@ public class PlatformProperties {
     }
 
     /**
-     * Fonte de saúde (Prometheus HTTP query API, ADR 0034). Vazio = telemetria health unavailable —
-     * mesma degradação que a config do App Insights tinha antes (o endpoint
-     * /admin/platform/telemetry/health continua respondendo 200).
+     * Health source (Prometheus HTTP query API, ADR 0034). Empty = health telemetry unavailable —
+     * the same degradation the App Insights config had before (the /admin/platform/telemetry/health
+     * endpoint still answers 200).
      *
-     * <p>Sem api-key: o Prometheus vive na bridge {@code internal} do compose, sem exposição
-     * pública. A autenticação do painel é o token de admin da própria API.
+     * <p>No api-key: Prometheus lives on the compose {@code internal} bridge, with no public
+     * exposure. The dashboard's authentication is the API's own admin token.
      */
     public static class Health {
-        /** Base URL do Prometheus (ex.: http://prometheus:9090). Vazio = unavailable. */
+        /** Prometheus base URL (e.g. http://prometheus:9090). Empty = unavailable. */
         private String prometheusUrl = "";
 
-        /** Janela ISO-8601 (ex.: PT1H). Traduzida para range vector do PromQL. */
+        /** ISO-8601 window (e.g. PT1H). Translated into a PromQL range vector. */
         private String window = "PT1H";
 
         public String getPrometheusUrl() {
@@ -181,7 +184,7 @@ public class PlatformProperties {
         }
     }
 
-    /** Telemetria de negócio (c) — cortável; default ligada se a plataforma estiver enabled. */
+    /** Business telemetry (c) — cuttable; on by default if the platform is enabled. */
     public static class Business {
         private boolean enabled = true;
 

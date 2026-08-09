@@ -6,7 +6,7 @@ export interface LiveHighlightItem {
   text: string;
   confidence: number;
   sourceQuote: string;
-  /** Quando o item foi detectado (carimbado ao entrar no merge). Ordena o feed. */
+  /** When the item was detected (stamped on entering the merge). Orders the feed. */
   receivedAt?: number;
 }
 
@@ -98,7 +98,7 @@ export function LiveHighlightsProvider({ children }: { children: ReactNode }) {
     attach(
       listen<LiveAnalysisTelemetry>("live-analysis-telemetry", (event) => {
         setLastLatencyMs(event.payload.latencyMs);
-        // Falha não emite "live-analysis"; a telemetria é o único sinal de fim.
+        // A failure doesn't emit "live-analysis"; telemetry is the only end signal.
         if (!event.payload.success) setIsAnalyzing(false);
       }),
     );
@@ -213,8 +213,8 @@ function isDuplicate(newText: string, existing: LiveHighlightItem[]): boolean {
 
   for (const item of existing) {
     const normOld = normalizeText(item.text);
-    // Skip vazios — `"qualquer".includes("")` é sempre true e travaria
-    // todo highlight subsequente como "duplicado".
+    // Skip empties — `"anything".includes("")` is always true and would flag
+    // every subsequent highlight as a "duplicate".
     if (!normOld) continue;
     if (normNew === normOld) return true;
     if (normNew.includes(normOld) || normOld.includes(normNew)) return true;
@@ -235,8 +235,8 @@ function hasContent(text: string | null | undefined): boolean {
 function mergeItems(existing: LiveHighlightItem[], incoming: LiveHighlightItem[]): LiveHighlightItem[] {
   const result = [...existing];
   for (const item of incoming) {
-    // Filtra antes — items sem texto não devem entrar no array, senão poluem
-    // a dedup subsequente (qualquer string include "" → tudo é "duplicado").
+    // Filter first — items with no text must not enter the array, otherwise they
+    // pollute the subsequent dedup (any string includes "" → everything is a "duplicate").
     if (!hasContent(item.text)) continue;
     if (!isDuplicate(item.text, result)) {
       result.push({ ...item, receivedAt: item.receivedAt ?? Date.now() });

@@ -17,24 +17,25 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Pareamento do Telegram (onda 2) — o Telegram NÃO tem OAuth, então a conexão prova posse de um
- * código curto: {@code start} gera o código (8 chars, TTL 10 min, um pendente por tenant) e devolve
- * o deep link {@code t.me/<bot>?start=<código>}; o usuário abre o link e manda o /start; {@code
- * verify} varre o getUpdates do bot atrás de {@code /start <código>} e, achando, persiste o {@code
- * chat_id} como conexão do tenant (cifrado como os demais tokens; sem refresh/expiração).
+ * Telegram pairing (wave 2) — Telegram has NO OAuth, so the connection proves possession of a short
+ * code: {@code start} generates the code (8 chars, TTL 10 min, one pending per tenant) and returns
+ * the deep link {@code t.me/<bot>?start=<código>}; the user opens the link and sends /start; {@code
+ * verify} sweeps the bot's getUpdates looking for {@code /start <código>} and, on a hit, persists
+ * the {@code chat_id} as the tenant's connection (encrypted like the other tokens; no
+ * refresh/expiry).
  *
- * <p>Estado em memória por design (códigos efêmeros, mesmo espírito do state HMAC): códigos
- * pendentes por tenant + /start vistos no poll (sobrevivem entre verifies — o getUpdates avança o
- * offset, então cada update só chega uma vez). Restart do app no meio do pareamento = gerar código
- * novo, fail-visible e sem migration.
+ * <p>In-memory state by design (ephemeral codes, same spirit as the HMAC state): pending codes per
+ * tenant + /start commands seen in the poll (they survive between verifies — getUpdates advances
+ * the offset, so each update only arrives once). Restarting the app mid-pairing = generate a new
+ * code, fail-visible and with no migration.
  */
 @Service
 public class TelegramPairingService {
 
-    /** Mesmo TTL do state OAuth (10 min). */
+    /** Same TTL as the OAuth state (10 min). */
     private static final long CODE_TTL_SECONDS = 600;
 
-    /** Sem 0/O/1/I/L — o usuário pode acabar digitando o código à mão. */
+    /** No 0/O/1/I/L — the user may end up typing the code by hand. */
     private static final String ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
     private static final int CODE_LENGTH = 8;
@@ -45,10 +46,10 @@ public class TelegramPairingService {
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
-    /** Código pendente por tenant (um pareamento em andamento por vez). */
+    /** Pending code per tenant (one pairing in progress at a time). */
     private final Map<UUID, PendingCode> pending = new ConcurrentHashMap<>();
 
-    /** /start vistos no getUpdates e ainda não casados (código → chat), com TTL próprio. */
+    /** /start seen in getUpdates and not yet matched (code → chat), with their own TTL. */
     private final Map<String, SeenStart> seenStarts = new ConcurrentHashMap<>();
 
     public TelegramPairingService(
@@ -62,7 +63,7 @@ public class TelegramPairingService {
         this.clock = clock;
     }
 
-    /** Gera o código do tenant e devolve o deep link do bot (getMe cacheado pelo client). */
+    /** Generates the tenant's code and returns the bot deep link (getMe cached by the client). */
     public PairingStart start(UUID tenantId, UUID userId) {
         requireConfigured();
         String code = generateCode();
@@ -73,9 +74,9 @@ public class TelegramPairingService {
     }
 
     /**
-     * Procura o {@code /start <código>} do tenant no getUpdates e conclui a conexão. Sem o /start
-     * ainda = {@code PairingPending} (o hub orienta tentar de novo); código expirado ou pareamento
-     * não iniciado = {@code ProviderError} com instrução de recomeçar.
+     * Looks for the tenant's {@code /start <código>} in getUpdates and completes the connection. No
+     * /start yet = {@code PairingPending} (the hub tells the user to try again); expired code or
+     * pairing not started = {@code ProviderError} with an instruction to start over.
      */
     @Transactional
     public ProviderStatus verify(UUID tenantId) {
@@ -121,9 +122,9 @@ public class TelegramPairingService {
     }
 
     /**
-     * Puxa o getUpdates (one-shot; offset avança no client) e guarda os /start vistos — cada update
-     * só chega UMA vez, então o cache garante que um /start observado num verify de outro tenant
-     * não se perde. Entradas velhas (> TTL) são descartadas.
+     * Pulls getUpdates (one-shot; the offset advances in the client) and stores the /start seen —
+     * each update only arrives ONCE, so the cache guarantees that a /start observed during another
+     * tenant's verify is not lost. Stale entries (> TTL) are discarded.
      */
     private void absorbUpdates(Instant now) {
         for (TelegramBotApi.StartCommand cmd : bot.pollStartCommands()) {
@@ -151,7 +152,7 @@ public class TelegramPairingService {
         }
     }
 
-    /** Resposta do start: deep link pronto pro botão "Abrir no Telegram" + código exibido. */
+    /** Start response: deep link ready for the "Abrir no Telegram" button + the code shown. */
     public record PairingStart(String deepLink, String code) {}
 
     private record PendingCode(String code, UUID userId, Instant expiresAt) {}

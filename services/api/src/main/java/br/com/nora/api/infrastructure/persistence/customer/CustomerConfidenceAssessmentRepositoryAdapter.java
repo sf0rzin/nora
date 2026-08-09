@@ -31,11 +31,11 @@ public class CustomerConfidenceAssessmentRepositoryAdapter
     @Override
     @Transactional
     public CustomerConfidenceAssessment save(CustomerConfidenceAssessment assessment) {
-        // Idempotente: substitui assessment existente do mesmo par (meeting, account). DELETE
-        // nativo
-        // para que o ON DELETE CASCADE do Postgres limpe signals/objections sem o ciclo de UPDATE
-        // SET
-        // NULL que o Hibernate tentaria via orphanRemoval+@JoinColumn unidirecional.
+        // Idempotent: replaces an existing assessment for the same (meeting, account) pair.
+        // Native DELETE
+        // so that Postgres' ON DELETE CASCADE clears signals/objections without the UPDATE SET
+        // NULL
+        // round that Hibernate would attempt via orphanRemoval + unidirectional @JoinColumn.
         jpa.deleteByMeetingAndAccountNative(
                 assessment.meetingId(), assessment.customerAccountId(), assessment.tenantId());
         jpa.flush();

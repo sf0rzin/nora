@@ -1,12 +1,12 @@
 // Azure AI Search (Basic SKU)
-// IMPORTANTE: Search service não tem pause/start — ou está provisionado (cobrando ~$0.10/h) ou destruído.
-// Estratégia NORA: módulo só é deployado quando enableSearch=true (controlado pelo main.bicep).
-// Pra apresentação FIAP 12/06: provisionar ~14 dias antes (~R$200), destruir após.
+// IMPORTANT: the Search service has no pause/start — it is either provisioned (charging ~$0.10/h) or destroyed.
+// NORA strategy: the module is only deployed when enableSearch=true (controlled by main.bicep).
+// For the FIAP presentation on 12/06: provision ~14 days before (~R$200), destroy afterwards.
 //
-// Modo de operação:
-//   - Dev: enableSearch=false, worker usa stub local
-//   - Pré-apresentação: enableSearch=true, popular índice, ajustar relevância
-//   - Pós-apresentação: enableSearch=false novamente (ou destruir RG inteiro)
+// Operating mode:
+//   - Dev: enableSearch=false, worker uses a local stub
+//   - Pre-presentation: enableSearch=true, populate the index, tune relevance
+//   - Post-presentation: enableSearch=false again (or destroy the whole RG)
 
 @description('Nome do serviço (2-60 chars, lowercase + hífen).')
 @minLength(2)

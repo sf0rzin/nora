@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * NORA Core — command palette (⌘K) com busca semântica de reuniões.
+ * NORA Core — command palette (⌘K) with semantic meeting search.
  *
- * Porte do protótipo do Claude Design (shell.js · mountPalette/renderPalette):
- * comandos fixos + resultados de reuniões via `searchMeetings(q)` (RAG real,
- * escopado ao tenant). Sem mock: a lista de reuniões vem do backend.
+ * Port of the Claude Design prototype (shell.js · mountPalette/renderPalette):
+ * fixed commands + meeting results via `searchMeetings(q)` (real RAG, scoped
+ * to the tenant). No mock: the meeting list comes from the backend.
  *
- * Atalhos de teclado (bindShortcuts) e o estado de abertura ficam no AppShell;
- * este componente só renderiza/controla o overlay quando `open` é true.
+ * Keyboard shortcuts (bindShortcuts) and the open state live in the AppShell;
+ * this component only renders/controls the overlay when `open` is true.
  */
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
@@ -107,8 +107,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const [meetings, setMeetings] = useState<MeetingHit[]>([]);
   const [sel, setSel] = useState(0);
 
-  // Foca o input ao abrir e zera a busca. Fechar não precisa limpar tudo —
-  // o reset acontece na próxima abertura.
+  // Focuses the input on open and clears the search. Closing does not need to
+  // wipe everything — the reset happens on the next open.
   useEffect(() => {
     if (!open) return;
     setQuery("");
@@ -117,8 +117,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     return () => clearTimeout(t);
   }, [open]);
 
-  // Busca semântica debounced. Query vazia → mostra reuniões recentes
-  // (searchMeetings com q vazio retorna os recentes do backend).
+  // Debounced semantic search. Empty query → shows recent meetings
+  // (searchMeetings with empty q returns the recent ones from the backend).
   useEffect(() => {
     if (!open) return;
     let alive = true;
@@ -140,13 +140,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const q = query.trim().toLowerCase();
   const cmds = COMMANDS.filter((c) => !q || c.label.toLowerCase().includes(q));
 
-  // Lista achatada na ordem visual, pra navegação por teclado.
+  // Flattened list in visual order, for keyboard navigation.
   const items: ResolvedItem[] = [
     ...cmds.map((c) => ({ href: c.href })),
     ...meetings.map((m) => ({ href: `/meetings/${m.id}` as Route })),
   ];
 
-  // Mantém a seleção dentro dos limites quando a lista muda.
+  // Keeps the selection within bounds when the list changes.
   useEffect(() => {
     setSel((s) => Math.min(Math.max(s, 0), Math.max(items.length - 1, 0)));
   }, [items.length]);

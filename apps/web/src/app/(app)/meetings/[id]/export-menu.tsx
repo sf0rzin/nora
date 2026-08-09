@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * Botão "Exportar" do detalhe da reunião (GOAL item 14).
+ * "Exportar" button on the meeting detail (GOAL item 14).
  *
- * Menu pequeno com duas saídas reais:
- *  - Markdown (.md): gera client-side via meetingToMarkdown() e baixa por
- *    Blob + <a download> — sem round-trip no servidor.
- *  - PDF: navega pra rota de impressão /meetings/{id}/relatorio, onde o
- *    usuário salva PDF pelo diálogo nativo (window.print) — zero libs.
+ * Small menu with two real outputs:
+ *  - Markdown (.md): generated client-side via meetingToMarkdown() and
+ *    downloaded through Blob + <a download> — no server round-trip.
+ *  - PDF: navigates to the print route /meetings/{id}/relatorio, where the
+ *    user saves the PDF via the native dialog (window.print) — zero libs.
  */
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -37,7 +37,7 @@ export default function ExportMenu({ detail }: { detail: MeetingDetail }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // Fecha em clique fora / Esc — padrão de menu mínimo, sem lib.
+  // Closes on outside click / Esc — minimal menu pattern, no lib.
   useEffect(() => {
     if (!open) return;
     function onPointerDown(e: PointerEvent) {

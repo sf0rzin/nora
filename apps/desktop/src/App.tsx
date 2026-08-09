@@ -93,14 +93,14 @@ function Router() {
     );
   }
 
-  // Barra de título custom (janela sem decorações nativas) acima de TODA tela
-  // da janela principal — loading, login e app — já que sem ela não há como
-  // mover/fechar a janela.
+  // Custom title bar (window without native decorations) above EVERY screen
+  // of the main window — loading, login and app — since without it there is no way
+  // to move/close the window.
   return (
     <div className="flex flex-col h-full">
       <Titlebar />
       <div className="flex-1 min-h-0">{content}</div>
-      {/* Pegas de resize (janela sem borda nativa). */}
+      {/* Resize handles (window without a native border). */}
       <ResizeHandles />
     </div>
   );

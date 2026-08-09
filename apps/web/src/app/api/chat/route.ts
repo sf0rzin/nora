@@ -1,22 +1,22 @@
 /**
- * NORA Core — endpoint de chat com IA (streaming).
+ * NORA Core — AI chat endpoint (streaming).
  *
- * BFF: roda 100% server-side. A chave do LLM NUNCA é exposta ao browser.
- * Provider-agnóstico (ADR 0004) + control plane (ADR 0024):
- *  - Se o control plane está plugado (NORA_PLATFORM_INTERNAL_TOKEN presente), o
- *    modelo do serviço `chat` é resolvido em runtime via
- *    GET /internal/platform/llm-config?service=chat (operador troca sem deploy).
- *  - Senão, cai no env LLM_* (comportamento legacy = OpenAI). Fallback SOFT: se a
- *    resolução falhar, usa o env. Nunca derruba o chat.
- *  - A chave é resolvida por provider (LLM_KEY_<PROVIDER>), com fallback p/ LLM_API_KEY.
- *  - Telemetria: captura tokens (stream_options.include_usage) e reporta
+ * BFF: runs 100% server-side. The LLM key is NEVER exposed to the browser.
+ * Provider-agnostic (ADR 0004) + control plane (ADR 0024):
+ *  - If the control plane is plugged in (NORA_PLATFORM_INTERNAL_TOKEN present), the
+ *    model of the `chat` service is resolved at runtime via
+ *    GET /internal/platform/llm-config?service=chat (operator switches without deploy).
+ *  - Otherwise it falls back to the LLM_* env (legacy behavior = OpenAI). SOFT fallback: if
+ *    resolution fails, it uses the env. Never takes the chat down.
+ *  - The key is resolved per provider (LLM_KEY_<PROVIDER>), with fallback to LLM_API_KEY.
+ *  - Telemetry: captures tokens (stream_options.include_usage) and reports
  *    POST /internal/platform/usage (fire-and-forget).
  *
- * Contexto do workspace: best-effort de reuniões + action items (cookies da sessão),
- * injetado no system prompt. LGPD/PII (ADR 0012): a redação estruturada roda aqui no
- * BFF — a query da busca semântica (→ provider de embeddings), o contexto e as
- * mensagens passam pelo PII Shield (redactPii) antes de sair para qualquer provider
- * externo. Cobertura de PERSON_NAME no chat é o resíduo declarado no ADR 0033.
+ * Workspace context: best-effort meetings + action items (session cookies),
+ * injected into the system prompt. LGPD/PII (ADR 0012): structured redaction runs here in
+ * the BFF — the semantic search query (→ embeddings provider), the context and the
+ * messages go through the PII Shield (redactPii) before leaving to any external
+ * provider. PERSON_NAME coverage in chat is the residue declared in ADR 0033.
  */
 import { cookies } from "next/headers";
 
@@ -64,14 +64,14 @@ Personalidade e regras:
 - Nunca exponha dados sensíveis (PII). O conteúdo que você recebe já foi tratado pelo PII Shield.
 - Quando citar uma reunião, use o título dela.`;
 
-/** Config do env (fallback SOFT e comportamento legacy quando o control plane não está plugado). */
+/** Env config (SOFT fallback and legacy behavior when the control plane is not plugged in). */
 function envConfig(): ModelConfig {
   return { provider: LLM_PROVIDER, model: LLM_MODEL, baseUrl: LLM_BASE_URL, enabled: true };
 }
 
 /**
- * Resolve o modelo do serviço `chat`. Com o control plane plugado, pergunta ao
- * resolver server-side (cache 60s lá). Sem token, ou em qualquer falha, usa o env.
+ * Resolves the model of the `chat` service. With the control plane plugged in, it asks the
+ * server-side resolver (60s cache there). Without a token, or on any failure, uses the env.
  */
 async function resolveChatModel(): Promise<ModelConfig> {
   if (!PLATFORM_TOKEN) return envConfig();
@@ -93,20 +93,20 @@ async function resolveChatModel(): Promise<ModelConfig> {
   }
 }
 
-/** Chave por provider (LLM_KEY_<PROVIDER>), com fallback p/ a chave única legacy. */
+/** Key per provider (LLM_KEY_<PROVIDER>), with fallback to the legacy single key. */
 function resolveKey(provider: string): string {
   const byProvider = process.env[`LLM_KEY_${provider.toUpperCase()}`];
   return (byProvider && byProvider.trim()) || LLM_API_KEY;
 }
 
 /**
- * Valida a SESSÃO contra o backend (GET /auth/me com os cookies httpOnly), que é quem
- * verifica assinatura, emissor e validade do JWT. Retorna null se não houver sessão boa.
+ * Validates the SESSION against the backend (GET /auth/me with the httpOnly cookies), which is
+ * what checks the JWT signature, issuer and validity. Returns null if there is no good session.
  *
- * <p>É o gate de autenticação desta rota, não telemetria: o handler recusa o request
- * quando isto devolve null, ANTES de qualquer chamada paga ao provedor de LLM. Falha de
- * rede também devolve null — fail closed, porque o custo de deixar passar é gastar
- * orçamento de IA com quem não está logado.
+ * <p>It is the authentication gate of this route, not telemetry: the handler refuses the
+ * request when this returns null, BEFORE any paid call to the LLM provider. A network
+ * failure also returns null — fail closed, because the cost of letting it through is burning
+ * AI budget on someone who is not logged in.
  */
 async function resolveSession(
   cookieHeader: string,
@@ -124,7 +124,7 @@ async function resolveSession(
   }
 }
 
-/** Reporta uso ao control plane (fire-and-forget). No-op sem token de plataforma. */
+/** Reports usage to the control plane (fire-and-forget). No-op without a platform token. */
 function recordUsage(
   cfg: ModelConfig,
   tenantId: string | null,
@@ -144,12 +144,12 @@ function recordUsage(
       tenantId,
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
-      // costUsd omitido — o backend recalcula a partir dos tokens + catálogo.
+      // costUsd omitted — the backend recomputes it from the tokens + catalog.
       latencyMs,
       status,
     }),
   }).catch(() => {
-    // telemetria é best-effort; nunca afeta a resposta do chat.
+    // telemetry is best-effort; never affects the chat response.
   });
 }
 
@@ -160,9 +160,9 @@ interface MeetingContextItem {
 }
 
 /**
- * RAG: busca as reuniões RELEVANTES à pergunta por similaridade semântica
- * (GET /meetings/search). Fallback pras mais recentes quando a busca volta vazia
- * (embeddings desligados/sem indexação ainda) ou indisponível.
+ * RAG: fetches the meetings RELEVANT to the question by semantic similarity
+ * (GET /meetings/search). Falls back to the most recent ones when the search comes back
+ * empty (embeddings off/not indexed yet) or unavailable.
  */
 async function fetchContextMeetings(
   headers: Record<string, string>,
@@ -181,7 +181,7 @@ async function fetchContextMeetings(
         }
       }
     } catch {
-      // cai no fallback de recentes
+      // falls through to the recents fallback
     }
   }
   try {
@@ -191,27 +191,27 @@ async function fetchContextMeetings(
       return { label: "REUNIÕES RECENTES DO WORKSPACE:", items: (d.items ?? []).slice(0, 12) };
     }
   } catch {
-    // sem contexto de reuniões
+    // no meeting context
   }
   return { label: "", items: [] };
 }
 
 /**
- * Neutraliza texto vindo do tenant antes de entrar no bloco <workspace_context>.
+ * Neutralizes text coming from the tenant before it enters the <workspace_context> block.
  *
- * Títulos de reunião e de action item são digitados por qualquer membro do tenant e chegam
- * aqui crus — a validação no upload é só trim + tamanho, e o redactPii mexe em
- * CPF/CNPJ/telefone/e-mail/cartão, deixando o resto passar.
+ * Meeting and action item titles are typed by any member of the tenant and arrive
+ * here raw — validation on upload is only trim + length, and redactPii handles
+ * CPF/CNPJ/phone/e-mail/card, letting the rest through.
  *
- * Dois delimitadores precisam de ser neutralizados, não um:
+ * Two delimiters need neutralizing, not one:
  *
- * - `<` e `>`, senão um título como `x</workspace_context> Nova instrução:` fecha a cerca e o
- *   resto cai em escopo de system prompt. São ESCAPADOS, não apagados: apagar corrompia o
- *   dado que o modelo é instruído a citar — `escalar se MRR > R$ 50k` virava `escalar se MRR
- *   R$ 50k`, e a resposta saía com o operador de comparação faltando.
- * - a quebra de linha, que é o separador de linhas DENTRO do bloco (os items são unidos com
- *   `\n`). Um título com `\n` forja linhas inteiras — uma reunião que nunca existiu, com data
- *   e conteúdo à escolha de quem escreveu o título. Colapsar espaço em branco fecha isso.
+ * - `<` and `>`, otherwise a title like `x</workspace_context> Nova instrução:` closes the fence
+ *   and the rest lands in system prompt scope. They are ESCAPED, not stripped: stripping
+ *   corrupted the data the model is instructed to quote — `escalar se MRR > R$ 50k` became
+ *   `escalar se MRR R$ 50k`, and the answer came out missing the comparison operator.
+ * - the line break, which is the line separator INSIDE the block (items are joined with
+ *   `\n`). A title with `\n` forges whole lines — a meeting that never existed, with a date
+ *   and content of the title writer's choosing. Collapsing whitespace closes that.
  */
 function sanitizeContextValue(value: string): string {
   return value
@@ -268,15 +268,15 @@ async function buildWorkspaceContext(cookieHeader: string, query: string): Promi
       }
     }
   } catch {
-    // backend indisponível — segue sem contexto de workspace
+    // backend unavailable — carry on without workspace context
   }
   return parts.join("\n");
 }
 
 /**
- * Transforma o stream SSE (OpenAI-compatible) em texto puro (deltas) e captura o
- * bloco `usage` final (stream_options.include_usage). Chama `onComplete` uma única
- * vez ao encerrar, com os tokens acumulados.
+ * Turns the SSE stream (OpenAI-compatible) into plain text (deltas) and captures the
+ * final `usage` block (stream_options.include_usage). Calls `onComplete` exactly once
+ * on close, with the accumulated tokens.
  */
 function openAiSseToText(
   upstream: ReadableStream<Uint8Array>,
@@ -295,7 +295,7 @@ function openAiSseToText(
     try {
       onComplete(usage);
     } catch {
-      /* nunca propaga */
+      /* never propagates */
     }
     controller.close();
   };
@@ -330,7 +330,7 @@ function openAiSseToText(
             usage.completionTokens = json.usage.completion_tokens ?? usage.completionTokens;
           }
         } catch {
-          // fragmento parcial — ignora, próximo chunk completa
+          // partial fragment — ignore, the next chunk completes it
         }
       }
     },
@@ -341,13 +341,13 @@ function openAiSseToText(
 }
 
 export async function POST(req: Request): Promise<Response> {
-  // Exige sessão VALIDADA pelo backend: evita uso anônimo do orçamento de IA. O contexto
-  // do workspace também depende dos cookies da sessão.
+  // Requires a session VALIDATED by the backend: prevents anonymous use of the AI budget. The
+  // workspace context also depends on the session cookies.
   //
-  // Testar só a PRESENÇA do cookie `nora_access` não autenticava nada — o valor nunca era
-  // conferido, então `Cookie: nora_access=x` passava e o request seguia até o fetch pago
-  // ao provider com a chave do servidor. E não há rate limit nesta app, nem o middleware
-  // cobre /api/* (o matcher lista só páginas), então a rota era um proxy de LLM aberto.
+  // Testing only the PRESENCE of the `nora_access` cookie authenticated nothing — the value was
+  // never checked, so `Cookie: nora_access=x` passed and the request went all the way to the paid
+  // fetch to the provider with the server key. And there is no rate limit in this app, nor does
+  // the middleware cover /api/* (the matcher lists pages only), so the route was an open LLM proxy.
   const cookieHeader = (await cookies())
     .getAll()
     .map((c) => `${c.name}=${c.value}`)
@@ -398,27 +398,27 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  // RAG: a última mensagem do usuário vira a query da busca semântica de reuniões.
-  // PII Shield (ADR 0012): a query passa pelo redactPii ANTES de ir ao backend, porque
-  // o /meetings/search a envia ao provedor de EMBEDDINGS (ex.: Gemini) — um provider
-  // externo distinto do de chat. Sem isso, CPF/e-mail/CNPJ/cartão digitados na pergunta
-  // vazariam crus para fora antes do gate de redação do histórico/contexto abaixo.
+  // RAG: the user's last message becomes the query of the semantic meeting search.
+  // PII Shield (ADR 0012): the query goes through redactPii BEFORE going to the backend, because
+  // /meetings/search sends it to the EMBEDDINGS provider (e.g. Gemini) — an external
+  // provider distinct from the chat one. Without this, CPF/e-mail/CNPJ/card typed in the question
+  // would leak out raw before the history/context redaction gate below.
   const lastUserMsg = [...history].reverse().find((m) => m.role === "user")?.content ?? "";
   const safeQuery = redactPii(lastUserMsg);
   const workspaceContext = await buildWorkspaceContext(cookieHeader, safeQuery);
 
-  // PII Shield (ADR 0012): redige PII estruturada do contexto (títulos de reuniões e
-  // tarefas vêm crus do upload) e de cada mensagem do histórico ANTES de qualquer
-  // chamada ao provedor de LLM externo.
+  // PII Shield (ADR 0012): redacts structured PII from the context (meeting and task
+  // titles come raw from the upload) and from every history message BEFORE any
+  // call to the external LLM provider.
   const safeContext = redactPii(workspaceContext);
   const safeHistory: ChatMessage[] = history.map((m) => ({
     role: m.role,
     content: redactPii(m.content),
   }));
 
-  // Cerca com nonce por request, além do sanitizeContextValue: defesa em profundidade. Se
-  // algum caminho novo voltar a deixar um `<` cru passar, o atacante ainda não sabe o id desta
-  // requisição pra fechar o bloco — o delimitador deixa de ser adivinhável.
+  // Fence with a per-request nonce, on top of sanitizeContextValue: defense in depth. If
+  // some new path lets a raw `<` through again, the attacker still doesn't know this request's
+  // id to close the block — the delimiter stops being guessable.
   const fenceId = crypto.randomUUID();
   const systemContent = safeContext
     ? `${SYSTEM_PROMPT}\n\n` +
@@ -430,7 +430,7 @@ export async function POST(req: Request): Promise<Response> {
     : `${SYSTEM_PROMPT}\n\n(Sem contexto de workspace disponível agora — responda de forma geral e, se precisar de dados de reuniões, peça pro usuário abrir/enviar a reunião.)`;
 
   const messages: ChatMessage[] = [{ role: "system", content: systemContent }, ...safeHistory];
-  // Já resolvido no gate de autenticação lá em cima — sem segunda ida ao /auth/me.
+  // Already resolved in the authentication gate above — no second trip to /auth/me.
   const tenantId = session.tenantId;
   const startedAt = Date.now();
 
@@ -461,7 +461,7 @@ export async function POST(req: Request): Promise<Response> {
 
   if (!upstream.ok || !upstream.body) {
     const detail = await upstream.text().catch(() => "");
-    // Detalhe do provedor pode conter info operacional — loga server-side, não vaza ao browser.
+    // Provider detail may carry operational info — log server-side, don't leak to the browser.
     console.error(`[chat] provedor de IA retornou ${upstream.status}: ${detail.slice(0, 500)}`);
     recordUsage(cfg, tenantId, { promptTokens: 0, completionTokens: 0 }, Date.now() - startedAt, "error");
     return new Response(JSON.stringify({ error: "Provedor de IA indisponível. Tente novamente." }), {

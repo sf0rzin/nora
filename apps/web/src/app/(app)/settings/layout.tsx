@@ -1,12 +1,12 @@
 /**
- * NORA Core — hub de Configurações.
+ * NORA Core — Settings hub.
  *
- * Layout fino: estabelece o container `.page` e o cabeçalho do hub. A
- * navegação interna por seções (Conta · Segurança · Workspace · Contexto da
- * empresa) e os respectivos painéis vivem na página cliente (context/page.tsx),
- * onde o estado da seção ativa pode dirigir a troca de painel.
+ * Thin layout: sets up the `.page` container and the hub header. The internal
+ * per-section navigation (Conta · Segurança · Workspace · Contexto da
+ * empresa) and the respective panels live in the client page (context/page.tsx),
+ * where the active section state can drive the panel switch.
  *
- * Sem IAM aqui: o Core é individual; times e permissões são do Enterprise.
+ * No IAM here: Core is individual; teams and permissions belong to Enterprise.
  */
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   return (

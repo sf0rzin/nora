@@ -15,9 +15,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Adapter JDBC do histórico de execuções de workflows (V023). Mesmo estilo do {@code
- * WorkflowRepositoryAdapter}; escrita em duas fases (create RUNNING → finish terminal) para que uma
- * execução em andamento já apareça no histórico.
+ * JDBC adapter for the workflow execution history (V023). Same style as {@code
+ * WorkflowRepositoryAdapter}; two-phase write (create RUNNING → finish terminal) so that an
+ * in-progress execution already shows up in the history.
  */
 @Repository
 public class WorkflowExecutionRepositoryAdapter implements WorkflowExecutionRepository {

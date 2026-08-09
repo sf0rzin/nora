@@ -2,26 +2,26 @@ import { useEffect } from "react";
 import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
 
 /**
- * Escuta um evento Tauri respeitando o ciclo de vida React.
+ * Listens to a Tauri event respecting the React lifecycle.
  *
- * Padrão original espalhado pelo codebase tinha race no unmount:
+ * The original pattern scattered across the codebase had a race on unmount:
  *
  *   useEffect(() => {
  *     const unlisten = listen("event", handler);
  *     return () => { unlisten.then((fn) => fn()); };
  *   }, []);
  *
- * Se o componente desmontar ANTES da Promise de listen() resolver, o
- * callback de cleanup só agenda a desinscrição via .then — mas a
- * referência ao `unlisten` é capturada no momento do unmount, não no
- * resolve da Promise, então o handler fica preso (leak) e nunca é
- * removido. Esse hook captura o resolve numa flag `cancelled` e dispara
- * o unlisten imediatamente se já desmontou.
+ * If the component unmounts BEFORE the listen() Promise resolves, the
+ * cleanup callback only schedules the unsubscribe via .then — but the
+ * reference to `unlisten` is captured at unmount time, not at the
+ * Promise's resolve, so the handler stays stuck (leak) and is never
+ * removed. This hook captures the resolve in a `cancelled` flag and fires
+ * the unlisten immediately if it already unmounted.
  *
- * @param event Nome do evento Tauri
- * @param handler Callback chamado pra cada payload
- * @param deps Dependências adicionais (handler já é capturado por closure
- *   — passe deps que devem rearmar o listener)
+ * @param event Tauri event name
+ * @param handler Callback called for each payload
+ * @param deps Additional dependencies (handler is already captured by closure
+ *   — pass deps that should rearm the listener)
  */
 export function useTauriListener<T>(
   event: string,

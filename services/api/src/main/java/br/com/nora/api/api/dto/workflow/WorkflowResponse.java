@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/** Workflow completo (com o grafo do canvas em {@code definition}). */
+/** Full workflow (with the canvas graph in {@code definition}). */
 public record WorkflowResponse(
         UUID id,
         String name,

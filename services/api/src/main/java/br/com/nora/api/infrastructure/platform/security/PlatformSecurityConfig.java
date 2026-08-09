@@ -14,17 +14,17 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Chains de segurança do control plane (ADR 0023), separadas por path e com precedência sobre a
- * chain JWT por-tenant existente (que não tem @Order ⇒ LOWEST_PRECEDENCE ⇒ avaliada por último como
- * catch-all). Cada chain confia apenas no token interno (X-Internal-Token):
+ * Control plane security chains (ADR 0023), split by path and taking precedence over the existing
+ * per-tenant JWT chain (which has no @Order ⇒ LOWEST_PRECEDENCE ⇒ evaluated last as a catch-all).
+ * Each chain trusts only the internal token (X-Internal-Token):
  *
  * <ul>
  *   <li>@Order(1) /internal/platform/** — service token (worker/BFF)
- *   <li>@Order(2) /admin/platform/** — admin token (nora-admin); auditoria via X-Operator-Email
- *       lido no controller
+ *   <li>@Order(2) /admin/platform/** — admin token (nora-admin); auditing via X-Operator-Email read
+ *       in the controller
  * </ul>
  *
- * Sem CORS (server-to-server), stateless, 401 quando o token falta/não bate.
+ * No CORS (server-to-server), stateless, 401 when the token is missing/does not match.
  */
 @Configuration
 public class PlatformSecurityConfig {

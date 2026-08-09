@@ -1,19 +1,19 @@
 # shared-contracts
 
-Contratos compartilhados entre serviços do NORA. Este diretório centraliza definições que precisam estar alinhadas entre múltiplas linguagens / runtimes (Java backend, Python worker, TypeScript web/desktop).
+Contracts shared between NORA services. This directory centralises definitions that need to be aligned across multiple languages / runtimes (Java backend, Python worker, TypeScript web/desktop).
 
-## Conteúdo atual
+## Current content
 
-- `pii-types.json` — enum canônico de tipos de PII redacted (alinhado com ADR 0012 + `services/nlp-worker/src/nora_nlp/models.py:PiiType`)
-- `processing-status.json` — enum de status de processamento de meeting (alinhado com `services/api/.../domain/meeting/ProcessingStatus.java`)
-- `error-codes.md` — convenção de códigos de erro emitidos pelo backend e esperados pelo cliente
+- `pii-types.json` — canonical enum of redacted PII types (aligned with ADR 0012 + `services/nlp-worker/src/nora_nlp/models.py:PiiType`)
+- `processing-status.json` — enum of meeting processing statuses (aligned with `services/api/.../domain/meeting/ProcessingStatus.java`)
+- `error-codes.md` — convention for the error codes emitted by the backend and expected by the client
 
-## Como usar
+## How to use
 
-Por ora, cada serviço **espelha** estas definições no próprio código (Java enum, Pydantic Enum, TS union). Este pacote serve como **fonte da verdade documental** — divergências entre clientes devem ser resolvidas trazendo todos pra cá.
+For now, each service **mirrors** these definitions in its own code (Java enum, Pydantic Enum, TS union). This package serves as the **documentary source of truth** — divergences between clients must be resolved by bringing them all here.
 
-Geração de código automática (json-schema → tipos) é débito da Sub-fase 1.12 (ADR 0016).
+Automatic code generation (json-schema → types) is a debt of Sub-phase 1.12 (ADR 0016).
 
-## Por que não vazio?
+## Why not empty?
 
-Auditoria identificou que o diretório anterior `.gitkeep` apenas era confuso: documentação não referenciava o estado, devs viam ele e ignoravam. Agora ao menos as **listas de valores enum** que precisam casar entre serviços ficam centralizadas — quando um agregado novo é adicionado, lembramos de propagar pra todos os clientes.
+An audit identified that the previous directory with only a `.gitkeep` was confusing: the documentation did not reference the state, devs saw it and ignored it. Now at least the **enum value lists** that need to match between services are centralised — when a new aggregate is added, we remember to propagate it to all the clients.

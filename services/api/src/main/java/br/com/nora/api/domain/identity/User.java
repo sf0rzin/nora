@@ -5,14 +5,14 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Agregado de usuario. Pertence sempre a um tenant. O e-mail e unico dentro do tenant (V002).
+ * User aggregate. Always belongs to a tenant. The e-mail is unique within the tenant (V002).
  *
- * <p>Regras encapsuladas:
+ * <p>Encapsulated rules:
  *
  * <ul>
- *   <li>Login so e permitido se o e-mail estiver verificado e o usuario estiver ACTIVE.
- *   <li>Troca de senha invalida sessoes futuras (refletido pelo updatedAt; sessoes sao stateless
- *       JWT, expiram naturalmente).
+ *   <li>Login is only allowed if the e-mail is verified and the user is ACTIVE.
+ *   <li>Changing the password invalidates future sessions (reflected by updatedAt; sessions are
+ *       stateless JWT, they expire naturally).
  * </ul>
  */
 public final class User {
@@ -48,7 +48,7 @@ public final class User {
         this.updatedAt = Objects.requireNonNull(updatedAt);
     }
 
-    /** Construtor de novo usuario nao verificado, recem-criado em signup. */
+    /** Constructor for a new unverified user, just created at signup. */
     public static User newUnverified(
             UUID id,
             UUID tenantId,
@@ -80,7 +80,7 @@ public final class User {
         this.updatedAt = now;
     }
 
-    /** Troca o nome de exibicao (aba Conta das configuracoes). Rejeita blank. */
+    /** Changes the display name (Account tab in settings). Rejects blank. */
     public void changeDisplayName(String newDisplayName, Instant now) {
         if (newDisplayName == null || newDisplayName.isBlank()) {
             throw new IllegalArgumentException("displayName cannot be blank");

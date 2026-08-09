@@ -13,12 +13,11 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Criar evento no Outlook Calendar" do NORA Flows — follow-up REAL no calendário primário da
- * conta Microsoft conectada (Graph), espelho da {@code calendar_create_event} do Google. Params
- * (todos opcionais): {@code title} (placeholders suportados; default "Follow-up:
- * {{meeting.title}}"), {@code startInDays} (default 1, amanhã), {@code hour} (default 10, horário
- * de São Paulo), {@code durationMinutes} (default 30). A descrição leva o resumo + próximos passos
- * da reunião.
+ * NORA Flows "Criar evento no Outlook Calendar" action — REAL follow-up in the connected Microsoft
+ * account's primary calendar (Graph), mirror of Google's {@code calendar_create_event}. Params (all
+ * optional): {@code title} (placeholders supported; default "Follow-up: {{meeting.title}}"), {@code
+ * startInDays} (default 1, tomorrow), {@code hour} (default 10, São Paulo time), {@code
+ * durationMinutes} (default 30). The description carries the meeting summary + next steps.
  */
 @Component
 public class MicrosoftCalendarCreateEventAction implements ActionExecutor {

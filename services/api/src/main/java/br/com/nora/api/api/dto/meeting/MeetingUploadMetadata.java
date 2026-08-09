@@ -7,7 +7,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
-/** Metadados enviados como JSON multipart (campo "metadata") junto ao arquivo da transcricao. */
+/** Metadata sent as multipart JSON (the "metadata" field) alongside the transcript file. */
 public record MeetingUploadMetadata(
         @NotBlank(message = "title is required") @Size(max = 200) String title,
         OffsetDateTime startedAt,

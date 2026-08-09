@@ -13,7 +13,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-/** Adapter JdbcTemplate dos bindings serviço→modelo (tabela llm_config, ADR 0024). */
+/** JdbcTemplate adapter for the service→model bindings (llm_config table, ADR 0024). */
 @Repository
 @ConditionalOnProperty(name = "nora.platform.enabled", havingValue = "true")
 public class JdbcLlmConfigRepository implements LlmConfigRepository {

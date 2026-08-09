@@ -1,8 +1,8 @@
 package br.com.nora.api.domain.identity;
 
 /**
- * Politica de senha do MVP. Mantida no dominio para que infra (controller/JPA) nao precise repetir
- * regras. Pos-MVP pode evoluir para zxcvbn ou checagem em listas vazadas.
+ * MVP password policy. Kept in the domain so that infra (controller/JPA) does not have to repeat
+ * rules. Post-MVP it can evolve to zxcvbn or a check against leaked lists.
  */
 public final class PasswordPolicy {
 
@@ -12,8 +12,8 @@ public final class PasswordPolicy {
     private PasswordPolicy() {}
 
     /**
-     * Valida uma senha em texto puro. Lanca {@link IllegalArgumentException} se nao atender ao
-     * minimo do MVP: tamanho >= MIN_LENGTH, com pelo menos uma letra e um digito.
+     * Validates a plain-text password. Throws {@link IllegalArgumentException} if it does not meet
+     * the MVP minimum: length >= MIN_LENGTH, with at least one letter and one digit.
      */
     public static void validate(String raw) {
         if (raw == null || raw.length() < MIN_LENGTH || raw.length() > MAX_LENGTH) {

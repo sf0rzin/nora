@@ -1,14 +1,14 @@
--- V022 — Sessões de chat persistentes (histórico do assistente NORA).
+-- V022 — Persistent chat sessions (NORA assistant history).
 --
--- Guarda o histórico de conversas do chat por usuário, escopado por tenant. Cada sessão
--- (chat_session) tem N mensagens (chat_message) na ordem cronológica. O título é derivado
--- da 1ª mensagem do usuário (~48 chars) quando não informado explicitamente.
+-- Stores the chat conversation history per user, scoped by tenant. Each session
+-- (chat_session) has N messages (chat_message) in chronological order. The title is derived
+-- from the user's 1st message (~48 chars) when not given explicitly.
 --
--- Escopo: tenant-owned (ADR 0002 — tenant_id em toda tabela) + user-scoped (cada usuário só
--- enxerga as próprias sessões; o filtro por user_id é aplicado na aplicação). RLS habilitado
--- (ADR 0028) no mesmo padrão de V019/V021: sob enforce, o nora_app (NOBYPASSRLS) só vê as
--- linhas do GUC de sessão `nora.current_tenant_id`. nora_app recebe os grants via
--- ALTER DEFAULT PRIVILEGES do R001 (a tabela é criada pelo Flyway-as-admin = nora_admin).
+-- Scope: tenant-owned (ADR 0002 — tenant_id on every table) + user-scoped (each user only
+-- sees their own sessions; the user_id filter is applied in the app). RLS enabled
+-- (ADR 0028) in the same pattern as V019/V021: under enforce, nora_app (NOBYPASSRLS) only sees the
+-- rows of the session GUC `nora.current_tenant_id`. nora_app gets the grants via the
+-- ALTER DEFAULT PRIVILEGES in R001 (the table is created by Flyway-as-admin = nora_admin).
 
 CREATE TABLE chat_session (
     id         UUID PRIMARY KEY,
@@ -28,16 +28,16 @@ CREATE TABLE chat_message (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Listagem da sidebar: sessões do usuário, mais recentes primeiro.
+-- Sidebar listing: the user's sessions, most recent first.
 CREATE INDEX idx_chat_session_tenant ON chat_session (tenant_id);
 CREATE INDEX idx_chat_session_user ON chat_session (user_id);
 CREATE INDEX idx_chat_session_user_updated ON chat_session (user_id, updated_at DESC);
 
--- Carregamento do detalhe + último snippet por sessão.
+-- Loading the detail + last snippet per session.
 CREATE INDEX idx_chat_message_tenant ON chat_message (tenant_id);
 CREATE INDEX idx_chat_message_session_created ON chat_message (session_id, created_at);
 
--- RLS: tabelas de negócio tenant-owned → enforced (ADR 0028). Mesmo padrão de V019/V021.
+-- RLS: tenant-owned business tables → enforced (ADR 0028). Same pattern as V019/V021.
 ALTER TABLE chat_session ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON chat_session
     USING (tenant_id = nora.current_tenant_id())

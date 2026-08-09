@@ -10,10 +10,10 @@ const FORBIDDEN_HEADERS: &[&str] = &[
     "cookie",
     "x-forwarded-for",
     "x-real-ip",
-    // O proxy sempre injeta Authorization a partir do SecretStore. Sem este filtro,
-    // o renderer poderia mandar `authorization: ...` no payload e o `clean_headers`
-    // posterior usaria o injetado, mas o sentinel evita confusao se o codigo de
-    // injecao for refatorado.
+    // The proxy always injects Authorization from the SecretStore. Without this filter,
+    // the renderer could send `authorization: ...` in the payload and the later
+    // `clean_headers` would use the injected one, but the sentinel avoids confusion if
+    // the injection code gets refactored.
     "authorization",
 ];
 
@@ -52,10 +52,10 @@ pub async fn http_proxy(
     base_url: tauri::State<'_, ApiBaseUrl>,
     secrets: tauri::State<'_, SecretStore>,
 ) -> Result<ProxyResponse, String> {
-    // SSRF defense: `url::Url::join` aceita URL absoluta no `path` (RFC 3986 §5.3).
-    // Sem validar, atacante mandando `path: "https://evil.com/x"` faz o desktop
-    // emitir request com Bearer NORA pra qualquer URL. Forcamos que (1) o path
-    // comece com '/' e (2) a URL final tenha mesma origin do base_url.
+    // SSRF defense: `url::Url::join` accepts an absolute URL in `path` (RFC 3986 §5.3).
+    // Without validating, an attacker sending `path: "https://evil.com/x"` makes the desktop
+    // emit a request with the NORA Bearer to any URL. We force that (1) the path
+    // starts with '/' and (2) the final URL has the same origin as base_url.
     if !req.path.starts_with('/') || req.path.starts_with("//") {
         return Err("path deve comecar com '/' e nao ser protocol-relative".into());
     }
@@ -81,8 +81,8 @@ pub async fn http_proxy(
         }
         clean_headers.insert(k, v);
     }
-    // Só força Content-Type se o frontend não enviou um (case-insensitive —
-    // senão um "content-type" minúsculo do renderer geraria header duplicado).
+    // Only forces Content-Type if the frontend did not send one (case-insensitive —
+    // otherwise a lowercase "content-type" from the renderer would produce a duplicate header).
     if !clean_headers.keys().any(|k| k.eq_ignore_ascii_case("content-type")) {
         clean_headers.insert("Content-Type".into(), "application/json".into());
     }
@@ -108,8 +108,8 @@ pub async fn http_proxy(
         builder = builder.header(k, v);
     }
 
-    // Só anexa body em métodos que o aceitam e quando não é null — senão um GET
-    // com `body: null` (default do api-client) mandava o literal "null" no corpo.
+    // Only attaches a body on methods that accept it and when it is not null — otherwise a GET
+    // with `body: null` (the api-client default) sent the literal "null" in the body.
     if let Some(body) = req.body {
         if !body.is_null() && matches!(upper.as_str(), "POST" | "PUT") {
             let bytes = serde_json::to_vec(&body)

@@ -10,14 +10,14 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Agenda do follow-up das ações de calendário (Google e Outlook) — compartilhada para as duas
- * baterem no mesmo comportamento.
+ * Follow-up scheduling for the calendar actions (Google and Outlook) — shared so both behave the
+ * same way.
  *
- * <p>Regra (pedido do PO, 2026-06-12): o evento deve nascer dos DADOS DA REUNIÃO quando possível.
- * Sem {@code startInDays} explícito no nó, usamos o prazo mais próximo entre os action items
- * extraídos pela análise (estritamente depois de hoje — prazo de hoje às 10h pode já ter passado);
- * sem prazo utilizável, cai no padrão "amanhã". {@code startInDays} preenchido pelo usuário SEMPRE
- * vence — configuração explícita não é adivinhada.
+ * <p>Rule (PO request, 2026-06-12): the event should come from the MEETING DATA whenever possible.
+ * Without an explicit {@code startInDays} on the node, we use the nearest due date among the action
+ * items extracted by the analysis (strictly after today — a due date today at 10am may already have
+ * passed); with no usable due date, it falls back to the "tomorrow" default. A {@code startInDays}
+ * filled in by the user ALWAYS wins — explicit configuration is not guessed.
  */
 public final class FollowUpSchedule {
 
@@ -26,12 +26,13 @@ public final class FollowUpSchedule {
     private FollowUpSchedule() {}
 
     /**
-     * Janela resolvida do evento. {@code origem} explica de onde a data veio quando não foi o
-     * default (vai pro log da execução e pro retorno da ação) — null no caminho padrão/manual.
+     * Resolved window for the event. {@code origem} explains where the date came from when it was
+     * not the default (goes to the execution log and to the action's return) — null on the
+     * default/manual path.
      */
     public record Resolved(OffsetDateTime start, OffsetDateTime end, String origem) {}
 
-    /** {@code now} deve vir no fuso do calendário (America/Sao_Paulo nas ações atuais). */
+    /** {@code now} must come in the calendar time zone (America/Sao_Paulo in current actions). */
     public static Resolved resolve(
             WorkflowEventContext ctx, Map<String, Object> params, OffsetDateTime now) {
         int hour = clamp(intParam(params, "hour", 10), 0, 23);
@@ -90,7 +91,7 @@ public final class FollowUpSchedule {
             try {
                 return Integer.parseInt(s.trim());
             } catch (NumberFormatException ignored) {
-                // sem valor utilizável
+                // no usable value
             }
         }
         return null;

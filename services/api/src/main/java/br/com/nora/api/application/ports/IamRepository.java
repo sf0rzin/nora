@@ -11,10 +11,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Porta de persistencia para o subdominio IAM. Tudo escopado por tenant_id.
+ * Persistence port for the IAM subdomain. Everything scoped by tenant_id.
  *
- * <p>Optei por uma porta unica para nao multiplicar arquivos de adapter no MVP — o adapter
- * implementa todas as operacoes contra o JdbcTemplate / EntityManager.
+ * <p>I went with a single port so as not to multiply adapter files in the MVP — the adapter
+ * implements all the operations against the JdbcTemplate / EntityManager.
  */
 public interface IamRepository {
 
@@ -58,7 +58,7 @@ public interface IamRepository {
 
     void detachPolicyFromUser(UUID policyId, UUID userId, UUID tenantId);
 
-    /** Retorna todos os statements aplicaveis ao usuario (diretos + via grupos), ja parseados. */
+    /** Returns all statements applicable to the user (direct + via groups), already parsed. */
     List<PolicyStatement> collectStatementsForUser(UUID userId, UUID tenantId);
 
     // ----- audit -----

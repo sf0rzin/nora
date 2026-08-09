@@ -2,7 +2,7 @@ package br.com.nora.api.application.ports;
 
 import java.time.Instant;
 
-/** Porta para fonte de tempo. Permite testar logica de expiracao com Clock fake. */
+/** Port for the time source. Lets expiration logic be tested with a fake Clock. */
 public interface Clock {
 
     Instant now();

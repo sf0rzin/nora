@@ -44,9 +44,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Unit tests do {@link InvitationService} (US06). Cobre validacao de dominio, idempotencia, audit,
- * on-read expire, revogacao e aceite. Usa Fakes em vez de Mockito (mesmo padrao de
- * TenantServiceTest e AuthServiceTest).
+ * Unit tests for {@link InvitationService} (US06). Covers domain validation, idempotency, audit,
+ * on-read expire, revocation and acceptance. Uses Fakes instead of Mockito (same pattern as
+ * TenantServiceTest and AuthServiceTest).
  */
 class InvitationServiceTest {
 
@@ -92,7 +92,7 @@ class InvitationServiceTest {
                         fixedNow);
         tenants.save(tenant);
 
-        // grupo valido
+        // valid group
         iam.groups.put(
                 groupId,
                 new IamGroup(
@@ -104,7 +104,7 @@ class InvitationServiceTest {
                         OffsetDateTime.now(),
                         OffsetDateTime.now()));
 
-        // user que convida (para invitedByName lookup)
+        // inviting user (for invitedByName lookup)
         users.save(
                 new User(
                         invitedBy,
@@ -149,7 +149,7 @@ class InvitationServiceTest {
         assertThat(inv.groupIds()).containsExactly(groupId);
         assertThat(inv.expiresAt()).isEqualTo(fixedNow.plus(Duration.ofDays(7)));
 
-        // E-mail enviado.
+        // E-mail sent.
         assertThat(mail.lastInviteTo).isEqualTo("carlos@acme.com");
         assertThat(mail.lastInviteTenant).isEqualTo("Acme");
         assertThat(mail.lastInviteInvitedBy).isEqualTo("Camila Root");
@@ -157,15 +157,16 @@ class InvitationServiceTest {
                 .startsWith("http://localhost:3000/auth/invites/accept/");
         assertThat(mail.lastInviteExpiresInDays).isEqualTo(7);
 
-        // SEGURANCA: persistimos APENAS o hash do token, nunca o token cru. A URL do e-mail leva o
-        // cru; o agregado/banco guardam o SHA-256 (mesmo padrao dos demais one-time tokens).
+        // SECURITY: we persist ONLY the token hash, never the raw token. The e-mail URL carries
+        // the raw one; the aggregate/database store the SHA-256 (same pattern as the other
+        // one-time tokens).
         String rawToken = lastRawToken();
         assertThat(inv.tokenHash()).isEqualTo(tokens.hash(rawToken));
         assertThat(inv.tokenHash()).isNotEqualTo(rawToken);
         assertThat(mail.lastInviteAcceptUrl).contains(rawToken);
         assertThat(mail.lastInviteAcceptUrl).doesNotContain(inv.tokenHash());
 
-        // Audit registrado.
+        // Audit recorded.
         assertThat(iam.audits).hasSize(1);
         RecordedAudit rec = iam.audits.get(0);
         assertThat(rec.action).isEqualTo("iam.user.invited");
@@ -199,7 +200,7 @@ class InvitationServiceTest {
         tenants.save(restricted.withAllowedEmailDomain("acme.com", fixedNow));
 
         IamInvitation inv = service.inviteUser(tenantId, invitedBy, "carlos@ACME.com", Set.of(), 7);
-        // Email.of normaliza para lowercase.
+        // Email.of normalizes to lowercase.
         assertThat(inv.email()).isEqualTo("carlos@acme.com");
     }
 
@@ -253,7 +254,7 @@ class InvitationServiceTest {
         assertThat(second.id()).isNotEqualTo(first.id());
         assertThat(second.tokenHash()).isNotEqualTo(first.tokenHash());
 
-        // Antigo deve ter sido marcado como EXPIRED.
+        // The old one must have been marked as EXPIRED.
         IamInvitation oldNow = invitations.byId(first.id()).orElseThrow();
         assertThat(oldNow.status()).isEqualTo(InvitationStatus.EXPIRED);
     }
@@ -306,7 +307,7 @@ class InvitationServiceTest {
 
         AcceptResult result = service.acceptInvite(token, "Carlos Silva", "SenhaForte123");
 
-        // User criado e linkado ao tenant.
+        // User created and linked to the tenant.
         assertThat(result.user().email().value()).isEqualTo("carlos@acme.com");
         assertThat(result.user().tenantId()).isEqualTo(tenantId);
         assertThat(result.user().status()).isEqualTo(UserStatus.ACTIVE);
@@ -314,13 +315,13 @@ class InvitationServiceTest {
         assertThat(hasher.matches("SenhaForte123", result.user().passwordHash())).isTrue();
         assertThat(result.accessToken()).isNotBlank();
 
-        // Invite virou ACCEPTED.
+        // Invite turned ACCEPTED.
         IamInvitation reload = invitations.byId(inv.id()).orElseThrow();
         assertThat(reload.status()).isEqualTo(InvitationStatus.ACCEPTED);
         assertThat(reload.acceptedUserId()).isEqualTo(result.user().id());
         assertThat(reload.acceptedAt()).isEqualTo(fixedNow);
 
-        // Membership anexado.
+        // Membership attached.
         assertThat(iam.userGroupMemberships).contains(result.user().id() + ":" + groupId);
 
         // Audit invite.accepted.
@@ -336,13 +337,13 @@ class InvitationServiceTest {
 
         AcceptResult result = service.acceptInvite(token, "Carol", "SenhaForte123");
 
-        // Par access+refresh emitido.
+        // access+refresh pair issued.
         assertThat(result.accessToken()).isNotBlank();
         assertThat(result.expiresInSeconds()).isEqualTo(Duration.ofMinutes(15).toSeconds());
         assertThat(result.refreshTokenPlain()).isNotBlank();
         assertThat(result.refreshExpiresInSeconds()).isEqualTo(Duration.ofDays(30).toSeconds());
 
-        // Refresh persistido como HASH (nao plain).
+        // Refresh persisted as HASH (not plain).
         assertThat(refreshTokens.all)
                 .hasSize(1)
                 .allSatisfy(
@@ -421,7 +422,7 @@ class InvitationServiceTest {
 
     @Test
     void accept_collidingEmail_throwsEmailAlreadyTaken() {
-        // Pre-existe um user com mesmo e-mail (cenario raro mas possivel).
+        // A user with the same e-mail already exists (rare but possible scenario).
         users.save(
                 new User(
                         UUID.randomUUID(),
@@ -465,7 +466,7 @@ class InvitationServiceTest {
         assertThat(reloadStatus(all, a.id())).isEqualTo(InvitationStatus.EXPIRED);
         assertThat(reloadStatus(all, b.id())).isEqualTo(InvitationStatus.PENDING);
 
-        // On-read expire persiste.
+        // On-read expire is persisted.
         assertThat(invitations.byId(a.id()).orElseThrow().status())
                 .isEqualTo(InvitationStatus.EXPIRED);
 
@@ -526,9 +527,9 @@ class InvitationServiceTest {
     }
 
     /**
-     * Extrai o token CRU do ultimo accept URL enviado por e-mail. O domain so guarda o hash; o
-     * token cru existe apenas na URL do e-mail (exatamente o que o convidado clica). Espelha o
-     * fluxo real.
+     * Extracts the RAW token from the last accept URL sent by e-mail. The domain only keeps the
+     * hash; the raw token exists only in the e-mail URL (exactly what the invitee clicks). Mirrors
+     * the real flow.
      */
     private String lastRawToken() {
         String url = mail.lastInviteAcceptUrl;
@@ -618,7 +619,7 @@ class InvitationServiceTest {
 
         @Override
         public void sendWorkflowNotification(String toEmail, String subject, String htmlBody) {
-            // InvitationService nao usa notificacao de workflow; no-op aqui.
+            // InvitationService does not use workflow notification; no-op here.
         }
     }
 
@@ -788,7 +789,7 @@ class InvitationServiceTest {
                     new RecordedAudit(tenantId, actorUserId, action, targetType, targetId, copy));
         }
 
-        // ----- nao usados -----
+        // ----- not used -----
 
         @Override
         public IamGroup createGroup(

@@ -1,24 +1,24 @@
-"""TF-IDF baseline interpretavel (wrapper fino sobre ``sklearn.TfidfVectorizer``).
+"""Interpretable TF-IDF baseline (thin wrapper over ``sklearn.TfidfVectorizer``).
 
-Objetivo: ser usado tanto em producao (worker NLP --- step do pipeline,
-pre-LLM) quanto no notebook academico, garantindo que o numero que vai pro
-relatorio eh o mesmo numero que vai pra UI da NORA.
+Goal: to be used both in production (NLP worker --- pipeline step,
+pre-LLM) and in the academic notebook, guaranteeing that the number that goes to
+the report is the same number that goes to NORA's UI.
 
-Decisoes deliberadas:
+Deliberate decisions:
 
-* Sem state global. Cada instancia eh independente --- pode ser construida,
-  treinada e descartada em qualquer ordem.
-* O preprocessador interno aplica o nosso ``normalize_text`` antes do
-  ``TfidfVectorizer`` (que ainda assim usa seu tokenizer regex). Isso garante
-  que stopwords sao deduzidas da forma *normalizada* (matchear ``e`` em vez
-  de ``é``) e que termos como ``Protheus`` e ``protheus`` viram o mesmo
+* No global state. Each instance is independent --- it can be built,
+  trained and discarded in any order.
+* The internal preprocessor applies our ``normalize_text`` before the
+  ``TfidfVectorizer`` (which still uses its regex tokenizer). This guarantees
+  stopwords are matched in the *normalized* form (matching ``e`` instead
+  of ``é``) and that terms like ``Protheus`` and ``protheus`` become the same
   token.
-* Stopwords vem do ``nlp_baseline.stopwords`` (lista PT-BR hardcoded) --- nao
-  dependemos do NLTK em runtime.
-* Os scores expostos por ``top_terms`` sao a *media* do tfidf por documento;
-  os de ``top_terms_per_doc`` sao o vetor tfidf do documento isolado. Em
-  ambos os casos, ordenamos por score desc e quebramos empate por termo
-  (lex asc) --- comportamento determinista.
+* Stopwords come from ``nlp_baseline.stopwords`` (hardcoded PT-BR list) --- we do
+  not depend on NLTK at runtime.
+* The scores exposed by ``top_terms`` are the tfidf *mean* per document;
+  those of ``top_terms_per_doc`` are the tfidf vector of the isolated document. In
+  both cases, we sort by score desc and break ties by term
+  (lex asc) --- deterministic behavior.
 """
 
 from __future__ import annotations
@@ -33,9 +33,9 @@ from .stopwords import get_ptbr_stopwords_normalized
 
 
 class TfidfBaseline:
-    """Wrapper interpretavel de TF-IDF PT-BR.
+    """Interpretable PT-BR TF-IDF wrapper.
 
-    Exemplo:
+    Example:
         >>> baseline = TfidfBaseline()
         >>> baseline.fit(["renovacao do contrato", "proposta comercial nova"])
         >>> baseline.top_terms(top_n=3)
@@ -51,21 +51,21 @@ class TfidfBaseline:
         max_df: float = 0.95,
         sublinear_tf: bool = True,
     ) -> None:
-        """Configura os hiperparametros do TF-IDF.
+        """Configures the TF-IDF hyperparameters.
 
         Args:
-            ngram_range: (1, 2) cobre unigramas + bigramas --- bom para PT-BR
-                porque captura termos compostos como "valor mensal".
-            max_features: limita o vocabulario aos N termos mais frequentes
-                (controla custo de memoria/tempo no notebook e no worker).
-            min_df: documento minimum frequency. Inteiro = contagem absoluta;
-                float = proporcao.
-            max_df: descarta termos que aparecem em mais de ``max_df`` dos
-                documentos (filtra ruido --- termo onipresente nao discrimina).
-                Quando ``len(texts) == 1``, internamente desligamos esse filtro
-                para evitar ``ValueError`` do sklearn ("max_df < min_df").
-            sublinear_tf: aplica ``1 + log(tf)`` --- recomendado para textos
-                medios/longos (transcricoes).
+            ngram_range: (1, 2) covers unigrams + bigrams --- good for PT-BR
+                because it captures compound terms like "valor mensal".
+            max_features: limits the vocabulary to the N most frequent terms
+                (controls memory/time cost in the notebook and in the worker).
+            min_df: document minimum frequency. Integer = absolute count;
+                float = proportion.
+            max_df: discards terms appearing in more than ``max_df`` of the
+                documents (filters noise --- an omnipresent term does not discriminate).
+                When ``len(texts) == 1``, we internally turn this filter off
+                to avoid sklearn's ``ValueError`` ("max_df < min_df").
+            sublinear_tf: applies ``1 + log(tf)`` --- recommended for
+                medium/long texts (transcripts).
         """
         if ngram_range[0] < 1 or ngram_range[1] < ngram_range[0]:
             raise ValueError(f"ngram_range invalido: {ngram_range}")
@@ -87,11 +87,11 @@ class TfidfBaseline:
         self._feature_names: list[str] = []
         self._n_docs: int = 0
 
-    # ---------- Pre-processamento ----------
+    # ---------- Preprocessing ----------
 
     @staticmethod
     def _preprocess(text: str) -> str:
-        """Hook chamado pelo ``TfidfVectorizer`` antes da tokenizacao."""
+        """Hook called by ``TfidfVectorizer`` before tokenization."""
         return normalize_text(
             text,
             lowercase=True,
@@ -101,16 +101,16 @@ class TfidfBaseline:
         )
 
     def _build_vectorizer(self, n_docs: int) -> TfidfVectorizer:
-        """Constroi o ``TfidfVectorizer`` ajustando filtros impossiveis."""
+        """Builds the ``TfidfVectorizer`` adjusting impossible filters."""
         max_df: float = self._max_df
         min_df: int | float = self._min_df
 
-        # Caso degenerado: 1 documento --- ``max_df`` proportional <1 quebra
-        # porque todo termo aparece em 100% dos docs. Desligamos o filtro.
+        # Degenerate case: 1 document --- proportional ``max_df`` <1 breaks
+        # because every term appears in 100% of the docs. We turn the filter off.
         if n_docs <= 1 and isinstance(max_df, float) and max_df < 1.0:
             max_df = 1.0
-        # ``min_df`` proporcional impossivel: se 2/2 docs caem fora,
-        # quebra. Forcamos 1 quando ha poucos docs.
+        # Impossible proportional ``min_df``: if 2/2 docs fall out,
+        # it breaks. We force 1 when there are few docs.
         if isinstance(min_df, float) and min_df * n_docs < 1.0:
             min_df = 1
 
@@ -122,22 +122,22 @@ class TfidfBaseline:
             min_df=min_df,
             max_df=max_df,
             sublinear_tf=self._sublinear_tf,
-            lowercase=False,  # ja feito no preprocessor
-            strip_accents=None,  # idem
+            lowercase=False,  # already done in the preprocessor
+            strip_accents=None,  # same
         )
 
     # ---------- Fit / Query ----------
 
     def fit(self, texts: list[str]) -> "TfidfBaseline":
-        """Treina o vectorizer no corpus ``texts`` (lista de documentos).
+        """Trains the vectorizer on the ``texts`` corpus (list of documents).
 
         Returns:
-            ``self`` (encadeavel).
+            ``self`` (chainable).
 
         Raises:
-            ValueError: corpus vazio ou todos os textos vazios apos a
-                normalizacao (sklearn levanta ``empty vocabulary``; convertemos
-                para uma mensagem mais util).
+            ValueError: empty corpus or all texts empty after
+                normalization (sklearn raises ``empty vocabulary``; we convert it
+                into a more useful message).
         """
         if not texts:
             raise ValueError("Corpus vazio. Forneca ao menos 1 documento.")
@@ -155,9 +155,9 @@ class TfidfBaseline:
 
         self._tfidf_matrix = matrix
         self._feature_names = list(self._vectorizer.get_feature_names_out())
-        # Media dos scores por feature ao longo dos documentos.
-        # ``matrix.mean(axis=0)`` retorna ``np.matrix``; convertemos pra array
-        # 1D para uso direto em ``argsort``.
+        # Mean of the scores per feature across the documents.
+        # ``matrix.mean(axis=0)`` returns ``np.matrix``; we convert to a 1D
+        # array for direct use in ``argsort``.
         self._mean_scores = np.asarray(matrix.mean(axis=0)).ravel()
         return self
 
@@ -168,10 +168,10 @@ class TfidfBaseline:
             )
 
     def top_terms(self, top_n: int = 20) -> list[tuple[str, float]]:
-        """Top ``top_n`` termos do corpus, ordenados por score medio desc.
+        """Top ``top_n`` terms of the corpus, sorted by mean score desc.
 
-        Empate eh resolvido pela ordem lexicografica ascendente do termo ---
-        comportamento determinista para testes e logs.
+        Ties are resolved by the ascending lexicographic order of the term ---
+        deterministic behavior for tests and logs.
         """
         self._require_fitted()
         if top_n <= 0:
@@ -179,8 +179,8 @@ class TfidfBaseline:
 
         assert self._mean_scores is not None
         scores = self._mean_scores
-        # ``argsort`` ascendente; pegamos os indices do final para descendente.
-        # Para garantir determinismo no empate, ordenamos por (-score, term).
+        # ``argsort`` is ascending; we take the indices from the end for descending.
+        # To guarantee determinism on ties, we sort by (-score, term).
         indexed = sorted(
             range(len(self._feature_names)),
             key=lambda i: (-float(scores[i]), self._feature_names[i]),
@@ -196,10 +196,10 @@ class TfidfBaseline:
     def top_terms_per_doc(
         self, text: str, top_n: int = 10
     ) -> list[tuple[str, float]]:
-        """Top ``top_n`` termos para ``text`` segundo o vocabulario aprendido.
+        """Top ``top_n`` terms for ``text`` according to the learned vocabulary.
 
-        Termos fora do vocabulario sao ignorados (comportamento padrao do
-        sklearn). Empates seguem o mesmo criterio determinista de ``top_terms``.
+        Terms outside the vocabulary are ignored (sklearn's default
+        behavior). Ties follow the same deterministic criterion as ``top_terms``.
         """
         self._require_fitted()
         if top_n <= 0:
@@ -220,19 +220,19 @@ class TfidfBaseline:
             out.append((self._feature_names[idx], score))
         return out
 
-    # ---------- Introspeccao ----------
+    # ---------- Introspection ----------
 
     @property
     def vocabulary_size(self) -> int:
-        """Numero de termos aprendidos. Zero antes do ``fit``."""
+        """Number of learned terms. Zero before the ``fit``."""
         return len(self._feature_names)
 
     @property
     def n_docs(self) -> int:
-        """Numero de documentos usados no ``fit``."""
+        """Number of documents used in the ``fit``."""
         return self._n_docs
 
     @property
     def feature_names(self) -> list[str]:
-        """Lista de termos aprendidos (copia)."""
+        """List of learned terms (copy)."""
         return list(self._feature_names)

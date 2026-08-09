@@ -1,6 +1,6 @@
 package br.com.nora.api.domain.integration;
 
-/** Provedores externos suportados pelo hub de integrações do NORA Flows. */
+/** External providers supported by the NORA Flows integrations hub. */
 public enum IntegrationProvider {
     GOOGLE("google"),
     SLACK("slack"),

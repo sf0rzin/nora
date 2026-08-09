@@ -1,8 +1,8 @@
-/* NORA Auth v3 — login + signup multi-step (port do bundle Claude Design /auth).
+/* NORA Auth v3 — login + multi-step signup (port of the Claude Design /auth bundle).
  *
- * Global, mas TODO seletor é escopado sob `.nora-auth` para não vazar pro app.
- * Tokens em styles/tokens.css. Painel esquerdo = variante "ambient" (transcrição
- * ao vivo). Resets globais e :root do protótipo removidos. Logo = NoraLogo da marca.
+ * Global, but EVERY selector is scoped under `.nora-auth` so it does not leak into
+ * the app. Tokens in styles/tokens.css. Left panel = "ambient" variant (live
+ * transcription). Prototype global resets and :root removed. Logo = brand NoraLogo.
  */
 
 .nora-auth {

@@ -13,23 +13,23 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * Avaliador de policies estilo AWS IAM.
+ * AWS IAM-style policy evaluator.
  *
- * <p>Regras (ADR 0007):
+ * <p>Rules (ADR 0007):
  *
  * <ol>
- *   <li>Caller Root do tenant => ALLOW (decidido fora deste avaliador).
- *   <li>Coletar TODOS os statements aplicaveis ao usuario (diretos + via grupos).
- *   <li>Qualquer statement DENY que case Action+Resource+Condition => DENY.
- *   <li>Senao, exigir pelo menos um ALLOW que case Action+Resource+Condition => ALLOW.
+ *   <li>Tenant Root caller => ALLOW (decided outside this evaluator).
+ *   <li>Collect ALL statements applicable to the user (direct + via groups).
+ *   <li>Any DENY statement matching Action+Resource+Condition => DENY.
+ *   <li>Otherwise, require at least one ALLOW matching Action+Resource+Condition => ALLOW.
  *   <li>Default: DENY.
  * </ol>
  *
- * <p>Wildcards: {@code *} (zero ou mais caracteres) e {@code ?} (um caractere) sao suportados em
- * {@code action} e {@code resource}.
+ * <p>Wildcards: {@code *} (zero or more characters) and {@code ?} (one character) are supported in
+ * {@code action} and {@code resource}.
  *
- * <p>Conditions suportadas: {@code StringEquals}, {@code StringIn}, {@code StringLike}, {@code
- * DateGreaterThan}, {@code DateLessThan}. Formato esperado dentro do statement:
+ * <p>Supported conditions: {@code StringEquals}, {@code StringIn}, {@code StringLike}, {@code
+ * DateGreaterThan}, {@code DateLessThan}. Expected format inside the statement:
  *
  * <pre>{@code
  * "condition": {"StringEquals":    {"chave": "valor"}}
@@ -39,11 +39,11 @@ import java.util.regex.Pattern;
  * "condition": {"DateLessThan":    {"chave": "2026-12-31"}}
  * }</pre>
  *
- * <p>A {@code chave} eh resolvida no {@code requestContext} passado pelo chamador (atributos do
- * recurso, do usuario, do request, etc.). Statements sem condition sao avaliados como sempre
- * satisfeitos. Operadores nao suportados (ex.: StringNotEquals) e atributos ausentes no contexto
- * fazem o statement NAO casar (fail-closed) — qualquer Allow com operador/atributo desconhecido eh
- * ignorado em vez de ser tratado como satisfeito.
+ * <p>The {@code chave} is resolved in the {@code requestContext} passed by the caller (attributes
+ * of the resource, of the user, of the request, etc.). Statements without a condition are evaluated
+ * as always satisfied. Unsupported operators (e.g. StringNotEquals) and attributes missing from the
+ * context make the statement NOT match (fail-closed) — any Allow with an unknown operator/attribute
+ * is ignored instead of being treated as satisfied.
  */
 public final class PolicyEvaluator {
 
@@ -52,17 +52,17 @@ public final class PolicyEvaluator {
 
     private PolicyEvaluator() {}
 
-    /** Overload sem context — equivalente a context vazio. Mantem compatibilidade. */
+    /** Overload without context — equivalent to an empty context. Keeps compatibility. */
     public static boolean isAllowed(
             List<PolicyStatement> statements, String action, String resource) {
         return isAllowed(statements, action, resource, Collections.emptyMap());
     }
 
     /**
-     * Pre-check para list-endpoints: retorna true se existir algum Allow para action+resource (sem
-     * avaliar conditions), e nao houver Deny incondicional cobrindo o mesmo action+resource. Um
-     * Deny incondicional bloqueia todas as instancias e nao pode ser superado por contexto, entao
-     * curto-circuita o pre-check.
+     * Pre-check for list endpoints: returns true if there is any Allow for action+resource (without
+     * evaluating conditions) and there is no unconditional Deny covering the same action+resource.
+     * An unconditional Deny blocks every instance and cannot be overridden by context, so it
+     * short-circuits the pre-check.
      */
     public static boolean hasAnyAllow(
             List<PolicyStatement> statements, String action, String resource) {
@@ -85,27 +85,27 @@ public final class PolicyEvaluator {
     }
 
     /**
-     * Diz se a decisao para {@code action} e forcosamente a MESMA para todo recurso do conjunto
-     * descrito por {@code wildcardResource} (ex.: {@code nora:tenant/{t}:meeting/*} = todas as
-     * reunioes do tenant).
+     * Says whether the decision for {@code action} is necessarily the SAME for every resource in
+     * the set described by {@code wildcardResource} (e.g. {@code nora:tenant/{t}:meeting/*} = all
+     * of the tenant's meetings).
      *
-     * <p>Existe para o caminho de listagem. Filtrar item a item obriga a carregar o conjunto
-     * inteiro do banco antes de paginar, porque so depois de avaliar cada item se sabe quantos
-     * sobram. Quando nenhuma statement consegue DISTINGUIR dois recursos do conjunto, esse trabalho
-     * todo produz sempre a mesma resposta -- e a decisao pode ser tomada uma vez, antes da query,
-     * deixando a paginacao para o SQL.
+     * <p>It exists for the listing path. Filtering item by item forces loading the whole set from
+     * the database before paginating, because only after evaluating each item do you know how many
+     * are left. When no statement can DISTINGUISH two resources of the set, all that work always
+     * produces the same answer -- and the decision can be taken once, before the query, leaving
+     * pagination to SQL.
      *
-     * <p>Uma statement distingue dois recursos do conjunto de duas maneiras:
+     * <p>A statement distinguishes two resources of the set in two ways:
      *
      * <ul>
-     *   <li><b>condition</b> -- le atributos do recurso, que variam item a item;
-     *   <li><b>resource mais especifico que o conjunto</b> -- {@code meeting/abc*} casa uns e
-     *       outros nao.
+     *   <li><b>condition</b> -- reads resource attributes, which vary item by item;
+     *   <li><b>resource more specific than the set</b> -- {@code meeting/abc*} matches some and not
+     *       others.
      * </ul>
      *
-     * <p>Devolve {@code empty} em qualquer duvida: o caller entao avalia item a item, exatamente
-     * como antes. E uma otimizacao que so dispara quando e demonstravelmente equivalente -- nunca
-     * amplia nem restringe o que o usuario ve.
+     * <p>Returns {@code empty} on any doubt: the caller then evaluates item by item, exactly as
+     * before. It is an optimization that only fires when it is demonstrably equivalent -- it never
+     * widens nor restricts what the user sees.
      */
     public static Optional<Boolean> uniformDecision(
             List<PolicyStatement> statements, String action, String wildcardResource) {
@@ -117,11 +117,11 @@ public final class PolicyEvaluator {
             return Optional.of(false);
         }
 
-        // A decisao e derivada da ESTRUTURA das statements, nao de avaliar um ARN sintetico.
-        // Avaliar `isAllowed(..., prefix + "*")` seria errado: nessa chamada o `*` entra como
-        // valor, um caractere literal, entao casar esse texto nao e nem necessario nem
-        // suficiente para casar os membros reais do conjunto -- um Deny em `meeting/????...`
-        // nao casa a sentinela mas nega toda reuniao real.
+        // The decision is derived from the STRUCTURE of the statements, not from evaluating a
+        // synthetic ARN. Evaluating `isAllowed(..., prefix + "*")` would be wrong: in that call
+        // the `*` goes in as a value, a literal character, so matching that text is neither
+        // necessary nor sufficient to match the real members of the set -- a Deny on
+        // `meeting/????...` does not match the sentinel but denies every real meeting.
         boolean anyAllow = false;
         for (PolicyStatement s : statements) {
             if (!matchesAction(s, action)) {
@@ -141,23 +141,23 @@ public final class PolicyEvaluator {
                 }
             }
             if (!coversAll) {
-                continue; // so tem patterns que nao alcancam nenhum membro: irrelevante
+                continue; // only has patterns that reach no member at all: irrelevant
             }
             if (s.effect() == Effect.DENY) {
-                return Optional.of(false); // Deny sobre todo o conjunto vence sempre
+                return Optional.of(false); // Deny over the whole set always wins
             }
             anyAllow = true;
         }
         return Optional.of(anyAllow);
     }
 
-    /** Como um resource pattern se relaciona com o conjunto {@code prefix + <qualquer id>}. */
+    /** How a resource pattern relates to the set {@code prefix + <qualquer id>}. */
     private enum Coverage {
-        /** Casa TODO membro do conjunto. */
+        /** Matches EVERY member of the set. */
         ALL,
-        /** Nao casa membro NENHUM. */
+        /** Matches NO member at all. */
         NONE,
-        /** Casa uns e outros nao — obriga a avaliar item a item. */
+        /** Matches some and not others — forces item-by-item evaluation. */
         PARTIAL
     }
 
@@ -165,18 +165,19 @@ public final class PolicyEvaluator {
         int wild = firstWildcard(pattern);
         String literal = wild < 0 ? pattern : pattern.substring(0, wild);
 
-        // Nenhum: o texto literal antes do primeiro wildcard ja diverge do prefixo comum, e todo
-        // membro do conjunto comeca por esse prefixo. Outro tipo de recurso, outro tenant.
+        // None: the literal text before the first wildcard already diverges from the common
+        // prefix, and every member of the set starts with that prefix. Another resource type,
+        // another tenant.
         int common = Math.min(literal.length(), prefix.length());
         if (!literal.regionMatches(0, prefix, 0, common)) {
             return Coverage.NONE;
         }
 
-        // Todos: o pattern e EXATAMENTE `<literal>*`, com o literal sem passar do prefixo comum.
-        // A exigencia de o `*` ser o ultimo caractere e o que faltava: sem ela,
-        // `nora:tenant/*:meeting/<id>` passava por "casa tudo" so porque o literal
-        // `nora:tenant/` e prefixo do prefixo — e a cauda, que e justamente quem discrimina,
-        // nunca era olhada. Um Deny assim desaparecia sem deixar rasto.
+        // All: the pattern is EXACTLY `<literal>*`, with the literal not going past the common
+        // prefix. Requiring the `*` to be the last character is what was missing: without it,
+        // `nora:tenant/*:meeting/<id>` passed as "matches everything" just because the literal
+        // `nora:tenant/` is a prefix of the prefix — and the tail, which is exactly what
+        // discriminates, was never looked at. A Deny like that vanished without a trace.
         if (wild >= 0
                 && wild == pattern.length() - 1
                 && pattern.charAt(wild) == '*'
@@ -199,7 +200,7 @@ public final class PolicyEvaluator {
         return Math.min(star, any);
     }
 
-    /** Avaliacao completa com request context (usado para conditions). */
+    /** Full evaluation with request context (used for conditions). */
     public static boolean isAllowed(
             List<PolicyStatement> statements,
             String action,
@@ -244,9 +245,9 @@ public final class PolicyEvaluator {
     }
 
     /**
-     * Avalia as conditions do statement. Retorna true sse TODOS os blocos forem satisfeitos.
-     * Operadores nao suportados, valores mal-formados ou atributos ausentes no contexto causam o
-     * statement a NAO casar (return false) — fail-closed para evitar privilege escalation.
+     * Evaluates the statement's conditions. Returns true iff ALL blocks are satisfied. Unsupported
+     * operators, malformed values or attributes missing from the context make the statement NOT
+     * match (return false) — fail-closed to avoid privilege escalation.
      */
     private static boolean matchesCondition(PolicyStatement s, Map<String, String> ctx) {
         Map<String, Object> condition = s.condition();
@@ -272,8 +273,9 @@ public final class PolicyEvaluator {
     }
 
     /**
-     * Avalia um unico requisito (valor do contexto vs valor esperado) para o operador dado.
-     * Atributo ausente ({@code actual == null}) nunca casa. Datas nao-parseaveis tambem nao casam.
+     * Evaluates a single requirement (context value vs expected value) for the given operator. A
+     * missing attribute ({@code actual == null}) never matches. Unparseable dates do not match
+     * either.
      */
     private static boolean matchesOperator(String operator, String actual, Object expected) {
         if (actual == null) {
@@ -290,7 +292,7 @@ public final class PolicyEvaluator {
         };
     }
 
-    /** {@code StringIn}: casa se {@code actual} for igual a qualquer elemento da lista esperada. */
+    /** {@code StringIn}: matches if {@code actual} equals any element of the expected list. */
     private static boolean matchesAnyOf(String actual, Object expected) {
         if (expected instanceof Iterable<?> values) {
             for (Object v : values) {
@@ -300,14 +302,14 @@ public final class PolicyEvaluator {
             }
             return false;
         }
-        // Valor unico (nao-lista) eh tolerado como igualdade simples.
+        // A single value (non-list) is tolerated as plain equality.
         return actual.equals(String.valueOf(expected));
     }
 
     /**
-     * Compara {@code actual} e {@code expected} como instantes ISO-8601. Aceita offset (ex.: {@code
-     * 2026-01-01T00:00:00Z}) ou data simples ({@code 2026-01-01}, meia-noite UTC). Retorna vazio se
-     * qualquer lado nao parsear — o caller trata como nao-casa (fail-closed).
+     * Compares {@code actual} and {@code expected} as ISO-8601 instants. Accepts an offset (e.g.
+     * {@code 2026-01-01T00:00:00Z}) or a plain date ({@code 2026-01-01}, midnight UTC). Returns
+     * empty if either side fails to parse — the caller treats it as no-match (fail-closed).
      */
     private static Optional<Integer> compareAsInstant(String actual, Object expected) {
         Instant a = parseInstant(actual);
@@ -326,7 +328,7 @@ public final class PolicyEvaluator {
         try {
             return OffsetDateTime.parse(v).toInstant();
         } catch (DateTimeParseException ignored) {
-            // nao eh offset-datetime; tenta data simples (yyyy-MM-dd) abaixo
+            // not an offset-datetime; tries a plain date (yyyy-MM-dd) below
         }
         try {
             return LocalDate.parse(v).atStartOfDay(ZoneOffset.UTC).toInstant();

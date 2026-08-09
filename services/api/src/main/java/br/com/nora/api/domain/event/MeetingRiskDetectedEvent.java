@@ -5,11 +5,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Evento de domínio: a análise identificou um risco de severidade ALTA na reunião. Emitido por
- * {@code AnalysisService.run()} APÓS o commit do COMPLETED, um evento POR risco — e SÓ para {@code
- * Severity.HIGH} (alerta de risco é exceção, não ruído).
+ * Domain event: the analysis identified a HIGH severity risk in the meeting. Emitted by {@code
+ * AnalysisService.run()} AFTER the COMPLETED commit, one event PER risk — and ONLY for {@code
+ * Severity.HIGH} (a risk alert is an exception, not noise).
  *
- * <p>Wire format do gatilho correspondente no Flows: {@code meeting.risk_detected}.
+ * <p>Wire format of the matching trigger in Flows: {@code meeting.risk_detected}.
  */
 public record MeetingRiskDetectedEvent(
         UUID tenantId, UUID meetingId, String description, Severity severity, Instant occurredAt) {

@@ -76,7 +76,7 @@ function VerifyEmailContent() {
   );
 }
 
-// ── Estilos compartilhados (cards de auth) ──────────────────────────
+// ── Shared styles (auth cards) ──────────────────────────────────────
 const cardTitle: React.CSSProperties = {
   fontSize: 19,
   fontWeight: 500,

@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * NORA Flows — nó custom do canvas (React Flow nodeType "bloco").
+ * NORA Flows — custom canvas node (React Flow nodeType "bloco").
  *
- * Card ~220px com header do papel (GATILHO/CONDIÇÃO/AÇÃO colorido), título do
- * bloco e linha de resumo dos params. Fluxo horizontal estilo n8n: handle de
- * entrada à ESQUERDA, saída à DIREITA. Gatilho não tem entrada; ação não tem
- * saída (é folha do grafo).
+ * ~220px card with the role header (colored GATILHO/CONDIÇÃO/AÇÃO), block
+ * title and a params summary line. Horizontal n8n-style flow: input handle on
+ * the LEFT, output on the RIGHT. A trigger has no input; an action has no
+ * output (it is a graph leaf).
  */
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 
@@ -15,8 +15,8 @@ import type { WorkflowNodeKind } from "@/lib/api/types";
 import { IconeKind, KIND_META, metaDoBloco } from "./catalogo";
 
 /**
- * Dados do nó no React Flow. O `type` do RF é a chave do nodeType ("bloco");
- * o tipo do catálogo do engine vive em `blockType` pra não colidir.
+ * Node data in React Flow. The RF `type` is the nodeType key ("bloco");
+ * the engine catalog type lives in `blockType` so they do not collide.
  */
 export type DadosNo = {
   kind: WorkflowNodeKind;

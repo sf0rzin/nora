@@ -118,7 +118,7 @@ mod platform {
             }
 
             std::thread::spawn(move || {
-                let mut read_buf = [0u8; 6400]; // 3200 samples i16 = 200ms a 16kHz mono
+                let mut read_buf = [0u8; 6400]; // 3200 samples i16 = 200ms at 16kHz mono
                 while flag.load(Ordering::SeqCst) {
                     match stdout.read(&mut read_buf) {
                         Ok(0) => break,
@@ -298,7 +298,7 @@ mod platform {
         if fmt.wFormatTag as u32 == WAVE_FORMAT_IEEE_FLOAT { return true; }
         if fmt.wFormatTag as u32 == WAVE_FORMAT_EXTENSIBLE && fmt.cbSize >= 22 {
             let ext = &*(fmt as *const _ as *const WAVEFORMATEXTENSIBLE);
-            // WAVEFORMATEXTENSIBLE é packed; acesso a SubFormat precisa ser unaligned
+            // WAVEFORMATEXTENSIBLE is packed; access to SubFormat has to be unaligned
             let subformat = std::ptr::addr_of!(ext.SubFormat).read_unaligned();
             return subformat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
         }
@@ -335,20 +335,20 @@ mod platform {
     //! macOS system-audio capture.
     //!
     //! Status (Issue #15):
-    //! - Implementado: fallback BlackHole via cpal (PCM f32 → mono → 16 kHz i16).
-    //!   Funciona em qualquer versão de macOS desde que o usuário tenha o driver
-    //!   virtual BlackHole instalado e o esteja roteando como saída do sistema
-    //!   (ou via Multi-Output Device no Audio MIDI Setup).
-    //! - TODO: caminho ScreenCaptureKit (macOS 13+) sem driver virtual. Deixado
-    //!   como follow-up: requer crate `screencapturekit` + bindings objc2 e
-    //!   validação em hardware Apple. A infraestrutura aqui (detecção de versão,
-    //!   Info.plist, README) já está pronta para receber o caminho SCK.
+    //! - Implemented: BlackHole fallback via cpal (PCM f32 → mono → 16 kHz i16).
+    //!   Works on any macOS version as long as the user has the BlackHole virtual
+    //!   driver installed and is routing it as the system output
+    //!   (or via a Multi-Output Device in Audio MIDI Setup).
+    //! - TODO: ScreenCaptureKit path (macOS 13+) without a virtual driver. Left
+    //!   as follow-up: requires the `screencapturekit` crate + objc2 bindings and
+    //!   validation on Apple hardware. The infrastructure here (version detection,
+    //!   Info.plist, README) is already ready to take the SCK path.
     //!
-    //! Fluxo atual:
-    //!   `find_system_audio_source()` retorna o nome do device "BlackHole" se
-    //!   presente; caso contrário `None` (o caller deve mostrar instruções).
-    //!   `SystemAudioCapture::start(name, ...)` abre o device com cpal, downmix
-    //!   para mono, resample para 16 kHz, converte para i16 e envia ao sink.
+    //! Current flow:
+    //!   `find_system_audio_source()` returns the name of the "BlackHole" device if
+    //!   present; otherwise `None` (the caller must show instructions).
+    //!   `SystemAudioCapture::start(name, ...)` opens the device with cpal, downmixes
+    //!   to mono, resamples to 16 kHz, converts to i16 and sends to the sink.
 
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     use cpal::SampleFormat;
@@ -357,15 +357,15 @@ mod platform {
 
     use crate::audio_resample::{downmix_to_mono, f32_to_i16, MonoResampler};
 
-    /// Nomes conhecidos do driver virtual BlackHole (pode aparecer com sufixo
-    /// de canais, ex: "BlackHole 2ch", "BlackHole 16ch").
+    /// Known names of the BlackHole virtual driver (it may show up with a channel
+    /// suffix, e.g.: "BlackHole 2ch", "BlackHole 16ch").
     const BLACKHOLE_HINTS: &[&str] = &["blackhole", "soundflower"];
 
-    /// Detecta se o sistema é macOS 13+ (Ventura), onde ScreenCaptureKit
-    /// passa a suportar captura de áudio do sistema sem driver virtual.
-    /// Mantido para uso futuro pelo caminho SCK; hoje apenas registra um log.
+    /// Detects whether the system is macOS 13+ (Ventura), where ScreenCaptureKit
+    /// starts supporting system audio capture without a virtual driver.
+    /// Kept for future use by the SCK path; today it only writes a log.
     fn macos_supports_sck_audio() -> bool {
-        // Lê via sysctlbyname("kern.osrelease") — Darwin kernel.
+        // Reads via sysctlbyname("kern.osrelease") — Darwin kernel.
         // macOS 13 (Ventura) = Darwin 22.x; macOS 14 = Darwin 23.x; etc.
         // ScreenCaptureKit audio: macOS 13+.
         unsafe {
@@ -407,8 +407,8 @@ mod platform {
         }
     }
 
-    /// Retorna o nome do device de input que parece ser o BlackHole (ou similar),
-    /// ou `None` se nenhum estiver instalado.
+    /// Returns the name of the input device that looks like BlackHole (or similar),
+    /// or `None` if none is installed.
     pub fn find_system_audio_source() -> Option<String> {
         let host = cpal::default_host();
         let devices = host.input_devices().ok()?;
@@ -449,7 +449,7 @@ mod platform {
             sink: tokio::sync::mpsc::Sender<Vec<i16>>,
             flag: Arc<AtomicBool>,
         ) -> Result<Self, String> {
-            // Localiza o device pelo nome fornecido (case-insensitive contains).
+            // Locates the device by the given name (case-insensitive contains).
             let host = cpal::default_host();
             let device = host
                 .input_devices()
@@ -480,7 +480,7 @@ mod platform {
 
             let device_name = device.name().unwrap_or_else(|_| source.to_string());
 
-            // Escolhe um config F32 com sample rate razoável.
+            // Picks an F32 config with a reasonable sample rate.
             let supported: Vec<_> = device
                 .supported_input_configs()
                 .map_err(|e| format!("supported_input_configs: {}", e))?
@@ -509,7 +509,7 @@ mod platform {
             );
 
             let stop_flag = flag.clone();
-            // cpal::Stream é !Send: precisa viver em thread dedicada.
+            // cpal::Stream is !Send: it has to live on a dedicated thread.
             let thread = std::thread::Builder::new()
                 .name("nora-macos-audio".into())
                 .spawn(move || {
@@ -592,8 +592,8 @@ mod platform {
     }
 }
 
-/// Verifica se o BlackHole (ou Soundflower) está instalado no macOS.
-/// Retorna true se encontrado, false caso contrário.
+/// Checks whether BlackHole (or Soundflower) is installed on macOS.
+/// Returns true if found, false otherwise.
 #[cfg(target_os = "macos")]
 pub fn is_blackhole_installed() -> bool {
     platform::find_system_audio_source().is_some()

@@ -10,9 +10,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
- * Chamadas à REST API v2 do Todoist usadas pela ação {@code todoist_create_task} do Flows. Sem SDK
- * — payload mínimo e visível. Falha vira {@code ProviderError} com status + trecho do corpo (≤300
- * chars), padrão dos demais clients da onda 1.
+ * Calls to Todoist's REST API v2 used by the Flows {@code todoist_create_task} action. No SDK —
+ * minimal, visible payload. A failure becomes a {@code ProviderError} with status + body excerpt
+ * (≤300 chars), the pattern of the other wave 1 clients.
  */
 @Component
 public class TodoistClient {
@@ -28,7 +28,7 @@ public class TodoistClient {
         this.mapper = mapper;
     }
 
-    /** Cria uma tarefa no Inbox do usuário conectado. Retorna a URL da tarefa criada. */
+    /** Creates a task in the connected user's Inbox. Returns the URL of the created task. */
     public String createTask(String accessToken, String content, String description) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("content", content);

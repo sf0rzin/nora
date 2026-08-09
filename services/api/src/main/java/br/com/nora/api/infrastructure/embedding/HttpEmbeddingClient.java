@@ -12,10 +12,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * {@link EmbeddingClient} HTTP provider-agnóstico (ADR 0004). Default Gemini; OpenAI suportado pelo
- * mesmo código (só muda o endpoint/shape e a credencial). Ambos emitem a mesma dimensão configurada
- * ({@code nora.embedding.dimension}). Sem credencial pro provider ativo → {@link #isEnabled()}
- * falso e o pipeline trata como no-op (embeddings são best-effort, nunca derrubam a análise).
+ * Provider-agnostic HTTP {@link EmbeddingClient} (ADR 0004). Default Gemini; OpenAI supported by
+ * the same code (only the endpoint/shape and the credential change). Both emit the same configured
+ * dimension ({@code nora.embedding.dimension}). No credential for the active provider → {@link
+ * #isEnabled()} false and the pipeline treats it as a no-op (embeddings are best-effort, they never
+ * bring down the analysis).
  */
 @Component
 public class HttpEmbeddingClient implements EmbeddingClient {
@@ -51,7 +52,7 @@ public class HttpEmbeddingClient implements EmbeddingClient {
         this.geminiBaseUrl = stripSlash(geminiBaseUrl);
         this.openAiBaseUrl = stripSlash(openAiBaseUrl);
         String key = "openai".equals(this.provider) ? openAiKey : geminiKey;
-        // 'unset' é o sentinel do Bicep (KV não aceita secret vazio) → tratar como desligado.
+        // 'unset' is the Bicep sentinel (KV does not accept an empty secret) → treat as disabled.
         this.apiKey = (key == null || key.isBlank() || "unset".equals(key)) ? "" : key;
     }
 

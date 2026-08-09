@@ -1,82 +1,82 @@
-# ADR 0033 — Estratégia de PII no caminho do chat (redação estruturada no BFF + PERSON_NAME via worker)
+# ADR 0033 — PII strategy on the chat path (structured redaction in the BFF + PERSON_NAME via the worker)
 
-- **Status:** aceito
-- **Data:** 2026-07-06
-- **Decisores:** sys0xFF (PO) + Claude Fable 5 (auditoria pós-pitch)
-- **Relacionados:** ADR 0012 (estratégia de PERSON_NAME no worker — **complementa**, não substitui),
-  ADR 0004 (provider-agnóstico), ADR 0003 (JSON Schema strict). Não altera o pipeline de análise.
+- **Status:** accepted
+- **Date:** 2026-07-06
+- **Deciders:** sys0xFF (PO) + Claude Fable 5 (post-pitch audit)
+- **Related:** ADR 0012 (PERSON_NAME strategy in the worker — **complements**, does not replace it),
+  ADR 0004 (provider-agnostic), ADR 0003 (strict JSON Schema). Does not change the analysis pipeline.
 
-## Contexto
+## Context
 
-O não-negociável do ADR 0012 é "PII nunca crua na LLM": o `PIIShield` do worker é o último gate
-antes de qualquer chamada ao provedor no **pipeline de análise**. O chat Core (chat-first, RAG),
-porém, tem um caminho de LLM **separado** que não passa pelo worker:
+The non-negotiable of ADR 0012 is "PII never raw in the LLM": the worker's `PIIShield` is the last gate
+before any call to the provider in the **analysis pipeline**. The Core chat (chat-first, RAG),
+however, has a **separate** LLM path that does not go through the worker:
 
-`apps/web/src/app/api/chat/route.ts` (BFF) monta contexto de workspace + histórico e chama o
-provedor de chat direto. A redação nesse caminho é feita por um port em JS
-(`apps/web/src/lib/pii/redact.ts`) que cobre só PII **estruturada** (e-mail, telefone, CPF, CNPJ,
-cartão — com DV/Luhn), **de propósito**, para não over-redigir Title Case legítimo no chat.
+`apps/web/src/app/api/chat/route.ts` (BFF) assembles workspace context + history and calls the
+chat provider directly. Redaction on that path is done by a JS port
+(`apps/web/src/lib/pii/redact.ts`) that covers only **structured** PII (email, phone, CPF, CNPJ,
+card — with check digit/Luhn), **on purpose**, so as not to over-redact legitimate Title Case in the chat.
 
-A auditoria pós-pitch (2026-07-06) encontrou dois problemas nesse caminho:
+The post-pitch audit (2026-07-06) found two problems on that path:
 
-1. **Vazamento estruturado para embeddings.** A última mensagem do usuário virava a query da busca
-   semântica (`GET /meetings/search?q=`) e ia **crua** para o provedor de **embeddings** (Gemini
-   por default — um provider externo distinto do de chat) **antes** do `redactPii`. Uma pergunta
-   como "qual reunião falou do CPF 111.444.777-35?" exfiltrava o CPF.
-2. **PERSON_NAME nunca redigido no chat.** O `redactPii` não cobre nome de pessoa, então nomes em
-   mensagens do usuário e em títulos de reunião (que vêm crus do upload) chegam ao provedor de
-   chat. Isso é PII coberta pelo ADR 0012 no worker, mas com cobertura zero no caminho do chat — e
-   a decisão vivia só num comentário de código, sem ADR.
+1. **Structured leak to embeddings.** The user's last message became the semantic search query
+   (`GET /meetings/search?q=`) and went **raw** to the **embeddings** provider (Gemini
+   by default — an external provider distinct from the chat one) **before** `redactPii`. A question
+   like "qual reunião falou do CPF 111.444.777-35?" exfiltrated the CPF.
+2. **PERSON_NAME never redacted in the chat.** `redactPii` does not cover person names, so names in
+   user messages and in meeting titles (which come raw from the upload) reach the chat
+   provider. This is PII covered by ADR 0012 in the worker, but with zero coverage on the chat path — and
+   the decision lived only in a code comment, with no ADR.
 
-## Decisão
+## Decision
 
-**A redação de PII estruturada permanece no BFF (rápida, sem hop de rede) e passa a cobrir também
-a query de RAG; a cobertura de PERSON_NAME no chat será entregue roteando os textos do chat pelo
-`PIIShield` do worker — não por duplicar a lista de nomes em JS.**
+**Structured PII redaction stays in the BFF (fast, no network hop) and now also covers
+the RAG query; PERSON_NAME coverage in the chat will be delivered by routing the chat texts through the
+worker's `PIIShield` — not by duplicating the name list in JS.**
 
-1. **Query de RAG redigida antes do embedding** (entregue neste ADR): `route.ts` aplica
-   `redactPii` na última mensagem do usuário antes de passá-la a `buildWorkspaceContext` →
-   `/meetings/search`. Placeholder `[[CPF_1]]` degrada pouco a similaridade semântica (não se busca
-   por número de CPF). Defesa em profundidade recomendada (follow-up): redigir também `q` no
-   `MeetingsController.search`/`EmbeddingService` do lado Java.
-2. **PERSON_NAME no chat = roteamento pelo worker** (follow-up declarado): em vez de portar a lista
-   `_BR_TOP_NAMES` (~270 nomes) para o JS — exatamente o espelhamento manual que já causou bypass
-   estruturado (fix órfão `b0bad1d`) —, o BFF passará a chamar um endpoint interno do worker
-   (`POST /redact`, autenticado por `X-Internal-Token`) que reusa o `PIIShield` completo (com o
-   accent-fold restaurado e o backstop NER quando o PR #289 entrar). Fallback SOFT para o
-   `redactPii` local em qualquer falha, para nunca derrubar o chat.
+1. **RAG query redacted before the embedding** (delivered in this ADR): `route.ts` applies
+   `redactPii` to the user's last message before passing it to `buildWorkspaceContext` →
+   `/meetings/search`. The `[[CPF_1]]` placeholder degrades semantic similarity only slightly (one does not search
+   by CPF number). Recommended defense in depth (follow-up): also redact `q` in the
+   `MeetingsController.search`/`EmbeddingService` on the Java side.
+2. **PERSON_NAME in the chat = routing through the worker** (declared follow-up): instead of porting the
+   `_BR_TOP_NAMES` list (~270 names) to JS — exactly the manual mirroring that already caused the structured
+   bypass (orphan fix `b0bad1d`) —, the BFF will call an internal worker endpoint
+   (`POST /redact`, authenticated by `X-Internal-Token`) that reuses the complete `PIIShield` (with the
+   accent-fold restored and the NER backstop once PR #289 lands). SOFT fallback to the
+   local `redactPii` on any failure, so the chat is never taken down.
 
-## Resíduo aceito (até o follow-up)
+## Accepted residue (until the follow-up)
 
-Enquanto o roteamento pelo worker não entra, **PERSON_NAME em mensagens do chat e em títulos de
-reunião ainda chega ao provedor de chat**. É um risco residual **explícito e documentado** (não um
-comentário escondido). Mitigadores atuais: a PII estruturada de maior risco LGPD (documentos,
-contato, cartão) está coberta nos dois provedores (chat e embeddings); o system prompt instrui o
-modelo a não expor PII. Este ADR aciona o trigger nº 3 do ADR 0012 (bug report de falso negativo
-de nome causando vazamento) — o backstop NER (spaCy) já provado em #289 é o alvo do resgate.
+Until routing through the worker lands, **PERSON_NAME in chat messages and in meeting
+titles still reaches the chat provider**. This is an **explicit and documented** residual risk (not a
+hidden comment). Current mitigators: the structured PII with the highest LGPD risk (documents,
+contact, card) is covered in both providers (chat and embeddings); the system prompt instructs the
+model not to expose PII. This ADR triggers trigger #3 of ADR 0012 (a bug report of a false negative
+on a name causing a leak) — the NER backstop (spaCy) already proven in #289 is the rescue target.
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-- **Portar `_BR_TOP_NAMES` + prefixos para `redact.ts`:** rejeitado como solução definitiva —
-  duplica a fonte de verdade e reintroduz o anti-padrão de espelhamento manual (o próprio bypass
-  estruturado nasceu de um port desalinhado). Aceitável só como paliativo se o worker-routing
-  atrasar.
-- **Roteador de redação como microserviço à parte:** overkill; o worker já tem o shield e o token
-  interno.
-- **Não redigir a query de RAG (aceitar o vazamento estruturado):** rejeitado — viola o ADR 0012 e
-  dobra a superfície externa (provider de embeddings ≠ provider de chat).
+- **Porting `_BR_TOP_NAMES` + prefixes to `redact.ts`:** rejected as a definitive solution —
+  it duplicates the source of truth and reintroduces the manual mirroring anti-pattern (the structured bypass
+  itself was born from a misaligned port). Acceptable only as a stopgap if the worker routing
+  is delayed.
+- **A redaction router as a separate microservice:** overkill; the worker already has the shield and the
+  internal token.
+- **Not redacting the RAG query (accepting the structured leak):** rejected — it violates ADR 0012 and
+  doubles the external surface (the embeddings provider ≠ the chat provider).
 
-## Consequências
+## Consequences
 
-- **Positivas:** fecha o vazamento estruturado para o provider de embeddings (P0); dá ao chat uma
-  fonte única de redação de nome (worker) em vez de espelhamento frágil; o risco residual passa a
-  ser rastreável (ADR + follow-up), não implícito.
-- **Negativas / dívidas:** o roteamento pelo worker adiciona um hop de rede por turno de chat
-  (mitigado por batch + fallback SOFT + cache); enquanto não entra, PERSON_NAME no chat é resíduo
-  aceito. O endpoint `/redact` do worker precisa de auth interna e de teste de contrato.
+- **Positive:** it closes the structured leak to the embeddings provider (P0); it gives the chat a
+  single source of name redaction (the worker) instead of fragile mirroring; the residual risk becomes
+  traceable (ADR + follow-up), not implicit.
+- **Negative / debts:** routing through the worker adds a network hop per chat turn
+  (mitigated by batching + SOFT fallback + cache); until it lands, PERSON_NAME in the chat is accepted
+  residue. The worker's `/redact` endpoint needs internal auth and a contract test.
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-07-06 | sys0xFF + Claude | ADR criado e aceito. Fix da query de RAG entregue; PERSON_NAME no chat via worker declarado como follow-up. |
+| 2026-07-06 | sys0xFF + Claude | ADR created and accepted. RAG query fix delivered; PERSON_NAME in the chat via the worker declared as a follow-up. |

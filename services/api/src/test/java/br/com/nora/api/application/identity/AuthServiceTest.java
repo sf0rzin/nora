@@ -39,7 +39,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Cobre US01-US04 + refresh/logout (Round 2 / 1.3 A) com fakes em memoria, sem Spring nem banco.
+ * Covers US01-US04 + refresh/logout (Round 2 / 1.3 A) with in-memory fakes, no Spring or database.
  */
 class AuthServiceTest {
 
@@ -177,7 +177,7 @@ class AuthServiceTest {
 
         LoginResult login = service.login(new LoginCommand("rp@nora.dev", "SenhaForte123"));
 
-        // Confere que o que ficou em DB e o HASH, nao o plain.
+        // Checks that what ended up in the DB is the HASH, not the plain one.
         assertThat(refreshRepo.all)
                 .hasSize(1)
                 .allSatisfy(
@@ -203,7 +203,7 @@ class AuthServiceTest {
         assertThat(refresh.refreshTokenPlain())
                 .isNotBlank()
                 .isNotEqualTo(login.refreshTokenPlain());
-        // 2 registros: pai revogado + filho ativo, ambos na mesma family.
+        // 2 records: revoked parent + active child, both in the same family.
         assertThat(refreshRepo.all).hasSize(2);
         RefreshToken parent =
                 refreshRepo.all.stream().filter(RefreshToken::isRevoked).findFirst().orElseThrow();
@@ -212,8 +212,8 @@ class AuthServiceTest {
         assertThat(parent.familyId()).isEqualTo(child.familyId());
         assertThat(parent.replacedById()).isEqualTo(child.id());
 
-        // O novo refresh funciona; o anterior ja revogado dispara reuse detection
-        // depois da janela de corrida benigna (60s).
+        // The new refresh works; the previous one, already revoked, triggers reuse detection
+        // after the benign race window (60s).
         RefreshResult again = service.refresh(refresh.refreshTokenPlain());
         assertThat(again.accessToken()).isNotBlank();
         clock.advance(Duration.ofSeconds(61));
@@ -227,17 +227,17 @@ class AuthServiceTest {
         service.verifyEmail(sr.emailVerificationDevToken());
         LoginResult login = service.login(new LoginCommand("ru@nora.dev", "SenhaForte123"));
 
-        // Rotaciona uma vez. Atacante recupera o token velho.
+        // Rotate once. Attacker recovers the old token.
         RefreshResult rotated = service.refresh(login.refreshTokenPlain());
 
-        // Fora da janela de corrida benigna (60s), reuse e tratado como roubo de token.
+        // Outside the benign race window (60s), reuse is treated as token theft.
         clock.advance(Duration.ofSeconds(61));
 
-        // Atacante reapresenta o token velho (revogado) → reuse detection revoga family.
+        // Attacker re-presents the old (revoked) token → reuse detection revokes the family.
         assertThatThrownBy(() -> service.refresh(login.refreshTokenPlain()))
                 .isInstanceOf(AuthException.RefreshTokenInvalid.class);
 
-        // Apos reuse, o token rotacionado (que era valido) tambem foi invalidado.
+        // After the reuse, the rotated token (which was valid) was also invalidated.
         assertThatThrownBy(() -> service.refresh(rotated.refreshTokenPlain()))
                 .isInstanceOf(AuthException.RefreshTokenInvalid.class);
         assertThat(refreshRepo.all).allMatch(RefreshToken::isRevoked);
@@ -245,21 +245,22 @@ class AuthServiceTest {
 
     @Test
     void refreshReuseWithinLeewayIsTreatedAsBenignRaceAndKeepsFamilyAlive() {
-        // Cenario real de producao: timer proativo + interceptor 401 (ou duas abas)
-        // disparam refresh quase simultaneo com o mesmo cookie. O segundo chega com o
-        // token ja rotacionado — NAO pode derrubar a family (logout espontaneo).
+        // Real production scenario: proactive timer + 401 interceptor (or two tabs)
+        // fire an almost simultaneous refresh with the same cookie. The second arrives
+        // with the token already rotated — it must NOT tear down the family (spontaneous
+        // logout).
         SignupResult sr = service.signup(new SignupCommand("br@nora.dev", "SenhaForte123", "BR"));
         service.verifyEmail(sr.emailVerificationDevToken());
         LoginResult login = service.login(new LoginCommand("br@nora.dev", "SenhaForte123"));
 
-        // Aba A rotaciona normalmente.
+        // Tab A rotates normally.
         RefreshResult rotated = service.refresh(login.refreshTokenPlain());
 
-        // Aba B reapresenta o token antigo 30s depois (dentro da janela de 60s).
+        // Tab B re-presents the old token 30s later (inside the 60s window).
         clock.advance(Duration.ofSeconds(30));
         RefreshResult raced = service.refresh(login.refreshTokenPlain());
 
-        // Recebe um par novo valido, na MESMA family, sem revogar mais nada.
+        // Gets a new valid pair, in the SAME family, without revoking anything else.
         assertThat(raced.accessToken()).isNotBlank();
         assertThat(raced.refreshTokenPlain())
                 .isNotBlank()
@@ -268,18 +269,18 @@ class AuthServiceTest {
         assertThat(refreshRepo.all).hasSize(3);
         UUID familyId = refreshRepo.all.get(0).familyId();
         assertThat(refreshRepo.all).allMatch(t -> t.familyId().equals(familyId));
-        // So o pai (rotacionado) esta revogado; os dois filhos continuam ativos.
+        // Only the parent (rotated) is revoked; both children stay active.
         assertThat(refreshRepo.all.stream().filter(RefreshToken::isRevoked)).hasSize(1);
 
-        // Ambas as "abas" continuam funcionando: tokens de A e B seguem refreshaveis.
+        // Both "tabs" keep working: A's and B's tokens remain refreshable.
         assertThat(service.refresh(rotated.refreshTokenPlain()).accessToken()).isNotBlank();
         assertThat(service.refresh(raced.refreshTokenPlain()).accessToken()).isNotBlank();
     }
 
     @Test
     void refreshReuseWindowIsAnchoredOnFirstUseNotExtendedByEachReuse() {
-        // Anti-abuso: reusar o token velho dentro da janela NAO renova a janela.
-        // 30s + 31s = 61s desde o PRIMEIRO uso → reuse detection plena.
+        // Anti-abuse: reusing the old token inside the window does NOT renew the window.
+        // 30s + 31s = 61s since the FIRST use → full reuse detection.
         SignupResult sr = service.signup(new SignupCommand("an@nora.dev", "SenhaForte123", "AN"));
         service.verifyEmail(sr.emailVerificationDevToken());
         LoginResult login = service.login(new LoginCommand("an@nora.dev", "SenhaForte123"));
@@ -335,7 +336,7 @@ class AuthServiceTest {
 
     @Test
     void logoutIsIdempotentOnAbsentOrInvalidToken() {
-        // Nenhum token: no-op silencioso.
+        // No token: silent no-op.
         service.logout(null);
         service.logout("");
         service.logout("inexistente");
@@ -351,10 +352,10 @@ class AuthServiceTest {
 
         service.logout(first.refreshTokenPlain());
 
-        // Primeira family foi revogada (logout).
+        // First family was revoked (logout).
         assertThatThrownBy(() -> service.refresh(first.refreshTokenPlain()))
                 .isInstanceOf(AuthException.RefreshTokenInvalid.class);
-        // Segunda family continua valida.
+        // Second family stays valid.
         RefreshResult ok = service.refresh(second.refreshTokenPlain());
         assertThat(ok.accessToken()).isNotBlank();
     }
@@ -395,7 +396,7 @@ class AuthServiceTest {
         service.confirmPasswordReset(
                 new ConfirmPasswordResetCommand(req.devToken(), "NovaSenha456"));
 
-        // Senha antiga falha, nova passa
+        // Old password fails, new one passes
         assertThatThrownBy(() -> service.login(new LoginCommand("rs@nora.dev", "SenhaForte123")))
                 .isInstanceOf(AuthException.InvalidCredentials.class);
         var ok = service.login(new LoginCommand("rs@nora.dev", "NovaSenha456"));
@@ -404,9 +405,9 @@ class AuthServiceTest {
 
     @Test
     void resetPasswordRevokesAllActiveRefreshTokens() {
-        // Regression: confirmPasswordReset DEVE invalidar todos os refresh tokens ativos.
-        // Sem isso, atacante com refresh roubado mantem sessao por 30 dias apos a vitima
-        // resetar a senha. OWASP recommendation.
+        // Regression: confirmPasswordReset MUST invalidate every active refresh token.
+        // Without it, an attacker with a stolen refresh keeps the session for 30 days after
+        // the victim resets the password. OWASP recommendation.
         SignupResult sr =
                 service.signup(new SignupCommand("revoke@nora.dev", "SenhaForte123", "Revoke"));
         service.verifyEmail(sr.emailVerificationDevToken());
@@ -414,7 +415,7 @@ class AuthServiceTest {
         var loginA = service.login(new LoginCommand("revoke@nora.dev", "SenhaForte123"));
         var loginB = service.login(new LoginCommand("revoke@nora.dev", "SenhaForte123"));
 
-        // Ambas sessoes funcionam antes do reset; rotacionam pra um novo refresh ativo.
+        // Both sessions work before the reset; they rotate into a new active refresh.
         var r1 = service.refresh(loginA.refreshTokenPlain());
         var r2 = service.refresh(loginB.refreshTokenPlain());
         assertThat(r1.user().id()).isEqualTo(sr.userId());
@@ -424,7 +425,7 @@ class AuthServiceTest {
         service.confirmPasswordReset(
                 new ConfirmPasswordResetCommand(req.devToken(), "NovaSenha456"));
 
-        // Os refresh ativos pos-rotation tambem deixam de funcionar.
+        // The post-rotation active refreshes stop working too.
         assertThatThrownBy(() -> service.refresh(r1.refreshTokenPlain()))
                 .isInstanceOf(AuthException.RefreshTokenInvalid.class);
         assertThatThrownBy(() -> service.refresh(r2.refreshTokenPlain()))
@@ -488,12 +489,12 @@ class AuthServiceTest {
                 String invitedByName,
                 String acceptUrl,
                 int expiresInDays) {
-            // AuthService nao usa invite; no-op aqui.
+            // AuthService does not use invite; no-op here.
         }
 
         @Override
         public void sendWorkflowNotification(String toEmail, String subject, String htmlBody) {
-            // AuthService nao usa notificacao de workflow; no-op aqui.
+            // AuthService does not use workflow notification; no-op here.
         }
     }
 
@@ -512,7 +513,7 @@ class AuthServiceTest {
         }
     }
 
-    /** Fake JWT issuer: codifica um sufixo unico para distinguir tokens entre chamadas. */
+    /** Fake JWT issuer: encodes a unique suffix to tell tokens apart across calls. */
     static class FakeJwtIssuer implements JwtIssuer {
         int seq;
 

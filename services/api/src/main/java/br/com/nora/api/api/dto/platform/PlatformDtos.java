@@ -8,13 +8,13 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/** DTOs de fronteira HTTP do control plane (contrato platform-control-plane.md). */
+/** HTTP boundary DTOs of the control plane (platform-control-plane.md contract). */
 public final class PlatformDtos {
 
     private PlatformDtos() {}
 
     /**
-     * Resposta do catálogo (GET /admin/platform/models). Espelha o contrato (model/modality wire).
+     * Catalog response (GET /admin/platform/models). Mirrors the contract (model/modality wire).
      */
     public record ModelResponse(
             String id,
@@ -49,7 +49,7 @@ public final class PlatformDtos {
         }
     }
 
-    /** POST /admin/platform/models. Preços/flags opcionais (default 0 / false / true). */
+    /** POST /admin/platform/models. Prices/flags optional (default 0 / false / true). */
     public record CreateModelRequest(
             @NotBlank String provider,
             @NotBlank String model,
@@ -62,9 +62,7 @@ public final class PlatformDtos {
             BigDecimal priceCachedInputPerMTok,
             Boolean enabled) {}
 
-    /**
-     * Resposta de binding (GET /admin/platform/config), enriquecida com provider/model do modelo.
-     */
+    /** Binding response (GET /admin/platform/config), enriched with the model's provider/model. */
     public record BindingResponse(
             String service,
             String modelId,

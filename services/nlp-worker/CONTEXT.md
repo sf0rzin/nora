@@ -1,49 +1,49 @@
-# NLP Worker — Contexto para IA
+# NLP Worker — Context for AI
 
-> Arquivo gerado para dar contexto a agentes de IA sobre o estado atual do NLP Worker.
+> File generated to give AI agents context about the current state of the NLP Worker.
 
 ---
 
-## Estado Atual
+## Current State
 
-O NLP Worker está funcional com dois modos de operação:
+The NLP Worker is functional with two operating modes:
 
-| Modo | Env | Descrição |
+| Mode | Env | Description |
 |---|---|---|
-| **Stub** | `USE_LLM_STUB=true` | Análise determinística por heurísticas em PT-BR. Sem custo de API. Default em CI e dev local. |
-| **LLM Real** | `USE_LLM_STUB=false` | Cliente provider-agnostic (default OpenAI direto, `gpt-4o-mini`) com structured output JSON Schema. Ver ADR 0004. |
+| **Stub** | `USE_LLM_STUB=true` | Deterministic analysis by heuristics in PT-BR. No API cost. Default in CI and local dev. |
+| **Real LLM** | `USE_LLM_STUB=false` | Provider-agnostic client (default OpenAI direct, `gpt-4o-mini`) with JSON Schema structured output. See ADR 0004. |
 
-Ambos os modos passam pelo **PII Shield** antes da análise.
+Both modes go through the **PII Shield** before the analysis.
 
 ---
 
-## Arquitetura dos Módulos
+## Module Architecture
 
 ### `clients/llm.py`
-Client LLM agnóstico de provider, baseado na SDK oficial `openai` com `base_url` plugável (compatível com OpenAI direto, Azure OpenAI, Groq, OpenRouter, Ollama, etc.):
+Provider-agnostic LLM client, based on the official `openai` SDK with a pluggable `base_url` (compatible with OpenAI direct, Azure OpenAI, Groq, OpenRouter, Ollama, etc.):
 
-- `LlmClient.__init__(settings)` — valida `LLM_API_KEY` e configura SDK.
-- `LlmClient.chat_structured(...)` — `response_format=json_schema` (strict). Retorna `(json_str, tokens_in, tokens_out)`.
-- `LlmClient.chat_json(...)` — fallback `response_format=json_object` para providers que não suportam strict schema.
-- `build_json_schema_for_analysis()` — gera o JSON Schema do `MeetingAnalysisV1`.
+- `LlmClient.__init__(settings)` — validates `LLM_API_KEY` and configures the SDK.
+- `LlmClient.chat_structured(...)` — `response_format=json_schema` (strict). Returns `(json_str, tokens_in, tokens_out)`.
+- `LlmClient.chat_json(...)` — `response_format=json_object` fallback for providers that do not support a strict schema.
+- `build_json_schema_for_analysis()` — generates the JSON Schema of `MeetingAnalysisV1`.
 
 ### `services/llm_analyzer.py`
-Pipeline completo:
-1. Carrega prompt de `prompts/meeting-analysis-v1.md` (seções `## SYSTEM` e `## USER`).
-2. Injeta `tenant_context_json`, `meeting_id`, `language`, `transcript` nos placeholders `{{...}}`.
-3. Tenta `chat_structured` (JSON Schema); se falhar, faz fallback para `chat_json`.
-4. Valida resposta com `MeetingAnalysisV1.model_validate()`.
-5. Retorna `AnalyzeResponse` com metadata (tokens, tempo, `modelVersion = f"{provider}-{model}"`).
+Complete pipeline:
+1. Loads the prompt from `prompts/meeting-analysis-v1.md` (`## SYSTEM` and `## USER` sections).
+2. Injects `tenant_context_json`, `meeting_id`, `language`, `transcript` into the `{{...}}` placeholders.
+3. Tries `chat_structured` (JSON Schema); if it fails, falls back to `chat_json`.
+4. Validates the response with `MeetingAnalysisV1.model_validate()`.
+5. Returns `AnalyzeResponse` with metadata (tokens, time, `modelVersion = f"{provider}-{model}"`).
 
 ### `routers/analyze.py`
 - `USE_LLM_STUB=true` → `stub_analyzer.analyze()`.
 - `USE_LLM_STUB=false` → `llm_analyzer.analyze(req, settings)`.
-- Erros de config → 503 `LLM_CONFIG_INVALID`.
-- Erros de provider → 500 `LLM_PROVIDER_ERROR`.
+- Config errors → 503 `LLM_CONFIG_INVALID`.
+- Provider errors → 500 `LLM_PROVIDER_ERROR`.
 
 ---
 
-## Schema de Saída (MeetingAnalysisV1)
+## Output Schema (MeetingAnalysisV1)
 
 ```json
 {
@@ -67,21 +67,21 @@ Pipeline completo:
 }
 ```
 
-### Campo `summary` em Markdown
-- Parágrafo de objetivo.
-- `## Decisões` — lista.
-- `## Próximos Passos` — lista com `-`.
-- `## Observações` — notas relevantes.
-- Negrito `**texto**` para destaques.
+### `summary` field in Markdown
+- Objective paragraph.
+- `## Decisões` — list.
+- `## Próximos Passos` — list with `-`.
+- `## Observações` — relevant notes.
+- Bold `**texto**` for highlights.
 
-### Campo `participants` (US13)
-- `name` — nome do participante.
-- `role` — cargo/função (se mencionado), senão `null`.
-- `mentionCount` — quantas vezes participou/falou.
+### `participants` field (US13)
+- `name` — the participant's name.
+- `role` — job title/function (if mentioned), otherwise `null`.
+- `mentionCount` — how many times they took part/spoke.
 
 ---
 
-## Variáveis de Ambiente
+## Environment Variables
 
 ```env
 WORKER_PORT=8001
@@ -97,16 +97,16 @@ LLM_TEMPERATURE=0.2
 USE_LLM_STUB=false   # true para stub (default em CI/dev)
 ```
 
-### Trocar de provider
-- **OpenAI direto (default)**: deixe os defaults; preencha `LLM_API_KEY`.
-- **Azure OpenAI**: `LLM_BASE_URL=https://<resource>.openai.azure.com/openai/deployments/<deploy>` e use `LLM_MODEL=<deployment>`.
+### Switching provider
+- **OpenAI direct (default)**: leave the defaults; fill in `LLM_API_KEY`.
+- **Azure OpenAI**: `LLM_BASE_URL=https://<resource>.openai.azure.com/openai/deployments/<deploy>` and use `LLM_MODEL=<deployment>`.
 - **Groq**: `LLM_BASE_URL=https://api.groq.com/openai/v1`, `LLM_MODEL=llama-3.3-70b-versatile`.
 - **OpenRouter**: `LLM_BASE_URL=https://openrouter.ai/api/v1`, `LLM_MODEL=openai/gpt-4o-mini`.
-- **Ollama local**: `LLM_BASE_URL=http://localhost:11434/v1`, `LLM_MODEL=llama3.1`.
+- **Local Ollama**: `LLM_BASE_URL=http://localhost:11434/v1`, `LLM_MODEL=llama3.1`.
 
 ---
 
-## Estrutura de Arquivos
+## File Structure
 
 ```
 services/nlp-worker/src/nora_nlp/
@@ -134,42 +134,42 @@ services/nlp-worker/src/nora_nlp/
 
 ---
 
-## Testes
+## Tests
 
-| Arquivo | Descrição |
+| File | Description |
 |---|---|
 | `test_health.py` | Health endpoint. |
-| `test_pii_shield.py` | Redação de PII (email, phone, cpf, cnpj). |
-| `test_analyze_stub.py` | Análise stub com dados sintéticos. |
-| `test_llm_analyzer.py` | Pipeline LLM com mock (prompt loading, validação, context injection, fallback JSON mode). |
+| `test_pii_shield.py` | PII redaction (email, phone, cpf, cnpj). |
+| `test_analyze_stub.py` | Stub analysis with synthetic data. |
+| `test_llm_analyzer.py` | LLM pipeline with a mock (prompt loading, validation, context injection, JSON mode fallback). |
 
-Stub é o default em CI; nenhum teste depende de chave externa.
+The stub is the default in CI; no test depends on an external key.
 
 ---
 
-## Stories Atendidas
+## Stories Covered
 
 | Story | Status |
 |---|---|
-| US11 — Resumo automático da reunião | Implementado (LLM + stub). |
-| US12 — Extração de tarefas e decisões | Implementado (LLM + stub). |
-| US13 — Identificação de participantes | Implementado (campo `participants`). |
-| US14 — Contexto da empresa no processamento | Implementado (tenant context injection no prompt). |
+| US11 — Automatic meeting summary | Implemented (LLM + stub). |
+| US12 — Task and decision extraction | Implemented (LLM + stub). |
+| US13 — Participant identification | Implemented (`participants` field). |
+| US14 — Company context in processing | Implemented (tenant context injection in the prompt). |
 
 ---
 
-## Próximos Passos (não implementados nesta branch)
+## Next Steps (not implemented on this branch)
 
-1. **Embeddings / RAG** (US15) — recuperar contexto relevante via Azure AI Search.
-2. **PII Shield com LLM** — fallback para nomes próprios complexos.
-3. **Retry/backoff** no `LlmClient` para falhas transitórias.
-4. **Streaming** de resposta para reuniões longas.
-5. **Health Score temporal** — scoring por tenant ao longo de múltiplas reuniões.
-6. **Integração backend** — chamada do worker a partir do upload de transcrição.
+1. **Embeddings / RAG** (US15) — retrieve relevant context via Azure AI Search.
+2. **PII Shield with LLM** — fallback for complex proper names.
+3. **Retry/backoff** in `LlmClient` for transient failures.
+4. **Streaming** of the response for long meetings.
+5. **Temporal Health Score** — scoring per tenant across multiple meetings.
+6. **Backend integration** — calling the worker from the transcript upload.
 
 ---
 
-## Comandos Úteis
+## Useful Commands
 
 ```bash
 cd services/nlp-worker

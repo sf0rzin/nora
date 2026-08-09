@@ -1,21 +1,22 @@
 "use client";
 
 /**
- * NORA Core — bloco "Sessões" da sidebar.
+ * NORA Core — sidebar "Sessões" block.
  *
- * Porte do protótipo (shell.js · sessionsBlock), agora com dados reais:
- * as sessões vêm de `listChatSessions()` (escopado ao usuário logado dentro
- * do tenant). A sessão ativa é destacada lendo `?s=` da rota /chat.
+ * Port of the prototype (shell.js · sessionsBlock), now with real data:
+ * the sessions come from `listChatSessions()` (scoped to the logged-in user
+ * inside the tenant). The active session is highlighted by reading `?s=` from
+ * the /chat route.
  *
- * A lista fica viva sem full reload: refaz o fetch quando a rota/`?s=` muda
- * e quando o chat dispara o evento `nora:sessions-changed` (criação de
- * sessão / nova mensagem — ver lib/chat-sessions-sync.ts).
+ * The list stays live without a full reload: it re-fetches when the route/`?s=`
+ * changes and when the chat fires the `nora:sessions-changed` event (session
+ * creation / new message — see lib/chat-sessions-sync.ts).
  *
- * Gestão por sessão (hover): renomear (input inline) e apagar (confirmação
- * inline em 2 cliques). Apagar a sessão ativa navega pra /chat limpo.
+ * Per-session management (hover): rename (inline input) and delete (inline
+ * 2-click confirmation). Deleting the active session navigates to a clean /chat.
  *
- * Mudança Stratfy: o label "Sessões" usa `.side-sec-label--tight` (colado
- * no título da categoria).
+ * Stratfy change: the "Sessões" label uses `.side-sec-label--tight` (pinned
+ * to the category title).
  */
 import Link from "next/link";
 import type { Route } from "next";
@@ -72,7 +73,7 @@ function XIcon() {
   );
 }
 
-/** Estado de edição de uma sessão: renomeando ou confirmando exclusão. */
+/** Edit state of a session: renaming or confirming deletion. */
 type EditState =
   | { kind: "rename"; id: string }
   | { kind: "confirm-delete"; id: string }
@@ -90,10 +91,10 @@ export function AppSidebarSessions() {
   const [renameValue, setRenameValue] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Guarda contra respostas fora de ordem: rota + eventos disparam refreshes
-  // em rajada e uma resposta antiga aterrissando por último sobrescrevia a
-  // lista nova (a seção "piscava"). Só a resposta do request mais recente
-  // pode aplicar estado.
+  // Guard against out-of-order responses: route + events fire refreshes in
+  // bursts and an old response landing last used to overwrite the new list
+  // (the section "flickered"). Only the response of the most recent request
+  // may apply state.
   const refreshSeqRef = useRef(0);
 
   const refresh = useCallback(() => {
@@ -103,19 +104,20 @@ export function AppSidebarSessions() {
         if (seq === refreshSeqRef.current) setSessions(next);
       })
       .catch(() => {
-        // Erro transiente NÃO zera a lista — zerar fazia a seção inteira
-        // sumir e voltar (length === 0 retorna null). Mantém a última boa.
+        // A transient error does NOT clear the list — clearing made the whole
+        // section vanish and come back (length === 0 returns null). Keep the
+        // last good one.
       });
   }, []);
 
-  // Mount + qualquer mudança de rota/sessão ativa → re-fetch (cobre criar
-  // sessão via URL, voltar do chat etc. sem precisar de full reload).
+  // Mount + any route/active-session change → re-fetch (covers creating a
+  // session via URL, coming back from the chat etc. without a full reload).
   useEffect(() => {
     refresh();
   }, [refresh, pathname, current]);
 
-  // Evento custom do chat (criação de sessão / mensagem persistida) e das
-  // ações da própria sidebar — mantém desktop + drawer mobile em sincronia.
+  // Custom event from the chat (session creation / persisted message) and from
+  // the sidebar's own actions — keeps desktop + mobile drawer in sync.
   useEffect(() => {
     window.addEventListener(SESSIONS_CHANGED_EVENT, refresh);
     return () => window.removeEventListener(SESSIONS_CHANGED_EVENT, refresh);
@@ -136,7 +138,7 @@ export function AppSidebarSessions() {
         await renameChatSession(s.id, title);
         notifySessionsChanged();
       } catch {
-        // Mantém o título antigo; o re-fetch do evento não acontece em erro.
+        // Keeps the old title; the event re-fetch does not happen on error.
       } finally {
         setBusy(false);
       }
@@ -151,7 +153,7 @@ export function AppSidebarSessions() {
         await deleteChatSession(s.id);
         setEdit(null);
         notifySessionsChanged();
-        // Apagou a sessão aberta no chat → volta pro /chat limpo.
+        // Deleted the session open in the chat → back to a clean /chat.
         if (onChat && current === s.id) router.push("/chat" as Route);
       } catch {
         setEdit(null);

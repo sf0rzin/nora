@@ -1,4 +1,4 @@
-"""Aplicacao FastAPI do NORA NLP Worker."""
+"""FastAPI application of the NORA NLP Worker."""
 
 from __future__ import annotations
 

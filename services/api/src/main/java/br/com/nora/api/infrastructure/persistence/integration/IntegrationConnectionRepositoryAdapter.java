@@ -17,9 +17,10 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Adapter JDBC das conexões OAuth (V024). Tokens são cifrados aqui (TokenCipher, AES-GCM) — a porta
- * fala token em claro e o banco só vê {@code enc:v1:...}. Upsert via ON CONFLICT na unique
- * (tenant_id, provider): reconectar substitui tokens/conta preservando a linha.
+ * JDBC adapter for OAuth connections (V024). Tokens are encrypted here (TokenCipher, AES-GCM) — the
+ * port speaks plaintext token and the database only ever sees {@code enc:v1:...}. Upsert via ON
+ * CONFLICT on the unique (tenant_id, provider): reconnecting replaces tokens/account while
+ * preserving the row.
  */
 @Repository
 public class IntegrationConnectionRepositoryAdapter implements IntegrationConnectionRepository {

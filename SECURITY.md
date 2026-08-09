@@ -1,95 +1,95 @@
 ---
-title: "Política de Segurança"
-owner: Arquiteto NORA (Tech Lead)
+title: "Security Policy"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
-# Política de Segurança
+# Security Policy
 
-NORA leva segurança a sério. Este documento descreve **como reportar vulnerabilidades, escopo, contato seguro, e expectativa de timeline**.
+NORA takes security seriously. This document describes **how to report vulnerabilities, the scope, secure contact, and timeline expectations**.
 
-## Reportar vulnerabilidade
+## Reporting a vulnerability
 
-**Por favor não abra issue público no GitHub.** Use os canais abaixo:
+**Please do not open a public issue on GitHub.** Use the channels below:
 
-- **E-mail seguro:** axonogenesis@proton.me (com prefixo `[SECURITY-NORA]` no assunto)
-- **Resposta esperada:** em até **3 dias úteis** com acknowledgement inicial
-- **Disclosure timeline:** tipicamente **90 dias** entre report e disclosure pública, com correção mergeada antes
+- **Secure email:** axonogenesis@proton.me (with the `[SECURITY-NORA]` prefix in the subject)
+- **Expected response:** within **3 business days** with an initial acknowledgement
+- **Disclosure timeline:** typically **90 days** between report and public disclosure, with the fix merged beforehand
 
-PGP key disponível mediante request inicial pelo e-mail acima.
+PGP key available on request via the email address above.
 
-## Escopo
+## Scope
 
-### Em escopo
+### In scope
 
-- `services/api/**` — backend Spring (autenticação, IAM, persistência, contratos REST)
-- `services/nlp-worker/**` — worker Python NLP (PII Shield, LLM calls, contratos)
-- `apps/web/**` — frontend Next.js (auth flow, XSS, CSRF)
-- `apps/desktop/**` — app Tauri + sidecar Python (token broker, secret store local)
-- `infra/bicep/**` — infraestrutura como código Azure (configurações, secret management)
+- `services/api/**` — Spring backend (authentication, IAM, persistence, REST contracts)
+- `services/nlp-worker/**` — Python NLP worker (PII Shield, LLM calls, contracts)
+- `apps/web/**` — Next.js frontend (auth flow, XSS, CSRF)
+- `apps/desktop/**` — Tauri app + Python sidecar (token broker, local secret store)
+- `infra/bicep/**` — Azure infrastructure as code (configuration, secret management)
 - `.github/workflows/**` — CI/CD (secret leakage, supply chain)
-- `packages/**` — pacotes compartilhados
+- `packages/**` — shared packages
 
-### Fora de escopo
+### Out of scope
 
-- **Vulnerabilidades em dependências upstream** (Spring Boot, Next.js, Tauri, OpenAI SDK, etc.) — reporte upstream e nos avise por cortesia
-- **Configurações específicas do ambiente do usuário** que não derivam do código padrão NORA
-- **Self-XSS** (requer engenharia social ativa para explorar)
-- **Issues de UX/usabilidade sem componente de segurança**
+- **Vulnerabilities in upstream dependencies** (Spring Boot, Next.js, Tauri, OpenAI SDK, etc.) — report them upstream and let us know as a courtesy
+- **User-environment-specific configuration** that does not derive from standard NORA code
+- **Self-XSS** (requires active social engineering to exploit)
+- **UX/usability issues with no security component**
 
-## Vulnerabilidades de alta prioridade
+## High-priority vulnerabilities
 
-NORA processa dados sensíveis (transcripts de reuniões, possíveis dados pessoais via PII Shield) sob LGPD brasileiro. Categorias de **alta prioridade**:
+NORA processes sensitive data (meeting transcripts, possible personal data via PII Shield) under Brazil's LGPD. **High-priority** categories:
 
-1. **Bypass de tenant isolation** — qualquer caminho que permita usuário do tenant A acessar dados do tenant B (`tenant_id` violado em query, frontend filtering only sem backend gate, JWT manipulado para trocar `tenantId`)
-2. **Bypass do PII Shield** — caminho que entrega PII bruto para o LLM (incluindo via prompt injection)
-3. **IAM privilege escalation** — usuário consegue executar action que policy aplicável Deny ou não Allow (Policy Evaluator bypass, Resource string injection, condition operator misuse)
-4. **JWT/refresh token forgery** — assinatura forjada, replay attack, ou cookie hijack sem detection
-5. **Secrets leakage** — secrets do Key Vault expostos em logs, error responses, ou via debug endpoints
-6. **SQL injection / NoSQL injection** — em qualquer query construída dinâmicamente
-7. **Speech token broker abuse** — caminho que permite atacante obter token Azure Speech via NORA sem autorização
+1. **Tenant isolation bypass** — any path that lets a user of tenant A access data from tenant B (`tenant_id` violated in a query, frontend-only filtering with no backend gate, JWT manipulated to swap `tenantId`)
+2. **PII Shield bypass** — a path that delivers raw PII to the LLM (including via prompt injection)
+3. **IAM privilege escalation** — a user manages to execute an action that the applicable policy Denies or does not Allow (Policy Evaluator bypass, Resource string injection, condition operator misuse)
+4. **JWT/refresh token forgery** — forged signature, replay attack, or cookie hijack without detection
+5. **Secrets leakage** — Key Vault secrets exposed in logs, error responses, or via debug endpoints
+6. **SQL injection / NoSQL injection** — in any dynamically built query
+7. **Speech token broker abuse** — a path that lets an attacker obtain an Azure Speech token via NORA without authorization
 
-## Categorias de menor prioridade
+## Lower-priority categories
 
-- Rate limiting bypass (impacto: spam, custo LLM/Speech)
-- Information disclosure não-sensível (versões de libs, paths internos)
-- DoS via input mal-formado (impacto: serviço degradado)
-- CSRF onde NORA já tem mitigação (SameSite cookies, etc.)
+- Rate limiting bypass (impact: spam, LLM/Speech cost)
+- Non-sensitive information disclosure (library versions, internal paths)
+- DoS via malformed input (impact: degraded service)
+- CSRF where NORA already has mitigation (SameSite cookies, etc.)
 
 ## Responsible disclosure
 
-NORA é licenciado sob **AGPL-3.0** (ver `LICENSE`). Pesquisadores que descobrem vulnerabilidades:
+NORA is licensed under **AGPL-3.0** (see `LICENSE`). Researchers who discover vulnerabilities:
 
-- **Mantém copyright** sobre seu trabalho de pesquisa
-- **São creditados** no `CHANGELOG.md` e em post-mortem (se concordar)
-- **Não são processados** legalmente por research em escopo declarado neste documento (good faith security research)
-- **Não devem testar em produção** sem coordenação prévia (use clone local + ambiente próprio)
+- **Keep copyright** over their research work
+- **Are credited** in `CHANGELOG.md` and in the post-mortem (if they agree)
+- **Are not pursued** legally for research within the scope declared in this document (good faith security research)
+- **Must not test in production** without prior coordination (use a local clone + your own environment)
 
-## Reconhecimentos passados
+## Past acknowledgements
 
-(em construção — primeiros responsible disclosures serão listados aqui)
+(under construction — the first responsible disclosures will be listed here)
 
-## DPO / Encarregado LGPD
+## DPO / LGPD Data Protection Officer
 
-**Encarregado de Proteção de Dados** (LGPD exige indicação de pessoa física):
+**Data Protection Officer** (LGPD requires a natural person to be designated):
 
-- **Nome:** Anthony Sforzin (membro da equipe Stratfy designado como Encarregado)
-- **Contato:** axonogenesis@proton.me (com prefixo `[LGPD-NORA]`)
+- **Name:** Anthony Sforzin (Stratfy team member designated as Data Protection Officer)
+- **Contact:** axonogenesis@proton.me (with the `[LGPD-NORA]` prefix)
 
-NORA é operado pela equipe Stratfy durante MVP/Pilot. Em GA com >10 tenants, DPO formal contratado ou role designado.
+NORA is operated by the Stratfy team during MVP/Pilot. At GA with >10 tenants, a formal DPO will be hired or a role designated.
 
-## Tooling de segurança ativo
+## Active security tooling
 
-- **Dependabot** habilitado via `.github/dependabot.yml` — updates semanais agrupados por ecosystem (Maven, pip, npm, Cargo, GitHub Actions). Alerts via Security tab.
-- **JaCoCo + áreas IAM/Auth/PII** — meta ADR 0018 de >85% coverage. Hoje rodada manualmente; gate de CI bloqueando regressão está na Sub-fase 1.12 (ADR 0016 — production readiness).
-- **GitHub Secret Scanning / Push Protection** — o repositório NORA é **privado**, portanto Secret Scanning e Push Protection não vêm habilitados por default (esse comportamento é default apenas em repos públicos). Habilitação em repo privado depende de configuração explícita.
-- **PII Shield** no worker como último gate antes de LLM (ADR 0012)
+- **Dependabot** enabled via `.github/dependabot.yml` — weekly updates grouped by ecosystem (Maven, pip, npm, Cargo, GitHub Actions). Alerts via the Security tab.
+- **JaCoCo + IAM/Auth/PII areas** — ADR 0018 target of >85% coverage. Today it is run manually; the CI gate blocking regressions is in Sub-phase 1.12 (ADR 0016 — production readiness).
+- **GitHub Secret Scanning / Push Protection** — the NORA repository is **private**, so Secret Scanning and Push Protection are not enabled by default (that behavior is default only in public repos). Enabling them in a private repo depends on explicit configuration.
+- **PII Shield** in the worker as the last gate before the LLM (ADR 0012)
 
-## Histórico
+## History
 
-| Data | Mudança |
+| Date | Change |
 |---|---|
-| 2026-05-14 | Documento criado durante Sub-fase 1.10 (Docs Refresh) |
-| 2026-06-06 | Reconciliação doc x código + padronização (auditoria pré-apresentação) — Arquiteto NORA (Tech Lead) |
+| 2026-05-14 | Document created during Sub-phase 1.10 (Docs Refresh) |
+| 2026-06-06 | Doc x code reconciliation + standardization (pre-presentation audit) — NORA Architect (Tech Lead) |

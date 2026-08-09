@@ -28,7 +28,7 @@ export default function MeetingProductivitySection({
   function handleSaved(saved: MeetingGoal) {
     setGoal(saved);
     setEditing(false);
-    // Refetch para puxar reprocessamento + productivity novo, se for o caso.
+    // Refetch to pull in reprocessing + new productivity, if that is the case.
     router.refresh();
   }
 
@@ -41,7 +41,7 @@ export default function MeetingProductivitySection({
     router.refresh();
   }
 
-  // Caso A: sem goal e sem productivity → CTA pra avaliar produtividade
+  // Case A: no goal and no productivity → CTA to assess productivity
   if (!goal && !productivity) {
     return (
       <Frame>
@@ -67,7 +67,7 @@ export default function MeetingProductivitySection({
     );
   }
 
-  // Caso B: goal definido, mas sem productivity → aguardando reprocessamento
+  // Case B: goal set, but no productivity → waiting for reprocessing
   if (goal && !productivity) {
     return (
       <Frame>
@@ -87,7 +87,7 @@ export default function MeetingProductivitySection({
     );
   }
 
-  // Caso C: productivity disponível
+  // Case C: productivity available
   return (
     <Frame>
       {editing ? (
@@ -124,8 +124,8 @@ function Frame({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Editar objetivo + remover objetivo com confirmação por digitação ("REMOVER"),
- * no padrão da danger zone — sem window.confirm. Erro de API é exibido inline.
+ * Edit goal + remove goal with typed confirmation ("REMOVER"), following the
+ * danger zone pattern — no window.confirm. API error is shown inline.
  */
 function GoalControls({
   onEdit,

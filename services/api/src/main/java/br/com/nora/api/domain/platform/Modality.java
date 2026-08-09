@@ -1,8 +1,8 @@
 package br.com.nora.api.domain.platform;
 
 /**
- * Modalidade suportada por um modelo do catálogo (ADR 0024). O router por serviço usa isso: serviço
- * {@code multimodal} só pode bindar um modelo {@code MULTIMODAL}.
+ * Modality supported by a catalog model (ADR 0024). The per-service router uses this: a {@code
+ * multimodal} service can only bind a {@code MULTIMODAL} model.
  */
 public enum Modality {
     TEXT,

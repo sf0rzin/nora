@@ -4,10 +4,10 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Conta de cliente (lead/account) de um tenant (ADR 0015). Imutavel.
+ * Customer account (lead/account) of a tenant (ADR 0015). Immutable.
  *
- * <p>Dedup por {@code (tenantId, LOWER(name))} via get-or-create no repositorio. {@code
- * ownerUserId} e {@code stage} sao opcionais (CRM-lite).
+ * <p>Dedup by {@code (tenantId, LOWER(name))} via get-or-create in the repository. {@code
+ * ownerUserId} and {@code stage} are optional (CRM-lite).
  */
 public record CustomerAccount(
         UUID id,
@@ -51,7 +51,7 @@ public record CustomerAccount(
         updatedAt = updatedAt == null ? resolvedCreatedAt : updatedAt;
     }
 
-    /** Factory para criar uma conta nova (id gerado, timestamps = now). */
+    /** Factory to create a new account (generated id, timestamps = now). */
     public static CustomerAccount create(
             UUID tenantId, String name, UUID ownerUserId, String stage) {
         OffsetDateTime now = OffsetDateTime.now();

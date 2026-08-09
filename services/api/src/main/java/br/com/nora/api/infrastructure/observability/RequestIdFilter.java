@@ -14,17 +14,18 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Atribui um request id correlacionável a cada request HTTP e o expõe no MDC ({@value #MDC_KEY}),
- * no header de resposta ({@value #HEADER}) e — via {@code logging.pattern.level} (application.yml)
- * — em toda linha de log do request. O {@code GlobalExceptionHandler} usa o mesmo id como {@code
- * traceId} da resposta de erro, então um id reportado pelo usuário amarra request → logs → tenant /
- * user, viabilizando investigar incidentes em produção (antes o traceId era um UUID descartável sem
- * correlação com nenhum log).
+ * Assigns a correlatable request id to every HTTP request and exposes it in the MDC ({@value
+ * #MDC_KEY}), in the response header ({@value #HEADER}) and — via {@code logging.pattern.level}
+ * (application.yml) — on every log line of the request. The {@code GlobalExceptionHandler} uses the
+ * same id as the error response's {@code traceId}, so an id reported by the user ties request →
+ * logs → tenant / user, making it feasible to investigate incidents in production (before, the
+ * traceId was a throwaway UUID with no correlation to any log).
  *
- * <p>Roda ANTES da cadeia do Spring Security ({@link Ordered#HIGHEST_PRECEDENCE}) pra que o id já
- * esteja no MDC durante a autenticação. Reutiliza um {@code X-Request-Id} de entrada (de um proxy /
- * edge como o Cloudflare) quando ele é são — sanitizado contra log injection — senão gera um UUID.
- * Limpa o MDC no finally pra não vazar entre requests que reusam a mesma thread do pool do Tomcat.
+ * <p>Runs BEFORE the Spring Security chain ({@link Ordered#HIGHEST_PRECEDENCE}) so the id is
+ * already in the MDC during authentication. Reuses an incoming {@code X-Request-Id} (from a proxy /
+ * edge such as Cloudflare) when it is sane — sanitized against log injection — otherwise generates
+ * a UUID. Clears the MDC in the finally block so it does not leak between requests that reuse the
+ * same thread from the Tomcat pool.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -33,8 +34,8 @@ public class RequestIdFilter extends OncePerRequestFilter {
     public static final String HEADER = "X-Request-Id";
     public static final String MDC_KEY = "requestId";
 
-    // Só aceita um id de entrada que pareça seguro (8–64 chars alfanuméricos, hífen, ponto,
-    // underscore) — evita log injection / poluição do MDC com header arbitrário do cliente.
+    // Only accepts an incoming id that looks safe (8–64 alphanumeric chars, hyphen, dot,
+    // underscore) — avoids log injection / MDC pollution with an arbitrary client header.
     private static final Pattern SAFE_ID = Pattern.compile("[A-Za-z0-9._-]{8,64}");
 
     @Override

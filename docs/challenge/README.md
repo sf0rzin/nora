@@ -1,6 +1,6 @@
 ---
 title: "Docs Challenge — NORA (FIAP 2026)"
-owner: Equipe Stratfy
+owner: Stratfy Team
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
@@ -8,24 +8,24 @@ last_reviewed: 2026-06-06
 
 # NORA — Docs Challenge (FIAP 2026)
 
-> NORA é construído como **produto comercial real** atendendo a parceria FIAP × TOTVS. Esta pasta consolida o material que cumpre a **rubrica acadêmica do FIAP Challenge 2026**, mantendo separação clara entre o material acadêmico e o material de produto (`docs/product/`, `docs/engineering/`, `docs/operations/`).
+> NORA is built as a **real commercial product** serving the FIAP × TOTVS partnership. This folder consolidates the material that fulfills the **academic rubric of the FIAP Challenge 2026**, keeping a clear separation between the academic material and the product material (`docs/product/`, `docs/engineering/`, `docs/operations/`).
 
-## Conteúdo
+## Contents
 
-| Documento | Descrição |
+| Document | Description |
 |---|---|
-| [`fiap-challenge-2026.md`](fiap-challenge-2026.md) | Contexto da parceria FIAP × TOTVS, rubrica, deadlines, entregas alvo |
-| [`personas-e-mapa-de-empatia.md`](personas-e-mapa-de-empatia.md) | 3 personas (Lucas, Camila, Rafael) com mapas de empatia |
-| [`diagrama-casos-de-uso.md`](diagrama-casos-de-uso.md) | Diagrama de casos de uso (mermaid) |
+| [`fiap-challenge-2026.md`](fiap-challenge-2026.md) | Context of the FIAP × TOTVS partnership, rubric, deadlines, target deliverables |
+| [`personas-e-mapa-de-empatia.md`](personas-e-mapa-de-empatia.md) | 3 personas (Lucas, Camila, Rafael) with empathy maps |
+| [`diagrama-casos-de-uso.md`](diagrama-casos-de-uso.md) | Use case diagram (mermaid) |
 
-## Como navegar
+## How to navigate
 
-- **Banca FIAP / orientadores acadêmicos:** comecem em `fiap-challenge-2026.md` que cobre o que a rubrica exige + onde cada peça está
-- **Recrutadores / curiosos técnicos:** prefiram `docs/product/vision.md` e `docs/engineering/architecture.md` (visão de produto + arquitetura técnica). Este `docs/challenge/` é só uma das facetas
+- **FIAP examination board / academic advisors:** start with `fiap-challenge-2026.md`, which covers what the rubric requires + where each piece is
+- **Recruiters / technically curious readers:** prefer `docs/product/vision.md` and `docs/engineering/architecture.md` (product vision + technical architecture). This `docs/challenge/` is only one of the facets
 
-## Histórico
+## History
 
-| Versão | Data | Responsável | Mudança |
+| Version | Date | Responsible | Change |
 |---|---|---|---|
-| (inicial) | 2026-05-14 | Equipe Stratfy | Pasta criada na Sub-fase 1.10 (Docs Refresh). Documentos `personas-e-mapa-de-empatia.md` e `diagrama-casos-de-uso.md` movidos da raiz `docs/` |
-| 1.0 | 2026-06-06 | Equipe Stratfy | Reconciliação doc × código + padronização (auditoria pré-apresentação) |
+| (initial) | 2026-05-14 | Stratfy Team | Folder created in Sub-phase 1.10 (Docs Refresh). Documents `personas-e-mapa-de-empatia.md` and `diagrama-casos-de-uso.md` moved from the `docs/` root |
+| 1.0 | 2026-06-06 | Stratfy Team | Doc × code reconciliation + standardization (pre-presentation audit) |

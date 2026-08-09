@@ -1,9 +1,9 @@
--- V026 — Libera os provedores da onda 2 (Microsoft, Telegram, Trello) no CHECK de
--- integration_connections.provider (V025 fixava a lista da onda 1).
+-- V026 — Allows the wave 2 providers (Microsoft, Telegram, Trello) in the CHECK on
+-- integration_connections.provider (V025 pinned the wave 1 list).
 --
--- Microsoft é OAuth2 code-flow COM refresh; Telegram conecta por pareamento de código
--- (access_token = chat_id do bot); Trello por token colado pelo usuário. Todos usam a MESMA
--- tabela/cifra (AES-GCM via TokenCipher) — sem mudança de RLS/índices, só a lista de valores.
+-- Microsoft is OAuth2 code-flow WITH refresh; Telegram connects by code pairing
+-- (access_token = the bot's chat_id); Trello by a token pasted by the user. All use the SAME
+-- table/cipher (AES-GCM via TokenCipher) — no RLS/index change, only the list of values.
 
 ALTER TABLE integration_connections
     DROP CONSTRAINT integration_connections_provider_check;

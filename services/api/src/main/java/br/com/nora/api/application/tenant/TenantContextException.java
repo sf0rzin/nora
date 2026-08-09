@@ -2,7 +2,7 @@ package br.com.nora.api.application.tenant;
 
 import java.util.UUID;
 
-/** Falhas relacionadas ao contexto do tenant. */
+/** Failures related to the tenant context. */
 public sealed class TenantContextException extends RuntimeException {
 
     private final String code;

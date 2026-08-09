@@ -7,13 +7,13 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
- * Adapter do event bus in-process sobre o {@link ApplicationEventPublisher} do Spring.
+ * In-process event bus adapter over Spring's {@link ApplicationEventPublisher}.
  *
- * <p>Semântica pós-commit: com transação ativa no ponto de publicação, o evento é segurado e
- * entregue só no {@code afterCommit} (rollback = evento descartado — listener nunca vê estado que
- * não foi commitado). Sem transação ativa (ex.: {@code AnalysisService.run()}, que comita status em
- * transações curtas e publica fora delas), a entrega é imediata — o estado relevante já está no
- * banco.
+ * <p>Post-commit semantics: with an active transaction at the publication point, the event is held
+ * and delivered only in {@code afterCommit} (rollback = event discarded — the listener never sees
+ * state that was not committed). With no active transaction (e.g. {@code AnalysisService.run()},
+ * which commits status in short transactions and publishes outside them), delivery is immediate —
+ * the relevant state is already in the database.
  */
 @Component
 public class SpringDomainEventPublisher implements DomainEventPublisher {

@@ -1,17 +1,17 @@
 ---
-name: Tarefa Técnica
-about: Refator, débito técnico, infra, CI, dependências
+name: Technical Task
+about: Refactor, technical debt, infra, CI, dependencies
 title: "[CHORE] "
 labels: [chore]
 ---
 
-## Objetivo
+## Objective
 
-## Justificativa
+## Rationale
 
-## Impacto Esperado
+## Expected Impact
 
-## Critérios de Pronto
+## Done Criteria
 
 - [ ]
 - [ ]

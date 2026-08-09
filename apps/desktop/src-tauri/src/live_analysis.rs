@@ -67,8 +67,8 @@ pub async fn analyze_live(
     state: State<'_, LiveHighlightsState>,
     request: AnalyzeLiveRequest,
 ) -> Result<(), String> {
-    // Token vem da sessao do web (cookie nora_access na webview main), nao do keychain —
-    // o login agora acontece dentro da janela principal que carrega nora.systems.
+    // Token comes from the web session (nora_access cookie in the main webview), not the keychain —
+    // login now happens inside the main window that loads nora.systems.
     let access_token = crate::auth_bridge::web_session_jwt(&app_handle)?;
 
     let backend_url = crate::api_base_url();
@@ -90,8 +90,8 @@ pub async fn analyze_live(
         }
     }
 
-    // Sinaliza o início da análise pra UI (spinner da overlay). O fim vem por
-    // "live-analysis" (sucesso) ou pela telemetria com success:false (falha).
+    // Signals the start of the analysis to the UI (overlay spinner). The end comes via
+    // "live-analysis" (success) or via the telemetry with success:false (failure).
     let _ = app_handle.emit("live-analysis-start", request.chunk_seq);
 
     let start = std::time::Instant::now();
@@ -234,15 +234,15 @@ pub fn toggle_overlay(
     if let Some(window) = app_handle.get_webview_window("overlay") {
         if show {
             let _ = window.show();
-            // Mata o contorno fantasma do DWM (mesmo do dock) agora que a
-            // overlay está visível e tem HWND.
+            // Kills the DWM ghost outline (same as the dock) now that the
+            // overlay is visible and has an HWND.
             #[cfg(target_os = "windows")]
             crate::windows::remove_window_border(&window);
-            // NÃO chamar set_focus aqui: roubava o foco do app em primeiro plano
-            // (Meet/Zoom). O foco explícito fica a cargo de focus_overlay_window
-            // quando o usuário clica pra abrir a overlay (dock-bar). Auditoria #26.
+            // Do NOT call set_focus here: it stole the focus of the foreground app
+            // (Meet/Zoom). Explicit focus is handled by focus_overlay_window
+            // when the user clicks to open the overlay (dock-bar). Audit #26.
 
-            // Se stealth mode estiver ativo, aplicar na overlay agora que ela ficou visível
+            // If stealth mode is active, apply it to the overlay now that it became visible
             #[cfg(target_os = "windows")]
             {
                 let stealth_enabled = state.lock().map_err(|e| e.to_string())?;

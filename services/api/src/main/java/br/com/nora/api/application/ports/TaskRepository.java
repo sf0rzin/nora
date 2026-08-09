@@ -9,8 +9,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Acesso de leitura/escrita aos action items extraidos da analise (US22-US24). Esta porta retorna
- * uma visao "tarefa" achatada (com meetingId e meetingTitle) ja escopada por tenant.
+ * Read/write access to the action items extracted from the analysis (US22-US24). This port returns
+ * a flattened "task" view (with meetingId and meetingTitle) already scoped by tenant.
  */
 public interface TaskRepository {
 

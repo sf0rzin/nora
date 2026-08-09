@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 
-/** Telemetria de custo: custo do catálogo, stub=0, drop quando off, e NUNCA propaga exceção. */
+/** Cost telemetry: catalog cost, stub=0, drop when off, and NEVER propagates an exception. */
 class UsageTelemetryServiceTest {
 
     private final UsageEventRepository events = mock(UsageEventRepository.class);

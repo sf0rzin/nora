@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** Ação outlook_send_email: espelho da gmail_send_email com a conta Microsoft conectada. */
+/** outlook_send_email action: mirror of gmail_send_email with the connected Microsoft account. */
 class OutlookSendEmailActionTest {
 
     private final IntegrationService integrations = mock(IntegrationService.class);
@@ -39,7 +39,7 @@ class OutlookSendEmailActionTest {
         assertThat(mail.token()).isEqualTo("ms_token");
         assertThat(mail.to()).isEqualTo("cliente@acme.com");
         assertThat(mail.subject()).isEqualTo("NORA — Reunião analisada: Renovação Acme");
-        // Corpo HTML do relatório-resumo compartilhado (WorkflowActionTemplates).
+        // HTML body of the shared summary report (WorkflowActionTemplates).
         assertThat(mail.html()).contains("Renovação Acme").contains("NORA");
     }
 
@@ -70,7 +70,7 @@ class OutlookSendEmailActionTest {
         assertThat(graph.mails).isEmpty();
     }
 
-    /** Captura envios em memória (substitui as chamadas HTTP reais ao Graph). */
+    /** Captures sends in memory (replaces the real HTTP calls to Graph). */
     static class RecordingGraph extends MicrosoftGraphClient {
         record Mail(String token, String to, String subject, String html) {}
 

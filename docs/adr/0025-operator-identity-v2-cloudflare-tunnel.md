@@ -1,51 +1,51 @@
-# 0025 — Identidade de operador v2: Cloudflare Tunnel + Access (substitui Easy Auth do ADR 0023)
+# 0025 — Operator identity v2: Cloudflare Tunnel + Access (supersedes ADR 0023's Easy Auth)
 
-- Status: aceito
-- Data: 2026-06-01
-- Decisores: Arquiteto Control Plane (Opus) + Stratfy (PO/dono)
-- Relacionado: ADR 0023 (identidade de operador v1 — parcialmente substituído), ADR 0022 (banco de plataforma), `docs/operations/cloudflare-access.md`, `docs/operations/control-plane-runbook.md`
+- Status: accepted
+- Date: 2026-06-01
+- Deciders: Control Plane Architect (Opus) + Stratfy (PO/owner)
+- Related: ADR 0023 (operator identity v1 — partially superseded), ADR 0022 (platform database), `docs/operations/cloudflare-access.md`, `docs/operations/control-plane-runbook.md`
 
-## Contexto
+## Context
 
-O ADR 0023 definiu a borda do `nora-admin` como **Entra Easy Auth + `ipSecurityRestrictions`** ("os dois"). A criação do grupo Entra + App Registration é passo manual no tenant.
+ADR 0023 defined the `nora-admin` edge as **Entra Easy Auth + `ipSecurityRestrictions`** ("both"). Creating the Entra group + App Registration is a manual step in the tenant.
 
-No go-live (2026-06-01) isso bateu num bloqueio duro: o tenant **fiap.com.br** (gerenciado pela instituição) **nega** `az ad group create` / `az ad app create` com `Authorization_RequestDenied` — a conta-dona não tem o role de diretório (Application Developer / Groups Administrator). Sem App Registration, não há Easy Auth.
+At go-live (2026-06-01) this hit a hard blocker: the **fiap.com.br** tenant (managed by the institution) **denies** `az ad group create` / `az ad app create` with `Authorization_RequestDenied` — the owner account does not have the directory role (Application Developer / Groups Administrator). Without an App Registration, there is no Easy Auth.
 
-Em paralelo, a lane Cloudflare já entregou (PRs #177/#178) **Cloudflare Access** protegendo `admin.nora.systems` (allowlist + OTP, log central, plano Free). Mas, do jeito que estava, a origem (`nora-admin` com `ingress: external`) ficava **alcançável diretamente pelo FQDN cru do Azure**, contornando o Access — e com Easy Auth fora + IP allowlist vazio, sem nenhuma autenticação.
+In parallel, the Cloudflare lane had already delivered (PRs #177/#178) **Cloudflare Access** protecting `admin.nora.systems` (allowlist + OTP, central log, Free plan). But, as things stood, the origin (`nora-admin` with `ingress: external`) remained **reachable directly via Azure's raw FQDN**, bypassing Access — and with Easy Auth out and the IP allowlist empty, with no authentication at all.
 
-## Decisão
+## Decision
 
-Substituir o Easy Auth (Entra) por **Cloudflare Tunnel + Cloudflare Access**, removendo a origem pública:
+Replace Easy Auth (Entra) with **Cloudflare Tunnel + Cloudflare Access**, removing the public origin:
 
-1. **Sem origem pública.** `nora-admin` passa a `ingress: internal` (sem FQDN público). O acesso externo é só via **Cloudflare Tunnel**: um sidecar **cloudflared** no mesmo Container App conecta-se (outbound) ao Cloudflare e encaminha pro Next em `localhost:3002`. O DNS `admin.nora.systems` vira CNAME (proxied) pro `<tunnel-id>.cfargotunnel.com`. Não existe FQDN do Azure pra contornar.
-2. **Identidade na borda de rede:** Cloudflare Access (allowlist + OTP/SSO) gateia `admin.nora.systems` antes da requisição entrar no túnel.
-3. **Identidade na borda do app (Tier 2, defense-in-depth):** o `nora-admin` valida o header `Cf-Access-Jwt-Assertion` (JWKS do team domain + `aud` da Access App) num **server component** (Node runtime, `lib/access.ts`). Sem asserção válida → 403. Degrada pra edge-only se `CF_ACCESS_TEAM_DOMAIN`/`CF_ACCESS_AUD` não estiverem setados.
-4. **Token entre serviços inalterado** (herdado do ADR 0023): `nora-admin` → Spring `/admin/platform/**` com o admin token; `X-Operator-Email` (agora do header `Cf-Access-Authenticated-User-Email`) pra auditoria.
-5. **Automação + lanes:** o túnel é provisionado pelo workflow `cloudflare-tunnel.yml` (idempotente, API Cloudflare, **arquivo novo** — não toca o `cloudflare-setup.yml` da lane irmã). O `cloudflare-setup.yml` continua dono do Access App/Policy/IdP e **deve rodar sem `admin_hostname`** (senão sobrescreve o CNAME do túnel). A lane do túnel foi reassinada ao arquiteto Control Plane pela PO.
+1. **No public origin.** `nora-admin` moves to `ingress: internal` (no public FQDN). External access is only via **Cloudflare Tunnel**: a **cloudflared** sidecar in the same Container App connects (outbound) to Cloudflare and forwards to Next on `localhost:3002`. The DNS `admin.nora.systems` becomes a CNAME (proxied) to `<tunnel-id>.cfargotunnel.com`. There is no Azure FQDN to bypass it with.
+2. **Identity at the network edge:** Cloudflare Access (allowlist + OTP/SSO) gates `admin.nora.systems` before the request enters the tunnel.
+3. **Identity at the app edge (Tier 2, defense-in-depth):** `nora-admin` validates the `Cf-Access-Jwt-Assertion` header (JWKS of the team domain + the Access App's `aud`) in a **server component** (Node runtime, `lib/access.ts`). No valid assertion → 403. It degrades to edge-only if `CF_ACCESS_TEAM_DOMAIN`/`CF_ACCESS_AUD` are not set.
+4. **The token between services is unchanged** (inherited from ADR 0023): `nora-admin` → Spring `/admin/platform/**` with the admin token; `X-Operator-Email` (now from the `Cf-Access-Authenticated-User-Email` header) for auditing.
+5. **Automation + lanes:** the tunnel is provisioned by the `cloudflare-tunnel.yml` workflow (idempotent, Cloudflare API, a **new file** — it does not touch the sibling lane's `cloudflare-setup.yml`). `cloudflare-setup.yml` remains the owner of the Access App/Policy/IdP and **must run without `admin_hostname`** (otherwise it overwrites the tunnel's CNAME). The tunnel lane was reassigned to the Control Plane architect by the PO.
 
-## Consequências
+## Consequences
 
-**Positivas:**
-- Zero superfície pública no admin (sem FQDN do Azure exposto) — mais forte que o IP allowlist do v1.
-- Sem dependência de tenant Entra (contorna o bloqueio FIAP). Operadores externos (gmail/proton) entram via Access (OTP/SSO) sem precisar de guest B2B.
-- Defesa em profundidade real: rede (Access) + transporte (Tunnel, origem trancada) + app (validação de JWT) + serviço (admin token).
-- Log central de acesso no painel Zero Trust. Bom argumento de pitch (arquitetura Zero Trust de verdade).
+**Positive:**
+- Zero public surface on the admin (no Azure FQDN exposed) — stronger than v1's IP allowlist.
+- No dependency on an Entra tenant (it works around the FIAP blocker). External operators (gmail/proton) get in via Access (OTP/SSO) without needing a B2B guest.
+- Real defense in depth: network (Access) + transport (Tunnel, locked origin) + app (JWT validation) + service (admin token).
+- Central access log in the Zero Trust panel. A good pitch argument (a genuine Zero Trust architecture).
 
-**Negativas / trade-offs:**
-- `nora-admin` não escala mais a zero: o conector cloudflared precisa de ≥1 réplica sempre de pé (~US$ 3–15/mês de compute; ordem de grandeza ≤ o 2º Postgres do ADR 0022). Aceito.
-- Mais peças: sidecar + túnel + workflow + secret (`CLOUDFLARE_TUNNEL_TOKEN`). Mitigado por idempotência + runbook.
-- A validação de JWT roda em server component (não em middleware) porque o middleware edge inlinaria `CF_ACCESS_*` em build-time. O gate roda por render de página; `/healthz` (route handler) fica naturalmente fora, mantendo o probe do Container App.
-- Dependência operacional do Cloudflare na borda. Aceito (já era a borda escolhida em 0023/cloudflare-access).
+**Negative / trade-offs:**
+- `nora-admin` no longer scales to zero: the cloudflared connector needs ≥1 replica always up (~US$ 3–15/month of compute; order of magnitude ≤ ADR 0022's 2nd Postgres). Accepted.
+- More pieces: sidecar + tunnel + workflow + secret (`CLOUDFLARE_TUNNEL_TOKEN`). Mitigated by idempotency + a runbook.
+- JWT validation runs in a server component (not in middleware) because edge middleware would inline `CF_ACCESS_*` at build time. The gate runs per page render; `/healthz` (a route handler) naturally stays outside, preserving the Container App's probe.
+- An operational dependency on Cloudflare at the edge. Accepted (it was already the edge chosen in 0023/cloudflare-access).
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Pedir a um admin do tenant FIAP criar o App Registration** — rejeitado: dependência de terceiro, atrito, frágil pra demo.
-2. **Tenant Entra separado (do dono) só pro Easy Auth** — rejeitado: tenant descartável + B2B guests pros operadores externos; pior UX que OTP/SSO do Access.
-3. **Cloudflare-only sem remover a origem, trancando-a nas faixas de IP da Cloudflare** (Tier 1 intermediário) — trancaria a origem por IP em vez de removê-la. Rejeitado em favor do Tunnel, que elimina a origem pública inteira (mais forte e melhor narrativa de pitch).
-4. **Manter `ingress: external` + cloudflared** — rejeitado: deixaria o FQDN cru acessível; o ponto é não ter origem pública.
+1. **Ask a FIAP tenant admin to create the App Registration** — rejected: a third-party dependency, friction, fragile for a demo.
+2. **A separate (owner's) Entra tenant just for Easy Auth** — rejected: a throwaway tenant + B2B guests for the external operators; worse UX than Access's OTP/SSO.
+3. **Cloudflare-only without removing the origin, locking it to Cloudflare's IP ranges** (an intermediate Tier 1) — it would lock the origin by IP instead of removing it. Rejected in favor of the Tunnel, which eliminates the entire public origin (stronger and a better pitch narrative).
+4. **Keep `ingress: external` + cloudflared** — rejected: it would leave the raw FQDN accessible; the point is to have no public origin.
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-06-01 | Arquiteto Control Plane + Stratfy | Criação. Substitui o Easy Auth do ADR 0023 por Cloudflare Tunnel + Access após bloqueio do tenant FIAP (`Authorization_RequestDenied`). PO reassinou a lane do túnel ao arquiteto Control Plane. |
+| 2026-06-01 | Control Plane Architect + Stratfy | Creation. Replaces ADR 0023's Easy Auth with Cloudflare Tunnel + Access after the FIAP tenant blocker (`Authorization_RequestDenied`). The PO reassigned the tunnel lane to the Control Plane architect. |

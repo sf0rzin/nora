@@ -33,7 +33,7 @@ export function getPendingMeetings(): PendingMeeting[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    // Valida o shape: localStorage pode ter lixo de versões antigas. Auditoria #108.
+    // Validate the shape: localStorage may hold junk from older versions. Audit #108.
     return Array.isArray(parsed) ? parsed.filter(isPendingMeeting) : [];
   } catch {
     return [];

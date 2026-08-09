@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** Ação notion_create_page: página filha com heading + resumo + bulleted list dos action items. */
+/** notion_create_page action: child page with heading + summary + action items bulleted list. */
 class NotionCreatePageActionTest {
 
     private final IntegrationService integrations = mock(IntegrationService.class);
@@ -44,7 +44,7 @@ class NotionCreatePageActionTest {
         assertThat(page.token()).isEqualTo("ntn_token");
         assertThat(page.parentPageId()).isEqualTo("page-123");
         assertThat(page.title()).isEqualTo("Renovação Acme");
-        // heading Resumo + parágrafo + heading Action items + 1 bullet + link.
+        // Resumo heading + paragraph + Action items heading + 1 bullet + link.
         assertThat(page.children()).hasSize(5);
         assertThat(page.children().toString()).contains("Resumo da reunião.");
         assertThat(page.children().toString()).contains("Enviar proposta — Ana");
@@ -58,7 +58,7 @@ class NotionCreatePageActionTest {
 
         action.execute(ctx, Map.of("parentPageId", "page-123"));
 
-        // heading Resumo + parágrafo + link (sem bloco de action items).
+        // Resumo heading + paragraph + link (no action items block).
         assertThat(notion.pages.get(0).children()).hasSize(3);
     }
 
@@ -71,7 +71,7 @@ class NotionCreatePageActionTest {
                 .isEqualTo("abc");
     }
 
-    /** Captura criações de página em memória (substitui as chamadas HTTP reais ao Notion). */
+    /** Captures page creations in memory (replaces the real HTTP calls to Notion). */
     static class RecordingNotion extends NotionClient {
         record Page(String token, String parentPageId, String title, List<Object> children) {}
 

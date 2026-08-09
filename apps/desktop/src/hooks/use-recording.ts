@@ -13,8 +13,8 @@ interface UseRecordingOptions {
   systemAudioDevice?: string | null;
 }
 
-/** Monta o transcript com prefixo [speaker] por linha. Compartilhado entre
- *  saveMeeting e fullTranscript (eram idênticos). Auditoria desktop #90. */
+/** Builds the transcript with a [speaker] prefix per line. Shared between
+ *  saveMeeting and fullTranscript (they were identical). Desktop audit #90. */
 function buildTranscript(
   lines: { text: string; speaker: string | null; speakerId: string | null; track: string }[],
   getSpeakerName: (speakerId: string | null, speaker: string | null, track?: string) => string | null,
@@ -52,8 +52,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
   const [pendingCount, setPendingCount] = useState(0);
   const startTimeRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Persistente entre re-execuções do effect de retry pra não duplicar uploads
-  // se o effect recriar (auditoria desktop #87).
+  // Persistent across re-runs of the retry effect so uploads aren't duplicated
+  // if the effect is recreated (desktop audit #87).
   const inFlightIdsRef = useRef<Set<string>>(new Set());
 
   const { clearHighlights, highlights } = useLiveHighlights();
@@ -224,12 +224,12 @@ export function useRecording(options: UseRecordingOptions = {}) {
   }, []);
 
   const getSpeakerName = useCallback((speakerId: string | null, speaker: string | null, track?: string) => {
-    // Se for do microfone, sempre mostrar "Eu"
+    // If it comes from the microphone, always show "Eu"
     if (track === "mic") return "Eu";
     if (!speakerId) return speaker;
-    // Se o speakerId for "UNKNOWN", mostrar como "Desconhecido"
+    // If the speakerId is "UNKNOWN", show it as "Desconhecido"
     if (speakerId === "UNKNOWN") return "Desconhecido";
-    // Retornar o nome mapeado, ou o speakerId original
+    // Return the mapped name, or the original speakerId
     return speakerMap[speakerId] || speakerId;
   }, [speakerMap]);
 
@@ -302,11 +302,11 @@ export function useRecording(options: UseRecordingOptions = {}) {
     setPendingCount(getPendingCount());
 
     // Retry worker: attempts to send pending meetings every 30 seconds.
-    // inFlightIds garante que o mesmo meeting não dispara 2x se um upload
-    // demora mais que o intervalo de retry (uploadTranscript já tem backoff
-    // interno até ~7.5s + um timeout do reqwest que pode passar de 30s).
-    // Sem isso, gerava reuniões duplicadas no backend quando o segundo tick
-    // disparava o mesmo payload enquanto o primeiro ainda processava.
+    // inFlightIds guarantees the same meeting doesn't fire 2x if an upload
+    // takes longer than the retry interval (uploadTranscript already has
+    // internal backoff up to ~7.5s + a reqwest timeout that can exceed 30s).
+    // Without it, duplicate meetings were created in the backend when the second
+    // tick fired the same payload while the first was still processing.
     const inFlightIds = inFlightIdsRef.current;
     const retryInterval = setInterval(() => {
       const pending = getPendingMeetings().filter(
@@ -326,8 +326,8 @@ export function useRecording(options: UseRecordingOptions = {}) {
           const nextRetry = meeting.retryCount + 1;
           savePendingMeeting({
             ...meeting,
-            // Após 10 tentativas, marca falha permanente em vez de deixar a
-            // reunião "pending" zumbi sendo re-filtrada pra sempre. Auditoria #91.
+            // After 10 attempts, mark permanent failure instead of leaving the
+            // meeting a "pending" zombie re-filtered forever. Audit #91.
             status: nextRetry >= 10 ? "failed_permanently" : "pending",
             retryCount: nextRetry,
             lastError: e instanceof Error ? e.message : String(e),

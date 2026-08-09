@@ -4,7 +4,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/** Detalhe da sessão de chat com o histórico de mensagens em ordem cronológica. */
+/** Chat session detail with the message history in chronological order. */
 public record ChatSessionDetailResponse(
         UUID id,
         String title,

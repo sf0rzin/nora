@@ -13,10 +13,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Caso de uso do subdominio IAM. Toda operacao mutante registra um evento de auditoria.
+ * Use case of the IAM subdomain. Every mutating operation records an audit event.
  *
- * <p>A autorizacao em si (verificar se o caller pode invocar cada metodo) e responsabilidade do
- * IamController via {@link AuthorizationService}.
+ * <p>The authorization itself (checking whether the caller may invoke each method) is the
+ * IamController's responsibility via {@link AuthorizationService}.
  */
 @Service
 public class IamService {
@@ -57,9 +57,10 @@ public class IamService {
     @Transactional
     public void addUserToGroup(UUID tenantId, UUID actor, UUID groupId, UUID userId) {
         iam.findGroup(groupId, tenantId).orElseThrow(IamException::groupNotFound);
-        // O grupo e validado contra o tenant; o userId nao era validado contra nada. Quem barra
-        // um usuario de outro tenant e o FK composto de V027 -- aqui so traduzimos a violacao
-        // para erro de dominio, no mesmo formato que createGroup ja usa pra nome duplicado.
+        // The group is validated against the tenant; the userId was not validated against
+        // anything. What blocks a user from another tenant is the composite FK of V027 -- here
+        // we only translate the violation into a domain error, in the same format createGroup
+        // already uses for a duplicate name.
         try {
             iam.addUserToGroup(userId, groupId, tenantId, actor);
         } catch (DataIntegrityViolationException ex) {
@@ -182,7 +183,7 @@ public class IamService {
     @Transactional
     public void attachPolicyToUser(UUID tenantId, UUID actor, UUID policyId, UUID userId) {
         iam.findPolicy(policyId, tenantId).orElseThrow(IamException::policyNotFound);
-        // Ver nota em addUserToGroup: o userId so e amarrado ao tenant pelo FK composto de V027.
+        // See note in addUserToGroup: userId is only bound to the tenant by V027's composite FK.
         try {
             iam.attachPolicyToUser(policyId, userId, tenantId, actor);
         } catch (DataIntegrityViolationException ex) {

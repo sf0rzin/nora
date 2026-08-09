@@ -6,7 +6,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/** Recorder no-op (plataforma off): nunca faz nada, nunca lança — fail-soft pro AnalysisService. */
+/** No-op recorder (platform off): does nothing, never throws — fail-soft for AnalysisService. */
 class NoOpUsageRecorderTest {
 
     private final NoOpUsageRecorder recorder = new NoOpUsageRecorder();

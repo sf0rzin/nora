@@ -9,12 +9,13 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Criar tarefas no Todoist" do NORA Flows — tarefas REAIS no Inbox da conta conectada, uma
- * por action item da reunião (content = título do item; description = reunião + responsável +
- * link). Sem params obrigatórios. O contexto do Flows não expõe dueDate — a tarefa nasce sem prazo.
+ * NORA Flows "Criar tarefas no Todoist" action — REAL tasks in the connected account's Inbox, one
+ * per meeting action item (content = item title; description = meeting + assignee + link). No
+ * required params. The Flows context does not expose dueDate — the task is born with no due date.
  *
- * <p>Reunião sem action items NÃO é falha: a ação registra honestamente que nada foi criado. Falha
- * de provedor PROPAGA (contrato do {@link ActionExecutor}) — o engine grava FAILED no log.
+ * <p>A meeting with no action items is NOT a failure: the action honestly records that nothing was
+ * created. A provider failure PROPAGATES ({@link ActionExecutor} contract) — the engine writes
+ * FAILED in the log.
  */
 @Component
 public class TodoistCreateTaskAction implements ActionExecutor {
@@ -45,7 +46,7 @@ public class TodoistCreateTaskAction implements ActionExecutor {
         return count + (count == 1 ? " tarefa criada" : " tarefas criadas") + " no Todoist";
     }
 
-    /** Description da tarefa: reunião + responsável + link no NORA. */
+    /** Task description: meeting + assignee + link in NORA. */
     static String description(WorkflowEventContext.ActionItemView item, WorkflowEventContext ctx) {
         StringBuilder description =
                 new StringBuilder("Reunião: ")

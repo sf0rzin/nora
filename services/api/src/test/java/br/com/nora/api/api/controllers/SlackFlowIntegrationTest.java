@@ -36,10 +36,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Fluxo end-to-end da integração Slack (Fase 2 do GOAL): start (OAuth v2) → callback (state
- * assinado) → conexão persistida (bot token sem expiração, team name como conta) → ação
- * slack_post_message do Flows usando o token → disconnect → falha clara. Slack é stubado nos
- * ports/client; o resto do caminho (controller, service, RLS, cifra de token) é real contra
+ * End-to-end flow of the Slack integration (GOAL Phase 2): start (OAuth v2) → callback (signed
+ * state) → persisted connection (bot token with no expiry, team name as the account) → Flows
+ * slack_post_message action using the token → disconnect → clear failure. Slack is stubbed at the
+ * ports/client; the rest of the path (controller, service, RLS, token encryption) is real against
  * Postgres.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -82,13 +82,13 @@ class SlackFlowIntegrationTest {
     void fluxoCompleto_startCallbackStatusAcaoDisconnect() throws Exception {
         String token = signupAndLogin("slack-full@nora.dev", "SenhaForte123", "Slack Full");
 
-        // 1) Status inicial: slack configurado, não conectado.
+        // 1) Initial status: slack configured, not connected.
         JsonNode before = authGet("/integrations", token).read(HttpStatus.OK);
         JsonNode slackBefore = providerNode(before, "slack");
         assertThat(slackBefore.get("configured").asBoolean()).isTrue();
         assertThat(slackBefore.get("connected").asBoolean()).isFalse();
 
-        // 2) Start: URL de autorização OAuth v2 com state assinado.
+        // 2) Start: OAuth v2 authorization URL with a signed state.
         JsonNode start =
                 postJson("/integrations/slack/oauth/start", Map.of(), token).read(HttpStatus.OK);
         String authorizeUrl = start.get("authorizeUrl").asText();
@@ -98,7 +98,7 @@ class SlackFlowIntegrationTest {
         String state = queryParam(authorizeUrl, "state");
         assertThat(state).isNotBlank();
 
-        // 3) Callback (público, como o redirect do Slack faria) → 302 pro front com sucesso.
+        // 3) Callback (public, as Slack's redirect would do) → 302 to the front with success.
         ResponseEntity<String> callback =
                 rest.exchange(
                         callbackUri(state, "code-slack"),
@@ -109,13 +109,13 @@ class SlackFlowIntegrationTest {
         assertThat(callback.getHeaders().getLocation())
                 .hasToString("http://localhost:3000/integracoes?connected=slack");
 
-        // 4) Status: conectado com a workspace identificada.
+        // 4) Status: connected with the workspace identified.
         JsonNode after = authGet("/integrations", token).read(HttpStatus.OK);
         JsonNode slackAfter = providerNode(after, "slack");
         assertThat(slackAfter.get("connected").asBoolean()).isTrue();
         assertThat(slackAfter.get("externalAccount").asText()).isEqualTo("Time NORA");
 
-        // 5) Ação slack_post_message num workflow: POST /test (dados de exemplo, sem reunião).
+        // 5) slack_post_message action in a workflow: POST /test (sample data, no meeting).
         String definition =
                 """
                 {
@@ -149,7 +149,7 @@ class SlackFlowIntegrationTest {
         assertThat(SLACK.posted.get(0).channel()).isEqualTo("#vendas");
         assertThat(SLACK.posted.get(0).text()).contains("analisada pelo NORA");
 
-        // 6) Disconnect → status volta a não conectado e a ação passa a falhar com clareza.
+        // 6) Disconnect → status goes back to not connected and the action starts failing clearly.
         ResponseEntity<String> disconnect =
                 rest.exchange(
                         "/integrations/slack",
@@ -192,13 +192,13 @@ class SlackFlowIntegrationTest {
         String tokenA = signupAndLogin("slack-a@nora.dev", "SenhaForte123", "A");
         String tokenB = signupAndLogin("slack-b@nora.dev", "SenhaForte123", "B");
 
-        // A conecta.
+        // A connects.
         JsonNode start =
                 postJson("/integrations/slack/oauth/start", Map.of(), tokenA).read(HttpStatus.OK);
         String state = queryParam(start.get("authorizeUrl").asText(), "state");
         rest.exchange(callbackUri(state, "x"), HttpMethod.GET, HttpEntity.EMPTY, String.class);
 
-        // B não vê a conexão de A.
+        // B does not see A's connection.
         JsonNode statusB = authGet("/integrations", tokenB).read(HttpStatus.OK);
         assertThat(providerNode(statusB, "slack").get("connected").asBoolean()).isFalse();
     }
@@ -289,7 +289,7 @@ class SlackFlowIntegrationTest {
         }
     }
 
-    /** Captura posts no Slack em memória (substitui as chamadas HTTP reais). */
+    /** Captures Slack posts in memory (replaces the real HTTP calls). */
     static class RecordingSlack extends SlackClient {
         record Posted(String botToken, String channel, String text) {}
 
@@ -323,7 +323,7 @@ class SlackFlowIntegrationTest {
             return SLACK;
         }
 
-        /** E-mails Resend silenciados (sem rede) — este IT não os exercita. */
+        /** Resend e-mails silenced (no network) — this IT does not exercise them. */
         @Bean
         @Primary
         EmailSender silentEmailSender() {

@@ -10,7 +10,7 @@ const NAV_LINKS = [
   { href: "#faq", label: "FAQ" },
 ];
 
-/** Top nav sticky (blur via CSS). Logo + âncoras + Entrar/Começar grátis. */
+/** Sticky top nav (blur via CSS). Logo + anchors + Entrar/Começar grátis. */
 export function LandingNav() {
   return (
     <nav className="nav">

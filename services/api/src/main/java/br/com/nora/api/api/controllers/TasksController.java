@@ -19,7 +19,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Endpoints da gestao de tarefas extraidas (US22-US24). Tudo escopado pelo tenant do JWT. */
+/**
+ * Endpoints for managing extracted tasks (US22-US24). Everything scoped by the tenant from the JWT.
+ */
 @RestController
 @RequestMapping("/tasks")
 public class TasksController {

@@ -6,11 +6,11 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Statement IAM estilo AWS.
+ * AWS-style IAM statement.
  *
- * <p>O campo {@code condition} mapeia operador -&gt; ({@code chave} -&gt; valor esperado). O {@link
- * PolicyEvaluator} avalia {@code StringEquals}, {@code StringIn}, {@code StringLike}, {@code
- * DateGreaterThan} e {@code DateLessThan}; operadores fora dessa lista sao fail-closed.
+ * <p>The {@code condition} field maps operator -&gt; ({@code chave} -&gt; expected value). The
+ * {@link PolicyEvaluator} evaluates {@code StringEquals}, {@code StringIn}, {@code StringLike},
+ * {@code DateGreaterThan} and {@code DateLessThan}; operators outside that list are fail-closed.
  */
 public record PolicyStatement(
         Effect effect,

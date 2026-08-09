@@ -31,8 +31,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch((err) => {
-        // Sem .catch, uma rejeição deixava `loading` travado em true (app em
-        // branco pra sempre). O .finally garante que sempre saímos do loading.
+        // Without .catch, a rejection left `loading` stuck at true (blank app
+        // forever). The .finally guarantees we always leave the loading state.
         console.error("[auth] bootstrapSession falhou:", err);
       })
       .finally(() => setLoading(false));
@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     apiClient.on401(logout);
   }, []);
 
-  // Ouve evento auth-expired vindo do loop de refresh
+  // Listens for the auth-expired event coming from the refresh loop
   useEffect(() => {
     const handler = () => {
       doLogout();

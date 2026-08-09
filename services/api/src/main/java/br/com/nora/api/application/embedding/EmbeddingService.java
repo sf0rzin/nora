@@ -10,10 +10,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * Indexação e busca semântica (RAG) das reuniões. O embedding é gerado a partir do RESUMO já
- * tratado (não da transcrição bruta) — LGPD/PII. A busca computa cosseno em Java sobre os vetores
- * do tenant (ver V021: sem pgvector nesta escala). Tudo best-effort: falha de embedding nunca
- * derruba o caller.
+ * Semantic indexing and search (RAG) of the meetings. The embedding is generated from the already
+ * processed SUMMARY (not from the raw transcript) — LGPD/PII. The search computes cosine in Java
+ * over the tenant's vectors (see V021: no pgvector at this scale). All best-effort: an embedding
+ * failure never takes down the caller.
  */
 @Service
 public class EmbeddingService {
@@ -29,7 +29,8 @@ public class EmbeddingService {
     }
 
     /**
-     * Gera + guarda o embedding do texto da reunião. Falha = log + segue (não derruba a análise).
+     * Generates + stores the embedding of the meeting text. Failure = log + continue (does not take
+     * down the analysis).
      */
     public void index(UUID meetingId, UUID tenantId, String text) {
         if (!client.isEnabled() || text == null || text.isBlank()) {
@@ -48,7 +49,7 @@ public class EmbeddingService {
     }
 
     /**
-     * IDs das top-K reuniões do tenant mais similares à query. Vazio se desligado/sem dados/falha.
+     * IDs of the tenant's top-K meetings most similar to the query. Empty if off/no data/failure.
      */
     public List<UUID> search(UUID tenantId, String query, int k) {
         if (!client.isEnabled() || query == null || query.isBlank() || k <= 0) {
@@ -70,7 +71,7 @@ public class EmbeddingService {
                 .toList();
     }
 
-    /** Similaridade do cosseno. 0 quando dimensões divergem ou algum vetor é nulo. */
+    /** Cosine similarity. 0 when the dimensions diverge or some vector is null. */
     static double cosine(float[] a, float[] b) {
         if (a.length != b.length || a.length == 0) {
             return 0;

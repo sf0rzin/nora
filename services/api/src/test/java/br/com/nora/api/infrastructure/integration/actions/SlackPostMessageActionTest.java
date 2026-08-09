@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/** Renderização do texto da ação slack_post_message (default, custom e truncamento). */
+/** Text rendering of the slack_post_message action (default, custom and truncation). */
 class SlackPostMessageActionTest {
 
     @Test
@@ -27,7 +27,7 @@ class SlackPostMessageActionTest {
         WorkflowEventContext ctx = context("Reunião X", "a".repeat(2000));
         String text = SlackPostMessageAction.defaultText(ctx);
         String[] lines = text.split("\n", 2);
-        // Corpo limitado a ~400 chars (com reticências); o link vem inteiro na linha seguinte.
+        // Body capped at ~400 chars (with ellipsis); the link comes whole on the next line.
         assertThat(lines[0]).hasSize(SlackPostMessageAction.DEFAULT_TEXT_MAX);
         assertThat(lines[0]).endsWith("…");
         assertThat(lines[1]).isEqualTo("http://localhost:3000/meetings/" + ctx.meetingId());

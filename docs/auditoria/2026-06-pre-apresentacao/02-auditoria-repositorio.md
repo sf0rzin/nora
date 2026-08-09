@@ -1,41 +1,41 @@
 ---
-title: "Auditoria do repositório — higiene e limpeza"
-owner: Arquiteto NORA (Tech Lead)
+title: "Repository audit — hygiene and cleanup"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
-# Auditoria do repositório — higiene e limpeza
+# Repository audit — hygiene and cleanup
 
-> Itens inúteis, obsoletos ou melhoráveis no monorepo. Cada **remoção** foi verificada
-> por busca de referências em todo o repositório (CI, Makefile, Dockerfiles, imports,
-> docs). As remoções de altíssima confiança já foram aplicadas nesta branch
-> (`chore/auditoria-pre-apresentacao-2026-06`); o restante é recomendação.
+> Useless, obsolete or improvable items in the monorepo. Every **removal** was verified
+> by searching for references across the whole repository (CI, Makefile, Dockerfiles, imports,
+> docs). The highest-confidence removals have already been applied on this branch
+> (`chore/auditoria-pre-apresentacao-2026-06`); the rest is a recommendation.
 
-## 1. Removido nesta branch (verificado seguro)
+## 1. Removed on this branch (verified safe)
 
-| Caminho | Por quê | Verificação |
+| Path | Why | Verification |
 |---|---|---|
-| `package.json` (raiz) | *Stray*: 123 bytes, sem `name`/`private`/`scripts`/`workspaces`. Criado por engano num commit do desktop. Declara `react-markdown` (já corretamente em `apps/web` e `apps/desktop`) e `cross-env` (não usado em lugar nenhum). | Nenhum CI/Makefile/Dockerfile roda `npm` na raiz — `ci.yml` instala em `apps/web` e `apps/desktop`; os Dockerfiles copiam os `package.json` por-app no próprio contexto. |
-| `package-lock.json` (raiz) | 52 KB que travam apenas o `package.json` *stray* acima. `dependabot.yml` registra npm só em `/apps/web` e `/apps/desktop`. | Nenhum `npm ci`/`npm install` na raiz em CI ou Makefile. Os lockfiles reais são `apps/web/`, `apps/admin/` e `apps/desktop/`. |
-| `scripts/.gitkeep` | Placeholder redundante: `scripts/` já tem `dev-stop.sh` rastreado. | Zero referências a `scripts/.gitkeep` no repo. |
-| `notebooks/.gitkeep` | Placeholder redundante: `notebooks/` já tem `.ipynb` + `.py` rastreados. | Zero referências a `notebooks/.gitkeep` no repo. |
-| `.kimi/` (árvore inteira) | Conjunto de instruções de IA **órfão e obsoleto**: contém só `skills/nora-workflow/SKILL.md`, que referencia caminhos absolutos de outra máquina (`/home/pollo/Dev/nora/`) e manda ler `docs/PROJECT.md` — arquivo que o `CLAUDE.md` declara explicitamente que **não existe mais**. | `grep` por `.kimi` em todo o repo (fora da própria pasta) = 0 referências. Remoção pré-autorizada pela PO ("`.kimi` se órfão"). |
+| `package.json` (root) | *Stray*: 123 bytes, with no `name`/`private`/`scripts`/`workspaces`. Created by mistake in a desktop commit. Declares `react-markdown` (already correctly in `apps/web` and `apps/desktop`) and `cross-env` (not used anywhere). | No CI/Makefile/Dockerfile runs `npm` at the root — `ci.yml` installs in `apps/web` and `apps/desktop`; the Dockerfiles copy the per-app `package.json` within their own context. |
+| `package-lock.json` (root) | 52 KB that lock only the *stray* `package.json` above. `dependabot.yml` registers npm only in `/apps/web` and `/apps/desktop`. | No `npm ci`/`npm install` at the root in CI or in the Makefile. The real lockfiles are in `apps/web/`, `apps/admin/` and `apps/desktop/`. |
+| `scripts/.gitkeep` | Redundant placeholder: `scripts/` already has a tracked `dev-stop.sh`. | Zero references to `scripts/.gitkeep` in the repo. |
+| `notebooks/.gitkeep` | Redundant placeholder: `notebooks/` already has tracked `.ipynb` + `.py` files. | Zero references to `notebooks/.gitkeep` in the repo. |
+| `.kimi/` (entire tree) | **Orphaned and obsolete** AI instruction set: it contains only `skills/nora-workflow/SKILL.md`, which references absolute paths from another machine (`/home/pollo/Dev/nora/`) and instructs reading `docs/PROJECT.md` — a file that `CLAUDE.md` explicitly declares **no longer exists**. | `grep` for `.kimi` across the whole repo (outside the folder itself) = 0 references. Removal pre-authorized by the PO ("`.kimi` if orphaned"). |
 
-> Estas remoções **não afetam** nenhum build, CI, imagem Docker ou fluxo de
-> desenvolvimento. A separação por-app (Makefile + `ci.yml`) permanece intacta.
+> These removals **do not affect** any build, CI, Docker image or development
+> flow. The per-app separation (Makefile + `ci.yml`) remains intact.
 
-## 2. Recomendado (não aplicado — exige decisão)
+## 2. Recommended (not applied — requires a decision)
 
-### 2.1 Branches remotas obsoletas
+### 2.1 Obsolete remote branches
 
-Há ~28 branches remotas além da `main`. **Atenção metodológica**: este repositório usa
-*squash-merge*, então `git branch --merged main` reporta apenas a `main` — as branches
-de feature foram "achatadas" e não aparecem como mergeadas, **mesmo já estando na
-`main`**. Não confie no `--merged` aqui.
+There are ~28 remote branches besides `main`. **Methodological warning**: this repository uses
+*squash-merge*, so `git branch --merged main` reports only `main` — the feature branches
+were "flattened" and do not show up as merged, **even though they are already on
+`main`**. Do not trust `--merged` here.
 
-**Branches cujo trabalho já está na `main` via PR mergeada (candidatas a deletar):**
+**Branches whose work is already on `main` via a merged PR (deletion candidates):**
 
 ```
 chore/codeql-scanning (#202)   chore/remove-codeql (a84f0a7)   chore/security-headers
@@ -45,7 +45,7 @@ feat/rls-enforce-cutover   feat/rls-enforce-flip   fix/ci-deploy-rollout   fix/r
 fix/swagger-off-prod   test/coverage-gate
 ```
 
-**Branches antigas plenamente superadas:**
+**Old branches fully superseded:**
 
 ```
 feat/e3-processamento-ia   docs/iam-estilo-aws   docs/limpeza-incongruencias
@@ -53,11 +53,11 @@ feat/pontuacao-produtividade   feat/confianca-cliente   product-dashboard-design
 revert-39-fix/desktop-sidecar-lifecycle-and-types
 ```
 
-**Não deletar sem checar PR aberta:** `dependabot/*` (auto-removidas quando a PR
-fecha/merge) e `claude/*` (branches de agente).
+**Do not delete without checking for an open PR:** `dependabot/*` (auto-removed when the PR
+closes/merges) and `claude/*` (agent branches).
 
-**Procedimento seguro recomendado** (não automatizado aqui porque deletar branch remota
-é uma ação destrutiva e externa):
+**Recommended safe procedure** (not automated here because deleting a remote branch
+is a destructive and external action):
 
 ```bash
 gh pr list --state merged --limit 100        # confirme cada PR
@@ -65,53 +65,53 @@ git branch -r --contains <tip-da-branch>      # ou compare diff vs main
 git push origin --delete <branch>             # só após confirmar
 ```
 
-### 2.2 Correções rápidas de produto/segurança (alto valor, baixo risco)
+### 2.2 Quick product/security fixes (high value, low risk)
 
-| Item | Onde | Ação |
+| Item | Where | Action |
 |---|---|---|
-| E-mail de contato de segurança/DPO **errado** | `SECURITY.md:9,71` usa `axonogenesis@gmail.com`; o canal real é `axonogenesis@proton.me` | Corrigir o e-mail (canal de reporte de vulnerabilidade apontando para conta errada é risco real). |
-| Tooling de segurança descrito não condiz com repo privado | `SECURITY.md:78-80` cita Secret Scanning/Push Protection "default em repos públicos", mas o repo é privado (o commit `a84f0a7` removeu o CodeQL por exigir GitHub Advanced Security pago em repo privado) | Ajustar a descrição ao que está de fato habilitado. |
-| Homóglifo cirílico em texto latino | `docs/operations/production-readiness-gaps.md:7` ("deploy**а**" com `а` cirílico) | Corrigir o caractere; recomendar linter de homóglifos no CI. |
+| **Wrong** security/DPO contact e-mail | `SECURITY.md:9,71` uses `axonogenesis@gmail.com`; the real channel is `axonogenesis@proton.me` | Fix the e-mail (a vulnerability reporting channel pointing at the wrong account is a real risk). |
+| Described security tooling does not match a private repo | `SECURITY.md:78-80` cites Secret Scanning/Push Protection as "default in public repos", but the repo is private (commit `a84f0a7` removed CodeQL because it requires paid GitHub Advanced Security on a private repo) | Adjust the description to what is actually enabled. |
+| Cyrillic homoglyph in Latin text | `docs/operations/production-readiness-gaps.md:7` ("deploy**а**" with a Cyrillic `а`) | Fix the character; recommend a homoglyph linter in CI. |
 
-### 2.3 *Smells* de menor prioridade
+### 2.3 Lower-priority *smells*
 
-- **`notebooks/totvs_transcricoes_eda.py`**: o nome com `totvs` colide com o princípio
-  *"Sem TOTVS hardcoded"* (o princípio mira código de produto, e isto é script de
-  análise — tecnicamente fora de escopo, mas o nome é um *smell* dado o posicionamento
-  tenant-agnóstico). Sugestão: renomear removendo a marca e/ou converter para `.ipynb`
-  (convenção da pasta).
-- **Assimetria em `scripts/`**: `make dev-stop` delega a `scripts/dev-stop.sh`, mas a
-  lógica de *start* está embutida no `Makefile`. Opcional: extrair um
-  `scripts/dev-start.sh` por simetria.
-- **Três fontes de instrução de IA**: `CLAUDE.md` (fonte de verdade) +
-  `.github/copilot-instructions.md` (atual e consistente — aceitável) + `.kimi` (removido
-  nesta branch). Manter `CLAUDE.md` e `copilot-instructions.md` sincronizados.
+- **`notebooks/totvs_transcricoes_eda.py`**: the name containing `totvs` collides with the
+  *"No hardcoded TOTVS"* principle (the principle targets product code, and this is an analysis
+  script — technically out of scope, but the name is a *smell* given the
+  tenant-agnostic positioning). Suggestion: rename it removing the brand and/or convert it to `.ipynb`
+  (the folder's convention).
+- **Asymmetry in `scripts/`**: `make dev-stop` delegates to `scripts/dev-stop.sh`, but the
+  *start* logic is embedded in the `Makefile`. Optional: extract a
+  `scripts/dev-start.sh` for symmetry.
+- **Three sources of AI instructions**: `CLAUDE.md` (source of truth) +
+  `.github/copilot-instructions.md` (current and consistent — acceptable) + `.kimi` (removed
+  on this branch). Keep `CLAUDE.md` and `copilot-instructions.md` in sync.
 
-## 3. Verificado e **descartado** (não são problema)
+## 3. Verified and **discarded** (not a problem)
 
-Para evitar retrabalho em auditorias futuras, registramos o que parecia suspeito mas foi
-confirmado como **legítimo**:
+To avoid rework in future audits, we record what looked suspicious but was
+confirmed as **legitimate**:
 
-| Suspeita | Veredito |
+| Suspicion | Verdict |
 |---|---|
-| Pasta `mcp/` vazia | **Não existe** no repo (já foi removida). O `backlog`/`roadmap`/`vision` ainda a citam — isso é *drift* de doc (ver documento 03), não lixo no repo. |
-| `docs/engineering/data-model-oracle.md` duplica `data-model.md` | **Não duplica**: é entrega acadêmica FIAP intencional (schema espelhado em Oracle 19c). Ambos são cross-referenciados. Manter. |
-| `apps/admin/src/lib/mock.ts` é dead code | **Está ativo**: é a fonte de dados local do admin (`data.ts` usa como fallback quando `NORA_ADMIN_USE_MOCKS≠false`). |
-| Workflows Cloudflare (`setup` + `tunnel`) redundantes | **Não**: são duas "raias" intencionais do ADR 0025 (setup = Access App/Policy/IdP; tunnel = Tunnel + CNAME). Ambos `workflow_dispatch`. |
-| `data/samples` vs `data/synthetic` | Ambos populados, distintos e documentados (samples = fixtures curtos; synthetic = corpus completo). |
-| Artefatos de build commitados | **Nenhum**: `git ls-files` não mostra `node_modules`/`.next`/`target`/`dist`/`coverage`/`.env`. O `.gitignore` é efetivo. |
-| `packages/shared-contracts` só tem `.gitkeep` | **Falso**: tem 4 arquivos reais (`error-codes.md`, `pii-types.json`, `processing-status.json`, `README.md`). Os docs que dizem "só `.gitkeep`" estão desatualizados (ver documento 03). |
+| Empty `mcp/` folder | **Does not exist** in the repo (it has already been removed). The `backlog`/`roadmap`/`vision` still cite it — that is doc *drift* (see document 03), not junk in the repo. |
+| `docs/engineering/data-model-oracle.md` duplicates `data-model.md` | **It does not duplicate**: it is an intentional FIAP academic deliverable (schema mirrored in Oracle 19c). Both are cross-referenced. Keep. |
+| `apps/admin/src/lib/mock.ts` is dead code | **It is active**: it is the admin's local data source (`data.ts` uses it as a fallback when `NORA_ADMIN_USE_MOCKS≠false`). |
+| Cloudflare workflows (`setup` + `tunnel`) are redundant | **No**: they are two intentional "lanes" of ADR 0025 (setup = Access App/Policy/IdP; tunnel = Tunnel + CNAME). Both are `workflow_dispatch`. |
+| `data/samples` vs `data/synthetic` | Both are populated, distinct and documented (samples = short fixtures; synthetic = full corpus). |
+| Committed build artifacts | **None**: `git ls-files` does not show `node_modules`/`.next`/`target`/`dist`/`coverage`/`.env`. The `.gitignore` is effective. |
+| `packages/shared-contracts` only has a `.gitkeep` | **False**: it has 4 real files (`error-codes.md`, `pii-types.json`, `processing-status.json`, `README.md`). The docs that say "only `.gitkeep`" are outdated (see document 03). |
 
-## 4. Workflows de CI — situação
+## 4. CI workflows — status
 
-Nenhum workflow órfão/morto encontrado. Para o leitor entender a divisão de
-responsabilidades (alguns só rodam manualmente):
+No orphaned/dead workflow found. So the reader understands the split of
+responsibilities (some run only manually):
 
-| Workflow | Disparo | Papel |
+| Workflow | Trigger | Role |
 |---|---|---|
-| `ci.yml` | PR | Gate de lint/test/build por pacote alterado |
-| `build-images.yml` | push `main` (path-filtered) | Build das imagens + rollout dos Container Apps |
-| `deploy-infra.yml` | mudanças em `infra/bicep/**` | Bicep/infra via OIDC |
+| `ci.yml` | PR | Lint/test/build gate per changed package |
+| `build-images.yml` | push to `main` (path-filtered) | Image build + Container Apps rollout |
+| `deploy-infra.yml` | changes in `infra/bicep/**` | Bicep/infra via OIDC |
 | `cloudflare-setup.yml` | manual | Access App/Policy/IdP (ADR 0025) |
 | `cloudflare-tunnel.yml` | manual | Tunnel + CNAME `admin.nora.systems` (ADR 0025) |
-| `rls-cutover.yml` | manual | Provisionamento idempotente do cutover RLS (ADR 0028) |
+| `rls-cutover.yml` | manual | Idempotent provisioning of the RLS cutover (ADR 0028) |

@@ -5,7 +5,7 @@ import br.com.nora.api.domain.identity.User;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Porta de persistencia para o agregado User. */
+/** Persistence port for the User aggregate. */
 public interface UserRepository {
 
     Optional<User> findById(UUID id);
@@ -14,12 +14,12 @@ public interface UserRepository {
 
     User save(User user);
 
-    /** Marca o usuario como Root do tenant. So pode existir um Root ativo por tenant. */
+    /** Marks the user as the tenant's Root. Only one active Root can exist per tenant. */
     void markAsRoot(UUID userId, UUID tenantId);
 
-    /** Indica se o usuario e o Root do tenant. */
+    /** Whether the user is the tenant's Root. */
     boolean isRoot(UUID userId, UUID tenantId);
 
-    /** Quantos usuarios o tenant tem. Guarda da exclusao de conta (so tenant pessoal, 1 user). */
+    /** How many users the tenant has. Guard for account deletion (personal tenant only, 1 user). */
     int countByTenant(UUID tenantId);
 }

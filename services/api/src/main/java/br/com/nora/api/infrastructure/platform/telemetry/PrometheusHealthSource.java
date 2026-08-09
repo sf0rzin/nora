@@ -24,42 +24,43 @@ import reactor.core.publisher.Mono;
 import reactor.util.function.Tuple3;
 
 /**
- * Lê saúde do sistema via Prometheus HTTP query API (telemetria (b), ADR 0024/0034).
+ * Reads system health via the Prometheus HTTP query API (telemetry (b), ADR 0024/0034).
  *
- * <p>Substitui o {@code AppInsightsHealthSource}, que fazia GET em {@code
- * api.applicationinsights.io/v1/apps/{id}/query} com KQL. Um OTel Collector é write-only e não fala
- * KQL, então a perna de LEITURA não migra trocando env var: as três agregações do KQL viraram três
- * instant queries PromQL contra a série que o opentelemetry-javaagent publica.
+ * <p>Replaces {@code AppInsightsHealthSource}, which did a GET on {@code
+ * api.applicationinsights.io/v1/apps/{id}/query} with KQL. An OTel Collector is write-only and does
+ * not speak KQL, so the READ leg does not migrate by swapping an env var: the three KQL
+ * aggregations became three PromQL instant queries against the series the opentelemetry-javaagent
+ * publishes.
  *
- * <p>Tradução do KQL original — {@code requests | summarize requests=count(),
+ * <p>Translation of the original KQL — {@code requests | summarize requests=count(),
  * failed=countif(success=='False'), p95=percentile(duration,95) by cloud_RoleName}:
  *
  * <ul>
- *   <li>tabela {@code requests} → histograma {@code http.server.request.duration} do agent
- *       (server-side), exposto no Prometheus como {@code http_server_request_duration_seconds_*}.
- *   <li>{@code count()} → {@code increase(..._count[janela])}.
- *   <li>{@code countif(success=='False')} → mesmo contador filtrado por {@code
- *       http_response_status_code=~"[45].."}. O App Insights marca a request como falha quando o
- *       responseCode é &gt;= 400, então 4xx entra na conta — manter isso preserva o número que o
- *       painel já mostrava.
- *   <li>{@code percentile(duration,95)} → {@code histogram_quantile(0.95, ..._bucket)}. ATENÇÃO à
- *       unidade: o KQL devolvia MILISSEGUNDOS e o semconv estável do OTel usa SEGUNDOS — daí o
- *       {@code * 1000} antes de preencher {@code p95LatencyMs}.
- *   <li>{@code by cloud_RoleName} → {@code by (job)}. O exporter prometheusremotewrite do collector
- *       mapeia o resource {@code service.name} para o label {@code job}; os valores são os mesmos
- *       OTEL_SERVICE_NAME do compose (nora-api, nora-worker, nora-web, nora-admin).
+ *   <li>the {@code requests} table → the agent's {@code http.server.request.duration} histogram
+ *       (server-side), exposed in Prometheus as {@code http_server_request_duration_seconds_*}.
+ *   <li>{@code count()} → {@code increase(..._count[window])}.
+ *   <li>{@code countif(success=='False')} → the same counter filtered by {@code
+ *       http_response_status_code=~"[45].."}. App Insights marks a request as failed when the
+ *       responseCode is &gt;= 400, so 4xx counts — keeping that preserves the number the dashboard
+ *       already showed.
+ *   <li>{@code percentile(duration,95)} → {@code histogram_quantile(0.95, ..._bucket)}. WATCH the
+ *       unit: KQL returned MILLISECONDS and OTel's stable semconv uses SECONDS — hence the {@code *
+ *       1000} before filling {@code p95LatencyMs}.
+ *   <li>{@code by cloud_RoleName} → {@code by (job)}. The collector's prometheusremotewrite
+ *       exporter maps the {@code service.name} resource to the {@code job} label; the values are
+ *       the same OTEL_SERVICE_NAME from compose (nora-api, nora-worker, nora-web, nora-admin).
  * </ul>
  *
- * <p>Best-effort, igual ao adaptador anterior: sem {@code prometheus-url} configurada, ou se a
- * consulta falhar, devolve {@link HealthSnapshot#unavailable} (o endpoint /admin/.../health ainda
- * responde 200). Bean sempre presente (não-gated) — não toca o banco de plataforma.
+ * <p>Best-effort, same as the previous adapter: with no {@code prometheus-url} configured, or if
+ * the query fails, it returns {@link HealthSnapshot#unavailable} (the /admin/.../health endpoint
+ * still answers 200). Bean always present (not gated) — does not touch the platform database.
  */
 @Component
 public class PrometheusHealthSource implements HealthMetricsSource {
 
     private static final Logger LOG = LoggerFactory.getLogger(PrometheusHealthSource.class);
 
-    /** Label de identidade do serviço no Prometheus (equivalente ao cloud_RoleName). */
+    /** Service identity label in Prometheus (equivalent to cloud_RoleName). */
     private static final String ROLE_LABEL = "job";
 
     private static final String METRIC = "http_server_request_duration_seconds";
@@ -79,7 +80,7 @@ public class PrometheusHealthSource implements HealthMetricsSource {
                     + METRIC
                     + "_bucket[%s])))";
 
-    /** Mesmo orçamento total do adaptador anterior; as 3 queries vão em paralelo. */
+    /** Same total budget as the previous adapter; the 3 queries go in parallel. */
     private static final Duration TIMEOUT = Duration.ofSeconds(8);
 
     private static final String DEFAULT_WINDOW = "PT1H";
@@ -147,7 +148,7 @@ public class PrometheusHealthSource implements HealthMetricsSource {
         Map<String, Double> failed = byRole(res.getT2());
         Map<String, Double> p95Seconds = byRole(res.getT3());
 
-        // União ordenada: um serviço pode aparecer só no p95 (ex.: contador zerado pelo reset).
+        // Ordered union: a service may show up only in the p95 (e.g. counter zeroed by the reset).
         Set<String> roles = new LinkedHashSet<>(requests.keySet());
         roles.addAll(failed.keySet());
         roles.addAll(p95Seconds.keySet());
@@ -188,14 +189,14 @@ public class PrometheusHealthSource implements HealthMetricsSource {
         return out;
     }
 
-    /** O campo `value` do Prometheus é [timestampEpochSeconds, "valorComoString"]. */
+    /** Prometheus' `value` field is [timestampEpochSeconds, "valueAsString"]. */
     private static Double scalar(List<Object> value) {
         if (value == null || value.size() < 2 || value.get(1) == null) {
             return null;
         }
         try {
             double d = Double.parseDouble(value.get(1).toString().trim());
-            // "NaN" é a resposta normal do histogram_quantile quando não há amostras.
+            // "NaN" is the normal histogram_quantile answer when there are no samples.
             return Double.isFinite(d) ? d : null;
         } catch (NumberFormatException ex) {
             return null;

@@ -6,10 +6,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Snapshot dos dados da reunião/análise no momento do disparo — é o que condições avaliam e ações
- * consomem (placeholders {{meeting.title}} etc.). Construído pelo {@link WorkflowContextFactory} a
- * partir do estado commitado no banco. {@code sampleData} marca contexto sintético usado pelo
- * "Testar" quando o tenant ainda não tem reunião analisada.
+ * Snapshot of the meeting/analysis data at trigger time — it is what conditions evaluate and
+ * actions consume (placeholders {{meeting.title}} etc.). Built by the {@link
+ * WorkflowContextFactory} from the state committed in the database. {@code sampleData} marks the
+ * synthetic context used by the "Test" when the tenant does not have an analyzed meeting yet.
  */
 public record WorkflowEventContext(
         UUID tenantId,
@@ -30,8 +30,8 @@ public record WorkflowEventContext(
         boolean sampleData) {
 
     /**
-     * Projeção mínima de um action item para condições ({@code priority_equals}), templates e
-     * payloads de webhook ({@code dueDate} pode ser null — a LLM nem sempre extrai prazo).
+     * Minimal projection of an action item for conditions ({@code priority_equals}), templates and
+     * webhook payloads ({@code dueDate} may be null — the LLM does not always extract a deadline).
      */
     public record ActionItemView(
             String title, String assignee, String priority, LocalDate dueDate) {}

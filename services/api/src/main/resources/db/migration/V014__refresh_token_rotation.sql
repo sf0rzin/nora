@@ -1,22 +1,22 @@
 -- Refresh Token Rotation + Reuse Detection (audit follow-up #3).
 --
--- Antes da rotacao: cada token era valido ate expirar (30 dias). Se um atacante
--- exfiltrasse o cookie, podia renovar access tokens livremente ate o usuario
--- vitima fazer logout.
+-- Before rotation: each token was valid until it expired (30 days). If an attacker
+-- exfiltrated the cookie, they could renew access tokens freely until the victim
+-- user logged out.
 --
--- Agora: a cada /auth/refresh emitimos um NOVO token na mesma family_id e
--- revogamos o anterior. Se o anterior (ja revogado) for apresentado, assumimos
--- comprometimento: revogamos a family inteira (atacante e vitima sao deslogados).
+-- Now: on every /auth/refresh we issue a NEW token under the same family_id and
+-- revoke the previous one. If the previous one (already revoked) is presented, we
+-- assume compromise: we revoke the whole family (attacker and victim are logged out).
 
 ALTER TABLE refresh_tokens ADD COLUMN family_id UUID;
 ALTER TABLE refresh_tokens ADD COLUMN replaced_by_id UUID NULL REFERENCES refresh_tokens(id);
 
--- Backfill: tokens existentes formam uma family cada (mesmo UUID que o id).
+-- Backfill: existing tokens each form a family of their own (same UUID as the id).
 UPDATE refresh_tokens SET family_id = id WHERE family_id IS NULL;
 
 ALTER TABLE refresh_tokens ALTER COLUMN family_id SET NOT NULL;
 
--- Lookup pela family (revogar toda a cadeia em reuso).
+-- Lookup by family (revoke the whole chain on reuse).
 CREATE INDEX idx_refresh_tokens_family ON refresh_tokens(family_id);
 
 COMMENT ON COLUMN refresh_tokens.family_id IS

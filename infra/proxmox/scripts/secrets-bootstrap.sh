@@ -1,46 +1,46 @@
 #!/usr/bin/env bash
 #
-# secrets-bootstrap.sh — gera e coleta TODOS os segredos da stack, e emite o
-# `secrets.env.sops` cifrado. Roda UMA vez, no host, antes do primeiro deploy.
+# secrets-bootstrap.sh — generates and collects ALL the stack's secrets, and emits
+# the encrypted `secrets.env.sops`. Runs ONCE, on the host, before the first deploy.
 #
 # ============================================================================
-# NENHUM VALOR É IMPRESSO. NUNCA.
+# NO VALUE IS EVER PRINTED. NEVER.
 # ============================================================================
-# Este script foi escrito para poder ser executado por um agente de IA sem que os
-# segredos entrem no contexto/transcript dele — e, de quebra, para não deixar
-# rastro em `history`, em log de terminal ou em screenshot.
+# This script was written so it can be run by an AI agent without the secrets
+# entering its context/transcript — and, as a bonus, so it leaves no trace in
+# `history`, in a terminal log or in a screenshot.
 #
-#   * Valores gerados vão DIRETO para o arquivo. Não passam por stdout.
-#   * Entrada interativa usa `read -rs` (sem eco na tela).
-#   * O relatório final mostra só o NOME da variável e se está preenchida —
-#     nunca o conteúdo. Ex.:  JWT_SECRET  [ok, 64 chars]
-#   * O arquivo em claro é criado com umask 077 e apagado no trap EXIT.
+#   * Generated values go STRAIGHT to the file. They never pass through stdout.
+#   * Interactive input uses `read -rs` (no echo on screen).
+#   * The final report shows only the variable NAME and whether it is filled —
+#     never the content. E.g.:  JWT_SECRET  [ok, 64 chars]
+#   * The cleartext file is created with umask 077 and deleted in the EXIT trap.
 #
-# O que ele faz:
-#   1. Gera os segredos que NÃO vêm de lugar nenhum (senhas, chaves simétricas).
-#   2. Coleta os que só você tem (Cloudflare, provedores de LLM, OAuth) — de um
-#      arquivo com `--from-file` ou perguntando um a um, sem eco.
-#   3. Escreve `secrets.env` em tmpfs, cifra com SOPS+age e apaga o claro.
+# What it does:
+#   1. Generates the secrets that come from NOWHERE (passwords, symmetric keys).
+#   2. Collects the ones only you have (Cloudflare, LLM providers, OAuth) — from
+#      a file with `--from-file` or asking one by one, without echo.
+#   3. Writes `secrets.env` in tmpfs, encrypts it with SOPS+age and wipes the clear one.
 #
-# Uso:
-#   ./secrets-bootstrap.sh                          # interativo, pergunta tudo
-#   ./secrets-bootstrap.sh --from-file ~/cf.txt     # lê o que puder do arquivo
-#   ./secrets-bootstrap.sh --regenerate JWT_SECRET  # rotaciona um segredo só
-#   ./secrets-bootstrap.sh --check                  # audita o .sops existente
+# Usage:
+#   ./secrets-bootstrap.sh                          # interactive, asks everything
+#   ./secrets-bootstrap.sh --from-file ~/cf.txt     # reads what it can from the file
+#   ./secrets-bootstrap.sh --regenerate JWT_SECRET  # rotates a single secret
+#   ./secrets-bootstrap.sh --check                  # audits the existing .sops
 #
-# Formato aceito em --from-file (uma chave por linha, `=` ou `:` como separador;
-# linhas iniciadas por # são ignoradas; chaves desconhecidas são ignoradas em
-# silêncio, então dá pra apontar para um arquivo de anotações qualquer):
+# Format accepted in --from-file (one key per line, `=` or `:` as separator;
+# lines starting with # are ignored; unknown keys are ignored silently, so you
+# can point it at any notes file you happen to have):
 #
 #   acc_id=<cloudflare account id>
-#   write_all=<api token com Tunnel:Edit + Access:Edit>
-#   CLOUDFLARE_TUNNEL_TOKEN=<connector token, se você já criou o túnel>
+#   write_all=<api token with Tunnel:Edit + Access:Edit>
+#   CLOUDFLARE_TUNNEL_TOKEN=<connector token, if you already created the tunnel>
 #   OPENAI_API_KEY=...
 #   GEMINI_API_KEY=...
 #
-# NÃO são usados, e por isso nem são lidos: `user`, `pass`, `read_all`. Login de
-# conta não tem função nesta stack, e um token read-only não cria túnel. Se
-# estiverem no arquivo, são ignorados — mas o certo é não deixá-los lá.
+# NOT used, and therefore not even read: `user`, `pass`, `read_all`. Account login
+# has no function in this stack, and a read-only token does not create a tunnel. If
+# they are in the file, they are ignored — but the right thing is not to leave them there.
 
 set -euo pipefail
 umask 077
@@ -78,9 +78,9 @@ while [ $# -gt 0 ]; do
 done
 
 # ---------------------------------------------------------------------------
-# Catálogo. GERADO = criado aqui; COLETADO = só você tem; OPCIONAL = pode ficar vazio.
+# Catalog. GERADO = created here; COLETADO = only you have it; OPCIONAL = may stay empty.
 # ---------------------------------------------------------------------------
-# formato: NOME|classe|gerador-ou-descrição
+# format: NAME|class|generator-or-description
 CATALOGO=$(cat <<'CAT'
 POSTGRES_ADMIN_PASSWORD|gerado|b64:32
 POSTGRES_PLATFORM_ADMIN_PASSWORD|gerado|b64:32
@@ -107,30 +107,30 @@ CAT
 )
 
 # ---------------------------------------------------------------------------
-# Geradores. Escrevem em stdout do SUBSHELL, capturado direto para variável —
-# nunca para o terminal.
+# Generators. They write to the SUBSHELL's stdout, captured straight into a variable —
+# never to the terminal.
 # ---------------------------------------------------------------------------
 gerar() {
   case "$1" in
     b64:*)     openssl rand -base64 "${1#b64:}" | tr -d '\n=' | tr '+/' '-_' ;;
     hex:*)     openssl rand -hex "${1#hex:}" ;;
-    # AES-256-GCM: exatamente 32 bytes em base64 PADRÃO (com padding). O
-    # TokenCipher valida isso no boot — base64url ou tamanho errado derruba a API.
+    # AES-256-GCM: exactly 32 bytes in STANDARD base64 (with padding). The
+    # TokenCipher validates this at boot — base64url or the wrong size takes the API down.
     aes256b64) openssl rand -base64 32 ;;
     *) die "gerador desconhecido: $1" ;;
   esac
 }
 
 # ---------------------------------------------------------------------------
-# Parse do --from-file. Aceita `=` ou `:`; ignora comentário, espaço e aspas.
-# Mapeia os apelidos do arquivo de anotações para os nomes canônicos.
+# Parsing of --from-file. Accepts `=` or `:`; ignores comments, spaces and quotes.
+# Maps the aliases from the notes file to the canonical names.
 # ---------------------------------------------------------------------------
 declare -A COLETA=()
 
 ler_arquivo() {
   local f="$1" linha chave valor
   [ -r "$f" ] || die "não consigo ler $f"
-  # Nunca ecoa o conteúdo. Só conta quantas chaves reconheceu.
+  # Never echoes the content. Only counts how many keys it recognized.
   local reconhecidas=0 ignoradas=0
   while IFS= read -r linha || [ -n "$linha" ]; do
     case "$linha" in ''|\#*) continue ;; esac
@@ -143,11 +143,11 @@ ler_arquivo() {
     case "$chave" in
       acc_id|account_id|CLOUDFLARE_ACCOUNT_ID)   COLETA[CLOUDFLARE_ACCOUNT_ID]="$valor"; reconhecidas=$((reconhecidas+1)) ;;
       write_all|CLOUDFLARE_API_TOKEN)            COLETA[CLOUDFLARE_API_TOKEN]="$valor";  reconhecidas=$((reconhecidas+1)) ;;
-      # Deliberadamente NÃO lidos: login de conta não serve à stack, e um token
-      # read-only não cria túnel. Guardá-los aqui só aumentaria a superfície.
+      # Deliberately NOT read: account login is of no use to this stack, and a
+      # read-only token does not create a tunnel. Keeping them would only widen the surface.
       user|username|pass|password|read_all)      ignoradas=$((ignoradas+1)) ;;
       *)
-        # Qualquer nome que já seja canônico do catálogo entra direto.
+        # Any name already canonical in the catalog goes straight in.
         if printf '%s\n' "$CATALOGO" | cut -d'|' -f1 | grep -qx "$chave"; then
           COLETA["$chave"]="$valor"; reconhecidas=$((reconhecidas+1))
         else
@@ -159,7 +159,7 @@ ler_arquivo() {
 }
 
 # ---------------------------------------------------------------------------
-# --check: audita o .sops existente sem revelar nada
+# --check: audits the existing .sops without revealing anything
 # ---------------------------------------------------------------------------
 if [ "$CHECK_ONLY" -eq 1 ]; then
   [ -f "$SOPS_FILE" ] || die "não existe $SOPS_FILE — rode sem --check para criar."
@@ -191,7 +191,7 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Pré-voo
+# Preflight
 # ---------------------------------------------------------------------------
 command -v openssl >/dev/null || die "openssl não encontrado."
 command -v sops    >/dev/null || die "sops não encontrado (rode o bootstrap-host.sh)."
@@ -200,7 +200,7 @@ command -v age     >/dev/null || die "age não encontrado (rode o bootstrap-host
 
 [ -n "$FROM_FILE" ] && ler_arquivo "$FROM_FILE"
 
-# Se já existe um .sops, preserva o que estiver lá (isto é reconciliação, não reset).
+# If a .sops already exists, preserve whatever is in it (this is reconciliation, not reset).
 declare -A ATUAL=()
 if [ -f "$SOPS_FILE" ]; then
   log "Já existe $SOPS_FILE — preservando os valores atuais"
@@ -208,23 +208,23 @@ if [ -f "$SOPS_FILE" ]; then
   prev="$(mktemp)"
   sops --decrypt --input-type dotenv --output-type dotenv "$SOPS_FILE" > "$prev" 2>/dev/null \
     || warn "não consegui decifrar o existente; vou tratar como novo."
-  # NÃO use `IFS='=' read -r k v` aqui. O bash descarta o delimitador FINAL da linha
-  # ao preencher a última variável, então um valor terminado em `=` perde esse `=` --
-  # que é justamente o padding de todo base64. Na prática: NORA_INTEGRATIONS_ENC_KEY
-  # ia de 44 para 43 chars (deixa de decodificar para 32 bytes e o TokenCipher derruba
-  # a API no boot) e o CLOUDFLARE_TUNNEL_TOKEN de 180 para 179 (o cloudflared não
-  # registra o túnel). Ou seja: reexecutar este script para acrescentar UMA chave
-  # corrompia, em silêncio, todo segredo já cifrado cujo valor terminasse em `=`.
+  # Do NOT use `IFS='=' read -r k v` here. Bash discards the line's FINAL delimiter
+  # when filling the last variable, so a value ending in `=` loses that `=` --
+  # which is exactly the padding of every base64. In practice: NORA_INTEGRATIONS_ENC_KEY
+  # went from 44 to 43 chars (stops decoding to 32 bytes and the TokenCipher takes the
+  # API down at boot) and CLOUDFLARE_TUNNEL_TOKEN from 180 to 179 (cloudflared does not
+  # register the tunnel). That is: re-running this script to add ONE key silently
+  # corrupted every already-encrypted secret whose value ended in `=`.
   while IFS= read -r linha; do
     case "$linha" in ''|\#*) continue ;; esac
-    [ "${linha#*=}" != "$linha" ] || continue   # sem `=` não é linha de dotenv
+    [ "${linha#*=}" != "$linha" ] || continue   # without `=` it is not a dotenv line
     ATUAL["${linha%%=*}"]="${linha#*=}"
   done < "$prev"
   shred -u "$prev" 2>/dev/null || rm -f "$prev"
 fi
 
 # ---------------------------------------------------------------------------
-# Monta o conjunto final
+# Assembles the final set
 # ---------------------------------------------------------------------------
 SHM_FS="$(findmnt -no FSTYPE /dev/shm 2>/dev/null || true)"
 [ "$SHM_FS" = "tmpfs" ] || die "/dev/shm não é tmpfs. Recuso escrever segredo em disco."
@@ -254,13 +254,13 @@ while IFS='|' read -r nome classe spec; do
   elif [ "$classe" = "gerado" ]; then
     valor="$(gerar "$spec")"; origem="gerado"
   elif [ "$TEM_TTY" -eq 0 ]; then
-    # Sem terminal (ssh sem -t, cron, agente): não há como perguntar. Deixa
-    # vazio e segue -- o relatório final mostra o buraco, e o `--check` cobra
-    # o que for obrigatório. Perguntar aqui só produziria erro de /dev/tty
-    # repetido, uma linha por variável.
+    # No terminal (ssh without -t, cron, agent): there is no way to ask. Leaves
+    # it empty and moves on -- the final report shows the hole, and `--check`
+    # demands whatever is mandatory. Asking here would only produce a repeated
+    # /dev/tty error, one line per variable.
     valor=""; origem="sem tty"
   else
-    # Coletado ou opcional e ainda sem valor: pergunta SEM ECO.
+    # Collected or optional and still without a value: ask WITHOUT ECHO.
     printf '  %s%s%s\n' "$C_YLW" "$nome" "$C_OFF"
     printf '    %s%s%s\n' "$C_DIM" "$spec" "$C_OFF"
     if [ "$classe" = "opcional" ]; then
@@ -278,13 +278,13 @@ while IFS='|' read -r nome classe spec; do
     "$([ -n "$valor" ] && echo "[${#valor} chars]" || echo "[vazio]")")")
 done <<< "$CATALOGO"
 
-# Sanidade que só se descobre em produção, tarde:
+# Sanity check you only discover in production, late:
 enc="$(sed -n 's/^NORA_INTEGRATIONS_ENC_KEY=//p' "$PLAIN" | head -1)"
 if [ -n "$enc" ]; then
-  # `... | wc -c || echo 0` não substitui, CONCATENA: sob `pipefail` uma falha em
-  # qualquer estágio faz o `echo 0` rodar DEPOIS do `wc` já ter impresso, e `bytes`
-  # vira "32\n0" -- o `[ -eq ]` então morre com "integer expression expected" em vez
-  # de dar o diagnóstico. Decodifica para arquivo e conta separado.
+  # `... | wc -c || echo 0` does not substitute, it CONCATENATES: under `pipefail` a
+  # failure at any stage makes `echo 0` run AFTER `wc` has already printed, and `bytes`
+  # becomes "32\n0" -- `[ -eq ]` then dies with "integer expression expected" instead
+  # of giving the diagnosis. Decode to a file and count separately.
   base64 -d < <(printf '%s' "$enc") > "$WORK/enc.bin" 2>/dev/null || true
   bytes="$(wc -c < "$WORK/enc.bin")"
   rm -f "$WORK/enc.bin"
@@ -294,17 +294,17 @@ fi
 grep -q '=unset$' "$PLAIN" && die 'algum valor ficou como a string literal "unset" — isso quebra o boot.'
 
 # ---------------------------------------------------------------------------
-# Cifra
+# Encrypt
 # ---------------------------------------------------------------------------
 export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
 sops --encrypt --input-type dotenv --output-type dotenv "$PLAIN" > "$SOPS_FILE.tmp" \
   || die "sops falhou ao cifrar. O .sops.yaml tem o recipient age deste host?"
 mv -f "$SOPS_FILE.tmp" "$SOPS_FILE"
-chmod 0644 "$SOPS_FILE"   # cifrado: pode ser versionado
+chmod 0644 "$SOPS_FILE"   # encrypted: can be versioned
 
-# Prova de ida e volta. Um segredo corrompido na montagem é invisível aqui dentro --
-# só aparece como container em CrashLoop, ou pior, como comportamento errado em
-# silêncio. Comparar byte a byte custa nada e fecha a classe inteira de bug.
+# Round-trip proof. A secret corrupted while assembling is invisible in here --
+# it only shows up as a container in CrashLoop, or worse, as wrong behaviour in
+# silence. Comparing byte by byte costs nothing and closes the whole bug class.
 verif="$WORK/verify.env"
 sops --decrypt --input-type dotenv --output-type dotenv "$SOPS_FILE" > "$verif" 2>/dev/null \
   || die "o arquivo recém-cifrado não decifra com a chave em $AGE_KEY_FILE."

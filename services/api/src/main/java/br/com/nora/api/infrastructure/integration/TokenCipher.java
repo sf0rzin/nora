@@ -12,11 +12,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Cifra tokens OAuth em repouso (AES-256-GCM, IV aleatório por valor). Formato armazenado: {@code
- * enc:v1:base64(iv):base64(ciphertext)}. Chave de 32 bytes em base64 via {@code
- * NORA_INTEGRATIONS_ENC_KEY}; SEM chave (dev local), armazena {@code plain:...} com WARN no boot —
- * honesto e visível, nunca silencioso. Decrypt aceita ambos os formatos (migração suave quando a
- * chave entrar).
+ * Encrypts OAuth tokens at rest (AES-256-GCM, random IV per value). Stored format: {@code
+ * enc:v1:base64(iv):base64(ciphertext)}. 32-byte key in base64 via {@code
+ * NORA_INTEGRATIONS_ENC_KEY}; with NO key (local dev), stores {@code plain:...} with a WARN at boot
+ * — honest and visible, never silent. Decrypt accepts both formats (smooth migration once the key
+ * lands).
  */
 @Component
 public class TokenCipher {
@@ -76,7 +76,7 @@ public class TokenCipher {
             return stored.substring(PLAIN_PREFIX.length());
         }
         if (!stored.startsWith(ENC_PREFIX)) {
-            // Valor legado sem prefixo (não deveria existir) — devolve como está.
+            // Legacy value with no prefix (should not exist) — returns it as is.
             return stored;
         }
         if (key == null) {

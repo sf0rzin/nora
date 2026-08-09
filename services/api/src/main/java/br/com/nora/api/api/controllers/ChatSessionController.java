@@ -29,10 +29,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Histórico de sessões de chat do assistente NORA. Cada sessão é escopada pelo tenant_id (ADR 0002
- * + RLS ADR 0028) e pelo user_id do principal: um usuário só enxerga e manipula as próprias
- * sessões. A autenticação é exigida pelo SecurityConfig (rota não pública); o escopo fino por
- * usuário vive no service/repository.
+ * Chat session history for the NORA assistant. Each session is scoped by tenant_id (ADR 0002 + RLS
+ * ADR 0028) and by the principal's user_id: a user only sees and manipulates their own sessions.
+ * Authentication is enforced by SecurityConfig (non-public route); the fine-grained per-user scope
+ * lives in the service/repository.
  */
 @RestController
 @RequestMapping("/chat/sessions")

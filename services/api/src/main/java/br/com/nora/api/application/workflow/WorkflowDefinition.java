@@ -10,9 +10,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Grafo executável de um workflow, como desenhado no canvas: nós (gatilho/condição/ação) ligados
- * por arestas direcionadas. É o modelo em memória do {@code definition_json} — o parse/validação
- * vive no {@link WorkflowDefinitionParser}.
+ * Executable graph of a workflow, as drawn on the canvas: nodes (trigger/condition/action) linked
+ * by directed edges. It is the in-memory model of the {@code definition_json} — the
+ * parsing/validation lives in {@link WorkflowDefinitionParser}.
  */
 public record WorkflowDefinition(List<Node> nodes, List<Edge> edges) {
 
@@ -34,10 +34,10 @@ public record WorkflowDefinition(List<Node> nodes, List<Edge> edges) {
     }
 
     /**
-     * Nó do grafo. {@code type} é o identificador semântico dentro do kind (ex.: {@code
-     * meeting.analysis_completed} para gatilho, {@code productivity_score_below} para condição,
-     * {@code send_email} para ação). {@code params} carrega a configuração da sidebar; {@code x}/
-     * {@code y} são só layout do canvas (o engine ignora).
+     * Graph node. {@code type} is the semantic identifier within the kind (e.g. {@code
+     * meeting.analysis_completed} for trigger, {@code productivity_score_below} for condition,
+     * {@code send_email} for action). {@code params} carries the sidebar configuration; {@code x}/
+     * {@code y} are only canvas layout (the engine ignores them).
      */
     public record Node(
             String id, NodeKind kind, String type, Map<String, Object> params, double x, double y) {
@@ -54,7 +54,7 @@ public record WorkflowDefinition(List<Node> nodes, List<Edge> edges) {
 
     public record Edge(String id, String source, String target) {}
 
-    /** O único nó de gatilho do grafo (a validação do parser garante exatamente um). */
+    /** The graph's single trigger node (the parser's validation guarantees exactly one). */
     public Node triggerNode() {
         return nodes.stream()
                 .filter(n -> n.kind() == NodeKind.TRIGGER)
@@ -62,7 +62,7 @@ public record WorkflowDefinition(List<Node> nodes, List<Edge> edges) {
                 .orElseThrow(() -> new IllegalStateException("definition without trigger node"));
     }
 
-    /** Nós de destino das arestas que saem de {@code nodeId}, na ordem das arestas. */
+    /** Target nodes of the edges leaving {@code nodeId}, in edge order. */
     public List<Node> childrenOf(String nodeId) {
         Map<String, Node> byId = nodesById();
         List<Node> children = new ArrayList<>();
@@ -85,7 +85,7 @@ public record WorkflowDefinition(List<Node> nodes, List<Edge> edges) {
         return byId;
     }
 
-    /** Detecta ciclo por DFS iterativo (grafo precisa ser acíclico para o engine terminar). */
+    /** Detects a cycle via iterative DFS (the graph must be acyclic for the engine to finish). */
     public boolean hasCycle() {
         Map<String, List<String>> adj = new HashMap<>();
         for (Edge e : edges) {

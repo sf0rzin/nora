@@ -1,12 +1,12 @@
-# Workflows — o que mudou na migração Azure → Proxmox
+# Workflows — what changed in the Azure → Proxmox migration
 
-> Contexto: [ADR 0034](../../docs/adr/0034-migracao-azure-para-proxmox.md).
-> Runbook operacional: [`docs/operations/proxmox-deploy.md`](../../docs/operations/proxmox-deploy.md).
-> Desligamento do Azure: [`docs/operations/azure-decommission.md`](../../docs/operations/azure-decommission.md).
+> Context: [ADR 0034](../../docs/adr/0034-migracao-azure-para-proxmox.md).
+> Operational runbook: [`docs/operations/proxmox-deploy.md`](../../docs/operations/proxmox-deploy.md).
+> Azure shutdown: [`docs/operations/azure-decommission.md`](../../docs/operations/azure-decommission.md).
 
-A mudança estrutural é uma só, e todo o resto decorre dela:
+There is a single structural change, and everything else follows from it:
 
-**O CI deixou de empurrar o deploy. Ele agora só publica imagem e um ponteiro; quem decide o que roda é o host.**
+**CI no longer pushes the deploy. It now only publishes an image and a pointer; the host is what decides what runs.**
 
 ```
 ANTES                                    DEPOIS
@@ -21,33 +21,33 @@ GitHub Actions                           GitHub Actions
                                              └─► deploy.sh ─► docker compose up -d --wait
 ```
 
-## Por que pull, e não push
+## Why pull, and not push
 
-Não é preferência de estilo — as duas alternativas de push estão fechadas:
+It is not a matter of style preference — both push alternatives are closed off:
 
-- **Runner self-hosted** — o repositório é **público** (ADR 0017) e `deploy-infra.yml` tinha trigger `pull_request`. Um runner persistente na rede doméstica executaria código de PR de fork arbitrário. Risco crítico, não hipotético.
-- **SSH a partir do runner GitHub-hosted** — exigiria expor `sshd` à internet, porque runners hospedados não têm faixa de IP estável para allowlist.
+- **Self-hosted runner** — the repository is **public** (ADR 0017) and `deploy-infra.yml` had a `pull_request` trigger. A persistent runner on the home network would execute PR code from an arbitrary fork. Critical risk, not hypothetical.
+- **SSH from the GitHub-hosted runner** — it would require exposing `sshd` to the internet, because hosted runners do not have a stable IP range to allowlist.
 
-O pull elimina os dois: **zero porta inbound, zero chave SSH em Secrets, zero runner.** O host abre conexão de saída para o GHCR e para a Cloudflare, e nada mais.
+Pull eliminates both: **zero inbound ports, zero SSH keys in Secrets, zero runners.** The host opens an outbound connection to GHCR and to Cloudflare, and nothing else.
 
-## Workflow a workflow
+## Workflow by workflow
 
-| Workflow | Estado | O que mudou |
+| Workflow | State | What changed |
 |---|---|---|
-| `ci.yml` | **editado** | O job `infra` deixou de validar Bicep (`az bicep build`) e passou a validar `infra/proxmox/docker-compose.yml` + shellcheck nos scripts. **O nome do job continua `infra`** — é `needs` do `ci-gate`, o único required check da main (ADR 0027); renomear quebraria a branch protection. |
-| `build-images.yml` | **editado** | Build e push pro GHCR **intactos** — é a parte que sempre funcionou. Removido o job `deploy-apps` (`azure/login` + `az containerapp update`) e o `permissions: id-token: write` que existia só pro OIDC. No lugar entrou `release-pointer`, que apenas anuncia as tags `sha-<short>` prontas. O fallback do `NEXT_PUBLIC_API_BASE_URL` deixou de apontar pro FQDN do Azure. |
-| `deploy-proxmox.yml` | **novo** | Publica o release pointer (tag git `release/prod/<short>` + `release/prod/current`) e, opcionalmente, chama um webhook. Nunca toca o host. |
-| `rls-cutover.yml` | **reescrito** | Não conecta mais em banco nenhum. Valida o `R001` num Postgres efêmero e emite o runbook; a execução real virou `infra/proxmox/scripts/rls-cutover.sh`, rodando **no host**. Motivo: o Postgres do Proxmox está na bridge `data` (`internal: true`) publicando só `127.0.0.1:5432` — não existe caminho de rede a partir de um runner. |
-| `deploy-infra.yml` | **deletado** | Existia só para `az deployment group create` do Bicep. `infra/bicep/` **permanece no repo** como referência histórica até o decommission terminar. |
-| `cloudflare-setup.yml` | editado | Ajustes de hostname: agora o tunnel serve toda a stack, não só o admin. |
-| `cloudflare-tunnel.yml` | inalterado | Continua emitindo o connector token. Ganhou importância: agora é o ingress de tudo. |
-| `desktop-release.yml` | editado | Ajustes para o STT local (ADR 0035). **Ponto de atenção:** `whisper-rs` compila `whisper.cpp`, que exige toolchain C++ nos três alvos — isso ainda não foi validado num build real. |
+| `ci.yml` | **edited** | The `infra` job stopped validating Bicep (`az bicep build`) and now validates `infra/proxmox/docker-compose.yml` + shellcheck on the scripts. **The job name is still `infra`** — it is a `needs` of `ci-gate`, main's only required check (ADR 0027); renaming it would break branch protection. |
+| `build-images.yml` | **edited** | Build and push to GHCR **untouched** — that is the part that always worked. Removed the `deploy-apps` job (`azure/login` + `az containerapp update`) and the `permissions: id-token: write` that existed only for OIDC. In its place came `release-pointer`, which merely announces the ready `sha-<short>` tags. The `NEXT_PUBLIC_API_BASE_URL` fallback stopped pointing at the Azure FQDN. |
+| `deploy-proxmox.yml` | **new** | Publishes the release pointer (git tag `release/prod/<short>` + `release/prod/current`) and, optionally, calls a webhook. It never touches the host. |
+| `rls-cutover.yml` | **rewritten** | It no longer connects to any database. It validates `R001` on an ephemeral Postgres and emits the runbook; the real execution became `infra/proxmox/scripts/rls-cutover.sh`, running **on the host**. Reason: the Proxmox Postgres is on the `data` bridge (`internal: true`) publishing only `127.0.0.1:5432` — there is no network path from a runner. |
+| `deploy-infra.yml` | **deleted** | It existed only for the Bicep `az deployment group create`. `infra/bicep/` **remains in the repo** as historical reference until the decommission is finished. |
+| `cloudflare-setup.yml` | edited | Hostname adjustments: the tunnel now serves the whole stack, not just the admin. |
+| `cloudflare-tunnel.yml` | unchanged | It still issues the connector token. It gained importance: it is now the ingress for everything. |
+| `desktop-release.yml` | edited | Adjustments for the local STT (ADR 0035). **Point of attention:** `whisper-rs` compiles `whisper.cpp`, which requires a C++ toolchain on all three targets — this has not yet been validated in a real build. |
 
-## Secrets e Variables do GitHub
+## GitHub Secrets and Variables
 
-### Podem ser DELETADOS depois do decommission
+### Can be DELETED after the decommission
 
-Só apague **depois** de confirmar que o Proxmox está servindo tráfego e o resource group foi removido — ver [`azure-decommission.md`](../../docs/operations/azure-decommission.md).
+Only delete them **after** confirming that Proxmox is serving traffic and the resource group has been removed — see [`azure-decommission.md`](../../docs/operations/azure-decommission.md).
 
 ```
 AZURE_CLIENT_ID              AZURE_TENANT_ID           AZURE_SUBSCRIPTION_ID
@@ -56,16 +56,16 @@ EASYAUTH_CLIENT_ID           EASYAUTH_CLIENT_SECRET     (já inertes desde o ADR
 NORA_APP_PASSWORD            RLS_TELEMETRY_PASSWORD     (migram pro secrets.env.sops)
 ```
 
-Também no Entra: a App Registration `sp-nora-github-deploy` e suas **3 federated credentials**
+Also in Entra: the `sp-nora-github-deploy` App Registration and its **3 federated credentials**
 (`github-main-branch`, `github-pull-requests`, `github-environment-dev`).
 
-> O Service Principal tinha **dois** roles, não um: `Contributor` em `rg-nora-dev` **e**
-> `Role Based Access Control Administrator` — este segundo porque `modules/keyvault.bicep:67`
-> cria role assignments. Remova os dois.
+> The Service Principal had **two** roles, not one: `Contributor` on `rg-nora-dev` **and**
+> `Role Based Access Control Administrator` — the second one because `modules/keyvault.bicep:67`
+> creates role assignments. Remove both.
 
-### Continuam necessários
+### Still needed
 
-Migram do Key Vault para o `secrets.env.sops`, mas seguem no GitHub enquanto o CI buildar:
+They migrate from Key Vault to `secrets.env.sops`, but they stay in GitHub for as long as CI builds:
 
 ```
 OPENAI_API_KEY   DEEPSEEK_API_KEY   GEMINI_API_KEY   RESEND_API_KEY
@@ -77,33 +77,33 @@ NORA_PLATFORM_INTERNAL_TOKEN     NORA_PLATFORM_ADMIN_TOKEN
 JWT_SECRET       CLOUDFLARE_TUNNEL_TOKEN
 ```
 
-### Precisam ser CRIADOS
+### Need to be CREATED
 
-| Nome | Tipo | Para quê |
+| Name | Type | What for |
 |---|---|---|
-| `GHCR_PULL_TOKEN` | Secret | PAT com **apenas** `read:packages`, usado pelo host para `docker login ghcr.io`. Não vai no GitHub — vai no `secrets.env.sops` do host. Listado aqui porque é gerado na UI do GitHub. |
-| `NORA_RELEASE_WEBHOOK` | Secret (opcional) | URL que o `deploy-proxmox.yml` chama para acordar o agente de pull antes do próximo tick de 5 min. Sem ela o deploy só é mais lento, não quebra. |
-| `CF_ACCESS_AUD` | **Secret**, não Variable | Ver abaixo. |
+| `GHCR_PULL_TOKEN` | Secret | A PAT with **only** `read:packages`, used by the host for `docker login ghcr.io`. It does not go into GitHub — it goes into the host's `secrets.env.sops`. Listed here because it is generated in the GitHub UI. |
+| `NORA_RELEASE_WEBHOOK` | Secret (optional) | URL that `deploy-proxmox.yml` calls to wake the pull agent before the next 5-minute tick. Without it the deploy is just slower, it does not break. |
+| `CF_ACCESS_AUD` | **Secret**, not Variable | See below. |
 
-## ⚠️ Bug pré-existente que a migração precisa fechar
+## ⚠️ Pre-existing bug that the migration needs to close
 
-`CF_ACCESS_AUD` está cadastrado como **Secret**, mas `deploy-infra.yml:158` e `:239` liam
-`${{ vars.CF_ACCESS_AUD }}` — namespace de *Variables*, não de *Secrets*. O valor chegava
-**vazio** ao `nora-admin`, e `apps/admin/src/lib/access.ts` faz **fail-open** quando vazio.
+`CF_ACCESS_AUD` is registered as a **Secret**, but `deploy-infra.yml:158` and `:239` were reading
+`${{ vars.CF_ACCESS_AUD }}` — the *Variables* namespace, not the *Secrets* one. The value arrived
+**empty** at `nora-admin`, and `apps/admin/src/lib/access.ts` **fails open** when it is empty.
 
-Efeito em produção hoje: o Tier 2 do Cloudflare Access está **desligado**, e um JWT do Access
-emitido para **outra aplicação da mesma organização Cloudflare** é aceito pelo console de operador.
+Effect in production today: Cloudflare Access Tier 2 is **off**, and an Access JWT
+issued for **another application in the same Cloudflare organization** is accepted by the operator console.
 
-No novo `docker-compose.yml` isso não pode mais passar despercebido — `CF_ACCESS_AUD` e
-`CF_ACCESS_TEAM_DOMAIN` usam a sintaxe `${VAR:?mensagem}`, então o container **se recusa a
-subir** sem eles. Preencha os dois antes do primeiro deploy com o profile `platform`.
+In the new `docker-compose.yml` this can no longer go unnoticed — `CF_ACCESS_AUD` and
+`CF_ACCESS_TEAM_DOMAIN` use the `${VAR:?mensagem}` syntax, so the container **refuses to
+come up** without them. Fill both in before the first deploy with the `platform` profile.
 
-## Verificação depois de mexer aqui
+## Verification after touching things here
 
 ```bash
 gh workflow list --repo sf0rzin/nora
 ```
 
-Confira que o `ci-gate` continua listando `infra` em `needs` e que a branch protection da
-`main` ainda aponta para o check `ci-gate`. Se o required check sumir, PRs passam a mergear
-sem CI verde — falha silenciosa e cara.
+Check that `ci-gate` still lists `infra` under `needs` and that the branch protection on
+`main` still points at the `ci-gate` check. If the required check disappears, PRs start merging
+without green CI — a silent and expensive failure.

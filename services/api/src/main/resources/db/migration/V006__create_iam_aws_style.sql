@@ -1,18 +1,18 @@
--- V006: IAM estilo AWS (Root + Users + Groups + Policies + Audit).
--- Ver ADR 0007 e docs/data-model.md (secao IAM).
+-- V006: AWS-style IAM (Root + Users + Groups + Policies + Audit).
+-- See ADR 0007 and docs/data-model.md (IAM section).
 --
--- Notas:
--- * Conditions sao ARMAZENADAS dentro do JSONB do document mas NAO sao avaliadas no MVP
---   pelo PolicyEvaluator (ficam para post-MVP). Wildcards em action/resource sao avaliados.
--- * As tabelas antigas `roles` / `user_roles` (V002) ficam intactas por compatibilidade
---   e nao sao mais usadas no novo modelo; remocao em migration futura.
+-- Notes:
+-- * Conditions are STORED inside the document JSONB but are NOT evaluated in the MVP
+--   by the PolicyEvaluator (left for post-MVP). Wildcards in action/resource are evaluated.
+-- * The old `roles` / `user_roles` tables (V002) stay intact for compatibility
+--   and are no longer used in the new model; removal in a future migration.
 
 -- ============================================================
 -- users.is_root
 -- ============================================================
 ALTER TABLE users ADD COLUMN is_root BOOLEAN NOT NULL DEFAULT FALSE;
 
--- Promove o primeiro usuario de cada tenant existente a Root (compat com dados ja criados).
+-- Promotes the first user of each existing tenant to Root (compat with already created data).
 UPDATE users u
    SET is_root = TRUE
   FROM (
@@ -22,7 +22,7 @@ UPDATE users u
        ) first_user
  WHERE u.id = first_user.id;
 
--- Garante que so existe um Root por tenant.
+-- Ensures there is only one Root per tenant.
 CREATE UNIQUE INDEX uq_users_root_per_tenant
     ON users (tenant_id) WHERE is_root = TRUE;
 
@@ -84,7 +84,7 @@ CREATE TABLE iam_policies (
 CREATE INDEX idx_iam_policies_tenant ON iam_policies (tenant_id);
 
 -- ============================================================
--- iam_policy_versions (historico imutavel)
+-- iam_policy_versions (immutable history)
 -- ============================================================
 CREATE TABLE iam_policy_versions (
     policy_id     UUID NOT NULL REFERENCES iam_policies(id) ON DELETE CASCADE,
@@ -139,7 +139,7 @@ CREATE TABLE iam_audit_events (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     actor_user_id  UUID REFERENCES users(id) ON DELETE SET NULL,
-    action         TEXT NOT NULL,        -- ex.: "iam:group:create", "iam:policy:attach"
+    action         TEXT NOT NULL,        -- e.g.: "iam:group:create", "iam:policy:attach"
     target_type    TEXT NOT NULL,        -- "GROUP" | "POLICY" | "USER" | "MEMBERSHIP" | "ATTACHMENT"
     target_id      UUID,
     payload        JSONB,

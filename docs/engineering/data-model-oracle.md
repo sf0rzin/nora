@@ -1,19 +1,19 @@
 ---
-title: "Modelo de Dados — NORA (Oracle 19c+)"
-owner: Arquiteto NORA (Tech Lead)
+title: "Data Model — NORA (Oracle 19c+)"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.1
 last_reviewed: 2026-06-06
 ---
 
-# Modelo de Dados — NORA (Oracle 19c+)
+# Data Model — NORA (Oracle 19c+)
 
-> Espelho do schema Postgres em sintaxe **Oracle 19c+ (PL/SQL DDL)**.
-> NORA roda **em Postgres em produção** (ver `data-model.md`). Este documento é entrega acadêmica para a disciplina de Database Design da FIAP, que exige modelagem Oracle.
-> Cada tabela corresponde 1:1 ao schema documentado em `data-model.md`, com as adaptações de tipo e sintaxe descritas em §15.
-> Cobre as migrations **V001–V016** (inclui soft-delete V013, refresh token rotation V014, FK composta V015 e Row-Level Security V016 — ver §18 para a equivalência Oracle do RLS via VPD/DBMS_RLS). Inventário completo em §17. A lista canônica de migrations (que avança além da V016, até a V021) está em `data-model.md`.
+> A mirror of the Postgres schema in **Oracle 19c+ (PL/SQL DDL)** syntax.
+> NORA runs **on Postgres in production** (see `data-model.md`). This document is an academic deliverable for FIAP's Database Design course, which requires Oracle modeling.
+> Each table corresponds 1:1 to the schema documented in `data-model.md`, with the type and syntax adaptations described in §15.
+> It covers migrations **V001–V016** (including soft-delete V013, refresh token rotation V014, composite FK V015 and Row-Level Security V016 — see §18 for the Oracle equivalent of RLS via VPD/DBMS_RLS). Full inventory in §17. The canonical list of migrations (which goes beyond V016, up to V021) is in `data-model.md`.
 >
-> **Nota (escopo deste doc):** as migrations posteriores à V016 — Customer Confidence (entregue full-stack), RLS completa/scope auth-aware, hash do token de convite e `meeting_embeddings` (busca semântica) — ainda não foram mapeadas para a sintaxe Oracle. Isto é um débito do espelho acadêmico, não do produto: os recursos estão entregues e documentados no schema Postgres canônico em `data-model.md` (Customer Confidence em `§2.29-2.33`).
+> **Note (scope of this doc):** the migrations after V016 — Customer Confidence (delivered full-stack), full/auth-aware-scope RLS, invitation token hash and `meeting_embeddings` (semantic search) — have not yet been mapped to Oracle syntax. This is a debt of the academic mirror, not of the product: the features are delivered and documented in the canonical Postgres schema in `data-model.md` (Customer Confidence in `§2.29-2.33`).
 
 ---
 
@@ -50,7 +50,7 @@ CREATE UNIQUE INDEX tenants_slug_uk
 CREATE INDEX idx_tenants_deleted_at ON tenants (deleted_at);
 ```
 
-> **Soft-delete (V013)**: as entities tenant-owned `tenants`, `users`, `tenant_contexts` e `meetings` ganham `deleted_at`. O backend anota cada `@Entity` com **`@SQLRestriction("deleted_at IS NULL")`**, então toda query do Spring Data filtra registros vivos por default — o equivalente Hibernate ao filtro `WHERE deleted_at IS NULL`. Hard-delete continua possível via native query (direito ao esquecimento LGPD / retention).
+> **Soft-delete (V013)**: the tenant-owned entities `tenants`, `users`, `tenant_contexts` and `meetings` gain `deleted_at`. The backend annotates each `@Entity` with **`@SQLRestriction("deleted_at IS NULL")`**, so every Spring Data query filters to live records by default — the Hibernate equivalent of the `WHERE deleted_at IS NULL` filter. Hard-delete remains possible via native query (LGPD right to be forgotten / retention).
 
 ---
 
@@ -107,7 +107,7 @@ CREATE UNIQUE INDEX uq_users_root_per_tenant
 
 ---
 
-## 3. `ROLES` e `USER_ROLES` (legado, **não usado**)
+## 3. `ROLES` and `USER_ROLES` (legacy, **not used**)
 
 ```sql
 CREATE TABLE roles (
@@ -333,7 +333,7 @@ CREATE INDEX idx_tenant_contexts_deleted_at ON tenant_contexts (deleted_at);
 
 ---
 
-## 11. `MEETING_ANALYSES` e filhos
+## 11. `MEETING_ANALYSES` and children
 
 ```sql
 CREATE TABLE meeting_analyses (
@@ -458,7 +458,7 @@ CREATE INDEX idx_meeting_opportunities_tenant   ON meeting_opportunities (tenant
 
 ---
 
-## 12. IAM AWS-style
+## 12. AWS-style IAM
 
 ```sql
 CREATE TABLE iam_groups (
@@ -593,7 +593,7 @@ CREATE INDEX idx_iam_audit_events_tenant_created
 
 ---
 
-## 13. Convites e refresh tokens
+## 13. Invitations and refresh tokens
 
 ```sql
 CREATE TABLE iam_user_invitations (
@@ -737,31 +737,31 @@ CREATE INDEX idx_meeting_outcome_coverage_assessment ON meeting_outcome_coverage
 
 ---
 
-## 15. Diferenças notáveis Postgres ↔ Oracle
+## 15. Notable Postgres ↔ Oracle differences
 
-| Tópico | Postgres | Oracle |
+| Topic | Postgres | Oracle |
 |---|---|---|
-| **UUID PK** | `UUID PRIMARY KEY DEFAULT gen_random_uuid()` (extensão `pgcrypto`) | `VARCHAR2(36) DEFAULT SYS_GUID() PRIMARY KEY` (também aceita `RAW(16)`) |
-| **Texto longo** | `TEXT` (sem limite) | `CLOB` (até 4GB) ou `VARCHAR2(4000)` para curto. Oracle não tem `TEXT` puro. |
-| **Timestamp com TZ** | `TIMESTAMPTZ` | `TIMESTAMP WITH TIME ZONE` |
-| **JSON binário** | `JSONB` com operadores nativos (`@>`, `?`, `->`) | `CLOB CHECK(column IS JSON)` em 19c. Em 21c+ existe tipo `JSON` nativo. Operadores via `JSON_VALUE`, `JSON_QUERY`, `JSON_EXISTS`. |
-| **Boolean** | `BOOLEAN` (TRUE/FALSE) | `NUMBER(1) CHECK (val IN (0,1))`. Oracle 23ai tem `BOOLEAN` nativo, mas evitamos para portabilidade 19c+. |
-| **Email case-insensitive** | extensão `citext` (`CITEXT`) | function-based index `LOWER(email)` + UNIQUE; queries usam `LOWER()` |
-| **`gen_random_uuid()`** | `pgcrypto` | `SYS_GUID()` (retorna `RAW(16)`; convertido para `VARCHAR2(36)` via cast implícito) |
-| **`NOW()`** | função | `SYSTIMESTAMP` (com timezone) ou `CURRENT_TIMESTAMP` |
-| **Array nativo (`TEXT[]`)** | nativo | inexistente. Usar `JSON_ARRAY` em CLOB com `IS JSON` check, ou tabela child N:N. |
-| **Índice parcial (`WHERE …`)** | nativo (`CREATE INDEX … WHERE`) | inexistente; emular com function-based index (`CASE WHEN … THEN … END`). Usado tanto para `is_root`/refresh-tokens quanto para **unique parcial do soft-delete** (V013): `UNIQUE INDEX (CASE WHEN deleted_at IS NULL THEN col END)`, que libera slug/email/tenant_id para reuso após soft-delete. |
-| **Índice GIN para JSONB** | `USING GIN (col jsonb_path_ops)` | `CREATE SEARCH INDEX … FOR JSON` (Oracle Text/JSON Search Index) em 19c+. |
-| **Cascade FK** | `ON DELETE CASCADE` / `ON DELETE RESTRICT` / `ON DELETE SET NULL` | idêntico (`ON DELETE CASCADE`, `ON DELETE SET NULL`; **`RESTRICT` não existe** — comportamento padrão sem cláusula é equivalente a `NO ACTION`/`RESTRICT`). |
-| **FK composta** | `FOREIGN KEY (a, b) REFERENCES t(a, b)` (target precisa de UNIQUE/PK composta) | idêntico — Oracle suporta FK composta nativamente; target é o `UNIQUE (tenant_id, id)` (V015, §2). |
-| **Row-Level Security** | `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + `CREATE POLICY … USING (…) WITH CHECK (…)`; contexto via GUC de sessão (`SET LOCAL`) + role `NOBYPASSRLS` (V016) | **VPD/FGAC**: `DBMS_RLS.ADD_POLICY` + policy function PL/SQL que retorna o predicado; contexto via application context (`SYS_CONTEXT`); bypass via privilégio `EXEMPT ACCESS POLICY`. Ver §18. |
+| **UUID PK** | `UUID PRIMARY KEY DEFAULT gen_random_uuid()` (`pgcrypto` extension) | `VARCHAR2(36) DEFAULT SYS_GUID() PRIMARY KEY` (also accepts `RAW(16)`) |
+| **Long text** | `TEXT` (unlimited) | `CLOB` (up to 4GB) or `VARCHAR2(4000)` for short text. Oracle has no plain `TEXT`. |
+| **Timestamp with TZ** | `TIMESTAMPTZ` | `TIMESTAMP WITH TIME ZONE` |
+| **Binary JSON** | `JSONB` with native operators (`@>`, `?`, `->`) | `CLOB CHECK(column IS JSON)` in 19c. In 21c+ there is a native `JSON` type. Operators via `JSON_VALUE`, `JSON_QUERY`, `JSON_EXISTS`. |
+| **Boolean** | `BOOLEAN` (TRUE/FALSE) | `NUMBER(1) CHECK (val IN (0,1))`. Oracle 23ai has a native `BOOLEAN`, but we avoid it for 19c+ portability. |
+| **Case-insensitive email** | `citext` extension (`CITEXT`) | function-based index `LOWER(email)` + UNIQUE; queries use `LOWER()` |
+| **`gen_random_uuid()`** | `pgcrypto` | `SYS_GUID()` (returns `RAW(16)`; converted to `VARCHAR2(36)` via implicit cast) |
+| **`NOW()`** | function | `SYSTIMESTAMP` (with timezone) or `CURRENT_TIMESTAMP` |
+| **Native array (`TEXT[]`)** | native | nonexistent. Use `JSON_ARRAY` in a CLOB with an `IS JSON` check, or an N:N child table. |
+| **Partial index (`WHERE …`)** | native (`CREATE INDEX … WHERE`) | nonexistent; emulate with a function-based index (`CASE WHEN … THEN … END`). Used both for `is_root`/refresh-tokens and for the **partial unique of the soft-delete** (V013): `UNIQUE INDEX (CASE WHEN deleted_at IS NULL THEN col END)`, which frees slug/email/tenant_id for reuse after a soft-delete. |
+| **GIN index for JSONB** | `USING GIN (col jsonb_path_ops)` | `CREATE SEARCH INDEX … FOR JSON` (Oracle Text/JSON Search Index) in 19c+. |
+| **Cascade FK** | `ON DELETE CASCADE` / `ON DELETE RESTRICT` / `ON DELETE SET NULL` | identical (`ON DELETE CASCADE`, `ON DELETE SET NULL`; **`RESTRICT` does not exist** — the default behavior with no clause is equivalent to `NO ACTION`/`RESTRICT`). |
+| **Composite FK** | `FOREIGN KEY (a, b) REFERENCES t(a, b)` (the target needs a composite UNIQUE/PK) | identical — Oracle supports composite FKs natively; the target is the `UNIQUE (tenant_id, id)` (V015, §2). |
+| **Row-Level Security** | `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + `CREATE POLICY … USING (…) WITH CHECK (…)`; context via a session GUC (`SET LOCAL`) + `NOBYPASSRLS` role (V016) | **VPD/FGAC**: `DBMS_RLS.ADD_POLICY` + a PL/SQL policy function that returns the predicate; context via an application context (`SYS_CONTEXT`); bypass via the `EXEMPT ACCESS POLICY` privilege. See §18. |
 
 ---
 
-## 16. Observações de portabilidade
+## 16. Portability observations
 
-- **Identity columns**: Oracle 12c+ suporta `GENERATED BY DEFAULT AS IDENTITY` para sequências autoincrementais. Não usamos aqui porque todas as PKs são UUID.
-- **Triggers de `updated_at`**: o equivalente do `DEFAULT NOW()` na atualização (que Postgres trata via trigger separado, comum em apps Spring) precisaria de trigger PL/SQL `BEFORE UPDATE` em cada tabela. O JPA do backend NORA já seta `updated_at` no commit, então o trigger não é estritamente necessário, mas em uma entrega acadêmica pura é boa prática:
+- **Identity columns**: Oracle 12c+ supports `GENERATED BY DEFAULT AS IDENTITY` for auto-incrementing sequences. We do not use it here because all PKs are UUIDs.
+- **`updated_at` triggers**: the equivalent of `DEFAULT NOW()` on update (which Postgres handles via a separate trigger, common in Spring apps) would require a PL/SQL `BEFORE UPDATE` trigger on each table. The NORA backend's JPA already sets `updated_at` on commit, so the trigger is not strictly necessary, but in a purely academic deliverable it is good practice:
 
 ```sql
 CREATE OR REPLACE TRIGGER trg_tenants_updated_at
@@ -773,29 +773,29 @@ END;
 /
 ```
 
-- **Funções equivalentes notáveis**:
-  - `COALESCE` é igual.
-  - `EXTRACT(EPOCH FROM ...)` → `(EXTRACT(DAY FROM diff) * 86400 + EXTRACT(HOUR FROM diff) * 3600 + ...)` ou `(CAST(timestamp1 AS DATE) - CAST(timestamp2 AS DATE)) * 86400`.
-  - `ARRAY_AGG` Postgres → `LISTAGG` Oracle (com sintaxe diferente).
+- **Notable equivalent functions**:
+  - `COALESCE` is the same.
+  - `EXTRACT(EPOCH FROM ...)` → `(EXTRACT(DAY FROM diff) * 86400 + EXTRACT(HOUR FROM diff) * 3600 + ...)` or `(CAST(timestamp1 AS DATE) - CAST(timestamp2 AS DATE)) * 86400`.
+  - Postgres `ARRAY_AGG` → Oracle `LISTAGG` (with different syntax).
 
-- **JSON queries em queries reais**:
+- **JSON queries in real queries**:
   - Postgres: `WHERE attributes @> '{"department":"Vendas"}'::jsonb`
   - Oracle: `WHERE JSON_VALUE(attributes, '$.department') = 'Vendas'`
 
-- **Extensões**: o equivalente de `CREATE EXTENSION IF NOT EXISTS "pgcrypto"` em Oracle é zero — `SYS_GUID()` está disponível por padrão.
+- **Extensions**: the Oracle equivalent of `CREATE EXTENSION IF NOT EXISTS "pgcrypto"` is nothing — `SYS_GUID()` is available by default.
 
 ---
 
-## 17. Inventário Oracle ≡ Postgres
+## 17. Oracle ≡ Postgres inventory
 
-| # | Tabela | Postgres (migration) | Oracle (§ neste doc) |
+| # | Table | Postgres (migration) | Oracle (§ in this doc) |
 |---|---|---|---|
 | 1 | tenants | V001 | §1 |
 | 2 | users | V002, V003, V006 | §2 |
-| 3 | roles / user_roles (legado) | V002 | §3 |
+| 3 | roles / user_roles (legacy) | V002 | §3 |
 | 4 | email_verification_tokens | V003 | §4 |
 | 5 | password_reset_tokens | V003 | §5 |
-| 6 | meetings | V004, V007 (attributes), V008 (índice GIN) | §6 |
+| 6 | meetings | V004, V007 (attributes), V008 (GIN index) | §6 |
 | 7 | meeting_participants | V004 | §7 |
 | 8 | meeting_tags | V004 | §8 |
 | 9 | transcripts | V004 | §9 |
@@ -804,22 +804,22 @@ END;
 | 12 | iam_groups, iam_user_groups, iam_policies, iam_policy_versions, iam_group_policies, iam_user_policies, iam_audit_events | V006 | §12 |
 | 13 | iam_user_invitations, iam_invitation_groups, refresh_tokens | V010, V011 | §13 |
 | 14 | meeting_goals + expected_outcomes + productivity_assessments + outcome_coverage | V012 | §14 |
-| 15 | soft-delete (`deleted_at` + uniques parciais) em tenants/users/tenant_contexts/meetings | V013 | §1, §2, §6, §10 |
+| 15 | soft-delete (`deleted_at` + partial uniques) in tenants/users/tenant_contexts/meetings | V013 | §1, §2, §6, §10 |
 | 16 | refresh_tokens rotation (`family_id`, `replaced_by_id`) | V014 | §13 |
-| 17 | FK composta meetings.(tenant_id, owner_user_id) → users.(tenant_id, id) | V015 | §2, §6 |
+| 17 | composite FK meetings.(tenant_id, owner_user_id) → users.(tenant_id, id) | V015 | §2, §6 |
 | 18 | Row-Level Security (RLS → VPD/DBMS_RLS) | V016 | §18 |
 
-> `tenants.allowed_email_domain` (V009) está incluído em §1.
+> `tenants.allowed_email_domain` (V009) is included in §1.
 
 ---
 
-## 18. Row-Level Security (V016) — equivalente Oracle: VPD / DBMS_RLS
+## 18. Row-Level Security (V016) — Oracle equivalent: VPD / DBMS_RLS
 
-No Postgres a migration V016 ativa **Row-Level Security (RLS)**: cada tabela tenant-owned ganha `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + uma policy `tenant_isolation` cujo predicado é `tenant_id = nora.current_tenant_id()`. A função lê um **GUC de sessão** (`nora.current_tenant_id`) setado pelo Spring **`TenantRlsAspect`** via `SET LOCAL` no início de cada `@Transactional`. O enforcement é **opt-in em prod**: só vira real quando a API conecta com um role dedicado **sem `BYPASSRLS`** (`nora_app NOBYPASSRLS`) e `nora.security.rls.enforce=true`; o owner/admin (usado em dev/Testcontainers) bypassa por default, deixando o schema RLS inerte sem quebrar testes.
+In Postgres, migration V016 enables **Row-Level Security (RLS)**: each tenant-owned table gains `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + a `tenant_isolation` policy whose predicate is `tenant_id = nora.current_tenant_id()`. The function reads a **session GUC** (`nora.current_tenant_id`) set by the Spring **`TenantRlsAspect`** via `SET LOCAL` at the start of each `@Transactional`. Enforcement is **opt-in in prod**: it only becomes real when the API connects with a dedicated role **without `BYPASSRLS`** (`nora_app NOBYPASSRLS`) and `nora.security.rls.enforce=true`; the owner/admin (used in dev/Testcontainers) bypasses by default, leaving the RLS schema inert without breaking tests.
 
-O equivalente nativo no Oracle é o **VPD (Virtual Private Database)**, também chamado *Fine-Grained Access Control (FGAC)*, configurado via **`DBMS_RLS.ADD_POLICY`** + uma **policy function** que retorna um predicado dinâmico (`WHERE`-clause). O contexto de sessão (GUC do Postgres) vira um **application context** Oracle (`CREATE CONTEXT … USING …`), lido com `SYS_CONTEXT`.
+The native equivalent in Oracle is **VPD (Virtual Private Database)**, also called *Fine-Grained Access Control (FGAC)*, configured via **`DBMS_RLS.ADD_POLICY`** + a **policy function** that returns a dynamic predicate (`WHERE` clause). The session context (Postgres's GUC) becomes an Oracle **application context** (`CREATE CONTEXT … USING …`), read with `SYS_CONTEXT`.
 
-### 18.1 Application context (equivalente ao GUC de sessão)
+### 18.1 Application context (equivalent to the session GUC)
 
 ```sql
 -- Pacote que seta o tenant corrente no contexto (chamado pelo aspect Spring,
@@ -841,7 +841,7 @@ END nora_session;
 CREATE CONTEXT NORA_CTX USING nora_session;
 ```
 
-### 18.2 Policy function (predicado dinâmico)
+### 18.2 Policy function (dynamic predicate)
 
 ```sql
 -- Retorna o predicado aplicado a cada linha. Quando o contexto nao esta setado
@@ -862,7 +862,7 @@ END nora_tenant_predicate;
 /
 ```
 
-### 18.3 Aplicando a policy (representativo: `meetings` e `users`)
+### 18.3 Applying the policy (representative: `meetings` and `users`)
 
 ```sql
 -- meetings: SELECT/INSERT/UPDATE/DELETE filtrados por tenant.
@@ -898,17 +898,17 @@ END;
 /
 ```
 
-As demais tabelas tenant-owned cobertas pela V016 seguem **exatamente o mesmo padrão** (`DBMS_RLS.ADD_POLICY` com `NORA_TENANT_PREDICATE`): `tenant_contexts`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses` e `meeting_participants`. A tabela `tenants` é o único caso especial (filtra por `id`, não `tenant_id`).
+The remaining tenant-owned tables covered by V016 follow **exactly the same pattern** (`DBMS_RLS.ADD_POLICY` with `NORA_TENANT_PREDICATE`): `tenant_contexts`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses` and `meeting_participants`. The `tenants` table is the only special case (it filters by `id`, not `tenant_id`).
 
-### 18.4 Diferenças de operação
+### 18.4 Operational differences
 
-| Aspecto | Postgres (V016) | Oracle (VPD) |
+| Aspect | Postgres (V016) | Oracle (VPD) |
 |---|---|---|
-| Habilitar | `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + `CREATE POLICY` | `DBMS_RLS.ADD_POLICY(...)` por tabela |
-| Predicado | expressão SQL na policy (`USING (...) WITH CHECK (...)`) | string retornada pela **policy function** PL/SQL |
-| Contexto de sessão | GUC `nora.current_tenant_id` via `SET LOCAL` | application context `NORA_CTX` via `DBMS_SESSION.SET_CONTEXT` |
-| Leitura do contexto | `current_setting('nora.current_tenant_id', true)` | `SYS_CONTEXT('NORA_CTX','tenant_id')` |
-| Write enforcement | `WITH CHECK` na policy | parâmetro `update_check => TRUE` |
-| Bypass (dev/admin) | owner ou role com `BYPASSRLS` | usuários com privilégio de sistema `EXEMPT ACCESS POLICY` |
-| Fail-closed (sem contexto) | policy não matcha → 0 linhas (em role não-admin) | policy function retorna `1 = 0` → 0 linhas |
-| Driver no app | `TenantRlsAspect` (Spring) seta o GUC por `@Transactional` | mesmo aspect chamaria `nora_session.set_tenant(...)` |
+| Enabling | `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + `CREATE POLICY` | `DBMS_RLS.ADD_POLICY(...)` per table |
+| Predicate | SQL expression in the policy (`USING (...) WITH CHECK (...)`) | string returned by the PL/SQL **policy function** |
+| Session context | GUC `nora.current_tenant_id` via `SET LOCAL` | application context `NORA_CTX` via `DBMS_SESSION.SET_CONTEXT` |
+| Reading the context | `current_setting('nora.current_tenant_id', true)` | `SYS_CONTEXT('NORA_CTX','tenant_id')` |
+| Write enforcement | `WITH CHECK` in the policy | `update_check => TRUE` parameter |
+| Bypass (dev/admin) | owner or a role with `BYPASSRLS` | users with the `EXEMPT ACCESS POLICY` system privilege |
+| Fail-closed (no context) | policy does not match → 0 rows (in a non-admin role) | policy function returns `1 = 0` → 0 rows |
+| Driver in the app | `TenantRlsAspect` (Spring) sets the GUC per `@Transactional` | the same aspect would call `nora_session.set_tenant(...)` |

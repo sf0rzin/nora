@@ -4,15 +4,15 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Avalia nós de condição contra o {@link WorkflowEventContext}. Sem condição no caminho = sempre
- * dispara (quem decide isso é o walk do engine; aqui só avaliamos um nó). Condições sobre dados
- * ausentes (ex.: reunião sem Productivity Score) avaliam como NÃO satisfeitas, com explicação no
- * log — nunca exceção.
+ * Evaluates condition nodes against the {@link WorkflowEventContext}. No condition on the path =
+ * always fires (the engine's walk decides that; here we only evaluate one node). Conditions over
+ * missing data (e.g. a meeting with no Productivity Score) evaluate as NOT satisfied, with an
+ * explanation in the log — never an exception.
  */
 @Component
 public class ConditionEvaluator {
 
-    /** Resultado da avaliação + frase PT-BR pronta para o log da execução. */
+    /** Evaluation result + PT-BR sentence ready for the execution log. */
     public record Evaluation(boolean passed, String description) {}
 
     public Evaluation evaluate(String type, Map<String, Object> params, WorkflowEventContext ctx) {
@@ -79,7 +79,7 @@ public class ConditionEvaluator {
             try {
                 return Integer.parseInt(s.trim());
             } catch (NumberFormatException ignored) {
-                // cai no throw abaixo
+                // falls through to the throw below
             }
         }
         throw new IllegalArgumentException(

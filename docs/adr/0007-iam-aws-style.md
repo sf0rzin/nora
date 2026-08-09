@@ -1,24 +1,24 @@
-# 0007 — IAM estilo AWS (Root + Users + Groups + Policies)
+# 0007 — AWS-style IAM (Root + Users + Groups + Policies)
 
-- Status: aceito
-- Data: 2026-05-07
-- Decisores: Time NORA
+- Status: accepted
+- Date: 2026-05-07
+- Deciders: NORA Team
 
-## Contexto
+## Context
 
-A versão inicial dos documentos previa um IAM híbrido **RBAC + ABAC** com cinco roles fixas (`ROOT`, `ADMIN`, `MANAGER`, `ANALYST`, `VIEWER`) e uma tabela `access_scopes` para limitar visibilidade por `team` ou `region`. Esse modelo cresceu organicamente entre `docs/PROJECT.md`, `docs/visao-do-produto.md`, `docs/data-model.md` e `docs/backlog-mvp.md`, gerando incongruências:
+The initial version of the documents envisaged a hybrid **RBAC + ABAC** IAM with five fixed roles (`ROOT`, `ADMIN`, `MANAGER`, `ANALYST`, `VIEWER`) and an `access_scopes` table to limit visibility by `team` or `region`. That model grew organically across `docs/PROJECT.md`, `docs/visao-do-produto.md`, `docs/data-model.md` and `docs/backlog-mvp.md`, producing inconsistencies:
 
-- `visao-do-produto.md` listava 4 níveis ("Root, Admin, Manager, Analyst/Viewer") enquanto `PROJECT.md` listava 5.
-- `access_scopes` usava `OWN_MEETINGS / TEAMS / REGIONS`, mas a narrativa falava em `department / project / client_account`.
-- `access_scopes.user_id` era PK, impedindo combinar mais de um eixo de escopo por usuário.
-- O conceito "region" estava órfão (sem tabela própria, sem story que o exigisse).
-- Roles fixas contradiziam a comparação repetida com "AWS IAM" — que é justamente o oposto.
+- `visao-do-produto.md` listed 4 levels ("Root, Admin, Manager, Analyst/Viewer") while `PROJECT.md` listed 5.
+- `access_scopes` used `OWN_MEETINGS / TEAMS / REGIONS`, but the narrative talked about `department / project / client_account`.
+- `access_scopes.user_id` was the PK, preventing more than one scope axis from being combined per user.
+- The "region" concept was orphaned (no table of its own, no story requiring it).
+- Fixed roles contradicted the repeated comparison with "AWS IAM" — which is precisely the opposite.
 
-Além disso, o time alinhou que tenants Enterprise precisam de **liberdade real** para modelar a própria estrutura de acesso (departamentos, projetos, contas, regiões, qualquer eixo), sem depender da plataforma adicionar novas roles.
+In addition, the team agreed that Enterprise tenants need **real freedom** to model their own access structure (departments, projects, accounts, regions, any axis), without depending on the platform adding new roles.
 
-## Decisão
+## Decision
 
-Adotar um modelo **estilo AWS IAM** desde o MVP:
+Adopt an **AWS IAM-style** model from the MVP onwards:
 
 ```
 Tenant
@@ -31,61 +31,61 @@ Tenant
 └── Users ⇄ Policies     (N:N — anexação direta, opcional)
 ```
 
-**Vocabulário:**
+**Vocabulary:**
 
-- **Actions** seguem o padrão `service:operation`: `meeting:read`, `meeting:upload`, `analysis:export`, `tenant:context:write`, `iam:user:invite`, `iam:group:create`, `iam:policy:create`, `audit:read`, etc. Wildcards permitidos (`meeting:*`, `*`).
-- **Resources** são ARN-like: `nora:tenant/{tenantId}:meeting/{meetingId}`, `nora:tenant/{tenantId}:meeting/*`, com wildcard.
-- **Conditions** estilo AWS (`stringEquals`, `stringIn`, `dateGreaterThan`, etc.) operando sobre atributos definidos pelo próprio tenant: `nora:Department`, `nora:Project`, `nora:Account`. A NORA não impõe taxonomia.
+- **Actions** follow the `service:operation` pattern: `meeting:read`, `meeting:upload`, `analysis:export`, `tenant:context:write`, `iam:user:invite`, `iam:group:create`, `iam:policy:create`, `audit:read`, etc. Wildcards allowed (`meeting:*`, `*`).
+- **Resources** are ARN-like: `nora:tenant/{tenantId}:meeting/{meetingId}`, `nora:tenant/{tenantId}:meeting/*`, with wildcard.
+- **Conditions** in AWS style (`stringEquals`, `stringIn`, `dateGreaterThan`, etc.) operating over attributes defined by the tenant itself: `nora:Department`, `nora:Project`, `nora:Account`. NORA does not impose a taxonomy.
 
-**Avaliação de autorização (Policy Evaluator):**
+**Authorization evaluation (Policy Evaluator):**
 
-1. Se o usuário é o Root do tenant → **Allow**.
-2. Coletar todas as policies anexadas ao usuário diretamente e via grupos.
-3. Avaliar **Deny primeiro**: qualquer Deny aplicável vence.
-4. Caso contrário, exigir pelo menos um **Allow** que case `Action` + `Resource` + `Condition`.
+1. If the user is the tenant's Root → **Allow**.
+2. Collect all policies attached to the user directly and via groups.
+3. Evaluate **Deny first**: any applicable Deny wins.
+4. Otherwise, require at least one **Allow** matching `Action` + `Resource` + `Condition`.
 5. Default: **Deny**.
 
-**Modelo de dados:** ver `docs/data-model.md` (tabelas `users.is_root`, `iam_groups`, `iam_user_groups`, `iam_policies`, `iam_policy_versions`, `iam_group_policies`, `iam_user_policies`). As tabelas antigas `roles`, `user_roles`, `teams`, `user_teams` e `access_scopes` são removidas.
+**Data model:** see `docs/data-model.md` (tables `users.is_root`, `iam_groups`, `iam_user_groups`, `iam_policies`, `iam_policy_versions`, `iam_group_policies`, `iam_user_policies`). The old tables `roles`, `user_roles`, `teams`, `user_teams` and `access_scopes` are removed.
 
-**Escopo do MVP (decisão explícita):**
+**MVP scope (explicit decision):**
 
-A funcionalidade **completa** entra no MVP — sem fatiamento. Isso inclui:
+The **complete** functionality goes into the MVP — no slicing. This includes:
 
-- CRUD de Users, Groups, Policies, anexações.
-- Policies em JSON com Effect/Action/Resource **e** Condition.
-- Wildcards em Action/Resource.
-- Versionamento imutável de Policies.
-- Auditoria de mudanças de IAM.
-- Templates opcionais ("ReadOnlyAccess", "MeetingAnalystAccess") para acelerar onboarding.
-- UI Web mínima para gerenciamento.
+- CRUD of Users, Groups, Policies, attachments.
+- Policies in JSON with Effect/Action/Resource **and** Condition.
+- Wildcards in Action/Resource.
+- Immutable versioning of Policies.
+- Auditing of IAM changes.
+- Optional templates ("ReadOnlyAccess", "MeetingAnalystAccess") to speed up onboarding.
+- Minimal Web UI for management.
 
-Editor visual form-based, simulador de policy e permission boundaries entram como **Should/Could** no backlog (US42–US44), mas não são bloqueio para a primeira release.
+A form-based visual editor, a policy simulator and permission boundaries enter the backlog as **Should/Could** (US42–US44), but are not blockers for the first release.
 
-## Consequências
+## Consequences
 
-**Positivas:**
+**Positive:**
 
-- Tenants têm liberdade total para modelar acesso conforme sua estrutura organizacional, sem esperar roadmap da NORA.
-- Modelo familiar para equipes de TI Enterprise (vocabulário AWS).
-- Auditoria fica natural: cada policy tem versão, cada anexação tem timestamp e autor.
-- Account Health Score, Customer Confidence e Product Context podem usar conditions para filtrar dados sem inventar conceitos novos.
+- Tenants have full freedom to model access according to their organizational structure, without waiting for NORA's roadmap.
+- A familiar model for Enterprise IT teams (AWS vocabulary).
+- Auditing becomes natural: every policy has a version, every attachment has a timestamp and an author.
+- Account Health Score, Customer Confidence and Product Context can use conditions to filter data without inventing new concepts.
 
-**Negativas / custos:**
+**Negative / costs:**
 
-- Implementar Policy Evaluator robusto (Deny-first, wildcards, conditions) é trabalho relevante — estimado em 3–4 semanas de 1 dev sênior.
-- UI de IAM exige cuidado para não assustar usuários menos técnicos (templates e, futuramente, editor visual mitigam).
-- Errar uma policy pode bloquear acesso legítimo. Mitigação: Root sempre tem bypass; auditoria registra mudanças; templates seguros como ponto de partida.
+- Implementing a robust Policy Evaluator (Deny-first, wildcards, conditions) is significant work — estimated at 3–4 weeks of 1 senior dev.
+- The IAM UI requires care so as not to intimidate less technical users (templates and, in the future, a visual editor mitigate this).
+- Getting a policy wrong can block legitimate access. Mitigation: Root always has bypass; auditing records changes; safe templates as a starting point.
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Manter roles fixas (RBAC clássico).** Rejeitado: não atende a heterogeneidade dos tenants Enterprise; já estava em conflito com a própria narrativa do produto que se compara ao AWS IAM.
-2. **Modelo híbrido reduzido (Root + Groups + permissões pré-definidas, sem JSON policies).** Rejeitado: ainda exigiria roadmap NORA para cada nova capacidade de filtragem; perderia o principal diferencial.
-3. **Adiar IAM AWS-style para post-MVP, manter roles fixas no MVP.** Rejeitado pelo time: o IAM granular é parte da promessa Enterprise e do pitch FIAP/NEXT 2026; entregar o MVP sem ele enfraquece a demonstração.
+1. **Keep fixed roles (classic RBAC).** Rejected: it does not address the heterogeneity of Enterprise tenants; it was already in conflict with the product's own narrative, which compares itself to AWS IAM.
+2. **Reduced hybrid model (Root + Groups + predefined permissions, without JSON policies).** Rejected: it would still require a NORA roadmap for each new filtering capability; it would lose the main differentiator.
+3. **Defer AWS-style IAM to post-MVP, keep fixed roles in the MVP.** Rejected by the team: granular IAM is part of the Enterprise promise and of the FIAP/NEXT 2026 pitch; delivering the MVP without it weakens the demonstration.
 
-## Regras Acompanhantes
+## Accompanying Rules
 
-- Toda nova feature define quais Actions e Resources expõe; documentar em `docs/development-standards.md` (seção a criar) ou em ADR específico.
-- O backend deve ter um interceptor único (`@RequiresPermission("meeting:read")` ou equivalente) que aciona o Policy Evaluator. Nunca avaliar permissões manualmente em controller.
-- Mudanças de IAM (criar/editar/anexar policy ou grupo, adicionar/remover membro) **sempre** geram registro em `audit_events`.
-- O Root do tenant é único por tenant e não pode ser removido nem rebaixado via UI; troca de Root é processo administrativo separado (post-MVP).
-- Default de qualquer recurso novo: **Deny** se nenhuma policy o cobrir.
+- Every new feature defines which Actions and Resources it exposes; document this in `docs/development-standards.md` (section to be created) or in a specific ADR.
+- The backend must have a single interceptor (`@RequiresPermission("meeting:read")` or equivalent) that triggers the Policy Evaluator. Never evaluate permissions manually in a controller.
+- IAM changes (create/edit/attach a policy or group, add/remove a member) **always** produce a record in `audit_events`.
+- The tenant's Root is unique per tenant and cannot be removed or demoted via the UI; changing the Root is a separate administrative process (post-MVP).
+- Default for any new resource: **Deny** if no policy covers it.

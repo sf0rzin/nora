@@ -4,20 +4,20 @@ import java.util.Locale;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Config do broker de fala.
+ * Speech broker config.
  *
- * <p>{@code provider} escolhe o adaptador da porta {@code SpeechTokenBroker}:
+ * <p>{@code provider} selects the adapter for the {@code SpeechTokenBroker} port:
  *
  * <ul>
- *   <li>{@code local} (default) — STT roda no cliente (Whisper local no desktop). O broker responde
- *       410 GONE; nenhuma credencial de nuvem é necessária.
- *   <li>{@code azure} — comportamento anterior (STS regional da Azure). Preservado só para a janela
- *       de transição, enquanto houver cliente desktop antigo em campo.
+ *   <li>{@code local} (default) — STT runs on the client (local Whisper on the desktop). The broker
+ *       answers 410 GONE; no cloud credential is needed.
+ *   <li>{@code azure} — previous behavior (Azure regional STS). Preserved only for the transition
+ *       window, while there are still old desktop clients in the field.
  * </ul>
  *
- * <p>O bloco {@code azure} continua sendo lido mesmo com {@code provider=local} porque {@code
- * azure.default-region} e {@code rate-limit} alimentam o {@code SpeechTokenService} antes de chegar
- * no broker — o rate limit vale para os dois providers.
+ * <p>The {@code azure} block is still read even with {@code provider=local} because {@code
+ * azure.default-region} and {@code rate-limit} feed the {@code SpeechTokenService} before reaching
+ * the broker — the rate limit applies to both providers.
  */
 @ConfigurationProperties(prefix = "nora.speech")
 public record SpeechProperties(String provider, Azure azure, RateLimit rateLimit) {
@@ -39,9 +39,9 @@ public record SpeechProperties(String provider, Azure azure, RateLimit rateLimit
                 (provider == null || provider.isBlank())
                         ? PROVIDER_LOCAL
                         : provider.trim().toLowerCase(Locale.ROOT);
-        // Defaults defensivos: com provider=local o bloco azure vira supérfluo e pode ser
-        // removido do yml no futuro. Sem isso, o SpeechTokenService estouraria NPE (500) em
-        // vez do 410 GONE que o contrato promete.
+        // Defensive defaults: with provider=local the azure block becomes superfluous and may be
+        // removed from the yml in the future. Without this, SpeechTokenService would blow up with
+        // an NPE (500) instead of the 410 GONE the contract promises.
         azure = azure == null ? DEFAULT_AZURE : azure;
         rateLimit = rateLimit == null ? DEFAULT_RATE_LIMIT : rateLimit;
     }

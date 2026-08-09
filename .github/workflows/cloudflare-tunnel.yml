@@ -1,27 +1,27 @@
 name: cloudflare-tunnel
 
-# Provisiona o Cloudflare Tunnel do nora-admin (operator identity v2, ADR 0025).
-# Cria o túnel (remotely-managed), configura a rota pro Next via o sidecar cloudflared
-# (localhost:3002) e aponta o DNS admin.nora.systems pro <tunnel-id>.cfargotunnel.com.
-# Roda manual (workflow_dispatch). Idempotente — re-run só reconcilia.
+# Provisions the nora-admin Cloudflare Tunnel (operator identity v2, ADR 0025).
+# Creates the tunnel (remotely-managed), configures the route to Next via the cloudflared
+# sidecar (localhost:3002) and points DNS admin.nora.systems at <tunnel-id>.cfargotunnel.com.
+# Runs manually (workflow_dispatch). Idempotent — a re-run only reconciles.
 #
-# Divisão de lanes (ADR 0025):
-#   - ESTE workflow é dono do TÚNEL + do DNS de admin.nora.systems (CNAME -> cfargotunnel).
-#   - O cloudflare-setup.yml (lane irmã) é dono do Access App + Policy + IdP.
-#   - ⚠️ NÃO rodar cloudflare-setup.yml com `admin_hostname` preenchido: o DNS step dele
-#     sobrescreveria o CNAME do túnel. Rodar sempre com admin_hostname VAZIO.
+# Lane split (ADR 0025):
+#   - THIS workflow owns the TUNNEL + the DNS of admin.nora.systems (CNAME -> cfargotunnel).
+#   - cloudflare-setup.yml (sibling lane) owns the Access App + Policy + IdP.
+#   - ⚠️ Do NOT run cloudflare-setup.yml with `admin_hostname` filled in: its DNS step
+#     would overwrite the tunnel CNAME. Always run with admin_hostname EMPTY.
 #
-# Secrets necessários:
-#   - CLOUDFLARE_API_TOKEN  Token escopado em nora.systems. Permissões mínimas:
+# Required secrets:
+#   - CLOUDFLARE_API_TOKEN  Token scoped to nora.systems. Minimum permissions:
 #                             Account: Cloudflare Tunnel  Edit
 #                             Zone:    DNS                Edit
 #                             Zone:    Zone               Read
-#                           (mesmo token do cloudflare-setup.yml, com Tunnel:Edit adicionado)
+#                           (same token as cloudflare-setup.yml, with Tunnel:Edit added)
 #
-# Saída: o AUD da Access App (pra Variable CF_ACCESS_AUD) sai no log do último step.
-# O connector token NÃO sai: este repo é público (ADR 0017) e o log de um run é legível
-# por qualquer visitante. O step imprime o comando pro operador buscá-lo direto da API
-# e canalizá-lo pro `gh secret set`, sem o valor tocar em log algum.
+# Output: the Access App AUD (for Variable CF_ACCESS_AUD) comes out in the last step's log.
+# The connector token does NOT: this repo is public (ADR 0017) and a run's log is readable
+# by any visitor. The step prints the command for the operator to fetch it straight from the
+# API and pipe it into `gh secret set`, without the value touching any log.
 
 on:
   workflow_dispatch:
@@ -84,7 +84,7 @@ jobs:
           TUNNEL_NAME: ${{ inputs.tunnel_name }}
         run: |
           set -euo pipefail
-          # Procura túnel ativo por nome (não-deletado).
+          # Looks for an active tunnel by name (not deleted).
           tunnel_id=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
             "$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel?name=$TUNNEL_NAME&is_deleted=false" \
             | jq -r '.result[0].id // empty')
@@ -106,16 +106,16 @@ jobs:
           echo "Tunnel ID: $tunnel_id"
 
       # ---------------------------------------------------------------------
-      # TRAVA DE SEGURANÇA (2026-08-08)
+      # SAFETY LOCK (2026-08-08)
       # ---------------------------------------------------------------------
-      # O passo seguinte faz PUT em /configurations, e PUT SUBSTITUI o ingress inteiro
-      # pela topologia de UM hostname da era Container Apps. Se apontado para o túnel de
-      # produção (`nora-prod`, 5 hostnames -> caddy:80), ele apagaria as outras 4 rotas e
-      # tiraria nora.systems do ar — sem erro, com `success: true`.
+      # The next step does a PUT on /configurations, and PUT REPLACES the whole ingress
+      # with the ONE-hostname topology of the Container Apps era. If pointed at the
+      # production tunnel (`nora-prod`, 5 hostnames -> caddy:80), it would erase the other
+      # 4 routes and take nora.systems off the air — no error, with `success: true`.
       #
-      # Esta trava lê a configuração ATUAL e aborta se houver mais de uma rota real. Para
-      # DNS não é preciso passar por aqui: use o `cloudflare-dns-cutover.yml`, que não
-      # toca em túnel.
+      # This lock reads the CURRENT configuration and aborts if there is more than one real
+      # route. For DNS there is no need to go through here: use `cloudflare-dns-cutover.yml`,
+      # which does not touch the tunnel.
       - name: Guarda — não sobrescrever um túnel multi-rota
         env:
           TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
@@ -123,7 +123,7 @@ jobs:
           set -euo pipefail
           atual="$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
             "$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID/configurations" || echo '{}')"
-          # A regra catch-all (sem hostname) não conta: ela existe em qualquer config.
+          # The catch-all rule (no hostname) does not count: it exists in any config.
           rotas="$(echo "$atual" | jq '[.result.config.ingress[]? | select(.hostname)] | length')"
           echo "rotas com hostname hoje neste túnel: ${rotas:-0}"
           if [ "${rotas:-0}" -gt 1 ]; then
@@ -140,8 +140,8 @@ jobs:
         run: |
           set -euo pipefail
           fqdn="$SUBDOMAIN.$DOMAIN"
-          # Rota: admin.nora.systems -> origem (sidecar cloudflared serve o Next em localhost),
-          # com catch-all 404 pra qualquer outro hostname.
+          # Route: admin.nora.systems -> origin (the cloudflared sidecar serves Next on
+          # localhost), with a catch-all 404 for any other hostname.
           payload=$(jq -nc --arg host "$fqdn" --arg svc "$ORIGIN" \
             '{config:{ingress:[{hostname:$host, service:$svc}, {service:"http_status:404"}]}}')
           echo "Configurando rota $fqdn -> $ORIGIN"
@@ -179,19 +179,21 @@ jobs:
           TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
         run: |
           set -euo pipefail
-          # O connector token NÃO é buscado aqui, de propósito.
+          # The connector token is NOT fetched here, on purpose.
           #
-          # Ele dá poder de registrar um connector no túnel de produção — quem o tiver
-          # passa a receber tráfego real dos hostnames de ../../infra/proxmox/cloudflared/config.yml.
-          # Este repositório é PÚBLICO (ADR 0017), e o log de um run é legível por qualquer
-          # visitante. Valor obtido em runtime não entra no mascaramento automático do Actions,
-          # que só cobre Secrets registrados — então imprimi-lo aqui seria publicá-lo.
+          # It grants the power to register a connector on the production tunnel — whoever
+          # holds it starts receiving real traffic from the hostnames in ../../infra/proxmox/cloudflared/config.yml.
+          # This repository is PUBLIC (ADR 0017), and a run's log is readable by any
+          # visitor. A value obtained at runtime does not enter the Actions automatic masking,
+          # which only covers registered Secrets — so printing it here would be publishing it.
           #
-          # O caminho abaixo mantém o valor fora de qualquer log: o operador o busca direto
-          # da API e canaliza pro `gh secret set`, sem passar pelo terminal nem por um artifact.
+          # The path below keeps the value out of any log: the operator fetches it straight
+          # from the API and pipes it into `gh secret set`, without going through the terminal
+          # or an artifact.
 
-          # O AUD não é segredo: é o identificador público da Access App, usado só como
-          # `audience` esperado na validação do JWT. O repo já o guarda como Variable, não Secret.
+          # The AUD is not a secret: it is the public identifier of the Access App, used only as
+          # the expected `audience` in the JWT validation. The repo already keeps it as a Variable,
+          # not a Secret.
           aud=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
             "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps?per_page=100" \
             | jq -r --arg fqdn "$SUBDOMAIN.$DOMAIN" '.result[] | select(.domain==$fqdn) | .aud' | head -1)

@@ -1,94 +1,94 @@
 ---
-title: "FIAP Challenge 2026 — NORA × Parceria TOTVS"
-owner: Arquiteto NORA (Tech Lead)
+title: "FIAP Challenge 2026 — NORA × TOTVS Partnership"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.1
 last_reviewed: 2026-06-06
 ---
 
-# FIAP Challenge 2026 — NORA × Parceria TOTVS
+# FIAP Challenge 2026 — NORA × TOTVS Partnership
 
-## Contexto
+## Context
 
-NORA é o projeto desenvolvido pela equipe **Stratfy** (matriculada no curso de Engenharia de Software na FIAP) no contexto do **FIAP Challenge 2026**, em parceria com a TOTVS S.A.
+NORA is the project developed by the **Stratfy** team (enrolled in the Software Engineering course at FIAP) in the context of the **FIAP Challenge 2026**, in partnership with TOTVS S.A.
 
-**Diferencial deste projeto:** NORA é construído como **produto comercial real**, não apenas como entrega acadêmica. A rubrica FIAP é tratada como **um dos múltiplos compromissos** que o produto cumpre — paralelo à possibilidade de entrega comercial via TOTVS (Plano A da Stratfy) e à eventual operação como SaaS independente (Plano B).
+**What sets this project apart:** NORA is built as a **real commercial product**, not merely as an academic deliverable. The FIAP rubric is treated as **one of multiple commitments** that the product fulfills — in parallel with the possibility of commercial delivery through TOTVS (Stratfy's Plan A) and with eventual operation as an independent SaaS (Plan B).
 
-Esta página documenta:
+This page documents:
 
-1. Como NORA atende a rubrica do FIAP Challenge 2026
-2. Deadlines e entregas alvo
-3. Onde cada peça da rubrica está documentada no repositório
+1. How NORA meets the FIAP Challenge 2026 rubric
+2. Deadlines and target deliverables
+3. Where each piece of the rubric is documented in the repository
 
-## Rubrica acadêmica
+## Academic rubric
 
-> **NOTA:** itens marcados `?? não conferido` precisam ser validados contra a rubrica oficial publicada pela FIAP. Documento foi escrito com base em entregas históricas FIAP Challenge anteriores; pode necessitar ajustes específicos para a edição 2026.
+> **NOTE:** items marked `?? não conferido` need to be validated against the official rubric published by FIAP. This document was written based on previous FIAP Challenge deliverables; it may need specific adjustments for the 2026 edition.
 
-### Entregas acadêmicas esperadas
+### Expected academic deliverables
 
-| Item da rubrica | Onde está no NORA |
+| Rubric item | Where it is in NORA |
 |---|---|
-| **Personas e mapa de empatia** | [`personas-e-mapa-de-empatia.md`](personas-e-mapa-de-empatia.md) — 3 personas (Lucas Almeida, Camila Souza, Rafael Costa) |
-| **Diagrama de casos de uso (UML)** | [`diagrama-casos-de-uso.md`](diagrama-casos-de-uso.md) — mermaid com 20+ casos de uso |
-| **Backlog priorizado (MoSCoW)** | [`../product/backlog.md`](../product/backlog.md) — US01-US51 com status real DONE/PARTIAL/MISSING |
-| **Modelo de dados relacional (Postgres)** | [`../engineering/data-model.md`](../engineering/data-model.md) — schema relacional + migrations Flyway aplicadas (fonte canônica do conjunto de migrations) |
-| **Modelo de dados Oracle (entrega DB)** | [`../engineering/data-model-oracle.md`](../engineering/data-model-oracle.md) — DDL Oracle 19c+ equivalente ao schema Postgres |
-| **Arquitetura técnica (diagramas, fluxos)** | [`../engineering/architecture.md`](../engineering/architecture.md) — DDD layers, IAM flow, RAG pipeline, multi-tenancy |
-| **Decisões arquiteturais documentadas** | [`../adr/README.md`](../adr/README.md) — índice canônico de ADRs (decisões durables com contexto + alternativas) |
-| **Validação técnica (testes)** | Test coverage real medido (worker 87%, backend 67%) — ver ADR 0018 |
-| **Demonstração funcional (deploy)** | NORA deployado em Azure: `https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io` |
-| **Pitch / apresentação final** | Sub-fase 1.11 cria roteiro de demo de 15-20min |
+| **Personas and empathy map** | [`personas-e-mapa-de-empatia.md`](personas-e-mapa-de-empatia.md) — 3 personas (Lucas Almeida, Camila Souza, Rafael Costa) |
+| **Use case diagram (UML)** | [`diagrama-casos-de-uso.md`](diagrama-casos-de-uso.md) — mermaid with 20+ use cases |
+| **Prioritized backlog (MoSCoW)** | [`../product/backlog.md`](../product/backlog.md) — US01-US51 with real DONE/PARTIAL/MISSING status |
+| **Relational data model (Postgres)** | [`../engineering/data-model.md`](../engineering/data-model.md) — relational schema + applied Flyway migrations (canonical source for the migration set) |
+| **Oracle data model (DB deliverable)** | [`../engineering/data-model-oracle.md`](../engineering/data-model-oracle.md) — Oracle 19c+ DDL equivalent to the Postgres schema |
+| **Technical architecture (diagrams, flows)** | [`../engineering/architecture.md`](../engineering/architecture.md) — DDD layers, IAM flow, RAG pipeline, multi-tenancy |
+| **Documented architectural decisions** | [`../adr/README.md`](../adr/README.md) — canonical ADR index (durable decisions with context + alternatives) |
+| **Technical validation (tests)** | Real measured test coverage (worker 87%, backend 67%) — see ADR 0018 |
+| **Functional demonstration (deploy)** | NORA deployed on Azure: `https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io` |
+| **Pitch / final presentation** | Sub-phase 1.11 creates a 15-20 min demo script |
 
-### Diferenciais técnicos (acima do mínimo de rubrica)
+### Technical differentiators (above the rubric minimum)
 
-NORA entrega elementos que vão além da rubrica acadêmica típica:
+NORA delivers elements that go beyond the typical academic rubric:
 
-- **IAM AWS-style** (ADR 0007) — modelo de autorização Root + Users + Groups + Policies com Effect/Action/Resource/Condition, próprio. Versionamento de policies + audit trail
-- **PII Shield BR-aware** (ADR 0012) — redaction de EMAIL, CPF, CNPJ, PHONE, CREDIT_CARD, PERSON_NAME (lista BR ~270 nomes) antes de chamadas LLM. Compliance LGPD por design
-- **Provider LLM agnóstico** (ADR 0004) — abstração que permite trocar OpenAI direto → Azure OpenAI → Whisper local sem mudar pipeline
-- **JSON Schema strict obrigatório** (ADR 0003) — saída LLM validada server-side, sem free-form text cross-service
-- **Multi-tenancy** (ADR 0002) — filtro de aplicação no MVP + RLS Postgres com schema entregue e scope auth-aware; resta o cutover/enforcement operacional em prod (ADR 0026/0028)
-- **Productivity Score opt-in** (ADR 0005) — análise de produtividade da reunião contra objetivo declarado, com disclaimer obrigatório "indicador da reunião, não dos participantes"
-- **Customer Confidence** (ADR 0006) — score por reunião com buying signals + objeções, entregue full-stack com trend autoritativo por conta (PR #148)
-- **Deploy Azure production-grade** — 8 armadilhas do Azure for Students catalogadas + workflow OIDC sem secrets, 14 recursos provisionados via Bicep IaC
-- **Test coverage rigoroso** (ADR 0018) — áreas críticas (IAM, Auth, PII) sustentadas >85%
-- **License AGPL-3.0** (ADR 0017) — proteção contra clone-and-compete
+- **AWS-style IAM** (ADR 0007) — an authorization model of Root + Users + Groups + Policies with Effect/Action/Resource/Condition, built in-house. Policy versioning + audit trail
+- **BR-aware PII Shield** (ADR 0012) — redaction of EMAIL, CPF, CNPJ, PHONE, CREDIT_CARD, PERSON_NAME (BR list of ~270 names) before LLM calls. LGPD compliance by design
+- **Provider-agnostic LLM** (ADR 0004) — an abstraction that allows switching from OpenAI direct → Azure OpenAI → local Whisper without changing the pipeline
+- **Mandatory strict JSON Schema** (ADR 0003) — LLM output validated server-side, no free-form text cross-service
+- **Multi-tenancy** (ADR 0002) — application filter in the MVP + Postgres RLS with the schema delivered and auth-aware scope; the operational cutover/enforcement in prod remains (ADR 0026/0028)
+- **Opt-in Productivity Score** (ADR 0005) — analysis of the meeting's productivity against the declared goal, with the mandatory disclaimer "an indicator of the meeting, not of the participants"
+- **Customer Confidence** (ADR 0006) — score per meeting with buying signals + objections, delivered full-stack with an authoritative per-account trend (PR #148)
+- **Production-grade Azure deploy** — 8 Azure for Students pitfalls catalogued + OIDC workflow with no secrets, 14 resources provisioned via Bicep IaC
+- **Rigorous test coverage** (ADR 0018) — critical areas (IAM, Auth, PII) held above 85%
+- **AGPL-3.0 License** (ADR 0017) — protection against clone-and-compete
 
 ## Deadlines
 
-| Marco | Data | Status |
+| Milestone | Date | Status |
 |---|---|---|
-| Entrega de modelagem de dados (Oracle) | ?? não conferido | Material em `../engineering/data-model-oracle.md` |
-| Apresentação parcial (sprint review) | ?? não conferido | — |
-| **Pitch FIAP / NEXT 2026** | **2026-06-15** | **Sub-fase 1.11 (Demo Polish) entrega o material** |
-| Entrega final FIAP | ?? não conferido | Sub-fases 1.11 + 1.12 cobrem |
+| Data modeling deliverable (Oracle) | ?? não conferido | Material in `../engineering/data-model-oracle.md` |
+| Partial presentation (sprint review) | ?? não conferido | — |
+| **FIAP Pitch / NEXT 2026** | **2026-06-15** | **Sub-phase 1.11 (Demo Polish) delivers the material** |
+| Final FIAP delivery | ?? não conferido | Sub-phases 1.11 + 1.12 cover it |
 
-## Equipe Stratfy
+## Stratfy Team
 
-- **Stratfy** — equipe responsável pelo NORA (PO + arquitetura técnica + operação). Coordenação via GitHub organização/handle `sys0xFF`. Membros listados como contribuidores no git history.
-- **Gabriel Maciel (@pollotherunner)** — colaborador externo no Desktop app (Tauri + sidecar Python). Escopo isolado, fora do core SaaS.
-- **Múltiplos Claude rodando skill `arquiteto-nora`** — assistentes técnicos (Tech Lead, Arquiteto Design) operando sob direção da equipe Stratfy.
+- **Stratfy** — the team responsible for NORA (PO + technical architecture + operations). Coordination via the GitHub organization/handle `sys0xFF`. Members are listed as contributors in the git history.
+- **Gabriel Maciel (@pollotherunner)** — external collaborator on the Desktop app (Tauri + Python sidecar). Isolated scope, outside the SaaS core.
+- **Multiple Claude instances running the `arquiteto-nora` skill** — technical assistants (Tech Lead, Design Architect) operating under the direction of the Stratfy team.
 
-> Para detalhes sobre a divisão e coordenação multi-arquiteto Claude, ver `Claude/50-coordenacao-arquitetos/00-papeis.md` no vault Obsidian privado da equipe.
+> For details on the multi-architect Claude split and coordination, see `Claude/50-coordenacao-arquitetos/00-papeis.md` in the team's private Obsidian vault.
 
-## Por que NORA é mais que um trabalho acadêmico
+## Why NORA is more than an academic assignment
 
-A Stratfy trabalha com **3 cenários estratégicos para NORA pós-pitch**:
+Stratfy works with **3 strategic scenarios for NORA after the pitch**:
 
-- **Plano A** — TOTVS contrata vendo NORA na demo (parceria FIAP × TOTVS, NORA passa de portfolio a oferta concreta de contratação/parceria institucional)
-- **Plano B** — SaaS comercial operado pela própria Stratfy (longo prazo, com co-founder de negócio se necessário)
-- **Plano C** — Portfolio técnico / posicionamento profissional dos membros (material já existe agora, pronto para publicação)
+- **Plan A** — TOTVS hires after seeing NORA in the demo (FIAP × TOTVS partnership, NORA goes from portfolio to a concrete hiring/institutional partnership offer)
+- **Plan B** — commercial SaaS operated by Stratfy itself (long term, with a business co-founder if necessary)
+- **Plan C** — technical portfolio / professional positioning of the members (the material already exists now, ready for publication)
 
-A rubrica FIAP é a **camada acadêmica visível**; o produto comercial roda em paralelo como código real, deployado, monetizável.
+The FIAP rubric is the **visible academic layer**; the commercial product runs in parallel as real code, deployed, monetizable.
 
-## Próximos passos pré-pitch (15/06)
+## Next steps before the pitch (15/06)
 
-- **Sub-fase 1.11 — Demo Polish Plano A** (2-3 semanas agentic): polir UX interna (dashboard, meeting detail, tasks, settings) + seed sintético TOTVS realista + roteiro de demo gravado. Itens antes listados aqui já foram entregues: Customer Confidence full-stack (PR #148), remoção do AUTH_FILTER_HARD_CAP (scan em lotes em `MeetingService.listAllForAuthFilter`) e operadores do PolicyEvaluator (StringEquals, StringIn, StringLike, DateGreaterThan, DateLessThan, fail-closed)
-- **Sub-fase 1.12 — Production Hardening** (se sobrar tempo pré-pitch): rg-nora-prod separado, monitoring alerts, secrets rotation, cutover/enforcement de RLS em prod. LGPD operacional já entregue (ADR 0029: `DELETE /privacy/meetings/{id}` + RetentionSweeper agendado). **Pode ficar pós-pitch sem prejuízo da demo.**
+- **Sub-phase 1.11 — Demo Polish Plan A** (2-3 agentic weeks): polish the internal UX (dashboard, meeting detail, tasks, settings) + realistic synthetic TOTVS seed + recorded demo script. Items previously listed here have already been delivered: Customer Confidence full-stack (PR #148), removal of AUTH_FILTER_HARD_CAP (batch scanning in `MeetingService.listAllForAuthFilter`) and the PolicyEvaluator operators (StringEquals, StringIn, StringLike, DateGreaterThan, DateLessThan, fail-closed)
+- **Sub-phase 1.12 — Production Hardening** (if there is time left before the pitch): a separate rg-nora-prod, monitoring alerts, secrets rotation, RLS cutover/enforcement in prod. Operational LGPD is already delivered (ADR 0029: `DELETE /privacy/meetings/{id}` + scheduled RetentionSweeper). **It can be left until after the pitch without harming the demo.**
 
-## Histórico
+## History
 
-| Data | Mudança |
+| Date | Change |
 |---|---|
-| 2026-05-14 | Doc criado na Sub-fase 1.10 (Docs Refresh) consolidando o framing FIAP × TOTVS |
-| 2026-06-06 | Arquiteto NORA (Tech Lead) — Reconciliação doc x código + padronização (auditoria pré-apresentação) |
+| 2026-05-14 | Doc created in Sub-phase 1.10 (Docs Refresh) consolidating the FIAP × TOTVS framing |
+| 2026-06-06 | NORA Architect (Tech Lead) — Doc x code reconciliation + standardization (pre-presentation audit) |

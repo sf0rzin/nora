@@ -1,8 +1,8 @@
 version: 2
 
 # Dependabot scans dependencies and opens PRs for security/version updates.
-# Mantemos updates SEMANALMENTE em grupos por ecosystem para reduzir ruido —
-# patches críticos sao surfacados em alerts (Security tab) independente.
+# We keep updates WEEKLY, grouped by ecosystem, to reduce noise —
+# critical patches are surfaced in alerts (Security tab) regardless.
 
 updates:
   # Java / Maven (backend)
@@ -26,7 +26,7 @@ updates:
           - "jakarta.persistence*"
     ignore:
       # Spring Boot 4 = Spring Framework 7 + Jakarta EE 11 + Hibernate 7.
-      # Stack pina 3.3.5 (ver CLAUDE.md). Avaliamos manualmente.
+      # Stack pins 3.3.5 (see CLAUDE.md). We evaluate manually.
       - dependency-name: org.springframework.boot:spring-boot-starter-parent
         update-types: ["version-update:semver-major"]
 
@@ -62,10 +62,10 @@ updates:
       - dependencies
       - web
     ignore:
-      # Next 16 e breaking — avaliamos manualmente
+      # Next 16 is breaking — we evaluate manually
       - dependency-name: next
         update-types: ["version-update:semver-major"]
-      # React 19 incompativel com Next 14 (precisa Next 15)
+      # React 19 incompatible with Next 14 (needs Next 15)
       - dependency-name: react
         update-types: ["version-update:semver-major"]
       - dependency-name: "@types/react"
@@ -74,32 +74,32 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@types/react-dom"
         update-types: ["version-update:semver-major"]
-      # TypeScript 6 ainda nao GA stable pro stack atual
+      # TypeScript 6 not yet GA stable for the current stack
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
-      # TS-ESLint 8 requer ESLint 9 + flat config migration
+      # TS-ESLint 8 requires ESLint 9 + flat config migration
       - dependency-name: "@typescript-eslint/eslint-plugin"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@typescript-eslint/parser"
         update-types: ["version-update:semver-major"]
-      # ESLint 9/10 requer @typescript-eslint 8 + flat config (acima ignorado);
-      # eslint 10 vs peer @typescript-eslint/parser@7 (eslint ^8) quebrava o run semanal.
-      # Migração coordenada ESLint 9 flat-config é issue dedicada.
+      # ESLint 9/10 requires @typescript-eslint 8 + flat config (ignored above);
+      # eslint 10 vs peer @typescript-eslint/parser@7 (eslint ^8) broke the weekly run.
+      # A coordinated ESLint 9 flat-config migration is a dedicated issue.
       - dependency-name: eslint
         update-types: ["version-update:semver-major"]
-      # eslint-config-next 16 requer Next 16 (que tambem ignoramos)
+      # eslint-config-next 16 requires Next 16 (which we also ignore)
       - dependency-name: eslint-config-next
         update-types: ["version-update:semver-major"]
       # Monaco 0.55 breaking API changes (worker loader)
       - dependency-name: monaco-editor
         versions: [">=0.55.0"]
-      # @types/node ahead da LTS Node 20 que usamos
+      # @types/node ahead of the Node 20 LTS we use
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
-      # eslint-config-prettier 10 requer ESLint 9 + flat config
+      # eslint-config-prettier 10 requires ESLint 9 + flat config
       - dependency-name: eslint-config-prettier
         update-types: ["version-update:semver-major"]
-      # tailwind-merge 3 e sync com tailwindcss 4 (que ignoramos)
+      # tailwind-merge 3 is in sync with tailwindcss 4 (which we ignore)
       - dependency-name: tailwind-merge
         update-types: ["version-update:semver-major"]
 
@@ -113,7 +113,7 @@ updates:
       - dependencies
       - desktop
     ignore:
-      # Tailwind 4 breaks PostCSS/config; ADR 0013 pina Tailwind cru 3.x
+      # Tailwind 4 breaks PostCSS/config; ADR 0013 pins raw Tailwind 3.x
       - dependency-name: tailwindcss
         update-types: ["version-update:semver-major"]
       # React 19 + react-router 7 (Remix merge) breaking
@@ -127,7 +127,7 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: react-router-dom
         update-types: ["version-update:semver-major"]
-      # Vite plugin v6 requer Vite 6 (estamos em Vite 5)
+      # Vite plugin v6 requires Vite 6 (we are on Vite 5)
       - dependency-name: "@vitejs/plugin-react"
         update-types: ["version-update:semver-major"]
 
@@ -152,7 +152,7 @@ updates:
       - dependencies
       - desktop
     ignore:
-      # cpal 0.17 quebra API de audio (sidecar Azure Speech depende)
+      # cpal 0.17 breaks the audio API (the Azure Speech sidecar depends on it)
       - dependency-name: cpal
         versions: [">=0.16.0"]
 
@@ -167,6 +167,6 @@ updates:
       - dependencies
       - ci
     ignore:
-      # upload-artifact v5+ mudou semantica de merge (PR caminhos quebram)
+      # upload-artifact v5+ changed merge semantics (PR paths break)
       - dependency-name: actions/upload-artifact
         update-types: ["version-update:semver-major"]

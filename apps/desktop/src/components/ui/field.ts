@@ -1,9 +1,9 @@
 import type { FocusEvent } from "react";
 
 /**
- * Borda + shadow de foco compartilhados para inputs/textarea. Eram duplicados
- * inline em new-meeting-modal, meetings, login e overlay. Auditoria desktop #70.
- * (NÃO unifica o `inputCss` — paddings/fontSizes divergem por tela.)
+ * Shared focus border + shadow for inputs/textarea. They were duplicated
+ * inline in new-meeting-modal, meetings, login and overlay. Desktop audit #70.
+ * (Does NOT unify `inputCss` — paddings/fontSizes diverge per screen.)
  */
 export function focusOn(e: FocusEvent<HTMLElement>) {
   e.currentTarget.style.borderColor = "var(--accent)";

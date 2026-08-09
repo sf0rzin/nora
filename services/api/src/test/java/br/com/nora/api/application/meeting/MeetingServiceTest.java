@@ -46,8 +46,8 @@ class MeetingServiceTest {
                         transcriptRepo,
                         new NullAnalysisProvider(),
                         noOpAudit,
-                        // Sem banco neste teste: o template só é exercitado no caminho de
-                        // rejeição do executor, coberto pelos testes de integração.
+                        // No database in this test: the template is only exercised on the
+                        // executor's rejection path, covered by the integration tests.
                         new NoOpTransactionManager(),
                         false);
     }
@@ -152,8 +152,8 @@ class MeetingServiceTest {
 
     @Test
     void listAllForAuthFilterReturnsEveryMeetingAcrossBatches() {
-        // > LIST_SCAN_BATCH (200) para forcar mais de uma pagina e provar que nada eh truncado
-        // (o antigo AUTH_FILTER_HARD_CAP descartava silenciosamente meetings alem do teto).
+        // > LIST_SCAN_BATCH (200) to force more than one page and prove nothing is truncated
+        // (the old AUTH_FILTER_HARD_CAP silently discarded meetings beyond the cap).
         int count = 250;
         for (int i = 0; i < count; i++) {
             service.upload(
@@ -183,7 +183,7 @@ class MeetingServiceTest {
                         new UploadCommand(
                                 tenant, owner, "done", null, null, null, "TXT", List.of(),
                                 List.of(), "linha"));
-        // Transição válida até COMPLETED (PENDING -> PROCESSING -> COMPLETED).
+        // Valid transition up to COMPLETED (PENDING -> PROCESSING -> COMPLETED).
         meetingRepo.save(
                 m.withStatus(ProcessingStatus.PROCESSING).withStatus(ProcessingStatus.COMPLETED));
 
@@ -221,9 +221,9 @@ class MeetingServiceTest {
 
     @Test
     void reprocessRejectedWhileAlreadyQueued() {
-        // PENDING passava antes, e era por isso que o lock nao impedia o duplo despacho: o
-        // vencedor grava PENDING, e a segunda chamada -- libertada pelo lock -- lia PENDING e
-        // passava na guarda. Um duplo clique agendava duas analises sobre a mesma reuniao.
+        // PENDING used to pass, and that was why the lock did not prevent the double dispatch: the
+        // winner writes PENDING, and the second call -- released by the lock -- read PENDING and
+        // passed the guard. A double click scheduled two analyses over the same meeting.
         Meeting m =
                 service.upload(
                         new UploadCommand(
@@ -237,9 +237,9 @@ class MeetingServiceTest {
 
     @Test
     void reprocessRunsAuthorizationBeforeTakingTheRowLock() {
-        // Tomar o lock primeiro deixava um chamador sem permissao segurar um lock de escrita
-        // durante toda a avaliacao de IAM, em loop -- negacao de servico sobre uma reuniao a
-        // escolha dele. O callback tem de correr antes de qualquer FOR UPDATE.
+        // Taking the lock first let a caller without permission hold a write lock for the whole
+        // IAM evaluation, in a loop -- denial of service over a meeting of his choosing. The
+        // callback has to run before any FOR UPDATE.
         Meeting m =
                 service.upload(
                         new UploadCommand(
@@ -269,7 +269,7 @@ class MeetingServiceTest {
     static final class InMemoryMeetingRepo implements MeetingRepository {
         private final Map<UUID, Meeting> store = new HashMap<>();
 
-        /** Quantas vezes o caminho com lock foi pedido. Ver o teste da ordem lock/autorizacao. */
+        /** How many times the locked path was requested. See the lock/authorization order test. */
         int forUpdateCalls;
 
         @Override
@@ -296,8 +296,8 @@ class MeetingServiceTest {
 
         @Override
         public Optional<Meeting> findByIdAndTenantForUpdate(UUID id, UUID tenantId) {
-            // Fake single-thread: não há concorrência pra serializar, o lock é no-op aqui. O
-            // contador existe para provar QUANDO o lock é pedido, que é o que importa em
+            // Fake single-thread: there is no concurrency to serialize, the lock is a no-op here.
+            // The counter exists to prove WHEN the lock is requested, which is what matters in
             // reprocessRunsAuthorizationBeforeTakingTheRowLock.
             forUpdateCalls++;
             return findByIdAndTenant(id, tenantId);
@@ -334,11 +334,11 @@ class MeetingServiceTest {
         }
     }
 
-    /** Provider que nunca devolve um AnalysisService — dispatch async vira no-op nos testes. */
+    /** Provider that never returns an AnalysisService — async dispatch is a no-op in tests. */
     /**
-     * Executa o callback sem transacao nenhuma. Este teste roda com repositorios em memoria; o
-     * REQUIRES_NEW so importa quando ha um transaction manager JPA de verdade, e essa parte esta
-     * coberta pelos testes de integracao.
+     * Runs the callback with no transaction at all. This test runs with in-memory repositories;
+     * REQUIRES_NEW only matters when there is a real JPA transaction manager, and that part is
+     * covered by the integration tests.
      */
     static final class NoOpTransactionManager implements PlatformTransactionManager {
         @Override

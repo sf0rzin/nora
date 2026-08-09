@@ -2,16 +2,16 @@ import { useMemo } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 /**
- * Barra de título custom da janela principal.
+ * Custom titlebar for the main window.
  *
- * A janela "main" roda com `decorations: false` (sem a barra nativa do SO),
- * então as ações de janela (minimizar / maximizar / fechar) e o arraste são
- * implementados aqui. Marca NORA à esquerda, controles à direita.
+ * The "main" window runs with `decorations: false` (no native OS bar), so the
+ * window actions (minimize / maximize / close) and the drag are
+ * implemented here. NORA mark on the left, controls on the right.
  *
- * Cross-platform: usamos `getCurrentWebviewWindow().startDragging()` no
- * mousedown porque `-webkit-app-region: drag` / `data-tauri-drag-region` NÃO
- * funcionam no WebKitGTK (Linux). `startDragging()` cobre x11/wayland/macOS/
- * Windows. Maximizar por duplo-clique é tratado via `onDoubleClick`.
+ * Cross-platform: we use `getCurrentWebviewWindow().startDragging()` on
+ * mousedown because `-webkit-app-region: drag` / `data-tauri-drag-region` do NOT
+ * work on WebKitGTK (Linux). `startDragging()` covers x11/wayland/macOS/
+ * Windows. Double-click maximize is handled via `onDoubleClick`.
  */
 function ControlButton({
   onClick,
@@ -57,8 +57,8 @@ function ControlButton({
 export function Titlebar() {
   const win = useMemo(() => getCurrentWebviewWindow(), []);
 
-  // Arraste — só botão esquerdo. `e.detail > 1` (segundo clique de um
-  // duplo-clique) é ignorado pra não engolir o `onDoubleClick` que maximiza.
+  // Drag — left button only. `e.detail > 1` (second click of a
+  // double-click) is ignored so it doesn't swallow the `onDoubleClick` that maximizes.
   const onDragMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0 || e.detail > 1) return;
     win.startDragging().catch((err) => console.warn("[titlebar] startDragging failed:", err));
@@ -77,7 +77,7 @@ export function Titlebar() {
         borderBottom: "1px solid var(--border)",
       }}
     >
-      {/* Região de arraste — preenche tudo menos os controles (sem logo). */}
+      {/* Drag region — fills everything but the controls (no logo). */}
       <div
         className="flex-1 min-w-0 flex items-center"
         onMouseDown={onDragMouseDown}
@@ -85,8 +85,8 @@ export function Titlebar() {
         style={{ cursor: "default" }}
       />
 
-      {/* Controles de janela. position+zIndex acima das pegas de resize (z40)
-          pra que o clique em fechar/maximizar no canto não vire redimensionar. */}
+      {/* Window controls. position+zIndex above the resize handles (z40)
+          so the close/maximize click in the corner doesn't turn into a resize. */}
       <div
         className="flex items-center"
         style={{ gap: 2, padding: "0 6px 0 4px", position: "relative", zIndex: 50 }}

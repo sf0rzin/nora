@@ -4,10 +4,10 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Endereco de e-mail normalizado (lowercase + trim). */
+/** Normalized e-mail address (lowercase + trim). */
 public final class Email {
 
-    // RFC 5322 simplificado, suficiente para validacao de campo (a verificacao real e por token).
+    // Simplified RFC 5322, enough for field validation (the real check is by token).
     private static final Pattern PATTERN =
             Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 

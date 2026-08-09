@@ -9,18 +9,18 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Postar no Slack" do NORA Flows — mensagem REAL num canal da workspace conectada (bot token
- * via OAuth v2). Params: {@code channel} (obrigatório, ex.: {@code #vendas}; validado no save) e
- * {@code text} opcional com os mesmos placeholders das ações de e-mail. Sem text, posta um resumo
- * compacto da reunião com link (Slack é chat, não relatório).
+ * NORA Flows "Postar no Slack" action — REAL message in a channel of the connected workspace (bot
+ * token via OAuth v2). Params: {@code channel} (required, e.g. {@code #vendas}; validated on save)
+ * and an optional {@code text} with the same placeholders as the e-mail actions. With no text, it
+ * posts a compact meeting summary with a link (Slack is chat, not a report).
  *
- * <p>Falha PROPAGA (contrato do {@link ActionExecutor}) — ex.: bot fora do canal vira erro claro no
- * log da execução, com orientação de /invite. Nunca finge sucesso.
+ * <p>A failure PROPAGATES ({@link ActionExecutor} contract) — e.g. a bot outside the channel turns
+ * into a clear error in the run log, with /invite guidance. It never fakes success.
  */
 @Component
 public class SlackPostMessageAction implements ActionExecutor {
 
-    /** Tamanho máximo do texto default antes do link (corte com reticências). */
+    /** Maximum size of the default text before the link (cut with an ellipsis). */
     static final int DEFAULT_TEXT_MAX = 400;
 
     private final IntegrationService integrations;
@@ -45,7 +45,7 @@ public class SlackPostMessageAction implements ActionExecutor {
         return "Mensagem enviada no Slack para " + channel;
     }
 
-    /** Texto custom (placeholders aplicados) ou o default compacto. */
+    /** Custom text (placeholders applied) or the compact default. */
     static String renderText(Map<String, Object> params, WorkflowEventContext ctx) {
         String custom = WorkflowActionTemplates.stringParam(params, "text");
         return custom == null || custom.isBlank()
@@ -53,7 +53,7 @@ public class SlackPostMessageAction implements ActionExecutor {
                 : WorkflowActionTemplates.applyPlaceholders(custom, ctx, false);
     }
 
-    /** Default: título + resumo truncado a ~400 chars + link da reunião no NORA. */
+    /** Default: title + summary truncated to ~400 chars + meeting link in NORA. */
     static String defaultText(WorkflowEventContext ctx) {
         String text =
                 WorkflowActionTemplates.applyPlaceholders(

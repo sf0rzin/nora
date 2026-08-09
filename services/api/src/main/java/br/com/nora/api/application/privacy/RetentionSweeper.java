@@ -12,14 +12,14 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Job de RETENÇÃO (LGPD, ADR 0029): purga periodicamente meetings mais antigos que a janela
- * configurada — fechando o gap de "raw_text = PII em repouso sem retenção".
+ * RETENTION job (LGPD, ADR 0029): periodically purges meetings older than the configured window —
+ * closing the "raw_text = PII at rest with no retention" gap.
  *
- * <p>Configurável e DESLIGADO por default ({@code nora.privacy.retention-days=0}): retenção é
- * destrutiva, então só liga por opt-in explícito do ambiente. Itera por tenant porque, sob RLS
- * enforce (ADR 0028), a thread do scheduler não tem JWT — propaga o tenant via {@link
- * TenantRlsContext} pra que o aspect aplique o GUC na transação da purga (a tabela {@code tenants}
- * é exempta, então a listagem de ids funciona sem GUC).
+ * <p>Configurable and OFF by default ({@code nora.privacy.retention-days=0}): retention is
+ * destructive, so it only turns on by explicit opt-in from the environment. It iterates per tenant
+ * because, under RLS enforce (ADR 0028), the scheduler thread has no JWT — it propagates the tenant
+ * via {@link TenantRlsContext} so the aspect applies the GUC on the purge's transaction (the {@code
+ * tenants} table is exempt, so listing ids works without the GUC).
  */
 @Component
 public class RetentionSweeper {
@@ -42,7 +42,7 @@ public class RetentionSweeper {
         this.retentionDays = retentionDays;
     }
 
-    /** Cron configurável (default: diário às 03:30). {@code retention-days <= 0} = no-op. */
+    /** Configurable cron (default: daily at 03:30). {@code retention-days <= 0} = no-op. */
     @Scheduled(cron = "${nora.privacy.retention-cron:0 30 3 * * *}")
     public void sweep() {
         if (retentionDays <= 0) {

@@ -10,21 +10,21 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
- * Configura o {@link Executor} usado por {@link org.springframework.scheduling.annotation.Async}.
+ * Configures the {@link Executor} used by {@link org.springframework.scheduling.annotation.Async}.
  *
- * <p>Sem este bean, Spring cai em {@code SimpleAsyncTaskExecutor} (deprecated) que cria UMA thread
- * por chamada — cada upload de meeting spawnava thread nova fazendo HTTP blocking ao worker. N
- * uploads paralelos = N threads + N conexões Postgres (pool max=10) → exaustão de file descriptors
- * e starvation do pool.
+ * <p>Without this bean, Spring falls back to {@code SimpleAsyncTaskExecutor} (deprecated) which
+ * creates ONE thread per call — each meeting upload spawned a new thread doing blocking HTTP to the
+ * worker. N parallel uploads = N threads + N Postgres connections (pool max=10) → file descriptor
+ * exhaustion and pool starvation.
  *
  * <p>Pool config:
  *
  * <ul>
- *   <li>core=2: economiza recurso quando idle
- *   <li>max=8: combina com Container App scale-out (max 3 réplicas × 8 = 24 análises paralelas)
- *   <li>queue=50: absorve picos sem rejeitar; depois disso joga {@link
- *       java.util.concurrent.RejectedExecutionException} (caller trata e marca o meeting como
- *       FAILED em vez de PROCESSING órfão)
+ *   <li>core=2: saves resources when idle
+ *   <li>max=8: matches Container App scale-out (max 3 replicas × 8 = 24 parallel analyses)
+ *   <li>queue=50: absorbs spikes without rejecting; past that it throws {@link
+ *       java.util.concurrent.RejectedExecutionException} (the caller handles it and marks the
+ *       meeting as FAILED instead of an orphaned PROCESSING)
  * </ul>
  */
 @Configuration
@@ -41,12 +41,13 @@ public class AsyncConfig implements AsyncConfigurer {
         executor.setThreadNamePrefix("nora-async-");
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
-        // Propaga o tenant (TenantContextHolder) da thread do request pra thread do executor.
-        // Sob RLS enforce (ADR 0028) o pipeline de análise async escreve em tabelas enforced
-        // (meeting_analyses + filhos) — o TenantRlsAspect precisa do GUC, que vem deste holder.
-        // Sem isso, a task roda sem tenant na thread do pool e as escritas seriam fail-closed.
-        // Capturamos no submit (request, holder setado pelo JwtAuthenticationFilter) e limpamos
-        // no fim pra não vazar entre tasks que reusam a thread.
+        // Propagates the tenant (TenantContextHolder) from the request thread to the executor
+        // thread. Under RLS enforce (ADR 0028) the async analysis pipeline writes to enforced
+        // tables (meeting_analyses + children) — TenantRlsAspect needs the GUC, which comes from
+        // this holder. Without this, the task runs with no tenant on the pool thread and the
+        // writes would be fail-closed. We capture at submit (request, holder set by
+        // JwtAuthenticationFilter) and clear at the end so it does not leak between tasks that
+        // reuse the thread.
         executor.setTaskDecorator(
                 runnable -> {
                     UUID tenantId = TenantContextHolder.get();

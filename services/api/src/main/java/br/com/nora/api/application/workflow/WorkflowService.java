@@ -15,14 +15,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * CRUD + operações dos workflows do NORA Flows. Toda operação é escopada pelo tenant do principal
- * (ADR 0002 + RLS). O triggerType é derivado do nó de gatilho do definition_json no save — a API
- * não o recebe separado (uma fonte de verdade só: o grafo do canvas).
+ * CRUD + operations for NORA Flows workflows. Every operation is scoped by the principal's tenant
+ * (ADR 0002 + RLS). The triggerType is derived from the trigger node in definition_json on save —
+ * the API does not receive it separately (a single source of truth: the canvas graph).
  */
 @Service
 public class WorkflowService {
 
-    /** Máximo de execuções retornadas no histórico (mais recentes primeiro). */
+    /** Maximum number of executions returned in the history (most recent first). */
     public static final int EXECUTIONS_LIMIT = 50;
 
     private final WorkflowRepository workflows;
@@ -112,10 +112,10 @@ public class WorkflowService {
     }
 
     /**
-     * "Testar" do canvas: executa o workflow AGORA (síncrono), contra a reunião COMPLETED mais
-     * recente do tenant (ou dados de exemplo), e retorna a execução com o log. Sem @Transactional
-     * de propósito: ações chamam serviços externos (e-mail) e cada passo do engine persiste em
-     * transações curtas próprias.
+     * Canvas "Test": runs the workflow NOW (synchronous), against the tenant's most recent
+     * COMPLETED meeting (or sample data), and returns the execution with the log. Deliberately
+     * not @Transactional: actions call external services (e-mail) and each engine step persists in
+     * its own short transactions.
      */
     public WorkflowExecution test(UUID id, UUID tenantId) {
         Workflow workflow = get(id, tenantId);

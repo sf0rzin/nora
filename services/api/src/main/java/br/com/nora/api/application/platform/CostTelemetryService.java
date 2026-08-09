@@ -8,7 +8,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
-/** Telemetria de custo (frente (a), ADR 0024). Lê usage_events do banco de plataforma. */
+/** Cost telemetry (track (a), ADR 0024). Reads usage_events from the platform database. */
 @Service
 public class CostTelemetryService {
 
@@ -37,7 +37,7 @@ public class CostTelemetryService {
         try {
             return eventsProvider.getObject().aggregate(from, to, g);
         } catch (DataAccessException ex) {
-            // Banco de plataforma caiu em runtime → 503 (não 500), per-call.
+            // Platform database went down at runtime → 503 (not 500), per-call.
             throw new PlatformUnavailableException("banco de plataforma indisponível em runtime");
         }
     }

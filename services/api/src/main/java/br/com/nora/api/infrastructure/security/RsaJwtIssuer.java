@@ -21,15 +21,15 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Emite e valida JWTs RS256 (assimetricos).
+ * Issues and validates RS256 (asymmetric) JWTs.
  *
- * <p>Em prod com validators externos (ex.: outros servicos que precisam validar tokens da NORA),
- * RS256 + JWKS endpoint permite que cada validator busque a chave publica via {@code
- * /.well-known/jwks.json} sem precisar do segredo compartilhado.
+ * <p>In prod with external validators (e.g. other services that need to validate NORA tokens),
+ * RS256 + JWKS endpoint lets each validator fetch the public key via {@code /.well-known/jwks.json}
+ * without needing the shared secret.
  *
- * <p>Bean ativo quando {@code nora.security.jwt.algorithm} = RS256. Chave privada carregada do env
- * {@code JWT_RS256_PRIVATE_KEY_PEM} (formato PKCS#8 base64). Em Azure prod, o secret e renderizado
- * via Bicep a partir de um Key Vault secret (futura integracao com keys nativas do KV).
+ * <p>Bean active when {@code nora.security.jwt.algorithm} = RS256. Private key loaded from the env
+ * {@code JWT_RS256_PRIVATE_KEY_PEM} (PKCS#8 base64 format). In Azure prod, the secret is rendered
+ * via Bicep from a Key Vault secret (future integration with KV native keys).
  */
 @Component
 @ConditionalOnProperty(name = "nora.security.jwt.algorithm", havingValue = "RS256")
@@ -95,7 +95,7 @@ public class RsaJwtIssuer implements JwtIssuer {
         return new JjwtJwtIssuer.AuthenticatedPrincipal(userId, tenantId, email, roles);
     }
 
-    /** Expoe a chave publica + kid pra construcao do JWKS. */
+    /** Exposes the public key + kid for building the JWKS. */
     public RSAPublicKey publicKey() {
         return publicKey;
     }
@@ -128,7 +128,7 @@ public class RsaJwtIssuer implements JwtIssuer {
 
     private static RSAPublicKey derivePublicKey(RSAPrivateKey privateKey) {
         try {
-            // Suporta PKCS#8 com CRT key: extrai modulus e expoente publico.
+            // Supports PKCS#8 with CRT key: extracts modulus and public exponent.
             if (privateKey instanceof java.security.interfaces.RSAPrivateCrtKey crt) {
                 KeyFactory kf = KeyFactory.getInstance("RSA");
                 return (RSAPublicKey)

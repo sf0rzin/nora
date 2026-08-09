@@ -10,12 +10,13 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Criar issues no Linear" do NORA Flows — issues REAIS via GraphQL com a conta conectada, uma
- * por action item da reunião (title = título do item; description = reunião + responsável + link).
- * Param {@code teamKey} opcional (ex.: {@code ENG}); sem ele, usa o primeiro team do workspace.
+ * NORA Flows "Criar issues no Linear" action — REAL issues via GraphQL with the connected account,
+ * one per meeting action item (title = item title; description = meeting + assignee + link).
+ * Optional {@code teamKey} param (e.g. {@code ENG}); without it, uses the workspace's first team.
  *
- * <p>Reunião sem action items NÃO é falha: a ação registra honestamente que nada foi criado. Falha
- * de provedor PROPAGA (contrato do {@link ActionExecutor}) — o engine grava FAILED no log.
+ * <p>A meeting with no action items is NOT a failure: the action honestly records that nothing was
+ * created. A provider failure PROPAGATES ({@link ActionExecutor} contract) — the engine writes
+ * FAILED in the log.
  */
 @Component
 public class LinearCreateIssueAction implements ActionExecutor {
@@ -51,7 +52,7 @@ public class LinearCreateIssueAction implements ActionExecutor {
         return count + (count == 1 ? " issue criada" : " issues criadas") + " no Linear";
     }
 
-    /** Description da issue: reunião + responsável + link no NORA (markdown do Linear). */
+    /** Issue description: meeting + assignee + link in NORA (Linear markdown). */
     static String description(WorkflowEventContext.ActionItemView item, WorkflowEventContext ctx) {
         StringBuilder description =
                 new StringBuilder("**Reunião:** ")

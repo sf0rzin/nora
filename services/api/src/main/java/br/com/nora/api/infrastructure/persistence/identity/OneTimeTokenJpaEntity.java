@@ -6,7 +6,7 @@ import jakarta.persistence.MappedSuperclass;
 import java.time.Instant;
 import java.util.UUID;
 
-/** Base mapeada para email_verification_tokens e password_reset_tokens. */
+/** Mapped base for email_verification_tokens and password_reset_tokens. */
 @MappedSuperclass
 public abstract class OneTimeTokenJpaEntity {
 

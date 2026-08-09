@@ -14,7 +14,7 @@ export default function PasswordResetConfirmPage() {
   );
 }
 
-/** Pontuação de força de senha (0–4), igual ao protótipo v3. */
+/** Password strength score (0–4), same as prototype v3. */
 function strength(p: string): number {
   let s = 0;
   if (p.length >= 8) s++;
@@ -24,7 +24,7 @@ function strength(p: string): number {
   return s;
 }
 
-// Índice 0 = vazio; 1–4 = cores por nível.
+// Index 0 = empty; 1–4 = colors per level.
 const STRENGTH_COLORS = [
   "var(--chip)",
   "var(--danger)",
@@ -140,7 +140,7 @@ function ConfirmForm() {
   );
 }
 
-// ── Estilos compartilhados (cards de auth) ──────────────────────────
+// ── Shared styles (auth cards) ──────────────────────────────────────
 const cardTitle: React.CSSProperties = {
   fontSize: 19,
   fontWeight: 500,

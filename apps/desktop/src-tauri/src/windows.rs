@@ -3,20 +3,20 @@ use tauri::{AppHandle, Manager, PhysicalPosition};
 #[cfg(target_os = "windows")]
 use tauri::WebviewWindow;
 
-/// Remove a borda/contorno que o DWM do Windows 11 desenha em volta de QUALQUER
-/// top-level window — inclusive janelas transparentes sem decoração (dock,
-/// overlay). Sem isso aparece um retângulo arredondado fantasma em volta da
-/// barra de vidro (bug reportado: "contorno como se fosse uma janela do
-/// Windows"). Pintamos a cor da borda como DWMWA_COLOR_NONE.
+/// Removes the border/outline that Windows 11's DWM draws around ANY
+/// top-level window — including transparent undecorated windows (dock,
+/// overlay). Without this a ghost rounded rectangle shows up around the
+/// glass bar (reported bug: "an outline as if it were a Windows
+/// window"). We paint the border color as DWMWA_COLOR_NONE.
 ///
-/// Best-effort: em versões antigas do Windows o atributo é ignorado, então
-/// só logamos o erro em debug e seguimos.
+/// Best-effort: on old Windows versions the attribute is ignored, so
+/// we only log the error in debug and move on.
 #[cfg(target_os = "windows")]
 pub fn remove_window_border(window: &WebviewWindow) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_BORDER_COLOR};
 
-    // DWMWA_COLOR_NONE — desliga o desenho da borda pelo DWM.
+    // DWMWA_COLOR_NONE — turns off border drawing by the DWM.
     const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
 
     let hwnd_raw = match window.hwnd() {
@@ -28,8 +28,8 @@ pub fn remove_window_border(window: &WebviewWindow) {
             return;
         }
     };
-    // Tauri depende do windows 0.61; nosso Cargo.toml usa 0.62 — reconstruímos o
-    // HWND da versão correta a partir do ponteiro bruto (mesmo padrão do stealth).
+    // Tauri depends on windows 0.61; our Cargo.toml uses 0.62 — we rebuild the
+    // HWND of the correct version from the raw pointer (same pattern as stealth).
     let hwnd = HWND(hwnd_raw.0);
     let color = DWMWA_COLOR_NONE;
 
@@ -47,14 +47,14 @@ pub fn remove_window_border(window: &WebviewWindow) {
     }
 }
 
-/// Mostra/esconde a janela de dock flutuante.
+/// Shows/hides the floating dock window.
 ///
-/// A dock fica posicionada no topo-centro do monitor primário, com um
-/// pequeno offset vertical pra não encostar na borda. O posicionamento
-/// só acontece quando ela aparece — depois disso o usuário pode arrastar
-/// livremente pelo handle de drag. A barra é redimensionável por JS
-/// (setSize ao expandir/colapsar), então usamos a largura atual da janela
-/// (outer_size) pra centralizar corretamente em qualquer estado.
+/// The dock sits at the top-center of the primary monitor, with a
+/// small vertical offset so it does not touch the edge. Positioning
+/// only happens when it appears — after that the user can drag it
+/// freely by the drag handle. The bar is resizable from JS
+/// (setSize on expand/collapse), so we use the window's current width
+/// (outer_size) to center it correctly in any state.
 #[tauri::command]
 pub fn toggle_dock(app_handle: AppHandle, show: bool) -> Result<(), String> {
     let Some(window) = app_handle.get_webview_window("dock") else {
@@ -62,9 +62,9 @@ pub fn toggle_dock(app_handle: AppHandle, show: bool) -> Result<(), String> {
     };
 
     if show {
-        // Reposiciona no topo-centro sempre que mostrar — usuário pode
-        // arrastar depois, mas o padrão "aparece no topo" é mais previsível
-        // (estilo Cluely) do que herdar a posição anterior.
+        // Repositions at top-center on every show — the user can drag it
+        // afterwards, but the "appears at the top" default is more predictable
+        // (Cluely style) than inheriting the previous position.
         if let Some(monitor) = window.current_monitor().map_err(|e| e.to_string())? {
             let scale = monitor.scale_factor();
             let monitor_size = monitor.size();
@@ -77,20 +77,20 @@ pub fn toggle_dock(app_handle: AppHandle, show: bool) -> Result<(), String> {
             let _ = window.set_position(PhysicalPosition { x, y });
         }
         let _ = window.show();
-        // Mata o contorno fantasma do DWM agora que a janela tem HWND e está
-        // visível (chamar com a janela escondida força o handle e pode pintar
-        // branco — mesmo cuidado do stealth).
+        // Kills the DWM ghost outline now that the window has an HWND and is
+        // visible (calling it with the window hidden forces the handle and can
+        // paint white — same care as stealth).
         #[cfg(target_os = "windows")]
         remove_window_border(&window);
-        // Não chamamos set_focus — queremos que o dock fique visível mas
-        // sem roubar o foco do app em primeiro plano (Meet/Zoom/Teams).
+        // We do not call set_focus — we want the dock visible but
+        // without stealing focus from the foreground app (Meet/Zoom/Teams).
     } else {
         let _ = window.hide();
     }
     Ok(())
 }
 
-/// Mostra e foca a janela principal (NORA Desktop).
+/// Shows and focuses the main window (NORA Desktop).
 #[tauri::command]
 pub fn focus_main_window(app_handle: AppHandle) -> Result<(), String> {
     let Some(window) = app_handle.get_webview_window("main") else {
@@ -102,7 +102,7 @@ pub fn focus_main_window(app_handle: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Mostra e foca a janela da overlay.
+/// Shows and focuses the overlay window.
 #[tauri::command]
 pub fn focus_overlay_window(app_handle: AppHandle) -> Result<(), String> {
     let Some(window) = app_handle.get_webview_window("overlay") else {
@@ -113,13 +113,13 @@ pub fn focus_overlay_window(app_handle: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Abre o explorador de arquivos na pasta de logs do app.
+/// Opens the file explorer at the app's log folder.
 ///
-/// Em release o binario roda com `windows_subsystem = "windows"` (sem console),
-/// entao o `desktop.log` escrito pelo `start_recording` e a unica forma de o
-/// usuario diagnosticar "cliquei iniciar e nada aconteceu". Este comando abre
-/// a pasta de logs no Explorer/Finder via o plugin shell — best-effort, mas
-/// retorna erro pro JS caso a pasta nao exista ou o open falhe.
+/// In release the binary runs with `windows_subsystem = "windows"` (no console),
+/// so the `desktop.log` written by `start_recording` is the only way for the
+/// user to diagnose "I clicked start and nothing happened". This command opens
+/// the log folder in Explorer/Finder via the shell plugin — best-effort, but
+/// returns an error to JS if the folder does not exist or the open fails.
 #[tauri::command]
 pub fn open_log_dir(app: AppHandle) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
@@ -128,7 +128,7 @@ pub fn open_log_dir(app: AppHandle) -> Result<(), String> {
         .path()
         .app_log_dir()
         .map_err(|e| format!("failed to resolve log dir: {}", e))?;
-    // Garante que a pasta existe antes de tentar abri-la.
+    // Ensures the folder exists before trying to open it.
     std::fs::create_dir_all(&dir).map_err(|e| format!("failed to create log dir: {}", e))?;
 
     let dir_str = dir.to_string_lossy().to_string();

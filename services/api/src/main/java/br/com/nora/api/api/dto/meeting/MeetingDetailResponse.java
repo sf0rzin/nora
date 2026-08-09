@@ -5,11 +5,11 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Detalhe da reuniao. Espelha docs/api/examples/meeting-detail-response.json.
+ * Meeting detail. Mirrors docs/api/examples/meeting-detail-response.json.
  *
- * <p>Os campos {@code goal} e {@code productivity} sao opt-in (ADR 0005) e podem vir nulos quando o
- * usuario nao declarou objetivo ou quando a analise ainda nao gerou productivity. {@code
- * customerConfidence} (ADR 0015) vem nulo para reunioes internas.
+ * <p>The {@code goal} and {@code productivity} fields are opt-in (ADR 0005) and may come back null
+ * when the user did not declare a goal or when the analysis has not produced productivity yet.
+ * {@code customerConfidence} (ADR 0015) comes back null for internal meetings.
  */
 public record MeetingDetailResponse(
         UUID id,

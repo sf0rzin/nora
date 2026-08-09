@@ -1,6 +1,6 @@
 // Container Apps Environment
-// Compartilhado por api, worker e web. Usa o Log Analytics workspace pra logs/metrics.
-// Profile Consumption = scale-to-zero possível, paga só quando há requests.
+// Shared by api, worker and web. Uses the Log Analytics workspace for logs/metrics.
+// Consumption profile = scale-to-zero possible, pay only when there are requests.
 
 @description('Nome do environment.')
 param name string

@@ -11,9 +11,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
- * Chamadas à REST API do GitHub usadas pela ação {@code github_create_issue} do Flows. Sem SDK —
- * payload mínimo e visível. Falha vira {@code ProviderError} com status + trecho do corpo (≤300
- * chars), padrão do {@link GoogleWorkspaceClient}.
+ * Calls to the GitHub REST API used by the Flows {@code github_create_issue} action. No SDK —
+ * minimal, visible payload. A failure becomes {@code ProviderError} with status + body excerpt
+ * (≤300 chars), the {@link GoogleWorkspaceClient} pattern.
  */
 @Component
 public class GitHubClient {
@@ -30,9 +30,9 @@ public class GitHubClient {
     }
 
     /**
-     * Cria uma issue em {@code owner/nome}. Retorna a URL da issue criada.
+     * Creates an issue in {@code owner/nome}. Returns the URL of the created issue.
      *
-     * @param repo no formato {@code owner/nome} (validado na ação/no save)
+     * @param repo in the {@code owner/nome} format (validated in the action/on save)
      */
     public String createIssue(
             String accessToken, String repo, String title, String body, List<String> labels) {
@@ -55,7 +55,7 @@ public class GitHubClient {
             JsonNode json = mapper.readTree(response == null ? "{}" : response);
             return json.path("html_url").asText("(issue criada)");
         } catch (Exception ex) {
-            // Corpo do GitHub é acionável (ex.: 404 = repo inexistente ou sem acesso do token).
+            // The GitHub body is actionable (e.g. 404 = nonexistent repo or token without access).
             throw ProviderErrors.of("github", "issues", ex);
         }
     }

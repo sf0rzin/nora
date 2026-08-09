@@ -1,11 +1,11 @@
 /**
- * Relatório de reunião em Markdown — helper puro (sem DOM, sem fetch).
+ * Meeting report in Markdown — pure helper (no DOM, no fetch).
  *
- * `meetingToMarkdown(detail)` monta o relatório completo a partir do
- * MeetingDetail já carregado: título, data, tags, resumo, decisões, action
- * items, riscos, oportunidades, tópicos, Productivity Score e Confiança do
- * cliente (quando houver) + rodapé "Gerado pelo NORA". Usado pelo export
- * client-side do detalhe da reunião (download via Blob).
+ * `meetingToMarkdown(detail)` builds the full report from the already loaded
+ * MeetingDetail: title, date, tags, summary, decisions, action
+ * items, risks, opportunities, topics, Productivity Score and Customer
+ * confidence (when present) + the "Gerado pelo NORA" footer. Used by the
+ * client-side export of the meeting detail (download via Blob).
  */
 
 import type { MeetingDetail, Severity } from "@/lib/api/types";
@@ -47,7 +47,7 @@ function durationLabel(seconds?: number): string | null {
   return `${Math.round(seconds / 60)}min`;
 }
 
-/** Slug seguro pra nome de arquivo: minúsculas, sem acentos, hífens. */
+/** Filename-safe slug: lowercase, no accents, hyphens. */
 export function slugify(text: string): string {
   return text
     .normalize("NFD")
@@ -58,7 +58,7 @@ export function slugify(text: string): string {
     .slice(0, 60);
 }
 
-/** Nome do arquivo: `nora-reuniao-<slug>-<yyyy-mm-dd>.md` (data da reunião). */
+/** File name: `nora-reuniao-<slug>-<yyyy-mm-dd>.md` (meeting date). */
 export function meetingReportFileName(detail: MeetingDetail): string {
   const slug = slugify(detail.title) || "reuniao";
   const day =
@@ -66,7 +66,7 @@ export function meetingReportFileName(detail: MeetingDetail): string {
   return `nora-reuniao-${slug}-${day}.md`;
 }
 
-/** Gera o relatório completo da reunião em Markdown (GFM). */
+/** Generates the full meeting report in Markdown (GFM). */
 export function meetingToMarkdown(detail: MeetingDetail): string {
   const a = detail.analysis;
   const lines: string[] = [];

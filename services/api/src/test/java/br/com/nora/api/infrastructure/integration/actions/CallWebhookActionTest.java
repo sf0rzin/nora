@@ -22,10 +22,10 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/** Ação call_webhook: contrato do payload, guarda SSRF e propagação de falha. */
+/** call_webhook action: payload contract, SSRF guard and failure propagation. */
 class CallWebhookActionTest {
 
-    // ── Contrato do payload ──
+    // ── Payload contract ──
 
     @Test
     @SuppressWarnings("unchecked")
@@ -64,7 +64,7 @@ class CallWebhookActionTest {
                 .containsEntry("title", "Enviar proposta")
                 .containsEntry("assignee", "Ana")
                 .containsEntry("dueDate", "2026-06-20");
-        // Campos null OMITIDOS por item (assignee/dueDate sem valor).
+        // Null fields OMITTED per item (assignee/dueDate with no value).
         assertThat(items.get(1)).containsEntry("title", "Follow-up");
         assertThat(items.get(1)).doesNotContainKeys("assignee", "dueDate");
     }
@@ -80,11 +80,11 @@ class CallWebhookActionTest {
         assertThat(payload).doesNotContainKey("scores");
         Map<String, Object> meeting = (Map<String, Object>) payload.get("meeting");
         assertThat(meeting).doesNotContainKey("id");
-        // actionItems é sempre presente — lista vazia quando não há itens.
+        // actionItems is always present — empty list when there are no items.
         assertThat((List<?>) payload.get("actionItems")).isEmpty();
     }
 
-    // ── Validação de URL / guarda SSRF ──
+    // ── URL validation / SSRF guard ──
 
     @Test
     void urlObrigatoria_faltandoFalhaClaro() {
@@ -108,7 +108,7 @@ class CallWebhookActionTest {
 
     @Test
     void enderecosPrivadosLoopbackLinkLocalEMetadata_rejeitados() {
-        // IPs literais não disparam DNS — teste determinista.
+        // Literal IPs don't trigger DNS — deterministic test.
         List<String> bloqueadas =
                 List.of(
                         "https://127.0.0.1/hook",
@@ -135,7 +135,7 @@ class CallWebhookActionTest {
                 .doesNotThrowAnyException();
     }
 
-    // ── Execução (HTTP mockado) ──
+    // ── Execution (mocked HTTP) ──
 
     @Test
     void execute_sucessoRetornaStatusEManaHeaders() {

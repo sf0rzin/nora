@@ -1,16 +1,16 @@
-# Padrões de qualidade do backend (Java/Spring Boot)
+# Backend quality standards (Java/Spring Boot)
 
-> Configurações vivas em `services/api/`. Este README documenta as ferramentas obrigatórias.
+> Live configuration in `services/api/`. This README documents the mandatory tooling.
 
-## Ferramentas
+## Tools
 
 - **Build**: Maven (Maven Wrapper `./mvnw`).
-- **Formatador**: [Spotless](https://github.com/diffplug/spotless) com perfil **Google Java Format** (AOSP).
-- **Lint estático**: Checkstyle (perfil enxuto) + Error Prone via Maven.
-- **Testes**: JUnit 5 + AssertJ + Spring Boot Test + Testcontainers (Postgres real para integração).
-- **Cobertura**: JaCoCo, mínimo 70% de linhas em `application` e `domain`.
+- **Formatter**: [Spotless](https://github.com/diffplug/spotless) with the **Google Java Format** profile (AOSP).
+- **Static lint**: Checkstyle (lean profile) + Error Prone via Maven.
+- **Tests**: JUnit 5 + AssertJ + Spring Boot Test + Testcontainers (real Postgres for integration).
+- **Coverage**: JaCoCo, minimum 70% of lines in `application` and `domain`.
 
-## Comandos
+## Commands
 
 ```bash
 ./mvnw spotless:apply       # formatar
@@ -18,17 +18,17 @@
 ./mvnw verify               # build + testes + cobertura
 ```
 
-## Plugins esperados no `pom.xml`
+## Plugins expected in `pom.xml`
 
 - `spring-boot-maven-plugin`
-- `spotless-maven-plugin` (com `googleJavaFormat()`)
-- `maven-checkstyle-plugin` (config em `checkstyle.xml`)
+- `spotless-maven-plugin` (with `googleJavaFormat()`)
+- `maven-checkstyle-plugin` (config in `checkstyle.xml`)
 - `jacoco-maven-plugin`
 - `flyway-maven-plugin`
 
-## Regras de PR
+## PR rules
 
-1. `spotless:check` precisa passar.
-2. Sem warnings novos do Checkstyle.
-3. Cobertura não pode cair em relação à `main`.
-4. Toda nova entidade tenant-bound exige teste de isolamento.
+1. `spotless:check` must pass.
+2. No new Checkstyle warnings.
+3. Coverage must not drop relative to `main`.
+4. Every new tenant-bound entity requires an isolation test.

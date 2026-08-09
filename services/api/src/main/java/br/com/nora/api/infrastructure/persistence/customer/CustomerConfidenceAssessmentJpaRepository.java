@@ -14,19 +14,19 @@ public interface CustomerConfidenceAssessmentJpaRepository
             UUID meetingId, UUID tenantId);
 
     /**
-     * Avaliacoes anteriores de uma conta (exclui a reuniao corrente) ordenadas por {@code
-     * created_at} desc. O service usa apenas a primeira (mais recente) para calcular o trend; usar
-     * uma lista evita acoplar {@code Pageable}/{@code Optional} aqui — a borda fina fica no
-     * adapter.
+     * Previous assessments for an account (excludes the current meeting) ordered by {@code
+     * created_at} desc. The service uses only the first (most recent) one to compute the trend;
+     * using a list avoids coupling {@code Pageable}/{@code Optional} here — the thin edge stays in
+     * the adapter.
      */
     List<CustomerConfidenceAssessmentJpaEntity>
             findByCustomerAccountIdAndTenantIdAndMeetingIdNotOrderByCreatedAtDesc(
                     UUID customerAccountId, UUID tenantId, UUID meetingId);
 
     /**
-     * Apaga o assessment de um par (meeting, account) via native SQL para que o ON DELETE CASCADE
-     * do Postgres remova signals/objections. Evita o ciclo de UPDATE assessment_id=NULL que o
-     * Hibernate tentaria com orphanRemoval+@JoinColumn unidirecional.
+     * Deletes the assessment of a (meeting, account) pair via native SQL so that Postgres' ON
+     * DELETE CASCADE removes signals/objections. Avoids the UPDATE assessment_id=NULL round that
+     * Hibernate would attempt with orphanRemoval + unidirectional @JoinColumn.
      */
     @Modifying
     @Query(

@@ -1,7 +1,7 @@
--- V010: convites de usuario por e-mail corporativo (US06, ADR 0011).
--- Token UUID em texto, secret never returned em listagens. Status managed pelo InvitationService.
--- Idempotencia (mesmo email com PENDING valido) e on-read expire sao implementados na camada
--- de aplicacao; o schema apenas garante constraints e indices para query rapida.
+-- V010: user invitations by corporate e-mail (US06, ADR 0011).
+-- UUID token in text, secret never returned in listings. Status managed by the InvitationService.
+-- Idempotency (same email with a valid PENDING) and on-read expire are implemented in the
+-- application layer; the schema only guarantees constraints and indexes for fast queries.
 
 CREATE TABLE iam_user_invitations (
     id                UUID PRIMARY KEY,

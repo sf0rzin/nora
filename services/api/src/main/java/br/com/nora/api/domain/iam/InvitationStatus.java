@@ -1,13 +1,13 @@
 package br.com.nora.api.domain.iam;
 
 /**
- * Status do convite de usuario (US06, ADR 0011).
+ * User invitation status (US06, ADR 0011).
  *
  * <ul>
- *   <li>{@code PENDING} — criado, ainda dentro do prazo, nao revogado.
- *   <li>{@code ACCEPTED} — aceito; usuario foi criado e anexado aos grupos.
- *   <li>{@code EXPIRED} — passou de expiresAt sem aceite.
- *   <li>{@code REVOKED} — cancelado por quem tem permissao IAM antes do aceite.
+ *   <li>{@code PENDING} — created, still within the deadline, not revoked.
+ *   <li>{@code ACCEPTED} — accepted; the user was created and attached to the groups.
+ *   <li>{@code EXPIRED} — went past expiresAt without being accepted.
+ *   <li>{@code REVOKED} — cancelled by someone with IAM permission before the accept.
  * </ul>
  */
 public enum InvitationStatus {

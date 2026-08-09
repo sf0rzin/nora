@@ -5,8 +5,8 @@ import type { ServiceHealth } from "@/lib/contracts";
 export const dynamic = "force-dynamic";
 
 export default async function TelemetriaPage() {
-  // Ver nota em app/page.tsx: o layout não reroda em navegação RSC, então cada leitura
-  // gateia a si própria.
+  // See the note in app/page.tsx: the layout does not re-run on RSC navigation, so each read
+  // gates itself.
   await requireAccess();
 
   const [cost, health, business] = await Promise.all([getCost(), getHealth(), getBusiness()]);

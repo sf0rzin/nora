@@ -13,11 +13,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Endpoints de privacidade/LGPD (ADR 0029). Escopados por tenant do JWT.
+ * Privacy/LGPD endpoints (ADR 0029). Scoped by the tenant from the JWT.
  *
- * <p>Direito ao esquecimento: apaga DEFINITIVAMENTE um meeting (hard-delete físico, distinto do
- * soft-delete default da ADR 0021). O cascade do banco purga transcript ({@code raw_text} = PII),
- * participants, tags e análises.
+ * <p>Right to be forgotten: PERMANENTLY deletes a meeting (physical hard-delete, distinct from the
+ * default soft-delete of ADR 0021). The database cascade purges transcript ({@code raw_text} =
+ * PII), participants, tags and analyses.
  */
 @RestController
 @RequestMapping("/privacy")
@@ -36,9 +36,9 @@ public class PrivacyController {
     }
 
     /**
-     * Apaga definitivamente o meeting e todo o PII vinculado. 204 em sucesso; 404 se não existir no
-     * tenant (não vaza existência cross-tenant). Exige {@code meeting:update} (mesmo gate da
-     * remoção destrutiva de goal).
+     * Permanently deletes the meeting and all the linked PII. 204 on success; 404 if it does not
+     * exist in the tenant (does not leak cross-tenant existence). Requires {@code meeting:update}
+     * (same gate as the destructive goal removal).
      */
     @DeleteMapping("/meetings/{id}")
     public ResponseEntity<Void> eraseMeeting(@PathVariable("id") UUID id) {

@@ -23,31 +23,32 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Prova de enforcement REAL do RLS completo (V016/V017/V019, ADR 0002/0019/0026).
+ * Proof of REAL enforcement of the full RLS (V016/V017/V019, ADR 0002/0019/0026).
  *
- * <p><b>Por que este teste é diferente dos outros ITs:</b> o app (e o {@code JdbcTemplate}
- * autowired) conecta como o superuser do container, que <b>bypassa RLS por default</b> — então as
- * policies ficam inertes no caminho normal e os demais ITs seguem sem mudança. Para exercitar o
- * enforce de verdade, este teste:
+ * <p><b>Why this test differs from the other ITs:</b> the app (and the autowired {@code
+ * JdbcTemplate}) connects as the container superuser, which <b>bypasses RLS by default</b> — so the
+ * policies stay inert on the normal path and the remaining ITs carry on unchanged. To exercise
+ * enforcement for real, this test:
  *
  * <ol>
- *   <li>deixa o Flyway (via boot do app) criar todas as policies, incluindo as de V019;
- *   <li>semeia 2 tenants com {@code transcripts} e {@code meeting_action_items} via a conexão owner
- *       (que bypassa RLS);
- *   <li>cria um role {@code rls_probe} NOBYPASSRLS, dá grants e abre uma conexão JDBC dedicada como
- *       ele — replicando o que {@code nora_app} faz em prod sob {@code NORA_RLS_ENFORCE=true};
- *   <li>seta o GUC {@code nora.current_tenant_id} = tenant A e afirma que A só enxerga as linhas de
- *       A, nunca as de B (e vice-versa). Cobre {@code transcripts} (raw_text = PII em repouso, a
- *       tabela que V019 fechou com prioridade) e {@code meeting_action_items}.
+ *   <li>lets Flyway (via the app boot) create all the policies, including those from V019;
+ *   <li>seeds 2 tenants with {@code transcripts} and {@code meeting_action_items} through the owner
+ *       connection (which bypasses RLS);
+ *   <li>creates a NOBYPASSRLS {@code rls_probe} role, gives it grants and opens a dedicated JDBC
+ *       connection as it — replicating what {@code nora_app} does in prod under {@code
+ *       NORA_RLS_ENFORCE=true};
+ *   <li>sets the GUC {@code nora.current_tenant_id} = tenant A and asserts that A only sees A's
+ *       rows, never B's (and vice versa). Covers {@code transcripts} (raw_text = PII at rest, the
+ *       table V019 closed as a priority) and {@code meeting_action_items}.
  * </ol>
  *
- * <p>Sem V019, este teste FALHARIA: {@code transcripts}/{@code meeting_action_items} não tinham
- * policy, então o role NOBYPASSRLS leria tudo cross-tenant.
+ * <p>Without V019, this test WOULD FAIL: {@code transcripts}/{@code meeting_action_items} had no
+ * policy, so the NOBYPASSRLS role would read everything cross-tenant.
  */
-// RANDOM_PORT (não NONE): o contexto tem SecurityFilterChain beans (SecurityConfig +
-// PlatformSecurityConfig) que dependem do HttpSecurity, que só existe num contexto web. Com NONE o
-// contexto nem sobe. O teste não faz HTTP — só precisa do app bootado (Flyway cria as policies) +
-// JDBC direto como o role NOBYPASSRLS. Alinhado aos demais ITs.
+// RANDOM_PORT (not NONE): the context has SecurityFilterChain beans (SecurityConfig +
+// PlatformSecurityConfig) that depend on HttpSecurity, which only exists in a web context. With
+// NONE the context does not even come up. The test does no HTTP — it only needs the app booted
+// (Flyway creates the policies) + direct JDBC as the NOBYPASSRLS role. Aligned with the other ITs.
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @Testcontainers
@@ -82,8 +83,8 @@ class RlsEnforcementIntegrationTest {
     }
 
     /**
-     * Semeia dados como owner (bypassa RLS) + cria o role NOBYPASSRLS. Idempotente entre os testes
-     * desta classe (flag {@link #seeded}).
+     * Seeds data as owner (bypasses RLS) + creates the NOBYPASSRLS role. Idempotent across the
+     * tests in this class (flag {@link #seeded}).
      */
     private void seedIfNeeded() {
         if (seeded) {
@@ -95,7 +96,7 @@ class RlsEnforcementIntegrationTest {
         seedTenant(tenantA, "Tenant A RLS", "acme-rls", "Owner A", "ownera@rls.dev");
         seedTenant(tenantB, "Tenant B RLS", "globex-rls", "Owner B", "ownerb@rls.dev");
 
-        // Role NOBYPASSRLS + grants — espelha o provisionamento de nora_app (R001).
+        // NOBYPASSRLS role + grants — mirrors the provisioning of nora_app (R001).
         jdbc.execute("DROP ROLE IF EXISTS " + PROBE_ROLE);
         jdbc.execute(
                 "CREATE ROLE "
@@ -113,7 +114,7 @@ class RlsEnforcementIntegrationTest {
         seeded = true;
     }
 
-    /** Cria tenant + user + meeting + transcript + action_item, tudo via owner (RLS inerte). */
+    /** Creates tenant + user + meeting + transcript + action_item, all via owner (RLS inert). */
     private void seedTenant(
             UUID tenantId, String tenantName, String slug, String ownerName, String ownerEmail) {
         jdbc.update(
@@ -165,10 +166,10 @@ class RlsEnforcementIntegrationTest {
     void transcriptsIsolatedUnderEnforce() throws Exception {
         seedIfNeeded();
 
-        // Owner enxerga as duas (RLS bypass) — sanidade da semeadura.
+        // Owner sees both (RLS bypass) — sanity check on the seeding.
         assertThat(countAsOwner("transcripts")).isGreaterThanOrEqualTo(2);
 
-        // Role NOBYPASSRLS com GUC = tenant A só enxerga a transcript de A.
+        // NOBYPASSRLS role with GUC = tenant A only sees A's transcript.
         try (Connection conn = probeConnection()) {
             setTenant(conn, tenantA);
             assertThat(countTranscripts(conn)).isEqualTo(1);
@@ -176,7 +177,7 @@ class RlsEnforcementIntegrationTest {
                     .allSatisfy(t -> assertThat(t).contains("Tenant A"))
                     .noneSatisfy(t -> assertThat(t).contains("Tenant B"));
 
-            // Troca de tenant na mesma conexão: agora só vê B.
+            // Tenant switch on the same connection: now it only sees B.
             setTenant(conn, tenantB);
             assertThat(countTranscripts(conn)).isEqualTo(1);
             assertThat(rawTextsVisible(conn)).allSatisfy(t -> assertThat(t).contains("Tenant B"));
@@ -200,7 +201,7 @@ class RlsEnforcementIntegrationTest {
     void noTenantGucIsFailClosed() throws Exception {
         seedIfNeeded();
 
-        // Sem GUC setado, o role NOBYPASSRLS não enxerga NENHUMA linha (fail-closed).
+        // With no GUC set, the NOBYPASSRLS role sees NO rows at all (fail-closed).
         try (Connection conn = probeConnection()) {
             assertThat(countTranscripts(conn)).isZero();
             assertThat(countActionItems(conn)).isZero();

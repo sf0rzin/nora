@@ -8,7 +8,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Servico de contexto comercial do tenant (US14/US30). 1-1 com tenants. */
+/** Service for the tenant's commercial context (US14/US30). 1-1 with tenants. */
 @Service
 public class TenantContextService {
 
@@ -80,7 +80,7 @@ public class TenantContextService {
                 .toList();
     }
 
-    /** Comando de upsert (campos opcionais aceitam null). */
+    /** Upsert command (optional fields accept null). */
     public record UpsertCommand(
             String companyName,
             String industry,

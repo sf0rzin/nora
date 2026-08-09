@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Sidecar fake para testes E2E do NORA Desktop.
-Não chama a Azure — emite transcrições pré-definidas via NDJSON stdout.
+Fake sidecar for NORA Desktop E2E tests.
+Does not call Azure — emits predefined transcripts via NDJSON stdout.
 """
 
 import json

@@ -1,6 +1,6 @@
 package br.com.nora.api.application.identity;
 
-/** Excecoes do dominio de identidade que viram respostas HTTP padronizadas. */
+/** Exceptions of the identity domain that turn into standardized HTTP responses. */
 public sealed class AuthException extends RuntimeException
         permits AuthException.EmailAlreadyTaken,
                 AuthException.InvalidCredentials,
@@ -47,9 +47,9 @@ public sealed class AuthException extends RuntimeException
     }
 
     /**
-     * Refresh token nao encontrado, expirado ou revogado. Distinto de {@link TokenInvalid} (usado
-     * pra one-time tokens de e-mail/reset) porque dispara um fluxo de logout no client, nao um 400
-     * com retry humano.
+     * Refresh token not found, expired or revoked. Distinct from {@link TokenInvalid} (used for
+     * one-time e-mail/reset tokens) because it triggers a logout flow in the client, not a 400 with
+     * a human retry.
      */
     public static final class RefreshTokenInvalid extends AuthException {
         public RefreshTokenInvalid() {
@@ -70,9 +70,9 @@ public sealed class AuthException extends RuntimeException
     }
 
     /**
-     * Exclusao de conta bloqueada: o tenant tem outros usuarios (Enterprise). A exclusao via
-     * configuracoes so cobre o tenant pessoal do Core (1 usuario); workspaces compartilhados exigem
-     * fluxo administrativo proprio.
+     * Account deletion blocked: the tenant has other users (Enterprise). Deletion via settings only
+     * covers the Core personal tenant (1 user); shared workspaces require their own administrative
+     * flow.
      */
     public static final class AccountNotPersonal extends AuthException {
         public AccountNotPersonal() {

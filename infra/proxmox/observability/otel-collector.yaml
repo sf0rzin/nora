@@ -1,66 +1,66 @@
 # NORA — OpenTelemetry Collector
 # =============================================================================
-# Substitui a perna de TRACES + MÉTRICAS do Application Insights.
-# NÃO substitui a perna de LOGS: essa é do Alloy (ver config.alloy). Um Collector
-# é write-only e não faz tail de stdout de container.
+# Replaces the TRACES + METRICS leg of Application Insights.
+# Does NOT replace the LOGS leg: that one belongs to Alloy (see config.alloy). A Collector
+# is write-only and does not tail container stdout.
 #
-# Mapa 1:1 com o que o App Insights fazia:
+# 1:1 map with what App Insights did:
 #
-#   applicationinsights-agent-3.x.jar  ->  opentelemetry-javaagent.jar + este arquivo
-#   endpoint Breeze da connection str  ->  otlp receiver (4317 grpc / 4318 http)
+#   applicationinsights-agent-3.x.jar  ->  opentelemetry-javaagent.jar + this file
+#   Breeze endpoint of the connection str -> otlp receiver (4317 grpc / 4318 http)
 #   "Live Metrics" / Metrics Explorer  ->  prometheusremotewrite -> Prometheus -> Grafana
-#   "Transaction Search" / App Map     ->  NÃO EXISTE HOJE (sem Tempo na stack, ver §TRACES)
+#   "Transaction Search" / App Map     ->  DOES NOT EXIST TODAY (no Tempo in the stack, see §TRACES)
 #   Query REST API (KQL)               ->  Prometheus Query API (PrometheusHealthSource)
 #
-# ATENÇÃO — a troca do JAR já está feita NO FONTE, mas depende da imagem publicada:
-# o agent do App Insights exportava para o endpoint Breeze da APPLICATIONINSIGHTS_CONNECTION_STRING
-# e IGNORAVA OTEL_EXPORTER_OTLP_ENDPOINT — trocar só a env do compose não moveria um byte para cá.
-# Por isso o services/api/Dockerfile já baixa o opentelemetry-javaagent.jar (ARG
-# OTEL_AGENT_VERSION=2.30.0, linhas 30-33) e o carrega no JAVA_TOOL_OPTIONS (linha 49).
+# WATCH OUT — the JAR swap is already done IN THE SOURCE, but it depends on the published image:
+# the App Insights agent exported to the Breeze endpoint of APPLICATIONINSIGHTS_CONNECTION_STRING
+# and IGNORED OTEL_EXPORTER_OTLP_ENDPOINT — changing only the compose env would not move a byte here.
+# That is why services/api/Dockerfile already downloads opentelemetry-javaagent.jar (ARG
+# OTEL_AGENT_VERSION=2.30.0, lines 30-33) and loads it in JAVA_TOOL_OPTIONS (line 49).
 #
-# O que ainda pode deixar este Collector ocioso NÃO é o código, é a TAG em uso: se o
-# API_TAG apontar para uma imagem construída ANTES dessa troca, o container em execução
-# ainda carrega o agent antigo e não exporta nada para cá. O último build-images em main
-# com deploy-apps OK foi 2026-07-06. Confirme com:
+# What can still leave this Collector idle is NOT the code, it is the TAG in use: if
+# API_TAG points at an image built BEFORE that swap, the running container still carries
+# the old agent and exports nothing here. The last build-images on main with deploy-apps
+# OK was 2026-07-06. Confirm with:
 #
 #     docker compose exec api sh -c 'echo $JAVA_TOOL_OPTIONS'
-#     # tem que conter -javaagent:/app/opentelemetry-javaagent.jar
+#     # it has to contain -javaagent:/app/opentelemetry-javaagent.jar
 #
-# Sintoma de tag velha: este arquivo correto, o collector healthy e o dashboard da API
-# em "No data" — sem um único erro em lugar nenhum.
+# Symptom of an old tag: this file correct, the collector healthy and the API dashboard
+# on "No data" — without a single error anywhere.
 #
-# A API também NÃO tem micrometer-registry-prometheus no pom.xml e o actuator só expõe
-# `health,info` (application.yml:51-55). Ou seja: não existe /actuator/prometheus para o
-# Prometheus raspar. Todo métrico da API depende deste caminho de push OTLP.
+# The API also does NOT have micrometer-registry-prometheus in pom.xml and the actuator only
+# exposes `health,info` (application.yml:51-55). That is: there is no /actuator/prometheus for
+# Prometheus to scrape. Every API metric depends on this OTLP push path.
 
 receivers:
   otlp:
     protocols:
       grpc:
-        # CRÍTICO: desde o collector 0.104 o default destes endpoints é `localhost:<porta>`
-        # (feature gate component.UseLocalHostAsDefaultHost). Dentro de um container isso
-        # significa "só o próprio container" e todo export de api/worker/web/admin dá
-        # connection refused EM SILÊNCIO do lado do collector. Tem que ser 0.0.0.0.
+        # CRITICAL: since collector 0.104 the default of these endpoints is `localhost:<port>`
+        # (feature gate component.UseLocalHostAsDefaultHost). Inside a container that
+        # means "only the container itself" and every export from api/worker/web/admin gets
+        # connection refused SILENTLY on the collector's side. It has to be 0.0.0.0.
         endpoint: 0.0.0.0:4317
-        # A API manda via grpc (OTEL_EXPORTER_OTLP_PROTOCOL: grpc no compose).
+        # The API sends via grpc (OTEL_EXPORTER_OTLP_PROTOCOL: grpc in the compose).
         max_recv_msg_size_mib: 8
       http:
-        # 4318 existe para os apps Node (web/admin) quando/se ganharem SDK: o
-        # @vercel/otel e o SDK Node usam http/protobuf por default, não grpc.
+        # 4318 exists for the Node apps (web/admin) when/if they get an SDK:
+        # @vercel/otel and the Node SDK use http/protobuf by default, not grpc.
         endpoint: 0.0.0.0:4318
 
   # ---------------------------------------------------------------------------
-  # OPCIONAL (desligado) — métricas de container por docker_stats
+  # OPTIONAL (off) — per-container metrics via docker_stats
   # ---------------------------------------------------------------------------
-  # Isto é o que dá CPU/memória/restart por container, o mais próximo que existe do
-  # "Container Apps -> Metrics" do Azure. NÃO está ligado porque o docker-compose.yml
-  # não monta o socket no otel-collector. Para habilitar, adicione ao serviço:
+  # This is what gives CPU/memory/restarts per container, the closest thing there is to
+  # Azure's "Container Apps -> Metrics". It is NOT on because docker-compose.yml
+  # does not mount the socket into otel-collector. To enable, add to the service:
   #
   #     volumes:
   #       - /var/run/docker.sock:/var/run/docker.sock:ro
   #       - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
   #
-  # e inclua `docker_stats` no pipeline metrics abaixo.
+  # and include `docker_stats` in the metrics pipeline below.
   #
   # docker_stats:
   #   endpoint: unix:///var/run/docker.sock
@@ -76,21 +76,21 @@ receivers:
   #       enabled: true
 
 processors:
-  # memory_limiter TEM que ser o primeiro processor de cada pipeline. Ele aplica
-  # backpressure no receiver antes do collector ser morto por OOM. Sem ele, um pico
-  # de telemetria derruba o container e você perde o sinal justamente na hora do
-  # incidente — que é exatamente quando você precisa dele.
-  # Dimensionado para caber com folga: o compose não impõe deploy.resources ao
-  # collector, então este é o teto de fato.
+  # memory_limiter MUST be the first processor of every pipeline. It applies
+  # backpressure on the receiver before the collector gets killed by OOM. Without it, a
+  # telemetry spike takes the container down and you lose the signal right at the moment
+  # of the incident — which is exactly when you need it.
+  # Sized to fit with room to spare: the compose does not impose deploy.resources on the
+  # collector, so this is the de facto cap.
   memory_limiter:
     check_interval: 1s
     limit_mib: 384
     spike_limit_mib: 96
 
-  # Carimba host.name / os.type no resource. Substitui as colunas `Computer` e
-  # `_ResourceId` que o Log Analytics injetava sozinho em toda linha.
-  # Detector `docker` de propósito FORA: ele exige o socket do Docker, que este
-  # container não monta (ver receiver docker_stats acima). `system` não exige nada.
+  # Stamps host.name / os.type on the resource. Replaces the `Computer` and
+  # `_ResourceId` columns that Log Analytics injected on its own into every line.
+  # The `docker` detector is deliberately OUT: it requires the Docker socket, which this
+  # container does not mount (see the docker_stats receiver above). `system` requires nothing.
   resourcedetection:
     detectors: [env, system]
     system:
@@ -103,8 +103,8 @@ processors:
     timeout: 5s
     override: false
 
-  # Agrupa antes de exportar. Reduz drasticamente o número de writes no Prometheus.
-  # send_batch_max_size limita o tamanho da request de remote-write.
+  # Groups before exporting. Drastically reduces the number of writes to Prometheus.
+  # send_batch_max_size limits the size of the remote-write request.
   batch:
     timeout: 10s
     send_batch_size: 1024
@@ -112,34 +112,34 @@ processors:
 
 exporters:
   # ---------------------------------------------------------------------------
-  # MÉTRICAS -> Prometheus (remote-write)
+  # METRICS -> Prometheus (remote-write)
   # ---------------------------------------------------------------------------
-  # Push, não pull: os apps não expõem /metrics (a API nem tem o registry Micrometer),
-  # então o Prometheus não teria o que raspar. O receiver de remote-write é ligado
-  # pela flag --web.enable-remote-write-receiver no docker-compose.yml:476.
+  # Push, not pull: the apps do not expose /metrics (the API does not even have the
+  # Micrometer registry), so Prometheus would have nothing to scrape. The remote-write
+  # receiver is turned on by the --web.enable-remote-write-receiver flag in docker-compose.yml:476.
   #
-  # Como os labels saem do outro lado (isto define as queries do dashboard):
-  #   resource service.name        -> label `job`       (ex.: job="nora-api")
+  # How the labels come out on the other side (this defines the dashboard queries):
+  #   resource service.name        -> label `job`       (e.g. job="nora-api")
   #   resource service.instance.id -> label `instance`
-  #   demais resource attributes   -> só na série `target_info`
-  # Por isso o dashboard filtra por `job=~"$job"` e não por `service_name`.
+  #   other resource attributes    -> only on the `target_info` series
+  # That is why the dashboard filters by `job=~"$job"` and not by `service_name`.
   #
-  # O javaagent gera um service.instance.id novo (UUID) a cada boot da JVM, então cada
-  # deploy cria uma série nova. Com 1 réplica e retenção de 30d isso é ruído irrelevante,
-  # mas as queries do dashboard sempre agregam por `job` para não quebrar no rollout.
+  # The javaagent generates a new service.instance.id (UUID) on every JVM boot, so each
+  # deploy creates a new series. With 1 replica and 30d retention that is irrelevant noise,
+  # but the dashboard queries always aggregate by `job` so they do not break during the rollout.
   #
-  # Requisito silencioso: remote-write só aceita temporalidade CUMULATIVE. O javaagent 2.x
-  # já exporta cumulative por default — não sete OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
-  # ou as métricas são descartadas sem erro visível no app.
+  # Silent requirement: remote-write only accepts CUMULATIVE temporality. The javaagent 2.x
+  # already exports cumulative by default — do not set OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=delta
+  # or the metrics are dropped with no visible error in the app.
   prometheusremotewrite:
     endpoint: http://prometheus:9090/api/v1/write
     tls:
-      insecure: true   # tráfego não sai da bridge `internal` (internal: true)
+      insecure: true   # traffic never leaves the `internal` bridge (internal: true)
     add_metric_suffixes: true      # http.server.request.duration -> http_server_request_duration_seconds
     target_info:
-      enabled: true                # série target_info com host.name, os.type, service.version
+      enabled: true                # target_info series with host.name, os.type, service.version
     resource_to_telemetry_conversion:
-      enabled: false               # true explodiria a cardinalidade com host.name em toda série
+      enabled: false               # true would blow up cardinality with host.name on every series
     remote_write_queue:
       enabled: true
       num_consumers: 5
@@ -148,17 +148,17 @@ exporters:
       source: otel-collector
 
   # ---------------------------------------------------------------------------
-  # LOGS -> Loki (OTLP nativo)
+  # LOGS -> Loki (native OTLP)
   # ---------------------------------------------------------------------------
-  # O exporter `loki` foi DEPRECADO em 0.107 e REMOVIDO do contrib pouco depois.
-  # O caminho suportado hoje é otlphttp contra o endpoint OTLP nativo do Loki 3.x:
-  # o exporter concatena /v1/logs, então a base é http://loki:3100/otlp.
+  # The `loki` exporter was DEPRECATED in 0.107 and REMOVED from contrib shortly after.
+  # The supported path today is otlphttp against Loki 3.x's native OTLP endpoint:
+  # the exporter appends /v1/logs, so the base is http://loki:3100/otlp.
   #
-  # HOJE ESTE EXPORTER NÃO RECEBE NADA: o compose seta OTEL_LOGS_EXPORTER: none na API
-  # (docker-compose.yml:301) e os logs entram no Loki pelo Alloy, lendo o socket do Docker.
-  # A pipeline existe para que ligar OTEL_LOGS_EXPORTER=otlp seja uma troca de env var,
-  # sem mexer neste arquivo. Se você ligar, saiba que vai DUPLICAR: a mesma linha chega
-  # pelo SDK e pelo stdout via Alloy.
+  # TODAY THIS EXPORTER RECEIVES NOTHING: the compose sets OTEL_LOGS_EXPORTER: none on the
+  # API (docker-compose.yml:301) and logs enter Loki through Alloy, reading the Docker socket.
+  # The pipeline exists so that turning OTEL_LOGS_EXPORTER=otlp on is an env var swap,
+  # without touching this file. If you turn it on, know that it will DUPLICATE: the same line
+  # arrives via the SDK and via stdout through Alloy.
   otlphttp/loki:
     endpoint: http://loki:3100/otlp
     tls:
@@ -166,19 +166,19 @@ exporters:
     compression: gzip
 
   # ---------------------------------------------------------------------------
-  # TRACES -> lugar nenhum (ver §TRACES no bloco service)
+  # TRACES -> nowhere (see §TRACES in the service block)
   # ---------------------------------------------------------------------------
-  # verbosity: basic imprime só contadores agregados, não o conteúdo dos spans.
-  # Não use `detailed` aqui: o json-file driver do compose tem max-size 20m/5 arquivos
-  # e um trace verboso enche isso em minutos.
+  # verbosity: basic prints only aggregated counters, not the content of the spans.
+  # Do not use `detailed` here: the compose's json-file driver has max-size 20m/5 files
+  # and a verbose trace fills that in minutes.
   debug:
     verbosity: basic
     sampling_initial: 2
     sampling_thereafter: 500
 
 extensions:
-  # Alvo do healthcheck do compose (docker-compose.yml:461-465, wget em :13133/).
-  # Mesma pegadinha do localhost dos receivers: precisa de 0.0.0.0 explícito.
+  # Target of the compose healthcheck (docker-compose.yml:461-465, wget on :13133/).
+  # Same localhost gotcha as the receivers: it needs an explicit 0.0.0.0.
   health_check:
     endpoint: 0.0.0.0:13133
     path: /
@@ -191,35 +191,35 @@ service:
       level: info
     metrics:
       level: normal
-      # Métricas internas do próprio collector (otelcol_receiver_accepted_*,
-      # otelcol_exporter_send_failed_*). O job `otel-collector` do prometheus.yml
-      # raspa exatamente esta porta — sem 0.0.0.0 aqui aquele scrape dá
-      # connection refused e você fica cego para perda de telemetria.
+      # The collector's own internal metrics (otelcol_receiver_accepted_*,
+      # otelcol_exporter_send_failed_*). The `otel-collector` job in prometheus.yml
+      # scrapes exactly this port — without 0.0.0.0 here that scrape gets
+      # connection refused and you go blind to telemetry loss.
       address: 0.0.0.0:8888
 
   pipelines:
     # -------------------------------------------------------------------------
-    # TRACES — recebidos e DESCARTADOS. Isto não é um bug, é o estado real.
+    # TRACES — received and DISCARDED. This is not a bug, it is the real state.
     # -------------------------------------------------------------------------
-    # Não existe backend de traces nesta stack: o docker-compose.yml não tem Tempo,
-    # Jaeger nem equivalente. O "Transaction Search" / "Application Map" / "End-to-end
-    # transaction details" do App Insights NÃO tem substituto hoje. Isso é regressão
-    # de funcionalidade, não paridade.
+    # There is no traces backend in this stack: docker-compose.yml has no Tempo,
+    # no Jaeger and no equivalent. App Insights' "Transaction Search" / "Application Map" /
+    # "End-to-end transaction details" has NO replacement today. That is a functionality
+    # regression, not parity.
     #
-    # A pipeline existe mesmo assim porque o compose já aponta OTEL_EXPORTER_OTLP_ENDPOINT
-    # de quatro serviços para cá. Sem uma pipeline de traces registrada, o collector
-    # devolve erro em todo export e os apps enchem o log de falha de exportação.
+    # The pipeline exists anyway because the compose already points OTEL_EXPORTER_OTLP_ENDPOINT
+    # of four services here. Without a registered traces pipeline, the collector
+    # returns an error on every export and the apps fill the log with export failures.
     #
-    # Para fechar a lacuna, adicione um serviço `tempo` ao compose e troque `debug` por:
+    # To close the gap, add a `tempo` service to the compose and swap `debug` for:
     #
     #   otlp/tempo:
     #     endpoint: tempo:4317
     #     tls:
     #       insecure: true
     #
-    # Alternativa sem Tempo (traces viram RED metrics em vez de sumirem): o connector
-    # `spanmetrics`. Vale principalmente pelos spans de banco, que não aparecem em
-    # http.server.request.duration:
+    # Alternative without Tempo (traces become RED metrics instead of vanishing): the
+    # `spanmetrics` connector. Mostly worth it for the database spans, which do not show up
+    # in http.server.request.duration:
     #
     #   connectors:
     #     spanmetrics:
@@ -231,26 +231,26 @@ service:
     #         - name: http.response.status_code
     #       metrics_flush_interval: 30s
     #
-    #   ... e então traces.exporters: [debug, spanmetrics] + metrics.receivers: [otlp, spanmetrics]
+    #   ... and then traces.exporters: [debug, spanmetrics] + metrics.receivers: [otlp, spanmetrics]
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, batch]
       exporters: [debug]
 
     # -------------------------------------------------------------------------
-    # MÉTRICAS — a perna que realmente funciona
+    # METRICS — the leg that actually works
     # -------------------------------------------------------------------------
-    # Fonte hoje: SÓ a API (javaagent OTel). worker, web e admin têm
-    # OTEL_EXPORTER_OTLP_ENDPOINT setado no compose mas NÃO têm SDK instalado —
-    # a env var não faz nada sozinha. Ver o README da pasta.
+    # Source today: ONLY the API (OTel javaagent). worker, web and admin have
+    # OTEL_EXPORTER_OTLP_ENDPOINT set in the compose but do NOT have an SDK installed —
+    # the env var does nothing on its own. See the folder's README.
     metrics:
       receivers: [otlp]
-      # inclua docker_stats aqui se montar o socket:  [otlp, docker_stats]
+      # include docker_stats here if you mount the socket:  [otlp, docker_stats]
       processors: [memory_limiter, resourcedetection, batch]
       exporters: [prometheusremotewrite]
 
     # -------------------------------------------------------------------------
-    # LOGS — ocioso por design (o caminho de produção é Alloy -> Loki)
+    # LOGS — idle by design (the production path is Alloy -> Loki)
     # -------------------------------------------------------------------------
     logs:
       receivers: [otlp]

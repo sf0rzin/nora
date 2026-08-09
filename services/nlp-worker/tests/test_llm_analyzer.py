@@ -1,7 +1,7 @@
-"""Testes do LLM analyzer com mock do cliente LLM.
+"""Tests for the LLM analyzer with a mocked LLM client.
 
-Valida o pipeline completo (prompt loading -> tenant context injection ->
-LLM call -> Pydantic validation) sem custo real de API.
+Validates the full pipeline (prompt loading -> tenant context injection ->
+LLM call -> Pydantic validation) without real API cost.
 """
 
 from __future__ import annotations
@@ -217,9 +217,9 @@ def test_analyze_falls_back_to_json_mode(MockClient):
 
 @patch("nora_nlp.services.llm_analyzer.LlmClient")
 def test_analyze_sanitizes_pii_in_tenant_context_glossary(MockClient):
-    """Regressao: campo `meaning` do glossario era ignorado (codigo iterava sobre
-    `definition`, que nao existe no modelo). PII colado pelo tenant chegava cru ao
-    LLM via glossary, violando ADR 0012.
+    """Regression: the glossary `meaning` field was ignored (the code iterated over
+    `definition`, which does not exist in the model). PII pasted by the tenant reached
+    the LLM raw via glossary, violating ADR 0012.
     """
     mock_instance = MagicMock()
     mock_instance.chat_structured.return_value = (json.dumps(_FAKE_LLM_RESPONSE), 100, 50)
@@ -287,7 +287,7 @@ def test_analyze_handles_minimal_llm_response(MockClient):
     assert response.action_items == []
     assert response.participants == []
     assert response.sentiment_overall.value == "NEUTRAL"
-    # Sem o bloco no payload, o default nullable mantem o contrato (ADR 0006).
+    # Without the block in the payload, the nullable default keeps the contract (ADR 0006).
     assert response.customer_confidence is None
 
 
@@ -330,7 +330,7 @@ _FAKE_LLM_RESPONSE_WITH_CONFIDENCE = {
 
 @patch("nora_nlp.services.llm_analyzer.LlmClient")
 def test_analyze_parses_customer_confidence(MockClient):
-    """LLM emite customerConfidence -> Pydantic valida e o accountName detectado sobrevive."""
+    """LLM emits customerConfidence -> Pydantic validates and the detected accountName lives."""
     mock_instance = MagicMock()
     mock_instance.chat_structured.return_value = (
         json.dumps(_FAKE_LLM_RESPONSE_WITH_CONFIDENCE),
@@ -355,7 +355,7 @@ def test_analyze_parses_customer_confidence(MockClient):
     assert cc.objections[0].type.value == "COMPETITOR_MENTION"
     assert cc.objections[0].competitor == "TotalSys"
     assert cc.objections[0].severity.value == "HIGH"
-    # Serializa de volta com aliases camelCase (contrato do backend).
+    # Serializes back with camelCase aliases (backend contract).
     dumped = response.model_dump(by_alias=True)
     assert dumped["customerConfidence"]["accountName"] == "ACME Manufatura S.A."
     assert dumped["customerConfidence"]["buyingSignals"][0]["type"] == "PROPOSAL_REQUESTED"

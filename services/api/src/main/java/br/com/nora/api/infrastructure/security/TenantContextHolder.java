@@ -3,16 +3,16 @@ package br.com.nora.api.infrastructure.security;
 import java.util.UUID;
 
 /**
- * Holder de tenant atual da request (ThreadLocal). Populado pelo {@link JwtAuthenticationFilter}
- * apos auth bem-sucedida e limpado pelo {@code doFilter} no finally.
+ * Holder for the request's current tenant (ThreadLocal). Populated by {@link
+ * JwtAuthenticationFilter} after successful auth and cleared by {@code doFilter} in the finally.
  *
- * <p>Consumidores principais:
+ * <p>Main consumers:
  *
  * <ul>
- *   <li>{@code TenantRlsAspect} (RLS Postgres): le este holder pra setar {@code SET LOCAL
- *       nora.current_tenant_id} no inicio de cada transacao.
- *   <li>Codigo de aplicacao ja recebe tenantId via parametro explicito (padrao DDD); este holder
- *       NAO substitui esse passing — e infra-side, pra fechar o caminho do RLS.
+ *   <li>{@code TenantRlsAspect} (Postgres RLS): reads this holder to set {@code SET LOCAL
+ *       nora.current_tenant_id} at the start of each transaction.
+ *   <li>Application code already receives tenantId via an explicit parameter (DDD pattern); this
+ *       holder does NOT replace that passing — it is infra-side, to close the RLS path.
  * </ul>
  */
 public final class TenantContextHolder {

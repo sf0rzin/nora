@@ -14,11 +14,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 /**
- * Escritor único de telemetria de custo (ADR 0024). Implementa {@link UsageRecorder}; ativo só
- * quando {@code nora.platform.enabled=true} (quando off, o bean ativo é {@code NoOpUsageRecorder}).
- * Calcula o custo a partir do pricing do catálogo (fonte da verdade) — o {@code costUsdHint} do
- * caller é só fallback. <b>Nunca lança</b>: em plataforma degradada ou erro de query, descarta
- * silenciosamente.
+ * Single writer of cost telemetry (ADR 0024). Implements {@link UsageRecorder}; active only when
+ * {@code nora.platform.enabled=true} (when off, the active bean is {@code NoOpUsageRecorder}).
+ * Computes the cost from the catalog pricing (source of truth) — the caller's {@code costUsdHint}
+ * is only a fallback. <b>Never throws</b>: on a degraded platform or a query error, it drops
+ * silently.
  */
 @Service
 @ConditionalOnProperty(name = "nora.platform.enabled", havingValue = "true")
@@ -84,7 +84,7 @@ public class UsageTelemetryService implements UsageRecorder {
                 normalizeStatus(status));
     }
 
-    /** Constrange status ao enum documentado (ok|error|stub|fallback); desconhecido vira "ok". */
+    /** Constrains status to the documented enum (ok|error|stub|fallback); unknown becomes "ok". */
     private static String normalizeStatus(String status) {
         if (status == null) {
             return "ok";
@@ -106,7 +106,7 @@ public class UsageTelemetryService implements UsageRecorder {
             Integer latencyMs,
             String status) {
         if (!availability.isUsable()) {
-            return; // plataforma degradada/off — fire-and-forget: descarta
+            return; // platform degraded/off — fire-and-forget: drop it
         }
         try {
             int in = Math.max(0, promptTokens);
@@ -154,9 +154,9 @@ public class UsageTelemetryService implements UsageRecorder {
     }
 
     /**
-     * Deriva {@code (provider, model)} do {@code modelVersion} do worker (ex.: {@code
+     * Derives {@code (provider, model)} from the worker's {@code modelVersion} (e.g. {@code
      * "openai-gpt-4o-mini"} → openai / gpt-4o-mini; {@code "stub-deterministic-v1"} → stub /
-     * deterministic-v1). Split no PRIMEIRO hífen.
+     * deterministic-v1). Split on the FIRST hyphen.
      */
     static String[] splitProviderModel(String modelVersion) {
         if (modelVersion == null || modelVersion.isBlank()) {

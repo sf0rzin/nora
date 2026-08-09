@@ -1,6 +1,6 @@
 package br.com.nora.api.domain.meeting;
 
-/** Estado do pipeline de processamento de uma reuniao. */
+/** State of a meeting's processing pipeline. */
 public enum ProcessingStatus {
     PENDING,
     PROCESSING,

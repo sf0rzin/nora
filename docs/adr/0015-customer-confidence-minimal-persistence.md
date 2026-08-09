@@ -1,97 +1,97 @@
-# 0015 — Customer Confidence: persistência mínima viável na Sub-fase 1.11
+# 0015 — Customer Confidence: minimum viable persistence in Sub-phase 1.11
 
-- Status: aceito
-- Data: 2026-05-14
-- Decisores: Stratfy (PO), Tech Lead, Arquiteto Design
-- Substitui parcialmente: ADR 0006 (Customer Confidence + Account Health) — escopo Account Health adiado
+- Status: accepted
+- Date: 2026-05-14
+- Deciders: Stratfy (PO), Tech Lead, Design Architect
+- Partially supersedes: ADR 0006 (Customer Confidence + Account Health) — Account Health scope deferred
 
-## Contexto
+## Context
 
-ADR 0006 (aceito em 2026-05-07) define Customer Confidence (por reunião) e Account Health (agregado). Schema completo está em `docs/api/llm-schemas/meeting-analysis-v1.schema.json:117-167` e Pydantic em `services/nlp-worker/src/nora_nlp/models.py` — worker JÁ EMITE `customerConfidence` quando reunião está vinculada a customer_account.
+ADR 0006 (accepted on 2026-05-07) defines Customer Confidence (per meeting) and Account Health (aggregated). The full schema is in `docs/api/llm-schemas/meeting-analysis-v1.schema.json:117-167` and the Pydantic one in `services/nlp-worker/src/nora_nlp/models.py` — the worker ALREADY EMITS `customerConfidence` when the meeting is linked to a customer_account.
 
-**Mas a persistência nunca foi implementada:**
-- 0 migrations Flyway para `customer_accounts`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections`, `meeting_account_links`, `account_health_snapshots`
-- 0 endpoints REST que expõem Customer Confidence
-- 0 UI no MeetingDetail
+**But persistence was never implemented:**
+- 0 Flyway migrations for `customer_accounts`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections`, `meeting_account_links`, `account_health_snapshots`
+- 0 REST endpoints exposing Customer Confidence
+- 0 UI in MeetingDetail
 
-Resultado: **cada análise gera dados de Customer Confidence que são descartados** quando backend deserializa a resposta do worker (campo ignorado).
+Result: **every analysis generates Customer Confidence data that is discarded** when the backend deserializes the worker's response (the field is ignored).
 
-### Dívida narrativa
+### Narrative debt
 
-A landing pública do NORA (criada na Sub-fase 1.2 visual redesign v2) tem **HealthScoreSection** com chart visual e meta cards (Account / Owner / Stage) e events tooltip — **vende a feature visualmente**. Demo TOTVS:
+NORA's public landing page (created in the Sub-phase 1.2 visual redesign v2) has a **HealthScoreSection** with a visual chart and meta cards (Account / Owner / Stage) and an events tooltip — it **sells the feature visually**. TOTVS demo:
 
-1. Cliente entra no site público, vê chart Health Score
-2. Clica "Entrar", autentica
-3. Abre meeting → **não vê a feature**
+1. The customer enters the public site, sees the Health Score chart
+2. Clicks "Entrar", authenticates
+3. Opens a meeting → **does not see the feature**
 
-Credibilidade afunda em 5 segundos. **Dívida narrativa = pior tipo de débito.**
+Credibility sinks in 5 seconds. **Narrative debt = the worst kind of debt.**
 
-### Audit pré-Sub-fase 1.10
+### Pre-Sub-phase 1.10 audit
 
-Revisão do Arquiteto Design (2026-05-14) re-severizou de "Médio" pra **"Alta"** com voto pra implementar mínimo. Tech Lead concordou em revisão (`50-coordenacao-arquitetos/2026-05-14-de-tech-lead-para-arquiteto-design-resposta-revisao-audit.md`).
+The Design Architect's review (2026-05-14) re-severitized it from "Medium" to **"High"** with a vote to implement the minimum. The Tech Lead agreed in review (`50-coordenacao-arquitetos/2026-05-14-de-tech-lead-para-arquiteto-design-resposta-revisao-audit.md`).
 
-## Decisão
+## Decision
 
-**Implementar persistência mínima de Customer Confidence na Sub-fase 1.11** com escopo deliberadamente reduzido:
+**Implement minimal Customer Confidence persistence in Sub-phase 1.11** with a deliberately reduced scope:
 
-### Escopo declarado (Sub-fase 1.11)
+### Declared scope (Sub-phase 1.11)
 
 1. **Migration V013** `customer_confidence_persistence`:
-   - `customer_accounts` (id, tenant_id, name, owner_user_id, stage, created_at, updated_at). Auto-criação on-the-fly por nome detectado pelo LLM
-   - `meeting_account_links` (N:N reunião↔conta — uma reunião pode ter mais de uma conta, raro mas suportado)
-   - `customer_confidence_assessments` (id, tenant_id, meeting_id, customer_account_id, score, band, trend nullable, rationale, created_at) — 1:1 com (meeting, account)
+   - `customer_accounts` (id, tenant_id, name, owner_user_id, stage, created_at, updated_at). On-the-fly auto-creation by the name detected by the LLM
+   - `meeting_account_links` (N:N meeting↔account — a meeting can have more than one account, rare but supported)
+   - `customer_confidence_assessments` (id, tenant_id, meeting_id, customer_account_id, score, band, trend nullable, rationale, created_at) — 1:1 with (meeting, account)
    - `customer_buying_signals` (id, assessment_id, type enum, quote, weight nullable, position)
    - `customer_objections` (id, assessment_id, type enum, quote, severity, competitor nullable, position)
 
-2. **Domain models** em `services/api/src/main/java/com/nora/api/domain/customer/`: `CustomerAccount`, `MeetingAccountLink`, `CustomerConfidenceAssessment`, `BuyingSignal`, `Objection`, enums
+2. **Domain models** in `services/api/src/main/java/com/nora/api/domain/customer/`: `CustomerAccount`, `MeetingAccountLink`, `CustomerConfidenceAssessment`, `BuyingSignal`, `Objection`, enums
 
-3. **Application service** `CustomerConfidenceService`: persiste assessment quando worker retorna, gerencia auto-criação de `customer_accounts` por nome
+3. **Application service** `CustomerConfidenceService`: persists the assessment when the worker returns it, manages the auto-creation of `customer_accounts` by name
 
-4. **Mapping no worker proxy** `HttpNlpWorkerClient`: extrai `customerConfidence` da resposta do worker e passa pra service
+4. **Mapping in the worker proxy** `HttpNlpWorkerClient`: extracts `customerConfidence` from the worker's response and passes it to the service
 
-5. **DTO + Response** `GET /meetings/{id}` expande retorno com `customerConfidence` quando presente (nullable)
+5. **DTO + Response** `GET /meetings/{id}` expands the return with `customerConfidence` when present (nullable)
 
-6. **UI** Arquiteto Design: `CustomerConfidenceCard` no `MeetingDetail` (escopo dele)
+6. **UI** Design Architect: `CustomerConfidenceCard` in `MeetingDetail` (his scope)
 
-### Escopo **NÃO incluído** (deferido via ADR 0014)
+### Scope **NOT included** (deferred via ADR 0014)
 
-- **US50 Account Health Score agregado** — exige >5 meetings linkados a uma account pra ter sinal útil; espera pilot real
-- **US51 Alerta mudança de banda** — depende de Health Score
-- **CRUD manual de `customer_accounts`** — sem UI Account Manager no MVP
-- **Endpoint dedicado** `GET /accounts/{id}/health` — não existe ainda
+- **US50 Aggregated Account Health Score** — requires >5 meetings linked to an account to have a useful signal; waits for a real pilot
+- **US51 Band-change alert** — depends on the Health Score
+- **Manual CRUD of `customer_accounts`** — no Account Manager UI in the MVP
+- **Dedicated endpoint** `GET /accounts/{id}/health` — does not exist yet
 
-## Consequências
+## Consequences
 
-**Positivas:**
-- **Dívida narrativa resolvida**: landing → demo → MeetingDetail mostram coerência. Cliente que entra vê o que prometido
-- **Schema LLM existente é aproveitado**: worker já emite; só plumbing de backend pra persistir
-- **Account Health pode evoluir** depois com dados reais acumulados (não no escudo do MVP)
-- **MeetingDetail ganha card valioso** sem necessidade de feature gigante
+**Positive:**
+- **Narrative debt resolved**: landing → demo → MeetingDetail show coherence. The customer who comes in sees what was promised
+- **The existing LLM schema is leveraged**: the worker already emits it; only backend plumbing to persist it is needed
+- **Account Health can evolve** later with real accumulated data (not under the MVP's shield)
+- **MeetingDetail gains a valuable card** without needing a giant feature
 
-**Negativas:**
-- Account Health não implementado deixa US50-US51 abertos — explicitamente deferidos via ADR 0014
-- Auto-criação de `customer_accounts` por nome é heurística — pode criar duplicatas (ex.: "Acme" e "ACME"). Mitigação: normalização de nome + dedup com `LOWER(name) = LOWER(:input)` + UI futura pra merge manual
+**Negative:**
+- Account Health not being implemented leaves US50-US51 open — explicitly deferred via ADR 0014
+- Auto-creating `customer_accounts` by name is a heuristic — it may create duplicates (e.g., "Acme" and "ACME"). Mitigation: name normalization + dedup with `LOWER(name) = LOWER(:input)` + a future UI for manual merging
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **(a) Implementar mínimo viável** — **VOTO ESCOLHIDO**. Equilibra dívida narrativa × escopo gerenciável
-2. **(b) Remover Customer Confidence da landing temporariamente + ADR sucessor de 0006 com "adiado, sem timeline"** — rejeitado. Esforço similar (~2h pra remover seções da landing) mas perde feature de vitrine; landing fica menos vendedora
-3. **(c) Manter limbo (schema existe, nada persiste)** — rejeitado explicitamente pelo Arquiteto Design: "bomba sob a demo"
+1. **(a) Implement the minimum viable** — **CHOSEN VOTE**. It balances narrative debt × manageable scope
+2. **(b) Temporarily remove Customer Confidence from the landing page + a successor ADR to 0006 with "deferred, no timeline"** — rejected. Similar effort (~2h to remove the landing sections) but it loses a showcase feature; the landing becomes less persuasive
+3. **(c) Keep the limbo (the schema exists, nothing persists)** — rejected explicitly by the Design Architect: "a bomb under the demo"
 
-## Plano de Aplicação
+## Application Plan
 
-Sub-fase 1.11 (Demo Polish Plano A), branch `feat/sub-1.11-customer-confidence-minimal`, esforço **M (~6-8h agentic)**. Sequência:
+Sub-phase 1.11 (Plan A Demo Polish), branch `feat/sub-1.11-customer-confidence-minimal`, effort **M (~6-8h agentic)**. Sequence:
 
 1. Migration V013 + domain
 2. JPA entities + repos
 3. Service + worker proxy update
 4. DTO + endpoint expansion
-5. Testes integration (auto-criação account, persist assessment, GET retorna confidence)
-6. UI card (Arquiteto Design em paralelo)
+5. Integration tests (account auto-creation, persist assessment, GET returns confidence)
+6. UI card (Design Architect in parallel)
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-05-14 | Joint (PO + Tech Lead + Arquiteto Design) | ADR criado. Voto Tech Lead + Design pra (a) implementa mínimo; Stratfy (PO) confirmou em bloco |
-| 2026-05-21 | Stratfy (Anthony) | **Aplicado em PR #148** (aceito → implementado). Divergências do plano: a migration shipou como **V017** (o slot V013 foi usado por soft-delete em #114) e a entrega veio em 1 PR (não na branch `feat/sub-1.11-...`). Trend é **autoritativo no servidor** (`CustomerConfidenceService.computeTrend`, banda ±5), não o palpite do worker. CI verde c/ Testcontainers. |
+| 2026-05-14 | Joint (PO + Tech Lead + Design Architect) | ADR created. Tech Lead + Design vote for (a) implement the minimum; Stratfy (PO) confirmed as a block |
+| 2026-05-21 | Stratfy (Anthony) | **Applied in PR #148** (accepted → implemented). Divergences from the plan: the migration shipped as **V017** (the V013 slot was used by soft-delete in #114) and the delivery came in 1 PR (not on the `feat/sub-1.11-...` branch). Trend is **authoritative on the server** (`CustomerConfidenceService.computeTrend`, band ±5), not the worker's guess. CI green w/ Testcontainers. |

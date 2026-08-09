@@ -1,10 +1,10 @@
-"""Helpers compartilhados de prompt dos analyzers do worker.
+"""Shared prompt helpers for the worker's analyzers.
 
-``load_prompt`` (parse das secoes ## SYSTEM / ## USER) e ``render_template``
-(substituicao de placeholders ``{{key}}`` com escape anti prompt-template
-injection) eram triplicados byte-a-byte entre ``llm_analyzer``,
-``live_analyzer`` e ``split_analyzer``. Uma unica fonte evita drift — ex.: um
-fix no escape que so chegasse a um dos analyzers deixaria os outros vulneraveis.
+``load_prompt`` (parsing of the ## SYSTEM / ## USER sections) and ``render_template``
+(substitution of ``{{key}}`` placeholders with anti prompt-template
+injection escaping) were triplicated byte-for-byte across ``llm_analyzer``,
+``live_analyzer`` and ``split_analyzer``. A single source avoids drift — e.g.: a
+fix in the escaping reaching only one analyzer would leave the others vulnerable.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ _USER_RE = re.compile(r"##\s*USER\s*\n(.*)", re.DOTALL)
 
 
 def load_prompt(version: str) -> tuple[str, str]:
-    """Carrega ``prompts/{version}.md`` e retorna as secoes (system, user)."""
+    """Loads ``prompts/{version}.md`` and returns the (system, user) sections."""
     path = PROMPTS_DIR / f"{version}.md"
     if not path.exists():
         raise FileNotFoundError(f"Prompt nao encontrado: {path}")
@@ -34,13 +34,13 @@ def load_prompt(version: str) -> tuple[str, str]:
 
 
 def _escape_placeholders(value: str) -> str:
-    """Neutraliza placeholders ``{{x}}`` vindos do usuario.
+    """Neutralizes ``{{x}}`` placeholders coming from the user.
 
-    ``render_template`` faz ``str.replace`` em ordem; se o transcript ou outro
-    campo do request contiver ``{{goal_section}}``, ele seria substituido pelo
-    conteudo legitimo de ``goal_section`` nas iteracoes seguintes — prompt
-    template injection. Trocar ``{{`` por ``{ {`` rompe o casamento sem mudar a
-    intencao semantica do texto original.
+    ``render_template`` does ``str.replace`` in order; if the transcript or another
+    request field contains ``{{goal_section}}``, it would be replaced by the
+    legitimate content of ``goal_section`` in the following iterations — prompt
+    template injection. Swapping ``{{`` for ``{ {`` breaks the match without changing
+    the semantic intent of the original text.
     """
     if "{{" not in value:
         return value
@@ -48,7 +48,7 @@ def _escape_placeholders(value: str) -> str:
 
 
 def render_template(template: str, **variables: str) -> str:
-    """Substitui placeholders ``{{key}}`` no template, com escape de input do usuario."""
+    """Replaces ``{{key}}`` placeholders in the template, escaping user input."""
     result = template
     for key, value in variables.items():
         result = result.replace(f"{{{{{key}}}}}", _escape_placeholders(value))

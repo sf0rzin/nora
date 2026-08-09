@@ -1,96 +1,96 @@
-# 0026 — RLS completa, provisionamento de role versionado e cutover do enforce
+# 0026 — Complete RLS, versioned role provisioning and enforce cutover
 
-- Status: parcialmente substituído por 0028 (o design de enforce + a sequência de cutover foram corrigidos no ADR 0028 após achar 3 furos; o V019 e o script R001 deste ADR continuam válidos)
-- Data: 2026-06-04
-- Decisores: Arquiteto + Stratfy (PO)
-- Relacionado: ADR 0002 (multi-tenancy), ADR 0019 (tenant isolation em profundidade: RLS + FK composta), ADR 0024 (telemetria de negócio)
+- Status: partially superseded by 0028 (the enforce design + the cutover sequence were fixed in ADR 0028 after 3 holes were found; the V019 and the R001 script from this ADR remain valid)
+- Date: 2026-06-04
+- Deciders: Architect + Stratfy (PO)
+- Related: ADR 0002 (multi-tenancy), ADR 0019 (tenant isolation in depth: RLS + composite FK), ADR 0024 (business telemetry)
 
-## Contexto
+## Context
 
-O ADR 0019 entregou RLS Postgres como defesa em profundidade do `tenant_id` filter, mas com **cobertura parcial**: `V016` habilitou `ENABLE ROW LEVEL SECURITY` + `POLICY tenant_isolation` em 12 tabelas e `V017` em +3 (customer confidence). Uma auditoria do schema (2026-06-04) encontrou **~19 tabelas tenant-owned ainda SEM policy**, incluindo:
+ADR 0019 delivered Postgres RLS as defense in depth for the `tenant_id` filter, but with **partial coverage**: `V016` enabled `ENABLE ROW LEVEL SECURITY` + `POLICY tenant_isolation` on 12 tables and `V017` on 3 more (customer confidence). A schema audit (2026-06-04) found **~19 tenant-owned tables still WITHOUT a policy**, including:
 
-- **`transcripts`** (V004) — guarda `raw_text` = transcrição bruta = **PII em repouso**;
-- filhos da análise: `meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities` (V005);
+- **`transcripts`** (V004) — stores `raw_text` = raw transcription = **PII at rest**;
+- analysis children: `meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities` (V005);
 - `meeting_tags` (V004), `meeting_goals`, `meeting_productivity_assessments` (V012);
 - IAM: `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events` (V006);
-- tokens de auth: `email_verification_tokens`, `password_reset_tokens` (V003).
+- auth tokens: `email_verification_tokens`, `password_reset_tokens` (V003).
 
-No Postgres, uma tabela tenant-owned **sem** `ENABLE ROW LEVEL SECURITY` é totalmente aberta ao role conectado. Ou seja: se o enforce de RLS fosse ligado hoje (role `nora_app` NOBYPASSRLS), as tabelas com policy ficariam isoladas, mas as **sem** policy continuariam legíveis cross-tenant. O pior caso é exatamente `transcripts` — ligar o enforce protegeria `meetings` mas deixaria a PII bruta vazada entre tenants. A cobertura precisa ser completa **antes** de qualquer cutover.
+In Postgres, a tenant-owned table **without** `ENABLE ROW LEVEL SECURITY` is fully open to the connected role. That is: if RLS enforce were turned on today (role `nora_app` NOBYPASSRLS), the tables with a policy would be isolated, but those **without** a policy would remain readable cross-tenant. The worst case is exactly `transcripts` — turning enforce on would protect `meetings` but leave the raw PII leaking between tenants. Coverage must be complete **before** any cutover.
 
-Três acoplamentos adicionais foram identificados:
+Three additional couplings were identified:
 
-1. **Role não versionado.** O provisionamento do role `nora_app` (CREATE ROLE + GRANTs + NOBYPASSRLS) existia apenas como **comentário** em `V016` — não era reprodutível nem versionado.
-2. **Telemetria fail-closed.** `PrimaryDbBusinessMetricsSource` (telemetria de negócio operador-only, ADR 0024) agrega `meeting_analyses` com `COUNT(*)` / `COUNT(DISTINCT tenant_id)` **sem contexto de tenant** e **fora de `@Transactional`** — logo o `TenantRlsAspect` não seta o GUC `nora.current_tenant_id`. Sob enforce, a policy fail-closed esconderia **todas** as linhas ⇒ o painel mostraria `analyses=0 / tenants=0` **silenciosamente** (sem erro).
-3. **Sequência de cutover.** Ligar enforce envolve role + grants + connection string + flag + telemetria, **nessa ordem**. Sem um runbook, é fácil ligar a flag antes do role e derrubar o produto.
+1. **Unversioned role.** The provisioning of the `nora_app` role (CREATE ROLE + GRANTs + NOBYPASSRLS) existed only as a **comment** in `V016` — it was neither reproducible nor versioned.
+2. **Fail-closed telemetry.** `PrimaryDbBusinessMetricsSource` (operator-only business telemetry, ADR 0024) aggregates `meeting_analyses` with `COUNT(*)` / `COUNT(DISTINCT tenant_id)` **without tenant context** and **outside `@Transactional`** — therefore the `TenantRlsAspect` does not set the `nora.current_tenant_id` GUC. Under enforce, the fail-closed policy would hide **all** rows ⇒ the dashboard would show `analyses=0 / tenants=0` **silently** (no error).
+3. **Cutover sequence.** Turning enforce on involves role + grants + connection string + flag + telemetry, **in that order**. Without a runbook, it is easy to flip the flag before the role and take the product down.
 
-## Decisão
+## Decision
 
-### 1. Cobertura completa de RLS (`V019`)
+### 1. Complete RLS coverage (`V019`)
 
-`V019__row_level_security_complete.sql` habilita `ENABLE ROW LEVEL SECURITY` + `CREATE POLICY tenant_isolation` (mesmo predicado e estilo de V016/V017: `tenant_id = nora.current_tenant_id()` com `USING` + `WITH CHECK`) em **15 tabelas** tenant-owned remanescentes que carregam `tenant_id` próprio, com **prioridade para `transcripts`**.
+`V019__row_level_security_complete.sql` enables `ENABLE ROW LEVEL SECURITY` + `CREATE POLICY tenant_isolation` (same predicate and style as V016/V017: `tenant_id = nora.current_tenant_id()` with `USING` + `WITH CHECK`) on the **15 remaining** tenant-owned tables that carry their own `tenant_id`, with **priority for `transcripts`**.
 
-Cobertura após V019: V016 (12) + V017 (3) + V019 (15) = **30 tabelas** com policy direta.
+Coverage after V019: V016 (12) + V017 (3) + V019 (15) = **30 tables** with a direct policy.
 
-**Fronteiras de cascade (sem policy, por design).** Três tabelas filhas **não** têm `tenant_id` próprio e são acessadas exclusivamente via o pai já isolado (cascade FK `ON DELETE CASCADE`): `iam_invitation_groups` (filha de `iam_user_invitations`), `meeting_goal_expected_outcomes` (filha de `meeting_goals`) e `meeting_outcome_coverage` (filha de `meeting_productivity_assessments`). Seguem a mesma convenção já adotada em V017 para `customer_buying_signals` / `customer_objections`: o isolamento vem do cascade + do fato de que todo acesso passa pelo pai isolado. Documentado explicitamente como fronteira no cabeçalho de V019 — se alguma delas ganhar acesso direto (sem passar pelo pai), precisará de policy via JOIN.
+**Cascade boundaries (no policy, by design).** Three child tables do **not** have their own `tenant_id` and are accessed exclusively via the already-isolated parent (cascade FK `ON DELETE CASCADE`): `iam_invitation_groups` (child of `iam_user_invitations`), `meeting_goal_expected_outcomes` (child of `meeting_goals`) and `meeting_outcome_coverage` (child of `meeting_productivity_assessments`). They follow the same convention already adopted in V017 for `customer_buying_signals` / `customer_objections`: isolation comes from the cascade + the fact that all access goes through the isolated parent. Documented explicitly as a boundary in the V019 header — if any of them gains direct access (without going through the parent), it will need a policy via JOIN.
 
-**Tabelas legadas fora de escopo.** `roles` (tem linhas globais `tenant_id IS NULL` — uma policy por tenant as esconderia) e `user_roles` (V002, deprecadas, fora de uso no modelo IAM novo) **não** recebem RLS; saem em migration de limpeza futura.
+**Legacy tables out of scope.** `roles` (has global rows `tenant_id IS NULL` — a per-tenant policy would hide them) and `user_roles` (V002, deprecated, unused in the new IAM model) do **not** get RLS; they will be removed in a future cleanup migration.
 
-### 2. Provisionamento de role versionado (`db/operational/R001`)
+### 2. Versioned role provisioning (`db/operational/R001`)
 
-`services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` — script **idempotente** que:
+`services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` — an **idempotent** script that:
 
-- cria `nora_app` (LOGIN, **NOBYPASSRLS**) — role de runtime da API;
-- cria `nora_telemetry` (LOGIN, **BYPASSRLS**) — leitura operador-only cross-tenant (item 3);
-- `GRANT SELECT/INSERT/UPDATE/DELETE` em todas as tabelas do schema `public` + `USAGE/SELECT` em sequences ao `nora_app`; `GRANT EXECUTE` em `nora.current_tenant_id()`;
-- `GRANT SELECT` mínimo (least-privilege) em `meeting_analyses` ao `nora_telemetry`;
-- `ALTER DEFAULT PRIVILEGES` para que tabelas futuras herdem os grants automaticamente.
+- creates `nora_app` (LOGIN, **NOBYPASSRLS**) — the API's runtime role;
+- creates `nora_telemetry` (LOGIN, **BYPASSRLS**) — operator-only cross-tenant reads (item 3);
+- `GRANT SELECT/INSERT/UPDATE/DELETE` on all tables of the `public` schema + `USAGE/SELECT` on sequences to `nora_app`; `GRANT EXECUTE` on `nora.current_tenant_id()`;
+- minimal (least-privilege) `GRANT SELECT` on `meeting_analyses` to `nora_telemetry`;
+- `ALTER DEFAULT PRIVILEGES` so that future tables inherit the grants automatically.
 
-**Este script NÃO é uma migration Flyway da aplicação.** Ele cria roles e default privileges — operações que exigem privilégio de **admin** do Postgres (o owner / `postgresAdminLogin`), não o `nora_app`. A API roda Flyway como `nora_app` e não pode (nem deve) executá-lo. Roda manualmente (ou via pipeline de infra com credencial admin), uma vez por ambiente, antes do cutover.
+**This script is NOT an application Flyway migration.** It creates roles and default privileges — operations that require Postgres **admin** privilege (the owner / `postgresAdminLogin`), not `nora_app`. The API runs Flyway as `nora_app` and cannot (and should not) execute it. It is run manually (or via an infra pipeline with admin credentials), once per environment, before the cutover.
 
-### 3. Telemetria BYPASSRLS-safe
+### 3. BYPASSRLS-safe telemetry
 
-`PrimaryDbBusinessMetricsSource` passa a usar, **quando configurado**, um `JdbcTemplate` dedicado (`telemetryJdbcTemplate`) sobre um pool conectando como `nora_telemetry` (BYPASSRLS). A config é gated por `nora.security.rls.telemetry.url` (`TelemetryDataSourceConfig`, `@ConditionalOnProperty`): **vazia por default** (dev/local/test/CI e prod **antes** do cutover) ⇒ o source cai no `JdbcTemplate` primário, onde o owner bypassa RLS — comportamento atual intacto. Setando as 3 vars (`NORA_TELEMETRY_DATASOURCE_URL/USERNAME/PASSWORD`) no passo de cutover, a agregação cross-tenant continua funcionando sob enforce. Sem isso, sob enforce o painel veria 0 linhas (fail-closed).
+`PrimaryDbBusinessMetricsSource` now uses, **when configured**, a dedicated `JdbcTemplate` (`telemetryJdbcTemplate`) over a pool connecting as `nora_telemetry` (BYPASSRLS). The config is gated by `nora.security.rls.telemetry.url` (`TelemetryDataSourceConfig`, `@ConditionalOnProperty`): **empty by default** (dev/local/test/CI and prod **before** the cutover) ⇒ the source falls back to the primary `JdbcTemplate`, where the owner bypasses RLS — current behavior untouched. By setting the 3 vars (`NORA_TELEMETRY_DATASOURCE_URL/USERNAME/PASSWORD`) in the cutover step, cross-tenant aggregation keeps working under enforce. Without it, under enforce the dashboard would see 0 rows (fail-closed).
 
-Alternativa considerada e rejeitada: função `SECURITY DEFINER` owned por role privilegiada com GRANT ao `nora_app`. Daria o mesmo efeito sem 2º pool, mas acopla a lógica de agregação ao SQL no banco e dificulta evoluir as queries (hoje em Java). O datasource dedicado mantém a query no código e é simétrico ao `PlatformDataSourceConfig` já existente.
+Alternative considered and rejected: a `SECURITY DEFINER` function owned by a privileged role with a GRANT to `nora_app`. It would give the same effect without a 2nd pool, but it couples the aggregation logic to SQL in the database and makes it harder to evolve the queries (today in Java). The dedicated datasource keeps the query in code and is symmetric to the already existing `PlatformDataSourceConfig`.
 
-### 4. Caminho de Bicep (enforce default OFF)
+### 4. Bicep path (enforce default OFF)
 
-`main.bicep` ganha os params `rlsEnforce` (bool, **default false**), `rlsTelemetryDatasourceUrl` e `rlsTelemetryPassword` (secure, vai pro KV `rls-telemetry-password`). Quando `rlsEnforce=true`, injeta `NORA_RLS_ENFORCE=true` no `apiApp`; quando a URL de telemetria está setada, injeta o caminho BYPASSRLS dedicado. **O default mantém a produção exatamente como está** — este PR entrega tudo pronto pra ligar, sem ligar. Mudar `DATASOURCE_USERNAME/PASSWORD` para o role `nora_app` é um passo de cutover separado e controlado, **não** feito no template.
+`main.bicep` gains the params `rlsEnforce` (bool, **default false**), `rlsTelemetryDatasourceUrl` and `rlsTelemetryPassword` (secure, goes to the KV `rls-telemetry-password`). When `rlsEnforce=true`, it injects `NORA_RLS_ENFORCE=true` into the `apiApp`; when the telemetry URL is set, it injects the dedicated BYPASSRLS path. **The default keeps production exactly as it is** — this PR delivers everything ready to turn on, without turning it on. Changing `DATASOURCE_USERNAME/PASSWORD` to the `nora_app` role is a separate, controlled cutover step, **not** done in the template.
 
-### 5. Sequência de cutover (a ordem importa)
+### 5. Cutover sequence (the order matters)
 
-1. **Aplicar V019** (deploy normal da API — Flyway cria as policies; enforce ainda OFF, sem efeito porque a API roda como owner).
-2. **Provisionar roles**: rodar `R001` como **admin** do Postgres (cria `nora_app` NOBYPASSRLS + `nora_telemetry` BYPASSRLS + grants + default privileges). Popular os secrets no Key Vault (senha do `nora_app`, `rls-telemetry-password`).
-3. **Validar a telemetria BYPASSRLS** em staging: setar as 3 vars `NORA_TELEMETRY_DATASOURCE_*` apontando o banco primário com `nora_telemetry`; confirmar que o painel de negócio continua somando (analyses/tenants > 0) **antes** de mexer no enforce.
-4. **Ligar enforce em staging**: apontar `DATASOURCE_USERNAME/PASSWORD` para `nora_app` + `NORA_RLS_ENFORCE=true`. Exercitar o smoke cross-tenant (login em 2 tenants, cada um só vê o próprio meeting/transcript/task) e confirmar painel operador ainda somando.
-5. **Promover para prod** repetindo (2)–(4). Rollback é trivial: reverter a connection string para o owner e `NORA_RLS_ENFORCE=false` — o schema (policies) fica e não atrapalha.
+1. **Apply V019** (normal API deploy — Flyway creates the policies; enforce still OFF, no effect because the API runs as owner).
+2. **Provision roles**: run `R001` as Postgres **admin** (creates `nora_app` NOBYPASSRLS + `nora_telemetry` BYPASSRLS + grants + default privileges). Populate the secrets in Key Vault (`nora_app` password, `rls-telemetry-password`).
+3. **Validate BYPASSRLS telemetry** in staging: set the 3 `NORA_TELEMETRY_DATASOURCE_*` vars pointing at the primary database with `nora_telemetry`; confirm the business dashboard keeps adding up (analyses/tenants > 0) **before** touching enforce.
+4. **Turn enforce on in staging**: point `DATASOURCE_USERNAME/PASSWORD` at `nora_app` + `NORA_RLS_ENFORCE=true`. Exercise the cross-tenant smoke test (log in to 2 tenants, each one sees only its own meeting/transcript/task) and confirm the operator dashboard still adds up.
+5. **Promote to prod** by repeating (2)–(4). Rollback is trivial: revert the connection string to the owner and `NORA_RLS_ENFORCE=false` — the schema (policies) stays and does not get in the way.
 
-## Consequências
+## Consequences
 
-**Positivas:**
+**Positive:**
 
-- O furo mais grave (transcrições com PII bruta legíveis cross-tenant sob enforce) é fechado.
-- Cobertura de RLS deixa de ser parcial — 30 tabelas com policy + 3 fronteiras de cascade documentadas = 100% das tenant-owned.
-- Provisionamento de role versionado e idempotente — reprodutível por ambiente, sem depender de comentário.
-- Telemetria operador-only continua funcionando sob enforce, sem virar 0 silencioso.
-- Cutover documentado e reversível: enforce é opt-in por flag + role; rollback é só trocar credencial/flag.
+- The most serious hole (transcriptions with raw PII readable cross-tenant under enforce) is closed.
+- RLS coverage is no longer partial — 30 tables with a policy + 3 documented cascade boundaries = 100% of the tenant-owned ones.
+- Versioned and idempotent role provisioning — reproducible per environment, without relying on a comment.
+- Operator-only telemetry keeps working under enforce, without silently becoming 0.
+- Documented and reversible cutover: enforce is opt-in by flag + role; rollback is just swapping credential/flag.
 
-**Negativas / trade-offs:**
+**Negative / trade-offs:**
 
-- Sob enforce, há **dois** roles e (opcionalmente) **dois** pools no caminho da API (`nora_app` + `nora_telemetry`). Mais superfície operacional; mitigado por least-privilege (telemetria só lê `meeting_analyses`).
-- `R001` exige privilégio de admin e um passo manual fora do Flyway — risco de esquecer no cutover. Mitigado pelo runbook (item 5) e pela ordem explícita.
-- O teste de enforcement (`RlsEnforcementIntegrationTest`) exige Docker/Testcontainers; em dev sem Docker fica não-rodado (CI valida).
-- `nora_telemetry` é BYPASSRLS — qualquer uso indevido desse role veria tudo cross-tenant. Mitigado: grant restrito a `SELECT` em `meeting_analyses`, usado só pela telemetria.
+- Under enforce, there are **two** roles and (optionally) **two** pools in the API path (`nora_app` + `nora_telemetry`). More operational surface; mitigated by least-privilege (telemetry only reads `meeting_analyses`).
+- `R001` requires admin privilege and a manual step outside Flyway — risk of forgetting it at cutover. Mitigated by the runbook (item 5) and by the explicit ordering.
+- The enforcement test (`RlsEnforcementIntegrationTest`) requires Docker/Testcontainers; in dev without Docker it goes unrun (CI validates it).
+- `nora_telemetry` is BYPASSRLS — any misuse of that role would see everything cross-tenant. Mitigated: grant restricted to `SELECT` on `meeting_analyses`, used only by telemetry.
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Ligar enforce só com a cobertura parcial (V016/V017)** — rejeitado: deixaria `transcripts` (PII bruta) e outras 18 tabelas legíveis cross-tenant — pior do que não ligar.
-2. **Policy via JOIN ao pai nas tabelas filhas sem `tenant_id`** — rejeitado para já: custo/complexidade sem ganho real, já que o único caminho de acesso é via o pai isolado. Mantida a convenção de cascade do V017, documentada como fronteira.
-3. **Telemetria via `SECURITY DEFINER`** — rejeitado (ver §3): acopla agregação ao SQL no banco; o datasource dedicado mantém a query em Java e é simétrico ao control plane existente.
-4. **Enforce sempre-on (sem flag/role)** — rejeitado (herdado do ADR 0019): quebraria dev/Testcontainers que conectam como owner; exige role dedicado antes de valer a pena.
+1. **Turning enforce on with only partial coverage (V016/V017)** — rejected: it would leave `transcripts` (raw PII) and 18 other tables readable cross-tenant — worse than not turning it on.
+2. **Policy via JOIN to the parent on child tables without `tenant_id`** — rejected for now: cost/complexity with no real gain, since the only access path is via the isolated parent. The V017 cascade convention is kept, documented as a boundary.
+3. **Telemetry via `SECURITY DEFINER`** — rejected (see §3): couples aggregation to SQL in the database; the dedicated datasource keeps the query in Java and is symmetric to the existing control plane.
+4. **Always-on enforce (no flag/role)** — rejected (inherited from ADR 0019): it would break dev/Testcontainers, which connect as owner; it requires a dedicated role before it is worth it.
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-06-04 | Arquiteto + Stratfy (PO) | ADR criado. V019 (cobertura completa de RLS, prioridade `transcripts`), `db/operational/R001` (provisionamento versionado de `nora_app`/`nora_telemetry`), telemetria BYPASSRLS-safe (`TelemetryDataSourceConfig` + `PrimaryDbBusinessMetricsSource`), params Bicep `rlsEnforce`/telemetria (default OFF) e sequência de cutover. Enforce **não** ligado em prod neste passo. Estende ADR 0019 |
+| 2026-06-04 | Architect + Stratfy (PO) | ADR created. V019 (complete RLS coverage, `transcripts` priority), `db/operational/R001` (versioned provisioning of `nora_app`/`nora_telemetry`), BYPASSRLS-safe telemetry (`TelemetryDataSourceConfig` + `PrimaryDbBusinessMetricsSource`), Bicep params `rlsEnforce`/telemetry (default OFF) and cutover sequence. Enforce **not** turned on in prod in this step. Extends ADR 0019 |

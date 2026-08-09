@@ -1,7 +1,7 @@
--- V011: refresh tokens stateful para login sessao longa (httpOnly + revogabilidade).
--- Round 2 / Subfase 1.3 A: combate ao XSS - access JWT curto (15min) + refresh (30 dias).
--- token_hash = SHA-256 do token cru. O cru so existe no cookie httpOnly do navegador.
--- Vazamento do banco nao permite reuso. Revogacao stateful (logout, logoutAll, troca de senha futura).
+-- V011: stateful refresh tokens for long-session login (httpOnly + revocability).
+-- Round 2 / Subphase 1.3 A: fighting XSS - short access JWT (15min) + refresh (30 days).
+-- token_hash = SHA-256 of the raw token. The raw one only exists in the browser's httpOnly cookie.
+-- A database leak does not allow reuse. Stateful revocation (logout, logoutAll, future password change).
 
 CREATE TABLE refresh_tokens (
     id           UUID PRIMARY KEY,
@@ -14,10 +14,10 @@ CREATE TABLE refresh_tokens (
     last_used_at TIMESTAMPTZ
 );
 
--- Lookup principal: filtra ativos por usuario (revogar todos, listar sessoes).
+-- Main lookup: filters active ones by user (revoke all, list sessions).
 CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id) WHERE revoked_at IS NULL;
 
--- Lookup direto pelo hash (validacao em cada refresh).
+-- Direct lookup by hash (validation on each refresh).
 CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens(token_hash);
 
 COMMENT ON TABLE refresh_tokens IS 'Refresh tokens stateful (revogaveis). token_hash = SHA-256 do token plain. Plain so existe no client cookie.';

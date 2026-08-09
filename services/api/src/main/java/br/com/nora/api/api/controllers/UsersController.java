@@ -18,9 +18,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Operacoes do PROPRIO usuario (/users/me) — perfil e exclusao de conta (LGPD). Escopo: sempre o
- * principal do JWT; nao existe acesso a outros usuarios por aqui (gestao de membros e IAM
- * Enterprise).
+ * Operations on the user's OWN account (/users/me) — profile and account deletion (LGPD). Scope:
+ * always the principal from the JWT; there is no access to other users here (member management is
+ * IAM Enterprise).
  */
 @RestController
 @RequestMapping("/users")
@@ -48,9 +48,9 @@ public class UsersController {
     }
 
     /**
-     * LGPD — exclusao DEFINITIVA da conta e de TODOS os dados do workspace pessoal (zona de
-     * perigo). Exige a senha atual no body; tenant compartilhado retorna 409. Limpa os cookies na
-     * resposta.
+     * LGPD — PERMANENT deletion of the account and of ALL personal workspace data (danger zone).
+     * Requires the current password in the body; a shared tenant returns 409. Clears the cookies in
+     * the response.
      */
     @DeleteMapping("/me")
     public ResponseEntity<Void> deleteMe(@Valid @RequestBody DeleteAccountRequest req) {

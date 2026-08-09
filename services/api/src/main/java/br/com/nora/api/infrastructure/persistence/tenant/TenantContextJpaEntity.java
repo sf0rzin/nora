@@ -22,7 +22,7 @@ public class TenantContextJpaEntity {
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
 
-    /** Documento JSON serializado (companyName, products, competitors, etc.). */
+    /** Serialized JSON document (companyName, products, competitors, etc.). */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(nullable = false, columnDefinition = "jsonb")
     private String document;

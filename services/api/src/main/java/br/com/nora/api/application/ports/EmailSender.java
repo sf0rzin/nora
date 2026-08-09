@@ -1,8 +1,8 @@
 package br.com.nora.api.application.ports;
 
 /**
- * Porta para envio de e-mails transacionais. Implementacao default no MVP loga no console; em
- * producao um bean Resend e ativado quando RESEND_API_KEY esta presente.
+ * Port for sending transactional e-mails. The default implementation in the MVP logs to the
+ * console; in production a Resend bean is activated when RESEND_API_KEY is present.
  */
 public interface EmailSender {
 
@@ -11,15 +11,15 @@ public interface EmailSender {
     void sendPasswordReset(String toEmail, String displayName, String resetLink);
 
     /**
-     * Envia um convite de usuario (US06). O {@code subject} e os campos sao parametrizados pelo
-     * caller, que tambem injeta o link absoluto para o frontend. O adapter e responsavel apenas por
-     * o entregar via SMTP/Resend/SDK.
+     * Sends a user invitation (US06). The {@code subject} and the fields are parameterized by the
+     * caller, which also injects the absolute link to the frontend. The adapter is only responsible
+     * for delivering it via SMTP/Resend/SDK.
      *
-     * @param toEmail destinatario
-     * @param tenantName nome amigavel do tenant (renderizado no template)
-     * @param invitedByName quem convidou (renderizado no template)
-     * @param acceptUrl URL absoluta com token para o frontend
-     * @param expiresInDays quantos dias o convite e valido (renderizado no template)
+     * @param toEmail recipient
+     * @param tenantName friendly tenant name (rendered in the template)
+     * @param invitedByName who invited (rendered in the template)
+     * @param acceptUrl absolute URL with token for the frontend
+     * @param expiresInDays how many days the invitation is valid for (rendered in the template)
      */
     void sendInvitation(
             String toEmail,
@@ -29,9 +29,10 @@ public interface EmailSender {
             int expiresInDays);
 
     /**
-     * Envia uma notificação de workflow do NORA Flows (assunto + corpo HTML prontos, montados pela
-     * ação). Diferente dos e-mails transacionais acima, FALHA DEVE PROPAGAR (exceção): o engine
-     * captura e registra o erro no log da execução — fingir sucesso quebraria o histórico real.
+     * Sends a NORA Flows workflow notification (subject + HTML body already assembled by the
+     * action). Unlike the transactional e-mails above, FAILURE MUST PROPAGATE (exception): the
+     * engine catches it and records the error in the execution log — faking success would break the
+     * real history.
      */
     void sendWorkflowNotification(String toEmail, String subject, String htmlBody);
 }

@@ -4,8 +4,8 @@ import br.com.nora.api.domain.platform.BusinessSnapshot;
 import java.time.OffsetDateTime;
 
 /**
- * Porta de leitura de métricas de negócio cross-tenant (telemetria (c), CORTÁVEL, ADR 0024). Read
- * operador-only do banco primário, sem contexto de tenant.
+ * Read port for cross-tenant business metrics (telemetry (c), CUTTABLE, ADR 0024). Operator-only
+ * read from the primary database, without tenant context.
  */
 public interface BusinessMetricsSource {
 

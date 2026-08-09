@@ -1,127 +1,127 @@
-# 0012 — PII PERSON_NAME: estratégia regional BR no MVP, upgrade pra NER multi-idioma quando internacionalizar
+# 0012 — PII PERSON_NAME: BR regional strategy in the MVP, upgrade to multi-language NER when going international
 
-- Status: aceito
-- Data: 2026-05-12
-- Decisores: Stratfy (PO) + Claude Opus 4.7 (Tech Lead)
+- Status: accepted
+- Date: 2026-05-12
+- Deciders: Stratfy (PO) + Claude Opus 4.7 (Tech Lead)
 
-## Contexto
+## Context
 
-O PII shield do worker NLP cobre EMAIL, CPF, CNPJ, PHONE, CREDIT_CARD desde a Subfase 1.0. A Subfase 1.1 (TF-IDF baseline) expôs problema sério: o ranking top-N de termos era dominado por **nomes próprios** (Lucas, Marina, Rafael, Camila) das transcrições sintéticas — não por termos de negócio. Em produção isso se traduz em:
+The NLP worker's PII shield has covered EMAIL, CPF, CNPJ, PHONE, CREDIT_CARD since Sub-phase 1.0. Sub-phase 1.1 (TF-IDF baseline) exposed a serious problem: the top-N term ranking was dominated by **proper names** (Lucas, Marina, Rafael, Camila) from the synthetic transcripts — not by business terms. In production this translates into:
 
-- `baselineTerms` do response degrada (mostra nomes em vez de produtos/conceitos)
-- Logs e auditoria expõem nomes de pessoas reais (LGPD risk se não redigir antes do LLM)
-- LLM recebe nomes brutos no prompt — em alguns casos isso enviesa extração (LLM "lembra" do nome em decisão/risco)
+- The response's `baselineTerms` degrades (it shows names instead of products/concepts)
+- Logs and auditing expose real people's names (LGPD risk if not redacted before the LLM)
+- The LLM receives raw names in the prompt — in some cases this biases extraction (the LLM "remembers" the name in a decision/risk)
 
-A Subfase 1.3 (Fatia P) adicionou detecção de PERSON_NAME via **três padrões heurísticos**:
+Sub-phase 1.3 (Slice P) added PERSON_NAME detection via **three heuristic patterns**:
 
-1. Prefixos formais: `Sr\.|Sra\.|Dr\.|Dra\.|Profa?\.` seguidos de Title Case
-2. Title Case sequence: 2-4 palavras capitalizadas em sequência (filtradas por negative list)
-3. **Lista hardcoded de ~270 nomes BR comuns** (Lucas, Marina, Camila, Rafael, Carlos, Ana, João, Maria, etc — variantes com e sem acento)
+1. Formal prefixes: `Sr\.|Sra\.|Dr\.|Dra\.|Profa?\.` followed by Title Case
+2. Title Case sequence: 2-4 capitalized words in sequence (filtered by a negative list)
+3. **Hardcoded list of ~270 common BR names** (Lucas, Marina, Camila, Rafael, Carlos, Ana, João, Maria, etc — variants with and without accents)
 
-Mais uma **negative list (~80 termos)** evita falsos positivos de produtos, empresas e siglas técnicas (TOTVS, Protheus, NORA, SAP, Oracle, Salesforce, etc).
+Plus a **negative list (~80 terms)** that avoids false positives from products, companies and technical acronyms (TOTVS, Protheus, NORA, SAP, Oracle, Salesforce, etc).
 
-A solução cobre **bem o mercado-alvo MVP** (Brasil, ecossistema TOTVS), mas tem **limitações conhecidas**:
+The solution covers the **MVP target market well** (Brazil, TOTVS ecosystem), but has **known limitations**:
 
-- **Não escala internacionalmente**: nomes anglo-saxões (John, Sarah), franceses (Pierre, Marie), asiáticos (Hiroshi, Wei), espanhóis (Diego, Pablo) não estão cobertos pela lista BR
-- **Manutenção custosa por região**: cada mercado novo exigiria expansão da lista
-- **Cobertura ~80%** para tenants brasileiros — nomes incomuns ou variantes raras escapam
-- **Padrão 2 (Title Case sequence)** captura algumas pessoas estrangeiras por sorte (qualquer "Word1 Word2" Title Case fora da negative list) — mas com falsos positivos previsíveis (nomes de lugares, conceitos capitalizados)
+- **Does not scale internationally**: Anglo-Saxon (John, Sarah), French (Pierre, Marie), Asian (Hiroshi, Wei) and Spanish (Diego, Pablo) names are not covered by the BR list
+- **Costly maintenance per region**: each new market would require expanding the list
+- **~80% coverage** for Brazilian tenants — uncommon names or rare variants slip through
+- **Pattern 2 (Title Case sequence)** catches some foreign people by luck (any Title Case "Word1 Word2" outside the negative list) — but with predictable false positives (place names, capitalized concepts)
 
-## Decisão
+## Decision
 
-**Aceitar a estratégia regional BR como solução MVP**, com limitação documentada e plano de upgrade explícito.
+**Accept the BR regional strategy as the MVP solution**, with the limitation documented and an explicit upgrade plan.
 
-Esta decisão é uma escolha **consciente de escopo**, não negligência:
+This decision is a **conscious scoping** choice, not negligence:
 
-- Mercado-alvo MVP é Brasil (parceria FIAP × TOTVS, ecossistema lusófono)
-- Custo de implementar NER multi-idioma agora vs. ganho real = não justifica
-- Solução atual é **suficiente** pra demonstrar PII shield em pitch FIAP/NEXT 2026 e onboardar primeiros clientes BR
-- Cobertura limitada é **explicitamente documentada** em testes e neste ADR
+- The MVP target market is Brazil (FIAP × TOTVS partnership, Lusophone ecosystem)
+- Cost of implementing multi-language NER now vs. real gain = not justified
+- The current solution is **sufficient** to demonstrate the PII shield in the FIAP/NEXT 2026 pitch and to onboard the first BR customers
+- The limited coverage is **explicitly documented** in tests and in this ADR
 
-### Trigger pra upgrade (não automático)
+### Trigger for the upgrade (not automatic)
 
-Migrar pra solução NER multi-idioma quando **pelo menos uma** das condições abaixo for verdadeira:
+Migrate to a multi-language NER solution when **at least one** of the conditions below is true:
 
-1. **Primeiro tenant não-brasileiro** assinar contrato ou entrar em piloto formal
-2. **>5% das transcrições processadas em produção** vierem em idioma ≠ pt-BR (medido via metadado `language` em `AnalyzeRequest` + telemetria do worker)
-3. **Bug report de cliente** com falso negativo de nome causando vazamento via baselineTerms ou audit log
-4. **Audit de segurança LGPD** flagar a lista hardcoded como inadequada
+1. **The first non-Brazilian tenant** signs a contract or enters a formal pilot
+2. **>5% of the transcripts processed in production** come in a language ≠ pt-BR (measured via the `language` metadata in `AnalyzeRequest` + worker telemetry)
+3. **A customer bug report** with a false negative on a name causing a leak via baselineTerms or the audit log
+4. **An LGPD security audit** flags the hardcoded list as inadequate
 
-## Consequências
+## Consequences
 
-**Positivas:**
+**Positive:**
 
-- Tempo de implementação na Subfase 1.3 foi mínimo (~30min agentic), sem dep externa
-- Zero overhead runtime adicional (regex puro, ~ms)
-- Sem dep pesada (Presidio ~30MB, spaCy ~100MB) no container do worker
-- Testes determinísticos (lista fixa permite asserções exatas)
-- Solução é honesta com o escopo MVP
+- Implementation time in Sub-phase 1.3 was minimal (~30min agentic), with no external dependency
+- Zero additional runtime overhead (pure regex, ~ms)
+- No heavy dependency (Presidio ~30MB, spaCy ~100MB) in the worker container
+- Deterministic tests (a fixed list allows exact assertions)
+- The solution is honest about the MVP scope
 
-**Negativas / dívidas:**
+**Negative / debts:**
 
-- **Não escala** pra internacionalização sem refactor
-- **Manutenção implícita**: se descobrirmos nome BR comum não coberto, precisa update manual da lista
-- Negative list cresce conforme produtos/empresas novos aparecem em transcrições
-- Audit de PII em prod **precisará flagar** explicitamente que cobertura é regional, não universal
+- **Does not scale** to internationalization without a refactor
+- **Implicit maintenance**: if we discover a common BR name that is not covered, the list needs a manual update
+- The negative list grows as new products/companies appear in transcripts
+- A PII audit in prod **will need to flag** explicitly that coverage is regional, not universal
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-### (a) Lista global expandida (~5000+ nomes multi-cultural)
+### (a) Expanded global list (~5000+ multicultural names)
 
-Rejeitado:
-- Vira lista impossível de manter (top 1000 nomes de cada N região)
-- Bloat de bytes no código sem solucionar problema sistêmico (sempre vai faltar algum)
-- Falsos positivos crescem proporcionalmente
+Rejected:
+- It becomes an impossible list to maintain (top 1000 names for each of N regions)
+- Byte bloat in the code without solving the systemic problem (some name will always be missing)
+- False positives grow proportionally
 
-### (b) Heurística pura (regex Title Case sem lista)
+### (b) Pure heuristics (Title Case regex without a list)
 
-Rejeitado:
-- É exatamente o padrão 2 que já temos — sozinho não basta
-- Falsos positivos explodem (cidades, conceitos capitalizados, produtos sem prefixo conhecido)
-- Padrão fica indistinguível de noise
+Rejected:
+- It is exactly pattern 2 that we already have — on its own it is not enough
+- False positives explode (cities, capitalized concepts, products without a known prefix)
+- The pattern becomes indistinguishable from noise
 
 ### (c) Microsoft Presidio (ML-based NER)
 
-Adiada — **opção principal pra upgrade futuro** quando trigger condições baterem:
-- Multi-idioma robusto (suporta EN, PT, ES, FR nativamente)
-- ML-based: detecta nomes por contexto, não por lista
-- Custo: dep pesada ~30MB + warmup model load (~2s no startup) + ~50ms por análise
-- Maduro (Microsoft mantém)
-- Pode coexistir com lista BR (Presidio detecta, lista BR confirma com alta confiança)
+Deferred — **the main option for a future upgrade** when the trigger conditions are met:
+- Robust multi-language (supports EN, PT, ES, FR natively)
+- ML-based: detects names by context, not by list
+- Cost: heavy dependency ~30MB + model warmup load (~2s at startup) + ~50ms per analysis
+- Mature (maintained by Microsoft)
+- Can coexist with the BR list (Presidio detects, the BR list confirms with high confidence)
 
-### (d) spaCy com modelos NER pré-treinados
+### (d) spaCy with pre-trained NER models
 
-Alternativa secundária ao Presidio:
-- `pt_core_news_lg` (~500MB) ou `xx_ent_wiki_sm` (~10MB, multilingual)
-- Maduro, oss, ampla comunidade
-- Custo: dep mid-weight + warmup similar ao Presidio
-- Menos focada em PII especificamente (Presidio é PII-first; spaCy é NER genérico)
+A secondary alternative to Presidio:
+- `pt_core_news_lg` (~500MB) or `xx_ent_wiki_sm` (~10MB, multilingual)
+- Mature, oss, wide community
+- Cost: mid-weight dependency + warmup similar to Presidio
+- Less focused on PII specifically (Presidio is PII-first; spaCy is generic NER)
 
-### (e) LLM 2-stage (chamada extra dedicada a extrair nomes)
+### (e) 2-stage LLM (an extra call dedicated to extracting names)
 
-Rejeitado pra agora:
-- Custo dobra por análise (~$0.04 → ~$0.08 com gpt-4o-mini)
-- Latência adicional (~1-2s por análise)
-- Multi-idioma nativo, mas o ROI não bate o custo agora
+Rejected for now:
+- The cost per analysis doubles (~$0.04 → ~$0.08 with gpt-4o-mini)
+- Additional latency (~1-2s per analysis)
+- Natively multi-language, but the ROI does not beat the cost right now
 
-## Plano de Upgrade
+## Upgrade Plan
 
-Quando trigger condition for atingida:
+When the trigger condition is met:
 
-1. Avaliar Presidio vs spaCy vs LLM 2-stage com benchmark real (latência, recall, precision em 50 transcrições reais)
-2. Criar ADR sucessor (ex.: `0XXX-pii-person-name-ner-upgrade.md`) com decisão técnica final
-3. Implementar substituição mantendo lista BR como camada de confiança alta (combo: NER detecta → lista confirma)
-4. Migration estratégica: feature flag `PII_PERSON_DETECTOR=heuristic|presidio|spacy`, rollout gradual
-5. Manter testes determinísticos atuais como regression suite
+1. Evaluate Presidio vs spaCy vs 2-stage LLM with a real benchmark (latency, recall, precision on 50 real transcripts)
+2. Create a successor ADR (e.g., `0XXX-pii-person-name-ner-upgrade.md`) with the final technical decision
+3. Implement the replacement keeping the BR list as a high-confidence layer (combo: NER detects → list confirms)
+4. Strategic migration: feature flag `PII_PERSON_DETECTOR=heuristic|presidio|spacy`, gradual rollout
+5. Keep the current deterministic tests as a regression suite
 
-## Regras Acompanhantes
+## Accompanying Rules
 
-- Lista `_BR_TOP_NAMES` e `_PERSON_NAME_NEGATIVE_LIST` em `services/nlp-worker/src/nora_nlp/services/pii_shield.py` são **propriedade do produto** — qualquer adição passa por code review (alguém com contexto BR/PT) pra evitar bias regional
-- Pull requests que adicionem nomes à lista BR devem incluir justificativa no commit message (ex.: "encontrado em transcrição de cliente Y, padrão N=120 outras conversas")
-- Logs em produção que detectarem nome via padrão 2 (Title Case sem lista) devem emitir métrica `pii.person.fallback_heuristic` pra monitorar gap real entre lista vs heurística
+- The `_BR_TOP_NAMES` and `_PERSON_NAME_NEGATIVE_LIST` lists in `services/nlp-worker/src/nora_nlp/services/pii_shield.py` are **product property** — any addition goes through code review (by someone with BR/PT context) to avoid regional bias
+- Pull requests that add names to the BR list must include a justification in the commit message (e.g., "found in a transcript from customer Y, pattern across N=120 other conversations")
+- Production logs that detect a name via pattern 2 (Title Case without a list) must emit the metric `pii.person.fallback_heuristic` to monitor the real gap between the list and the heuristic
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-05-12 | Stratfy + Claude | ADR criado e aceito |
+| 2026-05-12 | Stratfy + Claude | ADR created and accepted |

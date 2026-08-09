@@ -1,6 +1,6 @@
 package br.com.nora.api.domain.iam;
 
-/** Effect estilo AWS IAM. */
+/** AWS IAM-style Effect. */
 public enum Effect {
     ALLOW,
     DENY

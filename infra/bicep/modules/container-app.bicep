@@ -1,10 +1,10 @@
-// Container App (template reusavel)
-// Usado pra api, worker e web. Cada chamada do main.bicep passa parametros especificos.
+// Container App (reusable template)
+// Used for api, worker and web. Each main.bicep call passes specific parameters.
 //
-// Identity: aceita User-Assigned MI (passada via userAssignedIdentityId) ou
-// SystemAssigned (default quando UAI vazio). Pra integrar com Key Vault references
-// preferir UAI — permite role assignment ANTES da app ser criada, evitando o
-// ciclo de SystemAssigned (identity so existe pos-criacao, role so apos isso).
+// Identity: accepts a User-Assigned MI (passed via userAssignedIdentityId) or
+// SystemAssigned (default when UAI is empty). To integrate with Key Vault references
+// prefer UAI — it allows role assignment BEFORE the app is created, avoiding the
+// SystemAssigned cycle (identity only exists post-creation, role only after that).
 
 @description('Nome da Container App (2-32 chars, lowercase + hifen).')
 @minLength(2)
@@ -116,8 +116,8 @@ var identityConfig = hasUai ? {
   type: 'SystemAssigned'
 }
 
-// Probes que o Container Apps reconhece (HEALTHCHECK do Dockerfile e ignorado pela
-// plataforma). API Spring Boot expoe /actuator/health; worker e web expoem /healthz.
+// Probes that Container Apps recognizes (the Dockerfile HEALTHCHECK is ignored by the
+// platform). The Spring Boot API exposes /actuator/health; worker and web expose /healthz.
 var probePath = ingress == 'none' ? '' : (containerName == 'api' ? '/actuator/health' : '/healthz')
 
 var probes = ingress == 'none' ? [] : [
@@ -149,7 +149,7 @@ var probes = ingress == 'none' ? [] : [
       path: probePath
       port: targetPort
     }
-    // API Spring Boot leva ~30s. Damos ate 60s ate marcar failure (12*5s).
+    // The Spring Boot API takes ~30s. We give it up to 60s before marking failure (12*5s).
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
@@ -213,9 +213,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// Easy Auth (Entra) — child resource separado (ADR 0023). Só criado quando easyAuth.enabled.
-// A plataforma Container Apps strippa headers X-MS-CLIENT-PRINCIPAL-* do cliente e injeta os
-// seus após validar — o app downstream (nora-admin) lê a identidade do operador daí.
+// Easy Auth (Entra) — separate child resource (ADR 0023). Only created when easyAuth.enabled.
+// The Container Apps platform strips X-MS-CLIENT-PRINCIPAL-* headers from the client and injects
+// its own after validating — the downstream app (nora-admin) reads the operator identity from there.
 resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (easyAuthEnabled) {
   parent: containerApp
   name: 'current'
@@ -242,7 +242,7 @@ resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (e
 
 output id string = containerApp.id
 output name string = containerApp.name
-// principalId: pra SystemAssigned vem do containerApp; pra UAI o chamador ja tem do UAI module
+// principalId: for SystemAssigned it comes from containerApp; for UAI the caller already has it from the UAI module
 output principalId string = hasUai ? '' : containerApp.identity.principalId
 output fqdn string = ingress == 'none' ? '' : containerApp.properties.configuration.ingress.fqdn
 output latestRevisionName string = containerApp.properties.latestRevisionName

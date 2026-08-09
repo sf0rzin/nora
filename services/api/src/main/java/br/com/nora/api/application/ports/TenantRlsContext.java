@@ -3,24 +3,25 @@ package br.com.nora.api.application.ports;
 import java.util.UUID;
 
 /**
- * Permite a camada de aplicação propagar EXPLICITAMENTE o tenant para o mecanismo de RLS (o GUC
- * {@code nora.current_tenant_id} que o {@code TenantRlsAspect} aplica por transação) em código que
- * roda FORA de uma thread de request HTTP — onde o {@code TenantContextHolder} não foi populado
- * pelo filtro de autenticação.
+ * Lets the application layer EXPLICITLY propagate the tenant to the RLS mechanism (the GUC {@code
+ * nora.current_tenant_id} that the {@code TenantRlsAspect} applies per transaction) in code that
+ * runs OUTSIDE an HTTP request thread — where the {@code TenantContextHolder} was not populated by
+ * the authentication filter.
  *
- * <p>Caso de uso (ADR 0028): o pipeline de análise roda async numa thread de executor. Sob RLS
- * enforce, suas escritas em tabelas enforced ({@code meeting_analyses} + filhos) precisam do GUC —
- * mas a thread async não herda o {@code TenantContextHolder} do request. O serviço, que recebe o
- * {@code tenantId}, chama {@link #set(UUID)} no início e {@link #clear()} no finally.
+ * <p>Use case (ADR 0028): the analysis pipeline runs async on an executor thread. Under RLS
+ * enforce, its writes to enforced tables ({@code meeting_analyses} + children) need the GUC — but
+ * the async thread does not inherit the {@code TenantContextHolder} from the request. The service,
+ * which receives the {@code tenantId}, calls {@link #set(UUID)} at the start and {@link #clear()}
+ * in the finally.
  *
- * <p>O adapter na infraestrutura delega para o mesmo holder que o aspect lê — mantendo a regra DDD
- * (application não conhece infraestrutura) via porta.
+ * <p>The adapter in infrastructure delegates to the same holder the aspect reads — keeping the DDD
+ * rule (application does not know infrastructure) via a port.
  */
 public interface TenantRlsContext {
 
-    /** Associa o tenant à thread corrente, para que o RLS aspect o aplique nas transações dela. */
+    /** Binds the tenant to the current thread so the RLS aspect applies it in its transactions. */
     void set(UUID tenantId);
 
-    /** Limpa o tenant da thread corrente. Chamar no finally (threads de pool são reusadas). */
+    /** Clears the tenant from the current thread. Call in the finally (pool threads are reused). */
     void clear();
 }

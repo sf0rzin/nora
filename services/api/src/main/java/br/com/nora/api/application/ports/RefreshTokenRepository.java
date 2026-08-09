@@ -6,9 +6,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Porta de persistencia para refresh tokens stateful (Round 2 / Subfase 1.3 A).
+ * Persistence port for stateful refresh tokens (Round 2 / Subphase 1.3 A).
  *
- * <p>O token cru nunca passa por aqui: apenas o hash SHA-256.
+ * <p>The raw token never passes through here: only the SHA-256 hash.
  */
 public interface RefreshTokenRepository {
 
@@ -17,27 +17,26 @@ public interface RefreshTokenRepository {
     Optional<RefreshToken> findByTokenHash(String tokenHash);
 
     /**
-     * Busca por id. Usado para inspecionar o filho apontado por {@code replacedById} e decidir se a
-     * cadeia de rotacao ainda esta viva.
+     * Lookup by id. Used to inspect the child pointed to by {@code replacedById} and decide whether
+     * the rotation chain is still alive.
      */
     Optional<RefreshToken> findById(UUID id);
 
     /**
-     * Lista somente tokens nao revogados; expirados podem aparecer e devem ser filtrados pelo
-     * caller.
+     * Lists only non-revoked tokens; expired ones may show up and must be filtered by the caller.
      */
     List<RefreshToken> findActiveByUserId(UUID userId);
 
     /**
-     * Revoga em lote todos os tokens nao revogados do usuario (ex.: logout-all-sessions, troca de
-     * senha). Retorna o numero de tokens efetivamente revogados.
+     * Bulk-revokes all of the user's non-revoked tokens (e.g. logout-all-sessions, password
+     * change). Returns the number of tokens actually revoked.
      */
     int revokeAllByUserId(UUID userId, java.time.Instant now);
 
     /**
-     * Revoga em lote todos os tokens da family (cadeia de rotacao). Usado quando reuse e detectado:
-     * um token revogado da family foi apresentado, indicando comprometimento provavel da cadeia.
-     * Retorna o numero de tokens efetivamente revogados.
+     * Bulk-revokes all tokens of the family (rotation chain). Used when reuse is detected: a
+     * revoked token from the family was presented, indicating probable compromise of the chain.
+     * Returns the number of tokens actually revoked.
      */
     int revokeAllByFamilyId(UUID familyId, java.time.Instant now);
 }

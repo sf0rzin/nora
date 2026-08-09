@@ -1,9 +1,9 @@
-"""Fixtures globais.
+"""Global fixtures.
 
-`get_settings` usa `@lru_cache` para evitar re-parsing de `.env` a cada
-`Depends(get_settings)`. Em testes, isso significa que mutar env vars apos a
-primeira leitura nao surte efeito ate `cache_clear()`. Limpar antes E depois de
-cada teste garante isolamento.
+`get_settings` uses `@lru_cache` to avoid re-parsing `.env` on every
+`Depends(get_settings)`. In tests, that means mutating env vars after the
+first read has no effect until `cache_clear()`. Clearing before AND after
+each test guarantees isolation.
 """
 
 from __future__ import annotations

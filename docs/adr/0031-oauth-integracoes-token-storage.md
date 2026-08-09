@@ -1,73 +1,73 @@
-# ADR 0031 — Integrações OAuth (Google) e armazenamento de tokens
+# ADR 0031 — OAuth integrations (Google) and token storage
 
-- **Status:** aceito
-- **Data:** 2026-06-11
-- **Decisores:** Arquiteto NORA (run do pitch) + Stratfy (PO, via GOAL.md)
-- **Relacionados:** ADR 0030 (workflow engine — as ações consomem as conexões), ADR 0002/0028
-  (tenant isolation + RLS), ADR 0020 (precedente de rotação de tokens)
+- **Status:** accepted
+- **Date:** 2026-06-11
+- **Deciders:** NORA Architect (pitch run) + Stratfy (PO, via GOAL.md)
+- **Related:** ADR 0030 (workflow engine — the actions consume the connections), ADR 0002/0028
+  (tenant isolation + RLS), ADR 0020 (token rotation precedent)
 
-## Contexto
+## Context
 
-As ações estrela do NORA Flows (enviar e-mail via Gmail do usuário, criar evento no Google
-Calendar, postar no Slack) exigem OAuth REAL com contas externas. Precisamos de: fluxo
-authorization code completo, armazenamento seguro de tokens por tenant, refresh automático em
-runtime (as ações rodam em listener assíncrono, sem usuário presente) e um hub de status
-("Conectado"/"Conectar") na página de integrações.
+The star actions of NORA Flows (send an email via the user's Gmail, create an event in Google
+Calendar, post to Slack) require REAL OAuth with external accounts. We need: a complete
+authorization code flow, secure per-tenant token storage, automatic refresh at
+runtime (the actions run in an asynchronous listener, with no user present) and a status hub
+("Conectado"/"Conectar") on the integrations page.
 
-Particularidades: o callback OAuth chega por redirect do navegador no domínio da API (sem garantia
-de cookie de sessão); o Core é individual (1 usuário root por tenant); as ações executam fora de
-request (thread do engine), então o token precisa ser resolvível só com o tenant_id do evento.
+Particularities: the OAuth callback arrives via a browser redirect on the API's domain (with no guarantee
+of a session cookie); the Core is single-user (1 root user per tenant); the actions execute outside a
+request (engine thread), so the token must be resolvable using only the event's tenant_id.
 
-## Decisão
+## Decision
 
-1. **Sem SDK do Google**: o fluxo são 2 POSTs (token endpoint) e 1 GET (userinfo) + 2 chamadas de
-   API (Gmail send, Calendar events) — `WebClient` direto em adapters infrastructure
-   (`GoogleOAuthHttpClient`, `GoogleWorkspaceClient`), atrás das portas `GoogleOAuthClient` (fluxo
-   OAuth) e ações `ActionExecutor` (`gmail_send_email`, `calendar_create_event`). Menos
-   dependências, payloads visíveis, stub trivial nos testes.
-2. **State auto-contido assinado (HMAC-SHA256)** em vez de state persistido: carrega
-   tenantId+userId+provider+exp(10min)+nonce, assinado com `NORA_INTEGRATIONS_STATE_SECRET`
-   (`OAuthStateCodec`). O callback é rota PÚBLICA (`/integrations/*/oauth/callback`) — o state É a
-   credencial: forge quebra na assinatura, replay tardio na expiração. Callback sempre REDIRECIONA
-   pro front (`/integracoes?connected=…` ou `?error=…`), nunca responde JSON ao navegador.
-3. **Conexão tenant-level** (`integration_connections`, V024): UNIQUE (tenant_id, provider) — o
-   Core é individual; `user_id` registra quem conectou (auditoria). RLS enforced padrão V022/V023.
-   Reconectar = upsert (ON CONFLICT) trocando tokens/conta.
-4. **Tokens cifrados em repouso**: AES-256-GCM com IV aleatório por valor (`TokenCipher`), chave
-   de 32 bytes em `NORA_INTEGRATIONS_ENC_KEY`; formato `enc:v1:iv:ciphertext`. SEM chave (dev
-   local), grava `plain:…` com WARN no boot — degradação honesta e visível, nunca silenciosa. O
-   adapter cifra/decifra; porta e domínio falam token em claro.
-5. **Refresh em runtime**: `IntegrationService.validGoogleAccessToken(tenantId)` renova quando o
-   access token está a <60s do vencimento, persiste a rotation (mantém o refresh token atual quando
-   o Google não envia um novo — comportamento padrão do Google) e devolve token pronto pra ação.
-   Token expirado SEM refresh token → erro claro pedindo reconexão (vai pro log da execução).
-6. **Escopos mínimos**: `openid email` (identificar a conta no hub) + `gmail.send` (só envio, sem
-   leitura de caixa) + `calendar.events` (criar eventos, sem acesso total ao calendário).
-   `access_type=offline&prompt=consent` para garantir refresh token na primeira conexão.
+1. **No Google SDK**: the flow is 2 POSTs (token endpoint) and 1 GET (userinfo) + 2 API calls
+   (Gmail send, Calendar events) — `WebClient` directly in infrastructure adapters
+   (`GoogleOAuthHttpClient`, `GoogleWorkspaceClient`), behind the ports `GoogleOAuthClient` (OAuth
+   flow) and the `ActionExecutor` actions (`gmail_send_email`, `calendar_create_event`). Fewer
+   dependencies, visible payloads, trivial stubbing in tests.
+2. **Signed self-contained state (HMAC-SHA256)** instead of persisted state: it carries
+   tenantId+userId+provider+exp(10min)+nonce, signed with `NORA_INTEGRATIONS_STATE_SECRET`
+   (`OAuthStateCodec`). The callback is a PUBLIC route (`/integrations/*/oauth/callback`) — the state IS the
+   credential: forgery breaks on the signature, a late replay on the expiration. The callback always REDIRECTS
+   to the front end (`/integracoes?connected=…` or `?error=…`), it never answers JSON to the browser.
+3. **Tenant-level connection** (`integration_connections`, V024): UNIQUE (tenant_id, provider) — the
+   Core is single-user; `user_id` records who connected (audit). RLS enforced in the V022/V023 pattern.
+   Reconnecting = upsert (ON CONFLICT) swapping tokens/account.
+4. **Tokens encrypted at rest**: AES-256-GCM with a random IV per value (`TokenCipher`), a 32-byte key
+   in `NORA_INTEGRATIONS_ENC_KEY`; format `enc:v1:iv:ciphertext`. WITHOUT a key (local dev),
+   it writes `plain:…` with a WARN at boot — honest and visible degradation, never silent. The
+   adapter encrypts/decrypts; the port and the domain speak tokens in the clear.
+5. **Runtime refresh**: `IntegrationService.validGoogleAccessToken(tenantId)` renews when the
+   access token is <60s from expiring, persists the rotation (keeping the current refresh token when
+   Google does not send a new one — Google's default behavior) and returns a token ready for the action.
+   An expired token WITHOUT a refresh token → a clear error asking for reconnection (it goes into the execution log).
+6. **Minimal scopes**: `openid email` (to identify the account in the hub) + `gmail.send` (send only, no
+   mailbox reading) + `calendar.events` (create events, without full access to the calendar).
+   `access_type=offline&prompt=consent` to guarantee a refresh token on the first connection.
 
-## Alternativas rejeitadas
+## Rejected alternatives
 
-- **SDK oficial google-api-client**: ~10 MB de dependências transitivas para 4 chamadas HTTP;
-  esconde o fluxo que queremos auditável.
-- **State persistido em tabela**: exige tabela + limpeza; o state assinado é stateless e cobre os
-  mesmos ataques no nosso fluxo (não usamos PKCE porque o client é confidencial — secret no
-  servidor).
-- **Token por usuário (não por tenant)**: correto num multi-seat, mas o Core é individual; a
-  decisão Stratfy "Core sem IAM" torna a conexão tenant-level mais simples e suficiente. Trigger
-  de upgrade: tenants multi-usuário no Enterprise.
-- **Key Vault para tokens**: latência+custo por execução de workflow; AES-GCM com chave em env
-  (que JÁ vem do GitHub Secrets/KV no deploy) dá cifra em repouso com acesso O(1).
+- **The official google-api-client SDK**: ~10 MB of transitive dependencies for 4 HTTP calls;
+  it hides the flow we want to be auditable.
+- **State persisted in a table**: requires a table + cleanup; the signed state is stateless and covers the
+  same attacks in our flow (we do not use PKCE because the client is confidential — the secret is on the
+  server).
+- **Per-user token (not per tenant)**: correct in a multi-seat setup, but the Core is single-user; the
+  Stratfy decision "Core sem IAM" makes the tenant-level connection simpler and sufficient. Upgrade
+  trigger: multi-user tenants in Enterprise.
+- **Key Vault for tokens**: latency+cost per workflow execution; AES-GCM with the key in an env var
+  (which ALREADY comes from GitHub Secrets/KV at deploy time) gives encryption at rest with O(1) access.
 
-## Consequências
+## Consequences
 
-- Slack seguirá o mesmo molde (provider novo no enum + client próprio + ação) — o hub
-  (`GET /integrations`) já lista todos os providers com configured/connected.
-- Revogação no Google (usuário remove o app) aparece como falha clara no log da execução
-  (`ProviderError 400 invalid_grant`) — o hub continua mostrando "Conectado" até reconexão ou
-  disconnect manual; aceitável no MVP.
-- Prova: `IntegrationFlowIntegrationTest` (start → callback assinado → status conectado → ação
-  gmail num workflow real → disconnect → ação falha com mensagem clara; state forjado rejeitado;
-  isolamento cross-tenant), `IntegrationServiceTest` (refresh/rotation), `OAuthStateCodecTest`,
+- Slack will follow the same mold (a new provider in the enum + its own client + an action) — the hub
+  (`GET /integrations`) already lists all providers with configured/connected.
+- Revocation on Google's side (the user removes the app) shows up as a clear failure in the execution log
+  (`ProviderError 400 invalid_grant`) — the hub keeps showing "Conectado" until reconnection or a manual
+  disconnect; acceptable in the MVP.
+- Proof: `IntegrationFlowIntegrationTest` (start → signed callback → connected status → a gmail action
+  in a real workflow → disconnect → the action fails with a clear message; a forged state is rejected;
+  cross-tenant isolation), `IntegrationServiceTest` (refresh/rotation), `OAuthStateCodecTest`,
   `TokenCipherTest`.
-- Handoff humano necessário para ativar de verdade: projeto no Google Cloud Console, consent
-  screen, Client ID/Secret e redirect URIs (dev + api.nora.systems) — ver `.env.example`.
+- Human handoff needed to actually activate it: a project in the Google Cloud Console, the consent
+  screen, Client ID/Secret and redirect URIs (dev + api.nora.systems) — see `.env.example`.

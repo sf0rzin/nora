@@ -18,12 +18,12 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Adapter entre {@link MeetingJpaRepository} e a porta de dominio.
+ * Adapter between {@link MeetingJpaRepository} and the domain port.
  *
- * <p>Os metodos sao {@code @Transactional} porque {@link #toDomain} acessa as colecoes {@code
- * participants} e {@code tags} (ambas LAZY). Sem a sessao aberta aqui, callers que chamam o adapter
- * fora de um {@code @Transactional} caller (ex.: {@code AnalysisService.run}) sofreriam {@code
- * LazyInitializationException}.
+ * <p>The methods are {@code @Transactional} because {@link #toDomain} accesses the {@code
+ * participants} and {@code tags} collections (both LAZY). Without the session open here, callers
+ * that hit the adapter outside a {@code @Transactional} caller (e.g. {@code AnalysisService.run})
+ * would suffer {@code LazyInitializationException}.
  */
 @Repository
 public class MeetingRepositoryAdapter implements MeetingRepository {

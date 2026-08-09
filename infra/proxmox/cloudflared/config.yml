@@ -1,168 +1,168 @@
 # =============================================================================
-# NORA — Cloudflare Tunnel: ingress de REFERÊNCIA.
+# NORA — Cloudflare Tunnel: REFERENCE ingress.
 # =============================================================================
 #
 # ############################################################################
-# #  ESTE ARQUIVO NÃO É LIDO PELO CONTAINER. LEIA O PARÁGRAFO ABAIXO ANTES    #
-# #  DE EDITÁ-LO ACHANDO QUE ISSO MUDA ALGUMA COISA EM PRODUÇÃO.              #
+# #  THIS FILE IS NOT READ BY THE CONTAINER. READ THE PARAGRAPH BELOW BEFORE  #
+# #  EDITING IT THINKING THAT CHANGES ANYTHING IN PRODUCTION.                 #
 # ############################################################################
 #
-# O serviço `cloudflared` do infra/proxmox/docker-compose.yml sobe assim:
+# The `cloudflared` service in infra/proxmox/docker-compose.yml comes up like this:
 #
 #     command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 run
 #     environment:
 #       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?...}
 #
-# Sem `--config`, sem volume montado neste diretório. Com `TUNNEL_TOKEN` o
-# túnel é REMOTELY-MANAGED (gerenciado pelo dashboard): o connector busca a
-# configuração de ingress na Cloudflare no momento em que conecta. As regras
-# REAIS vivem em:
+# No `--config`, no volume mounted on this directory. With `TUNNEL_TOKEN` the
+# tunnel is REMOTELY-MANAGED (managed from the dashboard): the connector fetches
+# the ingress configuration from Cloudflare the moment it connects. The REAL
+# rules live in:
 #
-#     Zero Trust > Networks > Tunnels > (o túnel do NORA) > Configure >
+#     Zero Trust > Networks > Tunnels > (the NORA tunnel) > Configure >
 #     Public Hostnames
 #
-# Portanto: este YAML é a DOCUMENTAÇÃO VERSIONADA do que precisa estar
-# cadastrado lá. Ele existe para (a) revisar a configuração de ingress em pull
-# request, (b) reconstruir o túnel do zero sem arqueologia no dashboard, e
-# (c) servir de config pronta caso um dia se migre para túnel locally-managed
-# (ver a seção "Modo locally-managed" no rodapé).
+# So: this YAML is the VERSIONED DOCUMENTATION of what has to be registered
+# there. It exists to (a) review the ingress configuration in a pull request,
+# (b) rebuild the tunnel from scratch without archaeology in the dashboard, and
+# (c) serve as a ready config if one day this migrates to a locally-managed tunnel
+# (see the "Locally-managed mode" section in the footer).
 #
-# Editar este arquivo e dar `docker compose up -d` NÃO muda o roteamento.
-# Mudança de rota = mexer no dashboard (ou usar a API da Cloudflare).
+# Editing this file and running `docker compose up -d` does NOT change routing.
+# Changing a route = touching the dashboard (or using the Cloudflare API).
 #
 # -----------------------------------------------------------------------------
-# O QUE CADASTRAR NO DASHBOARD (equivalente 1:1 do bloco `ingress:` abaixo)
+# WHAT TO REGISTER IN THE DASHBOARD (1:1 equivalent of the `ingress:` block below)
 # -----------------------------------------------------------------------------
-# Quatro Public Hostnames, TODOS apontando para o mesmo serviço `http://caddy:80`
-# — quem decide qual app atende é o Caddy, pelo header Host (ver ../caddy/Caddyfile).
-# O connector resolve `caddy` pelo DNS interno do Docker, então cloudflared e
-# caddy precisam compartilhar a rede `edge` (já compartilham no compose).
+# Four Public Hostnames, ALL pointing at the same `http://caddy:80` service
+# — what decides which app answers is Caddy, by the Host header (see ../caddy/Caddyfile).
+# The connector resolves `caddy` through Docker's internal DNS, so cloudflared and
+# caddy have to share the `edge` network (they already do in the compose).
 #
 #   | Subdomain | Domain          | Type | URL          |
 #   |-----------|-----------------|------|--------------|
-#   | (vazio)   | nora.systems    | HTTP | caddy:80     |
+#   | (empty)   | nora.systems    | HTTP | caddy:80     |
 #   | www       | nora.systems    | HTTP | caddy:80     |
 #   | api       | nora.systems    | HTTP | caddy:80     |
 #   | admin     | nora.systems    | HTTP | caddy:80     |
 #   | grafana   | nora.systems    | HTTP | caddy:80     |
 #
-# Tipo HTTP (não HTTPS): a origem não tem TLS de propósito — o TLS do visitante
-# termina na borda da Cloudflare e o trecho cloudflared -> caddy não sai das
-# bridges do Docker. Ver o cabeçalho do Caddyfile.
+# HTTP type (not HTTPS): the origin has no TLS on purpose — the visitor's TLS
+# terminates at the Cloudflare edge and the cloudflared -> caddy leg never leaves
+# the Docker bridges. See the Caddyfile header.
 #
-# O DNS (registro CNAME `<host>.nora.systems -> <tunnel-id>.cfargotunnel.com`,
-# proxied) é criado automaticamente ao adicionar o Public Hostname.
+# The DNS (CNAME record `<host>.nora.systems -> <tunnel-id>.cfargotunnel.com`,
+# proxied) is created automatically when the Public Hostname is added.
 #
-# Substitua `nora.systems` se NORA_PUBLIC_DOMAIN for outro: este arquivo não
-# tem interpolação de variável de ambiente (o cloudflared não faz isso).
+# Replace `nora.systems` if NORA_PUBLIC_DOMAIN is something else: this file has
+# no environment variable interpolation (cloudflared does not do that).
 # =============================================================================
 
-# --- Identidade do túnel -----------------------------------------------------
-# Só usados no modo locally-managed. Com TUNNEL_TOKEN o connector já sabe qual
-# túnel é e se autentica pelo token — estes dois campos são ignorados.
+# --- Tunnel identity ---------------------------------------------------------
+# Only used in locally-managed mode. With TUNNEL_TOKEN the connector already knows
+# which tunnel it is and authenticates by the token — these two fields are ignored.
 tunnel: nora-proxmox
 credentials-file: /etc/cloudflared/credentials.json
 
-# --- Operacional -------------------------------------------------------------
-# Autoupdate desligado: a versão é fixada pela tag da imagem no compose
-# (cloudflare/cloudflared:2026.5.2). Atualizar = subir a tag num commit.
+# --- Operational -------------------------------------------------------------
+# Autoupdate off: the version is pinned by the image tag in the compose
+# (cloudflare/cloudflared:2026.5.2). Updating = bumping the tag in a commit.
 no-autoupdate: true
 
-# Métricas do connector em :2000 (mesma flag que o compose passa). Expõe
-# /metrics no formato Prometheus e /ready. É onde aparece
-# cloudflared_tunnel_ha_connections — esperado 4; cair para 0 é exatamente o
-# 522 que derrubou nora.systems.
+# Connector metrics on :2000 (the same flag the compose passes). Exposes
+# /metrics in Prometheus format and /ready. It is where
+# cloudflared_tunnel_ha_connections shows up — expected 4; dropping to 0 is exactly
+# the 522 that took nora.systems down.
 #
-# O job `cloudflared` JÁ EXISTE em ../observability/prometheus.yml e HOJE NÃO
-# COLETA: este serviço está só na rede `edge` e o prometheus só na `internal`,
-# então o scrape resolve "no such host". Fecha com uma linha no compose, no
-# serviço cloudflared:  networks: [edge, internal]  — não aumenta exposição,
-# a `internal` é `internal: true`. Ver o comentário do job lá.
+# The `cloudflared` job ALREADY EXISTS in ../observability/prometheus.yml and TODAY
+# COLLECTS NOTHING: this service is only on the `edge` network and prometheus only on
+# `internal`, so the scrape resolves to "no such host". One line in the compose closes
+# it, on the cloudflared service:  networks: [edge, internal]  — it does not increase
+# exposure, `internal` is `internal: true`. See the job's comment over there.
 metrics: 0.0.0.0:2000
 
-# Logs em stdout para o Alloy coletar (mesmo pipeline dos demais containers).
+# Logs on stdout for Alloy to collect (same pipeline as the other containers).
 loglevel: info
 
-# --- Defaults aplicados a todas as regras ------------------------------------
+# --- Defaults applied to every rule ------------------------------------------
 originRequest:
-  # Tempo para abrir a conexão TCP com o Caddy. Curto de propósito: o Caddy é
-  # o único componente que NÃO some no rolling update (é ele que segura a
-  # requisição enquanto api/web reiniciam, via lb_try_duration).
+  # Time to open the TCP connection to Caddy. Short on purpose: Caddy is the
+  # only component that does NOT disappear during the rolling update (it is the
+  # one holding the request while api/web restart, via lb_try_duration).
   connectTimeout: 10s
 
-  # SEM timeout de resposta: o chat usa SSE e a resposta fica aberta enquanto
-  # o modelo gera tokens. `disableChunkedEncoding: false` (default) preserva o
-  # streaming; ligar isso quebraria o chat de forma silenciosa.
+  # NO response timeout: the chat uses SSE and the response stays open while
+  # the model generates tokens. `disableChunkedEncoding: false` (default) preserves
+  # streaming; turning it on would break the chat silently.
   disableChunkedEncoding: false
 
-  # Origem em HTTP puro — nada de TLS para verificar. Mantido explícito para
-  # deixar claro que `noTLSVerify: true` NÃO é necessário aqui.
+  # Origin over plain HTTP — no TLS to verify. Kept explicit to make clear
+  # that `noTLSVerify: true` is NOT needed here.
   noTLSVerify: false
 
-  # Preserva o Host original (api.nora.systems etc.). É o que o roteamento do
-  # Caddy usa; sobrescrever com `httpHostHeader` cairia sempre no catch-all 404.
-  # httpHostHeader: <não setar>
+  # Preserves the original Host (api.nora.systems etc.). It is what Caddy's
+  # routing uses; overriding it with `httpHostHeader` would always land on the 404 catch-all.
+  # httpHostHeader: <do not set>
 
-  # Reaproveita conexões com o Caddy em vez de abrir uma por requisição.
+  # Reuses connections to Caddy instead of opening one per request.
   keepAliveConnections: 100
   keepAliveTimeout: 90s
 
-# --- Regras de ingress (ordem importa: a primeira que casar vence) -----------
+# --- Ingress rules (order matters: the first that matches wins) --------------
 ingress:
-  # Site público (Next.js/BFF) — apex.
+  # Public site (Next.js/BFF) — apex.
   - hostname: nora.systems
     service: http://caddy:80
 
-  # Site público — www.
+  # Public site — www.
   - hostname: www.nora.systems
     service: http://caddy:80
 
-  # API Spring Boot. Rota do SSE do chat.
+  # Spring Boot API. Route of the chat SSE.
   - hostname: api.nora.systems
     service: http://caddy:80
 
-  # Console do operador (profile `platform`). A autenticação é na BORDA: esta
-  # rota PRECISA ter uma Access Application da Cloudflare na frente, senão o
-  # admin fica aberto — o apps/admin/src/lib/access.ts faz fail-OPEN quando
-  # CF_ACCESS_AUD chega vazio. O connector injeta `Cf-Access-Jwt-Assertion`.
+  # Operator console (`platform` profile). Authentication happens at the EDGE:
+  # this route MUST have a Cloudflare Access Application in front, otherwise the
+  # admin is wide open — apps/admin/src/lib/access.ts does fail-OPEN when
+  # CF_ACCESS_AUD arrives empty. The connector injects `Cf-Access-Jwt-Assertion`.
   - hostname: admin.nora.systems
     service: http://caddy:80
 
-  # Grafana. Protegido só pela senha de admin, a menos que se coloque uma
-  # Access Application na frente também (recomendado).
+  # Grafana. Protected only by the admin password, unless an Access Application
+  # is put in front of it too (recommended).
   - hostname: grafana.nora.systems
     service: http://caddy:80
 
-  # Catch-all OBRIGATÓRIO: o cloudflared recusa a configuração se a última
-  # regra tiver `hostname`. Qualquer Host não listado morre aqui, sem chegar
-  # na VM.
+  # MANDATORY catch-all: cloudflared refuses the configuration if the last rule
+  # has a `hostname`. Any Host not listed dies here, without reaching the
+  # VM.
   - service: http_status:404
 
 # =============================================================================
-# Modo locally-managed (alternativa — NÃO é o modo em uso)
+# Locally-managed mode (alternative — NOT the mode in use)
 # =============================================================================
-# Se um dia o token de conector for trocado por credenciais locais, este
-# arquivo passa a ser a fonte da verdade e o roteamento volta a viver no repo.
+# If one day the connector token is swapped for local credentials, this file
+# becomes the source of truth and routing goes back to living in the repo.
 #
-#   1. Autenticar e criar o túnel numa máquina com browser:
+#   1. Authenticate and create the tunnel on a machine with a browser:
 #        cloudflared tunnel login
 #        cloudflared tunnel create nora-proxmox
-#      Isso gera <TUNNEL-ID>.json (as credenciais) e imprime o TUNNEL-ID.
-#   2. Guardar o JSON no host (ex.: /etc/nora/cloudflared/credentials.json,
-#      chmod 600) — é um segredo, NÃO versionar. Se for versionar cifrado,
-#      use o mesmo SOPS + age do resto da stack (../.sops.yaml).
-#   3. Criar o DNS de cada hostname:
+#      That generates <TUNNEL-ID>.json (the credentials) and prints the TUNNEL-ID.
+#   2. Keep the JSON on the host (e.g. /etc/nora/cloudflared/credentials.json,
+#      chmod 600) — it is a secret, do NOT version it. If it is to be versioned
+#      encrypted, use the same SOPS + age as the rest of the stack (../.sops.yaml).
+#   3. Create the DNS for each hostname:
 #        cloudflared tunnel route dns nora-proxmox api.nora.systems   # etc.
-#   4. No docker-compose.yml: remover TUNNEL_TOKEN, montar este diretório e
-#      trocar o command para
+#   4. In docker-compose.yml: remove TUNNEL_TOKEN, mount this directory and
+#      change the command to
 #        tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
-#      com os volumes
+#      with the volumes
 #        - ./cloudflared:/etc/cloudflared:ro
 #        - /etc/nora/cloudflared/credentials.json:/etc/cloudflared/credentials.json:ro
-#   5. Trocar `tunnel: nora-proxmox` pelo TUNNEL-ID, se preferir ser explícito.
+#   5. Replace `tunnel: nora-proxmox` with the TUNNEL-ID, to be explicit if preferred.
 #
-# Trade-off: locally-managed versiona o roteamento (auditável em PR) mas move
-# um segredo a mais para o host. Remotely-managed (o modo atual) mantém só o
-# TUNNEL_TOKEN, ao custo de o roteamento real morar fora do repo — que é
-# exatamente a razão de este arquivo existir.
+# Trade-off: locally-managed versions the routing (auditable in a PR) but moves
+# one more secret onto the host. Remotely-managed (the current mode) keeps only
+# the TUNNEL_TOKEN, at the cost of the real routing living outside the repo — which
+# is exactly the reason this file exists.
 # =============================================================================

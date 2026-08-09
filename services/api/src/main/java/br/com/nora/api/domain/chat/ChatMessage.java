@@ -4,8 +4,8 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Uma mensagem dentro de uma sessão de chat. Pertence a uma {@link ChatSession} (via sessionId) e
- * carrega tenant_id explícito (ADR 0002). Imutável.
+ * A message inside a chat session. Belongs to a {@link ChatSession} (via sessionId) and carries an
+ * explicit tenant_id (ADR 0002). Immutable.
  */
 public record ChatMessage(
         UUID id,

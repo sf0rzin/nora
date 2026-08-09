@@ -1,8 +1,8 @@
 package br.com.nora.api.domain.customer;
 
 /**
- * Sinal de compra detectado na reuniao conforme avaliacao do worker. Imutavel, value object filho
- * de {@link CustomerConfidenceAssessment} (ADR 0015).
+ * Buying signal detected in the meeting according to the worker's assessment. Immutable, child
+ * value object of {@link CustomerConfidenceAssessment} (ADR 0015).
  */
 public record BuyingSignal(BuyingSignalType type, String quote, Double weight, int position) {
 

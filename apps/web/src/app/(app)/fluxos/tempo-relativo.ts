@@ -1,6 +1,6 @@
 /**
- * NORA Flows — datas relativas em PT-BR (sem lib externa, padrão do app).
- * "agora", "há 2 min", "há 3 h", "ontem", "há 4 dias", depois data curta.
+ * NORA Flows — relative dates in PT-BR (no external lib, app standard).
+ * "agora", "há 2 min", "há 3 h", "ontem", "há 4 dias", then short date.
  */
 
 export function tempoRelativo(iso: string): string {
@@ -22,14 +22,14 @@ export function tempoRelativo(iso: string): string {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 }
 
-/** Hora HH:mm — usado no feedback "Salvo às 14:32". */
+/** HH:mm time — used in the "Salvo às 14:32" feedback. */
 export function horaCurta(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-/** Hora HH:mm:ss — usado nas linhas do log de execução. */
+/** HH:mm:ss time — used in the execution log lines. */
 export function horaLog(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";

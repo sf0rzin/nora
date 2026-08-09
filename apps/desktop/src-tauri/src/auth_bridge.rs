@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Manager};
 
-/// Le o JWT de sessao (cookie nora_access) da webview principal (carrega nora.systems).
-/// O backend aceita esse JWT via Bearer (JwtAuthenticationFilter), entao serve de token.
+/// Reads the session JWT (nora_access cookie) from the main webview (loads nora.systems).
+/// The backend accepts this JWT via Bearer (JwtAuthenticationFilter), so it works as a token.
 pub fn web_session_jwt(app: &AppHandle) -> Result<String, String> {
     let win = app
         .get_webview_window("main")

@@ -14,7 +14,7 @@ import "./auth.css";
 
 type Mode = "login" | "signup";
 
-/** Aceita só paths internos; rejeita `//host` e absolutas (open-redirect). */
+/** Accepts internal paths only; rejects `//host` and absolute ones (open-redirect). */
 function safeNextPath(raw: string | null): Route {
   if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
     return "/dashboard" as Route;
@@ -22,7 +22,7 @@ function safeNextPath(raw: string | null): Route {
   return raw as Route;
 }
 
-// ── Live transcription (painel esquerdo · variante ambient) ──
+// ── Live transcription (left panel · ambient variant) ──
 type TLine = {
   t: number;
   speaker: string;
@@ -234,7 +234,7 @@ function EyeIcon({ shown }: { shown: boolean }) {
   );
 }
 
-// SSO ainda não conectado (Entra ID) — botão ativo por design; back-end é issue à parte.
+// SSO not wired up yet (Entra ID) — button active by design; back-end is a separate issue.
 const SSO_NOTICE = "Login com Microsoft ainda não está disponível — em integração.";
 
 // ── Login ──
@@ -245,7 +245,7 @@ function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; n
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  // E-mail ainda não verificado (401 EMAIL_NOT_VERIFIED): oferece reenvio.
+  // E-mail not verified yet (401 EMAIL_NOT_VERIFIED): offers a resend.
   const [needsVerify, setNeedsVerify] = useState(false);
   const [resending, setResending] = useState(false);
   const [resentNote, setResentNote] = useState<string | null>(null);
@@ -282,7 +282,7 @@ function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; n
     setResending(true);
     try {
       await resendVerificationEmail(email);
-      // 202 sempre (anti-enumeração) — a mensagem é a mesma em qualquer caso.
+      // Always 202 (anti-enumeration) — the message is the same in any case.
       setErr(null);
       setNeedsVerify(false);
       setResentNote(

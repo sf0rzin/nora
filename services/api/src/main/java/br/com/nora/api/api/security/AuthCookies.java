@@ -5,19 +5,19 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 
 /**
- * Construcao centralizada dos cookies httpOnly de autenticacao (Round 2 / Subfase 1.3 A).
+ * Centralized construction of the httpOnly authentication cookies (Round 2 / Subphase 1.3 A).
  *
- * <p>Dois cookies:
+ * <p>Two cookies:
  *
  * <ul>
- *   <li>{@value #ACCESS_COOKIE} — JWT curto (15min default). {@code SameSite=Lax}, {@code Path=/}.
- *       Vai em toda request mas e curto-vivido.
- *   <li>{@value #REFRESH_COOKIE} — opaque (30 dias default). {@code SameSite=Strict}, {@code
- *       Path=/auth}. So chega no endpoint de refresh/logout, reduz exposicao em logs/network.
+ *   <li>{@value #ACCESS_COOKIE} — short JWT (15min default). {@code SameSite=Lax}, {@code Path=/}.
+ *       Goes on every request but is short-lived.
+ *   <li>{@value #REFRESH_COOKIE} — opaque (30 days default). {@code SameSite=Strict}, {@code
+ *       Path=/auth}. Only reaches the refresh/logout endpoint, reduces exposure in logs/network.
  * </ul>
  *
- * <p>Flag {@code Secure} controlada por {@code nora.auth.cookie-secure} (default false em dev, true
- * em prod). Sempre {@code HttpOnly} — impede JavaScript do navegador de ler.
+ * <p>The {@code Secure} flag is controlled by {@code nora.auth.cookie-secure} (default false in
+ * dev, true in prod). Always {@code HttpOnly} — stops browser JavaScript from reading it.
  */
 public final class AuthCookies {
 
@@ -37,11 +37,11 @@ public final class AuthCookies {
     }
 
     /**
-     * @param domain quando informado (ex.: {@code salmonbeach-X.centralus.azurecontainerapps.io}),
-     *     emite os cookies com {@code Domain=}, fazendo o navegador compartilhá-los entre os
-     *     subdomínios (web e api). Necessário no Container Apps quando web e api estão em hosts
-     *     irmãos do mesmo registrable domain — sem isso, o cookie fica scoped só na api e o
-     *     middleware do Next no domínio do web não enxerga, redirecionando pra login infinito.
+     * @param domain when provided (e.g.: {@code salmonbeach-X.centralus.azurecontainerapps.io}),
+     *     emits the cookies with {@code Domain=}, making the browser share them across the
+     *     subdomains (web and api). Needed on Container Apps when web and api are on sibling hosts
+     *     of the same registrable domain — without it, the cookie is scoped only to the api and the
+     *     Next middleware on the web domain does not see it, redirecting to login forever.
      */
     public AuthCookies(boolean secure, String domain) {
         this.secure = secure;
@@ -53,7 +53,7 @@ public final class AuthCookies {
         return domain == null ? b : b.domain(domain);
     }
 
-    /** Cookie do access JWT. Path raiz para ser enviado em qualquer chamada autenticada. */
+    /** Access JWT cookie. Root path so it is sent on any authenticated call. */
     public ResponseCookie buildAccessCookie(String value, Duration ttl) {
         return applyDomain(
                         ResponseCookie.from(ACCESS_COOKIE, value)
@@ -66,8 +66,8 @@ public final class AuthCookies {
     }
 
     /**
-     * Cookie do refresh opaque. Path restrito a {@code /auth} para nao vazar em requests gerais —
-     * so vai pra rotas de refresh/logout/etc.
+     * Opaque refresh cookie. Path restricted to {@code /auth} so it does not leak on general
+     * requests — it only goes to refresh/logout/etc routes.
      */
     public ResponseCookie buildRefreshCookie(String value, Duration ttl) {
         return applyDomain(
@@ -80,7 +80,7 @@ public final class AuthCookies {
                 .build();
     }
 
-    /** Cookie de limpeza do access (Max-Age=0). */
+    /** Access clearing cookie (Max-Age=0). */
     public ResponseCookie buildClearAccessCookie() {
         return applyDomain(
                         ResponseCookie.from(ACCESS_COOKIE, "")
@@ -92,7 +92,7 @@ public final class AuthCookies {
                 .build();
     }
 
-    /** Cookie de limpeza do refresh (Max-Age=0, mesmo Path da emissao para casar o delete). */
+    /** Refresh clearing cookie (Max-Age=0, same Path as issuance so the delete matches). */
     public ResponseCookie buildClearRefreshCookie() {
         return applyDomain(
                         ResponseCookie.from(REFRESH_COOKIE, "")
@@ -104,12 +104,12 @@ public final class AuthCookies {
                 .build();
     }
 
-    /** Helper de teste/observabilidade: e indica se {@code Secure} esta ligado. */
+    /** Test/observability helper: indicates whether {@code Secure} is on. */
     public boolean isSecure() {
         return secure;
     }
 
-    /** Atalho para appendar um cookie em {@code HttpHeaders} como Set-Cookie. */
+    /** Shortcut to append a cookie to {@code HttpHeaders} as Set-Cookie. */
     public static void appendSetCookie(HttpHeaders headers, ResponseCookie cookie) {
         headers.add(HttpHeaders.SET_COOKIE, cookie.toString());
     }

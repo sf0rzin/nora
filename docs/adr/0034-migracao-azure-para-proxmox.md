@@ -1,389 +1,389 @@
-# ADR 0034 — Migração de Azure Container Apps para Proxmox self-hosted (VM única + Docker Compose)
+# ADR 0034 — Migration from Azure Container Apps to self-hosted Proxmox (single VM + Docker Compose)
 
-- **Status:** aceito
-- **Data:** 2026-08-07
-- **Decisores:** sys0xFF (PO/dono) + Arquiteto NORA (Tech Lead, auditoria de migração)
-- **Substitui:** ADR 0009 (Speech Token Broker — o recurso Azure Speech deixa de existir; a
-  substituição funcional é o **ADR 0035**)
-- **Substitui parcialmente:** ADR 0016 (production-readiness checklist — todas as premissas
-  ancoradas em Azure caem: Gap 1 `prod.bicepparam`/SP separado, Gap 3 RPO/RTO apoiado no PITR do
-  Flexible Server, Gap 4 alertas via Azure Monitor + workbook do App Insights, Gap 7 rotação via
-  Key Vault. Gap 2 e Gap 6 continuam válidos com outro substrato; Gap 5 já foi entregue pelo
+- **Status:** accepted
+- **Date:** 2026-08-07
+- **Deciders:** sys0xFF (PO/owner) + NORA Architect (Tech Lead, migration audit)
+- **Supersedes:** ADR 0009 (Speech Token Broker — the Azure Speech resource ceases to exist; the
+  functional replacement is **ADR 0035**)
+- **Partially supersedes:** ADR 0016 (production-readiness checklist — every Azure-anchored premise
+  falls: Gap 1 `prod.bicepparam`/separate SP, Gap 3 RPO/RTO relying on the Flexible Server's
+  PITR, Gap 4 alerts via Azure Monitor + the App Insights workbook, Gap 7 rotation via
+  Key Vault. Gap 2 and Gap 6 remain valid on a different substrate; Gap 5 was already delivered by
   ADR 0029)
-- **Altera:** ADR 0023 (a borda do operador deixa de ser ingress de Container App; a separação de
-  planos e os dois tokens internos continuam), ADR 0022 (o 2º Postgres continua sendo **server
-  separado**, mas o isolamento físico cai — mesma VM), ADR 0026/0028 (o design de RLS não muda; o
-  **endpoint** do cutover muda e o FQDN Azure hardcoded precisa ser reapontado), ADR 0029 (o local
-  de repouso do PII sai de datacenter gerenciado para hardware próprio)
-- **Estende:** ADR 0025 (o Cloudflare Tunnel deixa de ser só do `nora-admin` e vira o **único**
-  ingress de toda a stack)
-- **Relacionados:** ADR 0017 (repo público — é o que veta o deploy por push), ADR 0027 (branch
-  protection), ADR 0024 (control plane), `infra/proxmox/docker-compose.yml` (contrato da stack),
-  `docs/operations/proxmox-deploy.md` (runbook sucessor), `docs/operations/azure-decommission.md`
+- **Changes:** ADR 0023 (the operator edge is no longer a Container App ingress; the separation of
+  planes and the two internal tokens remain), ADR 0022 (the 2nd Postgres is still a **separate
+  server**, but the physical isolation falls — same VM), ADR 0026/0028 (the RLS design does not change; the
+  cutover **endpoint** changes and the hardcoded Azure FQDN needs to be repointed), ADR 0029 (the
+  resting place of PII moves from a managed datacenter to our own hardware)
+- **Extends:** ADR 0025 (the Cloudflare Tunnel is no longer only for `nora-admin` and becomes the **only**
+  ingress of the whole stack)
+- **Related:** ADR 0017 (public repo — it is what vetoes push-based deployment), ADR 0027 (branch
+  protection), ADR 0024 (control plane), `infra/proxmox/docker-compose.yml` (the stack contract),
+  `docs/operations/proxmox-deploy.md` (successor runbook), `docs/operations/azure-decommission.md`
 
-## Contexto
+## Context
 
-### Produção está fora do ar
+### Production is down
 
-`nora.systems` e `api.nora.systems` devolvem **522** (Cloudflare alcança o DNS, a origem não
-responde). O FQDN cru do Container App —
-`nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io` — **também não conecta**, o que
-elimina a Cloudflare da lista de suspeitos: a origem sumiu.
+`nora.systems` and `api.nora.systems` return **522** (Cloudflare reaches DNS, the origin does not
+respond). The Container App's raw FQDN —
+`nora-api-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io` — **also does not connect**, which
+removes Cloudflare from the list of suspects: the origin is gone.
 
-Linha do tempo apurada:
+Established timeline:
 
-| Data | Evento |
+| Date | Event |
 |---|---|
-| 2026-06-13 | Último deploy de infra (`deploy-infra.yml`) bem-sucedido |
-| 2026-07-06 | Último `build-images` em `main` com `deploy-apps` OK — ou seja, o OIDC federado ainda funcionava nessa data |
-| 2026-08-07 | 522 no domínio público e no FQDN direto |
+| 2026-06-13 | Last successful infra deploy (`deploy-infra.yml`) |
+| 2026-07-06 | Last `build-images` on `main` with `deploy-apps` OK — that is, federated OIDC still worked on that date |
+| 2026-08-07 | 522 on the public domain and on the direct FQDN |
 
-Causa provável: **a subscription Azure for Students foi desativada**. O benefício estudantil expira
-ou esgota crédito sem aviso operacional; recursos são parados e, depois de um prazo de retenção,
-excluídos. Não é falha de código nem de deploy — o `deploy-apps` funcionava em 06/07.
+Probable cause: **the Azure for Students subscription was deactivated**. The student benefit expires
+or runs out of credit with no operational warning; resources are stopped and, after a retention period,
+deleted. It is neither a code nor a deploy failure — `deploy-apps` was working on 06/07.
 
-### Não há dado a preservar — e isso simplifica tudo
+### There is no data to preserve — and that simplifies everything
 
-O NORA é um **projeto educacional** (FIAP Challenge 2026 × TOTVS). Apesar de o `rg-nora-dev` servir
-`nora.systems` num domínio real e de a stack ser construída com padrões de produção, **não há dado
-de produção nem base de usuários** — e, por decisão do PO, não haverá: o produto não vai operar
-comercialmente nesta encarnação.
+NORA is an **educational project** (FIAP Challenge 2026 × TOTVS). Even though `rg-nora-dev` serves
+`nora.systems` on a real domain and the stack is built with production standards, **there is no production
+data and no user base** — and, by the PO's decision, there will not be: the product is not going to operate
+commercially in this incarnation.
 
-Consequência direta, e ela reordena a migração inteira: **o conteúdo dos dois Postgres do Azure é
-descartável.** Não há resgate de dados no caminho crítico, não há janela de retenção correndo contra
-o cronograma, e o decommission pode ser um `az group delete` sem cerimônia. A migração é uma
-mudança de plataforma, não uma operação de recuperação.
+Direct consequence, and it reorders the entire migration: **the contents of the two Azure Postgres instances are
+disposable.** There is no data rescue on the critical path, there is no retention window running against
+the schedule, and the decommission can be an unceremonious `az group delete`. The migration is a
+platform change, not a recovery operation.
 
-Vale registrar o que *seria* verdade num cenário comercial, porque a assimetria explica várias
-escolhas deste ADR que de outro modo pareceriam frouxas: `transcripts.raw_text` guarda transcrição
-bruta — PII em repouso, já que o PII Shield redige o que vai pra LLM e não o que fica no banco (ADR
-0029) — e os tokens OAuth das integrações (ADR 0031) são cifrados mas não recuperáveis sem o banco.
-Numa operação real, a perda da subscription seria incidente de dados, e o PITR de 7 dias do Flexible
-Server não ajudaria: ele é interno à subscription e morre junto com ela. Aqui, é só limpeza.
+It is worth recording what *would* be true in a commercial scenario, because the asymmetry explains several
+choices in this ADR that would otherwise look lax: `transcripts.raw_text` stores the raw
+transcription — PII at rest, since the PII Shield redacts what goes to the LLM and not what stays in the database (ADR
+0029) — and the integrations' OAuth tokens (ADR 0031) are encrypted but not recoverable without the database.
+In a real operation, losing the subscription would be a data incident, and the Flexible Server's 7-day PITR
+would not help: it is internal to the subscription and dies along with it. Here, it is just cleanup.
 
-### Nunca houve um ADR declarando o Azure
+### There never was an ADR declaring Azure
 
-Vale registrar sem eufemismo: a plataforma de hospedagem **nunca foi decidida** — foi herdada de um
-crédito estudantil. O que existe é um runbook (`docs/operations/azure-deploy.md`) e um catálogo de
-**8 armadilhas do Azure for Students** descobertas empiricamente na Sub-fase 1.9. O ADR 0016
-assumiu Azure como dado, não como escolha. Este ADR é o **primeiro registro formal de decisão de
-plataforma de hospedagem** do projeto.
+Worth recording without euphemism: the hosting platform was **never decided** — it was inherited from a
+student credit. What exists is a runbook (`docs/operations/azure-deploy.md`) and a catalog of
+**8 Azure for Students pitfalls** discovered empirically in Sub-phase 1.9. ADR 0016
+assumed Azure as a given, not as a choice. This ADR is the project's **first formal record of a hosting
+platform decision**.
 
-### A auditoria: sair do Azure é mais barato do que o inventário sugeria
+### The audit: leaving Azure is cheaper than the inventory suggested
 
-O levantamento de acoplamento encontrou o oposto do esperado:
+The coupling survey found the opposite of what was expected:
 
-- **Zero SDK Azure em qualquer app.** Nenhum `com.azure:*` no `pom.xml`, nenhum `azure-*` no worker
-  Python, nenhum `@azure/*` nos dois Next. A "nuvem" estava no IaC e nas env vars, não no código.
-- **O acoplamento profundo em código são DOIS pontos:**
-  1. o `-javaagent` do Application Insights (`services/api/Dockerfile:16,22-28,39`);
-  2. o sidecar Python do desktop (`azure-cognitiveservices-speech`) — endereçado pelo **ADR 0035**,
-     não por este.
+- **Zero Azure SDKs in any app.** No `com.azure:*` in the `pom.xml`, no `azure-*` in the Python
+  worker, no `@azure/*` in either Next app. The "cloud" was in the IaC and in the env vars, not in the code.
+- **The deep coupling in code is TWO points:**
+  1. the Application Insights `-javaagent` (`services/api/Dockerfile:16,22-28,39`);
+  2. the desktop's Python sidecar (`azure-cognitiveservices-speech`) — addressed by **ADR 0035**,
+     not by this one.
 
-E um terceiro que o inventário quase perdeu:
+And a third one the inventory nearly missed:
 
-- **`AppInsightsHealthSource.java` é um caminho de LEITURA de telemetria.** Faz `GET` em
-  `api.applicationinsights.io/v1/apps/{id}/query` com **KQL** e header `x-api-key`. Um OTel
-  Collector é **write-only e não fala KQL** — não há substituição por configuração. Isso é
-  reescrita de classe Java, e ficou fora do inventário inicial porque a busca por "SDK" não pega um
-  cliente HTTP cru.
+- **`AppInsightsHealthSource.java` is a telemetry READ path.** It does a `GET` on
+  `api.applicationinsights.io/v1/apps/{id}/query` with **KQL** and an `x-api-key` header. An OTel
+  Collector is **write-only and does not speak KQL** — there is no replacement by configuration. That is
+  a Java class rewrite, and it fell outside the initial inventory because searching for "SDK" does not catch a
+  raw HTTP client.
 
-Duas armadilhas de execução, apuradas antes de qualquer commit:
+Two execution pitfalls, established before any commit:
 
-- **Trocar só a env `OTEL_EXPORTER_OTLP_ENDPOINT` NÃO funciona.** O agent do App Insights exporta
-  para o endpoint **Breeze** da connection string e **ignora** `OTEL_EXPORTER_OTLP_ENDPOINT`. É
-  obrigatório **trocar o JAR** pelo `opentelemetry-javaagent.jar` e **republicar a imagem**. Sem
-  isso, a API sobe "sem erro" e não emite nada.
-- **`AZURE_SPEECH_ENDPOINT` é peso morto.** É injetada pelo Bicep e **não tem um consumidor no
-  repo**; o output `speechEndpoint` também é inconsumido. O broker usa o endpoint **regional de
-  STS** (`application.yml:179`,
-  `https://%s.api.cognitive.microsoft.com/sts/v1.0/issueToken`) com header
-  `Ocp-Apim-Subscription-Key`.
+- **Swapping just the `OTEL_EXPORTER_OTLP_ENDPOINT` env var does NOT work.** The App Insights agent exports
+  to the connection string's **Breeze** endpoint and **ignores** `OTEL_EXPORTER_OTLP_ENDPOINT`. It is
+  mandatory to **swap the JAR** for `opentelemetry-javaagent.jar` and **republish the image**. Without
+  that, the API comes up "with no error" and emits nothing.
+- **`AZURE_SPEECH_ENDPOINT` is dead weight.** It is injected by Bicep and **has no consumer in the
+  repo**; the `speechEndpoint` output is also unconsumed. The broker uses the **regional STS**
+  endpoint (`application.yml:179`,
+  `https://%s.api.cognitive.microsoft.com/sts/v1.0/issueToken`) with the
+  `Ocp-Apim-Subscription-Key` header.
 
-### O repositório é público — e isso decide o modelo de deploy
+### The repository is public — and that decides the deployment model
 
-O repo é público (ADR 0017) e `deploy-infra.yml:60-64` tem trigger `pull_request`. Um **runner
-self-hosted persistente na rede doméstica** executaria, portanto, **código de fork arbitrário** com
-acesso ao socket do Docker e à LAN. Isso não é uma preferência de estilo: é o que **elimina** o
-deploy por push antes de qualquer comparação de conveniência.
+The repo is public (ADR 0017) and `deploy-infra.yml:60-64` has a `pull_request` trigger. A **persistent
+self-hosted runner on the home network** would therefore execute **arbitrary fork code** with
+access to the Docker socket and to the LAN. This is not a style preference: it is what **eliminates**
+push-based deployment before any convenience comparison.
 
-### Restrição nova disponível
+### A new constraint available
 
-Existe um Proxmox doméstico ("beta") ocioso, com energia e link já pagos. Custo marginal de
-hospedar a stack lá: ~zero em dinheiro.
+There is an idle home Proxmox ("beta"), with power and link already paid for. The marginal cost of
+hosting the stack there: ~zero in money.
 
-## Decisão
+## Decision
 
-**Migrar a produção do NORA para uma VM Debian única em Proxmox, orquestrada por Docker Compose,
-com Cloudflare Tunnel como único ingress, segredos em SOPS+age e deploy por PULL.**
+**Migrate NORA's production to a single Debian VM on Proxmox, orchestrated by Docker Compose,
+with Cloudflare Tunnel as the only ingress, secrets in SOPS+age and PULL-based deployment.**
 
-O contrato completo da stack é o `infra/proxmox/docker-compose.yml` (projeto compose `nora`) — ele
-é a fonte da verdade; o que segue são as decisões que o justificam.
+The complete stack contract is `infra/proxmox/docker-compose.yml` (compose project `nora`) — it
+is the source of truth; what follows are the decisions that justify it.
 
-### 1. Substrato: VM Debian única + Docker Compose
+### 1. Substrate: single Debian VM + Docker Compose
 
-Uma VM, três redes bridge: `edge` (só cloudflared e caddy), `internal` (`internal: true` — sem rota
-pra internet) e `data` (`internal: true`). **Nenhuma porta publicada no host** além de `127.0.0.1`
-para debug via `ssh -L`. Cada serviço é o par 1:1 de um módulo `container-app.bicep`; as env vars
-foram transcritas do range `main.bicep:694-1540`.
+One VM, three bridge networks: `edge` (only cloudflared and caddy), `internal` (`internal: true` — no route
+to the internet) and `data` (`internal: true`). **No port published on the host** other than `127.0.0.1`
+for debugging via `ssh -L`. Each service is the 1:1 counterpart of a `container-app.bicep` module; the env vars
+were transcribed from the range `main.bicep:694-1540`.
 
-Sem scale-to-zero: numa VM única o custo de manter uma réplica de pé é irrelevante e elimina o cold
-start que o Consumption profile impunha.
+No scale-to-zero: on a single VM the cost of keeping one replica up is irrelevant and it eliminates the cold
+start that the Consumption profile imposed.
 
-### 2. Ingress: Cloudflare Tunnel como o único caminho de entrada
+### 2. Ingress: Cloudflare Tunnel as the only entry path
 
-Estende o ADR 0025 do `nora-admin` para a stack inteira. `cloudflared` conecta **outbound** ao
-Cloudflare; não existe porta inbound, não existe FQDN de origem para contornar o Access. O TLS do
-visitante é o Universal SSL da Cloudflare (SSL mode Full, como já era).
+Extends ADR 0025 from `nora-admin` to the whole stack. `cloudflared` connects **outbound** to
+Cloudflare; there is no inbound port, there is no origin FQDN to bypass Access. The visitor's TLS
+is Cloudflare's Universal SSL (SSL mode Full, as it already was).
 
-O roteamento por Host é do **Caddy**: apex e `www` → `web`; `api.<dom>` → `api`;
+Host-based routing belongs to **Caddy**: apex and `www` → `web`; `api.<dom>` → `api`;
 `admin.<dom>` → `admin`; `grafana.<dom>` → `grafana`.
 
-**`CF_ACCESS_AUD` passa a ser obrigatório** (`:?` no compose). Hoje, em produção, ele chega **vazio**
-— está cadastrado como Secret e lido como `vars.` nos workflows — e `apps/admin/src/lib/access.ts`
-faz **fail-OPEN**: o Tier 2 do ADR 0025 está desligado em produção **em silêncio**. A migração
-fecha isso por construção: sem a variável, o container `admin` não sobe.
+**`CF_ACCESS_AUD` becomes mandatory** (`:?` in the compose file). Today, in production, it arrives **empty**
+— it is registered as a Secret and read as `vars.` in the workflows — and `apps/admin/src/lib/access.ts`
+does **fail-OPEN**: Tier 2 of ADR 0025 is silently disabled in production. The migration
+closes that by construction: without the variable, the `admin` container does not come up.
 
-### 3. Caddy: um componente novo, sem par no Azure, e o motivo dele
+### 3. Caddy: a new component, with no Azure counterpart, and the reason for it
 
-O Container Apps tinha `activeRevisionsMode: Single` com **readiness gate**: só trocava o tráfego
-depois do probe da revisão nova passar. `docker compose up -d` faz o contrário — **derruba o
-container antigo antes de subir o novo**. O boot do Spring com Flyway leva ~30s (o healthcheck usa
-`start_period: 45s` e `retries: 12`, calibrado no Bicep para isso).
+Container Apps had `activeRevisionsMode: Single` with a **readiness gate**: it only switched traffic
+after the new revision's probe passed. `docker compose up -d` does the opposite — **it takes the old
+container down before bringing the new one up**. The Spring boot with Flyway takes ~30s (the healthcheck uses
+`start_period: 45s` and `retries: 12`, calibrated in the Bicep for that).
 
-O Caddy existe para transformar esse buraco em latência: `lb_try_duration` segura a requisição e
-reenvia quando a origem volta. É **mitigação, não eliminação** — ver §Consequências.
+Caddy exists to turn that hole into latency: `lb_try_duration` holds the request and
+resends it when the origin comes back. It is **mitigation, not elimination** — see §Consequences.
 
-### 4. Segredos: SOPS + age
+### 4. Secrets: SOPS + age
 
-`infra/proxmox/secrets.env.sops` é **versionado cifrado**; a chave privada age vive **só no host**,
-em `/etc/nora/age.key` (`chmod 400`, dono `root`). O deploy decifra para um `.env` em **tmpfs**, que
-nunca toca o disco.
+`infra/proxmox/secrets.env.sops` is **versioned encrypted**; the age private key lives **only on the host**,
+at `/etc/nora/age.key` (`chmod 400`, owner `root`). The deploy decrypts it into a `.env` in **tmpfs**, which
+never touches the disk.
 
-Substitui Key Vault + 3 User-Assigned Managed Identities + os role assignments. As consequências
-disso não são boas — estão registradas abaixo, sem maquiagem.
+It replaces Key Vault + 3 User-Assigned Managed Identities + the role assignments. The consequences
+of this are not good — they are recorded below, without makeup.
 
-### 5. Deploy por PULL, nunca por push
+### 5. PULL-based deployment, never push
 
-Um agente no próprio host puxa a tag desejada do GHCR e aplica. **Nenhum runner do GitHub toca a
-rede doméstica.** O CI continua sendo o dono do build e da publicação das imagens; o host é o dono
-do rollout.
+An agent on the host itself pulls the desired tag from GHCR and applies it. **No GitHub runner touches the
+home network.** CI remains the owner of building and publishing the images; the host is the owner
+of the rollout.
 
-Imagens continuam vindo do GHCR já existente
-(`ghcr.io/sys0xff/nora-{api,worker,web,admin}`). O mecanismo de rollout são as **tags imutáveis
-`sha-<short>`** — `latest` serve para bootstrap, não para rollout, porque não dá alvo de rollback.
+Images keep coming from the already existing GHCR
+(`ghcr.io/sys0xff/nora-{api,worker,web,admin}`). The rollout mechanism is the **immutable
+`sha-<short>` tags** — `latest` serves for bootstrap, not for rollout, because it does not give a rollback target.
 
-### 6. Observabilidade: duas pernas, não uma
+### 6. Observability: two legs, not one
 
-Cobertura equivalente ao que existia exige **duas** pernas distintas:
+Coverage equivalent to what existed requires **two** distinct legs:
 
-| O que fazia no Azure | Substituto |
+| What it did on Azure | Replacement |
 |---|---|
-| `-javaagent` do App Insights (traces/métricas) | `opentelemetry-javaagent.jar` → `otel-collector` (OTLP gRPC 4317) → Prometheus (retenção 30d) |
-| `appLogsConfiguration` → Log Analytics (stdout dos apps) | Alloy lendo o socket do Docker → Loki |
-| Workbook / Metrics Explorer | Grafana em `grafana.<dom>`, atrás do mesmo Tunnel |
+| App Insights `-javaagent` (traces/metrics) | `opentelemetry-javaagent.jar` → `otel-collector` (OTLP gRPC 4317) → Prometheus (30d retention) |
+| `appLogsConfiguration` → Log Analytics (the apps' stdout) | Alloy reading the Docker socket → Loki |
+| Workbook / Metrics Explorer | Grafana at `grafana.<dom>`, behind the same Tunnel |
 
-Um OTel Collector sozinho **não** cobre log shipping — daí o Alloy. Ele foi escolhido em vez do log
-driver `loki` porque o plugin quebra `docker logs` e, em `mode=non-blocking`, descarta linhas em
-silêncio sob backpressure; Alloy tem WAL, então backpressure vira atraso, não perda.
+An OTel Collector alone does **not** cover log shipping — hence Alloy. It was chosen over the `loki` log
+driver because the plugin breaks `docker logs` and, in `mode=non-blocking`, silently drops lines
+under backpressure; Alloy has a WAL, so backpressure becomes delay, not loss.
 
-**A troca do JAR é obrigatória e é mudança de imagem**, não de env (ver §Contexto).
+**Swapping the JAR is mandatory and is an image change**, not an env change (see §Context).
 
 ### 7. `AppInsightsHealthSource` → `PrometheusHealthSource`
 
-A leitura de telemetria de saúde do control plane (ADR 0024) é reescrita: a Query REST API do App
-Insights (KQL, `x-api-key`) é trocada pela **Query API do Prometheus**
-(`NORA_PLATFORM_HEALTH_PROMETHEUS_URL: http://prometheus:9090`, janela em
+The control plane's health telemetry read (ADR 0024) is rewritten: the App Insights REST Query API
+(KQL, `x-api-key`) is replaced by the **Prometheus Query API**
+(`NORA_PLATFORM_HEALTH_PROMETHEUS_URL: http://prometheus:9090`, window in
 `NORA_PLATFORM_HEALTH_WINDOW`).
 
-Efeito colateral positivo: `NORA_PLATFORM_HEALTH_APP_ID` / `NORA_PLATFORM_HEALTH_API_KEY` nunca
-foram provisionados em lugar nenhum, então esse painel está "unavailable" desde sempre. Passa a
-funcionar pela primeira vez.
+Positive side effect: `NORA_PLATFORM_HEALTH_APP_ID` / `NORA_PLATFORM_HEALTH_API_KEY` were never
+provisioned anywhere, so that dashboard has been "unavailable" from the start. It starts
+working for the first time.
 
-### 8. Dados: dois Postgres, três roles, sem `sslmode`
+### 8. Data: two Postgres, three roles, no `sslmode`
 
-- Imagem `pgvector/pgvector:pg16`, **dois servers separados** (`nora` e `nora_platform`),
-  preservando o contrato `PLATFORM_DATASOURCE_URL` e o blast radius do ADR 0022 — com a ressalva de
-  que "separado" agora é processo, não máquina.
-- **A JDBC URL não leva `?sslmode=require`.** A imagem oficial sobe com SSL OFF e o Hikari falha no
-  boot. O tráfego não sai da bridge `data`, que é `internal: true`.
-- Os **três** roles do RLS (ADR 0026/0028) são provisionados: `nora_app` (NOBYPASSRLS, runtime),
-  `nora_telemetry` (BYPASSRLS, painel do operador) e o admin/owner (Flyway/DDL). **Omitir o
-  `nora_telemetry` zera o painel em silêncio** — fail-closed sem erro, o modo de falha mais caro de
-  diagnosticar. Está no runbook como item bloqueante.
-- O FQDN Azure `nora-pg-dev-wgl3a3.postgres.database.azure.com` está hardcoded em **quatro**
-  lugares e precisa ser reapontado ou aposentado: `infra/bicep/main.dev.bicepparam:140`,
+- Image `pgvector/pgvector:pg16`, **two separate servers** (`nora` and `nora_platform`),
+  preserving the `PLATFORM_DATASOURCE_URL` contract and ADR 0022's blast radius — with the caveat
+  that "separate" is now a process, not a machine.
+- **The JDBC URL does not carry `?sslmode=require`.** The official image comes up with SSL OFF and Hikari fails at
+  boot. The traffic does not leave the `data` bridge, which is `internal: true`.
+- The **three** RLS roles (ADR 0026/0028) are provisioned: `nora_app` (NOBYPASSRLS, runtime),
+  `nora_telemetry` (BYPASSRLS, operator dashboard) and the admin/owner (Flyway/DDL). **Omitting
+  `nora_telemetry` silently zeroes the dashboard** — fail-closed with no error, the most expensive failure mode to
+  diagnose. It is in the runbook as a blocking item.
+- The Azure FQDN `nora-pg-dev-wgl3a3.postgres.database.azure.com` is hardcoded in **four**
+  places and needs to be repointed or retired: `infra/bicep/main.dev.bicepparam:140`,
   `.github/workflows/rls-cutover.yml:40`, `docs/operations/rls-cutover-runbook.md:69`,
   `docs/operations/azure-deploy.md:398`.
 
 ### 9. Backup
 
-`pg_dump` lógico por hora dos dois bancos, retenção de 14 dias, mais snapshot da VM no Proxmox
-Backup Server (fora do compose). Substitui o PITR de 7 dias do Flexible Server — **com perda de
-garantia**, quantificada abaixo.
+Hourly logical `pg_dump` of both databases, 14-day retention, plus a VM snapshot on the Proxmox
+Backup Server (outside the compose file). It replaces the Flexible Server's 7-day PITR — **with a loss
+of guarantee**, quantified below.
 
 <a id="escopo-excluido"></a>
 
-## Escopo excluído — o que é DELETADO, não portado
+## Excluded scope — what is DELETED, not ported
 
-Migrar isto seria portar dívida. Nada aqui tem consumidor:
+Migrating this would be porting debt. Nothing here has a consumer:
 
-| Recurso / variável | Por que sai |
+| Resource / variable | Why it goes |
 |---|---|
-| **Storage Account** (LRS, blob soft-delete 7d) | **Zero consumidores** no código. Provisionado e nunca usado. |
-| **Azure AI Search** (Basic, opcional) | Desligado por default. A busca semântica é a V021 (`meeting_embeddings`) + HTTP embedding client — nunca dependeu dele. |
-| **Easy Auth / App Registration Entra** | Abandonado pelo **ADR 0025**; o Bicep ainda provisionava o secret. `EASYAUTH_CLIENT_ID` / `EASYAUTH_CLIENT_SECRET` são órfãos referenciados no workflow e inexistentes como Secret. |
-| **`daprAIConnectionString`** | **Nenhum app habilita Dapr.** |
-| **`AZURE_SPEECH_ENDPOINT`** + output `speechEndpoint` | Injetada e inconsumida. O broker usa o endpoint regional de STS (`application.yml:179`). |
-| **`AZURE_SEARCH_ENDPOINT` / `AZURE_SEARCH_INDEX`** | Dependentes do AI Search desligado. |
-| **`APPLICATIONINSIGHTS_CONNECTION_STRING`** | Morre com a troca do javaagent. |
-| **`NORA_PLATFORM_HEALTH_APP_ID` / `_API_KEY`** | Nunca provisionados; substituídos pelo Prometheus. |
-| **Key Vault + 3 UAIs + role assignments** | Substituídos por SOPS+age (com as consequências abaixo). |
-| **Azure Speech (Cognitive Services S0)** | Ver **ADR 0035**. |
+| **Storage Account** (LRS, blob soft-delete 7d) | **Zero consumers** in the code. Provisioned and never used. |
+| **Azure AI Search** (Basic, optional) | Off by default. Semantic search is V021 (`meeting_embeddings`) + the HTTP embedding client — it never depended on it. |
+| **Easy Auth / Entra App Registration** | Abandoned by **ADR 0025**; the Bicep still provisioned the secret. `EASYAUTH_CLIENT_ID` / `EASYAUTH_CLIENT_SECRET` are orphans referenced in the workflow and nonexistent as a Secret. |
+| **`daprAIConnectionString`** | **No app enables Dapr.** |
+| **`AZURE_SPEECH_ENDPOINT`** + output `speechEndpoint` | Injected and unconsumed. The broker uses the regional STS endpoint (`application.yml:179`). |
+| **`AZURE_SEARCH_ENDPOINT` / `AZURE_SEARCH_INDEX`** | Dependent on the AI Search that is off. |
+| **`APPLICATIONINSIGHTS_CONNECTION_STRING`** | Dies with the javaagent swap. |
+| **`NORA_PLATFORM_HEALTH_APP_ID` / `_API_KEY`** | Never provisioned; replaced by Prometheus. |
+| **Key Vault + 3 UAIs + role assignments** | Replaced by SOPS+age (with the consequences below). |
+| **Azure Speech (Cognitive Services S0)** | See **ADR 0035**. |
 
-**Explicitamente NÃO no escopo:** ligar `pgvector` de verdade. A V021 evitou a extensão **de
-propósito**, por causa da allow-list do Azure — guarda embeddings como JSON em coluna `TEXT` e
-computa cosseno em Java. Sair do Azure destrava a extensão, mas trocar isso é **refactor de RAG**,
-não migração de infra. A imagem `pgvector/pgvector:pg16` deixa a extensão *disponível* e **não a
-cria**.
+**Explicitly NOT in scope:** actually turning on `pgvector`. V021 avoided the extension **on
+purpose**, because of Azure's allow-list — it stores embeddings as JSON in a `TEXT` column and
+computes cosine in Java. Leaving Azure unlocks the extension, but changing that is a **RAG refactor**,
+not an infra migration. The `pgvector/pgvector:pg16` image makes the extension *available* and **does not
+create it**.
 
-## Consequências
+## Consequences
 
 <a id="disponibilidade"></a>
 
-### Disponibilidade — piora, e o quanto
+### Availability — it gets worse, and by how much
 
-**Perde-se o readiness gate e o rolling update.** O `activeRevisionsMode: Single` só cortava
-tráfego depois do probe passar. Compose não tem esse conceito. Resultado: **janela de ~45s por
-deploy da API** em que a origem não responde (boot do Spring + Flyway ~30s; healthcheck com
-`start_period: 45s`). Mitigada — não eliminada — por `lb_try_duration` no Caddy: requisições que
-estouram o try duration ainda falham, e conexões em voo caem. Web e admin sofrem menos (boot mais
-curto), mas sofrem.
+**The readiness gate and the rolling update are lost.** `activeRevisionsMode: Single` only cut
+traffic over after the probe passed. Compose has no such concept. Result: a **window of ~45s per
+API deploy** in which the origin does not respond (Spring boot + Flyway ~30s; healthcheck with
+`start_period: 45s`). Mitigated — not eliminated — by `lb_try_duration` in Caddy: requests that
+exceed the try duration still fail, and in-flight connections drop. Web and admin suffer less (shorter
+boot), but they suffer.
 
-**Perde-se o PITR gerenciado — e aqui isso é aceitável, não uma dívida.** RPO sai de ~5 min (ADR
-0016 Gap 3, apoiado no PITR do Flexible Server) para **até 1 hora**, o intervalo do `pg_dump`. RTO
-sai de minutos para **horas**: provisionar/restaurar a VM, restaurar o dump lógico, subir a stack,
-verificar.
+**The managed PITR is lost — and here that is acceptable, not a debt.** RPO goes from ~5 min (ADR
+0016 Gap 3, relying on the Flexible Server's PITR) to **up to 1 hour**, the `pg_dump` interval. RTO
+goes from minutes to **hours**: provision/restore the VM, restore the logical dump, bring the stack up,
+verify.
 
-Num produto comercial isso seria regressão séria e exigiria pgBackRest com WAL archiving. **Não é o
-caso deste projeto.** O NORA é educacional, sem dado de produção e sem base de usuários; o que o
-banco guarda é conteúdo de demonstração, reproduzível. `pg_dump` horário com retenção de 14 dias,
-mais snapshot da VM no Proxmox Backup Server, é **proporcional ao que está em jogo**. As metas de
-RPO/RTO do ADR 0016 foram escritas assumindo operação real; este ADR as **substitui por metas
-proporcionais**, em vez de manter no papel um número que ninguém vai sustentar.
+In a commercial product this would be a serious regression and would require pgBackRest with WAL archiving. **That is not
+the case for this project.** NORA is educational, with no production data and no user base; what the
+database holds is demonstration content, reproducible. An hourly `pg_dump` with 14-day retention,
+plus a VM snapshot on the Proxmox Backup Server, is **proportional to what is at stake**. ADR 0016's
+RPO/RTO targets were written assuming real operation; this ADR **replaces them with proportional
+targets**, instead of keeping on paper a number that nobody is going to sustain.
 
-O `restore-drill.sh` continua valendo — não por risco de perda, mas porque um restore nunca testado
-é um procedimento que não existe, e o `production-readiness-gaps.md:67` já admitia que nenhum jamais
-foi feito. É barato fechar esse gap agora.
+`restore-drill.sh` remains valid — not because of loss risk, but because a restore that has never been tested
+is a procedure that does not exist, and `production-readiness-gaps.md:67` already admitted that none had ever
+been done. It is cheap to close that gap now.
 
-**Host único = ponto único de falha.** Sem multi-AZ, sem failover, sem hipervisor redundante. Queda
-de energia ou de link doméstico derruba a stack inteira, incluindo a observabilidade que diria que
-ela caiu. O cenário C do ADR 0016 Gap 6 ("região Azure indisponível — MVP single-region aceita
-downtime") vira "single-**host** aceita downtime": mesmo veredito, blast radius maior, probabilidade
-maior. Para uma demo acadêmica com pitch agendado, o risco relevante não é o downtime médio — é
-**estar fora do ar no dia da apresentação**. A mitigação prática é ensaiar o boot da stack antes,
-não construir HA.
+**Single host = single point of failure.** No multi-AZ, no failover, no redundant hypervisor. A power
+or home-link outage takes down the entire stack, including the observability that would tell us
+it went down. Scenario C of ADR 0016 Gap 6 ("Azure region unavailable — single-region MVP accepts
+downtime") becomes "single-**host** accepts downtime": same verdict, larger blast radius, higher
+probability. For an academic demo with a scheduled pitch, the relevant risk is not average downtime — it is
+**being down on presentation day**. The practical mitigation is rehearsing the stack boot beforehand,
+not building HA.
 
-**O SLO de 99,0% mensal (ADR 0016 Gap 4) deixa de fazer sentido e é retirado.** Era uma meta herdada
-de premissa comercial. Nada nesta stack o garante, ninguém está de plantão para defendê-lo, e
-mantê-lo no papel só produziria a ilusão de um compromisso. Fica registrado no lugar dele: **a stack
-é best-effort, com janela de ~45s por deploy da API e sem garantia durante quedas do host.**
+**The 99.0% monthly SLO (ADR 0016 Gap 4) stops making sense and is withdrawn.** It was a target inherited
+from a commercial premise. Nothing in this stack guarantees it, nobody is on call to defend it, and
+keeping it on paper would only produce the illusion of a commitment. Recorded in its place: **the stack
+is best-effort, with a window of ~45s per API deploy and no guarantee during host outages.**
 
-### Segredos: o número AUMENTA (o resultado contraintuitivo)
+### Secrets: the number GOES UP (the counterintuitive result)
 
-No Azure, a API **não tinha a senha do Postgres numa env var**: vinha do Key Vault por `secretRef` +
-User-Assigned Managed Identity. A **identidade era a credencial**, e quem a rotacionava era a
-plataforma.
+On Azure, the API **did not have the Postgres password in an env var**: it came from Key Vault via `secretRef` +
+a User-Assigned Managed Identity. The **identity was the credential**, and it was the platform that
+rotated it.
 
-Sem managed identity, cada uma dessas referências vira **valor estático** no
+Without a managed identity, each of those references becomes a **static value** in
 `secrets.env.sops`: `POSTGRES_ADMIN_PASSWORD`, `POSTGRES_PLATFORM_ADMIN_PASSWORD`, `JWT_SECRET`,
 `NORA_PLATFORM_INTERNAL_TOKEN`, `NORA_PLATFORM_ADMIN_TOKEN`, `NORA_INTEGRATIONS_ENC_KEY`,
-`NORA_INTEGRATIONS_STATE_SECRET`, as chaves dos providers de LLM/embeddings, `RESEND_API_KEY`, os
-pares OAuth das integrações, `GRAFANA_ADMIN_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN`, as senhas dos
-roles de RLS.
+`NORA_INTEGRATIONS_STATE_SECRET`, the LLM/embeddings providers' keys, `RESEND_API_KEY`, the
+integrations' OAuth pairs, `GRAFANA_ADMIN_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN`, the RLS roles'
+passwords.
 
-Saem 1 Key Vault e 3 UAIs. Entram **~20 valores estáticos cifrados por UMA chave age que vive num
-arquivo no host**. Quem lê `/etc/nora/age.key` decifra tudo — o blast radius de comprometer o host
-cresce materialmente. Mitigação honesta e **parcial**: permissão 400/root, disco da VM cifrado em
-repouso, e a política de rotação do ADR 0016 Gap 7 continua valendo com `sops updatekeys` no lugar
-do KV. **Não é equivalente a managed identity. É pior.** Aceito pelo preço e pela urgência.
+Out go 1 Key Vault and 3 UAIs. In come **~20 static values encrypted by ONE age key that lives in a
+file on the host**. Whoever reads `/etc/nora/age.key` decrypts everything — the blast radius of compromising the host
+grows materially. Honest and **partial** mitigation: 400/root permission, VM disk encrypted at
+rest, and the rotation policy of ADR 0016 Gap 7 remains valid with `sops updatekeys` in place
+of the KV. **It is not equivalent to a managed identity. It is worse.** Accepted for the price and the urgency.
 
-### Operação e custo
+### Operation and cost
 
-- **Custo em dinheiro cai a ~zero** (energia e link já existem, o Proxmox está ocioso). **Custo em
-  atenção humana sobe**: patch do host e do Docker, disco, snapshots, rotação de chave, e o drill de
-  restore — que agora é a única coisa entre nós e a perda de dados.
-- **Perde-se o `az`.** Todo o `docs/operations/azure-deploy.md` e as 8 armadilhas do Azure for
-  Students viram história. Em troca ganha-se uma **classe nova de armadilhas** (`sslmode` na JDBC
-  URL, retenção do Loki sem compactor, `NEXT_PUBLIC` baked em build-time, `CF_ACCESS_AUD`
-  fail-open, `initdb` que só roda em volume vazio, a janela de 502) — catalogadas em
+- **The cost in money drops to ~zero** (power and link already exist, the Proxmox is idle). **The cost in
+  human attention goes up**: patching the host and Docker, disk, snapshots, key rotation, and the restore
+  drill — which is now the only thing between us and data loss.
+- **`az` is lost.** All of `docs/operations/azure-deploy.md` and the 8 Azure for Students pitfalls
+  become history. In exchange we gain a **new class of pitfalls** (`sslmode` in the JDBC
+  URL, Loki retention without a compactor, `NEXT_PUBLIC` baked in at build time, `CF_ACCESS_AUD`
+  fail-open, `initdb` that only runs on an empty volume, the 502 window) — cataloged in
   `docs/operations/proxmox-deploy.md`.
-- **Perde-se o OIDC federado sem segredo.** O deploy PULL não usa credencial de nuvem alguma, mas o
-  host precisará de credencial de pull do GHCR se as imagens deixarem de ser públicas.
-- O ADR 0022 continua valendo no contrato (2º datasource, dump independente), mas o **isolamento
-  físico** que ele comprava some: os dois Postgres passam a compartilhar host, kernel e disco.
+- **Secretless federated OIDC is lost.** The PULL deployment does not use any cloud credential, but the
+  host will need a GHCR pull credential if the images stop being public.
+- ADR 0022 remains valid in the contract (2nd datasource, independent dump), but the **physical
+  isolation** it bought disappears: the two Postgres instances now share host, kernel and disk.
 
-### O que efetivamente melhora
+### What actually improves
 
-- **A stack fica reproduzível localmente.** `docker compose up` sobe o que roda em produção; o
-  Bicep nunca permitiu isso.
-- **`pgvector` fica disponível.** A allow-list do Azure some, destravando o refactor da V021 para
-  quem quiser fazê-lo (não agora — ver §Escopo excluído).
-- **Zero superfície pública, para a stack inteira.** Nenhuma porta inbound, nenhum FQDN cru de
-  origem. O ADR 0025 queria isso só pro admin.
-- **O painel de saúde do control plane passa a funcionar** (nunca funcionou por falta de
-  provisionamento).
-- **Fim da dependência de uma subscription estudantil que pode ser desativada sem aviso** — que é,
-  literalmente, o incidente que gerou este ADR.
+- **The stack becomes reproducible locally.** `docker compose up` brings up what runs in production; the
+  Bicep never allowed that.
+- **`pgvector` becomes available.** Azure's allow-list is gone, unlocking the V021 refactor for
+  whoever wants to do it (not now — see §Excluded scope).
+- **Zero public surface, for the whole stack.** No inbound port, no raw origin
+  FQDN. ADR 0025 wanted that only for the admin.
+- **The control plane's health dashboard starts working** (it never worked, for lack of
+  provisioning).
+- **The end of the dependency on a student subscription that can be deactivated without warning** — which is,
+  literally, the incident that generated this ADR.
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Reativar / migrar para Pay-As-You-Go no Azure.** Custo real de ~R$110-180/mês numa stack sem
-   receita, para um projeto educacional que já tem hardware ocioso disponível. Rejeitado: pagar
-   mensalidade por infraestrutura que o `beta` hospeda de graça não se justifica, e mantém a
-   dependência de um provedor cujo desligamento já provou ser silencioso. Sem dado a preservar, não
-   há sequer o argumento de reativar temporariamente para extrair um dump.
-2. **Outro PaaS (Fly.io / Render / Railway).** Preservaria readiness gate e backup gerenciado, e é
-   honestamente a melhor alternativa se o Proxmox se mostrar caro em atenção humana. Rejeitado
-   agora por custo em dinheiro e por não resolver a lição (continuar refém de uma plataforma).
-   **Trigger de reavaliação declarado:** dois incidentes de indisponibilidade por causa do host em
-   um trimestre, ou o primeiro tenant pagante.
-3. **k3s no Proxmox.** Resolveria o rolling update com readiness probe de verdade — o item mais
-   caro que estamos perdendo. Rejeitado: para ~12 containers em **um** host, operar k3s (etcd,
-   ingress controller, CNI, storage class, ciclo de upgrade) custa mais do que o único gate que o
-   Caddy já mitiga em boa parte. **Trigger de upgrade:** mais de um host, ou requisito real de
-   zero-downtime.
-4. **Docker Swarm.** Tem `update_config` com rolling update nativo, que resolveria a janela de 502.
-   Rejeitado: praticamente sem manutenção upstream — seria colocar produção sobre um orquestrador
-   em fim de vida para ganhar um recurso.
-5. **Deploy por PUSH com runner self-hosted.** Rejeitado **por segurança, não por gosto**: o repo é
-   público (ADR 0017) e `deploy-infra.yml:60-64` dispara em `pull_request`. Um runner persistente na
-   rede doméstica executaria código de fork arbitrário com acesso ao socket do Docker e à LAN. Não
-   existe configuração de runner que torne isso aceitável num repo público.
-6. **Migrar só o compute e manter o App Insights apontando pro Azure.** Rejeitado: a connection
-   string morre com a subscription, e o App Insights é justamente um dos componentes cujo
-   desligamento estamos fugindo.
-7. **Manter o `-javaagent` do App Insights e só trocar a env OTLP.** Não é alternativa — é um bug.
-   O agent ignora `OTEL_EXPORTER_OTLP_ENDPOINT`. Registrado aqui porque foi a primeira hipótese e
-   teria falhado em silêncio.
+1. **Reactivating / migrating to Pay-As-You-Go on Azure.** A real cost of ~R$110-180/month on a stack with no
+   revenue, for an educational project that already has idle hardware available. Rejected: paying
+   a monthly fee for infrastructure that `beta` hosts for free is not justifiable, and it keeps
+   the dependency on a provider whose shutdown has already proven to be silent. With no data to preserve, there
+   is not even the argument of reactivating temporarily to extract a dump.
+2. **Another PaaS (Fly.io / Render / Railway).** It would preserve the readiness gate and managed backup, and it is
+   honestly the best alternative if Proxmox turns out to be expensive in human attention. Rejected
+   now for the cost in money and for not solving the lesson (remaining hostage to a platform).
+   **Declared reevaluation trigger:** two unavailability incidents caused by the host in
+   one quarter, or the first paying tenant.
+3. **k3s on Proxmox.** It would solve the rolling update with a real readiness probe — the most
+   expensive item we are losing. Rejected: for ~12 containers on **one** host, operating k3s (etcd,
+   ingress controller, CNI, storage class, upgrade cycle) costs more than the single gate that
+   Caddy already mitigates in good part. **Upgrade trigger:** more than one host, or a real
+   zero-downtime requirement.
+4. **Docker Swarm.** It has `update_config` with native rolling update, which would solve the 502 window.
+   Rejected: practically no upstream maintenance — it would mean putting production on an orchestrator
+   at end of life to gain one feature.
+5. **PUSH deployment with a self-hosted runner.** Rejected **for security, not for taste**: the repo is
+   public (ADR 0017) and `deploy-infra.yml:60-64` fires on `pull_request`. A persistent runner on the
+   home network would execute arbitrary fork code with access to the Docker socket and to the LAN. There is
+   no runner configuration that makes that acceptable in a public repo.
+6. **Migrating only the compute and keeping App Insights pointing at Azure.** Rejected: the connection
+   string dies with the subscription, and App Insights is precisely one of the components whose
+   shutdown we are fleeing.
+7. **Keeping the App Insights `-javaagent` and just swapping the OTLP env var.** It is not an alternative — it is a bug.
+   The agent ignores `OTEL_EXPORTER_OTLP_ENDPOINT`. Recorded here because it was the first hypothesis and
+   would have failed silently.
 
-## Plano de Aplicação
+## Application Plan
 
-Detalhado em [`proxmox-deploy.md`](../operations/proxmox-deploy.md) e
-[`azure-decommission.md`](../operations/azure-decommission.md). Como não há dado a preservar, a
-ordem é simples e não tem etapa irreversível até o passo 5:
+Detailed in [`proxmox-deploy.md`](../operations/proxmox-deploy.md) and
+[`azure-decommission.md`](../operations/azure-decommission.md). Since there is no data to preserve, the
+order is simple and has no irreversible step until step 5:
 
-1. Republicar as imagens `api` (troca do javaagent + `PrometheusHealthSource`) e as demais.
-2. Provisionar a VM, rodar o `bootstrap-host.sh`, cifrar os segredos.
-3. Subir a stack com banco **vazio** — o Flyway cria o schema do zero, e os roles do RLS saem do
-   `postgres/init/01-roles-and-db.sql`. Repovoar com dados de demonstração é passo de conteúdo, não
-   de migração.
-4. Verificar com tráfego real por um hostname de teste, e rodar o `restore-drill.sh` uma vez.
-5. Apontar o DNS e, depois, `az group delete`.
+1. Republish the `api` images (javaagent swap + `PrometheusHealthSource`) and the rest.
+2. Provision the VM, run `bootstrap-host.sh`, encrypt the secrets.
+3. Bring the stack up with an **empty** database — Flyway creates the schema from scratch, and the RLS roles come from
+   `postgres/init/01-roles-and-db.sql`. Repopulating with demonstration data is a content step, not a
+   migration one.
+4. Verify with real traffic on a test hostname, and run `restore-drill.sh` once.
+5. Point the DNS and, afterwards, `az group delete`.
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-08-07 | sys0xFF + Arquiteto NORA | Criação e aceite. Migração motivada pela indisponibilidade do ambiente Azure (522 desde ~julho/2026, subscription Azure for Students provavelmente desativada) e pela escolha de não pagar hospedagem para um projeto educacional que dispõe de hardware próprio. Substitui 0009, substitui parcialmente 0016, altera 0022/0023/0026/0028/0029, estende 0025. |
-| 2026-08-07 | sys0xFF | Correção de premissa, mesma data. A versão original tratava resgate de dados como caminho crítico e mantinha as metas de RPO/RTO e o SLO do ADR 0016. O PO esclareceu que o NORA é educacional, sem dado de produção nem base de usuários, e que não operará comercialmente. Removido o resgate do plano; RPO/RTO substituídos por metas proporcionais; SLO de 99,0% retirado em vez de mantido sem sustentação. |
+| 2026-08-07 | sys0xFF + NORA Architect | Creation and acceptance. Migration motivated by the unavailability of the Azure environment (522 since ~July/2026, Azure for Students subscription probably deactivated) and by the choice not to pay for hosting for an educational project that has its own hardware. Supersedes 0009, partially supersedes 0016, changes 0022/0023/0026/0028/0029, extends 0025. |
+| 2026-08-07 | sys0xFF | Premise correction, same date. The original version treated data rescue as the critical path and kept ADR 0016's RPO/RTO targets and SLO. The PO clarified that NORA is educational, with no production data and no user base, and that it will not operate commercially. Rescue removed from the plan; RPO/RTO replaced by proportional targets; the 99.0% SLO withdrawn instead of kept without backing. |

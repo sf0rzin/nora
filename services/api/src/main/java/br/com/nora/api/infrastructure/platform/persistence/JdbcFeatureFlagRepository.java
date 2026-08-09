@@ -11,7 +11,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-/** Adapter JdbcTemplate de feature flags (tabela feature_flags, ADR 0024). */
+/** JdbcTemplate adapter for feature flags (feature_flags table, ADR 0024). */
 @Repository
 @ConditionalOnProperty(name = "nora.platform.enabled", havingValue = "true")
 public class JdbcFeatureFlagRepository implements FeatureFlagRepository {

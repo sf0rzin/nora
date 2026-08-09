@@ -3,11 +3,11 @@ package br.com.nora.api.domain.platform;
 import java.time.OffsetDateTime;
 
 /**
- * Métricas de negócio agregadas cross-tenant (telemetria frente (c), CORTÁVEL, ADR 0024). Leitura
- * operador-only do banco primário, sem contexto de tenant. {@code enabled=false} quando a frente
- * estiver desligada/cortada. {@code from}/{@code to} ecoam a janela consultada (espelha
- * CostReport). {@code productivityAvg}/{@code customerConfidenceAvg} podem ser null no v1 (não
- * calculados ainda).
+ * Cross-tenant aggregated business metrics (telemetry workstream (c), CUTTABLE, ADR 0024).
+ * Operator-only read from the primary database, with no tenant context. {@code enabled=false} when
+ * the workstream is disabled/cut. {@code from}/{@code to} echo the queried window (mirrors
+ * CostReport). {@code productivityAvg}/{@code customerConfidenceAvg} may be null in v1 (not
+ * computed yet).
  */
 public record BusinessSnapshot(
         OffsetDateTime from,

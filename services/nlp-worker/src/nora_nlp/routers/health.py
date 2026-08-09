@@ -1,9 +1,9 @@
-"""Endpoints de saude.
+"""Health endpoints.
 
-`/healthz` (liveness): raso. Retorna 200 se o processo esta vivo.
-`/readyz`  (readiness): valida configuracao minima (LLM_API_KEY quando
-USE_LLM_STUB=false). Container Apps deveria usar `/readyz` como readinessProbe
-e `/healthz` como livenessProbe.
+`/healthz` (liveness): shallow. Returns 200 if the process is alive.
+`/readyz`  (readiness): validates minimal configuration (LLM_API_KEY when
+USE_LLM_STUB=false). Container Apps should use `/readyz` as readinessProbe
+and `/healthz` as livenessProbe.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ def healthz() -> dict[str, str]:
 
 @router.get("/readyz")
 def readyz(settings: Settings = Depends(get_settings)) -> dict[str, str]:
-    """Pronto para servir trafego. Falha 503 se config nao satisfaz o modo escolhido."""
+    """Ready to serve traffic. Fails 503 if config does not satisfy the chosen mode."""
     if not settings.use_llm_stub and not settings.llm_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

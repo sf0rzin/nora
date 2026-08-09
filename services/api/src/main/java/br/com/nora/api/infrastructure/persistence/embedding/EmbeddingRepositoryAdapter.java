@@ -9,9 +9,10 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Adapter de {@link EmbeddingRepository}. Serializa o vetor como JSON de floats em TEXT (ver V021 —
- * decisão de não usar pgvector nesta escala). {@code @Transactional} pra que, sob RLS enforce, o
- * aspect aplique o GUC nas escritas/leituras de {@code meeting_embeddings} (tabela enforced).
+ * Adapter for {@link EmbeddingRepository}. Serializes the vector as a JSON array of floats in TEXT
+ * (see V021 — decision not to use pgvector at this scale). {@code @Transactional} so that, under
+ * RLS enforce, the aspect applies the GUC on writes/reads of {@code meeting_embeddings} (enforced
+ * table).
  */
 @Repository
 public class EmbeddingRepositoryAdapter implements EmbeddingRepository {

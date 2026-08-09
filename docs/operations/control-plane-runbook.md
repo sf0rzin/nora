@@ -1,37 +1,37 @@
 ---
-title: "Runbook — Ligar o Control Plane (admin de operador + telemetria)"
-owner: Arquiteto NORA (Tech Lead)
+title: "Runbook — Turning on the Control Plane (operator admin + telemetry)"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
-# Runbook — Ligar o Control Plane (admin de operador + telemetria)
+# Runbook — Turning on the Control Plane (operator admin + telemetry)
 
-> Como promover o control plane de **OFF** (default) para **ON** no Azure. A identidade do
-> operador é **Cloudflare Tunnel + Access** (ADR 0025, que substituiu o Easy Auth do ADR 0023
-> após o tenant FIAP bloquear App Registration). ADRs 0022/0023/0024/0025. Contrato:
-> `docs/engineering/contracts/platform-control-plane.md`. Borda Cloudflare: `cloudflare-access.md`.
+> How to promote the control plane from **OFF** (default) to **ON** on Azure. The operator's
+> identity is **Cloudflare Tunnel + Access** (ADR 0025, which replaced the Easy Auth of ADR 0023
+> after the FIAP tenant blocked App Registration). ADRs 0022/0023/0024/0025. Contract:
+> `docs/engineering/contracts/platform-control-plane.md`. Cloudflare edge: `cloudflare-access.md`.
 
-## O que o IaC já faz vs. o que é manual
+## What the IaC already does vs. what is manual
 
-| IaC (Bicep, `enablePlatform=true`) | Manual (este runbook) |
+| IaC (Bicep, `enablePlatform=true`) | Manual (this runbook) |
 |---|---|
-| 2º Postgres `nora-pg-platform-dev`, db `nora_platform` | Provisionar o Cloudflare Tunnel (workflow `cloudflare-tunnel.yml`) |
-| UAI `nora-uai-admin-dev` + acesso ao KV | Setar os GitHub Secrets (3 tokens de plataforma + `CLOUDFLARE_TUNNEL_TOKEN`) |
-| Container App `nora-admin` (ingress **internal** + sidecar `cloudflared`) | Setar a Variable `CF_ACCESS_AUD` |
-| Secrets no KV (tokens, senha pg-platform, tunnel token) | Garantir o Access App/allowlist (lane Cloudflare, `cloudflare-setup.yml`, **sem** `admin_hostname`) |
-| Env do api/worker/web para o control plane | Publicar a imagem `nora-admin` (CI `build-images.yml`) |
+| 2nd Postgres `nora-pg-platform-dev`, db `nora_platform` | Provision the Cloudflare Tunnel (workflow `cloudflare-tunnel.yml`) |
+| UAI `nora-uai-admin-dev` + access to the KV | Set the GitHub Secrets (3 platform tokens + `CLOUDFLARE_TUNNEL_TOKEN`) |
+| Container App `nora-admin` (ingress **internal** + `cloudflared` sidecar) | Set the Variable `CF_ACCESS_AUD` |
+| Secrets in the KV (tokens, pg-platform password, tunnel token) | Ensure the Access App/allowlist (Cloudflare lane, `cloudflare-setup.yml`, **without** `admin_hostname`) |
+| Env of api/worker/web for the control plane | Publish the `nora-admin` image (CI `build-images.yml`) |
 
-## Pré-requisitos
+## Prerequisites
 
-- Imagem `ghcr.io/sf0rzin/nora-admin:latest` publicada e **Public** no GHCR (o Container App não
-  tem creds de registry). A CI publica em push para `main` que toca `apps/admin/**`.
-- `CLOUDFLARE_API_TOKEN` (conta `nora.systems`) com **Cloudflare Tunnel: Edit** + **DNS: Edit** +
-  **Zone: Read**. É o mesmo token do `cloudflare-setup.yml`, com Tunnel:Edit adicionado.
-- Cloudflare Access já configurado para `admin.nora.systems` (lane irmã, PRs #177/#178).
+- Image `ghcr.io/sf0rzin/nora-admin:latest` published and **Public** on GHCR (the Container App has
+  no registry creds). CI publishes on pushes to `main` that touch `apps/admin/**`.
+- `CLOUDFLARE_API_TOKEN` (account `nora.systems`) with **Cloudflare Tunnel: Edit** + **DNS: Edit** +
+  **Zone: Read**. It is the same token as `cloudflare-setup.yml`, with Tunnel:Edit added.
+- Cloudflare Access already configured for `admin.nora.systems` (sibling lane, PRs #177/#178).
 
-## Passo 1 — Gerar secrets de plataforma
+## Step 1 — Generate platform secrets
 
 ```powershell
 # Rode local; NÃO cole os valores em chat/PR. São 3 secrets:
@@ -40,25 +40,25 @@ last_reviewed: 2026-06-06
 [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Max 256 }))  # NORA_PLATFORM_ADMIN_TOKEN
 ```
 
-## Passo 2 — Provisionar o Cloudflare Tunnel
+## Step 2 — Provision the Cloudflare Tunnel
 
-Roda o workflow **`cloudflare-tunnel.yml`** (Actions → Run workflow). Ele é idempotente e:
+Run the workflow **`cloudflare-tunnel.yml`** (Actions → Run workflow). It is idempotent and:
 
-1. Cria/reusa o túnel `nora-admin` (remotely-managed).
-2. Configura a rota `admin.nora.systems → http://localhost:3002` (o sidecar `cloudflared` serve o
-   Next pelo localhost do pod).
-3. Faz upsert do DNS `admin.nora.systems` → `<tunnel-id>.cfargotunnel.com` (proxied).
-4. Imprime, no log do step **`AUD + instruções do connector token`**: o **AUD** da Access App (para
-   a Variable `CF_ACCESS_AUD`, identificador público) e o comando pra cadastrar o **connector
-   token**. O token em si **não sai no log** — repo público, log legível por qualquer um; o comando
-   o leva da API direto pro `gh secret set`.
+1. Creates/reuses the `nora-admin` tunnel (remotely-managed).
+2. Configures the route `admin.nora.systems → http://localhost:3002` (the `cloudflared` sidecar serves
+   Next over the pod's localhost).
+3. Upserts the DNS `admin.nora.systems` → `<tunnel-id>.cfargotunnel.com` (proxied).
+4. Prints, in the log of the step **`AUD + instruções do connector token`**: the Access App's **AUD** (for
+   the Variable `CF_ACCESS_AUD`, a public identifier) and the command to register the **connector
+   token**. The token itself **does not appear in the log** — public repo, log readable by anyone; the command
+   takes it from the API straight to `gh secret set`.
 
-> **Por que Tunnel + Access (ADR 0025):** o `nora-admin` sobe com `ingress: internal` — **sem FQDN
-> público**. A única porta de entrada é o túnel, atrás do Cloudflare Access (allowlist + OTP/SSO).
-> Não há origem do Azure para contornar. Defesa em profundidade: rede (Access) + transporte (Tunnel)
-> + app (validação do `Cf-Access-Jwt-Assertion` no Next, Tier 2) + serviço (admin token).
+> **Why Tunnel + Access (ADR 0025):** `nora-admin` comes up with `ingress: internal` — **no public
+> FQDN**. The only entry door is the tunnel, behind Cloudflare Access (allowlist + OTP/SSO).
+> There is no Azure origin to bypass it. Defense in depth: network (Access) + transport (Tunnel)
+> + app (validation of `Cf-Access-Jwt-Assertion` in Next, Tier 2) + service (admin token).
 
-## Passo 3 — GitHub Secrets + Variable (repo `sf0rzin/nora`)
+## Step 3 — GitHub Secrets + Variable (repo `sf0rzin/nora`)
 
 ```
 # Secrets:
@@ -70,32 +70,32 @@ CLOUDFLARE_TUNNEL_TOKEN      = <connector token do Passo 2>
 CF_ACCESS_AUD                = <AUD do Passo 2>
 ```
 
-> Sem os 3 tokens de plataforma, eles viram `'unset'` no KV (admin/internal destravados). Sem
-> `CLOUDFLARE_TUNNEL_TOKEN`, o sidecar `cloudflared` não sobe e o admin fica internal/inacessível
-> (seguro, mas offline). Sem `CF_ACCESS_AUD`, o Tier 2 degrada para edge-only (Tunnel + Access ainda
-> protegem). `EASYAUTH_*` ficou inerte (ADR 0025) — pode ficar vazio.
+> Without the 3 platform tokens, they become `'unset'` in the KV (admin/internal unlocked). Without
+> `CLOUDFLARE_TUNNEL_TOKEN`, the `cloudflared` sidecar does not come up and the admin stays internal/inaccessible
+> (safe, but offline). Without `CF_ACCESS_AUD`, Tier 2 degrades to edge-only (Tunnel + Access still
+> protect it). `EASYAUTH_*` became inert (ADR 0025) — it can be left empty.
 
-## Passo 4 — Deploy
+## Step 4 — Deploy
 
-`enablePlatform = true` já está no `main.dev.bicepparam`. Merge do PR em `main` → `deploy-infra.yml`
-provisiona tudo (idempotente). O `nora-admin` sobe internal; assim que `CLOUDFLARE_TUNNEL_TOKEN`
-estiver setado, o `cloudflared` conecta e o túnel passa a servir.
+`enablePlatform = true` is already in `main.dev.bicepparam`. Merging the PR into `main` → `deploy-infra.yml`
+provisions everything (idempotent). `nora-admin` comes up internal; as soon as `CLOUDFLARE_TUNNEL_TOKEN`
+is set, `cloudflared` connects and the tunnel starts serving.
 
-## Passo 5 — Chaves de provider (para o switch de modelo em runtime)
+## Step 5 — Provider keys (for the runtime model switch)
 
-Pra trocar o modelo de um serviço **ao vivo** sem deploy, a chave do provider precisa já estar
-provisionada. OpenAI já está (`openai-api-key`). Para DeepSeek e Gemini, adicione `DEEPSEEK_API_KEY`
-e `GEMINI_API_KEY` nos GitHub Secrets (ADR 0024 / decisão #C). Opcional — perguntar à PO se vale
-agora.
+To switch a service's model **live** without a deploy, the provider's key must already be
+provisioned. OpenAI already is (`openai-api-key`). For DeepSeek and Gemini, add `DEEPSEEK_API_KEY`
+and `GEMINI_API_KEY` to the GitHub Secrets (ADR 0024 / decision #C). Optional — ask the PO whether it is worth doing
+now.
 
-## Passo 6 — Coordenação com a lane Cloudflare
+## Step 6 — Coordination with the Cloudflare lane
 
-Garantir o Access App + allowlist + OTP via `cloudflare-setup.yml` — **rodando com `admin_hostname`
-VAZIO**. O DNS de `admin.nora.systems` agora é do túnel (Passo 2); passar `admin_hostname` faria o
-`cloudflare-setup.yml` sobrescrever o CNAME do túnel com o FQDN direto. Atenção: **nunca passe
-`admin_hostname` depois de ligar o túnel.**
+Ensure the Access App + allowlist + OTP via `cloudflare-setup.yml` — **running with `admin_hostname`
+EMPTY**. The DNS of `admin.nora.systems` now belongs to the tunnel (Step 2); passing `admin_hostname` would make
+`cloudflare-setup.yml` overwrite the tunnel's CNAME with the direct FQDN. Attention: **never pass
+`admin_hostname` after turning on the tunnel.**
 
-## Verificação pós-deploy
+## Post-deploy verification
 
 ```bash
 # 1. API subiu com o módulo platform (procurar no log): "módulo HEALTHY"
@@ -113,20 +113,20 @@ az containerapp replica list -n nora-admin-dev -g rg-nora-dev -o table
 
 ## Rollback
 
-`param enablePlatform = false` + deploy. O 2º Postgres, o `nora-admin` e o `cloudflared` somem; a API
-volta a `NORA_PLATFORM_ENABLED` ausente (módulo inerte). O caminho do cliente nunca dependeu disto
-(fail-soft, ADR 0022). O túnel/DNS no Cloudflare continuam (inertes sem conector); para remover, apague
-o túnel `nora-admin` no painel/API e o CNAME.
+`param enablePlatform = false` + deploy. The 2nd Postgres, `nora-admin` and `cloudflared` disappear; the API
+goes back to `NORA_PLATFORM_ENABLED` absent (inert module). The client path never depended on this
+(fail-soft, ADR 0022). The tunnel/DNS on Cloudflare remain (inert without a connector); to remove them, delete
+the `nora-admin` tunnel in the panel/API and the CNAME.
 
-## Notas de segurança
+## Security notes
 
-- `/admin/platform/**` no `nora-api` público é protegido pelo admin token (o isolamento de
-  rede/identidade está na borda do `nora-admin` via Cloudflare). Mantenha o admin token forte e
-  distinto do internal.
-- O `nora-admin` não tem FQDN público (ingress internal). A entrada é só pelo Cloudflare Tunnel,
-  atrás do Access — não há origem do Azure exposta para contornar.
-- O Tier 2 (validação do `Cf-Access-Jwt-Assertion` no Next) roda em server component porque o
-  middleware edge inlinaria `CF_ACCESS_*` em build-time. `/healthz` é route handler (fora do gate),
-  então o probe do Container App funciona sem JWT.
-- O `cloudflared` precisa de ≥1 réplica sempre de pé (o admin não escala a zero) — custo de compute
-  pequeno, aceito no ADR 0025.
+- `/admin/platform/**` on the public `nora-api` is protected by the admin token (the network/identity
+  isolation is at the `nora-admin` edge via Cloudflare). Keep the admin token strong and
+  distinct from the internal one.
+- `nora-admin` has no public FQDN (internal ingress). Entry is only through the Cloudflare Tunnel,
+  behind Access — there is no exposed Azure origin to bypass it.
+- Tier 2 (validation of `Cf-Access-Jwt-Assertion` in Next) runs in a server component because the
+  edge middleware would inline `CF_ACCESS_*` at build-time. `/healthz` is a route handler (outside the gate),
+  so the Container App probe works without a JWT.
+- `cloudflared` needs ≥1 replica always up (the admin does not scale to zero) — a small compute
+  cost, accepted in ADR 0025.

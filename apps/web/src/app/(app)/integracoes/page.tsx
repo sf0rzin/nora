@@ -1,17 +1,17 @@
 'use client';
 
 /**
- * NORA Core — Integrações (hub real de conectores OAuth, NORA Flows Fase 2).
+ * NORA Core — Integrations (real OAuth connector hub, NORA Flows Phase 2).
  *
- * Lista o status REAL dos conectores (GET /integrations), inicia o OAuth
- * (POST /integrations/{provider}/oauth/start → redirect pro consent) e
- * desconecta (DELETE /integrations/{provider}). O callback OAuth do backend
- * volta pra cá com ?connected={provider} ou ?error={codigo} — ambos viram
- * notice amigável e a URL é limpa em seguida.
+ * Lists the REAL status of the connectors (GET /integrations), starts the OAuth
+ * (POST /integrations/{provider}/oauth/start → redirect to the consent) and
+ * disconnects (DELETE /integrations/{provider}). The backend OAuth callback
+ * comes back here with ?connected={provider} or ?error={codigo} — both become
+ * a friendly notice and the URL is cleaned right after.
  *
- * Honestidade de produto: conector sem credencial OAuth no servidor aparece
- * como "Não configurado neste ambiente" SEM botão morto; o roadmap dos demais
- * conectores é um bloco textual no rodapé, sem fingir integração.
+ * Product honesty: a connector without an OAuth credential on the server shows
+ * as "Não configurado neste ambiente" WITHOUT a dead button; the roadmap of the
+ * other connectors is a text block in the footer, without faking integration.
  */
 import Link from 'next/link';
 import type { Route } from 'next';
@@ -33,7 +33,7 @@ import {
 
 import { tempoRelativo } from '../fluxos/tempo-relativo';
 
-/* ── Logos das marcas (SVG inline, estilo simple-icons, container 36×36) ─── */
+/* ── Brand logos (inline SVG, simple-icons style, 36×36 container) ───────── */
 
 function GoogleLogo() {
   return (
@@ -168,7 +168,7 @@ function TrelloLogo() {
   );
 }
 
-/* ── Metadados de exibição por provedor ────────────────────────────────── */
+/* ── Display metadata per provider ─────────────────────────────────────── */
 
 const PROVEDORES: Record<IntegrationProvider, { nome: string; desc: string; logo: ReactNode }> = {
   google: {
@@ -230,7 +230,7 @@ const NOME_CURTO: Record<IntegrationProvider, string> = {
   trello: 'Trello',
 };
 
-/** Ordem fixa de exibição dos conectores no hub. */
+/** Fixed display order of the connectors in the hub. */
 const ORDEM: IntegrationProvider[] = [
   'google',
   'microsoft',
@@ -245,7 +245,7 @@ const ORDEM: IntegrationProvider[] = [
 
 type Aviso = { tipo: 'ok' | 'erro'; msg: string };
 
-/** Tradução PT-BR amigável dos códigos de erro do callback OAuth. */
+/** Friendly PT-BR translation of the OAuth callback error codes. */
 function mensagemErroOAuth(codigo: string): string {
   switch (codigo) {
     case 'access_denied':
@@ -261,14 +261,14 @@ function mensagemErroOAuth(codigo: string): string {
   }
 }
 
-/** "desde {quando}" a partir do tempoRelativo ("há 3 dias" → "3 dias"). */
+/** "desde {quando}" out of tempoRelativo ("há 3 dias" → "3 dias"). */
 function desdeQuando(iso: string): string {
   const rel = tempoRelativo(iso);
   if (rel === 'agora') return 'agora há pouco';
   return rel.startsWith('há ') ? rel.slice(3) : rel;
 }
 
-/* ── Card de um conector ───────────────────────────────────────────────── */
+/* ── Connector card ────────────────────────────────────────────────────── */
 
 function CardConector({
   status,
@@ -281,22 +281,22 @@ function CardConector({
   status: IntegrationStatus;
   conectando: boolean;
   onConectar: () => void;
-  /** Resolve true quando a desconexão deu certo (o card sai do modo confirmação). */
+  /** Resolves true when the disconnect worked (the card leaves confirmation mode). */
   onDesconectar: () => Promise<boolean>;
-  /** Status novo do conector vindo de um fluxo concluído dentro do card (Telegram/Trello). */
+  /** New connector status coming from a flow finished inside the card (Telegram/Trello). */
   onStatus: (status: IntegrationStatus) => void;
   onAviso: (aviso: Aviso | null) => void;
 }) {
   const [confirmando, setConfirmando] = useState(false);
   const [desconectando, setDesconectando] = useState(false);
 
-  // Telegram: pareamento por código (deep link + "Verificar conexão").
+  // Telegram: pairing by code (deep link + "Verificar conexão").
   const [pareamento, setPareamento] = useState<TelegramPairingStart | null>(null);
   const [gerandoCodigo, setGerandoCodigo] = useState(false);
   const [verificando, setVerificando] = useState(false);
   const [pendencia, setPendencia] = useState<string | null>(null);
 
-  // Trello: o usuário gera o token em nova aba e cola aqui.
+  // Trello: the user generates the token in a new tab and pastes it here.
   const [coletandoToken, setColetandoToken] = useState(false);
   const [tokenColado, setTokenColado] = useState('');
   const [salvandoToken, setSalvandoToken] = useState(false);
@@ -339,10 +339,10 @@ function CardConector({
       });
     } catch (e) {
       if (e instanceof ApiRequestError && e.status === 409) {
-        // INTEGRATION_PAIRING_PENDING — o /start ainda não chegou; mensagem inline, sem alarde.
+        // INTEGRATION_PAIRING_PENDING — the /start has not arrived yet; inline message, no fuss.
         setPendencia(e.message);
       } else {
-        // Código expirado / pareamento perdido: recomeça do botão Conectar.
+        // Expired code / lost pairing: start over from the Conectar button.
         setPareamento(null);
         onAviso({
           tipo: 'erro',
@@ -689,7 +689,7 @@ function CardConector({
   );
 }
 
-/* ── Página ────────────────────────────────────────────────────────────── */
+/* ── Page ──────────────────────────────────────────────────────────────── */
 
 function HubIntegracoes() {
   const router = useRouter();
@@ -701,8 +701,8 @@ function HubIntegracoes() {
   const [aviso, setAviso] = useState<Aviso | null>(null);
   const [conectando, setConectando] = useState<IntegrationProvider | null>(null);
 
-  // Resultado do callback OAuth (?connected= / ?error=) → notice + limpa a URL,
-  // pra um refresh não repetir a mensagem.
+  // Result of the OAuth callback (?connected= / ?error=) → notice + clears the URL,
+  // so a refresh does not repeat the message.
   useEffect(() => {
     const conectado = searchParams.get('connected');
     const erro = searchParams.get('error');
@@ -724,7 +724,7 @@ function HubIntegracoes() {
     router.replace('/integracoes' as Route, { scroll: false });
   }, [searchParams, router]);
 
-  // Status real dos conectores no backend.
+  // Real status of the connectors in the backend.
   useEffect(() => {
     let vivo = true;
     setErroCarga(null);
@@ -748,13 +748,13 @@ function HubIntegracoes() {
     setAviso(null);
     try {
       const { authorizeUrl } = await startIntegrationOAuth(provider);
-      // Redirect completo pro consent do provedor; o estado "Redirecionando…"
-      // permanece até o browser navegar.
+      // Full redirect to the provider consent; the "Redirecionando…" state
+      // stays until the browser navigates.
       window.location.assign(authorizeUrl);
     } catch (e) {
       setConectando(null);
       if (e instanceof ApiRequestError && e.status === 422) {
-        // INTEGRATION_NOT_CONFIGURED — a message do backend já vem acionável.
+        // INTEGRATION_NOT_CONFIGURED — the backend message already comes actionable.
         setAviso({ tipo: 'erro', msg: e.message });
       } else if (e instanceof ApiRequestError && e.status === 404) {
         setAviso({
@@ -792,7 +792,7 @@ function HubIntegracoes() {
     }
   }
 
-  // Ordena pela ordem fixa do hub (google primeiro), preservando extras no fim.
+  // Sorts by the hub's fixed order (google first), keeping extras at the end.
   const ordenadas = integracoes
     ? [...integracoes].sort(
         (a, b) =>
@@ -917,7 +917,7 @@ function HubIntegracoes() {
   );
 }
 
-/** Fallback do Suspense (useSearchParams exige boundary no app router). */
+/** Suspense fallback (useSearchParams requires a boundary in the app router). */
 function PaginaSkeleton() {
   return (
     <div className="page" aria-busy>

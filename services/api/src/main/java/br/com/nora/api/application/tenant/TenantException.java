@@ -3,8 +3,8 @@ package br.com.nora.api.application.tenant;
 import java.util.UUID;
 
 /**
- * Falhas de configuracao geral do tenant (US32 e diante). Distinto de {@link
- * TenantContextException} que cobre o subdominio "contexto comercial".
+ * Failures in the tenant's general configuration (US32 onwards). Distinct from {@link
+ * TenantContextException}, which covers the "commercial context" subdomain.
  */
 public sealed class TenantException extends RuntimeException {
 
@@ -19,7 +19,7 @@ public sealed class TenantException extends RuntimeException {
         return code;
     }
 
-    /** Tenant inexistente. */
+    /** Nonexistent tenant. */
     public static final class NotFound extends TenantException {
         public NotFound(UUID tenantId) {
             super("TENANT_NOT_FOUND", "tenant not found: " + tenantId);
@@ -27,8 +27,8 @@ public sealed class TenantException extends RuntimeException {
     }
 
     /**
-     * Formato de dominio invalido (US32). Mapeado para HTTP 422 para sinalizar que o payload e
-     * sintaticamente correto mas semanticamente nao aceitavel.
+     * Invalid domain format (US32). Mapped to HTTP 422 to signal that the payload is syntactically
+     * correct but semantically not acceptable.
      */
     public static final class InvalidDomain extends TenantException {
         public InvalidDomain(String detail) {

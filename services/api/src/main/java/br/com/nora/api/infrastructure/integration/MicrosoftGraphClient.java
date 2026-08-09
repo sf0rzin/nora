@@ -13,9 +13,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
- * Chamadas ao Microsoft Graph usadas pelas ações do Flows: Outlook ({@code POST /me/sendMail},
- * corpo HTML) e Calendar ({@code POST /me/events}). Sem SDK — payloads mínimos e visíveis. Falha
- * vira {@code ProviderError} com status + trecho do corpo, padrão do {@link GoogleWorkspaceClient}.
+ * Calls to Microsoft Graph used by the Flows actions: Outlook ({@code POST /me/sendMail}, HTML
+ * body) and Calendar ({@code POST /me/events}). No SDK — minimal, visible payloads. A failure
+ * becomes a {@code ProviderError} with status + body excerpt, the {@link GoogleWorkspaceClient}
+ * pattern.
  */
 @Component
 public class MicrosoftGraphClient {
@@ -23,9 +24,9 @@ public class MicrosoftGraphClient {
     private static final String GRAPH_BASE = "https://graph.microsoft.com/v1.0";
     private static final Duration TIMEOUT = Duration.ofSeconds(15);
 
-    // O Graph usa dateTimeTimeZone: dateTime local SEM offset + timeZone separado (IANA aceito).
-    // Mesma armadilha do Google Calendar (GoogleWorkspaceClient.RFC3339): segundos são
-    // OBRIGATÓRIOS — OffsetDateTime.toString() os omite quando zerados e o Graph responde 400.
+    // Graph uses dateTimeTimeZone: local dateTime with NO offset + separate timeZone (IANA ok).
+    // Same trap as Google Calendar (GoogleWorkspaceClient.RFC3339): seconds are MANDATORY —
+    // OffsetDateTime.toString() omits them when zeroed and Graph answers 400.
     private static final DateTimeFormatter GRAPH_LOCAL =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
@@ -37,7 +38,7 @@ public class MicrosoftGraphClient {
         this.mapper = mapper;
     }
 
-    /** Envia e-mail pela conta Microsoft conectada (202 sem corpo quando aceito). */
+    /** Sends e-mail through the connected Microsoft account (202 with no body when accepted). */
     public void sendMail(String accessToken, String to, String subject, String htmlBody) {
         Map<String, Object> message = new LinkedHashMap<>();
         message.put("subject", subject);
@@ -58,10 +59,11 @@ public class MicrosoftGraphClient {
     }
 
     /**
-     * Cria evento no calendário primário da conta conectada. Retorna o link do evento (webLink).
+     * Creates an event in the connected account's primary calendar. Returns the event link
+     * (webLink).
      *
-     * @param timeZone IANA (ex.: {@code America/Sao_Paulo}) — o Graph interpreta os dateTimes
-     *     locais neste fuso
+     * @param timeZone IANA (e.g. {@code America/Sao_Paulo}) — Graph interprets the local dateTimes
+     *     in this time zone
      */
     public String createEvent(
             String accessToken,
@@ -94,7 +96,7 @@ public class MicrosoftGraphClient {
         }
     }
 
-    /** Data-hora local COM segundos (o offset fica de fora — o Graph usa o campo timeZone). */
+    /** Local date-time WITH seconds (the offset is left out — Graph uses the timeZone field). */
     public static String graphLocal(OffsetDateTime value) {
         return GRAPH_LOCAL.format(value);
     }

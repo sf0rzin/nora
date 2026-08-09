@@ -2,7 +2,7 @@ package br.com.nora.api.api.dto.meeting;
 
 import java.util.List;
 
-/** Productivity Score persistido (ADR 0005), retornado no detalhe da reuniao. */
+/** Persisted Productivity Score (ADR 0005), returned in the meeting detail. */
 public record ProductivityAssessmentResponse(
         int score,
         String band,

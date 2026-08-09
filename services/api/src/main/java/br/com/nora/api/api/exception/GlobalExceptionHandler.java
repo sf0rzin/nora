@@ -35,7 +35,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 
-/** Tradutor central de excecoes para o formato de erro padrao. */
+/** Central translator of exceptions into the standard error format. */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -184,7 +184,7 @@ public class GlobalExceptionHandler {
                     case "INTEGRATION_UNKNOWN_PROVIDER" -> HttpStatus.NOT_FOUND;
                     case "INTEGRATION_NOT_CONFIGURED" -> HttpStatus.UNPROCESSABLE_ENTITY;
                     case "INTEGRATION_INVALID_STATE" -> HttpStatus.BAD_REQUEST;
-                    // Pareamento Telegram ainda sem o /start do usuário — estado, não falha 5xx.
+                    // Telegram pairing still missing the user's /start — state, not a 5xx failure.
                     case "INTEGRATION_PAIRING_PENDING" -> HttpStatus.CONFLICT;
                     case "INTEGRATION_PROVIDER_ERROR" -> HttpStatus.BAD_GATEWAY;
                     default -> HttpStatus.BAD_REQUEST;
@@ -262,8 +262,8 @@ public class GlobalExceptionHandler {
                     case "RATE_LIMIT_EXCEEDED" -> HttpStatus.TOO_MANY_REQUESTS;
                     case "INVALID_REGION" -> HttpStatus.BAD_REQUEST;
                     case "BROKER_ERROR" -> HttpStatus.BAD_GATEWAY;
-                    // 410, nao 500: o provider de nuvem saiu de proposito (STT local no
-                    // cliente). GONE e terminal — o desktop antigo para de tentar.
+                    // 410, not 500: the cloud provider went away on purpose (STT is local on
+                    // the client). GONE is terminal — the old desktop stops retrying.
                     case "SPEECH_PROVIDER_GONE" -> HttpStatus.GONE;
                     default -> HttpStatus.BAD_REQUEST;
                 };
@@ -277,7 +277,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
-        // NAO vazamos ex.getMessage() — pode conter detalhes internos. traceId no log basta.
+        // We do NOT leak ex.getMessage() — it may contain internal details. traceId in the log is
+        // enough.
         String trace = traceId();
         LOG.warn("IllegalArgument traceId={} message={}", trace, ex.getMessage());
         return ResponseEntity.badRequest()
@@ -343,7 +344,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponse> handleTypeMismatch(
             MethodArgumentTypeMismatchException ex) {
-        // Tipico: UUID invalido em @PathVariable.
+        // Typical: invalid UUID in a @PathVariable.
         return ResponseEntity.badRequest()
                 .body(
                         new ErrorResponse(
@@ -412,9 +413,9 @@ public class GlobalExceptionHandler {
     }
 
     private static String traceId() {
-        // Reaproveita o requestId setado pelo RequestIdFilter (mesmo id que aparece nos logs e no
-        // header X-Request-Id), tornando o traceId da resposta de erro correlacionavel. Fallback
-        // pra UUID se o filtro nao tiver rodado (ex.: erro muito cedo na cadeia).
+        // Reuses the requestId set by the RequestIdFilter (the same id that shows up in the logs
+        // and in the X-Request-Id header), making the error response's traceId correlatable.
+        // Falls back to a UUID if the filter has not run (e.g.: error very early in the chain).
         String requestId = MDC.get("requestId");
         return requestId != null ? requestId : UUID.randomUUID().toString();
     }

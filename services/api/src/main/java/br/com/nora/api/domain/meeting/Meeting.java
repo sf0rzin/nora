@@ -11,9 +11,9 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Reuniao no dominio. Carrega tenant_id obrigatorio, owner, formato da transcricao e estado de
- * processamento. A transcricao em si vive em {@link Transcript} (referencia 1-1) para evitar
- * carregar texto longo desnecessariamente nas listagens.
+ * Meeting in the domain. Carries a mandatory tenant_id, owner, transcript format and processing
+ * state. The transcript itself lives in {@link Transcript} (1-1 reference) to avoid loading long
+ * text unnecessarily in listings.
  */
 public final class Meeting {
 
@@ -157,7 +157,7 @@ public final class Meeting {
         return Collections.unmodifiableMap(copy);
     }
 
-    /** Cria uma nova reuniao em estado PENDING (logo apos upload). */
+    /** Creates a new meeting in PENDING state (right after upload). */
     public static Meeting newPending(
             UUID tenantId,
             UUID ownerUserId,
@@ -181,7 +181,7 @@ public final class Meeting {
                 Map.of());
     }
 
-    /** Cria uma nova reuniao em estado PENDING com attributes (US19 / IAM conditions). */
+    /** Creates a new meeting in PENDING state with attributes (US19 / IAM conditions). */
     public static Meeting newPending(
             UUID tenantId,
             UUID ownerUserId,
@@ -207,7 +207,7 @@ public final class Meeting {
                 Clock.systemUTC());
     }
 
-    /** Variante com Clock explicito (testabilidade). */
+    /** Variant with an explicit Clock (testability). */
     public static Meeting newPending(
             UUID tenantId,
             UUID ownerUserId,
@@ -247,19 +247,19 @@ public final class Meeting {
     }
 
     /**
-     * Devolve copia com novo status (e updatedAt = now), validando a transicao.
+     * Returns a copy with a new status (and updatedAt = now), validating the transition.
      *
-     * <p>State machine permitida:
+     * <p>Allowed state machine:
      *
      * <pre>
-     *   PENDING    → PROCESSING, FAILED, PENDING (idem)
-     *   PROCESSING → COMPLETED, FAILED, PROCESSING (idem)
-     *   COMPLETED  → PENDING (reprocess de goal), PROCESSING (reprocess direto)
+     *   PENDING    → PROCESSING, FAILED, PENDING (same)
+     *   PROCESSING → COMPLETED, FAILED, PROCESSING (same)
+     *   COMPLETED  → PENDING (goal reprocess), PROCESSING (direct reprocess)
      *   FAILED     → PENDING (reprocess)
      * </pre>
      *
-     * <p>Sem state machine, qualquer thread/race podia mover meeting de COMPLETED→PROCESSING
-     * silenciosamente — quebrava listing/UI sem trace.
+     * <p>Without the state machine, any thread/race could move a meeting from COMPLETED→PROCESSING
+     * silently — it broke listing/UI with no trace.
      */
     public Meeting withStatus(ProcessingStatus newStatus) {
         if (newStatus == null) {
@@ -301,7 +301,9 @@ public final class Meeting {
         };
     }
 
-    /** Devolve copia com novo snippet (e updatedAt = now). Trunca em SUMMARY_SNIPPET_MAX. */
+    /**
+     * Returns a copy with a new snippet (and updatedAt = now). Truncates at SUMMARY_SNIPPET_MAX.
+     */
     public Meeting withSummarySnippet(String snippet) {
         String trimmed =
                 snippet == null
@@ -327,7 +329,7 @@ public final class Meeting {
                 OffsetDateTime.now());
     }
 
-    /** Apenas leitura — getters. */
+    /** Read only — getters. */
     public UUID id() {
         return id;
     }

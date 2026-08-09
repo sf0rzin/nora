@@ -161,8 +161,8 @@ export function ShaderOrb({
     frame();
 
     return () => {
-      // Sem isso, cada re-run do effect (mudança de props) ou desmontagem
-      // vazava program/shaders/buffer no contexto WebGL. Auditoria #50/#51.
+      // Without this, every re-run of the effect (props change) or unmount
+      // leaked program/shaders/buffer in the WebGL context. Audit #50/#51.
       cancelAnimationFrame(raf);
       gl.deleteProgram(prog);
       gl.deleteShader(vs);

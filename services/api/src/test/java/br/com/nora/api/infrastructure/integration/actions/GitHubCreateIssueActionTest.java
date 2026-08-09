@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/** Ação github_create_issue: uma issue por action item, fallback de resumo e título custom. */
+/** github_create_issue action: one issue per action item, summary fallback and custom title. */
 class GitHubCreateIssueActionTest {
 
     private final IntegrationService integrations = mock(IntegrationService.class);
@@ -52,7 +52,7 @@ class GitHubCreateIssueActionTest {
         assertThat(first.body()).contains("Renovação Acme").contains("Ana").contains("HIGH");
         assertThat(first.body()).contains(ctx.meetingUrl());
         assertThat(first.labels()).containsExactly("nora");
-        // Item sem responsável não ganha a linha de responsável.
+        // An item with no assignee doesn't get the assignee line.
         assertThat(github.issues.get(1).body()).doesNotContain("Responsável");
     }
 
@@ -104,7 +104,7 @@ class GitHubCreateIssueActionTest {
                 .isEqualTo("stratfy/nora");
     }
 
-    /** Captura criações de issue em memória (substitui as chamadas HTTP reais ao GitHub). */
+    /** Captures issue creations in memory (replaces the real HTTP calls to GitHub). */
     static class RecordingGitHub extends GitHubClient {
         record Issue(String token, String repo, String title, String body, List<String> labels) {}
 
@@ -122,7 +122,7 @@ class GitHubCreateIssueActionTest {
         }
     }
 
-    /** Contexto de reunião compartilhado pelos testes das ações da onda 1. */
+    /** Meeting context shared by the wave 1 action tests. */
     static final class TestContexts {
         static final UUID TENANT = UUID.randomUUID();
 

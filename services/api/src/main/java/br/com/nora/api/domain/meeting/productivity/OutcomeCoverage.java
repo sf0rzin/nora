@@ -1,7 +1,7 @@
 package br.com.nora.api.domain.meeting.productivity;
 
 /**
- * Cobertura de um outcome esperado conforme avaliacao do worker. Imutavel, value object filho de
+ * Coverage of an expected outcome as assessed by the worker. Immutable, value object child of
  * {@link ProductivityAssessment}.
  */
 public record OutcomeCoverage(

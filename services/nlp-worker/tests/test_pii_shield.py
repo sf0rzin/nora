@@ -41,7 +41,7 @@ def test_placeholder_format():
 
 
 def test_redacts_isolated_br_first_name():
-    """Padrao 3: primeiro nome BR sozinho contra lista hardcoded."""
+    """Pattern 3: BR first name alone against a hardcoded list."""
     text = "O Lucas confirmou a proposta"
     result = pii_shield.redact(text)
     assert result.redacted_text == "O [[PERSON_NAME_1]] confirmou a proposta"
@@ -49,10 +49,10 @@ def test_redacts_isolated_br_first_name():
 
 
 def test_redacts_accented_first_name_regression():
-    """Regressao (jun/2026, leak real em producao): nomes ACENTUADOS da lista
-    vazavam porque `_BR_TOP_NAMES` e escrita SEM acento e a comparacao era
-    `casefold()` sensivel a acento -- 'Patrícia' ('patrícia') nunca casava com
-    'Patricia' ('patricia'). O accent-fold (NFKD) corrige a classe inteira."""
+    """Regression (jun/2026, real production leak): ACCENTED names from the list
+    leaked because `_BR_TOP_NAMES` is written WITHOUT accents and the comparison
+    was accent-sensitive `casefold()` -- 'Patrícia' ('patrícia') never matched
+    'Patricia' ('patricia'). The accent-fold (NFKD) fixes the whole class."""
     for name in ("Patrícia", "Antônio", "André", "João", "Mário", "Mônica", "Vitória", "César"):
         text = f"A {name} ficou de enviar o contrato"
         result = pii_shield.redact(text)
@@ -63,7 +63,7 @@ def test_redacts_accented_first_name_regression():
 
 
 def test_accent_fold_does_not_break_negative_list():
-    """Termos da negative list continuam NAO sendo redigidos apos o accent-fold."""
+    """Negative list terms keep NOT being redacted after the accent-fold."""
     text = "Vamos rodar no Azure com Python e Spring, integrando com Salesforce"
     result = pii_shield.redact(text)
     for term in ("Azure", "Python", "Spring", "Salesforce"):
@@ -71,7 +71,7 @@ def test_accent_fold_does_not_break_negative_list():
 
 
 def test_redacts_name_surname_sequence():
-    """Padrao 2: 2 palavras Title Case consecutivas."""
+    """Pattern 2: 2 consecutive Title Case words."""
     text = "Marina Alves do RH"
     result = pii_shield.redact(text)
     assert result.redacted_text == "[[PERSON_NAME_1]] do RH"
@@ -80,7 +80,7 @@ def test_redacts_name_surname_sequence():
 
 
 def test_redacts_name_with_prefix():
-    """Padrao 1: pronome de tratamento + Nome [Sobrenome]."""
+    """Pattern 1: honorific + Name [Surname]."""
     text = "Falamos com Dr. Carlos Silva"
     result = pii_shield.redact(text)
     assert result.redacted_text == "Falamos com [[PERSON_NAME_1]]"
@@ -95,7 +95,7 @@ def test_redacts_sra_prefix():
 
 
 def test_multiple_distinct_people_get_distinct_numbers():
-    """Cada nome detectado recebe um numero novo (sem dedup)."""
+    """Each detected name gets a new number (no dedup)."""
     text = "Marina ligou pro Pedro sobre o RM"
     result = pii_shield.redact(text)
     assert result.redacted_text == ("[[PERSON_NAME_1]] ligou pro [[PERSON_NAME_2]] sobre o RM")
@@ -104,7 +104,7 @@ def test_multiple_distinct_people_get_distinct_numbers():
 
 
 def test_same_person_repeated_gets_new_number():
-    """Decisao explicita do escopo: cada ocorrencia ganha numero novo."""
+    """Explicit scope decision: each occurrence gets a new number."""
     text = "Lucas chegou, Lucas falou, Lucas saiu"
     result = pii_shield.redact(text)
     assert "[[PERSON_NAME_1]]" in result.redacted_text
@@ -113,12 +113,12 @@ def test_same_person_repeated_gets_new_number():
 
 
 # --------------------------------------------------------------------------- #
-# PERSON_NAME -- negatives (negative list e nao-nomes)
+# PERSON_NAME -- negatives (negative list and non-names)
 # --------------------------------------------------------------------------- #
 
 
 def test_negative_list_blocks_product_pair():
-    """'TOTVS Protheus' nao deve virar PERSON_NAME."""
+    """'TOTVS Protheus' must not become PERSON_NAME."""
     text = "Vamos usar TOTVS Protheus"
     result = pii_shield.redact(text)
     assert result.redacted_text == text
@@ -126,7 +126,7 @@ def test_negative_list_blocks_product_pair():
 
 
 def test_negative_list_blocks_company_and_product():
-    """'A Acme contratou NORA' -- ambos na negative list, texto inalterado."""
+    """'A Acme contratou NORA' -- both on the negative list, text unchanged."""
     text = "A Acme contratou NORA"
     result = pii_shield.redact(text)
     assert result.redacted_text == text
@@ -134,11 +134,11 @@ def test_negative_list_blocks_company_and_product():
 
 
 def test_negative_token_does_not_shield_the_name_next_to_it():
-    """Produto encostado no nome nao pode desligar a redacao do nome.
+    """A product glued to the name cannot switch off the name redaction.
 
-    Regressao: `_is_negative` era all-or-nothing -- um unico token da negative list
-    descartava o match inteiro da sequencia Title Case. Como a regex e gulosa, escrever
-    "Ana Souza Protheus" fazia "Ana Souza" sair em claro.
+    Regression: `_is_negative` was all-or-nothing -- a single negative list token
+    discarded the whole match of the Title Case sequence. Since the regex is greedy,
+    writing "Ana Souza Protheus" made "Ana Souza" come out in the clear.
     """
     result = pii_shield.redact("Reuniao com Ana Souza Protheus na terca")
     assert "Ana Souza" not in result.redacted_text
@@ -147,7 +147,7 @@ def test_negative_token_does_not_shield_the_name_next_to_it():
 
 
 def test_negative_token_between_two_names_keeps_the_longest_run():
-    """Com o ofensor no meio, sobra o maior trecho contiguo limpo."""
+    """With the offender in the middle, the longest clean contiguous run remains."""
     result = pii_shield.redact("Acme Protheus Ana Souza fechou o contrato")
     assert "Ana Souza" not in result.redacted_text
     assert "Acme" in result.redacted_text
@@ -155,7 +155,7 @@ def test_negative_token_between_two_names_keeps_the_longest_run():
 
 
 def test_all_negative_tokens_still_redact_nothing():
-    """Contraprova do recorte: sem nenhum token limpo, nada e redigido."""
+    """Counter-proof of the trimming: with no clean token, nothing is redacted."""
     text = "Comparamos Protheus Datasul lado a lado"
     result = pii_shield.redact(text)
     assert result.redacted_text == text
@@ -163,7 +163,7 @@ def test_all_negative_tokens_still_redact_nothing():
 
 
 def test_a_negative_token_between_two_names_redacts_both():
-    """Regressao: so o primeiro trecho limpo sobrevivia e o segundo apelido saia em claro."""
+    """Regression: only the first clean run survived and the second name came out clear."""
     result = pii_shield.redact("Ana Souza Protheus Carlos Silva")
     assert "Ana Souza" not in result.redacted_text
     assert "Carlos Silva" not in result.redacted_text
@@ -171,21 +171,21 @@ def test_a_negative_token_between_two_names_redacts_both():
 
 
 def test_a_trimmed_prefix_claim_does_not_swallow_a_clean_sequence():
-    """Regressao: o span recortado do Padrao 1 bloqueava um match limpo do Padrao 2."""
+    """Regression: the trimmed span from Pattern 1 blocked a clean Pattern 2 match."""
     result = pii_shield.redact("Ribeiro Alves Dr. Ana Protheus")
     assert "Ribeiro Alves" not in result.redacted_text
     assert "Protheus" in result.redacted_text
 
 
 def test_a_trim_never_splices_a_placeholder_into_a_surname():
-    """Regressao: o corte caia no fim do match e colava o placeholder na cauda do apelido."""
+    """Regression: the cut fell at the match end, gluing the placeholder to the name tail."""
     result = pii_shield.redact("Sr. Protheus Carlos Núñez")
     assert "]]ñez" not in result.redacted_text
     assert "Núñez" in result.redacted_text
 
 
 def test_a_job_title_alone_is_not_a_person():
-    """Regressao: cargo como sinal de pessoa redigia frase que nao tem ninguem dentro."""
+    """Regression: job title as a person signal redacted a phrase with nobody in it."""
     for text in ("Gerente de Contas Oracle confirmou o prazo", "Diretor Comercial Senior aprovou"):
         result = pii_shield.redact(text)
         assert result.redacted_text == text
@@ -193,7 +193,7 @@ def test_a_job_title_alone_is_not_a_person():
 
 
 def test_acronym_does_not_match():
-    """'RM', 'SAP', 'CRM' sao all-caps e nao satisfazem Title Case."""
+    """'RM', 'SAP', 'CRM' are all-caps and do not satisfy Title Case."""
     text = "Migramos do SAP para o RM via CRM"
     result = pii_shield.redact(text)
     assert result.redacted_text == text
@@ -201,19 +201,19 @@ def test_acronym_does_not_match():
 
 
 def test_sentence_start_word_not_redacted():
-    """Palavra Title Case isolada no inicio da frase nao eh nome."""
+    """An isolated Title Case word at the sentence start is not a name."""
     text = "Reuniao alinhou proxima entrega"
     result = pii_shield.redact(text)
     assert result.redacted_text == text
 
 
 # --------------------------------------------------------------------------- #
-# Interplay com outros tipos de PII
+# Interplay with other PII types
 # --------------------------------------------------------------------------- #
 
 
 def test_email_does_not_interfere_with_person_name():
-    """O nome dentro do e-mail nao deve ser redigido duas vezes."""
+    """The name inside the e-mail must not be redacted twice."""
     text = "carlos@acme.com agendou com Marina"
     result = pii_shield.redact(text)
     assert result.redacted_text == "[[EMAIL_1]] agendou com [[PERSON_NAME_1]]"
@@ -223,16 +223,16 @@ def test_email_does_not_interfere_with_person_name():
 
 
 def test_email_with_name_in_local_part_only_redacts_email():
-    """Marina dentro do email nao gera PERSON_NAME extra."""
+    """Marina inside the email does not generate an extra PERSON_NAME."""
     text = "Mande pra marina@empresa.com.br"
     result = pii_shield.redact(text)
     assert "[[EMAIL_1]]" in result.redacted_text
-    # nenhum PERSON_NAME pois Marina esta dentro do range do email
+    # no PERSON_NAME because Marina is inside the email range
     assert not any(r.type == PiiType.PERSON_NAME for r in result.redactions)
 
 
 def test_full_pii_mix():
-    """E-mail, telefone, CPF e nome no mesmo texto."""
+    """E-mail, phone, CPF and name in the same text."""
     text = "Marina Alves (CPF 123.456.789-00) ligou de (11) 98888-7777 para joao@cliente.com.br"
     result = pii_shield.redact(text)
     redacted = result.redacted_text
@@ -248,13 +248,13 @@ def test_full_pii_mix():
 
 
 # --------------------------------------------------------------------------- #
-# CARTAO DE CREDITO -- regressao de vazamento por separador PONTO + Luhn
-# (auditoria 2026-06-03, ADR 0012)
+# CREDIT CARD -- leak regression via DOT separator + Luhn
+# (audit 2026-06-03, ADR 0012)
 # --------------------------------------------------------------------------- #
 
 
 def test_card_with_dot_separator_is_redacted():
-    """Probe da auditoria: '4111.1111.1111.1111' vazava cru. Agora redige."""
+    """Audit probe: '4111.1111.1111.1111' leaked raw. Now it redacts."""
     text = "4111.1111.1111.1111"
     result = pii_shield.redact(text)
     assert result.redacted_text == "[[CREDIT_CARD_1]]"
@@ -263,7 +263,7 @@ def test_card_with_dot_separator_is_redacted():
 
 
 def test_card_with_dot_separator_inline_is_redacted():
-    """Probe da auditoria: cartao com ponto no meio de uma frase."""
+    """Audit probe: card with dots in the middle of a sentence."""
     text = "Cartao 4111.1111.1111.1111 venceu"
     result = pii_shield.redact(text)
     assert result.redacted_text == "Cartao [[CREDIT_CARD_1]] venceu"
@@ -271,7 +271,7 @@ def test_card_with_dot_separator_inline_is_redacted():
 
 
 def test_card_with_space_and_hyphen_separators_still_redacted():
-    """Separadores legados (espaco/hifen) seguem funcionando apos a mudanca."""
+    """Legacy separators (space/hyphen) keep working after the change."""
     for raw in ("4111 1111 1111 1111", "4111-1111-1111-1111"):
         result = pii_shield.redact(raw)
         assert result.redacted_text == "[[CREDIT_CARD_1]]"
@@ -279,7 +279,7 @@ def test_card_with_space_and_hyphen_separators_still_redacted():
 
 
 def test_amex_card_is_redacted():
-    """Amex (15 digitos, prefixo 34/37) com Luhn valido eh redigido."""
+    """Amex (15 digits, prefix 34/37) with valid Luhn is redacted."""
     text = "Amex 378282246310005 no arquivo"
     result = pii_shield.redact(text)
     assert "378282246310005" not in result.redacted_text
@@ -287,7 +287,7 @@ def test_amex_card_is_redacted():
 
 
 def test_non_luhn_16_digits_not_treated_as_card():
-    """Negativo: 16 digitos que NAO passam Luhn nao viram cartao (precisao)."""
+    """Negative: 16 digits that do NOT pass Luhn are not cards (precision)."""
     text = "Pedido 1234567890123456 enviado"
     result = pii_shield.redact(text)
     assert result.redacted_text == text
@@ -295,14 +295,14 @@ def test_non_luhn_16_digits_not_treated_as_card():
 
 
 def test_non_luhn_16_digits_with_dots_not_treated_as_card():
-    """Negativo: sequencia 4x4 com pontos mas sem Luhn valido nao eh cartao."""
+    """Negative: 4x4 sequence with dots but without a valid Luhn is not a card."""
     text = "1234.5678.9012.3456"
     result = pii_shield.redact(text)
     assert not any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
 
 
 def test_long_phone_not_treated_as_card():
-    """Negativo: telefone longo com DDD nao deve ser classificado como cartao."""
+    """Negative: a long phone with DDD must not be classified as a card."""
     text = "Ligue para (11) 98888-7777 hoje"
     result = pii_shield.redact(text)
     assert not any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
@@ -310,13 +310,13 @@ def test_long_phone_not_treated_as_card():
 
 
 # --------------------------------------------------------------------------- #
-# CPF / CNPJ -- regressao de vazamento por separador ESPACO
-# (auditoria 2026-06-03, ADR 0012)
+# CPF / CNPJ -- leak regression via SPACE separator
+# (audit 2026-06-03, ADR 0012)
 # --------------------------------------------------------------------------- #
 
 
 def test_cpf_with_space_groups_is_redacted():
-    """Probe da auditoria: 'Meu CPF e 111 444 777 35' vazava cru. Agora redige."""
+    """Audit probe: 'Meu CPF e 111 444 777 35' leaked raw. Now it redacts."""
     text = "Meu CPF e 111 444 777 35"
     result = pii_shield.redact(text)
     assert result.redacted_text == "Meu CPF e [[CPF_1]]"
@@ -325,7 +325,7 @@ def test_cpf_with_space_groups_is_redacted():
 
 
 def test_cnpj_with_space_groups_is_redacted():
-    """CNPJ com grupos separados por espaco eh redigido (DV valido)."""
+    """CNPJ with space-separated groups is redacted (valid DV)."""
     text = "CNPJ 11 222 333 0001 81"
     result = pii_shield.redact(text)
     assert result.redacted_text == "CNPJ [[CNPJ_1]]"
@@ -334,7 +334,7 @@ def test_cnpj_with_space_groups_is_redacted():
 
 
 def test_spaced_cpf_with_invalid_dv_not_redacted():
-    """Negativo: grupos espacados com DV invalido nao sao redigidos (precisao)."""
+    """Negative: spaced groups with an invalid DV are not redacted (precision)."""
     text = "Codigo 123 456 789 00 do lote"
     result = pii_shield.redact(text)
     assert "123 456 789 00" in result.redacted_text
@@ -342,8 +342,8 @@ def test_spaced_cpf_with_invalid_dv_not_redacted():
 
 
 # --------------------------------------------------------------------------- #
-# Validadores diretos: _validate_cpf / _validate_cnpj / _validate_card / _luhn_ok
-# (sobe cobertura dos ramos de DV — ADR 0018 exige >85% em PII)
+# Direct validators: _validate_cpf / _validate_cnpj / _validate_card / _luhn_ok
+# (raises coverage of the DV branches — ADR 0018 requires >85% on PII)
 # --------------------------------------------------------------------------- #
 
 
@@ -356,13 +356,13 @@ def test_validate_cpf_rejects_invalid_dv():
 
 
 def test_validate_cpf_rejects_trivial_sequence():
-    """Sequencia trivial (todos digitos iguais) tem DV 'valido' mas eh rejeitada."""
+    """Trivial sequence (all identical digits) has a 'valid' DV but is rejected."""
     assert pii_shield._validate_cpf("11111111111") is False
 
 
 def test_validate_cpf_rejects_wrong_length():
-    assert pii_shield._validate_cpf("1114447773") is False  # 10 digitos
-    assert pii_shield._validate_cpf("111444777355") is False  # 12 digitos
+    assert pii_shield._validate_cpf("1114447773") is False  # 10 digits
+    assert pii_shield._validate_cpf("111444777355") is False  # 12 digits
 
 
 def test_validate_cpf_rejects_non_digits():
@@ -382,7 +382,7 @@ def test_validate_cnpj_rejects_trivial_sequence():
 
 
 def test_validate_cnpj_rejects_wrong_length():
-    assert pii_shield._validate_cnpj("1122233300018") is False  # 13 digitos
+    assert pii_shield._validate_cnpj("1122233300018") is False  # 13 digits
 
 
 def test_validate_card_accepts_luhn_valid():
@@ -395,7 +395,7 @@ def test_validate_card_rejects_luhn_invalid():
 
 
 def test_validate_card_rejects_wrong_length():
-    assert pii_shield._validate_card("41111111") is False  # 8 digitos
+    assert pii_shield._validate_card("41111111") is False  # 8 digits
 
 
 def test_luhn_ok():
@@ -404,15 +404,15 @@ def test_luhn_ok():
 
 
 # --------------------------------------------------------------------------- #
-# AUDITORIA 2026-06-16 (ADR 0012) — bypass de PII estruturada por formato.
-# Regressao dos casos 1,2,3,7,8,10 (PHONE), 11 (CNPJ), 12,13,14 (CPF) e 15
-# (cartao Diners) do relatorio `.challenge-build/pii-leak-hunt-report.md`.
-# Em todos: o numero ORIGINAL nao pode sobrar em `redacted_text`.
+# AUDIT 2026-06-16 (ADR 0012) — structured PII bypass by formatting.
+# Regression of cases 1,2,3,7,8,10 (PHONE), 11 (CNPJ), 12,13,14 (CPF) and 15
+# (Diners card) from the report `.challenge-build/pii-leak-hunt-report.md`.
+# In all of them: the ORIGINAL number must not survive in `redacted_text`.
 # --------------------------------------------------------------------------- #
 
 
 def test_phone_isolated_ninth_digit_with_parens_redacted():
-    """Caso 1: 9o digito do celular ditado solto, com DDD em parenteses."""
+    """Case 1: mobile 9th digit dictated on its own, with DDD in parentheses."""
     text = "meu cel e (11) 9 8765-4321 anota"
     result = pii_shield.redact(text)
     assert "(11) 9 8765-4321" not in result.redacted_text
@@ -420,7 +420,7 @@ def test_phone_isolated_ninth_digit_with_parens_redacted():
 
 
 def test_phone_isolated_ninth_digit_no_parens_redacted():
-    """Caso 2: 9o digito solto, sem parenteses, separado por espaco."""
+    """Case 2: 9th digit on its own, no parentheses, split by a space."""
     text = "cliente fone 11 9 8765 4321 anotado"
     result = pii_shield.redact(text)
     assert "11 9 8765 4321" not in result.redacted_text
@@ -428,7 +428,7 @@ def test_phone_isolated_ninth_digit_no_parens_redacted():
 
 
 def test_phone_international_br_with_isolated_nine_redacted():
-    """Caso 3: +55 (11) 9 9988-7766 — internacional BR com 9 solto."""
+    """Case 3: +55 (11) 9 9988-7766 — BR international with a loose 9."""
     text = "+55 (11) 9 9988-7766 completo"
     result = pii_shield.redact(text)
     assert "+55 (11) 9 9988-7766" not in result.redacted_text
@@ -436,7 +436,7 @@ def test_phone_international_br_with_isolated_nine_redacted():
 
 
 def test_phone_space_inside_parens_redacted():
-    """Caso 7: espacos internos no parentese — ( 11 ) 98765-4321."""
+    """Case 7: inner spaces in the parentheses — ( 11 ) 98765-4321."""
     text = "( 11 ) 98765-4321 espaco no parentese"
     result = pii_shield.redact(text)
     assert "( 11 ) 98765-4321" not in result.redacted_text
@@ -444,7 +444,7 @@ def test_phone_space_inside_parens_redacted():
 
 
 def test_phone_ddd_with_leading_zero_redacted():
-    """Caso 8: DDD antigo com zero (3 digitos) — (011) 98765-4321."""
+    """Case 8: old DDD with a zero (3 digits) — (011) 98765-4321."""
     text = "fone (011) 98765-4321 antigo"
     result = pii_shield.redact(text)
     assert "(011) 98765-4321" not in result.redacted_text
@@ -452,7 +452,7 @@ def test_phone_ddd_with_leading_zero_redacted():
 
 
 def test_phone_slash_separator_redacted():
-    """Caso 10: separador barra — 11/98765/4321."""
+    """Case 10: slash separator — 11/98765/4321."""
     text = "tel 11/98765/4321 barra"
     result = pii_shield.redact(text)
     assert "11/98765/4321" not in result.redacted_text
@@ -460,7 +460,7 @@ def test_phone_slash_separator_redacted():
 
 
 def test_phone_canonical_format_still_redacted():
-    """Anti-regressao: o formato canonico (11) 98888-7777 continua redigido."""
+    """Anti-regression: the canonical format (11) 98888-7777 stays redacted."""
     text = "no (11) 98888-7777 ok"
     result = pii_shield.redact(text)
     assert "(11) 98888-7777" not in result.redacted_text
@@ -468,7 +468,7 @@ def test_phone_canonical_format_still_redacted():
 
 
 def test_cnpj_dots_only_separator_redacted():
-    """Caso 11: CNPJ com PONTO entre todos os grupos — 11.222.333.0001.81."""
+    """Case 11: CNPJ with a DOT between all groups — 11.222.333.0001.81."""
     text = "cnpj 11.222.333.0001.81 so pontos"
     result = pii_shield.redact(text)
     assert result.redacted_text == "cnpj [[CNPJ_1]] so pontos"
@@ -477,7 +477,7 @@ def test_cnpj_dots_only_separator_redacted():
 
 
 def test_cpf_mixed_dot_and_space_separators_redacted():
-    """Caso 12: CPF misto pontos + espaco antes do DV — 111.444.777 35."""
+    """Case 12: CPF mixing dots + a space before the DV — 111.444.777 35."""
     text = "cpf 111.444.777 35 misto"
     result = pii_shield.redact(text)
     assert result.redacted_text == "cpf [[CPF_1]] misto"
@@ -486,7 +486,7 @@ def test_cpf_mixed_dot_and_space_separators_redacted():
 
 
 def test_cpf_slash_separators_redacted():
-    """Caso 13: CPF com barra — 111/444/777-35."""
+    """Case 13: CPF with slashes — 111/444/777-35."""
     text = "cpf com barra 111/444/777-35 estranho"
     result = pii_shield.redact(text)
     assert "111/444/777-35" not in result.redacted_text
@@ -494,7 +494,7 @@ def test_cpf_slash_separators_redacted():
 
 
 def test_cpf_hyphen_only_separators_redacted():
-    """Caso 14: CPF so com hifen entre grupos — 111-444-777-35."""
+    """Case 14: CPF with hyphens only between groups — 111-444-777-35."""
     text = "cpf 111-444-777-35 so hifen"
     result = pii_shield.redact(text)
     assert "111-444-777-35" not in result.redacted_text
@@ -502,7 +502,7 @@ def test_cpf_hyphen_only_separators_redacted():
 
 
 def test_diners_14_digit_card_redacted():
-    """Caso 15: cartao Diners 14 digitos (4-4-4-2), Luhn valido — 3056 9309 0259 04."""
+    """Case 15: 14-digit Diners card (4-4-4-2), valid Luhn — 3056 9309 0259 04."""
     text = "diners 3056 9309 0259 04 cartao"
     result = pii_shield.redact(text)
     assert result.redacted_text == "diners [[CREDIT_CARD_1]] cartao"
@@ -511,7 +511,7 @@ def test_diners_14_digit_card_redacted():
 
 
 def test_diners_14_digit_card_raw_redacted():
-    """Diners 14 digitos sem separadores tambem passa (Luhn gate)."""
+    """14-digit Diners with no separators also passes (Luhn gate)."""
     text = "30569309025904"
     result = pii_shield.redact(text)
     assert "30569309025904" not in result.redacted_text
@@ -519,15 +519,15 @@ def test_diners_14_digit_card_raw_redacted():
 
 
 # --------------------------------------------------------------------------- #
-# Anti-falso-positivo: os NOVOS patterns tolerantes (separador arbitrario)
-# so redigem com DV/Luhn valido. Numeros invalidos NAO sao redigidos.
-# (Os mesmos numeros invalidos da secao 2.4 do relatorio, mas em formato
-# nao-canonico — que e exatamente o que os patterns tolerantes governam.)
+# Anti-false-positive: the NEW tolerant patterns (arbitrary separator) only
+# redact with a valid DV/Luhn. Invalid numbers are NOT redacted.
+# (The same invalid numbers from section 2.4 of the report, but in a
+# non-canonical format — which is exactly what the tolerant patterns govern.)
 # --------------------------------------------------------------------------- #
 
 
 def test_invalid_cpf_tolerant_separators_not_redacted():
-    """DV bloqueia: CPF invalido com separadores arbitrarios nao e redigido."""
+    """DV blocks it: an invalid CPF with arbitrary separators is not redacted."""
     for raw in ("100 000 000 50", "123 456 789 00", "999-888-777-66", "100/000/000-50"):
         text = f"codigo {raw} lote"
         result = pii_shield.redact(text)
@@ -536,7 +536,7 @@ def test_invalid_cpf_tolerant_separators_not_redacted():
 
 
 def test_invalid_cnpj_dots_not_redacted():
-    """DV bloqueia: CNPJ invalido so-pontos nao e redigido."""
+    """DV blocks it: an invalid dots-only CNPJ is not redacted."""
     text = "registro 12.345.678.0001.00 talvez"
     result = pii_shield.redact(text)
     assert "12.345.678.0001.00" in result.redacted_text
@@ -544,7 +544,7 @@ def test_invalid_cnpj_dots_not_redacted():
 
 
 def test_16_digit_tracking_code_not_treated_as_card():
-    """Anti-FP: codigo de pedido/rastreio de 16 digitos SEM Luhn valido nao vira cartao."""
+    """Anti-FP: a 16-digit order/tracking code WITHOUT valid Luhn is not a card."""
     text = "codigo de rastreio 7531594562130864 do pedido"
     result = pii_shield.redact(text)
     assert "7531594562130864" in result.redacted_text
@@ -552,7 +552,7 @@ def test_16_digit_tracking_code_not_treated_as_card():
 
 
 def test_14_digit_non_luhn_not_treated_as_card():
-    """Anti-FP: 14 digitos (mesmo grouping do Diners) sem Luhn nao vira cartao."""
-    text = "pedido 3056 9309 0259 09 invalido"  # ultimo digito quebra o Luhn
+    """Anti-FP: 14 digits (same grouping as Diners) without Luhn is not a card."""
+    text = "pedido 3056 9309 0259 09 invalido"  # last digit breaks Luhn
     result = pii_shield.redact(text)
     assert not any(r.type == PiiType.CREDIT_CARD for r in result.redactions)

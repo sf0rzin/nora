@@ -1,54 +1,54 @@
--- V019: Row Level Security (RLS) COMPLETA — fecha a cobertura iniciada em V016/V017 (ADR 0002, ADR 0019, ADR 0026).
+-- V019: COMPLETE Row Level Security (RLS) — closes the coverage started in V016/V017 (ADR 0002, ADR 0019, ADR 0026).
 --
--- ## Por que esta migration existe
+-- ## Why this migration exists
 --
--- V016 habilitou ENABLE ROW LEVEL SECURITY + POLICY tenant_isolation em 12 tabelas
--- tenant-owned; V017 em +3 (customer confidence). Ficaram SEM policy ~19 tabelas
--- tenant-owned. No Postgres, uma tabela tenant-owned SEM `ENABLE ROW LEVEL SECURITY`
--- e TOTALMENTE ABERTA ao role conectado: se o enforce de RLS for ligado (role
--- nora_app NOBYPASSRLS), as tabelas com policy ficam isoladas, mas as SEM policy
--- continuam legiveis cross-tenant. O caso mais grave: `transcripts` guarda
--- `raw_text` (transcricao bruta = PII em repouso). Ligar o enforce hoje protegeria
--- `meetings` e deixaria `transcripts` vazado entre tenants — exatamente o oposto do
--- objetivo. Esta migration fecha o buraco.
+-- V016 enabled ENABLE ROW LEVEL SECURITY + POLICY tenant_isolation on 12 tenant-owned
+-- tables; V017 on +3 more (customer confidence). About 19 tenant-owned tables were left
+-- with NO policy. In Postgres, a tenant-owned table WITHOUT `ENABLE ROW LEVEL SECURITY`
+-- is FULLY OPEN to the connected role: if RLS enforce is turned on (role
+-- nora_app NOBYPASSRLS), the tables with a policy get isolated, but the ones WITHOUT
+-- one stay readable cross-tenant. The worst case: `transcripts` stores
+-- `raw_text` (raw transcription = PII at rest). Turning enforce on today would protect
+-- `meetings` and leave `transcripts` leaking between tenants — exactly the opposite of the
+-- goal. This migration closes the hole.
 --
--- ## Padrao (identico a V016/V017)
+-- ## Pattern (identical to V016/V017)
 --
--- Para toda tabela tenant-owned com `tenant_id` proprio:
+-- For every tenant-owned table with its own `tenant_id`:
 --   ALTER TABLE <t> ENABLE ROW LEVEL SECURITY;
 --   CREATE POLICY tenant_isolation ON <t>
 --       USING (tenant_id = nora.current_tenant_id())
 --       WITH CHECK (tenant_id = nora.current_tenant_id());
 --
--- A funcao nora.current_tenant_id() ja existe (V016) e le o GUC de sessao
--- `nora.current_tenant_id` (NULL => fail-closed: 0 rows pra role sem BYPASSRLS).
--- O TenantRlsAspect (opt-in via nora.security.rls.enforce=true) seta o GUC por
--- transacao. Em dev/Testcontainers o app roda como owner e RLS fica inerte.
+-- The function nora.current_tenant_id() already exists (V016) and reads the session GUC
+-- `nora.current_tenant_id` (NULL => fail-closed: 0 rows for a role without BYPASSRLS).
+-- The TenantRlsAspect (opt-in via nora.security.rls.enforce=true) sets the GUC per
+-- transaction. In dev/Testcontainers the app runs as owner and RLS stays inert.
 --
--- ## Tabelas filhas SEM tenant_id proprio (fronteira de cascade — SEM policy)
+-- ## Child tables WITHOUT their own tenant_id (cascade boundary — NO policy)
 --
--- Tres tabelas sao filhas diretas de um pai ja isolado e NAO carregam tenant_id:
---   - iam_invitation_groups        -> filha de iam_user_invitations (via invitation_id)
---   - meeting_goal_expected_outcomes -> filha de meeting_goals       (via meeting_goal_id)
---   - meeting_outcome_coverage     -> filha de meeting_productivity_assessments (via assessment_id)
--- Elas seguem a MESMA convencao ja adotada em V017 para customer_buying_signals /
--- customer_objections / meeting_outcome_coverage: o isolamento vem do cascade FK ao
--- pai (ON DELETE CASCADE) + do fato de que toda leitura passa pelo pai isolado. Como
--- nao tem tenant_id, uma policy direta exigiria JOIN ao pai dentro do USING — custo e
--- complexidade sem ganho real de seguranca, ja que o unico caminho de acesso e via o
--- pai. Documentado aqui como FRONTEIRA EXPLICITA: se algum dia uma dessas tabelas
--- ganhar acesso direto (sem passar pelo pai), ela precisa de policy via JOIN.
+-- Three tables are direct children of an already isolated parent and do NOT carry tenant_id:
+--   - iam_invitation_groups        -> child of iam_user_invitations (via invitation_id)
+--   - meeting_goal_expected_outcomes -> child of meeting_goals      (via meeting_goal_id)
+--   - meeting_outcome_coverage     -> child of meeting_productivity_assessments (via assessment_id)
+-- They follow the SAME convention already adopted in V017 for customer_buying_signals /
+-- customer_objections / meeting_outcome_coverage: isolation comes from the FK cascade to the
+-- parent (ON DELETE CASCADE) + the fact that every read goes through the isolated parent. Since
+-- they have no tenant_id, a direct policy would require a JOIN to the parent inside USING — cost
+-- and complexity with no real security gain, since the only access path is via the
+-- parent. Documented here as an EXPLICIT BOUNDARY: if one of these tables ever
+-- gains direct access (not through the parent), it needs a policy via JOIN.
 --
--- ## Cobertura apos V019
+-- ## Coverage after V019
 --
--- V016 (12) + V017 (3) + V019 (15) = 30 tabelas tenant-owned com policy direta.
--- Tabelas legadas `roles` (linhas globais tenant_id NULL) e `user_roles` (V002,
--- deprecadas e fora de uso no modelo IAM novo) NAO recebem RLS: `roles` tem linhas
--- globais que uma policy por tenant esconderia; ambas saem em migration de limpeza
--- futura (ver nota V006). Filhas de cascade: 3 (acima) — sem policy por design.
+-- V016 (12) + V017 (3) + V019 (15) = 30 tenant-owned tables with a direct policy.
+-- Legacy tables `roles` (global rows, tenant_id NULL) and `user_roles` (V002,
+-- deprecated and unused in the new IAM model) get NO RLS: `roles` has global
+-- rows that a per-tenant policy would hide; both go away in a future cleanup
+-- migration (see the V006 note). Cascade children: 3 (above) — no policy by design.
 
 -- ============================================================
--- transcripts (V004) — PRIORIDADE: guarda raw_text = PII em repouso.
+-- transcripts (V004) — PRIORITY: stores raw_text = PII at rest.
 -- ============================================================
 ALTER TABLE transcripts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON transcripts
@@ -64,7 +64,7 @@ CREATE POLICY tenant_isolation ON meeting_tags
     WITH CHECK (tenant_id = nora.current_tenant_id());
 
 -- ============================================================
--- Filhos da analise (V005) — cada um carrega tenant_id explicito (ADR 0002).
+-- Analysis children (V005) — each carries an explicit tenant_id (ADR 0002).
 -- ============================================================
 ALTER TABLE meeting_decisions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON meeting_decisions
@@ -87,7 +87,7 @@ CREATE POLICY tenant_isolation ON meeting_opportunities
     WITH CHECK (tenant_id = nora.current_tenant_id());
 
 -- ============================================================
--- Productivity (V012) — meeting_goals + assessments carregam tenant_id.
+-- Productivity (V012) — meeting_goals + assessments carry tenant_id.
 -- ============================================================
 ALTER TABLE meeting_goals ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON meeting_goals
@@ -100,7 +100,7 @@ CREATE POLICY tenant_isolation ON meeting_productivity_assessments
     WITH CHECK (tenant_id = nora.current_tenant_id());
 
 -- ============================================================
--- IAM (V006) — membership/attachments/versions/audit, todos com tenant_id.
+-- IAM (V006) — membership/attachments/versions/audit, all with tenant_id.
 -- ============================================================
 ALTER TABLE iam_user_groups ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON iam_user_groups
@@ -128,8 +128,8 @@ CREATE POLICY tenant_isolation ON iam_audit_events
     WITH CHECK (tenant_id = nora.current_tenant_id());
 
 -- ============================================================
--- Tokens de auth (V003) — verificacao de e-mail + reset de senha. Carregam
--- tenant_id; isolar evita enumerar/consumir tokens de outro tenant via role app.
+-- Auth tokens (V003) — email verification + password reset. They carry
+-- tenant_id; isolating them prevents enumerating/consuming another tenant's tokens via the app role.
 -- ============================================================
 ALTER TABLE email_verification_tokens ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON email_verification_tokens
@@ -142,9 +142,9 @@ CREATE POLICY tenant_isolation ON password_reset_tokens
     WITH CHECK (tenant_id = nora.current_tenant_id());
 
 -- ============================================================
--- Fronteiras de cascade (SEM policy, por design — ver cabecalho).
+-- Cascade boundaries (NO policy, by design — see the header).
 -- iam_invitation_groups (V010), meeting_goal_expected_outcomes (V012),
--- meeting_outcome_coverage (V012) NAO recebem ENABLE RLS nem policy: sao filhas
--- diretas de um pai isolado, sem tenant_id proprio. Mesma convencao de V017
+-- meeting_outcome_coverage (V012) get NEITHER ENABLE RLS nor a policy: they are direct
+-- children of an isolated parent, with no tenant_id of their own. Same convention as V017
 -- (customer_buying_signals / customer_objections / meeting_outcome_coverage).
 -- ============================================================

@@ -7,8 +7,8 @@ import type {
   ServiceBinding,
 } from "./contracts";
 
-/** Seeds — espelham o V001 de plataforma proposto pelo 4.8. Usados enquanto o
- *  backend não está plugado (NORA_ADMIN_USE_MOCKS != "false"). */
+/** Seeds — they mirror the platform V001 proposed by 4.8. Used while the
+ *  backend is not plugged in (NORA_ADMIN_USE_MOCKS != "false"). */
 
 export const MOCK_MODELS: LlmModel[] = [
   {

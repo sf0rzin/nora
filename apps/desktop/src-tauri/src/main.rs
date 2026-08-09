@@ -1,6 +1,6 @@
-// `windows_subsystem = "windows"` PRECISA viver no crate-root do BINARIO (este main.rs).
-// Em lib.rs o atributo e ignorado pelo linker e o .exe sai no subsistema "console" —
-// por isso uma janela de CMD preta abria ao INICIAR o app. Aqui ele tem efeito.
+// `windows_subsystem = "windows"` MUST live in the crate-root of the BINARY (this main.rs).
+// In lib.rs the attribute is ignored by the linker and the .exe comes out in the "console" subsystem —
+// that is why a black CMD window opened when STARTING the app. Here it takes effect.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {

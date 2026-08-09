@@ -1,17 +1,17 @@
--- V001 (banco de PLATAFORMA — control plane, ADR 0022): catálogo de modelos LLM,
--- seleção por serviço, telemetria de custo, feature flags e auditoria do operador.
+-- V001 (PLATFORM database — control plane, ADR 0022): LLM model catalog,
+-- per-service selection, cost telemetry, feature flags and operator audit.
 --
--- ATENÇÃO: este Flyway roda no SEGUNDO datasource (PLATFORM_DATASOURCE_*), com history
--- table própria, location classpath:db/platform. NÃO é o schema do banco transacional
--- do cliente (db/migration). Tabelas aqui são GLOBAIS (do dono da plataforma) — NÃO
--- carregam tenant_id como fronteira de segurança nem RLS. usage_events tem tenant_id
--- apenas como DIMENSÃO de telemetria (UUID solto, sem FK, sem policy).
+-- WARNING: this Flyway runs on the SECOND datasource (PLATFORM_DATASOURCE_*), with its own
+-- history table, location classpath:db/platform. It is NOT the schema of the customer's
+-- transactional database (db/migration). Tables here are GLOBAL (the platform owner's) — they do NOT
+-- carry tenant_id as a security boundary nor RLS. usage_events has tenant_id
+-- only as a telemetry DIMENSION (loose UUID, no FK, no policy).
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ============================================================
--- Catálogo de modelos LLM (CRUD via /admin/platform/models).
--- Fechado porém editável (ADR 0024). Pricing em USD por 1M de tokens.
+-- LLM model catalog (CRUD via /admin/platform/models).
+-- Closed but editable (ADR 0024). Pricing in USD per 1M tokens.
 -- ============================================================
 CREATE TABLE llm_models (
     id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -38,10 +38,10 @@ CREATE TABLE llm_models (
 CREATE INDEX idx_llm_models_enabled ON llm_models (enabled);
 
 -- ============================================================
--- Seleção de modelo por serviço (binding). Editável em runtime
--- via PUT /admin/platform/config/{service}; lido no hot-path com
--- cache ~60s (ADR 0024). ON DELETE RESTRICT: não dá pra apagar um
--- modelo que está bindado (complementa o 409 do controller).
+-- Per-service model selection (binding). Editable at runtime
+-- via PUT /admin/platform/config/{service}; read on the hot path with
+-- ~60s cache (ADR 0024). ON DELETE RESTRICT: you cannot delete a
+-- model that is bound (complements the controller's 409).
 -- ============================================================
 CREATE TABLE llm_config (
     service     TEXT PRIMARY KEY,
@@ -54,9 +54,9 @@ CREATE TABLE llm_config (
 );
 
 -- ============================================================
--- Telemetria de custo de IA (ADR 0024). Desnormalizada pra agregação
--- por tenant/modelo/serviço. tenant_id é dimensão (sem FK — a tabela
--- tenants vive no banco primário). status: ok|error|stub|fallback.
+-- AI cost telemetry (ADR 0024). Denormalized for aggregation
+-- by tenant/model/service. tenant_id is a dimension (no FK — the tenants
+-- table lives in the primary database). status: ok|error|stub|fallback.
 -- ============================================================
 CREATE TABLE usage_events (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -82,7 +82,7 @@ CREATE INDEX idx_usage_events_model    ON usage_events (model, occurred_at);
 CREATE INDEX idx_usage_events_service  ON usage_events (service, occurred_at);
 
 -- ============================================================
--- Feature flags on/off por serviço.
+-- Feature flags on/off per service.
 -- ============================================================
 CREATE TABLE feature_flags (
     key         TEXT PRIMARY KEY,
@@ -93,7 +93,7 @@ CREATE TABLE feature_flags (
 );
 
 -- ============================================================
--- Auditoria do operador (quem mudou config). detail é JSONB livre.
+-- Operator audit (who changed config). detail is free-form JSONB.
 -- ============================================================
 CREATE TABLE platform_audit_log (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -108,28 +108,28 @@ CREATE TABLE platform_audit_log (
 CREATE INDEX idx_platform_audit_occurred ON platform_audit_log (occurred_at);
 
 -- ============================================================
--- SEEDS — catálogo fechado inicial (mai/2026). Pricing USD/1M tokens.
+-- SEEDS — initial closed catalog (may/2026). Pricing USD/1M tokens.
 -- ============================================================
 INSERT INTO llm_models
     (provider, model_id, display_name, base_url, modality, supports_strict_json_schema,
      price_input_per_mtok, price_output_per_mtok, price_cached_input_per_mtok, enabled)
 VALUES
-    -- DeepSeek V4 Flash: só texto, barato, cache-hit agressivo, MIT, 1M ctx.
+    -- DeepSeek V4 Flash: text only, cheap, aggressive cache-hit, MIT, 1M ctx.
     ('deepseek', 'deepseek-v4-flash', 'DeepSeek V4 Flash',
      'https://api.deepseek.com/v1', 'text', FALSE,
      0.140000, 0.280000, 0.014000, TRUE),
-    -- gpt-4o-mini: texto (+visão), strict JSON Schema first-class (ADR 0003).
+    -- gpt-4o-mini: text (+vision), strict JSON Schema first-class (ADR 0003).
     ('openai', 'gpt-4o-mini', 'GPT-4o mini',
      'https://api.openai.com/v1', 'text', TRUE,
      0.150000, 0.600000, NULL, TRUE),
-    -- Gemini 3.5 Flash: multimodal (áudio/vídeo/visão), structured output nativo.
-    -- base_url = endpoint OpenAI-compatible do Gemini.
+    -- Gemini 3.5 Flash: multimodal (audio/video/vision), native structured output.
+    -- base_url = Gemini's OpenAI-compatible endpoint.
     ('google', 'gemini-3.5-flash', 'Gemini 3.5 Flash',
      'https://generativelanguage.googleapis.com/v1beta/openai', 'multimodal', TRUE,
      1.500000, 9.000000, NULL, TRUE);
 
--- Bindings iniciais: chat começa barato (DeepSeek); analysis exige strict (gpt-4o-mini);
--- multimodal pronto no router (Gemini), mesmo sem consumidor live ainda.
+-- Initial bindings: chat starts cheap (DeepSeek); analysis requires strict (gpt-4o-mini);
+-- multimodal ready in the router (Gemini), even with no live consumer yet.
 INSERT INTO llm_config (service, model_id, enabled, updated_by)
 SELECT 'chat',       id, TRUE, 'seed' FROM llm_models WHERE provider='deepseek' AND model_id='deepseek-v4-flash';
 INSERT INTO llm_config (service, model_id, enabled, updated_by)

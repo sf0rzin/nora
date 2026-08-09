@@ -1,79 +1,79 @@
 ---
-title: "Runbook — Deploy do NORA na Azure (HISTÓRICO)"
-owner: Arquiteto NORA (Tech Lead)
+title: "Runbook — NORA deploy on Azure (HISTORICAL)"
+owner: NORA Architect (Tech Lead)
 status: historical
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
-# Runbook — Deploy do NORA na Azure
+# Runbook — NORA deploy on Azure
 
-> **DOCUMENTO HISTÓRICO — NÃO OPERE POR ELE.**
+> **HISTORICAL DOCUMENT — DO NOT OPERATE FROM IT.**
 >
-> A produção saiu da Azure para uma VM Proxmox self-hosted
-> ([ADR 0034](../adr/0034-migracao-azure-para-proxmox.md)). O runbook vigente é
-> [`proxmox-deploy.md`](proxmox-deploy.md); o desligamento do que ficou na Azure está em
+> Production moved off Azure to a self-hosted Proxmox VM
+> ([ADR 0034](../adr/0034-migracao-azure-para-proxmox.md)). The runbook in force is
+> [`proxmox-deploy.md`](proxmox-deploy.md); the shutdown of what remained on Azure is in
 > [`azure-decommission.md`](azure-decommission.md).
 >
-> Este arquivo é mantido por dois motivos: as **8 armadilhas do Azure for Students** são
-> registro de aprendizado citado pelo ADR 0034, e a descrição da stack antiga é a
-> referência para o inventário do decommission. Os comandos `az` abaixo apontam para
-> recursos que estão sendo destruídos.
+> This file is kept for two reasons: the **8 Azure for Students pitfalls** are a
+> learning record cited by ADR 0034, and the description of the old stack is the
+> reference for the decommission inventory. The `az` commands below point to
+> resources that are being destroyed.
 
-> **Audiência (à época):** quem opera o deploy do NORA em Azure.
+> **Audience (at the time):** whoever operates the NORA deploy on Azure.
 >
-> **Pré-requisitos:** subscription Azure ativa (atualmente "Azure for Students"), Az CLI 2.86+, Bicep CLI 0.43+, GitHub repo com permissões para criar workflows.
+> **Prerequisites:** active Azure subscription (currently "Azure for Students"), Az CLI 2.86+, Bicep CLI 0.43+, GitHub repo with permissions to create workflows.
 
-> **Ambiente de produção (modelo de ambiente único).** O `rg-nora-dev` é, na prática,
-> o **ambiente de produção** do NORA: é ele que serve o domínio público `nora.systems` /
-> `api.nora.systems` com tráfego real. NÃO existe um segundo ambiente — operamos um único
-> ambiente vivo. Os nomes físicos (`rg-nora-dev`, `nora-*-dev`, GitHub environment `dev`)
-> são **históricos**: renomeá-los exigiria recriar Container Apps + Postgres (downtime) e
-> reconfigurar as federated credentials OIDC (subject `environment:dev`). Esse rename
-> cosmético fica para uma janela de manutenção pós-pitch; até lá, **`dev` = produção**. Um
-> eventual ambiente de staging separado, se desejado, seria criado como `rg-nora-stg`.
+> **Production environment (single-environment model).** `rg-nora-dev` is, in practice,
+> NORA's **production environment**: it is what serves the public domain `nora.systems` /
+> `api.nora.systems` with real traffic. There is NO second environment — we operate a single
+> live environment. The physical names (`rg-nora-dev`, `nora-*-dev`, GitHub environment `dev`)
+> are **historical**: renaming them would require recreating Container Apps + Postgres (downtime) and
+> reconfiguring the OIDC federated credentials (subject `environment:dev`). That cosmetic
+> rename is left for a post-pitch maintenance window; until then, **`dev` = production**. An
+> eventual separate staging environment, if desired, would be created as `rg-nora-stg`.
 
-## Visão geral
+## Overview
 
-NORA é deployado em Azure via 3 workflows GitHub Actions:
+NORA is deployed on Azure via 3 GitHub Actions workflows:
 
-1. **`build-images.yml`** — builda 3 imagens Docker (api/worker/web) e publica em `ghcr.io/sys0xff/nora-{api,worker,web}` quando código de cada serviço muda
-2. **`deploy-infra.yml`** — deploya/atualiza recursos Azure via Bicep IaC em `rg-nora-dev` quando `infra/bicep/**` muda
-3. **`ci.yml`** — testes, lint, type-check, validate Bicep
+1. **`build-images.yml`** — builds 3 Docker images (api/worker/web) and publishes them to `ghcr.io/sys0xff/nora-{api,worker,web}` when each service's code changes
+2. **`deploy-infra.yml`** — deploys/updates Azure resources via Bicep IaC in `rg-nora-dev` when `infra/bicep/**` changes
+3. **`ci.yml`** — tests, lint, type-check, validate Bicep
 
-Stack provisionada (ver `infra/bicep/main.bicep`):
+Provisioned stack (see `infra/bicep/main.bicep`):
 
-- 1 Resource Group (`rg-nora-dev` em `brazilsouth`; recursos em `centralus`)
+- 1 Resource Group (`rg-nora-dev` in `brazilsouth`; resources in `centralus`)
 - 1 Container Apps Environment (Consumption profile, scale-to-zero)
-- 3 Container Apps (api, worker, web) com User-Assigned Managed Identities
-- 1 Postgres Flexible Server B1ms (banco `nora`, extensions PGCRYPTO + CITEXT)
-- 1 Key Vault Standard com 4 secrets (postgres-password, jwt-secret, openai-api-key, azure-speech-key)
-- 1 Storage Account LRS (Standard, blob soft-delete 7 dias)
-- 1 Log Analytics workspace + 1 Application Insights workspace-based
+- 3 Container Apps (api, worker, web) with User-Assigned Managed Identities
+- 1 Postgres Flexible Server B1ms (database `nora`, extensions PGCRYPTO + CITEXT)
+- 1 Key Vault Standard with 4 secrets (postgres-password, jwt-secret, openai-api-key, azure-speech-key)
+- 1 Storage Account LRS (Standard, blob soft-delete 7 days)
+- 1 Log Analytics workspace + 1 workspace-based Application Insights
 - 1 Azure Speech (Cognitive Services SpeechServices S0)
 - 3 User-Assigned Managed Identities (uai-api, uai-worker, uai-web)
-- (opcional) 1 Azure AI Search Basic — desligado por padrão. Atenção: a busca semântica / RAG (US15) já foi entregue (PR #206) via pgvector + HTTP embedding client provider-agnóstico (Gemini/OpenAI), migration V021 `meeting_embeddings` — **não** depende de Azure AI Search. Este recurso permanece opcional/legado.
+- (optional) 1 Azure AI Search Basic — off by default. Note: semantic search / RAG (US15) has already been delivered (PR #206) via pgvector + a provider-agnostic HTTP embedding client (Gemini/OpenAI), migration V021 `meeting_embeddings` — it does **not** depend on Azure AI Search. This resource remains optional/legacy.
 
-Custo dev (atualmente provisionado): **~R$110-180/mês** (ver `docs/engineering/architecture.md` §12 "Stack rationale" e `docs/product/roadmap.md` Unit Economics).
+Dev cost (currently provisioned): **~R$110-180/month** (see `docs/engineering/architecture.md` §12 "Stack rationale" and `docs/product/roadmap.md` Unit Economics).
 
 ---
 
-## As 8 armadilhas do Azure for Students (CATALOGADAS)
+## The 8 Azure for Students pitfalls (CATALOGUED)
 
-Estas 8 armadilhas foram descobertas durante Sub-fase 1.9 (2026-05-13). Aplique fixes antes de deploy senão deploy falha.
+These 8 pitfalls were discovered during Sub-phase 1.9 (2026-05-13). Apply the fixes before deploying, otherwise the deploy fails.
 
-### Armadilha 1 — Federated credential precisa subject por contexto
+### Pitfall 1 — Federated credential needs a subject per context
 
-**Sintoma:** Deploy via `deploy-infra.yml` falha imediatamente em `azure/login@v2` com:
+**Symptom:** Deploy via `deploy-infra.yml` fails immediately at `azure/login@v2` with:
 
 ```
 AADSTS700213: No matching federated identity record found for presented assertion
 subject 'repo:sys0xFF/nora:environment:dev'
 ```
 
-**Causa:** Service Principal criado com federated credential para `repo:sys0xFF/nora:ref:refs/heads/main`, mas job tem `environment: dev` no workflow → subject muda para `repo:sys0xFF/nora:environment:dev`.
+**Cause:** Service Principal created with a federated credential for `repo:sys0xFF/nora:ref:refs/heads/main`, but the job has `environment: dev` in the workflow → the subject changes to `repo:sys0xFF/nora:environment:dev`.
 
-**Fix (uma vez):**
+**Fix (one time):**
 
 ```bash
 az ad app federated-credential create --id <APP_ID> --parameters '{
@@ -84,132 +84,132 @@ az ad app federated-credential create --id <APP_ID> --parameters '{
 }'
 ```
 
-3 federated credentials totais necessários:
-- `github-main-branch` (subject `repo:sys0xFF/nora:ref:refs/heads/main`) — para push em main sem environment
-- `github-pull-requests` (subject `repo:sys0xFF/nora:pull_request`) — para what-if em PR
-- `github-environment-dev` (subject `repo:sys0xFF/nora:environment:dev`) — para job com `environment: dev`
+3 federated credentials are needed in total:
+- `github-main-branch` (subject `repo:sys0xFF/nora:ref:refs/heads/main`) — for pushes to main without an environment
+- `github-pull-requests` (subject `repo:sys0xFF/nora:pull_request`) — for what-if on PRs
+- `github-environment-dev` (subject `repo:sys0xFF/nora:environment:dev`) — for the job with `environment: dev`
 
-### Armadilha 2 — Region restriction policy
+### Pitfall 2 — Region restriction policy
 
-**Sintoma:** Deploy falha com `RequestDisallowedByAzure`:
+**Symptom:** Deploy fails with `RequestDisallowedByAzure`:
 
 ```
 This policy maintains a set of best available regions where your subscription
 can deploy resources.
 ```
 
-**Causa:** Subscription Azure for Students tem policy `sys.regionrestriction` que permite só:
+**Cause:** The Azure for Students subscription has the policy `sys.regionrestriction`, which allows only:
 - `mexicocentral`
 - `northcentralus`
 - `eastus`
 - `centralus`
 - `canadacentral`
 
-Brazil South **não** está permitido para recursos (RGs em si podem ficar em brazilsouth, mas recursos dentro precisam estar em uma das 5 regiões permitidas).
+Brazil South is **not** allowed for resources (RGs themselves can live in brazilsouth, but resources inside them must be in one of the 5 allowed regions).
 
-**Fix:** Usar `location = 'centralus'` no `main.dev.bicepparam` (já configurado).
+**Fix:** Use `location = 'centralus'` in `main.dev.bicepparam` (already configured).
 
 ```powershell
 $az = "az.cmd"
 & $az policy assignment list --query "[?contains(displayName, 'region') || contains(displayName, 'Region')].{name:displayName, params:parameters}" -o json
 ```
 
-### Armadilha 3 — Resource providers não auto-registram
+### Pitfall 3 — Resource providers do not auto-register
 
-**Sintoma:** Deploy falha com `MissingSubscriptionRegistration`:
+**Symptom:** Deploy fails with `MissingSubscriptionRegistration`:
 
 ```
 The subscription is not registered to use namespace 'Microsoft.OperationalInsights'
 ```
 
-**Causa:** Subscriptions Azure normais auto-registram providers no primeiro uso. Students **não**.
+**Cause:** Normal Azure subscriptions auto-register providers on first use. Students does **not**.
 
-**Fix (uma vez por provider):**
+**Fix (one time per provider):**
 
 ```bash
 az provider register --namespace Microsoft.OperationalInsights
 az provider register --namespace Microsoft.DBforPostgreSQL
 az provider register --namespace Microsoft.App
-az provider register --namespace Microsoft.ContainerRegistry  # preventivo se for usar ACR no futuro
+az provider register --namespace Microsoft.ContainerRegistry  # preventive, in case ACR is used in the future
 ```
 
-Aguardar registration ficar `Registered` (alguns minutos cada):
+Wait for the registration to become `Registered` (a few minutes each):
 
 ```bash
 az provider show --namespace Microsoft.OperationalInsights --query "registrationState"
 ```
 
-### Armadilha 4 — Postgres rejeita `eastus` (offer restriction)
+### Pitfall 4 — Postgres rejects `eastus` (offer restriction)
 
-**Sintoma:** Deploy de Postgres falha em `eastus` com:
+**Symptom:** Postgres deploy fails in `eastus` with:
 
 ```
 LocationIsOfferRestricted: Subscriptions are restricted from provisioning in location 'eastus'
 ```
 
-**Causa:** Outras categorias de Azure for Students aceitam recursos em `eastus`, mas Postgres Flexible Server **não**. Restriction de offer por serviço.
+**Cause:** Other Azure for Students categories accept resources in `eastus`, but Postgres Flexible Server does **not**. Per-service offer restriction.
 
-**Regiões testadas (2026-05-13)** que aceitam Postgres B1ms:
-- `centralus` — aceita
-- `northcentralus` — aceita
-- `canadacentral` — aceita
-- `mexicocentral` — aceita
-- `eastus` — rejeita
+**Regions tested (2026-05-13)** that accept Postgres B1ms:
+- `centralus` — accepts
+- `northcentralus` — accepts
+- `canadacentral` — accepts
+- `mexicocentral` — accepts
+- `eastus` — rejects
 
-**Fix:** Manter `centralus` no bicepparam. Speech também provisionado em `centralus` — proximidade reduz latência cross-region.
+**Fix:** Keep `centralus` in the bicepparam. Speech is also provisioned in `centralus` — proximity reduces cross-region latency.
 
-### Armadilha 5 — Key Vault soft-delete reserva nome global por 7 dias
+### Pitfall 5 — Key Vault soft-delete reserves the global name for 7 days
 
-**Sintoma:** Após `az group delete` + recreate do RG (destruir + recriar), próximo deploy falha:
+**Symptom:** After `az group delete` + recreating the RG (destroy + recreate), the next deploy fails:
 
 ```
 VaultAlreadyExists: The vault name 'nora-kv-dev-wgl3a3' is already in use.
 ... vault with the same name was recently deleted but not purged after being placed in a recoverable state.
 ```
 
-**Causa:** KV tem soft-delete por padrão (7 dias). Nome global fica reservado mesmo após delete do RG.
+**Cause:** KV has soft-delete by default (7 days). The global name stays reserved even after the RG is deleted.
 
-**Fix:** Purge antes de recreate:
+**Fix:** Purge before recreating:
 
 ```bash
-# Lista KVs soft-deleted
+# List soft-deleted KVs
 az keyvault list-deleted --query "[?starts_with(name, 'nora-')].{name:name, location:properties.location}" -o table
 
 # Purge
 az keyvault purge --name <kv-name> --location <region>
 ```
 
-**O mesmo vale para Cognitive Services Speech** (armadilha 5b):
+**The same applies to Cognitive Services Speech** (pitfall 5b):
 
 ```bash
 az cognitiveservices account list-deleted --query "[?contains(name, 'nora')]" -o table
 az cognitiveservices account purge --location <region> --resource-group <rg> --name <speech-name>
 ```
 
-### Armadilha 6 — Speech kind rejeita `bypass:AzureServices`
+### Pitfall 6 — Speech kind rejects `bypass:AzureServices`
 
-**Sintoma:** Bicep deploy falha:
+**Symptom:** Bicep deploy fails:
 
 ```
 NetworkAclsBypassNotSupported: The Kind 'SpeechServices' does not support Trusted Services.
 ```
 
-**Causa:** Cognitive Services tem múltiplos kinds (SpeechServices, OpenAI, FormRecognizer, ComputerVision). Cada um aceita um subset de propriedades. **Kind `SpeechServices` não permite `networkAcls.bypass = 'AzureServices'`** — outros kinds aceitam.
+**Cause:** Cognitive Services has multiple kinds (SpeechServices, OpenAI, FormRecognizer, ComputerVision). Each accepts a subset of properties. **Kind `SpeechServices` does not allow `networkAcls.bypass = 'AzureServices'`** — other kinds do.
 
-**Fix:** No `infra/bicep/modules/speech.bicep`, remover chave `bypass` do `networkAcls` (já corrigido). `defaultAction: 'Allow'` basta.
+**Fix:** In `infra/bicep/modules/speech.bicep`, remove the `bypass` key from `networkAcls` (already fixed). `defaultAction: 'Allow'` is enough.
 
-### Armadilha 7 — Contributor não cria role assignments
+### Pitfall 7 — Contributor does not create role assignments
 
-**Sintoma:** Deploy falha:
+**Symptom:** Deploy fails:
 
 ```
 The client '<sp-name>' does not have permission to perform action
 'Microsoft.Authorization/roleAssignments/write' at scope '...'
 ```
 
-**Causa:** SP com role `Contributor` provisiona recursos mas **NÃO consegue criar `roleAssignments`** (proteção contra privilege escalation). KV refactor via UAIs precisa criar role assignment `Key Vault Secrets User` → falha.
+**Cause:** An SP with the `Contributor` role provisions resources but **CANNOT create `roleAssignments`** (protection against privilege escalation). The KV refactor via UAIs needs to create the role assignment `Key Vault Secrets User` → it fails.
 
-**Fix:** Dar ao SP role adicional `Role Based Access Control Administrator` (preferida — restrita só a role assignments) ou `User Access Administrator` (mais ampla):
+**Fix:** Give the SP the additional role `Role Based Access Control Administrator` (preferred — restricted to role assignments only) or `User Access Administrator` (broader):
 
 ```bash
 az role assignment create \
@@ -218,17 +218,17 @@ az role assignment create \
   --scope "/subscriptions/<SUB_ID>/resourceGroups/rg-nora-dev"
 ```
 
-### Armadilha 8 — Postgres bloqueia `CREATE EXTENSION` por default
+### Pitfall 8 — Postgres blocks `CREATE EXTENSION` by default
 
-**Sintoma:** API container app entra em CrashLoopBackOff com:
+**Symptom:** The API container app enters CrashLoopBackOff with:
 
 ```
 ERROR: extension "pgcrypto" is not allow-listed for users in Azure Database for PostgreSQL
 ```
 
-**Causa:** Postgres Flexible Server bloqueia `CREATE EXTENSION` por padrão. Flyway migration falha na primeira execução.
+**Cause:** Postgres Flexible Server blocks `CREATE EXTENSION` by default. The Flyway migration fails on the first run.
 
-**Fix (no Bicep, já configurado):** Configurar parameter `azure.extensions` na Flexible Server config:
+**Fix (in Bicep, already configured):** Configure the `azure.extensions` parameter in the Flexible Server config:
 
 ```bicep
 resource extensionsConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = {
@@ -241,7 +241,7 @@ resource extensionsConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configurati
 }
 ```
 
-Pra fix em ambiente existente (sem recriar):
+To fix an existing environment (without recreating it):
 
 ```bash
 az postgres flexible-server parameter set \
@@ -259,11 +259,11 @@ az containerapp revision restart \
 
 ---
 
-## Primeiro deploy do zero (`rg-nora-dev`)
+## First deploy from scratch (`rg-nora-dev`)
 
-Cenário: subscription Azure for Students nova, sem nada provisionado.
+Scenario: brand-new Azure for Students subscription, nothing provisioned.
 
-### 1. Preparar Az CLI e login
+### 1. Prepare Az CLI and log in
 
 ```bash
 az login
@@ -271,7 +271,7 @@ az account set --subscription "Azure for Students"
 az account show --query "{id:id, tenantId:tenantId, name:name}"
 ```
 
-### 2. Resolver providers (armadilha 3)
+### 2. Resolve providers (pitfall 3)
 
 ```bash
 for p in Microsoft.OperationalInsights Microsoft.DBforPostgreSQL Microsoft.App Microsoft.ContainerRegistry; do
@@ -284,7 +284,7 @@ for p in Microsoft.OperationalInsights Microsoft.DBforPostgreSQL Microsoft.App; 
 done
 ```
 
-### 3. Criar Resource Group
+### 3. Create the Resource Group
 
 ```bash
 az group create \
@@ -293,9 +293,9 @@ az group create \
   --tags project=nora env=dev managed-by=claude
 ```
 
-(RG pode ficar em brazilsouth pois RGs em si não são bloqueados pela region policy. Recursos vão para `centralus` via bicepparam.)
+(The RG can live in brazilsouth because RGs themselves are not blocked by the region policy. Resources go to `centralus` via the bicepparam.)
 
-### 4. Criar Service Principal para deploy automatizado
+### 4. Create a Service Principal for automated deploys
 
 ```bash
 # App registration
@@ -318,13 +318,13 @@ az role assignment create \
   --scope /subscriptions/<SUB_ID>/resourceGroups/rg-nora-dev
 ```
 
-### 5. Federated credentials (armadilha 1)
+### 5. Federated credentials (pitfall 1)
 
-3 federated credentials necessárias. Veja armadilha 1.
+3 federated credentials are needed. See pitfall 1.
 
 ### 6. GitHub Secrets
 
-Adicionar ao repo (Settings → Secrets and variables → Actions):
+Add to the repo (Settings → Secrets and variables → Actions):
 
 ```bash
 gh secret set AZURE_CLIENT_ID --body "<APP_ID>" --repo sys0xFF/nora
@@ -337,66 +337,66 @@ gh secret set JWT_SECRET --body "<random-base64-44-chars>" --repo sys0xFF/nora
 gh secret set OPENAI_API_KEY --body "<sk-...>" --repo sys0xFF/nora  # ou vazio para rodar em modo stub
 ```
 
-### 7. Disparar deploy
+### 7. Trigger the deploy
 
 ```bash
 gh workflow run deploy-infra.yml --repo sys0xFF/nora --ref main
 ```
 
-Monitorar:
+Monitor:
 
 ```bash
 gh run watch
 ```
 
-Tempo total: **~15-20min** (Postgres B1ms é o gargalo).
+Total time: **~15-20min** (Postgres B1ms is the bottleneck).
 
-### 8. Validar
+### 8. Validate
 
 ```bash
 az containerapp list --resource-group rg-nora-dev --query "[].{name:name, running:properties.runningStatus, fqdn:properties.configuration.ingress.fqdn}" -o table
 ```
 
-URLs esperadas:
+Expected URLs:
 - Web: `https://nora-web-dev.<env-suffix>.centralus.azurecontainerapps.io`
 - API: `https://nora-api-dev.<env-suffix>.centralus.azurecontainerapps.io` (health: `/actuator/health`)
 
 ---
 
-## Operações comuns
+## Common operations
 
-### Ligar/desligar AI Search (custo ~R$13-15/dia ativo)
+### Turning AI Search on/off (cost ~R$13-15/day while active)
 
-Atenção: a busca semântica / RAG do produto (US15) é servida por pgvector + HTTP embedding client (PR #206, migration V021), **não** por Azure AI Search. Este toggle controla apenas o recurso opcional/legado de AI Search.
+Note: the product's semantic search / RAG (US15) is served by pgvector + an HTTP embedding client (PR #206, migration V021), **not** by Azure AI Search. This toggle controls only the optional/legacy AI Search resource.
 
-Editar `infra/bicep/main.dev.bicepparam`:
+Edit `infra/bicep/main.dev.bicepparam`:
 
 ```bicep
 param enableSearch = true   // ligar (ex.: 29/05 para pitch 15/06)
 ```
 
-Commit + merge em main → deploy automático. **AI Search não tem pause** — só provisiona ou destrói. Estratégia recomendada: ligar ~14 dias antes do pitch FIAP para ter tempo de popular índice e iterar.
+Commit + merge to main → automatic deploy. **AI Search has no pause** — it is either provisioned or destroyed. Recommended strategy: turn it on ~14 days before the FIAP pitch to have time to populate the index and iterate.
 
-### Atualizar imagens GHCR
+### Updating GHCR images
 
-Após push em main que toque `services/api/`, `services/nlp-worker/`, ou `apps/web/`, workflow `build-images.yml` rebuilda automaticamente. Tags publicadas:
+After a push to main that touches `services/api/`, `services/nlp-worker/`, or `apps/web/`, the `build-images.yml` workflow rebuilds automatically. Published tags:
 
 - `ghcr.io/sys0xff/nora-{api,worker,web}:latest`
 - `ghcr.io/sys0xff/nora-{api,worker,web}:sha-<SHA7>`
 - `ghcr.io/sys0xff/nora-{api,worker,web}:<branch>`
 
-`main.dev.bicepparam` aponta para `:latest`. Para rollback: trocar para tag SHA específica.
+`main.dev.bicepparam` points to `:latest`. For rollback: switch to a specific SHA tag.
 
-### Acessar secrets do Key Vault
+### Accessing Key Vault secrets
 
 ```bash
 az keyvault secret list --vault-name nora-kv-dev-wgl3a3
 az keyvault secret show --vault-name nora-kv-dev-wgl3a3 --name postgres-password --query value -o tsv
 ```
 
-Requer role `Key Vault Secrets Officer` (CRUD) ou `Key Vault Secrets User` (read-only). O Service Principal da Stratfy (`sp-nora-github-deploy`) já tem Officer.
+Requires the role `Key Vault Secrets Officer` (CRUD) or `Key Vault Secrets User` (read-only). Stratfy's Service Principal (`sp-nora-github-deploy`) already has Officer.
 
-### Conectar Postgres
+### Connecting to Postgres
 
 ```bash
 # JDBC URL completo:
@@ -410,7 +410,7 @@ PGPASSWORD=$(az keyvault secret show --vault-name nora-kv-dev-wgl3a3 --name post
 psql "host=nora-pg-dev-wgl3a3.postgres.database.azure.com port=5432 dbname=nora user=nora_admin sslmode=require"
 ```
 
-Pra adicionar seu IP no firewall:
+To add your IP to the firewall:
 
 ```bash
 MY_IP=$(curl -s ifconfig.me)
@@ -421,13 +421,13 @@ az postgres flexible-server firewall-rule create \
   --start-ip-address $MY_IP --end-ip-address $MY_IP
 ```
 
-### Tear down completo (development reset)
+### Full tear down (development reset)
 
 ```bash
 az group delete --name rg-nora-dev --yes --no-wait
 ```
 
-Demora 5-15min (CAE é o gargalo). **Lembre das armadilhas 5 (KV soft-delete) e 5b (Speech soft-delete)** — após delete do RG, faça purge antes de recreate:
+Takes 5-15min (the CAE is the bottleneck). **Remember pitfalls 5 (KV soft-delete) and 5b (Speech soft-delete)** — after deleting the RG, purge before recreating:
 
 ```bash
 sleep 1000  # ou aguardar callback
@@ -439,7 +439,7 @@ az keyvault purge --name <kv-name> --location centralus
 az cognitiveservices account purge --location centralus --resource-group rg-nora-dev --name <speech-name>
 ```
 
-E **role assignments** (armadilha 7) — após RG recreate, recriar:
+And **role assignments** (pitfall 7) — after recreating the RG, recreate them:
 
 ```bash
 az role assignment create --assignee <APP_ID> --role Contributor --scope /subscriptions/<SUB_ID>/resourceGroups/rg-nora-dev
@@ -448,26 +448,26 @@ az role assignment create --assignee <APP_ID> --role "Role Based Access Control 
 
 ---
 
-## Promover dev → prod (Sub-fase 1.12)
+## Promoting dev → prod (Sub-phase 1.12)
 
-`rg-nora-prod` ainda não existe. Plano em `docs/operations/production-readiness-gaps.md` (7 gaps) + ADR 0016.
+`rg-nora-prod` does not exist yet. Plan in `docs/operations/production-readiness-gaps.md` (7 gaps) + ADR 0016.
 
-Resumo:
-- Bicep `main.prod.bicepparam` separado (SKUs prod-grade, `min replicas = 1`, `enablePurgeProtection = true`)
-- Service Principal separado `sp-nora-github-deploy-prod`
-- RG `rg-nora-prod` (decidir region final)
+Summary:
+- Separate Bicep `main.prod.bicepparam` (prod-grade SKUs, `min replicas = 1`, `enablePurgeProtection = true`)
+- Separate Service Principal `sp-nora-github-deploy-prod`
+- RG `rg-nora-prod` (decide the final region)
 - Monitoring + alerts wired
-- Migrations safety strategy (3 opções avaliadas)
-- LGPD operacional: **entregue** (ADR 0029) — `DELETE /privacy/meetings/{id}` (direito ao esquecimento) + `RetentionSweeper` agendado + `PrivacyFlowIntegrationTest`. Resta apenas validar enforcement de retenção no ambiente prod.
+- Migrations safety strategy (3 options evaluated)
+- Operational LGPD: **delivered** (ADR 0029) — `DELETE /privacy/meetings/{id}` (right to be forgotten) + scheduled `RetentionSweeper` + `PrivacyFlowIntegrationTest`. All that remains is validating retention enforcement in the prod environment.
 - Secrets rotation policy
-- DR runbook testado (drill quarterly)
+- Tested DR runbook (quarterly drill)
 
 ---
 
-## Histórico
+## History
 
-| Data | Mudança |
+| Date | Change |
 |---|---|
-| 2026-05-14 | Runbook criado durante Sub-fase 1.10 (Docs Refresh). Cobre 8 armadilhas do Azure for Students catalogadas na Sub-fase 1.9. Promoção para prod fica como `docs/operations/production-readiness-gaps.md` |
-| 2026-06-06 | v1.0 (Arquiteto NORA / Tech Lead): Reconciliação doc x código + padronização (auditoria pré-apresentação) |
-| 2026-08-07 | Marcado como **histórico** (`status: historical`) pelo ADR 0034. Substituído por `proxmox-deploy.md`; desligamento em `azure-decommission.md`. Conteúdo preservado intacto — as 8 armadilhas são registro de aprendizado e o inventário da stack alimenta o decommission |
+| 2026-05-14 | Runbook created during Sub-phase 1.10 (Docs Refresh). Covers the 8 Azure for Students pitfalls catalogued in Sub-phase 1.9. Promotion to prod is left to `docs/operations/production-readiness-gaps.md` |
+| 2026-06-06 | v1.0 (NORA Architect / Tech Lead): Doc x code reconciliation + standardisation (pre-presentation audit) |
+| 2026-08-07 | Marked as **historical** (`status: historical`) by ADR 0034. Replaced by `proxmox-deploy.md`; shutdown in `azure-decommission.md`. Content preserved intact — the 8 pitfalls are a learning record and the stack inventory feeds the decommission |

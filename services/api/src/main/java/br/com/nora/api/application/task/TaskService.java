@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Servico de tarefas extraidas (US22-US24). Toda operacao e escopada pelo tenant_id do principal.
+ * Service for extracted tasks (US22-US24). Every operation is scoped by the principal's tenant_id.
  */
 @Service
 public class TaskService {

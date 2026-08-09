@@ -3,7 +3,7 @@ package br.com.nora.api.api.dto.auth;
 import java.time.Instant;
 import java.util.UUID;
 
-/** Identidade do usuario autenticado (aba Conta das configuracoes). */
+/** Identity of the authenticated user (Account tab in settings). */
 public record MeResponse(
         UUID userId,
         UUID tenantId,

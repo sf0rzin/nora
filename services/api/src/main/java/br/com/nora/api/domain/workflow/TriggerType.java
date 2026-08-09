@@ -1,8 +1,9 @@
 package br.com.nora.api.domain.workflow;
 
 /**
- * Gatilhos suportados pelo NORA Flows. O wire format (ex.: {@code meeting.analysis_completed}) é o
- * que vai na coluna {@code workflows.trigger_type}, no nó de gatilho do definition_json e na API.
+ * Triggers supported by NORA Flows. The wire format (e.g. {@code meeting.analysis_completed}) is
+ * what goes in the {@code workflows.trigger_type} column, in the definition_json trigger node and
+ * in the API.
  */
 public enum TriggerType {
     MEETING_ANALYSIS_COMPLETED("meeting.analysis_completed"),

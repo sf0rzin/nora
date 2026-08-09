@@ -11,11 +11,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Casos de uso de configuracao geral do tenant (US32). Hoje cobre apenas o dominio corporativo;
- * proximas fatias podem adicionar branding, retencao, etc.
+ * Use cases for the tenant's general configuration (US32). Today it only covers the corporate
+ * domain; upcoming slices may add branding, retention, etc.
  *
- * <p>Separado de {@link TenantContextService} (este lida com produto/concorrentes/glossario do
- * subdominio "contexto comercial"; aqui e configuracao geral do tenant).
+ * <p>Separate from {@link TenantContextService} (that one deals with product/competitors/glossary
+ * of the "commercial context" subdomain; here it is the tenant's general configuration).
  */
 @Service
 public class TenantService {
@@ -30,13 +30,13 @@ public class TenantService {
         this.clock = clock;
     }
 
-    /** Tenant completo (aba Workspace das configuracoes: nome, slug, plano). */
+    /** Full tenant (Workspace tab of the settings: name, slug, plan). */
     @Transactional(readOnly = true)
     public Tenant get(UUID tenantId) {
         return tenants.findById(tenantId).orElseThrow(() -> new TenantException.NotFound(tenantId));
     }
 
-    /** Renomeia o workspace (GOAL Fase 3). Preserva o slug; grava audit com old/new. */
+    /** Renames the workspace (GOAL Phase 3). Preserves the slug; records audit with old/new. */
     @Transactional
     public Tenant rename(UUID tenantId, String newName, UUID actorUserId) {
         Tenant current =
@@ -51,7 +51,7 @@ public class TenantService {
         return saved;
     }
 
-    /** Le o dominio corporativo configurado para o tenant. */
+    /** Reads the corporate domain configured for the tenant. */
     @Transactional(readOnly = true)
     public String getAllowedEmailDomain(UUID tenantId) {
         Tenant tenant =
@@ -61,11 +61,11 @@ public class TenantService {
     }
 
     /**
-     * Atualiza o dominio corporativo do tenant. {@code rawDomain} pode ser {@code null} para limpar
-     * a restricao. Normaliza para lowercase + trim antes de validar via {@link
-     * Tenant#isValidEmailDomain(String)}. Em caso de invalido lanca {@link
-     * TenantException.InvalidDomain} (mapeada para HTTP 422). Sempre grava um {@code IamAuditEvent}
-     * com action {@code tenant.domain.updated} contendo {@code oldDomain} e {@code newDomain}.
+     * Updates the tenant's corporate domain. {@code rawDomain} may be {@code null} to clear the
+     * restriction. Normalizes to lowercase + trim before validating via {@link
+     * Tenant#isValidEmailDomain(String)}. If invalid, throws {@link TenantException.InvalidDomain}
+     * (mapped to HTTP 422). Always records an {@code IamAuditEvent} with action {@code
+     * tenant.domain.updated} containing {@code oldDomain} and {@code newDomain}.
      */
     @Transactional
     public Tenant updateAllowedEmailDomain(UUID tenantId, String rawDomain, UUID actorUserId) {
@@ -82,7 +82,7 @@ public class TenantService {
         Tenant updated = current.withAllowedEmailDomain(normalized, clock.now());
         Tenant saved = tenants.save(updated);
 
-        // Audit (US40): preserva oldDomain/newDomain (ambos podem ser null).
+        // Audit (US40): preserves oldDomain/newDomain (both may be null).
         Map<String, Object> payload = new HashMap<>();
         payload.put("oldDomain", current.allowedEmailDomain());
         payload.put("newDomain", normalized);

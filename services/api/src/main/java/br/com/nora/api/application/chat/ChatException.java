@@ -1,6 +1,6 @@
 package br.com.nora.api.application.chat;
 
-/** Exceções de regra de negócio para o agregado "ChatSession" (histórico do assistente). */
+/** Business-rule exceptions for the "ChatSession" aggregate (assistant history). */
 public abstract class ChatException extends RuntimeException {
 
     private final String code;

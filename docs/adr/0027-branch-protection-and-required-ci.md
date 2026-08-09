@@ -1,60 +1,60 @@
-# 0027 — Branch protection da `main` + CI gate obrigatório
+# 0027 — `main` branch protection + mandatory CI gate
 
-- Status: aceito
-- Data: 2026-06-04
-- Decisores: Arquiteto (Opus) + Stratfy (PO/dono)
-- Relacionado: ADR 0018 (test coverage targets), `.github/workflows/ci.yml`, `.github/CODEOWNERS`, auditoria de fundação 2026-06-03
+- Status: accepted
+- Date: 2026-06-04
+- Deciders: Architect (Opus) + Stratfy (PO/owner)
+- Related: ADR 0018 (test coverage targets), `.github/workflows/ci.yml`, `.github/CODEOWNERS`, foundation audit 2026-06-03
 
-## Contexto
+## Context
 
-A auditoria de fundação (2026-06-03) achou um descompasso entre a qualidade do pipeline e a sua imposição: o `ci.yml` já roda testes reais (api `mvn verify`, worker `pytest`, web `lint/typecheck/build`), mas o **ruleset da `main` (id 16147673) só bloqueava `deletion` + `non_fast_forward`**. Não havia exigência de Pull Request, de review, nem de status check verde. Consequências:
+The foundation audit (2026-06-03) found a mismatch between the quality of the pipeline and its enforcement: `ci.yml` already runs real tests (api `mvn verify`, worker `pytest`, web `lint/typecheck/build`), but the **`main` ruleset (id 16147673) only blocked `deletion` + `non_fast_forward`**. There was no requirement for a Pull Request, for a review, or for a green status check. Consequences:
 
-- Qualquer colaborador com write podia empurrar direto na `main`.
-- PRs podiam ser mergeados com **CI vermelho** e **zero revisão**.
-- Código tocando os não-negociáveis (tenant isolation, PII, IAM) chegava à `main` sem nenhum portão automático nem humano.
+- Any collaborator with write access could push directly to `main`.
+- PRs could be merged with **red CI** and **zero review**.
+- Code touching the non-negotiables (tenant isolation, PII, IAM) reached `main` with no automated or human gate at all.
 
-Restrição de contexto: o time tem **2 humanos** (Anthony/`@sys0xFF` em web+back+infra; Gabriel/`@pollotherunner` em desktop) e o PO frequentemente mergeia o próprio PR. Uma exigência de review **sem escape** geraria deadlock quando um dos dois está indisponível.
+Context constraint: the team has **2 humans** (Anthony/`@sys0xFF` on web+back+infra; Gabriel/`@pollotherunner` on desktop) and the PO frequently merges his own PR. A review requirement **with no escape hatch** would create a deadlock when one of the two is unavailable.
 
-Detalhe técnico que força um desenho específico: os jobs do `ci.yml` são **condicionais por path** (`dorny/paths-filter`). Exigir um job condicional (ex.: `api`) diretamente como required status check trava o merge quando o PR não toca aquela área — o GitHub trata um required check que nunca roda como *pending* eterno.
+A technical detail that forces a specific design: the `ci.yml` jobs are **conditional by path** (`dorny/paths-filter`). Requiring a conditional job (e.g., `api`) directly as a required status check blocks the merge when the PR does not touch that area — GitHub treats a required check that never runs as eternally *pending*.
 
-## Decisão
+## Decision
 
-1. **CI gate agregador.** Novo job `ci-gate` no `ci.yml`: sempre roda (`if: always()`), depende de todos os jobs de PR (`changes, api, worker, web, desktop-sidecar, docs-link-check, infra`) e só falha se algum deles **falhou ou foi cancelado** (`skipped` por path-filter = ok). `desktop-bundle` fica de fora (só roda em push na `main`, não é portão de PR). O `ci-gate` é o **único** status check exigido — resolve o problema do path-filter com um único nome estável.
+1. **Aggregator CI gate.** New `ci-gate` job in `ci.yml`: always runs (`if: always()`), depends on all PR jobs (`changes, api, worker, web, desktop-sidecar, docs-link-check, infra`) and only fails if one of them **failed or was cancelled** (`skipped` by path-filter = ok). `desktop-bundle` is left out (it only runs on push to `main`, it is not a PR gate). `ci-gate` is the **only** required status check — it solves the path-filter problem with a single stable name.
 
-2. **Ruleset da `main` endurecido** (mesmo id 16147673), passa a exigir:
-   - **Pull request obrigatório** antes de merge (sem push direto na `main`).
-   - **1 approving review**, com *dismiss stale reviews on push* (aprovação cai se novo commit chega).
-   - **Status check `ci-gate` verde**, em modo *strict* (branch atualizada com a base).
-   - **Histórico linear** (alinhado ao fluxo squash-merge).
-   - **Resolução de conversas** antes do merge.
-   - Mantém o bloqueio de `deletion` + `non_fast_forward`.
+2. **Hardened `main` ruleset** (same id 16147673), now requiring:
+   - **Mandatory pull request** before merge (no direct push to `main`).
+   - **1 approving review**, with *dismiss stale reviews on push* (approval drops when a new commit arrives).
+   - **Green `ci-gate` status check**, in *strict* mode (branch up to date with the base).
+   - **Linear history** (aligned with the squash-merge flow).
+   - **Conversation resolution** before merge.
+   - Keeps the `deletion` + `non_fast_forward` block.
 
-3. **Bypass pragmático para time de 2.** O role de **admin do repositório** (os 2 donos) pode bypassar o gate de PR/review para merge solo ou emergência. É um trade-off consciente: sem ele, um dono sozinho não consegue mergear o próprio PR (não pode auto-aprovar). A exigência de review é o **default**; o bypass é a exceção. **Quando o time crescer (3+), remover o bypass** e tornar o review obrigatório de verdade.
+3. **Pragmatic bypass for a team of 2.** The **repository admin** role (the 2 owners) can bypass the PR/review gate for a solo merge or an emergency. It is a conscious trade-off: without it, a lone owner cannot merge his own PR (he cannot self-approve). The review requirement is the **default**; the bypass is the exception. **When the team grows (3+), remove the bypass** and make review truly mandatory.
 
-4. **CODEOWNERS** (`.github/CODEOWNERS`) roteia review por área: backend/IAM/worker/web/infra/adr → `@sys0xFF`; desktop → `@pollotherunner`. Hoje serve para *auto-request* de reviewer; quando o time crescer, ligar `require_code_owner_review` no ruleset.
+4. **CODEOWNERS** (`.github/CODEOWNERS`) routes review by area: backend/IAM/worker/web/infra/adr → `@sys0xFF`; desktop → `@pollotherunner`. Today it serves for reviewer *auto-request*; when the team grows, turn on `require_code_owner_review` in the ruleset.
 
-## Consequências
+## Consequences
 
-**Positivas:**
-- O `ci.yml`, que já roda testes reais, vira um **portão real**: nada toca a `main` com CI vermelho.
-- 4-eyes principle como default; rastreabilidade de quem revisou o quê.
-- Roteamento automático de review por domínio (CODEOWNERS).
-- Base para ligar o gate de cobertura (ADR 0018) como parte do `ci-gate` no futuro.
+**Positive:**
+- `ci.yml`, which already runs real tests, becomes a **real gate**: nothing touches `main` with red CI.
+- 4-eyes principle as the default; traceability of who reviewed what.
+- Automatic review routing by domain (CODEOWNERS).
+- A basis for turning on the coverage gate (ADR 0018) as part of `ci-gate` in the future.
 
-**Negativas / trade-offs:**
-- Não há mais push direto na `main` — todo trabalho passa por PR (custo de processo aceito; já era a norma de fato).
-- O bypass de admin torna a exigência de review "soft" para os donos enquanto o time é de 2. Documentado e com gatilho de remoção (3+ pessoas).
-- Um force-push legítimo na `main` (ex.: a limpeza de histórico de 2026-06-03) exige desabilitar o ruleset por alguns segundos e reabilitar — procedimento manual conhecido.
+**Negative / trade-offs:**
+- There is no more direct push to `main` — all work goes through a PR (process cost accepted; it was already the de facto norm).
+- The admin bypass makes the review requirement "soft" for the owners while the team is 2 people. Documented and with a removal trigger (3+ people).
+- A legitimate force-push to `main` (e.g., the history cleanup of 2026-06-03) requires disabling the ruleset for a few seconds and re-enabling it — a known manual procedure.
 
-## Alternativas Consideradas
+## Alternatives Considered
 
-1. **Exigir os jobs condicionais diretamente como required checks** — rejeitado: trava o merge com *pending* eterno quando o job é skipped por path-filter. O `ci-gate` agregador é o padrão correto.
-2. **Required review sem bypass** — rejeitado para time de 2: gera deadlock quando um dono está sozinho (não pode auto-aprovar).
-3. **Só status check, sem exigir review** — menos rigoroso; descarta o 4-eyes principle que é a parte mais valiosa. Rejeitado como default, mantido como o comportamento efetivo para os donos via bypass.
-4. **Deixar como estava** (só delete/force-push) — rejeitado: era o gap de governança nº1 da auditoria.
+1. **Requiring the conditional jobs directly as required checks** — rejected: it blocks the merge with eternal *pending* when the job is skipped by path-filter. The aggregator `ci-gate` is the correct pattern.
+2. **Required review with no bypass** — rejected for a team of 2: it creates a deadlock when one owner is alone (he cannot self-approve).
+3. **Only a status check, without requiring review** — less rigorous; it discards the 4-eyes principle, which is the most valuable part. Rejected as the default, kept as the effective behavior for the owners via bypass.
+4. **Leaving it as it was** (only delete/force-push) — rejected: it was the #1 governance gap in the audit.
 
-## Histórico
+## History
 
-| Data | Decisor | Mudança |
+| Date | Decider | Change |
 |---|---|---|
-| 2026-06-04 | Arquiteto + Stratfy | Criação. CI gate agregador + branch protection (PR + review + ci-gate + linear history) com bypass de admin para time de 2 + CODEOWNERS. Endereça o gap de governança da auditoria 2026-06-03. |
+| 2026-06-04 | Architect + Stratfy | Creation. Aggregator CI gate + branch protection (PR + review + ci-gate + linear history) with admin bypass for a team of 2 + CODEOWNERS. Addresses the governance gap from the 2026-06-03 audit. |

@@ -1,27 +1,31 @@
 package br.com.nora.api.application.ports;
 
 /**
- * Gera embeddings (vetores) de texto pra busca semântica do chat (RAG). Provider-agnóstico (ADR
- * 0004): a implementação fala com Gemini (default) ou OpenAI conforme config. Todos os vetores de
- * um ambiente usam o MESMO provider+modelo (espaços vetoriais não são intercambiáveis).
+ * Generates text embeddings (vectors) for the chat's semantic search (RAG). Provider-agnostic (ADR
+ * 0004): the implementation talks to Gemini (default) or OpenAI depending on config. All vectors in
+ * an environment use the SAME provider+model (vector spaces are not interchangeable).
  */
 public interface EmbeddingClient {
 
     /**
-     * Vetor do texto. Lança {@link EmbeddingException} em falha (caller trata como best-effort).
+     * Vector for the text. Throws {@link EmbeddingException} on failure (the caller treats it as
+     * best-effort).
      */
     float[] embed(String text);
 
     /**
-     * Identificador {@code provider:model} do espaço vetorial — gravado junto pra comparar só
-     * iguais.
+     * {@code provider:model} identifier of the vector space — stored alongside so only matching
+     * ones are compared.
      */
     String modelId();
 
-    /** Se há credencial configurada pro provider ativo. Falso = embeddings desligados (no-op). */
+    /**
+     * Whether there is a credential configured for the active provider. False = embeddings off
+     * (no-op).
+     */
     boolean isEnabled();
 
-    /** Falha ao gerar embedding (rede, credencial, resposta inesperada do provider). */
+    /** Failure generating an embedding (network, credential, unexpected provider response). */
     class EmbeddingException extends RuntimeException {
         public EmbeddingException(String message, Throwable cause) {
             super(message, cause);

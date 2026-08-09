@@ -153,17 +153,17 @@ export function ActiveRecordingProvider({ children }: { children: ReactNode }) {
     invoke("toggle_overlay", { show: false }).catch(() => {});
   }, [persistMeta, recording]);
 
-  // When a save succeeds (incluindo retries que rodam fora do stopAndSave —
-  // ex.: retry-worker, save manual), garante navegação + cleanup. O
-  // stopAndSave path principal já faz tudo isso explicitamente, mas como
-  // saveMeeting pode ser invocado por outros caminhos (worker, retry-save
-  // listener), este effect cobre os outros casos. As ops são idempotentes:
-  // persistMeta(null) sobre null é no-op; setIsFinishing(false) sobre false
-  // idem; navegação é a mesma URL.
+  // When a save succeeds (including retries that run outside stopAndSave —
+  // e.g.: retry-worker, manual save), guarantees navigation + cleanup. The
+  // main stopAndSave path already does all of this explicitly, but since
+  // saveMeeting can be invoked from other paths (worker, retry-save
+  // listener), this effect covers the other cases. The ops are idempotent:
+  // persistMeta(null) over null is a no-op; setIsFinishing(false) over false
+  // likewise; navigation is the same URL.
   //
-  // Window detection via getCurrentWebviewWindow().label em vez de
-  // window.location.pathname — pathname pode variar entre dev/prod ou se a
-  // entrada da janela main muda (ex: /index.html vs /).
+  // Window detection via getCurrentWebviewWindow().label instead of
+  // window.location.pathname — pathname can vary between dev/prod or if the
+  // main window's entry changes (e.g.: /index.html vs /).
   useEffect(() => {
     if (!recording.savedMeetingId) return;
     const win = getCurrentWebviewWindow();
@@ -180,7 +180,7 @@ export function ActiveRecordingProvider({ children }: { children: ReactNode }) {
   // Listen for cancel signal from overlay
   useTauriListener("nora://cancel-recording", () => cancel(), [cancel]);
 
-  // Listen for "retry save" — usuário clicou em Tentar de novo após falha
+  // Listen for "retry save" — user clicked Try again after a failure
   useTauriListener(
     "nora://retry-save",
     async () => {

@@ -1,11 +1,11 @@
-"""Stub deterministico do analisador.
+"""Deterministic stub of the analyzer.
 
-Permite desenvolver web e backend sem custo de LLM. Aplica heuristicas simples para
-gerar uma `MeetingAnalysisV1` valida a partir da transcricao + contexto do tenant.
+Allows developing web and backend without LLM cost. Applies simple heuristics to
+generate a valid `MeetingAnalysisV1` from the transcript + tenant context.
 
-Quando `USE_LLM_STUB=false` no .env, este modulo deixa de ser usado e o worker chama
-o provedor real (Azure OpenAI). A implementacao real entra na story do backlog que
-plugar Azure OpenAI; aqui mantemos apenas o contrato.
+When `USE_LLM_STUB=false` in the .env, this module stops being used and the worker
+calls the real provider (Azure OpenAI). The real implementation lands in the backlog
+story that plugs in Azure OpenAI; here we keep only the contract.
 """
 
 from __future__ import annotations
@@ -96,11 +96,11 @@ def _normalize(s: str) -> str:
 
 
 def _split_sentences(text: str) -> list[str]:
-    # quebras pelas marcacoes de fala "[timestamp] Pessoa: ..." ou pontuacao final
+    # splits by the speech markers "[timestamp] Person: ..." or final punctuation
     lines = [line.strip() for line in re.split(r"\r?\n", text) if line.strip()]
     sentences: list[str] = []
     for line in lines:
-        # remove o prefixo de timestamp/falante
+        # removes the timestamp/speaker prefix
         stripped = re.sub(r"^\[[^\]]+\]\s*", "", line)
         stripped = re.sub(r"^[A-Z][\wáéíóúãâêôç ]{0,40}:\s*", "", stripped)
         sentences.extend(p.strip() for p in re.split(r"(?<=[.!?])\s+", stripped) if p.strip())
@@ -239,8 +239,8 @@ def _opportunities(sentences: list[str]) -> list[Opportunity]:
 
 
 def _productivity_coverage(outcome: str, sentences: list[str]) -> tuple[CoverageStatus, str | None]:
-    """Retorna (status, evidence) baseado em quantos tokens (>=4 chars) do outcome
-    aparecem na sentence de maior overlap. Heuristica determinista pro stub.
+    """Returns (status, evidence) based on how many tokens (>=4 chars) of the outcome
+    appear in the sentence with the largest overlap. Deterministic heuristic for the stub.
     """
     outcome_norm = _normalize(outcome)
     tokens = [t for t in re.split(r"\W+", outcome_norm) if len(t) >= 4]
@@ -269,7 +269,7 @@ def _productivity(
     sentences: list[str],
     decisions: list[Decision],
 ) -> ProductivityAssessment | None:
-    """Calcula productivity quando ha goal declarado. Sem goal, retorna None (ADR 0005)."""
+    """Computes productivity when a goal is declared. Without a goal, returns None (ADR 0005)."""
     if req.goal is None:
         return None
 
@@ -295,13 +295,13 @@ def _productivity(
     total = len(coverage_list)
     coverage_ratio = (addressed + 0.5 * partial) / total if total else 0.0
 
-    # Densidade normalizada: 5+ decisoes = 100%
+    # Normalized density: 5+ decisions = 100%
     decision_density = min(1.0, len(decisions) / 5.0)
 
-    # Off-topic heuristico: poucas frases = foco; muitas = mais ruido
+    # Heuristic off-topic: few sentences = focus; many = more noise
     off_topic_ratio = 0.2 if len(sentences) < 30 else min(0.5, 0.2 + (len(sentences) - 30) / 100)
 
-    # Score 0-100: cobertura domina (70%), density (20%), foco (10%)
+    # Score 0-100: coverage dominates (70%), density (20%), focus (10%)
     score = int(coverage_ratio * 70 + decision_density * 20 + (1 - off_topic_ratio) * 10)
     score = max(0, min(100, score))
 
@@ -330,8 +330,8 @@ def _productivity(
     )
 
 
-# Cues que sinalizam conversa com cliente/lead (vs. reuniao interna). Heuristica
-# determinista do stub; o LLM real decide com semantica.
+# Cues that signal a conversation with a customer/lead (vs. internal meeting).
+# Deterministic heuristic of the stub; the real LLM decides with semantics.
 _BUYING_SIGNAL_HINTS: dict[str, BuyingSignalType] = {
     "orcamento": BuyingSignalType.BUDGET_DISCUSSED,
     "budget": BuyingSignalType.BUDGET_DISCUSSED,
@@ -365,12 +365,12 @@ def _customer_confidence(
     req: AnalyzeRequest,
     sentences: list[str],
 ) -> CustomerConfidence | None:
-    """Detecta Customer Confidence de forma determinista (ADR 0006).
+    """Detects Customer Confidence deterministically (ADR 0006).
 
-    Retorna None quando a transcricao nao tem cues de conversa com cliente/lead
-    (default de reuniao interna); caso contrario, emite um objeto pequeno com
-    sinais/objecoes citados. O LLM real toma essa decisao com semantica; aqui e
-    so uma heuristica pra manter o contrato e exercitar o modelo.
+    Returns None when the transcript has no cues of a customer/lead conversation
+    (internal meeting default); otherwise, emits a small object with the
+    quoted signals/objections. The real LLM makes this call with semantics; here
+    it is only a heuristic to keep the contract and exercise the model.
     """
     buying_signals: list[BuyingSignal] = []
     seen_signal_types: set[BuyingSignalType] = set()
@@ -404,12 +404,12 @@ def _customer_confidence(
                     )
                 )
 
-    # Sem nenhum cue de venda (sinal de compra ou objecao), tratamos como
-    # reuniao interna -> None. O LLM real decide com semantica; aqui e cue-based.
+    # Without any sales cue (buying signal or objection), we treat it as an
+    # internal meeting -> None. The real LLM decides with semantics; here it is cue-based.
     if not buying_signals and not objections:
         return None
 
-    # Score: sinais positivos sobem, objecoes descem. Heuristica determinista.
+    # Score: positive signals push up, objections push down. Deterministic heuristic.
     raw = 50 + len(buying_signals) * 12 - len(objections) * 10
     score = max(0, min(100, raw))
     if score >= 70:
@@ -430,7 +430,7 @@ def _customer_confidence(
             "score": score,
             "band": band.value,
             "trend": None,
-            # Stub nao parseia nome do cliente; o LLM real preenche. Mantemos null.
+            # Stub does not parse the customer name; the real LLM fills it. We keep null.
             "accountName": None,
             "buyingSignals": [b.model_dump(by_alias=True) for b in buying_signals],
             "objections": [o.model_dump(by_alias=True) for o in objections],
@@ -458,7 +458,7 @@ def _participants(text: str) -> list[Participant]:
 
 
 def analyze(req: AnalyzeRequest, *, pii_redactions_applied: int = 0) -> AnalyzeResponse:
-    """Analisa a transcricao de forma deterministica. Sem chamada externa."""
+    """Analyzes the transcript deterministically. No external call."""
     started = time.monotonic()
     sentences = _split_sentences(req.transcript)
     ctx_terms = (

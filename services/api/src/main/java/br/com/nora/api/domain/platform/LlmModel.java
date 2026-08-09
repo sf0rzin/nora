@@ -5,9 +5,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Modelo do catálogo do control plane (ADR 0024). Pricing em USD por 1M de tokens. Vive no banco de
- * plataforma (ADR 0022) — global, sem tenant. {@code priceCachedInputPerMTok} pode ser null (nem
- * todo provider tem preço de cache-hit).
+ * Control plane catalog model (ADR 0024). Pricing in USD per 1M tokens. Lives in the platform
+ * database (ADR 0022) — global, no tenant. {@code priceCachedInputPerMTok} may be null (not every
+ * provider has a cache-hit price).
  */
 public record LlmModel(
         UUID id,

@@ -5,11 +5,11 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /**
- * Adapter de {@link TenantRlsContext} que delega para o {@link TenantContextHolder} — o mesmo
- * ThreadLocal que o {@code JwtAuthenticationFilter} popula no request e que o {@code
- * TenantRlsAspect} lê para setar o GUC por transação. Assim a propagação explícita feita pela
- * aplicação (ex.: pipeline de análise async, ADR 0028) usa exatamente o mesmo caminho do fluxo
- * autenticado.
+ * {@link TenantRlsContext} adapter that delegates to {@link TenantContextHolder} — the same
+ * ThreadLocal that {@code JwtAuthenticationFilter} populates on the request and that {@code
+ * TenantRlsAspect} reads to set the GUC per transaction. This way the explicit propagation done by
+ * the application (e.g. async analysis pipeline, ADR 0028) uses exactly the same path as the
+ * authenticated flow.
  */
 @Component
 public class TenantRlsContextAdapter implements TenantRlsContext {

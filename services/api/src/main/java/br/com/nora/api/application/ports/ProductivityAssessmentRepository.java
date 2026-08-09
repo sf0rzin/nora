@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Persistencia do Productivity Assessment (ADR 0005). Sempre escopada por tenant. */
+/** Productivity Assessment persistence (ADR 0005). Always scoped by tenant. */
 public interface ProductivityAssessmentRepository {
 
     ProductivityAssessment save(ProductivityAssessment assessment);
@@ -15,9 +15,12 @@ public interface ProductivityAssessmentRepository {
 
     void deleteByMeetingId(UUID meetingId, UUID tenantId);
 
-    /** Banda + score por meeting, em UMA query (sem carregar coverage). Para a listagem sem N+1. */
+    /**
+     * Band + score per meeting, in ONE query (without loading coverage). For the listing without
+     * N+1.
+     */
     List<BandScore> bandsByMeetingIds(Collection<UUID> meetingIds, UUID tenantId);
 
-    /** Banda + score de produtividade de um meeting para a linha da listagem. */
+    /** Productivity band + score of a meeting for the listing row. */
     record BandScore(UUID meetingId, String band, int score) {}
 }

@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 
 class FollowUpScheduleTest {
 
-    // Sexta 12/06/2026 às 15h em SP (-03:00).
+    // Friday 12/06/2026 at 3pm in SP (-03:00).
     private static final OffsetDateTime AGORA =
             OffsetDateTime.of(2026, 6, 12, 15, 0, 0, 0, ZoneOffset.ofHours(-3));
 

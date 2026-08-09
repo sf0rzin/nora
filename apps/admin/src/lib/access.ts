@@ -2,24 +2,24 @@ import { headers } from "next/headers";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 /**
- * Tier 2 (ADR 0025) — validação do JWT do Cloudflare Access na borda do app.
+ * Tier 2 (ADR 0025) — Cloudflare Access JWT validation at the app edge.
  *
- * Defense in depth: a origem do nora-admin já é inalcançável de fora (ingress internal +
- * Cloudflare Tunnel) e o Cloudflare Access gateia `admin.nora.systems` na borda da rede.
- * Esta é a 2ª camada — sem um `Cf-Access-Jwt-Assertion` válido pro nosso AUD, a requisição
- * é barrada mesmo que alguém alcance a origem por dentro do environment.
+ * Defense in depth: the nora-admin origin is already unreachable from outside (internal ingress +
+ * Cloudflare Tunnel) and Cloudflare Access gates `admin.nora.systems` at the network edge.
+ * This is the 2nd layer — without a `Cf-Access-Jwt-Assertion` valid for our AUD, the request
+ * is blocked even if someone reaches the origin from inside the environment.
  *
- * Roda em server component (Node runtime), que lê `CF_ACCESS_*` em RUNTIME. Middleware do
- * Next 14 roda em edge runtime e inlinaria essas envs em build-time (não funcionaria, já que
- * o AUD é setado pelo Container Apps no deploy) — por isso a validação fica aqui, não no edge.
+ * Runs in a server component (Node runtime), which reads `CF_ACCESS_*` at RUNTIME. Next 14
+ * middleware runs in the edge runtime and would inline those envs at build-time (would not work,
+ * since AUD is set by Container Apps on deploy) — that's why validation lives here, not at the edge.
  */
 
 const TEAM_DOMAIN = process.env.CF_ACCESS_TEAM_DOMAIN ?? "";
 const AUD = process.env.CF_ACCESS_AUD ?? "";
 const USE_MOCKS = process.env.NORA_ADMIN_USE_MOCKS !== "false";
 
-// Enforça só em produção (mocks off) e com Access configurado. Sem config = degrada pra
-// edge-only (Tunnel + Access na borda continuam protegendo) — não trava o app.
+// Enforces only in production (mocks off) and with Access configured. No config = degrades to
+// edge-only (Tunnel + Access at the edge keep protecting) — does not brick the app.
 const ENFORCING = !USE_MOCKS && TEAM_DOMAIN !== "" && AUD !== "";
 
 const JWKS = ENFORCING
@@ -27,16 +27,16 @@ const JWKS = ENFORCING
   : null;
 
 export interface AccessResult {
-  /** true = a validação de JWT está ativa neste ambiente. */
+  /** true = JWT validation is active in this environment. */
   enforced: boolean;
-  /** true = pode renderizar (em modo enforced, significa JWT válido). */
+  /** true = may render (in enforced mode, means a valid JWT). */
   ok: boolean;
   /**
-   * E-mail extraído do JWT VERIFICADO. Só vem preenchido quando `enforced && ok` —
-   * é a única identidade de operador com prova criptográfica. O header
-   * `Cf-Access-Authenticated-User-Email` que o `getOperator()` lê carrega o mesmo
-   * dado, mas sem assinatura: serve para exibir, não para autorizar nem para
-   * carimbar auditoria.
+   * E-mail extracted from the VERIFIED JWT. Only filled in when `enforced && ok` —
+   * it is the only operator identity with cryptographic proof. The
+   * `Cf-Access-Authenticated-User-Email` header that `getOperator()` reads carries the same
+   * data, but unsigned: good for display, not for authorizing nor for
+   * stamping audit records.
    */
   email?: string;
 }
@@ -70,7 +70,7 @@ export async function checkAccess(): Promise<AccessResult> {
   }
 }
 
-/** Erro de autorização. Nome estável para o caller distinguir de falha de rede/backend. */
+/** Authorization error. Stable name so the caller can tell it apart from a network/backend failure. */
 export class AccessDeniedError extends Error {
   constructor() {
     super("Acesso negado: requisição sem asserção válida do Cloudflare Access.");
@@ -79,22 +79,22 @@ export class AccessDeniedError extends Error {
 }
 
 /**
- * Gate obrigatório de **server actions e de páginas**. O `checkAccess()` do RootLayout não
- * cobre nenhum dos dois caminhos:
+ * Mandatory gate for **server actions and pages**. RootLayout's `checkAccess()` does not
+ * cover either path:
  *
- * - **Server actions:** o Next executa a action primeiro e só depois re-renderiza a árvore,
- *   então o layout roda tarde demais para impedir o efeito colateral. Sem isto, um POST
- *   direto no endpoint da action — com o `Next-Action` id, que é público no bundle —
- *   executa a mutação sem passar por Access nenhum.
- * - **Páginas:** o App Router faz renderização parcial e não reinvoca o layout de um
- *   segmento pai inalterado numa navegação RSC. Uma requisição que já traga a router state
- *   tree renderiza a página e devolve o payload sem o gate do layout rodar.
+ * - **Server actions:** Next runs the action first and only then re-renders the tree,
+ *   so the layout runs too late to prevent the side effect. Without this, a direct POST
+ *   to the action endpoint — with the `Next-Action` id, which is public in the bundle —
+ *   executes the mutation without going through Access at all.
+ * - **Pages:** the App Router does partial rendering and does not reinvoke the layout of an
+ *   unchanged parent segment on an RSC navigation. A request that already carries the router
+ *   state tree renders the page and returns the payload without the layout gate running.
  *
- * Toda página nova deve começar com `await requireAccess()`. O layout continua fazendo o
- * seu check para render inicial e para a tela de 403, mas ele é a segunda linha, não a única.
+ * Every new page must start with `await requireAccess()`. The layout keeps doing its
+ * own check for the initial render and for the 403 screen, but it is the second line, not the only one.
  *
- * Retorna o e-mail do JWT verificado quando está enforçando. Fora de enforce (dev/mocks)
- * devolve `undefined` e o caller cai no operador de desenvolvimento.
+ * Returns the e-mail from the verified JWT when enforcing. Outside enforce (dev/mocks)
+ * it returns `undefined` and the caller falls back to the development operator.
  */
 export async function requireAccess(): Promise<string | undefined> {
   const access = await checkAccess();

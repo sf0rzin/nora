@@ -64,13 +64,13 @@ class MeetingGoalServiceTest {
 
     @Test
     void saveOnCompletedMeetingMarksForReprocessAndClearsAssessment() {
-        // Caminho realista pelo state machine: PENDING -> PROCESSING -> COMPLETED.
+        // Realistic path through the state machine: PENDING -> PROCESSING -> COMPLETED.
         Meeting m =
                 pendingMeeting(tenant)
                         .withStatus(ProcessingStatus.PROCESSING)
                         .withStatus(ProcessingStatus.COMPLETED);
         meetingRepo.save(m);
-        // Simula assessment ja persistido de um goal anterior.
+        // Simulates an assessment already persisted from a previous goal.
         assessmentRepo.save(
                 ProductivityAssessment.newAssessment(
                         tenant,
@@ -130,7 +130,7 @@ class MeetingGoalServiceTest {
                                 service.save(
                                         m.id(), otherTenant, "purpose", List.of("outcome"), null))
                 .isInstanceOf(MeetingException.NotFound.class);
-        // Garante que nada vazou para o outro tenant.
+        // Makes sure nothing leaked to the other tenant.
         assertThat(goalRepo.findByMeetingId(m.id(), otherTenant)).isEmpty();
         assertThat(goalRepo.findByMeetingId(m.id(), tenant)).isEmpty();
     }
@@ -210,7 +210,7 @@ class MeetingGoalServiceTest {
 
         @Override
         public Optional<Meeting> findByIdAndTenantForUpdate(UUID id, UUID tenantId) {
-            // Fake single-thread: não há concorrência pra serializar, o lock é no-op aqui.
+            // Fake single-thread: there is no concurrency to serialize, the lock is a no-op here.
             return findByIdAndTenant(id, tenantId);
         }
 

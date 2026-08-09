@@ -13,44 +13,44 @@ crate-type = ["lib", "cdylib", "staticlib"]
 tauri-build = { version = "2", features = [] }
 
 # ============================================================================
-# FEATURES — selecao de backend de STT
+# FEATURES — STT backend selection
 # ============================================================================
-# Durante a transicao Azure -> local os DOIS backends compilam por default. O
-# backend efetivo e escolhido em RUNTIME (env `NORA_STT_BACKEND`, ver stt.rs),
-# nao em build-time; a feature so controla se o codigo entra no binario.
+# During the Azure -> local transition BOTH backends compile by default. The
+# effective backend is chosen at RUNTIME (env `NORA_STT_BACKEND`, see stt.rs),
+# not at build-time; the feature only controls whether the code enters the binary.
 #
-# Para um build "local puro" (sem o sidecar Python no bundle):
+# For a "pure local" build (without the Python sidecar in the bundle):
 #   cargo build --no-default-features --features stt-local
 #
-# Aceleracao de GPU: `whisper-metal` e ligada automaticamente no macOS pela
-# secao [target.'cfg(target_os = "macos")'.dependencies] abaixo. Vulkan/CUDA
-# ficam opt-in explicito porque exigem SDK do fabricante na maquina de BUILD
-# (nao so na de execucao) — ligar por default quebraria o CI dos tres alvos.
-#   cargo build --features whisper-vulkan     # Windows/Linux com Vulkan SDK
-#   cargo build --features whisper-cuda       # Windows/Linux com CUDA Toolkit
+# GPU acceleration: `whisper-metal` is turned on automatically on macOS by the
+# [target.'cfg(target_os = "macos")'.dependencies] section below. Vulkan/CUDA
+# stay explicit opt-in because they require the vendor SDK on the BUILD machine
+# (not only on the runtime one) — on by default would break CI on all three targets.
+#   cargo build --features whisper-vulkan     # Windows/Linux with Vulkan SDK
+#   cargo build --features whisper-cuda       # Windows/Linux with CUDA Toolkit
 #
-# CPU e sempre o fallback: sem nenhuma feature de GPU o whisper.cpp roda em CPU.
+# CPU is always the fallback: with no GPU feature whisper.cpp runs on CPU.
 [features]
 default = ["stt-local", "stt-azure"]
 
-# STT local, in-process, via whisper.cpp (crate whisper-rs).
+# Local STT, in-process, via whisper.cpp (whisper-rs crate).
 stt-local = ["dep:whisper-rs", "dep:sha2"]
 
-# STT via sidecar Python + Azure Speech SDK. LEGADO — mantido atras de flag
-# durante a transicao. Remover junto com apps/desktop/sidecar/ quando o local
-# estiver validado em hardware real nos tres alvos.
+# STT via Python sidecar + Azure Speech SDK. LEGACY — kept behind a flag
+# during the transition. Remove together with apps/desktop/sidecar/ once local
+# is validated on real hardware on all three targets.
 stt-azure = []
 
-# `?` = "se a dep opcional estiver ativa, ligue a feature dela" — sem o `?` a
-# feature de GPU force-ativaria o whisper-rs mesmo com stt-local desligada.
+# `?` = "if the optional dep is active, turn on its feature" — without the `?` the
+# GPU feature would force-enable whisper-rs even with stt-local turned off.
 whisper-vulkan = ["whisper-rs?/vulkan"]
 whisper-cuda = ["whisper-rs?/cuda"]
 whisper-openblas = ["whisper-rs?/openblas"]
 
 [dependencies]
-# Pinado em "=0.16.0" de proposito: whisper-rs vendora o whisper.cpp como
-# submodulo e mudanca de minor ja trocou a API de FullParams/State no passado
-# (0.13 -> 0.14 renomeou o gate de log). Bump so com cargo check nos 3 alvos.
+# Pinned at "=0.16.0" on purpose: whisper-rs vendors whisper.cpp as a
+# submodule and a minor bump has swapped the FullParams/State API before
+# (0.13 -> 0.14 renamed the log gate). Bump only with cargo check on the 3 targets.
 whisper-rs = { version = "=0.16.0", optional = true }
 sha2 = { version = "0.10", optional = true }
 
@@ -79,11 +79,11 @@ raw-window-handle = "0.6"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
-# Metal por default no macOS: o Cargo faz UNIAO das features desta secao com a
-# de [dependencies], entao o build macOS ganha "metal" e os outros nao. O
-# whisper.cpp cai pra CPU sozinho se o device Metal nao inicializar, entao isso
-# nao quebra Intel antigo. Nao vale pra CoreML: o encoder CoreML exige um
-# .mlmodelc gerado por modelo, que nao baixamos (ver whisper_model.rs).
+# Metal by default on macOS: Cargo takes the UNION of the features of this section
+# with those of [dependencies], so the macOS build gets "metal" and the others do
+# not. whisper.cpp falls back to CPU on its own if the Metal device does not
+# initialize, so this does not break old Intel. Does not apply to CoreML: the CoreML
+# encoder needs a per-model .mlmodelc, which we do not download (see whisper_model.rs).
 whisper-rs = { version = "=0.16.0", features = ["metal"], optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]

@@ -10,10 +10,10 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Enviar e-mail via Outlook" do NORA Flows — envia PELA CONTA MICROSOFT conectada do tenant
- * (OAuth com refresh, onda 2), espelho da {@code gmail_send_email}. Params: {@code to}
- * (obrigatório), {@code subject}/{@code body} opcionais com os mesmos placeholders das ações de
- * e-mail. Sem conexão Microsoft → exceção clara no log da execução (nunca finge sucesso).
+ * NORA Flows "Enviar e-mail via Outlook" action — sends FROM the tenant's connected MICROSOFT
+ * ACCOUNT (OAuth with refresh, wave 2), mirror of {@code gmail_send_email}. Params: {@code to}
+ * (required), optional {@code subject}/{@code body} with the same placeholders as the e-mail
+ * actions. No Microsoft connection → clear exception in the run log (never fakes success).
  */
 @Component
 public class OutlookSendEmailAction implements ActionExecutor {

@@ -25,8 +25,8 @@ export async function getMeeting(meetingId: string): Promise<MeetingDetail> {
 }
 
 /**
- * Reenfileira a análise NLP de uma reunião que falhou (processingStatus FAILED).
- * Backend valida o estado, volta pra PENDING e re-dispara o pipeline async.
+ * Re-queues the NLP analysis of a meeting that failed (processingStatus FAILED).
+ * Backend validates the state, goes back to PENDING and re-fires the async pipeline.
  */
 export async function reprocessMeeting(
   meetingId: string,
@@ -57,8 +57,8 @@ export interface UploadTranscriptOptions {
   onRetry?: (attempt: number, delayMs: number, error: unknown) => void;
 }
 
-/** Extrai um status HTTP do erro: do campo `.status` ou do "(NNN)" da mensagem
- *  (o upload no Rust devolve "Upload failed (404): ..."). */
+/** Extracts an HTTP status from the error: from the `.status` field or the "(NNN)"
+ *  in the message (the Rust upload returns "Upload failed (404): ..."). */
 function extractStatus(err: unknown): number | undefined {
   if (err && typeof err === "object") {
     const s = (err as { status?: number }).status;
@@ -73,10 +73,10 @@ function extractStatus(err: unknown): number | undefined {
 function isTransient(err: unknown): boolean {
   if (err == null) return false;
   const status = extractStatus(err);
-  // Com status detectável: só 5xx vale retry; 4xx (auth/validação) é permanente.
-  // Antes QUALQUER string/Error era "transitório" → retentava 4xx à toa.
+  // With a detectable status: only 5xx is worth retrying; 4xx (auth/validation) is permanent.
+  // Before, ANY string/Error was "transient" → retried 4xx for nothing.
   if (typeof status === "number") return status >= 500 && status < 600;
-  // Sem status (falha de rede/timeout) → transitório.
+  // No status (network failure/timeout) → transient.
   return typeof err === "string" || err instanceof Error;
 }
 

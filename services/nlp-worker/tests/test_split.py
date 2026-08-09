@@ -1,7 +1,7 @@
-"""Testes do endpoint /split e do split_analyzer (LLM mockado).
+"""Tests for the /split endpoint and the split_analyzer (mocked LLM).
 
-Cobre: caso feliz multi-reuniao, reuniao unica, fronteiras invalidas do LLM
-corrigidas server-side, PII nunca vazando no preview e o merge de janelas.
+Covers: multi-meeting happy path, single meeting, invalid LLM boundaries
+corrected server-side, PII never leaking into the preview and the window merge.
 """
 
 from __future__ import annotations
@@ -52,14 +52,14 @@ def _make_settings() -> Settings:
 
 
 def _mock_client_returning(payloads: list[dict]) -> MagicMock:
-    """Mock do LlmClient: cada chamada a chat_structured devolve o proximo payload."""
+    """LlmClient mock: each chat_structured call returns the next payload."""
     instance = MagicMock()
     instance.chat_structured.side_effect = [(json.dumps(p), 100, 50) for p in payloads]
     return instance
 
 
 def _assert_contract(body: dict) -> None:
-    """Invariantes do contrato: ordenado, sem overlap, sem buraco, cobrindo o arquivo."""
+    """Contract invariants: ordered, no overlap, no gap, covering the file."""
     segments = body["segments"]
     assert segments, "esperava ao menos 1 segmento"
     assert segments[0]["startLine"] == 1
@@ -73,7 +73,7 @@ def _assert_contract(body: dict) -> None:
             assert seg["startLine"] == segments[i - 1]["endLine"] + 1
 
 
-# ---------- Endpoint (stub deterministico, USE_LLM_STUB=true) ----------
+# ---------- Endpoint (deterministic stub, USE_LLM_STUB=true) ----------
 
 
 def test_split_endpoint_multi_meeting_stub():
@@ -108,7 +108,7 @@ def test_split_endpoint_rejects_empty_transcript():
     assert resp.status_code == 422
 
 
-# ---------- split_analyzer com LLM mockado ----------
+# ---------- split_analyzer with mocked LLM ----------
 
 
 @patch("nora_nlp.services.split_analyzer.LlmClient")
@@ -179,19 +179,19 @@ def test_split_llm_single_meeting_is_valid(MockClient):
 
 @patch("nora_nlp.services.split_analyzer.LlmClient")
 def test_split_llm_invalid_boundaries_are_corrected(MockClient):
-    """LLM devolve lixo (overlap, buraco, fora do range, desordenado): o
-    servidor normaliza para segmentos ordenados, sem overlap, cobrindo o
-    arquivo inteiro."""
+    """LLM returns garbage (overlap, gap, out of range, unordered): the
+    server normalizes into ordered segments, without overlap, covering the
+    whole file."""
     red_lines, _ = redact_lines(_MULTI_MEETING_TRANSCRIPT)
     MockClient.return_value = _mock_client_returning(
         [
             {
                 "segments": [
-                    # desordenado + fora do range (endLine alem do arquivo)
+                    # unordered + out of range (endLine past the file)
                     {"title": "Daily", "startLine": 6, "endLine": 99, "confidence": 1.5},
-                    # buraco entre 3 e 6 + cabeca do arquivo descoberta (linha 1)
+                    # gap between 3 and 6 + head of the file uncovered (line 1)
                     {"title": "Discovery", "startLine": 2, "endLine": 3, "confidence": 0.9},
-                    # aninhado por inteiro dentro do "Daily" — deve sumir
+                    # entirely nested inside "Daily" — must disappear
                     {"title": "Fantasma", "startLine": 7, "endLine": 8, "confidence": 0.4},
                 ]
             }
@@ -207,10 +207,10 @@ def test_split_llm_invalid_boundaries_are_corrected(MockClient):
     assert "Discovery" in titles
     assert "Daily" in titles
     assert "Fantasma" not in titles
-    # buraco (4-5) virou extensao do segmento anterior; confidence clampada.
+    # the gap (4-5) became an extension of the previous segment; confidence clamped.
     discovery = next(s for s in body["segments"] if s["title"] == "Discovery")
     daily = next(s for s in body["segments"] if s["title"] == "Daily")
-    assert discovery["startLine"] == 1  # cabeca do arquivo coberta
+    assert discovery["startLine"] == 1  # head of the file covered
     assert discovery["endLine"] == daily["startLine"] - 1
     assert daily["endLine"] == body["totalLines"]
     assert daily["confidence"] == 1.0
@@ -229,7 +229,7 @@ def test_split_llm_empty_response_falls_back_to_single_segment(MockClient):
     assert len(body["segments"]) == 1
 
 
-# ---------- PII nunca vaza (ADR 0012) ----------
+# ---------- PII never leaks (ADR 0012) ----------
 
 _PII_TRANSCRIPT = (
     "=== Reuniao comercial ===\n"
@@ -259,7 +259,7 @@ def test_split_preview_never_leaks_pii_stub():
 
 @patch("nora_nlp.services.split_analyzer.LlmClient")
 def test_split_llm_prompt_and_preview_receive_redacted_text(MockClient):
-    """O texto numerado enviado ao LLM e o preview da resposta ja sao redigidos."""
+    """The numbered text sent to the LLM and the response preview are already redacted."""
     red_lines, redactions = redact_lines(_PII_TRANSCRIPT)
     total = len(red_lines)
     mock_instance = _mock_client_returning(
@@ -278,30 +278,30 @@ def test_split_llm_prompt_and_preview_receive_redacted_text(MockClient):
     assert resp.metadata.pii_redactions_applied == redactions
 
 
-# ---------- Redacao intra-linha (line numbers estaveis) ----------
+# ---------- Intra-line redaction (stable line numbers) ----------
 
 
 def test_redact_lines_preserves_line_count():
     red_lines, count = redact_lines(_PII_TRANSCRIPT)
     assert len(red_lines) == _PII_TRANSCRIPT.count("\n") + 1
     assert count >= 4
-    # cada linha redigida continua sendo UMA linha (sem \n interno).
+    # each redacted line stays ONE line (no internal \n).
     assert all("\n" not in line for line in red_lines)
 
 
 def test_redact_lines_keeps_phone_split_across_lines_intra_line():
-    """Telefone com \\s no regex poderia casar atravessando linhas no shield
-    global; linha a linha o numero de linhas nunca muda."""
+    """A phone with \\s in the regex could match across lines in the global
+    shield; line by line the number of lines never changes."""
     text = "contato (11)\n98765 4321 final\noutra linha"
     red_lines, _ = redact_lines(text)
     assert len(red_lines) == 3
 
 
 def test_redact_lines_normalizes_crlf_and_cr_to_match_frontend():
-    """O fatiamento client-side normaliza CRLF/CR->LF antes de cortar por linha
-    (sliceFileLines em apps/web/.../upload/page.tsx). O worker tem que numerar
-    as MESMAS linhas, senao os cortes saem deslocados. Garante paridade de
-    contagem para LF, CRLF (Windows) e CR-solto (Mac classico)."""
+    """The client-side slicing normalizes CRLF/CR->LF before cutting by line
+    (sliceFileLines in apps/web/.../upload/page.tsx). The worker has to number
+    the SAME lines, otherwise the cuts come out shifted. Guarantees count
+    parity for LF, CRLF (Windows) and lone-CR (classic Mac)."""
     lf = "reuniao um\nlinha dois\nreuniao dois"
     crlf = "reuniao um\r\nlinha dois\r\nreuniao dois"
     cr = "reuniao um\rlinha dois\rreuniao dois"
@@ -310,32 +310,32 @@ def test_redact_lines_normalizes_crlf_and_cr_to_match_frontend():
     assert len(base_lines) == 3
     for variant in (crlf, cr):
         red_lines, _ = redact_lines(variant)
-        # mesma contagem que o LF...
+        # same count as LF...
         assert len(red_lines) == 3
-        # ...e nenhum \r residual vazando para o preview.
+        # ...and no residual \r leaking into the preview.
         assert all("\r" not in line for line in red_lines)
         assert red_lines == base_lines
 
 
 def test_redact_lines_trailing_newline_matches_frontend_split():
-    """Arquivo terminando em nova linha gera um elemento "" final tanto no
-    split do worker quanto no split('\\n') do front apos normalizar — paridade
-    no boundary da ultima linha."""
+    """A file ending in a newline yields a trailing "" element both in the
+    worker split and in the front's split('\\n') after normalizing — parity
+    at the last-line boundary."""
     text = "reuniao um\r\nlinha dois\r\n"
     red_lines, _ = redact_lines(text)
-    # "a\nb\n".split("\n") == ["a", "b", ""] (3 elementos), igual no front.
+    # "a\nb\n".split("\n") == ["a", "b", ""] (3 elements), same on the front.
     assert len(red_lines) == 3
     assert red_lines[-1] == ""
 
 
-# ---------- Janelas + merge ----------
+# ---------- Windows + merge ----------
 
 
 @patch("nora_nlp.services.split_analyzer.LlmClient")
 def test_split_windows_merge_boundaries(MockClient, monkeypatch):
-    """Forca 2+ janelas com budget minusculo e confere o merge: o ultimo
-    segmento truncado da janela e re-analisado na seguinte; janela de segmento
-    unico e fundida com a primeira fronteira da proxima."""
+    """Forces 2+ windows with a tiny budget and checks the merge: the window's
+    last truncated segment is re-analyzed in the next one; a single-segment
+    window is merged with the first boundary of the next."""
     transcript = "\n".join(
         ["=== Reuniao A ==="]
         + [f"A fala numero {i} da primeira reuniao" for i in range(1, 10)]
@@ -343,15 +343,15 @@ def test_split_windows_merge_boundaries(MockClient, monkeypatch):
         + [f"B fala numero {i} da segunda reuniao" for i in range(1, 10)]
     )
     red_lines, _ = redact_lines(transcript)
-    total = len(red_lines)  # 20 linhas
+    total = len(red_lines)  # 20 lines
 
-    # Budget pequeno: ~6 linhas por janela.
+    # Small budget: ~6 lines per window.
     monkeypatch.setattr(split_analyzer, "_WINDOW_CHAR_BUDGET", 220)
 
     def respond(**kwargs):
-        """Oraculo da fronteira real: reuniao A = linhas 1-10, B = 11-20."""
+        """Real boundary oracle: meeting A = lines 1-10, B = 11-20."""
         prompt = kwargs["user_prompt"]
-        # extrai o range da janela a partir das linhas numeradas presentes
+        # extract the window range from the numbered lines present
         lines = [
             int(line.split("|", 1)[0])
             for line in prompt.splitlines()
@@ -396,7 +396,7 @@ def test_split_windows_merge_boundaries(MockClient, monkeypatch):
     assert body["segments"][1]["endLine"] == total
 
 
-# ---------- normalize_segments (unidade) ----------
+# ---------- normalize_segments (unit) ----------
 
 
 def test_normalize_segments_empty_input_yields_full_file_segment():
@@ -417,4 +417,4 @@ def test_normalize_segments_discards_garbage_entries():
     )
     assert len(result) == 1
     assert result[0]["title"] == "ok"
-    assert result[0]["endLine"] == 5  # cauda estendida
+    assert result[0]["endLine"] == 5  # extended tail

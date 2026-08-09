@@ -5,12 +5,12 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Renderiza o template HTML de convite (US06). Carrega {@code email-templates/invite.html} do
- * classpath e substitui placeholders {@code {{...}}}.
+ * Renders the invite HTML template (US06). Loads {@code email-templates/invite.html} from the
+ * classpath and replaces {@code {{...}}} placeholders.
  *
- * <p>Mantemos rendering manual (sem Thymeleaf) para nao adicionar dependencia: o template e
- * estatico e simples. Os valores sao escapados como HTML para evitar injection em campos
- * controlados pelo tenant ({@code tenantName}, {@code invitedByName}).
+ * <p>We keep manual rendering (no Thymeleaf) so as not to add a dependency: the template is static
+ * and simple. The values are HTML-escaped to avoid injection in fields controlled by the tenant
+ * ({@code tenantName}, {@code invitedByName}).
  */
 public final class InviteEmailTemplate {
 

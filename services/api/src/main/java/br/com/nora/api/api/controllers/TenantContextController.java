@@ -19,12 +19,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Endpoints do contexto do tenant (US14/US30). 1-1 com o tenant do JWT.
+ * Tenant context endpoints (US14/US30). 1-1 with the tenant from the JWT.
  *
- * <p>O contexto e injetado no prompt do LLM (companyName, valueProposition, products,
- * objectionHandling). Qualquer membro do tenant que pudesse sobrescrever o contexto sem checagem de
- * policy efetivamente manipulava o prompt da LLM para TODOS — entao exigimos `tenant:context:read`
- * / `tenant:context:write` (ADR 0007).
+ * <p>The context is injected into the LLM prompt (companyName, valueProposition, products,
+ * objectionHandling). Any tenant member able to overwrite the context without a policy check was
+ * effectively manipulating the LLM prompt for EVERYONE — so we require `tenant:context:read` /
+ * `tenant:context:write` (ADR 0007).
  */
 @RestController
 @RequestMapping("/tenant/context")

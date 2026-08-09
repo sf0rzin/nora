@@ -1,7 +1,7 @@
-# Defaults endurecidos para o profile prod. Bicep injeta SPRING_PROFILES_ACTIVE=prod.
-# Mantemos config aqui para que producao tenha defaults seguros mesmo se uma env var
-# falhar (fail-closed). JjwtJwtIssuer.java rejeita o placeholder publico de JWT_SECRET
-# fora dos profiles local/test.
+# Hardened defaults for the prod profile. Bicep injects SPRING_PROFILES_ACTIVE=prod.
+# We keep config here so production has safe defaults even if an env var fails
+# (fail-closed). JjwtJwtIssuer.java rejects the public JWT_SECRET placeholder
+# outside the local/test profiles.
 
 spring:
   jpa:
@@ -9,9 +9,9 @@ spring:
     properties:
       hibernate.format_sql: false
 
-# Swagger/OpenAPI desabilitado em prod: o apiApp tem ingress external, entao publicar
-# a spec exporia o mapa completo da API a nao-autenticados (reconnaissance). Springdoc
-# fica habilitado em local/dev (util pra desenvolvimento). Auditoria api-security 2026-06-03.
+# Swagger/OpenAPI disabled in prod: apiApp has external ingress, so publishing
+# the spec would expose the full API map to unauthenticated users (reconnaissance). Springdoc
+# stays enabled in local/dev (useful for development). api-security audit 2026-06-03.
 springdoc:
   api-docs:
     enabled: false

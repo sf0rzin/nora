@@ -5,8 +5,8 @@ interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> 
 }
 
 /**
- * Botão só-ícone quadrado e consistente (titlebar, toolbars, ações de linha).
- * 30x30 (md) ou 26x26 (sm) — acaba com os 28/30/26 ad-hoc espalhados.
+ * Square, consistent icon-only button (titlebar, toolbars, row actions).
+ * 30x30 (md) or 26x26 (sm) — kills the ad-hoc 28/30/26 scattered around.
  */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
   { size = "md", className = "", type = "button", ...rest },

@@ -17,8 +17,8 @@ class TestProtocol:
     """Test protocol message parsing and serialization."""
     
     def test_parse_start_message(self):
-        # ADR 0009: Token Broker — desktop nunca tem azure_key. Recebe auth_token JWT
-        # do backend NORA, que faz o broker para o Azure Speech STS.
+        # ADR 0009: Token Broker — desktop never has azure_key. It receives a JWT auth_token
+        # from the NORA backend, which brokers to the Azure Speech STS.
         data = {
             "v": 1,
             "type": "start",

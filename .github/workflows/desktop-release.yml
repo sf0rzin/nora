@@ -1,16 +1,16 @@
 name: desktop-release
 
-# Build assinado + release do Nora Desktop com auto-update.
+# Signed build + release of Nora Desktop with auto-update.
 #
-# Dispara por uma tag `desktop-v*` (ex.: desktop-v0.2.5) ou manualmente
-# (workflow_dispatch informando a tag). O tauri-action builda, ASSINA os
-# bundles com a chave do updater (secrets TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]),
-# cria a release no GitHub e gera/mescla o `latest.json` — que é o endpoint que
-# o app consulta (releases/latest/download/latest.json). prerelease:false pra a
-# release virar "Latest" e o endpoint resolver.
+# Fires on a `desktop-v*` tag (e.g. desktop-v0.2.5) or manually
+# (workflow_dispatch providing the tag). tauri-action builds, SIGNS the
+# bundles with the updater key (secrets TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]),
+# creates the release on GitHub and generates/merges `latest.json` — which is the endpoint
+# the app queries (releases/latest/download/latest.json). prerelease:false so the
+# release becomes "Latest" and the endpoint resolves.
 #
-# Bootstrap: a primeira versão COM updater (0.2.5) precisa ser instalada à mão;
-# dela em diante o botão "Atualização disponível" na sidebar faz o resto.
+# Bootstrap: the first version WITH the updater (0.2.5) has to be installed by hand;
+# from it onward the "Atualização disponível" button in the sidebar does the rest.
 
 on:
   push:
@@ -35,9 +35,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `--features stt-local` liga o STT embarcado (whisper.cpp via whisper-rs,
-          # ADR 0035). SEM esta flag o bundle sai com o caminho antigo do Azure Speech
-          # ativo — que depende de um `/speech/token` que hoje responde 410 GONE.
+          # `--features stt-local` turns on the embedded STT (whisper.cpp via whisper-rs,
+          # ADR 0035). WITHOUT this flag the bundle ships with the old Azure Speech path
+          # active — which depends on a `/speech/token` that today answers 410 GONE.
           - platform: windows-latest
             args: "--features stt-local"
           - platform: ubuntu-latest
@@ -56,16 +56,16 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      # whisper-rs-sys compila o whisper.cpp com CMake + MSBuild. O CMake gera caminhos
-      # scratch profundos (…/out/build/CMakeFiles/CMakeScratch/TryCompile-XXXXXXX/
-      # cmTC_XXXXX.dir/Debug/cmTC_XXXXX.tlog) que estouram o MAX_PATH de 260 chars do
-      # Windows, e o MSBuild falha com `MSB6003: CL.exe could not be run /
-      # DirectoryNotFoundException`. Reproduzido localmente em 2026-08-07.
+      # whisper-rs-sys compiles whisper.cpp with CMake + MSBuild. CMake generates deep
+      # scratch paths (…/out/build/CMakeFiles/CMakeScratch/TryCompile-XXXXXXX/
+      # cmTC_XXXXX.dir/Debug/cmTC_XXXXX.tlog) that blow past Windows' 260-char MAX_PATH,
+      # and MSBuild fails with `MSB6003: CL.exe could not be run /
+      # DirectoryNotFoundException`. Reproduced locally on 2026-08-07.
       #
-      # NAO setamos CARGO_TARGET_DIR aqui: o tauri-action localiza os bundles sozinho
-      # pelo layout padrao do cargo, e mover o target dir arriscaria a release ASSINADA
-      # nao encontrar o que empacotar. O workspace do runner ja e curto; LongPathsEnabled
-      # cobre o resto. (No job desktop-rust do ci.yml, que nao sobe artifact, setamos.)
+      # We do NOT set CARGO_TARGET_DIR here: tauri-action locates the bundles on its own
+      # by cargo's default layout, and moving the target dir would risk the SIGNED release
+      # not finding what to package. The runner workspace is already short; LongPathsEnabled
+      # covers the rest. (In ci.yml's desktop-rust job, which uploads no artifact, we set it.)
       - name: Windows — long paths (whisper.cpp/CMake)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
@@ -94,11 +94,11 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Mesma URL baked em build-time do desktop-bundle (build.rs option_env!).
-          # Fallback migrado do FQDN do Azure Container Apps (morto) pro domínio público
-          # servido pelo Cloudflare Tunnel -> caddy -> api. Um bundle assinado e publicado
-          # carrega essa URL pra sempre: com o default antigo, toda release nova nascia
-          # apontando pra um host que não resolve.
+          # Same URL baked in at build-time as desktop-bundle (build.rs option_env!).
+          # Fallback migrated from the Azure Container Apps FQDN (dead) to the public domain
+          # served by the Cloudflare Tunnel -> caddy -> api. A signed and published bundle
+          # carries that URL forever: with the old default, every new release was born
+          # pointing at a host that does not resolve.
           NORA_API_BASE_URL: ${{ vars.NORA_API_BASE_URL || 'https://api.nora.systems' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

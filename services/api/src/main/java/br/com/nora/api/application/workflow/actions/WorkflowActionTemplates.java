@@ -4,10 +4,10 @@ import br.com.nora.api.application.workflow.WorkflowEventContext;
 import java.util.Map;
 
 /**
- * Renderização compartilhada das ações de e-mail do Flows (send_email via Resend e gmail_send_email
- * via conta do usuário): placeholders ({{meeting.title}}, {{meeting.summary}}, {{meeting.url}},
- * {{meeting.tags}}, {{productivity.score}}, {{confidence.score}}), corpo padrão (relatório-resumo
- * da reunião em HTML) e validação de destinatário.
+ * Shared rendering for the Flows e-mail actions (send_email via Resend and gmail_send_email via the
+ * user's account): placeholders ({{meeting.title}}, {{meeting.summary}}, {{meeting.url}},
+ * {{meeting.tags}}, {{productivity.score}}, {{confidence.score}}), default body (HTML meeting
+ * summary report) and recipient validation.
  */
 public final class WorkflowActionTemplates {
 
@@ -30,7 +30,7 @@ public final class WorkflowActionTemplates {
         return applyPlaceholders(subject, ctx, false);
     }
 
-    /** Corpo HTML: o {@code params.body} custom (com placeholders) ou o relatório-resumo padrão. */
+    /** HTML body: custom {@code params.body} (with placeholders) or the default summary report. */
     public static String bodyOrDefault(Map<String, Object> params, WorkflowEventContext ctx) {
         String customBody = stringParam(params, "body");
         return customBody == null || customBody.isBlank()
@@ -38,15 +38,15 @@ public final class WorkflowActionTemplates {
                 : customBodyHtml(customBody, ctx);
     }
 
-    // ---- Layout do e-mail ----------------------------------------------------------------
-    // Tudo inline (cliente de e-mail ignora <style>) e com tabela externa pra compatibilidade.
-    // Paleta espelha o Core: canvas #f4f3f1, cartao branco, ink #15171a, muted #6e7178.
+    // ---- E-mail layout -------------------------------------------------------------------
+    // All inline (e-mail clients ignore <style>) and with an outer table for compatibility.
+    // Palette mirrors Core: canvas #f4f3f1, white card, ink #15171a, muted #6e7178.
 
     private static final String FONT_STACK = "'DM Sans','Segoe UI',-apple-system,Arial,sans-serif";
 
     private static String customBodyHtml(String body, WorkflowEventContext ctx) {
-        // Placeholders entram crus e o conjunto (template do usuário + conteúdo da reunião)
-        // é renderizado como Markdown — o escape acontece dentro do renderer.
+        // Placeholders go in raw and the whole thing (user template + meeting content)
+        // is rendered as Markdown — the escaping happens inside the renderer.
         String content = MarkdownLite.render(applyPlaceholders(body, ctx, false));
         return frame(ctx, content, true);
     }
@@ -83,7 +83,7 @@ public final class WorkflowActionTemplates {
         return frame(ctx, sb.toString(), true);
     }
 
-    /** Linha de métricas: valor em destaque + rótulo discreto, em tabela (e-mail-safe). */
+    /** Metrics row: highlighted value + discreet label, in a table (e-mail-safe). */
     private static void appendStats(StringBuilder sb, WorkflowEventContext ctx) {
         sb.append("<table role=\"presentation\" style=\"border-collapse:separate;")
                 .append("border-spacing:8px 0;margin:18px -8px 4px;\"><tr>");
@@ -115,7 +115,7 @@ public final class WorkflowActionTemplates {
                 .append("</div></td>");
     }
 
-    /** Moldura comum: fundo, cabeçalho NORA, cartão branco com o conteúdo, CTA e rodapé. */
+    /** Common frame: background, NORA header, white card with the content, CTA and footer. */
     private static String frame(WorkflowEventContext ctx, String innerHtml, boolean withCta) {
         StringBuilder sb = new StringBuilder();
         sb.append("<div style=\"background:#f4f3f1;padding:28px 16px;\">")
@@ -123,7 +123,7 @@ public final class WorkflowActionTemplates {
                 .append(FONT_STACK)
                 .append(";color:#15171a;\">");
 
-        // Cabeçalho: wordmark + contexto.
+        // Header: wordmark + context.
         sb.append("<div style=\"padding:0 6px 14px;\">")
                 .append("<span style=\"font-size:16px;font-weight:700;letter-spacing:-0.02em;\">")
                 .append("NORA</span>")
@@ -131,7 +131,7 @@ public final class WorkflowActionTemplates {
                 .append("text-transform:uppercase;margin-left:12px;\">Reunião analisada</span>")
                 .append("</div>");
 
-        // Cartão.
+        // Card.
         sb.append("<div style=\"background:#ffffff;border:1px solid #e9e7e3;border-radius:12px;")
                 .append("padding:28px;\">");
         if (ctx.sampleData()) {
@@ -149,7 +149,7 @@ public final class WorkflowActionTemplates {
         }
         sb.append("</div>");
 
-        // Rodapé.
+        // Footer.
         sb.append("<p style=\"font-size:11.5px;color:#9a9c9f;margin:16px 6px 0;\">")
                 .append("Enviado por um fluxo do NORA Flows · ")
                 .append(

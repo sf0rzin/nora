@@ -15,11 +15,11 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
- * Parse + validação do {@code definition_json} de um workflow (formato do canvas: nodes + edges).
- * Toda violação vira {@link WorkflowException.InvalidDefinition} com mensagem acionável — é o que a
- * sidebar do canvas mostra ao salvar.
+ * Parsing + validation of a workflow's {@code definition_json} (canvas format: nodes + edges).
+ * Every violation becomes a {@link WorkflowException.InvalidDefinition} with an actionable message
+ * — it is what the canvas sidebar shows on save.
  *
- * <p>Formato esperado:
+ * <p>Expected format:
  *
  * <pre>{@code
  * {
@@ -35,11 +35,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class WorkflowDefinitionParser {
 
-    /** Prefixos aceitos pra webhook de canal do Discord (mesma regra do executor). */
+    /** Accepted prefixes for a Discord channel webhook (same rule as the executor). */
     private static final List<String> DISCORD_WEBHOOK_PREFIXES =
             List.of("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/");
 
-    /** Condições conhecidas pelo {@link ConditionEvaluator}. */
+    /** Conditions known to the {@link ConditionEvaluator}. */
     public static final Set<String> CONDITION_TYPES =
             Set.of(
                     "productivity_score_below",
@@ -54,8 +54,8 @@ public class WorkflowDefinitionParser {
     }
 
     /**
-     * Parse + validação estrutural. {@code knownActionTypes} vem do registry de {@link
-     * ActionExecutor} — ações desconhecidas são rejeitadas no save, não na execução.
+     * Parsing + structural validation. {@code knownActionTypes} comes from the {@link
+     * ActionExecutor} registry — unknown actions are rejected on save, not at execution time.
      */
     public WorkflowDefinition parse(String definitionJson, Set<String> knownActionTypes) {
         JsonNode root;
@@ -74,7 +74,7 @@ public class WorkflowDefinitionParser {
         return definition;
     }
 
-    /** Serialização canônica (compacta) para persistir. */
+    /** Canonical (compact) serialization for persisting. */
     public String canonicalJson(JsonNode definition) {
         try {
             return mapper.writeValueAsString(definition);

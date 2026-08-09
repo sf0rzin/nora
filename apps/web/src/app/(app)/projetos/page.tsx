@@ -7,11 +7,11 @@ import type { MeetingListItem, ProcessingStatus } from "@/lib/api/types";
 /**
  * NORA Core — Projetos.
  *
- * Projetos agrupam reuniões e action items por TAG, sem preenchimento manual
- * (vision: "Core — Projetos"). O agrupamento é feito client-side a partir das
- * tags que já vêm em cada reunião (MeetingListItem.tags). Cada frente de
- * trabalho aparece como um card; o drill-down filtra a lista por tag via
- * ?tag= na URL (sem backend novo).
+ * Projects group meetings and action items by TAG, with no manual filling
+ * (vision: "Core — Projetos"). The grouping is done client-side from the tags
+ * that already come with each meeting (MeetingListItem.tags). Each line of
+ * work shows up as a card; the drill-down filters the list by tag via
+ * ?tag= in the URL (no new backend).
  */
 
 export const dynamic = "force-dynamic";

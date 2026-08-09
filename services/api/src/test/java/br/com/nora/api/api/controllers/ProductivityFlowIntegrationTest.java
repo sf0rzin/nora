@@ -48,8 +48,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Fluxo end-to-end do Productivity Score (ADR 0005): upload -> set goal -> rodar analise stub ->
- * GET retorna goal+productivity. Tambem cobre isolamento por tenant e DELETE de goal.
+ * End-to-end Productivity Score flow (ADR 0005): upload -> set goal -> run stub analysis -> GET
+ * returns goal+productivity. Also covers per-tenant isolation and goal DELETE.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -86,7 +86,7 @@ class ProductivityFlowIntegrationTest {
         String token = signupAndLogin("prod@nora.dev", "SenhaForte123", "Owner Prod");
         UUID meetingId = uploadMeeting(token, "Discovery Acme");
 
-        // 1) Set goal (meeting ainda em PENDING).
+        // 1) Set goal (meeting still in PENDING).
         Map<String, Object> goalBody =
                 Map.of(
                         "purpose",
@@ -101,10 +101,10 @@ class ProductivityFlowIntegrationTest {
         assertThat(goalNode.get("purpose").asText()).isEqualTo("Discovery com lead Acme");
         assertThat(goalNode.get("expectedOutcomes").size()).isEqualTo(2);
 
-        // 2) Rodar analise sincrona (auto-dispatch desligado em test profile).
+        // 2) Run the synchronous analysis (auto-dispatch off in the test profile).
         analysisService.run(meetingId, principalTenantId(token));
 
-        // 3) GET inclui goal + productivity.
+        // 3) GET includes goal + productivity.
         JsonNode detail = authGet("/meetings/" + meetingId, token).read(HttpStatus.OK);
         assertThat(detail.get("goal")).isNotNull();
         assertThat(detail.get("goal").isNull()).isFalse();
@@ -121,7 +121,7 @@ class ProductivityFlowIntegrationTest {
         String token = signupAndLogin("del@nora.dev", "SenhaForte123", "Owner Del");
         UUID meetingId = uploadMeeting(token, "Reuniao com delete");
 
-        // Set goal, rodar analise (gera productivity).
+        // Set goal, run the analysis (generates productivity).
         putGoal(
                 meetingId,
                 token,
@@ -150,13 +150,13 @@ class ProductivityFlowIntegrationTest {
         String tokenB = signupAndLogin("b@nora.dev", "SenhaForte123", "B");
         UUID meetingA = uploadMeeting(tokenA, "Reuniao tenant A");
 
-        // Tenant B tenta atualizar goal de meeting do tenant A => 404.
+        // Tenant B tries to update the goal of a tenant A meeting => 404.
         Map<String, Object> body =
                 Map.of("purpose", "tentar invadir", "expectedOutcomes", List.of("vazar dados"));
         ResponseEntity<String> resp = putGoal(meetingA, tokenB, body);
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
-        // Confirma que nada foi persistido pra meeting de A pelo lado de B.
+        // Confirms nothing was persisted to A's meeting from B's side.
         JsonNode detail = authGet("/meetings/" + meetingA, tokenA).read(HttpStatus.OK);
         assertThat(detail.get("goal").isNull()).isTrue();
     }
@@ -176,13 +176,13 @@ class ProductivityFlowIntegrationTest {
         String token = signupAndLogin("repro@nora.dev", "SenhaForte123", "Repro");
         UUID meetingId = uploadMeeting(token, "Reuniao repro");
 
-        // Roda analise inicial sem goal => productivity null.
+        // Run the initial analysis without a goal => productivity null.
         analysisService.run(meetingId, principalTenantId(token));
         JsonNode beforeGoal = authGet("/meetings/" + meetingId, token).read(HttpStatus.OK);
         assertThat(beforeGoal.get("processingStatus").asText()).isEqualTo("COMPLETED");
         assertThat(beforeGoal.get("productivity").isNull()).isTrue();
 
-        // Agora seta goal => meeting deve voltar pra PENDING.
+        // Now set the goal => the meeting must go back to PENDING.
         Map<String, Object> goalBody =
                 Map.of(
                         "purpose",
@@ -198,9 +198,9 @@ class ProductivityFlowIntegrationTest {
     /* ---------- helpers ---------- */
 
     private UUID principalTenantId(String token) throws Exception {
-        // Resolve tenantId via /meetings detail de qualquer meeting do user; mais simples: o token
-        // sera usado num GET para forcar resolucao. Mas mais barato: criar um meeting helper basta.
-        // Aqui, criamos uma meeting throwaway pra ler tenantId.
+        // Resolve tenantId via the /meetings detail of any of the user's meetings; simplest: the
+        // token will be used in a GET to force resolution. But cheaper: creating a helper meeting
+        // is enough. Here we create a throwaway meeting just to read tenantId.
         UUID meeting = uploadMeeting(token, "tmp tenant probe " + UUID.randomUUID());
         JsonNode detail = authGet("/meetings/" + meeting, token).read(HttpStatus.OK);
         return UUID.fromString(detail.get("tenantId").asText());
@@ -317,8 +317,8 @@ class ProductivityFlowIntegrationTest {
     }
 
     /**
-     * Stub determinista do worker. Emite productivity apenas quando ha {@link MeetingGoal} (espelha
-     * o contrato do worker em ADR 0005).
+     * Deterministic worker stub. Emits productivity only when there is a {@link MeetingGoal}
+     * (mirrors the worker contract in ADR 0005).
      */
     @TestConfiguration
     static class StubWorkerConfig {

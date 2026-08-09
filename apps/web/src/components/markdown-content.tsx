@@ -1,24 +1,24 @@
 "use client";
 
 /**
- * MarkdownContent (Subfase 1.3 M)
+ * MarkdownContent (Subphase 1.3 M)
  * -------------------------------------------------------------------------
- * Renderiza markdown produzido pelo LLM (resumos, descricoes longas) com
- * sanitizacao built-in do `react-markdown`. NAO usa `rehype-raw` — HTML
- * inline nao e permitido, o que mantem a superficie de XSS minima.
+ * Renders markdown produced by the LLM (summaries, long descriptions) with
+ * `react-markdown`'s built-in sanitization. Does NOT use `rehype-raw` — inline
+ * HTML is not allowed, which keeps the XSS surface minimal.
  *
- * Onde usar:
- * - Campos de texto livre vindos do worker (ex: `MeetingAnalysis.summary`).
- * - Qualquer descricao longa controlada pelo tenant que aceite formatacao
- *   leve (listas, negrito, headers).
+ * Where to use:
+ * - Free-text fields coming from the worker (e.g. `MeetingAnalysis.summary`).
+ * - Any long tenant-controlled description that accepts light formatting
+ *   (lists, bold, headers).
  *
- * Onde NAO usar:
- * - Items curtos de listas estruturadas (decision.text, risk.text, etc.).
- *   Markdown ali quebraria o layout das pills/badges e nao agrega valor.
+ * Where NOT to use:
+ * - Short items of structured lists (decision.text, risk.text, etc.).
+ *   Markdown there would break the pills/badges layout and adds no value.
  *
- * Estilos:
- * - Paleta v3 (tokens OKLCH: --ink / --muted / --accent-ink / --border / --chip).
- * - Espacamentos compactos suficientes para inline em sections.
+ * Styles:
+ * - v3 palette (OKLCH tokens: --ink / --muted / --accent-ink / --border / --chip).
+ * - Spacing compact enough for inline use in sections.
  */
 
 import type { ComponentPropsWithoutRef } from "react";

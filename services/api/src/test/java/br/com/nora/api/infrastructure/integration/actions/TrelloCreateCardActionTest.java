@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** Ação trello_create_card: um card por action item na lista informada; due quando extraído. */
+/** trello_create_card action: one card per action item in the given list; due when extracted. */
 class TrelloCreateCardActionTest {
 
     private final IntegrationService integrations = mock(IntegrationService.class);
@@ -54,7 +54,7 @@ class TrelloCreateCardActionTest {
                 .contains("Responsável: Ana")
                 .contains(ctx.meetingUrl());
         assertThat(first.due()).isEqualTo(prazo);
-        // Item sem prazo/responsável: card sem due e sem a linha de responsável.
+        // Item with no due date/assignee: card with no due and no assignee line.
         assertThat(trello.cards.get(1).due()).isNull();
         assertThat(trello.cards.get(1).desc()).doesNotContain("Responsável");
     }
@@ -79,7 +79,7 @@ class TrelloCreateCardActionTest {
                 .isEqualTo("lista-1");
     }
 
-    /** Garante que falha do provedor PROPAGA (engine grava FAILED). */
+    /** Ensures provider failure PROPAGATES (engine records FAILED). */
     @Test
     void falhaDoProvedorPropaga() {
         when(integrations.validAccessToken(eq(TestContexts.TENANT), eq(IntegrationProvider.TRELLO)))
@@ -110,7 +110,7 @@ class TrelloCreateCardActionTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
-    /** Captura criações de card em memória (substitui as chamadas HTTP reais ao Trello). */
+    /** Captures card creations in memory (replaces the real HTTP calls to Trello). */
     static class RecordingTrello extends TrelloHttpClient {
         record Card(String token, String listId, String name, String desc, LocalDate due) {}
 

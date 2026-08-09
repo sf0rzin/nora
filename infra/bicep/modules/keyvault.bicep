@@ -1,6 +1,6 @@
-// Key Vault (Standard com RBAC)
-// Armazena: postgres admin password, JWT signing key, Azure Speech key, OpenAI key.
-// Acesso via Managed Identity das Container Apps + role assignment Key Vault Secrets User.
+// Key Vault (Standard with RBAC)
+// Stores: postgres admin password, JWT signing key, Azure Speech key, OpenAI key.
+// Access via the Container Apps Managed Identity + Key Vault Secrets User role assignment.
 
 @description('Nome do Key Vault (3-24 chars, alfanumerico + hifen).')
 @minLength(3)
@@ -47,8 +47,8 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     tenantId: tenantId
     enableRbacAuthorization: true
     enableSoftDelete: true
-    softDeleteRetentionInDays: 7 // minimo permitido
-    enablePurgeProtection: enablePurgeProtection ? true : null // null = desabilitado; campo nao pode ser false explicitamente
+    softDeleteRetentionInDays: 7 // minimum allowed
+    enablePurgeProtection: enablePurgeProtection ? true : null // null = disabled; the field cannot be explicitly false
     publicNetworkAccess: 'Enabled'
     networkAcls: {
       bypass: 'AzureServices'
@@ -57,7 +57,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }
 }
 
-// Role: Key Vault Secrets User (read-only em secrets)
+// Role: Key Vault Secrets User (read-only on secrets)
 // ID: 4633458b-17de-408a-b874-0445c86b69e6
 var secretsUserRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
@@ -76,8 +76,8 @@ resource secretsUserRoleAssignments 'Microsoft.Authorization/roleAssignments@202
   }
 ]
 
-// Cria/atualiza secrets no KV. Bicep nao tem array tipado fortemente entao usamos
-// `secrets.items` como array de objetos { name, value }.
+// Creates/updates secrets in the KV. Bicep has no strongly typed array so we use
+// `secrets.items` as an array of { name, value } objects.
 resource vaultSecrets 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = [
   for s in (secrets.?items ?? []): {
     parent: keyVault

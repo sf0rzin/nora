@@ -1,52 +1,52 @@
 ---
-title: "Personas e Mapa de Empatia — NORA"
-owner: Arquiteto NORA (Tech Lead)
+title: "Personas and Empathy Map — NORA"
+owner: NORA Architect (Tech Lead)
 status: approved
 version: 1.0
 last_reviewed: 2026-06-06
 ---
 
-# Personas e Mapas de Empatia — NORA
+# Personas and Empathy Maps — NORA
 
-> Documento de referência para a disciplina **Agile Methodology with Squad Framework**
-> Sprint 1+2 · FIAP Challenge 2026 × TOTVS · Engenharia de Software 2º Ano
+> Reference document for the **Agile Methodology with Squad Framework** course
+> Sprint 1+2 · FIAP Challenge 2026 × TOTVS · Software Engineering, 2nd Year
 
 ---
 
-## Sobre este documento
+## About this document
 
-As personas foram construídas para representar os **três perfis centrais de usuário** da plataforma NORA, cobrindo ambos os planos (Core e Enterprise) e os dois níveis de hierarquia do Enterprise (campo e gestão). Cada persona é acompanhada de um **Mapa de Empatia** estruturado nos seis quadrantes padrão da metodologia Agile.
+The personas were built to represent the **three central user profiles** of the NORA platform, covering both plans (Core and Enterprise) and the two hierarchy levels of Enterprise (field and management). Each persona comes with an **Empathy Map** structured around the six standard quadrants of the Agile methodology.
 
-No backlog do MVP, as personas oficiais são: **Lucas** para o uso Core individual, **Rafael** para o usuário Enterprise de campo e **Camila** para o perfil gestor/admin do Enterprise.
+In the MVP backlog, the official personas are: **Lucas** for individual Core usage, **Rafael** for the Enterprise field user and **Camila** for the Enterprise manager/admin profile.
 
-> **Nota sobre a Camila:** no MVP, ela acumula **dois papéis** que em empresas maiores poderiam estar separados — gestor comercial (consumidor de dashboards e Account Health) e admin do tenant (responsável por contexto da empresa, IAM, convites e auditoria). Toda story marcada como "Camila (Enterprise Admin)" no backlog refere-se ao papel de admin do tenant; quando a story for de consumo de insights comerciais, a mesma persona aparece como gestora. Na evolução do produto, esses papéis podem ser desambiguados em duas personas distintas (ex.: "Camila — Gestora Comercial" e "TI/Owner do tenant").
+> **Note about Camila:** in the MVP she accumulates **two roles** that in larger companies could be separate — commercial manager (consumer of dashboards and Account Health) and tenant admin (responsible for company context, IAM, invitations and auditing). Every story marked "Camila (Enterprise Admin)" in the backlog refers to the tenant admin role; when the story is about consuming commercial insights, the same persona appears as a manager. As the product evolves, these roles may be disambiguated into two distinct personas (e.g. "Camila — Commercial Manager" and "Tenant IT/Owner").
 
 ---
 
 ## Persona 1 — Lucas Mendes
 
-### Perfil
+### Profile
 
-| Atributo | Detalhe |
+| Attribute | Detail |
 |---|---|
-| **Nome** | Lucas Mendes |
-| **Idade** | 27 anos |
-| **Cargo** | Product Manager Jr. / Dev Full-Stack |
-| **Empresa** | Startup de tecnologia (40 funcionários) |
-| **Plano NORA** | Core (Individual / Freemium) |
-| **Localização** | São Paulo, SP |
-| **Escolaridade** | Bacharelado em Ciência da Computação |
-| **Ferramentas do dia a dia** | GitHub, Linear, Notion, Google Meet, Slack, Figma |
+| **Name** | Lucas Mendes |
+| **Age** | 27 years old |
+| **Role** | Product Manager Jr. / Full-Stack Dev |
+| **Company** | Technology startup (40 employees) |
+| **NORA plan** | Core (Individual / Freemium) |
+| **Location** | São Paulo, SP |
+| **Education** | Bachelor's degree in Computer Science |
+| **Day-to-day tools** | GitHub, Linear, Notion, Google Meet, Slack, Figma |
 
-### Contexto
+### Context
 
-Lucas trabalha em uma startup de tecnologia que cresce rápido. Divide o tempo entre desenvolvimento de features e alinhamento de produto — o que significa participar de 6 a 8 reuniões por semana: planning, refinement, sync com design, reuniões com stakeholders. Ele é organizado por natureza, mas a velocidade do ambiente não permite que ele anote tudo com cuidado. O resultado: tarefas ficam perdidas entre conversas do Slack, decisões são retomadas semanas depois porque ninguém registrou, e o Linear acumula issues criados às pressas que perdem contexto.
+Lucas works at a fast-growing technology startup. He splits his time between feature development and product alignment — which means attending 6 to 8 meetings a week: planning, refinement, design syncs, stakeholder meetings. He is organized by nature, but the pace of the environment does not let him take careful notes. The result: tasks get lost among Slack conversations, decisions are revisited weeks later because nobody recorded them, and Linear piles up issues created in a rush that lose their context.
 
-Lucas descobriu ferramentas de transcrição (Fireflies, Otter.ai) mas abandonou todas elas porque entregam um muro de texto sem estrutura útil. O que ele quer não é a transcrição — é saber **o que foi decidido, quem vai fazer o quê e quando**.
+Lucas discovered transcription tools (Fireflies, Otter.ai) but abandoned all of them because they deliver a wall of text with no useful structure. What he wants is not the transcript — it is knowing **what was decided, who is going to do what and when**.
 
 ---
 
-### Mapa de Empatia — Lucas Mendes
+### Empathy Map — Lucas Mendes
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -115,37 +115,37 @@ Lucas descobriu ferramentas de transcrição (Fireflies, Otter.ai) mas abandonou
 └──────────────────────────────┴──────────────────────────────────────────┘
 ```
 
-**Como o NORA resolve para Lucas:**
-O NORA Core processa a transcrição da reunião, detecta action items e os empurra automaticamente para o Linear via MCP. Issues no GitHub mencionados na conversa são linkados. O calendário recebe o resumo no evento. Lucas sai da call e não precisa fazer mais nada — o contexto já está distribuído.
+**How NORA solves it for Lucas:**
+NORA Core processes the meeting transcript, detects action items and pushes them automatically to Linear via MCP. GitHub issues mentioned in the conversation are linked. The calendar receives the summary on the event. Lucas leaves the call and does not need to do anything else — the context is already distributed.
 
 ---
 
 ## Persona 2 — Rafael Souza
 
-### Perfil
+### Profile
 
-| Atributo | Detalhe |
+| Attribute | Detail |
 |---|---|
-| **Nome** | Rafael Souza |
-| **Idade** | 31 anos |
-| **Cargo** | Account Executive (Executivo de Contas) |
-| **Empresa** | TOTVS (ou empresa com perfil equivalente de vendor B2B) |
-| **Plano NORA** | Enterprise (usuário de campo) |
-| **Localização** | São Paulo, SP (atende clientes em SP e interior) |
-| **Escolaridade** | Bacharelado em Administração |
-| **Ferramentas do dia a dia** | Salesforce, Microsoft Teams, Outlook, LinkedIn Sales Navigator |
+| **Name** | Rafael Souza |
+| **Age** | 31 years old |
+| **Role** | Account Executive |
+| **Company** | TOTVS (or a company with an equivalent B2B vendor profile) |
+| **NORA plan** | Enterprise (field user) |
+| **Location** | São Paulo, SP (serves clients in SP and the interior of the state) |
+| **Education** | Bachelor's degree in Business Administration |
+| **Day-to-day tools** | Salesforce, Microsoft Teams, Outlook, LinkedIn Sales Navigator |
 
-### Contexto
+### Context
 
-Rafael é um dos melhores vendedores da sua regional. Tem 6 anos de empresa, carteira de 42 contas ativas e meta trimestral de R$ 1,8M. Em uma semana típica, conduz de 10 a 14 reuniões com clientes — descoberta, demos, negociação, follow-up. O problema: cada reunião gera um volume enorme de inteligência que ele simplesmente não consegue capturar com qualidade.
+Rafael is one of the best salespeople in his region. He has 6 years at the company, a portfolio of 42 active accounts and a quarterly quota of R$ 1.8M. In a typical week he runs 10 to 14 client meetings — discovery, demos, negotiation, follow-up. The problem: each meeting generates an enormous volume of intelligence that he simply cannot capture with quality.
 
-Rafael preenche o Salesforce como consegue — às vezes no fim do dia, às vezes na quinta-feira antes do 1:1 com o gerente. As oportunidades que anota são as óbvias (cliente pediu proposta). As sutis (cliente mencionou que está avaliando um concorrente, cliente reclamou do produto atual) ficam só na cabeça — e saem quando ele troca de carro no trânsito de volta para casa.
+Rafael fills in Salesforce as best he can — sometimes at the end of the day, sometimes on Thursday before the 1:1 with his manager. The opportunities he records are the obvious ones (the client asked for a proposal). The subtle ones (the client mentioned they are evaluating a competitor, the client complained about the current product) stay only in his head — and slip away as he changes gears in the traffic on the way home.
 
-O resultado: seu gerente não tem visibilidade real da carteira. Clientes que estavam prestes a churnar não são sinalizados com antecedência. E Rafael, que é competente, parece desorganizado nos dados do CRM.
+The result: his manager has no real visibility of the portfolio. Clients about to churn are not flagged in advance. And Rafael, who is competent, looks disorganized in the CRM data.
 
 ---
 
-### Mapa de Empatia — Rafael Souza
+### Empathy Map — Rafael Souza
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -228,38 +228,38 @@ O resultado: seu gerente não tem visibilidade real da carteira. Clientes que es
 └──────────────────────────────┴──────────────────────────────────────────┘
 ```
 
-**Como o NORA resolve para Rafael:**
-O NORA Enterprise processa a transcrição pós-reunião com o catálogo de produtos da empresa configurado. Identifica que o cliente mencionou um concorrente (Competitive Radar), detecta sinal de upsell com produto específico sugerido, calcula variação no Account Health Score da conta e empurra tudo para o Salesforce via MCP com a Next Best Action. Rafael sai da reunião e o Salesforce já está atualizado — com inteligência real.
+**How NORA solves it for Rafael:**
+NORA Enterprise processes the post-meeting transcript with the company's product catalog configured. It identifies that the client mentioned a competitor (Competitive Radar), detects an upsell signal with a specific suggested product, computes the variation in the account's Account Health Score and pushes everything to Salesforce via MCP along with the Next Best Action. Rafael leaves the meeting and Salesforce is already updated — with real intelligence.
 
 ---
 
 ## Persona 3 — Camila Torres
 
-### Perfil
+### Profile
 
-| Atributo | Detalhe |
+| Attribute | Detail |
 |---|---|
-| **Nome** | Camila Torres |
-| **Idade** | 42 anos |
-| **Cargo** | Gerente Regional de Vendas |
-| **Empresa** | TOTVS (ou empresa com perfil equivalente) |
-| **Plano NORA** | Enterprise (gestão / visão consolidada) |
-| **Localização** | São Paulo, SP |
-| **Escolaridade** | MBA em Gestão Comercial |
-| **Ferramentas do dia a dia** | Salesforce (relatórios), Microsoft Teams, PowerPoint, Excel |
-| **Time sob gestão** | 8 Account Executives, ~320 contas ativas |
+| **Name** | Camila Torres |
+| **Age** | 42 years old |
+| **Role** | Regional Sales Manager |
+| **Company** | TOTVS (or a company with an equivalent profile) |
+| **NORA plan** | Enterprise (management / consolidated view) |
+| **Location** | São Paulo, SP |
+| **Education** | MBA in Commercial Management |
+| **Day-to-day tools** | Salesforce (reports), Microsoft Teams, PowerPoint, Excel |
+| **Team under management** | 8 Account Executives, ~320 active accounts |
 
-### Contexto
+### Context
 
-Camila tem 15 anos de experiência comercial e 4 anos como gerente regional. Lidera um time de 8 AEs e é responsável por uma carteira de ~320 contas, com meta trimestral de R$ 12M. O problema que ela enfrenta não é falta de dados — é falta de **dados confiáveis**. Os relatórios do Salesforce mostram o que os AEs lembram de preencher, não o que realmente aconteceu nas reuniões.
+Camila has 15 years of commercial experience and 4 years as a regional manager. She leads a team of 8 AEs and is responsible for a portfolio of ~320 accounts, with a quarterly quota of R$ 12M. The problem she faces is not a lack of data — it is a lack of **reliable data**. The Salesforce reports show what the AEs remember to fill in, not what actually happened in the meetings.
 
-Toda semana ela passa horas em 1:1s com cada AE tentando entender o real estado da carteira. É um processo de repasse verbal — o AE fala o que lembra, Camila anota o que considera relevante, e as decisões são tomadas com base nisso. Quando um cliente dá churn, a surpresa raramente é genuína — os sinais estavam lá, em conversas que nunca chegaram estruturadas até ela.
+Every week she spends hours in 1:1s with each AE trying to understand the real state of the portfolio. It is a verbal handover process — the AE says what he remembers, Camila writes down what she considers relevant, and decisions are made on that basis. When a client churns, the surprise is rarely genuine — the signals were there, in conversations that never reached her in a structured form.
 
-Camila quer prever problemas, não reagir a eles. Quer saber qual conta precisa de atenção antes que seja tarde. Quer que seus AEs passem menos tempo em burocracia e mais em reuniões de verdade.
+Camila wants to predict problems, not react to them. She wants to know which account needs attention before it is too late. She wants her AEs to spend less time on bureaucracy and more in real meetings.
 
 ---
 
-### Mapa de Empatia — Camila Torres
+### Empathy Map — Camila Torres
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -338,31 +338,31 @@ Camila quer prever problemas, não reagir a eles. Quer saber qual conta precisa 
 └──────────────────────────────┴──────────────────────────────────────────┘
 ```
 
-**Como o NORA resolve para Camila:**
-Camila acessa o dashboard Enterprise com Account Health Score de todas as contas do time, filtrado por AE ou por grau de risco. Não depende de repasse — os dados vêm das transcrições reais. Quando o score de uma conta degrada, ela recebe alerta com contexto ("cliente mencionou avaliação de concorrente em 2 reuniões consecutivas"). O 1:1 semanal passa de "o que está acontecendo?" para "como vamos agir nessas 3 contas em risco?".
+**How NORA solves it for Camila:**
+Camila accesses the Enterprise dashboard with the Account Health Score of all the team's accounts, filtered by AE or by risk level. She does not depend on verbal handover — the data comes from the real transcripts. When an account's score degrades, she receives an alert with context ("the client mentioned evaluating a competitor in 2 consecutive meetings"). The weekly 1:1 goes from "what is happening?" to "how are we going to act on these 3 at-risk accounts?".
 
 ---
 
-## Síntese — Cruzamento Persona × Feature
+## Synthesis — Persona × Feature cross-reference
 
-| Feature NORA | Lucas (Core) | Rafael (Enterprise) | Camila (Enterprise) |
+| NORA Feature | Lucas (Core) | Rafael (Enterprise) | Camila (Enterprise) |
 |---|---|---|---|
-| Resumo estruturado da reunião | Principal uso | Preenche CRM | Contexto para 1:1 |
-| Detecção de action items | Principal uso | Follow-ups de venda | Visibilidade de compromissos |
-| Push via MCP (Linear/Jira) | Principal uso | — | — |
-| Push via MCP (Salesforce/CRM) | — | Principal uso | Forecast |
-| Product Context via RAG | — | Oportunidades com produto certo | Entende linguagem de cada conta |
-| Account Health Score | — | Revisão de conta pré-1:1 | **Principal uso — visão da carteira** |
-| Competitive Radar | — | Detecta ameaça em tempo real | Padrão de mercado no time |
-| Next Best Action | — | Principal uso | Input para coaching de AEs |
-| IAM ABAC (departamento) | — | Vê só contas da própria carteira | Vê toda a regional |
-| Desktop real-time | Possível uso (reuniões técnicas) | Coaching durante a call | — |
+| Structured meeting summary | Primary use | Fills the CRM | Context for the 1:1 |
+| Action item detection | Primary use | Sales follow-ups | Visibility of commitments |
+| Push via MCP (Linear/Jira) | Primary use | — | — |
+| Push via MCP (Salesforce/CRM) | — | Primary use | Forecast |
+| Product Context via RAG | — | Opportunities with the right product | Understands each account's language |
+| Account Health Score | — | Account review before the 1:1 | **Primary use — portfolio view** |
+| Competitive Radar | — | Detects a threat in real time | Market pattern across the team |
+| Next Best Action | — | Primary use | Input for AE coaching |
+| IAM ABAC (department) | — | Sees only the accounts in their own portfolio | Sees the whole region |
+| Desktop real-time | Possible use (technical meetings) | Coaching during the call | — |
 
 ---
 
-## Histórico do Documento
+## Document History
 
-| Versão | Data | Descrição |
+| Version | Date | Description |
 |---|---|---|
-| 0.1 | 2026-05-02 | Criação — três personas completas com Mapas de Empatia e tabela de cruzamento |
-| 0.2 | 2026-05-02 | Alinhamento dos nomes das personas com o backlog MVP |
+| 0.1 | 2026-05-02 | Creation — three complete personas with Empathy Maps and cross-reference table |
+| 0.2 | 2026-05-02 | Alignment of the persona names with the MVP backlog |

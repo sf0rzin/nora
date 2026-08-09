@@ -17,10 +17,10 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Adapter JDBC (via {@link EntityManager} + SQL nativo) das sessões de chat e mensagens (V022).
- * Mesmo estilo do {@code TaskRepositoryAdapter}: projeta linhas achatadas e escreve com SQL nativo,
- * sempre escopando por tenant_id (RLS, ADR 0028) + user_id. {@code @Transactional} para que, sob
- * RLS enforce, o aspect aplique o GUC de tenant nas leituras/escritas das tabelas enforced.
+ * JDBC adapter (via {@link EntityManager} + native SQL) for chat sessions and messages (V022). Same
+ * style as {@code TaskRepositoryAdapter}: projects flattened rows and writes with native SQL,
+ * always scoping by tenant_id (RLS, ADR 0028) + user_id. {@code @Transactional} so that, under RLS
+ * enforce, the aspect applies the tenant GUC on reads/writes of the enforced tables.
  */
 @Repository
 public class ChatSessionRepositoryAdapter implements ChatSessionRepository {

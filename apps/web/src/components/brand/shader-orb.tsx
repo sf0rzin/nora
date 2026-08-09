@@ -3,23 +3,23 @@
 import { useEffect, useRef } from "react";
 
 type ShaderOrbProps = {
-  /** Lado do canvas em px (default 80). */
+  /** Canvas side in px (default 80). */
   size?: number;
-  /** Multiplicador de velocidade da animação (default 1). */
+  /** Animation speed multiplier (default 1). */
   speed?: number;
-  /** Opacidade/força do orb 0–1 (default 1). */
+  /** Orb opacity/strength 0–1 (default 1). */
   intensity?: number;
-  /** Rotação de matiz dentro da família azul (default 0). */
+  /** Hue rotation within the blue family (default 0). */
   hueShift?: number;
   className?: string;
 };
 
 /**
- * NORA signature WebGL orb — massa radial deslocada por FBM noise, paleta azul.
+ * NORA signature WebGL orb — radial mass displaced by FBM noise, blue palette.
  *
- * Port fiel de `project/shader-orb.jsx` do bundle do Claude Design. Client-only
- * (usa WebGL/canvas). Em `prefers-reduced-motion` renderiza um único frame em vez
- * de animar.
+ * Faithful port of `project/shader-orb.jsx` from the Claude Design bundle. Client-only
+ * (uses WebGL/canvas). Under `prefers-reduced-motion` it renders a single frame instead
+ * of animating.
  */
 export function ShaderOrb({
   size = 80,

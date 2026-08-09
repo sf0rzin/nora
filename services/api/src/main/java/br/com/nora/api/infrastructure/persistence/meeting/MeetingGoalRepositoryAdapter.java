@@ -21,9 +21,10 @@ public class MeetingGoalRepositoryAdapter implements MeetingGoalRepository {
     @Override
     @Transactional
     public MeetingGoal save(MeetingGoal goal) {
-        // Upsert idempotente: ja existindo um goal pro meeting/tenant, removemos antes via DELETE
-        // nativo. O ON DELETE CASCADE do Postgres limpa os outcomes sem o ciclo problematico de
-        // UPDATE SET NULL que o Hibernate faria com orphanRemoval+@JoinColumn unidirecional.
+        // Idempotent upsert: if a goal already exists for the meeting/tenant, we remove it first
+        // via
+        // native DELETE. Postgres' ON DELETE CASCADE clears the outcomes without the problematic
+        // UPDATE SET NULL cycle Hibernate would do with orphanRemoval+unidirectional @JoinColumn.
         jpa.deleteByMeetingIdAndTenantIdNative(goal.meetingId(), goal.tenantId());
         jpa.flush();
         MeetingGoalJpaEntity entity = toEntity(goal);
@@ -40,8 +41,8 @@ public class MeetingGoalRepositoryAdapter implements MeetingGoalRepository {
     @Override
     @Transactional
     public void deleteByMeetingId(UUID meetingId, UUID tenantId) {
-        // DELETE nativo aciona ON DELETE CASCADE sobre os outcomes; evita UPDATE SET NULL do
-        // ciclo padrao do Hibernate.
+        // Native DELETE triggers ON DELETE CASCADE over the outcomes; avoids the UPDATE SET NULL of
+        // Hibernate's default cycle.
         jpa.deleteByMeetingIdAndTenantIdNative(meetingId, tenantId);
     }
 

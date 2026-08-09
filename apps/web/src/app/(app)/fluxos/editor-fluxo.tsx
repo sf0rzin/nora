@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * NORA Flows — editor visual de fluxos (canvas estilo n8n).
+ * NORA Flows — visual flow editor (n8n-style canvas).
  *
- * Mesmo componente pra /fluxos/novo (workflowId null) e /fluxos/[id].
- * Layout: topbar (nome à esquerda; Ativo + Testar/Salvar/Excluir agrupados à
- * direita) sobre 3 colunas — paleta de blocos | canvas React Flow | painel
- * de parâmetros/execuções.
+ * Same component for /fluxos/novo (workflowId null) and /fluxos/[id].
+ * Layout: topbar (name on the left; Active + Test/Save/Delete grouped on the
+ * right) over 3 columns — block palette | React Flow canvas | parameters/
+ * executions panel.
  *
- * Persistência 100% real: POST/PUT /workflows com a definição serializada
- * (nós kind/type/params + posição do canvas) e POST /workflows/{id}/test
- * pro botão Testar (execução síncrona com log).
+ * 100% real persistence: POST/PUT /workflows with the serialized definition
+ * (kind/type/params nodes + canvas position) and POST /workflows/{id}/test
+ * for the Test button (synchronous execution with log).
  */
 import Link from "next/link";
 import type { Route } from "next";
@@ -51,17 +51,17 @@ import { PainelLateral, type TabPainel } from "./painel-lateral";
 import { PaletaBlocos } from "./paleta-blocos";
 import { horaCurta } from "./tempo-relativo";
 
-// nodeTypes precisa de referência estável (fora do componente) — senão o
-// React Flow re-registra os tipos a cada render.
+// nodeTypes needs a stable reference (outside the component) — otherwise
+// React Flow re-registers the types on every render.
 const NODE_TYPES = { bloco: NoBloco };
 
 const GATILHO_PADRAO = CATALOGO.find((b) => b.kind === "trigger")!;
 
 /**
- * Cria um nó RF novo a partir de um bloco do catálogo. O id é injetável:
- * nós adicionados pelo usuário usam crypto.randomUUID(), mas o gatilho
- * inicial de /fluxos/novo usa id fixo — o estado inicial roda também no
- * SSR e um id aleatório divergiria entre servidor e hidratação.
+ * Creates a new RF node from a catalog block. The id is injectable:
+ * nodes added by the user use crypto.randomUUID(), but the initial
+ * trigger of /fluxos/novo uses a fixed id — the initial state also runs in
+ * SSR and a random id would diverge between server and hydration.
  */
 function novoNo(
   bloco: BlocoMeta,
@@ -78,12 +78,12 @@ function novoNo(
   };
 }
 
-/** definition do backend → nós/arestas do React Flow. */
+/** backend definition → React Flow nodes/edges. */
 function paraCanvas(def: WorkflowDefinition): { nos: NoRF[]; arestas: Edge[] } {
   const nos: NoRF[] = def.nodes.map((n, i) => ({
     id: n.id,
     type: "bloco",
-    // fallback de layout pra definições antigas sem posição salva
+    // layout fallback for old definitions without a saved position
     position: n.position ?? { x: 60 + i * 260, y: 140 },
     data: { kind: n.kind, blockType: n.type, params: { ...(n.params ?? {}) } },
   }));
@@ -91,7 +91,7 @@ function paraCanvas(def: WorkflowDefinition): { nos: NoRF[]; arestas: Edge[] } {
   return { nos, arestas };
 }
 
-/** Remove params vazios antes de persistir (ex.: subject/body em branco). */
+/** Removes empty params before persisting (e.g. blank subject/body). */
 function limparParams(params: Record<string, unknown>): Record<string, unknown> | undefined {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(params)) {
@@ -102,7 +102,7 @@ function limparParams(params: Record<string, unknown>): Record<string, unknown> 
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-/** nós/arestas do React Flow → definition que o engine entende. */
+/** React Flow nodes/edges → definition the engine understands. */
 function paraDefinicao(nos: NoRF[], arestas: Edge[]): WorkflowDefinition {
   return {
     nodes: nos.map((n) => ({
@@ -122,7 +122,7 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
   const router = useRouter();
   const fluxoSalvo = workflowId !== null;
 
-  // ── Estado do documento ──
+  // ── Document state ──
   const [nome, setNome] = useState("");
   const [ativo, setAtivo] = useState(true);
   const [nodes, setNodes, onNodesChange] = useNodesState<NoRF>(
@@ -131,11 +131,11 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [sujo, setSujo] = useState(false);
 
-  // ── Estado de carga (fluxo existente) ──
+  // ── Loading state (existing flow) ──
   const [carregando, setCarregando] = useState(fluxoSalvo);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
 
-  // ── Estado de UI ──
+  // ── UI state ──
   const [selId, setSelId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabPainel>("fluxo");
   const [aviso, setAviso] = useState<Aviso | null>(null);
@@ -146,13 +146,13 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
   const [confirmaExcluir, setConfirmaExcluir] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
 
-  // ── Execuções ──
+  // ── Executions ──
   const [execucoes, setExecucoes] = useState<WorkflowExecutionResponse[] | null>(null);
   const [carregandoExec, setCarregandoExec] = useState(false);
   const [erroExec, setErroExec] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<string | null>(null);
 
-  // Carrega o fluxo existente (nome, estado e grafo) do backend.
+  // Loads the existing flow (name, state and graph) from the backend.
   useEffect(() => {
     if (!workflowId) return;
     let vivo = true;
@@ -180,8 +180,8 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
     };
   }, [workflowId, setNodes, setEdges]);
 
-  // Wrappers que marcam o documento como sujo em mudanças reais do grafo
-  // (seleção e medição de dimensões não contam como edição).
+  // Wrappers that mark the document dirty on real graph changes
+  // (selection and dimension measuring do not count as an edit).
   const aoMudarNos = useCallback(
     (changes: NodeChange<NoRF>[]) => {
       if (changes.some((c) => c.type !== "select" && c.type !== "dimensions")) setSujo(true);
@@ -199,7 +199,7 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
 
   const aoConectar = useCallback(
     (conexao: Connection) => {
-      if (conexao.source === conexao.target) return; // sem self-loop
+      if (conexao.source === conexao.target) return; // no self-loop
       setEdges((eds) => addEdge({ ...conexao, id: crypto.randomUUID() }, eds));
       setSujo(true);
     },
@@ -216,10 +216,10 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
   );
   const temGatilho = nodes.some((n) => n.data.kind === "trigger");
 
-  /** CLICK na paleta: adiciona o bloco perto do nó mais à direita, já selecionado. */
+  /** CLICK on the palette: adds the block near the rightmost node, already selected. */
   function adicionarBloco(bloco: BlocoMeta) {
-    // id criado FORA do updater: em StrictMode o updater roda 2x e um id
-    // gerado lá dentro divergiria do que registramos na seleção.
+    // id created OUTSIDE the updater: in StrictMode the updater runs 2x and an id
+    // generated in there would diverge from what we recorded in the selection.
     const id = crypto.randomUUID();
     setNodes((ns) => {
       let pos = { x: 60, y: 140 };
@@ -254,13 +254,13 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
     setSujo(true);
   }
 
-  /** Seleciona um nó programaticamente (usado pra apontar erro de validação). */
+  /** Selects a node programmatically (used to point at a validation error). */
   function focarNo(id: string) {
     setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })));
     setSelId(id);
   }
 
-  /** Validação client-side antes de bater na API. Retorna a 1ª pendência. */
+  /** Client-side validation before hitting the API. Returns the 1st pending item. */
   function validar(): string | null {
     if (!nome.trim()) return "Dê um nome ao fluxo antes de salvar.";
     const gatilhos = nodes.filter((n) => n.data.kind === "trigger");
@@ -353,11 +353,11 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
         setTentouSalvar(false);
       } else {
         const w = await createWorkflow({ name: nome.trim(), active: ativo, definition });
-        // vira a URL canônica do fluxo recém-criado (o editor recarrega salvo)
+        // switches to the canonical URL of the just-created flow (the editor reloads saved)
         router.replace(`/fluxos/${w.id}` as Route);
       }
     } catch (e) {
-      // 422 WORKFLOW_INVALID_DEFINITION traz mensagem PT-BR acionável do engine
+      // 422 WORKFLOW_INVALID_DEFINITION carries an actionable PT-BR message from the engine
       setAviso({
         tipo: "erro",
         msg: e instanceof ApiRequestError ? e.message : "Falha ao salvar o fluxo. Tente de novo.",
@@ -379,12 +379,12 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
       .finally(() => setCarregandoExec(false));
   }, [workflowId]);
 
-  // Primeira abertura da tab Execuções → carrega o histórico.
+  // First time the Executions tab is opened → loads the history.
   useEffect(() => {
     if (tab === "execucoes" && execucoes === null && fluxoSalvo) recarregarExecucoes();
   }, [tab, execucoes, fluxoSalvo, recarregarExecucoes]);
 
-  // Aviso de sucesso some sozinho; erro fica até o usuário fechar.
+  // Success notice disappears on its own; error stays until the user closes it.
   useEffect(() => {
     if (aviso?.tipo !== "ok") return;
     const t = setTimeout(() => setAviso(null), 6000);
@@ -400,10 +400,10 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
       setExecucoes((curr) => [ex, ...(curr ?? []).filter((e) => e.id !== ex.id)]);
       setExpandida(ex.id);
       setTab("execucoes");
-      // garante o histórico completo (se a tab nunca foi aberta, só a
-      // execução nova estaria na lista) — refetch em segundo plano
+      // guarantees the full history (if the tab was never opened, only the
+      // new execution would be in the list) — background refetch
       recarregarExecucoes();
-      // limpa a seleção pro painel direito mostrar a tab de execuções
+      // clears the selection so the right panel shows the executions tab
       setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n)));
       setSelId(null);
       setAviso(
@@ -437,7 +437,7 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
     }
   }
 
-  // ── Estados de carga/erro de página ──
+  // ── Page loading/error states ──
   if (erroCarga) {
     return (
       <div className="page">
@@ -538,8 +538,8 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
             </button>
           ))}
 
-        {/* switch agrupado com as ações primárias (Testar/Salvar) — antes
-            flutuava ao lado do nome, "no meio do nada" (feedback do PO) */}
+        {/* switch grouped with the primary actions (Test/Save) — it used to
+            float next to the name, "in the middle of nowhere" (PO feedback) */}
         <label className="flows-switch" title={ativo ? "Fluxo ativo — roda nos gatilhos" : "Fluxo pausado"}>
           <input
             type="checkbox"
@@ -575,7 +575,7 @@ function EditorFluxoInterno({ workflowId }: { workflowId: string | null }) {
         </button>
       </div>
 
-      {/* ── Corpo: paleta | canvas | painel ── */}
+      {/* ── Body: palette | canvas | panel ── */}
       <div className="flows-body">
         <PaletaBlocos temGatilho={temGatilho} onAdicionar={adicionarBloco} />
 

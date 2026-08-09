@@ -1,6 +1,6 @@
 package br.com.nora.api.domain.analysis;
 
-/** Oportunidade comercial identificada pela analise. */
+/** Commercial opportunity identified by the analysis. */
 public record Opportunity(
         String text, Severity estimatedValue, OpportunityCategory category, String sourceQuote) {
 

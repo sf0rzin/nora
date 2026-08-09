@@ -1,8 +1,8 @@
-# NORA — Infra Bicep
+# NORA — Bicep Infra
 
-Bicep IaC pra deploy do NORA em Azure. Compatível com Azure for Students (~R$500 de crédito).
+Bicep IaC for deploying NORA on Azure. Compatible with Azure for Students (~R$500 of credit).
 
-## Estrutura
+## Structure
 
 ```
 infra/bicep/
@@ -19,7 +19,7 @@ infra/bicep/
     └── search.bicep           # Azure AI Search (opcional)
 ```
 
-## Pré-requisitos
+## Prerequisites
 
 ```powershell
 # Az CLI
@@ -33,18 +33,18 @@ az login
 az account set --subscription "Azure for Students"
 ```
 
-Resource Group já existe: `rg-nora-dev` (criado em `brazilsouth` antes da descoberta da policy).
+The Resource Group already exists: `rg-nora-dev` (created in `brazilsouth` before the policy was discovered).
 
-> **NOTA — restrições do Azure for Students (2 camadas)**:
+> **NOTE — Azure for Students restrictions (2 layers)**:
 >
-> 1. **Policy de region (`sys.regionrestriction`)** permite apenas: `mexicocentral`, `northcentralus`, `eastus`, `centralus`, `canadacentral`. Brazil South **não** é permitido pra recursos. RGs em si podem ficar em brazilsouth.
-> 2. **Offer restriction por serviço**: `eastus` permite Storage/KV/LA/AI mas REJEITA Postgres Flexible Server com `LocationIsOfferRestricted`. Testado 13/05/2026: `centralus`, `northcentralus`, `canadacentral`, `mexicocentral` aceitam Postgres B1ms.
+> 1. **Region policy (`sys.regionrestriction`)** allows only: `mexicocentral`, `northcentralus`, `eastus`, `centralus`, `canadacentral`. Brazil South is **not** allowed for resources. RGs themselves can stay in brazilsouth.
+> 2. **Per-service offer restriction**: `eastus` allows Storage/KV/LA/AI but REJECTS Postgres Flexible Server with `LocationIsOfferRestricted`. Tested 13/05/2026: `centralus`, `northcentralus`, `canadacentral`, `mexicocentral` accept Postgres B1ms.
 >
-> **Bicep deployа recursos em `centralus`** (default). Resource providers críticos (`Microsoft.OperationalInsights`, `Microsoft.DBforPostgreSQL`, `Microsoft.App`) precisam de registro explícito (`az provider register --namespace <ns>`) — Students não auto-registra.
+> **Bicep deploys resources in `centralus`** (default). Critical resource providers (`Microsoft.OperationalInsights`, `Microsoft.DBforPostgreSQL`, `Microsoft.App`) need explicit registration (`az provider register --namespace <ns>`) — Students does not auto-register.
 
 ## Deploy
 
-### 1. Configurar secrets (env vars locais, NÃO commitar)
+### 1. Configure secrets (local env vars, do NOT commit)
 
 ```powershell
 $env:PG_ADMIN_PASSWORD = "<senha forte 12+ chars>"
@@ -53,14 +53,14 @@ $env:OPENAI_API_KEY = "<sk-...>"          # opcional; vazio = worker em modo stu
 $env:REGISTRY_PASSWORD = "<token GHCR>"   # opcional; vazio = imagens públicas
 ```
 
-### 2. Validar template
+### 2. Validate the template
 
 ```powershell
 az bicep build --file main.bicep --outdir .bicep-out
 # Espera: zero warnings, zero errors
 ```
 
-### 3. What-if (preview do que seria criado)
+### 3. What-if (preview of what would be created)
 
 ```powershell
 az deployment group what-if `
@@ -88,41 +88,41 @@ az deployment group show `
   --query properties.outputs
 ```
 
-Inclui: `webUrl`, `apiUrl`, `workerInternalFqdn`, `postgresFqdn`, `postgresJdbcUrl`, `keyVaultUri`, `storageAccountName`, `appInsightsName`, `searchEndpoint`.
+Includes: `webUrl`, `apiUrl`, `workerInternalFqdn`, `postgresFqdn`, `postgresJdbcUrl`, `keyVaultUri`, `storageAccountName`, `appInsightsName`, `searchEndpoint`.
 
-## Custo estimado (MVP, sem Search)
+## Estimated cost (MVP, without Search)
 
-| Recurso | SKU | Custo/mês BRL |
+| Resource | SKU | Cost/month BRL |
 |---|---|---|
-| Container Apps Environment | Consumption | grátis (paga por uso) |
+| Container Apps Environment | Consumption | free (pay per use) |
 | Container App: api | 0.5 vCPU, 1Gi, min=1 | ~R$15-25 |
 | Container App: worker | 0.5 vCPU, 1Gi, min=0 | ~R$0-10 |
 | Container App: web | 0.25 vCPU, 0.5Gi, min=0 | ~R$0-5 |
 | Postgres Flexible B1ms | Burstable | ~R$30-40 |
 | Storage Standard LRS | 32GB | ~R$2 |
 | Key Vault Standard | Standard | ~R$3 |
-| Log Analytics | PerGB2018, 1GB/dia | ~R$5-10 |
-| Application Insights | Workspace-based | incluso no LA |
-| **Total sem Search** | | **~R$60-90/mês** |
+| Log Analytics | PerGB2018, 1GB/day | ~R$5-10 |
+| Application Insights | Workspace-based | included in LA |
+| **Total without Search** | | **~R$60-90/month** |
 
-## Azure AI Search — ligar/desligar
+## Azure AI Search — turning on/off
 
-**ATENÇÃO**: AI Search não tem pause/start. Cobra ~R$13-15/dia enquanto provisionado.
+**WARNING**: AI Search has no pause/start. It charges ~R$13-15/day while provisioned.
 
-### Estratégia recomendada pro pitch FIAP 12/06
+### Recommended strategy for the FIAP pitch 12/06
 
-Provisionar ~14 dias antes da apresentação (29/05 → 12/06), custo ~R$200, sobra ~R$300 dos 500.
+Provision ~14 days before the presentation (29/05 → 12/06), cost ~R$200, leaving ~R$300 of the 500.
 
-### Ligar
+### Turning on
 
-Editar `main.dev.bicepparam`:
+Edit `main.dev.bicepparam`:
 
 ```bicep
 param enableSearch = true
 param searchSku = 'basic'
 ```
 
-E re-deployar:
+And redeploy:
 
 ```powershell
 az deployment group create `
@@ -131,11 +131,11 @@ az deployment group create `
   --parameters main.dev.bicepparam
 ```
 
-### Desligar
+### Turning off
 
-Voltar `enableSearch = false` e re-deployar. O Bicep destrói o recurso Search mas mantém todo o resto.
+Set `enableSearch = false` back and redeploy. Bicep destroys the Search resource but keeps everything else.
 
-Alternativa cirúrgica:
+Surgical alternative:
 
 ```powershell
 az search service delete `
@@ -144,19 +144,19 @@ az search service delete `
   --yes
 ```
 
-## Teardown completo
+## Full teardown
 
 ```powershell
 az group delete --name rg-nora-dev --yes --no-wait
 ```
 
-Zera tudo. Útil pra começar do zero.
+Wipes everything. Useful for starting from scratch.
 
-## Imagens
+## Images
 
-Default = placeholder Microsoft (`mcr.microsoft.com/k8se/quickstart:latest`). Deploy funciona pra testar a infra, mas as Container Apps respondem com a página padrão.
+Default = Microsoft placeholder (`mcr.microsoft.com/k8se/quickstart:latest`). The deploy works for testing the infra, but the Container Apps respond with the default page.
 
-Pipeline de build/push (futuro): substituir os 3 params em `main.dev.bicepparam`:
+Build/push pipeline (future): replace the 3 params in `main.dev.bicepparam`:
 
 ```bicep
 param apiImage = 'ghcr.io/sys0xff/nora-api:<sha-curto>'
@@ -164,27 +164,27 @@ param workerImage = 'ghcr.io/sys0xff/nora-worker:<sha-curto>'
 param webImage = 'ghcr.io/sys0xff/nora-web:<sha-curto>'
 ```
 
-GHCR é público por default — só precisa de registry credentials se as imagens forem privadas.
+GHCR is public by default — registry credentials are only needed if the images are private.
 
 ## CI/CD
 
-O workflow `.github/workflows/ci.yml` tem job `infra` que roda `az bicep build` em todos os `.bicep` quando arquivos em `infra/bicep/**` mudam. Não deploya — só valida sintaxe.
+The `.github/workflows/ci.yml` workflow has an `infra` job that runs `az bicep build` on every `.bicep` when files under `infra/bicep/**` change. It does not deploy — it only validates syntax.
 
-Pra deploy automatizado (Subfase futura): criar Service Principal escopado ao RG, adicionar federated credentials no GitHub, criar workflow `deploy-infra.yml` com `azure/login@v2` + `az deployment group create`.
+For an automated deploy (future Sub-phase): create a Service Principal scoped to the RG, add federated credentials in GitHub, create a `deploy-infra.yml` workflow with `azure/login@v2` + `az deployment group create`.
 
-## Limitações conhecidas
+## Known limitations
 
-- **Public access no Postgres**: simplifica MVP mas expõe banco (com firewall por IP + AllowAzureServices). Migrar pra VNet integration em prod.
-- **Container Apps sem ACR**: usar imagem pública (ghcr.io). Pra prod, criar ACR no Bicep.
-- **Sem custom domain / certificado**: usa FQDN default do Container Apps. Recursos atuais estão em **centralus** (`*.centralus.azurecontainerapps.io`).
-- **Sem WAF / Front Door**: pra prod, adicionar.
-- **Container Apps sem zone-redundancy**: aceitável MVP, ligar em prod (`zoneRedundant: true`).
+- **Public access on Postgres**: simplifies the MVP but exposes the database (with a firewall by IP + AllowAzureServices). Migrate to VNet integration in prod.
+- **Container Apps without ACR**: use a public image (ghcr.io). For prod, create an ACR in Bicep.
+- **No custom domain / certificate**: uses the Container Apps default FQDN. Current resources are in **centralus** (`*.centralus.azurecontainerapps.io`).
+- **No WAF / Front Door**: for prod, add it.
+- **Container Apps without zone redundancy**: acceptable for the MVP, turn it on in prod (`zoneRedundant: true`).
 
-### Já endereçado na Sub-fase 1.9+
-- ✅ **Managed Identity → Key Vault wiring**: 3 UAIs (api/worker/web) com role `Key Vault Secrets User` + Container App secrets como `keyVaultUrl + identity` (vide `main.bicep:430-490`).
-- ✅ **Probes (liveness/readiness/startup)**: declarados em `container-app.bicep` — Container Apps platform ignora `HEALTHCHECK` do Dockerfile.
+### Already addressed in Sub-phase 1.9+
+- ✅ **Managed Identity → Key Vault wiring**: 3 UAIs (api/worker/web) with the `Key Vault Secrets User` role + Container App secrets as `keyVaultUrl + identity` (see `main.bicep:430-490`).
+- ✅ **Probes (liveness/readiness/startup)**: declared in `container-app.bicep` — the Container Apps platform ignores the Dockerfile's `HEALTHCHECK`.
 
-Tudo isso é deliberado pro MVP. Documentado pra revisitar pós-pitch.
+All of this is deliberate for the MVP. Documented to be revisited post-pitch.
 
 ## Naming convention
 
@@ -196,4 +196,4 @@ ex.: nora-api-dev
      norastdevxyz12345 (storage — sem hífen)
 ```
 
-`suffix` = `take(uniqueString(rg.id), 6)`. Garante unicidade global onde necessário (storage, kv, pg, search).
+`suffix` = `take(uniqueString(rg.id), 6)`. It guarantees global uniqueness where necessary (storage, kv, pg, search).

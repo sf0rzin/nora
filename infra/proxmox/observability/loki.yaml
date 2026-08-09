@@ -1,59 +1,59 @@
 # NORA — Loki (single binary, filesystem)
 # =============================================================================
-# Substitui o Log Analytics Workspace: o destino do `appLogsConfiguration` do
-# Container Apps Environment. Onde antes ia stdout/stderr dos 4 apps para a tabela
-# ContainerAppConsoleLogs_CL, agora vai para cá, empurrado pelo Alloy.
+# Replaces the Log Analytics Workspace: the destination of the Container Apps
+# Environment's `appLogsConfiguration`. Where stdout/stderr of the 4 apps used to go to
+# the ContainerAppConsoleLogs_CL table, it now goes here, pushed by Alloy.
 #
-# Escala alvo: uma VM, um binário, disco local. Sem S3, sem memberlist, sem anel
-# distribuído. `replication_factor: 1` e kvstore inmemory são deliberados — qualquer
-# outra coisa aqui é complexidade sem dono.
+# Target scale: one VM, one binary, local disk. No S3, no memberlist, no distributed
+# ring. `replication_factor: 1` and the inmemory kvstore are deliberate — anything
+# else here is complexity without an owner.
 #
 # =============================================================================
-# >>> LEIA ISTO ANTES DE MEXER EM RETENÇÃO <<<
+# >>> READ THIS BEFORE TOUCHING RETENTION <<<
 # =============================================================================
-# `limits_config.retention_period: 720h` SOZINHO NÃO APAGA NADA.
+# `limits_config.retention_period: 720h` ON ITS OWN DELETES NOTHING.
 #
-# Ao contrário do `retentionInDays: 30` do Log Analytics — onde o Azure tinha um
-# processo gerenciado varrendo o workspace — no Loki o retention_period é apenas uma
-# DECLARAÇÃO de política. Quem executa a política é o COMPACTOR, e ele ignora a
-# política inteira a menos que você ligue duas chaves explicitamente:
+# Unlike Log Analytics' `retentionInDays: 30` — where Azure had a managed process
+# sweeping the workspace — in Loki retention_period is only a policy DECLARATION.
+# What executes the policy is the COMPACTOR, and it ignores the whole policy unless
+# you turn two keys on explicitly:
 #
 #     compactor:
-#       retention_enabled: true          <- sem isto, retention_period é decorativo
-#       delete_request_store: filesystem <- obrigatório quando retention_enabled: true
+#       retention_enabled: true          <- without this, retention_period is decorative
+#       delete_request_store: filesystem <- mandatory when retention_enabled: true
 #
-# O modo de falha é o pior possível: SILENCIOSO. O Loki sobe normal, responde /ready,
-# ingere log, serve query, e o dashboard fica verde. Só que nada nunca é apagado.
-# Você descobre semanas depois, quando o disco da VM enche, o Postgres não consegue
-# mais escrever WAL e a stack inteira cai — por causa de log velho.
+# The failure mode is the worst possible: SILENT. Loki comes up normally, answers /ready,
+# ingests logs, serves queries, and the dashboard stays green. Except nothing is ever
+# deleted. You find out weeks later, when the VM disk fills up, Postgres can no longer
+# write WAL and the whole stack goes down — because of old logs.
 #
-# É pior ainda em `filesystem`: não há bucket lifecycle policy de rede de segurança
-# como haveria num S3/Azure Blob. Se o compactor não apagar, ninguém apaga.
+# It is even worse on `filesystem`: there is no bucket lifecycle policy as a safety net
+# like there would be on S3/Azure Blob. If the compactor does not delete, nobody does.
 #
-# Nota de versão: em Loki < 3.0 a chave era `compactor.shared_store`. Ela foi REMOVIDA
-# no Loki 3.x. Config antiga copiada de tutorial ou faz o Loki recusar o boot ou
-# (dependendo do campo) deixa a retenção desligada. A imagem aqui é grafana/loki:3.3.2
-# (docker-compose.yml:488), então vale `delete_request_store`.
+# Version note: in Loki < 3.0 the key was `compactor.shared_store`. It was REMOVED
+# in Loki 3.x. Old config copied from a tutorial either makes Loki refuse to boot or
+# (depending on the field) leaves retention off. The image here is grafana/loki:3.3.2
+# (docker-compose.yml:488), so `delete_request_store` is the one that applies.
 #
-# Como CONFIRMAR que está funcionando (não confie no arquivo, confira a série):
-#   loki_compactor_runs_started_total                    deve crescer
+# How to CONFIRM it is working (do not trust the file, check the series):
+#   loki_compactor_runs_started_total                    must grow
 #   loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds
-#                                                        deve subir a cada ~10min
-# O job `loki` do prometheus.yml existe exatamente para isso.
+#                                                        must rise every ~10min
+# The `loki` job in prometheus.yml exists for exactly that.
 # =============================================================================
 
-auth_enabled: false   # tenant único; o Caddy/Cloudflare Access é quem autentica na borda
+auth_enabled: false   # single tenant; Caddy/Cloudflare Access is what authenticates at the edge
 
 server:
   http_listen_port: 3100
   grpc_listen_port: 9096
   log_level: info
-  # Traces do Spring podem gerar linhas longas; o default de 4MB da grpc sobra.
+  # Spring traces can produce long lines; grpc's 4MB default is more than enough.
   grpc_server_max_recv_msg_size: 8388608
   grpc_server_max_send_msg_size: 8388608
 
 common:
-  path_prefix: /loki          # volume loki_data (docker-compose.yml:495)
+  path_prefix: /loki          # loki_data volume (docker-compose.yml:495)
   storage:
     filesystem:
       chunks_directory: /loki/chunks
@@ -66,10 +66,10 @@ common:
 
 schema_config:
   configs:
-    # tsdb + v13 é o único combo que suporta structured metadata, que por sua vez é
-    # requisito da ingestão OTLP nativa (/otlp/v1/logs, usada pelo otlphttp/loki do
-    # collector). Schema antigo (boltdb-shipper / v11) faria o endpoint OTLP rejeitar.
-    # `from` no passado: é o começo de validade do schema, não a data de criação.
+    # tsdb + v13 is the only combo that supports structured metadata, which in turn is
+    # a requirement of native OTLP ingestion (/otlp/v1/logs, used by the collector's
+    # otlphttp/loki). An old schema (boltdb-shipper / v11) would make the OTLP endpoint reject.
+    # `from` in the past: it is the start of the schema's validity, not the creation date.
     - from: 2024-01-01
       store: tsdb
       object_store: filesystem
@@ -87,61 +87,61 @@ storage_config:
     directory: /loki/chunks
 
 # -----------------------------------------------------------------------------
-# COMPACTOR — quem de fato executa a retenção (ver o aviso grande no topo)
+# COMPACTOR — what actually executes retention (see the big warning at the top)
 # -----------------------------------------------------------------------------
 compactor:
   working_directory: /loki/compactor
 
-  # A chave que transforma retention_period de declaração em ação.
+  # The key that turns retention_period from a declaration into action.
   retention_enabled: true
 
-  # OBRIGATÓRIA quando retention_enabled: true. Sem ela o Loki aborta o boot com
+  # MANDATORY when retention_enabled: true. Without it Loki aborts the boot with
   # "delete_request_store should be configured when retention is enabled".
-  # Esse erro é uma sorte: é a única parte da retenção que falha barulhento em vez
-  # de falhar em silêncio.
+  # That error is a stroke of luck: it is the only part of retention that fails loud
+  # instead of failing silently.
   delete_request_store: filesystem
 
   compaction_interval: 10m
-  retention_delete_delay: 2h        # janela de arrependimento antes do delete físico
+  retention_delete_delay: 2h        # regret window before the physical delete
   retention_delete_worker_count: 150
   delete_request_cancel_period: 24h
 
 limits_config:
-  # 720h = 30 dias. Espelha `retentionInDays: 30` do Log Analytics e o
-  # --storage.tsdb.retention.time=30d do Prometheus. Os três números têm que andar
-  # juntos, senão a correlação métrica<->log tem buraco na ponta antiga.
+  # 720h = 30 days. Mirrors Log Analytics' `retentionInDays: 30` and Prometheus'
+  # --storage.tsdb.retention.time=30d. The three numbers have to move together,
+  # otherwise the metric<->log correlation has a hole at the old end.
   #
-  # Repetindo porque é o ponto do arquivo: esta linha sozinha não apaga nada.
-  # Ela só tem efeito porque compactor.retention_enabled: true está acima.
+  # Repeating because it is the point of the file: this line alone deletes nothing.
+  # It only has an effect because compactor.retention_enabled: true is above.
   retention_period: 720h
 
-  # Rejeita log com timestamp velho. Protege contra um Alloy que ficou dias parado
-  # e volta despejando backlog fora da janela — isso corromperia as taxas do dashboard.
+  # Rejects logs with an old timestamp. Protects against an Alloy that sat dead for days
+  # and comes back dumping backlog outside the window — that would corrupt the dashboard rates.
   reject_old_samples: true
   reject_old_samples_max_age: 168h
 
-  # Teto de ingestão. Numa VM única isto é o fusível: um app em loop de erro
-  # cuspindo stack trace não pode consumir o disco inteiro em uma tarde.
+  # Ingestion cap. On a single VM this is the fuse: an app in an error loop
+  # spitting stack traces must not eat the whole disk in one afternoon.
   ingestion_rate_mb: 8
   ingestion_burst_size_mb: 16
   per_stream_rate_limit: 5MB
   per_stream_rate_limit_burst: 20MB
 
-  # Guarda-corpo de cardinalidade. Cada combinação única de labels é um stream com
-  # índice próprio. O config.alloy mantém labels de baixa cardinalidade justamente
-  # para não bater aqui.
+  # Cardinality guardrail. Every unique combination of labels is a stream with its
+  # own index. config.alloy keeps labels low-cardinality precisely so it does not
+  # hit this.
   max_label_names_per_series: 15
   max_streams_per_user: 5000
   max_global_streams_per_user: 5000
 
   max_query_series: 5000
   max_query_parallelism: 16
-  # Habilita a API de volume (Grafana "Logs volume" acima do painel de logs).
+  # Enables the volume API (Grafana "Logs volume" above the logs panel).
   volume_enabled: true
   allow_structured_metadata: true
 
-# Retenção por stream (opcional). Exemplo: guardar menos log de infra que de app.
-# Só funciona porque o compactor está ligado — mesma dependência de sempre.
+# Per-stream retention (optional). Example: keep less infra log than app log.
+# It only works because the compactor is on — the same dependency as always.
 #   limits_config:
 #     retention_stream:
 #       - selector: '{service="nora-postgres"}'
@@ -149,7 +149,7 @@ limits_config:
 #         period: 168h
 
 pattern_ingester:
-  enabled: true    # alimenta o "Explain/Patterns" do Grafana; barato em single binary
+  enabled: true    # feeds Grafana's "Explain/Patterns"; cheap on a single binary
 
 query_range:
   align_queries_with_step: true
@@ -167,10 +167,10 @@ ruler:
       directory: /loki/rules
   rule_path: /loki/rules-temp
   enable_api: true
-  # Sem alertmanager_url: o alerting de log hoje é o unified alerting do Grafana
-  # em cima do datasource Loki, não o ruler do Loki.
+  # No alertmanager_url: log alerting today is Grafana's unified alerting
+  # on top of the Loki datasource, not Loki's ruler.
 
-# Telemetria de uso para a Grafana Labs. Desligada, coerente com
-# GF_ANALYTICS_REPORTING_ENABLED: "false" no compose e com o repo ser público.
+# Usage telemetry to Grafana Labs. Off, consistent with
+# GF_ANALYTICS_REPORTING_ENABLED: "false" in the compose and with the repo being public.
 analytics:
   reporting_enabled: false

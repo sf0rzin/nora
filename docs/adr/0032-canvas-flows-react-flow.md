@@ -1,49 +1,49 @@
-# ADR 0032 — Canvas do NORA Flows: React Flow (@xyflow/react) estilizado com tokens NORA
+# ADR 0032 — NORA Flows canvas: React Flow (@xyflow/react) styled with NORA tokens
 
-- **Status:** aceito
-- **Data:** 2026-06-11
-- **Decisores:** Arquiteto NORA (run do pitch) + Stratfy (PO, via GOAL.md)
-- **Relacionados:** ADR 0013 (Tailwind cru, sem shadcn, tokens OKLCH), ADR 0030 (workflow engine —
-  o canvas edita o definition_json que o engine executa)
+- **Status:** accepted
+- **Date:** 2026-06-11
+- **Deciders:** NORA Architect (pitch run) + Stratfy (PO, via GOAL.md)
+- **Related:** ADR 0013 (raw Tailwind, no shadcn, OKLCH tokens), ADR 0030 (workflow engine —
+  the canvas edits the definition_json that the engine executes)
 
-## Contexto
+## Context
 
-O builder visual do NORA Flows (rota `/fluxos`) precisa de: canvas com fundo de grid, nós
-arrastáveis, arestas conectáveis por handles, seleção, deleção por teclado, zoom/pan e
-serialização do grafo. Deadline: pitch 15/06. O GOAL.md pede avaliar React Flow vs. canvas custom
-e registrar a decisão.
+The NORA Flows visual builder (route `/fluxos`) needs: a canvas with a grid background, draggable
+nodes, edges connectable by handles, selection, keyboard deletion, zoom/pan and
+graph serialization. Deadline: pitch 15/06. GOAL.md asks to evaluate React Flow vs. a custom canvas
+and to record the decision.
 
-ADR 0013 veta bibliotecas de COMPONENTES (shadcn/Radix) porque o design editorial NORA não pode
-parecer template. Um motor de interação de grafo é outra categoria: não impõe aparência — os nós
-são componentes React nossos.
+ADR 0013 vetoes COMPONENT libraries (shadcn/Radix) because the NORA editorial design cannot
+look like a template. A graph interaction engine is another category: it does not impose an appearance — the nodes
+are our own React components.
 
-## Decisão
+## Decision
 
-**React Flow v12 (`@xyflow/react`, MIT)** com aparência 100% NORA:
+**React Flow v12 (`@xyflow/react`, MIT)** with a 100% NORA appearance:
 
-1. Nós são componentes React próprios (`nodeTypes`), estilizados com inline styles + `var(--token)`
-   (DM Sans, `--canvas`/`--ink`/`--accent`/`--warn`/`--success`, radius e bordas do design v3) —
-   nenhum componente visual da lib é usado além de `Background` (dots, cor `--border-strong`),
-   `Controls` (reestilizado via CSS) e o motor de arestas/handles (cores sobrescritas em
+1. Nodes are our own React components (`nodeTypes`), styled with inline styles + `var(--token)`
+   (DM Sans, `--canvas`/`--ink`/`--accent`/`--warn`/`--success`, radius and borders from design v3) —
+   no visual component from the lib is used beyond `Background` (dots, color `--border-strong`),
+   `Controls` (restyled via CSS) and the edges/handles engine (colors overridden in
    `flows.css`).
-2. Serialização própria: nós/arestas RF ⇄ `definition_json` do backend (`kind`/`type`/`params` em
-   `node.data`; posição do canvas persistida para reabrir igual). O canvas conhece apenas o
-   catálogo de blocos que o backend valida (gatilho + 4 condições + ações registradas).
-3. Única dependência nova do web. CSS base da lib (`@xyflow/react/dist/style.css`) é funcional
-   (posicionamento), importado num layout segmentado da rota.
+2. Our own serialization: RF nodes/edges ⇄ the backend's `definition_json` (`kind`/`type`/`params` in
+   `node.data`; canvas position persisted so it reopens identically). The canvas knows only the
+   block catalog that the backend validates (trigger + 4 conditions + registered actions).
+3. The web's only new dependency. The lib's base CSS (`@xyflow/react/dist/style.css`) is functional
+   (positioning), imported in a segmented layout of the route.
 
-## Alternativas rejeitadas
+## Rejected alternatives
 
-- **Canvas custom (SVG/pointer events):** controle total e zero dependência, mas
-  drag-and-drop + conexão de handles + hit-testing de arestas + zoom/pan robustos custam dias de
-  engenharia e QA que não existem antes do pitch; o risco de UX quebrada na demo é exatamente o
-  que o GOAL manda queimar cedo.
-- **Outras libs (rete.js, litegraph, jointjs):** menos mantidas, mais opinativas visualmente ou
-  com licenças/pesos piores que o MIT enxuto do React Flow.
+- **Custom canvas (SVG/pointer events):** total control and zero dependency, but
+  robust drag-and-drop + handle connection + edge hit-testing + zoom/pan cost days of
+  engineering and QA that do not exist before the pitch; the risk of broken UX in the demo is exactly
+  what GOAL says to burn down early.
+- **Other libs (rete.js, litegraph, jointjs):** less maintained, more visually opinionated or
+  with worse licenses/weights than React Flow's lean MIT.
 
-## Consequências
+## Consequences
 
-- Atualizações da lib acompanham React/Next (v12 suporta React 18/19).
-- O atributo de atribuição do React Flow permanece visível (padrão MIT da lib) — aceitável.
-- Novos tipos de nó = entrada no catálogo do front + ActionExecutor/condição no backend; o canvas
-  não precisa mudar.
+- Lib updates track React/Next (v12 supports React 18/19).
+- The React Flow attribution attribute remains visible (the lib's MIT default) — acceptable.
+- New node types = an entry in the front end's catalog + an ActionExecutor/condition in the backend; the canvas
+  does not need to change.

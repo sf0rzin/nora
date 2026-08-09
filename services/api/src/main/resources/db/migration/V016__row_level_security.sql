@@ -1,39 +1,39 @@
--- Row Level Security (RLS) — defesa em profundidade do tenant_id filter (ADR 0002).
+-- Row Level Security (RLS) — defense in depth for the tenant_id filter (ADR 0002).
 --
--- Hoje o backend filtra tenant_id em todas as queries (TenantContext + repository
--- por design). Se um servico/repo novo esquecer o filtro, vazaria dados. RLS no
--- Postgres adiciona uma camada extra: o DB rejeita rows com tenant_id != current
+-- Today the backend filters tenant_id in every query (TenantContext + repository
+-- by design). If a new service/repo forgets the filter, data would leak. RLS in
+-- Postgres adds an extra layer: the DB rejects rows with tenant_id != current
 -- session GUC `nora.current_tenant_id`.
 --
--- ## Como funciona
+-- ## How it works
 --
--- 1) Esta migration cria POLICIES e ENABLE RLS em todas as tabelas tenant-owned.
--- 2) Spring `TenantRlsAspect` (bean condicional) intercepta @Transactional e
---    executa `SET LOCAL nora.current_tenant_id = '<uuid>'` no inicio da
---    transacao. O GUC e local — auto-reseta no commit/rollback.
--- 3) Postgres owner (admin) bypassa RLS por default. Em prod, o app deveria
---    rodar com role dedicado (`nora_app`) sem BYPASSRLS, e RLS vira enforcement
---    real. Em tests/dev com Testcontainers/local Postgres, o app roda como owner
---    e RLS fica inerte — testes continuam funcionando sem mudanca.
+-- 1) This migration creates POLICIES and ENABLE RLS on every tenant-owned table.
+-- 2) Spring `TenantRlsAspect` (conditional bean) intercepts @Transactional and
+--    runs `SET LOCAL nora.current_tenant_id = '<uuid>'` at the start of the
+--    transaction. The GUC is local — it auto-resets on commit/rollback.
+-- 3) The Postgres owner (admin) bypasses RLS by default. In prod, the app should
+--    run with a dedicated role (`nora_app`) without BYPASSRLS, and RLS becomes real
+--    enforcement. In tests/dev with Testcontainers/local Postgres, the app runs as
+--    owner and RLS stays inert — tests keep working with no change.
 --
--- ## Operacao em prod (opt-in)
+-- ## Operating in prod (opt-in)
 --
--- Para ativar enforcement real em prod:
+-- To turn on real enforcement in prod:
 --   1. CREATE ROLE nora_app WITH LOGIN PASSWORD '...';
---   2. GRANT SELECT/INSERT/UPDATE/DELETE em todas as tenant-owned tables a nora_app;
+--   2. GRANT SELECT/INSERT/UPDATE/DELETE on every tenant-owned table to nora_app;
 --   3. ALTER ROLE nora_app NOBYPASSRLS;
---   4. Mudar a connection string da API pra usar nora_app.
---   5. Setar nora.security.rls.enforce=true (ativa o aspect).
+--   4. Change the API connection string to use nora_app.
+--   5. Set nora.security.rls.enforce=true (activates the aspect).
 --
--- Sem esses 5 passos, RLS esta no schema mas inerte (admin bypassa).
+-- Without these 5 steps, RLS is in the schema but inert (admin bypasses it).
 
 -- ============================================================
--- Schema 'nora' + helper que extrai tenant_id da session.
+-- Schema 'nora' + helper that extracts tenant_id from the session.
 -- ============================================================
--- O schema precisa existir ANTES da function. Usar current_setting com
--- missing_ok=true (segundo parametro) pra nao explodir quando GUC nao esta
--- setada (ex.: tests rodando direto sem aspect). Quando NULL, retorna
--- FALSE para qualquer row — admin/owner bypassa por default.
+-- The schema must exist BEFORE the function. Use current_setting with
+-- missing_ok=true (second parameter) so it does not blow up when the GUC is not
+-- set (e.g. tests running directly without the aspect). When NULL, it returns
+-- FALSE for any row — admin/owner bypasses by default.
 
 CREATE SCHEMA IF NOT EXISTS nora;
 
@@ -52,11 +52,11 @@ END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- ============================================================
--- POLICIES — tabelas tenant-owned core
+-- POLICIES — core tenant-owned tables
 -- ============================================================
--- Convencao: policy `tenant_isolation` por tabela. WHEN GUC nao setado
--- (NULL), policy nao matcha — admin bypassa, app com role nao-admin sem
--- SET LOCAL retorna 0 rows (fail-closed).
+-- Convention: policy `tenant_isolation` per table. WHEN the GUC is not set
+-- (NULL), the policy does not match — admin bypasses, app on a non-admin role
+-- without SET LOCAL returns 0 rows (fail-closed).
 
 -- meetings
 ALTER TABLE meetings ENABLE ROW LEVEL SECURITY;
@@ -64,7 +64,7 @@ CREATE POLICY tenant_isolation ON meetings
     USING (tenant_id = nora.current_tenant_id())
     WITH CHECK (tenant_id = nora.current_tenant_id());
 
--- tenants (auto-referencia: pode acessar o proprio tenant)
+-- tenants (self-reference: can access its own tenant)
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON tenants
     USING (id = nora.current_tenant_id())
@@ -89,7 +89,7 @@ CREATE POLICY tenant_isolation ON refresh_tokens
     WITH CHECK (tenant_id = nora.current_tenant_id());
 
 -- ============================================================
--- POLICIES — tabelas tenant-owned IAM
+-- POLICIES — IAM tenant-owned tables
 -- ============================================================
 
 ALTER TABLE iam_groups ENABLE ROW LEVEL SECURITY;
@@ -108,8 +108,8 @@ CREATE POLICY tenant_isolation ON iam_user_invitations
     WITH CHECK (tenant_id = nora.current_tenant_id());
 
 -- ============================================================
--- POLICIES — analise (filhos de meetings, ja sao filtrados via meeting_id
--- + tenant_id explicito que toda tabela carrega)
+-- POLICIES — analysis (children of meetings, already filtered via meeting_id
+-- + the explicit tenant_id every table carries)
 -- ============================================================
 
 ALTER TABLE meeting_analyses ENABLE ROW LEVEL SECURITY;

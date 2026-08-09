@@ -1,6 +1,6 @@
 package br.com.nora.api.domain.analysis;
 
-/** Decisao tomada na reuniao identificada pela analise. */
+/** Decision taken in the meeting identified by the analysis. */
 public record Decision(String text, double confidence) {
 
     public Decision {

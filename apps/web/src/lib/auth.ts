@@ -1,38 +1,38 @@
 /**
- * Helpers de auth do client web (Round 2 / Subfase 1.3 A).
+ * Web client auth helpers (Round 2 / Subphase 1.3 A).
  *
- * Modelo:
- * - Tokens reais (access JWT, refresh opaque) ficam em cookies httpOnly
- *   `nora_access` (Path=/, SameSite=Lax) e `nora_refresh` (Path=/auth,
- *   SameSite=Strict), setados pelo backend via Set-Cookie no /auth/login,
- *   /auth/refresh e limpos no /auth/logout.
- * - JavaScript nao tem acesso a esses cookies (XSS hardened). O middleware
- *   do Next consegue le-los porque roda server-side.
- * - Este modulo so cuida do **estado client-visivel**: nome/display do
- *   usuario logado (cookie `nora_user` legivel), agendamento do refresh
- *   proativo e fluxo de logout.
+ * Model:
+ * - The real tokens (access JWT, opaque refresh) live in httpOnly cookies
+ *   `nora_access` (Path=/, SameSite=Lax) and `nora_refresh` (Path=/auth,
+ *   SameSite=Strict), set by the backend via Set-Cookie on /auth/login,
+ *   /auth/refresh and cleared on /auth/logout.
+ * - JavaScript has no access to those cookies (XSS hardened). The Next
+ *   middleware can read them because it runs server-side.
+ * - This module only handles the **client-visible state**: name/display of the
+ *   logged-in user (readable `nora_user` cookie), scheduling of the proactive
+ *   refresh and the logout flow.
  */
 
 const USER_COOKIE = 'nora_user';
 
 /**
- * Sobrevida do cookie de user-info: alinhada com o refresh TTL nominal
- * (30 dias). Logout / sessão expirada limpam explicitamente.
+ * Lifetime of the user-info cookie: aligned with the nominal refresh TTL
+ * (30 days). Logout / expired session clear it explicitly.
  */
 const USER_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
 /**
- * Evento disparado em `window` quando o cookie `nora_user` muda fora do fluxo
- * de login (ex.: displayName editado nas configurações). Quem renderiza dados
- * da sessão (sidebar/orb) escuta pra refletir na hora, sem reload.
+ * Event fired on `window` when the `nora_user` cookie changes outside the login
+ * flow (e.g. displayName edited in the settings). Whoever renders session data
+ * (sidebar/orb) listens to reflect it right away, without a reload.
  */
 export const SESSION_USER_EVENT = 'nora:session-user';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
 
-/** Fracao do TTL onde disparamos o refresh proativo (80%). */
+/** Fraction of the TTL at which we fire the proactive refresh (80%). */
 const REFRESH_THRESHOLD = 0.8;
-/** Piso de seguranca: nunca agenda menos que 15s. */
+/** Safety floor: never schedules less than 15s. */
 const MIN_REFRESH_DELAY_MS = 15_000;
 
 export interface SessionUser {
@@ -63,26 +63,26 @@ function clearCookie(name: string) {
 }
 
 /**
- * Salva info display-only do usuario num cookie legivel pelo JS e agenda o
- * refresh proativo. Os tokens reais ja foram setados como cookies httpOnly
- * pelo backend no Set-Cookie do /auth/login — frontend nao precisa
- * (e nao consegue) armazenar nada disso.
+ * Saves display-only user info in a JS-readable cookie and schedules the
+ * proactive refresh. The real tokens were already set as httpOnly cookies
+ * by the backend in the Set-Cookie of /auth/login — the frontend does not need
+ * (and is not able) to store any of that.
  *
- * O cookie de user info usa Max-Age longo o suficiente pra sobreviver alem
- * do TTL do access (refresh renova) — alinhamos com o refresh TTL nominal
- * (30 dias). Logout limpa explicitamente.
+ * The user info cookie uses a Max-Age long enough to survive beyond the
+ * access TTL (refresh renews it) — we align with the nominal refresh TTL
+ * (30 days). Logout clears it explicitly.
  */
 export function setSession(user: SessionUser, expiresInSeconds: number) {
-  // Em caso de logout server-side, refresh falha e clearSession limpa local.
+  // On a server-side logout, refresh fails and clearSession clears the local state.
   setCookie(USER_COOKIE, JSON.stringify(user), USER_COOKIE_MAX_AGE);
   scheduleRefresh(expiresInSeconds);
 }
 
 /**
- * Atualiza campos display-only da sessão (ex.: displayName após editar o
- * perfil em /settings) e notifica os listeners via `SESSION_USER_EVENT` —
- * a sidebar reflete na hora, sem esperar reload. Retorna o estado novo, ou
- * `null` se não há sessão local.
+ * Updates display-only fields of the session (e.g. displayName after editing the
+ * profile in /settings) and notifies the listeners via `SESSION_USER_EVENT` —
+ * the sidebar reflects it right away, without waiting for a reload. Returns the
+ * new state, or `null` if there is no local session.
  */
 export function updateSessionUser(patch: Partial<SessionUser>): SessionUser | null {
   const current = getCurrentUser();
@@ -106,10 +106,10 @@ export function getCurrentUser(): SessionUser | null {
 }
 
 /**
- * Limpa APENAS o estado local (timer de refresh + cookie `nora_user`), sem
- * chamar o backend. Pra fluxos onde o servidor JÁ revogou as sessões e limpou
- * os cookies httpOnly (logout-all, exclusão de conta) — chamar /auth/logout
- * de novo seria redundante.
+ * Clears ONLY the local state (refresh timer + `nora_user` cookie), without
+ * calling the backend. For flows where the server has ALREADY revoked the sessions
+ * and cleared the httpOnly cookies (logout-all, account deletion) — calling
+ * /auth/logout again would be redundant.
  */
 export function clearLocalSession(): void {
   cancelScheduledRefresh();
@@ -117,9 +117,9 @@ export function clearLocalSession(): void {
 }
 
 /**
- * Limpa sessao no client + chama backend pra revogar o refresh em DB.
- * Idempotente: se o logout falhar (rede off, refresh ja revogado etc),
- * ainda limpa o estado local — usuario tem que conseguir sair.
+ * Clears the session on the client + calls the backend to revoke the refresh in DB.
+ * Idempotent: if the logout fails (network off, refresh already revoked etc),
+ * it still clears the local state — the user has to be able to get out.
  */
 export async function clearSession(): Promise<void> {
   clearLocalSession();
@@ -130,15 +130,15 @@ export async function clearSession(): Promise<void> {
       cache: 'no-store',
     });
   } catch {
-    // Sem rede / backend down — segue mesmo assim. O server side state pode
-    // ficar "sujo" temporariamente, mas o refresh expira no TTL longo.
+    // No network / backend down — carry on anyway. The server side state may
+    // stay "dirty" for a while, but the refresh expires on the long TTL.
   }
 }
 
 /**
- * Agenda um refresh proativo a 80% do TTL do access. Cancela qualquer
- * timer anterior antes de agendar novo. Em ambientes server-side
- * (SSR/middleware) nao faz nada.
+ * Schedules a proactive refresh at 80% of the access TTL. Cancels any
+ * previous timer before scheduling a new one. In server-side environments
+ * (SSR/middleware) it does nothing.
  */
 export function scheduleRefresh(expiresInSeconds: number): void {
   cancelScheduledRefresh();
@@ -161,33 +161,33 @@ export function cancelScheduledRefresh(): void {
   }
 }
 
-/** Resultado do refresh compartilhado — cada consumidor decide o que fazer. */
+/** Result of the shared refresh — each consumer decides what to do. */
 export interface SharedRefreshResult {
-  /** `true` quando o backend respondeu 2xx. */
+  /** `true` when the backend answered 2xx. */
   ok: boolean;
-  /** Status HTTP da resposta, ou `null` em erro de rede. */
+  /** HTTP status of the response, or `null` on a network error. */
   status: number | null;
-  /** TTL do novo access em segundos (quando ok e o backend informou). */
+  /** TTL of the new access in seconds (when ok and the backend reported it). */
   expiresInSeconds: number | null;
 }
 
 /**
- * Promise compartilhada do POST /auth/refresh em andamento (single-flight).
+ * Shared promise of the in-flight POST /auth/refresh (single-flight).
  *
- * Vive AQUI (e nao em client.ts) porque os dois consumidores — o timer
- * proativo deste modulo e o interceptor 401 de `@/lib/api/client` — precisam
- * aguardar a MESMA chamada, e client.ts ja importa auth.ts (importar no outro
- * sentido criaria ciclo).
+ * It lives HERE (and not in client.ts) because both consumers — the proactive
+ * timer of this module and the 401 interceptor of `@/lib/api/client` — need to
+ * await the SAME call, and client.ts already imports auth.ts (importing the
+ * other way would create a cycle).
  */
 let refreshInFlight: Promise<SharedRefreshResult> | null = null;
 
 /**
- * Single-flight do POST /auth/refresh. Timer proativo e interceptor 401
- * compartilham a mesma promise: dois refresh simultaneos com o mesmo cookie
- * eram tratados pelo backend como reuse de token rotacionado (reuse
- * detection), revogando a family inteira → logout espontaneo em producao.
+ * Single-flight of POST /auth/refresh. The proactive timer and the 401 interceptor
+ * share the same promise: two simultaneous refreshes with the same cookie
+ * were treated by the backend as reuse of a rotated token (reuse
+ * detection), revoking the whole family → spontaneous logout in production.
  *
- * No sucesso, ja reagenda o proximo refresh proativo (`scheduleRefresh`).
+ * On success, it already reschedules the next proactive refresh (`scheduleRefresh`).
  */
 export function sharedRefresh(): Promise<SharedRefreshResult> {
   if (refreshInFlight) return refreshInFlight;
@@ -211,7 +211,7 @@ export function sharedRefresh(): Promise<SharedRefreshResult> {
     } catch {
       return { ok: false, status: null, expiresInSeconds: null };
     } finally {
-      // Limpa apos completar — proxima chamada cria nova promise se precisar.
+      // Clear after completing — the next call creates a new promise if needed.
       refreshInFlight = null;
     }
   })();
@@ -219,20 +219,20 @@ export function sharedRefresh(): Promise<SharedRefreshResult> {
 }
 
 /**
- * Refresh proativo (timer). Usa o single-flight compartilhado; se ja houver
- * um refresh em voo (ex.: interceptor 401), apenas aguarda o resultado dele.
- * Se sucesso, o reagendamento ja foi feito pelo `sharedRefresh`; se 401,
- * limpa sessao e redireciona para /auth/login preservando rota em `?next=`.
+ * Proactive refresh (timer). Uses the shared single-flight; if there is already
+ * a refresh in flight (e.g. the 401 interceptor), it just awaits its result.
+ * On success, the rescheduling was already done by `sharedRefresh`; on 401,
+ * it clears the session and redirects to /auth/login keeping the route in `?next=`.
  *
- * Retorna o `expiresInSeconds` do novo access em caso de sucesso, ou
- * `null` em caso de falha (caller pode decidir comportamento).
+ * Returns the `expiresInSeconds` of the new access on success, or
+ * `null` on failure (the caller can decide the behavior).
  */
 export async function runProactiveRefresh(): Promise<number | null> {
   if (typeof window === 'undefined') return null;
   const result = await sharedRefresh();
   if (!result.ok) {
     if (result.status === 401) {
-      // Refresh invalido: forca logout local + redirect.
+      // Invalid refresh: forces a local logout + redirect.
       await handleSessionExpired();
     }
     return null;
@@ -241,8 +241,8 @@ export async function runProactiveRefresh(): Promise<number | null> {
 }
 
 /**
- * Limpa o estado local e redireciona para /auth/login preservando a rota
- * que o usuario estava tentando ver (para a UX nao perde-lo no fluxo).
+ * Clears the local state and redirects to /auth/login keeping the route
+ * the user was trying to see (so the UX does not lose them in the flow).
  */
 export async function handleSessionExpired(): Promise<void> {
   cancelScheduledRefresh();
@@ -250,7 +250,7 @@ export async function handleSessionExpired(): Promise<void> {
   if (typeof window === 'undefined') return;
   const current = window.location.pathname + window.location.search;
   const next = encodeURIComponent(current);
-  // Evita loop se ja estamos em /auth/login.
+  // Avoids a loop if we are already on /auth/login.
   if (window.location.pathname.startsWith('/auth/login')) return;
   window.location.href = `/auth/login?next=${next}`;
 }

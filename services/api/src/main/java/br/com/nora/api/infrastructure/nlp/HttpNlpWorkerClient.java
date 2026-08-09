@@ -47,8 +47,8 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import reactor.netty.http.client.HttpClient;
 
 /**
- * Cliente HTTP do NLP worker (FastAPI /analyze). Bloqueante intencionalmente: chamado a partir de
- * codigo @Async no AnalysisService.
+ * HTTP client for the NLP worker (FastAPI /analyze). Blocking on purpose: called from @Async code
+ * in AnalysisService.
  */
 @Component
 public class HttpNlpWorkerClient implements NlpWorkerClient {
@@ -364,10 +364,11 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
     }
 
     /**
-     * Mapeia o bloco {@code customerConfidence} do worker para o carrier de aplicacao (ADR 0015). A
-     * conta ({@code customerAccountId}) ainda nao existe aqui — o {@code CustomerConfidenceService}
-     * resolve via get-or-create a partir de {@code accountName}. {@code trend} e parseado como
-     * palpite do worker mas o backend o ignora (recalculo server-side).
+     * Maps the worker's {@code customerConfidence} block to the application carrier (ADR 0015). The
+     * account ({@code customerAccountId}) does not exist here yet — {@code
+     * CustomerConfidenceService} resolves it via get-or-create from {@code accountName}. {@code
+     * trend} is parsed as the worker's guess but the backend ignores it (server-side
+     * recalculation).
      */
     private CustomerConfidenceCarrier toCustomerConfidence(WorkerDtos.CustomerConfidenceDto c) {
         List<WorkerDtos.BuyingSignalDto> rawSignals = safe(c.buyingSignals());

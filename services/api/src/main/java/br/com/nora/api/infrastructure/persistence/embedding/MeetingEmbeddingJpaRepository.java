@@ -12,7 +12,9 @@ public interface MeetingEmbeddingJpaRepository
 
     List<MeetingEmbeddingJpaEntity> findByTenantIdAndModel(UUID tenantId, String model);
 
-    /** Upsert por meeting_id (re-análise sobrescreve). Sob RLS enforce, tenant_id casa o GUC. */
+    /**
+     * Upsert by meeting_id (re-analysis overwrites). Under RLS enforce, tenant_id matches the GUC.
+     */
     @Modifying
     @Query(
             value =

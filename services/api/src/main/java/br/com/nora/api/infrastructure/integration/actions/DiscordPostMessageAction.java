@@ -11,32 +11,33 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Ação "Avisar no Discord" do NORA Flows — posta um embed com o resumo da reunião num canal via
- * webhook do Discord, sem credencial global (o webhook do canal já carrega a autorização). Param
- * obrigatório: {@code webhookUrl}, que DEVE começar com {@code https://discord.com/api/webhooks/}
- * ou {@code https://discordapp.com/api/webhooks/} — o que também elimina SSRF por construção.
+ * NORA Flows "Avisar no Discord" action — posts an embed with the meeting summary to a channel via
+ * a Discord webhook, with no global credential (the channel webhook already carries the
+ * authorization). Required param: {@code webhookUrl}, which MUST start with {@code
+ * https://discord.com/api/webhooks/} or {@code https://discordapp.com/api/webhooks/} — which also
+ * rules out SSRF by construction.
  *
- * <p>Embed: title = título da reunião, description = resumo (truncado em ~1500 chars), fields
- * inline com Decisões/Action items/Riscos (+ Productivity e Confidence quando existem), field
- * "Próximos passos" com até 5 itens, cor NORA (0x4EC4D8), footer "NORA Flows" e url apontando pra
- * reunião no NORA. Username do webhook: "NORA".
+ * <p>Embed: title = meeting title, description = summary (truncated at ~1500 chars), inline fields
+ * with Decisões/Action items/Riscos (+ Productivity and Confidence when present), a "Próximos
+ * passos" field with up to 5 items, NORA color (0x4EC4D8), footer "NORA Flows" and url pointing at
+ * the meeting in NORA. Webhook username: "NORA".
  *
- * <p>Sucesso = 2xx (o Discord responde 204). Falha PROPAGA (contrato do {@link ActionExecutor}) — o
- * engine grava FAILED no log. Nunca finge sucesso.
+ * <p>Success = 2xx (Discord answers 204). A failure PROPAGATES ({@link ActionExecutor} contract) —
+ * the engine writes FAILED in the log. It never fakes success.
  */
 @Component
 public class DiscordPostMessageAction implements ActionExecutor {
 
-    /** Limite do resumo no embed — Discord aceita 4096, mas chat pede mensagem compacta. */
+    /** Summary cap in the embed — Discord accepts 4096, but chat calls for a compact message. */
     static final int DESCRIPTION_MAX = 1500;
 
-    /** Título de embed: limite hard do Discord. */
+    /** Embed title: Discord's hard limit. */
     static final int TITLE_MAX = 256;
 
-    /** Itens exibidos no field "Próximos passos". */
+    /** Items shown in the "Próximos passos" field. */
     static final int MAX_ACTION_ITEMS = 5;
 
-    /** Tom NORA 0x4EC4D8 em decimal — formato de cor que a API do Discord espera. */
+    /** NORA tone 0x4EC4D8 in decimal — the color format Discord's API expects. */
     static final int COR_NORA = 0x4EC4D8; // 5162200
 
     static final List<String> PREFIXOS_VALIDOS =
@@ -81,7 +82,7 @@ public class DiscordPostMessageAction implements ActionExecutor {
         return trimmed;
     }
 
-    /** Payload de webhook do Discord: username "NORA" + um embed com o resumo da reunião. */
+    /** Discord webhook payload: username "NORA" + one embed with the meeting summary. */
     static Map<String, Object> buildPayload(WorkflowEventContext ctx) {
         Map<String, Object> embed = new LinkedHashMap<>();
         embed.put("title", truncar(ctx.meetingTitle(), TITLE_MAX));
@@ -118,7 +119,7 @@ public class DiscordPostMessageAction implements ActionExecutor {
         return fields;
     }
 
-    /** Até {@value MAX_ACTION_ITEMS} itens "• título — responsável" (responsável quando há). */
+    /** Up to {@value MAX_ACTION_ITEMS} items "• title — assignee" (assignee when there is one). */
     private static String proximosPassos(WorkflowEventContext ctx) {
         StringBuilder sb = new StringBuilder();
         List<WorkflowEventContext.ActionItemView> items = ctx.actionItems();
@@ -132,7 +133,7 @@ public class DiscordPostMessageAction implements ActionExecutor {
                 sb.append(" — ").append(item.assignee());
             }
         }
-        // Limite hard do Discord pra value de field.
+        // Discord's hard limit for a field value.
         return truncar(sb.toString(), 1024);
     }
 

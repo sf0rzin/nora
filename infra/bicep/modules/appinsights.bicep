@@ -1,5 +1,5 @@
 // Application Insights (workspace-based)
-// Telemetria de api/worker/web. Conecta no Log Analytics workspace já criado.
+// Telemetry for api/worker/web. Connects to the already created Log Analytics workspace.
 
 @description('Nome do recurso.')
 param name string

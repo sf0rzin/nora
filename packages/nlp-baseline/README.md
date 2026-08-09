@@ -1,20 +1,20 @@
 # nlp-baseline
 
-Package Python compartilhado com baseline TF-IDF interpretavel para PT-BR.
+Shared Python package with an interpretable TF-IDF baseline for PT-BR.
 
-## Proposito
+## Purpose
 
-Implementacao unica do baseline NLP exigido por:
+Single implementation of the NLP baseline required by:
 
-- Plano academico (FIAP Challenge — `docs/challenge/fiap-challenge-2026.md` + ADR 0010)
-- Worker NLP em producao como step do pipeline pre-LLM
+- Academic plan (FIAP Challenge — `docs/challenge/fiap-challenge-2026.md` + ADR 0010)
+- NLP Worker in production as a pre-LLM pipeline step
 
-Mesma logica, mesma lista de stopwords, mesmos hiperparametros — o numero
-que aparece no notebook eh o mesmo que vai pra UI da NORA.
+Same logic, same stopword list, same hyperparameters — the number
+that appears in the notebook is the same one that goes to NORA's UI.
 
-Decisao registrada em [`docs/adr/0010-nlp-baseline-package.md`](../../docs/adr/0010-nlp-baseline-package.md).
+Decision recorded in [`docs/adr/0010-nlp-baseline-package.md`](../../docs/adr/0010-nlp-baseline-package.md).
 
-## Uso
+## Usage
 
 ```python
 from nlp_baseline import TfidfBaseline
@@ -35,14 +35,14 @@ print(baseline.top_terms(top_n=10))
 - `.top_terms_per_doc(text: str, top_n: int = 10) -> list[tuple[str, float]]`
 - `normalize_text(...)`, `tokenize_ptbr(...)`, `get_ptbr_stopwords()`
 
-## Dependencias
+## Dependencies
 
 - `scikit-learn>=1.4`
 
-Sem dependencia de runtime do NLTK — stopwords sao hardcoded em
+No NLTK runtime dependency — the stopwords are hardcoded in
 `src/nlp_baseline/stopwords.py`.
 
-## Testes
+## Tests
 
 ```bash
 pip install -e ".[dev]"

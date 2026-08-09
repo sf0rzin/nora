@@ -25,7 +25,7 @@ class PolicyEvaluatorTest {
                 Map.of("StringEquals", Map.of(key, expected)));
     }
 
-    /** Allow meeting:read no tenant t1 com uma unica condition {operator: {key: expected}}. */
+    /** Allow meeting:read on tenant t1 with a single condition {operator: {key: expected}}. */
     private static PolicyStatement allowWithCondition(
             String operator, String key, Object expected) {
         return new PolicyStatement(
@@ -147,10 +147,10 @@ class PolicyEvaluatorTest {
 
     @Test
     void unknownConditionOperatorIsFailClosed() {
-        // Allow com operador nao suportado (StringNotEquals) NAO deve conceder acesso —
-        // fail-closed evita privilege escalation com policies que usem operadores futuros.
-        // (O contexto satisfaria a intencao do operador, isolando que o false vem do operador
-        // desconhecido e nao de atributo ausente.)
+        // Allow with an unsupported operator (StringNotEquals) must NOT grant access —
+        // fail-closed avoids privilege escalation from policies using future operators.
+        // (The context would satisfy the operator's intent, isolating that the false comes
+        // from the unknown operator and not from a missing attribute.)
         var stmt =
                 new PolicyStatement(
                         Effect.ALLOW,
@@ -232,7 +232,7 @@ class PolicyEvaluatorTest {
     @Test
     void dateLessThanAcceptsPlainDateAndIsFailClosedOnUnparseable() {
         var stmts = List.of(allowWithCondition("DateLessThan", "meetingDate", "2026-01-01"));
-        // Data simples (yyyy-MM-dd) interpretada como meia-noite UTC.
+        // Plain date (yyyy-MM-dd) interpreted as midnight UTC.
         assertThat(
                         PolicyEvaluator.isAllowed(
                                 stmts,
@@ -240,7 +240,7 @@ class PolicyEvaluatorTest {
                                 "nora:tenant/t1:meeting/abc",
                                 Map.of("meetingDate", "2025-06-01")))
                 .isTrue();
-        // Valor nao-parseavel => fail-closed (nao casa).
+        // Unparseable value => fail-closed (no match).
         assertThat(
                         PolicyEvaluator.isAllowed(
                                 stmts,
@@ -252,7 +252,7 @@ class PolicyEvaluatorTest {
 
     @Test
     void mixedKnownAndUnknownOperatorRequiresAllSatisfied() {
-        // Bloco StringEquals satisfeito mas StringNotEquals desconhecido => fail-closed.
+        // StringEquals block satisfied but StringNotEquals unknown => fail-closed.
         var stmt =
                 new PolicyStatement(
                         Effect.ALLOW,
@@ -279,7 +279,7 @@ class PolicyEvaluatorTest {
 
     @Test
     void hasAnyAllowReturnsTrueForConditionalAllow() {
-        // Pre-check ignora conditions: existe Allow potencial, basta para passar.
+        // Pre-check ignores conditions: a potential Allow exists, that is enough to pass.
         var stmts =
                 List.of(
                         allowIfStringEquals(
@@ -293,8 +293,8 @@ class PolicyEvaluatorTest {
 
     @Test
     void hasAnyAllowReturnsFalseWhenUnconditionalDenyCoversAction() {
-        // Allow + Deny incondicional na mesma action+resource => Deny vence sempre.
-        // Pre-check deve fechar 403 em vez de devolver lista vazia silenciosa.
+        // Allow + unconditional Deny on the same action+resource => Deny always wins.
+        // Pre-check must close with 403 instead of returning a silent empty list.
         var stmts =
                 List.of(
                         allow("meeting:read", "nora:tenant/t1:meeting/*"),
@@ -305,7 +305,7 @@ class PolicyEvaluatorTest {
 
     @Test
     void hasAnyAllowIgnoresConditionalDeny() {
-        // Deny condicional NAO deve fechar o pre-check — pode haver instancias permitidas.
+        // Conditional Deny must NOT close the pre-check — there may be allowed instances.
         var conditionalDeny =
                 new PolicyStatement(
                         Effect.DENY,

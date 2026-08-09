@@ -6,9 +6,9 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 /**
- * Payload de criacao/atualizacao do MeetingGoal (input opt-in do Productivity Score, ADR 0005).
+ * Create/update payload for the MeetingGoal (opt-in input of the Productivity Score, ADR 0005).
  *
- * <p>Validacoes refletem os limites do dominio MeetingGoal/ExpectedOutcome.
+ * <p>Validations mirror the limits of the MeetingGoal/ExpectedOutcome domain.
  */
 public record MeetingGoalRequest(
         @NotBlank(message = "purpose is required")

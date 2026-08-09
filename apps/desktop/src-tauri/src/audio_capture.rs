@@ -16,9 +16,9 @@ pub struct RecordingStatus {
     pub sample_rate: u32,
 }
 
-/// Avisa a UI que a gravação NÃO chegou a iniciar de fato — falha dentro da thread de áudio
-/// (abrir o stream, play()) que acontece DEPOIS de start() já ter retornado is_recording:true.
-/// A UI escuta "recording-status" e reverte o estado de "gravando" em vez de fingir que grava.
+/// Warns the UI that the recording did NOT actually start — a failure inside the audio thread
+/// (opening the stream, play()) that happens AFTER start() has already returned is_recording:true.
+/// The UI listens to "recording-status" and reverts the "recording" state instead of pretending it records.
 fn emit_recording_failed(app: &AppHandle) {
     let status = RecordingStatus {
         is_recording: false,
@@ -30,9 +30,9 @@ fn emit_recording_failed(app: &AppHandle) {
 }
 
 pub struct CaptureSinks {
-    /// Recebe i16 16kHz mono do mic.
+    /// Receives i16 16kHz mono from the mic.
     pub mic_tx: tokio::sync::mpsc::Sender<Vec<i16>>,
-    /// Recebe i16 16kHz mono do system audio (None se desabilitado).
+    /// Receives i16 16kHz mono from the system audio (None if disabled).
     pub system_tx: Option<tokio::sync::mpsc::Sender<Vec<i16>>>,
 }
 
@@ -273,8 +273,8 @@ impl AudioCapture {
                 })
                 .or_else(system_audio::find_system_audio_source);
 
-            // Exige fonte E sink: o unwrap() panicava se o contrato caller/callee
-            // divergisse (capture_system_audio sem system_tx). Auditoria #19.
+            // Requires source AND sink: the unwrap() panicked if the caller/callee contract
+            // diverged (capture_system_audio without system_tx). Audit #19.
             if let (Some(source), Some(system_tx)) = (source, sinks.system_tx) {
                 let flag = Arc::new(AtomicBool::new(true));
 

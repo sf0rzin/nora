@@ -1,15 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 
 /**
- * Chaves de secret no keyring. Os VALORES são contrato com ALLOWED_KEYS em
- * secrets.rs (devem casar byte-a-byte) — centralizado aqui pra não espalhar
- * literais soltos por auth.ts/settings.tsx. Auditoria desktop #109.
+ * Secret keys in the keyring. The VALUES are a contract with ALLOWED_KEYS in
+ * secrets.rs (they must match byte-for-byte) — centralized here so loose
+ * literals aren't scattered across auth.ts/settings.tsx. Desktop audit #109.
  */
 export const SECRET_KEYS = {
   ACCESS_TOKEN: "access-token",
   REFRESH_TOKEN: "refresh-token",
   CURRENT_USER: "current-user",
-  /** Legacy: usados só pela migração de versões antigas (ver settings.tsx). */
+  /** Legacy: used only by the migration from old versions (see settings.tsx). */
   LEGACY_AZURE_SPEECH_KEY: "azure-speech-key",
   LEGACY_AZURE_REGION: "azure-region",
 } as const;

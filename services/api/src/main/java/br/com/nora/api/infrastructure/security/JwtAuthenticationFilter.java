@@ -17,15 +17,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Le credencial de acesso de duas fontes (ordem de prioridade):
+ * Reads the access credential from two sources (priority order):
  *
  * <ol>
- *   <li>Header {@code Authorization: Bearer <jwt>} — back-compat com clientes antigos e CLI/MCP.
- *   <li>Cookie httpOnly {@value AuthCookies#ACCESS_COOKIE} — fluxo novo do web (Round 2 / 1.3 A).
+ *   <li>Header {@code Authorization: Bearer <jwt>} — back-compat with old clients and CLI/MCP.
+ *   <li>httpOnly cookie {@value AuthCookies#ACCESS_COOKIE} — new web flow (Round 2 / 1.3 A).
  * </ol>
  *
- * <p>Aceitar ambos durante a migracao do web evita janela quebrada e nao baixa a barra de
- * seguranca: o cookie e {@code HttpOnly+SameSite}, e o header continua exigindo posse.
+ * <p>Accepting both during the web migration avoids a broken window and does not lower the security
+ * bar: the cookie is {@code HttpOnly+SameSite}, and the header still requires possession.
  */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -69,16 +69,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         };
                 auth.setAuthenticated(true);
                 SecurityContextHolder.getContext().setAuthentication(auth);
-                // Popula o holder pra RLS aspect ler. Limpamos no finally pra nao vazar entre
-                // requests reusando a mesma thread (Tomcat pool).
+                // Populates the holder for the RLS aspect to read. We clear it in the finally so it
+                // does not leak between requests reusing the same thread (Tomcat pool).
                 TenantContextHolder.set(principal.tenantId());
-                // Enriquece o MDC com tenant/user pra correlacionar os logs apos a autenticacao
-                // (o requestId ja foi setado pelo RequestIdFilter, antes da cadeia de seguranca).
+                // Enriches the MDC with tenant/user to correlate logs after authentication
+                // (the requestId was already set by RequestIdFilter, before the security chain).
                 MDC.put("tenantId", principal.tenantId().toString());
                 MDC.put("userId", principal.userId().toString());
             } catch (Exception ex) {
-                // Token invalido => nao popula contexto. Resposta 401 sai do entry point quando
-                // a rota exige autenticacao.
+                // Invalid token => does not populate the context. The 401 response comes from the
+                // entry point when the route requires authentication.
                 SecurityContextHolder.clearContext();
                 TenantContextHolder.clear();
             }

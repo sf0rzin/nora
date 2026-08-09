@@ -73,7 +73,7 @@ function WordSpotlight() {
   );
 }
 
-/** Seção de demonstração interativa (variante Word Spotlight). */
+/** Interactive demo section (Word Spotlight variant). */
 export function LandingDemo() {
   return (
     <section id="demo">

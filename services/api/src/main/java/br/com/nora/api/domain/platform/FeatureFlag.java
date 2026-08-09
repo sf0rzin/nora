@@ -2,7 +2,7 @@ package br.com.nora.api.domain.platform;
 
 import java.time.OffsetDateTime;
 
-/** Feature flag on/off por serviço (tabela feature_flags, ADR 0024). */
+/** On/off feature flag per service (feature_flags table, ADR 0024). */
 public record FeatureFlag(
         String key,
         boolean enabled,

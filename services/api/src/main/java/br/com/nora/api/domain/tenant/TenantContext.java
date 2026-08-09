@@ -7,10 +7,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Contexto comercial do tenant (US14/US30) usado para enriquecer o prompt da analise. Imutavel.
+ * Commercial context of the tenant (US14/US30) used to enrich the analysis prompt. Immutable.
  *
- * <p>Campos opcionais sao tratados como vazio quando ausentes; o agregado nunca expoe nulls em
- * colecoes.
+ * <p>Optional fields are treated as empty when absent; the aggregate never exposes nulls in
+ * collections.
  */
 public final class TenantContext {
 
@@ -89,7 +89,7 @@ public final class TenantContext {
                 now);
     }
 
-    /** Cria nova instancia com mesmos id/tenant/createdAt mas conteudo atualizado. */
+    /** Creates a new instance with the same id/tenant/createdAt but updated content. */
     public TenantContext withUpdates(
             String companyName,
             String industry,
@@ -170,7 +170,7 @@ public final class TenantContext {
         return updatedAt;
     }
 
-    /** Produto comercializado pelo tenant. Usado pelo worker para alimentar o prompt. */
+    /** Product sold by the tenant. Used by the worker to feed the prompt. */
     public record Product(String name, String description, List<String> keyDifferentiators) {
 
         public Product {

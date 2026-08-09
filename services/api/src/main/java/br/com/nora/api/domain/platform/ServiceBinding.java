@@ -4,7 +4,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Binding serviço → modelo (tabela llm_config). Serviços válidos: {@code chat}, {@code analysis},
+ * Service → model binding (llm_config table). Valid services: {@code chat}, {@code analysis},
  * {@code multimodal} (ADR 0024).
  */
 public record ServiceBinding(

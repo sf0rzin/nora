@@ -14,10 +14,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Serviço das sessões de chat do assistente NORA. Toda operação é escopada pelo tenant_id + user_id
- * do principal: um usuário só enxerga e manipula as próprias sessões. Regras de negócio: derivar o
- * título da 1ª mensagem do usuário quando a sessão ainda não tem título; bumpar updated_at sempre
- * que uma mensagem é anexada.
+ * Service for the NORA assistant chat sessions. Every operation is scoped by the principal's
+ * tenant_id + user_id: a user only sees and manipulates their own sessions. Business rules: derive
+ * the title from the user's 1st message when the session still has no title; bump updated_at
+ * whenever a message is appended.
  */
 @Service
 public class ChatSessionService {
@@ -30,7 +30,7 @@ public class ChatSessionService {
         this.clock = clock;
     }
 
-    /** Detalhe de uma sessão: a sessão somada às suas mensagens em ordem cronológica. */
+    /** Detail of a session: the session plus its messages in chronological order. */
     public record SessionDetail(ChatSession session, List<ChatMessage> messages) {}
 
     private OffsetDateTime now() {
@@ -62,8 +62,8 @@ public class ChatSessionService {
     }
 
     /**
-     * Anexa uma mensagem à sessão. Bumpa updated_at; se a sessão estiver sem título e a mensagem
-     * for do usuário, deriva o título do conteúdo (~48 chars).
+     * Appends a message to the session. Bumps updated_at; if the session has no title and the
+     * message is from the user, derives the title from the content (~48 chars).
      */
     @Transactional
     public ChatMessage appendMessage(

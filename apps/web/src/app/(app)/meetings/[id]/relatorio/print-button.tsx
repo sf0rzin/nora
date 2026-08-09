@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Botão de impressão da rota /meetings/{id}/relatorio: chama window.print()
- * e o usuário salva o PDF pelo diálogo nativo do navegador — sem lib de PDF.
+ * Print button of the /meetings/{id}/relatorio route: calls window.print()
+ * and the user saves the PDF via the browser's native dialog — no PDF lib.
  */
 export default function PrintButton() {
   return (

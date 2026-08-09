@@ -1,31 +1,33 @@
--- V018: hashear o token de convite (US06, ADR 0011) — hardening de seguranca (auditoria services/api).
+-- V018: hash the invitation token (US06, ADR 0011) — security hardening (services/api audit).
 --
--- Ate V010 a coluna `token` guardava o token de convite em TEXTO PURO, justificado por lookup
--- direto. Mas o token de convite E a credencial: quem o tem cria um user ACTIVE no tenant e recebe
--- JWT (login automatico no aceite). Um dump do banco expunha todos os convites PENDING em claro.
+-- Up to V010 the `token` column stored the invitation token in PLAIN TEXT, justified by direct
+-- lookup. But the invitation token IS the credential: whoever holds it creates an ACTIVE user in the
+-- tenant and receives a JWT (automatic login on acceptance). A database dump exposed every PENDING
+-- invitation in the clear.
 --
--- Os demais tokens one-time do sistema (email_verification_tokens, password_reset_tokens,
--- refresh_tokens — ver V003/V011) ja persistem APENAS o SHA-256. Esta migration alinha o convite ao
--- mesmo padrao: a coluna passa a guardar o hash; o token cru existe so em memoria durante a criacao
--- (para montar a URL do e-mail) e o aceite hasheia o token recebido para fazer lookup por indice.
+-- The system's other one-time tokens (email_verification_tokens, password_reset_tokens,
+-- refresh_tokens — see V003/V011) already persist ONLY the SHA-256. This migration aligns the
+-- invitation with the same pattern: the column now stores the hash; the raw token exists only in
+-- memory during creation (to build the email URL) and acceptance hashes the received token to do
+-- the indexed lookup.
 --
--- IMPORTANTE (ambiente dev): convites PENDING existentes guardam o token CRU nesta coluna. Apos a
--- migration o backend passa a comparar contra o SHA-256 do token apresentado, entao esses convites
--- legados NAO sao mais aceitaveis (o valor armazenado deixa de bater). Como combinado para dev, NAO
--- migramos dados legados; marcamos os PENDING antigos como EXPIRED para deixar o schema consistente
--- e evitar registros orfaos com valor cru indecifravel. Convites devem ser reenviados.
+-- IMPORTANT (dev environment): existing PENDING invitations hold the RAW token in this column. After
+-- the migration the backend compares against the SHA-256 of the presented token, so those legacy
+-- invitations are NO longer acceptable (the stored value stops matching). As agreed for dev, we do
+-- NOT migrate legacy data; we mark the old PENDING ones as EXPIRED to leave the schema consistent
+-- and avoid orphan records with an undecipherable raw value. Invitations must be resent.
 
--- 1) Invalida convites PENDING legados (o valor cru armazenado nao corresponde mais ao novo
---    contrato de hash). Sem isso ficariam PENDING para sempre, nunca aceitaveis.
+-- 1) Invalidates legacy PENDING invitations (the stored raw value no longer matches the new
+--    hash contract). Without this they would stay PENDING forever, never acceptable.
 UPDATE iam_user_invitations SET status = 'EXPIRED' WHERE status = 'PENDING';
 
--- 2) Renomeia a coluna e ajusta o tipo. O hash hexadecimal do SHA-256 tem 64 chars; TEXT espelha o
---    tipo usado nas demais tabelas de token (token_hash TEXT NOT NULL UNIQUE em V003/V011).
+-- 2) Renames the column and adjusts the type. The SHA-256 hex hash is 64 chars; TEXT mirrors the
+--    type used in the other token tables (token_hash TEXT NOT NULL UNIQUE in V003/V011).
 ALTER TABLE iam_user_invitations RENAME COLUMN token TO token_hash;
 ALTER TABLE iam_user_invitations ALTER COLUMN token_hash TYPE TEXT;
 
--- 3) Renomeia o indice correspondente para refletir o novo nome da coluna. A constraint UNIQUE
---    herdada de V010 (token UNIQUE) e renomeada automaticamente junto da coluna pelo Postgres.
+-- 3) Renames the matching index to reflect the new column name. The UNIQUE constraint inherited
+--    from V010 (token UNIQUE) is renamed automatically along with the column by Postgres.
 ALTER INDEX idx_iam_invitations_token RENAME TO idx_iam_invitations_token_hash;
 
 COMMENT ON COLUMN iam_user_invitations.token_hash IS
