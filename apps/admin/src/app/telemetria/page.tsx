@@ -1,9 +1,14 @@
+import { requireAccess } from "@/lib/access";
 import { getBusiness, getCost, getHealth } from "@/lib/data";
 import type { ServiceHealth } from "@/lib/contracts";
 
 export const dynamic = "force-dynamic";
 
 export default async function TelemetriaPage() {
+  // Ver nota em app/page.tsx: o layout não reroda em navegação RSC, então cada leitura
+  // gateia a si própria.
+  await requireAccess();
+
   const [cost, health, business] = await Promise.all([getCost(), getHealth(), getBusiness()]);
   const maxCost = Math.max(...cost.rows.map((r) => r.costUsd), 0.0001);
 
