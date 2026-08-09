@@ -57,7 +57,14 @@ public class IamService {
     @Transactional
     public void addUserToGroup(UUID tenantId, UUID actor, UUID groupId, UUID userId) {
         iam.findGroup(groupId, tenantId).orElseThrow(IamException::groupNotFound);
-        iam.addUserToGroup(userId, groupId, tenantId, actor);
+        // O grupo e validado contra o tenant; o userId nao era validado contra nada. Quem barra
+        // um usuario de outro tenant e o FK composto de V027 -- aqui so traduzimos a violacao
+        // para erro de dominio, no mesmo formato que createGroup ja usa pra nome duplicado.
+        try {
+            iam.addUserToGroup(userId, groupId, tenantId, actor);
+        } catch (DataIntegrityViolationException ex) {
+            throw IamException.userNotInTenant();
+        }
         iam.recordAudit(
                 tenantId,
                 actor,
@@ -175,7 +182,12 @@ public class IamService {
     @Transactional
     public void attachPolicyToUser(UUID tenantId, UUID actor, UUID policyId, UUID userId) {
         iam.findPolicy(policyId, tenantId).orElseThrow(IamException::policyNotFound);
-        iam.attachPolicyToUser(policyId, userId, tenantId, actor);
+        // Ver nota em addUserToGroup: o userId so e amarrado ao tenant pelo FK composto de V027.
+        try {
+            iam.attachPolicyToUser(policyId, userId, tenantId, actor);
+        } catch (DataIntegrityViolationException ex) {
+            throw IamException.userNotInTenant();
+        }
         iam.recordAudit(
                 tenantId,
                 actor,

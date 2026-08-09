@@ -20,6 +20,7 @@ Issue / Story: `#`
 ## Checklist
 
 - [ ] Segue padrões em `docs/engineering/standards.md`
+- [ ] Mensagens de commit em **inglês**, no formato Conventional Commits (ver `CLAUDE.md` › Como trabalhamos)
 - [ ] Multi-tenancy preservada (filtro `tenant_id` ou RLS) — quando aplicável
 - [ ] PII Shield aplicado em entradas de usuário antes do LLM (ADR 0012) — quando aplicável
 - [ ] Sem segredos no diff

@@ -14,6 +14,13 @@ public interface MeetingRepository {
 
     Optional<Meeting> findByIdAndTenant(UUID id, UUID tenantId);
 
+    /**
+     * Mesma busca, tomando lock de escrita na linha até o fim da transação. Para fluxos que leem o
+     * estado e decidem escrever com base nele (reprocess), onde duas transações concorrentes
+     * chegariam à mesma decisão a partir do mesmo estado obsoleto.
+     */
+    Optional<Meeting> findByIdAndTenantForUpdate(UUID id, UUID tenantId);
+
     /** Lista paginada por tenant ordenada por created_at desc. Page e size sao 0-based. */
     PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size);
 

@@ -121,27 +121,43 @@ public class MeetingsController {
     public MeetingSearchResponse search(
             @RequestParam("q") String q, @RequestParam(name = "k", defaultValue = "5") int k) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        authz.require(
-                principal.userId(),
-                principal.tenantId(),
-                "meeting:read",
-                meetingResource(principal.tenantId(), null));
         int limit = Math.min(Math.max(k, 1), 10);
-        List<MeetingSearchResponse.Item> items = new ArrayList<>();
+
+        // Carrega os candidatos e SÓ ENTÃO autoriza, item a item, com os atributos da reunião
+        // em mãos. O `authz.require` sobre o ARN curinga que existia aqui avaliava a política
+        // com contexto vazio: um Deny condicional (por atributo da reunião) nunca casava, e um
+        // Allow incondicional liberava o tenant inteiro. Este endpoint alimenta o RAG do chat,
+        // então o vazamento sairia como título + summarySnippet no contexto do modelo.
+        // Mesma chamada que o GET /meetings usa — ver `list` mais abaixo.
+        List<Meeting> candidates = new ArrayList<>();
         for (UUID id : embeddings.search(principal.tenantId(), q, limit)) {
             try {
-                Meeting m = meetings.getById(id, principal.tenantId());
-                items.add(
-                        new MeetingSearchResponse.Item(
-                                m.id(),
-                                m.title(),
-                                m.summarySnippet(),
-                                m.startedAt(),
-                                m.processingStatus().name()));
+                candidates.add(meetings.getById(id, principal.tenantId()));
             } catch (RuntimeException ignored) {
                 // embedding órfão (corrida com delete/erasure) — pula silenciosamente.
             }
         }
+
+        List<Meeting> visible =
+                authz.filterAllowed(
+                        principal.userId(),
+                        principal.tenantId(),
+                        "meeting:read",
+                        candidates,
+                        m -> meetingResource(principal.tenantId(), m.id()),
+                        Meeting::attributes);
+
+        List<MeetingSearchResponse.Item> items =
+                visible.stream()
+                        .map(
+                                m ->
+                                        new MeetingSearchResponse.Item(
+                                                m.id(),
+                                                m.title(),
+                                                m.summarySnippet(),
+                                                m.startedAt(),
+                                                m.processingStatus().name()))
+                        .toList();
         return new MeetingSearchResponse(items);
     }
 
@@ -302,7 +318,11 @@ public class MeetingsController {
                         Meeting::attributes);
 
         long totalItems = visible.size();
-        int fromIdx = Math.min(safePage * safeSize, visible.size());
+        // Offset em long: `page` vem do query string sem teto superior, e `safePage * safeSize`
+        // em int estoura pra negativo já a partir de page≈21M com size=100. O Math.min preserva
+        // o negativo e o subList seguinte rebenta com IndexOutOfBounds -> 500.
+        long offset = (long) safePage * safeSize;
+        int fromIdx = (int) Math.min(offset, visible.size());
         int toIdx = Math.min(fromIdx + safeSize, visible.size());
         List<Meeting> pageMeetings = visible.subList(fromIdx, toIdx);
         // Enriquecimento em LOTE (2 queries agregadas) — antes era 1 analise completa por item

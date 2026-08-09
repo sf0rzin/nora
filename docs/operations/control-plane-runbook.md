@@ -48,8 +48,10 @@ Roda o workflow **`cloudflare-tunnel.yml`** (Actions → Run workflow). Ele é i
 2. Configura a rota `admin.nora.systems → http://localhost:3002` (o sidecar `cloudflared` serve o
    Next pelo localhost do pod).
 3. Faz upsert do DNS `admin.nora.systems` → `<tunnel-id>.cfargotunnel.com` (proxied).
-4. Imprime, no log do step **`Connector token + AUD`**: o **connector token** (para o Secret
-   `CLOUDFLARE_TUNNEL_TOKEN`) e o **AUD** da Access App (para a Variable `CF_ACCESS_AUD`).
+4. Imprime, no log do step **`AUD + instruções do connector token`**: o **AUD** da Access App (para
+   a Variable `CF_ACCESS_AUD`, identificador público) e o comando pra cadastrar o **connector
+   token**. O token em si **não sai no log** — repo público, log legível por qualquer um; o comando
+   o leva da API direto pro `gh secret set`.
 
 > **Por que Tunnel + Access (ADR 0025):** o `nora-admin` sobe com `ingress: internal` — **sem FQDN
 > público**. A única porta de entrada é o túnel, atrás do Cloudflare Access (allowlist + OTP/SSO).

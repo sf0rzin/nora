@@ -664,6 +664,11 @@ class AuthServiceTest {
         }
 
         @Override
+        public Optional<RefreshToken> findById(UUID id) {
+            return all.stream().filter(t -> t.id().equals(id)).findFirst();
+        }
+
+        @Override
         public List<RefreshToken> findActiveByUserId(UUID userId) {
             return all.stream().filter(t -> t.userId().equals(userId) && !t.isRevoked()).toList();
         }

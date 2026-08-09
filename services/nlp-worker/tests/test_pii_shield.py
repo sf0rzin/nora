@@ -133,6 +133,35 @@ def test_negative_list_blocks_company_and_product():
     assert not any(r.type == PiiType.PERSON_NAME for r in result.redactions)
 
 
+def test_negative_token_does_not_shield_the_name_next_to_it():
+    """Produto encostado no nome nao pode desligar a redacao do nome.
+
+    Regressao: `_is_negative` era all-or-nothing -- um unico token da negative list
+    descartava o match inteiro da sequencia Title Case. Como a regex e gulosa, escrever
+    "Ana Souza Protheus" fazia "Ana Souza" sair em claro.
+    """
+    result = pii_shield.redact("Reuniao com Ana Souza Protheus na terca")
+    assert "Ana Souza" not in result.redacted_text
+    assert "Protheus" in result.redacted_text
+    assert any(r.type == PiiType.PERSON_NAME for r in result.redactions)
+
+
+def test_negative_token_between_two_names_keeps_the_longest_run():
+    """Com o ofensor no meio, sobra o maior trecho contiguo limpo."""
+    result = pii_shield.redact("Acme Protheus Ana Souza fechou o contrato")
+    assert "Ana Souza" not in result.redacted_text
+    assert "Acme" in result.redacted_text
+    assert "Protheus" in result.redacted_text
+
+
+def test_all_negative_tokens_still_redact_nothing():
+    """Contraprova do recorte: sem nenhum token limpo, nada e redigido."""
+    text = "Comparamos Protheus Datasul lado a lado"
+    result = pii_shield.redact(text)
+    assert result.redacted_text == text
+    assert not any(r.type == PiiType.PERSON_NAME for r in result.redactions)
+
+
 def test_acronym_does_not_match():
     """'RM', 'SAP', 'CRM' sao all-caps e nao satisfazem Title Case."""
     text = "Migramos do SAP para o RM via CRM"

@@ -678,6 +678,92 @@ def _is_negative(value: str) -> bool:
     return any(_fold(tok) in _PERSON_NAME_NEGATIVE_LIST for tok in _tokenize(value))
 
 
+_NAME_CONNECTIVES: frozenset[str] = frozenset(
+    _fold(c) for c in ("da", "de", "do", "das", "dos", "e")
+)
+
+# Pronomes de tratamento e cargos aceitos por `_NAME_PREFIX_RE`. Repetidos aqui como
+# conjunto porque, no caminho de recorte abaixo, o prefixo e o proprio sinal de que o
+# trecho restante e gente ("Dr. Carlos" continua valendo depois de tirar um produto).
+_NAME_HONORIFICS: frozenset[str] = frozenset(
+    _fold(h)
+    for h in (
+        "Sr",
+        "Sra",
+        "Srta",
+        "Dr",
+        "Dra",
+        "Prof",
+        "Profa",
+        "Eng",
+        "Engenheiro",
+        "Engenheira",
+        "Cap",
+        "Sgt",
+        "Gen",
+        "Pe",
+        "Padre",
+        "Diretor",
+        "Diretora",
+        "Coordenador",
+        "Coordenadora",
+        "Gerente",
+        "Pres",
+        "Presidente",
+    )
+)
+
+
+def _span_without_negatives(value: str, offset: int) -> tuple[int, int] | None:
+    """Devolve o trecho do candidato que ainda vale como nome, ou None.
+
+    Sem nenhum token da negative list, o match passa inteiro -- comportamento de sempre.
+
+    Com token da lista, o tratamento anterior era all-or-nothing: `_is_negative` respondia
+    True para QUALQUER token e o chamador descartava o match todo. Como `_NAME_SEQUENCE_RE`
+    e guloso (2-5 palavras Title Case ligadas por conectivos PT-BR), bastava encostar um
+    nome de produto no da pessoa -- "Ana Souza Protheus" -- para "Ana Souza" sair em claro.
+
+    Aqui o ofensor e removido e fica o maior trecho contiguo limpo, mas so se ele tiver um
+    sinal proprio de pessoa: o primeiro token precisa ser um primeiro nome BR conhecido ou
+    um pronome de tratamento. Sem essa exigencia o recorte viraria falso-positivo em nome
+    composto de empresa -- "Acme Software Solutions" (Acme na lista) redigiria
+    "Software Solutions" como se fosse gente.
+
+    Devolve None quando nada sobra util, inclusive com todos os tokens negativos
+    ("TOTVS Protheus" segue intocado). Token solto fica por conta do Padrao 3.
+    """
+    tokens = list(_WORD_RE.finditer(value))
+    if not tokens:
+        return None
+
+    if not any(_fold(t.group(0)) in _PERSON_NAME_NEGATIVE_LIST for t in tokens):
+        return offset, offset + len(value)
+
+    best: list[re.Match[str]] = []
+    run: list[re.Match[str]] = []
+    for tok in tokens:
+        if _fold(tok.group(0)) in _PERSON_NAME_NEGATIVE_LIST:
+            best = max(best, run, key=len)
+            run = []
+        else:
+            run.append(tok)
+    best = max(best, run, key=len)
+
+    # Conectivo orfao na ponta nao sustenta nome: "Ana Souza de" -> "Ana Souza".
+    while best and _fold(best[0].group(0)) in _NAME_CONNECTIVES:
+        best = best[1:]
+    while best and _fold(best[-1].group(0)) in _NAME_CONNECTIVES:
+        best = best[:-1]
+
+    if len(best) < 2:
+        return None
+    head = _fold(best[0].group(0))
+    if head not in _BR_TOP_NAMES and head not in _NAME_HONORIFICS:
+        return None
+    return offset + best[0].start(), offset + best[-1].end()
+
+
 def _apply_basic_patterns(
     text: str,
 ) -> tuple[str, list[Redaction], dict[PiiType, int]]:
@@ -751,19 +837,23 @@ def _redact_person_names(
 
     # Padrao 1: prefixo
     for m in _NAME_PREFIX_RE.finditer(text):
-        if _is_covered(m.start(), m.end()):
+        span = _span_without_negatives(m.group(0), m.start())
+        if span is None:
             continue
-        if _is_negative(m.group(0)):
+        start, end = span
+        if _is_covered(start, end):
             continue
-        _claim(m.start(), m.end(), m.group(0))
+        _claim(start, end, text[start:end])
 
     # Padrao 2: sequencia Title Case (2-4 palavras)
     for m in _NAME_SEQUENCE_RE.finditer(text):
-        if _is_covered(m.start(), m.end()):
+        span = _span_without_negatives(m.group(0), m.start())
+        if span is None:
             continue
-        if _is_negative(m.group(0)):
+        start, end = span
+        if _is_covered(start, end):
             continue
-        _claim(m.start(), m.end(), m.group(0))
+        _claim(start, end, text[start:end])
 
     # Padrao 3: primeiro nome BR isolado (Title Case, contra lista hardcoded).
     # _NAME_TOKEN_RE (Title Case only) evita falso-positivo em substantivos

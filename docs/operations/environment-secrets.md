@@ -232,12 +232,20 @@ Apenas para referência (não auditado). Não compartilha secrets de servidor. V
 4. Escopar na zona `nora.systems`.
 
 **`CLOUDFLARE_TUNNEL_TOKEN`** — connector token do túnel do nora-admin.
-1. Rodar o workflow `cloudflare-tunnel.yml` (workflow_dispatch). Ele cria/reusa o túnel e **imprime o token no log** do step "Connector token + AUD".
-2. Copiar o valor e cadastrar como **Secret** `CLOUDFLARE_TUNNEL_TOKEN`.
+1. Rodar o workflow `cloudflare-tunnel.yml` (workflow_dispatch) pra criar/reusar o túnel.
+2. O token **não sai no log**: este repo é público (ADR 0017) e o log de um run é legível por
+   qualquer visitante. O step `AUD + instruções do connector token` imprime o comando pra buscá-lo
+   direto da API e canalizá-lo pro secret, sem o valor tocar em log nem no histórico do shell:
+   ```bash
+   export CF_TOKEN=<o mesmo CLOUDFLARE_API_TOKEN>
+   curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+     "https://api.cloudflare.com/client/v4/accounts/<account-id>/cfd_tunnel/<tunnel-id>/token" \
+     | jq -r .result | gh secret set CLOUDFLARE_TUNNEL_TOKEN --repo sf0rzin/nora
+   ```
 3. Rotação: recriar o túnel pelo mesmo workflow gera novo token.
 
 **`CF_ACCESS_AUD`** — AUD tag da Access App `admin.nora.systems` (identificador **público**, não-secreto).
-1. Sai no **mesmo log** do step "Connector token + AUD" do `cloudflare-tunnel.yml` (precisa ter rodado `cloudflare-setup.yml` antes, que cria a Access App).
+1. Sai no log do step `AUD + instruções do connector token` do `cloudflare-tunnel.yml` (precisa ter rodado `cloudflare-setup.yml` antes, que cria a Access App).
 2. Cadastrar como **Variable** `CF_ACCESS_AUD` (ver §5 — hoje está como Secret, errado).
 
 ### Registry (opcional)

@@ -54,6 +54,12 @@ public class RefreshTokenRepositoryAdapter implements RefreshTokenRepository {
 
     @Override
     @Transactional
+    public Optional<RefreshToken> findById(UUID id) {
+        return jpa.findById(id).map(RefreshTokenRepositoryAdapter::toDomain);
+    }
+
+    @Override
+    @Transactional
     public List<RefreshToken> findActiveByUserId(UUID userId) {
         return jpa.findAllByUserIdAndRevokedAtIsNull(userId).stream()
                 .map(RefreshTokenRepositoryAdapter::toDomain)

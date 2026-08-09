@@ -49,6 +49,12 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
     }
 
     @Override
+    @Transactional
+    public Optional<Meeting> findByIdAndTenantForUpdate(UUID id, UUID tenantId) {
+        return jpa.findByIdAndTenantIdForUpdate(id, tenantId).map(this::toDomain);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size) {
         MeetingFilter f = filter == null ? MeetingFilter.empty() : filter;

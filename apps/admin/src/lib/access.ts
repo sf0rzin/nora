@@ -79,11 +79,19 @@ export class AccessDeniedError extends Error {
 }
 
 /**
- * Gate para **server actions**. O `checkAccess()` do RootLayout NÃO cobre esse caminho:
- * numa server action o Next executa a action primeiro e só depois re-renderiza a árvore,
- * então o layout roda tarde demais para impedir o efeito colateral. Sem isto, um POST
- * direto no endpoint da action — com o `Next-Action` id, que é público no bundle —
- * executa a mutação sem passar por Access nenhum.
+ * Gate obrigatório de **server actions e de páginas**. O `checkAccess()` do RootLayout não
+ * cobre nenhum dos dois caminhos:
+ *
+ * - **Server actions:** o Next executa a action primeiro e só depois re-renderiza a árvore,
+ *   então o layout roda tarde demais para impedir o efeito colateral. Sem isto, um POST
+ *   direto no endpoint da action — com o `Next-Action` id, que é público no bundle —
+ *   executa a mutação sem passar por Access nenhum.
+ * - **Páginas:** o App Router faz renderização parcial e não reinvoca o layout de um
+ *   segmento pai inalterado numa navegação RSC. Uma requisição que já traga a router state
+ *   tree renderiza a página e devolve o payload sem o gate do layout rodar.
+ *
+ * Toda página nova deve começar com `await requireAccess()`. O layout continua fazendo o
+ * seu check para render inicial e para a tela de 403, mas ele é a segunda linha, não a única.
  *
  * Retorna o e-mail do JWT verificado quando está enforçando. Fora de enforce (dev/mocks)
  * devolve `undefined` e o caller cai no operador de desenvolvimento.
