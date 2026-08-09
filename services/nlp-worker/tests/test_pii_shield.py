@@ -162,6 +162,36 @@ def test_all_negative_tokens_still_redact_nothing():
     assert not any(r.type == PiiType.PERSON_NAME for r in result.redactions)
 
 
+def test_a_negative_token_between_two_names_redacts_both():
+    """Regressao: so o primeiro trecho limpo sobrevivia e o segundo apelido saia em claro."""
+    result = pii_shield.redact("Ana Souza Protheus Carlos Silva")
+    assert "Ana Souza" not in result.redacted_text
+    assert "Carlos Silva" not in result.redacted_text
+    assert "Protheus" in result.redacted_text
+
+
+def test_a_trimmed_prefix_claim_does_not_swallow_a_clean_sequence():
+    """Regressao: o span recortado do Padrao 1 bloqueava um match limpo do Padrao 2."""
+    result = pii_shield.redact("Ribeiro Alves Dr. Ana Protheus")
+    assert "Ribeiro Alves" not in result.redacted_text
+    assert "Protheus" in result.redacted_text
+
+
+def test_a_trim_never_splices_a_placeholder_into_a_surname():
+    """Regressao: o corte caia no fim do match e colava o placeholder na cauda do apelido."""
+    result = pii_shield.redact("Sr. Protheus Carlos Núñez")
+    assert "]]ñez" not in result.redacted_text
+    assert "Núñez" in result.redacted_text
+
+
+def test_a_job_title_alone_is_not_a_person():
+    """Regressao: cargo como sinal de pessoa redigia frase que nao tem ninguem dentro."""
+    for text in ("Gerente de Contas Oracle confirmou o prazo", "Diretor Comercial Senior aprovou"):
+        result = pii_shield.redact(text)
+        assert result.redacted_text == text
+        assert not any(r.type == PiiType.PERSON_NAME for r in result.redactions)
+
+
 def test_acronym_does_not_match():
     """'RM', 'SAP', 'CRM' sao all-caps e nao satisfazem Title Case."""
     text = "Migramos do SAP para o RM via CRM"

@@ -713,55 +713,90 @@ _NAME_HONORIFICS: frozenset[str] = frozenset(
     )
 )
 
+# Subconjunto que so aparece antes de uma PESSOA. Os cargos ficam de fora de proposito:
+# "Gerente de Contas", "Diretor Comercial" e "Presidente do Conselho" sao funcoes que existem
+# sem ninguem no meio, e aceita-los como sinal de pessoa no caminho de recorte transformava
+# frase de cargo em PERSON_NAME -- com direito a hash do cargo no registro de redacao.
+_PERSON_ONLY_HONORIFICS: frozenset[str] = frozenset(
+    _fold(h)
+    for h in (
+        "Sr",
+        "Sra",
+        "Srta",
+        "Dr",
+        "Dra",
+        "Prof",
+        "Profa",
+        "Eng",
+        "Engenheiro",
+        "Engenheira",
+        "Cap",
+        "Sgt",
+        "Gen",
+        "Pe",
+        "Padre",
+    )
+)
 
-def _span_without_negatives(value: str, offset: int) -> tuple[int, int] | None:
-    """Devolve o trecho do candidato que ainda vale como nome, ou None.
 
-    Sem nenhum token da negative list, o match passa inteiro -- comportamento de sempre.
+def _spans_without_negatives(value: str, offset: int, text: str) -> list[tuple[int, int]]:
+    """Todos os trechos do candidato que ainda valem como nome, da esquerda para a direita.
 
-    Com token da lista, o tratamento anterior era all-or-nothing: `_is_negative` respondia
-    True para QUALQUER token e o chamador descartava o match todo. Como `_NAME_SEQUENCE_RE`
-    e guloso (2-5 palavras Title Case ligadas por conectivos PT-BR), bastava encostar um
-    nome de produto no da pessoa -- "Ana Souza Protheus" -- para "Ana Souza" sair em claro.
-
-    Aqui o ofensor e removido e fica o maior trecho contiguo limpo, mas so se ele tiver um
-    sinal proprio de pessoa: o primeiro token precisa ser um primeiro nome BR conhecido ou
-    um pronome de tratamento. Sem essa exigencia o recorte viraria falso-positivo em nome
-    composto de empresa -- "Acme Software Solutions" (Acme na lista) redigiria
-    "Software Solutions" como se fosse gente.
-
-    Devolve None quando nada sobra util, inclusive com todos os tokens negativos
-    ("TOTVS Protheus" segue intocado). Token solto fica por conta do Padrao 3.
+    Devolve lista porque um token negativo no MEIO separa dois nomes distintos: em
+    "Ana Souza Protheus Carlos Silva" sobram dois trechos limpos, e a versao anterior --
+    que ficava so com o maior via `max()`, primeiro em caso de empate -- descartava
+    "Carlos Silva" inteiro. O apelido saia em claro.
     """
-    tokens = list(_WORD_RE.finditer(value))
-    if not tokens:
-        return None
-
-    if not any(_fold(t.group(0)) in _PERSON_NAME_NEGATIVE_LIST for t in tokens):
-        return offset, offset + len(value)
-
-    best: list[re.Match[str]] = []
-    run: list[re.Match[str]] = []
-    for tok in tokens:
+    runs: list[list[re.Match[str]]] = []
+    current: list[re.Match[str]] = []
+    for tok in _WORD_RE.finditer(value):
         if _fold(tok.group(0)) in _PERSON_NAME_NEGATIVE_LIST:
-            best = max(best, run, key=len)
-            run = []
+            if current:
+                runs.append(current)
+            current = []
         else:
-            run.append(tok)
-    best = max(best, run, key=len)
+            current.append(tok)
+    if current:
+        runs.append(current)
 
+    if len(runs) <= 1 and not any(
+        _fold(t.group(0)) in _PERSON_NAME_NEGATIVE_LIST for t in _WORD_RE.finditer(value)
+    ):
+        # Sem token negativo nenhum: o match passa inteiro, como sempre passou.
+        return [(offset, offset + len(value))] if runs else []
+
+    spans: list[tuple[int, int]] = []
+    for run in runs:
+        span = _qualify_run(run, offset, text)
+        if span is not None:
+            spans.append(span)
+    return spans
+
+
+def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int, int] | None:
+    """Aceita um trecho limpo como nome, ou devolve None."""
     # Conectivo orfao na ponta nao sustenta nome: "Ana Souza de" -> "Ana Souza".
-    while best and _fold(best[0].group(0)) in _NAME_CONNECTIVES:
-        best = best[1:]
-    while best and _fold(best[-1].group(0)) in _NAME_CONNECTIVES:
-        best = best[:-1]
+    while run and _fold(run[0].group(0)) in _NAME_CONNECTIVES:
+        run = run[1:]
+    while run and _fold(run[-1].group(0)) in _NAME_CONNECTIVES:
+        run = run[:-1]
+    if len(run) < 2:
+        return None
+    # Sinal proprio de pessoa. Cargos (Gerente, Diretor, Presidente) NAO servem: sozinhos eles
+    # encabecam frases que sao so funcao, sem ninguem -- "Gerente de Contas Oracle" virava um
+    # PERSON_NAME com hash de "Gerente de Contas". Pronome de tratamento so precede gente.
+    head = _fold(run[0].group(0))
+    if head not in _BR_TOP_NAMES and head not in _PERSON_ONLY_HONORIFICS:
+        return None
 
-    if len(best) < 2:
+    start, end = offset + run[0].start(), offset + run[-1].end()
+    # O corte nao pode terminar no meio de uma palavra. O _WORD_RE so conhece as letras da classe
+    # declarada, entao um apelido com letra fora dela ("Núñez") faz o run acabar a meio -- e o
+    # placeholder saia colado na cauda: "[[PERSON_NAME_1]]ñez". A checagem e contra o TEXTO
+    # COMPLETO, nao contra o match: o corte cai justamente no fim do match.
+    if end < len(text) and text[end].isalpha():
         return None
-    head = _fold(best[0].group(0))
-    if head not in _BR_TOP_NAMES and head not in _NAME_HONORIFICS:
-        return None
-    return offset + best[0].start(), offset + best[-1].end()
+    return start, end
 
 
 def _apply_basic_patterns(
@@ -835,25 +870,42 @@ def _redact_person_names(
         person_matches.append(_Match(type=PiiType.PERSON_NAME, start=start, end=end, value=value))
         covered.append((start, end))
 
-    # Padrao 1: prefixo
+    def _claim_free_parts(start: int, end: int) -> None:
+        """Reclama o candidato, recortando o que ja esta coberto em vez de o descartar.
+
+        O `_is_covered` sozinho e all-or-nothing, e isso passou a perder nomes quando o
+        Padrao 1 comecou a reclamar spans RECORTADOS: um match do Padrao 2 inteiramente
+        limpo que apenas ENCOSTASSE nesse recorte era jogado fora por inteiro, e o apelido
+        saia em claro. Aqui sobra o que estiver livre, e cada pedaco livre volta a ser
+        validado como nome antes de ser reclamado.
+        """
+        cursor = start
+        for cs, ce in sorted(covered):
+            if ce <= cursor or cs >= end:
+                continue
+            if cs > cursor:
+                _qualify_and_claim(cursor, min(cs, end))
+            cursor = max(cursor, ce)
+            if cursor >= end:
+                return
+        if cursor < end:
+            _qualify_and_claim(cursor, end)
+
+    def _qualify_and_claim(start: int, end: int) -> None:
+        for s, e in _spans_without_negatives(text[start:end], start, text):
+            if _is_covered(s, e):
+                continue
+            _claim(s, e, text[s:e])
+
+    # Padrao 1: prefixo (pronome de tratamento / cargo + nome)
     for m in _NAME_PREFIX_RE.finditer(text):
-        span = _span_without_negatives(m.group(0), m.start())
-        if span is None:
-            continue
-        start, end = span
-        if _is_covered(start, end):
-            continue
-        _claim(start, end, text[start:end])
+        for start, end in _spans_without_negatives(m.group(0), m.start(), text):
+            _claim_free_parts(start, end)
 
     # Padrao 2: sequencia Title Case (2-4 palavras)
     for m in _NAME_SEQUENCE_RE.finditer(text):
-        span = _span_without_negatives(m.group(0), m.start())
-        if span is None:
-            continue
-        start, end = span
-        if _is_covered(start, end):
-            continue
-        _claim(start, end, text[start:end])
+        for start, end in _spans_without_negatives(m.group(0), m.start(), text):
+            _claim_free_parts(start, end)
 
     # Padrao 3: primeiro nome BR isolado (Title Case, contra lista hardcoded).
     # _NAME_TOKEN_RE (Title Case only) evita falso-positivo em substantivos
