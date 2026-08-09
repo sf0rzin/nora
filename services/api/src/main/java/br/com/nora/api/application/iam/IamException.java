@@ -33,4 +33,12 @@ public class IamException extends RuntimeException {
     public static IamException forbidden(String action) {
         return new IamException("IAM_FORBIDDEN", "Acao nao permitida: " + action);
     }
+
+    /**
+     * Usuario alvo do vinculo nao pertence ao tenant do chamador. Levantada ao traduzir a violacao
+     * do FK composto de V027 -- nao existe caminho legitimo que a produza.
+     */
+    public static IamException userNotInTenant() {
+        return new IamException("IAM_USER_NOT_IN_TENANT", "Usuario nao pertence a este tenant.");
+    }
 }
