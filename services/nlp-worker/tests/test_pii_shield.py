@@ -338,13 +338,13 @@ def test_an_unqualified_leftover_fragment_is_not_claimed_as_a_person(monkeypatch
     fragment left over between the start of the Pattern 2 match and the span Pattern 1 already
     claimed is taken for a person and its hash filed.
     """
-    probe = "Contrato Dr. Ana chegou."
-    assert pii_shield.redact(probe).redacted_text == "Contrato [[PERSON_NAME_1]] chegou."
+    probe = "Zanchetta Dr. Ana chegou."
+    assert pii_shield.redact(probe).redacted_text == "Zanchetta [[PERSON_NAME_1]] chegou."
 
     monkeypatch.setattr(pii_shield, "_is_a_name_on_its_own", lambda value: True)
     assert (
         pii_shield.redact(probe).redacted_text == "[[PERSON_NAME_1]] [[PERSON_NAME_2]] chegou."
-    ), "the gate must be what keeps 'Contrato' out; if this line matches the one above it is inert"
+    ), "the gate must be what keeps the fragment out; if this matches the line above it is inert"
 
 
 @pytest.mark.parametrize(
@@ -371,9 +371,201 @@ def test_the_conjunction_e_joins_two_people_and_is_not_a_genitive(text, leaked):
 
 
 def test_the_order_of_two_names_does_not_decide_whether_they_are_redacted():
+    # Two people, two placeholders, two distinct hashes -- the run is split at the conjunction
+    # and each side qualified on its own, so neither depends on the other being recognised.
     a = pii_shield.redact("Osvaldo Pinheiro e Marina Alves ficaram de responder.").redacted_text
     b = pii_shield.redact("Marina Alves e Osvaldo Pinheiro ficaram de responder.").redacted_text
-    assert a == b == "[[PERSON_NAME_1]] ficaram de responder."
+    assert a == b == "[[PERSON_NAME_1]] e [[PERSON_NAME_2]] ficaram de responder."
+
+
+@pytest.mark.parametrize(
+    "text, name",
+    [
+        ("Falei com Nivaldo da Silva ontem.", "Nivaldo da Silva"),
+        ("Zoraide dos Santos assumiu.", "Zoraide dos Santos"),
+        ("Kleber de Souza respondeu.", "Kleber de Souza"),
+        ("Genivaldo de Oliveira revisou.", "Genivaldo de Oliveira"),
+        ("Marlene da Costa aprovou.", "Marlene da Costa"),
+        ("Osvaldo do Nascimento ligou.", "Osvaldo do Nascimento"),
+        ("Iracema de Lima confirmou.", "Iracema de Lima"),
+        ("Creuza dos Reis enviou.", "Creuza dos Reis"),
+        ("Valdomiro da Rocha comentou.", "Valdomiro da Rocha"),
+    ],
+)
+def test_the_particle_that_marks_a_brazilian_full_name_does_not_switch_the_shield_off(text, name):
+    """Regression: the genitive gate leaked the most common full-name shape in the country.
+
+    The rule was "unknown head + a preposition => not a person", and "Nivaldo da Silva",
+    "Zoraide dos Santos", "Marlene da Costa" are exactly that shape. Twelve of sixteen
+    realistic names went to the LLM in the clear -- the tail signal was there (Silva, Santos,
+    Costa are all on the surname list) and was being discarded. The head now has to be
+    RECOGNISED as ordinary vocabulary before a phrase is refused; unknown means person.
+    """
+    result = pii_shield.redact(text)
+    assert name not in result.redacted_text, result.redacted_text
+    for token in name.split():
+        if pii_shield._fold(token) in pii_shield._NAME_CONNECTIVES:
+            continue
+        assert token not in result.redacted_text, result.redacted_text
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("CARLOS SILVA APROVOU O ESCOPO.", "[[PERSON_NAME_1]] APROVOU O ESCOPO."),
+        (
+            "FICOU COM EDSON SILVA O ACOMPANHAMENTO.",
+            "FICOU COM [[PERSON_NAME_1]] O ACOMPANHAMENTO.",
+        ),
+        (
+            "ATA: PRESENTES CARLOS SILVA E MAIS DOIS.",
+            "ATA: PRESENTES [[PERSON_NAME_1]] E MAIS DOIS.",
+        ),
+        ("ANA SILVA-COSTA aprovou.", "[[PERSON_NAME_1]] aprovou."),
+    ],
+)
+def test_an_all_caps_name_does_not_swallow_the_words_around_it(text, expected):
+    """Regression: Pattern 4 claimed the whole greedy run.
+
+    "CARLOS SILVA APROVOU O ESCOPO" lost the verb -- the decision itself disappeared from the
+    text the model reads -- and filed `_hash("CARLOS SILVA APROVOU")`, which is nobody. Only
+    the stretch that opens on a recognised token and closes on a recognised one is the name.
+    """
+    assert pii_shield.redact(text).redacted_text == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "ACOMPANHAMENTO DE CAMPOS.",
+        "LISTA DE CAMPOS foi revisada.",
+        "PRECISAMOS DA LISTA DE CAMPOS DO PROTHEUS.",
+        "FALTA O RELATORIO DE VENDAS DO PRADO.",
+        "PRAZO DE MUITOS DIAS.",
+        "Bairro SANTA CRUZ na proposta.",
+    ],
+)
+def test_an_upper_cased_business_phrase_is_not_a_person(text):
+    """Upper-casing an ordinary phrase must not change the answer.
+
+    Pattern 4 admitted head-OR-tail, and a third of the surname list doubles as an ordinary
+    Portuguese noun, so every heading ending in Campos, Cruz, Dias or Prado became a person --
+    including the upper-cased twins of the phrases the suite already pins as "not a person".
+    """
+    assert pii_shield.redact(text).redacted_text == text
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("O Protheus da Nota Fiscal quebrou.", "O Protheus da Nota Fiscal quebrou."),
+        ("O Jira do Time Comercial esta parado.", "O Jira do Time Comercial esta parado."),
+        ("A Sprint do Modulo Fiscal atrasou.", "A Sprint do Modulo Fiscal atrasou."),
+        ("O Backlog do Time Novo cresceu.", "O Backlog do Time Novo cresceu."),
+    ],
+)
+def test_a_product_owning_a_thing_is_not_a_product_owning_a_person(text, expected):
+    """Counter-proof for the possessive exemption: not everything a product owns is a person."""
+    assert pii_shield.redact(text).redacted_text == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Pesquisa e Desenvolvimento vai avaliar.",
+        "Custos e Despesas subiram.",
+        "Governanca e Risco pediu o relatorio.",
+        "Compras e Suprimentos ainda nao respondeu.",
+    ],
+)
+def test_two_departments_joined_by_e_are_not_a_person(text):
+    """The other side of splitting on `e`: each half has to stand as a name on its own, and a
+    single ordinary word does not."""
+    assert pii_shield.redact(text).redacted_text == text
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Contato Carlos Silva-jr.", "Contato [[PERSON_NAME_1]]-jr."),
+        ("Responsavel Marina Alves-financeiro.", "Responsavel [[PERSON_NAME_1]]-financeiro."),
+    ],
+)
+def test_a_lowercase_tail_after_a_hyphen_is_a_suffix_not_half_a_surname(text, expected):
+    """Regression: refusing the cut before ANY letter leaked the surname.
+
+    The hyphen clause was added so "Silva-Costa" would not be cut in half. Written as
+    `.isalpha()` it also refused "Silva-jr", and refusing means the whole span is dropped:
+    Pattern 3 then caught the given name alone and "Silva" went out in the clear where it had
+    been redacted before. Only a CAPITAL after the hyphen is the other half of a compound
+    surname -- which is what `_TITLE_WORD`'s own hyphen branch already says.
+    """
+    assert pii_shield.redact(text).redacted_text == expected
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Ana-Paula ficou de responder.", "[[PERSON_NAME_1]] ficou de responder."),
+        ("Maria-Fernanda abriu o chamado.", "[[PERSON_NAME_1]] abriu o chamado."),
+        ("A Ana-Maria confirmou.", "A [[PERSON_NAME_1]] confirmou."),
+        ("Maria-do-Carmo assinou.", "[[PERSON_NAME_1]] assinou."),
+        ("Ana-claudia confirmou.", "[[PERSON_NAME_1]] confirmou."),
+    ],
+)
+def test_a_hyphenated_given_name_is_redacted_whole(text, expected):
+    """Regression: the hyphen branch of `_TITLE_WORD` made Pattern 3 blind.
+
+    "Ana-Paula" became ONE token, and "ana-paula" is on no list of single given names, so a
+    name that used to be redacted as two tokens leaked whole. Where the compound continues in
+    lowercase ("Maria-do-Carmo") the token stopped at "Maria" instead and the placeholder went
+    out spliced. Pattern 3 now widens to the whole compound and reads its parts.
+    """
+    assert pii_shield.redact(text).redacted_text == expected
+
+
+def test_a_name_beyond_the_fifth_token_is_not_left_behind():
+    """Regression: the sequence cap was five tokens.
+
+    Product names padding the middle reach it easily. In this input the match stopped at
+    "Marina" and "Alves" fell outside every pattern -- Pattern 3 only knows given names -- so
+    the surname went to the LLM in the clear.
+    """
+    result = pii_shield.redact("Dr. Carlos Protheus Silva Protheus Marina Alves")
+    for name in ("Carlos", "Silva", "Marina", "Alves"):
+        assert name not in result.redacted_text, result.redacted_text
+    assert result.redacted_text.count("Protheus") == 2
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Revisar o RM das Contas Medicas.",
+        "O SAP da Nota Fiscal Eletronica.",
+        "Segue a Nota Fiscal Eletronica.",
+    ],
+)
+def test_the_fast_path_does_not_trust_a_phrase_that_opens_on_ordinary_vocabulary(text):
+    """A two-word Title Case shape is not enough when the first word is plainly not a name.
+
+    "Contas Medicas" and "Nota Fiscal Eletronica" were claimed as people, with the hash of the
+    phrase filed, purely because the regex fits. The tail is the escape hatch: if it IS a
+    listed surname the phrase is still taken, so "Conta Silva" is unaffected.
+    """
+    assert pii_shield.redact(text).redacted_text == text
+
+
+def test_a_lone_surname_left_by_a_product_term_is_not_left_in_the_clear():
+    """Regression: a one-token run was refused outright.
+
+    "Sr. Jose Protheus da Silva" came out as "[[PERSON_NAME_1]] Protheus da Silva" -- the
+    surname in the clear because the run around it was a single token.
+    """
+    result = pii_shield.redact("Sr. Jose Protheus da Silva")
+    assert "Silva" not in result.redacted_text
+    assert "Protheus" in result.redacted_text
+    # ...and a lone ordinary word in the same position stays put.
+    assert pii_shield.redact("Sr. Jose Protheus da Lista").redacted_text.endswith("da Lista")
 
 
 @pytest.mark.parametrize(

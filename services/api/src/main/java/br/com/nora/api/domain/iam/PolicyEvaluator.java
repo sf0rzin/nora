@@ -116,11 +116,44 @@ public final class PolicyEvaluator {
      */
     private static boolean coversWholeSet(PolicyStatement s, String resourceSet) {
         for (String pattern : s.resources()) {
-            if (matches(pattern, resourceSet)) {
+            if (coversEveryMemberOf(pattern, resourceSet)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Whether {@code pattern} matches EVERY string the {@code resourceSet} glob describes.
+     *
+     * <p>This was {@code matches(pattern, resourceSet)}, which compares the pattern against the
+     * set's own text as if it were a resource. The {@code ?} wildcard then consumed the literal
+     * {@code *}: an unconditional Deny on {@code nora:tenant/T:meeting/?} — a one-character id no
+     * meeting has — short-circuited the pre-check for the whole tenant, and {@code GET
+     * /meetings/search} answered 403 while the per-row check allowed every real meeting.
+     *
+     * <p>The rule is stated in terms of the sets. A pattern with no trailing {@code *} matches
+     * finitely many strings and cannot cover the infinite set {@code prefix*}; one that has a
+     * trailing {@code *} covers it exactly when its own fixed part is satisfied by a prefix of the
+     * set's fixed part, leaving its star to absorb whatever the set's star produces.
+     *
+     * <p>Deliberately conservative in one direction: a Deny on {@code meeting/????????-????-...}
+     * does deny every real UUID, but not every string in the set, so it does not short-circuit. The
+     * consequence is a query that runs and returns nothing — never an unauthorized read.
+     */
+    private static boolean coversEveryMemberOf(String pattern, String resourceSet) {
+        if (pattern.equals("*")) {
+            return true;
+        }
+        if (!resourceSet.endsWith("*")) {
+            return matches(pattern, resourceSet);
+        }
+        if (!pattern.endsWith("*")) {
+            return false;
+        }
+        String patternPrefix = pattern.substring(0, pattern.length() - 1);
+        String setPrefix = resourceSet.substring(0, resourceSet.length() - 1);
+        return Pattern.compile(globRegexPrefix(patternPrefix)).matcher(setPrefix).lookingAt();
     }
 
     /**
@@ -413,6 +446,12 @@ public final class PolicyEvaluator {
             return true;
         }
         return value.matches(globRegex(pattern));
+    }
+
+    /** The same regex without the closing anchor, for prefix matching. */
+    private static String globRegexPrefix(String pattern) {
+        String anchored = globRegex(pattern);
+        return anchored.substring(0, anchored.length() - 1);
     }
 
     /** The anchored regex for a glob pattern: {@code *} is any run, {@code ?} is one character. */

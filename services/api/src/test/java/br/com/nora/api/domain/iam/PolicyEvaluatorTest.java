@@ -319,6 +319,43 @@ class PolicyEvaluatorTest {
     }
 
     @Test
+    void anUnconditionalDenyOnOneResourceDoesNotShortCircuitTheWholeSet() {
+        // The short-circuit compared the Deny pattern against the SET's own text, so `?`
+        // consumed the literal `*`: a Deny on a one-character id -- which no meeting has --
+        // made the pre-check answer 403 for the whole tenant, while the per-row check allowed
+        // every real meeting.
+        var stmts =
+                List.of(
+                        allow("meeting:read", "nora:tenant/t1:meeting/*"),
+                        deny("meeting:read", "nora:tenant/t1:meeting/?"));
+
+        assertThat(PolicyEvaluator.hasAnyAllow(stmts, "meeting:read", "nora:tenant/t1:meeting/*"))
+                .as("a Deny that no real resource matches must not short-circuit")
+                .isTrue();
+        assertThat(
+                        PolicyEvaluator.isAllowed(
+                                stmts, "meeting:read", "nora:tenant/t1:meeting/9c8f-1234"))
+                .isTrue();
+    }
+
+    @Test
+    void anUnconditionalDenyOverTheWholeSetStillShortCircuits() {
+        // Counter-proof: the short-circuit has to survive, or the pre-check stops saving the
+        // query it exists to save.
+        for (String denied : new String[] {"*", "nora:tenant/t1:*", "nora:tenant/t1:meeting/*"}) {
+            var stmts =
+                    List.of(
+                            allow("meeting:read", "nora:tenant/t1:meeting/*"),
+                            deny("meeting:read", denied));
+            assertThat(
+                            PolicyEvaluator.hasAnyAllow(
+                                    stmts, "meeting:read", "nora:tenant/t1:meeting/*"))
+                    .as("Deny on %s covers the whole set", denied)
+                    .isFalse();
+        }
+    }
+
+    @Test
     void hasAnyAllowReturnsTrueForUnconditionalAllow() {
         var stmts = List.of(allow("meeting:read", "nora:tenant/t1:meeting/*"));
         assertThat(PolicyEvaluator.hasAnyAllow(stmts, "meeting:read", "nora:tenant/t1:meeting/*"))

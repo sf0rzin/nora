@@ -326,6 +326,42 @@ class MeetingServiceTest {
         assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.PENDING);
         assertThat(meetingRepo.findByIdAndTenant(m.id(), tenant).orElseThrow().processingStatus())
                 .isEqualTo(ProcessingStatus.PENDING);
+
+        // The audit row must not assert a transition the database refuses. The snapshot said
+        // PROCESSING; the claim only fires from COMPLETED or FAILED, so which one it passed
+        // through is unknowable here -- and recording "previousStatus": "PROCESSING" filed a
+        // permanent claim that PROCESSING -> PENDING happened, which it cannot have.
+        RecordingAudit.Event event =
+                audit.events.stream()
+                        .filter(e -> e.action().equals("meeting.reprocessed"))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(event.payload()).containsEntry("previousStatus", "UNKNOWN");
+        assertThat(event.payload()).containsEntry("observedBeforeClaim", "PROCESSING");
+    }
+
+    @Test
+    void theAuditRecordsTheRealPreviousStatusWhenNothingMovedUnderIt() {
+        // Counter-proof: in the ordinary case the snapshot IS the previous status, and saying
+        // "UNKNOWN" everywhere would make the field useless.
+        Meeting m =
+                service.upload(
+                        new UploadCommand(
+                                tenant, owner, "calm", null, null, null, "TXT", List.of(),
+                                List.of(), "linha"));
+        meetingRepo.save(
+                m.withStatus(ProcessingStatus.PROCESSING).withStatus(ProcessingStatus.COMPLETED));
+        audit.events.clear();
+
+        service.reprocess(m.id(), tenant, owner, loaded -> {});
+
+        RecordingAudit.Event event =
+                audit.events.stream()
+                        .filter(e -> e.action().equals("meeting.reprocessed"))
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(event.payload()).containsEntry("previousStatus", "COMPLETED");
+        assertThat(event.payload()).doesNotContainKey("observedBeforeClaim");
     }
 
     @Test

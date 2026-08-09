@@ -274,13 +274,27 @@ public class MeetingService {
                     "A análise já está em andamento ou na fila; aguarde concluir antes de"
                             + " reprocessar.");
         }
+        // `meeting` was read BEFORE the authorization callback, which is the very reason the
+        // return value below is a re-read rather than a derivation. The payload cannot trust it
+        // either: the claim only fires from COMPLETED or FAILED, so when the snapshot says
+        // PROCESSING the row moved under us and which terminal state it passed through is
+        // unknowable from here. Recording the snapshot anyway filed a permanent audit row
+        // asserting PROCESSING -> PENDING, a transition the state machine explicitly refuses.
+        ProcessingStatus observed = meeting.processingStatus();
+        boolean snapshotSurvivedTheClaim =
+                observed == ProcessingStatus.COMPLETED || observed == ProcessingStatus.FAILED;
+        Map<String, Object> auditPayload = new HashMap<>();
+        auditPayload.put("previousStatus", snapshotSurvivedTheClaim ? observed.name() : "UNKNOWN");
+        if (!snapshotSurvivedTheClaim) {
+            auditPayload.put("observedBeforeClaim", observed.name());
+        }
         audit.record(
                 tenantId,
                 actorUserId != null ? actorUserId : meeting.ownerUserId(),
                 "meeting.reprocessed",
                 "MEETING",
                 meetingId,
-                Map.of("previousStatus", meeting.processingStatus().name()));
+                auditPayload);
         scheduleAnalysisAfterCommit(meetingId, tenantId);
 
         // Re-read rather than derive from the snapshot taken before the claim.

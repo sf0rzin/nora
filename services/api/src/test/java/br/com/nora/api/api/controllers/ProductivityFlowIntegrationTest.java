@@ -245,14 +245,24 @@ class ProductivityFlowIntegrationTest {
     }
 
     @Test
-    void puttingTheGoalTwiceOnACompletedMeetingQueuesOnlyOneReanalysis() throws Exception {
-        // Same path with the reprocess branch live: the second PUT flushes through
-        // claimForReanalysis, which is where the stale managed entity would surface as a
+    void aSecondGoalEditThatAlsoRequeuesTheAnalysisSucceeds() throws Exception {
+        // The goal upsert and the re-analysis claim in the SAME transaction: the goal write is
+        // still pending in the persistence context when claimForReanalysis fires with
+        // clearAutomatically, which is where a stale managed entity surfaces as a
         // StaleStateException on flush rather than at merge time.
+        //
+        // Reaching that needs the meeting COMPLETED at BOTH puts. The first version of this ran
+        // the analysis once and then put twice -- but the first put already moves the row to
+        // PENDING, so the second took the shouldReprocess=false branch, never touched
+        // claimForReanalysis, and was an exact duplicate of the test above. The analysis is run
+        // again in between, and the status after each put is what proves the branch was taken:
+        // had the claim been skipped, the row would have stayed COMPLETED.
         String token = signupAndLogin("upsert2@nora.dev", "SenhaForte123", "Upsert2");
         UUID meetingId = uploadMeeting(token, "Reuniao upsert 2");
-        analysisService.run(meetingId, principalTenantId(token));
+        UUID tenantId = principalTenantId(token);
 
+        analysisService.run(meetingId, tenantId);
+        assertThat(statusOf(meetingId, token)).isEqualTo("COMPLETED");
         assertThat(
                         putGoal(
                                         meetingId,
@@ -260,17 +270,36 @@ class ProductivityFlowIntegrationTest {
                                         Map.of("purpose", "v1", "expectedOutcomes", List.of("x")))
                                 .getStatusCode())
                 .isEqualTo(HttpStatus.OK);
+        assertThat(statusOf(meetingId, token))
+                .as("the first edit of an analysed meeting must queue a re-analysis")
+                .isEqualTo("PENDING");
+
+        // Back to COMPLETED, so the second edit takes the same branch as the first.
+        analysisService.run(meetingId, tenantId);
+        assertThat(statusOf(meetingId, token)).isEqualTo("COMPLETED");
+
         ResponseEntity<String> second =
                 putGoal(
                         meetingId,
                         token,
                         Map.of("purpose", "v2", "expectedOutcomes", List.of("y")));
         assertThat(second.getStatusCode())
-                .as("second PUT on a completed meeting: %s", second.getBody())
+                .as("second edit through the reprocess branch: %s", second.getBody())
                 .isEqualTo(HttpStatus.OK);
 
         JsonNode detail = authGet("/meetings/" + meetingId, token).read(HttpStatus.OK);
+        assertThat(detail.get("processingStatus").asText())
+                .as("the claim must have run on the second edit too, not been skipped")
+                .isEqualTo("PENDING");
         assertThat(detail.get("goal").get("purpose").asText()).isEqualTo("v2");
+        assertThat(detail.get("goal").get("expectedOutcomes").size()).isEqualTo(1);
+    }
+
+    private String statusOf(UUID meetingId, String token) throws Exception {
+        return authGet("/meetings/" + meetingId, token)
+                .read(HttpStatus.OK)
+                .get("processingStatus")
+                .asText();
     }
 
     /* ---------- helpers ---------- */
