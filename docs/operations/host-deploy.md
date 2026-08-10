@@ -119,8 +119,12 @@ ls -A infra/proxmox
 sudo rmdir infra/proxmox
 
 # 5. Deploy from the new path and watch it succeed, then restart the timer.
-sudo env SOPS_AGE_KEY_FILE=/etc/nora/age.key \
-     infra/host/scripts/deploy.sh --tag "sha-$(git rev-parse --short HEAD)"
+#    No --tag: this step proves the RELOCATED machinery works, it does not roll out code.
+#    Passing --tag "sha-$(git rev-parse --short HEAD)" here is a trap — build-images.yml only
+#    publishes on changes under services/ or apps/, so a docs-or-infra commit has no image at
+#    its SHA and every `docker compose pull` fails. deploy.sh reads the running tag when none
+#    is given, which is exactly what is wanted.
+sudo env SOPS_AGE_KEY_FILE=/etc/nora/age.key infra/host/scripts/deploy.sh
 sudo systemctl start nora-deploy.timer
 systemctl list-timers nora-deploy.timer
 ```
