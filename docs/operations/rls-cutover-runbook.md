@@ -1,12 +1,10 @@
 # RLS Enforce — Cutover Runbook (ADR 0028)
 
-> **Historical — superseded.** Written for the Azure deployment (Bicep params, `deploy-infra.yml`,
-> the Postgres Flexible Server). Azure is gone — no subscription, no export (ADR 0036). On the
-> self-hosted stack, Step 2 (provisioning the roles) runs as `infra/host/scripts/rls-cutover.sh` on
-> the production host — see `docs/operations/host-deploy.md` §RLS enforce flip — and Step 3 (the
-> flip) is a `NORA_RLS_ENFORCE` variable in the compose `.env`, not a Bicep param. The reasoning
-> below (why two roles, auth-aware scope, rollback shape) is unchanged and still the source of
-> truth for that; only the mechanics of applying it moved.
+> **Rewritten for the self-hosted stack on 2026-08-10.** The procedure below is what runs on the
+> production host today. The Azure mechanics this document used to describe — Bicep params,
+> `deploy-infra.yml`, a Postgres Flexible Server — went with the subscription (ADR 0036) and are
+> not preserved here; `git log` has them. What did not change is the reasoning, which lives in
+> ADR 0028: why there are three roles, why identity and IAM are exempt, and what rollback costs.
 
 Turns on Postgres **real Row Level Security** as defense in depth for `tenant_id`
 (on top of the app-level filter, which is already 100% disciplined). Operational companion to
@@ -19,91 +17,142 @@ Turns on Postgres **real Row Level Security** as defense in depth for `tenant_id
 
 | Step | What | Status |
 |---|---|---|
-| 1 | Mechanism (V019/V020 + Flyway-admin + onboarding GUC + Bicep switch + test gate) | Done (PR #197), enforce **default OFF** |
-| 2 | Provision the `nora_app` / `nora_telemetry` roles in Postgres | Pending — `rls-cutover.yml` |
-| 3 | Flip `rlsEnforce=true` in the bicepparam → deploy | Pending — requires a "go" from the owner |
-| 4 | Live smoke test + monitoring | Pending |
+| 1 | Mechanism: V019/V020, Flyway separated from the runtime role, onboarding GUC, the enforce switch, the test gate | Done (PR #197), enforce **default OFF** |
+| 2 | Provision `nora_app` / `nora_telemetry` in Postgres | Done on the current host — `01-roles-and-db.sql` runs them at initdb, and `scripts/rls-cutover.sh` reconciles them on an existing database |
+| 3 | Flip the six variables and redeploy the API | The step below |
+| 4 | Smoke test and watch | `scripts/smoke-e2e.sh` |
 
-Running Step 2 has **zero impact** on the running app — the roles stay idle until the flip.
+Step 2 has **zero impact** on the running app — the roles sit idle until the flip.
 
-## Prerequisites (once per environment)
+## Prerequisites
 
-Two GitHub Secrets with strong passwords (the `nora_app` password is the **same** one used by R001 and
-by the deployment — the single source of truth is the secret):
+`NORA_APP_PASSWORD` and `RLS_TELEMETRY_PASSWORD` in `infra/host/secrets.env.sops`, each generated
+with `openssl rand -hex 24`. They are the single source of truth: the same value goes into the
+`ALTER ROLE` in the database and into the API's environment. Generating one and setting only one
+half is the most common way to arrive at step 3 with an authentication failure.
+
+## Step 2 — Provision the roles
+
+On a **fresh** database this has already happened: `infra/host/postgres/init/01-roles-and-db.sql`
+runs at initdb, on an empty volume, and creates both roles with the grants and default privileges.
+Note that the compose does **not** pass the password variables into the `postgres` container, so
+the roles are created without a password — deliberately fail-closed. Step 2 is what gives them one.
+
+On an existing database, or to give the initdb-created roles their passwords:
 
 ```bash
-# Generate and set it WITHOUT echoing the value (hex = alphanumeric, no quoting headaches):
-openssl rand -hex 24 | gh secret set NORA_APP_PASSWORD
-openssl rand -hex 24 | gh secret set RLS_TELEMETRY_PASSWORD
-gh secret list | grep -E "NORA_APP_PASSWORD|RLS_TELEMETRY_PASSWORD"
+cd /opt/nora/infra/host
+sops -d secrets.env.sops > /dev/shm/nora.env      # tmpfs, never on disk
+set -a; . /dev/shm/nora.env; set +a
+sudo -E ./scripts/rls-cutover.sh --yes
+shred -u /dev/shm/nora.env
 ```
 
-`deploy-infra.yml` already injects those two secrets as env vars (the bicepparam reads them via
-`readEnvironmentVariable` at the flip). Already existing: `AZURE_*`, `PG_ADMIN_PASSWORD`.
+It runs `db/operational/R001` as the owner, is idempotent, and reconciles rather than recreates.
+It does **not** turn enforce on: the roles stay idle until step 3.
 
-## Step 2 — Provision roles (`rls-cutover.yml`)
+Confirm all three roles before going further — a missing `nora_telemetry` is the failure that
+silently zeroes the operator dashboard:
 
 ```bash
-gh workflow run rls-cutover.yml -f confirm=PROVISION
-gh run watch $(gh run list --workflow=rls-cutover.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+sudo docker exec nora-postgres psql -U nora_admin -d nora -c \
+  "select rolname, rolcanlogin, rolbypassrls from pg_roles where rolname like 'nora%' order by 1"
 ```
 
-The workflow (as **admin** `nora_admin`, via OIDC):
-1. runs `db/operational/R001` → creates `nora_app` (NOBYPASSRLS) + `nora_telemetry` (BYPASSRLS)
-   + GRANTs + DEFAULT PRIVILEGES;
-2. smoke test: checks the role flags, that `nora_app` connects, reads an **exempt** table (`users`)
-   and that an **enforced** table (`meetings`) under a random tenant returns 0 rows without error;
-3. closes the runner's temporary firewall rule (always).
+Expected: `nora_admin` (bypass `t`, it is the owner), `nora_app` (`f`), `nora_telemetry` (`t`).
 
-It is **idempotent** — it can be re-run. The admin password never leaves GitHub.
+## Step 3 — The flip
 
-## Step 3 — Flip (requires a "go" from the owner)
+Six variables, in `secrets.env.sops`. **All six or none** — every partial combination fails
+silently, which is why the API now refuses to start on several of them rather than running wrong.
 
-Add at the end of `infra/bicep/main.dev.bicepparam`:
-
-```bicep
-// ---- RLS enforce (ADR 0028) — cutover flip ----
-// nora_app (NOBYPASSRLS) + nora_telemetry (BYPASSRLS) provisioned by rls-cutover.yml.
-param rlsEnforce = true
-param appDbPassword = readEnvironmentVariable('NORA_APP_PASSWORD')
-param rlsTelemetryDatasourceUrl = 'jdbc:postgresql://nora-pg-dev-wgl3a3.postgres.database.azure.com:5432/nora?sslmode=require'
-param rlsTelemetryPassword = readEnvironmentVariable('RLS_TELEMETRY_PASSWORD')
+```bash
+cd /opt/nora/infra/host
+sops secrets.env.sops        # edits in place, re-encrypts on save
 ```
 
-What the flip turns on in the `nora-api-dev` Container App (via `main.bicep`):
-- `DATASOURCE_USERNAME=nora_app` + `DATASOURCE_PASSWORD`←KV `nora-app-password` (NOBYPASSRLS → RLS applies);
-- Flyway separated as **admin**: `SPRING_FLYWAY_USER=nora_admin` + password←KV `postgres-password`
-  (DDL + table owner);
-- `NORA_RLS_ENFORCE=true` (turns on the `TenantRlsAspect`);
-- the telemetry BYPASSRLS path: `NORA_TELEMETRY_DATASOURCE_*` as `nora_telemetry`
-  (the operator panel keeps aggregating cross-tenant).
+```dotenv
+DATASOURCE_USERNAME=nora_app
+DATASOURCE_PASSWORD=<the same value as NORA_APP_PASSWORD>
+SPRING_FLYWAY_USER=nora_admin
+NORA_TELEMETRY_DATASOURCE_URL=jdbc:postgresql://postgres:5432/nora
+NORA_TELEMETRY_DATASOURCE_USERNAME=nora_telemetry
+NORA_TELEMETRY_DATASOURCE_PASSWORD=<the same value as RLS_TELEMETRY_PASSWORD>
+NORA_RLS_ENFORCE=true
+```
 
-A PR with **only** that change → merge → `deploy-infra.yml` applies it. The API restarts connecting
-as `nora_app`.
+Why each one is in the list:
 
-> Do not include the flip in the same PR as the provisioning: merging the flip **before** Step 2 brings
-> the API up pointing at a `nora_app` that does not exist → the boot breaks.
+- **`DATASOURCE_*`** is the point of the exercise: the runtime pool connects as a NOBYPASSRLS role
+  that owns nothing, so the policies actually apply to it.
+- **`SPRING_FLYWAY_USER`** must stay the owner. It defaults to `POSTGRES_ADMIN_USER`, so setting it
+  is belt and braces — but it is listed because it used to default to `DATASOURCE_USERNAME`, which
+  made this exact procedure a boot failure: Flyway would follow the runtime role to `nora_app`,
+  with the admin's password, and a Flyway that authenticated anyway would be a non-owner unable to
+  do DDL. Flyway being the owner is *what makes* `nora_app` subject to the policies.
+- **The telemetry trio** is not optional. Under enforce the operator console's cross-tenant
+  aggregate runs with no tenant GUC, so as `nora_app` it reads zero rows with no error.
+- **`NORA_RLS_ENFORCE=true`** switches on `TenantRlsAspect`, which sets the GUC per transaction.
+  It must be exactly `true` — see below.
 
-## Step 4 — Live smoke test
+Then roll the API:
 
-- **Auth (exempt tables):** signup → email verification → login → invitation acceptance → password reset.
-- **Enforced tables:** transcript upload → list/detail show up → async analysis completes (COMPLETED).
-- **Isolation:** tenant B does **not** see tenant A's meeting/transcript.
-- **Operator:** the admin panel still aggregates metrics (BYPASSRLS telemetry).
+```bash
+sudo env SOPS_AGE_KEY_FILE=/etc/nora/age.key ./scripts/deploy.sh --service api
+```
 
-## Rollback (trivial, reversible)
+## The API refuses to start
 
-Remove the 4 flip lines from the bicepparam (or `param rlsEnforce = false`) → merge → redeploy.
-The API goes back to connecting as `nora_admin` (bypassing RLS). The schema (V019/V020) and the roles stay —
-with no effect while enforce is OFF.
+`RlsEnforceTelemetryGuard` fails the boot on three states, each of which would otherwise run
+wrong and look healthy. The message names the variables; this is the context behind it.
+
+| Message says | What is wrong | Fix |
+|---|---|---|
+| `NORA_RLS_ENFORCE is '…', which is neither 'true' nor 'false'` | `1`, `yes` and `on` are values Spring accepts as true elsewhere, and `@ConditionalOnProperty` does not. `1` leaves `TenantRlsAspect` switched **off**, so no GUC is ever set, while the datasource is already `nora_app` — every tenant-scoped read returns zero rows | Set it to exactly `true` |
+| `the runtime datasource connects as a role that BYPASSES row-level security` | `NORA_RLS_ENFORCE=true` with `DATASOURCE_USERNAME` still the owner or a superuser. Policies inert, everything green | Point `DATASOURCE_*` at `nora_app` |
+| `the telemetry datasource is not fully configured` | One or more of the three telemetry variables missing. All three are checked, not just the url | Set all three |
+
+**Recovery needs a shell on the host.** This is a configuration failure, and `deploy.sh`'s
+automatic rollback reverts *image tags* — it says so in its own header: "the automatic rollback
+covers image tags, not a broken compose". With the tag unchanged it either gives up or rolls the
+API back to an older image against the same broken environment. `web` and `admin` both
+`depends_on: api: condition: service_healthy`, so they do not come up either, and the only ingress
+is the tunnel, so there is no remote escape hatch.
+
+```bash
+cd /opt/nora/infra/host
+sops secrets.env.sops                       # fix, or set NORA_RLS_ENFORCE=false
+sudo env SOPS_AGE_KEY_FILE=/etc/nora/age.key ./scripts/deploy.sh --service api
+sudo docker logs --tail 40 nora-api         # the guard's message names the variable
+```
+
+## Step 4 — Smoke test
+
+```bash
+API_BASE=https://api.nora.systems \
+NORA_SMOKE_CONFIRM_CMD="sudo /opt/nora/infra/host/scripts/smoke-confirm.sh" \
+/opt/nora/scripts/smoke-e2e.sh
+```
+
+It covers what matters here, in one run: signup and login (the **exempt** identity tables — if RLS
+had been enabled on those, authentication would fail closed), upload and analysis (the **enforced**
+tables, through the aspect and through the async pipeline), and a second tenant getting 404 on the
+first tenant's meeting.
+
+Then confirm the operator dashboard still aggregates. It reads through the BYPASSRLS role, and a
+zero there with everything else working is the telemetry misconfiguration, not a quiet week.
+
+## Rollback
+
+`NORA_RLS_ENFORCE=false` in `secrets.env.sops`, then redeploy the API. It goes back to connecting
+as the owner and bypassing RLS. The schema (V019/V020) and both roles stay, inert.
+
+Reverting `DATASOURCE_USERNAME` at the same time is optional and harmless; leaving it on `nora_app`
+with enforce off means the app runs unprivileged with no GUC, which fails closed on every enforced
+table. Roll both back together.
 
 ## Operational notes
 
-- **`ServerIsBusy` on `azure.extensions`:** `deploy-infra.yml` rewrites the `azure.extensions`
-  parameter (already at `PGCRYPTO,CITEXT`) on every deployment; on a busy B1ms server this yields
-  `ServerIsBusy` (a transient no-op). Remedy: confirm `state=Ready` on both Postgres servers
-  (`az postgres flexible-server show ... --query state`) and re-run **once** (do not repeat
-  excessively — each attempt restarts the server and keeps the next one busy).
 - **Why two roles:** `nora_app` is NOBYPASSRLS (RLS applies to tenant data); `nora_telemetry`
   is BYPASSRLS (operator-only aggregate reads, intentionally cross-tenant). See ADR 0028 §telemetry.
 - **Auth-aware scope:** identity (users/tenants/tokens/invitations) and IAM authz (groups/policies/…)

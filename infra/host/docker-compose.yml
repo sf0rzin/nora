@@ -260,7 +260,11 @@ services:
       # which is `internal: true`. See the audit fix about sslmode.
       DATASOURCE_URL: jdbc:postgresql://postgres:5432/nora
       DATASOURCE_USERNAME: ${DATASOURCE_USERNAME:-nora_admin}
-      DATASOURCE_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD obrigatorio}
+      # Defaults to the admin password so nothing changes before the RLS cutover. After it,
+      # DATASOURCE_USERNAME becomes nora_app and DATASOURCE_PASSWORD has to be able to become
+      # nora_app's password -- without this indirection the username could be switched and the
+      # password could not, which is a login failure at boot with a misleading message.
+      DATASOURCE_PASSWORD: ${DATASOURCE_PASSWORD:-${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}}
 
       # ---- RLS enforce (ADR 0026/0028) — separate flip, see rls-cutover ----
       NORA_RLS_ENFORCE: ${NORA_RLS_ENFORCE:-false}
@@ -276,7 +280,14 @@ services:
       # flywayInitializer, without naming the guilty variable. The comment in application.yml
       # already warned about this; the compose fell into the hole anyway, on the first real deploy.
       SPRING_FLYWAY_URL: ${SPRING_FLYWAY_URL:-jdbc:postgresql://postgres:5432/nora}
-      SPRING_FLYWAY_USER: ${SPRING_FLYWAY_USER:-${DATASOURCE_USERNAME:-nora_admin}}
+      # Defaults to the OWNER, not to DATASOURCE_USERNAME. It used to follow it, which turned
+      # the documented cutover into a boot failure: setting DATASOURCE_USERNAME=nora_app also
+      # pointed Flyway at nora_app, with the admin password (the line below defaults to that
+      # independently), so Flyway failed to authenticate -- and had it authenticated, Flyway
+      # would have been running as a NOBYPASSRLS non-owner, which cannot do DDL and defeats the
+      # whole premise of ADR 0028. Flyway must be the owner; that is what makes nora_app subject
+      # to the policies.
+      SPRING_FLYWAY_USER: ${SPRING_FLYWAY_USER:-${POSTGRES_ADMIN_USER:-nora_admin}}
       SPRING_FLYWAY_PASSWORD: ${SPRING_FLYWAY_PASSWORD:-${POSTGRES_ADMIN_PASSWORD}}
       # All THREE roles matter: nora_app (NOBYPASSRLS), nora_telemetry (BYPASSRLS) and the
       # admin/owner. Without nora_telemetry the operator panel sees 0 rows SILENTLY.
@@ -369,7 +380,10 @@ services:
       # ---- Control plane (ADR 0022/0023/0024) ----
       NORA_PLATFORM_ENABLED: ${NORA_PLATFORM_ENABLED:-false}
       PLATFORM_DATASOURCE_URL: jdbc:postgresql://postgres-platform:5432/nora_platform
-      PLATFORM_DATASOURCE_USERNAME: ${DATASOURCE_USERNAME:-nora_admin}
+      # Same reasoning as SPRING_FLYWAY_USER: this must NOT follow DATASOURCE_USERNAME. The RLS
+      # cutover points that at nora_app, a role that exists in the `postgres` container and not
+      # in this one, so the control plane would be pointed at a login that does not exist.
+      PLATFORM_DATASOURCE_USERNAME: ${PLATFORM_DATASOURCE_USERNAME:-${POSTGRES_ADMIN_USER:-nora_admin}}
       PLATFORM_DATASOURCE_PASSWORD: ${POSTGRES_PLATFORM_ADMIN_PASSWORD:-${POSTGRES_ADMIN_PASSWORD}}
       NORA_PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_INTERNAL_TOKEN:-}
       NORA_PLATFORM_ADMIN_TOKEN: ${NORA_PLATFORM_ADMIN_TOKEN:-}

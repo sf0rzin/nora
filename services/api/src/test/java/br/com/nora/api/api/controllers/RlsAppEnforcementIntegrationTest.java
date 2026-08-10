@@ -2,10 +2,12 @@ package br.com.nora.api.api.controllers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import br.com.nora.api.application.platform.BusinessMetricsSource;
 import br.com.nora.api.application.ports.NlpWorkerClient;
 import br.com.nora.api.application.ports.NlpWorkerClient.AnalysisResult;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
 import br.com.nora.api.domain.analysis.Sentiment;
+import br.com.nora.api.domain.platform.BusinessSnapshot;
 import br.com.nora.api.domain.tenant.TenantContext;
 import br.com.nora.api.infrastructure.nlp.WorkerDtos;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -14,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -80,6 +83,8 @@ class RlsAppEnforcementIntegrationTest {
 
     private static final String APP_ROLE = "nora_app_test";
     private static final String APP_PASSWORD = "nora_app_test_pwd";
+    private static final String TELEMETRY_ROLE = "nora_telemetry_test";
+    private static final String TELEMETRY_PASSWORD = "nora_telemetry_test_pwd";
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES =
@@ -99,12 +104,20 @@ class RlsAppEnforcementIntegrationTest {
         registry.add("spring.flyway.user", POSTGRES::getUsername);
         registry.add("spring.flyway.password", POSTGRES::getPassword);
         registry.add("nora.security.rls.enforce", () -> "true");
+        // Under enforce the telemetry datasource is not optional: the operator console's
+        // cross-tenant aggregate runs with no tenant GUC, so as nora_app it would read zero rows
+        // with no error. RlsEnforceTelemetryGuard refuses to start without it, so this test has
+        // to provide it — and providing it is also what makes the test resemble production.
+        registry.add("nora.security.rls.telemetry.url", POSTGRES::getJdbcUrl);
+        registry.add("nora.security.rls.telemetry.username", () -> TELEMETRY_ROLE);
+        registry.add("nora.security.rls.telemetry.password", () -> TELEMETRY_PASSWORD);
         // The 'test' profile turns off the async dispatch (no worker in the ITs). We turn it on
         // here to exercise the async pipeline under enforce (with StubWorkerConfig as the worker).
         registry.add("nora.analysis.auto-dispatch", () -> "true");
     }
 
     @Autowired TestRestTemplate rest;
+    @Autowired BusinessMetricsSource businessMetrics;
     @Autowired ObjectMapper mapper;
 
     /**
@@ -128,6 +141,15 @@ class RlsAppEnforcementIntegrationTest {
                             + " WITH LOGIN PASSWORD '"
                             + APP_PASSWORD
                             + "' NOBYPASSRLS");
+            // The third role of the cutover (ADR 0026/0028): BYPASSRLS, for the operator
+            // console's cross-tenant aggregate. Production provisions it in R001.
+            s.execute("DROP ROLE IF EXISTS " + TELEMETRY_ROLE);
+            s.execute(
+                    "CREATE ROLE "
+                            + TELEMETRY_ROLE
+                            + " WITH LOGIN PASSWORD '"
+                            + TELEMETRY_PASSWORD
+                            + "' BYPASSRLS");
         }
     }
 
@@ -162,6 +184,9 @@ class RlsAppEnforcementIntegrationTest {
                     "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "
                             + APP_ROLE);
             s.execute("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO " + APP_ROLE);
+            // nora_telemetry grants (mirrors R001): read only, and only what the aggregate needs.
+            s.execute("GRANT USAGE ON SCHEMA public TO " + TELEMETRY_ROLE);
+            s.execute("GRANT SELECT ON meeting_analyses TO " + TELEMETRY_ROLE);
         }
         granted = true;
     }
@@ -231,6 +256,22 @@ class RlsAppEnforcementIntegrationTest {
         assertThat(status).isEqualTo("COMPLETED");
         JsonNode detail = authGet("/meetings/" + meetingId, token).read(HttpStatus.OK);
         assertThat(detail.has("analysis")).isTrue();
+
+        // And now the half of enforce that fails SILENTLY. The operator console aggregates
+        // meeting_analyses across tenants with no tenant GUC set. As nora_app that is
+        // fail-closed, so without the BYPASSRLS telemetry datasource this returns zero and
+        // nothing anywhere reports a problem — the dashboard just looks like a quiet week.
+        // Provisioning nora_telemetry_test is not enough to prove that: it only proves the role
+        // can log in. This asserts the aggregate actually sees the row that was just written.
+        BusinessSnapshot snapshot =
+                businessMetrics.fetch(
+                        OffsetDateTime.now().minusDays(1), OffsetDateTime.now().plusDays(1));
+        assertThat(snapshot.enabled())
+                .as("telemetry datasource must be active under enforce")
+                .isTrue();
+        assertThat(snapshot.analyses())
+                .as("cross-tenant aggregate must see the analysis just written")
+                .isGreaterThanOrEqualTo(1L);
     }
 
     /* ---------- helpers ---------- */
