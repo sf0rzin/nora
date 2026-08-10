@@ -7,7 +7,7 @@
 > of the contract (paths, tokens, `X-Internal-Token` / `X-Operator-Email` headers) remains valid.
 
 > **Status:** FROZEN (v1) — 2026-05-28. Attachment point for the `nora-admin` app (Next) and for the
-> hot-paths (worker / chat BFF). Changing a signature here requires agreement between the two architects
+> hot-paths (worker / chat BFF). Changing a signature here requires updating every consumer
 > + the owner. Originating decisions: design note + ruling of 2026-05-28 (ADRs 0022/0023/0024).
 
 ## 1. Security domains

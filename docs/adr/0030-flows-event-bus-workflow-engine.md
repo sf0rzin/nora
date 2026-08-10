@@ -2,7 +2,6 @@
 
 - **Status:** accepted
 - **Date:** 2026-06-11
-- **Deciders:** NORA Architect (pitch run) + Stratfy (PO, via GOAL.md)
 - **Related:** ADR 0002 (multi-tenancy), ADR 0019/0028 (RLS), ADR 0014 (v1 scope — extended
   by the pitch's GOAL.md), ADR 0029 (multi-tenant job pattern under RLS)
 

@@ -426,4 +426,4 @@ sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev 
 
 ## License
 
-MIT - NORA Team
+See the `LICENSE` file at the root of the repository (AGPL-3.0, ADR 0017).

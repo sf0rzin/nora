@@ -386,7 +386,7 @@ az keyvault secret list --vault-name nora-kv-dev-wgl3a3
 az keyvault secret show --vault-name nora-kv-dev-wgl3a3 --name postgres-password --query value -o tsv
 ```
 
-Requires the role `Key Vault Secrets Officer` (CRUD) or `Key Vault Secrets User` (read-only). Stratfy's Service Principal (`sp-nora-github-deploy`) already has Officer.
+Requires the role `Key Vault Secrets Officer` (CRUD) or `Key Vault Secrets User` (read-only). The deploy Service Principal (`sp-nora-github-deploy`) already has Officer.
 
 ### Connecting to Postgres
 
@@ -461,5 +461,5 @@ Summary:
 | Date | Change |
 |---|---|
 | 2026-05-14 | Runbook created during Sub-phase 1.10 (Docs Refresh). Covers the 8 Azure for Students pitfalls catalogued in Sub-phase 1.9. Promotion to prod is left to `docs/operations/production-readiness-gaps.md` |
-| 2026-06-06 | v1.0 (NORA Architect / Tech Lead): Doc x code reconciliation + standardisation (pre-presentation audit) |
+| 2026-06-06 | Doc x code reconciliation + standardisation |
 | 2026-08-07 | Marked as **historical** (`status: historical`) by ADR 0034. Replaced by `proxmox-deploy.md`; shutdown in `azure-decommission.md`. Content preserved intact — the 8 pitfalls are a learning record and the stack inventory feeds the decommission |

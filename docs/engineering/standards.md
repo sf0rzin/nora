@@ -29,7 +29,7 @@
 | **AI** | LLM-agnostic via env vars (default OpenAI `gpt-4o-mini`; Azure OpenAI in Enterprise) | Strict JSON Schema, low temperature, logs without PII. ADR 0004. |
 | **Search/RAG** | pgvector + provider-agnostic HTTP embedding client (Gemini/OpenAI) | Semantic search delivered (PR #206, V021 `meeting_embeddings`); Core chat consumes `/meetings/search` as RAG context |
 | **Auth** | JWT (JJWT 0.12) + stateful refresh tokens (V011); HttpOnly cookies | SSO Entra ID/SAML post-MVP |
-| **Desktop** | Tauri 2 + Rust + Python sidecar | Native audio capture; ADR 0008. Another architect's scope. |
+| **Desktop** | Tauri 2 + Rust | Native audio capture; ADR 0008 (Python sidecar removed by ADR 0035). Maintained by @pollotherunner. |
 | **Infra** | Azure (Container Apps + Postgres Flexible + KV + Storage) + Bicep | Declarative IaC; SP OIDC via GitHub Actions |
 | **CI/CD** | GitHub Actions: `ci.yml` + `build-images.yml` + `deploy-infra.yml` | Push to GHCR; automated deploy to `dev` |
 
@@ -46,7 +46,7 @@ nora/
 ├── apps/
 │   ├── web/                    # Next.js (Tailwind cru)
 │   ├── admin/                  # console de operador / control plane (ADR 0022-0025)
-│   └── desktop/                # Tauri 2 (outro arquiteto)
+│   └── desktop/                # Tauri 2 (@pollotherunner)
 ├── services/
 │   ├── api/                    # Spring Boot backend
 │   └── nlp-worker/             # FastAPI worker NLP/LLM

@@ -1,27 +1,9 @@
 # CODEOWNERS — automatic review routing per area (ADR 0027).
 # When a PR touches a path, the matching owner(s) are requested as reviewers.
 # The last matching rule wins. Syntax: <path> <@owner...>
-#
-# Current owners: @sys0xFF (Web app: front+back+infra) · @pollotherunner (Desktop).
 
 # Default — anything not covered below.
-*                           @sys0xFF
+*                           @sf0rzin
 
-# Backend / critical areas (IAM, Auth, PII boundary, multi-tenancy)
-/services/api/              @sys0xFF
-/services/nlp-worker/       @sys0xFF
-/packages/                  @sys0xFF
-
-# Frontend (web + operator admin console)
-/apps/web/                  @sys0xFF
-/apps/admin/                @sys0xFF
-
-# Infra (Bicep, Docker, control plane / Cloudflare)
-/infra/                     @sys0xFF
-/.github/                   @sys0xFF
-
-# Architectural decisions
-/docs/adr/                  @sys0xFF
-
-# Desktop (Tauri) — dedicated collaborator
+# Desktop (Tauri) client.
 /apps/desktop/              @pollotherunner

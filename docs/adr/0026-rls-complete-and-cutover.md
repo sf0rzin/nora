@@ -2,7 +2,6 @@
 
 - Status: partially superseded by 0028 (the enforce design + the cutover sequence were fixed in ADR 0028 after 3 holes were found; the V019 and the R001 script from this ADR remain valid)
 - Date: 2026-06-04
-- Deciders: Architect + Stratfy (PO)
 - Related: ADR 0002 (multi-tenancy), ADR 0019 (tenant isolation in depth: RLS + composite FK), ADR 0024 (business telemetry)
 
 ## Context

@@ -2,7 +2,6 @@
 
 - Status: Proposed (drafted by the Tech Lead; awaiting refinement by the Design Architect)
 - Date: 2026-05-14
-- Deciders: Design Architect (owner of the frontend scope)
 
 > **NOTE**: this ADR is a Tech Lead draft written during Sub-phase 1.10 (Docs Refresh). The Design Architect refines/formally accepts it. Subsections marked `[DESIGN refinar]` are awaiting his input.
 

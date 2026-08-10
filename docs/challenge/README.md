@@ -17,7 +17,7 @@
 
 ## History
 
-| Version | Date | Responsible | Change |
-|---|---|---|---|
-| (initial) | 2026-05-14 | Stratfy Team | Folder created in Sub-phase 1.10 (Docs Refresh). Documents `personas-and-empathy-map.md` and `use-case-diagram.md` moved from the `docs/` root |
-| 1.0 | 2026-06-06 | Stratfy Team | Doc × code reconciliation + standardization (pre-presentation audit) |
+| Version | Date | Change |
+|---|---|---|
+| (initial) | 2026-05-14 | Folder created in Sub-phase 1.10 (Docs Refresh). Documents `personas-and-empathy-map.md` and `use-case-diagram.md` moved from the `docs/` root |
+| 1.0 | 2026-06-06 | Doc × code reconciliation + standardization |

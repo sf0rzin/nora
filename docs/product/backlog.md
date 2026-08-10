@@ -204,7 +204,7 @@ A security/infra workstream that came in after Sub-phase 1.10, labeled "audit fo
 
 ## 5. The "Defer Post-MVP" decision — ADR 0014
 
-> Approved as a block by Stratfy on 2026-05-14. This decision closed 14 US as **Won't Have v1** with documented reactivation criteria. **Update:** US15 (semantic search) was subsequently delivered in PR #206 — see the note in the table below.
+> Approved as a block on 2026-05-14. This decision closed 14 US as **Won't Have v1** with documented reactivation criteria. **Update:** US15 (semantic search) was subsequently delivered in PR #206 — see the note in the table below.
 
 **General criterion:** the US below were postponed to free up focus for Sub-phase 1.11 (Demo Polish Plan A) and 1.12 (Production Hardening). None of them blocks the FIAP × TOTVS pitch (15/06/2026) nor the immediate Plan A.
 

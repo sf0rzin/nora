@@ -1,6 +1,6 @@
 # Possible integrations in NORA Flows — catalogue + credential tutorials
 
-> **Who this doc is for:** Stratfy (PO). Each section says what the integration enables in
+> **Who this doc is for:** whoever picks the next integration. Each section says what it enables in
 > Flows, whether it is free and genuinely multi-user, and the step by step for obtaining the
 > credentials. **Agreed workflow:** you obtain the credential, save it in your Windows user
 > env vars under the indicated name, and the architect handles the rest

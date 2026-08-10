@@ -2,9 +2,9 @@
 
 ## Context
 
-NORA is the project developed by the **Stratfy** team (enrolled in the Software Engineering course at FIAP) in the context of the **FIAP Challenge 2026**, in partnership with TOTVS S.A.
+NORA is a project for the Software Engineering course at FIAP, submitted to the **FIAP Challenge 2026** in partnership with TOTVS S.A.
 
-**What sets this project apart:** NORA is built as a **real commercial product**, not merely as an academic deliverable. The FIAP rubric is treated as **one of multiple commitments** that the product fulfills — in parallel with the possibility of commercial delivery through TOTVS (Stratfy's Plan A) and with eventual operation as an independent SaaS (Plan B).
+It is built to work as a real product rather than only as an academic deliverable, so the FIAP rubric is one of several commitments it has to satisfy — alongside a possible commercial delivery through TOTVS (Plan A) and eventual operation as an independent SaaS (Plan B).
 
 This page documents:
 
@@ -55,20 +55,19 @@ NORA delivers elements that go beyond the typical academic rubric:
 | **FIAP Pitch / NEXT 2026** | **2026-06-15** | **Sub-phase 1.11 (Demo Polish) delivers the material** |
 | Final FIAP delivery | ?? não conferido | Sub-phases 1.11 + 1.12 cover it |
 
-## Stratfy Team
+## Who works on this
 
-- **Stratfy** — the team responsible for NORA (PO + technical architecture + operations). Coordination via the GitHub organization/handle `sys0xFF`. Members are listed as contributors in the git history.
-- **Gabriel Maciel (@pollotherunner)** — external collaborator on the Desktop app (Tauri + Python sidecar). Isolated scope, outside the SaaS core.
-- **Multiple Claude instances running the `nora-architect` skill** — technical assistants (Tech Lead, Design Architect) operating under the direction of the Stratfy team.
+- **@sf0rzin** — maintainer of the repository: product, backend, web, infrastructure and operations. `github.com/sf0rzin/nora`.
+- **@pollotherunner** — collaborator on the Desktop app (Tauri). Isolated scope, outside the SaaS core.
 
-> For details on the multi-architect Claude split and coordination, see `Claude/50-coordenacao-arquitetos/00-papeis.md` in the team's private Obsidian vault.
+Everyone who contributed is listed in the git history.
 
 ## Why NORA is more than an academic assignment
 
-Stratfy works with **3 strategic scenarios for NORA after the pitch**:
+Three scenarios for NORA after the pitch:
 
 - **Plan A** — TOTVS hires after seeing NORA in the demo (FIAP × TOTVS partnership, NORA goes from portfolio to a concrete hiring/institutional partnership offer)
-- **Plan B** — commercial SaaS operated by Stratfy itself (long term, with a business co-founder if necessary)
+- **Plan B** — commercial SaaS operated independently (long term, with a business co-founder if necessary)
 - **Plan C** — technical portfolio / professional positioning of the members (the material already exists now, ready for publication)
 
 The FIAP rubric is the **visible academic layer**; the commercial product runs in parallel as real code, deployed, monetizable.
@@ -83,4 +82,4 @@ The FIAP rubric is the **visible academic layer**; the commercial product runs i
 | Date | Change |
 |---|---|
 | 2026-05-14 | Doc created in Sub-phase 1.10 (Docs Refresh) consolidating the FIAP × TOTVS framing |
-| 2026-06-06 | NORA Architect (Tech Lead) — Doc x code reconciliation + standardization (pre-presentation audit) |
+| 2026-06-06 | Doc x code reconciliation + standardization |

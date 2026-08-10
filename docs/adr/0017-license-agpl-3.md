@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Date: 2026-05-14
-- Deciders: Stratfy (PO — copyright attributed individually to the members according to the git history)
 
 ## Context
 

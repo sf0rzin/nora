@@ -1,6 +1,6 @@
 # Runbook — NORA deployment on Proxmox (self-hosted)
 
-> **Audience:** whoever operates the NORA deployment on the Proxmox VM (the Tech Lead today; future operators).
+> **Audience:** whoever operates the NORA deployment on the Proxmox VM.
 >
 > **Supersedes** [`azure-deploy.md`](azure-deploy.md), which becomes a historical document.
 > The decision is in [ADR 0034](../adr/0034-azure-to-proxmox-migration.md); shutting down what

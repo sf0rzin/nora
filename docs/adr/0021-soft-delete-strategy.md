@@ -2,7 +2,6 @@
 
 - Status: accepted (retroactive ADR — decision already implemented and merged; formal record created in the 2026-05-21 audit)
 - Date: 2026-05-21
-- Deciders: Tech Lead
 - Related: ADR 0002 (multi-tenancy); LGPD (right to be forgotten)
 
 ## Context

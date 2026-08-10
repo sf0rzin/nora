@@ -34,14 +34,6 @@ For academic context (FIAP Challenge):
 12. **`docs/challenge/personas-and-empathy-map.md`** — 3 personas + empathy map
 13. **`docs/challenge/use-case-diagram.md`** — UML use cases
 
-## Operating multiple architects
-
-NORA is operated by the **Stratfy team (PO) + multiple Claude instances** running the `nora-architect` skill. Each architect has a declared specialization (Tech Lead, Design, etc.) and a dedicated folder in the Obsidian vault.
-
-Cross-architect coordination happens **async via the Obsidian vault** at `Claude/50-coordenacao-arquitetos/`. The Stratfy team (PO) is always CC.
-
-See `Claude/50-coordenacao-arquitetos/00-papeis.md` (Obsidian vault) for current roles and `Claude/50-coordenacao-arquitetos/CURRENT-STATE.md` for active PRs / blockers.
-
 ## Current scope
 
 NORA is **migrating off Azure to a self-hosted Proxmox VM** (ADR 0034, 2026-08-07).
@@ -53,7 +45,7 @@ top priority — see `docs/operations/azure-decommission.md`. Stack:
 - **Backend** is Spring Boot 3 (Java 21) + Postgres 16 (`pgvector/pgvector:pg16` container) + Flyway, with **IAM AWS-style** (Root + Users + Groups + Policies) and **multi-tenancy** via `tenant_id` filter (ADR 0002) + RLS (ADR 0026/0028, **three** roles: `nora_app`, `nora_telemetry`, admin/owner)
 - **NLP Worker** is FastAPI (Python 3.12) with **PII Shield** (PERSON_NAME + EMAIL + CPF + CNPJ + PHONE + CREDIT_CARD per ADR 0012) and **JSON Schema strict** LLM output (ADR 0003) via **provider-agnostic client** (ADR 0004, default OpenAI `gpt-4o-mini`)
 - **Web** is Next.js 14 + TypeScript + **Tailwind cru, no shadcn** (ADR 0013) with editorial palette OKLCH + Inter + Instrument Serif fonts
-- **Desktop** is Tauri 2 + Rust with **Whisper STT running on-device** (ADR 0035 — the Python sidecar and the Azure Speech token broker are both removed) — operated by a separate collaborator
+- **Desktop** is Tauri 2 + Rust with **Whisper STT running on-device** (ADR 0035 — the Python sidecar and the Azure Speech token broker are both removed) — maintained by @pollotherunner
 - **Infra** is `infra/proxmox/docker-compose.yml` (compose project `nora`) on a single Debian VM: **Cloudflare Tunnel as the only ingress** (no inbound port), Caddy routing by Host, secrets in **SOPS + age**, observability via OTel Collector + Prometheus + Loki + Grafana. **Deploy is PULL** (`deploy-proxmox.yml` publishes an immutable release pointer; the host pulls) — never push, because the repo is public (ADR 0017)
 - `infra/bicep/` is **legacy** — the Azure infra it describes is being torn down
 
@@ -104,27 +96,19 @@ See `docs/engineering/architecture.md` §1 for the full table with where to veri
 - **Before editing**, inspect the existing patterns in the target module (Grep/Glob)
 - **After editing**, run the smallest relevant verification command (`mvn test`, `pytest`, `npm run typecheck`, `docker compose -f infra/proxmox/docker-compose.yml config`) and report pass/fail
 - **Update the docs** when code diverges: docs are part of the product, not an accessory
-- **The Obsidian vault** is mandatory for non-trivial changes (see the `nora-architect` skill)
 
-## AI Collaboration Pattern (subagents)
+## Working with subagents
 
-For large tasks, split into parallel implementable slices. Use the `nora-architect` skill to:
+For large tasks, split the work into slices that can be implemented independently, dispatch each with a self-contained brief (`Agent` tool), and review the resulting diff rather than the summary. Record a durable decision as an ADR if one is missing.
 
-1. **Understand** (read `MEMORY.md` + `CURRENT-STATE.md` + relevant docs)
-2. **Decide** (present 1-3 approaches + recommend one)
-3. **Break down** into dispatchable slices (independent or declared sequential)
-4. **Ask Stratfy (PO) for authorization** before dispatching a subagent that writes code
-5. **Dispatch** with a self-contained brief (`Agent` tool)
-6. **Review** the diff (do not trust the summary)
-7. **Document** in Obsidian + update memory + suggest an ADR if a durable decision lacked a record
-
-Use **Opus models** for architecture, data modeling, security review and refactors. Use **Sonnet models** or subagents for focused implementation, tests, UI components and mechanical CRUD flows.
+Use Opus models for architecture, data modeling, security review and refactors. Use Sonnet models or subagents for focused implementation, tests, UI components and mechanical CRUD flows.
 
 ## Change history of this file
 
 | Date | Change |
 |---|---|
+| 2026-08-10 | Documentation honesty pass: metadata frontmatter, invented owners/roles and decoration removed; stack versions re-verified against the manifests; superseded run brief and pre-presentation audit deleted |
 | 2026-08-07 | Azure → Proxmox migration (ADR 0034) and local STT (ADR 0035): "Current scope", the Stack table and the `docs/operations/` pointers updated. `azure-deploy.md` becomes historical; `proxmox-deploy.md` and `azure-decommission.md` take its place |
-| 1.0 / 2026-06-06 | NORA Architect (Tech Lead): Doc × code reconciliation + standardization (pre-presentation audit) |
-| 2026-05-14 | Rewritten during Sub-phase 1.10 (Docs Refresh): new `docs/` structure in subfolders (product/engineering/operations/challenge/security), updated references, new ADRs linked, multi-architect structure documented |
+| 2026-06-06 | Doc × code reconciliation + standardization |
+| 2026-05-14 | Rewritten during Sub-phase 1.10 (Docs Refresh): new `docs/` structure in subfolders (product/engineering/operations/challenge/security), updated references, new ADRs linked |
 | (earlier) 2026-05-02+ | Original version created with the initial scaffolding |

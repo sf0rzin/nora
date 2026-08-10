@@ -372,7 +372,7 @@ The UI (and any future export) **must** display: *"Indicador da reunião, não d
 
 ### Applied decision — ADR 0015 (accepted 2026-05-14, **applied in #148** 2026-05-21)
 
-**ADR 0015 — Customer Confidence: minimum viable persistence** (partially supersedes ADR 0006). Stratfy (PO) block vote: **option (a)** — implement the minimum. Delivered in #148, with two divergences from the original plan:
+**ADR 0015 — Customer Confidence: minimum viable persistence** (partially supersedes ADR 0006). Block vote: **option (a)** — implement the minimum. Delivered in #148, with two divergences from the original plan:
 
 - The migration was delivered as **V017** (the planned V013 slot was used by soft-delete in #114).
 - It came in 1 PR (not in the planned dedicated branch `feat/sub-1.11-...`).
@@ -435,7 +435,7 @@ Step by step in words:
 
 ## §11. Azure infrastructure
 
-Provisioned via Bicep (`infra/bicep/main.bicep`) and deployed by `deploy-infra.yml` (Service Principal OIDC). Operational details (the eight Azure for Students pitfalls, recreation commands, troubleshooting) **live in `docs/operations/azure-deploy.md`** (to be written by the Tech Lead in parallel).
+Provisioned via Bicep (`infra/bicep/main.bicep`) and deployed by `deploy-infra.yml` (Service Principal OIDC). Operational details (the eight Azure for Students pitfalls, recreation commands, troubleshooting) **live in `docs/operations/azure-deploy.md`**.
 
 ### Resource Group `rg-nora-dev` — current inventory
 

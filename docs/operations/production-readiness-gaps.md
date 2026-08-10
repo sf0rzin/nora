@@ -1,6 +1,6 @@
 # Production Readiness — Gap Analysis
 
-> **Audience:** Tech Lead + future operators when NORA is promoted from the `rg-nora-dev` environment (current, the only one) to `rg-nora-prod`.
+> **Audience:** whoever operates NORA when it is promoted from the `rg-nora-dev` environment (current, the only one) to `rg-nora-prod`.
 >
 > **Status:** descriptive (`docs/`). Implementation is tackled in **Sub-phase 1.12 — Production Hardening**, formalised via **ADR 0016 — Production Readiness Checklist** (to be created).
 >
@@ -84,7 +84,7 @@ ADR 0016 documents the choice.
 
 **Plan (Sub-phase 1.12):**
 
-1. **Critical alerts** (Azure Monitor) wired to the email of Stratfy's technical contact (and a future Slack webhook):
+1. **Critical alerts** (Azure Monitor) wired to the maintainer's e-mail (and a future Slack webhook):
    - API Container App: `/actuator/health` non-200 for >2min
    - Postgres: connection failures >10/min or CPU >80% sustained for 5min
    - Container Apps: scale-up failed (replica retries >3)
@@ -162,7 +162,7 @@ This gap is no longer Sub-phase 1.12 debt.
 - `postgres-password` — generated randomly when the SP was created
 - `jwt-secret` — generated randomly
 - `openai-api-key` — empty (worker in stub mode by default)
-- `azure-speech-key` — coming from `speech.listKeys().key1` (it would change if a Stratfy member rotated it manually)
+- `azure-speech-key` — coming from `speech.listKeys().key1` (it would change if someone rotated it manually)
 
 **Gap:** none of the 4 has an automated **rotation schedule**. In prod, that is a minimum security requirement.
 
@@ -172,7 +172,7 @@ This gap is no longer Sub-phase 1.12 debt.
 |---|---|---|
 | `postgres-password` | Every 90 days | Script: generates a new password, `ALTER USER ... PASSWORD`, updates the KV secret, forces the Container Apps to pull the new version (revision restart) |
 | `jwt-secret` | Every 180 days | Updates the KV secret + a 24h grace period so valid refresh tokens persist (needs "JWT secret rotation with keyId" logic — future design) |
-| `openai-api-key` | When rotated manually in the OpenAI dashboard by Stratfy | Updates the KV secret + restarts api/worker |
+| `openai-api-key` | When rotated manually in the OpenAI dashboard | Updates the KV secret + restarts api/worker |
 | `azure-speech-key` | Every 90 days | `az cognitiveservices account keys regenerate` + updates the KV secret + restarts api |
 
 A dedicated workflow `.github/workflows/rotate-secrets.yml` with a monthly cron can automate part of it.
@@ -214,8 +214,8 @@ Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Custom
 
 ## History
 
-| Date | Author | Change |
-|---|---|---|
-| 2026-05-14 | Tech Lead | Doc created during Sub-phase 1.10 (Docs Refresh). Analysis informed by the Design Architect's review in the audit (§4.3) |
-| 2026-05-28 | Co-architect (Opus) | Gap 8 added: the control plane's business telemetry (ADR 0022) goes to zero under RLS enforce — a BYPASSRLS role is a prerequisite before turning on RLS enforce |
-| 2026-06-06 | NORA Architect (Tech Lead) | Doc x code reconciliation + standardisation (pre-presentation audit): Gap 5 (operational LGPD) marked as delivered via ADR 0029; reference correction ADR 0019 → ADR 0029 for LGPD |
+| Date | Change |
+|---|---|
+| 2026-05-14 | Doc created during Sub-phase 1.10 (Docs Refresh) |
+| 2026-05-28 | Gap 8 added: the control plane's business telemetry (ADR 0022) goes to zero under RLS enforce — a BYPASSRLS role is a prerequisite before turning on RLS enforce |
+| 2026-06-06 | Doc x code reconciliation + standardisation: Gap 5 (operational LGPD) marked as delivered via ADR 0029; reference correction ADR 0019 → ADR 0029 for LGPD |

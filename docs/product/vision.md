@@ -234,4 +234,4 @@ Details in `docs/product/roadmap.md`. Summary:
 | 0.3 | 2026-05-02 | Horizontal platform (any company, not just TOTVS) + real-time Desktop (Tauri) + IAM RBAC+ABAC + three surfaces + Product Context via RAG |
 | 0.4 | 2026-05-02 | MVP alignment: SSO and Desktop as post-MVP; audio with temporary TTL-based storage |
 | **1.0** | **2026-05-14** | **Rewrite after the real Azure deploy (Sub-phase 1.9). Corrects drift: Desktop supports macOS via BlackHole (PR #37 — it is no longer "Does not support macOS in the MVP"). Adds the "Current State" section with real endpoints + operational IAM + Productivity Score full-stack + test coverage. Adds the "Upcoming Sub-phases" section with a link to the roadmap. Replaces the previous doc `docs/visao-do-produto.md` (moved to `docs/product/vision.md`).** |
-| 1.1 | 2026-06-06 | NORA Architect (Tech Lead) — Doc x code reconciliation + standardisation (pre-presentation audit) |
+| 1.1 | 2026-06-06 | Doc x code reconciliation + standardisation |

@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Date: 2026-05-28
-- Deciders: Co-architects (Opus) + Stratfy (PO/owner)
 - Related: ADR 0002 / 0019 (multi-tenancy + RLS), ADR 0016 (rg-nora-prod separation)
 
 ## Context

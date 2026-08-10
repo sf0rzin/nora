@@ -2,7 +2,6 @@
 
 - **Status:** accepted
 - **Date:** 2026-08-07
-- **Deciders:** sys0xFF (PO/owner) + NORA Architect (Tech Lead, migration audit)
 - **Supersedes:** ADR 0009 (Speech Token Broker — the Azure Speech resource ceases to exist; the
   functional replacement is **ADR 0035**)
 - **Partially supersedes:** ADR 0016 (production-readiness checklist — every Azure-anchored premise

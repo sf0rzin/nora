@@ -67,16 +67,16 @@ NORA is licensed under **AGPL-3.0** (see `LICENSE`). Researchers who discover vu
 
 **Data Protection Officer** (LGPD requires a natural person to be designated):
 
-- **Name:** Anthony Sforzin (Stratfy team member designated as Data Protection Officer)
+- **Name:** Anthony Sforzin (`@sf0rzin`), maintainer of the repository
 - **Contact:** axonogenesis@proton.me (with the `[LGPD-NORA]` prefix)
 
-NORA is operated by the Stratfy team during MVP/Pilot. At GA with >10 tenants, a formal DPO will be hired or a role designated.
+The same person maintains and operates NORA. At GA with >10 tenants, a formal DPO would have to be hired or designated.
 
 ## Active security tooling
 
 - **Dependabot** enabled via `.github/dependabot.yml` — weekly updates grouped by ecosystem (Maven, pip, npm, Cargo, GitHub Actions). Alerts via the Security tab.
 - **JaCoCo + IAM/Auth/PII areas** — ADR 0018 target of >85% coverage. Today it is run manually; the CI gate blocking regressions is in Sub-phase 1.12 (ADR 0016 — production readiness).
-- **GitHub Secret Scanning / Push Protection** — the NORA repository is **private**, so Secret Scanning and Push Protection are not enabled by default (that behavior is default only in public repos). Enabling them in a private repo depends on explicit configuration.
+- **GitHub Secret Scanning / Push Protection** — the NORA repository is public, so Secret Scanning and Push Protection are available for free and should be confirmed as enabled in the repository's Security settings.
 - **PII Shield** in the worker as the last gate before the LLM (ADR 0012)
 
 ## History
@@ -84,4 +84,4 @@ NORA is operated by the Stratfy team during MVP/Pilot. At GA with >10 tenants, a
 | Date | Change |
 |---|---|
 | 2026-05-14 | Document created during Sub-phase 1.10 (Docs Refresh) |
-| 2026-06-06 | Doc x code reconciliation + standardization (pre-presentation audit) — NORA Architect (Tech Lead) |
+| 2026-06-06 | Doc x code reconciliation + standardization |

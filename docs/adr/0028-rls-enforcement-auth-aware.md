@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Date: 2026-06-04
-- Deciders: Architect + Stratfy (PO)
 - Related: supersedes the **enforce design + cutover** part of ADR 0026 (keeps V019 and the role provisioning); extends ADR 0002 / 0019; related to ADR 0024 (telemetry)
 
 ## Context

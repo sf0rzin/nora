@@ -2,7 +2,7 @@
 name = "nora-desktop"
 version = "0.2.5"
 description = "NORA Desktop - Meeting Intelligence"
-authors = ["NORA Team"]
+authors = ["sf0rzin"]
 edition = "2021"
 
 [lib]

@@ -2,7 +2,6 @@
 
 - Status: accepted (Easy Auth superseded by ADR 0025 — Cloudflare Tunnel/Access; the remaining decisions stand)
 - Date: 2026-05-28
-- Deciders: Co-architects (Opus) + Stratfy (PO/owner)
 - Related: ADR 0007 (AWS-style per-tenant IAM), ADR 0022 (platform database), ADR 0025 (supersedes the Easy Auth part of this decision)
 
 ## Context
