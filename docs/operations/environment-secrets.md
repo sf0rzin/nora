@@ -218,10 +218,10 @@ For reference only (not audited). It does not share server secrets. Local variab
 **`CLOUDFLARE_TUNNEL_TOKEN`** — connector token of the nora-admin tunnel.
 1. Run the `cloudflare-tunnel.yml` workflow (workflow_dispatch) to create/reuse the tunnel.
 2. The token **does not appear in the log**: this repo is public (ADR 0017) and a run's log is readable by
-   any visitor. The step `AUD + instruções do connector token` prints the command to fetch it
+   any visitor. The step `AUD + connector token instructions` prints the command to fetch it
    straight from the API and pipe it into the secret, without the value touching a log or the shell history:
    ```bash
-   export CF_TOKEN=<o mesmo CLOUDFLARE_API_TOKEN>
+   export CF_TOKEN=<the same CLOUDFLARE_API_TOKEN>
    curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
      "https://api.cloudflare.com/client/v4/accounts/<account-id>/cfd_tunnel/<tunnel-id>/token" \
      | jq -r .result | gh secret set CLOUDFLARE_TUNNEL_TOKEN --repo sf0rzin/nora
@@ -229,7 +229,7 @@ For reference only (not audited). It does not share server secrets. Local variab
 3. Rotation: recreating the tunnel through the same workflow generates a new token.
 
 **`CF_ACCESS_AUD`** — AUD tag of the Access App `admin.nora.systems` (a **public**, non-secret identifier).
-1. It appears in the log of the `AUD + instruções do connector token` step of `cloudflare-tunnel.yml` (`cloudflare-setup.yml`, which creates the Access App, must have run before).
+1. It appears in the log of the `AUD + connector token instructions` step of `cloudflare-tunnel.yml` (`cloudflare-setup.yml`, which creates the Access App, must have run before).
 2. Register it as a **Variable** `CF_ACCESS_AUD` (see §5 — today it is a Secret, which is wrong).
 
 ### Registry (optional)
@@ -240,7 +240,7 @@ For reference only (not audited). It does not share server secrets. Local variab
 
 ### 5.1 CRITICAL — `CF_ACCESS_AUD` registered as a Secret but read as a Variable
 - **Symptom:** `deploy-infra.yml` lines 124 and 176 use `CF_ACCESS_AUD: ${{ vars.CF_ACCESS_AUD }}`. There is no Variable with that name (only `NORA_EMAIL_FROM`). The value arrives **empty** in Bicep (`cfAccessAud=''`), so nora-admin **does not validate the audience** of the Cloudflare Access JWT → Tier 2 degrades to edge-only, **silently**.
-- **Evidence:** `cloudflare-tunnel.yml` itself (lines 163, 185) instructs setting it as a **Variable**, and the comment in `deploy-infra.yml` (line 25) says "não-secreto". So the Secret was registered in the wrong place.
+- **Evidence:** `cloudflare-tunnel.yml` itself (lines 163, 185) instructs setting it as a **Variable**, and the comment in `deploy-infra.yml` (line 25) says "not-secret". So the Secret was registered in the wrong place.
 - **Fix (choose one):**
   - **(A) recommended:** delete the `CF_ACCESS_AUD` Secret and create a **Variable** `CF_ACCESS_AUD` with the same value (the AUD is public). No code change.
   - (B) change the workflow to `${{ secrets.CF_ACCESS_AUD }}` (keeping it as a Secret) — it works, but it contradicts the design (the AUD is not a secret) and the runbook.
@@ -302,7 +302,7 @@ For reference only (not audited). It does not share server secrets. Local variab
 **Variables (2):** `NORA_EMAIL_FROM`, **`CF_ACCESS_AUD`** (fixing the bug — do NOT register it as a Secret).
 - [ ] Via CLI (examples):
   - `gh secret set JWT_SECRET` (paste the value when prompted)
-  - `gh variable set CF_ACCESS_AUD --body "<aud-da-access-app>"`
+  - `gh variable set CF_ACCESS_AUD --body "<access-app-aud>"`
   - `gh variable set NORA_EMAIL_FROM --body "NORA <noreply@nora.systems>"`
 
 ### Phase 5 — Cloudflare (order matters)
@@ -323,7 +323,7 @@ For reference only (not audited). It does not share server secrets. Local variab
 
 ### Minimum `.env.local` to run DEV (does not go to GitHub)
 ```dotenv
-# raiz/.env.local (docker-compose)
+# root/.env.local (docker-compose)
 POSTGRES_DB=nora
 POSTGRES_USER=nora
 POSTGRES_PASSWORD=nora_dev
@@ -333,11 +333,11 @@ DATASOURCE_URL=jdbc:postgresql://localhost:5432/nora
 DATASOURCE_USERNAME=nora
 DATASOURCE_PASSWORD=nora_dev
 JWT_SECRET=change-me-please-min-32-chars-long-aaaa
-RESEND_API_KEY=            # vazio = LogEmailSender
+RESEND_API_KEY=            # empty = LogEmailSender
 
 # services/nlp-worker/.env.local
-USE_LLM_STUB=true          # true = sem custo de API
-LLM_API_KEY=               # preencher só se quiser LLM real
+USE_LLM_STUB=true          # true = no API cost
+LLM_API_KEY=               # fill in only if you want a real LLM
 
 # apps/web/.env.local
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8080

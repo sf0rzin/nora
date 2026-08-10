@@ -46,8 +46,8 @@ Notes:
 The backend follows 4 strict layers, organized under `services/api/src/main/java/br/com/nora/api/`:
 
 ```
-domain/         <- regras puras, zero dependência de framework
-application/    <- casos de uso, services, portas (interfaces)
+domain/         <- pure rules, zero framework dependency
+application/    <- use cases, services, ports (interfaces)
 infrastructure/ <- adapters: JPA, JJWT, HTTP clients, Azure SDK
 api/            <- controllers REST, DTOs, exception handlers
 ```
@@ -121,13 +121,13 @@ A model identical to AWS IAM, chosen because it gives the Enterprise tenant the 
 
 ```
 Tenant
-├── Root user           — owner do tenant; bypass total em AuthorizationService
-├── Users               — convidados via /iam/invitations (US06)
-├── Groups              — coleções nomeadas; criadas livremente
-├── Policies            — documentos JSON: Effect / Action / Resource [/ Condition]
+├── Root user           — tenant owner; full bypass in AuthorizationService
+├── Users               — invited via /iam/invitations (US06)
+├── Groups              — named collections; created freely
+├── Policies            — JSON documents: Effect / Action / Resource [/ Condition]
 ├── Users ⇄ Groups       (N:N, `iam_user_groups`)
 ├── Groups ⇄ Policies    (N:N, `iam_group_policies`)
-└── Users ⇄ Policies     (N:N, anexação direta opcional, `iam_user_policies`)
+└── Users ⇄ Policies     (N:N, optional direct attachment, `iam_user_policies`)
 ```
 
 Root uniqueness guarantee: partial index `UNIQUE (tenant_id) WHERE is_root = TRUE` (V006:26-27).
@@ -263,11 +263,11 @@ A deterministic pipeline that runs before any call to the LLM. Implementation in
 
 ### Redaction pipeline
 
-Each match becomes a placeholder `[[TIPO_N]]` where N is the incremental index. Example:
+Each match becomes a placeholder `[[TYPE_N]]` where N is the incremental index. Example:
 
 ```
-Antes:   "O Lucas me mandou um e-mail (lucas@acme.com) com o CPF 123.456.789-00"
-Depois:  "O [[PERSON_NAME_1]] me mandou um e-mail ([[EMAIL_1]]) com o CPF [[CPF_1]]"
+Before:  "Lucas sent me an email (lucas@acme.com) with the CPF 123.456.789-00"
+After:   "[[PERSON_NAME_1]] sent me an email ([[EMAIL_1]]) with the CPF [[CPF_1]]"
 ```
 
 The mapping `placeholder → hash(SHA-256, first 16 chars)` is kept in `PiiRedactionV1` for auditing without retaining the original value. The total number of redactions is recorded in `meeting_analyses.pii_redactions_applied` (V005:39).
@@ -381,14 +381,14 @@ sequenceDiagram
     API->>DB: INSERT meetings (status=PENDING)<br/>INSERT transcripts
     API-->>Web: 202 {meetingId, status: PENDING}
 
-    Note over API: assíncrono<br/>MeetingService.processAsync
+    Note over API: asynchronous<br/>MeetingService.processAsync
     API->>Worker: POST /analyze<br/>(transcript + tenant_context)
     Note over Worker: 1) PII Shield<br/>2) TF-IDF baseline<br/>3) LLM call (JSON Schema)<br/>4) Pydantic validate
     Worker->>LLM: chat/completions (strict)
-    LLM-->>Worker: JSON validado
+    LLM-->>Worker: validated JSON
     Worker-->>API: AnalyzeResponse v1
 
-    API->>DB: INSERT meeting_analyses<br/>INSERT meeting_decisions[]<br/>INSERT meeting_action_items[]<br/>INSERT meeting_risks[]<br/>INSERT meeting_opportunities[]<br/>(se goal) INSERT meeting_productivity_assessments
+    API->>DB: INSERT meeting_analyses<br/>INSERT meeting_decisions[]<br/>INSERT meeting_action_items[]<br/>INSERT meeting_risks[]<br/>INSERT meeting_opportunities[]<br/>(if goal) INSERT meeting_productivity_assessments
     API->>DB: UPDATE meetings SET status=COMPLETED
 
     loop polling
@@ -398,7 +398,7 @@ sequenceDiagram
 
     Web->>API: GET /meetings/{id}
     API-->>Web: status: COMPLETED + analysis payload
-    Note over Web: Render summary (markdown),<br/>decisions, action items,<br/>risks, opportunities,<br/>ProductivityScoreCard (se existe)
+    Note over Web: Render summary (markdown),<br/>decisions, action items,<br/>risks, opportunities,<br/>ProductivityScoreCard (if present)
 ```
 
 Step by step in words:
@@ -408,7 +408,7 @@ Step by step in words:
 3. **Backend → Worker** (`MeetingService.processAsync` → `AnalysisService.requestAnalysis`): assembles the `AnalyzeRequest` with transcript + tenant_context + options.
 4. **Worker** (`/analyze`): PII Shield → TF-IDF baseline → strict LLM → Pydantic validate → returns `AnalyzeResponse`.
 5. **Persistence**: the backend saves `meeting_analyses` + children (`meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities`) + optionally `meeting_productivity_assessments` + `meeting_outcome_coverage`. It updates `meetings.processing_status = COMPLETED`.
-6. **Frontend polling**: the "Processando" card in `apps/web/src/app/(app)/meetings/[id]/page.tsx` polls every ~2s until `processing_status = COMPLETED`.
+6. **Frontend polling**: the "Processing" card in `apps/web/src/app/(app)/meetings/[id]/page.tsx` polls every ~2s until `processing_status = COMPLETED`.
 7. **Render**: the UI shows the summary (markdown via `react-markdown`), decisions, action items, risks/opportunities and, if present, `ProductivityScoreCard`.
 
 ## §11. Azure infrastructure

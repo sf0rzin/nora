@@ -40,12 +40,12 @@ This eliminates the most expensive and most nerve-racking part of a decommission
 ## The safe order
 
 ```
-  1. VALIDAR o Proxmox          <- servindo tráfego real, ainda SEM DNS
-  2. APONTAR o DNS              <- o cutover; reversível em minutos
-  3. OBSERVAR                   <- período de carência (só se a Azure ainda estiver de pé)
-  4. LIMPAR credenciais         <- GitHub Secrets/Variables + Entra
-  5. DELETAR o resource group   <- ponto de não-retorno
-  6. LIMPAR o repositório       <- Bicep, FQDNs hardcoded, docs
+  1. VALIDATE Proxmox           <- serving real traffic, still WITHOUT DNS
+  2. POINT the DNS              <- the cutover; reversible in minutes
+  3. OBSERVE                    <- grace period (only if Azure is still standing)
+  4. CLEAN UP credentials       <- GitHub Secrets/Variables + Entra
+  5. DELETE the resource group  <- point of no return
+  6. CLEAN UP the repository    <- Bicep, hardcoded FQDNs, docs
 ```
 
 **The rule that remains:** nothing is deleted while the replacement has not been proven. Not because of
@@ -192,12 +192,12 @@ What to observe:
 **To reduce cost during the observation period, without deleting anything:**
 
 ```bash
-# Para os Container Apps zerando as réplicas (mantém o recurso e a configuração)
+# Stop the Container Apps by zeroing the replicas (keeps the resource and the configuration)
 for app in nora-api-dev nora-worker-dev nora-web-dev nora-admin-dev; do
   az containerapp update -g rg-nora-dev -n "$app" --min-replicas 0 --max-replicas 0
 done
 
-# Para o Postgres (ele volta com `start`; para sozinho após 7 dias de qualquer forma)
+# Stop Postgres (it comes back with `start`; it stops by itself after 7 days anyway)
 az postgres flexible-server stop -g rg-nora-dev -n nora-pg-dev-wgl3a3
 az postgres flexible-server stop -g rg-nora-dev -n nora-pg-platform-dev-wgl3a3
 ```
@@ -282,13 +282,13 @@ gh variable set NORA_API_BASE_URL --body "https://api.nora.systems" --repo sf0rz
 | Easy Auth App Registration (ADR 0023) | **check whether it exists.** It was probably **never created** — the `fiap.com.br` tenant denied `az ad app create` with `Authorization_RequestDenied`, which is the blocker that produced ADR 0025. `EASYAUTH_CLIENT_ID`/`EASYAUTH_CLIENT_SECRET` were **orphaned** references in the deleted workflow |
 
 ```bash
-# Inventário
+# Inventory
 az ad app list --display-name sp-nora-github-deploy \
   --query "[].{appId:appId, id:id, name:displayName}" -o table
 az ad app federated-credential list --id <APP_ID> -o table
 az role assignment list --assignee <APP_ID> --all -o table
 
-# Remoção
+# Removal
 az ad app delete --id <APP_ID>
 ```
 
@@ -413,46 +413,46 @@ grep -rn "azure/login\|AZURE_CLIENT_ID\|azurecontainerapps.io" .github/ infra/ |
 ## Final checklist
 
 ```
-DIAGNÓSTICO  (sem resgate: não há dado a preservar — ver §"O que este runbook NÃO precisa fazer")
-  [ ] az account show --query state          -> anotado; define quanto trabalho resta
+DIAGNOSIS  (no rescue: there is no data to preserve — see §"What this runbook does NOT need to do")
+  [ ] az account show --query state          -> noted; defines how much work remains
 
 PROXMOX
-  [ ] stack sobe com banco VAZIO             -> Flyway cria o schema do zero
-  [ ] flyway_schema_history                  -> versão esperada, 0 falhas
+  [ ] stack comes up with an EMPTY database   -> Flyway creates the schema from scratch
+  [ ] flyway_schema_history                  -> expected version, 0 failures
   [ ] 3 roles                                -> nora_app=f, nora_telemetry=t
-  [ ] todos os serviços healthy
-  [ ] 4 hostnames respondendo por Host header
-  [ ] métrica da API no Prometheus (javaagent trocado)
-  [ ] CF_ACCESS_AUD não vazio
+  [ ] all services healthy
+  [ ] 4 hostnames responding by Host header
+  [ ] API metric in Prometheus (javaagent swapped)
+  [ ] CF_ACCESS_AUD not empty
 
 DNS
-  [ ] grafana -> admin -> api -> www -> apex, um a um, verificando
-  [ ] TXT asuid/asuid.www removidos
-  [ ] nenhum registro para *.azurecontainerapps.io
+  [ ] grafana -> admin -> api -> www -> apex, one at a time, verifying
+  [ ] TXT asuid/asuid.www removed
+  [ ] no record left pointing to *.azurecontainerapps.io
 
-OBSERVAÇÃO (pular se a Azure já estiver fora do ar — não há o que observar)
-  [ ] sem erro relevante no Loki
-  [ ] backup horário gerando dump
-  [ ] RESTORE DRILL executado com sucesso   <- fecha o gap do production-readiness-gaps.md:67
-  [ ] Container Apps zerados / Postgres parado (economia)
+OBSERVATION (skip if Azure is already down — there is nothing to observe)
+  [ ] no relevant error in Loki
+  [ ] hourly backup generating a dump
+  [ ] RESTORE DRILL executed successfully   <- closes the gap from production-readiness-gaps.md:67
+  [ ] Container Apps zeroed / Postgres stopped (cost saving)
 
-CREDENCIAIS
-  [ ] 14 Secrets deletados, CLOUDFLARE_API_TOKEN mantido
-  [ ] NORA_EMAIL_FROM deletada; NEXT_PUBLIC_API_BASE_URL conferida
-  [ ] NORA_API_BASE_URL criada (desktop apontava pro Azure morto)
-  [ ] sp-nora-github-deploy deletado (ou federated credentials removidas)
-  [ ] túnel antigo deletado; Access App do grafana criada
+CREDENTIALS
+  [ ] 14 Secrets deleted, CLOUDFLARE_API_TOKEN kept
+  [ ] NORA_EMAIL_FROM deleted; NEXT_PUBLIC_API_BASE_URL checked
+  [ ] NORA_API_BASE_URL created (desktop was pointing at the dead Azure)
+  [ ] sp-nora-github-deploy deleted (or federated credentials removed)
+  [ ] old tunnel deleted; grafana Access App created
 
-PONTO DE NÃO-RETORNO
+POINT OF NO RETURN
   [ ] az group delete --name rg-nora-dev
-  [ ] soft-delete do KV conferido antes do purge
-  [ ] assinatura cancelada (se houve upgrade para PAYG)
+  [ ] KV soft-delete checked before the purge
+  [ ] subscription canceled (if it was upgraded to PAYG)
 
-REPOSITÓRIO
-  [ ] infra/bicep removido
-  [ ] rls-cutover.yml removido
-  [ ] FQDN hardcoded resolvido nos 4 lugares
-  [ ] azure-deploy.md marcado como histórico
+REPOSITORY
+  [ ] infra/bicep removed
+  [ ] rls-cutover.yml removed
+  [ ] hardcoded FQDN resolved in the 4 places
+  [ ] azure-deploy.md marked as historical
 ```
 
 ## History

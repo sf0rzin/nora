@@ -38,33 +38,33 @@ Focus on the **Web + Backend + NLP Worker** slice. Desktop, SSO, audio/video upl
 ```text
 nora/
 ├── apps/
-│   ├── web/                    # Next.js (Tailwind cru)
-│   ├── admin/                  # console de operador / control plane (ADR 0022-0025)
+│   ├── web/                    # Next.js (raw Tailwind)
+│   ├── admin/                  # operator console / control plane (ADR 0022-0025)
 │   └── desktop/                # Tauri 2 (@pollotherunner)
 ├── services/
 │   ├── api/                    # Spring Boot backend
 │   └── nlp-worker/             # FastAPI worker NLP/LLM
 ├── packages/
-│   ├── nlp-baseline/           # TF-IDF PT-BR reaproveitável (ADR 0010)
-│   └── shared-contracts/       # contratos compartilhados (error-codes, pii-types, processing-status)
+│   ├── nlp-baseline/           # reusable PT-BR TF-IDF (ADR 0010)
+│   └── shared-contracts/       # shared contracts (error-codes, pii-types, processing-status)
 ├── infra/
-│   ├── bicep/                  # Infra Azure (main.bicep + 9 módulos)
-│   └── docker/                 # Compose local, Dockerfiles auxiliares
+│   ├── bicep/                  # Azure infra (main.bicep + 9 modules)
+│   └── docker/                 # local Compose, auxiliary Dockerfiles
 ├── data/
-│   ├── synthetic/              # 12 transcripts + 3 contextos (versionados)
-│   └── samples/                # pequenos exemplos
-├── notebooks/                  # Entregas Data Science FIAP
+│   ├── synthetic/              # 12 transcripts + 3 contexts (versioned)
+│   └── samples/                # small examples
+├── notebooks/                  # FIAP Data Science deliverables
 ├── docs/
-│   ├── product/                # vision, backlog (status real), roadmap, glossary
-│   ├── engineering/            # architecture, standards (este doc), data-model, data-model-oracle
-│   ├── operations/             # azure-deploy (runbook + 8 armadilhas), production-readiness-gaps
-│   ├── challenge/              # FIAP Challenge 2026 (personas, casos de uso, README, fiap-challenge-2026)
-│   ├── security/               # threat model, LGPD operacional (entregue — ADR 0029)
-│   ├── api/                    # OpenAPI + JSON Schemas LLM + exemplos
-│   └── adr/                    # ADRs (índice canônico em docs/adr/README.md)
-├── scripts/                    # automação local
+│   ├── product/                # vision, backlog (real status), roadmap, glossary
+│   ├── engineering/            # architecture, standards (this doc), data-model, data-model-oracle
+│   ├── operations/             # azure-deploy (runbook + 8 pitfalls), production-readiness-gaps
+│   ├── challenge/              # FIAP Challenge 2026 (personas, use cases, README, fiap-challenge-2026)
+│   ├── security/               # threat model, operational LGPD (delivered — ADR 0029)
+│   ├── api/                    # OpenAPI + LLM JSON Schemas + examples
+│   └── adr/                    # ADRs (canonical index in docs/adr/README.md)
+├── scripts/                    # local automation
 ├── .github/                    # workflows + templates
-├── CLAUDE.md                   # contexto para Claude Code
+├── CLAUDE.md                   # context for Claude Code
 └── README.md
 ```
 
@@ -108,14 +108,14 @@ nora/
 ```text
 services/api/src/main/java/br/com/nora/api/
 ├── NoraApiApplication.java
-├── domain/                # POJOs/records, lógica pura; ZERO dependência Spring
+├── domain/                # POJOs/records, pure logic; ZERO Spring dependency
 │   ├── iam/               # IamPolicy, PolicyEvaluator, PolicyStatement
 │   ├── meeting/           # Meeting, Participant, ProcessingStatus
-│   ├── analysis/          # MeetingAnalysis + filhos
+│   ├── analysis/          # MeetingAnalysis + children
 │   ├── identity/          # User, Email value object, Password
 │   ├── tenant/            # Tenant
 │   └── productivity/      # MeetingGoal, ProductivityAssessment
-├── application/           # casos de uso, services, portas
+├── application/           # use cases, services, ports
 │   ├── identity/          # AuthService
 │   ├── iam/               # AuthorizationService, IamService
 │   ├── meeting/           # MeetingService
@@ -124,7 +124,7 @@ services/api/src/main/java/br/com/nora/api/
 │   ├── speech/            # SpeechTokenService
 │   └── ports/             # interfaces (UserRepository, MeetingRepository, ...)
 ├── infrastructure/        # adapters: JPA, JJWT, HTTP, Azure
-│   ├── persistence/jpa/   # entities + adapters dos repositories
+│   ├── persistence/jpa/   # entities + repository adapters
 │   ├── security/          # JjwtJwtIssuer, JwtAuthenticationFilter
 │   ├── speech/            # AzureSpeechTokenBroker
 │   └── analysis/          # WorkerHttpClient
@@ -213,11 +213,11 @@ services/nlp-worker/src/nora_nlp/
 │   ├── analyze.py         # POST /analyze, /live-analyze
 │   └── health.py
 ├── services/
-│   ├── pii_shield.py      # redação determinística antes do LLM
-│   ├── baseline.py        # TF-IDF do nlp-baseline
-│   ├── llm_analyzer.py    # pipeline LLM real
-│   ├── stub_analyzer.py   # determinístico para CI
-│   ├── live_analyzer.py   # análise incremental ao vivo
+│   ├── pii_shield.py      # deterministic redaction before the LLM
+│   ├── baseline.py        # TF-IDF from nlp-baseline
+│   ├── llm_analyzer.py    # real LLM pipeline
+│   ├── stub_analyzer.py   # deterministic for CI
+│   ├── live_analyzer.py   # live incremental analysis
 │   └── stub_live_analyzer.py
 ├── clients/
 │   └── llm.py             # adapter OpenAI-compatible (ADR 0004)
@@ -269,10 +269,10 @@ apps/web/src/
 ├── app/
 │   ├── (auth)/            # login, signup, reset
 │   ├── (app)/             # dashboard, meetings, tasks, settings
-│   └── api/               # route handlers (poucos)
-├── components/            # flat — sem subdivisão features/
-│   ├── ui-primitives/     # button, input, dialog (escritos à mão)
-│   ├── meeting-*          # cards e formulários de reunião
+│   └── api/               # route handlers (few)
+├── components/            # flat — no features/ subdivision
+│   ├── ui-primitives/     # button, input, dialog (hand-written)
+│   ├── meeting-*          # meeting cards and forms
 │   ├── productivity-*     # ProductivityScoreCard, MeetingGoalForm
 │   ├── iam-*              # GroupList, PolicyEditor (Monaco)
 │   └── nora-logo.tsx
@@ -282,10 +282,10 @@ apps/web/src/
 │   └── utils.ts
 └── styles/
     ├── globals.css        # tokens + utilities
-    └── tokens.css         # paleta OKLCH + tipografia
+    └── tokens.css         # OKLCH palette + typography
 ```
 
-**There is no `components/ui/` à la shadcn.** Base components are written by hand using Tailwind classes directly.
+**There is no shadcn-style `components/ui/`.** Base components are written by hand using Tailwind classes directly.
 
 ### Rules
 
@@ -384,11 +384,11 @@ Provide the agent with:
 ### Recommended prompt
 
 ```text
-Você está no projeto NORA. Leia CLAUDE.md e docs/engineering/standards.md.
-Implemente a US## do docs/product/backlog.md apenas no service X.
-Não altere escopo fora dessa story.
-Adicione testes e explique como validar.
-Ancore cada afirmação técnica em path:linha ou ADR.
+You are working in the NORA project. Read CLAUDE.md and docs/engineering/standards.md.
+Implement US## from docs/product/backlog.md only in service X.
+Do not change scope outside that story.
+Add tests and explain how to validate.
+Anchor every technical claim in path:line or an ADR.
 ```
 
 ### Model split

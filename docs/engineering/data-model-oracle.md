@@ -19,7 +19,7 @@ CREATE TABLE tenants (
     allowed_email_domain  VARCHAR2(255),
     created_at            TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
     updated_at            TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
-    -- Soft-delete (V013). NULL = ativo. Hard-delete continua via native query (LGPD).
+    -- Soft-delete (V013). NULL = active. Hard-delete remains available via native query (LGPD).
     deleted_at            TIMESTAMP WITH TIME ZONE NULL,
 
     CONSTRAINT tenants_status_chk CHECK (status IN ('ACTIVE','SUSPENDED')),
@@ -28,15 +28,15 @@ CREATE TABLE tenants (
 
 CREATE INDEX idx_tenants_status ON tenants (status);
 
--- Soft-delete (V013): UNIQUE total de slug trocado por unicidade "parcial".
--- Postgres usa indice parcial WHERE deleted_at IS NULL; Oracle <23ai nao tem
--- indice parcial, entao emulamos com function-based index (slug indexado
--- apenas enquanto deleted_at IS NULL; linhas soft-deleted viram NULL e nao
--- contam para a unicidade, liberando o slug para reuso).
+-- Soft-delete (V013): the slug's full UNIQUE was replaced by "partial" uniqueness.
+-- Postgres uses a partial index WHERE deleted_at IS NULL; Oracle <23ai has no
+-- partial index, so we emulate it with a function-based index (the slug is indexed
+-- only while deleted_at IS NULL; soft-deleted rows become NULL and do not
+-- count toward uniqueness, freeing the slug for reuse).
 CREATE UNIQUE INDEX tenants_slug_uk
     ON tenants (CASE WHEN deleted_at IS NULL THEN slug END);
 
--- Apoia o filtro default deleted_at IS NULL aplicado pelo @SQLRestriction (Spring).
+-- Supports the default deleted_at IS NULL filter applied by @SQLRestriction (Spring).
 CREATE INDEX idx_tenants_deleted_at ON tenants (deleted_at);
 ```
 
@@ -56,39 +56,39 @@ CREATE TABLE users (
     is_root            NUMBER(1) DEFAULT 0 NOT NULL,
     created_at         TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
     updated_at         TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
-    -- Soft-delete (V013). NULL = ativo.
+    -- Soft-delete (V013). NULL = active.
     deleted_at         TIMESTAMP WITH TIME ZONE NULL,
 
     CONSTRAINT users_tenant_fk  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     CONSTRAINT users_status_chk CHECK (status IN ('ACTIVE','INVITED','DISABLED')),
     CONSTRAINT users_root_chk   CHECK (is_root IN (0,1)),
-    -- UNIQUE composto (tenant_id, id) exigido como target da FK composta de
-    -- meetings (V015). A PK simples `id` continua sendo o identificador; este
-    -- UNIQUE existe apenas para suportar o FOREIGN KEY (tenant_id, owner_user_id).
+    -- Composite UNIQUE (tenant_id, id) required as the target of the composite FK from
+    -- meetings (V015). The simple PK `id` remains the identifier; this
+    -- UNIQUE exists only to support the FOREIGN KEY (tenant_id, owner_user_id).
     CONSTRAINT users_tenant_id_uk UNIQUE (tenant_id, id)
 );
 
--- (tenant_id, email): UNIQUE total trocado por unicidade "parcial" no soft-delete
--- (V013). Postgres usa indice parcial WHERE deleted_at IS NULL; Oracle emula com
--- function-based index. Um email so e unico entre usuarios vivos — apos um
--- soft-delete o mesmo email pode ser reusado num novo signup.
+-- (tenant_id, email): full UNIQUE replaced by "partial" uniqueness under soft-delete
+-- (V013). Postgres uses a partial index WHERE deleted_at IS NULL; Oracle emulates it with a
+-- function-based index. An email is only unique among live users — after a
+-- soft-delete the same email can be reused in a new signup.
 CREATE UNIQUE INDEX users_email_uk
     ON users (CASE WHEN deleted_at IS NULL THEN tenant_id END,
               CASE WHEN deleted_at IS NULL THEN email     END);
 
--- Equivalente ao CITEXT do Postgres: unicidade case-insensitive, tambem
--- restrita aos vivos para ficar consistente com o soft-delete.
+-- Equivalent to Postgres's CITEXT: case-insensitive uniqueness, also
+-- restricted to live rows to stay consistent with the soft-delete.
 CREATE UNIQUE INDEX uq_users_tenant_email_ci
     ON users (CASE WHEN deleted_at IS NULL THEN tenant_id      END,
               CASE WHEN deleted_at IS NULL THEN LOWER(email)   END);
 
 CREATE INDEX idx_users_tenant ON users (tenant_id);
 
--- Apoia o filtro default deleted_at IS NULL do @SQLRestriction (Spring).
+-- Supports the default deleted_at IS NULL filter of @SQLRestriction (Spring).
 CREATE INDEX idx_users_deleted_at ON users (deleted_at);
 
--- Indice parcial nao existe nativamente no Oracle <23ai;
--- usar function-based index com expressao para emular "WHERE is_root = 1".
+-- Partial index does not exist natively in Oracle <23ai;
+-- use a function-based index with an expression to emulate "WHERE is_root = 1".
 CREATE UNIQUE INDEX uq_users_root_per_tenant
     ON users (CASE WHEN is_root = 1 THEN tenant_id END);
 ```
@@ -180,20 +180,20 @@ CREATE TABLE meetings (
     transcript_format  VARCHAR2(10)  NOT NULL,
     processing_status  VARCHAR2(20)  DEFAULT 'PENDING' NOT NULL,
     summary_snippet    CLOB,
-    -- JSONB Postgres -> CLOB validado como JSON em Oracle 19c+
+    -- Postgres JSONB -> CLOB validated as JSON in Oracle 19c+
     attributes         CLOB DEFAULT '{}' NOT NULL,
     created_at         TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
     updated_at         TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
-    -- Soft-delete (V013). NULL = ativo.
+    -- Soft-delete (V013). NULL = active.
     deleted_at         TIMESTAMP WITH TIME ZONE NULL,
 
     CONSTRAINT meetings_tenant_fk FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    -- FK composta (V015): (tenant_id, owner_user_id) tem de bater com a linha de
-    -- users (tenant_id, id). Fecha cross-tenant user assignment via ORM forge
-    -- (defense in depth do isolamento ADR 0002). Oracle suporta FK composta
-    -- nativamente; o target e o UNIQUE users_tenant_id_uk (§2).
-    -- Postgres usa ON DELETE RESTRICT; em Oracle a ausencia de clausula ON DELETE
-    -- ja e equivalente a RESTRICT/NO ACTION (ver §15).
+    -- Composite FK (V015): (tenant_id, owner_user_id) must match the row in
+    -- users (tenant_id, id). Blocks a cross-tenant user assignment forged via the ORM
+    -- (defense in depth for the ADR 0002 isolation). Oracle supports a composite FK
+    -- natively; the target is the UNIQUE users_tenant_id_uk (§2).
+    -- Postgres uses ON DELETE RESTRICT; in Oracle the absence of an ON DELETE clause
+    -- is already equivalent to RESTRICT/NO ACTION (see §15).
     CONSTRAINT meetings_owner_fk  FOREIGN KEY (tenant_id, owner_user_id)
         REFERENCES users (tenant_id, id),
     CONSTRAINT meetings_format_chk CHECK (transcript_format IN ('TXT','VTT','SRT')),
@@ -205,11 +205,11 @@ CREATE INDEX idx_meetings_tenant_created ON meetings (tenant_id, created_at DESC
 CREATE INDEX idx_meetings_owner          ON meetings (owner_user_id);
 CREATE INDEX idx_meetings_status         ON meetings (tenant_id, processing_status);
 
--- Apoia o filtro default deleted_at IS NULL do @SQLRestriction (Spring) — V013.
+-- Supports the default deleted_at IS NULL filter of @SQLRestriction (Spring) — V013.
 CREATE INDEX idx_meetings_deleted_at     ON meetings (deleted_at);
 
--- Equivalente ao GIN/jsonb_path_ops do Postgres: indice JSON search em Oracle.
--- Em Oracle 19c, JSON_VALUE indexes funcionam por path; para containment use Oracle Text ou JSON Search Index.
+-- Equivalent to Postgres's GIN/jsonb_path_ops: a JSON search index in Oracle.
+-- In Oracle 19c, JSON_VALUE indexes work by path; for containment use Oracle Text or a JSON Search Index.
 CREATE SEARCH INDEX idx_meetings_attributes_jsi
     ON meetings (attributes) FOR JSON;
 ```
@@ -283,7 +283,7 @@ CREATE TABLE tenant_contexts (
     updated_by  VARCHAR2(36),
     created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
     updated_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
-    -- Soft-delete (V013). NULL = ativo.
+    -- Soft-delete (V013). NULL = active.
     deleted_at  TIMESTAMP WITH TIME ZONE NULL,
 
     CONSTRAINT tenant_ctx_tenant_fk FOREIGN KEY (tenant_id)  REFERENCES tenants(id) ON DELETE CASCADE,
@@ -291,15 +291,15 @@ CREATE TABLE tenant_contexts (
     CONSTRAINT tenant_ctx_doc_json  CHECK (document IS JSON)
 );
 
--- tenant_id: UNIQUE total (um contexto por tenant) trocado por unicidade
--- "parcial" no soft-delete (V013). Postgres usa indice parcial WHERE
--- deleted_at IS NULL; Oracle emula com function-based index.
+-- tenant_id: full UNIQUE (one context per tenant) replaced by "partial"
+-- uniqueness under soft-delete (V013). Postgres uses a partial index WHERE
+-- deleted_at IS NULL; Oracle emulates it with a function-based index.
 CREATE UNIQUE INDEX tenant_ctx_tenant_uk
     ON tenant_contexts (CASE WHEN deleted_at IS NULL THEN tenant_id END);
 
 CREATE INDEX idx_tenant_contexts_tenant ON tenant_contexts (tenant_id);
 
--- Apoia o filtro default deleted_at IS NULL do @SQLRestriction (Spring) — V013.
+-- Supports the default deleted_at IS NULL filter of @SQLRestriction (Spring) — V013.
 CREATE INDEX idx_tenant_contexts_deleted_at ON tenant_contexts (deleted_at);
 ```
 
@@ -312,7 +312,7 @@ CREATE TABLE meeting_analyses (
     tenant_id               VARCHAR2(36) NOT NULL,
     summary                 CLOB NOT NULL,
     sentiment_overall       VARCHAR2(20) NOT NULL,
-    -- Oracle nao tem TEXT[] nativo; armazenamos como JSON array em CLOB.
+    -- Oracle has no native TEXT[]; we store it as a JSON array in a CLOB.
     topics                  CLOB DEFAULT '[]' NOT NULL,
     model_version           VARCHAR2(100),
     prompt_version          VARCHAR2(100),
@@ -605,11 +605,11 @@ CREATE TABLE refresh_tokens (
     revoked_at      TIMESTAMP WITH TIME ZONE,
     created_at      TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
     last_used_at    TIMESTAMP WITH TIME ZONE,
-    -- Token rotation + reuse detection (V014). Tokens da mesma cadeia
-    -- compartilham family_id; reuse de token revogado revoga a family inteira.
+    -- Token rotation + reuse detection (V014). Tokens in the same chain
+    -- share family_id; reusing a revoked token revokes the entire family.
     family_id       VARCHAR2(36) NOT NULL,
-    -- Quando rotacionado, aponta para o token novo (self-FK). NULL no token
-    -- ativo da cadeia ou em tokens revogados sem sucessor (logout).
+    -- When rotated, points to the new token (self-FK). NULL on the chain's
+    -- active token or on revoked tokens with no successor (logout).
     replaced_by_id  VARCHAR2(36) NULL,
 
     CONSTRAINT rt_user_fk        FOREIGN KEY (user_id)   REFERENCES users(id)   ON DELETE CASCADE,
@@ -618,14 +618,14 @@ CREATE TABLE refresh_tokens (
     CONSTRAINT rt_hash_uk        UNIQUE (token_hash)
 );
 
--- Postgres usa indice parcial WHERE revoked_at IS NULL.
--- Em Oracle, function-based index emula o mesmo comportamento.
+-- Postgres uses a partial index WHERE revoked_at IS NULL.
+-- In Oracle, a function-based index emulates the same behavior.
 CREATE INDEX idx_refresh_tokens_user
     ON refresh_tokens (CASE WHEN revoked_at IS NULL THEN user_id END);
 
 CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens (token_hash);
 
--- Lookup pela family para revogar toda a cadeia em reuse (V014).
+-- Lookup by family to revoke the entire chain on reuse (V014).
 CREATE INDEX idx_refresh_tokens_family ON refresh_tokens (family_id);
 ```
 
@@ -778,8 +778,8 @@ The native equivalent in Oracle is **VPD (Virtual Private Database)**, also call
 ### 18.1 Application context (equivalent to the session GUC)
 
 ```sql
--- Pacote que seta o tenant corrente no contexto (chamado pelo aspect Spring,
--- equivalente ao SET LOCAL nora.current_tenant_id do Postgres).
+-- Package that sets the current tenant in the context (called by the Spring aspect,
+-- equivalent to Postgres's SET LOCAL nora.current_tenant_id).
 CREATE OR REPLACE PACKAGE nora_session AS
     PROCEDURE set_tenant(p_tenant_id IN VARCHAR2);
 END nora_session;
@@ -793,17 +793,17 @@ CREATE OR REPLACE PACKAGE BODY nora_session AS
 END nora_session;
 /
 
--- Context "seguro": so o pacote nora_session pode escrever atributos nele.
+-- "Secure" context: only the nora_session package can write attributes into it.
 CREATE CONTEXT NORA_CTX USING nora_session;
 ```
 
 ### 18.2 Policy function (dynamic predicate)
 
 ```sql
--- Retorna o predicado aplicado a cada linha. Quando o contexto nao esta setado
--- (SYS_CONTEXT devolve NULL — ex.: sessao admin sem o aspect), o predicado
--- '1 = 0' nao matcha nenhuma linha => fail-closed, espelhando o comportamento
--- do Postgres quando o GUC esta vazio e o role nao bypassa RLS.
+-- Returns the predicate applied to each row. When the context is not set
+-- (SYS_CONTEXT returns NULL — e.g., an admin session without the aspect), the predicate
+-- '1 = 0' matches no rows => fail-closed, mirroring the Postgres behavior
+-- when the GUC is empty and the role does not bypass RLS.
 CREATE OR REPLACE FUNCTION nora_tenant_predicate (
     p_schema IN VARCHAR2,
     p_object IN VARCHAR2
@@ -821,9 +821,9 @@ END nora_tenant_predicate;
 ### 18.3 Applying the policy (representative: `meetings` and `users`)
 
 ```sql
--- meetings: SELECT/INSERT/UPDATE/DELETE filtrados por tenant.
--- update_check => TRUE espelha o WITH CHECK do Postgres (impede gravar linha
--- de outro tenant, nao so le-la).
+-- meetings: SELECT/INSERT/UPDATE/DELETE filtered by tenant.
+-- update_check => TRUE mirrors Postgres's WITH CHECK (prevents writing a row
+-- from another tenant, not just reading it).
 BEGIN
     DBMS_RLS.ADD_POLICY(
         object_schema   => 'NORA',
@@ -837,8 +837,8 @@ BEGIN
 END;
 /
 
--- users: idêntico. A tabela `tenants` usa a coluna `id` (auto-referencia) em vez
--- de `tenant_id`, entao precisaria de uma policy function dedicada que retorne
+-- users: identical. The `tenants` table uses the `id` column (self-reference) instead
+-- of `tenant_id`, so it would need a dedicated policy function that returns
 -- 'id = SYS_CONTEXT(''NORA_CTX'',''tenant_id'')'.
 BEGIN
     DBMS_RLS.ADD_POLICY(

@@ -14,7 +14,7 @@ This page documents:
 
 ## Academic rubric
 
-> **NOTE:** items marked `?? não conferido` need to be validated against the official rubric published by FIAP. This document was written based on previous FIAP Challenge deliverables; it may need specific adjustments for the 2026 edition.
+> **NOTE:** items marked `?? unverified` need to be validated against the official rubric published by FIAP. This document was written based on previous FIAP Challenge deliverables; it may need specific adjustments for the 2026 edition.
 
 ### Expected academic deliverables
 
@@ -50,10 +50,10 @@ NORA delivers elements that go beyond the typical academic rubric:
 
 | Milestone | Date | Status |
 |---|---|---|
-| Data modeling deliverable (Oracle) | ?? não conferido | Material in `../engineering/data-model-oracle.md` |
-| Partial presentation (sprint review) | ?? não conferido | — |
+| Data modeling deliverable (Oracle) | ?? unverified | Material in `../engineering/data-model-oracle.md` |
+| Partial presentation (sprint review) | ?? unverified | — |
 | **FIAP Pitch / NEXT 2026** | **2026-06-15** | **Sub-phase 1.11 (Demo Polish) delivers the material** |
-| Final FIAP delivery | ?? não conferido | Sub-phases 1.11 + 1.12 cover it |
+| Final FIAP delivery | ?? unverified | Sub-phases 1.11 + 1.12 cover it |
 
 ## Who works on this
 

@@ -7,17 +7,19 @@ ADRs (Architecture Decision Records) record durable technical decisions with con
 Use the lean MADR template:
 
 ```
-# NNNN — Título
+# NNNN — Title
 
-- Status: proposto | aceito | substituído por XXXX | obsoleto
-- Data: AAAA-MM-DD
-- Decisores: nomes ou times
+- Status: proposed | accepted | superseded by XXXX | obsolete
+- Date: YYYY-MM-DD
 
-## Contexto
-## Decisão
-## Consequências
-## Alternativas Consideradas
+## Context
+## Decision
+## Consequences
+## Alternatives Considered
 ```
+
+There is no `Deciders` line. One person maintains this repository, so the field
+only ever held an invented name.
 
 ## Numbering
 

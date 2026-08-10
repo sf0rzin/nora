@@ -28,30 +28,30 @@ NORA is a platform with two plans that share the same AI engine and infrastructu
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        PLATAFORMA  NORA                            │
+│                        NORA  PLATFORM                               │
 ├──────────────────────────────────┬──────────────────────────────────┤
 │          NORA  CORE              │        NORA  ENTERPRISE          │
-│      Profissional Individual     │         Equipes e Empresas       │
+│      Individual professional     │         Teams and companies      │
 ├──────────────────────────────────┼──────────────────────────────────┤
-│ • Resumo automático de reuniões  │ • Tudo do Core +                 │
-│ • Detecção de action items       │ • Product Context via RAG        │
-│ • Productivity Score opt-in      │ • Customer Confidence (por call) │
-│ • Rastreamento de projetos       │ • Account Health Score temporal  │
-│ • PII Shield pessoal (LGPD)      │ • Competitive Radar configurável │
-│ • Integração via MCP:            │ • Next Best Action comercial     │
-│   · Google Calendar / Outlook    │ • IAM estilo AWS: Root + Users + │
+│ • Automatic meeting summaries    │ • Everything in Core, plus       │
+│ • Action item detection          │ • Product Context via RAG        │
+│ • Productivity Score, opt-in     │ • Customer Confidence (per call) │
+│ • Project tracking               │ • Account Health Score over time │
+│ • Personal PII Shield (LGPD)     │ • Configurable Competitive Radar │
+│ • Integration over MCP:          │ • Commercial Next Best Action    │
+│   · Google Calendar / Outlook    │ • AWS-style IAM: Root + Users +  │
 │   · Linear / Jira                │   Groups + Policies              │
-│   · GitHub                       │ • Team Analytics & dashboards    │
-│ • Freemium / plano individual    │ • SSO (Entra ID / SAML 2.0 —     │
-│                                  │   pós-MVP)                       │
-│                                  │ • Multi-tenancy isolado          │
-│                                  │ • SLA enterprise + suporte BR    │
+│   · GitHub                       │ • Team analytics & dashboards    │
+│ • Freemium / individual plan     │ • SSO (Entra ID / SAML 2.0 —     │
+│                                  │   post-MVP)                      │
+│                                  │ • Isolated multi-tenancy         │
+│                                  │ • Enterprise SLA + BR support    │
 ├──────────────────────────────────┴──────────────────────────────────┤
-│  SUPERFÍCIES: Web SaaS · Desktop (Tauri, real-time) · API / MCPs  │
+│  SURFACES: Web SaaS · Desktop (Tauri, real-time) · API / MCPs       │
 ├─────────────────────────────────────────────────────────────────────┤
 │  GO-TO-MARKET: Product-Led Growth                                   │
-│  Indivíduo adota Core (freemium) → apresenta à empresa →            │
-│  empresa contrata Enterprise                                        │
+│  An individual adopts Core (freemium) → shows it to the company →   │
+│  the company buys Enterprise                                        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -119,17 +119,17 @@ To understand the previous state (Sprint 1+2 documentation) consult the document
 NORA Enterprise implements an **AWS IAM-style** model: the tenant creates its own **groups** and its own **policies**. No hierarchical role is imposed by the product. See ADR 0007.
 
 ```
-Empresa (Tenant)
-├── Root user           — owner do tenant; bypass total; não removível
-├── Users               — convidados pelo Root ou por quem tiver permissão de IAM
-├── Groups              — criação livre ("Vendas-SP", "Auditores", etc.)
+Company (Tenant)
+├── Root user           — tenant owner; full bypass; cannot be removed
+├── Users               — invited by the Root or by anyone holding IAM permission
+├── Groups              — created freely ("Sales-SP", "Auditors", etc.)
 │   └── ⇄ Policies
 ├── Users ⇄ Groups       (N:N)
 ├── Users ⇄ Policies     (N:N)
-└── Policies            — documento JSON: Effect / Action / Resource [/ Condition]
+└── Policies            — JSON document: Effect / Action / Resource [/ Condition]
 ```
 
-**Real example:** the tenant admin creates a "Diretoria de Design" group and attaches a policy that allows `meeting:read` and `analysis:read` only on resources with the condition `nora:Department = "design"`.
+**Real example:** the tenant admin creates a "Design Department" group and attaches a policy that allows `meeting:read` and `analysis:read` only on resources with the condition `nora:Department = "design"`.
 → The group's members manage design meetings and **never see** sales transcripts.
 
 **Effect on Product Context:** each department can have its own sub-catalogue. The AI chooses the correct sub-catalogue based on the conditions applicable to the user who triggered the analysis.
@@ -143,15 +143,15 @@ Empresa (Tenant)
 The **Model Context Protocol (MCP)** is an open standard that lets NORA connect to external tools in a secure and standardised way — without fragile integrations or maintenance of ad-hoc webhooks. For the user, it means NORA "talks" to the tools they already use:
 
 ```
-Reunião transcrita no NORA
+Meeting transcribed in NORA
          │
-         ├─── MCP → Google Calendar / Outlook  → Registra resumo no evento da reunião
+         ├─── MCP → Google Calendar / Outlook  → Writes the summary onto the calendar event
          │
-         ├─── MCP → Linear / Jira              → Cria issues com as action items detectadas
+         ├─── MCP → Linear / Jira              → Opens issues from the detected action items
          │
-         ├─── MCP → GitHub                     → Linka discussão técnica ao PR/issue mencionado
+         ├─── MCP → GitHub                     → Links the technical discussion to the PR/issue named
          │
-         └─── MCP → Salesforce / HubSpot / TOTVS CRM → Empurra oportunidade com contexto estruturado
+         └─── MCP → Salesforce / HubSpot / TOTVS CRM → Pushes the opportunity with structured context
 ```
 
 This eliminates the main friction in adopting productivity tools: double data entry. The user transcribes once — NORA distributes it wherever it needs to go.

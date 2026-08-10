@@ -68,7 +68,7 @@ Cost event ingestion. **Fire-and-forget**: it never blocks the caller, never pro
   "service": "chat",
   "provider": "openai",
   "model": "gpt-4o-mini",
-  "tenantId": "5b1c…uuid ou null",
+  "tenantId": "5b1c…uuid or null",
   "promptTokens": 1234,
   "completionTokens": 567,
   "costUsd": 0.0,
@@ -187,7 +187,7 @@ operator-only):
   `service:"chat"`, the session's `tenantId`, tokens, `latencyMs`, `status`. It reads the active model via
   `GET /internal/platform/llm-config?service=chat`.
 - **nora-admin** (Next): server-side it adds `X-Internal-Token: <admin token>` and
-  `X-Operator-Email: <email do Easy Auth>` to every call to `/admin/platform/**`. It never exposes the
+  `X-Operator-Email: <Easy Auth email>` to every call to `/admin/platform/**`. It never exposes the
   token to the browser.
 
 ## 5. Versioning

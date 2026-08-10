@@ -22,13 +22,13 @@ A Debian VM on Proxmox runs the whole stack with Docker Compose (project `nora`)
 source of truth**; this runbook is how to operate it.
 
 ```
-Internet ──> Cloudflare edge ──(tunnel, saída-only)──> cloudflared
+Internet ──> Cloudflare edge ──(tunnel, egress-only)──> cloudflared
                                                            │
                                                          caddy            <- retry buffer
-                                                     ┌─────┼─────┐           do rolling update
+                                                     ┌─────┼─────┐           for the rolling update
                                                     web   api   admin
                                                            │
-                                                        worker (interno)
+                                                        worker (internal)
                                                            │
                                            postgres  +  postgres-platform
 ```
@@ -179,8 +179,8 @@ arrives empty (see `environment-secrets.md` §5.1).
 **does not start**:
 
 ```yaml
-CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:?... sem ele access.ts faz fail-open}
-CF_ACCESS_AUD:         ${CF_ACCESS_AUD:?... sem ele access.ts faz fail-open}
+CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:?... without it access.ts fails open}
+CF_ACCESS_AUD:         ${CF_ACCESS_AUD:?... without it access.ts fails open}
 ```
 
 Trading silent fail-open for noisy fail-closed is the point. Check after the deployment:
@@ -202,10 +202,10 @@ is just a query filter: the chunks stay on disk forever.
 
 ```yaml
 limits_config:
-  retention_period: 720h          # 30d, alinhado ao Prometheus
+  retention_period: 720h          # 30d, aligned with Prometheus
 compactor:
   working_directory: /loki/compactor
-  retention_enabled: true          # <- sem esta linha, nada é apagado
+  retention_enabled: true          # <- without this line, nothing gets deleted
   delete_request_store: filesystem
 ```
 
@@ -302,7 +302,7 @@ Sized from the compose limits (api 2 vCPU/2.5 Gi, web 2/2 Gi, worker 1/1.5 Gi, a
 | Protection | `Start at boot: yes`, `Protection: yes` | prevents accidental destruction |
 
 ```bash
-# no host beta, como root
+# on the beta host, as root
 qm create 106 --name nora-prod --ostype l26 \
   --cores 6 --cpu host --memory 16384 --balloon 0 \
   --net0 virtio,bridge=vmbr1 --agent enabled=1 \
@@ -352,7 +352,7 @@ vzdump: nora-daily
   schedule 03:30
   prune-backups keep-daily=7,keep-weekly=4
   vmid 106
-  notes-template NORA prod - backup automatico {{guestname}}
+  notes-template NORA prod - automatic backup {{guestname}}
 ```
 
 > Mind the space: the `local` storage has **48 GB free** and already holds ~5 GB per `ayla` backup.
@@ -369,9 +369,9 @@ ssh nora-prod
 sudo apt-get update && sudo apt-get -y upgrade
 sudo apt-get -y install ca-certificates curl gnupg git age unattended-upgrades \
                         postgresql-client-16 jq
-sudo dpkg-reconfigure -plow unattended-upgrades   # security updates automáticos
+sudo dpkg-reconfigure -plow unattended-upgrades   # automatic security updates
 
-# --- Docker (repo oficial; o docker.io do Debian é velho demais pro compose v2) ---
+# --- Docker (official repo; Debian's docker.io is too old for compose v2) ---
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/debian/gpg | \
   sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -383,7 +383,7 @@ sudo apt-get -y install docker-ce docker-ce-cli containerd.io \
                         docker-buildx-plugin docker-compose-plugin
 sudo usermod -aG docker "$USER" && newgrp docker
 
-# --- diretórios ---
+# --- directories ---
 sudo mkdir -p /etc/nora /srv/nora/backups /opt/nora
 sudo chown "$USER":"$USER" /opt/nora
 sudo chmod 700 /srv/nora/backups
@@ -393,13 +393,13 @@ SOPS_VER=3.9.4
 curl -fsSLo /tmp/sops "https://github.com/getsops/sops/releases/download/v${SOPS_VER}/sops-v${SOPS_VER}.linux.amd64"
 sudo install -m 0755 /tmp/sops /usr/local/bin/sops
 
-# --- firewall: nada de inbound além de SSH da LAN ---
+# --- firewall: no inbound besides SSH from the LAN ---
 sudo apt-get -y install ufw
 sudo ufw default deny incoming && sudo ufw default allow outgoing
 sudo ufw allow from 192.168.0.0/16 to any port 22 proto tcp
 sudo ufw --force enable
 
-# --- código ---
+# --- code ---
 git clone https://github.com/sf0rzin/nora.git /opt/nora
 ```
 
@@ -448,11 +448,11 @@ Assemble the secrets file from the stack's `.env.example` and encrypt it:
 
 ```bash
 cd infra/proxmox
-cp secrets.env.example secrets.env      # NUNCA commitar este intermediário
-$EDITOR secrets.env                     # preencher os valores
+cp secrets.env.example secrets.env      # NEVER commit this intermediate file
+$EDITOR secrets.env                     # fill in the values
 sops --encrypt secrets.env > secrets.env.sops
 shred -u secrets.env
-git add .sops.yaml secrets.env.sops && git commit -m "chore(infra): segredos cifrados (SOPS+age)"
+git add .sops.yaml secrets.env.sops && git commit -m "chore(infra): encrypted secrets (SOPS+age)"
 ```
 
 **Two planes, not one.** Only what must not leak is encrypted; the rest stays in the clear and
@@ -466,17 +466,17 @@ exactly how `CF_ACCESS_AUD` disappeared on Azure). The canonical template is
 relative to Key Vault, because without managed identity each `secretRef` becomes a static value):
 
 ```dotenv
-# Borda
+# Edge
 CLOUDFLARE_TUNNEL_TOKEN=
 
-# Dados
+# Data
 POSTGRES_ADMIN_PASSWORD=            # openssl rand -base64 32
-POSTGRES_PLATFORM_ADMIN_PASSWORD=   # OUTRO valor (blast radius, ADR 0022)
+POSTGRES_PLATFORM_ADMIN_PASSWORD=   # ANOTHER value (blast radius, ADR 0022)
 
-# RLS (os TRÊS roles — armadilha 8). Fonte única: alimentam o ALTER ROLE e o .env da API.
+# RLS (the THREE roles — pitfall 8). Single source: they feed the ALTER ROLE and the API's .env.
 NORA_APP_PASSWORD=                  # openssl rand -hex 24
 RLS_TELEMETRY_PASSWORD=
-NORA_TELEMETRY_DATASOURCE_PASSWORD= # mesmo valor de RLS_TELEMETRY_PASSWORD
+NORA_TELEMETRY_DATASOURCE_PASSWORD= # same value as RLS_TELEMETRY_PASSWORD
 SPRING_FLYWAY_PASSWORD=
 
 # Auth
@@ -488,18 +488,18 @@ DEEPSEEK_API_KEY=
 GEMINI_API_KEY=
 RESEND_API_KEY=
 
-# Integrações (ADR 0031) — só os SECRETS; os *_OAUTH_CLIENT_ID são públicos
-NORA_INTEGRATIONS_ENC_KEY=          # AES-256-GCM, 32 bytes BASE64 — ver aviso abaixo
+# Integrations (ADR 0031) — only the SECRETS; the *_OAUTH_CLIENT_ID ones are public
+NORA_INTEGRATIONS_ENC_KEY=          # AES-256-GCM, 32 bytes BASE64 — see the warning below
 NORA_INTEGRATIONS_STATE_SECRET=     # openssl rand -hex 32
 GOOGLE_OAUTH_CLIENT_SECRET= ...     # (slack, github, notion, todoist, linear, ms)
 NORA_TELEGRAM_BOT_TOKEN=
 TRELLO_API_KEY=
 
-# Control plane (ADR 0022/0023/0024) — dois valores DISTINTOS
+# Control plane (ADR 0022/0023/0024) — two DISTINCT values
 NORA_PLATFORM_INTERNAL_TOKEN=       # openssl rand -hex 32
-NORA_PLATFORM_ADMIN_TOKEN=          # OUTRO openssl rand -hex 32
+NORA_PLATFORM_ADMIN_TOKEN=          # ANOTHER openssl rand -hex 32
 
-# Observabilidade
+# Observability
 GRAFANA_ADMIN_PASSWORD=             # openssl rand -base64 24
 ```
 
@@ -519,7 +519,7 @@ GRAFANA_ADMIN_PASSWORD=             # openssl rand -base64 24
 Age key rotation (ADR 0016 Gap 7 policy, now without Key Vault):
 
 ```bash
-# adiciona a nova pública em .sops.yaml, depois:
+# add the new public key to .sops.yaml, then:
 sops updatekeys secrets.env.sops
 ```
 
@@ -613,17 +613,17 @@ shred -u /dev/shm/nora.env
 `pg_restore` collides with it.
 
 ```bash
-# 1) SÓ os bancos. O initdb roda aqui (volume vazio) e cria os roles do RLS.
+# 1) ONLY the databases. initdb runs here (empty volume) and creates the RLS roles.
 docker compose -p nora --env-file ./env.defaults --env-file /dev/shm/nora.env \
   up -d postgres postgres-platform
 docker compose -p nora exec postgres pg_isready -U nora_admin -d nora
 
-# 2) Copiar os dumps (formato custom, -Fc — ver azure-decommission.md §1)
+# 2) Copy the dumps (custom format, -Fc — see azure-decommission.md §1)
 docker cp nora.dump          nora-postgres:/tmp/nora.dump
 docker cp nora_platform.dump nora-postgres-platform:/tmp/nora_platform.dump
 
-# 3) Restaurar. --no-owner/--no-acl porque os roles do Azure (azure_pg_admin,
-#    azuresu) não existem aqui e fariam o restore cuspir erro em cada objeto.
+# 3) Restore. --no-owner/--no-acl because the Azure roles (azure_pg_admin,
+#    azuresu) do not exist here and would make the restore spit out an error on every object.
 docker compose -p nora exec postgres \
   pg_restore -U nora_admin -d nora --no-owner --no-acl --exit-on-error -v /tmp/nora.dump
 docker compose -p nora exec postgres-platform \
@@ -656,13 +656,13 @@ migrate on the API's first boot (expected); if it is **ahead**, stop: the dump i
 than the image.
 
 ```bash
-# 6) Agora sim, a stack inteira.
+# 6) Now yes, the whole stack.
 ./scripts/deploy.sh --platform --tag sha-xxxxxxx
 ```
 
 > **Only do this if you are recovering from a backup.** On the first deployment the database starts empty and
 > there is nothing to restore. When it does apply, steps 1 through 5 above are automated in
-> `./scripts/restore-into-proxmox.sh --from-dir <dir-de-backup> --sops` (the dumps that the `backup`
+> `./scripts/restore-into-proxmox.sh --from-dir <backup-dir> --sops` (the dumps that the `backup`
 > service generates in `$BACKUP_DIR`), which creates the roles before the data, restores with `--no-owner
 > --no-privileges` and applies R001 **afterwards**. Use the script; the manual sequence above is what it
 > does, for when something fails midway.
@@ -698,11 +698,11 @@ Egress (pitfall 3) and observability:
 docker compose -p nora exec worker python -c \
   "import urllib.request;print(urllib.request.urlopen('https://api.openai.com/v1/models',timeout=5).status)"
 
-# a API está mesmo emitindo? (falha se o javaagent não foi trocado — armadilha 9)
+# is the API actually emitting? (fails if the javaagent was not swapped — pitfall 9)
 docker compose -p nora exec prometheus wget -qO- \
   'http://localhost:9090/api/v1/query?query=up{job="nora-api"}' | jq '.data.result'
 
-# logs chegando no Loki?
+# logs arriving in Loki?
 docker compose -p nora exec loki wget -qO- \
   'http://localhost:3100/loki/api/v1/label/container/values' | jq
 ```
@@ -712,7 +712,7 @@ RLS (pitfall 8) and secrets:
 ```bash
 docker compose -p nora exec postgres psql -U nora_admin -d nora -c \
   "select rolname, rolbypassrls from pg_roles where rolname like 'nora_%';"
-docker compose -p nora --profile platform exec admin printenv CF_ACCESS_AUD   # não pode ser vazio
+docker compose -p nora --profile platform exec admin printenv CF_ACCESS_AUD   # must not be empty
 ```
 
 **Only after that** create the public hostnames on the tunnel (§4.2) — that is the DNS cutover. The
@@ -754,9 +754,9 @@ Mitigation — not elimination — in `caddy/Caddyfile`:
 ```caddyfile
 api.{$NORA_PUBLIC_DOMAIN} {
     reverse_proxy api:8080 {
-        lb_try_duration 60s      # segura e reenvia enquanto a origem volta
+        lb_try_duration 60s      # holds and retries while the origin comes back
         lb_try_interval 500ms
-        fail_duration    0s      # não marca a única origem como down
+        fail_duration    0s      # does not mark the single origin as down
         health_uri       /actuator/health
         health_interval  5s
     }
@@ -784,7 +784,7 @@ Deploying a single service:
 
 ```bash
 docker compose -p nora logs -f --tail=200 api
-# histórico e busca: Grafana → Explore → Loki
+# history and search: Grafana → Explore → Loki
 #   {container="nora-api"} |= "ERROR"
 ```
 
@@ -793,9 +793,9 @@ docker compose -p nora logs -f --tail=200 api
 No network exposure: the ports are on `127.0.0.1`.
 
 ```bash
-ssh -L 15432:127.0.0.1:5432 nora-prod          # primário
-ssh -L 15433:127.0.0.1:5433 nora-prod          # plataforma
-psql "host=127.0.0.1 port=15432 dbname=nora user=nora_admin"     # SEM sslmode (armadilha 1)
+ssh -L 15432:127.0.0.1:5432 nora-prod          # primary
+ssh -L 15433:127.0.0.1:5433 nora-prod          # platform
+psql "host=127.0.0.1 port=15432 dbname=nora user=nora_admin"     # WITHOUT sslmode (pitfall 1)
 ```
 
 Directly on the host: `docker compose -p nora exec postgres psql -U nora_admin -d nora`.
@@ -859,7 +859,7 @@ docker compose -p nora exec postgres \
   pg_restore -U nora_admin -d nora --no-owner --no-acl --exit-on-error /backups/nora-<TS>.dump
 docker compose -p nora exec -T postgres psql -U nora_admin -d nora \
   < services/api/src/main/resources/db/operational/R001__provision_app_roles.sql
-# só então: API_TAG de volta para a anterior + deploy
+# only then: API_TAG back to the previous one + deploy
 ```
 
 Everything written since the dump is lost (**up to 1 hour** — the real RPO of this stack, ADR 0034
@@ -871,7 +871,7 @@ Only for a **host** breakage (kernel upgrade, corrupted Docker, disk). Reverting
 **discards all data written since it was taken** — including the dumps in `/srv/nora/backups`.
 
 ```
-Proxmox → nora-prod → Snapshots → selecionar → Rollback
+Proxmox → nora-prod → Snapshots → select → Rollback
 ```
 
 **Before reverting, copy `/srv/nora/backups` off the VM.** Without that you trade a host problem

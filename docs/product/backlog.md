@@ -280,7 +280,7 @@ The NORA v1.0 MVP covers exclusively the stories classified as **Must Have**, di
 
 ### US36 — IAM policies (Effect/Action/Resource/Condition)
 
-**Given that** the Root opens "Configurações > IAM > Políticas",
+**Given that** the Root opens "Settings > IAM > Policies",
 **when** they create a new policy by submitting a JSON document with `version`, `statements[]` (each with `effect`, `action[]`, `resource[]` and an optional `condition`),
 **then** the policy must be persisted with version 1, validated against the official schema and available to be attached to groups/users.
 

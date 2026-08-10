@@ -58,7 +58,7 @@ Create a TXT record `asuid` (apex) and `asuid.www` with the environment's `custo
 cf-api "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records" -X POST \
   -H 'Content-Type: application/json' \
   -d "{\"type\":\"TXT\",\"name\":\"asuid\",\"content\":\"$VERID\",\"ttl\":1}"
-# repetir com "name":"asuid.www"
+# repeat with "name":"asuid.www"
 ```
 
 ### 2. Point apex and www at Azure (DNS-only during provisioning)
@@ -68,11 +68,11 @@ an A record at the edge). Keep it **DNS-only (grey)** until the certificate is i
 to see the domain pointing at it during validation.
 
 ```bash
-# apex: substituir o registro existente da raiz por CNAME -> FQDN, proxied=false
+# apex: replace the existing root record with CNAME -> FQDN, proxied=false
 cf-api "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records/$APEX_ID" -X PUT \
   -H 'Content-Type: application/json' \
   -d "{\"type\":\"CNAME\",\"name\":\"@\",\"content\":\"$FQDN\",\"proxied\":false,\"ttl\":1}"
-# www: CNAME -> FQDN, proxied=false  (substitui o parking da Namecheap, se houver)
+# www: CNAME -> FQDN, proxied=false  (replaces the Namecheap parking, if any)
 ```
 
 ### 3. Azure — add the hostname and issue the managed certificate
@@ -86,7 +86,7 @@ that DNS already points to.
 az containerapp hostname add  -g rg-nora-dev -n nora-web-dev --hostname nora.systems
 az containerapp hostname bind -g rg-nora-dev -n nora-web-dev --hostname nora.systems \
   -e nora-cae-dev --validation-method HTTP
-# repetir para www.nora.systems
+# repeat for www.nora.systems
 ```
 
 The expected result per hostname is `bindingType: SniEnabled` with a `certificateId`. Issuance
@@ -95,13 +95,13 @@ takes from 1 to a few minutes.
 > If a certificate gets stuck in `Pending` (e.g. a previous attempt via TXT), delete it
 > before retrying:
 > `az containerapp env certificate list -g rg-nora-dev -n nora-cae-dev --managed-certificates-only`
-> and `az containerapp env certificate delete -g rg-nora-dev -n nora-cae-dev --certificate <nome> --yes`.
+> and `az containerapp env certificate delete -g rg-nora-dev -n nora-cae-dev --certificate <name> --yes`.
 
 ### 4. Verify against the direct origin (still DNS-only)
 
 ```bash
 curl -sS -o /dev/null -w "http=%{http_code} ssl=%{ssl_verify_result}\n" https://nora.systems
-# Esperado: http=200 ssl=0 (cert válido). Se houver atraso de propagação, repita.
+# Expected: http=200 ssl=0 (valid cert). If there is propagation delay, repeat.
 ```
 
 ### 5. Flip to proxied (Cloudflare in front)
@@ -113,7 +113,7 @@ With the certificate issued, turn the proxy on (orange). The apex stays as a pro
 cf-api "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records/$APEX_ID" -X PUT \
   -H 'Content-Type: application/json' \
   -d "{\"type\":\"CNAME\",\"name\":\"@\",\"content\":\"$FQDN\",\"proxied\":true,\"ttl\":1}"
-# www: idem com proxied=true
+# www: same with proxied=true
 ```
 
 The zone's SSL/TLS mode must be **Full** (or Full strict). With Full, Cloudflare connects
@@ -123,7 +123,7 @@ to the origin over HTTPS and accepts Azure's managed certificate (which is publi
 
 ```bash
 curl -sS -I https://nora.systems | grep -iE "^(server|cf-ray):"
-# Esperado: Server: cloudflare + CF-RAY presente, e HTTP 200 no corpo.
+# Expected: Server: cloudflare + CF-RAY present, and HTTP 200 in the body.
 ```
 
 ## Final smoke test
