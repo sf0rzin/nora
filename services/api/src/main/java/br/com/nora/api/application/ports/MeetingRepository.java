@@ -15,9 +15,14 @@ public interface MeetingRepository {
     Optional<Meeting> findByIdAndTenant(UUID id, UUID tenantId);
 
     /**
-     * Atomically moves a meeting from a terminal state (COMPLETED, FAILED) to PENDING. Returns 1
-     * when THIS caller performed the transition and 0 when it did not — because the meeting was
-     * already queued or running, or does not exist in the tenant.
+     * Atomically moves a meeting to PENDING for re-analysis. Returns 1 when THIS caller performed
+     * the transition and 0 when it did not — because the meeting is running, was queued moments
+     * ago, or does not exist in the tenant.
+     *
+     * <p>Claimable means COMPLETED, FAILED, or a PENDING row that has sat untouched long enough to
+     * count as abandoned rather than queued. The adapter owns that window; a restart, a disabled
+     * auto-dispatch or a missing analysis bean all leave a meeting PENDING with nothing in flight,
+     * and nothing else ever moves it.
      *
      * <p>The caller must dispatch the analysis only on 1. That is what keeps a double click from
      * scheduling two pipelines over one meeting: the condition is evaluated by the database against

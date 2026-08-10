@@ -51,7 +51,13 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
     @Override
     @Transactional
     public int claimForReanalysis(UUID id, UUID tenantId) {
-        return jpa.claimForReanalysis(id, tenantId);
+        // The staleness cutoff is computed here and bound as a parameter instead of being written
+        // as `now() - interval '15 minutes'` inside the query, so the window stays a named constant
+        // rather than a literal buried in SQL. Same shape `purgeOlderThan` already uses.
+        return jpa.claimForReanalysis(
+                id,
+                tenantId,
+                OffsetDateTime.now().minus(MeetingJpaRepository.STALE_PENDING_CLAIM_WINDOW));
     }
 
     @Override

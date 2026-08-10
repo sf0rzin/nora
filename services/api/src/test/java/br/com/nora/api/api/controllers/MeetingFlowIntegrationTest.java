@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +21,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -52,6 +54,7 @@ class MeetingFlowIntegrationTest {
     @LocalServerPort int port;
     @Autowired TestRestTemplate rest;
     @Autowired ObjectMapper mapper;
+    @Autowired JdbcTemplate jdbc;
 
     @BeforeEach
     void useJdkHttpClient() {
@@ -150,6 +153,51 @@ class MeetingFlowIntegrationTest {
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
+    /**
+     * A meeting abandoned in PENDING can be re-analysed; one queued moments ago still cannot.
+     *
+     * <p>The test profile runs with auto-dispatch off, which is one of the ways production reaches
+     * this exact state: PENDING with nothing in flight. The others are an ordinary restart, which
+     * drops every task still in the in-memory executor queue, and a missing analysis bean. Nothing
+     * sweeps those rows — the only scheduled job is the LGPD retention purge — so while the claim
+     * accepted only COMPLETED and FAILED the meeting was frozen on "queued" with its re-analyse
+     * button disabled, permanently.
+     *
+     * <p>Both directions are asserted on the same row. Widening the claim must not weaken the guard
+     * that keeps a double click from scheduling two pipelines, so the first call has to be refused
+     * and only the backdated one accepted.
+     */
+    @Test
+    void anAbandonedPendingMeetingIsReprocessableAndAFreshOneIsNot() throws Exception {
+        String token = signupAndLogin("stale@nora.dev", "SenhaForte123", "Stale");
+        String metadata = "{\"title\":\"Abandonada\",\"transcriptFormat\":\"TXT\"}";
+        byte[] content = "Lucas: seguimos.".getBytes(StandardCharsets.UTF_8);
+
+        ResponseEntity<String> upload = multipartUpload("/meetings", token, metadata, content);
+        assertThat(upload.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        JsonNode uploaded = mapper.readTree(upload.getBody());
+        String meetingId = uploaded.get("id").asText();
+        assertThat(uploaded.get("processingStatus").asText()).isEqualTo("PENDING");
+
+        String reprocess = "/meetings/" + meetingId + "/reprocess";
+        ResponseEntity<String> tooSoon = authPost(reprocess, token);
+        assertThat(tooSoon.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(mapper.readTree(tooSoon.getBody()).get("code").asText())
+                .isEqualTo("CANNOT_REPROCESS");
+
+        // The same row, backdated past the claim window: it now reads as abandoned, not queued.
+        jdbc.update(
+                "UPDATE meetings SET updated_at = now() - INTERVAL '1 hour' WHERE id = ?",
+                UUID.fromString(meetingId));
+
+        ResponseEntity<String> afterWindow = authPost(reprocess, token);
+        assertThat(afterWindow.getStatusCode())
+                .as("body=%s", afterWindow.getBody())
+                .isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(mapper.readTree(afterWindow.getBody()).get("processingStatus").asText())
+                .isEqualTo("PENDING");
+    }
+
     /* ---------- helpers ---------- */
 
     private String signupAndLogin(String email, String pwd, String name) throws Exception {
@@ -208,6 +256,12 @@ class MeetingFlowIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         return rest.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+    }
+
+    private ResponseEntity<String> authPost(String path, String token) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        return rest.exchange(path, HttpMethod.POST, new HttpEntity<>(headers), String.class);
     }
 
     private final class RequestExec {
