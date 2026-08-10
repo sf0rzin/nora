@@ -51,7 +51,7 @@
   font-size: 10px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--muted); padding: 0 10px; margin: 14px 0 6px;
 }
-/* Stratfy change: sessions glued to the category title (smaller gap) */
+/* Sessions sit close to the category title: smaller gap, by design. */
 .side-sec-label--tight { margin: 16px 0 2px; }
 
 /* Sidebar session with actions (rename/delete) revealed on row hover/focus */

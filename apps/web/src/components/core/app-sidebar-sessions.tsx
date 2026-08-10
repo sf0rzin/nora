@@ -15,7 +15,7 @@
  * Per-session management (hover): rename (inline input) and delete (inline
  * 2-click confirmation). Deleting the active session navigates to a clean /chat.
  *
- * Stratfy change: the "Sessões" label uses `.side-sec-label--tight` (pinned
+ * The "Sessões" label deliberately uses `.side-sec-label--tight` (pinned
  * to the category title).
  */
 import Link from "next/link";
