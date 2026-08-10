@@ -536,6 +536,10 @@ class WorkflowFlowIntegrationTest {
         public void sendPasswordReset(String toEmail, String displayName, String link) {}
 
         @Override
+        public void sendSignupAttemptOnExistingAccount(
+                String toEmail, String displayName, String signInUrl) {}
+
+        @Override
         public void sendInvitation(
                 String toEmail,
                 String tenantName,

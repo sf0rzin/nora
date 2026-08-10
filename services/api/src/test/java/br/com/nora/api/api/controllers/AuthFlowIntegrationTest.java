@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -133,14 +136,16 @@ class AuthFlowIntegrationTest {
                 .read(HttpStatus.OK);
     }
 
+    /**
+     * Replaces the old {@code signupRejectsDuplicate}, which asserted a 409 EMAIL_ALREADY_TAKEN on
+     * the second signup. That status WAS the finding: one request per candidate address turned a
+     * public endpoint into a directory of who has an account. Over the wire the two calls must now
+     * be the same answer, and the second one must leave the database as it was.
+     */
     @Test
-    void signupRejectsDuplicate() throws Exception {
+    void signupOnRegisteredAddressAnswersLikeAFreshSignup() throws Exception {
         String email = "dup@nora.dev";
-        postJson(
-                        "/auth/signup",
-                        Map.of("email", email, "password", "SenhaForte123", "displayName", "X"))
-                .read(HttpStatus.CREATED);
-        JsonNode dup =
+        JsonNode first =
                 postJson(
                                 "/auth/signup",
                                 Map.of(
@@ -149,9 +154,49 @@ class AuthFlowIntegrationTest {
                                         "password",
                                         "SenhaForte123",
                                         "displayName",
+                                        "X"))
+                        .read(HttpStatus.CREATED);
+
+        JsonNode again =
+                postJson(
+                                "/auth/signup",
+                                Map.of(
+                                        "email",
+                                        email,
+                                        "password",
+                                        "OutraSenha456",
+                                        "displayName",
                                         "Y"))
-                        .read(HttpStatus.CONFLICT);
-        assertThat(dup.get("code").asText()).isEqualTo("EMAIL_ALREADY_TAKEN");
+                        .read(HttpStatus.CREATED);
+
+        // Same status (asserted by read), same field set, same message, and ids that are not
+        // reused — nothing in the response separates the two calls.
+        assertThat(fieldNames(again)).isEqualTo(fieldNames(first));
+        assertThat(again.get("message").asText()).isEqualTo(first.get("message").asText());
+        assertThat(again.get("userId").asText()).isNotEqualTo(first.get("userId").asText());
+        assertThat(again.get("tenantId").asText()).isNotEqualTo(first.get("tenantId").asText());
+
+        // No second account: the token handed back by the second call verifies nothing.
+        JsonNode rejected =
+                postJson(
+                                "/auth/verify-email",
+                                Map.of("token", again.get("emailVerificationDevToken").asText()))
+                        .read(HttpStatus.BAD_REQUEST);
+        assertThat(rejected.get("code").asText()).isEqualTo("TOKEN_INVALID");
+
+        // The original account is intact: its own token still verifies, its own password still
+        // logs in, and the password sent on the second attempt does not.
+        postJson(
+                        "/auth/verify-email",
+                        Map.of("token", first.get("emailVerificationDevToken").asText()))
+                .read(HttpStatus.NO_CONTENT);
+        postJson("/auth/login", Map.of("email", email, "password", "OutraSenha456"))
+                .read(HttpStatus.UNAUTHORIZED);
+        JsonNode login =
+                postJson("/auth/login", Map.of("email", email, "password", "SenhaForte123"))
+                        .read(HttpStatus.OK);
+        assertThat(login.get("userId").asText()).isEqualTo(first.get("userId").asText());
+        assertThat(login.get("displayName").asText()).isEqualTo("X");
     }
 
     @Test
@@ -176,6 +221,14 @@ class AuthFlowIntegrationTest {
                 postJson("/auth/password/reset/request", Map.of("email", "ghost@nora.dev"))
                         .read(HttpStatus.ACCEPTED);
         assertThat(r.has("passwordResetDevToken")).isFalse();
+    }
+
+    /** Sorted field names of a JSON object — compares body SHAPE without comparing values. */
+    private static List<String> fieldNames(JsonNode node) {
+        List<String> names = new ArrayList<>();
+        node.fieldNames().forEachRemaining(names::add);
+        Collections.sort(names);
+        return names;
     }
 
     private RequestExec postJson(String path, Map<String, ?> body) throws Exception {

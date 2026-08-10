@@ -54,6 +54,12 @@ public class AuthRateLimiter {
     private static final long MAX_BUCKETS_PER_CACHE = 10_000;
 
     /**
+     * Longest address RFC 5321 allows, and therefore the cap on the length of an e-mail bucket key.
+     * See {@link #emailKey}.
+     */
+    private static final int MAX_EMAIL_KEY_LENGTH = 254;
+
+    /**
      * Digits/dots only (IPv4) or hex/colons (IPv6, incl. the mixed form ::ffff:1.2.3.4). Acts as a
      * gate before {@code InetAddress}, which would resolve DNS for anything else.
      */
@@ -127,7 +133,7 @@ public class AuthRateLimiter {
             // applies, and @Valid validation rejects the request right after.
             return true;
         }
-        String key = email.trim().toLowerCase(Locale.ROOT) + "|" + clientKey(request);
+        String key = emailKey(email) + "|" + clientKey(request);
         return bucketFor(loginEmailBuckets, key, loginPerMinutePerEmail, Duration.ofMinutes(1))
                 .tryConsume(1);
     }
@@ -141,9 +147,29 @@ public class AuthRateLimiter {
         if (email == null) {
             return false;
         }
-        String key = email.trim().toLowerCase(Locale.ROOT);
-        return bucketFor(resetBuckets, key, resetPer10Minutes, Duration.ofMinutes(10))
+        return bucketFor(resetBuckets, emailKey(email), resetPer10Minutes, Duration.ofMinutes(10))
                 .tryConsume(1);
+    }
+
+    /**
+     * Normalizes an address into a bucket key and bounds its length.
+     *
+     * <p>Bean validation on the request DTOs already caps the field, but the cap is repeated here
+     * because this class is the thing that RETAINS the value: a key lives in the cache for as long
+     * as the eviction window, up to {@link #MAX_BUCKETS_PER_CACHE} of them at once. What a caller
+     * can put in the heap should be bounded by the component that holds it, not only by the
+     * annotation on the layer above — a new caller, or an endpoint whose DTO drifts, must not be
+     * able to widen that.
+     *
+     * <p>Anything longer than a valid address is truncated rather than rejected: the bucket only
+     * has to be stable per caller, and values in that range share one, which is the correct
+     * treatment for input no legitimate flow produces.
+     */
+    private static String emailKey(String email) {
+        String normalized = email.trim().toLowerCase(Locale.ROOT);
+        return normalized.length() <= MAX_EMAIL_KEY_LENGTH
+                ? normalized
+                : normalized.substring(0, MAX_EMAIL_KEY_LENGTH);
     }
 
     private Bucket bucketFor(

@@ -84,6 +84,15 @@ public class AuthController {
         return "web".equalsIgnoreCase(req.getHeader("X-NORA-Client"));
     }
 
+    /**
+     * Creates the account and fires the verification e-mail.
+     *
+     * <p>Answers 201 with the same body shape and the same message for every address, including one
+     * that already has an account — the endpoint is public and unauthenticated, so it is not a
+     * place to confirm who is registered. When the address is already taken nothing is created and
+     * its owner is notified instead; see {@code AuthService#signup}. The message is worded to hold
+     * either way, which is why it talks about the e-mail rather than about a workspace.
+     */
     @PostMapping("/signup")
     public ResponseEntity<SignupResponse> signup(
             @Valid @RequestBody SignupRequest req, HttpServletRequest httpReq) {
@@ -102,7 +111,7 @@ public class AuthController {
                 new SignupResponse(
                         result.userId(),
                         result.tenantId(),
-                        "Conta criada. Verifique seu e-mail para ativar.",
+                        "Verifique seu e-mail para ativar sua conta.",
                         result.emailVerificationDevToken());
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
