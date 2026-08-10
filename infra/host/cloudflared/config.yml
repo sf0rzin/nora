@@ -38,11 +38,12 @@
 # The connector resolves `caddy` through Docker's internal DNS, so cloudflared and
 # caddy have to share the `edge` network (they already do in the compose).
 #
-#   | Subdomain | Domain          | Type | URL          |
-#   |-----------|-----------------|------|--------------|
-#   | (empty)   | nora.systems    | HTTP | caddy:80     |
-#   | www       | nora.systems    | HTTP | caddy:80     |
-#   | api       | nora.systems    | HTTP | caddy:80     |
+#   | Subdomain | Domain          | Type | URL                       |
+#   |-----------|-----------------|------|---------------------------|
+#   | (empty)   | nora.systems    | HTTP | caddy:80                  |
+#   | www       | nora.systems    | HTTP | caddy:80                  |
+#   | api       | nora.systems    | HTTP | caddy:80                  |
+#   | ssh       | nora.systems    | SSH  | host.docker.internal:22   |  <- Access policy FIRST
 #   | admin     | nora.systems    | HTTP | caddy:80     |
 #   | grafana   | nora.systems    | HTTP | caddy:80     |
 #
@@ -132,6 +133,22 @@ ingress:
   # is put in front of it too (recommended).
   - hostname: grafana.nora.systems
     service: http://caddy:80
+
+  # SSH to the host itself, so the machine stays reachable from networks that block
+  # outbound 22 (the client speaks TLS on 443 to Cloudflare's edge; see
+  # docs/operations/ssh-over-tunnel.md).
+  #
+  # THIS ROUTE IS SSH WITH NO AUTHENTICATION OF ITS OWN. It MUST have a Cloudflare Access
+  # Application in front of it, created BEFORE the Public Hostname exists. Without one, the
+  # hostname is a login prompt for the whole internet. The other routes here front an
+  # application that at least has its own session; this one fronts sshd directly.
+  #
+  # `host.docker.internal` and not `localhost`: the connector is a container, so localhost is
+  # the container's loopback, where nothing listens. Requires the `extra_hosts` entry on the
+  # cloudflared service in ../docker-compose.yml — the two go together or the route dials
+  # 127.0.0.1:22 inside the container and fails with "connection refused".
+  - hostname: ssh.nora.systems
+    service: ssh://host.docker.internal:22
 
   # MANDATORY catch-all: cloudflared refuses the configuration if the last rule
   # has a `hostname`. Any Host not listed dies here, without reaching the
