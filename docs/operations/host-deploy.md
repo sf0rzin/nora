@@ -753,8 +753,13 @@ endpoint can delete, and runs a real analysis against the deployment's provider 
 `NORA_SMOKE_CONFIRM_CMD` is the one step that cannot go over the API. Confirming an address needs
 the token from the e-mail, this deployment sends real mail, and the token is stored only as a
 SHA-256 hash — there is nothing to read back. `smoke-confirm.sh` marks the account verified
-directly and refuses any address outside the reserved `@smoke.invalid` domain, so it cannot be
-pointed at a person. It needs docker access, hence `sudo`.
+directly, and refuses any address outside `@smoke.invalid`, which is a literal constant in the
+script rather than a variable. It needs docker access, hence `sudo`.
+
+It is worth knowing what that script can do, because "confirms an address" understates it: the
+same statement also sets `status = 'ACTIVE'`, so it would move a `DISABLED` or `INVITED` account
+to active. It cannot create an account, set a password or authenticate. The domain guard is the
+only thing between it and a real user, which is why it is not configurable.
 
 What a pass tells you, and what it does not:
 
