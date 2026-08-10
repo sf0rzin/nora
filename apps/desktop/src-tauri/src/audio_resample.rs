@@ -22,8 +22,16 @@ impl MonoResampler {
         }
         let chunk_in = (src_sr as usize / 50).max(64); // ~20ms
         // Argument order under rubato 4 is (input rate, output rate, chunk_size, nbr_channels,
-        // fixed) — `sub_chunks` is gone, chosen automatically to target ~256 frames. Use
-        // `new_custom` if that ever needs controlling.
+        // fixed) — `sub_chunks` is gone, chosen automatically as `(chunk_size / 256).max(1)` to
+        // target roughly 256 frames per sub-chunk. `new_custom` takes it back if needed.
+        //
+        // This is a BEHAVIOUR change at 48 kHz, not just an API one, and it is the reason the
+        // two tests below were run rather than merely compiled. `chunk_in` is 960 there, so
+        // rubato picks 3 sub-chunks where this code used to pass 2, and the internal FFT block
+        // goes from 480 frames to 320. Delay and filter shape move with it. At 44.1 kHz
+        // (`chunk_in` 882) the arithmetic lands on the same block either way. Both tests pass
+        // at 48 kHz under the new value: output length within 90-100% of input/3, peak above
+        // 0.1, and ~2000 zero crossings per second for a 1 kHz tone.
         //
         // Worth keeping, because every parameter here is a usize and nothing rejects a wrong
         // order at compile time: on rubato 2 this call read (.., 1, chunk_in, 2, ..) with
