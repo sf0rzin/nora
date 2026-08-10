@@ -1194,6 +1194,22 @@ _COMMON_PHRASE_HEADS: frozenset[str] = frozenset(
         "Encaminhamento",
         "Conclusao",
         "Conclusoes",
+        # The section heads a minute-taker actually writes. Pattern 6 claims 1-3 all-caps words
+        # at the head of a line with a colon and needs neither end on a list, so an unguarded
+        # head is a person: "CONTEXTO: definimos o escopo" lost its heading. That is not one
+        # more over-redaction -- the analysis prompt asks the model to build its output sections
+        # from the transcript's own structure, so deleting the headings deletes the scaffolding
+        # the headline output is built on.
+        "Contexto",
+        "Contextos",
+        "Problema",
+        "Problemas",
+        "Solucao",
+        "Solucoes",
+        "Topico",
+        "Topicos",
+        "Resultado",
+        "Resultados",
         "Um",
         "Uma",
         "Uns",
@@ -2040,6 +2056,14 @@ def _redact_person_names(
     # Pattern 6: a speaker label opening a line. The only shape where neither end has to be
     # recognised -- the position and the colon carry it. Runs last, so anything the lists could
     # identify is already claimed and only the unrecognised names reach here.
+    #
+    # The false positives concentrate on the ONE-token label, and structurally so: the guard is a
+    # per-token blocklist, so a three-word heading gets three chances of hitting it while a
+    # one-word heading gets one. The pattern is left as it is anyway. Requiring two tokens here
+    # would hand every single-word all-caps label written by an unlisted person straight to the
+    # provider -- Pattern 5 above only covers labels that ARE on the given-name list -- and that
+    # leak is what this pattern was added to close. A missed heading is fixed by naming it in
+    # `_COMMON_PHRASE_HEADS`, not by narrowing the shape.
     for m in _CAPS_SPEAKER_RE.finditer(text):
         label = m.group(1)
         tokens = [_fold(t.group(0)) for t in _WORD_RE.finditer(label)]

@@ -738,6 +738,17 @@ def test_an_all_caps_name_is_redacted_when_the_lists_cannot_recognise_it(text, n
         "STATUS: em andamento.",
         "TOTVS PROTHEUS: versao nova.",
         "Integrar CRM ERP via API REST.",
+        # Section heads that a minute-taker writes and the guard set was missing. Pattern 6
+        # needs neither end on a list, so each of these was a redacted PERSON_NAME.
+        "CONTEXTO: definimos o escopo.",
+        "PROBLEMA: o prazo nao fecha.",
+        "SOLUCAO: dividir a entrega em duas.",
+        "TOPICOS: prazo, escopo e custo.",
+        "RESULTADOS: dois pontos fechados.",
+        # The guard set is written unaccented and the comparison goes through `_fold`, so the
+        # accented spelling a transcript actually carries has to be caught by the same entry.
+        "SOLUÇÃO: dividir a entrega em duas.",
+        "TÓPICOS: prazo, escopo e custo.",
     ],
 )
 def test_the_all_caps_patterns_do_not_read_a_verb_or_a_heading_as_a_name(text):
@@ -748,6 +759,34 @@ def test_the_all_caps_patterns_do_not_read_a_verb_or_a_heading_as_a_name(text):
     vocabulary however it is punctuated.
     """
     assert pii_shield.redact(text).redacted_text == text
+
+
+def test_a_section_heading_survives_while_the_speaker_beside_it_does_not():
+    """Both halves of the same trade-off, on one transcript.
+
+    Pattern 6 claims a line-opening all-caps label with neither end on any list, which is what
+    catches a speaker the lists cannot recognise. The ONLY thing separating that from a section
+    heading is membership in `_COMMON_PHRASE_HEADS`, so guarding the heads has to be shown not
+    to switch the shield off next to them.
+
+    It is not one more over-redaction either: the analysis prompt asks the model to build its
+    output sections from the transcript's own structure, so a deleted heading takes the
+    scaffolding of the product's headline output with it.
+    """
+    text = (
+        "CONTEXTO: renovacao anual do contrato.\n"
+        "PROBLEMA: o desconto pedido nao cabe.\n"
+        "NIVALDO ZANCHETTA: consigo dez por cento.\n"
+        "SOLUCAO: dividir a entrega em duas.\n"
+        "RESULTADOS: proposta revisada.\n"
+        "TOPICOS: prazo, escopo e custo."
+    )
+    result = pii_shield.redact(text)
+    for heading in ("CONTEXTO:", "PROBLEMA:", "SOLUCAO:", "RESULTADOS:", "TOPICOS:"):
+        assert heading in result.redacted_text, result.redacted_text
+    assert "NIVALDO" not in result.redacted_text, result.redacted_text
+    assert "ZANCHETTA" not in result.redacted_text, result.redacted_text
+    assert any(r.type == PiiType.PERSON_NAME for r in result.redactions)
 
 
 @pytest.mark.parametrize(
