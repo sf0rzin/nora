@@ -1,11 +1,3 @@
----
-title: "Runbook — NORA deployment on Proxmox (self-hosted)"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.1
-last_reviewed: 2026-08-07
----
-
 # Runbook — NORA deployment on Proxmox (self-hosted)
 
 > **Audience:** whoever operates the NORA deployment on the Proxmox VM (the Tech Lead today; future operators).

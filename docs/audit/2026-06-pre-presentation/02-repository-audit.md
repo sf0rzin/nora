@@ -1,11 +1,3 @@
----
-title: "Repository audit — hygiene and cleanup"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Repository audit — hygiene and cleanup
 
 > Useless, obsolete or improvable items in the monorepo. Every **removal** was verified

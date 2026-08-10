@@ -1,11 +1,3 @@
----
-title: "RLS Enforce — Cutover Runbook (ADR 0028)"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # RLS Enforce — Cutover Runbook (ADR 0028)
 
 Turns on Postgres **real Row Level Security** as defense in depth for `tenant_id`

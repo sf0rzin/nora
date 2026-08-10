@@ -1,11 +1,3 @@
----
-title: "Cartography of secrets and environment variables"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # NORA — Secrets & Environment Variables Cartography
 
 > **Operational document.** Last sweep: 2026-06-03 (senior audit).

@@ -1,11 +1,3 @@
----
-title: "Product Vision — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.1
-last_reviewed: 2026-06-06
----
-
 # Product Vision — NORA
 
 > Product reference document. Source of truth for **What** NORA is, for **whom**, and **why**.

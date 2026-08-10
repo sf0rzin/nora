@@ -1,11 +1,3 @@
----
-title: "Runbook — Azure shutdown (decommission)"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 2.0
-last_reviewed: 2026-08-07
----
-
 # Runbook — Azure shutdown (decommission)
 
 > **Audience:** whoever executes the final Azure cut after the migration to Proxmox.

@@ -1,11 +1,3 @@
----
-title: "Security Policy"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Security Policy
 
 NORA takes security seriously. This document describes **how to report vulnerabilities, the scope, secure contact, and timeline expectations**.

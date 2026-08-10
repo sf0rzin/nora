@@ -1,11 +1,3 @@
----
-titulo: "Complete NORA Core front-end — handoff to the Design Architect"
-status: active
-autor: "NORA Architect (Tech Lead)"
-data: 2026-06-09
-verificado-em: 2026-06-09
----
-
 # Complete NORA Core front-end (`apps/web`)
 
 > **To: Claude Design (NORA's design architect).**

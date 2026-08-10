@@ -1,11 +1,3 @@
----
-title: "Production Readiness — Gap Analysis"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Production Readiness — Gap Analysis
 
 > **Audience:** Tech Lead + future operators when NORA is promoted from the `rg-nora-dev` environment (current, the only one) to `rg-nora-prod`.

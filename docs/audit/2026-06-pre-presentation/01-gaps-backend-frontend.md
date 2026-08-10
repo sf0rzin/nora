@@ -1,12 +1,3 @@
----
-title: "Back-end × front-end gaps (web + admin)"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
-escopo: "NORA Core — web (apps/web) and admin (apps/admin) surfaces. Desktop out of scope."
----
-
 # Back-end × front-end gaps (web + admin)
 
 > Capabilities that the **back-end** (Spring `services/api`) or the **worker** exposes, but

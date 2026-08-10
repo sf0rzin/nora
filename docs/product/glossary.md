@@ -1,11 +1,3 @@
----
-title: "Glossary — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.1
-last_reviewed: 2026-06-06
----
-
 # Glossary — NORA
 
 > Canonical vocabulary of the NORA project. Terms in alphabetical order. Each entry includes a definition, scope (where it appears) and a reference (ADR / file / PR) when applicable.

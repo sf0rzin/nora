@@ -1,12 +1,3 @@
----
-title: "Pre-presentation audit — Executive summary"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
-contexto: "Preparation for NORA's 1st academic presentation (FIAP) on 2026-06-15"
----
-
 # Pre-presentation audit — Executive summary
 
 > Readiness audit of **NORA Core** for the first presentation (2026-06-15).

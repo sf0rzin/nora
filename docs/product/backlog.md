@@ -1,11 +1,3 @@
----
-title: "Backlog — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.1
-last_reviewed: 2026-06-06
----
-
 # Backlog — NORA
 
 > Living MVP backlog, maintained in MoSCoW format with **real status per user story** (DONE / PARTIAL / MISSING). Updated 2026-05-14, based on the audit `2026-05-13-audit-pre-subfase-1.10.md` §2 and §3.

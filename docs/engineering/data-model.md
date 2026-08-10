@@ -1,11 +1,3 @@
----
-title: "Data Model — NORA (Postgres 16)"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Data Model — NORA (Postgres 16)
 
 > Actual state of the schema, aligned with **migrations V001–V021** in `services/api/src/main/resources/db/migration/` (full inventory in §5).

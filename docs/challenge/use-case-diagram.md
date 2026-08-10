@@ -1,11 +1,3 @@
----
-title: "Use Case Diagram — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Use Case Diagram — NORA
 
 > Reference document for the **Agile Methodology with Squad Framework** course

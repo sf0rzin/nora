@@ -1,12 +1,3 @@
----
-title: "Documentation style guide and templates"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
-aplica_se_a: "All .md files in the repository (docs/, README, CLAUDE.md, SECURITY.md)"
----
-
 # Documentation style guide and templates — NORA
 
 > A single standard so that NORA's documentation looks like (and is) a real product. This

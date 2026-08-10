@@ -1,11 +1,3 @@
----
-title: "Docs Challenge — NORA (FIAP 2026)"
-owner: Stratfy Team
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # NORA — Docs Challenge (FIAP 2026)
 
 > NORA is built as a **real commercial product** serving the FIAP × TOTVS partnership. This folder consolidates the material that fulfills the **academic rubric of the FIAP Challenge 2026**, keeping a clear separation between the academic material and the product material (`docs/product/`, `docs/engineering/`, `docs/operations/`).

@@ -1,11 +1,3 @@
----
-title: "FIAP Challenge 2026 — NORA × TOTVS Partnership"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.1
-last_reviewed: 2026-06-06
----
-
 # FIAP Challenge 2026 — NORA × TOTVS Partnership
 
 ## Context

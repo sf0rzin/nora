@@ -1,11 +1,3 @@
----
-title: "Roadmap — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.1
-last_reviewed: 2026-06-06
----
-
 # Roadmap — NORA
 
 > **Living and official** roadmap of NORA. Replaces the old `docs/plano-de-execucao.md` (archived — discontinued on 2026-05-14, because it described a week-by-week split between two developers that no longer matches the real flow: today the Stratfy team executes via Claude Code with subagents in parallel via worktrees).

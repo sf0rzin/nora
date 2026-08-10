@@ -1,11 +1,3 @@
----
-title: "Engineering Standards — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Engineering Standards — NORA
 
 > Operational guide for humans and AI agents programming NORA.

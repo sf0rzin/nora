@@ -1,11 +1,3 @@
----
-title: "Runbook — NORA deploy on Azure (HISTORICAL)"
-owner: NORA Architect (Tech Lead)
-status: historical
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Runbook — NORA deploy on Azure
 
 > **HISTORICAL DOCUMENT — DO NOT OPERATE FROM IT.**

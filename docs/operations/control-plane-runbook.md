@@ -1,11 +1,3 @@
----
-title: "Runbook — Turning on the Control Plane (operator admin + telemetry)"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Runbook — Turning on the Control Plane (operator admin + telemetry)
 
 > How to promote the control plane from **OFF** (default) to **ON** on Azure. The operator's

@@ -1,11 +1,3 @@
----
-title: "Cloudflare Access — protecting the operator console"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Cloudflare Access — protecting the operator console
 
 Runbook for configuring and operating Cloudflare Access protecting `admin.nora.systems` (the nora-admin console). Updated on 2026-06-02 post-ADR 0025.

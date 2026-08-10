@@ -1,12 +1,3 @@
----
-title: "Runbook — custom domain for the web app (nora.systems)"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-08
-relacionado: "ADR 0025 (admin via Cloudflare Tunnel — distinct surface); docs/operations/cloudflare-access.md"
----
-
 # Runbook — custom domain for the web app (`nora.systems`)
 
 > Wires the root domain `nora.systems` and `www.nora.systems` to the web app (`apps/web`),

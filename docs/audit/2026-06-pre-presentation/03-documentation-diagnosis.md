@@ -1,11 +1,3 @@
----
-title: "Documentation diagnosis"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Documentation diagnosis
 
 > Assessment of the **professionalism and consistency** of 27 documents (`README`,

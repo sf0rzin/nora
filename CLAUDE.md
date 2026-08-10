@@ -1,11 +1,3 @@
----
-title: "CLAUDE.md — NORA (main project context)"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # CLAUDE.md — NORA
 
 This file is the main project context for Claude Code and similar AI coding agents. Read it before making code changes.

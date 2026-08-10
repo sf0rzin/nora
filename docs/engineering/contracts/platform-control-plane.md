@@ -1,11 +1,3 @@
----
-title: "Contract — Operator Control Plane + AI Telemetry"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Contract — Operator Control Plane + AI Telemetry
 
 > **Supersession note (2026-06-06):** the operator edge identity described in this contract

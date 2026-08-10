@@ -1,11 +1,3 @@
----
-title: "Data Model — NORA (Oracle 19c+)"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.1
-last_reviewed: 2026-06-06
----
-
 # Data Model — NORA (Oracle 19c+)
 
 > A mirror of the Postgres schema in **Oracle 19c+ (PL/SQL DDL)** syntax.

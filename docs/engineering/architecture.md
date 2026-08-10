@@ -1,11 +1,3 @@
----
-title: "Architecture — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Architecture — NORA
 
 > End-to-end technical view of NORA: stack, layers, flows and the rationale behind the decisions.
