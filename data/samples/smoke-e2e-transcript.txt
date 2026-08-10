@@ -1,0 +1,21 @@
+Reunião: Escopo da integração com o ERP
+Data: 2026-08-10
+Participantes: Ana (Produto), Bruno (Backend)
+
+Ana: Bom dia. O objetivo de hoje é fechar o escopo da integração com o ERP.
+
+Bruno: Do nosso lado, o bloqueio continua sendo o volume de notas fiscais no primeiro lote.
+
+Ana: Então vamos decidir agora: começamos com um lote reduzido, de dez mil notas, e medimos.
+
+Bruno: Concordo. Fica decidido o lote reduzido para a primeira carga.
+
+Ana: Bruno, você fica de mandar o desenho da fila até sexta-feira.
+
+Bruno: Combinado, mando até sexta.
+
+Ana: Um risco que eu vejo é a janela de manutenção do ERP no fim do mês.
+
+Bruno: Verdade. Se a carga cair nessa janela, atrasa uma semana.
+
+Ana: Anotado. Fechamos assim então.
