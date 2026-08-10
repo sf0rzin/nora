@@ -39,8 +39,7 @@ class GoogleWorkspaceClientTest {
         OffsetDateTime noSeconds =
                 OffsetDateTime.of(2026, 6, 13, 10, 0, 0, 0, ZoneOffset.ofHours(-3));
 
-        assertThat(GoogleWorkspaceClient.rfc3339(noSeconds))
-                .isEqualTo("2026-06-13T10:00:00-03:00");
+        assertThat(GoogleWorkspaceClient.rfc3339(noSeconds)).isEqualTo("2026-06-13T10:00:00-03:00");
     }
 
     @Test

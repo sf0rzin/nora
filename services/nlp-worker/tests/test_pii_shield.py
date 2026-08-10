@@ -1395,7 +1395,9 @@ def test_invalid_cpf_tolerant_separators_not_redacted():
     for raw in ("100 000 000 50", "123 456 789 00", "999-888-777-66", "100/000/000-50"):
         text = f"codigo {raw} lote"
         result = pii_shield.redact(text)
-        assert raw in result.redacted_text, f"OVER-REDACTED (invalid check digit should pass through): {raw}"
+        assert raw in result.redacted_text, (
+            f"OVER-REDACTED (invalid check digit should pass through): {raw}"
+        )
         assert not any(r.type == PiiType.CPF for r in result.redactions)
 
 

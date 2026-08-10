@@ -14,8 +14,8 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * NORA Flows "Call webhook" action — generic n8n-style JSON POST to a user URL, with no
- * credential at all. Required param: {@code url} (HTTPS only; validated on save AND at run time).
+ * NORA Flows "Call webhook" action — generic n8n-style JSON POST to a user URL, with no credential
+ * at all. Required param: {@code url} (HTTPS only; validated on save AND at run time).
  *
  * <p><strong>STABLE payload contract</strong> (external consumers depend on it — additive changes
  * only):

@@ -251,9 +251,7 @@ class PolicyEvaluatorUniformDecisionTest {
         }
         // Guard against the optimization dying unnoticed: if a refactor makes it always
         // `empty`, the test above passes vacuously and the endpoint scans the whole tenant again.
-        assertThat(answered)
-                .as("no set from the corpus took the fast path")
-                .isGreaterThan(20);
+        assertThat(answered).as("no set from the corpus took the fast path").isGreaterThan(20);
     }
 
     @Test

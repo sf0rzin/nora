@@ -10,8 +10,8 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * NORA Flows "Create cards in Trello" action — REAL cards in the given list, with the token the user
- * pasted on connect. Params: {@code listId} (required, id of the board's list). One card per
+ * NORA Flows "Create cards in Trello" action — REAL cards in the given list, with the token the
+ * user pasted on connect. Params: {@code listId} (required, id of the board's list). One card per
  * meeting action item (name = title; desc = meeting + assignee + link; due = the item's due date
  * when the analysis extracted one).
  *

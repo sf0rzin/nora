@@ -27,8 +27,7 @@ public class FeatureFlagService {
 
     public List<FeatureFlag> listFlags() {
         if (!availability.isUsable()) {
-            throw new PlatformUnavailableException(
-                    "control plane unavailable (platform database)");
+            throw new PlatformUnavailableException("control plane unavailable (platform database)");
         }
         try {
             return flagProvider.getObject().findAll();

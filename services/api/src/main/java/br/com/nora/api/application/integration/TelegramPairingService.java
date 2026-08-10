@@ -20,9 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
  * Telegram pairing (wave 2) — Telegram has NO OAuth, so the connection proves possession of a short
  * code: {@code start} generates the code (8 chars, TTL 10 min, one pending per tenant) and returns
  * the deep link {@code t.me/<bot>?start=<code>}; the user opens the link and sends /start; {@code
- * verify} sweeps the bot's getUpdates looking for {@code /start <code>} and, on a hit, persists
- * the {@code chat_id} as the tenant's connection (encrypted like the other tokens; no
- * refresh/expiry).
+ * verify} sweeps the bot's getUpdates looking for {@code /start <code>} and, on a hit, persists the
+ * {@code chat_id} as the tenant's connection (encrypted like the other tokens; no refresh/expiry).
  *
  * <p>In-memory state by design (ephemeral codes, same spirit as the HMAC state): pending codes per
  * tenant + /start commands seen in the poll (they survive between verifies — getUpdates advances

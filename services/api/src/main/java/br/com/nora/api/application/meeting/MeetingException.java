@@ -51,9 +51,8 @@ public sealed class MeetingException extends RuntimeException
     }
 
     /**
-     * File above the upload limit. The message is user-facing (the MeetingException handler
-     * returns {@code getMessage()} directly, unlike IllegalArgumentException which is masked for
-     * security).
+     * File above the upload limit. The message is user-facing (the MeetingException handler returns
+     * {@code getMessage()} directly, unlike IllegalArgumentException which is masked for security).
      */
     public static final class FileTooLarge extends MeetingException {
         public FileTooLarge(int maxMegabytes) {

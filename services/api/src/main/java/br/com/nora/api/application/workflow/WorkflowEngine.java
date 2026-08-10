@@ -246,7 +246,8 @@ public class WorkflowEngine {
                     } catch (RuntimeException ex) {
                         success = false;
                         log.error(
-                                node.id(), "Action '" + node.type() + "' failed: " + ex.getMessage());
+                                node.id(),
+                                "Action '" + node.type() + "' failed: " + ex.getMessage());
                         // Children of this branch do not run — a failure does not propagate as
                         // success.
                     }

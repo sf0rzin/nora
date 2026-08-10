@@ -20,7 +20,11 @@ public class InvitationException extends RuntimeException {
     public static InvitationException emailDomainNotAllowed(String email, String allowedDomain) {
         return new InvitationException(
                 "EMAIL_DOMAIN_NOT_ALLOWED",
-                "Email '" + email + "' does not belong to the allowed domain '" + allowedDomain + "'.");
+                "Email '"
+                        + email
+                        + "' does not belong to the allowed domain '"
+                        + allowedDomain
+                        + "'.");
     }
 
     public static InvitationException inviteNotFound() {

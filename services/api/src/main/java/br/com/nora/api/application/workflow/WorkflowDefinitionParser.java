@@ -129,8 +129,7 @@ public class WorkflowDefinitionParser {
             String source = textOrNull(e, "source");
             String target = textOrNull(e, "target");
             if (source == null || target == null) {
-                throw new WorkflowException.InvalidDefinition(
-                        "every edge needs source and target");
+                throw new WorkflowException.InvalidDefinition("every edge needs source and target");
             }
             edges.add(new Edge(id == null ? "e" + (++i) : id, source, target));
         }

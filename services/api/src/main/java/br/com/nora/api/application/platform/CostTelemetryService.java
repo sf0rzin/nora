@@ -26,8 +26,7 @@ public class CostTelemetryService {
 
     public CostReport cost(OffsetDateTime from, OffsetDateTime to, String groupBy) {
         if (!availability.isUsable()) {
-            throw new PlatformUnavailableException(
-                    "control plane unavailable (platform database)");
+            throw new PlatformUnavailableException("control plane unavailable (platform database)");
         }
         String g = groupBy == null || groupBy.isBlank() ? "model" : groupBy.trim().toLowerCase();
         if (!GROUPS.contains(g)) {

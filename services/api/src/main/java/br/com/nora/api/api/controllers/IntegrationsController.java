@@ -139,9 +139,9 @@ public class IntegrationsController {
     }
 
     /**
-     * Telegram: looks for the tenant's {@code /start <code>} in the bot's getUpdates and
-     * completes the connection. No /start yet = 409 {@code INTEGRATION_PAIRING_PENDING} with an
-     * actionable message.
+     * Telegram: looks for the tenant's {@code /start <code>} in the bot's getUpdates and completes
+     * the connection. No /start yet = 409 {@code INTEGRATION_PAIRING_PENDING} with an actionable
+     * message.
      */
     @PostMapping("/telegram/pairing/verify")
     @RequiresPermission(action = "integration:write", resource = ResourceType.INTEGRATION)

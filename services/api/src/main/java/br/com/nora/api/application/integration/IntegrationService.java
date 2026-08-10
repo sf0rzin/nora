@@ -439,7 +439,8 @@ public class IntegrationService {
         }
         if (conn.refreshToken() == null || conn.refreshToken().isBlank()) {
             throw new IntegrationException.ProviderError(
-                    provider.wire(), "token expired with no refresh token — reconnect the integration");
+                    provider.wire(),
+                    "token expired with no refresh token — reconnect the integration");
         }
         GenericOAuthClient.TokenResponse refreshed =
                 genericOAuth.refresh(config, conn.refreshToken());

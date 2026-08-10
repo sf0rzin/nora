@@ -45,8 +45,8 @@ public abstract class IntegrationException extends RuntimeException {
     }
 
     /**
-     * Telegram pairing not completed yet: the backend did not find the user's {@code /start
-     * <code>} in getUpdates. It is NOT a provider failure — the hub tells the user to try again.
+     * Telegram pairing not completed yet: the backend did not find the user's {@code /start <code>}
+     * in getUpdates. It is NOT a provider failure — the hub tells the user to try again.
      */
     public static final class PairingPending extends IntegrationException {
         public PairingPending(String message) {

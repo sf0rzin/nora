@@ -162,8 +162,7 @@ public class ModelCatalogService {
 
     private void requireUsable() {
         if (!availability.isUsable()) {
-            throw new PlatformUnavailableException(
-                    "control plane unavailable (platform database)");
+            throw new PlatformUnavailableException("control plane unavailable (platform database)");
         }
     }
 

@@ -13,9 +13,9 @@ import java.util.regex.Pattern;
  * produces in practice.
  *
  * <p>Supports: headings ({@code #}–{@code ###} → {@code <h3>/<h4>}), bulleted lists ({@code
- * -}/{@code *}/{@code •}), numbered lists ({@code 1.}), {@code **bold**}, {@code
- * *italic*}/{@code _italic_}, {@code `code`}, links {@code [text](https://…)}, autolink of
- * bare https URLs and paragraphs separated by a blank line.
+ * -}/{@code *}/{@code •}), numbered lists ({@code 1.}), {@code **bold**}, {@code *italic*}/{@code
+ * _italic_}, {@code `code`}, links {@code [text](https://…)}, autolink of bare https URLs and
+ * paragraphs separated by a blank line.
  *
  * <p>Security: ALL text is HTML-escaped before the transformations — content coming from the LLM or
  * from the user never injects markup.

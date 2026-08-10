@@ -72,8 +72,7 @@ public class SlackPostMessageAction implements ActionExecutor {
     static String requiredChannel(Map<String, Object> params) {
         String channel = WorkflowActionTemplates.stringParam(params, "channel");
         if (channel == null || channel.isBlank()) {
-            throw new IllegalArgumentException(
-                    "channel required in params.channel (e.g.: #sales)");
+            throw new IllegalArgumentException("channel required in params.channel (e.g.: #sales)");
         }
         return channel.trim();
     }
