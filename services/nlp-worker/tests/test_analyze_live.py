@@ -112,8 +112,8 @@ def test_analyze_live_full_transcript():
     resp = client.post("/analyze-live", json=payload)
     body = resp.json()
 
-    assert len(body["decisions"]) >= 1, "Esperava ao menos 1 decisao"
-    assert len(body["tasks"]) >= 1, "Esperava ao menos 1 tarefa (Carlos vai preparar)"
+    assert len(body["decisions"]) >= 1, "Expected at least 1 decision"
+    assert len(body["tasks"]) >= 1, "Expected at least 1 task (Carlos vai preparar)"
     assert body["metadata"]["processingMillis"] >= 0
 
 

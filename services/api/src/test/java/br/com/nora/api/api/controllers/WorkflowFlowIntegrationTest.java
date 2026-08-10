@@ -85,7 +85,7 @@ class WorkflowFlowIntegrationTest {
     /* =========================== anchor scenario =========================== */
 
     @Test
-    void uploadDisparaWorkflow_enviaEmailEGravaExecucao() throws Exception {
+    void uploadTriggersWorkflow_sendsEmailAndRecordsExecution() throws Exception {
         String token = signupAndLogin("flows-anchor@nora.dev", "SenhaForte123", "Flows Anchor");
 
         JsonNode created =
@@ -107,7 +107,7 @@ class WorkflowFlowIntegrationTest {
         assertThat(execution.get("status").asText()).isEqualTo("SUCCESS");
         assertThat(execution.get("eventType").asText()).isEqualTo("meeting.analysis_completed");
         String logText = execution.get("log").toString();
-        assertThat(logText).contains("Gatilho");
+        assertThat(logText).contains("Trigger");
         assertThat(logText).contains("E-mail enviado para anchor-dest@nora.dev");
 
         assertThat(EMAILS.workflowEmails).hasSize(1);
@@ -119,7 +119,7 @@ class WorkflowFlowIntegrationTest {
     }
 
     @Test
-    void workflowInativo_naoDispara() throws Exception {
+    void inactiveWorkflow_doesNotTrigger() throws Exception {
         String token = signupAndLogin("flows-inactive@nora.dev", "SenhaForte123", "Inactive");
 
         JsonNode created =
@@ -149,7 +149,7 @@ class WorkflowFlowIntegrationTest {
     }
 
     @Test
-    void condicaoNaoSatisfeita_interrompeCaminhoSemEnviarEmail() throws Exception {
+    void conditionNotSatisfied_stopsPathWithoutSendingEmail() throws Exception {
         String token = signupAndLogin("flows-cond@nora.dev", "SenhaForte123", "Cond");
 
         String definition =
@@ -182,7 +182,7 @@ class WorkflowFlowIntegrationTest {
         JsonNode execution = awaitExecutions(workflowId, token, 1).get(0);
         assertThat(execution.get("status").asText()).isEqualTo("SUCCESS");
         String logText = execution.get("log").toString();
-        assertThat(logText).contains("condição não satisfeita");
+        assertThat(logText).contains("condition not satisfied");
         assertThat(logText).doesNotContain("E-mail enviado");
         assertThat(EMAILS.workflowEmails).isEmpty();
     }
@@ -190,7 +190,7 @@ class WorkflowFlowIntegrationTest {
     /* =========================== "Testar" (synchronous) =========================== */
 
     @Test
-    void testar_comReuniaoAnalisada_usaDadosReais() throws Exception {
+    void test_withAnalyzedMeeting_usesRealData() throws Exception {
         String token = signupAndLogin("flows-test@nora.dev", "SenhaForte123", "Testar");
 
         String meetingId = uploadMeeting(token, "Kickoff Beta");
@@ -212,7 +212,7 @@ class WorkflowFlowIntegrationTest {
         assertThat(execution.get("status").asText()).isEqualTo("SUCCESS");
         assertThat(execution.get("log").toString())
                 .contains("Kickoff Beta")
-                .doesNotContain("dados de exemplo");
+                .doesNotContain("sample data");
         assertThat(EMAILS.workflowEmails).hasSize(1);
         assertThat(EMAILS.workflowEmails.get(0).subject()).contains("Kickoff Beta");
 
@@ -223,7 +223,7 @@ class WorkflowFlowIntegrationTest {
     }
 
     @Test
-    void testar_semReuniao_usaDadosDeExemplo() throws Exception {
+    void test_withoutMeeting_usesSampleData() throws Exception {
         String token = signupAndLogin("flows-sample@nora.dev", "SenhaForte123", "Sample");
 
         JsonNode created =
@@ -239,14 +239,14 @@ class WorkflowFlowIntegrationTest {
                 postJson("/workflows/" + created.get("id").asText() + "/test", Map.of(), token)
                         .read(HttpStatus.OK);
         assertThat(execution.get("status").asText()).isEqualTo("SUCCESS");
-        assertThat(execution.get("log").toString()).contains("dados de exemplo");
+        assertThat(execution.get("log").toString()).contains("sample data");
         assertThat(EMAILS.workflowEmails).hasSize(1);
     }
 
     /* =========================== CRUD + validation =========================== */
 
     @Test
-    void crud_criaAtualizaDeleta() throws Exception {
+    void crud_createsUpdatesDeletes() throws Exception {
         String token = signupAndLogin("flows-crud@nora.dev", "SenhaForte123", "Crud");
 
         JsonNode created =
@@ -288,23 +288,23 @@ class WorkflowFlowIntegrationTest {
     }
 
     @Test
-    void definitionInvalida_retorna422() throws Exception {
+    void invalidDefinition_returns422() throws Exception {
         String token = signupAndLogin("flows-invalid@nora.dev", "SenhaForte123", "Invalid");
 
         // No action wired to the trigger.
-        String semAcao =
+        String noAction =
                 """
                 {"nodes":[{"id":"t1","kind":"trigger","type":"meeting.analysis_completed"}],
                  "edges":[]}
                 """;
         ResponseEntity<String> resp =
-                postJsonRaw("/workflows", workflowBody("Inválido", semAcao), token);
+                postJsonRaw("/workflows", workflowBody("Inválido", noAction), token);
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
         assertThat(mapper.readTree(resp.getBody()).get("code").asText())
                 .isEqualTo("WORKFLOW_INVALID_DEFINITION");
 
         // send_email with no recipient.
-        String semDestinatario =
+        String noRecipient =
                 """
                 {"nodes":[
                   {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
@@ -312,14 +312,14 @@ class WorkflowFlowIntegrationTest {
                  "edges":[{"id":"e1","source":"t1","target":"a1"}]}
                 """;
         ResponseEntity<String> resp2 =
-                postJsonRaw("/workflows", workflowBody("Inválido 2", semDestinatario), token);
+                postJsonRaw("/workflows", workflowBody("Inválido 2", noRecipient), token);
         assertThat(resp2.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
     }
 
     /* =========================== tenant isolation =========================== */
 
     @Test
-    void crossTenant_retorna404() throws Exception {
+    void crossTenant_returns404() throws Exception {
         String tokenA = signupAndLogin("flows-a@nora.dev", "SenhaForte123", "A");
         String tokenB = signupAndLogin("flows-b@nora.dev", "SenhaForte123", "B");
 
@@ -350,7 +350,7 @@ class WorkflowFlowIntegrationTest {
     }
 
     @Test
-    void exigeAutenticacao() {
+    void requiresAuthentication() {
         ResponseEntity<String> resp =
                 rest.postForEntity("/workflows", new HttpEntity<>(new HttpHeaders()), String.class);
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
@@ -449,7 +449,7 @@ class WorkflowFlowIntegrationTest {
             }
             Thread.sleep(250);
         }
-        throw new AssertionError("execução do workflow não apareceu/terminou em 10s");
+        throw new AssertionError("workflow execution did not appear/finish within 10s");
     }
 
     private String signupAndLogin(String email, String pwd, String name) throws Exception {

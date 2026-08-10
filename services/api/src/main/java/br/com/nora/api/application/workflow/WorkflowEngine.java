@@ -115,7 +115,7 @@ public class WorkflowEngine {
                             occurredAt == null ? now() : occurredAt.atOffset(ZoneOffset.UTC));
         } catch (RuntimeException ex) {
             LOG.error(
-                    "Flows: contexto do evento indisponível meetingId={} tenantId={} cause={}",
+                    "Flows: event context unavailable meetingId={} tenantId={} cause={}",
                     meetingId,
                     tenantId,
                     ex.getMessage());
@@ -128,7 +128,7 @@ public class WorkflowEngine {
                 // execute() already records the failure on the execution; this covers an error
                 // before the INSERT.
                 LOG.error(
-                        "Flows: execução do workflow {} falhou tenantId={} cause={}",
+                        "Flows: workflow {} execution failed tenantId={} cause={}",
                         workflow.id(),
                         tenantId,
                         ex.getMessage());
@@ -162,16 +162,16 @@ public class WorkflowEngine {
             Node trigger = definition.triggerNode();
             log.info(
                     trigger.id(),
-                    "Gatilho \""
+                    "Trigger \""
                             + ctx.eventType()
-                            + "\" disparado para a reunião \""
+                            + "\" fired for meeting \""
                             + ctx.meetingTitle()
                             + "\""
-                            + (ctx.sampleData() ? " (dados de exemplo)" : ""));
+                            + (ctx.sampleData() ? " (sample data)" : ""));
             success = walk(definition, trigger, ctx, log);
         } catch (RuntimeException ex) {
             success = false;
-            log.error(null, "Erro na execução: " + ex.getMessage());
+            log.error(null, "Execution error: " + ex.getMessage());
         }
 
         WorkflowExecutionStatus status =
@@ -204,7 +204,7 @@ public class WorkflowEngine {
         Deque<Node> queue = new ArrayDeque<>(definition.childrenOf(trigger.id()));
         Set<String> seen = new HashSet<>();
         if (queue.isEmpty()) {
-            log.info(null, "Nenhum nó ligado ao gatilho — nada a executar");
+            log.info(null, "No node wired to the trigger — nothing to execute");
             return true;
         }
         while (!queue.isEmpty()) {
@@ -222,21 +222,21 @@ public class WorkflowEngine {
                         eval = conditions.evaluate(node.type(), node.params(), ctx);
                     } catch (RuntimeException ex) {
                         success = false;
-                        log.error(node.id(), "Condição inválida: " + ex.getMessage());
+                        log.error(node.id(), "Invalid condition: " + ex.getMessage());
                         continue;
                     }
-                    log.info(node.id(), "Condição: " + eval.description());
+                    log.info(node.id(), "Condition: " + eval.description());
                     if (eval.passed()) {
                         queue.addAll(definition.childrenOf(node.id()));
                     } else {
-                        log.info(node.id(), "Caminho interrompido — condição não satisfeita");
+                        log.info(node.id(), "Path stopped — condition not satisfied");
                     }
                 }
                 case ACTION -> {
                     Optional<ActionExecutor> executor = actions.byType(node.type());
                     if (executor.isEmpty()) {
                         success = false;
-                        log.error(node.id(), "Ação desconhecida: " + node.type());
+                        log.error(node.id(), "Unknown action: " + node.type());
                         continue;
                     }
                     try {
@@ -246,7 +246,8 @@ public class WorkflowEngine {
                     } catch (RuntimeException ex) {
                         success = false;
                         log.error(
-                                node.id(), "Ação '" + node.type() + "' falhou: " + ex.getMessage());
+                                node.id(),
+                                "Action '" + node.type() + "' failed: " + ex.getMessage());
                         // Children of this branch do not run — a failure does not propagate as
                         // success.
                     }

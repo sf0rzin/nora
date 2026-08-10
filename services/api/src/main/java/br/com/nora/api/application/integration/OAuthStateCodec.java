@@ -38,8 +38,8 @@ public class OAuthStateCodec {
             new SecureRandom().nextBytes(random);
             this.secret = random;
             LOG.info(
-                    "NORA_INTEGRATIONS_STATE_SECRET ausente — usando segredo efêmero por boot"
-                            + " (ok em dev; configure em produção)");
+                    "NORA_INTEGRATIONS_STATE_SECRET missing — using an ephemeral per-boot secret"
+                            + " (fine in dev; configure it in production)");
         } else {
             this.secret = configured.getBytes(StandardCharsets.UTF_8);
         }
@@ -114,7 +114,7 @@ public class OAuthStateCodec {
             mac.init(new SecretKeySpec(secret, "HmacSHA256"));
             return mac.doFinal(body.getBytes(StandardCharsets.UTF_8));
         } catch (Exception ex) {
-            throw new IllegalStateException("HMAC indisponível", ex);
+            throw new IllegalStateException("HMAC unavailable", ex);
         }
     }
 

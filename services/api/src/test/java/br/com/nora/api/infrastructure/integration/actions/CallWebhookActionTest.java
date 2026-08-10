@@ -29,9 +29,9 @@ class CallWebhookActionTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void payloadCompleto_segueContratoDocumentado() {
+    void completePayload_followsDocumentedContract() {
         UUID meetingId = UUID.randomUUID();
-        WorkflowEventContext ctx = contexto(meetingId, 70, 65);
+        WorkflowEventContext ctx = context(meetingId, 70, 65);
 
         Map<String, Object> payload = CallWebhookAction.buildPayload(ctx);
 
@@ -71,8 +71,8 @@ class CallWebhookActionTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void payloadSemScoresNemMeetingId_omiteCamposNulos() {
-        WorkflowEventContext ctx = contextoSample();
+    void payloadWithNoScoresOrMeetingId_omitsNullFields() {
+        WorkflowEventContext ctx = sampleContext();
 
         Map<String, Object> payload = CallWebhookAction.buildPayload(ctx);
 
@@ -87,29 +87,29 @@ class CallWebhookActionTest {
     // ── URL validation / SSRF guard ──
 
     @Test
-    void urlObrigatoria_faltandoFalhaClaro() {
+    void urlRequired_missingFailsClearly() {
         assertThatThrownBy(() -> CallWebhookAction.requiredUrl(Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("params.url");
     }
 
     @Test
-    void urlHttp_rejeitada() {
+    void urlHttp_rejected() {
         assertThatThrownBy(() -> CallWebhookAction.validateUrl("http://exemplo.com/hook"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("https://");
     }
 
     @Test
-    void urlMalformada_rejeitada() {
-        assertThatThrownBy(() -> CallWebhookAction.validateUrl("isso não é url"))
+    void urlMalformed_rejected() {
+        assertThatThrownBy(() -> CallWebhookAction.validateUrl("this is not a url"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void enderecosPrivadosLoopbackLinkLocalEMetadata_rejeitados() {
+    void privateLoopbackLinkLocalAndMetadataAddresses_rejected() {
         // Literal IPs don't trigger DNS — deterministic test.
-        List<String> bloqueadas =
+        List<String> blocked =
                 List.of(
                         "https://127.0.0.1/hook",
                         "https://10.0.0.8/hook",
@@ -121,16 +121,16 @@ class CallWebhookActionTest {
                         "https://[fc00::1]/hook",
                         "https://[fdff::1]/hook",
                         "https://localhost/hook");
-        for (String url : bloqueadas) {
+        for (String url : blocked) {
             assertThatThrownBy(() -> CallWebhookAction.validateUrl(url))
-                    .as("deveria bloquear %s", url)
+                    .as("should block %s", url)
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("privado");
+                    .hasMessageContaining("private");
         }
     }
 
     @Test
-    void urlHttpsPublica_passa() {
+    void urlHttpsPublic_passes() {
         assertThatCode(() -> CallWebhookAction.validateUrl("https://1.1.1.1/hook"))
                 .doesNotThrowAnyException();
     }
@@ -138,7 +138,7 @@ class CallWebhookActionTest {
     // ── Execution (mocked HTTP) ──
 
     @Test
-    void execute_sucessoRetornaStatusEManaHeaders() {
+    void execute_successReturnsStatusAndSendsHeaders() {
         WebhookHttpClient http = mock(WebhookHttpClient.class);
         when(http.postJson(
                         eq("webhook"),
@@ -155,14 +155,14 @@ class CallWebhookActionTest {
         String result =
                 new CallWebhookAction(http)
                         .execute(
-                                contexto(UUID.randomUUID(), 70, 65),
+                                context(UUID.randomUUID(), 70, 65),
                                 Map.of("url", "https://1.1.1.1/hook"));
 
         assertThat(result).isEqualTo("Webhook chamado: 204");
     }
 
     @Test
-    void execute_falhaDoEndpointPropaga() {
+    void execute_endpointFailurePropagates() {
         WebhookHttpClient http = mock(WebhookHttpClient.class);
         when(http.postJson(anyString(), anyString(), anyMap(), any()))
                 .thenThrow(new IntegrationException.ProviderError("webhook", "respondeu HTTP 500"));
@@ -171,7 +171,7 @@ class CallWebhookActionTest {
                         () ->
                                 new CallWebhookAction(http)
                                         .execute(
-                                                contexto(UUID.randomUUID(), 70, 65),
+                                                context(UUID.randomUUID(), 70, 65),
                                                 Map.of("url", "https://1.1.1.1/hook")))
                 .isInstanceOf(IntegrationException.ProviderError.class)
                 .hasMessageContaining("500");
@@ -179,7 +179,7 @@ class CallWebhookActionTest {
 
     // ── Fixtures ──
 
-    private static WorkflowEventContext contexto(
+    private static WorkflowEventContext context(
             UUID meetingId, Integer productivity, Integer confidence) {
         return new WorkflowEventContext(
                 UUID.randomUUID(),
@@ -203,7 +203,7 @@ class CallWebhookActionTest {
                 false);
     }
 
-    private static WorkflowEventContext contextoSample() {
+    private static WorkflowEventContext sampleContext() {
         return new WorkflowEventContext(
                 UUID.randomUUID(),
                 "meeting.analysis_completed",

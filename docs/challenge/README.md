@@ -15,8 +15,8 @@ last_reviewed: 2026-06-06
 | Document | Description |
 |---|---|
 | [`fiap-challenge-2026.md`](fiap-challenge-2026.md) | Context of the FIAP × TOTVS partnership, rubric, deadlines, target deliverables |
-| [`personas-e-mapa-de-empatia.md`](personas-e-mapa-de-empatia.md) | 3 personas (Lucas, Camila, Rafael) with empathy maps |
-| [`diagrama-casos-de-uso.md`](diagrama-casos-de-uso.md) | Use case diagram (mermaid) |
+| [`personas-and-empathy-map.md`](personas-and-empathy-map.md) | 3 personas (Lucas, Camila, Rafael) with empathy maps |
+| [`use-case-diagram.md`](use-case-diagram.md) | Use case diagram (mermaid) |
 
 ## How to navigate
 
@@ -27,5 +27,5 @@ last_reviewed: 2026-06-06
 
 | Version | Date | Responsible | Change |
 |---|---|---|---|
-| (initial) | 2026-05-14 | Stratfy Team | Folder created in Sub-phase 1.10 (Docs Refresh). Documents `personas-e-mapa-de-empatia.md` and `diagrama-casos-de-uso.md` moved from the `docs/` root |
+| (initial) | 2026-05-14 | Stratfy Team | Folder created in Sub-phase 1.10 (Docs Refresh). Documents `personas-and-empathy-map.md` and `use-case-diagram.md` moved from the `docs/` root |
 | 1.0 | 2026-06-06 | Stratfy Team | Doc × code reconciliation + standardization (pre-presentation audit) |

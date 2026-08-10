@@ -100,14 +100,14 @@ public class PrometheusHealthSource implements HealthMetricsSource {
                 h.getWindow() == null || h.getWindow().isBlank() ? DEFAULT_WINDOW : h.getWindow();
         Duration parsed = parseWindow(window);
         if (parsed == null) {
-            LOG.warn("Health: janela inválida '{}', caindo para {}", window, DEFAULT_WINDOW);
+            LOG.warn("Health: invalid window '{}', falling back to {}", window, DEFAULT_WINDOW);
             window = DEFAULT_WINDOW;
             parsed = Duration.ofHours(1);
         }
         if (isBlank(h.getPrometheusUrl())) {
             return HealthSnapshot.unavailable(
                     window,
-                    "Prometheus query API não configurada (NORA_PLATFORM_HEALTH_PROMETHEUS_URL)");
+                    "Prometheus query API not configured (NORA_PLATFORM_HEALTH_PROMETHEUS_URL)");
         }
 
         String base = trimTrailingSlash(h.getPrometheusUrl());
@@ -121,8 +121,8 @@ public class PrometheusHealthSource implements HealthMetricsSource {
                             .block(TIMEOUT);
             return parse(res, window);
         } catch (Exception ex) {
-            LOG.warn("Health: falha ao consultar Prometheus: {}", ex.getMessage());
-            return HealthSnapshot.unavailable(window, "falha ao consultar Prometheus");
+            LOG.warn("Health: failed to query Prometheus: {}", ex.getMessage());
+            return HealthSnapshot.unavailable(window, "failed to query Prometheus");
         }
     }
 
@@ -138,10 +138,10 @@ public class PrometheusHealthSource implements HealthMetricsSource {
     private HealthSnapshot parse(
             Tuple3<PromResponse, PromResponse, PromResponse> res, String window) {
         if (res == null) {
-            return HealthSnapshot.unavailable(window, "resposta vazia do Prometheus");
+            return HealthSnapshot.unavailable(window, "empty response from Prometheus");
         }
         if (malformed(res.getT1()) || malformed(res.getT2()) || malformed(res.getT3())) {
-            return HealthSnapshot.unavailable(window, "resposta inválida do Prometheus");
+            return HealthSnapshot.unavailable(window, "invalid response from Prometheus");
         }
 
         Map<String, Double> requests = byRole(res.getT1());

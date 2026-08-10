@@ -20,7 +20,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
  * SDK — getMe (cached username), one-shot getUpdates (in-memory offset; each update arrives once)
  * and sendMessage in HTML.
  *
- * <p>Security WARNING: the bot token goes in the URL ({@code /bot<token>/método}) — every failure
+ * <p>Security WARNING: the bot token goes in the URL ({@code /bot<token>/method}) — every failure
  * goes through {@link #reason}, which NEVER echoes the URL (only status + description from
  * Telegram's envelope), unlike the {@code ProviderErrors} pattern of the other clients.
  */
@@ -58,7 +58,7 @@ public class TelegramBotHttpClient implements TelegramBotApi {
         JsonNode result = call("getMe", null);
         String username = result.path("username").asText(null);
         if (username == null || username.isBlank()) {
-            throw new IntegrationException.ProviderError(PROVIDER, "getMe sem username do bot");
+            throw new IntegrationException.ProviderError(PROVIDER, "getMe with no bot username");
         }
         cachedUsername = username;
         return username;
@@ -143,7 +143,7 @@ public class TelegramBotHttpClient implements TelegramBotApi {
             JsonNode json = mapper.readTree(body == null ? "{}" : body);
             if (!json.path("ok").asBoolean(false)) {
                 throw new IntegrationException.ProviderError(
-                        PROVIDER, json.path("description").asText("resposta ok=false"));
+                        PROVIDER, json.path("description").asText("response with ok=false"));
             }
             return json.path("result");
         } catch (IntegrationException ex) {

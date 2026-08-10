@@ -14,8 +14,8 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * NORA Flows "Chamar webhook" action — generic n8n-style JSON POST to a user URL, with no
- * credential at all. Required param: {@code url} (HTTPS only; validated on save AND at run time).
+ * NORA Flows "Call webhook" action — generic n8n-style JSON POST to a user URL, with no credential
+ * at all. Required param: {@code url} (HTTPS only; validated on save AND at run time).
  *
  * <p><strong>STABLE payload contract</strong> (external consumers depend on it — additive changes
  * only):
@@ -34,7 +34,7 @@ import org.springframework.stereotype.Component;
  * Null fields are OMITTED (e.g. {@code meeting.id} on a test run with sample data, {@code
  * assignee}/{@code dueDate} with no value, the whole {@code scores} object when no score exists).
  * {@code actionItems} is always present (empty list when there are no items). Headers: {@code
- * X-Nora-Event: <tipo do evento>} and {@code User-Agent: NORA-Flows}.
+ * X-Nora-Event: <event type>} and {@code User-Agent: NORA-Flows}.
  *
  * <p><strong>SSRF guard</strong>: rejects {@code http://} and resolves the hostname, rejecting
  * private/loopback/link-local/metadata IPs (10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, ::1,
@@ -72,7 +72,7 @@ public class CallWebhookAction implements ActionExecutor {
         String url = WorkflowActionTemplates.stringParam(params, "url");
         if (url == null || url.isBlank()) {
             throw new IllegalArgumentException(
-                    "URL obrigatória em params.url (ex.: https://hooks.exemplo.com/nora)");
+                    "URL required in params.url (e.g.: https://hooks.example.com/nora)");
         }
         return url.trim();
     }
@@ -86,31 +86,31 @@ public class CallWebhookAction implements ActionExecutor {
         try {
             uri = new URI(url);
         } catch (Exception ex) {
-            throw new IllegalArgumentException("URL inválida: " + url);
+            throw new IllegalArgumentException("Invalid URL: " + url);
         }
         String scheme = uri.getScheme();
         if (scheme == null || !"https".equalsIgnoreCase(scheme)) {
             throw new IllegalArgumentException(
-                    "apenas URLs https:// são aceitas — http:// e outros esquemas são bloqueados");
+                    "only https:// URLs are accepted — http:// and other schemes are blocked");
         }
         String host = uri.getHost();
         if (host == null || host.isBlank()) {
-            throw new IllegalArgumentException("URL sem host válido: " + url);
+            throw new IllegalArgumentException("URL with no valid host: " + url);
         }
         InetAddress[] addresses;
         try {
             addresses = InetAddress.getAllByName(host);
         } catch (UnknownHostException ex) {
-            throw new IllegalArgumentException("não foi possível resolver o host \"" + host + "\"");
+            throw new IllegalArgumentException("could not resolve host \"" + host + "\"");
         }
         for (InetAddress address : addresses) {
             if (isBlockedAddress(address)) {
                 throw new IllegalArgumentException(
-                        "o host \""
+                        "host \""
                                 + host
-                                + "\" resolve para um endereço privado/interno ("
+                                + "\" resolves to a private/internal address ("
                                 + address.getHostAddress()
-                                + ") — webhooks só podem apontar para serviços públicos");
+                                + ") — webhooks may only target public services");
             }
         }
     }

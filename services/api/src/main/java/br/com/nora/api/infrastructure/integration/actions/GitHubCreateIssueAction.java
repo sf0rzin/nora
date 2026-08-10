@@ -11,8 +11,8 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * NORA Flows "Criar issue no GitHub" action — REAL issues in the given repository, with the
- * connected GitHub account (OAuth). Params: {@code repo} (required, {@code owner/nome} format) and
+ * NORA Flows "Create issue in GitHub" action — REAL issues in the given repository, with the
+ * connected GitHub account (OAuth). Params: {@code repo} (required, {@code owner/name} format) and
  * an optional {@code title} with placeholders ({{meeting.title}} etc.).
  *
  * <p>Default behavior (no {@code title}): ONE issue per meeting action item (item title; body with
@@ -98,8 +98,8 @@ public class GitHubCreateIssueAction implements ActionExecutor {
         String repo = WorkflowActionTemplates.stringParam(params, "repo");
         if (repo == null || repo.isBlank() || !repo.trim().contains("/")) {
             throw new IllegalArgumentException(
-                    "repositório obrigatório em params.repo no formato owner/nome"
-                            + " (ex.: stratfy/nora)");
+                    "repository required in params.repo in owner/name format"
+                            + " (e.g.: stratfy/nora)");
         }
         return repo.trim();
     }

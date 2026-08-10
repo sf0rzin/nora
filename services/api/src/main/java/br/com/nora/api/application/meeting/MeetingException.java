@@ -46,18 +46,17 @@ public sealed class MeetingException extends RuntimeException
         public SplitUnsupportedFormat() {
             super(
                     "SPLIT_UNSUPPORTED_FORMAT",
-                    "Separação automática disponível só para .txt por enquanto.");
+                    "Automatic split is only available for .txt for now.");
         }
     }
 
     /**
-     * File above the upload limit. The message is in PT-BR and user-facing (the MeetingException
-     * handler returns {@code getMessage()} directly, unlike IllegalArgumentException which is
-     * masked for security).
+     * File above the upload limit. The message is user-facing (the MeetingException handler returns
+     * {@code getMessage()} directly, unlike IllegalArgumentException which is masked for security).
      */
     public static final class FileTooLarge extends MeetingException {
         public FileTooLarge(int maxMegabytes) {
-            super("FILE_TOO_LARGE", "O arquivo excede o limite de " + maxMegabytes + " MB.");
+            super("FILE_TOO_LARGE", "The file exceeds the limit of " + maxMegabytes + " MB.");
         }
     }
 

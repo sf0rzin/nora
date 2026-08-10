@@ -10,7 +10,7 @@ last_reviewed: 2026-08-07
 
 > **Audience:** whoever executes the final Azure cut after the migration to Proxmox.
 >
-> **Decision:** [ADR 0034](../adr/0034-migracao-azure-para-proxmox.md) ·
+> **Decision:** [ADR 0034](../adr/0034-azure-to-proxmox-migration.md) ·
 > **Destination:** [`proxmox-deploy.md`](proxmox-deploy.md) ·
 > **Origin (historical):** [`azure-deploy.md`](azure-deploy.md)
 >

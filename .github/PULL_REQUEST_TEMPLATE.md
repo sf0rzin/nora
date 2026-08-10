@@ -14,7 +14,7 @@ Issue / Story: `#`
 ## How to Test
 
 ```bash
-# comandos
+# commands
 ```
 
 ## Checklist

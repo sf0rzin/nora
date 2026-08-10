@@ -10,7 +10,7 @@ name: desktop-release
 # release becomes "Latest" and the endpoint resolves.
 #
 # Bootstrap: the first version WITH the updater (0.2.5) has to be installed by hand;
-# from it onward the "Atualização disponível" button in the sidebar does the rest.
+# from it onward the update-available button in the sidebar does the rest.
 
 on:
   push:
@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag da release (ex.: desktop-v0.2.5). Precisa existir ou será criada."
+        description: "Release tag (e.g. desktop-v0.2.5). It must exist or will be created."
         required: true
 
 concurrency:
@@ -111,7 +111,7 @@ jobs:
           projectPath: apps/desktop
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: "Nora Desktop ${{ github.event.inputs.tag || github.ref_name }}"
-          releaseBody: "Atualização do Nora Desktop. A instalação a partir da v0.2.5 é automática pelo botão na sidebar."
+          releaseBody: "Nora Desktop update. From v0.2.5 on, installation is automatic through the sidebar button."
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true

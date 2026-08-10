@@ -17,7 +17,7 @@ sys.path.insert(0, str(src_path))
 from PyInstaller.utils.hooks import collect_dynamic_libs, collect_data_files, collect_all
 import platform
 
-# Triple do Tauri/Rust (windows-latest pode evoluir pra ARM no futuro).
+# Tauri/Rust triple (windows-latest may move to ARM in the future).
 _arch_map = {'x86_64': 'x86_64', 'amd64': 'x86_64', 'aarch64': 'aarch64', 'arm64': 'aarch64'}
 _arch = _arch_map.get(platform.machine().lower(), platform.machine().lower())
 _exe_name = f'nora-stt-sidecar-{_arch}-pc-windows-msvc'
@@ -29,7 +29,7 @@ azure_binaries = collect_dynamic_libs('azure.cognitiveservices.speech')
 azure_datas = collect_data_files('azure.cognitiveservices.speech')
 
 # Collect entire pydantic/pydantic_core packages (C extensions + submodules).
-# IMPORTANTE: collect_all retorna (datas, binaries, hiddenimports) nessa ordem.
+# IMPORTANT: collect_all returns (datas, binaries, hiddenimports) in that order.
 pydantic_datas, pydantic_binaries, pydantic_hiddenimports = collect_all('pydantic')
 pydantic_core_datas, pydantic_core_binaries, pydantic_core_hiddenimports = collect_all('pydantic_core')
 

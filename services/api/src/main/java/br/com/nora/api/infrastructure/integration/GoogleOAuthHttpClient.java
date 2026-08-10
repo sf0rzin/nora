@@ -91,7 +91,8 @@ public class GoogleOAuthHttpClient implements GoogleOAuthClient {
             JsonNode json = mapper.readTree(body == null ? "{}" : body);
             String accessToken = json.path("access_token").asText(null);
             if (accessToken == null) {
-                throw new IntegrationException.ProviderError("google", "resposta sem access_token");
+                throw new IntegrationException.ProviderError(
+                        "google", "response with no access_token");
             }
             return new TokenResponse(
                     accessToken,

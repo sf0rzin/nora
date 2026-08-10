@@ -62,9 +62,9 @@ def test_redacts_accented_first_name_regression():
     for name in ("Patrícia", "Antônio", "André", "João", "Mário", "Mônica", "Vitória", "César"):
         text = f"A {name} ficou de enviar o contrato"
         result = pii_shield.redact(text)
-        assert name not in result.redacted_text, f"VAZOU nome acentuado: {name}"
+        assert name not in result.redacted_text, f"LEAKED accented name: {name}"
         assert any(r.type == PiiType.PERSON_NAME for r in result.redactions), (
-            f"{name} nao gerou redacao PERSON_NAME"
+            f"{name} did not produce a PERSON_NAME redaction"
         )
 
 
@@ -73,7 +73,7 @@ def test_accent_fold_does_not_break_negative_list():
     text = "Vamos rodar no Azure com Python e Spring, integrando com Salesforce"
     result = pii_shield.redact(text)
     for term in ("Azure", "Python", "Spring", "Salesforce"):
-        assert term in result.redacted_text, f"{term} foi redigido por engano"
+        assert term in result.redacted_text, f"{term} was redacted by mistake"
 
 
 def test_redacts_name_surname_sequence():
@@ -1026,10 +1026,10 @@ def test_redaction_stays_linear_in_the_size_of_the_transcript():
 
 
 def test_a_surname_is_enough_when_the_given_name_is_not_on_the_list():
-    """Regressao: ler so o primeiro token deixava a maioria dos nomes BR passar em claro.
+    """Regression: reading only the first token let most BR names pass through in the clear.
 
-    _BR_TOP_NAMES tem 300 nomes proprios; o pais tem muitos mais. Como todo nome completo
-    brasileiro termina em apelido, a cauda e o sinal que a cabeca nao consegue dar.
+    _BR_TOP_NAMES has 300 given names; the country has many more. Since every full
+    Brazilian name ends in a surname, the tail is the signal the head cannot give.
     """
     for text in (
         "Edson Ribeiro Protheus decidiu",
@@ -1042,7 +1042,7 @@ def test_a_surname_is_enough_when_the_given_name_is_not_on_the_list():
 
 
 def test_the_surname_signal_does_not_swallow_composite_company_names():
-    """Contraprova: o trecho que sobra tem de acabar em apelido, nao em palavra qualquer."""
+    """Counter-proof: the leftover stretch must end in a surname, not just any word."""
     for text in ("Acme Software Solutions fechou", "Acme Financeiro Pro subiu de preco"):
         result = pii_shield.redact(text)
         assert result.redacted_text == text, text
@@ -1395,7 +1395,9 @@ def test_invalid_cpf_tolerant_separators_not_redacted():
     for raw in ("100 000 000 50", "123 456 789 00", "999-888-777-66", "100/000/000-50"):
         text = f"codigo {raw} lote"
         result = pii_shield.redact(text)
-        assert raw in result.redacted_text, f"OVER-REDIGIDO (DV invalido deveria passar): {raw}"
+        assert raw in result.redacted_text, (
+            f"OVER-REDACTED (invalid check digit should pass through): {raw}"
+        )
         assert not any(r.type == PiiType.CPF for r in result.redactions)
 
 

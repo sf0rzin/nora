@@ -71,7 +71,7 @@ def test_analyze_acme_detects_competition_risk():
     body = resp.json()
     categories = {r["category"] for r in body["risks"]}
     # The meeting mentions a competitor; we expect at least 1 identified risk.
-    assert body["risks"], "Esperava ao menos 1 risco identificado."
+    assert body["risks"], "Expected at least 1 risk identified."
     assert categories & {"COMPETITION", "PRICE"}
 
 
@@ -186,7 +186,7 @@ def test_customer_confidence_present_for_sales_conversation(transcript: str, ten
     assert resp.status_code == 200, resp.text
     cc = resp.json()["customerConfidence"]
 
-    assert cc is not None, "Esperava customerConfidence emitido para conversa de venda."
+    assert cc is not None, "Expected customerConfidence to be emitted for a sales conversation."
     assert 0 <= cc["score"] <= 100
     assert cc["band"] in {"LOW", "MEDIUM", "HIGH"}
     assert cc["trend"] in {"IMPROVING", "STABLE", "DECLINING", None}

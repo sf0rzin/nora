@@ -55,7 +55,7 @@ public interface NlpWorkerClient {
      * this flow.
      */
     default SplitDtos.SplitResponse split(String transcript, String language) {
-        throw new UnsupportedOperationException("split nao implementado por este client");
+        throw new UnsupportedOperationException("split not implemented by this client");
     }
 
     /**

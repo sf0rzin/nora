@@ -55,9 +55,9 @@ public class JjwtJwtIssuer implements JwtIssuer {
                         && (activeProfile.contains("local") || activeProfile.contains("test"));
         if (INSECURE_DEFAULT_SECRET.equals(secret) && !isLocalOrTest) {
             throw new IllegalStateException(
-                    "nora.security.jwt.secret esta com o valor placeholder padrao; defina"
-                            + " JWT_SECRET com um segredo gerado por SecureRandom (>=32 bytes) antes de"
-                            + " subir fora do profile local/test.");
+                    "nora.security.jwt.secret still holds the default placeholder value; set"
+                            + " JWT_SECRET to a SecureRandom-generated secret (>=32 bytes) before"
+                            + " deploying outside the local/test profile.");
         }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.issuer = "nora-api";

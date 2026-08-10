@@ -1,1 +1,1 @@
-"""Pacote de clients externos do worker NLP."""
+"""NLP worker's external clients package."""

@@ -164,7 +164,7 @@ public class MeetingService {
             svc.runAsync(meetingId, tenantId);
         } catch (RejectedExecutionException e) {
             LOG.error(
-                    "análise rejeitada pelo executor (pool saturado) meetingId={} tenantId={}",
+                    "analysis rejected by the executor (pool saturated) meetingId={} tenantId={}",
                     meetingId,
                     tenantId,
                     e);
@@ -182,7 +182,7 @@ public class MeetingService {
                 // Marking FAILED is best-effort: if that also fails, the meeting stays PENDING and
                 // a manual reprocess resolves it. Propagating here would only swap one error for
                 // another.
-                LOG.error("falha ao marcar meeting {} como FAILED", meetingId, marking);
+                LOG.error("failed to mark meeting {} as FAILED", meetingId, marking);
             }
         }
     }
@@ -272,8 +272,8 @@ public class MeetingService {
         // Letting the database evaluate the condition removes the window entirely.
         if (meetings.claimForReanalysis(meetingId, tenantId) == 0) {
             throw new MeetingException.CannotReprocess(
-                    "A análise já está em andamento ou na fila; aguarde concluir antes de"
-                            + " reprocessar.");
+                    "The analysis is already in progress or queued; wait for it to finish before"
+                            + " reprocessing.");
         }
         // `meeting` was read BEFORE the authorization callback, which is the very reason the
         // return value below is a re-read rather than a derivation. The payload cannot trust it

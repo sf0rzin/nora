@@ -10,7 +10,7 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * NORA Flows "Avisar no Telegram" action — REAL message in the tenant's paired chat (the app bot;
+ * NORA Flows "Notify on Telegram" action — REAL message in the tenant's paired chat (the app bot;
  * the chat_id is the connection "token", saved during code pairing). No params: the text is a
  * summary formatted in Telegram HTML — title in {@code <b>}, analysis counts and up to 5 next steps
  * + the meeting link.

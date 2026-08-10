@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
  * Catalog of the generic OAuth providers (wave 1: GitHub, Notion, Todoist, Linear; wave 2:
  * Microsoft). URLs, scopes and the quirks of each provider are declared HERE; credentials come from
  * env (never in code). A provider without client-id/secret in the environment simply does not enter
- * the catalog — the hub shows "não configurado" and start returns 422 (fail-visible, same contract
+ * the catalog — the hub shows "not configured" and start returns 422 (fail-visible, same contract
  * as Google/Slack).
  */
 @Component

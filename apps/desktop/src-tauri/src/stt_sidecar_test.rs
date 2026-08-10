@@ -3,7 +3,7 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
-/// Testa o fluxo completo: spawn sidecar fake → recebe ready → recebe transcripts → stop.
+/// Tests the full flow: spawn fake sidecar → receive ready → receive transcripts → stop.
 #[tokio::test]
 async fn test_sidecar_fake_lifecycle() {
     // Find the fake sidecar script relative to CARGO_MANIFEST_DIR

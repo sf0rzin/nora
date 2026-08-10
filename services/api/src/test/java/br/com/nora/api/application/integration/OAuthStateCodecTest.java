@@ -10,11 +10,11 @@ import org.junit.jupiter.api.Test;
 
 class OAuthStateCodecTest {
 
-    private final OAuthStateCodec codec = new OAuthStateCodec("segredo-de-teste-32-bytes-ok!!");
+    private final OAuthStateCodec codec = new OAuthStateCodec("test-secret-32-bytes-long-ok!!");
     private final Instant now = Instant.parse("2026-06-11T12:00:00Z");
 
     @Test
-    void roundtrip_codificaEDecodifica() {
+    void roundtrip_encodesAndDecodes() {
         UUID tenantId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         String state = codec.encode(tenantId, userId, IntegrationProvider.GOOGLE, now);
@@ -26,7 +26,7 @@ class OAuthStateCodecTest {
     }
 
     @Test
-    void rejeitaExpirado() {
+    void rejectsExpired() {
         String state =
                 codec.encode(UUID.randomUUID(), UUID.randomUUID(), IntegrationProvider.GOOGLE, now);
         assertThatThrownBy(() -> codec.decode(state, now.plusSeconds(601)))
@@ -34,7 +34,7 @@ class OAuthStateCodecTest {
     }
 
     @Test
-    void rejeitaAssinaturaAdulterada() {
+    void rejectsTamperedSignature() {
         String state =
                 codec.encode(UUID.randomUUID(), UUID.randomUUID(), IntegrationProvider.GOOGLE, now);
         String tampered = state.substring(0, state.length() - 4) + "XXXX";
@@ -43,7 +43,7 @@ class OAuthStateCodecTest {
     }
 
     @Test
-    void rejeitaPayloadAdulterado() {
+    void rejectsTamperedPayload() {
         String state =
                 codec.encode(UUID.randomUUID(), UUID.randomUUID(), IntegrationProvider.GOOGLE, now);
         String[] parts = state.split(":");
@@ -53,7 +53,7 @@ class OAuthStateCodecTest {
     }
 
     @Test
-    void rejeitaLixoENulo() {
+    void rejectsGarbageAndNull() {
         assertThatThrownBy(() -> codec.decode(null, now))
                 .isInstanceOf(IntegrationException.InvalidState.class);
         assertThatThrownBy(() -> codec.decode("", now))
@@ -63,11 +63,11 @@ class OAuthStateCodecTest {
     }
 
     @Test
-    void segredosDiferentesNaoValidamCruzado() {
-        OAuthStateCodec outro = new OAuthStateCodec("outro-segredo-completamente-diferente");
+    void differentSecretsDoNotCrossValidate() {
+        OAuthStateCodec other = new OAuthStateCodec("a-completely-different-other-secret");
         String state =
                 codec.encode(UUID.randomUUID(), UUID.randomUUID(), IntegrationProvider.GOOGLE, now);
-        assertThatThrownBy(() -> outro.decode(state, now))
+        assertThatThrownBy(() -> other.decode(state, now))
                 .isInstanceOf(IntegrationException.InvalidState.class);
     }
 }

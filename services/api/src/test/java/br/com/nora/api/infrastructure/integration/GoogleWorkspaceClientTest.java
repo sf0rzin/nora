@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 class GoogleWorkspaceClientTest {
 
     @Test
-    void mime_temDestinatarioSubjectCodificadoECorpoBase64() {
+    void mime_hasRecipientEncodedSubjectAndBase64Body() {
         String mime =
                 GoogleWorkspaceClient.buildMime(
                         "ana@empresa.com", "Reunião analisada — Açaí & Cia", "<p>Olá</p>");
@@ -33,18 +33,17 @@ class GoogleWorkspaceClientTest {
     }
 
     @Test
-    void rfc3339_mantemSegundosZeradosExigidosPeloCalendar() {
+    void rfc3339_keepsZeroedSecondsRequiredByCalendar() {
         // OffsetDateTime.toString() would omit the seconds ("10:00-03:00") and the
         // Calendar rejects it with 400.
-        OffsetDateTime semSegundos =
+        OffsetDateTime noSeconds =
                 OffsetDateTime.of(2026, 6, 13, 10, 0, 0, 0, ZoneOffset.ofHours(-3));
 
-        assertThat(GoogleWorkspaceClient.rfc3339(semSegundos))
-                .isEqualTo("2026-06-13T10:00:00-03:00");
+        assertThat(GoogleWorkspaceClient.rfc3339(noSeconds)).isEqualTo("2026-06-13T10:00:00-03:00");
     }
 
     @Test
-    void rfc3339_emUtcUsaOffsetNumerico() {
+    void rfc3339_inUtcUsesNumericOffset() {
         OffsetDateTime utc = OffsetDateTime.of(2026, 6, 13, 13, 30, 0, 0, ZoneOffset.UTC);
 
         assertThat(GoogleWorkspaceClient.rfc3339(utc)).isEqualTo("2026-06-13T13:30:00+00:00");

@@ -25,7 +25,7 @@ As a **<persona>**, I want **<action>** so that **<benefit>**.
 ## How to Test
 
 ```bash
-# comando(s) que validam a entrega
+# command(s) that validate the delivery
 ```
 
 ## Definition of Done

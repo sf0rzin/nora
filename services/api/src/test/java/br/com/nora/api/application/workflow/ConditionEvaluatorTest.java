@@ -37,7 +37,7 @@ class ConditionEvaluatorTest {
     }
 
     @Test
-    void productivityScoreBelow_passaQuandoMenor() {
+    void productivityScoreBelow_passesWhenLower() {
         var eval =
                 evaluator.evaluate("productivity_score_below", Map.of("value", 70), ctx(62, null));
         assertThat(eval.passed()).isTrue();
@@ -45,7 +45,7 @@ class ConditionEvaluatorTest {
     }
 
     @Test
-    void productivityScoreBelow_naoPassaQuandoMaiorOuIgual() {
+    void productivityScoreBelow_doesNotPassWhenGreaterOrEqual() {
         assertThat(
                         evaluator
                                 .evaluate(
@@ -65,16 +65,16 @@ class ConditionEvaluatorTest {
     }
 
     @Test
-    void productivityScoreBelow_scoreAusenteNaoSatisfaz() {
+    void productivityScoreBelow_missingScoreDoesNotSatisfy() {
         var eval =
                 evaluator.evaluate(
                         "productivity_score_below", Map.of("value", 70), ctx(null, null));
         assertThat(eval.passed()).isFalse();
-        assertThat(eval.description()).contains("ausente");
+        assertThat(eval.description()).contains("missing");
     }
 
     @Test
-    void productivityScoreBelow_aceitaValueComoString() {
+    void productivityScoreBelow_acceptsValueAsString() {
         var eval =
                 evaluator.evaluate(
                         "productivity_score_below", Map.of("value", "70"), ctx(62, null));
@@ -82,7 +82,7 @@ class ConditionEvaluatorTest {
     }
 
     @Test
-    void customerConfidenceBelow_usaScoreDeConfidence() {
+    void customerConfidenceBelow_usesConfidenceScore() {
         assertThat(
                         evaluator
                                 .evaluate(
@@ -120,7 +120,7 @@ class ConditionEvaluatorTest {
     }
 
     @Test
-    void priorityEquals_casaComQualquerActionItem() {
+    void priorityEquals_matchesAnyActionItem() {
         assertThat(
                         evaluator
                                 .evaluate(
@@ -136,13 +136,13 @@ class ConditionEvaluatorTest {
     }
 
     @Test
-    void condicaoDesconhecidaLancaErro() {
+    void unknownConditionThrowsError() {
         assertThatThrownBy(() -> evaluator.evaluate("fase_da_lua", Map.of(), ctx(null, null)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void paramObrigatorioAusenteLancaErro() {
+    void missingRequiredParamThrowsError() {
         assertThatThrownBy(
                         () ->
                                 evaluator.evaluate(

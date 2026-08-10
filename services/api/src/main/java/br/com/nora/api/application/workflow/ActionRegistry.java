@@ -22,7 +22,7 @@ public class ActionRegistry {
             ActionExecutor previous = map.put(executor.type(), executor);
             if (previous != null) {
                 throw new IllegalStateException(
-                        "duas ações registradas com o mesmo type: " + executor.type());
+                        "two actions registered with the same type: " + executor.type());
             }
         }
         this.byType = Map.copyOf(map);

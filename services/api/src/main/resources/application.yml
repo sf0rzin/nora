@@ -129,7 +129,7 @@ nora:
       api-key: ${RESEND_API_KEY:}
   integrations:
     # NORA Flows Phase 2 — OAuth with external providers (Gmail/Calendar and Slack).
-    # Without client-id/redirect-uri the hub shows "não configurado" and start returns 422 (fail-visible).
+    # Without client-id/redirect-uri the hub shows "not configured" and start returns 422 (fail-visible).
     state-secret: ${NORA_INTEGRATIONS_STATE_SECRET:}
     # AES-256-GCM for tokens at rest: 32 bytes in base64. Empty (dev) = stores unencrypted w/ WARN.
     encryption-key: ${NORA_INTEGRATIONS_ENC_KEY:}

@@ -39,7 +39,7 @@ public class PlatformInternalController {
     public ResponseEntity<ResolvedLlmConfig> llmConfig(@RequestParam String service) {
         if (!resolver.isValidService(service)) {
             throw new PlatformValidationException(
-                    "service inválido: " + service + " (use chat|analysis|multimodal)", false);
+                    "invalid service: " + service + " (use chat|analysis|multimodal)", false);
         }
         return ResponseEntity.ok(resolver.resolve(service));
     }

@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ConditionEvaluator {
 
-    /** Evaluation result + PT-BR sentence ready for the execution log. */
+    /** Evaluation result + human-readable sentence ready for the execution log. */
     public record Evaluation(boolean passed, String description) {}
 
     public Evaluation evaluate(String type, Map<String, Object> params, WorkflowEventContext ctx) {
@@ -29,14 +29,14 @@ public class ConditionEvaluator {
                             requiredInt(params, "value", type));
             case "tag_equals" -> tagEquals(params, ctx);
             case "priority_equals" -> priorityEquals(params, ctx);
-            default -> throw new IllegalArgumentException("condição desconhecida: " + type);
+            default -> throw new IllegalArgumentException("unknown condition: " + type);
         };
     }
 
     private Evaluation scoreBelow(String label, Integer actual, int threshold) {
         if (actual == null) {
             return new Evaluation(
-                    false, label + " ausente nesta reunião — condição não satisfeita");
+                    false, label + " missing in this meeting — condition not satisfied");
         }
         boolean passed = actual < threshold;
         return new Evaluation(passed, label + " " + actual + (passed ? " < " : " ≥ ") + threshold);
@@ -50,8 +50,8 @@ public class ConditionEvaluator {
         return new Evaluation(
                 passed,
                 passed
-                        ? "reunião tem a tag \"" + expected + "\""
-                        : "reunião não tem a tag \"" + expected + "\"");
+                        ? "meeting has tag \"" + expected + "\""
+                        : "meeting does not have tag \"" + expected + "\"");
     }
 
     private Evaluation priorityEquals(Map<String, Object> params, WorkflowEventContext ctx) {
@@ -66,8 +66,8 @@ public class ConditionEvaluator {
         return new Evaluation(
                 passed,
                 passed
-                        ? "há action item com prioridade " + expected.toUpperCase()
-                        : "nenhum action item com prioridade " + expected.toUpperCase());
+                        ? "there is an action item with priority " + expected.toUpperCase()
+                        : "no action item with priority " + expected.toUpperCase());
     }
 
     private static int requiredInt(Map<String, Object> params, String key, String type) {
@@ -83,7 +83,7 @@ public class ConditionEvaluator {
             }
         }
         throw new IllegalArgumentException(
-                "condição '" + type + "' precisa de params." + key + " numérico");
+                "condition '" + type + "' needs params." + key + " to be numeric");
     }
 
     private static String requiredString(Map<String, Object> params, String key, String type) {
@@ -92,6 +92,6 @@ public class ConditionEvaluator {
             return s;
         }
         throw new IllegalArgumentException(
-                "condição '" + type + "' precisa de params." + key + " textual");
+                "condition '" + type + "' needs params." + key + " to be text");
     }
 }

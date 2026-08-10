@@ -10,7 +10,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ── Shell ─────────────────────────────────────────────────── */
-/* The document is the scroller for the content pages (Início, Projetos, …):
+/* The document is the scroller for the content pages (Home, Projects, …):
    window scrollbar, keyboard scrolling (space/PgDn/arrows) and the browser's
    scroll position restoration all work — before, the scroll lived in a
    100dvh .app-main and the page "did not scroll" outside the wheel. Routes

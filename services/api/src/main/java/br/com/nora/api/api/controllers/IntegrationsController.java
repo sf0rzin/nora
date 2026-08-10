@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * OAuth integrations hub (NORA Flows Phase 2). The callback is PUBLIC by design (provider redirect;
  * the signed state identifies tenant/user and blocks forgery) and always REDIRECTS to the front end
- * (/integracoes) with a success/error query — it never returns JSON to the user's browser.
+ * (/integrations) with a success/error query — it never returns JSON to the user's browser.
  *
  * <p>Every other handler is gated by IAM (#51): a connection is tenant-wide, so connecting,
  * disconnecting or pairing a provider changes what the whole workspace's automations can reach, and
@@ -98,24 +98,24 @@ public class IntegrationsController {
         try {
             parsed = IntegrationProvider.fromWire(provider);
         } catch (IllegalArgumentException ex) {
-            return redirect("/integracoes?error=integration_unknown_provider");
+            return redirect("/integrations?error=integration_unknown_provider");
         }
         if (error != null && !error.isBlank()) {
             // User denied consent (or provider error) — no stack, no 500.
-            return redirect("/integracoes?error=" + error);
+            return redirect("/integrations?error=" + error);
         }
         if (code == null || code.isBlank()) {
-            return redirect("/integracoes?error=missing_code");
+            return redirect("/integrations?error=missing_code");
         }
         try {
             integrations.handleCallback(parsed, code, state);
-            return redirect("/integracoes?connected=" + parsed.wire());
+            return redirect("/integrations?connected=" + parsed.wire());
         } catch (IntegrationException ex) {
             LOG.warn("OAuth {} callback falhou: {} {}", parsed.wire(), ex.code(), ex.getMessage());
-            return redirect("/integracoes?error=" + ex.code().toLowerCase());
+            return redirect("/integrations?error=" + ex.code().toLowerCase());
         } catch (RuntimeException ex) {
             LOG.error("OAuth {} callback erro inesperado", parsed.wire(), ex);
-            return redirect("/integracoes?error=internal");
+            return redirect("/integrations?error=internal");
         }
     }
 
@@ -129,7 +129,7 @@ public class IntegrationsController {
 
     /**
      * Telegram (wave 2, NO OAuth): generates the tenant's pairing code and returns the bot deep
-     * link ({@code t.me/<bot>?start=<código>}) for the hub to display.
+     * link ({@code t.me/<bot>?start=<code>}) for the hub to display.
      */
     @PostMapping("/telegram/pairing/start")
     @RequiresPermission(action = "integration:write", resource = ResourceType.INTEGRATION)
@@ -139,9 +139,9 @@ public class IntegrationsController {
     }
 
     /**
-     * Telegram: looks for the tenant's {@code /start <código>} in the bot's getUpdates and
-     * completes the connection. No /start yet = 409 {@code INTEGRATION_PAIRING_PENDING} with an
-     * actionable message.
+     * Telegram: looks for the tenant's {@code /start <code>} in the bot's getUpdates and completes
+     * the connection. No /start yet = 409 {@code INTEGRATION_PAIRING_PENDING} with an actionable
+     * message.
      */
     @PostMapping("/telegram/pairing/verify")
     @RequiresPermission(action = "integration:write", resource = ResourceType.INTEGRATION)

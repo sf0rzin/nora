@@ -128,7 +128,7 @@ class SplitPreviewIntegrationTest {
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         JsonNode body = mapper.readTree(resp.getBody());
         assertThat(body.get("code").asText()).isEqualTo("SPLIT_UNSUPPORTED_FORMAT");
-        assertThat(body.get("message").asText()).contains(".txt por enquanto");
+        assertThat(body.get("message").asText()).contains(".txt for now");
     }
 
     @Test

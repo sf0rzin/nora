@@ -1,1 +1,1 @@
-"""Routers HTTP do worker."""
+"""Worker's HTTP routers."""

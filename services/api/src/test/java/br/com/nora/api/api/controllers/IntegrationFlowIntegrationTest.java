@@ -79,7 +79,7 @@ class IntegrationFlowIntegrationTest {
     }
 
     @Test
-    void fluxoCompleto_startCallbackStatusAcaoDisconnect() throws Exception {
+    void fullFlow_startCallbackStatusActionDisconnect() throws Exception {
         String token = signupAndLogin("oauth-full@nora.dev", "SenhaForte123", "OAuth Full");
 
         // 1) Initial status: google configured, not connected.
@@ -108,7 +108,7 @@ class IntegrationFlowIntegrationTest {
                         String.class);
         assertThat(callback.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(callback.getHeaders().getLocation())
-                .hasToString("http://localhost:3000/integracoes?connected=google");
+                .hasToString("http://localhost:3000/integrations?connected=google");
 
         // 4) Status: connected with the account identified.
         JsonNode after = authGet("/integrations", token).read(HttpStatus.OK);
@@ -164,31 +164,31 @@ class IntegrationFlowIntegrationTest {
                 postJson("/workflows/" + wf.get("id").asText() + "/test", Map.of(), token)
                         .read(HttpStatus.OK);
         assertThat(failedExecution.get("status").asText()).isEqualTo("FAILED");
-        assertThat(failedExecution.get("log").toString()).contains("não está conectada");
+        assertThat(failedExecution.get("log").toString()).contains("is not connected");
     }
 
     @Test
-    void callback_stateInvalido_redirecionaComErro() {
+    void callback_invalidState_redirectsWithError() {
         ResponseEntity<String> callback =
                 rest.getForEntity(
                         "/integrations/google/oauth/callback?code=abc&state=forjado", String.class);
         assertThat(callback.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(callback.getHeaders().getLocation().toString())
-                .contains("/integracoes?error=integration_invalid_state");
+                .contains("/integrations?error=integration_invalid_state");
     }
 
     @Test
-    void callback_usuarioNegouConsentimento_redirecionaComErro() {
+    void callback_userDeniedConsent_redirectsWithError() {
         ResponseEntity<String> callback =
                 rest.getForEntity(
                         "/integrations/google/oauth/callback?error=access_denied", String.class);
         assertThat(callback.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(callback.getHeaders().getLocation().toString())
-                .contains("/integracoes?error=access_denied");
+                .contains("/integrations?error=access_denied");
     }
 
     @Test
-    void conexaoEhIsoladaPorTenant() throws Exception {
+    void connectionIsIsolatedPerTenant() throws Exception {
         String tokenA = signupAndLogin("oauth-a@nora.dev", "SenhaForte123", "A");
         String tokenB = signupAndLogin("oauth-b@nora.dev", "SenhaForte123", "B");
 
@@ -204,7 +204,7 @@ class IntegrationFlowIntegrationTest {
     }
 
     @Test
-    void exigeAutenticacaoNoHub() {
+    void requiresAuthenticationInHub() {
         assertThat(rest.getForEntity("/integrations", String.class).getStatusCode())
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
     }
@@ -226,7 +226,7 @@ class IntegrationFlowIntegrationTest {
                 return node;
             }
         }
-        throw new AssertionError("provider não listado: " + provider);
+        throw new AssertionError("provider not listed: " + provider);
     }
 
     private static String queryParam(String url, String name) {

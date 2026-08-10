@@ -37,7 +37,7 @@ class WorkerDtosContractTest {
             Set.of("name", "description", "keyDifferentiators");
 
     @Test
-    void tenantContext_serializaApenasChavesQueOWorkerAceita() {
+    void tenantContext_serializesOnlyKeysTheWorkerAccepts() {
         WorkerDtos.TenantContext ctx =
                 new WorkerDtos.TenantContext(
                         "Acme",

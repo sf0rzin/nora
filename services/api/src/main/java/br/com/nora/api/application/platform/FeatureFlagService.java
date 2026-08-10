@@ -27,13 +27,12 @@ public class FeatureFlagService {
 
     public List<FeatureFlag> listFlags() {
         if (!availability.isUsable()) {
-            throw new PlatformUnavailableException(
-                    "control plane indisponível (banco de plataforma)");
+            throw new PlatformUnavailableException("control plane unavailable (platform database)");
         }
         try {
             return flagProvider.getObject().findAll();
         } catch (DataAccessException ex) {
-            throw new PlatformUnavailableException("banco de plataforma indisponível em runtime");
+            throw new PlatformUnavailableException("platform database unavailable at runtime");
         }
     }
 }

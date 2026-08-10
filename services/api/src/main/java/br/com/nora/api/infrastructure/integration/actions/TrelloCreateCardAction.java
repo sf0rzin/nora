@@ -10,8 +10,8 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * NORA Flows "Criar cards no Trello" action — REAL cards in the given list, with the token the user
- * pasted on connect. Params: {@code listId} (required, id of the board's list). One card per
+ * NORA Flows "Create cards in Trello" action — REAL cards in the given list, with the token the
+ * user pasted on connect. Params: {@code listId} (required, id of the board's list). One card per
  * meeting action item (name = title; desc = meeting + assignee + link; due = the item's due date
  * when the analysis extracted one).
  *
@@ -67,7 +67,7 @@ public class TrelloCreateCardAction implements ActionExecutor {
         String listId = WorkflowActionTemplates.stringParam(params, "listId");
         if (listId == null || listId.isBlank()) {
             throw new IllegalArgumentException(
-                    "lista obrigatória em params.listId (id da lista do board no Trello)");
+                    "list required in params.listId (id of the board's list in Trello)");
         }
         return listId.trim();
     }

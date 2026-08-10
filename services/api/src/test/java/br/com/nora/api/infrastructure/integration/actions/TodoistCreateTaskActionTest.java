@@ -29,7 +29,7 @@ class TodoistCreateTaskActionTest {
             new TodoistCreateTaskAction(integrations, todoist);
 
     @Test
-    void criaUmaTarefaPorActionItem() {
+    void createsOneTaskPerActionItem() {
         when(integrations.validAccessToken(
                         eq(TestContexts.TENANT), eq(IntegrationProvider.TODOIST)))
                 .thenReturn("td_token");
@@ -58,7 +58,7 @@ class TodoistCreateTaskActionTest {
     }
 
     @Test
-    void semActionItems_naoChamaProvedorERegistraHonesto() {
+    void noActionItems_doesNotCallProviderAndRecordsHonestly() {
         WorkflowEventContext ctx = TestContexts.context("Kickoff", "Resumo.", List.of());
 
         String result = action.execute(ctx, Map.of());
@@ -70,7 +70,7 @@ class TodoistCreateTaskActionTest {
 
     /** Ensures provider failure PROPAGATES (engine records FAILED). */
     @Test
-    void falhaDoProvedorPropaga() {
+    void providerFailurePropagates() {
         when(integrations.validAccessToken(any(), any())).thenReturn("td_token");
         TodoistCreateTaskAction failing =
                 new TodoistCreateTaskAction(
@@ -79,7 +79,7 @@ class TodoistCreateTaskActionTest {
                             @Override
                             public String createTask(
                                     String accessToken, String content, String description) {
-                                throw new IllegalStateException("falha simulada");
+                                throw new IllegalStateException("simulated failure");
                             }
                         });
         WorkflowEventContext ctx =

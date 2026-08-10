@@ -61,8 +61,8 @@ public class TrelloHttpClient implements TrelloApi {
             if (ex.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 throw new IntegrationException.ProviderError(
                         PROVIDER,
-                        "o Trello recusou esse token — gere um novo na aba de autorização e cole"
-                                + " de novo");
+                        "Trello refused that token — generate a new one on the authorization tab"
+                                + " and paste it again");
             }
             throw new IntegrationException.ProviderError(PROVIDER, "members/me: " + reason(ex));
         } catch (Exception ex) {
@@ -93,7 +93,7 @@ public class TrelloHttpClient implements TrelloApi {
                             .bodyToMono(String.class)
                             .block(TIMEOUT);
             JsonNode json = mapper.readTree(body == null ? "{}" : body);
-            return json.path("shortUrl").asText(json.path("url").asText("(card criado)"));
+            return json.path("shortUrl").asText(json.path("url").asText("(card created)"));
         } catch (IntegrationException ex) {
             throw ex;
         } catch (Exception ex) {

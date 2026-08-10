@@ -66,13 +66,13 @@ public class PlatformDataSourceConfig {
                         .load()
                         .migrate();
                 availability.markHealthy();
-                LOG.info("Control plane: migração do banco de plataforma OK — módulo HEALTHY.");
+                LOG.info("Control plane: platform database migration OK — module HEALTHY.");
             } catch (RuntimeException ex) {
                 availability.markDegraded();
                 LOG.error(
-                        "Control plane: migração do banco de plataforma FALHOU — módulo DEGRADADO"
-                                + " (admin -> 503; llm-config -> fallback env; usage -> descartado)."
-                                + " Causa: {}",
+                        "Control plane: platform database migration FAILED — module DEGRADED"
+                                + " (admin -> 503; llm-config -> fallback env; usage -> discarded)."
+                                + " Cause: {}",
                         ex.getMessage());
             }
         };

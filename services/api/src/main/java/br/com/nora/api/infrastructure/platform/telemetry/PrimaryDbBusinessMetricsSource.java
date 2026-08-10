@@ -67,7 +67,9 @@ public class PrimaryDbBusinessMetricsSource implements BusinessMetricsSource {
                             to);
             return new BusinessSnapshot(from, to, true, nz(analyses), nz(tenants), null, null);
         } catch (RuntimeException ex) {
-            LOG.warn("Business telemetry: falha ao agregar do banco primário: {}", ex.getMessage());
+            LOG.warn(
+                    "Business telemetry: failed to aggregate from the primary database: {}",
+                    ex.getMessage());
             return BusinessSnapshot.disabled(from, to);
         }
     }

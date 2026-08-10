@@ -28,7 +28,7 @@ class GitHubCreateIssueActionTest {
             new GitHubCreateIssueAction(integrations, github);
 
     @Test
-    void default_criaUmaIssuePorActionItemComLabelNora() {
+    void default_createsOneIssuePerActionItemWithNoraLabel() {
         when(integrations.validAccessToken(eq(TestContexts.TENANT), eq(IntegrationProvider.GITHUB)))
                 .thenReturn("gho_token");
         WorkflowEventContext ctx =
@@ -57,7 +57,7 @@ class GitHubCreateIssueActionTest {
     }
 
     @Test
-    void semActionItems_criaIssueUnicaComResumo() {
+    void noActionItems_createsSingleIssueWithSummary() {
         when(integrations.validAccessToken(eq(TestContexts.TENANT), eq(IntegrationProvider.GITHUB)))
                 .thenReturn("gho_token");
         WorkflowEventContext ctx = TestContexts.context("Kickoff Beta", "Resumo geral.", List.of());
@@ -72,7 +72,7 @@ class GitHubCreateIssueActionTest {
     }
 
     @Test
-    void tituloCustom_criaIssueUnicaComPlaceholders() {
+    void customTitle_createsSingleIssueWithPlaceholders() {
         when(integrations.validAccessToken(eq(TestContexts.TENANT), eq(IntegrationProvider.GITHUB)))
                 .thenReturn("gho_token");
         WorkflowEventContext ctx =
@@ -93,13 +93,13 @@ class GitHubCreateIssueActionTest {
     }
 
     @Test
-    void repoObrigatorioNoFormatoOwnerNome() {
+    void repoRequiredInOwnerNameFormat() {
         assertThatThrownBy(() -> GitHubCreateIssueAction.requiredRepo(Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("params.repo");
-        assertThatThrownBy(() -> GitHubCreateIssueAction.requiredRepo(Map.of("repo", "sem-barra")))
+        assertThatThrownBy(() -> GitHubCreateIssueAction.requiredRepo(Map.of("repo", "no-slash")))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("owner/nome");
+                .hasMessageContaining("owner/name");
         assertThat(GitHubCreateIssueAction.requiredRepo(Map.of("repo", " stratfy/nora ")))
                 .isEqualTo("stratfy/nora");
     }

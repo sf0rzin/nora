@@ -46,6 +46,7 @@ export type { MeResponse, TenantInfo };
 import meetingsListFixture from '@/fixtures/meetings-list-response.json';
 import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
 import { handleSessionExpired, sharedRefresh } from '@/lib/auth';
+import { errorCopy } from '@/lib/strings';
 
 // Default must be 'false' in prod. It used to be 'true' → if the build forgot to
 // set NEXT_PUBLIC_USE_MOCKS, prod served hardcoded fixtures. Now any build that
@@ -150,9 +151,15 @@ async function request<T>(path: string, init?: RequestOptions): Promise<T> {
     } catch {
       // ignore
     }
+    // The API's `code` is the contract; its `message` is a developer-facing detail and is
+    // English. Screens render this text directly, so map the code to pt-BR copy first and
+    // fall back to the message only for codes nobody has written copy for yet.
+    const code = payload?.code;
     throw new ApiRequestError(
       resp.status,
-      payload?.message ?? `Request failed: ${resp.status} ${resp.statusText}`,
+      (code ? errorCopy[code] : undefined) ??
+        payload?.message ??
+        `Request failed: ${resp.status} ${resp.statusText}`,
       payload,
     );
   }
@@ -821,8 +828,8 @@ export async function listWorkflowExecutions(id: string): Promise<WorkflowExecut
 //
 // Per-user connectors: the backend stores the OAuth tokens and exposes only the status.
 // The connection flow is a full redirect: `authorizeUrl` → consent at the
-// provider → callback in the backend → back to /integracoes?connected={provider}
-// or /integracoes?error={codigo}.
+// provider → callback in the backend → back to /integrations?connected={provider}
+// or /integrations?error={codigo}.
 
 /** Status of every supported connector for the logged-in user. */
 export async function listIntegrations(): Promise<IntegrationStatus[]> {

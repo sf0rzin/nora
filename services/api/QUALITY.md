@@ -13,9 +13,9 @@
 ## Commands
 
 ```bash
-./mvnw spotless:apply       # formatar
-./mvnw spotless:check       # checar formatação (CI)
-./mvnw verify               # build + testes + cobertura
+./mvnw spotless:apply       # format
+./mvnw spotless:check       # check formatting (CI)
+./mvnw verify               # build + tests + coverage
 ```
 
 ## Plugins expected in `pom.xml`

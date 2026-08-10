@@ -19,10 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Telegram pairing (wave 2) — Telegram has NO OAuth, so the connection proves possession of a short
  * code: {@code start} generates the code (8 chars, TTL 10 min, one pending per tenant) and returns
- * the deep link {@code t.me/<bot>?start=<código>}; the user opens the link and sends /start; {@code
- * verify} sweeps the bot's getUpdates looking for {@code /start <código>} and, on a hit, persists
- * the {@code chat_id} as the tenant's connection (encrypted like the other tokens; no
- * refresh/expiry).
+ * the deep link {@code t.me/<bot>?start=<code>}; the user opens the link and sends /start; {@code
+ * verify} sweeps the bot's getUpdates looking for {@code /start <code>} and, on a hit, persists the
+ * {@code chat_id} as the tenant's connection (encrypted like the other tokens; no refresh/expiry).
  *
  * <p>In-memory state by design (ephemeral codes, same spirit as the HMAC state): pending codes per
  * tenant + /start commands seen in the poll (they survive between verifies — getUpdates advances
@@ -74,7 +73,7 @@ public class TelegramPairingService {
     }
 
     /**
-     * Looks for the tenant's {@code /start <código>} in getUpdates and completes the connection. No
+     * Looks for the tenant's {@code /start <code>} in getUpdates and completes the connection. No
      * /start yet = {@code PairingPending} (the hub tells the user to try again); expired code or
      * pairing not started = {@code ProviderError} with an instruction to start over.
      */
@@ -86,13 +85,13 @@ public class TelegramPairingService {
         if (code == null) {
             throw new IntegrationException.ProviderError(
                     IntegrationProvider.TELEGRAM.wire(),
-                    "nenhum pareamento em andamento — clique em Conectar para gerar o código");
+                    "no pairing in progress — click Connect to generate the code");
         }
         if (now.isAfter(code.expiresAt())) {
             pending.remove(tenantId);
             throw new IntegrationException.ProviderError(
                     IntegrationProvider.TELEGRAM.wire(),
-                    "o código de pareamento expirou — clique em Conectar para gerar outro");
+                    "the pairing code expired — click Connect to generate another one");
         }
 
         absorbUpdates(now);
@@ -100,7 +99,7 @@ public class TelegramPairingService {
         SeenStart match = seenStarts.remove(code.code());
         if (match == null) {
             throw new IntegrationException.PairingPending(
-                    "ainda não recebi seu /start — abra o link e tente de novo");
+                    "we still haven't received your /start — open the link and try again");
         }
 
         OffsetDateTime nowOffset = now.atOffset(ZoneOffset.UTC);
@@ -152,7 +151,7 @@ public class TelegramPairingService {
         }
     }
 
-    /** Start response: deep link ready for the "Abrir no Telegram" button + the code shown. */
+    /** Start response: deep link ready for the "Open in Telegram" button + the code shown. */
     public record PairingStart(String deepLink, String code) {}
 
     private record PendingCode(String code, UUID userId, Instant expiresAt) {}

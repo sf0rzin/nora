@@ -58,7 +58,7 @@ def test_top_terms_returns_list_of_tuples_with_positive_scores() -> None:
     baseline = TfidfBaseline()
     baseline.fit(SAMPLE_CORPUS)
     top = baseline.top_terms(top_n=10)
-    assert top, "top_terms nao deveria estar vazia em corpus valido"
+    assert top, "top_terms should not be empty for a valid corpus"
     for term, score in top:
         assert isinstance(term, str)
         assert isinstance(score, float)
@@ -166,7 +166,7 @@ def test_ngram_range_unigrams_only() -> None:
     baseline = TfidfBaseline(ngram_range=(1, 1))
     baseline.fit(SAMPLE_CORPUS)
     for term in baseline.feature_names:
-        assert " " not in term, f"esperava unigrama, achei '{term}'"
+        assert " " not in term, f"expected a unigram, got '{term}'"
 
 
 def test_ngram_range_bigrams_included() -> None:
@@ -174,7 +174,7 @@ def test_ngram_range_bigrams_included() -> None:
     baseline = TfidfBaseline(ngram_range=(1, 2))
     baseline.fit(SAMPLE_CORPUS)
     bigrams = [t for t in baseline.feature_names if " " in t]
-    assert bigrams, "Esperava ao menos um bigrama no vocabulario"
+    assert bigrams, "Expected at least one bigram in the vocabulary"
 
 
 def test_max_features_caps_vocabulary() -> None:
@@ -207,7 +207,7 @@ def test_single_document_corpus_does_not_crash() -> None:
     baseline = TfidfBaseline()
     baseline.fit(["proposta comercial nova com preco competitivo"])
     top = baseline.top_terms(top_n=5)
-    assert top, "deveria extrair termos mesmo com 1 doc"
+    assert top, "should extract terms even with 1 doc"
 
 
 def test_feature_names_returns_copy() -> None:

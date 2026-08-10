@@ -52,7 +52,7 @@ public class ModelCatalogService {
                             .ifPresent(
                                     m -> {
                                         throw new PlatformConflictException(
-                                                "modelo já existe: "
+                                                "model already exists: "
                                                         + c.provider()
                                                         + "/"
                                                         + c.modelId());
@@ -91,11 +91,11 @@ public class ModelCatalogService {
                                     .orElseThrow(
                                             () ->
                                                     new PlatformNotFoundException(
-                                                            "modelo não encontrado: " + id));
+                                                            "model not found: " + id));
                     if (models().isBound(id)) {
                         throw new PlatformConflictException(
-                                "modelo está bindado em llm_config — desbinde do serviço antes de"
-                                        + " remover");
+                                "model is bound in llm_config — unbind it from the service before"
+                                        + " removing");
                     }
                     models().deleteById(id);
                     audit(
@@ -114,7 +114,7 @@ public class ModelCatalogService {
     public ServiceBinding bindService(
             String service, UUID modelId, boolean enabled, String operator) {
         if (!LlmConfigResolver.SERVICES.contains(service)) {
-            throw new PlatformValidationException("serviço inválido: " + service, false);
+            throw new PlatformValidationException("invalid service: " + service, false);
         }
         return guarded(
                 () -> {
@@ -123,16 +123,17 @@ public class ModelCatalogService {
                                     .orElseThrow(
                                             () ->
                                                     new PlatformNotFoundException(
-                                                            "modelo não encontrado: " + modelId));
+                                                            "model not found: " + modelId));
                     if ("analysis".equals(service) && !m.supportsStrictJsonSchema()) {
                         throw new PlatformValidationException(
-                                "serviço 'analysis' exige modelo com supportsStrictJsonSchema=true"
-                                        + " (ADR 0003)",
+                                "service 'analysis' requires a model with"
+                                        + " supportsStrictJsonSchema=true (ADR 0003)",
                                 true);
                     }
                     if ("multimodal".equals(service) && m.modality() != Modality.MULTIMODAL) {
                         throw new PlatformValidationException(
-                                "serviço 'multimodal' exige modelo modality=multimodal (ADR 0024)",
+                                "service 'multimodal' requires a model with modality=multimodal"
+                                        + " (ADR 0024)",
                                 true);
                     }
                     ServiceBinding b = configs().upsert(service, modelId, enabled, operator);
@@ -161,8 +162,7 @@ public class ModelCatalogService {
 
     private void requireUsable() {
         if (!availability.isUsable()) {
-            throw new PlatformUnavailableException(
-                    "control plane indisponível (banco de plataforma)");
+            throw new PlatformUnavailableException("control plane unavailable (platform database)");
         }
     }
 
@@ -177,7 +177,7 @@ public class ModelCatalogService {
         try {
             return action.get();
         } catch (DataAccessException ex) {
-            throw new PlatformUnavailableException("banco de plataforma indisponível em runtime");
+            throw new PlatformUnavailableException("platform database unavailable at runtime");
         }
     }
 

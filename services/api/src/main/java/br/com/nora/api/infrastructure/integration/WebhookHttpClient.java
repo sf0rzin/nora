@@ -45,7 +45,7 @@ public class WebhookHttpClient {
                             .toBodilessEntity()
                             .block(TIMEOUT);
             if (response == null) {
-                throw new IntegrationException.ProviderError(provider, "sem resposta do endpoint");
+                throw new IntegrationException.ProviderError(provider, "no response from endpoint");
             }
             return response.getStatusCode().value();
         } catch (IntegrationException ex) {
@@ -54,7 +54,7 @@ public class WebhookHttpClient {
             // HTTP status only in the error — never the body (may echo sensitive endpoint data).
             String reason =
                     ex instanceof WebClientResponseException httpEx
-                            ? "respondeu HTTP " + httpEx.getStatusCode().value()
+                            ? "responded with HTTP " + httpEx.getStatusCode().value()
                             : ex.getMessage();
             throw new IntegrationException.ProviderError(provider, reason);
         }

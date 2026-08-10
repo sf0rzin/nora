@@ -12,7 +12,7 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * NORA Flows "Criar evento no Google Calendar" action — creates a REAL follow-up in the connected
+ * NORA Flows "Create event in Google Calendar" action — creates a REAL follow-up in the connected
  * Google account's primary calendar. Params (all optional): {@code title} (placeholders supported;
  * default "Follow-up: {{meeting.title}}"), {@code startInDays} (default 1, tomorrow), {@code hour}
  * (default 10, São Paulo time), {@code durationMinutes} (default 30). The description carries the

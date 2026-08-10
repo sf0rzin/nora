@@ -7,9 +7,9 @@ import java.util.Map;
  * send_email} via Resend; in the future {@code gmail_send}, {@code calendar_create_event}, {@code
  * slack_post} via the user's OAuth).
  *
- * <p>Contract: success returns a short PT-BR message for the execution log ("E-mail enviado para
- * x@y.z"). Failure MUST propagate an exception — the {@link WorkflowEngine} catches it, records it
- * in the log and marks the execution as FAILED. Never fake success.
+ * <p>Contract: success returns a short pt-BR message for the execution log (the log is rendered in
+ * the product UI, which is pt-BR). Failure MUST propagate an exception — the {@link WorkflowEngine}
+ * catches it, records it in the log and marks the execution as FAILED. Never fake success.
  */
 public interface ActionExecutor {
 

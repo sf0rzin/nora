@@ -152,14 +152,14 @@ function NoraWordmark() {
 const NAV: NavItem[] = [
   { label: "Início", href: "/dashboard" as Route, icon: <HomeIcon />, matchPrefixes: ["/dashboard", "/meetings"] },
   { label: "Nova sessão", href: "/chat" as Route, icon: <ChatIcon />, plus: true },
-  { label: "Projetos", href: "/projetos" as Route, icon: <ProjectsIcon /> },
+  { label: "Projetos", href: "/projects" as Route, icon: <ProjectsIcon /> },
   { label: "Action items", href: "/tasks" as Route, icon: <TasksIcon /> },
-  { label: "Fluxos", href: "/fluxos" as Route, icon: <FlowsIcon />, matchPrefixes: ["/fluxos"] },
+  { label: "Fluxos", href: "/flows" as Route, icon: <FlowsIcon />, matchPrefixes: ["/flows"] },
 ];
 
 const CONNECTORS: NavItem = {
   label: "Integrações",
-  href: "/integracoes" as Route,
+  href: "/integrations" as Route,
   icon: <PlugIcon />,
   hint: "MCP",
 };

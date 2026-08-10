@@ -25,7 +25,7 @@ class LinearCreateIssueActionTest {
             new LinearCreateIssueAction(integrations, linear);
 
     @Test
-    void semTeamKey_usaPrimeiroTeamDoWorkspace() {
+    void noTeamKey_usesFirstWorkspaceTeam() {
         when(integrations.validAccessToken(eq(TestContexts.TENANT), eq(IntegrationProvider.LINEAR)))
                 .thenReturn("lin_token");
         WorkflowEventContext ctx =
@@ -51,7 +51,7 @@ class LinearCreateIssueActionTest {
     }
 
     @Test
-    void comTeamKey_resolvePelaKey() {
+    void withTeamKey_resolvesByKey() {
         when(integrations.validAccessToken(eq(TestContexts.TENANT), eq(IntegrationProvider.LINEAR)))
                 .thenReturn("lin_token");
         WorkflowEventContext ctx =
@@ -73,7 +73,7 @@ class LinearCreateIssueActionTest {
     }
 
     @Test
-    void semActionItems_naoChamaProvedorERegistraHonesto() {
+    void noActionItems_doesNotCallProviderAndRecordsHonestly() {
         WorkflowEventContext ctx = TestContexts.context("Kickoff", "Resumo.", List.of());
         String result = action.execute(ctx, Map.of());
         assertThat(result).contains("nenhuma issue criada");

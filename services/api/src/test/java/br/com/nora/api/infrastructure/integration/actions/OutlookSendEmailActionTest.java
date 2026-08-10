@@ -25,7 +25,7 @@ class OutlookSendEmailActionTest {
     private final OutlookSendEmailAction action = new OutlookSendEmailAction(integrations, graph);
 
     @Test
-    void enviaComAssuntoDefaultECorpoRelatorio() {
+    void sendsWithDefaultSubjectAndReportBody() {
         when(integrations.validAccessToken(
                         eq(TestContexts.TENANT), eq(IntegrationProvider.MICROSOFT)))
                 .thenReturn("ms_token");
@@ -44,7 +44,7 @@ class OutlookSendEmailActionTest {
     }
 
     @Test
-    void assuntoECorpoCustomComPlaceholders() {
+    void customSubjectAndBodyWithPlaceholders() {
         when(integrations.validAccessToken(
                         eq(TestContexts.TENANT), eq(IntegrationProvider.MICROSOFT)))
                 .thenReturn("ms_token");
@@ -62,7 +62,7 @@ class OutlookSendEmailActionTest {
     }
 
     @Test
-    void destinatarioObrigatorio() {
+    void recipientRequired() {
         assertThatThrownBy(
                         () -> action.execute(TestContexts.context("R", "S", List.of()), Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)

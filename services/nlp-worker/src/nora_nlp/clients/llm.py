@@ -34,7 +34,7 @@ class LlmClient:
 
     def __init__(self, settings: Settings) -> None:
         if not settings.llm_api_key:
-            raise ValueError("LLM_API_KEY é obrigatória quando USE_LLM_STUB=false.")
+            raise ValueError("LLM_API_KEY is required when USE_LLM_STUB=false.")
         self._client = OpenAI(
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,

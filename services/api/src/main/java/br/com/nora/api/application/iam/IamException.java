@@ -15,23 +15,23 @@ public class IamException extends RuntimeException {
     }
 
     public static IamException groupNotFound() {
-        return new IamException("IAM_GROUP_NOT_FOUND", "Grupo IAM nao encontrado.");
+        return new IamException("IAM_GROUP_NOT_FOUND", "IAM group not found.");
     }
 
     public static IamException policyNotFound() {
-        return new IamException("IAM_POLICY_NOT_FOUND", "Policy IAM nao encontrada.");
+        return new IamException("IAM_POLICY_NOT_FOUND", "IAM policy not found.");
     }
 
     public static IamException nameTaken(String name) {
-        return new IamException("IAM_NAME_TAKEN", "Nome ja em uso: " + name);
+        return new IamException("IAM_NAME_TAKEN", "Name already in use: " + name);
     }
 
     public static IamException invalidDocument(String detail) {
-        return new IamException("IAM_INVALID_DOCUMENT", "Documento de policy invalido: " + detail);
+        return new IamException("IAM_INVALID_DOCUMENT", "Invalid policy document: " + detail);
     }
 
     public static IamException forbidden(String action) {
-        return new IamException("IAM_FORBIDDEN", "Acao nao permitida: " + action);
+        return new IamException("IAM_FORBIDDEN", "Action not allowed: " + action);
     }
 
     /**
@@ -41,7 +41,7 @@ public class IamException extends RuntimeException {
      * offending handler is named in the log, never in the response.
      */
     public static IamException authorizationNotDeclared() {
-        return new IamException("IAM_AUTHORIZATION_NOT_DECLARED", "Acao nao permitida.");
+        return new IamException("IAM_AUTHORIZATION_NOT_DECLARED", "Action not allowed.");
     }
 
     /**
@@ -49,6 +49,6 @@ public class IamException extends RuntimeException {
      * the composite FK violation from V027 -- there is no legitimate path that produces it.
      */
     public static IamException userNotInTenant() {
-        return new IamException("IAM_USER_NOT_IN_TENANT", "Usuario nao pertence a este tenant.");
+        return new IamException("IAM_USER_NOT_IN_TENANT", "User does not belong to this tenant.");
     }
 }

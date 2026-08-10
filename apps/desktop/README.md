@@ -60,14 +60,14 @@ sudo dnf install webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel p
 ## Development
 
 ```bash
-# Na raiz do monorepo
+# At the monorepo root
 cd apps/desktop
 
-# Instalar dependências
+# Install dependencies
 pnpm install
 
-# Rodar em modo dev — NÃO precisa mais buildar o sidecar Python.
-# O primeiro `start_recording` baixa o modelo Whisper (~488 MB no `small`).
+# Run in dev mode — no longer need to build the Python sidecar.
+# The first `start_recording` downloads the Whisper model (~488 MB on `small`).
 pnpm tauri dev
 ```
 
@@ -80,7 +80,7 @@ NORA_WHISPER_MODEL=tiny pnpm tauri dev
 ## Production Build
 
 ```bash
-# Linux / Windows / macOS — backend local (default), sem Python
+# Linux / Windows / macOS — local backend (default), no Python
 pnpm tauri build
 
 # macOS (Apple Silicon)
@@ -105,35 +105,35 @@ pnpm tauri build -- --config src-tauri/tauri.azure.conf.json
 
 ```
 apps/desktop/
-├── src/                    # Frontend React
-│   ├── pages/             # Páginas (recording, meetings, etc)
+├── src/                    # React frontend
+│   ├── pages/             # Pages (recording, meetings, etc)
 │   ├── hooks/             # Custom hooks (useRecording)
-│   ├── lib/               # Utilitários e API client
-│   └── components/        # Componentes reutilizáveis
-├── src-tauri/             # Backend Rust
+│   ├── lib/               # Utilities and API client
+│   └── components/        # Reusable components
+├── src-tauri/             # Rust backend
 │   ├── src/
-│   │   ├── audio_capture.rs      # Captura de áudio (cpal)
+│   │   ├── audio_capture.rs      # Audio capture (cpal)
 │   │   ├── audio_resample.rs     # Resampling (rubato)
-│   │   ├── stt.rs                # Trait SttBackend + escolha do backend
-│   │   ├── stt_local.rs          # STT local: whisper.cpp in-process (DEFAULT)
-│   │   ├── whisper_model.rs      # Download/cache/checksum do modelo GGML
-│   │   ├── stt_sidecar.rs        # STT legado: sidecar Azure (feature stt-azure)
-│   │   ├── speech_token.rs       # Token do Azure (só na feature stt-azure)
-│   │   ├── system_audio.rs       # Áudio do sistema (Linux/Win/macOS)
-│   │   ├── http_proxy.rs         # Proxy HTTP para API
-│   │   ├── secrets.rs            # Armazenamento de secrets
-│   │   └── commands.rs           # Comandos Tauri
-│   ├── tauri.conf.json           # Config base (backend local, sem externalBin)
-│   ├── tauri.azure.conf.json     # Overlay do bundle legado (declara externalBin)
+│   │   ├── stt.rs                # SttBackend trait + backend selection
+│   │   ├── stt_local.rs          # Local STT: whisper.cpp in-process (DEFAULT)
+│   │   ├── whisper_model.rs      # Download/cache/checksum of the GGML model
+│   │   ├── stt_sidecar.rs        # Legacy STT: Azure sidecar (feature stt-azure)
+│   │   ├── speech_token.rs       # Azure token (only in the stt-azure feature)
+│   │   ├── system_audio.rs       # System audio (Linux/Win/macOS)
+│   │   ├── http_proxy.rs         # HTTP proxy for the API
+│   │   ├── secrets.rs            # Secrets storage
+│   │   └── commands.rs           # Tauri commands
+│   ├── tauri.conf.json           # Base config (local backend, no externalBin)
+│   ├── tauri.azure.conf.json     # Legacy bundle overlay (declares externalBin)
 │   └── Cargo.toml
-└── sidecar/               # Sidecar Python (LEGADO — só com o backend azure)
+└── sidecar/               # Python sidecar (LEGACY — only with the azure backend)
     ├── src/
     │   └── nora_stt_sidecar/
     │       ├── transcriber.py    # Azure Speech SDK
-    │       ├── protocol.py       # Protocolo JSON Lines
-    │       └── audio_pipe.py     # Pipe de áudio
+    │       ├── protocol.py       # JSON Lines protocol
+    │       └── audio_pipe.py     # Audio pipe
     ├── tests/                    # pytest
-    ├── build_sidecar.py          # Script PyInstaller (cross-platform)
+    ├── build_sidecar.py          # PyInstaller script (cross-platform)
     ├── sidecar-linux.spec        # PyInstaller spec (Linux)
     ├── sidecar-macos.spec        # PyInstaller spec (macOS)
     └── sidecar-windows.spec      # PyInstaller spec (Windows)
@@ -146,16 +146,16 @@ apps/desktop/
 │                   NORA Desktop App                    │
 │  ┌─────────────┐         ┌────────────────────────┐  │
 │  │  Frontend   │◄───────►│     Rust Backend       │  │
-│  │  (React)    │ evento  │       (Tauri)          │  │
+│  │  (React)    │  event  │       (Tauri)          │  │
 │  └─────────────┘"transcript"└──────────┬───────────┘  │
 │                                        │              │
-│              backend selecionado em runtime           │
+│              backend selected at runtime               │
 │                    ┌───────────────────┴──────┐       │
 │                    ▼                          ▼       │
 │      ┌─────────────────────────┐   ┌──────────────┐  │
 │      │  stt_local.rs (DEFAULT) │   │Sidecar Python│  │
 │      │  whisper.cpp in-process │   │(Azure Speech)│  │
-│      │  offline, sem rede      │   │   LEGADO     │  │
+│      │  offline, no network    │   │   LEGACY     │  │
 │      └─────────────────────────┘   └──────────────┘  │
 └───────────────────────────────────────────────────────┘
 ```
@@ -183,8 +183,8 @@ An unknown value falls back to the default with a warning — it never takes the
 backend that was not compiled degrades to whichever one exists.
 
 ```bash
-cargo build                                          # os dois backends no binário
-cargo build --no-default-features --features stt-local   # local puro, sem Python
+cargo build                                          # both backends in the binary
+cargo build --no-default-features --features stt-local   # pure local, no Python
 ```
 
 ### Speaker attribution: PER TRACK (there is no online diarization)
@@ -301,7 +301,7 @@ monotonic and is the base offset of every event; the `final`s go through a
 See `.env.example` for the full, commented list.
 
 ```bash
-# URL da API NORA (default: http://localhost:8080)
+# NORA API URL (default: http://localhost:8080)
 NORA_API_BASE_URL=http://localhost:8080
 
 # STT
@@ -381,7 +381,7 @@ NORA_WHISPER_MODEL_BASE_URL=https://mirror.interno/whisper.cpp
 To use a local file (skips the download **and** the checksum):
 
 ```bash
-NORA_WHISPER_MODEL_PATH=/caminho/ggml-small.bin
+NORA_WHISPER_MODEL_PATH=/path/ggml-small.bin
 ```
 
 A `.bin` that fails verification is deleted and re-downloaded from scratch — there is no resume.
@@ -398,7 +398,7 @@ In this order:
 4. Turn off system audio capture if you only need your microphone —
    it cuts half the inference load.
 
-If `BURACO de Nms no audio (inferencia atrasada)` shows up in the log, the machine is not
+If `GAP of Nms in the audio (inference lagging)` shows up in the log, the machine is not
 keeping up with real time and audio is being dropped.
 
 ### Sidecar not found

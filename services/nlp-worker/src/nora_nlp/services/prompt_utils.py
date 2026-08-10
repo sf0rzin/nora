@@ -22,13 +22,13 @@ def load_prompt(version: str) -> tuple[str, str]:
     """Loads ``prompts/{version}.md`` and returns the (system, user) sections."""
     path = PROMPTS_DIR / f"{version}.md"
     if not path.exists():
-        raise FileNotFoundError(f"Prompt nao encontrado: {path}")
+        raise FileNotFoundError(f"Prompt not found: {path}")
 
     content = path.read_text(encoding="utf-8")
     system_match = _SYSTEM_RE.search(content)
     user_match = _USER_RE.search(content)
     if not system_match or not user_match:
-        raise ValueError(f"Prompt {version}.md deve conter secoes ## SYSTEM e ## USER")
+        raise ValueError(f"Prompt {version}.md must contain ## SYSTEM and ## USER sections")
 
     return system_match.group(1).strip(), user_match.group(1).strip()
 

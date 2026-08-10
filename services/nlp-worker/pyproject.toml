@@ -1,7 +1,7 @@
 [project]
 name = "nora-nlp-worker"
 version = "0.1.0"
-description = "NORA NLP worker (FastAPI + Pydantic) responsavel por analisar transcricoes."
+description = "NORA NLP worker (FastAPI + Pydantic) responsible for analyzing transcripts."
 requires-python = ">=3.12"
 # ADDITIONAL dependency not declared in `dependencies`:
 #   - nlp-baseline (local path: ../../packages/nlp-baseline) --- ADR 0010.

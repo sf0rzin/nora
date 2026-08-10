@@ -54,8 +54,8 @@ import reactor.netty.http.client.HttpClient;
 public class HttpNlpWorkerClient implements NlpWorkerClient {
 
     private static final Logger LOG = LoggerFactory.getLogger(HttpNlpWorkerClient.class);
-    private static final String DEFAULT_VALUE_PROPOSITION = "(nao informado)";
-    private static final String DEFAULT_COMPANY_NAME = "(empresa nao configurada)";
+    private static final String DEFAULT_VALUE_PROPOSITION = "(not provided)";
+    private static final String DEFAULT_COMPANY_NAME = "(company not configured)";
 
     private final WebClient client;
     private final WebClient liveClient;
@@ -136,12 +136,12 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
                             .block(Duration.ofMillis(Math.max(1_000L, props.getTimeoutMillis())));
         } catch (WebClientResponseException ex) {
             LOG.error(
-                    "NLP worker respondeu erro status={} body={}",
+                    "NLP worker responded with error status={} body={}",
                     ex.getStatusCode(),
                     ex.getResponseBodyAsString());
             throw new AnalysisException.WorkerUnavailable("status " + ex.getStatusCode(), ex);
         } catch (RuntimeException ex) {
-            LOG.error("Falha na chamada ao NLP worker", ex);
+            LOG.error("Failed to call NLP worker", ex);
             throw new AnalysisException.WorkerUnavailable(ex.getMessage(), ex);
         }
         if (response == null) {
@@ -188,12 +188,12 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
             return response;
         } catch (WebClientResponseException ex) {
             LOG.error(
-                    "NLP worker live respondeu erro status={} body={}",
+                    "NLP worker live responded with error status={} body={}",
                     ex.getStatusCode(),
                     ex.getResponseBodyAsString());
             throw new AnalysisException.WorkerUnavailable("live: status " + ex.getStatusCode(), ex);
         } catch (RuntimeException ex) {
-            LOG.error("Falha na chamada ao NLP worker (live)", ex);
+            LOG.error("Failed to call NLP worker (live)", ex);
             throw new AnalysisException.WorkerUnavailable("live: " + ex.getMessage(), ex);
         }
     }
@@ -218,7 +218,7 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
             return response;
         } catch (WebClientResponseException ex) {
             LOG.error(
-                    "NLP worker split respondeu erro status={} body={}",
+                    "NLP worker split responded with error status={} body={}",
                     ex.getStatusCode(),
                     ex.getResponseBodyAsString());
             throw new AnalysisException.WorkerUnavailable(
@@ -226,7 +226,7 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
         } catch (AnalysisException.WorkerUnavailable ex) {
             throw ex;
         } catch (RuntimeException ex) {
-            LOG.error("Falha na chamada ao NLP worker (split)", ex);
+            LOG.error("Failed to call NLP worker (split)", ex);
             throw new AnalysisException.WorkerUnavailable("split: " + ex.getMessage(), ex);
         }
     }

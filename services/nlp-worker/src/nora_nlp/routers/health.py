@@ -32,7 +32,7 @@ def readyz(settings: Settings = Depends(get_settings)) -> dict[str, str]:
     if not settings.use_llm_stub and not settings.llm_api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"code": "NOT_READY", "reason": "LLM_API_KEY ausente com USE_LLM_STUB=false"},
+            detail={"code": "NOT_READY", "reason": "LLM_API_KEY missing with USE_LLM_STUB=false"},
         )
     return {
         "service": "nora-nlp-worker",

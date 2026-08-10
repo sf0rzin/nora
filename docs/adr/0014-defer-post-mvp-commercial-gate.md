@@ -72,7 +72,7 @@ The `mcp/{calendar,tasks,crm}/` folder is removed from the monorepo root (or mov
 
 1. **`docs/product/backlog.md`** updated: real status + an explicit "DEFERRED — reactivate when X" mark on the 13 listed USs
 2. **`docs/product/roadmap.md`** describes Sub-phase 1.11 and 1.12 with declared scope; sub-phases 1.13+ remain open pending traction
-3. The **`arquiteto-nora` skill** already has the anti-pattern "Accepting scope creep ('since I'm in here anyway, I'll add Y') — declared scope is executed scope" — an explicit reference to this ADR
+3. The **`nora-architect` skill** already has the anti-pattern "Accepting scope creep ('since I'm in here anyway, I'll add Y') — declared scope is executed scope" — an explicit reference to this ADR
 
 ## History
 

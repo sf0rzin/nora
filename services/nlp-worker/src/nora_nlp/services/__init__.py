@@ -1,1 +1,1 @@
-"""Pacote de servicos do worker NLP."""
+"""NLP worker's services package."""

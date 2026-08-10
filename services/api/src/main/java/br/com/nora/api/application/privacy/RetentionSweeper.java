@@ -56,13 +56,13 @@ public class RetentionSweeper {
             try {
                 total += privacy.purgeOlderThan(tenantId, cutoff);
             } catch (RuntimeException ex) {
-                LOG.warn("Retenção falhou pro tenant={}: {}", tenantId, ex.getMessage());
+                LOG.warn("Retention failed for tenant={}: {}", tenantId, ex.getMessage());
             } finally {
                 rlsContext.clear();
             }
         }
         LOG.info(
-                "Retenção concluída: {} meeting(s) purgado(s) em {} tenant(s) (corte={} dias)",
+                "Retention completed: {} meeting(s) purged across {} tenant(s) (cutoff={} days)",
                 total,
                 tenantIds.size(),
                 retentionDays);

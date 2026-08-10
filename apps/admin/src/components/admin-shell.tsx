@@ -8,8 +8,8 @@ import type { Operator } from "@/lib/operator";
 
 const NAV = [
   { href: "/", label: "Visão geral" },
-  { href: "/modelos", label: "Modelos & IA" },
-  { href: "/telemetria", label: "Telemetria" },
+  { href: "/models", label: "Modelos & IA" },
+  { href: "/telemetry", label: "Telemetria" },
 ];
 
 export function AdminShell({ operator, children }: { operator: Operator; children: ReactNode }) {

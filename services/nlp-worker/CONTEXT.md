@@ -68,11 +68,16 @@ Complete pipeline:
 ```
 
 ### `summary` field in Markdown
+
+The headings below are quoted VERBATIM: the prompt template makes the model emit them in
+pt-BR, and any consumer that parses the summary matches on these exact strings. They are
+data, not prose — changing them here would only make this document wrong.
+
 - Objective paragraph.
-- `## Decisões` — list.
-- `## Próximos Passos` — list with `-`.
+- `## Decisões` — decisions, as a list.
+- `## Próximos Passos` — next steps, as a `-` list.
 - `## Observações` — relevant notes.
-- Bold `**texto**` for highlights.
+- Bold (`**...**`) for highlights.
 
 ### `participants` field (US13)
 - `name` — the participant's name.
@@ -87,14 +92,14 @@ Complete pipeline:
 WORKER_PORT=8001
 LOG_LEVEL=info
 
-# Provider de LLM agnóstico (ADR 0004). Default: OpenAI direto.
+# Provider-agnostic LLM (ADR 0004). Default: OpenAI direct.
 LLM_PROVIDER=openai
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_API_KEY=sk-...
 LLM_MODEL=gpt-4o-mini
 LLM_TEMPERATURE=0.2
 
-USE_LLM_STUB=false   # true para stub (default em CI/dev)
+USE_LLM_STUB=false   # true for stub (default in CI/dev)
 ```
 
 ### Switching provider
@@ -112,23 +117,23 @@ USE_LLM_STUB=false   # true para stub (default em CI/dev)
 services/nlp-worker/src/nora_nlp/
 ├── __init__.py
 ├── main.py                    # FastAPI app
-├── models.py                  # Pydantic schemas (inclui Participant)
+├── models.py                  # Pydantic schemas (includes Participant)
 ├── settings.py                # env-based config (LLM_*)
 ├── clients/
 │   ├── __init__.py
 │   └── llm.py                 # LlmClient agnostic + JSON schema builder
 ├── prompts/
 │   ├── README.md
-│   ├── meeting-analysis-v1.md # Prompt com seções SYSTEM/USER
-│   └── pii-shield-v1.md       # Prompt fallback para PII complexo
+│   ├── meeting-analysis-v1.md # Prompt with SYSTEM/USER sections
+│   └── pii-shield-v1.md       # Prompt fallback for complex PII
 ├── routers/
 │   ├── __init__.py
-│   ├── analyze.py             # POST /analyze (stub ou LLM)
+│   ├── analyze.py             # POST /analyze (stub or LLM)
 │   └── health.py              # GET /healthz
 └── services/
     ├── __init__.py
     ├── pii_shield.py          # Regex PII redaction
-    ├── stub_analyzer.py       # Análise heurística determinística
+    ├── stub_analyzer.py       # Deterministic heuristic analysis
     └── llm_analyzer.py        # Pipeline LLM (provider agnostic)
 ```
 
@@ -176,16 +181,16 @@ cd services/nlp-worker
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Testes
+# Tests
 python -m pytest tests/ -v
 
 # Lint + format
 ruff check src/ tests/
 ruff format --check src/ tests/
 
-# Rodar localmente (stub)
+# Run locally (stub)
 USE_LLM_STUB=true python -m nora_nlp.main
 
-# Rodar localmente (LLM real, OpenAI direto)
+# Run locally (real LLM, OpenAI direct)
 USE_LLM_STUB=false LLM_API_KEY=sk-... python -m nora_nlp.main
 ```

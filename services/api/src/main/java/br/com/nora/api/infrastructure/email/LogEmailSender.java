@@ -25,8 +25,8 @@ public class LogEmailSender implements EmailSender {
         // Token present in verificationLink: we do not log the full URL to avoid exposing
         // credentials in centralized logs (Application Insights / Log Analytics). LGPD + ADR 0012.
         LOG.info(
-                "[email/dev] verification -> to={} name={} (link suprimido; setar RESEND_API_KEY"
-                        + " para envio real)",
+                "[email/dev] verification -> to={} name={} (link suppressed; set RESEND_API_KEY"
+                        + " for real sending)",
                 toEmail,
                 displayName);
     }
@@ -36,8 +36,8 @@ public class LogEmailSender implements EmailSender {
         // Token present in resetLink: we do not log the full URL to avoid exposing credentials in
         // centralized logs (Application Insights / Log Analytics). LGPD + ADR 0012.
         LOG.info(
-                "[email/dev] password-reset -> to={} name={} (link suprimido; setar"
-                        + " RESEND_API_KEY para envio real)",
+                "[email/dev] password-reset -> to={} name={} (link suppressed; set"
+                        + " RESEND_API_KEY for real sending)",
                 toEmail,
                 displayName);
     }
@@ -46,8 +46,8 @@ public class LogEmailSender implements EmailSender {
     public void sendSignupAttemptOnExistingAccount(
             String toEmail, String displayName, String signInUrl) {
         LOG.info(
-                "[email/dev] signup-attempt-on-existing-account -> to={} name={} (setar"
-                        + " RESEND_API_KEY para envio real)",
+                "[email/dev] signup-attempt-on-existing-account -> to={} name={} (set"
+                        + " RESEND_API_KEY for real delivery)",
                 toEmail,
                 displayName);
     }
@@ -72,8 +72,8 @@ public class LogEmailSender implements EmailSender {
     public void sendWorkflowNotification(String toEmail, String subject, String htmlBody) {
         // Body suppressed: may contain the meeting summary (business data) — does not go to logs.
         LOG.info(
-                "[email/dev] workflow-notification -> to={} subject={} (corpo suprimido; setar"
-                        + " RESEND_API_KEY para envio real)",
+                "[email/dev] workflow-notification -> to={} subject={} (body suppressed; set"
+                        + " RESEND_API_KEY for real sending)",
                 toEmail,
                 subject);
     }

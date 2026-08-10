@@ -462,16 +462,16 @@ mod platform {
                 .ok_or_else(|| {
                     if macos_supports_sck_audio() {
                         format!(
-                            "Device de áudio do sistema '{}' não encontrado. \
-                             Instale o BlackHole (https://existential.audio/blackhole/) \
-                             e roteie a saída do sistema através dele. \
-                             Suporte nativo via ScreenCaptureKit está em desenvolvimento (#15).",
+                            "System audio device '{}' not found. \
+                             Install BlackHole (https://existential.audio/blackhole/) \
+                             and route the system output through it. \
+                             Native support via ScreenCaptureKit is in development (#15).",
                             source
                         )
                     } else {
                         format!(
-                            "Device '{}' não encontrado. Em macOS < 13, a captura \
-                             de áudio do sistema requer instalar o BlackHole \
+                            "Device '{}' not found. On macOS < 13, system audio \
+                             capture requires installing BlackHole \
                              (https://existential.audio/blackhole/).",
                             source
                         )
@@ -488,7 +488,7 @@ mod platform {
                 .collect();
             if supported.is_empty() {
                 return Err(format!(
-                    "Device '{}' não expõe configuração F32 suportada",
+                    "Device '{}' does not expose a supported F32 configuration",
                     device_name
                 ));
             }

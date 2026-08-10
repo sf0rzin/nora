@@ -76,7 +76,7 @@ class PrivacyFlowIntegrationTest {
 
         // The transcript (with raw PII) exists before the erasure.
         assertThat(transcripts.findByMeetingAndTenant(UUID.fromString(meetingId), tenantId))
-                .as("transcript deveria existir antes do erasure")
+                .as("transcript should exist before the erasure")
                 .isPresent();
 
         // Right to be forgotten → 204.
@@ -91,7 +91,7 @@ class PrivacyFlowIntegrationTest {
 
         // The cascade physically purged the transcript — the PII at rest no longer exists.
         assertThat(transcripts.findByMeetingAndTenant(UUID.fromString(meetingId), tenantId))
-                .as("transcript (raw PII) deveria ter sido purgado pelo cascade")
+                .as("transcript (raw PII) should have been purged by the cascade")
                 .isEmpty();
     }
 

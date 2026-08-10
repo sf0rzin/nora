@@ -18,7 +18,7 @@
  *
  * The card also hooks into NORA Flows: if the user has an active flow with
  * the `meeting.analysis_completed` trigger, we warn that the flows will fire
- * when the analysis finishes; otherwise, we suggest creating one at /fluxos.
+ * when the analysis finishes; otherwise, we suggest creating one at /flows.
  *
  * Timeout: 5 minutes (150 polls of 2s). After that we show a notice with a
  * manual link — we do not stop the analysis in the backend, only the polling.
@@ -1460,7 +1460,7 @@ function FlowsHintNote({ hint, plural = false }: { hint: FlowsHint; plural?: boo
           : "Para receber um aviso ao fim da análise, crie um fluxo com o gatilho "}
         &quot;Reunião analisada&quot; em{" "}
         <Link
-          href={"/fluxos" as Route}
+          href={"/flows" as Route}
           style={{ color: "var(--accent-ink)", textDecoration: "underline", textUnderlineOffset: 2 }}
         >
           Fluxos

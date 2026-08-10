@@ -21,13 +21,13 @@ class JjwtJwtIssuerTest {
     void rejectsInsecureDefaultOutsideLocalOrTest() {
         assertThatThrownBy(() -> new JjwtJwtIssuer(INSECURE_DEFAULT, "prod"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("placeholder padrao");
+                .hasMessageContaining("default placeholder value");
         assertThatThrownBy(() -> new JjwtJwtIssuer(INSECURE_DEFAULT, "staging"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("placeholder padrao");
+                .hasMessageContaining("default placeholder value");
         assertThatThrownBy(() -> new JjwtJwtIssuer(INSECURE_DEFAULT, null))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("placeholder padrao");
+                .hasMessageContaining("default placeholder value");
     }
 
     @Test

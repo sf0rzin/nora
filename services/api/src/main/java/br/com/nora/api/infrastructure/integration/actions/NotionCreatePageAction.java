@@ -12,7 +12,7 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * NORA Flows "Criar página no Notion" action — REAL page as a child of {@code parentPageId}
+ * NORA Flows "Create page in Notion" action — REAL page as a child of {@code parentPageId}
  * (required; the parent page must be shared with the integration in Notion). Content: meeting title
  * + "Resumo" heading + summary paragraph + bulleted list of the action items.
  *
@@ -67,8 +67,8 @@ public class NotionCreatePageAction implements ActionExecutor {
         String parentPageId = WorkflowActionTemplates.stringParam(params, "parentPageId");
         if (parentPageId == null || parentPageId.isBlank()) {
             throw new IllegalArgumentException(
-                    "página pai obrigatória em params.parentPageId (id de uma página do Notion"
-                            + " compartilhada com a integração)");
+                    "parent page required in params.parentPageId (id of a Notion page shared"
+                            + " with the integration)");
         }
         return parentPageId.trim();
     }
