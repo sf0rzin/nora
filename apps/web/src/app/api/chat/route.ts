@@ -36,6 +36,71 @@ const API_BASE_URL = (
 ).replace(/\/$/, "");
 const PLATFORM_TOKEN = process.env.NORA_PLATFORM_INTERNAL_TOKEN ?? "";
 
+/**
+ * Input budget of a single request. The history filter below caps the NUMBER of
+ * messages (`.slice(-16)`); these two cap their SIZE, which is what the provider
+ * actually bills. Without them one accepted request can carry an arbitrarily
+ * large prompt to the paid endpoint.
+ *
+ * 8k characters is roughly 2k tokens — an order of magnitude above anything a
+ * person types into the chat box — and 24k across the whole retained history
+ * still fits a long conversation while keeping the worst case bounded.
+ */
+const MAX_MESSAGE_CHARS = 8_000;
+const MAX_HISTORY_CHARS = 24_000;
+
+/**
+ * Request budget per authenticated principal: a fixed window of
+ * RATE_LIMIT_WINDOW_MS allowing RATE_LIMIT_MAX requests.
+ *
+ * Scope, stated honestly: this counter lives in the memory of a SINGLE Next.js
+ * process. It resets on restart/deploy and is not shared between replicas, so
+ * with N replicas the effective ceiling is N × RATE_LIMIT_MAX. It makes the
+ * endpoint expensive to hammer from one account; it is not a spend guarantee.
+ * The durable version belongs in the backend, next to AuthRateLimiter, where a
+ * single decision covers the whole deployment and survives a restart.
+ */
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 20;
+/** Number of tracked principals above which expired buckets get swept. */
+const RATE_LIMIT_SWEEP_AT = 5_000;
+
+const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
+
+/**
+ * Fixed-window counter for one principal. Returns how long the caller has to wait
+ * when the budget for the current window is already spent.
+ */
+function consumeRateLimitSlot(principal: string): {
+  allowed: boolean;
+  retryAfterSeconds: number;
+} {
+  const now = Date.now();
+  const bucket = rateLimitBuckets.get(principal);
+
+  if (bucket && now < bucket.resetAt) {
+    if (bucket.count >= RATE_LIMIT_MAX) {
+      return {
+        allowed: false,
+        retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+      };
+    }
+    bucket.count += 1;
+    return { allowed: true, retryAfterSeconds: 0 };
+  }
+
+  // Expired buckets are only dropped here, which keeps the map from growing with
+  // every principal that ever called the route. Buckets still inside their window
+  // are kept — the live set is bounded by the number of signed-in users.
+  if (rateLimitBuckets.size >= RATE_LIMIT_SWEEP_AT) {
+    for (const [key, tracked] of rateLimitBuckets) {
+      if (now >= tracked.resetAt) rateLimitBuckets.delete(key);
+    }
+  }
+  rateLimitBuckets.set(principal, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+  return { allowed: true, retryAfterSeconds: 0 };
+}
+
 type Role = "system" | "user" | "assistant";
 interface ChatMessage {
   role: Role;
@@ -107,18 +172,22 @@ function resolveKey(provider: string): string {
  * request when this returns null, BEFORE any paid call to the LLM provider. A network
  * failure also returns null — fail closed, because the cost of letting it through is burning
  * AI budget on someone who is not logged in.
+ *
+ * <p>Returns the userId as well as the tenantId: the tenant is what usage telemetry is
+ * attributed to, the user is what the request budget is keyed on, so that one member cannot
+ * spend the whole workspace's allowance.
  */
 async function resolveSession(
   cookieHeader: string,
-): Promise<{ tenantId: string | null } | null> {
+): Promise<{ tenantId: string | null; userId: string | null } | null> {
   try {
     const r = await fetch(`${API_BASE_URL}/auth/me`, {
       headers: { Cookie: cookieHeader, Accept: "application/json" },
       cache: "no-store",
     });
     if (!r.ok) return null;
-    const me = (await r.json()) as { tenantId?: string };
-    return { tenantId: me.tenantId ?? null };
+    const me = (await r.json()) as { tenantId?: string; userId?: string };
+    return { tenantId: me.tenantId ?? null, userId: me.userId ?? null };
   } catch {
     return null;
   }
@@ -346,8 +415,9 @@ export async function POST(req: Request): Promise<Response> {
   //
   // Testing only the PRESENCE of the `nora_access` cookie authenticated nothing — the value was
   // never checked, so `Cookie: nora_access=x` passed and the request went all the way to the paid
-  // fetch to the provider with the server key. And there is no rate limit in this app, nor does
-  // the middleware cover /api/* (the matcher lists pages only), so the route was an open LLM proxy.
+  // fetch to the provider with the server key. The middleware does not cover /api/* either (the
+  // matcher lists pages only), so this route gates itself: session first, then the per-principal
+  // request budget and the input size caps below, all of them before the provider is contacted.
   const cookieHeader = (await cookies())
     .getAll()
     .map((c) => `${c.name}=${c.value}`)
@@ -359,6 +429,26 @@ export async function POST(req: Request): Promise<Response> {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  // Per-principal request budget. Keyed on the user, falling back to the tenant and then to a
+  // shared bucket, so a session the backend describes without ids still consumes a slot instead
+  // of skipping the control.
+  const principal = session.userId ?? session.tenantId ?? "unknown";
+  const rateLimit = consumeRateLimitSlot(principal);
+  if (!rateLimit.allowed) {
+    return new Response(
+      JSON.stringify({
+        error: "Muitas mensagens em pouco tempo. Aguarde alguns segundos e tente de novo.",
+      }),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": String(rateLimit.retryAfterSeconds),
+        },
+      },
+    );
   }
 
   let body: { messages?: ChatMessage[] };
@@ -380,6 +470,18 @@ export async function POST(req: Request): Promise<Response> {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  // Size gate: the filter above bounds how MANY messages are kept, this bounds how big they are.
+  // Both caps are needed — 16 messages of unbounded length is still an unbounded prompt.
+  const historyChars = history.reduce((total, m) => total + m.content.length, 0);
+  const oversized =
+    history.some((m) => m.content.length > MAX_MESSAGE_CHARS) || historyChars > MAX_HISTORY_CHARS;
+  if (oversized) {
+    return new Response(
+      JSON.stringify({ error: "Mensagem muito longa. Reduza o texto e tente de novo." }),
+      { status: 413, headers: { "Content-Type": "application/json" } },
+    );
   }
 
   const cfg = await resolveChatModel();
