@@ -161,7 +161,7 @@ pub fn configured_backend() -> SttBackendKind {
             "azure" | "sidecar" => SttBackendKind::Azure,
             other => {
                 eprintln!(
-                    "[stt] NORA_STT_BACKEND desconhecido: {:?} — usando {}",
+                    "[stt] NORA_STT_BACKEND unknown: {:?} — using {}",
                     other,
                     default_backend().as_str()
                 );
@@ -177,13 +177,13 @@ pub fn configured_backend() -> SttBackendKind {
         };
         if !available {
             eprintln!(
-                "[stt] backend {:?} nao foi compilado neste binario — caindo pro default",
+                "[stt] backend {:?} was not compiled into this binary — falling back to default",
                 resolved.as_str()
             );
             return default_backend();
         }
 
-        eprintln!("[stt] backend ativo: {}", resolved.as_str());
+        eprintln!("[stt] active backend: {}", resolved.as_str());
         resolved
     })
 }
@@ -211,19 +211,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mic_nao_gera_entrada_no_speaker_map() {
+    fn mic_does_not_generate_speaker_map_entry() {
         assert_eq!(speaker_id_for_track("mic"), None);
     }
 
     #[test]
-    fn system_gera_id_estavel_e_nao_vazio() {
+    fn system_generates_stable_nonempty_id() {
         // Stability is the point: two events from the same track have to land in
         // the SAME SpeakerMap bucket, else the overlay lists N phantom speakers.
         let a = speaker_id_for_track("system");
         let b = speaker_id_for_track("system");
         assert_eq!(a, b);
         assert_eq!(a.as_deref(), Some(SYSTEM_SPEAKER_ID));
-        assert!(!SYSTEM_SPEAKER_ID.is_empty(), "id vazio e falsy no JS e some do detectedSpeakers");
+        assert!(!SYSTEM_SPEAKER_ID.is_empty(), "empty id is falsy in JS and disappears from detectedSpeakers");
     }
 
     #[test]

@@ -261,7 +261,7 @@ class MeetingServiceTest {
                 .isInstanceOf(IllegalStateException.class);
 
         assertThat(meetingRepo.claimCalls)
-                .as("nada deve ter sido reclamado quando a autorizacao falha")
+                .as("nothing should have been claimed when authorization fails")
                 .isZero();
         assertThat(meetingRepo.findByIdAndTenant(m.id(), tenant).orElseThrow().processingStatus())
                 .isEqualTo(ProcessingStatus.COMPLETED);

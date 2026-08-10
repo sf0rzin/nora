@@ -252,7 +252,7 @@ public final class PolicyEvaluator {
         return Optional.of(anyAllow);
     }
 
-    /** How a resource pattern relates to the set {@code prefix + <qualquer id>}. */
+    /** How a resource pattern relates to the set {@code prefix + <any id>}. */
     private enum Coverage {
         /** Matches EVERY member of the set. */
         ALL,

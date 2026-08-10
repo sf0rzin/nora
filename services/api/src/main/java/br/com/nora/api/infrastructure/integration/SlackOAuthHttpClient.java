@@ -57,11 +57,13 @@ public class SlackOAuthHttpClient implements SlackOAuthClient {
             JsonNode json = mapper.readTree(body == null ? "{}" : body);
             if (!json.path("ok").asBoolean(false)) {
                 throw new IntegrationException.ProviderError(
-                        "slack", "oauth: " + json.path("error").asText("resposta sem ok"));
+                        "slack",
+                        "oauth: " + json.path("error").asText("response with no ok field"));
             }
             String botToken = json.path("access_token").asText(null);
             if (botToken == null) {
-                throw new IntegrationException.ProviderError("slack", "resposta sem access_token");
+                throw new IntegrationException.ProviderError(
+                        "slack", "response with no access_token");
             }
             return new TokenResponse(
                     botToken,

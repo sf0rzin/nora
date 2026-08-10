@@ -28,7 +28,7 @@ class TelegramSendMessageActionTest {
             new TelegramSendMessageAction(integrations, telegram);
 
     @Test
-    void enviaResumoFormatadoProChatPareado() {
+    void sendsFormattedSummaryToPairedChat() {
         when(integrations.validAccessToken(
                         eq(TestContexts.TENANT), eq(IntegrationProvider.TELEGRAM)))
                 .thenReturn("123456789");
@@ -53,7 +53,7 @@ class TelegramSendMessageActionTest {
     }
 
     @Test
-    void limitaEm5ProximosPassosComContadorDoResto() {
+    void limitsToFiveNextStepsWithRemainderCount() {
         List<WorkflowEventContext.ActionItemView> items = new ArrayList<>();
         for (int i = 1; i <= 7; i++) {
             items.add(new WorkflowEventContext.ActionItemView("Item " + i, null, "LOW", null));
@@ -68,7 +68,7 @@ class TelegramSendMessageActionTest {
 
     /** Dynamic content escaped — parse_mode HTML would break with a raw <. */
     @Test
-    void escapaHtmlDoConteudo() {
+    void escapesHtmlContent() {
         String html =
                 TelegramSendMessageAction.buildHtml(
                         TestContexts.context(

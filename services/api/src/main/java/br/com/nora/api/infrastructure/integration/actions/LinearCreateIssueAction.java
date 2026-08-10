@@ -10,7 +10,7 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * NORA Flows "Criar issues no Linear" action — REAL issues via GraphQL with the connected account,
+ * NORA Flows "Create issues in Linear" action — REAL issues via GraphQL with the connected account,
  * one per meeting action item (title = item title; description = meeting + assignee + link).
  * Optional {@code teamKey} param (e.g. {@code ENG}); without it, uses the workspace's first team.
  *

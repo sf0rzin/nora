@@ -18,10 +18,10 @@ The API automatically reads `services/api/.env.local` when the `local` profile i
 ## Commands
 
 ```bash
-mvn spring-boot:run        # roda em http://localhost:8080
-mvn verify                 # build + spotless + checkstyle + testes + jacoco
-mvn spotless:apply         # formata o codigo
-mvn test                   # apenas testes (Testcontainers requer Docker)
+mvn spring-boot:run        # runs at http://localhost:8080
+mvn verify                 # build + spotless + checkstyle + tests + jacoco
+mvn spotless:apply         # formats the code
+mvn test                   # tests only (Testcontainers requires Docker)
 ```
 
 ## DDD structure

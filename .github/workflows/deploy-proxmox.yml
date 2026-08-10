@@ -70,11 +70,11 @@ on:
   workflow_dispatch:
     inputs:
       sha:
-        description: 'SHA completo a promover (vazio = HEAD da main). Use pra ROLLBACK num SHA anterior que já tem imagens no GHCR.'
+        description: 'Full SHA to promote (empty = HEAD of main). Use it to ROLL BACK to an earlier SHA that already has images in GHCR.'
         required: false
         default: ''
       confirm:
-        description: 'Digite PROMOTE para confirmar'
+        description: 'Type PROMOTE to confirm'
         required: true
         default: ''
 
@@ -99,18 +99,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Guard — confirmação explícita (workflow_dispatch)
+      - name: Guard — explicit confirmation (workflow_dispatch)
         if: github.event_name == 'workflow_dispatch'
         env:
           CONFIRM: ${{ inputs.confirm }}
         run: |
           set -euo pipefail
           if [ "$CONFIRM" != "PROMOTE" ]; then
-            echo "::error::Confirmação inválida. Digite exatamente PROMOTE."
+            echo "::error::Invalid confirmation. Type exactly PROMOTE."
             exit 1
           fi
 
-      - name: Resolve o SHA a promover
+      - name: Resolve the SHA to promote
         id: target
         env:
           EVENT: ${{ github.event_name }}
@@ -124,7 +124,7 @@ jobs:
             sha="$RUN_SHA"
           fi
           if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$'; then
-            echo "::error::SHA inválido: '$sha' (esperado 40 hex chars)."
+            echo "::error::Invalid SHA: '$sha' (expected 40 hex chars)."
             exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -140,23 +140,23 @@ jobs:
       # Defense against promoting a commit that never went through main's gate: we only
       # announce a SHA that is an ancestor of refs/heads/main. Without this, a dispatch with
       # a SHA from any branch would become a production pointer.
-      - name: Guard — SHA pertence à main
+      - name: Guard — the SHA belongs to main
         env:
           SHA: ${{ steps.target.outputs.sha }}
         run: |
           set -euo pipefail
           git fetch --quiet origin main
           if ! git merge-base --is-ancestor "$SHA" origin/main; then
-            echo "::error::$SHA não é ancestral de origin/main — recusado."
-            echo "Só SHAs que passaram pelo ci-gate da main podem virar release pointer (ADR 0027)."
+            echo "::error::$SHA is not an ancestor of origin/main — refused."
+            echo "Only SHAs that went through main's ci-gate can become a release pointer (ADR 0027)."
             exit 1
           fi
-          echo "OK — $SHA está em main."
+          echo "OK — $SHA is on main."
 
       # Downloads the pointer produced by build-images from the SAME run. On workflow_dispatch
       # there is no associated run, so the download is best-effort: the promote continues and
       # the agent resolves the tags by SHA (the images already exist in GHCR — it is a rollback).
-      - name: Baixa o artefato do build-images
+      - name: Download the build-images artifact
         id: fetch
         if: github.event_name == 'workflow_run'
         continue-on-error: true
@@ -179,7 +179,7 @@ jobs:
             # No artifact (dispatch/rollback): we emit a FULL pointer — all four
             # services on the same tag. That is only safe because the rollback points at a SHA
             # that was ALREADY built; the next step confirms it in GHCR before publishing.
-            echo "Sem artefato — gerando pointer full pro SHA $SHORT (modo rollback)."
+            echo "No artifact — generating a full pointer for SHA $SHORT (rollback mode)."
             jq -n --arg sha "$SHA" --arg short "$SHORT" \
               --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               '{schema:"nora.release-pointer/v1", sha:$sha, short_sha:$short, ref:"main",
@@ -201,7 +201,7 @@ jobs:
       # It is the validation the pull model demands: the host trusts the pointer, so whoever
       # publishes has to guarantee it resolves. A missing manifest here becomes an error in
       # CI; there it would become a half-up stack (some services new, others not).
-      - name: Verifica os manifests no GHCR
+      - name: Check the manifests in GHCR
         if: steps.pointer.outputs.count != '0'
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -220,8 +220,8 @@ jobs:
               fail=1
             fi
           done < <(jq -r '.services[].image' pointer/release.json)
-          [ "$fail" -eq 0 ] || { echo "::error::Pointer recusado — imagem faltando."; exit 1; }
-          echo "Todos os manifests existem."
+          [ "$fail" -eq 0 ] || { echo "::error::Pointer refused — image missing."; exit 1; }
+          echo "Every manifest exists."
 
       # Two tags, different roles:
       #   release/prod/<short>  IMMUTABLE — the rollout history, the rollback target.
@@ -240,7 +240,7 @@ jobs:
 
           immutable="release/prod/${SHORT}"
           if git ls-remote --exit-code --tags origin "refs/tags/${immutable}" > /dev/null 2>&1; then
-            echo "Tag ${immutable} já existe — mantida (imutável)."
+            echo "Tag ${immutable} already exists — kept (immutable)."
           else
             git tag -a "$immutable" "$SHA" -m "NORA release pointer ${SHORT} (run ${GITHUB_RUN_ID})"
             git push origin "refs/tags/${immutable}"
@@ -252,7 +252,7 @@ jobs:
           git push --force origin "refs/tags/release/prod/current"
           echo "release/prod/current -> ${SHORT}"
 
-      - name: Republica o pointer como artefato de longa duração
+      - name: Republish the pointer as a long-lived artifact
         if: steps.pointer.outputs.count != '0'
         uses: actions/upload-artifact@v4
         with:
@@ -266,7 +266,7 @@ jobs:
       # is published by the Cloudflare Tunnel (egress-only): still no inbound port.
       # If it fails, it does NOT fail the job: the pointer (tag) is already published and the
       # agent's polling converges on its own. Notification is latency, not correctness.
-      - name: Notifica o agente (webhook via Cloudflare Tunnel — opcional)
+      - name: Notify the agent (webhook via Cloudflare Tunnel — optional)
         if: steps.pointer.outputs.count != '0'
         continue-on-error: true
         env:
@@ -277,7 +277,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${WEBHOOK_URL:-}" ]; then
-            echo "NORA_DEPLOY_WEBHOOK_URL não configurado — o agente vai pegar pelo polling."
+            echo "NORA_DEPLOY_WEBHOOK_URL not configured — the agent will pick it up by polling."
             exit 0
           fi
           payload=$(jq -nc --arg sha "$SHA" --arg short "$SHORT" \
@@ -298,7 +298,7 @@ jobs:
             -d "$payload" || echo "000")
           echo "webhook HTTP $code"
           if [ "$code" != "200" ] && [ "$code" != "202" ] && [ "$code" != "204" ]; then
-            echo "::warning::Webhook não confirmou (HTTP $code). Pointer publicado mesmo assim; o agente converge por polling."
+            echo "::warning::Webhook not confirmed (HTTP $code). The pointer was published anyway; the agent converges by polling."
             head -c 500 /tmp/hook.out || true
           fi
 
@@ -313,13 +313,13 @@ jobs:
             echo "## Release pointer — \`$SHORT\`"
             echo ""
             if [ "${COUNT:-0}" = "0" ]; then
-              echo "_Pointer vazio: nenhum serviço mudou neste SHA. Nada publicado, nada a fazer no host._"
+              echo "_Empty pointer: no service changed at this SHA. Nothing published, nothing to do on the host._"
             else
               echo "| Item | Valor |"
               echo "|---|---|"
               echo "| SHA | \`$SHA\` |"
-              echo "| Tag imutável | \`release/prod/$SHORT\` |"
-              echo "| Ponteiro móvel | \`release/prod/current\` → \`$SHORT\` |"
+              echo "| Immutable tag | \`release/prod/$SHORT\` |"
+              echo "| Moving pointer | \`release/prod/current\` → \`$SHORT\` |"
               echo ""
               echo "### O host aplica"
               echo ""
@@ -327,19 +327,19 @@ jobs:
               cat pointer/deploy.env 2>/dev/null || jq -r '.services[] | "\(.compose_var)=\(.tag)"' pointer/release.json
               echo '```'
               echo ""
-              echo "### Conferir/forçar no host"
+              echo "### Check/force on the host"
               echo ""
               echo '```bash'
-              echo "git ls-remote origin refs/tags/release/prod/current   # o que o agente vê"
-              echo "sudo systemctl start nora-pull-agent.service          # reconcilia agora"
+              echo "git ls-remote origin refs/tags/release/prod/current   # what the agent sees"
+              echo "sudo systemctl start nora-pull-agent.service          # reconcile now"
               echo '```'
               echo ""
               echo "### Rollback"
               echo ""
-              echo "Re-rodar este workflow em \`workflow_dispatch\` com o SHA anterior e \`PROMOTE\`."
-              echo "As imagens antigas continuam no GHCR sob a tag \`sha-<short>\` delas —"
-              echo "é o ganho da tag imutável: rollback é re-apontar, não rebuildar."
+              echo "Re-run this workflow on \`workflow_dispatch\` with the earlier SHA and \`PROMOTE\`."
+              echo "The old images stay in GHCR under their own \`sha-<short>\` tag —"
+              echo "that is the point of the immutable tag: a rollback re-points, it does not rebuild."
             fi
             echo ""
-            echo "> Pull, não push: nenhum step aqui tem credencial do host."
+            echo "> Pull, not push: no step here holds a host credential."
           } >> "$GITHUB_STEP_SUMMARY"

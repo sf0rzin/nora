@@ -87,7 +87,7 @@ class RagSearchIntegrationTest {
                 read(authGet("/meetings/search?q=" + enc("renegociar o preço do contrato"), token));
         assertThat(res.get("items")).isNotEmpty();
         assertThat(res.get("items").get(0).get("id").asText())
-                .as("a reunião de renovação/preço deve rankear primeiro")
+                .as("the renewal/pricing meeting should rank first")
                 .isEqualTo(idA.toString());
     }
 

@@ -139,7 +139,7 @@ def extract_baseline_terms(transcript: str, *, top_n: int = 10) -> list[Baseline
         )
         baseline.fit(chunks)
     except ValueError as exc:
-        logger.warning("TF-IDF baseline nao gerou vocabulario util: %s", exc)
+        logger.warning("TF-IDF baseline produced no useful vocabulary: %s", exc)
         return []
 
     # Global top (mean of the scores across the chunks). Makes sense here

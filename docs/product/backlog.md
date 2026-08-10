@@ -172,7 +172,7 @@ Work that was not in the original MoSCoW but came in via sub-phases or an archit
 | `meeting_attributes` JSONB + GIN index | V007 + V008 | ADR 0007 | DONE (arbitrary attributes for IAM conditions) |
 | Meeting reprocessing | #46 | — | DONE (`POST /meetings/{id}/reprocess`) |
 | CORS configurable per env | #42 | — | DONE (`CORS_ALLOWED_ORIGINS` in `application.yml`) |
-| `arquiteto-nora` skill for Claude Code | #53 | — | DONE (in `.claude/skills/`) |
+| `nora-architect` skill for Claude Code | #53 | — | DONE (in `.claude/skills/`) |
 
 ### Post-1.10 hardening wave (audit follow-ups #114–#138)
 

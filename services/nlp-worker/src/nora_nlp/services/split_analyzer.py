@@ -61,7 +61,7 @@ _PREVIEW_MAX_CHARS = 200
 
 _TITLE_MAX_CHARS = 120
 
-_FALLBACK_TITLE = "Transcricao completa"
+_FALLBACK_TITLE = "Full transcript"
 
 _WHITESPACE_RE = re.compile(r"\s+")
 
@@ -250,7 +250,7 @@ def assemble_segments(
     normalized = normalize_segments(raw_segments, total_lines)
     segments: list[SplitSegment] = []
     for i, seg in enumerate(normalized, start=1):
-        title = seg["title"] or f"Reuniao {i}"
+        title = seg["title"] or f"Meeting {i}"
         preview = build_preview(redacted_lines, seg["startLine"], seg["endLine"])
         segments.append(
             SplitSegment(
@@ -330,7 +330,7 @@ def analyze(
                 temperature=0.1,
             )
         except Exception as exc:
-            logger.warning("Structured output falhou no split, fallback JSON mode: %s", exc)
+            logger.warning("Structured output failed in split, falling back to JSON mode: %s", exc)
             raw_json, tokens_in, tokens_out = client.chat_json(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
@@ -340,7 +340,7 @@ def analyze(
         tokens_out_total += tokens_out
 
         # Do NOT log raw_json: ADR 0012 (PII never logged).
-        logger.debug("Split LLM raw response: %d chars (janela %d-%d)", len(raw_json), pos, end)
+        logger.debug("Split LLM raw response: %d chars (window %d-%d)", len(raw_json), pos, end)
 
         parsed = json.loads(raw_json)
         win = _clamp_window_segments(parsed.get("segments") or [], pos, end)

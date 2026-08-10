@@ -44,7 +44,7 @@ public class SlackClient {
                             .block(TIMEOUT);
             JsonNode json = mapper.readTree(body == null ? "{}" : body);
             if (!json.path("ok").asBoolean(false)) {
-                throw postError(channel, json.path("error").asText("resposta sem ok"));
+                throw postError(channel, json.path("error").asText("response with no ok field"));
             }
             return json.path("ts").asText("?");
         } catch (IntegrationException ex) {
@@ -64,7 +64,7 @@ public class SlackClient {
         String hint =
                 switch (error) {
                     case "not_in_channel", "channel_not_found" ->
-                            " — o bot precisa estar no canal: convide com /invite @NORA em "
+                            " — the bot needs to be in the channel: invite it with /invite @NORA in "
                                     + channel;
                     default -> "";
                 };

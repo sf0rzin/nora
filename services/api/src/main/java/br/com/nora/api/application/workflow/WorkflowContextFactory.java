@@ -56,13 +56,13 @@ public class WorkflowContextFactory {
                         .orElseThrow(
                                 () ->
                                         new IllegalStateException(
-                                                "meeting do evento não encontrada: " + meetingId));
+                                                "meeting for the event not found: " + meetingId));
         MeetingAnalysis analysis =
                 analyses.findByMeetingId(meetingId, tenantId)
                         .orElseThrow(
                                 () ->
                                         new IllegalStateException(
-                                                "análise do evento não encontrada: " + meetingId));
+                                                "analysis for the event not found: " + meetingId));
         Integer productivityScore =
                 assessments.findByMeetingId(meetingId, tenantId).map(a -> a.score()).orElse(null);
         Integer confidenceScore =

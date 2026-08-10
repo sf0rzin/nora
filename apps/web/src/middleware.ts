@@ -7,9 +7,9 @@ const PROTECTED_PREFIXES = [
   '/settings',
   '/tasks',
   '/chat',
-  '/projetos',
-  '/integracoes',
-  '/fluxos',
+  '/projects',
+  '/integrations',
+  '/flows',
 ];
 const AUTH_PREFIXES = ['/auth'];
 
@@ -67,9 +67,9 @@ export const config = {
     '/settings/:path*',
     '/tasks/:path*',
     '/chat/:path*',
-    '/projetos/:path*',
-    '/integracoes/:path*',
-    '/fluxos/:path*',
+    '/projects/:path*',
+    '/integrations/:path*',
+    '/flows/:path*',
     '/auth/:path*',
   ],
 };

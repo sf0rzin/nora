@@ -1,5 +1,5 @@
-# NOTA IMPORTANTE: build context = REPO ROOT, NÃO services/nlp-worker/
-# Isso é necessário pra COPY do package compartilhado packages/nlp-baseline (ADR 0010).
+# IMPORTANT NOTE: build context = REPO ROOT, NOT services/nlp-worker/
+# This is necessary for the COPY of the shared package packages/nlp-baseline (ADR 0010).
 # Build: docker build -f services/nlp-worker/Dockerfile -t nora-worker .
 
 FROM python:3.12-slim
@@ -12,7 +12,7 @@ WORKDIR /app
 
 RUN groupadd --system nora && useradd --system --gid nora nora
 
-# Install package compartilhado nlp-baseline (TF-IDF baseline, ADR 0010)
+# Install shared package nlp-baseline (TF-IDF baseline, ADR 0010)
 COPY packages/nlp-baseline /tmp/nlp-baseline
 RUN pip install --upgrade pip && pip install /tmp/nlp-baseline && rm -rf /tmp/nlp-baseline
 
@@ -28,6 +28,6 @@ ENV PYTHONPATH=/app/src
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/healthz', timeout=3)" || exit 1
 
-# --workers 2 desbloqueia a scale rule (50 concurrent/replica) que com 1 worker
-# python serializaria todas as requisicoes. 2 workers x 3 replicas max = 6 paralelos.
+# --workers 2 unblocks the scale rule (50 concurrent/replica) that with 1 worker
+# python would serialize all requests. 2 workers x 3 replicas max = 6 in parallel.
 CMD ["uvicorn", "nora_nlp.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]

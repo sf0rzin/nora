@@ -34,7 +34,7 @@ class WorkflowDefinitionParserTest {
             """;
 
     @Test
-    void parseValido_montaGrafoNavegavel() {
+    void validParse_buildsNavigableGraph() {
         WorkflowDefinition def = parser.parse(VALID, actions);
         assertThat(def.nodes()).hasSize(3);
         assertThat(def.triggerNode().type()).isEqualTo("meeting.analysis_completed");
@@ -50,13 +50,13 @@ class WorkflowDefinitionParserTest {
     }
 
     @Test
-    void rejeitaJsonInvalido() {
-        assertThatThrownBy(() -> parser.parse("nao é json", actions))
+    void rejectsInvalidJson() {
+        assertThatThrownBy(() -> parser.parse("not json", actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class);
     }
 
     @Test
-    void rejeitaSemGatilho() {
+    void rejectsMissingTrigger() {
         String json =
                 """
                 {"nodes":[{"id":"a1","kind":"action","type":"send_email",
@@ -64,11 +64,11 @@ class WorkflowDefinitionParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
-                .hasMessageContaining("exatamente um gatilho");
+                .hasMessageContaining("exactly one trigger");
     }
 
     @Test
-    void rejeitaDoisGatilhos() {
+    void rejectsTwoTriggers() {
         String json =
                 """
                 {"nodes":[
@@ -79,11 +79,11 @@ class WorkflowDefinitionParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
-                .hasMessageContaining("exatamente um gatilho");
+                .hasMessageContaining("exactly one trigger");
     }
 
     @Test
-    void rejeitaGatilhoDesconhecido() {
+    void rejectsUnknownTrigger() {
         String json =
                 """
                 {"nodes":[
@@ -93,11 +93,11 @@ class WorkflowDefinitionParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
-                .hasMessageContaining("gatilho desconhecido");
+                .hasMessageContaining("unknown trigger");
     }
 
     @Test
-    void rejeitaSemAcao() {
+    void rejectsMissingAction() {
         String json =
                 """
                 {"nodes":[{"id":"t1","kind":"trigger","type":"meeting.analysis_completed"}],
@@ -105,11 +105,11 @@ class WorkflowDefinitionParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
-                .hasMessageContaining("ao menos uma ação");
+                .hasMessageContaining("at least one action");
     }
 
     @Test
-    void rejeitaAcaoDesconhecida() {
+    void rejectsUnknownAction() {
         String json =
                 """
                 {"nodes":[
@@ -119,11 +119,11 @@ class WorkflowDefinitionParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
-                .hasMessageContaining("ação desconhecida");
+                .hasMessageContaining("unknown action");
     }
 
     @Test
-    void rejeitaSendEmailSemDestinatario() {
+    void rejectsSendEmailWithoutRecipient() {
         String json =
                 """
                 {"nodes":[
@@ -133,11 +133,11 @@ class WorkflowDefinitionParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
-                .hasMessageContaining("destinatário");
+                .hasMessageContaining("recipient");
     }
 
     @Test
-    void rejeitaSlackPostMessageSemCanal() {
+    void rejectsSlackPostMessageWithoutChannel() {
         String json =
                 """
                 {"nodes":[
@@ -151,7 +151,7 @@ class WorkflowDefinitionParserTest {
     }
 
     @Test
-    void aceitaSlackPostMessageComCanal() {
+    void acceptsSlackPostMessageWithChannel() {
         String json =
                 """
                 {"nodes":[
@@ -165,20 +165,20 @@ class WorkflowDefinitionParserTest {
     }
 
     @Test
-    void rejeitaGithubCreateIssueSemRepoOuForaDoFormato() {
-        Set<String> comGithub = Set.of("github_create_issue");
-        String semRepo =
+    void rejectsGithubCreateIssueWithoutRepoOrWrongFormat() {
+        Set<String> withGithub = Set.of("github_create_issue");
+        String withoutRepo =
                 """
                 {"nodes":[
                   {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
                   {"id":"a1","kind":"action","type":"github_create_issue","params":{}}],
                  "edges":[{"id":"e1","source":"t1","target":"a1"}]}
                 """;
-        assertThatThrownBy(() -> parser.parse(semRepo, comGithub))
+        assertThatThrownBy(() -> parser.parse(withoutRepo, withGithub))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
                 .hasMessageContaining("params.repo");
 
-        String semBarra =
+        String withoutSlash =
                 """
                 {"nodes":[
                   {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
@@ -186,15 +186,15 @@ class WorkflowDefinitionParserTest {
                    "params":{"repo":"sem-barra"}}],
                  "edges":[{"id":"e1","source":"t1","target":"a1"}]}
                 """;
-        assertThatThrownBy(() -> parser.parse(semBarra, comGithub))
+        assertThatThrownBy(() -> parser.parse(withoutSlash, withGithub))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
-                .hasMessageContaining("owner/nome");
+                .hasMessageContaining("owner/name");
     }
 
     /** Wave 2: outlook_send_email requires a valid recipient, same as send_email/gmail. */
     @Test
-    void rejeitaOutlookSendEmailSemDestinatario() {
-        Set<String> comOutlook = Set.of("outlook_send_email");
+    void rejectsOutlookSendEmailWithoutRecipient() {
+        Set<String> withOutlook = Set.of("outlook_send_email");
         String json =
                 """
                 {"nodes":[
@@ -202,15 +202,15 @@ class WorkflowDefinitionParserTest {
                   {"id":"a1","kind":"action","type":"outlook_send_email","params":{}}],
                  "edges":[{"id":"e1","source":"t1","target":"a1"}]}
                 """;
-        assertThatThrownBy(() -> parser.parse(json, comOutlook))
+        assertThatThrownBy(() -> parser.parse(json, withOutlook))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
                 .hasMessageContaining("params.to");
     }
 
     /** Wave 2: trello_create_card requires the board list. */
     @Test
-    void rejeitaTrelloCreateCardSemListId() {
-        Set<String> comTrello = Set.of("trello_create_card");
+    void rejectsTrelloCreateCardWithoutListId() {
+        Set<String> withTrello = Set.of("trello_create_card");
         String json =
                 """
                 {"nodes":[
@@ -218,13 +218,13 @@ class WorkflowDefinitionParserTest {
                   {"id":"a1","kind":"action","type":"trello_create_card","params":{}}],
                  "edges":[{"id":"e1","source":"t1","target":"a1"}]}
                 """;
-        assertThatThrownBy(() -> parser.parse(json, comTrello))
+        assertThatThrownBy(() -> parser.parse(json, withTrello))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
                 .hasMessageContaining("params.listId");
     }
 
     @Test
-    void rejeitaCallWebhookSemUrlHttps() {
+    void rejectsCallWebhookWithoutHttpsUrl() {
         for (String params : new String[] {"{}", "{\"url\":\"http://exemplo.com/hook\"}"}) {
             String json =
                     """
@@ -241,21 +241,21 @@ class WorkflowDefinitionParserTest {
     }
 
     @Test
-    void rejeitaNotionCreatePageSemPaginaPai() {
-        String semPai =
+    void rejectsNotionCreatePageWithoutParentPage() {
+        String withoutParent =
                 """
                 {"nodes":[
                   {"id":"t1","kind":"trigger","type":"meeting.analysis_completed"},
                   {"id":"a1","kind":"action","type":"notion_create_page","params":{}}],
                  "edges":[{"id":"e1","source":"t1","target":"a1"}]}
                 """;
-        assertThatThrownBy(() -> parser.parse(semPai, Set.of("notion_create_page")))
+        assertThatThrownBy(() -> parser.parse(withoutParent, Set.of("notion_create_page")))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
                 .hasMessageContaining("params.parentPageId");
     }
 
     @Test
-    void aceitaCallWebhookComUrlHttps() {
+    void acceptsCallWebhookWithHttpsUrl() {
         String json =
                 """
                 {"nodes":[
@@ -269,7 +269,7 @@ class WorkflowDefinitionParserTest {
     }
 
     @Test
-    void rejeitaDiscordSemWebhookDoDiscord() {
+    void rejectsDiscordWithoutDiscordWebhook() {
         for (String params :
                 new String[] {"{}", "{\"webhookUrl\":\"https://exemplo.com/webhooks/1/a\"}"}) {
             String json =
@@ -287,7 +287,7 @@ class WorkflowDefinitionParserTest {
     }
 
     @Test
-    void aceitaDiscordComWebhookValido() {
+    void acceptsDiscordWithValidWebhook() {
         String json =
                 """
                 {"nodes":[
@@ -301,7 +301,7 @@ class WorkflowDefinitionParserTest {
     }
 
     @Test
-    void rejeitaArestaParaNoInexistente() {
+    void rejectsEdgeToNonexistentNode() {
         String json =
                 """
                 {"nodes":[
@@ -311,11 +311,11 @@ class WorkflowDefinitionParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
-                .hasMessageContaining("nó inexistente");
+                .hasMessageContaining("nonexistent node");
     }
 
     @Test
-    void rejeitaCiclo() {
+    void rejectsCycle() {
         String json =
                 """
                 {"nodes":[
@@ -329,11 +329,11 @@ class WorkflowDefinitionParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
-                .hasMessageContaining("ciclos");
+                .hasMessageContaining("cycles");
     }
 
     @Test
-    void rejeitaIdDuplicado() {
+    void rejectsDuplicateId() {
         String json =
                 """
                 {"nodes":[
@@ -343,11 +343,11 @@ class WorkflowDefinitionParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
-                .hasMessageContaining("duplicado");
+                .hasMessageContaining("duplicate");
     }
 
     @Test
-    void rejeitaCondicaoDesconhecida() {
+    void rejectsUnknownCondition() {
         String json =
                 """
                 {"nodes":[
@@ -359,6 +359,6 @@ class WorkflowDefinitionParserTest {
                 """;
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
-                .hasMessageContaining("condição desconhecida");
+                .hasMessageContaining("unknown condition");
     }
 }

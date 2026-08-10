@@ -35,7 +35,7 @@ class IntegrationServiceTest {
     private final FakeSlack slack = new FakeSlack();
     private final FakeGeneric generic = new FakeGeneric();
     private final FakeTrello trello = new FakeTrello();
-    private final OAuthStateCodec codec = new OAuthStateCodec("segredo-teste");
+    private final OAuthStateCodec codec = new OAuthStateCodec("test-secret");
     private final Clock clock = () -> now;
 
     /**
@@ -101,7 +101,7 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void start_montaUrlComStateAssinado() {
+    void start_buildsUrlWithSignedState() {
         String url = service().startGoogle(tenantId, userId);
         assertThat(url).startsWith("https://accounts.google.com/o/oauth2/v2/auth?");
         assertThat(url).contains("client_id=client-id-teste");
@@ -112,8 +112,8 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void start_semConfiguracaoFalhaVisivel() {
-        IntegrationService semConfig =
+    void start_withoutConfigurationFailsVisibly() {
+        IntegrationService withoutConfig =
                 new IntegrationService(
                         repo,
                         google,
@@ -130,16 +130,16 @@ class IntegrationServiceTest {
                         "",
                         "",
                         "");
-        assertThatThrownBy(() -> semConfig.startGoogle(tenantId, userId))
+        assertThatThrownBy(() -> withoutConfig.startGoogle(tenantId, userId))
                 .isInstanceOf(IntegrationException.NotConfigured.class);
-        assertThatThrownBy(() -> semConfig.startSlack(tenantId, userId))
+        assertThatThrownBy(() -> withoutConfig.startSlack(tenantId, userId))
                 .isInstanceOf(IntegrationException.NotConfigured.class);
-        assertThatThrownBy(() -> semConfig.start(IntegrationProvider.GITHUB, tenantId, userId))
+        assertThatThrownBy(() -> withoutConfig.start(IntegrationProvider.GITHUB, tenantId, userId))
                 .isInstanceOf(IntegrationException.NotConfigured.class);
     }
 
     @Test
-    void callback_trocaCodePorTokensEFazUpsert() {
+    void callback_exchangesCodeForTokensAndUpserts() {
         String state = codec.encode(tenantId, userId, IntegrationProvider.GOOGLE, now);
         google.exchangeResult =
                 new GoogleOAuthClient.TokenResponse("at-1", "rt-1", 3600, "scope-x");
@@ -156,14 +156,14 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void validToken_naoExpirado_devolveSemRefresh() {
+    void validToken_notExpired_returnsWithoutRefresh() {
         seedConnection("at-atual", "rt-1", now.atOffset(ZoneOffset.UTC).plusSeconds(3000));
         assertThat(service().validGoogleAccessToken(tenantId)).isEqualTo("at-atual");
         assertThat(google.refreshCalls).isZero();
     }
 
     @Test
-    void validToken_expirado_renovaEPersisteRotation() {
+    void validToken_expired_renewsAndPersistsRotation() {
         seedConnection("at-velho", "rt-1", now.atOffset(ZoneOffset.UTC).minusSeconds(10));
         google.refreshResult = new GoogleOAuthClient.TokenResponse("at-novo", null, 3600, null);
 
@@ -177,23 +177,23 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void validToken_semConexao_falhaClaro() {
+    void validToken_noConnection_failsClearly() {
         assertThatThrownBy(() -> service().validGoogleAccessToken(tenantId))
                 .isInstanceOf(IntegrationException.NotConnected.class);
     }
 
     @Test
-    void validToken_expiradoSemRefreshToken_pedeReconexao() {
+    void validToken_expiredWithNoRefreshToken_asksToReconnect() {
         seedConnection("at-velho", null, now.atOffset(ZoneOffset.UTC).minusSeconds(10));
         assertThatThrownBy(() -> service().validGoogleAccessToken(tenantId))
                 .isInstanceOf(IntegrationException.ProviderError.class)
-                .hasMessageContaining("reconecte");
+                .hasMessageContaining("reconnect");
     }
 
     /* =========================== Slack =========================== */
 
     @Test
-    void startSlack_montaUrlOAuthV2ComStateAssinado() {
+    void startSlack_buildsOAuthV2UrlWithSignedState() {
         String url = service().startSlack(tenantId, userId);
         assertThat(url).startsWith("https://slack.com/oauth/v2/authorize?");
         assertThat(url).contains("client_id=slack-client-id-teste");
@@ -202,7 +202,7 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void slackCallback_persisteBotTokenSemExpiracaoComTeamName() {
+    void slackCallback_persistsBotTokenWithNoExpiryAndTeamName() {
         String state = codec.encode(tenantId, userId, IntegrationProvider.SLACK, now);
         slack.exchangeResult =
                 new SlackOAuthClient.TokenResponse(
@@ -220,14 +220,14 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void slackCallback_stateDeOutroProvedor_falha() {
+    void slackCallback_stateFromAnotherProvider_fails() {
         String stateGoogle = codec.encode(tenantId, userId, IntegrationProvider.GOOGLE, now);
         assertThatThrownBy(() -> service().handleSlackCallback("code", stateGoogle))
                 .isInstanceOf(IntegrationException.InvalidState.class);
     }
 
     @Test
-    void validSlackBotToken_devolveTokenSemRefresh() {
+    void validSlackBotToken_returnsTokenWithoutRefresh() {
         String state = codec.encode(tenantId, userId, IntegrationProvider.SLACK, now);
         slack.exchangeResult =
                 new SlackOAuthClient.TokenResponse("xoxb-token-2", "Time NORA", null);
@@ -237,21 +237,21 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void validSlackBotToken_semConexao_falhaClaro() {
+    void validSlackBotToken_noConnection_failsClearly() {
         assertThatThrownBy(() -> service().validSlackBotToken(tenantId))
                 .isInstanceOf(IntegrationException.NotConnected.class)
                 .hasMessageContaining("slack");
     }
 
     @Test
-    void status_listaSlackComConfiguredProprio() {
+    void status_listsSlackWithOwnConfigured() {
         List<ProviderStatus> status = service().status(tenantId);
         ProviderStatus slackStatus =
                 status.stream().filter(s -> s.provider().equals("slack")).findFirst().orElseThrow();
         assertThat(slackStatus.configured()).isTrue();
         assertThat(slackStatus.connected()).isFalse();
 
-        IntegrationService semSlack =
+        IntegrationService withoutSlack =
                 new IntegrationService(
                         repo,
                         google,
@@ -268,18 +268,18 @@ class IntegrationServiceTest {
                         "",
                         "",
                         "");
-        ProviderStatus naoConfigurado =
-                semSlack.status(tenantId).stream()
+        ProviderStatus notConfigured =
+                withoutSlack.status(tenantId).stream()
                         .filter(s -> s.provider().equals("slack"))
                         .findFirst()
                         .orElseThrow();
-        assertThat(naoConfigurado.configured()).isFalse();
+        assertThat(notConfigured.configured()).isFalse();
     }
 
     /* ==================== Generic providers (wave 1) ==================== */
 
     @Test
-    void startGenerico_montaUrlComScopeExtrasEState() {
+    void startGeneric_buildsUrlWithExtraScopeAndState() {
         String github = service().start(IntegrationProvider.GITHUB, tenantId, userId);
         assertThat(github).startsWith("https://github.com/login/oauth/authorize?");
         assertThat(github).contains("client_id=github-id");
@@ -299,7 +299,7 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void callbackGenerico_persisteTokenSemRefreshComContaExterna() {
+    void callbackGeneric_persistsTokenWithoutRefreshAndExternalAccount() {
         String state = codec.encode(tenantId, userId, IntegrationProvider.NOTION, now);
         generic.exchangeResult =
                 new GenericOAuthClient.TokenResponse(
@@ -316,7 +316,7 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void callbackGenerico_persisteExpiresAtQuandoProvedorInforma() {
+    void callbackGeneric_persistsExpiresAtWhenProviderReportsIt() {
         String state = codec.encode(tenantId, userId, IntegrationProvider.LINEAR, now);
         generic.exchangeResult =
                 new GenericOAuthClient.TokenResponse("lin_token", null, "write", null, 315360000L);
@@ -331,7 +331,7 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void callbackGenerico_stateDeOutroProvedor_falha() {
+    void callbackGeneric_stateFromAnotherProvider_fails() {
         String stateGithub = codec.encode(tenantId, userId, IntegrationProvider.GITHUB, now);
         assertThatThrownBy(
                         () ->
@@ -342,7 +342,7 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void validAccessToken_devolveTokenPersistido() {
+    void validAccessToken_returnsPersistedToken() {
         String state = codec.encode(tenantId, userId, IntegrationProvider.GITHUB, now);
         generic.exchangeResult =
                 new GenericOAuthClient.TokenResponse("gho_token", null, "repo", null, null);
@@ -353,14 +353,14 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void validAccessToken_semConexao_falhaClaro() {
+    void validAccessToken_noConnection_failsClearly() {
         assertThatThrownBy(() -> service().validAccessToken(tenantId, IntegrationProvider.TODOIST))
                 .isInstanceOf(IntegrationException.NotConnected.class)
                 .hasMessageContaining("todoist");
     }
 
     @Test
-    void validAccessToken_expiradoSemRefresh_pedeReconexao() {
+    void validAccessToken_expiredWithoutRefresh_asksToReconnect() {
         OffsetDateTime created = now.atOffset(ZoneOffset.UTC).minusDays(1);
         repo.upsert(
                 new IntegrationConnection(
@@ -377,11 +377,11 @@ class IntegrationServiceTest {
                         created));
         assertThatThrownBy(() -> service().validAccessToken(tenantId, IntegrationProvider.LINEAR))
                 .isInstanceOf(IntegrationException.ProviderError.class)
-                .hasMessageContaining("reconecte");
+                .hasMessageContaining("reconnect");
     }
 
     @Test
-    void status_listaOsNoveProvedoresComConfiguredProprio() {
+    void status_listsAllNineProvidersWithOwnConfigured() {
         List<ProviderStatus> status = service().status(tenantId);
         assertThat(status)
                 .extracting(ProviderStatus::provider)
@@ -397,9 +397,9 @@ class IntegrationServiceTest {
                         "trello");
         assertThat(status).allMatch(ProviderStatus::configured);
 
-        List<ProviderStatus> semGenericos = service(emptyDirectory()).status(tenantId);
+        List<ProviderStatus> withoutGenerics = service(emptyDirectory()).status(tenantId);
         assertThat(
-                        semGenericos.stream()
+                        withoutGenerics.stream()
                                 .filter(s -> s.provider().equals("github"))
                                 .findFirst()
                                 .orElseThrow()
@@ -410,7 +410,7 @@ class IntegrationServiceTest {
     /* ==================== Microsoft (wave 2 — generic refresh) ==================== */
 
     @Test
-    void startMicrosoft_montaUrlComScopesEState() {
+    void startMicrosoft_buildsUrlWithScopesAndState() {
         String url = service().start(IntegrationProvider.MICROSOFT, tenantId, userId);
         assertThat(url)
                 .startsWith("https://login.microsoftonline.com/common/oauth2/v2.0/authorize?");
@@ -421,7 +421,7 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void callbackMicrosoft_persisteRefreshTokenEExpiracao() {
+    void callbackMicrosoft_persistsRefreshTokenAndExpiry() {
         String state = codec.encode(tenantId, userId, IntegrationProvider.MICROSOFT, now);
         generic.exchangeResult =
                 new GenericOAuthClient.TokenResponse(
@@ -438,7 +438,7 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void validAccessTokenMicrosoft_naoExpirado_devolveSemRefresh() {
+    void validAccessTokenMicrosoft_notExpired_returnsWithoutRefresh() {
         seedMicrosoft("ms-at-atual", "ms-rt-1", now.atOffset(ZoneOffset.UTC).plusSeconds(3000));
         assertThat(service().validAccessToken(tenantId, IntegrationProvider.MICROSOFT))
                 .isEqualTo("ms-at-atual");
@@ -446,7 +446,7 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void validAccessTokenMicrosoft_expirado_renovaEPersisteRotation() {
+    void validAccessTokenMicrosoft_expired_renewsAndPersistsRotation() {
         seedMicrosoft("ms-at-velho", "ms-rt-1", now.atOffset(ZoneOffset.UTC).minusSeconds(10));
         generic.refreshResult =
                 new GenericOAuthClient.TokenResponse("ms-at-novo", "ms-rt-2", null, null, 3599L);
@@ -464,7 +464,7 @@ class IntegrationServiceTest {
 
     /** 60s skew: a token 30s from expiry already refreshes (same semantics as Google). */
     @Test
-    void validAccessTokenMicrosoft_dentroDoSkew_renova() {
+    void validAccessTokenMicrosoft_withinSkew_renews() {
         seedMicrosoft("ms-at-beirando", "ms-rt-1", now.atOffset(ZoneOffset.UTC).plusSeconds(30));
         generic.refreshResult =
                 new GenericOAuthClient.TokenResponse("ms-at-novo", null, null, null, 3599L);
@@ -480,19 +480,19 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void validAccessTokenMicrosoft_expiradoSemRefreshToken_pedeReconexao() {
+    void validAccessTokenMicrosoft_expiredWithNoRefreshToken_asksToReconnect() {
         seedMicrosoft("ms-at-velho", null, now.atOffset(ZoneOffset.UTC).minusSeconds(10));
         assertThatThrownBy(
                         () -> service().validAccessToken(tenantId, IntegrationProvider.MICROSOFT))
                 .isInstanceOf(IntegrationException.ProviderError.class)
-                .hasMessageContaining("reconecte");
+                .hasMessageContaining("reconnect");
         assertThat(generic.refreshCalls).isZero();
     }
 
     /* ==================== Trello (wave 2 — pasted token) ==================== */
 
     @Test
-    void startTrello_montaUrlDeAuthorizeComKeyDoApp() {
+    void startTrello_buildsAuthorizeUrlWithAppKey() {
         String url = service().start(IntegrationProvider.TRELLO, tenantId, userId);
         assertThat(url).startsWith("https://trello.com/1/authorize?");
         assertThat(url).contains("key=trello-api-key-teste");
@@ -503,7 +503,7 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void saveTrelloToken_validaNoProvedorEPersisteCifrado() {
+    void saveTrelloToken_validatesWithProviderAndPersistsEncrypted() {
         trello.memberName = "Ana Martins";
 
         ProviderStatus status = service().saveTrelloToken(tenantId, userId, " tok-colado ");
@@ -520,26 +520,26 @@ class IntegrationServiceTest {
     }
 
     @Test
-    void saveTrelloToken_invalido_propagaENaoPersiste() {
+    void saveTrelloToken_invalid_propagatesAndDoesNotPersist() {
         trello.failWith =
-                new IntegrationException.ProviderError("trello", "o Trello recusou esse token");
+                new IntegrationException.ProviderError("trello", "Trello refused that token");
 
         assertThatThrownBy(() -> service().saveTrelloToken(tenantId, userId, "tok-ruim"))
                 .isInstanceOf(IntegrationException.ProviderError.class)
-                .hasMessageContaining("recusou");
+                .hasMessageContaining("refused");
         assertThat(repo.findByTenantAndProvider(tenantId, IntegrationProvider.TRELLO)).isEmpty();
     }
 
     @Test
-    void saveTrelloToken_vazio_falhaClaro() {
+    void saveTrelloToken_blank_failsClearly() {
         assertThatThrownBy(() -> service().saveTrelloToken(tenantId, userId, "  "))
                 .isInstanceOf(IntegrationException.ProviderError.class)
-                .hasMessageContaining("cole o token");
+                .hasMessageContaining("paste the token");
     }
 
     @Test
-    void saveTrelloToken_semApiKeyNoAmbiente_falhaNotConfigured() {
-        IntegrationService semConfig =
+    void saveTrelloToken_noApiKeyInEnvironment_failsNotConfigured() {
+        IntegrationService withoutConfig =
                 new IntegrationService(
                         repo,
                         google,
@@ -556,7 +556,7 @@ class IntegrationServiceTest {
                         "",
                         "",
                         "");
-        assertThatThrownBy(() -> semConfig.saveTrelloToken(tenantId, userId, "tok"))
+        assertThatThrownBy(() -> withoutConfig.saveTrelloToken(tenantId, userId, "tok"))
                 .isInstanceOf(IntegrationException.NotConfigured.class);
     }
 

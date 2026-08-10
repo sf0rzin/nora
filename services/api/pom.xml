@@ -27,10 +27,10 @@
         <testcontainers.version>1.21.4</testcontainers.version>
         <springdotenv.version>5.1.0</springdotenv.version>
         <!--
-          docker.host: default tcp://localhost:2375 (Docker Desktop com "Expose daemon on tcp"
-          habilitado). Sobrescreva via -Ddocker.host=npipe:////./pipe/docker_engine no Windows
-          sem TCP, ou unix:///var/run/docker.sock em Linux/Mac. Em CI sem Docker Desktop, o
-          Testcontainers tambem descobre pelo env DOCKER_HOST.
+          docker.host: default tcp://localhost:2375 (Docker Desktop with "Expose daemon on tcp"
+          enabled). Override via -Ddocker.host=npipe:////./pipe/docker_engine on Windows without
+          TCP, or unix:///var/run/docker.sock on Linux/Mac. In CI without Docker Desktop,
+          Testcontainers also discovers it via the DOCKER_HOST env var.
         -->
         <docker.host>tcp://localhost:2375</docker.host>
     </properties>
@@ -94,13 +94,13 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- HTTP client para provider de e-mail externo (Resend) -->
+        <!-- HTTP client for the external email provider (Resend) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
 
-        <!-- Dev convenience: carrega .env(.local) automaticamente em runtime -->
+        <!-- Dev convenience: loads .env(.local) automatically at runtime -->
         <dependency>
             <groupId>me.paulschwarz</groupId>
             <artifactId>springboot3-dotenv</artifactId>
@@ -115,14 +115,14 @@
             <version>8.10.1</version>
         </dependency>
 
-        <!-- Cache com TTL + maximumSize para bounded eviction (AuthRateLimiter). -->
+        <!-- Cache with TTL + maximumSize for bounded eviction (AuthRateLimiter). -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
         </dependency>
 
-        <!-- AOP — Spring usa proxies internamente, mas AspectJ annotations precisam do starter
-             explicito. Usado pelo TenantRlsAspect (RLS Postgres). -->
+        <!-- AOP — Spring uses proxies internally, but AspectJ annotations need the explicit
+             starter. Used by TenantRlsAspect (Postgres RLS). -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-aop</artifactId>
@@ -242,20 +242,20 @@
                         </goals>
                     </execution>
                     <!--
-                      Gate de cobertura nas areas criticas IAM (ADR 0018: >85% sustentado em
-                      IAM/Auth/PII). Hoje a regra esta escopada a UMA classe — PolicyEvaluator,
-                      o ponto de decisao de autorizacao do IAM (ADR 0007), coberto por
-                      PolicyEvaluatorTest (~22 testes unitarios, sem Docker). Medido localmente:
-                      INSTRUCTION 0.945 / BRANCH 0.806 — os limites abaixo (0.90 / 0.75) passam
-                      com folga e sao significativos.
+                      Coverage gate on the critical IAM areas (ADR 0018: >85% sustained on
+                      IAM/Auth/PII). Today the rule is scoped to ONE class — PolicyEvaluator,
+                      the IAM authorization decision point (ADR 0007), covered by
+                      PolicyEvaluatorTest (~22 unit tests, no Docker). Measured locally:
+                      INSTRUCTION 0.945 / BRANCH 0.806 — the limits below (0.90 / 0.75) pass
+                      with headroom and are meaningful.
 
-                      FOLLOWUP (subir o gate a 0.85 package-wide): cobrir
-                      application/identity e infrastructure/security exige Testcontainers
-                      (Docker), que so roda no CI. A regra package-wide em domain.iam hoje fica
-                      em ~0.83 instruction porque records data-carrier (IamPolicy, IamGroup,
-                      PolicyDocument, IamAuditEvent) so sao exercitados via testes de integracao.
-                      Ampliar este check para PACKAGE/aplicacao deve ser calibrado medindo no CI
-                      com Docker, nao localmente.
+                      FOLLOWUP (raise the gate to 0.85 package-wide): covering
+                      application/identity and infrastructure/security requires Testcontainers
+                      (Docker), which only runs in CI. The package-wide rule on domain.iam
+                      currently sits at ~0.83 instruction because the data-carrier records
+                      (IamPolicy, IamGroup, PolicyDocument, IamAuditEvent) are only exercised
+                      via integration tests. Widening this check to PACKAGE/application must be
+                      calibrated by measuring in CI with Docker, not locally.
                     -->
                     <execution>
                         <id>check-iam-coverage</id>

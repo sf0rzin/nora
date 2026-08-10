@@ -47,7 +47,7 @@ def detect_target() -> tuple[str, str]:
     elif system == "darwin":
         return "macos", f"nora-stt-sidecar-{arch}-apple-darwin"
     else:
-        raise RuntimeError(f"Sistema não suportado: {system}")
+        raise RuntimeError(f"Unsupported system: {system}")
 
 
 def main() -> int:
@@ -59,13 +59,13 @@ def main() -> int:
     spec_file = project_root / f"sidecar-{system}.spec"
 
     if not spec_file.exists():
-        print(f"ERRO: Spec não encontrado: {spec_file}", file=sys.stderr)
-        print("Specs disponíveis:", file=sys.stderr)
+        print(f"ERROR: Spec not found: {spec_file}", file=sys.stderr)
+        print("Available specs:", file=sys.stderr)
         for s in project_root.glob("sidecar-*.spec"):
             print(f"  - {s.name}", file=sys.stderr)
         return 1
 
-    print(f"Plataforma detectada: {system}")
+    print(f"Detected platform: {system}")
     print(f"Target: {expected_name}")
     print(f"Spec: {spec_file}")
     print()
@@ -77,11 +77,11 @@ def main() -> int:
         "--noconfirm",
     ]
 
-    print(f"Executando: {' '.join(cmd)}")
+    print(f"Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, cwd=project_root)
 
     if result.returncode != 0:
-        print("ERRO: PyInstaller falhou", file=sys.stderr)
+        print("ERROR: PyInstaller failed", file=sys.stderr)
         return result.returncode
 
     # PyInstaller generates into dist/
@@ -97,8 +97,8 @@ def main() -> int:
     if not built_exe.exists():
         # Look for any file generated in dist
         candidates = list(dist_dir.iterdir()) if dist_dir.exists() else []
-        print(f"ERRO: Binário esperado não encontrado: {built_exe}", file=sys.stderr)
-        print(f"Conteúdo de {dist_dir}:", file=sys.stderr)
+        print(f"ERROR: Expected binary not found: {built_exe}", file=sys.stderr)
+        print(f"Contents of {dist_dir}:", file=sys.stderr)
         for c in candidates:
             print(f"  - {c.name}", file=sys.stderr)
         return 1
@@ -108,9 +108,9 @@ def main() -> int:
     shutil.copy2(built_exe, dest)
 
     print()
-    print("[OK] Sidecar compilado com sucesso!")
-    print(f"   Origem: {built_exe}")
-    print(f"   Destino: {dest}")
+    print("[OK] Sidecar built successfully!")
+    print(f"   Source: {built_exe}")
+    print(f"   Destination: {dest}")
     return 0
 
 

@@ -72,7 +72,7 @@ impl ModelSize {
             "medium" => ModelSize::Medium,
             other => {
                 eprintln!(
-                    "[whisper_model] tamanho desconhecido {:?} — usando 'small'",
+                    "[whisper_model] unknown size {:?} — using 'small'",
                     other
                 );
                 ModelSize::Small
@@ -125,7 +125,7 @@ pub fn configured_size() -> ModelSize {
             .or_else(|| crate::nora_config_str("whisperModel"))
             .unwrap_or_default();
         let size = ModelSize::parse(&raw);
-        eprintln!("[whisper_model] tamanho configurado: {}", size.as_str());
+        eprintln!("[whisper_model] configured size: {}", size.as_str());
         size
     })
 }
@@ -167,10 +167,10 @@ pub fn models_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
-        .map_err(|e| format!("nao consegui resolver app_data_dir: {e}"))?
+        .map_err(|e| format!("could not resolve app_data_dir: {e}"))?
         .join("models");
     std::fs::create_dir_all(&dir)
-        .map_err(|e| format!("nao consegui criar {}: {e}", dir.display()))?;
+        .map_err(|e| format!("could not create {}: {e}", dir.display()))?;
     Ok(dir)
 }
 
@@ -194,13 +194,13 @@ pub async fn ensure_model(app: &AppHandle, size: ModelSize) -> Result<PathBuf, S
         let p = PathBuf::from(raw);
         if p.is_file() {
             eprintln!(
-                "[whisper_model] usando modelo local de NORA_WHISPER_MODEL_PATH: {} (checksum NAO verificado)",
+                "[whisper_model] using local model from NORA_WHISPER_MODEL_PATH: {} (checksum NOT verified)",
                 p.display()
             );
             return Ok(p);
         }
         return Err(format!(
-            "NORA_WHISPER_MODEL_PATH aponta pra algo que nao e arquivo: {}",
+            "NORA_WHISPER_MODEL_PATH points to something that is not a file: {}",
             p.display()
         ));
     }
@@ -227,7 +227,7 @@ pub async fn ensure_model(app: &AppHandle, size: ModelSize) -> Result<PathBuf, S
     // takes down the whole process instead of becoming a Result::Err.
     if final_path.exists() {
         eprintln!(
-            "[whisper_model] {} existe mas falhou na verificacao — rebaixando",
+            "[whisper_model] {} exists but failed verification — discarding",
             final_path.display()
         );
         let _ = std::fs::remove_file(&final_path);
@@ -286,7 +286,7 @@ async fn download_and_verify(
     sentinel: &Path,
     spec: &ModelSpec,
 ) -> Result<(), String> {
-    eprintln!("[whisper_model] baixando {} -> {}", url, part_path.display());
+    eprintln!("[whisper_model] downloading {} -> {}", url, part_path.display());
 
     // Own client: `http_proxy::http_client()` has a TOTAL timeout of 30 s,
     // which kills a 465 MiB download. Here we only cap the connect; the body can
@@ -294,17 +294,17 @@ async fn download_and_verify(
     let client = reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(15))
         .build()
-        .map_err(|e| format!("cliente http: {e}"))?;
+        .map_err(|e| format!("http client: {e}"))?;
 
     let mut resp = client
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("download do modelo falhou: {e}"))?;
+        .map_err(|e| format!("model download failed: {e}"))?;
 
     if !resp.status().is_success() {
         return Err(format!(
-            "download do modelo: HTTP {} em {}",
+            "model download: HTTP {} at {}",
             resp.status(),
             url
         ));
@@ -314,7 +314,7 @@ async fn download_and_verify(
 
     let mut file = tokio::fs::File::create(part_path)
         .await
-        .map_err(|e| format!("nao consegui criar {}: {e}", part_path.display()))?;
+        .map_err(|e| format!("could not create {}: {e}", part_path.display()))?;
 
     let mut hasher = Sha256::new();
     let mut downloaded: u64 = 0;
@@ -325,12 +325,12 @@ async fn download_and_verify(
     while let Some(chunk) = resp
         .chunk()
         .await
-        .map_err(|e| format!("erro lendo corpo do download: {e}"))?
+        .map_err(|e| format!("error reading download body: {e}"))?
     {
         hasher.update(&chunk);
         file.write_all(&chunk)
             .await
-            .map_err(|e| format!("erro escrevendo {}: {e}", part_path.display()))?;
+            .map_err(|e| format!("error writing {}: {e}", part_path.display()))?;
         downloaded += chunk.len() as u64;
         if downloaded >= next_emit_at {
             emit(app, progress(size, "downloading", downloaded, total));
@@ -340,12 +340,12 @@ async fn download_and_verify(
 
     file.flush()
         .await
-        .map_err(|e| format!("flush do modelo: {e}"))?;
+        .map_err(|e| format!("model flush: {e}"))?;
     // fsync before the rename: without it a crash/power loss right after the
     // rename leaves a .bin with a valid sentinel and incomplete content.
     file.sync_all()
         .await
-        .map_err(|e| format!("fsync do modelo: {e}"))?;
+        .map_err(|e| format!("model fsync: {e}"))?;
     drop(file);
 
     emit(app, progress(size, "verifying", downloaded, total));
@@ -353,7 +353,7 @@ async fn download_and_verify(
     let actual = hex_lower(&hasher.finalize());
     if !actual.eq_ignore_ascii_case(spec.sha256) {
         return Err(format!(
-            "checksum do modelo {} nao confere (esperado {}, obtido {}) — download corrompido ou mirror adulterado",
+            "checksum for model {} does not match (expected {}, got {}) — corrupted download or tampered mirror",
             spec.file_name, spec.sha256, actual
         ));
     }
@@ -361,7 +361,7 @@ async fn download_and_verify(
         // Should not happen if the sha matched; it is cheap and catches a mirror
         // that returns the right file with padding.
         return Err(format!(
-            "tamanho do modelo {} nao confere: esperado {} bytes, obtido {}",
+            "size for model {} does not match: expected {} bytes, got {}",
             spec.file_name, spec.size_bytes, downloaded
         ));
     }
@@ -371,10 +371,10 @@ async fn download_and_verify(
         .map_err(|e| format!("rename {} -> {}: {e}", part_path.display(), final_path.display()))?;
     tokio::fs::write(sentinel, &actual)
         .await
-        .map_err(|e| format!("escrevendo sentinela {}: {e}", sentinel.display()))?;
+        .map_err(|e| format!("writing sentinel {}: {e}", sentinel.display()))?;
 
     eprintln!(
-        "[whisper_model] modelo pronto: {} ({} bytes, sha256 ok)",
+        "[whisper_model] model ready: {} ({} bytes, sha256 ok)",
         final_path.display(),
         downloaded
     );
@@ -395,7 +395,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_tolerante_cai_no_small() {
+    fn parse_tolerant_falls_back_to_small() {
         assert_eq!(ModelSize::parse("BASE"), ModelSize::Base);
         assert_eq!(ModelSize::parse(" medium "), ModelSize::Medium);
         assert_eq!(ModelSize::parse(""), ModelSize::Small);
@@ -403,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    fn specs_tem_sha256_de_64_hex() {
+    fn specs_have_64_hex_sha256() {
         for s in [
             ModelSize::Tiny,
             ModelSize::Base,
@@ -422,12 +422,12 @@ mod tests {
     }
 
     #[test]
-    fn hex_lower_formata_com_zero_a_esquerda() {
+    fn hex_lower_formats_with_leading_zero() {
         assert_eq!(hex_lower(&[0x00, 0x0f, 0xff]), "000fff");
     }
 
     #[test]
-    fn is_usable_exige_sentinela() {
+    fn is_usable_requires_sentinel() {
         let dir = std::env::temp_dir().join(format!("nora-wm-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let model = dir.join("m.bin");

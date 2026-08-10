@@ -111,7 +111,7 @@ class InvitationFlowIntegrationTest {
                 .isEqualTo(HttpStatus.CREATED);
         JsonNode invBody = mapper.readTree(inviteResp.getBody());
         assertThat(invBody.get("status").asText()).isEqualTo("PENDING");
-        assertThat(invBody.has("token")).as("token deve nao ser exposto na resposta").isFalse();
+        assertThat(invBody.has("token")).as("token must not be exposed in the response").isFalse();
         UUID inviteId = UUID.fromString(invBody.get("id").asText());
 
         // Raw token captured from the acceptUrl the backend sent to the email (the DB only has the

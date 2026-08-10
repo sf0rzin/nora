@@ -16,7 +16,7 @@ public final class WorkflowActionTemplates {
     public static String requiredEmail(Map<String, Object> params, String key) {
         String value = stringParam(params, key);
         if (value == null || !value.contains("@")) {
-            throw new IllegalArgumentException("destinatário inválido em params." + key);
+            throw new IllegalArgumentException("invalid recipient in params." + key);
         }
         return value.trim();
     }

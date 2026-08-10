@@ -64,7 +64,7 @@ def analyze(req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> 
         )
         return response.model_copy(update={"baseline_terms": baseline_terms})
     except ValueError as exc:
-        logger.error("Configuracao do LLM invalida: %s", exc)
+        logger.error("Invalid LLM configuration: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
@@ -73,12 +73,12 @@ def analyze(req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> 
             },
         ) from exc
     except Exception as exc:
-        logger.exception("Erro inesperado na chamada ao LLM")
+        logger.exception("Unexpected error calling the LLM")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "code": "LLM_PROVIDER_ERROR",
-                "message": "Erro ao processar a transcricao. Tente novamente.",
+                "message": "Error processing the transcript. Please try again.",
             },
         ) from exc
 
@@ -102,7 +102,7 @@ def split(req: SplitRequest, settings: Settings = Depends(get_settings)) -> Spli
             req, redacted_lines, settings, pii_redactions_applied=redactions
         )
     except ValueError as exc:
-        logger.error("Configuracao do LLM invalida: %s", exc)
+        logger.error("Invalid LLM configuration: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
@@ -111,12 +111,12 @@ def split(req: SplitRequest, settings: Settings = Depends(get_settings)) -> Spli
             },
         ) from exc
     except Exception as exc:
-        logger.exception("Erro inesperado na chamada ao LLM (split)")
+        logger.exception("Unexpected error calling the LLM (split)")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "code": "LLM_PROVIDER_ERROR",
-                "message": "Erro ao detectar reunioes no arquivo. Tente novamente.",
+                "message": "Error detecting meetings in the file. Please try again.",
             },
         ) from exc
 
@@ -144,7 +144,7 @@ def analyze_live(
             safe_req, settings, pii_redactions_applied=len(redaction.redactions)
         )
     except ValueError as exc:
-        logger.error("Configuracao do LLM invalida: %s", exc)
+        logger.error("Invalid LLM configuration: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
@@ -153,11 +153,11 @@ def analyze_live(
             },
         ) from exc
     except Exception as exc:
-        logger.exception("Erro inesperado na chamada ao LLM (live)")
+        logger.exception("Unexpected error calling the LLM (live)")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "code": "LLM_PROVIDER_ERROR",
-                "message": "Erro ao processar trecho ao vivo. Tente novamente.",
+                "message": "Error processing live chunk. Please try again.",
             },
         ) from exc

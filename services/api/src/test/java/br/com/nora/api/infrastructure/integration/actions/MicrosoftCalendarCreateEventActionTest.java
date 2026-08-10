@@ -28,7 +28,7 @@ class MicrosoftCalendarCreateEventActionTest {
             new MicrosoftCalendarCreateEventAction(integrations, graph);
 
     @Test
-    void defaults_amanha10hSaoPaulo30min() {
+    void defaults_tomorrow10amSaoPaulo30min() {
         when(integrations.validAccessToken(
                         eq(TestContexts.TENANT), eq(IntegrationProvider.MICROSOFT)))
                 .thenReturn("ms_token");
@@ -55,7 +55,7 @@ class MicrosoftCalendarCreateEventActionTest {
     }
 
     @Test
-    void paramsCustom_diasHoraDuracao() {
+    void customParams_daysHourDuration() {
         when(integrations.validAccessToken(
                         eq(TestContexts.TENANT), eq(IntegrationProvider.MICROSOFT)))
                 .thenReturn("ms_token");
@@ -77,9 +77,9 @@ class MicrosoftCalendarCreateEventActionTest {
 
     /** Graph gotcha (same as Google Calendar): dateTime WITHOUT seconds = 400. */
     @Test
-    void graphLocal_sempreComSegundosESemOffset() {
-        OffsetDateTime meiaHora = OffsetDateTime.parse("2026-06-13T10:00:00-03:00");
-        assertThat(MicrosoftGraphClient.graphLocal(meiaHora)).isEqualTo("2026-06-13T10:00:00");
+    void graphLocal_alwaysWithSecondsAndNoOffset() {
+        OffsetDateTime sampleTime = OffsetDateTime.parse("2026-06-13T10:00:00-03:00");
+        assertThat(MicrosoftGraphClient.graphLocal(sampleTime)).isEqualTo("2026-06-13T10:00:00");
     }
 
     /** Captures event creations in memory (replaces the real HTTP calls to Graph). */

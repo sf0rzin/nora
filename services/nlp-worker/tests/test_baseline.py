@@ -39,7 +39,7 @@ def _read_meeting(name: str) -> str:
 def test_extract_returns_list_of_baseline_term_for_real_transcript() -> None:
     transcript = _read_meeting("01-acme-discovery-lead-novo.txt")
     result = extract_baseline_terms(transcript, top_n=10)
-    assert result, "Esperava lista nao-vazia para transcript PT-BR real."
+    assert result, "Expected a non-empty list for a real PT-BR transcript."
     for item in result:
         assert isinstance(item, BaselineTerm)
 
@@ -49,7 +49,7 @@ def test_extract_terms_have_positive_score() -> None:
     result = extract_baseline_terms(transcript, top_n=10)
     assert result
     for item in result:
-        assert item.score > 0.0, f"Score deveria ser > 0, achei {item.score} em '{item.term}'"
+        assert item.score > 0.0, f"Score should be > 0, got {item.score} for '{item.term}'"
 
 
 def test_extract_scores_are_in_valid_range() -> None:
@@ -119,7 +119,7 @@ def test_extract_redacted_placeholders_dont_dominate() -> None:
     terms = {t.term for t in result}
     # At least one business term shows up (and not just a reduced placeholder)
     business = {"proposta", "renovacao", "contrato", "anual", "desconto", "valor", "mensal"}
-    assert terms & business, f"Esperava termos de negocio em {terms}"
+    assert terms & business, f"Expected business terms in {terms}"
 
 
 # ---------- E2E /analyze ----------
@@ -155,10 +155,10 @@ def test_analyze_endpoint_returns_baseline_terms() -> None:
     assert resp.status_code == 200, resp.text
     body = resp.json()
     # Field present (even if empty in degenerate cases)
-    assert "baselineTerms" in body, f"keys disponiveis: {list(body.keys())}"
+    assert "baselineTerms" in body, f"available keys: {list(body.keys())}"
     terms = body["baselineTerms"]
     assert isinstance(terms, list)
-    assert terms, "Esperava lista nao-vazia para transcript real."
+    assert terms, "Expected a non-empty list for a real transcript."
 
     for entry in terms:
         assert set(entry.keys()) == {"term", "score"}
@@ -190,7 +190,7 @@ def test_analyze_endpoint_does_not_break_existing_contract() -> None:
         "participants",
         "metadata",
     ):
-        assert key in body, f"campo pre-existente {key!r} sumiu do response"
+        assert key in body, f"pre-existing field {key!r} disappeared from the response"
 
     # New field present
     assert "baselineTerms" in body

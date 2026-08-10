@@ -23,7 +23,7 @@ impl SecretStore {
 
     fn validate_key(key: &str) -> Result<(), String> {
         if !ALLOWED_KEYS.contains(&key) {
-            return Err(format!("chave não permitida: {}", key));
+            return Err(format!("key not allowed: {}", key));
         }
         Ok(())
     }

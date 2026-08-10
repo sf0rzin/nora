@@ -104,7 +104,7 @@ public class AnalysisService {
             run(meetingId, tenantId);
         } catch (RuntimeException ex) {
             LOG.error(
-                    "Pipeline de analise falhou meetingId={} tenantId={} cause={}",
+                    "Analysis pipeline failed meetingId={} tenantId={} cause={}",
                     meetingId,
                     tenantId,
                     ex.getMessage());
@@ -192,7 +192,7 @@ public class AnalysisService {
             events.publish(event);
         } catch (RuntimeException ex) {
             LOG.warn(
-                    "Falha ao publicar evento de domínio {} cause={}",
+                    "Failed to publish domain event {} cause={}",
                     event.getClass().getSimpleName(),
                     ex.getMessage());
         }
@@ -216,7 +216,7 @@ public class AnalysisService {
                     stub);
         } catch (RuntimeException ex) {
             LOG.warn(
-                    "Falha ao emitir usage da análise meetingId={} tenantId={} cause={}",
+                    "Failed to emit analysis usage meetingId={} tenantId={} cause={}",
                     a.meetingId(),
                     tenantId,
                     ex.getMessage());
@@ -238,7 +238,7 @@ public class AnalysisService {
         } catch (RuntimeException ex) {
             // PII-safe: do not log accountName nor quotes, only ids and the cause.
             LOG.warn(
-                    "Falha ao persistir customer confidence meetingId={} tenantId={} cause={}",
+                    "Failed to persist customer confidence meetingId={} tenantId={} cause={}",
                     meetingId,
                     tenantId,
                     ex.getMessage());

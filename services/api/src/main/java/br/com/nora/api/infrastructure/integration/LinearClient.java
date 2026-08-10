@@ -36,7 +36,7 @@ public class LinearClient {
         JsonNode node = data.path("teams").path("nodes").path(0).path("id");
         if (!node.isTextual()) {
             throw new IntegrationException.ProviderError(
-                    "linear", "teams: workspace sem nenhum team acessível pelo token");
+                    "linear", "teams: workspace has no team accessible with this token");
         }
         return node.asText();
     }
@@ -52,7 +52,7 @@ public class LinearClient {
         JsonNode node = data.path("teams").path("nodes").path(0).path("id");
         if (!node.isTextual()) {
             throw new IntegrationException.ProviderError(
-                    "linear", "teams: nenhum team com a key '" + teamKey + "'");
+                    "linear", "teams: no team with key '" + teamKey + "'");
         }
         return node.asText();
     }
@@ -73,9 +73,9 @@ public class LinearClient {
         JsonNode issueCreate = data.path("issueCreate");
         if (!issueCreate.path("success").asBoolean(false)) {
             throw new IntegrationException.ProviderError(
-                    "linear", "issueCreate: o provedor não confirmou a criação da issue");
+                    "linear", "issueCreate: the provider did not confirm the issue creation");
         }
-        return issueCreate.path("issue").path("url").asText("(issue criada)");
+        return issueCreate.path("issue").path("url").asText("(issue created)");
     }
 
     /** GraphQL POST with Bearer token; returns {@code data} or throws {@code ProviderError}. */
@@ -93,7 +93,7 @@ public class LinearClient {
             JsonNode json = mapper.readTree(response == null ? "{}" : response);
             JsonNode errors = json.path("errors");
             if (errors.isArray() && !errors.isEmpty()) {
-                String message = errors.path(0).path("message").asText("erro GraphQL");
+                String message = errors.path(0).path("message").asText("GraphQL error");
                 throw new IntegrationException.ProviderError(
                         "linear",
                         "graphql: " + message.substring(0, Math.min(message.length(), 300)));

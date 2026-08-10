@@ -11,7 +11,7 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * NORA Flows "Avisar no Discord" action — posts an embed with the meeting summary to a channel via
+ * NORA Flows "Notify on Discord" action — posts an embed with the meeting summary to a channel via
  * a Discord webhook, with no global credential (the channel webhook already carries the
  * authorization). Required param: {@code webhookUrl}, which MUST start with {@code
  * https://discord.com/api/webhooks/} or {@code https://discordapp.com/api/webhooks/} — which also
@@ -38,9 +38,9 @@ public class DiscordPostMessageAction implements ActionExecutor {
     static final int MAX_ACTION_ITEMS = 5;
 
     /** NORA tone 0x4EC4D8 in decimal — the color format Discord's API expects. */
-    static final int COR_NORA = 0x4EC4D8; // 5162200
+    static final int NORA_COLOR = 0x4EC4D8; // 5162200
 
-    static final List<String> PREFIXOS_VALIDOS =
+    static final List<String> VALID_PREFIXES =
             List.of("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/");
 
     private final WebhookHttpClient http;
@@ -70,13 +70,13 @@ public class DiscordPostMessageAction implements ActionExecutor {
         String url = WorkflowActionTemplates.stringParam(params, "webhookUrl");
         if (url == null || url.isBlank()) {
             throw new IllegalArgumentException(
-                    "URL do webhook obrigatória em params.webhookUrl (crie em Configurações do"
-                            + " canal → Integrações → Webhooks)");
+                    "Webhook URL required in params.webhookUrl (create it in Channel Settings"
+                            + " → Integrations → Webhooks)");
         }
         String trimmed = url.trim();
-        if (PREFIXOS_VALIDOS.stream().noneMatch(trimmed::startsWith)) {
+        if (VALID_PREFIXES.stream().noneMatch(trimmed::startsWith)) {
             throw new IllegalArgumentException(
-                    "URL de webhook do Discord inválida — deve começar com"
+                    "Invalid Discord webhook URL — must start with"
                             + " https://discord.com/api/webhooks/");
         }
         return trimmed;
@@ -85,14 +85,14 @@ public class DiscordPostMessageAction implements ActionExecutor {
     /** Discord webhook payload: username "NORA" + one embed with the meeting summary. */
     static Map<String, Object> buildPayload(WorkflowEventContext ctx) {
         Map<String, Object> embed = new LinkedHashMap<>();
-        embed.put("title", truncar(ctx.meetingTitle(), TITLE_MAX));
+        embed.put("title", truncate(ctx.meetingTitle(), TITLE_MAX));
         if (ctx.summary() != null && !ctx.summary().isBlank()) {
-            embed.put("description", truncar(ctx.summary(), DESCRIPTION_MAX));
+            embed.put("description", truncate(ctx.summary(), DESCRIPTION_MAX));
         }
         if (ctx.meetingUrl() != null) {
             embed.put("url", ctx.meetingUrl());
         }
-        embed.put("color", COR_NORA);
+        embed.put("color", NORA_COLOR);
         embed.put("fields", buildFields(ctx));
         embed.put("footer", Map.of("text", "NORA Flows"));
 
@@ -114,13 +114,13 @@ public class DiscordPostMessageAction implements ActionExecutor {
             fields.add(field("Confidence", ctx.customerConfidenceScore() + "/100", true));
         }
         if (!ctx.actionItems().isEmpty()) {
-            fields.add(field("Próximos passos", proximosPassos(ctx), false));
+            fields.add(field("Próximos passos", nextSteps(ctx), false));
         }
         return fields;
     }
 
     /** Up to {@value MAX_ACTION_ITEMS} items "• title — assignee" (assignee when there is one). */
-    private static String proximosPassos(WorkflowEventContext ctx) {
+    private static String nextSteps(WorkflowEventContext ctx) {
         StringBuilder sb = new StringBuilder();
         List<WorkflowEventContext.ActionItemView> items = ctx.actionItems();
         for (int i = 0; i < Math.min(items.size(), MAX_ACTION_ITEMS); i++) {
@@ -134,7 +134,7 @@ public class DiscordPostMessageAction implements ActionExecutor {
             }
         }
         // Discord's hard limit for a field value.
-        return truncar(sb.toString(), 1024);
+        return truncate(sb.toString(), 1024);
     }
 
     private static Map<String, Object> field(String name, String value, boolean inline) {
@@ -145,7 +145,7 @@ public class DiscordPostMessageAction implements ActionExecutor {
         return field;
     }
 
-    static String truncar(String s, int max) {
+    static String truncate(String s, int max) {
         if (s == null || s.length() <= max) {
             return s;
         }

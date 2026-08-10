@@ -302,14 +302,14 @@ jobs:
           publish() {
             local var=$1 name=$2 changed=$3 result=$4
             if [ "$changed" != "true" ] && [ "$EVENT" != "workflow_dispatch" ]; then
-              echo "↷ $name: não mudou — host preserva a tag atual"
+              echo "↷ $name: unchanged — the host keeps the current tag"
               return
             fi
             if [ "$result" != "success" ]; then
               # Warning, not error: a broken build must not drag down the pointer of the
               # services that passed. The host applies the partial one and the broken
               # service stays on the previous tag (which is up).
-              echo "::warning::$name: build=$result — fora do pointer"
+              echo "::warning::$name: build=$result — left out of the pointer"
               return
             fi
             echo "→ $name: ${var}=sha-$SHORT"
@@ -343,7 +343,7 @@ jobs:
 
       # Always upload the artifact, even empty (services:[]): the agent distinguishes
       # "nothing changed at this SHA" from "the workflow did not run".
-      - name: Upload do release pointer
+      - name: Upload the release pointer
         uses: actions/upload-artifact@v4
         with:
           name: nora-release-pointer
@@ -351,7 +351,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Summary do pointer
+      - name: Pointer summary
         env:
           COUNT: ${{ steps.pointer.outputs.count }}
         run: |
@@ -359,18 +359,18 @@ jobs:
             echo "## Release pointer — \`${GITHUB_SHA::7}\`"
             echo ""
             if [ "${COUNT:-0}" = "0" ]; then
-              echo "_Nenhum serviço no pointer neste SHA (nada mudou ou os builds falharam)._"
+              echo "_No service in the pointer at this SHA (nothing changed, or the builds failed)._"
             else
-              echo "O agente de pull no host aplica estas linhas no \`.env\` do compose:"
+              echo "The pull agent on the host applies these lines to the compose \`.env\`:"
               echo ""
               echo '```dotenv'
               cat pointer/deploy.env
               echo '```'
               echo ""
-              echo "Serviços fora da lista mantêm a tag atual — de propósito."
+              echo "Services outside the list keep their current tag — on purpose."
             fi
             echo ""
-            echo "> Rollout é **pull**: nada aqui toca o host. Ver \`.github/workflows/deploy-proxmox.yml\`."
+            echo "> Rollout is **pull**: nothing here touches the host. See \`.github/workflows/deploy-proxmox.yml\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
   summary:
@@ -380,7 +380,7 @@ jobs:
     steps:
       - name: Build summary
         run: |
-          echo "## Build Images — resultados" >> $GITHUB_STEP_SUMMARY
+          echo "## Build Images — results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Imagem | Status | Tag SHA |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|---|" >> $GITHUB_STEP_SUMMARY
@@ -393,4 +393,4 @@ jobs:
           # Do NOT document `docker pull :latest` here: with :latest the service's resolved
           # reference does not change and `docker compose up -d` considers the container
           # up-to-date — it is NOT recreated and the new code never ships. Rollout is by immutable tag.
-          echo "Rollout via tag imutável \`sha-${GITHUB_SHA::7}\` — ver o job \`release-pointer\`." >> $GITHUB_STEP_SUMMARY
+          echo "Rollout via the immutable tag \`sha-${GITHUB_SHA::7}\` — see the \`release-pointer\` job." >> $GITHUB_STEP_SUMMARY

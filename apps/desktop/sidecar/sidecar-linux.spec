@@ -23,15 +23,15 @@ azure_binaries = collect_dynamic_libs('azure.cognitiveservices.speech')
 # Collect data files if any
 azure_datas = collect_data_files('azure.cognitiveservices.speech')
 
-# Pydantic 2 tem pydantic_core como C extension. Sem collect_all, runtime quebra
-# com ModuleNotFoundError: pydantic_core._pydantic_core.
+# Pydantic 2 has pydantic_core as a C extension. Without collect_all, the runtime breaks
+# with ModuleNotFoundError: pydantic_core._pydantic_core.
 pydantic_datas, pydantic_binaries, pydantic_hiddenimports = collect_all('pydantic')
 pydantic_core_datas, pydantic_core_binaries, pydantic_core_hiddenimports = collect_all('pydantic_core')
 
 bundled_binaries = azure_binaries + pydantic_binaries + pydantic_core_binaries
 bundled_datas = azure_datas + pydantic_datas + pydantic_core_datas
 
-# Triple do Tauri/Rust (alinhado com std::env::consts::ARCH/OS).
+# Tauri/Rust triple (aligned with std::env::consts::ARCH/OS).
 _arch_map = {'x86_64': 'x86_64', 'amd64': 'x86_64', 'aarch64': 'aarch64', 'arm64': 'aarch64'}
 _arch = _arch_map.get(platform.machine().lower(), platform.machine().lower())
 _exe_name = f'nora-stt-sidecar-{_arch}-unknown-linux-gnu'

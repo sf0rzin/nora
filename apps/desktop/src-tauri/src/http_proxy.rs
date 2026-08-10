@@ -57,14 +57,14 @@ pub async fn http_proxy(
     // emit a request with the NORA Bearer to any URL. We force that (1) the path
     // starts with '/' and (2) the final URL has the same origin as base_url.
     if !req.path.starts_with('/') || req.path.starts_with("//") {
-        return Err("path deve comecar com '/' e nao ser protocol-relative".into());
+        return Err("path must start with '/' and not be protocol-relative".into());
     }
     let target = base_url
         .0
         .join(&req.path)
         .map_err(|e| format!("invalid path: {}", e))?;
     if target.origin() != base_url.0.origin() {
-        return Err("path fora do origin permitido (SSRF blocked)".into());
+        return Err("path outside the allowed origin (SSRF blocked)".into());
     }
 
     #[cfg(debug_assertions)]
@@ -101,7 +101,7 @@ pub async fn http_proxy(
         "POST" => client.post(target),
         "PUT" => client.put(target),
         "DELETE" => client.delete(target),
-        other => return Err(format!("método não permitido: {}", other)),
+        other => return Err(format!("method not allowed: {}", other)),
     };
 
     for (k, v) in &clean_headers {
@@ -115,7 +115,7 @@ pub async fn http_proxy(
             let bytes = serde_json::to_vec(&body)
                 .map_err(|e| format!("body serialize: {}", e))?;
             if bytes.len() > MAX_BODY_BYTES {
-                return Err(format!("body acima do limite ({} bytes)", bytes.len()));
+                return Err(format!("body over the limit ({} bytes)", bytes.len()));
             }
             builder = builder.body(bytes);
         }
@@ -133,7 +133,7 @@ pub async fn http_proxy(
     let bytes = response.bytes().await
         .map_err(|e| format!("read body: {}", e))?;
     if bytes.len() > MAX_BODY_BYTES {
-        return Err("response acima do limite".into());
+        return Err("response over the limit".into());
     }
     let body: serde_json::Value = serde_json::from_slice(&bytes)
         .unwrap_or(serde_json::Value::Null);

@@ -61,7 +61,7 @@ def _mock_client_returning(payloads: list[dict]) -> MagicMock:
 def _assert_contract(body: dict) -> None:
     """Contract invariants: ordered, no overlap, no gap, covering the file."""
     segments = body["segments"]
-    assert segments, "esperava ao menos 1 segmento"
+    assert segments, "expected at least 1 segment"
     assert segments[0]["startLine"] == 1
     assert segments[-1]["endLine"] == body["totalLines"]
     for i, seg in enumerate(segments):
@@ -387,7 +387,7 @@ def test_split_windows_merge_boundaries(MockClient, monkeypatch):
     resp = analyze(req, red_lines, _make_settings())
     body = resp.model_dump(by_alias=True)
 
-    assert instance.chat_structured.call_count >= 2, "esperava multiplas janelas"
+    assert instance.chat_structured.call_count >= 2, "expected multiple windows"
     _assert_contract(body)
     assert len(body["segments"]) == 2
     assert body["segments"][0]["title"] == "Reuniao A"

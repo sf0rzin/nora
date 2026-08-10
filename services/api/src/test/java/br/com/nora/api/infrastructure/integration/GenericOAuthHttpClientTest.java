@@ -19,7 +19,7 @@ class GenericOAuthHttpClientTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
-    void github_tokenSemExpiracao() throws Exception {
+    void github_tokenWithNoExpiry() throws Exception {
         TokenResponse parsed =
                 GenericOAuthHttpClient.parse(
                         mapper.readTree(
@@ -33,7 +33,7 @@ class GenericOAuthHttpClientTest {
     }
 
     @Test
-    void notion_workspaceNameViraContaExterna() throws Exception {
+    void notion_workspaceNameBecomesExternalAccount() throws Exception {
         TokenResponse parsed =
                 GenericOAuthHttpClient.parse(
                         mapper.readTree(
@@ -45,7 +45,7 @@ class GenericOAuthHttpClientTest {
     }
 
     @Test
-    void linear_expiresInVemComoLong() throws Exception {
+    void linear_expiresInComesAsLong() throws Exception {
         TokenResponse parsed =
                 GenericOAuthHttpClient.parse(
                         mapper.readTree(
@@ -57,7 +57,7 @@ class GenericOAuthHttpClientTest {
 
     /** GitHub answers HTTP 200 with {"error": ...} on an invalid code — becomes ProviderError. */
     @Test
-    void erroComHttp200_viraProviderErrorComCodigo() throws Exception {
+    void errorWithHttp200_becomesProviderErrorWithCode() throws Exception {
         assertThatThrownBy(
                         () ->
                                 GenericOAuthHttpClient.parse(
@@ -69,7 +69,7 @@ class GenericOAuthHttpClientTest {
 
     /** Microsoft: refresh_token persists and the account comes from the id_token `email` claim. */
     @Test
-    void microsoft_refreshTokenEContaDoIdToken() throws Exception {
+    void microsoft_refreshTokenAndAccountFromIdToken() throws Exception {
         String idToken = jwt("{\"email\":\"conta@outlook.com\",\"aud\":\"x\"}");
         TokenResponse parsed =
                 GenericOAuthHttpClient.parse(
@@ -88,7 +88,7 @@ class GenericOAuthHttpClientTest {
 
     /** Corporate account with no `email` claim — falls back to preferred_username. */
     @Test
-    void microsoft_semEmailCaiNoPreferredUsername() throws Exception {
+    void microsoft_noEmailFallsBackToPreferredUsername() throws Exception {
         String idToken = jwt("{\"preferred_username\":\"ana@empresa.com\"}");
         TokenResponse parsed =
                 GenericOAuthHttpClient.parse(
@@ -100,7 +100,7 @@ class GenericOAuthHttpClientTest {
 
     /** A malformed id_token does not take down the connection — it just shows no account. */
     @Test
-    void microsoft_idTokenMalformado_naoQuebra() throws Exception {
+    void microsoft_malformedIdToken_doesNotBreak() throws Exception {
         TokenResponse parsed =
                 GenericOAuthHttpClient.parse(
                         mapper.readTree("{\"access_token\":\"ms_at\",\"id_token\":\"lixo\"}"),
@@ -111,7 +111,7 @@ class GenericOAuthHttpClientTest {
 
     /** Wave 1 still has no refresh: missing field becomes null (no empty string). */
     @Test
-    void onda1_semRefreshToken_continuaNull() throws Exception {
+    void wave1_withNoRefreshToken_staysNull() throws Exception {
         TokenResponse parsed =
                 GenericOAuthHttpClient.parse(
                         mapper.readTree("{\"access_token\":\"gho_abc\"}"),
@@ -120,14 +120,14 @@ class GenericOAuthHttpClientTest {
     }
 
     @Test
-    void respostaSemAccessToken_falhaClaro() throws Exception {
+    void responseWithoutAccessToken_failsClearly() throws Exception {
         assertThatThrownBy(
                         () ->
                                 GenericOAuthHttpClient.parse(
                                         mapper.readTree("{}"),
                                         config(IntegrationProvider.TODOIST, null)))
                 .isInstanceOf(IntegrationException.ProviderError.class)
-                .hasMessageContaining("sem access_token");
+                .hasMessageContaining("no access_token");
     }
 
     /** Test JWT: fake header and signature, real payload in base64url. */
@@ -137,7 +137,7 @@ class GenericOAuthHttpClientTest {
                         "{\"alg\":\"none\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8))
                 + "."
                 + b64.encodeToString(payloadJson.getBytes(java.nio.charset.StandardCharsets.UTF_8))
-                + ".assinatura";
+                + ".signature";
     }
 
     private static OAuthProviderConfig config(IntegrationProvider provider, String accountPointer) {

@@ -49,9 +49,9 @@ public class RsaJwtIssuer implements JwtIssuer {
             @Value("${nora.security.jwt.rsa.kid:nora-key-1}") String kid) {
         if (privateKeyPem == null || privateKeyPem.isBlank()) {
             throw new IllegalStateException(
-                    "nora.security.jwt.rsa.private-key-pem e obrigatorio quando algorithm=RS256."
-                            + " Forneca uma chave RSA PKCS#8 em formato PEM (base64 puro ou"
-                            + " envelope -----BEGIN PRIVATE KEY-----).");
+                    "nora.security.jwt.rsa.private-key-pem is required when algorithm=RS256."
+                            + " Provide an RSA PKCS#8 key in PEM format (plain base64 or"
+                            + " -----BEGIN PRIVATE KEY----- envelope).");
         }
         this.privateKey = parsePrivateKey(privateKeyPem);
         this.publicKey = derivePublicKey(privateKey);
@@ -114,14 +114,15 @@ public class RsaJwtIssuer implements JwtIssuer {
             decoded = Base64.getDecoder().decode(normalized);
         } catch (IllegalArgumentException ex) {
             throw new IllegalStateException(
-                    "nora.security.jwt.rsa.private-key-pem nao e base64 valido.", ex);
+                    "nora.security.jwt.rsa.private-key-pem is not valid base64.", ex);
         }
         try {
             KeyFactory kf = KeyFactory.getInstance("RSA");
             return (RSAPrivateKey) kf.generatePrivate(new PKCS8EncodedKeySpec(decoded));
         } catch (Exception ex) {
             throw new IllegalStateException(
-                    "Falha ao parsear chave RSA privada PKCS#8 de nora.security.jwt.rsa.private-key-pem.",
+                    "Failed to parse RSA private key PKCS#8 from"
+                            + " nora.security.jwt.rsa.private-key-pem.",
                     ex);
         }
     }
@@ -136,10 +137,11 @@ public class RsaJwtIssuer implements JwtIssuer {
                                 new RSAPublicKeySpec(crt.getModulus(), crt.getPublicExponent()));
             }
             throw new IllegalStateException(
-                    "Chave RSA privada deve ser CRT (PKCS#8 padrao com publicExponent embutido)."
-                            + " Gere com `openssl genpkey -algorithm RSA -out key.pem` ou similar.");
+                    "RSA private key must be CRT (standard PKCS#8 with embedded publicExponent)."
+                            + " Generate one with `openssl genpkey -algorithm RSA -out key.pem` or"
+                            + " similar.");
         } catch (Exception ex) {
-            throw new IllegalStateException("Falha ao derivar chave RSA publica.", ex);
+            throw new IllegalStateException("Failed to derive RSA public key.", ex);
         }
     }
 }

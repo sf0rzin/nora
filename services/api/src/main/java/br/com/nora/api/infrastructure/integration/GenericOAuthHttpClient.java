@@ -79,7 +79,7 @@ public class GenericOAuthHttpClient implements GenericOAuthClient {
     static TokenResponse parse(JsonNode json, OAuthProviderConfig config) {
         String accessToken = json.path("access_token").asText(null);
         if (accessToken == null || accessToken.isBlank()) {
-            String error = json.path("error").asText("resposta sem access_token");
+            String error = json.path("error").asText("response with no access_token");
             throw new IntegrationException.ProviderError(
                     config.provider().wire(), "token: " + error);
         }

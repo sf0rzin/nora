@@ -9,8 +9,8 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * NORA Flows "Postar no Slack" action — REAL message in a channel of the connected workspace (bot
- * token via OAuth v2). Params: {@code channel} (required, e.g. {@code #vendas}; validated on save)
+ * NORA Flows "Post to Slack" action — REAL message in a channel of the connected workspace (bot
+ * token via OAuth v2). Params: {@code channel} (required, e.g. {@code #sales}; validated on save)
  * and an optional {@code text} with the same placeholders as the e-mail actions. With no text, it
  * posts a compact meeting summary with a link (Slack is chat, not a report).
  *
@@ -73,7 +73,7 @@ public class SlackPostMessageAction implements ActionExecutor {
         String channel = WorkflowActionTemplates.stringParam(params, "channel");
         if (channel == null || channel.isBlank()) {
             throw new IllegalArgumentException(
-                    "canal obrigatório em params.channel (ex.: #vendas)");
+                    "channel required in params.channel (e.g.: #sales)");
         }
         return channel.trim();
     }

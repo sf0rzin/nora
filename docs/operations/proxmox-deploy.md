@@ -11,7 +11,7 @@ last_reviewed: 2026-08-07
 > **Audience:** whoever operates the NORA deployment on the Proxmox VM (the Tech Lead today; future operators).
 >
 > **Supersedes** [`azure-deploy.md`](azure-deploy.md), which becomes a historical document.
-> The decision is in [ADR 0034](../adr/0034-migracao-azure-para-proxmox.md); shutting down what
+> The decision is in [ADR 0034](../adr/0034-azure-to-proxmox-migration.md); shutting down what
 > remained on Azure is covered in [`azure-decommission.md`](azure-decommission.md).
 >
 > **Prerequisites:** access to the "beta" Proxmox, a Cloudflare account with the `nora.systems` zone,

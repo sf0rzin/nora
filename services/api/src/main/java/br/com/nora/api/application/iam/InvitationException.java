@@ -20,24 +20,25 @@ public class InvitationException extends RuntimeException {
     public static InvitationException emailDomainNotAllowed(String email, String allowedDomain) {
         return new InvitationException(
                 "EMAIL_DOMAIN_NOT_ALLOWED",
-                "Email '" + email + "' nao pertence ao dominio permitido '" + allowedDomain + "'.");
+                "Email '" + email + "' does not belong to the allowed domain '" + allowedDomain + "'.");
     }
 
     public static InvitationException inviteNotFound() {
-        return new InvitationException("INVITE_NOT_FOUND", "Convite nao encontrado.");
+        return new InvitationException("INVITE_NOT_FOUND", "Invitation not found.");
     }
 
     public static InvitationException inviteAlreadyAccepted() {
         return new InvitationException(
-                "INVITE_ALREADY_ACCEPTED", "Convite ja foi aceito ou revogado.");
+                "INVITE_ALREADY_ACCEPTED", "Invitation was already accepted or revoked.");
     }
 
     public static InvitationException inviteExpired() {
-        return new InvitationException("INVITE_EXPIRED", "Convite expirado.");
+        return new InvitationException("INVITE_EXPIRED", "Invitation expired.");
     }
 
     public static InvitationException duplicatePending(String email) {
         return new InvitationException(
-                "INVITE_DUPLICATE_PENDING", "Ja existe um convite pendente para '" + email + "'.");
+                "INVITE_DUPLICATE_PENDING",
+                "There is already a pending invitation for '" + email + "'.");
     }
 }

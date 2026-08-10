@@ -133,7 +133,7 @@ public class PlatformAdminController {
             @Valid @RequestBody BindRequest body,
             @RequestHeader(value = OPERATOR_HEADER, required = false) String operator) {
         if (body.modelId() == null) {
-            throw new PlatformValidationException("modelId é obrigatório", false);
+            throw new PlatformValidationException("modelId is required", false);
         }
         boolean enabled = body.enabled() == null || body.enabled();
         ServiceBinding b = catalog.bindService(service, body.modelId(), enabled, operator);
@@ -195,7 +195,7 @@ public class PlatformAdminController {
             try {
                 return LocalDate.parse(v).atStartOfDay().atOffset(ZoneOffset.UTC);
             } catch (DateTimeParseException ex2) {
-                throw new PlatformValidationException("data inválida (use ISO-8601): " + s, false);
+                throw new PlatformValidationException("invalid date (use ISO-8601): " + s, false);
             }
         }
     }

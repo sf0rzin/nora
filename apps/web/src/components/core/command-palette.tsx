@@ -30,7 +30,7 @@ const COMMANDS: CommandItem[] = [
   { kind: "cmd", label: "Nova reunião", sub: "N", icon: "plus", href: "/meetings/upload" as Route },
   { kind: "cmd", label: "Nova sessão de chat", icon: "chat", href: "/chat" as Route },
   { kind: "cmd", label: "Ver action items", icon: "tasks", href: "/tasks" as Route },
-  { kind: "cmd", label: "Fluxos", icon: "flow", href: "/fluxos" as Route },
+  { kind: "cmd", label: "Fluxos", icon: "flow", href: "/flows" as Route },
   { kind: "cmd", label: "Abrir configurações", icon: "gear", href: "/settings/context" as Route },
 ];
 

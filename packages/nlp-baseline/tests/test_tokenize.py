@@ -107,7 +107,7 @@ def test_get_ptbr_stopwords_contains_common_words() -> None:
     sw = get_ptbr_stopwords()
     # These are indispensable in any decent PT-BR stopword list
     for w in ("o", "a", "de", "para", "e", "do", "da", "que"):
-        assert w in sw, f"stopword '{w}' deveria estar na lista"
+        assert w in sw, f"stopword '{w}' should be in the list"
 
 
 def test_get_ptbr_stopwords_returns_fresh_list() -> None:
@@ -124,4 +124,4 @@ def test_get_ptbr_stopwords_is_lowercased_and_deduped() -> None:
     assert len(sw) == len(set(sw))
     # All lowercase
     for w in sw:
-        assert w == w.lower(), f"stopword nao normalizada: '{w}'"
+        assert w == w.lower(), f"stopword not normalized: '{w}'"

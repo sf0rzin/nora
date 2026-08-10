@@ -9,7 +9,7 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * NORA Flows "Criar tarefas no Todoist" action — REAL tasks in the connected account's Inbox, one
+ * NORA Flows "Create tasks in Todoist" action — REAL tasks in the connected account's Inbox, one
  * per meeting action item (content = item title; description = meeting + assignee + link). No
  * required params. The Flows context does not expose dueDate — the task is born with no due date.
  *

@@ -242,7 +242,7 @@ class PolicyEvaluatorUniformDecisionTest {
                                 PolicyEvaluator.isAllowed(stmts, ACTION, meeting(id), Map.of());
                         assertThat(perItem)
                                 .as(
-                                        "allow(%s) + %s(%s): uniforme=%s mas o item %s deu %s",
+                                        "allow(%s) + %s(%s): uniform=%s but item %s gave %s",
                                         p1, effect, p2, uniform.get(), id, perItem)
                                 .isEqualTo(uniform.get());
                     }
@@ -252,7 +252,7 @@ class PolicyEvaluatorUniformDecisionTest {
         // Guard against the optimization dying unnoticed: if a refactor makes it always
         // `empty`, the test above passes vacuously and the endpoint scans the whole tenant again.
         assertThat(answered)
-                .as("nenhum conjunto do corpus tomou o caminho rapido")
+                .as("no set from the corpus took the fast path")
                 .isGreaterThan(20);
     }
 

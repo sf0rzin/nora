@@ -113,7 +113,7 @@ public class AuthController {
                 new SignupResponse(
                         result.userId(),
                         result.tenantId(),
-                        "Verifique seu e-mail para ativar sua conta.",
+                        "Account created. Check your email to activate it.",
                         result.emailVerificationDevToken());
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
@@ -290,7 +290,7 @@ public class AuthController {
     @AuthorizationNotRequired(reason = "Public: for users who cannot log in; rate-limited.")
     public ResponseEntity<ResendVerificationResponse> resendVerification(
             @Valid @RequestBody ResendVerificationRequest req) {
-        String message = "Se houver uma conta nao verificada para este e-mail, reenviamos o link.";
+        String message = "If there is an unverified account for this email, we resent the link.";
         if (!rateLimiter.allowPasswordReset(req.email())) {
             LOG.warn(
                     "Verification resend rate-limited for email-hash={}",
@@ -318,8 +318,8 @@ public class AuthController {
             return ResponseEntity.accepted()
                     .body(
                             new RequestPasswordResetResponse(
-                                    "Se houver uma conta para este e-mail, enviaremos"
-                                            + " instrucoes.",
+                                    "If there is an account for this email, we will send"
+                                            + " instructions.",
                                     null));
         }
         RequestPasswordResetResult result =
@@ -327,7 +327,7 @@ public class AuthController {
         return ResponseEntity.accepted()
                 .body(
                         new RequestPasswordResetResponse(
-                                "Se houver uma conta para este e-mail, enviaremos instrucoes.",
+                                "If there is an account for this email, we will send instructions.",
                                 result.devToken()));
     }
 

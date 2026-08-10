@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 class MarkdownLiteTest {
 
     @Test
-    void negritoListaETituloViramHtmlSemAsteriscosLiterais() {
+    void boldListAndHeadingBecomeHtmlWithoutLiteralAsterisks() {
         String md =
                 """
                 ## Resumo da reunião
@@ -28,20 +28,20 @@ class MarkdownLiteTest {
     }
 
     @Test
-    void listaNumeradaViraOrdenada() {
+    void numberedListBecomesOrderedList() {
         String html = MarkdownLite.render("1. Primeiro\n2. Segundo");
         assertThat(html).contains("<ol", "<li").contains("Primeiro").contains("Segundo");
     }
 
     @Test
-    void htmlDoConteudoEEscapado() {
-        String html = MarkdownLite.render("Cuidado com <script>alert(1)</script> aqui");
+    void contentHtmlIsEscaped() {
+        String html = MarkdownLite.render("Watch out for <script>alert(1)</script> here");
         assertThat(html).doesNotContain("<script>");
         assertThat(html).contains("&lt;script&gt;");
     }
 
     @Test
-    void linkMarkdownEUrlSoltaViramAncora() {
+    void markdownLinkAndBareUrlBecomeAnchor() {
         String html =
                 MarkdownLite.render(
                         "Veja [a reunião](https://nora.systems/m/1) ou https://nora.systems/docs");
@@ -52,14 +52,14 @@ class MarkdownLiteTest {
     }
 
     @Test
-    void paragrafosSeparadosPorLinhaEmBrancoEQuebraSimplesViraBr() {
+    void paragraphsSeparatedByBlankLineAndSimpleBreakBecomeBr() {
         String html = MarkdownLite.render("linha um\nlinha dois\n\noutro parágrafo");
         assertThat(html).contains("linha um<br>linha dois");
         assertThat(html).contains("outro parágrafo");
     }
 
     @Test
-    void vazioOuNuloRendeVazio() {
+    void emptyOrNullRendersEmpty() {
         assertThat(MarkdownLite.render(null)).isEmpty();
         assertThat(MarkdownLite.render("  ")).isEmpty();
     }

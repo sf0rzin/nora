@@ -20,7 +20,7 @@ is_windows() {
 }
 
 stop_windows() {
-  echo ">> [Windows] matando processos nas portas ${PORTS[*]}..."
+  echo ">> [Windows] killing processes on ports ${PORTS[*]}..."
   # Heredoc with powershell syntax. Careful: $... variables are PS's, not bash's.
   powershell -NoProfile -Command '
     $ports = @(3000, 8080, 8001)
@@ -39,21 +39,21 @@ stop_windows() {
     foreach ($port in $ports) {
       $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
       if (-not $conns) {
-        Write-Host "  port $($port): nada escutando"
+        Write-Host "  port $($port): nothing listening"
         continue
       }
       foreach ($c in $conns) {
         $rootPid = [int]$c.OwningProcess
         if ($rootPid -le 4) { continue }
         $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$rootPid" -ErrorAction SilentlyContinue
-        # sobe ate o ultimo wrapper conhecido (mvn/pnpm/uvicorn-reloader/etc.)
+        # climb up to the last known wrapper (mvn/pnpm/uvicorn-reloader/etc.)
         while ($proc) {
           $parent = Get-CimInstance Win32_Process -Filter "ProcessId=$($proc.ParentProcessId)" -ErrorAction SilentlyContinue
           if ($parent -and ($wrappers -contains $parent.Name)) {
             $proc = $parent
           } else { break }
         }
-        Write-Host "  port $($port): matando arvore a partir de PID $($proc.ProcessId) ($($proc.Name))"
+        Write-Host "  port $($port): killing the process tree starting at PID $($proc.ProcessId) ($($proc.Name))"
         Kill-Tree $proc.ProcessId
       }
     }
@@ -76,15 +76,15 @@ list_descendants() {
 }
 
 stop_unix() {
-  echo ">> [Unix] matando processos nas portas ${PORTS[*]}..."
+  echo ">> [Unix] killing processes on ports ${PORTS[*]}..."
   for port in "${PORTS[@]}"; do
     pids=$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)
     if [ -z "$pids" ]; then
-      echo "  port $port: nada escutando"
+      echo "  port $port: nothing listening"
       continue
     fi
     for pid in $pids; do
-      echo "  port $port: matando arvore a partir de PID $pid"
+      echo "  port $port: killing the process tree starting at PID $pid"
       descendants=$(list_descendants "$pid")
       for d in $descendants; do kill -15 "$d" 2>/dev/null || true; done
       kill -15 "$pid" 2>/dev/null || true
@@ -104,4 +104,4 @@ else
 fi
 
 rm -f "$DEV_RUN_DIR"/web.pid "$DEV_RUN_DIR"/api.pid "$DEV_RUN_DIR"/worker.pid 2>/dev/null || true
-echo "OK -- processos parados. DB segue de pe (use 'make db-down' para derrubar)."
+echo "OK -- processes stopped. The DB is still up (use 'make db-down' to bring it down)."

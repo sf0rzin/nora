@@ -86,7 +86,7 @@ class TriggerEventsIntegrationTest {
     }
 
     @Test
-    void analiseDisparaGatilhosDeActionItemERiscoAlto() throws Exception {
+    void analysisTriggersActionItemAndHighRiskTriggers() throws Exception {
         String token = signupAndLogin("triggers@nora.dev", "SenhaForte123", "Triggers");
 
         // One workflow per trigger: action_item.created and meeting.risk_detected.
@@ -143,7 +143,7 @@ class TriggerEventsIntegrationTest {
     }
 
     @Test
-    void gatilhosExtrasNaoDisparamWorkflowDeOutroTipo() throws Exception {
+    void extraTriggersDoNotFireWorkflowOfAnotherType() throws Exception {
         String token = signupAndLogin("triggers-iso@nora.dev", "SenhaForte123", "Iso");
 
         // Anchor-trigger workflow: fires ONCE, not once per action item/risk.
@@ -266,7 +266,7 @@ class TriggerEventsIntegrationTest {
             }
             Thread.sleep(250);
         }
-        throw new AssertionError("execução do workflow não apareceu/terminou em 10s");
+        throw new AssertionError("workflow execution did not appear/finish within 10s");
     }
 
     private String signupAndLogin(String email, String pwd, String name) throws Exception {

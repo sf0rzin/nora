@@ -54,7 +54,7 @@ public class TelemetryDataSourceConfig {
         cfg.setInitializationFailTimeout(-1);
         this.dataSource = new HikariDataSource(cfg);
         LOG.info(
-                "Telemetria de negócio: datasource BYPASSRLS dedicado ATIVO (role={}, pool={}). RLS"
+                "Business telemetry: dedicated BYPASSRLS datasource ACTIVE (role={}, pool={}). RLS"
                         + " enforce-safe (ADR 0026).",
                 props.getUsername(),
                 props.getMaxPoolSize());

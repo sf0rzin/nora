@@ -1,5 +1,5 @@
 # Build context: apps/admin/
-# Console interno do operador (Next standalone). Atrás de Easy Auth + IP allowlist no ACA.
+# Internal operator console (Next standalone). Behind Easy Auth + IP allowlist on ACA.
 
 # --- deps ---
 FROM node:22-alpine AS deps
@@ -18,17 +18,17 @@ RUN npm run build
 # --- runtime (standalone) ---
 FROM node:22-alpine AS runtime
 WORKDIR /app
-# HOSTNAME=0.0.0.0 nao e detalhe: o `server.js` do output standalone faz bind em
-# `process.env.HOSTNAME`, e o Docker preenche essa variavel com o ID do container. Sem
-# a linha abaixo o Next escuta SO no IP do container -- a sonda da "connection refused",
-# o HEALTHCHECK falha para sempre e o `up --wait` do deploy nunca conclui, ainda que a
-# app esteja no ar e o Caddy (que fala com `admin:3002`) consiga servir.
-# O `web` nao tem esse problema porque usa `next start`, que assume 0.0.0.0.
+# HOSTNAME=0.0.0.0 is not a detail: the standalone output's `server.js` binds to
+# `process.env.HOSTNAME`, and Docker fills that variable with the container ID. Without
+# the line below, Next listens ONLY on the container IP -- the probe gets "connection refused",
+# the HEALTHCHECK fails forever and the deploy's `up --wait` never finishes, even though the
+# app is up and Caddy (which talks to `admin:3002`) can serve it.
+# `web` does not have this problem because it uses `next start`, which assumes 0.0.0.0.
 #
-# E a sonda usa 127.0.0.1, nao `localhost`: com HOSTNAME=0.0.0.0 o listener e IPv4-only,
-# mas o /etc/hosts do container resolve `localhost` tambem para ::1 e o wget do BusyBox
-# tenta o IPv6 primeiro. O resultado e identico ao bug acima -- connection refused com o
-# servidor no ar -- e por isso mesmo facil de diagnosticar errado duas vezes.
+# And the probe uses 127.0.0.1, not `localhost`: with HOSTNAME=0.0.0.0 the listener is IPv4-only,
+# but the container /etc/hosts also resolves `localhost` to ::1 and BusyBox wget
+# tries IPv6 first. The result is identical to the bug above -- connection refused with the
+# server up -- and for that very reason easy to misdiagnose twice.
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3002 HOSTNAME=0.0.0.0
 RUN addgroup -S nora && adduser -S nora -G nora
 COPY --from=build /app/public ./public

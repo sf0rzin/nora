@@ -36,15 +36,15 @@ on:
   workflow_dispatch:
     inputs:
       admin_hostname:
-        description: 'LEGACY (pre-ADR 0025). DEIXE VAZIO. Workflow aborta se CNAME ja aponta pro Cloudflare Tunnel.'
+        description: 'LEGACY (pre-ADR 0025). LEAVE EMPTY. The workflow aborts if the CNAME already points at the Cloudflare Tunnel.'
         required: false
         default: ''
       team_name:
-        description: 'Nome do team Zero Trust (vira <name>.cloudflareaccess.com). Apenas leitura — team deve existir.'
+        description: 'Zero Trust team name (becomes <name>.cloudflareaccess.com). Read only — the team must already exist.'
         required: true
         default: 'stratfy'
       access_emails:
-        description: 'Emails autorizados (CSV, sem espacos extras)'
+        description: 'Authorized e-mails (CSV, no extra spaces)'
         required: true
         default: 'axonogenesis@proton.me,gmaciel0204@gmail.com'
 
@@ -71,11 +71,11 @@ jobs:
           response=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" "$CF_API/user/tokens/verify")
           status=$(echo "$response" | jq -r '.result.status // "unknown"')
           if [ "$status" != "active" ]; then
-            echo "::error::Token nao ativo (status=$status). Verifica permissoes do CLOUDFLARE_API_TOKEN."
+            echo "::error::Token not active (status=$status). Check the CLOUDFLARE_API_TOKEN permissions."
             echo "$response" | jq .
             exit 1
           fi
-          echo "Token ativo. Permissoes verificadas pelo proprio scope nas chamadas seguintes."
+          echo "Token active. Permissions are verified by the scope of the calls that follow."
 
       - name: Resolve Zone ID
         id: zone
@@ -85,12 +85,12 @@ jobs:
           zone_id=$(echo "$response" | jq -r '.result[0].id // empty')
           zone_status=$(echo "$response" | jq -r '.result[0].status // empty')
           if [ -z "$zone_id" ]; then
-            echo "::error::Zone '$DOMAIN' nao encontrada. Confere que o dominio esta adicionado na conta CF e Active."
+            echo "::error::Zone '$DOMAIN' not found. Check that the domain is added to the CF account and Active."
             echo "$response" | jq .
             exit 1
           fi
           if [ "$zone_status" != "active" ]; then
-            echo "::warning::Zone '$DOMAIN' encontrada mas status=$zone_status (esperado: active). DNS pode ainda nao estar propagado."
+            echo "::warning::Zone '$DOMAIN' found but status=$zone_status (expected: active). DNS may not have propagated yet."
           fi
           echo "zone_id=$zone_id" >> "$GITHUB_OUTPUT"
           echo "Zone $DOMAIN -> $zone_id (status=$zone_status)"
@@ -110,16 +110,16 @@ jobs:
             "$CF_API/zones/$ZONE_ID/dns_records?type=CNAME&name=$fqdn" \
             | jq -r '.result[0].content // empty')
           if [[ "$existing_content" == *.cfargotunnel.com ]]; then
-            echo "::error::ABORT: CNAME $fqdn aponta pro Cloudflare Tunnel ($existing_content)."
-            echo "::error::Sobrescrever derrubaria o admin (ADR 0025: origem do nora-admin e internal — so o tunel entra)."
+            echo "::error::ABORT: CNAME $fqdn points at the Cloudflare Tunnel ($existing_content)."
+            echo "::error::Overwriting would take the admin down (ADR 0025: the nora-admin origin is internal — only the tunnel gets in)."
             # Post-migration (ADR 0034) the tunnel stopped being a Container App sidecar and
             # became the `cloudflared` service of infra/proxmox/docker-compose.yml. There is
             # no "public ingress" left to migrate: NO service in the stack publishes a port —
             # the only ports in the compose are 127.0.0.1 (loopback, debug via ssh -L). The
             # tunnel is not an exposure option, it is the ONLY one. This input exists purely
             # for back-compat.
-            echo "::error::Nao ha caminho alternativo: na stack do Proxmox o tunel e o unico ingress"
-            echo "::error::(nenhum container publica porta na interface externa). Rode SEM admin_hostname."
+            echo "::error::There is no alternative path: on the Proxmox stack the tunnel is the only ingress"
+            echo "::error::(no container publishes a port on the external interface). Run WITHOUT admin_hostname."
             exit 1
           fi
           existing=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
@@ -130,12 +130,12 @@ jobs:
             --arg content "$TARGET" \
             '{type:"CNAME", name:$name, content:$content, proxied:true, ttl:1, comment:"NORA admin console — gated por Cloudflare Access (legacy pre-ADR 0025)"}')
           if [ -n "$existing" ]; then
-            echo "CNAME $fqdn existe ($existing) apontando pra $existing_content; atualizando target -> $TARGET"
+            echo "CNAME $fqdn exists ($existing) pointing at $existing_content; updating target -> $TARGET"
             curl -fsSL -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
               "$CF_API/zones/$ZONE_ID/dns_records/$existing" -d "$payload" \
               | jq '{success, name: .result.name, content: .result.content, proxied: .result.proxied}'
           else
-            echo "Criando CNAME $fqdn -> $TARGET (proxied)"
+            echo "Creating CNAME $fqdn -> $TARGET (proxied)"
             curl -fsSL -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
               "$CF_API/zones/$ZONE_ID/dns_records" -d "$payload" \
               | jq '{success, name: .result.name, content: .result.content, proxied: .result.proxied}'
@@ -166,8 +166,8 @@ jobs:
             err_msg=$(echo "$response" | jq -r '.errors[0].message // "unknown"')
             team_domain="${TEAM_NAME}.cloudflareaccess.com"
             echo "::warning::API /access/organizations rejeitou (code=$err_code: $err_msg). Construindo team_domain do input: $team_domain"
-            echo "::warning::Pra verificacao via API, adiciona 'Access: Organizations, IdPs, and Groups Read' no token CF."
-            echo "::warning::Se o team realmente NAO existir, o step 'Upsert Access Application' vai falhar mais a frente."
+            echo "::warning::For API verification, add 'Access: Organizations, IdPs, and Groups Read' to the CF token."
+            echo "::warning::If the team really does NOT exist, the 'Upsert Access Application' step will fail further ahead."
           fi
           echo "team_domain=$team_domain" >> "$GITHUB_OUTPUT"
 
@@ -184,12 +184,12 @@ jobs:
             --arg domain "$fqdn" \
             '{name:$name, domain:$domain, type:"self_hosted", session_duration:"24h", auto_redirect_to_identity:false, app_launcher_visible:true}')
           if [ -n "$app_id" ]; then
-            echo "Access App $app_id existe pra $fqdn; atualizando."
+            echo "Access App $app_id exists for $fqdn; updating."
             curl -fsSL -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
               "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps/$app_id" -d "$payload" \
               | jq '{success, id: .result.id, domain: .result.domain}'
           else
-            echo "Criando Access App pra $fqdn"
+            echo "Creating Access App for $fqdn"
             response=$(curl -fsSL -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
               "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps" -d "$payload")
             app_id=$(echo "$response" | jq -r .result.id)
@@ -218,12 +218,12 @@ jobs:
             --argjson incl "$emails_json" \
             '{name:"operators-allowlist", decision:"allow", include:$incl, precedence:1}')
           if [ -n "$policy_id" ]; then
-            echo "Policy $policy_id existe; atualizando allowlist."
+            echo "Policy $policy_id exists; updating the allowlist."
             curl -fsSL -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
               "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps/$APP_ID/policies/$policy_id" -d "$payload" \
               | jq '{success, name: .result.name, emails_count: (.result.include | length)}'
           else
-            echo "Criando policy operators-allowlist"
+            echo "Creating the operators-allowlist policy"
             curl -fsSL -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
               "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps/$APP_ID/policies" -d "$payload" \
               | jq '{success, name: .result.name, emails_count: (.result.include | length)}'
@@ -243,17 +243,17 @@ jobs:
           if [ "$success" != "true" ]; then
             err_code=$(echo "$response" | jq -r '.errors[0].code // "unknown"')
             err_msg=$(echo "$response" | jq -r '.errors[0].message // "unknown"')
-            echo "::warning::API /access/identity_providers rejeitou (code=$err_code: $err_msg). OTP IdP nao sera criado via workflow."
-            echo "::warning::OPCAO A: adiciona 'Access: Organizations, IdPs, and Groups Edit' no token CF e re-roda."
-            echo "::warning::OPCAO B: adiciona manualmente em https://one.dash.cloudflare.com/ -> Settings -> Authentication -> Add new -> One-time PIN."
+            echo "::warning::API /access/identity_providers rejected the call (code=$err_code: $err_msg). The OTP IdP will not be created by the workflow."
+            echo "::warning::OPTION A: add 'Access: Organizations, IdPs, and Groups Edit' to the CF token and re-run."
+            echo "::warning::OPTION B: add it manually at https://one.dash.cloudflare.com/ -> Settings -> Authentication -> Add new -> One-time PIN."
             echo "skipped=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           existing=$(echo "$response" | jq -r '.result[] | select(.type=="onetimepin") | .id' | head -1)
           if [ -n "$existing" ]; then
-            echo "OTP IdP ja configurado ($existing)."
+            echo "OTP IdP already configured ($existing)."
           else
-            echo "Criando OTP IdP"
+            echo "Creating the OTP IdP"
             payload='{"name":"One-Time PIN","type":"onetimepin","config":{}}'
             curl -fsSL -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
               "$CF_API/accounts/$CF_ACCOUNT_ID/access/identity_providers" -d "$payload" \
@@ -271,13 +271,13 @@ jobs:
           ACCESS_EMAILS: ${{ inputs.access_emails }}
           OTP_SKIPPED: ${{ steps.otp_idp.outputs.skipped }}
         run: |
-          dns_state="⏳ pendente — re-roda com admin_hostname quando o Container App admin existir"
+          dns_state="⏳ pending — re-run with admin_hostname once the admin Container App exists"
           if [ -n "$ADMIN_HOSTNAME" ]; then
-            dns_state="✅ apontado pra \`$ADMIN_HOSTNAME\`"
+            dns_state="✅ pointing at \`$ADMIN_HOSTNAME\`"
           fi
           otp_state="✅ configurado via workflow"
           if [ "$OTP_SKIPPED" = "true" ]; then
-            otp_state="⚠️ skipped (token sem permissao — adicionar manualmente, ver abaixo)"
+            otp_state="⚠️ skipped (token lacks the permission — add it manually, see below)"
           fi
           {
             echo "## Cloudflare Access — Setup"
@@ -293,33 +293,33 @@ jobs:
             echo "| OTP IdP | $otp_state |"
             echo ""
             if [ "$OTP_SKIPPED" = "true" ]; then
-              echo "### ⚠️ Acao manual necessaria: adicionar IdP"
+              echo "### ⚠️ Manual action required: add an IdP"
               echo ""
-              echo "Sem IdP, ninguem consegue logar. Duas opcoes:"
+              echo "Without an IdP nobody can log in. Two options:"
               echo ""
-              echo "**A) Adicionar OTP via UI (mais rapido, 30s)**"
+              echo "**A) Add OTP via the UI (faster, 30s)**"
               echo "1. https://one.dash.cloudflare.com/ → Settings → Authentication"
               echo "2. Login methods → Add new → **One-time PIN** → Save"
               echo ""
-              echo "**B) Expandir token e re-rodar workflow**"
-              echo "1. CF dashboard → My Profile → API Tokens → edita o CLOUDFLARE_API_TOKEN"
-              echo "2. Adiciona permissao: **Account → Access: Organizations, Identity Providers, and Groups → Edit**"
-              echo "3. Re-roda este workflow"
+              echo "**B) Widen the token and re-run the workflow**"
+              echo "1. CF dashboard → My Profile → API Tokens → edit CLOUDFLARE_API_TOKEN"
+              echo "2. Add the permission: **Account → Access: Organizations, Identity Providers, and Groups → Edit**"
+              echo "3. Re-run this workflow"
               echo ""
             else
-              echo "### Login ja funcional"
+              echo "### Login already working"
               echo ""
-              echo "**One-Time PIN por email** — sem OAuth setup. Quando \`https://$SUBDOMAIN.$DOMAIN\` "
-              echo "estiver acessivel, Cloudflare pede email e manda codigo (so emails da allowlist passam)."
+              echo "**One-Time PIN by e-mail** — no OAuth setup. Once \`https://$SUBDOMAIN.$DOMAIN\` "
+              echo "is reachable, Cloudflare asks for an e-mail and sends a code (only allowlisted e-mails get through)."
               echo ""
             fi
-            echo "### Adicionar Google + GitHub OAuth (opcional)"
+            echo "### Add Google + GitHub OAuth (optional)"
             echo ""
-            echo "Callback URL pros dois providers (vai pedir no console deles):"
+            echo "Callback URL for both providers (their consoles will ask for it):"
             echo ""
             echo '```'
             echo "https://$TEAM_DOMAIN/cdn-cgi/access/callback"
             echo '```'
             echo ""
-            echo "Passo-a-passo em [\`docs/operations/cloudflare-access.md\`](../docs/operations/cloudflare-access.md)."
+            echo "Step by step in [\`docs/operations/cloudflare-access.md\`](../docs/operations/cloudflare-access.md)."
           } >> "$GITHUB_STEP_SUMMARY"

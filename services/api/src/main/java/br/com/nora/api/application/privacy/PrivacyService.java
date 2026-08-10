@@ -63,7 +63,7 @@ public class PrivacyService {
             throw new MeetingException.NotFound();
         }
         // PII-safe: ids only, never content.
-        LOG.info("LGPD erasure: meeting={} purgado (tenant={})", meetingId, tenantId);
+        LOG.info("LGPD erasure: meeting={} purged (tenant={})", meetingId, tenantId);
     }
 
     /** Purges the tenant's meetings created before {@code cutoff} (retention). Returns how many. */
@@ -72,7 +72,7 @@ public class PrivacyService {
         int rows = meetings.purgeOlderThan(tenantId, cutoff);
         if (rows > 0) {
             LOG.info(
-                    "Retenção: {} meeting(s) purgado(s) do tenant={} (anteriores a {})",
+                    "Retention: {} meeting(s) purged for tenant={} (older than {})",
                     rows,
                     tenantId,
                     cutoff);

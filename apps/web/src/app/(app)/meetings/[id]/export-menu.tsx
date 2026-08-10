@@ -6,7 +6,7 @@
  * Small menu with two real outputs:
  *  - Markdown (.md): generated client-side via meetingToMarkdown() and
  *    downloaded through Blob + <a download> — no server round-trip.
- *  - PDF: navigates to the print route /meetings/{id}/relatorio, where the
+ *  - PDF: navigates to the print route /meetings/{id}/report, where the
  *    user saves the PDF via the native dialog (window.print) — zero libs.
  */
 import { useEffect, useRef, useState } from "react";
@@ -70,7 +70,7 @@ export default function ExportMenu({ detail }: { detail: MeetingDetail }) {
 
   function openPrintReport() {
     setOpen(false);
-    router.push(`/meetings/${detail.id}/relatorio` as Route);
+    router.push(`/meetings/${detail.id}/report` as Route);
   }
 
   return (

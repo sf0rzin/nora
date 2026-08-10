@@ -118,14 +118,14 @@ pub fn run() {
                 tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
                 Manager,
             };
-            let abrir = MenuItemBuilder::with_id("abrir", "Abrir NORA").build(app)?;
-            let gravar = MenuItemBuilder::with_id("gravar", "Gravar reunião").build(app)?;
-            let sair = MenuItemBuilder::with_id("sair", "Sair").build(app)?;
+            let open_item = MenuItemBuilder::with_id("open", "Abrir NORA").build(app)?;
+            let record_item = MenuItemBuilder::with_id("record", "Gravar reunião").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "Sair").build(app)?;
             let menu = MenuBuilder::new(app)
-                .item(&abrir)
-                .item(&gravar)
+                .item(&open_item)
+                .item(&record_item)
                 .separator()
-                .item(&sair)
+                .item(&quit_item)
                 .build()?;
             let _tray = TrayIconBuilder::with_id("nora-tray")
                 .icon(app.default_window_icon().unwrap().clone())
@@ -133,17 +133,17 @@ pub fn run() {
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
-                    "abrir" => {
+                    "open" => {
                         if let Some(w) = app.get_webview_window("main") {
                             let _ = w.show();
                             let _ = w.unminimize();
                             let _ = w.set_focus();
                         }
                     }
-                    "gravar" => {
+                    "record" => {
                         let _ = windows::toggle_dock(app.clone(), true);
                     }
-                    "sair" => app.exit(0),
+                    "quit" => app.exit(0),
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {

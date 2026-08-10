@@ -62,7 +62,7 @@ class TelegramPairingServiceTest {
     }
 
     @Test
-    void start_geraCodigoDe8CharsEDeepLinkDoBot() {
+    void start_generates8CharCodeAndBotDeepLink() {
         TelegramPairingService.PairingStart pairing = service.start(tenantId, userId);
 
         assertThat(pairing.code()).hasSize(8).matches("[A-Z2-9]+");
@@ -70,33 +70,33 @@ class TelegramPairingServiceTest {
     }
 
     @Test
-    void start_semBotTokenNoAmbiente_falhaNotConfigured() {
+    void start_noBotTokenInEnvironment_failsNotConfigured() {
         when(integrations.telegramConfigured()).thenReturn(false);
         assertThatThrownBy(() -> service.start(tenantId, userId))
                 .isInstanceOf(IntegrationException.NotConfigured.class);
     }
 
     @Test
-    void verify_semPareamentoIniciado_orientaConectar() {
+    void verify_noPairingStarted_guidesToConnect() {
         assertThatThrownBy(() -> service.verify(tenantId))
                 .isInstanceOf(IntegrationException.ProviderError.class)
-                .hasMessageContaining("nenhum pareamento em andamento");
+                .hasMessageContaining("no pairing in progress");
     }
 
     @Test
-    void verify_semStartAinda_pendenteComMensagemAcionavel() {
+    void verify_noStartYet_pendingWithActionableMessage() {
         service.start(tenantId, userId);
 
         assertThatThrownBy(() -> service.verify(tenantId))
                 .isInstanceOf(IntegrationException.PairingPending.class)
-                .hasMessageContaining("ainda não recebi seu /start");
+                .hasMessageContaining("we still haven't received your /start");
         // Pairing stays alive — the user can try again.
         assertThatThrownBy(() -> service.verify(tenantId))
                 .isInstanceOf(IntegrationException.PairingPending.class);
     }
 
     @Test
-    void verify_achaStartESalvaChatIdComoConexao() {
+    void verify_findsStartAndSavesChatIdAsConnection() {
         TelegramPairingService.PairingStart pairing = service.start(tenantId, userId);
         bot.incoming.add(new TelegramBotApi.StartCommand("123456789", pairing.code(), "Ana"));
 
@@ -114,11 +114,11 @@ class TelegramPairingServiceTest {
         // Code consumed: verifying again requires a new pairing.
         assertThatThrownBy(() -> service.verify(tenantId))
                 .isInstanceOf(IntegrationException.ProviderError.class)
-                .hasMessageContaining("nenhum pareamento");
+                .hasMessageContaining("no pairing");
     }
 
     @Test
-    void verify_codigoDeOutroUsuarioNaoCasa() {
+    void verify_codeFromAnotherUserDoesNotMatch() {
         service.start(tenantId, userId);
         bot.incoming.add(new TelegramBotApi.StartCommand("999", "CODIGOXX", "Intruso"));
 
@@ -128,13 +128,13 @@ class TelegramPairingServiceTest {
     }
 
     @Test
-    void verify_codigoExpirado_orientaGerarOutro() {
+    void verify_codeExpired_guidesToGenerateAnother() {
         service.start(tenantId, userId);
         currentTime[0] = currentTime[0].plusSeconds(601);
 
         assertThatThrownBy(() -> service.verify(tenantId))
                 .isInstanceOf(IntegrationException.ProviderError.class)
-                .hasMessageContaining("expirou");
+                .hasMessageContaining("expired");
     }
 
     /**
@@ -142,17 +142,17 @@ class TelegramPairingServiceTest {
      * and matches on the next verify of the tenant that owns the code.
      */
     @Test
-    void verify_startAbsorvidoEmPollDeOutroTenant_casaDepois() {
-        UUID outroTenant = UUID.randomUUID();
-        when(integrations.statusOf(eq(outroTenant), eq(IntegrationProvider.TELEGRAM)))
+    void verify_startAbsorbedInAnotherTenantsPoll_matchesLater() {
+        UUID otherTenant = UUID.randomUUID();
+        when(integrations.statusOf(eq(otherTenant), eq(IntegrationProvider.TELEGRAM)))
                 .thenReturn(new ProviderStatus("telegram", true, false, null, null));
 
-        TelegramPairingService.PairingStart meuPairing = service.start(tenantId, userId);
-        service.start(outroTenant, UUID.randomUUID());
-        bot.incoming.add(new TelegramBotApi.StartCommand("123", meuPairing.code(), "Ana"));
+        TelegramPairingService.PairingStart myPairing = service.start(tenantId, userId);
+        service.start(otherTenant, UUID.randomUUID());
+        bot.incoming.add(new TelegramBotApi.StartCommand("123", myPairing.code(), "Ana"));
 
         // The other tenant verifies first: it consumes getUpdates but does not match the code.
-        assertThatThrownBy(() -> service.verify(outroTenant))
+        assertThatThrownBy(() -> service.verify(otherTenant))
                 .isInstanceOf(IntegrationException.PairingPending.class);
         assertThat(bot.incoming).isEmpty();
 

@@ -177,7 +177,7 @@ def analyze(
             max_tokens=2048,
         )
     except Exception as exc:
-        logger.warning("Structured output falhou no live, tentando JSON mode fallback: %s", exc)
+        logger.warning("Structured output failed in live, falling back to JSON mode: %s", exc)
         raw_json, tokens_in, tokens_out = client.chat_json(
             system_prompt=system_prompt,
             user_prompt=user_prompt,

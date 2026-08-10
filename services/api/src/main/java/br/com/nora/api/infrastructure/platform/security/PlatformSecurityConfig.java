@@ -38,13 +38,13 @@ public class PlatformSecurityConfig {
         if (props.isEnabled()) {
             if (props.getInternalToken() == null || props.getInternalToken().isBlank()) {
                 LOG.warn(
-                        "Control plane habilitado mas NORA_PLATFORM_INTERNAL_TOKEN está vazio —"
-                                + " /internal/platform/** vai recusar tudo (401).");
+                        "Control plane enabled but NORA_PLATFORM_INTERNAL_TOKEN is empty —"
+                                + " /internal/platform/** will refuse everything (401).");
             }
             if (props.getAdminToken() == null || props.getAdminToken().isBlank()) {
                 LOG.warn(
-                        "NORA_PLATFORM_ADMIN_TOKEN vazio — /admin/platform/** cai no internal-token"
-                                + " (recomendado configurar tokens distintos).");
+                        "NORA_PLATFORM_ADMIN_TOKEN empty — /admin/platform/** falls back to the"
+                                + " internal token (recommended to configure distinct tokens).");
             }
         }
     }

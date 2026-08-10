@@ -200,7 +200,7 @@ Three reference personas guide product decisions:
 - **Camila** — Enterprise admin. Configures the tenant, defines who sees what via IAM, configures the company's context
 - **Rafael** — Enterprise AE. A salesperson who needs to read opportunity and risk signals in every conversation with a customer
 
-Full details, empathy maps, pains and gains: `docs/challenge/personas-e-mapa-de-empatia.md`.
+Full details, empathy maps, pains and gains: `docs/challenge/personas-and-empathy-map.md`.
 
 ---
 

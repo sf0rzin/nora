@@ -58,7 +58,7 @@ public class NotionClient {
                             .bodyToMono(String.class)
                             .block(TIMEOUT);
             JsonNode json = mapper.readTree(response == null ? "{}" : response);
-            return json.path("url").asText("(página criada)");
+            return json.path("url").asText("(page created)");
         } catch (Exception ex) {
             throw ProviderErrors.of("notion", "pages", ex);
         }

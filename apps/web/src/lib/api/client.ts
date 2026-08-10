@@ -821,8 +821,8 @@ export async function listWorkflowExecutions(id: string): Promise<WorkflowExecut
 //
 // Per-user connectors: the backend stores the OAuth tokens and exposes only the status.
 // The connection flow is a full redirect: `authorizeUrl` → consent at the
-// provider → callback in the backend → back to /integracoes?connected={provider}
-// or /integracoes?error={codigo}.
+// provider → callback in the backend → back to /integrations?connected={provider}
+// or /integrations?error={codigo}.
 
 /** Status of every supported connector for the logged-in user. */
 export async function listIntegrations(): Promise<IntegrationStatus[]> {

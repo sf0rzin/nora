@@ -48,7 +48,7 @@ public class JdbcUsageEventRepository implements UsageEventRepository {
         // fixed expressions — no interpolation of user input.
         String keyExpr =
                 switch (groupBy) {
-                    case "tenant" -> "COALESCE(tenant_id::text, '(sem tenant)')";
+                    case "tenant" -> "COALESCE(tenant_id::text, '(no tenant)')";
                     case "service" -> "service";
                     default -> "model";
                 };

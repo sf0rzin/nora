@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nora.app/contracts/pii-types/v1",
   "title": "PII Types — NORA",
-  "description": "Tipos canônicos de PII detectados/redacted pelo PII Shield (ADR 0012). Todo cliente que renderize redactions DEVE conhecer este enum. Source of truth: services/nlp-worker/src/nora_nlp/models.py:PiiType.",
+  "description": "Canonical PII types detected/redacted by the PII Shield (ADR 0012). Every client that renders redactions MUST know this enum. Source of truth: services/nlp-worker/src/nora_nlp/models.py:PiiType.",
   "type": "string",
   "enum": [
     "EMAIL",
@@ -15,12 +15,12 @@
     "OTHER"
   ],
   "x-implementations": {
-    "java": "services/api/src/main/java/br/com/nora/api/domain/... (não usado hoje; backend não persiste PII type direto)",
+    "java": "services/api/src/main/java/br/com/nora/api/domain/... (unused today; the backend does not persist the PII type directly)",
     "python": "services/nlp-worker/src/nora_nlp/models.py:PiiType",
-    "typescript": "apps/web/src/lib/api/types.ts (espelhado quando necessário em DetailResponse)"
+    "typescript": "apps/web/src/lib/api/types.ts (mirrored in DetailResponse when needed)"
   },
   "x-notes": {
-    "ADDRESS": "Listado pra forward-compat; implementação atual do worker NÃO emite (débito ADR 0012 — NER pra endereços).",
-    "OTHER": "Catch-all pra futuras extensões; cliente deve renderizar como tipo genérico."
+    "ADDRESS": "Listed for forward compatibility; the current worker implementation does NOT emit it (ADR 0012 debt — NER for addresses).",
+    "OTHER": "Catch-all for future extensions; the client should render it as a generic type."
   }
 }

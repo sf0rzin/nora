@@ -25,7 +25,7 @@ class NotionCreatePageActionTest {
     private final NotionCreatePageAction action = new NotionCreatePageAction(integrations, notion);
 
     @Test
-    void criaPaginaFilhaComTituloDaReuniaoEBlocos() {
+    void createsChildPageWithMeetingTitleAndBlocks() {
         when(integrations.validAccessToken(eq(TestContexts.TENANT), eq(IntegrationProvider.NOTION)))
                 .thenReturn("ntn_token");
         WorkflowEventContext ctx =
@@ -51,7 +51,7 @@ class NotionCreatePageActionTest {
     }
 
     @Test
-    void semActionItems_paginaSoComResumo() {
+    void noActionItems_pageWithSummaryOnly() {
         when(integrations.validAccessToken(eq(TestContexts.TENANT), eq(IntegrationProvider.NOTION)))
                 .thenReturn("ntn_token");
         WorkflowEventContext ctx = TestContexts.context("Kickoff", "Resumo.", List.of());
@@ -63,7 +63,7 @@ class NotionCreatePageActionTest {
     }
 
     @Test
-    void parentPageIdObrigatorio() {
+    void parentPageIdRequired() {
         assertThatThrownBy(() -> NotionCreatePageAction.requiredParentPageId(Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("params.parentPageId");

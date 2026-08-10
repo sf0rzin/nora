@@ -31,11 +31,11 @@ async fn start_stt_backend(
             Ok(Box::new(h))
         }
         #[cfg(not(feature = "stt-local"))]
-        SttBackendKind::Local => Err("binario compilado sem a feature stt-local".to_string()),
+        SttBackendKind::Local => Err("binary compiled without the stt-local feature".to_string()),
 
         #[cfg(feature = "stt-azure")]
         SttBackendKind::Azure => {
-            let az = azure.ok_or("backend azure sem credenciais de speech token")?;
+            let az = azure.ok_or("azure backend without speech token credentials")?;
             let h = crate::stt_sidecar::SidecarHandle::start(
                 app_handle.clone(),
                 az.region.clone(),
@@ -51,7 +51,7 @@ async fn start_stt_backend(
         #[cfg(not(feature = "stt-azure"))]
         SttBackendKind::Azure => {
             let _ = azure;
-            Err("binario compilado sem a feature stt-azure".to_string())
+            Err("binary compiled without the stt-azure feature".to_string())
         }
     }
 }
@@ -499,7 +499,7 @@ pub async fn upload_meeting(
 
     let meeting_id = json["id"]
         .as_str()
-        .ok_or_else(|| format!("Upload: resposta do backend sem 'id': {}", body_text))?
+        .ok_or_else(|| format!("Upload: backend response missing 'id': {}", body_text))?
         .to_string();
     Ok(UploadMeetingResponse {
         meeting_id,
@@ -520,9 +520,9 @@ pub fn check_system_audio_prerequisites() -> Result<serde_json::Value, String> {
             "missingDriver": if has_blackhole { serde_json::Value::Null } else { serde_json::json!("blackhole") },
             "supportsScreenCaptureKit": supports_sck,
             "message": if has_blackhole {
-                "Driver virtual detectado"
+                "Virtual driver detected"
             } else {
-                "BlackHole não instalado. Instale para capturar áudio do sistema."
+                "BlackHole not installed. Install it to capture system audio."
             }
         }))
     }

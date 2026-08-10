@@ -82,7 +82,7 @@ first and keep the demo alive — not to cut scope.
    path. Removes the biggest risk while there is still time to recover.
 
 ### PHASE 1 — Canvas + anchor scenario running live
-5. `/fluxos` route in Core: canvas with a **grid background**, draggable nodes
+5. `/flows` route in Core: canvas with a **grid background**, draggable nodes
    (little squares: Trigger / Condition / Action), edges connecting them, a parameter
    sidebar, **Salvar** and **Testar** buttons (runs and shows the execution log).
 6. **Anchor scenario running live:** transcript upload → COMPLETED analysis
@@ -185,7 +185,7 @@ with the NORA tokens (without bringing in another design system).
 - Settings:      apps/web/src/app/(app)/settings/    (Account/Security/Workspace)
 - Chat:          apps/web/src/app/(app)/chat/page.tsx + apps/web/src/app/api/chat/route.ts
 - Dashboard:     apps/web/src/app/(app)/dashboard/page.tsx
-- Connectors:    apps/web/src/app/(app)/integracoes/page.tsx  (becomes a real hub)
+- Connectors:    apps/web/src/app/(app)/integrations/page.tsx  (becomes a real hub)
 - API client:    apps/web/src/lib/api/client.ts + types.ts
 - Design system: apps/web/src/styles/tokens.css + components.css
 - Admin:         apps/admin/src/app/                 (telemetria/page.tsx → real)
@@ -207,7 +207,7 @@ with the NORA tokens (without bringing in another design system).
    with whatever does not depend on it.
 4. `mvn spotless:apply` (if backend). Small commit referencing IDs. Branch
    always green.
-5. Update docs/goals/progresso-pitch.md (what became REAL, what is missing, risks).
+5. Update docs/goals/pitch-progress.md (what became REAL, what is missing, risks).
 6. Repeat. Record durable decisions in an ADR. Stop when the DoD is met
    or no safe work remains without a handoff; deliver a summary + demo script +
    risks for human review before the stage.
@@ -250,7 +250,7 @@ Principles:
   exact instructions and carry on with whatever does not depend on it. Do not pretend, do not skip.
 - For each slice: smallest real increment → relevant verification (mvn test /
   pytest / npm typecheck+build / az bicep build) → `mvn spotless:apply` if backend
-  → small commit referencing IDs → update docs/goals/progresso-pitch.md.
+  → small commit referencing IDs → update docs/goals/pitch-progress.md.
 - Respect ALL the non-negotiable constraints (tenant isolation + RLS, PII, JSON
   Schema strict, DDD, DM Sans + raw Tailwind + OKLCH, PT-BR, no secrets,
   spotless, Core without IAM). DO NOT touch the desktop. DO NOT break auth/IAM/chat.

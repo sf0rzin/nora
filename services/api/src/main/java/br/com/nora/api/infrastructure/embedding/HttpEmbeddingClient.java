@@ -70,14 +70,14 @@ public class HttpEmbeddingClient implements EmbeddingClient {
     public float[] embed(String text) {
         if (!isEnabled()) {
             throw new EmbeddingException(
-                    "embedding desabilitado (sem credencial pro provider " + provider + ")");
+                    "embedding disabled (no credential for provider " + provider + ")");
         }
         try {
             return "openai".equals(provider) ? embedOpenAi(text) : embedGemini(text);
         } catch (EmbeddingException e) {
             throw e;
         } catch (Exception e) {
-            throw new EmbeddingException("falha ao gerar embedding (" + provider + ")", e);
+            throw new EmbeddingException("failed to generate embedding (" + provider + ")", e);
         }
     }
 
@@ -112,14 +112,14 @@ public class HttpEmbeddingClient implements EmbeddingClient {
         }
         HttpResponse<String> res = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
         if (res.statusCode() / 100 != 2) {
-            throw new EmbeddingException("provider " + provider + " respondeu " + res.statusCode());
+            throw new EmbeddingException("provider " + provider + " responded " + res.statusCode());
         }
         return mapper.readTree(res.body());
     }
 
     private float[] toArray(JsonNode values) {
         if (!values.isArray() || values.isEmpty()) {
-            throw new EmbeddingException("resposta sem vetor de embedding");
+            throw new EmbeddingException("response without embedding vector");
         }
         float[] out = new float[values.size()];
         for (int i = 0; i < values.size(); i++) {

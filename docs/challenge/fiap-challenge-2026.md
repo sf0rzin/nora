@@ -28,8 +28,8 @@ This page documents:
 
 | Rubric item | Where it is in NORA |
 |---|---|
-| **Personas and empathy map** | [`personas-e-mapa-de-empatia.md`](personas-e-mapa-de-empatia.md) — 3 personas (Lucas Almeida, Camila Souza, Rafael Costa) |
-| **Use case diagram (UML)** | [`diagrama-casos-de-uso.md`](diagrama-casos-de-uso.md) — mermaid with 20+ use cases |
+| **Personas and empathy map** | [`personas-and-empathy-map.md`](personas-and-empathy-map.md) — 3 personas (Lucas Almeida, Camila Souza, Rafael Costa) |
+| **Use case diagram (UML)** | [`use-case-diagram.md`](use-case-diagram.md) — mermaid with 20+ use cases |
 | **Prioritized backlog (MoSCoW)** | [`../product/backlog.md`](../product/backlog.md) — US01-US51 with real DONE/PARTIAL/MISSING status |
 | **Relational data model (Postgres)** | [`../engineering/data-model.md`](../engineering/data-model.md) — relational schema + applied Flyway migrations (canonical source for the migration set) |
 | **Oracle data model (DB deliverable)** | [`../engineering/data-model-oracle.md`](../engineering/data-model-oracle.md) — Oracle 19c+ DDL equivalent to the Postgres schema |
@@ -67,7 +67,7 @@ NORA delivers elements that go beyond the typical academic rubric:
 
 - **Stratfy** — the team responsible for NORA (PO + technical architecture + operations). Coordination via the GitHub organization/handle `sys0xFF`. Members are listed as contributors in the git history.
 - **Gabriel Maciel (@pollotherunner)** — external collaborator on the Desktop app (Tauri + Python sidecar). Isolated scope, outside the SaaS core.
-- **Multiple Claude instances running the `arquiteto-nora` skill** — technical assistants (Tech Lead, Design Architect) operating under the direction of the Stratfy team.
+- **Multiple Claude instances running the `nora-architect` skill** — technical assistants (Tech Lead, Design Architect) operating under the direction of the Stratfy team.
 
 > For details on the multi-architect Claude split and coordination, see `Claude/50-coordenacao-arquitetos/00-papeis.md` in the team's private Obsidian vault.
 

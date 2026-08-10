@@ -28,7 +28,7 @@ class DiscordPostMessageActionTest {
     // ── webhookUrl validation ──
 
     @Test
-    void webhookUrl_aceitaDiscordEDiscordapp() {
+    void webhookUrl_acceptsDiscordAndDiscordapp() {
         assertThat(DiscordPostMessageAction.requiredWebhookUrl(Map.of("webhookUrl", WEBHOOK)))
                 .isEqualTo(WEBHOOK);
         assertThat(
@@ -40,14 +40,14 @@ class DiscordPostMessageActionTest {
     }
 
     @Test
-    void webhookUrl_faltandoFalhaClaro() {
+    void webhookUrl_missingFailsClearly() {
         assertThatThrownBy(() -> DiscordPostMessageAction.requiredWebhookUrl(Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("params.webhookUrl");
     }
 
     @Test
-    void webhookUrl_foraDoDominioDoDiscordRejeitada() {
+    void webhookUrl_outsideDiscordDomainRejected() {
         for (String url :
                 List.of(
                         "https://exemplo.com/api/webhooks/123/abc",
@@ -57,7 +57,7 @@ class DiscordPostMessageActionTest {
                             () ->
                                     DiscordPostMessageAction.requiredWebhookUrl(
                                             Map.of("webhookUrl", url)))
-                    .as("deveria rejeitar %s", url)
+                    .as("should reject %s", url)
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("https://discord.com/api/webhooks/");
         }
@@ -67,9 +67,9 @@ class DiscordPostMessageActionTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void embed_carregaTituloResumoCorFooterUrlEFields() {
+    void embed_carriesTitleSummaryColorFooterUrlAndFields() {
         UUID meetingId = UUID.randomUUID();
-        WorkflowEventContext ctx = contexto(meetingId, "Resumo curto.", 62, 58, itens(2));
+        WorkflowEventContext ctx = context(meetingId, "Resumo curto.", 62, 58, items(2));
 
         Map<String, Object> payload = DiscordPostMessageAction.buildPayload(ctx);
 
@@ -102,8 +102,8 @@ class DiscordPostMessageActionTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void embed_semScoresNemItensOmiteFieldsOpcionais() {
-        WorkflowEventContext ctx = contexto(UUID.randomUUID(), null, null, null, List.of());
+    void embed_withNoScoresOrItemsOmitsOptionalFields() {
+        WorkflowEventContext ctx = context(UUID.randomUUID(), null, null, null, List.of());
 
         Map<String, Object> embed =
                 ((List<Map<String, Object>>)
@@ -119,8 +119,8 @@ class DiscordPostMessageActionTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void embed_truncaResumoLongoELimitaProximosPassosACinco() {
-        WorkflowEventContext ctx = contexto(UUID.randomUUID(), "a".repeat(4000), 62, 58, itens(8));
+    void embed_truncatesLongSummaryAndCapsNextStepsAtFive() {
+        WorkflowEventContext ctx = context(UUID.randomUUID(), "a".repeat(4000), 62, 58, items(8));
 
         Map<String, Object> embed =
                 ((List<Map<String, Object>>)
@@ -132,14 +132,14 @@ class DiscordPostMessageActionTest {
         assertThat(description).endsWith("…");
 
         List<Map<String, Object>> fields = (List<Map<String, Object>>) embed.get("fields");
-        String passos = (String) fields.get(fields.size() - 1).get("value");
-        assertThat(passos.split("\n")).hasSize(DiscordPostMessageAction.MAX_ACTION_ITEMS);
+        String steps = (String) fields.get(fields.size() - 1).get("value");
+        assertThat(steps.split("\n")).hasSize(DiscordPostMessageAction.MAX_ACTION_ITEMS);
     }
 
     // ── Execution (mocked HTTP) ──
 
     @Test
-    void execute_sucessoComStatus204() {
+    void execute_successWithStatus204() {
         WebhookHttpClient http = mock(WebhookHttpClient.class);
         when(http.postJson(
                         eq("discord"), eq(WEBHOOK), eq(Map.of("User-Agent", "NORA-Flows")), any()))
@@ -148,14 +148,14 @@ class DiscordPostMessageActionTest {
         String result =
                 new DiscordPostMessageAction(http)
                         .execute(
-                                contexto(UUID.randomUUID(), "Resumo.", 62, 58, itens(1)),
+                                context(UUID.randomUUID(), "Resumo.", 62, 58, items(1)),
                                 Map.of("webhookUrl", WEBHOOK));
 
         assertThat(result).isEqualTo("Mensagem enviada no Discord (HTTP 204)");
     }
 
     @Test
-    void execute_falhaDoDiscordPropaga() {
+    void execute_discordFailurePropagates() {
         WebhookHttpClient http = mock(WebhookHttpClient.class);
         when(http.postJson(anyString(), anyString(), anyMap(), any()))
                 .thenThrow(new IntegrationException.ProviderError("discord", "respondeu HTTP 404"));
@@ -164,12 +164,12 @@ class DiscordPostMessageActionTest {
                         () ->
                                 new DiscordPostMessageAction(http)
                                         .execute(
-                                                contexto(
+                                                context(
                                                         UUID.randomUUID(),
                                                         "Resumo.",
                                                         62,
                                                         58,
-                                                        itens(1)),
+                                                        items(1)),
                                                 Map.of("webhookUrl", WEBHOOK)))
                 .isInstanceOf(IntegrationException.ProviderError.class)
                 .hasMessageContaining("404");
@@ -177,14 +177,14 @@ class DiscordPostMessageActionTest {
 
     // ── Fixtures ──
 
-    private static List<ActionItemView> itens(int quantos) {
-        return java.util.stream.IntStream.rangeClosed(1, quantos)
+    private static List<ActionItemView> items(int count) {
+        return java.util.stream.IntStream.rangeClosed(1, count)
                 .mapToObj(
                         i -> new ActionItemView("Item " + i, i == 1 ? "Ana" : null, "MEDIUM", null))
                 .toList();
     }
 
-    private static WorkflowEventContext contexto(
+    private static WorkflowEventContext context(
             UUID meetingId,
             String summary,
             Integer productivity,

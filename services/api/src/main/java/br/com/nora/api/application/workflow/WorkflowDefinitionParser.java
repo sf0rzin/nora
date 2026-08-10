@@ -62,10 +62,10 @@ public class WorkflowDefinitionParser {
         try {
             root = mapper.readTree(definitionJson);
         } catch (Exception ex) {
-            throw new WorkflowException.InvalidDefinition("definition não é JSON válido");
+            throw new WorkflowException.InvalidDefinition("definition is not valid JSON");
         }
         if (root == null || !root.isObject()) {
-            throw new WorkflowException.InvalidDefinition("definition precisa ser um objeto JSON");
+            throw new WorkflowException.InvalidDefinition("definition must be a JSON object");
         }
         List<Node> nodes = parseNodes(root.path("nodes"));
         List<Edge> edges = parseEdges(root.path("edges"));
@@ -79,32 +79,32 @@ public class WorkflowDefinitionParser {
         try {
             return mapper.writeValueAsString(definition);
         } catch (Exception ex) {
-            throw new WorkflowException.InvalidDefinition("definition não pôde ser serializada");
+            throw new WorkflowException.InvalidDefinition("definition could not be serialized");
         }
     }
 
     private List<Node> parseNodes(JsonNode nodesJson) {
         if (!nodesJson.isArray() || nodesJson.isEmpty()) {
             throw new WorkflowException.InvalidDefinition(
-                    "definition precisa de ao menos um nó (nodes)");
+                    "definition needs at least one node (nodes)");
         }
         List<Node> nodes = new ArrayList<>();
         for (JsonNode n : nodesJson) {
             String id = textOrNull(n, "id");
             if (id == null || id.isBlank()) {
-                throw new WorkflowException.InvalidDefinition("todo nó precisa de id");
+                throw new WorkflowException.InvalidDefinition("every node needs an id");
             }
             NodeKind kind;
             try {
                 kind = NodeKind.fromWire(textOrNull(n, "kind"));
             } catch (IllegalArgumentException ex) {
                 throw new WorkflowException.InvalidDefinition(
-                        "nó '" + id + "': kind inválido (use trigger, condition ou action)");
+                        "node '" + id + "': invalid kind (use trigger, condition or action)");
             }
             String type = textOrNull(n, "type");
             if (type == null || type.isBlank()) {
                 throw new WorkflowException.InvalidDefinition(
-                        "nó '" + id + "': type é obrigatório");
+                        "node '" + id + "': type is required");
             }
             Map<String, Object> params = toParams(n.path("params"));
             JsonNode pos = n.path("position");
@@ -121,7 +121,7 @@ public class WorkflowDefinitionParser {
             return edges;
         }
         if (!edgesJson.isArray()) {
-            throw new WorkflowException.InvalidDefinition("edges precisa ser uma lista");
+            throw new WorkflowException.InvalidDefinition("edges must be a list");
         }
         int i = 0;
         for (JsonNode e : edgesJson) {
@@ -130,7 +130,7 @@ public class WorkflowDefinitionParser {
             String target = textOrNull(e, "target");
             if (source == null || target == null) {
                 throw new WorkflowException.InvalidDefinition(
-                        "toda aresta precisa de source e target");
+                        "every edge needs source and target");
             }
             edges.add(new Edge(id == null ? "e" + (++i) : id, source, target));
         }
@@ -141,7 +141,7 @@ public class WorkflowDefinitionParser {
         Set<String> ids = new HashSet<>();
         for (Node n : definition.nodes()) {
             if (!ids.add(n.id())) {
-                throw new WorkflowException.InvalidDefinition("id de nó duplicado: " + n.id());
+                throw new WorkflowException.InvalidDefinition("duplicate node id: " + n.id());
             }
         }
 
@@ -149,41 +149,41 @@ public class WorkflowDefinitionParser {
                 definition.nodes().stream().filter(n -> n.kind() == NodeKind.TRIGGER).toList();
         if (triggers.size() != 1) {
             throw new WorkflowException.InvalidDefinition(
-                    "o fluxo precisa de exatamente um gatilho (encontrei " + triggers.size() + ")");
+                    "the flow needs exactly one trigger (found " + triggers.size() + ")");
         }
         try {
             TriggerType.fromWire(triggers.get(0).type());
         } catch (IllegalArgumentException ex) {
             throw new WorkflowException.InvalidDefinition(
-                    "gatilho desconhecido: " + triggers.get(0).type());
+                    "unknown trigger: " + triggers.get(0).type());
         }
 
         for (Edge e : definition.edges()) {
             if (!ids.contains(e.source()) || !ids.contains(e.target())) {
                 throw new WorkflowException.InvalidDefinition(
-                        "aresta '" + e.id() + "' referencia nó inexistente");
+                        "edge '" + e.id() + "' references a nonexistent node");
             }
         }
         if (definition.hasCycle()) {
-            throw new WorkflowException.InvalidDefinition("o fluxo não pode ter ciclos");
+            throw new WorkflowException.InvalidDefinition("the flow cannot have cycles");
         }
 
         boolean hasAction = false;
         for (Node n : definition.nodes()) {
             if (n.kind() == NodeKind.CONDITION && !CONDITION_TYPES.contains(n.type())) {
-                throw new WorkflowException.InvalidDefinition("condição desconhecida: " + n.type());
+                throw new WorkflowException.InvalidDefinition("unknown condition: " + n.type());
             }
             if (n.kind() == NodeKind.ACTION) {
                 hasAction = true;
                 if (!knownActionTypes.contains(n.type())) {
-                    throw new WorkflowException.InvalidDefinition("ação desconhecida: " + n.type());
+                    throw new WorkflowException.InvalidDefinition("unknown action: " + n.type());
                 }
                 validateActionParams(n);
             }
         }
         if (!hasAction) {
             throw new WorkflowException.InvalidDefinition(
-                    "o fluxo precisa de ao menos uma ação ligada ao gatilho");
+                    "the flow needs at least one action wired to the trigger");
         }
     }
 
@@ -194,55 +194,55 @@ public class WorkflowDefinitionParser {
             String to = action.paramAsString("to");
             if (to == null || to.isBlank() || !to.contains("@")) {
                 throw new WorkflowException.InvalidDefinition(
-                        "ação 'Enviar e-mail' (nó '"
+                        "action 'Send e-mail' (node '"
                                 + action.id()
-                                + "') precisa de um destinatário válido em params.to");
+                                + "') needs a valid recipient in params.to");
             }
         }
         if ("slack_post_message".equals(action.type())) {
             String channel = action.paramAsString("channel");
             if (channel == null || channel.isBlank()) {
                 throw new WorkflowException.InvalidDefinition(
-                        "ação 'Postar no Slack' (nó '"
+                        "action 'Post to Slack' (node '"
                                 + action.id()
-                                + "') precisa do canal em params.channel (ex.: #vendas)");
+                                + "') needs the channel in params.channel (e.g. #sales)");
             }
         }
         if ("github_create_issue".equals(action.type())) {
             String repo = action.paramAsString("repo");
             if (repo == null || repo.isBlank() || !repo.contains("/")) {
                 throw new WorkflowException.InvalidDefinition(
-                        "ação 'Criar issue no GitHub' (nó '"
+                        "action 'Create GitHub issue' (node '"
                                 + action.id()
-                                + "') precisa do repositório em params.repo no formato owner/nome"
-                                + " (ex.: stratfy/nora)");
+                                + "') needs the repository in params.repo in owner/name format"
+                                + " (e.g. stratfy/nora)");
             }
         }
         if ("trello_create_card".equals(action.type())) {
             String listId = action.paramAsString("listId");
             if (listId == null || listId.isBlank()) {
                 throw new WorkflowException.InvalidDefinition(
-                        "ação 'Criar cards no Trello' (nó '"
+                        "action 'Create Trello cards' (node '"
                                 + action.id()
-                                + "') precisa da lista em params.listId (id da lista do board)");
+                                + "') needs the list in params.listId (board list id)");
             }
         }
         if ("notion_create_page".equals(action.type())) {
             String parentPageId = action.paramAsString("parentPageId");
             if (parentPageId == null || parentPageId.isBlank()) {
                 throw new WorkflowException.InvalidDefinition(
-                        "ação 'Criar página no Notion' (nó '"
+                        "action 'Create Notion page' (node '"
                                 + action.id()
-                                + "') precisa da página pai em params.parentPageId");
+                                + "') needs the parent page in params.parentPageId");
             }
         }
         if ("call_webhook".equals(action.type())) {
             String url = action.paramAsString("url");
             if (url == null || url.isBlank() || !url.trim().startsWith("https://")) {
                 throw new WorkflowException.InvalidDefinition(
-                        "ação 'Chamar webhook' (nó '"
+                        "action 'Call webhook' (node '"
                                 + action.id()
-                                + "') precisa de uma URL https:// em params.url");
+                                + "') needs an https:// URL in params.url");
             }
         }
         if ("discord_post_message".equals(action.type())) {
@@ -250,10 +250,10 @@ public class WorkflowDefinitionParser {
             String trimmed = url == null ? "" : url.trim();
             if (DISCORD_WEBHOOK_PREFIXES.stream().noneMatch(trimmed::startsWith)) {
                 throw new WorkflowException.InvalidDefinition(
-                        "ação 'Avisar no Discord' (nó '"
+                        "action 'Notify Discord' (node '"
                                 + action.id()
-                                + "') precisa da URL do webhook do canal em params.webhookUrl"
-                                + " (começa com https://discord.com/api/webhooks/)");
+                                + "') needs the channel webhook URL in params.webhookUrl"
+                                + " (starts with https://discord.com/api/webhooks/)");
             }
         }
     }
@@ -268,7 +268,7 @@ public class WorkflowDefinitionParser {
             return Map.of();
         }
         if (!params.isObject()) {
-            throw new WorkflowException.InvalidDefinition("params de nó precisa ser um objeto");
+            throw new WorkflowException.InvalidDefinition("node params must be an object");
         }
         Map<String, Object> result = new LinkedHashMap<>();
         params.fields()

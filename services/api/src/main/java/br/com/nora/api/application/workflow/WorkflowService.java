@@ -131,7 +131,7 @@ public class WorkflowService {
             throw new WorkflowException.InvalidName();
         }
         if (definition == null || definition.isNull()) {
-            throw new WorkflowException.InvalidDefinition("definition é obrigatória");
+            throw new WorkflowException.InvalidDefinition("definition is required");
         }
         String canonical = parser.canonicalJson(definition);
         WorkflowDefinition parsed = parser.parse(canonical, actions.types());

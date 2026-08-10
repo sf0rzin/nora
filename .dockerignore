@@ -1,4 +1,4 @@
-# Repo-root .dockerignore — usado quando build context = raiz (ex.: worker)
+# Repo-root .dockerignore — used when the build context is the repo root (e.g. worker)
 .git
 .github
 .claude
@@ -6,14 +6,14 @@
 .vscode
 .settings
 
-# Apps que não fazem parte do worker build
+# Apps that are not part of the worker build
 apps/desktop
 apps/web
 
-# Outros services
+# Other services
 services/api
 
-# Tudo do worker que NÃO é src ou pyproject
+# Everything in the worker that is NOT src or pyproject
 services/nlp-worker/.venv
 services/nlp-worker/__pycache__
 services/nlp-worker/.pytest_cache

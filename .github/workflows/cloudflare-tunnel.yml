@@ -27,11 +27,11 @@ on:
   workflow_dispatch:
     inputs:
       tunnel_name:
-        description: 'Nome do túnel Cloudflare'
+        description: 'Name of the Cloudflare tunnel'
         required: true
         default: 'nora-admin'
       origin_service:
-        description: 'Origem que o cloudflared serve (sidecar -> Next). Porta = targetPort do nora-admin.'
+        description: 'Origin served by cloudflared (sidecar -> Next). Port = targetPort of nora-admin.'
         required: true
         default: 'http://localhost:3002'
 
@@ -58,11 +58,11 @@ jobs:
           response=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" "$CF_API/user/tokens/verify")
           status=$(echo "$response" | jq -r '.result.status // "unknown"')
           if [ "$status" != "active" ]; then
-            echo "::error::Token não ativo (status=$status). Verifica permissões do CLOUDFLARE_API_TOKEN."
+            echo "::error::Token not active (status=$status). Check the CLOUDFLARE_API_TOKEN permissions."
             echo "$response" | jq .
             exit 1
           fi
-          echo "Token ativo."
+          echo "Token active."
 
       - name: Resolve Zone ID
         id: zone
@@ -71,7 +71,7 @@ jobs:
           response=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" "$CF_API/zones?name=$DOMAIN")
           zone_id=$(echo "$response" | jq -r '.result[0].id // empty')
           if [ -z "$zone_id" ]; then
-            echo "::error::Zone '$DOMAIN' não encontrada na conta CF."
+            echo "::error::Zone '$DOMAIN' not found in the CF account."
             echo "$response" | jq .
             exit 1
           fi
@@ -89,15 +89,15 @@ jobs:
             "$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel?name=$TUNNEL_NAME&is_deleted=false" \
             | jq -r '.result[0].id // empty')
           if [ -n "$tunnel_id" ]; then
-            echo "Túnel '$TUNNEL_NAME' já existe ($tunnel_id); reusando."
+            echo "Tunnel '$TUNNEL_NAME' already exists ($tunnel_id); reusing it."
           else
-            echo "Criando túnel '$TUNNEL_NAME' (config_src=cloudflare)"
+            echo "Creating tunnel '$TUNNEL_NAME' (config_src=cloudflare)"
             payload=$(jq -nc --arg name "$TUNNEL_NAME" '{name:$name, config_src:"cloudflare"}')
             response=$(curl -fsSL -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
               "$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel" -d "$payload")
             tunnel_id=$(echo "$response" | jq -r '.result.id // empty')
             if [ -z "$tunnel_id" ]; then
-              echo "::error::Falha ao criar túnel."
+              echo "::error::Failed to create the tunnel."
               echo "$response" | jq .
               exit 1
             fi
@@ -116,20 +116,20 @@ jobs:
       # This lock reads the CURRENT configuration and aborts if there is more than one real
       # route. For DNS there is no need to go through here: use `cloudflare-dns-cutover.yml`,
       # which does not touch the tunnel.
-      - name: Guarda — não sobrescrever um túnel multi-rota
+      - name: Guard — do not overwrite a multi-route tunnel
         env:
           TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
         run: |
           set -euo pipefail
-          atual="$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+          current="$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
             "$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID/configurations" || echo '{}')"
           # The catch-all rule (no hostname) does not count: it exists in any config.
-          rotas="$(echo "$atual" | jq '[.result.config.ingress[]? | select(.hostname)] | length')"
-          echo "rotas com hostname hoje neste túnel: ${rotas:-0}"
-          if [ "${rotas:-0}" -gt 1 ]; then
-            echo "$atual" | jq -r '.result.config.ingress[]? | select(.hostname) | "  - \(.hostname) -> \(.service)"'
-            echo "::error::este túnel serve ${rotas} hostnames. O passo seguinte substituiria TODOS por um só."
-            echo "Se a intenção era mexer em DNS, use o workflow cloudflare-dns-cutover.yml."
+          routes="$(echo "$current" | jq '[.result.config.ingress[]? | select(.hostname)] | length')"
+          echo "routes with a hostname on this tunnel today: ${routes:-0}"
+          if [ "${routes:-0}" -gt 1 ]; then
+            echo "$current" | jq -r '.result.config.ingress[]? | select(.hostname) | "  - \(.hostname) -> \(.service)"'
+            echo "::error::this tunnel serves ${routes} hostnames. The next step would replace ALL of them with a single one."
+            echo "If the intent was to change DNS, use the cloudflare-dns-cutover.yml workflow."
             exit 1
           fi
 
@@ -144,7 +144,7 @@ jobs:
           # localhost), with a catch-all 404 for any other hostname.
           payload=$(jq -nc --arg host "$fqdn" --arg svc "$ORIGIN" \
             '{config:{ingress:[{hostname:$host, service:$svc}, {service:"http_status:404"}]}}')
-          echo "Configurando rota $fqdn -> $ORIGIN"
+          echo "Configuring route $fqdn -> $ORIGIN"
           curl -fsSL -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
             "$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID/configurations" -d "$payload" \
             | jq '{success, ingress: .result.config.ingress}'
@@ -163,18 +163,18 @@ jobs:
           payload=$(jq -nc --arg name "$SUBDOMAIN" --arg content "$target" \
             '{type:"CNAME", name:$name, content:$content, proxied:true, ttl:1, comment:"NORA admin — Cloudflare Tunnel (ADR 0025)"}')
           if [ -n "$existing" ]; then
-            echo "CNAME $fqdn existe ($existing); apontando -> $target"
+            echo "CNAME $fqdn exists ($existing); pointing -> $target"
             curl -fsSL -X PUT -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
               "$CF_API/zones/$ZONE_ID/dns_records/$existing" -d "$payload" \
               | jq '{success, name: .result.name, content: .result.content, proxied: .result.proxied}'
           else
-            echo "Criando CNAME $fqdn -> $target (proxied)"
+            echo "Creating CNAME $fqdn -> $target (proxied)"
             curl -fsSL -X POST -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
               "$CF_API/zones/$ZONE_ID/dns_records" -d "$payload" \
               | jq '{success, name: .result.name, content: .result.content, proxied: .result.proxied}'
           fi
 
-      - name: AUD + instruções do connector token
+      - name: AUD + connector token instructions
         env:
           TUNNEL_ID: ${{ steps.tunnel.outputs.tunnel_id }}
         run: |
@@ -198,18 +198,18 @@ jobs:
             "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps?per_page=100" \
             | jq -r --arg fqdn "$SUBDOMAIN.$DOMAIN" '.result[] | select(.domain==$fqdn) | .aud' | head -1)
 
-          echo "================ AÇÕES MANUAIS (PO) ================"
+          echo "================ MANUAL ACTIONS (PO) ================"
           echo ">>> GitHub Variable CF_ACCESS_AUD ="
-          echo "${aud:-<Access App ainda sem AUD — rode cloudflare-setup.yml primeiro>}"
+          echo "${aud:-<Access App has no AUD yet — run cloudflare-setup.yml first>}"
           echo ""
-          echo ">>> GitHub Secret CLOUDFLARE_TUNNEL_TOKEN — rode na SUA máquina:"
+          echo ">>> GitHub Secret CLOUDFLARE_TUNNEL_TOKEN — run on YOUR machine:"
           echo ""
-          echo "    export CF_TOKEN=<o mesmo CLOUDFLARE_API_TOKEN>"
+          echo "    export CF_TOKEN=<the same CLOUDFLARE_API_TOKEN>"
           echo "    curl -fsSL -H \"Authorization: Bearer \$CF_TOKEN\" \\"
           echo "      \"$CF_API/accounts/$CF_ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID/token\" \\"
           echo "      | jq -r .result | gh secret set CLOUDFLARE_TUNNEL_TOKEN --repo ${{ github.repository }}"
           echo ""
-          echo "    (o valor vai do curl direto pro secret — não aparece no shell nem no histórico)"
+          echo "    (the value goes straight from curl into the secret — it never appears in the shell or in history)"
           echo "==================================================="
 
       - name: Summary
@@ -221,18 +221,18 @@ jobs:
           {
             echo "## Cloudflare Tunnel — nora-admin (ADR 0025)"
             echo ""
-            echo "| Item | Valor |"
+            echo "| Item | Value |"
             echo "|---|---|"
             echo "| Tunnel ID | \`$TUNNEL_ID\` |"
             echo "| Hostname | \`$SUBDOMAIN.$DOMAIN\` |"
-            echo "| Rota | \`$ORIGIN\` |"
+            echo "| Route | \`$ORIGIN\` |"
             echo "| DNS | \`$SUBDOMAIN.$DOMAIN\` → \`$TUNNEL_ID.cfargotunnel.com\` (proxied) |"
             echo ""
-            echo "### Próximos passos"
-            echo "1. Pega o **AUD** no log do step \`AUD + instruções do connector token\` e seta a **Variable** \`CF_ACCESS_AUD\`."
-            echo "2. Seta o **Secret** \`CLOUDFLARE_TUNNEL_TOKEN\` com o comando impresso nesse mesmo step — o token não sai no log, por ser repo público."
-            echo "3. Merge do PR → \`deploy-infra.yml\` sobe o nora-admin (internal) + sidecar cloudflared."
-            echo "4. **Lane Cloudflare:** garantir Access App + allowlist via \`cloudflare-setup.yml\` **SEM** \`admin_hostname\`."
+            echo "### Next steps"
+            echo "1. Take the **AUD** from the log of the \`AUD + connector token instructions\` step and set the **Variable** \`CF_ACCESS_AUD\`."
+            echo "2. Set the **Secret** \`CLOUDFLARE_TUNNEL_TOKEN\` with the command printed in that same step — the token never reaches the log, because the repo is public."
+            echo "3. Merging the PR → \`deploy-infra.yml\` brings up nora-admin (internal) + the cloudflared sidecar."
+            echo "4. **Cloudflare lane:** ensure the Access App + allowlist via \`cloudflare-setup.yml\` **WITHOUT** \`admin_hostname\`."
             echo ""
-            echo "> ⚠️ Nunca rode \`cloudflare-setup.yml\` com \`admin_hostname\` preenchido — sobrescreve o CNAME do túnel."
+            echo "> ⚠️ Never run \`cloudflare-setup.yml\` with \`admin_hostname\` filled in — it overwrites the tunnel CNAME."
           } >> "$GITHUB_STEP_SUMMARY"

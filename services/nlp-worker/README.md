@@ -27,16 +27,16 @@ Analysis:    `POST http://localhost:8001/analyze`
 src/nora_nlp/
   main.py              # FastAPI app
   settings.py          # Settings via env
-  models.py            # Pydantic models espelhando docs/api/llm-schemas/
+  models.py            # Pydantic models mirroring docs/api/llm-schemas/
   routers/
     health.py
     analyze.py
   services/
-    pii_shield.py      # regex baseline para EMAIL/PHONE/CPF/CNPJ/CARD
-    stub_analyzer.py   # heuristica deterministica (sumario, decisoes, ...)
-    llm_analyzer.py    # pipeline LLM real (provider agnostic)
+    pii_shield.py      # regex baseline for EMAIL/PHONE/CPF/CNPJ/CARD
+    stub_analyzer.py   # deterministic heuristics (summary, decisions, ...)
+    llm_analyzer.py    # real LLM pipeline (provider agnostic)
   clients/
-    llm.py             # SDK OpenAI com base_url plugável
+    llm.py             # OpenAI SDK with pluggable base_url
   prompts/             # templates versionados (markdown)
 tests/
   test_health.py
@@ -47,7 +47,7 @@ tests/
 ## Tests
 
 ```bash
-pytest                        # todos
+pytest                        # all
 pytest tests/test_pii_shield.py
 ruff check . && ruff format --check .
 ```

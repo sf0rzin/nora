@@ -18,19 +18,19 @@ public abstract class IntegrationException extends RuntimeException {
         public NotConnected(String provider) {
             super(
                     "INTEGRATION_NOT_CONNECTED",
-                    "Integração '" + provider + "' não está conectada — conecte em Integrações");
+                    "Integration '" + provider + "' is not connected — connect it in Integrations");
         }
     }
 
     public static final class InvalidState extends IntegrationException {
         public InvalidState() {
-            super("INTEGRATION_INVALID_STATE", "state do OAuth inválido ou expirado");
+            super("INTEGRATION_INVALID_STATE", "invalid or expired OAuth state");
         }
     }
 
     public static final class UnknownProvider extends IntegrationException {
         public UnknownProvider(String provider) {
-            super("INTEGRATION_UNKNOWN_PROVIDER", "provedor desconhecido: " + provider);
+            super("INTEGRATION_UNKNOWN_PROVIDER", "unknown provider: " + provider);
         }
     }
 
@@ -38,15 +38,15 @@ public abstract class IntegrationException extends RuntimeException {
         public NotConfigured(String provider) {
             super(
                     "INTEGRATION_NOT_CONFIGURED",
-                    "Integração '"
+                    "Integration '"
                             + provider
-                            + "' não está configurada no servidor (faltam credenciais OAuth)");
+                            + "' is not configured on the server (missing OAuth credentials)");
         }
     }
 
     /**
      * Telegram pairing not completed yet: the backend did not find the user's {@code /start
-     * <código>} in getUpdates. It is NOT a provider failure — the hub tells the user to try again.
+     * <code>} in getUpdates. It is NOT a provider failure — the hub tells the user to try again.
      */
     public static final class PairingPending extends IntegrationException {
         public PairingPending(String message) {
@@ -56,7 +56,7 @@ public abstract class IntegrationException extends RuntimeException {
 
     public static final class ProviderError extends IntegrationException {
         public ProviderError(String provider, String detail) {
-            super("INTEGRATION_PROVIDER_ERROR", "Erro do provedor '" + provider + "': " + detail);
+            super("INTEGRATION_PROVIDER_ERROR", "Provider '" + provider + "' error: " + detail);
         }
     }
 }

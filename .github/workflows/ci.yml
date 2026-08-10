@@ -197,7 +197,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
-      - name: Build frontend (gera dist/ pro tauri-build)
+      - name: Build frontend (generates dist/ for tauri-build)
         working-directory: apps/desktop
         shell: bash
         run: |
@@ -214,7 +214,7 @@ jobs:
       # whisper-rs-sys compiles whisper.cpp with CMake + MSBuild, which generates deep scratch
       # paths and blows past Windows' 260-char MAX_PATH (fails with `MSB6003: CL.exe
       # could not be run / DirectoryNotFoundException`). Reproduced locally on 2026-08-07.
-      - name: Long paths + target dir curto (whisper.cpp/CMake)
+      - name: Long paths + short target dir (whisper.cpp/CMake)
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path C:\t | Out-Null
@@ -240,11 +240,11 @@ jobs:
       #  - without the feature: the legacy path (Azure sidecar), still supported in the transition;
       #  - with stt-local: the embedded whisper.cpp (ADR 0035), which is what goes to release.
       # Checking only one of them lets the other rot with nobody noticing.
-      - name: cargo check (sem stt-local — caminho legado)
+      - name: cargo check (without stt-local — legacy path)
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked
 
-      - name: cargo check (com stt-local — whisper embarcado)
+      - name: cargo check (with stt-local — embedded whisper)
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked --features stt-local
 
@@ -382,7 +382,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
-      - name: Validar JSON examples
+      - name: Validate JSON examples
         run: |
           python - <<'PY'
           import json, pathlib, sys
@@ -430,14 +430,14 @@ jobs:
       # encrypted in infra/proxmox/secrets.env.sops and are only decrypted on the host (age
       # key in /etc/nora/age.key). CI only needs to prove the GRAPH is valid, so we inject
       # obvious placeholders. No real value goes in here — this file is public.
-      - name: Gera .env de validação (placeholders — nenhum segredo real)
+      - name: Generate the validation .env (placeholders — no real secret)
         working-directory: infra/proxmox
         run: |
           set -euo pipefail
           cat > .env.ci <<'EOF'
           POSTGRES_ADMIN_PASSWORD=ci-placeholder
           POSTGRES_PLATFORM_ADMIN_PASSWORD=ci-placeholder
-          JWT_SECRET=ci-placeholder-jwt-secret-com-32-chars-ok
+          JWT_SECRET=ci-placeholder-jwt-secret-with-32-chars-ok
           CLOUDFLARE_TUNNEL_TOKEN=ci-placeholder
           GRAFANA_ADMIN_PASSWORD=ci-placeholder
           CF_ACCESS_TEAM_DOMAIN=ci-placeholder.cloudflareaccess.com
@@ -449,7 +449,7 @@ jobs:
         run: |
           set -euo pipefail
           docker compose --env-file .env.ci -f docker-compose.yml config -q
-          echo "docker-compose.yml válido (perfil default)."
+          echo "docker-compose.yml valid (default profile)."
 
       # The `platform` profile (postgres-platform + admin, ADR 0022/0023) sits OUTSIDE the
       # default `config`. Without this second pass, an error inside those two services
@@ -459,27 +459,27 @@ jobs:
         run: |
           set -euo pipefail
           docker compose --env-file .env.ci -f docker-compose.yml --profile platform config -q
-          echo "docker-compose.yml válido (profile platform)."
+          echo "docker-compose.yml valid (platform profile)."
 
       # Checks that the contract services exist under the expected name. `config -q` validates
       # syntax, not intent: a service renamed by mistake (e.g. `otel` instead of
       # `otel-collector`) is perfectly valid YAML, but breaks the OTEL_EXPORTER_OTLP_ENDPOINT
       # of the 4 apps — which resolve the collector by internal hostname.
-      - name: Contrato dos serviços (nomes = hostnames internos)
+      - name: Service contract (names = internal hostnames)
         working-directory: infra/proxmox
         run: |
           set -euo pipefail
-          esperados="admin alloy api backup caddy cloudflared grafana loki otel-collector postgres postgres-platform prometheus web worker"
-          atuais=$(docker compose --env-file .env.ci -f docker-compose.yml --profile platform config --services | sort | tr '\n' ' ')
-          atuais=$(echo "$atuais" | xargs)
-          if [ "$atuais" != "$esperados" ]; then
-            echo "::error::Conjunto de serviços mudou."
-            echo "  esperado: $esperados"
-            echo "  atual:    $atuais"
-            echo "Se a mudança é intencional, atualize esta lista E o ADR 0034."
+          expected="admin alloy api backup caddy cloudflared grafana loki otel-collector postgres postgres-platform prometheus web worker"
+          actual=$(docker compose --env-file .env.ci -f docker-compose.yml --profile platform config --services | sort | tr '\n' ' ')
+          actual=$(echo "$actual" | xargs)
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::The service set changed."
+            echo "  expected: $expected"
+            echo "  actual:   $actual"
+            echo "If the change is intentional, update this list AND ADR 0034."
             exit 1
           fi
-          echo "14 serviços conferem com o contrato."
+          echo "14 services match the contract."
 
       # shellcheck ships preinstalled in the ubuntu-latest image — no third-party action.
       # `-x` follows the `source` between scripts.
@@ -494,16 +494,16 @@ jobs:
       # error+warning already covers what matters here (SC2115 `rm -rf "$X/"` with X empty,
       # SC2164 `cd` without `||exit`, broken redirect, use of unassigned var).
       # To harden a specific script, use `# shellcheck enable=...` at the top of it.
-      - name: Shellcheck (scripts de operação)
+      - name: Shellcheck (operation scripts)
         run: |
           set -euo pipefail
           shellcheck --version
           mapfile -t files < <(find scripts infra/proxmox -name '*.sh' -type f 2>/dev/null | sort)
           if [ "${#files[@]}" -eq 0 ]; then
-            echo "::error::Nenhum .sh encontrado em scripts/ ou infra/proxmox/ — o filtro de path disparou este job, então isso indica script movido/apagado sem atualizar o CI."
+            echo "::error::No .sh found under scripts/ or infra/proxmox/ — the path filter triggered this job, so a script was moved or deleted without updating CI."
             exit 1
           fi
-          printf 'Analisando %d script(s):\n' "${#files[@]}"
+          printf 'Analyzing %d script(s):\n' "${#files[@]}"
           printf '  %s\n' "${files[@]}"
           shellcheck -x -S warning "${files[@]}"
           echo "shellcheck OK (gate: error+warning)."
@@ -518,7 +518,7 @@ jobs:
 
       # Informative pass at the strictest level. Does NOT fail the job — it exists so the
       # finding shows up in the log and gets fixed by decision, not by blocking.
-      - name: Shellcheck — passe informativo (style, não bloqueia)
+      - name: Shellcheck — informational pass (style, non-blocking)
         if: always()
         run: |
           set -uo pipefail
@@ -540,14 +540,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checar resultado dos jobs obrigatórios
+      - name: Check the result of the required jobs
         run: |
           results="${{ join(needs.*.result, ' ') }}"
-          echo "Resultados dos needs: $results"
+          echo "needs results: $results"
           for r in $results; do
             if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
-              echo "::error::Um job obrigatório do CI não passou (resultado: $r)."
+              echo "::error::A required CI job did not pass (result: $r)."
               exit 1
             fi
           done
-          echo "OK — todos os jobs obrigatórios passaram ou foram pulados por path-filter."
+          echo "OK — every required job passed or was skipped by the path filter."

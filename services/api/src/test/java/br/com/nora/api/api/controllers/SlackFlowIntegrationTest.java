@@ -79,7 +79,7 @@ class SlackFlowIntegrationTest {
     }
 
     @Test
-    void fluxoCompleto_startCallbackStatusAcaoDisconnect() throws Exception {
+    void fullFlow_startCallbackStatusActionDisconnect() throws Exception {
         String token = signupAndLogin("slack-full@nora.dev", "SenhaForte123", "Slack Full");
 
         // 1) Initial status: slack configured, not connected.
@@ -107,7 +107,7 @@ class SlackFlowIntegrationTest {
                         String.class);
         assertThat(callback.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(callback.getHeaders().getLocation())
-                .hasToString("http://localhost:3000/integracoes?connected=slack");
+                .hasToString("http://localhost:3000/integrations?connected=slack");
 
         // 4) Status: connected with the workspace identified.
         JsonNode after = authGet("/integrations", token).read(HttpStatus.OK);
@@ -133,7 +133,7 @@ class SlackFlowIntegrationTest {
                                 "/workflows",
                                 Map.of(
                                         "name",
-                                        "Postar no Slack",
+                                        "Post to Slack",
                                         "definition",
                                         mapper.readTree(definition)),
                                 token)
@@ -164,31 +164,31 @@ class SlackFlowIntegrationTest {
                 postJson("/workflows/" + wf.get("id").asText() + "/test", Map.of(), token)
                         .read(HttpStatus.OK);
         assertThat(failedExecution.get("status").asText()).isEqualTo("FAILED");
-        assertThat(failedExecution.get("log").toString()).contains("não está conectada");
+        assertThat(failedExecution.get("log").toString()).contains("is not connected");
     }
 
     @Test
-    void callback_stateForjado_redirecionaComErro() {
+    void callback_forgedState_redirectsWithError() {
         ResponseEntity<String> callback =
                 rest.getForEntity(
                         "/integrations/slack/oauth/callback?code=abc&state=forjado", String.class);
         assertThat(callback.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(callback.getHeaders().getLocation().toString())
-                .contains("/integracoes?error=integration_invalid_state");
+                .contains("/integrations?error=integration_invalid_state");
     }
 
     @Test
-    void callback_usuarioNegouConsentimento_redirecionaComErro() {
+    void callback_userDeniedConsent_redirectsWithError() {
         ResponseEntity<String> callback =
                 rest.getForEntity(
                         "/integrations/slack/oauth/callback?error=access_denied", String.class);
         assertThat(callback.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(callback.getHeaders().getLocation().toString())
-                .contains("/integracoes?error=access_denied");
+                .contains("/integrations?error=access_denied");
     }
 
     @Test
-    void conexaoEhIsoladaPorTenant() throws Exception {
+    void connectionIsIsolatedPerTenant() throws Exception {
         String tokenA = signupAndLogin("slack-a@nora.dev", "SenhaForte123", "A");
         String tokenB = signupAndLogin("slack-b@nora.dev", "SenhaForte123", "B");
 
@@ -220,7 +220,7 @@ class SlackFlowIntegrationTest {
                 return node;
             }
         }
-        throw new AssertionError("provider não listado: " + provider);
+        throw new AssertionError("provider not listed: " + provider);
     }
 
     private static String queryParam(String url, String name) {

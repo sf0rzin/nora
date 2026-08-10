@@ -39,12 +39,12 @@ For operational context (self-hosted deploy, runbooks):
 For academic context (FIAP Challenge):
 
 11. **`docs/challenge/fiap-challenge-2026.md`** — FIAP context, rubric, deadlines
-12. **`docs/challenge/personas-e-mapa-de-empatia.md`** — 3 personas + empathy map
-13. **`docs/challenge/diagrama-casos-de-uso.md`** — UML use cases
+12. **`docs/challenge/personas-and-empathy-map.md`** — 3 personas + empathy map
+13. **`docs/challenge/use-case-diagram.md`** — UML use cases
 
 ## Operating multiple architects
 
-NORA is operated by the **Stratfy team (PO) + multiple Claude instances** running the `arquiteto-nora` skill. Each architect has a declared specialization (Tech Lead, Design, etc.) and a dedicated folder in the Obsidian vault.
+NORA is operated by the **Stratfy team (PO) + multiple Claude instances** running the `nora-architect` skill. Each architect has a declared specialization (Tech Lead, Design, etc.) and a dedicated folder in the Obsidian vault.
 
 Cross-architect coordination happens **async via the Obsidian vault** at `Claude/50-coordenacao-arquitetos/`. The Stratfy team (PO) is always CC.
 
@@ -112,11 +112,11 @@ See `docs/engineering/architecture.md` §1 for the full table with where to veri
 - **Before editing**, inspect the existing patterns in the target module (Grep/Glob)
 - **After editing**, run the smallest relevant verification command (`mvn test`, `pytest`, `npm run typecheck`, `docker compose -f infra/proxmox/docker-compose.yml config`) and report pass/fail
 - **Update the docs** when code diverges: docs are part of the product, not an accessory
-- **The Obsidian vault** is mandatory for non-trivial changes (see the `arquiteto-nora` skill)
+- **The Obsidian vault** is mandatory for non-trivial changes (see the `nora-architect` skill)
 
 ## AI Collaboration Pattern (subagents)
 
-For large tasks, split into parallel implementable slices. Use the `arquiteto-nora` skill to:
+For large tasks, split into parallel implementable slices. Use the `nora-architect` skill to:
 
 1. **Understand** (read `MEMORY.md` + `CURRENT-STATE.md` + relevant docs)
 2. **Decide** (present 1-3 approaches + recommend one)

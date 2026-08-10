@@ -11,7 +11,7 @@ The NORA project's Next.js 14 (App Router) + TypeScript + Tailwind front end.
 
 ```bash
 cd apps/web
-pnpm install            # ou: npm install
+pnpm install            # or: npm install
 cp .env.example .env.local
 pnpm dev                # http://localhost:3000
 ```
@@ -28,26 +28,26 @@ pnpm dev                # http://localhost:3000
 ```
 src/
   app/
-    layout.tsx              # raiz
+    layout.tsx              # root
     page.tsx                # / (login mock)
     (app)/
-      layout.tsx            # shell autenticado (sidebar)
-      dashboard/page.tsx    # lista de reunioes
+      layout.tsx            # authenticated shell (sidebar)
+      dashboard/page.tsx    # meeting list
       meetings/[id]/page.tsx
     globals.css
   lib/
     api/
-      client.ts             # fetch wrapper, alterna mock/real
-      types.ts              # tipos espelhando OpenAPI
+      client.ts             # fetch wrapper, switches mock/real
+      types.ts              # types mirroring OpenAPI
     utils.ts                # cn(), formatDateTime
-  fixtures/                 # copia de docs/api/examples/*.json
+  fixtures/                 # copy of docs/api/examples/*.json
 ```
 
 ## Scripts
 
 ```bash
 pnpm dev          # dev server
-pnpm build        # build de producao
+pnpm build        # production build
 pnpm start        # serve build
 pnpm lint         # eslint (next/core-web-vitals)
 pnpm format       # prettier write

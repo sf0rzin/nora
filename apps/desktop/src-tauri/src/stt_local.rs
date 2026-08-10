@@ -246,7 +246,7 @@ impl LocalSttHandle {
                 }
             }
             #[cfg(debug_assertions)]
-            eprintln!("[stt_local] bridge encerrada session={}", bridge_session);
+            eprintln!("[stt_local] bridge closed session={}", bridge_session);
             #[cfg(not(debug_assertions))]
             let _ = bridge_session;
             // Dropping pcm_tx closes the channel -> the thread does the final flush and exits.
@@ -268,10 +268,10 @@ impl LocalSttHandle {
                 let mut engine = StreamEngine::new(state, language, worker_track, worker_session);
                 engine.run(&worker_app, pcm_rx);
             })
-            .map_err(|e| format!("nao consegui subir a thread de inferencia: {e}"))?;
+            .map_err(|e| format!("could not spawn the inference thread: {e}"))?;
 
         eprintln!(
-            "[stt_local] track={} pronto (modelo={}, threads={})",
+            "[stt_local] track={} ready (model={}, threads={})",
             track_label,
             size.as_str(),
             inference_threads()
@@ -322,10 +322,10 @@ async fn shared_context(path: &std::path::Path) -> Result<Arc<WhisperContext>, S
         WhisperContext::new_with_params(&load_path, params)
     })
     .await
-    .map_err(|e| format!("join load do modelo: {e}"))?
+    .map_err(|e| format!("model load join: {e}"))?
     .map_err(|e| {
         format!(
-            "whisper nao conseguiu carregar {}: {e}",
+            "whisper could not load {}: {e}",
             owned.display()
         )
     })?;
@@ -511,7 +511,7 @@ impl StreamEngine {
         }
         #[cfg(debug_assertions)]
         eprintln!(
-            "[stt_local] thread encerrada track={} committed={}ms",
+            "[stt_local] thread closed track={} committed={}ms",
             self.track, self.committed_ms
         );
     }
@@ -524,7 +524,7 @@ impl StreamEngine {
             }
             AudioMsg::Gap { ms } => {
                 eprintln!(
-                    "[stt_local] track={} BURACO de {}ms no audio (inferencia atrasada)",
+                    "[stt_local] track={} GAP of {}ms in the audio (inference lagging)",
                     self.track, ms
                 );
                 // Discontinuous audio: what is in the window cannot be
@@ -759,7 +759,7 @@ impl StreamEngine {
 
             debug_assert!(
                 offset >= self.last_final_end_ms,
-                "offset regrediu: {} < {} (track={})",
+                "offset regressed: {} < {} (track={})",
                 offset,
                 self.last_final_end_ms,
                 self.track
@@ -941,28 +941,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn conversao_ms_amostras_e_reversivel_em_multiplos_de_frame() {
+    fn ms_samples_conversion_is_reversible_in_frame_multiples() {
         for ms in [0u64, 100, 900, 1_200, 22_000] {
             assert_eq!(samples_to_ms(ms_to_samples(ms)), ms);
         }
     }
 
     #[test]
-    fn pad_nunca_encurta_e_alcanca_o_minimo() {
+    fn pad_never_shortens_and_reaches_the_minimum() {
         let min = ms_to_samples(MIN_PADDED_MS);
-        let curto = vec![0.5f32; 100];
-        let padded = pad_to_min(&curto);
+        let short = vec![0.5f32; 100];
+        let padded = pad_to_min(&short);
         assert_eq!(padded.len(), min);
         // Padding goes at the END: the first 100 are still the real audio.
-        assert_eq!(&padded[..100], &curto[..]);
+        assert_eq!(&padded[..100], &short[..]);
         assert_eq!(padded[min - 1], 0.0);
 
-        let longo = vec![0.1f32; min + 5];
-        assert_eq!(pad_to_min(&longo).len(), min + 5);
+        let long = vec![0.1f32; min + 5];
+        assert_eq!(pad_to_min(&long).len(), min + 5);
     }
 
     #[test]
-    fn blocklist_pega_alucinacao_de_silencio_em_pt_br() {
+    fn blocklist_catches_silence_hallucination_in_pt_br() {
         assert!(is_noise_text("Legendas pela comunidade Amara.org"));
         assert!(is_noise_text("  [Música]  "));
         assert!(is_noise_text("..."));
@@ -971,16 +971,16 @@ mod tests {
     }
 
     #[test]
-    fn vad_separa_silencio_de_fala() {
+    fn vad_separates_silence_from_speech() {
         let mut vad = EnergyVad::new();
         // 1 s of digital silence.
-        let silencio = vec![0.0f32; SAMPLE_RATE];
-        vad.ingest(&silencio);
+        let silence = vec![0.0f32; SAMPLE_RATE];
+        vad.ingest(&silence);
         assert_eq!(vad.speech_ms, 0);
         assert!(vad.silence_run_ms >= 900, "silence_run={}", vad.silence_run_ms);
 
         // 1 s of a wave with amplitude well above the floor.
-        let mut buf = silencio.clone();
+        let mut buf = silence.clone();
         for i in 0..SAMPLE_RATE {
             let t = i as f32 / SAMPLE_RATE as f32;
             buf.push((t * 440.0 * std::f32::consts::TAU).sin() * 0.3);
@@ -991,7 +991,7 @@ mod tests {
     }
 
     #[test]
-    fn reset_window_zera_contadores_mas_preserva_o_piso() {
+    fn reset_window_zeroes_counters_but_preserves_the_floor() {
         let mut vad = EnergyVad::new();
         vad.noise_floor = 0.02;
         vad.speech_ms = 500;
@@ -1005,7 +1005,7 @@ mod tests {
     }
 
     #[test]
-    fn join_segments_concatena_com_espaco_unico() {
+    fn join_segments_concatenates_with_single_space() {
         let segs = vec![
             DecodedSegment { text: "bom".into(), t0_ms: 0, t1_ms: 500, confidence: None },
             DecodedSegment { text: "dia".into(), t0_ms: 500, t1_ms: 900, confidence: None },
@@ -1017,10 +1017,10 @@ mod tests {
     /// commits (including a forced cut that consumes less than the window) and
     /// checks that the final sequence never regresses nor opens a hole.
     #[test]
-    fn offsets_de_final_nunca_regridem() {
+    fn final_offsets_never_regress() {
         let mut committed_ms: u64 = 0;
         let mut last_end: u64 = 0;
-        let mut emitidos: Vec<(u64, u64)> = Vec::new();
+        let mut emitted: Vec<(u64, u64)> = Vec::new();
 
         // (segments as (t0, t1) relative to the window, ms consumed by the commit)
         let commits: Vec<(Vec<(u64, u64)>, u64)> = vec![
@@ -1037,7 +1037,7 @@ mod tests {
                 let offset = (base + t0).max(last_end);
                 let end = (base + t1).max(offset);
                 assert!(offset >= last_end, "offset {} < last_end {}", offset, last_end);
-                emitidos.push((offset, end - offset));
+                emitted.push((offset, end - offset));
                 last_end = end;
             }
             committed_ms += consumed;
@@ -1046,8 +1046,8 @@ mod tests {
 
         // Global monotonicity of the emitted sequence.
         let mut prev = 0u64;
-        for (off, _) in &emitidos {
-            assert!(*off >= prev, "sequencia regrediu em {}", off);
+        for (off, _) in &emitted {
+            assert!(*off >= prev, "sequence regressed at {}", off);
             prev = *off;
         }
         // The clock matches the sum of the consumed audio.
@@ -1055,7 +1055,7 @@ mod tests {
     }
 
     #[test]
-    fn gap_avanca_o_relogio_sem_regressao() {
+    fn gap_advances_the_clock_without_regression() {
         // An audio hole must not make the next offset "go back" to the old
         // time: committed_ms has to jump along with it.
         let mut committed_ms: u64 = 5_000;

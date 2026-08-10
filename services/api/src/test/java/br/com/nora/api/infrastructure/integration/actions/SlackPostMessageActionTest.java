@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 class SlackPostMessageActionTest {
 
     @Test
-    void textoDefault_aplicaPlaceholdersEAnexaLink() {
+    void defaultText_appliesPlaceholdersAndAppendsLink() {
         WorkflowEventContext ctx = context("Renovação Acme", "Resumo curto da reunião.");
         String text = SlackPostMessageAction.defaultText(ctx);
         assertThat(text).startsWith("*Renovação Acme* analisada pelo NORA — resumo: Resumo curto");
@@ -23,7 +23,7 @@ class SlackPostMessageActionTest {
     }
 
     @Test
-    void textoDefault_truncaResumoLongoAntesDoLink() {
+    void defaultText_truncatesLongSummaryBeforeLink() {
         WorkflowEventContext ctx = context("Reunião X", "a".repeat(2000));
         String text = SlackPostMessageAction.defaultText(ctx);
         String[] lines = text.split("\n", 2);
@@ -34,27 +34,27 @@ class SlackPostMessageActionTest {
     }
 
     @Test
-    void textoCustom_usaTemplateDoUsuarioComPlaceholders() {
+    void customText_usesUserTemplateWithPlaceholders() {
         WorkflowEventContext ctx = context("Kickoff Beta", "Resumo.");
         String text =
                 SlackPostMessageAction.renderText(
-                        Map.of("text", "Olha essa: {{meeting.title}} ({{meeting.url}})"), ctx);
+                        Map.of("text", "Look at this: {{meeting.title}} ({{meeting.url}})"), ctx);
         assertThat(text)
                 .isEqualTo(
-                        "Olha essa: Kickoff Beta (http://localhost:3000/meetings/"
+                        "Look at this: Kickoff Beta (http://localhost:3000/meetings/"
                                 + ctx.meetingId()
                                 + ")");
     }
 
     @Test
-    void textoCustomVazio_caiNoDefault() {
+    void customTextBlank_fallsBackToDefault() {
         WorkflowEventContext ctx = context("Kickoff Beta", "Resumo.");
         assertThat(SlackPostMessageAction.renderText(Map.of("text", "  "), ctx))
                 .isEqualTo(SlackPostMessageAction.defaultText(ctx));
     }
 
     @Test
-    void canalObrigatorio_faltandoFalhaClaro() {
+    void channelRequired_missingFailsClearly() {
         assertThatThrownBy(() -> SlackPostMessageAction.requiredChannel(Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("params.channel");

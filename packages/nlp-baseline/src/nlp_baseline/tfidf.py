@@ -68,11 +68,11 @@ class TfidfBaseline:
                 medium/long texts (transcripts).
         """
         if ngram_range[0] < 1 or ngram_range[1] < ngram_range[0]:
-            raise ValueError(f"ngram_range invalido: {ngram_range}")
+            raise ValueError(f"invalid ngram_range: {ngram_range}")
         if max_features <= 0:
-            raise ValueError(f"max_features deve ser > 0: {max_features}")
+            raise ValueError(f"max_features must be > 0: {max_features}")
         if not 0.0 < max_df <= 1.0:
-            raise ValueError(f"max_df fora do intervalo (0, 1]: {max_df}")
+            raise ValueError(f"max_df out of range (0, 1]: {max_df}")
 
         self._ngram_range = ngram_range
         self._max_features = max_features
@@ -140,7 +140,7 @@ class TfidfBaseline:
                 into a more useful message).
         """
         if not texts:
-            raise ValueError("Corpus vazio. Forneca ao menos 1 documento.")
+            raise ValueError("Empty corpus. Provide at least 1 document.")
 
         self._n_docs = len(texts)
         self._vectorizer = self._build_vectorizer(n_docs=self._n_docs)
@@ -149,8 +149,8 @@ class TfidfBaseline:
             matrix = self._vectorizer.fit_transform(texts)
         except ValueError as exc:
             raise ValueError(
-                "Corpus nao gerou vocabulario util "
-                "(todos os textos vazios ou compostos so de stopwords)."
+                "Corpus produced no useful vocabulary "
+                "(all texts are empty or made up only of stopwords)."
             ) from exc
 
         self._tfidf_matrix = matrix
@@ -164,7 +164,7 @@ class TfidfBaseline:
     def _require_fitted(self) -> None:
         if self._vectorizer is None or self._mean_scores is None:
             raise RuntimeError(
-                "TfidfBaseline ainda nao foi treinado. Chame .fit(texts) antes."
+                "TfidfBaseline has not been trained yet. Call .fit(texts) first."
             )
 
     def top_terms(self, top_n: int = 20) -> list[tuple[str, float]]:

@@ -8,7 +8,7 @@ from .routers import analyze, health
 
 app = FastAPI(
     title="NORA NLP Worker",
-    description="Servico interno de analise de transcricoes via LLM (com saida JSON validada).",
+    description="Internal service that analyzes transcripts via LLM (with validated JSON output).",
     version="0.1.0",
 )
 

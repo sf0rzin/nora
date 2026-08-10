@@ -85,7 +85,7 @@ class OAuthWave1FlowIntegrationTest {
     }
 
     @Test
-    void fluxoCompleto_startCallbackStatusAcaoDisconnect() throws Exception {
+    void fullFlow_startCallbackStatusActionDisconnect() throws Exception {
         String token = signupAndLogin("wave1-full@nora.dev", "SenhaForte123", "Wave1 Full");
 
         // 1) Initial status: github/notion configured (props above), not connected;
@@ -132,7 +132,7 @@ class OAuthWave1FlowIntegrationTest {
                         String.class);
         assertThat(callback.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(callback.getHeaders().getLocation())
-                .hasToString("http://localhost:3000/integracoes?connected=github");
+                .hasToString("http://localhost:3000/integrations?connected=github");
 
         // 4) Status: connected.
         JsonNode after = authGet("/integrations", token).read(HttpStatus.OK);
@@ -186,27 +186,27 @@ class OAuthWave1FlowIntegrationTest {
                 postJson("/workflows/" + wf.get("id").asText() + "/test", Map.of(), token)
                         .read(HttpStatus.OK);
         assertThat(failedExecution.get("status").asText()).isEqualTo("FAILED");
-        assertThat(failedExecution.get("log").toString()).contains("não está conectada");
+        assertThat(failedExecution.get("log").toString()).contains("is not connected");
     }
 
     @Test
-    void callback_stateInvalido_redirecionaComErro() {
+    void callback_invalidState_redirectsWithError() {
         ResponseEntity<String> callback =
                 rest.getForEntity(
                         "/integrations/github/oauth/callback?code=abc&state=forjado", String.class);
         assertThat(callback.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(callback.getHeaders().getLocation().toString())
-                .contains("/integracoes?error=integration_invalid_state");
+                .contains("/integrations?error=integration_invalid_state");
     }
 
     @Test
-    void callback_provedorDesconhecido_redirecionaComErro() {
+    void callback_unknownProvider_redirectsWithError() {
         ResponseEntity<String> callback =
                 rest.getForEntity(
                         "/integrations/qualquer/oauth/callback?code=abc&state=x", String.class);
         assertThat(callback.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(callback.getHeaders().getLocation().toString())
-                .contains("/integracoes?error=integration_unknown_provider");
+                .contains("/integrations?error=integration_unknown_provider");
     }
 
     /* ---------------- helpers ---------------- */
@@ -228,7 +228,7 @@ class OAuthWave1FlowIntegrationTest {
                 return node;
             }
         }
-        throw new AssertionError("provider não listado: " + provider);
+        throw new AssertionError("provider not listed: " + provider);
     }
 
     private static String queryParam(String url, String name) {
@@ -331,7 +331,7 @@ class OAuthWave1FlowIntegrationTest {
 
                 @Override
                 public TokenResponse refresh(OAuthProviderConfig config, String refreshToken) {
-                    throw new UnsupportedOperationException("nenhum provedor deste IT usa refresh");
+                    throw new UnsupportedOperationException("no provider in this IT uses refresh");
                 }
             };
         }

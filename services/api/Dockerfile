@@ -11,22 +11,22 @@ RUN mvn -B -q -DskipTests package
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-# OpenTelemetry Java Agent (auto-instrumentation). Substitui o applicationinsights-agent
-# (ADR 0034 — saida do Azure).
+# OpenTelemetry Java Agent (auto-instrumentation). Replaces the applicationinsights-agent
+# (ADR 0034 — exit from Azure).
 #
-# Por que TROCAR O JAR e nao so a env var: o agent do App Insights exporta para o endpoint
-# Breeze derivado da APPLICATIONINSIGHTS_CONNECTION_STRING e IGNORA
-# OTEL_EXPORTER_OTLP_ENDPOINT. Apontar a env pro otel-collector com o jar antigo faria a
-# aplicacao subir normalmente, instrumentar tudo e exportar para lugar nenhum — perda TOTAL
-# e SILENCIOSA de telemetria, sem erro no boot nem no healthcheck.
+# Why SWAP THE JAR and not just the env var: the App Insights agent exports to the Breeze
+# endpoint derived from APPLICATIONINSIGHTS_CONNECTION_STRING and IGNORES
+# OTEL_EXPORTER_OTLP_ENDPOINT. Pointing the env at the otel-collector while keeping the old
+# jar would make the application boot normally, instrument everything and export to nowhere —
+# a TOTAL and SILENT loss of telemetry, with no error at boot or in the healthcheck.
 #
-# Sem mudanca de codigo: traces JDBC + HTTP server/client + Spring + Hibernate vao para o
-# otel-collector quando OTEL_EXPORTER_OTLP_ENDPOINT esta setada (infra/proxmox/docker-compose.yml
-# seta http://otel-collector:4317). Quando vazia, o ENTRYPOINT desliga o SDK — dev local e CI
-# continuam sem precisar de collector (ver nota do no-op abaixo).
+# No code change needed: JDBC + HTTP server/client + Spring + Hibernate traces go to the
+# otel-collector when OTEL_EXPORTER_OTLP_ENDPOINT is set (infra/proxmox/docker-compose.yml
+# sets http://otel-collector:4317). When empty, the ENTRYPOINT disables the SDK — local dev
+# and CI keep working without needing a collector (see the no-op note below).
 #
-# Versao pinada por reprodutibilidade. Bump via Dependabot futuramente
-# (agent self-versioned, nao depende do BOM).
+# Version pinned for reproducibility. Bump via Dependabot in the future
+# (agent is self-versioned, does not depend on the BOM).
 ARG OTEL_AGENT_VERSION=2.30.0
 ADD --chown=root:root \
     https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar \
@@ -38,21 +38,21 @@ COPY --from=build /workspace/target/*.jar /app/app.jar
 RUN chown nora:nora /app/app.jar
 USER nora
 EXPOSE 8080
-# O limite de memoria do runtime segue vindo de fora (deploy.resources.limits.memory no
-# compose; antes era o 1Gi default do Container Apps). JVM default heap em container = ~25%
-# (250MB). Spring Boot 3 + Hibernate + Tomcat estoura OOM em load com esse default. Subimos
-# pra 75% (~750MB heap num container de 1Gi). G1GC e ergonomia padrao de container do JDK 21
-# cobrem o resto.
+# The runtime memory limit still comes from the outside (deploy.resources.limits.memory in
+# the compose file; it used to be the 1Gi default of Container Apps). JVM default heap in a
+# container = ~25% (250MB). Spring Boot 3 + Hibernate + Tomcat OOMs under load with that
+# default. We raise it to 75% (~750MB heap in a 1Gi container). G1GC and JDK 21's default
+# container ergonomics cover the rest.
 #
-# `-javaagent` carrega o agent OTel. Os flags de memoria sao os mesmos de antes — a troca do
-# agent nao muda o perfil de heap.
+# `-javaagent` loads the OTel agent. The memory flags are the same as before — swapping the
+# agent does not change the heap profile.
 ENV JAVA_TOOL_OPTIONS="-javaagent:/app/opentelemetry-javaagent.jar -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost:8080/actuator/health || exit 1
-# No-op quando nao ha collector — preserva o comportamento do agent do App Insights, que
-# ficava inerte sem CONNECTION_STRING. Aqui o default do OTel e o OPOSTO: sem
-# OTEL_EXPORTER_OTLP_ENDPOINT ele tenta http://localhost:4318 e enche o log de
-# "Connection refused" em dev/CI. Desligamos o SDK explicitamente nesse caso, para que
-# `docker run` sem observabilidade continue funcionando sem exigir collector.
-# Prod nao e afetada: o compose seta OTEL_EXPORTER_OTLP_ENDPOINT.
+# No-op when there is no collector — preserves the behaviour of the App Insights agent, which
+# stayed idle without a CONNECTION_STRING. Here the OTel default is the OPPOSITE: without
+# OTEL_EXPORTER_OTLP_ENDPOINT it tries http://localhost:4318 and fills the log with
+# "Connection refused" in dev/CI. We explicitly disable the SDK in that case, so that
+# `docker run` without observability keeps working without requiring a collector.
+# Prod is not affected: the compose file sets OTEL_EXPORTER_OTLP_ENDPOINT.
 ENTRYPOINT ["/bin/sh", "-c", "if [ -z \"${OTEL_EXPORTER_OTLP_ENDPOINT}\" ]; then export OTEL_SDK_DISABLED=true; fi; exec java -jar /app/app.jar"]

@@ -11,7 +11,7 @@ last_reviewed: 2026-06-06
 > **HISTORICAL DOCUMENT — DO NOT OPERATE FROM IT.**
 >
 > Production moved off Azure to a self-hosted Proxmox VM
-> ([ADR 0034](../adr/0034-migracao-azure-para-proxmox.md)). The runbook in force is
+> ([ADR 0034](../adr/0034-azure-to-proxmox-migration.md)). The runbook in force is
 > [`proxmox-deploy.md`](proxmox-deploy.md); the shutdown of what remained on Azure is in
 > [`azure-decommission.md`](azure-decommission.md).
 >

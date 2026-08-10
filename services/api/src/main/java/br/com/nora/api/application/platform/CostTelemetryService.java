@@ -27,18 +27,18 @@ public class CostTelemetryService {
     public CostReport cost(OffsetDateTime from, OffsetDateTime to, String groupBy) {
         if (!availability.isUsable()) {
             throw new PlatformUnavailableException(
-                    "control plane indisponível (banco de plataforma)");
+                    "control plane unavailable (platform database)");
         }
         String g = groupBy == null || groupBy.isBlank() ? "model" : groupBy.trim().toLowerCase();
         if (!GROUPS.contains(g)) {
             throw new PlatformValidationException(
-                    "groupBy inválido: " + groupBy + " (use tenant|model|service)", false);
+                    "invalid groupBy: " + groupBy + " (use tenant|model|service)", false);
         }
         try {
             return eventsProvider.getObject().aggregate(from, to, g);
         } catch (DataAccessException ex) {
             // Platform database went down at runtime → 503 (not 500), per-call.
-            throw new PlatformUnavailableException("banco de plataforma indisponível em runtime");
+            throw new PlatformUnavailableException("platform database unavailable at runtime");
         }
     }
 }

@@ -38,7 +38,7 @@ class WorkflowActionTemplatesTest {
     }
 
     @Test
-    void corpoPadraoRenderizaMarkdownDoResumoSemAsteriscosLiterais() {
+    void defaultBodyRendersSummaryMarkdownWithoutLiteralAsterisks() {
         String html =
                 WorkflowActionTemplates.bodyOrDefault(
                         Map.of(), ctx("A **Acme** pediu urgência.\n\n- Proposta\n- Contrato"));
@@ -56,7 +56,7 @@ class WorkflowActionTemplatesTest {
     }
 
     @Test
-    void corpoCustomAplicaPlaceholdersERenderizaMarkdown() {
+    void customBodyAppliesPlaceholdersAndRendersMarkdown() {
         String html =
                 WorkflowActionTemplates.bodyOrDefault(
                         Map.of(
@@ -71,7 +71,7 @@ class WorkflowActionTemplatesTest {
     }
 
     @Test
-    void execucaoDeTesteGanhaAvisoDeDadosDeExemplo() {
+    void testExecutionGetsSampleDataWarning() {
         WorkflowEventContext sample =
                 new WorkflowEventContext(
                         UUID.randomUUID(),

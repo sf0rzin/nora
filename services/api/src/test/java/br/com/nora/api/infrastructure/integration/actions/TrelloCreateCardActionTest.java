@@ -27,17 +27,17 @@ class TrelloCreateCardActionTest {
     private final TrelloCreateCardAction action = new TrelloCreateCardAction(integrations, trello);
 
     @Test
-    void criaUmCardPorActionItemComDue() {
+    void createsOneCardPerActionItemWithDue() {
         when(integrations.validAccessToken(eq(TestContexts.TENANT), eq(IntegrationProvider.TRELLO)))
                 .thenReturn("trello_token");
-        LocalDate prazo = LocalDate.of(2026, 6, 20);
+        LocalDate dueDate = LocalDate.of(2026, 6, 20);
         WorkflowEventContext ctx =
                 TestContexts.context(
                         "Renovação Acme",
                         "Resumo.",
                         List.of(
                                 new WorkflowEventContext.ActionItemView(
-                                        "Enviar proposta", "Ana", "HIGH", prazo),
+                                        "Enviar proposta", "Ana", "HIGH", dueDate),
                                 new WorkflowEventContext.ActionItemView(
                                         "Agendar follow-up", null, "LOW", null)));
 
@@ -53,14 +53,14 @@ class TrelloCreateCardActionTest {
                 .contains("Reunião: Renovação Acme")
                 .contains("Responsável: Ana")
                 .contains(ctx.meetingUrl());
-        assertThat(first.due()).isEqualTo(prazo);
+        assertThat(first.due()).isEqualTo(dueDate);
         // Item with no due date/assignee: card with no due and no assignee line.
         assertThat(trello.cards.get(1).due()).isNull();
         assertThat(trello.cards.get(1).desc()).doesNotContain("Responsável");
     }
 
     @Test
-    void semActionItems_naoChamaProvedorERegistraHonesto() {
+    void noActionItems_doesNotCallProviderAndRecordsHonestly() {
         WorkflowEventContext ctx = TestContexts.context("Kickoff", "Resumo.", List.of());
 
         String result = action.execute(ctx, Map.of("listId", "lista-1"));
@@ -71,7 +71,7 @@ class TrelloCreateCardActionTest {
     }
 
     @Test
-    void listIdObrigatorio() {
+    void listIdRequired() {
         assertThatThrownBy(() -> TrelloCreateCardAction.requiredListId(Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("params.listId");
@@ -81,7 +81,7 @@ class TrelloCreateCardActionTest {
 
     /** Ensures provider failure PROPAGATES (engine records FAILED). */
     @Test
-    void falhaDoProvedorPropaga() {
+    void providerFailurePropagates() {
         when(integrations.validAccessToken(eq(TestContexts.TENANT), eq(IntegrationProvider.TRELLO)))
                 .thenReturn("trello_token");
         TrelloCreateCardAction failing =
@@ -95,7 +95,7 @@ class TrelloCreateCardActionTest {
                                     String name,
                                     String desc,
                                     LocalDate due) {
-                                throw new IllegalStateException("falha simulada");
+                                throw new IllegalStateException("simulated failure");
                             }
                         });
         WorkflowEventContext ctx =

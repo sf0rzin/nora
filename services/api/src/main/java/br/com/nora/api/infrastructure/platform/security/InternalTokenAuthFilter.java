@@ -61,7 +61,7 @@ public class InternalTokenAuthFilter extends OncePerRequestFilter {
             return MessageDigest.getInstance("SHA-256")
                     .digest(value.getBytes(StandardCharsets.UTF_8));
         } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 indisponível", ex);
+            throw new IllegalStateException("SHA-256 unavailable", ex);
         }
     }
 }

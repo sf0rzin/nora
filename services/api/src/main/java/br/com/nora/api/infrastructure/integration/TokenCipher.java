@@ -34,13 +34,14 @@ public class TokenCipher {
         if (base64Key == null || base64Key.isBlank()) {
             this.key = null;
             LOG.warn(
-                    "NORA_INTEGRATIONS_ENC_KEY ausente — tokens OAuth serão armazenados SEM cifra"
-                            + " (aceitável só em dev local; configure 32 bytes base64 em produção)");
+                    "NORA_INTEGRATIONS_ENC_KEY missing — OAuth tokens will be stored UNENCRYPTED"
+                            + " (acceptable only in local dev; configure 32 base64 bytes in"
+                            + " production)");
         } else {
             byte[] raw = Base64.getDecoder().decode(base64Key.trim());
             if (raw.length != 32) {
                 throw new IllegalStateException(
-                        "NORA_INTEGRATIONS_ENC_KEY precisa ter 32 bytes (base64 de 32 bytes)");
+                        "NORA_INTEGRATIONS_ENC_KEY must be 32 bytes (base64 of 32 bytes)");
             }
             this.key = new SecretKeySpec(raw, "AES");
         }
@@ -64,7 +65,7 @@ public class TokenCipher {
                     + ":"
                     + Base64.getEncoder().encodeToString(ciphertext);
         } catch (Exception ex) {
-            throw new IllegalStateException("falha ao cifrar token", ex);
+            throw new IllegalStateException("failed to encrypt token", ex);
         }
     }
 
@@ -81,7 +82,7 @@ public class TokenCipher {
         }
         if (key == null) {
             throw new IllegalStateException(
-                    "token cifrado no banco mas NORA_INTEGRATIONS_ENC_KEY ausente");
+                    "token is encrypted in the database but NORA_INTEGRATIONS_ENC_KEY is missing");
         }
         try {
             String[] parts = stored.substring(ENC_PREFIX.length()).split(":", 2);
@@ -91,7 +92,7 @@ public class TokenCipher {
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_BITS, iv));
             return new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8);
         } catch (Exception ex) {
-            throw new IllegalStateException("falha ao decifrar token", ex);
+            throw new IllegalStateException("failed to decrypt token", ex);
         }
     }
 }
