@@ -152,7 +152,7 @@ worker-test: worker-setup ## Run the worker tests
 # --- Web ---
 
 .PHONY: web-dev
-web-dev: ## Run the Next.js frontend in dev mode
+web-dev: web-setup ## Run the Next.js frontend in dev mode
 	cd apps/web && npm run dev
 
 # There is no `web-test`: apps/web has no test script and no test files, so the target
