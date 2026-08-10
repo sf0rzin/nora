@@ -36,9 +36,21 @@ public class TelemetryDatasourceProperties {
 
     private long connectionTimeoutMs = 5_000;
 
-    /** True when a dedicated telemetry datasource is configured (non-empty url). */
+    /**
+     * True when the dedicated telemetry datasource is <b>fully</b> configured.
+     *
+     * <p>All three fields, not just the url. With only the url set, {@code
+     * TelemetryDataSourceConfig} builds a Hikari pool with an empty username, every connection
+     * fails lazily, and {@code PrimaryDbBusinessMetricsSource} swallows the failure into a disabled
+     * snapshot — the same silently-empty dashboard the telemetry role exists to prevent, reached by
+     * a different route.
+     */
     public boolean isConfigured() {
-        return url != null && !url.isBlank();
+        return notBlank(url) && notBlank(username) && notBlank(password);
+    }
+
+    private static boolean notBlank(String value) {
+        return value != null && !value.isBlank();
     }
 
     public String getUrl() {
