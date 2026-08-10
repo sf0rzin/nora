@@ -139,9 +139,9 @@ contains() { local n="$1"; shift; local x; for x in "$@"; do [ "$x" = "$n" ] && 
 while [ $# -gt 0 ]; do
   case "$1" in
     --service|-s)
-      IFS=',' read -r -a _svcs <<< "${2:?--service exige um valor}"
+      IFS=',' read -r -a _svcs <<< "${2:?--service requires a value}"
       SELECTED+=("${_svcs[@]}"); shift 2 ;;
-    --tag|-t)        TAG="${2:?--tag exige um valor}"; shift 2 ;;
+    --tag|-t)        TAG="${2:?--tag requires a value}"; shift 2 ;;
     --if-changed)    IF_CHANGED=1; shift ;;
     --sync)          SYNC=1; shift ;;
     --rollback)      ROLLBACK_ONLY=1; shift ;;
@@ -149,7 +149,7 @@ while [ $# -gt 0 ]; do
     --no-rollback)   NO_ROLLBACK=1; shift ;;
     --platform)      FORCE_PLATFORM=1; shift ;;
     --no-platform)   FORCE_PLATFORM=0; shift ;;
-    --wait-timeout)  WAIT_TIMEOUT="${2:?--wait-timeout exige um valor}"; shift 2 ;;
+    --wait-timeout)  WAIT_TIMEOUT="${2:?--wait-timeout requires a value}"; shift 2 ;;
     --dry-run)       DRY_RUN=1; shift ;;
     -h|--help)       usage; exit 0 ;;
     *) err "unknown option: $1"; echo >&2; usage; exit 1 ;;
