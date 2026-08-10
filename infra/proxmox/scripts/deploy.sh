@@ -74,59 +74,59 @@ FORCE_PLATFORM=""
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — rollout pull-based com health gate interno e rollback automático
+$SCRIPT_NAME — pull-based rollout with internal health gate and automatic rollback
 
-USO
-  $SCRIPT_NAME [--service <nome>]... [--tag sha-xxxxxxx] [opções]
+USAGE
+  $SCRIPT_NAME [--service <name>]... [--tag sha-xxxxxxx] [options]
 
-OPÇÕES
-  --service <nome>     Só este serviço (repetível, ou lista separada por vírgula).
-                       Default: todos, na ordem de dependência.
-  --tag <tag>          Tag da imagem a subir (ex.: sha-a1b2c3d). Aplica-se aos
-                       serviços de aplicação selecionados: ${APP_SERVICES[*]}.
-  --if-changed         Só faz deploy se o digest remoto da tag no GHCR diferir do
-                       último digest registrado no estado. É o modo usado pelo timer
-                       systemd (nora-deploy.timer) — sai 0 sem fazer nada quando não mudou.
-  --sync               Faz \`git pull --ff-only\` no repo do host ANTES de qualquer coisa.
-                       Sem isto o deploy só atualiza IMAGENS: mudança no compose, no
-                       Caddyfile ou nos scripts fica no git e nunca chega na máquina.
-                       Combinado com --if-changed, um HEAD que andou já é motivo de
-                       deploy — senão a config nova ficaria parada até a próxima imagem.
-  --rollback           Volta os serviços selecionados para a tag anterior do estado
-                       e sai (não faz pull de tag nova).
-  --no-pull            Não roda \`docker compose pull\` (usa a imagem local).
-  --no-rollback        Em falha de health, NÃO faz rollback (deixa quebrado para debug).
+OPTIONS
+  --service <name>     Only this service (repeatable, or comma-separated list).
+                       Default: all, in dependency order.
+  --tag <tag>          Image tag to roll out (e.g.: sha-a1b2c3d). Applies to the
+                       selected application services: ${APP_SERVICES[*]}.
+  --if-changed         Only deploys if the tag's remote digest on GHCR differs from the
+                       last digest recorded in the state. This is the mode used by the
+                       systemd timer (nora-deploy.timer) — exits 0 doing nothing when unchanged.
+  --sync               Runs \`git pull --ff-only\` on the host repo BEFORE anything else.
+                       Without this the deploy only updates IMAGES: a change in the compose, in
+                       the Caddyfile or in the scripts stays in git and never reaches the machine.
+                       Combined with --if-changed, a HEAD that moved is already reason for a
+                       deploy — otherwise the new config would stay stuck until the next image.
+  --rollback           Reverts the selected services to the previous tag from the state
+                       and exits (does not pull a new tag).
+  --no-pull            Does not run \`docker compose pull\` (uses the local image).
+  --no-rollback        On health failure, does NOT roll back (leaves it broken for debugging).
   --platform / --no-platform
-                       Força ligar/desligar o profile 'platform'. Default: auto,
-                       lendo NORA_PLATFORM_ENABLED do arquivo de segredos.
-  --wait-timeout <s>   Timeout do \`up --wait\` por serviço (default: $WAIT_TIMEOUT)
-  --dry-run            Mostra o que faria, não executa
-  -h, --help           Esta ajuda
+                       Forces the 'platform' profile on/off. Default: auto,
+                       reading NORA_PLATFORM_ENABLED from the secrets file.
+  --wait-timeout <s>   Timeout of \`up --wait\` per service (default: $WAIT_TIMEOUT)
+  --dry-run            Shows what it would do, does not execute
+  -h, --help           This help
 
-ESTADO
+STATE
   $STATE_FILE
-  Guarda, por serviço: tag corrente, digest resolvido, TAG ANTERIOR (usada no rollback)
-  e o timestamp do último deploy bem-sucedido.
+  Stores, per service: current tag, resolved digest, PREVIOUS TAG (used in the rollback)
+  and the timestamp of the last successful deploy.
 
-SEGREDOS
-  $SOPS_FILE  (versionado, cifrado)
-  Chave privada age: $AGE_KEY_FILE (só no host, 0400 root).
-  Decifrado para um .env em /dev/shm (tmpfs), apagado no trap EXIT. Nunca toca o disco.
+SECRETS
+  $SOPS_FILE  (versioned, encrypted)
+  age private key: $AGE_KEY_FILE (host only, 0400 root).
+  Decrypted to a .env in /dev/shm (tmpfs), erased on the EXIT trap. Never touches disk.
 
-EXEMPLOS
-  $SCRIPT_NAME --tag sha-a1b2c3d                 # rollout completo numa tag
-  $SCRIPT_NAME --service api --tag sha-a1b2c3d   # só a API
+EXAMPLES
+  $SCRIPT_NAME --tag sha-a1b2c3d                 # full rollout on one tag
+  $SCRIPT_NAME --service api --tag sha-a1b2c3d   # API only
   $SCRIPT_NAME --service api,web --tag sha-a1b2c3d
-  $SCRIPT_NAME --if-changed                      # o que o timer systemd chama
-  $SCRIPT_NAME --service api --rollback          # volta a API pra tag anterior
+  $SCRIPT_NAME --if-changed                      # what the systemd timer calls
+  $SCRIPT_NAME --service api --rollback          # reverts the API to the previous tag
 EOF
 }
 
 _ts() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
 log()  { printf '[%s] %s\n'        "$(_ts)" "$*" >&2; }
 ok()   { printf '[%s] OK    %s\n'  "$(_ts)" "$*" >&2; }
-warn() { printf '[%s] AVISO %s\n'  "$(_ts)" "$*" >&2; }
-err()  { printf '[%s] ERRO  %s\n'  "$(_ts)" "$*" >&2; }
+warn() { printf '[%s] WARN  %s\n'  "$(_ts)" "$*" >&2; }
+err()  { printf '[%s] ERROR %s\n'  "$(_ts)" "$*" >&2; }
 die()  { err "$*"; exit 1; }
 hr()   { printf '%s\n' "------------------------------------------------------------" >&2; }
 
@@ -148,7 +148,7 @@ while [ $# -gt 0 ]; do
     --wait-timeout)  WAIT_TIMEOUT="${2:?--wait-timeout exige um valor}"; shift 2 ;;
     --dry-run)       DRY_RUN=1; shift ;;
     -h|--help)       usage; exit 0 ;;
-    *) err "opção desconhecida: $1"; echo >&2; usage; exit 1 ;;
+    *) err "unknown option: $1"; echo >&2; usage; exit 1 ;;
   esac
 done
 
@@ -159,35 +159,35 @@ if [ "${#SELECTED[@]}" -eq 0 ]; then
   SELECTED=("${ALL_SERVICES[@]}")
 else
   for s in "${SELECTED[@]}"; do
-    contains "$s" "${ALL_SERVICES[@]}" || die "serviço desconhecido: '$s'. Válidos: ${ALL_SERVICES[*]}"
+    contains "$s" "${ALL_SERVICES[@]}" || die "unknown service: '$s'. Valid: ${ALL_SERVICES[*]}"
   done
 fi
 
 if [ -n "$TAG" ]; then
   case "$TAG" in
     sha-*|latest|v*) : ;;
-    *) warn "tag '$TAG' não parece uma tag imutável 'sha-<short>' — rollback fica impreciso." ;;
+    *) warn "tag '$TAG' does not look like an immutable 'sha-<short>' tag — rollback becomes imprecise." ;;
   esac
   _apps_selected=0
   for s in "${SELECTED[@]}"; do contains "$s" "${APP_SERVICES[@]}" && _apps_selected=1; done
-  [ "$_apps_selected" -eq 1 ] || die "--tag só se aplica a ${APP_SERVICES[*]}; nenhum deles foi selecionado."
+  [ "$_apps_selected" -eq 1 ] || die "--tag only applies to ${APP_SERVICES[*]}; none of them were selected."
 fi
 
 # ---------------------------------------------------------------------------
 # Pre-flight
 # ---------------------------------------------------------------------------
-command -v docker >/dev/null 2>&1 || die "docker não encontrado. Rode o bootstrap-host.sh."
-docker compose version >/dev/null 2>&1 || die "plugin 'docker compose' v2 ausente. Rode o bootstrap-host.sh."
-docker info >/dev/null 2>&1 || die "o daemon do Docker não responde (permissão? o usuário está no grupo 'docker'?)."
-[ -f "$COMPOSE_FILE" ] || die "compose não encontrado: $COMPOSE_FILE"
+command -v docker >/dev/null 2>&1 || die "docker not found. Run bootstrap-host.sh."
+docker compose version >/dev/null 2>&1 || die "'docker compose' v2 plugin missing. Run bootstrap-host.sh."
+docker info >/dev/null 2>&1 || die "the Docker daemon is not responding (permission? is the user in the 'docker' group?)."
+[ -f "$COMPOSE_FILE" ] || die "compose not found: $COMPOSE_FILE"
 
-mkdir -p "$STATE_DIR" 2>/dev/null || die "não consegui criar $STATE_DIR (permissão?)."
-touch "$STATE_FILE" 2>/dev/null || die "não consegui escrever em $STATE_FILE."
+mkdir -p "$STATE_DIR" 2>/dev/null || die "could not create $STATE_DIR (permission?)."
+touch "$STATE_FILE" 2>/dev/null || die "could not write to $STATE_FILE."
 
 # Lock: two concurrent deploys (the timer + an operator) would recreate containers at the same time.
 if command -v flock >/dev/null 2>&1; then
   exec 9>"$LOCK_FILE"
-  flock -n 9 || die "outro deploy já está rodando (lock: $LOCK_FILE). Aguarde ou remova se for órfão."
+  flock -n 9 || die "another deploy is already running (lock: $LOCK_FILE). Wait or remove it if orphaned."
 fi
 
 # ---------------------------------------------------------------------------
@@ -208,8 +208,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 prepare_env() {
-  [ -f "$SOPS_FILE" ] || die "arquivo de segredos não encontrado: $SOPS_FILE"
-  command -v sops >/dev/null 2>&1 || die "sops não encontrado. Rode o bootstrap-host.sh."
+  [ -f "$SOPS_FILE" ] || die "secrets file not found: $SOPS_FILE"
+  command -v sops >/dev/null 2>&1 || die "sops not found. Run bootstrap-host.sh."
 
   # We demand a real tmpfs. Without it, the decrypted .env would touch the disk.
   local shm_fs=""
@@ -217,8 +217,8 @@ prepare_env() {
     shm_fs="$(findmnt -no FSTYPE /dev/shm 2>/dev/null || true)"
   fi
   if [ ! -d /dev/shm ] || { [ -n "$shm_fs" ] && [ "$shm_fs" != "tmpfs" ]; }; then
-    die "/dev/shm não é tmpfs (fs='${shm_fs:-inexistente}'). Recuso decifrar segredo para disco.
-       Corrija a montagem antes de deployar:  mount -t tmpfs -o size=64m tmpfs /dev/shm"
+    die "/dev/shm is not tmpfs (fs='${shm_fs:-nonexistent}'). Refusing to decrypt secrets to disk.
+       Fix the mount before deploying:  mount -t tmpfs -o size=64m tmpfs /dev/shm"
   fi
 
   ENV_DIR="$(mktemp -d /dev/shm/nora-deploy.XXXXXX)"
@@ -226,21 +226,21 @@ prepare_env() {
   ENV_FILE="$ENV_DIR/.env"
   ( umask 077; : > "$ENV_FILE" )
 
-  [ -r "$AGE_KEY_FILE" ] || warn "chave age não legível em $AGE_KEY_FILE — o sops pode falhar."
+  [ -r "$AGE_KEY_FILE" ] || warn "age key not readable at $AGE_KEY_FILE — sops may fail."
   export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
 
-  log "decifrando segredos para tmpfs ($ENV_DIR)..."
+  log "decrypting secrets to tmpfs ($ENV_DIR)..."
   if ! sops --decrypt --input-type dotenv --output-type dotenv "$SOPS_FILE" > "$ENV_FILE" 2>"$ENV_DIR/sops.err"; then
-    err "falha ao decifrar $SOPS_FILE:"
+    err "failed to decrypt $SOPS_FILE:"
     sed 's/^/       /' "$ENV_DIR/sops.err" >&2 || true
-    err "Verifique: a chave privada age em $AGE_KEY_FILE corresponde a um dos recipients"
-    err "do arquivo?  sops --decrypt $SOPS_FILE | head -1"
+    err "Check: does the age private key at $AGE_KEY_FILE match one of the recipients"
+    err "of the file?  sops --decrypt $SOPS_FILE | head -1"
     rm -f "$ENV_DIR/sops.err"
-    die "sem segredos, não há deploy"
+    die "no secrets, no deploy"
   fi
   rm -f "$ENV_DIR/sops.err"
-  [ -s "$ENV_FILE" ] || die "o .env decifrado saiu VAZIO — o secrets.env.sops está correto?"
-  ok "segredos em tmpfs ($(grep -c '=' "$ENV_FILE" || echo 0) variáveis)"
+  [ -s "$ENV_FILE" ] || die "the decrypted .env came out EMPTY — is secrets.env.sops correct?"
+  ok "secrets in tmpfs ($(grep -c '=' "$ENV_FILE" || echo 0) variables)"
 }
 
 # envget <KEY> — reads a value from the decrypted .env without dumping everything into the shell environment.
@@ -343,7 +343,7 @@ run() {  # executes (or only shows, under --dry-run)
 # ---------------------------------------------------------------------------
 # HEALTH FROM THE INSIDE
 #
-# Rule: never use https://<dominio> to decide whether the deploy worked. The ingress is
+# Rule: never use https://<domain> to decide whether the deploy worked. The ingress is
 # cloudflared -> caddy; a DNS problem, a certificate problem or one in the tunnel itself
 # produces 522/526 even with all containers healthy. Validating from the outside would turn
 # an edge failure into an unnecessary rollback — exactly the opposite of what we want.
@@ -407,7 +407,7 @@ probe_once() {
     if [ "$rc" -eq 0 ]; then
       # The API answers 200 even on partial DOWN in some configs — check the status.
       if [ "$svc" = "api" ] && ! printf '%s' "$out" | grep -q '"status":"UP"'; then
-        err "  api: /actuator/health respondeu sem status UP: $(printf '%s' "$out" | head -c 200)"
+        err "  api: /actuator/health responded without status UP: $(printf '%s' "$out" | head -c 200)"
         return 1
       fi
       return 0
@@ -429,11 +429,11 @@ healthy() {
   for i in $(seq 1 "$PROBE_RETRIES"); do
     hs="$(docker_health "$svc")"
     if [ "$hs" = "absent" ]; then
-      err "  $svc: container não está rodando"
+      err "  $svc: container is not running"
       return 1
     fi
     if [ "$hs" = "unhealthy" ]; then
-      err "  $svc: healthcheck do Docker reporta UNHEALTHY"
+      err "  $svc: Docker healthcheck reports UNHEALTHY"
       return 1
     fi
 
@@ -442,23 +442,23 @@ healthy() {
     rc=$?
     set -e
     case "$rc" in
-      0) ok "  $svc: health interno OK (tentativa $i)"; return 0 ;;
+      0) ok "  $svc: internal health OK (attempt $i)"; return 0 ;;
       2)
         # No usable probe: falls back to the container healthcheck (also internal).
         if [ "$hs" = "healthy" ]; then
-          ok "  $svc: sem probe próprio na imagem; healthcheck do Docker = healthy"
+          ok "  $svc: no own probe in the image; Docker healthcheck = healthy"
           return 0
         fi
         if [ "$hs" = "none" ]; then
-          warn "  $svc: sem healthcheck declarado e sem probe — validado só por 'running'"
+          warn "  $svc: no declared healthcheck and no probe — validated only by 'running'"
           return 0
         fi
         ;;
     esac
     [ "$i" -lt "$PROBE_RETRIES" ] && sleep "$PROBE_INTERVAL"
   done
-  err "  $svc: não ficou saudável após $((PROBE_RETRIES * PROBE_INTERVAL))s"
-  err "  Últimas linhas do log:"
+  err "  $svc: did not become healthy after $((PROBE_RETRIES * PROBE_INTERVAL))s"
+  err "  Last lines of the log:"
   dc logs --tail 30 "$svc" 2>&1 | sed 's/^/      /' >&2 || true
   return 1
 }
@@ -473,9 +473,9 @@ reachable_from_caddy() {  # <host> <port> <path>
   local rc=$?
   set -e
   if [ "$rc" -eq 0 ]; then
-    ok "  caddy -> $host:$port$path alcançável"
+    ok "  caddy -> $host:$port$path reachable"
   else
-    warn "  caddy NÃO alcança $host:$port$path (DNS interno ou rede do compose)"
+    warn "  caddy CANNOT reach $host:$port$path (internal DNS or compose network)"
   fi
   return 0
 }
@@ -499,28 +499,28 @@ deploy_service() {  # <service> -> 0 ok, 1 failed (after a rollback attempt)
   key="$(svc_key "$svc")"
 
   hr
-  log "SERVIÇO: $svc"
+  log "SERVICE: $svc"
 
   if [ -n "$tagvar" ]; then
     prev_tag="$(running_tag "$svc")"
     [ -n "$prev_tag" ] || prev_tag="$(state_get "${key}_TAG")"
     new_tag="${TAG:-${prev_tag:-latest}}"
     export "$tagvar=$new_tag"
-    log "  tag: ${prev_tag:-<nenhuma>} -> $new_tag"
+    log "  tag: ${prev_tag:-<none>} -> $new_tag"
   else
     prev_tag=""
     new_tag=""
-    log "  imagem fixada no compose (sem tag gerenciada)"
+    log "  image pinned in compose (no managed tag)"
   fi
 
   if [ "$DO_PULL" -eq 1 ]; then
     log "  docker compose pull..."
     if ! run dc pull --quiet "$svc"; then
-      err "  pull falhou para $svc."
+      err "  pull failed for $svc."
       if [ -n "$tagvar" ]; then
-        err "  A tag '$new_tag' existe no GHCR? Confira:"
-        err "    docker manifest inspect $(image_ref_for "$svc" "$new_tag") >/dev/null && echo existe"
-        err "  Imagem privada? Faça login:  echo \$GHCR_TOKEN | docker login ghcr.io -u <user> --password-stdin"
+        err "  Does the tag '$new_tag' exist on GHCR? Check:"
+        err "    docker manifest inspect $(image_ref_for "$svc" "$new_tag") >/dev/null && echo exists"
+        err "  Private image? Log in:  echo \$GHCR_TOKEN | docker login ghcr.io -u <user> --password-stdin"
       fi
       return 1
     fi
@@ -531,7 +531,7 @@ deploy_service() {  # <service> -> 0 ok, 1 failed (after a rollback attempt)
   bring_up "$svc" || up_rc=$?
 
   if [ "$DRY_RUN" -eq 1 ]; then
-    log "  [dry-run] health e estado não são avaliados"
+    log "  [dry-run] health and state are not evaluated"
     return 0
   fi
 
@@ -539,7 +539,7 @@ deploy_service() {  # <service> -> 0 ok, 1 failed (after a rollback attempt)
   if [ "$up_rc" -eq 0 ]; then
     healthy "$svc" || health_rc=1
   else
-    err "  'up --wait' falhou (código $up_rc) — container não ficou pronto no prazo"
+    err "  'up --wait' failed (code $up_rc) — container did not become ready in time"
     health_rc=1
   fi
 
@@ -559,32 +559,32 @@ deploy_service() {  # <service> -> 0 ok, 1 failed (after a rollback attempt)
       state_set "${key}_DIGEST" "$(local_digest "$svc")"
     fi
     state_set "${key}_DEPLOYED_AT" "$(_ts)"
-    ok "  $svc no ar e saudável"
+    ok "  $svc up and healthy"
     return 0
   fi
 
   # -------------------------------------------------------------------------
   # ROLLBACK
   # -------------------------------------------------------------------------
-  err "  $svc FALHOU no health gate"
+  err "  $svc FAILED the health gate"
   if [ "$NO_ROLLBACK" -eq 1 ]; then
-    warn "  --no-rollback: deixando o serviço no estado atual para debug"
+    warn "  --no-rollback: leaving the service in its current state for debugging"
     return 1
   fi
   if [ -z "$tagvar" ]; then
-    err "  $svc não tem tag gerenciada — rollback por tag é impossível."
-    err "  A imagem está fixada no docker-compose.yml; reverta o arquivo e rode de novo."
+    err "  $svc has no managed tag — rollback by tag is impossible."
+    err "  The image is pinned in docker-compose.yml; revert the file and run again."
     return 1
   fi
   if [ -z "$prev_tag" ] || [ "$prev_tag" = "$new_tag" ]; then
-    err "  não há tag anterior distinta para voltar (anterior='${prev_tag:-<nenhuma>}')."
-    err "  Este é provavelmente o primeiro deploy deste serviço. Investigue com:"
+    err "  there is no distinct previous tag to revert to (previous='${prev_tag:-<none>}')."
+    err "  This is probably the first deploy of this service. Investigate with:"
     err "    docker compose ${COMPOSE_ARGS[*]} logs --tail 200 $svc"
     return 1
   fi
 
   hr
-  warn "  ROLLBACK: $svc voltando de '$new_tag' para '$prev_tag'"
+  warn "  ROLLBACK: $svc reverting from '$new_tag' to '$prev_tag'"
   export "$tagvar=$prev_tag"
   local rb_rc=0
   [ "$DO_PULL" -eq 1 ] && { dc pull --quiet "$svc" >/dev/null 2>&1 || true; }
@@ -594,12 +594,12 @@ deploy_service() {  # <service> -> 0 ok, 1 failed (after a rollback attempt)
     state_set "${key}_DIGEST" "$(local_digest "$svc")"
     state_set "${key}_ROLLED_BACK_AT" "$(_ts)"
     state_set "${key}_FAILED_TAG" "$new_tag"
-    ok "  ROLLBACK CONCLUÍDO: $svc rodando '$prev_tag' e saudável"
-    err "  A tag '$new_tag' NÃO subiu. Investigue antes de tentar de novo:"
+    ok "  ROLLBACK COMPLETE: $svc running '$prev_tag' and healthy"
+    err "  The tag '$new_tag' did NOT go live. Investigate before trying again:"
     err "    docker compose ${COMPOSE_ARGS[*]} logs --tail 200 $svc"
   else
-    err "  ROLLBACK TAMBÉM FALHOU. O serviço '$svc' está FORA."
-    err "  Intervenção manual necessária:"
+    err "  ROLLBACK ALSO FAILED. The service '$svc' is DOWN."
+    err "  Manual intervention required:"
     err "    docker compose ${COMPOSE_ARGS[*]} logs --tail 200 $svc"
     err "    docker compose ${COMPOSE_ARGS[*]} ps"
   fi
@@ -610,12 +610,12 @@ rollback_service() {  # <service> — explicit rollback, via --rollback
   local svc="$1" tagvar key prev
   tagvar="$(tag_var_for "$svc")"
   key="$(svc_key "$svc")"
-  [ -n "$tagvar" ] || { warn "$svc não tem tag gerenciada — nada a reverter."; return 0; }
+  [ -n "$tagvar" ] || { warn "$svc has no managed tag — nothing to revert."; return 0; }
   prev="$(state_get "${key}_PREV_TAG")"
-  [ -n "$prev" ] || { err "$svc: não há ${key}_PREV_TAG no estado ($STATE_FILE)."; return 1; }
+  [ -n "$prev" ] || { err "$svc: there is no ${key}_PREV_TAG in the state ($STATE_FILE)."; return 1; }
 
   hr
-  log "ROLLBACK EXPLÍCITO: $svc -> $prev"
+  log "EXPLICIT ROLLBACK: $svc -> $prev"
   local cur; cur="$(running_tag "$svc")"
   export "$tagvar=$prev"
   [ "$DO_PULL" -eq 1 ] && { run dc pull --quiet "$svc" || true; }
@@ -626,10 +626,10 @@ rollback_service() {  # <service> — explicit rollback, via --rollback
     [ -n "$cur" ] && state_set "${key}_PREV_TAG" "$cur"
     state_set "${key}_TAG" "$prev"
     state_set "${key}_DEPLOYED_AT" "$(_ts)"
-    ok "$svc revertido para $prev"
+    ok "$svc reverted to $prev"
     return 0
   fi
-  err "$svc: rollback falhou."
+  err "$svc: rollback failed."
   return 1
 }
 
@@ -645,18 +645,18 @@ ghcr_login() {
   local tok user
   tok="$(envget GHCR_PULL_TOKEN)"
   if [ -z "$tok" ]; then
-    log "GHCR_PULL_TOKEN vazio — assumindo pacotes públicos em $REGISTRY"
+    log "GHCR_PULL_TOKEN empty — assuming public packages on $REGISTRY"
     return 0
   fi
   # Without an explicit GHCR_USER, the IMAGE_PREFIX owner does (e.g.: sf0rzin/nora -> sf0rzin).
   user="$(envget GHCR_USER)"
   [ -n "$user" ] || user="${IMAGE_PREFIX%%/*}"
   if printf '%s' "$tok" | run docker login "$REGISTRY" -u "$user" --password-stdin >/dev/null 2>&1; then
-    ok "autenticado em $REGISTRY como $user"
+    ok "authenticated to $REGISTRY as $user"
   else
-    warn "docker login em $REGISTRY falhou (usuário: $user).
-       Se os pacotes forem privados, o pull vai falhar logo abaixo.
-       Confira o escopo do PAT: precisa de read:packages."
+    warn "docker login to $REGISTRY failed (user: $user).
+       If the packages are private, the pull will fail right below.
+       Check the PAT scope: needs read:packages."
   fi
 }
 
@@ -680,9 +680,9 @@ REPO_ROOT="$(cd "$PROXMOX_DIR/../.." && pwd)"
 
 sync_repo() {
   [ "$SYNC" -eq 1 ] || return 0
-  [ -d "$REPO_ROOT/.git" ] || { warn "--sync: $REPO_ROOT não é um repo git — pulando"; return 0; }
+  [ -d "$REPO_ROOT/.git" ] || { warn "--sync: $REPO_ROOT is not a git repo — skipping"; return 0; }
 
-  local owner antes depois
+  local owner before after
   owner="$(stat -c %U "$REPO_ROOT")"
   # Running under sudo, a root `git` in a directory owned by someone else stops at
   # "detected dubious ownership". Pulling as the owner avoids that without having to touch
@@ -690,20 +690,20 @@ sync_repo() {
   local -a git_cmd=(git -C "$REPO_ROOT")
   [ "$(id -un)" = "$owner" ] || git_cmd=(sudo -u "$owner" git -C "$REPO_ROOT")
 
-  antes="$("${git_cmd[@]}" rev-parse HEAD 2>/dev/null || echo desconhecido)"
-  log "--sync: git pull --ff-only em $REPO_ROOT (como $owner)"
+  before="$("${git_cmd[@]}" rev-parse HEAD 2>/dev/null || echo unknown)"
+  log "--sync: git pull --ff-only on $REPO_ROOT (as $owner)"
   # --ff-only on purpose: if there is a local change, it is to STOP and let the operator see,
   # not to merge by itself on top of a production host.
   if ! run "${git_cmd[@]}" pull --ff-only; then
-    die "--sync: git pull falhou. Há mudança local em $REPO_ROOT? \`git -C $REPO_ROOT status\`"
+    die "--sync: git pull failed. Is there a local change in $REPO_ROOT? \`git -C $REPO_ROOT status\`"
   fi
-  depois="$("${git_cmd[@]}" rev-parse HEAD 2>/dev/null || echo desconhecido)"
+  after="$("${git_cmd[@]}" rev-parse HEAD 2>/dev/null || echo unknown)"
 
-  if [ "$antes" != "$depois" ]; then
+  if [ "$before" != "$after" ]; then
     REPO_MOVED=1
-    ok "repo atualizado: ${antes:0:7} -> ${depois:0:7}"
+    ok "repo updated: ${before:0:7} -> ${after:0:7}"
   else
-    log "repo já estava em ${depois:0:7}"
+    log "repo was already at ${after:0:7}"
   fi
 }
 
@@ -737,20 +737,20 @@ FINAL=()
 for s in "${ALL_SERVICES[@]}"; do
   contains "$s" "${SELECTED[@]}" || continue
   if contains "$s" "${PLATFORM_SERVICES[@]}" && [ "$PLATFORM_ON" -eq 0 ]; then
-    log "pulando '$s' (profile 'platform' desligado)"
+    log "skipping '$s' (profile 'platform' off)"
     continue
   fi
   FINAL+=("$s")
 done
-[ "${#FINAL[@]}" -gt 0 ] || die "nenhum serviço a processar."
+[ "${#FINAL[@]}" -gt 0 ] || die "no service to process."
 
 hr
-log "projeto:   $COMPOSE_PROJECT"
+log "project:   $COMPOSE_PROJECT"
 log "compose:   $COMPOSE_FILE"
-log "platform:  $([ "$PLATFORM_ON" -eq 1 ] && echo ligado || echo desligado)"
-log "serviços:  ${FINAL[*]}"
-[ -n "$TAG" ] && log "tag alvo:  $TAG"
-[ "$DRY_RUN" -eq 1 ] && log "MODO DRY-RUN — nada será alterado"
+log "platform:  $([ "$PLATFORM_ON" -eq 1 ] && echo on || echo off)"
+log "services:  ${FINAL[*]}"
+[ -n "$TAG" ] && log "target tag:  $TAG"
+[ "$DRY_RUN" -eq 1 ] && log "DRY-RUN MODE — nothing will be changed"
 
 # --rollback: only reverts and exits.
 if [ "$ROLLBACK_ONLY" -eq 1 ]; then
@@ -762,11 +762,11 @@ fi
 # --if-changed: compares the remote digest with the recorded one. It is what the timer uses.
 if [ "$IF_CHANGED" -eq 1 ] && [ "$REPO_MOVED" -eq 1 ]; then
   hr
-  log "--if-changed: o repo andou (--sync), então a config pode ter mudado — deployando tudo"
-  log "  comparar digest de imagem não veria uma alteração no compose ou no Caddyfile."
+  log "--if-changed: the repo moved (--sync), so the config may have changed — deploying everything"
+  log "  comparing image digest would not catch a change in the compose or the Caddyfile."
 elif [ "$IF_CHANGED" -eq 1 ]; then
   hr
-  log "--if-changed: comparando digests no GHCR"
+  log "--if-changed: comparing digests on GHCR"
   CHANGED=()
   for s in "${FINAL[@]}"; do
     tagvar="$(tag_var_for "$s")"
@@ -778,23 +778,23 @@ elif [ "$IF_CHANGED" -eq 1 ]; then
     rd="$(remote_digest "${IMAGE_PREFIX}-${s}" "$want_tag")"
     sd="$(state_get "${key}_REMOTE_DIGEST")"
     if [ -z "$rd" ]; then
-      warn "  $s: não consegui resolver o digest remoto de '$want_tag' — vou deployar por precaução"
+      warn "  $s: could not resolve the remote digest of '$want_tag' — deploying as a precaution"
       CHANGED+=("$s")
     elif [ "$rd" != "$sd" ]; then
-      log "  $s: digest mudou ($want_tag)"
-      log "      antes: ${sd:-<nenhum>}"
-      log "      agora: $rd"
+      log "  $s: digest changed ($want_tag)"
+      log "      before: ${sd:-<none>}"
+      log "      now: $rd"
       CHANGED+=("$s")
     else
-      log "  $s: digest inalterado ($want_tag) — pulando"
+      log "  $s: digest unchanged ($want_tag) — skipping"
     fi
   done
   if [ "${#CHANGED[@]}" -eq 0 ]; then
-    ok "nada mudou no GHCR. Nenhum deploy necessário."
+    ok "nothing changed on GHCR. No deploy necessary."
     exit 0
   fi
   FINAL=("${CHANGED[@]}")
-  log "serviços com mudança: ${FINAL[*]}"
+  log "services with changes: ${FINAL[*]}"
 fi
 
 FAILED=()
@@ -818,12 +818,12 @@ done
 
 hr
 if [ "${#FAILED[@]}" -eq 0 ]; then
-  ok "DEPLOY CONCLUÍDO — ${#FINAL[@]} serviço(s), todos saudáveis por dentro."
-  [ "$DRY_RUN" -eq 0 ] && log "estado: $STATE_FILE"
+  ok "DEPLOY COMPLETE — ${#FINAL[@]} service(s), all healthy internally."
+  [ "$DRY_RUN" -eq 0 ] && log "state: $STATE_FILE"
   exit 0
 fi
 
-err "DEPLOY COM FALHAS: ${FAILED[*]}"
-err "Serviços que subiram continuam no ar; os que falharam foram revertidos quando possível."
-err "Diagnóstico:  docker compose ${COMPOSE_ARGS[*]} ps"
+err "DEPLOY WITH FAILURES: ${FAILED[*]}"
+err "Services that came up remain running; the ones that failed were reverted when possible."
+err "Diagnosis:  docker compose ${COMPOSE_ARGS[*]} ps"
 exit 1

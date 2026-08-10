@@ -87,53 +87,53 @@ NOTE=""
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — ensaio de restore cronometrado num container descartável
+$SCRIPT_NAME — timed restore drill in a disposable container
 
-USO
-  $SCRIPT_NAME [opções]
+USAGE
+  $SCRIPT_NAME [options]
 
-  Sem argumentos: pega o dump mais recente de $BACKUP_DIR,
-  restaura num Postgres descartável e imprime o RTO medido.
+  No arguments: takes the most recent dump from $BACKUP_DIR,
+  restores it into a disposable Postgres, and prints the measured RTO.
 
-OPÇÕES
-  --dump <arquivo>       Dump do banco primário (default: o mais recente em --backup-dir)
-  --platform-dump <arq>  Dump do nora_platform (default: o mais recente, se houver)
-  --from-dir <dir>       Diretório com dumps `pg_dump -Fc` (usa nora.dump/nora_platform.dump
-                         e o baseline <db>-counts.tsv que estiver lá)
-  --backup-dir <dir>     Onde procurar dumps (default: $BACKUP_DIR)
-  --list                 Lista os backups disponíveis, com idade, e sai
-  --skip-platform        Não ensaia o nora_platform
-  --image <ref>          Imagem do Postgres do drill (default: $DRILL_IMAGE)
-  --jobs <n>             Paralelismo do pg_restore (default: $JOBS)
-  --target-rto <s>       Alvo de RTO em segundos (default: $TARGET_RTO = 2h, ADR 0016)
-  --tmpfs                Data dir em RAM. Mais rápido, e por isso SUBESTIMA o RTO:
-                         num desastre real o disco é disco. Use só pra smoke rápido.
+OPTIONS
+  --dump <file>          Dump of the primary database (default: the most recent in --backup-dir)
+  --platform-dump <file> Dump of nora_platform (default: the most recent, if any)
+  --from-dir <dir>       Directory with `pg_dump -Fc` dumps (uses nora.dump/nora_platform.dump
+                         and the baseline <db>-counts.tsv found there)
+  --backup-dir <dir>     Where to look for dumps (default: $BACKUP_DIR)
+  --list                 Lists the available backups, with age, and exits
+  --skip-platform        Does not drill nora_platform
+  --image <ref>          Postgres image for the drill (default: $DRILL_IMAGE)
+  --jobs <n>             pg_restore parallelism (default: $JOBS)
+  --target-rto <s>       RTO target in seconds (default: $TARGET_RTO = 2h, ADR 0016)
+  --tmpfs                Data dir in RAM. Faster, and therefore UNDERESTIMATES the RTO:
+                         in a real disaster the disk is a disk. Use only for a quick smoke test.
   --compare-live <auto|yes|no>
-                         Compara as contagens com o banco de produção que está de pé
-                         (SELECT count(*), somente leitura). Default: $COMPARE_LIVE.
-  --keep                 Não destrói o container ao final (para inspecionar). Ele fica
-                         parado e ocupando disco — remova você mesmo.
-  --note <texto>         Observação livre gravada na linha do histórico
-  -h, --help             Esta ajuda
+                         Compares the counts with the production database that is up
+                         (SELECT count(*), read-only). Default: $COMPARE_LIVE.
+  --keep                 Does not destroy the container at the end (for inspection). It stays
+                         stopped and taking up disk — remove it yourself.
+  --note <text>          Free-form note recorded in the history line
+  -h, --help             This help
 
-HISTÓRICO
+HISTORY
   $DRILL_LOG
-  Uma linha TSV por ensaio. O ADR 0016 pede drill trimestral; a tabela de
-  proxmox-deploy.md §Restore drill se alimenta daqui.
+  One TSV line per drill. ADR 0016 asks for a quarterly drill; the table in
+  proxmox-deploy.md §Restore drill feeds from here.
 
-EXEMPLOS
-  $SCRIPT_NAME                                   # ensaio do backup mais recente
+EXAMPLES
+  $SCRIPT_NAME                                   # drill on the most recent backup
   $SCRIPT_NAME --list
   $SCRIPT_NAME --dump /srv/nora/backups/nora-20260807T030000Z.dump
-  $SCRIPT_NAME --from-dir /srv/nora/backups/20260807T031500Z --note "ensaio mensal"
+  $SCRIPT_NAME --from-dir /srv/nora/backups/20260807T031500Z --note "monthly drill"
 EOF
 }
 
 _ts()  { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
 log()  { printf '[%s] %s\n'        "$(_ts)" "$*" >&2; }
 ok()   { printf '[%s] OK    %s\n'  "$(_ts)" "$*" >&2; }
-warn() { printf '[%s] AVISO %s\n'  "$(_ts)" "$*" >&2; }
-err()  { printf '[%s] ERRO  %s\n'  "$(_ts)" "$*" >&2; }
+warn() { printf '[%s] WARN  %s\n'  "$(_ts)" "$*" >&2; }
+err()  { printf '[%s] ERROR %s\n'  "$(_ts)" "$*" >&2; }
 die()  { err "$*"; exit "${2:-1}"; }
 hr()   { printf '%s\n' "------------------------------------------------------------" >&2; }
 
@@ -158,27 +158,27 @@ file_size() { wc -c < "$1" | tr -d '[:space:]'; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --dump)           DUMP_PRIMARY="${2:?--dump exige um valor}"; shift 2 ;;
-    --platform-dump)  DUMP_PLATFORM="${2:?--platform-dump exige um valor}"; shift 2 ;;
-    --from-dir)       FROM_DIR="${2:?--from-dir exige um valor}"; shift 2 ;;
-    --backup-dir)     BACKUP_DIR="${2:?--backup-dir exige um valor}"; shift 2 ;;
+    --dump)           DUMP_PRIMARY="${2:?--dump requires a value}"; shift 2 ;;
+    --platform-dump)  DUMP_PLATFORM="${2:?--platform-dump requires a value}"; shift 2 ;;
+    --from-dir)       FROM_DIR="${2:?--from-dir requires a value}"; shift 2 ;;
+    --backup-dir)     BACKUP_DIR="${2:?--backup-dir requires a value}"; shift 2 ;;
     --list)           DO_LIST=1; shift ;;
     --skip-platform)  SKIP_PLATFORM=1; shift ;;
-    --image)          DRILL_IMAGE="${2:?--image exige um valor}"; shift 2 ;;
-    --jobs)           JOBS="${2:?--jobs exige um valor}"; shift 2 ;;
-    --target-rto)     TARGET_RTO="${2:?--target-rto exige um valor}"; shift 2 ;;
+    --image)          DRILL_IMAGE="${2:?--image requires a value}"; shift 2 ;;
+    --jobs)           JOBS="${2:?--jobs requires a value}"; shift 2 ;;
+    --target-rto)     TARGET_RTO="${2:?--target-rto requires a value}"; shift 2 ;;
     --tmpfs)          USE_TMPFS=1; shift ;;
-    --compare-live)   COMPARE_LIVE="${2:?--compare-live exige auto|yes|no}"; shift 2 ;;
+    --compare-live)   COMPARE_LIVE="${2:?--compare-live requires auto|yes|no}"; shift 2 ;;
     --keep)           KEEP=1; shift ;;
-    --note)           NOTE="${2:?--note exige um valor}"; shift 2 ;;
+    --note)           NOTE="${2:?--note requires a value}"; shift 2 ;;
     -h|--help)        usage; exit 0 ;;
-    *) err "opção desconhecida: $1"; echo >&2; usage >&2; exit 1 ;;
+    *) err "unknown option: $1"; echo >&2; usage >&2; exit 1 ;;
   esac
 done
 
 umask 077
 
-case "$COMPARE_LIVE" in auto|yes|no) : ;; *) die "--compare-live aceita auto|yes|no" ;; esac
+case "$COMPARE_LIVE" in auto|yes|no) : ;; *) die "--compare-live accepts auto|yes|no" ;; esac
 
 # ---------------------------------------------------------------------------
 # Dump discovery
@@ -201,8 +201,8 @@ latest_dump() {  # <dir> <database-prefix>
 }
 
 if [ "$DO_LIST" -eq 1 ]; then
-  [ -d "$BACKUP_DIR" ] || die "diretório de backups não existe: $BACKUP_DIR"
-  printf '%-46s %10s %12s  %s\n' "ARQUIVO" "TAMANHO" "IDADE" "VERIFICADO" >&2
+  [ -d "$BACKUP_DIR" ] || die "backups directory does not exist: $BACKUP_DIR"
+  printf '%-46s %10s %12s  %s\n' "FILE" "SIZE" "AGE" "VERIFIED" >&2
   found=0
   for f in $(ls -1 "$BACKUP_DIR"/*.dump 2>/dev/null | sort || true); do
     found=1
@@ -213,65 +213,65 @@ if [ "$DO_LIST" -eq 1 ]; then
     printf '%-46s %10s %12s  %s\n' "$(basename "$f")" \
       "$(human_bytes "$(file_size "$f")")" "$(human_secs "$age")" "$v" >&2
   done
-  [ "$found" -eq 1 ] || warn "nenhum *.dump em $BACKUP_DIR — o serviço 'backup' está de pé?"
+  [ "$found" -eq 1 ] || warn "no *.dump in $BACKUP_DIR — is the 'backup' service up?"
   exit 0
 fi
 
 if [ -n "$FROM_DIR" ]; then
-  [ -d "$FROM_DIR" ] || die "--from-dir não é um diretório: $FROM_DIR"
+  [ -d "$FROM_DIR" ] || die "--from-dir is not a directory: $FROM_DIR"
   [ -n "$DUMP_PRIMARY" ]  || DUMP_PRIMARY="$FROM_DIR/$PRIMARY_DB.dump"
   [ -n "$DUMP_PLATFORM" ] || DUMP_PLATFORM="$FROM_DIR/$PLATFORM_DB.dump"
 fi
 
 if [ -z "$DUMP_PRIMARY" ]; then
-  [ -d "$BACKUP_DIR" ] || die "diretório de backups não existe: $BACKUP_DIR
-       Informe --dump <arquivo> ou --backup-dir <dir>."
+  [ -d "$BACKUP_DIR" ] || die "backups directory does not exist: $BACKUP_DIR
+       Provide --dump <file> or --backup-dir <dir>."
   DUMP_PRIMARY="$(latest_dump "$BACKUP_DIR" "$PRIMARY_DB")"
-  [ -n "$DUMP_PRIMARY" ] || die "nenhum $PRIMARY_DB-*.dump em $BACKUP_DIR.
-       O serviço 'backup' está rodando?  docker compose -p $COMPOSE_PROJECT ps backup
-       Forçar um agora:  docker compose -p $COMPOSE_PROJECT exec backup /usr/local/bin/run-backup.sh --once"
+  [ -n "$DUMP_PRIMARY" ] || die "no $PRIMARY_DB-*.dump in $BACKUP_DIR.
+       Is the 'backup' service running?  docker compose -p $COMPOSE_PROJECT ps backup
+       Force one now:  docker compose -p $COMPOSE_PROJECT exec backup /usr/local/bin/run-backup.sh --once"
 fi
-[ -s "$DUMP_PRIMARY" ] || die "dump primário vazio ou inexistente: $DUMP_PRIMARY"
+[ -s "$DUMP_PRIMARY" ] || die "primary dump empty or nonexistent: $DUMP_PRIMARY"
 if [ ! -r "$DUMP_PRIMARY" ]; then
-  err "sem permissão de leitura em $DUMP_PRIMARY"
-  err "  Causa provável: o serviço 'backup' roda como root (o compose sobrescreve o"
-  err "  entrypoint e pula o gosu da imagem), então o dump nasce 0640 root:nora."
-  err "  Conserto: entre no grupo 'nora' (relogin necessário)  ->  sudo usermod -aG nora \$USER"
-  err "  ou rode o ensaio com sudo."
-  die "abortando: não dá pra ensaiar um backup que não se consegue ler"
+  err "no read permission on $DUMP_PRIMARY"
+  err "  Likely cause: the 'backup' service runs as root (the compose overrides the"
+  err "  entrypoint and skips the image's gosu), so the dump is born 0640 root:nora."
+  err "  Fix: join the 'nora' group (relogin required)  ->  sudo usermod -aG nora \$USER"
+  err "  or run the drill with sudo."
+  die "aborting: cannot drill a backup that cannot be read"
 fi
 
 if [ "$SKIP_PLATFORM" -eq 0 ] && [ -z "$DUMP_PLATFORM" ] && [ -d "$BACKUP_DIR" ]; then
   DUMP_PLATFORM="$(latest_dump "$BACKUP_DIR" "$PLATFORM_DB")"
 fi
 if [ "$SKIP_PLATFORM" -eq 0 ] && { [ -z "$DUMP_PLATFORM" ] || [ ! -s "$DUMP_PLATFORM" ]; }; then
-  warn "sem dump de plataforma — ensaio só do banco primário."
+  warn "no platform dump — drilling only the primary database."
   SKIP_PLATFORM=1
 fi
 
 # ---------------------------------------------------------------------------
 # Pre-flight
 # ---------------------------------------------------------------------------
-command -v docker >/dev/null 2>&1 || die "docker não encontrado. Rode o bootstrap-host.sh."
-docker info >/dev/null 2>&1 || die "o daemon do Docker não responde (usuário no grupo 'docker'?)."
+command -v docker >/dev/null 2>&1 || die "docker not found. Run bootstrap-host.sh."
+docker info >/dev/null 2>&1 || die "the Docker daemon is not responding (user in the 'docker' group?)."
 
 DUMP_BYTES="$(file_size "$DUMP_PRIMARY")"
 DUMP_AGE=$(( $(date +%s) - $(dump_epoch "$DUMP_PRIMARY") ))
 
 hr
-log "ENSAIO DE RESTORE — NORA"
+log "RESTORE DRILL — NORA"
 log "  dump:        $DUMP_PRIMARY"
-log "  tamanho:     $(human_bytes "$DUMP_BYTES")"
-log "  idade:       $(human_secs "$DUMP_AGE")   <- este é o RPO real neste instante"
-[ "$SKIP_PLATFORM" -eq 0 ] && log "  plataforma:  $DUMP_PLATFORM"
-log "  imagem:      $DRILL_IMAGE"
-log "  alvo de RTO: $(human_secs "$TARGET_RTO") (ADR 0016 Gap 3)"
+log "  size:        $(human_bytes "$DUMP_BYTES")"
+log "  age:         $(human_secs "$DUMP_AGE")   <- this is the real RPO at this instant"
+[ "$SKIP_PLATFORM" -eq 0 ] && log "  platform:    $DUMP_PLATFORM"
+log "  image:       $DRILL_IMAGE"
+log "  RTO target:  $(human_secs "$TARGET_RTO") (ADR 0016 Gap 3)"
 
 # The RPO declared in ADR 0034 is "up to 1 hour" (the BACKUP_INTERVAL_SECONDS). A dump much
 # older than that means the backup service stopped producing — and nobody noticed.
 if [ "$DUMP_AGE" -gt 7200 ]; then
-  warn "o backup mais recente tem $(human_secs "$DUMP_AGE"). O ADR 0034 promete RPO de até 1h."
-  warn "Ou o serviço 'backup' está parado, ou os dumps estão sendo reprovados na verificação:"
+  warn "the most recent backup is $(human_secs "$DUMP_AGE") old. ADR 0034 promises an RPO of up to 1h."
+  warn "Either the 'backup' service is stopped, or the dumps are failing verification:"
   warn "  docker compose -p $COMPOSE_PROJECT logs --tail 50 backup"
 fi
 
@@ -279,15 +279,15 @@ fi
 # it is part of knowing whether the file is a backup at all.
 if [ -f "$DUMP_PRIMARY.sha256" ] && command -v sha256sum >/dev/null 2>&1; then
   if ( cd "$(dirname "$DUMP_PRIMARY")" && sha256sum -c --status "$(basename "$DUMP_PRIMARY").sha256" ); then
-    ok "checksum do dump confere"
+    ok "dump checksum matches"
   else
-    die "CHECKSUM NÃO CONFERE em $DUMP_PRIMARY — o arquivo corrompeu. Este backup não serve." 2
+    die "CHECKSUM MISMATCH on $DUMP_PRIMARY — the file was corrupted. This backup is no good." 2
   fi
 else
-  warn "sem .sha256 ao lado do dump — integridade não conferida"
+  warn "no .sha256 next to the dump — integrity not verified"
 fi
 
-mkdir -p "$STATE_DIR" 2>/dev/null || warn "não consegui criar $STATE_DIR — histórico não será gravado"
+mkdir -p "$STATE_DIR" 2>/dev/null || warn "could not create $STATE_DIR — history will not be recorded"
 
 # ---------------------------------------------------------------------------
 # Disposable container
@@ -298,7 +298,7 @@ DRILL_STARTED=0
 # Guardrail: however improbable, a name colliding with production would be catastrophic.
 case "$DRILL_NAME" in
   nora-postgres|nora-postgres-platform|nora-api|nora-web|nora-admin|nora-worker)
-    die "nome de container do drill colidiu com um de produção — abortando" ;;
+    die "drill container name collided with a production one — aborting" ;;
 esac
 
 cleanup() {
@@ -306,14 +306,14 @@ cleanup() {
   set +e
   if [ "$DRILL_STARTED" -eq 1 ]; then
     if [ "$KEEP" -eq 1 ]; then
-      warn "--keep: container '$DRILL_NAME' MANTIDO. Inspecione e remova depois:"
+      warn "--keep: container '$DRILL_NAME' KEPT. Inspect and remove it afterward:"
       warn "    docker exec -it $DRILL_NAME psql -U $PG_USER -d $PRIMARY_DB"
       warn "    docker rm -fv $DRILL_NAME"
     else
-      log "destruindo o container do drill..."
+      log "destroying the drill container..."
       docker rm -fv "$DRILL_NAME" >/dev/null 2>&1 \
-        && ok "container e volume anônimo removidos" \
-        || warn "não consegui remover '$DRILL_NAME' — remova na mão: docker rm -fv $DRILL_NAME"
+        && ok "container and anonymous volume removed" \
+        || warn "could not remove '$DRILL_NAME' — remove it by hand: docker rm -fv $DRILL_NAME"
     fi
   fi
   exit "$rc"
@@ -331,7 +331,7 @@ T_START="$(now_ms)"
 
 # ---- PHASE 1: bring up a virgin Postgres ----------------------------------
 hr
-log "FASE 1/4 — subindo Postgres descartável ($DRILL_IMAGE)"
+log "PHASE 1/4 — bringing up disposable Postgres ($DRILL_IMAGE)"
 P1_A="$(now_ms)"
 
 DOCKER_RUN=(docker run -d --name "$DRILL_NAME"
@@ -340,50 +340,50 @@ DOCKER_RUN=(docker run -d --name "$DRILL_NAME"
   --shm-size 256m
   -e POSTGRES_DB="$PRIMARY_DB"
   -e POSTGRES_USER="$PG_USER"
-  -e POSTGRES_PASSWORD="drill-$(date +%s)-descartavel"
+  -e POSTGRES_PASSWORD="drill-$(date +%s)-disposable"
   -e POSTGRES_INITDB_ARGS="--encoding=UTF8 --locale=C.UTF-8")
 
 if [ "$USE_TMPFS" -eq 1 ]; then
-  warn "--tmpfs: data dir em RAM. O número medido SUBESTIMA o RTO real (disco é mais lento)."
+  warn "--tmpfs: data dir in RAM. The measured number UNDERESTIMATES the real RTO (disk is slower)."
   DOCKER_RUN+=(--tmpfs "/var/lib/postgresql/data:rw,size=${TMPFS_SIZE}m,mode=1777")
 fi
 DOCKER_RUN+=("$DRILL_IMAGE")
 
 if ! "${DOCKER_RUN[@]}" >/dev/null 2>&1; then
-  err "não consegui subir o container do drill."
-  err "A imagem existe localmente?  docker image inspect $DRILL_IMAGE"
-  err "Se não:                      docker pull $DRILL_IMAGE"
+  err "could not bring up the drill container."
+  err "Does the image exist locally?  docker image inspect $DRILL_IMAGE"
+  err "If not:                        docker pull $DRILL_IMAGE"
   exit 1
 fi
 DRILL_STARTED=1
 
-log "  aguardando o initdb (timeout ${BOOT_TIMEOUT}s)..."
+log "  waiting for initdb (timeout ${BOOT_TIMEOUT}s)..."
 READY=0
 for _ in $(seq 1 "$BOOT_TIMEOUT"); do
   if docker exec "$DRILL_NAME" pg_isready -U "$PG_USER" -d "$PRIMARY_DB" -q >/dev/null 2>&1; then
     READY=1; break
   fi
   if [ "$(docker inspect -f '{{.State.Running}}' "$DRILL_NAME" 2>/dev/null)" != "true" ]; then
-    err "o container do drill morreu durante o boot. Log:"
+    err "the drill container died during boot. Log:"
     docker logs --tail 30 "$DRILL_NAME" 2>&1 | sed 's/^/      /' >&2 || true
     exit 1
   fi
   sleep 1
 done
 [ "$READY" -eq 1 ] || {
-  err "o Postgres do drill não ficou pronto em ${BOOT_TIMEOUT}s. Log:"
+  err "the drill's Postgres did not become ready within ${BOOT_TIMEOUT}s. Log:"
   docker logs --tail 30 "$DRILL_NAME" 2>&1 | sed 's/^/      /' >&2 || true
   exit 1
 }
 P1_B="$(now_ms)"
-ok "  banco virgem pronto em $(dur_s "$P1_A" "$P1_B")s"
+ok "  virgin database ready in $(dur_s "$P1_A" "$P1_B")s"
 
 # ---- PHASE 2: roles BEFORE the data ---------------------------------------
 # Same order as restore-into-proxmox.sh, for the same reason: a dump object that
 # references a nonexistent role blows up the restore halfway through. And nora_telemetry is
 # the one that goes missing without any error, zeroing the operator panel in silence (ADR 0026/0028).
 hr
-log "FASE 2/4 — provisionando os três roles do RLS"
+log "PHASE 2/4 — provisioning the three RLS roles"
 P2_A="$(now_ms)"
 
 rand_pw() {
@@ -407,18 +407,18 @@ dpsql "$PRIMARY_DB" -q -v telemetry_password="$DRILL_TEL_PW" \
   -c "ALTER ROLE nora_telemetry WITH LOGIN PASSWORD :'telemetry_password' BYPASSRLS"
 
 P2_B="$(now_ms)"
-ok "  nora_app (NOBYPASSRLS) e nora_telemetry (BYPASSRLS) criados em $(dur_s "$P2_A" "$P2_B")s"
+ok "  nora_app (NOBYPASSRLS) and nora_telemetry (BYPASSRLS) created in $(dur_s "$P2_A" "$P2_B")s"
 
 # ---- PHASE 3: the restore --------------------------------------------------
 hr
-log "FASE 3/4 — pg_restore"
+log "PHASE 3/4 — pg_restore"
 P3_A="$(now_ms)"
 RESTORE_RC=0
 
 restore_into() {  # <db> <file> <label>
   local db="$1" file="$2" label="$3" inner="/tmp/drill-$1.dump" rc=0
-  log "  $label: copiando $(human_bytes "$(file_size "$file")") para o container..."
-  docker cp "$file" "$DRILL_NAME:$inner" >/dev/null || { err "  $label: docker cp falhou"; return 1; }
+  log "  $label: copying $(human_bytes "$(file_size "$file")") to the container..."
+  docker cp "$file" "$DRILL_NAME:$inner" >/dev/null || { err "  $label: docker cp failed"; return 1; }
 
   log "  $label: pg_restore --no-owner --no-privileges -j $JOBS ..."
   docker exec -i "$DRILL_NAME" pg_restore \
@@ -427,79 +427,79 @@ restore_into() {  # <db> <file> <label>
   docker exec -i "$DRILL_NAME" rm -f "$inner" >/dev/null 2>&1 || true
 
   if [ "$rc" -ne 0 ]; then
-    err "  $label: pg_restore falhou (código $rc):"
+    err "  $label: pg_restore failed (code $rc):"
     sed 's/^/      /' "/tmp/drill-$db.err" 2>/dev/null | tail -20 >&2 || true
     rm -f "/tmp/drill-$db.err"
     return 1
   fi
   rm -f "/tmp/drill-$db.err"
-  ok "  $label: restaurado"
+  ok "  $label: restored"
   return 0
 }
 
-restore_into "$PRIMARY_DB" "$DUMP_PRIMARY" "PRIMÁRIO" || RESTORE_RC=1
+restore_into "$PRIMARY_DB" "$DUMP_PRIMARY" "PRIMARY" || RESTORE_RC=1
 
 if [ "$SKIP_PLATFORM" -eq 0 ] && [ "$RESTORE_RC" -eq 0 ]; then
   # Partial fidelity, on purpose: in production there are TWO servers (ADR 0022, isolated
   # blast radius). Here nora_platform comes in as a second DATABASE in the same cluster.
   # What is measured — restore time and integrity — does not change; the isolation does.
   dpsql postgres -q -c "CREATE DATABASE $PLATFORM_DB" >/dev/null 2>&1 || true
-  restore_into "$PLATFORM_DB" "$DUMP_PLATFORM" "PLATAFORMA" \
-    || warn "  restore do nora_platform falhou — o control plane sobe degradado (admin -> 503)"
+  restore_into "$PLATFORM_DB" "$DUMP_PLATFORM" "PLATFORM" \
+    || warn "  nora_platform restore failed — the control plane comes up degraded (admin -> 503)"
 fi
 
 # GRANTs after the data: R001 references the `nora` schema and the function
 # nora.current_tenant_id(), which only exist after V016 comes in with the dump.
 if [ "$RESTORE_RC" -eq 0 ] && [ -f "$R001_SQL" ]; then
-  log "  aplicando R001 (GRANTs + DEFAULT PRIVILEGES)..."
+  log "  applying R001 (GRANTs + DEFAULT PRIVILEGES)..."
   if dpsql "$PRIMARY_DB" -q -v app_password="$DRILL_APP_PW" -v telemetry_password="$DRILL_TEL_PW" \
        < "$R001_SQL" >/dev/null 2>&1; then
-    ok "  R001 aplicado"
+    ok "  R001 applied"
   else
-    warn "  R001 falhou no drill — investigue ANTES de precisar dele num restore real:"
+    warn "  R001 failed in the drill — investigate BEFORE you need it in a real restore:"
     warn "    $R001_SQL"
   fi
 elif [ ! -f "$R001_SQL" ]; then
-  warn "  R001 não encontrado ($R001_SQL) — GRANTs não aplicados; a validação do nora_app vai reprovar"
+  warn "  R001 not found ($R001_SQL) — GRANTs not applied; nora_app validation will fail"
 fi
 
 P3_B="$(now_ms)"
-[ "$RESTORE_RC" -eq 0 ] && ok "  restore concluído em $(dur_s "$P3_A" "$P3_B")s"
+[ "$RESTORE_RC" -eq 0 ] && ok "  restore completed in $(dur_s "$P3_A" "$P3_B")s"
 
 # ---- PHASE 4: validation ---------------------------------------------------
 hr
-log "FASE 4/4 — validação"
+log "PHASE 4/4 — validation"
 P4_A="$(now_ms)"
 VALIDATION_FAILED=0
-vfail() { err "  VALIDAÇÃO: $*"; VALIDATION_FAILED=1; }
+vfail() { err "  VALIDATION: $*"; VALIDATION_FAILED=1; }
 
 TABLES=0; TENANTS=0; FLYWAY_VER="-"
 
 if [ "$RESTORE_RC" -eq 0 ]; then
   TABLES="$(dq "$PRIMARY_DB" "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")"
   TABLES="${TABLES:-0}"
-  log "  tabelas em public: $TABLES"
-  [ "$TABLES" -gt 0 ] || vfail "nenhuma tabela em public — o dump não trouxe nada"
+  log "  tables in public: $TABLES"
+  [ "$TABLES" -gt 0 ] || vfail "no tables in public — the dump brought nothing"
 
   # -- Flyway --
   if [ "$(dq "$PRIMARY_DB" "SELECT to_regclass('public.flyway_schema_history') IS NOT NULL")" = "t" ]; then
     failed="$(dq "$PRIMARY_DB" "SELECT count(*) FROM flyway_schema_history WHERE success = false")"
-    [ "${failed:-0}" -eq 0 ] || vfail "$failed migration(s) com success=false no histórico do dump"
+    [ "${failed:-0}" -eq 0 ] || vfail "$failed migration(s) with success=false in the dump's history"
     FLYWAY_VER="$(dq "$PRIMARY_DB" "SELECT version FROM flyway_schema_history WHERE version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1")"
     FLYWAY_VER="${FLYWAY_VER:--}"
-    log "  flyway: última versão aplicada = V$FLYWAY_VER"
+    log "  flyway: last applied version = V$FLYWAY_VER"
     if [ -d "$MIGRATION_DIR" ]; then
       repo_ver="$(ls "$MIGRATION_DIR" 2>/dev/null | sed -n 's/^V0*\([0-9][0-9]*\)__.*\.sql$/\1/p' | sort -n | tail -1)"
       db_ver="$(printf '%s' "$FLYWAY_VER" | sed 's/^0*//')"
       if [ -n "$repo_ver" ] && [ -n "$db_ver" ] && [ "$db_ver" -eq "$db_ver" ] 2>/dev/null; then
-        if   [ "$db_ver" -eq "$repo_ver" ]; then ok "  schema na última versão do repo (V$repo_ver)"
-        elif [ "$db_ver" -lt "$repo_ver" ]; then warn "  dump em V$db_ver, repo em V$repo_ver — o Flyway da API aplicaria $(( repo_ver - db_ver )) migration(s) no boot; esse tempo NÃO está medido aqui"
-        else vfail "dump em V$db_ver, MAIOR que a V$repo_ver do repo — a imagem da API está atrás do dado"
+        if   [ "$db_ver" -eq "$repo_ver" ]; then ok "  schema at the repo's latest version (V$repo_ver)"
+        elif [ "$db_ver" -lt "$repo_ver" ]; then warn "  dump at V$db_ver, repo at V$repo_ver — the API's Flyway would apply $(( repo_ver - db_ver )) migration(s) on boot; this time is NOT measured here"
+        else vfail "dump at V$db_ver, HIGHER than the repo's V$repo_ver — the API image is behind the data"
         fi
       fi
     fi
   else
-    vfail "flyway_schema_history não existe — o dump veio de um banco não migrado"
+    vfail "flyway_schema_history does not exist — the dump came from an unmigrated database"
   fi
 
   # -- per-tenant smoke --
@@ -507,36 +507,36 @@ if [ "$RESTORE_RC" -eq 0 ]; then
     TENANTS="$(dq "$PRIMARY_DB" "SELECT count(*) FROM tenants")"
     TENANTS="${TENANTS:-0}"
     if [ "$TENANTS" -gt 0 ]; then
-      log "  smoke por tenant ($TENANTS tenants):"
+      log "  per-tenant smoke ($TENANTS tenants):"
       docker exec -i "$DRILL_NAME" psql -U "$PG_USER" -d "$PRIMARY_DB" -P pager=off -c \
         "SELECT t.slug, t.status,
-                (SELECT count(*) FROM users u            WHERE u.tenant_id = t.id) AS usuarios,
-                (SELECT count(*) FROM meetings m         WHERE m.tenant_id = t.id) AS reunioes,
-                (SELECT count(*) FROM meeting_analyses a WHERE a.tenant_id = t.id) AS analises
+                (SELECT count(*) FROM users u            WHERE u.tenant_id = t.id) AS users,
+                (SELECT count(*) FROM meetings m         WHERE m.tenant_id = t.id) AS meetings,
+                (SELECT count(*) FROM meeting_analyses a WHERE a.tenant_id = t.id) AS analyses
            FROM tenants t ORDER BY t.slug" 2>/dev/null | sed 's/^/      /' >&2 || \
-        warn "  smoke por tenant falhou (tabelas users/meetings/meeting_analyses ausentes?)"
+        warn "  per-tenant smoke failed (users/meetings/meeting_analyses tables missing?)"
     else
-      vfail "ZERO tenants — ou a origem estava vazia, ou o restore falhou em silêncio"
+      vfail "ZERO tenants — either the source was empty, or the restore failed silently"
     fi
   else
-    vfail "tabela 'tenants' não existe — restore incompleto"
+    vfail "table 'tenants' does not exist — incomplete restore"
   fi
 
   # -- roles: the point of ADR 0028 --
   roles_out="$(dq "$PRIMARY_DB" "SELECT rolname||':'||rolcanlogin::text||':'||rolbypassrls::text FROM pg_roles WHERE rolname IN ('nora_app','nora_telemetry') ORDER BY rolname")"
   printf '%s\n' "$roles_out" | sed 's/^/      /' >&2
   printf '%s' "$roles_out" | grep -q 'nora_app:t:f' \
-    || vfail "nora_app precisa ser LOGIN e NOBYPASSRLS (senão o RLS não vale nada)"
+    || vfail "nora_app must be LOGIN and NOBYPASSRLS (otherwise RLS is worthless)"
   printf '%s' "$roles_out" | grep -q 'nora_telemetry:t:t' \
-    || vfail "nora_telemetry precisa ser LOGIN e BYPASSRLS (senão o painel do operador zera EM SILÊNCIO)"
+    || vfail "nora_telemetry must be LOGIN and BYPASSRLS (otherwise the operator panel zeroes out SILENTLY)"
 
   # Does nora_app see any table? Proves the R001 GRANTs took hold over the restored dump.
   vis="$(docker exec -i "$DRILL_NAME" psql -tAq -U nora_app -d "$PRIMARY_DB" \
           -c "SELECT count(*) FROM information_schema.table_privileges WHERE grantee='nora_app' AND privilege_type='SELECT'" 2>/dev/null | tr -d '[:space:]' || echo 0)"
   if [ "${vis:-0}" -gt 0 ]; then
-    ok "  nora_app conecta e tem SELECT em $vis tabelas"
+    ok "  nora_app connects and has SELECT on $vis tables"
   else
-    vfail "nora_app sem GRANT nenhum — a API não subiria contra este restore"
+    vfail "nora_app has no GRANT at all — the API would not come up against this restore"
   fi
 
   # -- comparison with live production (read only) --
@@ -547,23 +547,23 @@ if [ "$RESTORE_RC" -eq 0 ]; then
     do_cmp=1
   fi
   if [ "$do_cmp" -eq 1 ]; then
-    log "  comparando com a produção (nora-postgres, somente leitura)..."
+    log "  comparing against production (nora-postgres, read-only)..."
     for t in tenants users meetings; do
       live="$(docker exec -i nora-postgres psql -tAq -U "$PG_USER" -d "$PRIMARY_DB" -c "SELECT count(*) FROM $t" 2>/dev/null | tr -d '[:space:]' || echo '')"
       drill="$(dq "$PRIMARY_DB" "SELECT count(*) FROM $t")"
       if [ -z "$live" ]; then
-        warn "    $t: não consegui ler a produção"
+        warn "    $t: could not read production"
       elif [ "$live" = "$drill" ]; then
-        ok "    $t: $drill (igual à produção)"
+        ok "    $t: $drill (matches production)"
       else
         # Divergence here is EXPECTED: the dump is up to 1h old and production kept
         # writing. What matters is the ORDER OF MAGNITUDE, not equality.
-        log "    $t: drill=$drill producao=$live (delta=$(( live - drill )) linhas escritas desde o dump)"
+        log "    $t: drill=$drill production=$live (delta=$(( live - drill )) rows written since the dump)"
       fi
     done
   fi
 else
-  vfail "restore falhou — nada a validar"
+  vfail "restore failed — nothing to validate"
 fi
 
 P4_B="$(now_ms)"
@@ -583,68 +583,68 @@ pct() { awk -v p="$1" -v t="$2" 'BEGIN{ if (t+0 == 0) print "0"; else printf "%.
 
 hr
 printf '\n' >&2
-printf '  RTO MEDIDO — ensaio de restore NORA\n' >&2
+printf '  MEASURED RTO — NORA restore drill\n' >&2
 printf '  %s\n' "$(date -u '+%Y-%m-%d %H:%M:%SZ')" >&2
 printf '  ----------------------------------------------------------\n' >&2
-printf '  fase 1  subir Postgres virgem .......... %8ss  (%s%%)\n' "$S1" "$(pct "$S1" "$TOTAL")" >&2
-printf '  fase 2  provisionar roles do RLS ....... %8ss  (%s%%)\n' "$S2" "$(pct "$S2" "$TOTAL")" >&2
-printf '  fase 3  pg_restore ..................... %8ss  (%s%%)\n' "$S3" "$(pct "$S3" "$TOTAL")" >&2
-printf '  fase 4  validação ...................... %8ss  (%s%%)\n' "$S4" "$(pct "$S4" "$TOTAL")" >&2
+printf '  phase 1  bring up virgin Postgres ...... %8ss  (%s%%)\n' "$S1" "$(pct "$S1" "$TOTAL")" >&2
+printf '  phase 2  provision RLS roles ........... %8ss  (%s%%)\n' "$S2" "$(pct "$S2" "$TOTAL")" >&2
+printf '  phase 3  pg_restore .................... %8ss  (%s%%)\n' "$S3" "$(pct "$S3" "$TOTAL")" >&2
+printf '  phase 4  validation .................... %8ss  (%s%%)\n' "$S4" "$(pct "$S4" "$TOTAL")" >&2
 printf '  ----------------------------------------------------------\n' >&2
-printf '  TOTAL (camada de dado) ................. %8ss  = %s\n' "$TOTAL" "$(human_secs "$TOTAL_INT")" >&2
-printf '  alvo do ADR 0016 ....................... %8ss  = %s\n' "$TARGET_RTO" "$(human_secs "$TARGET_RTO")" >&2
+printf '  TOTAL (data layer) ..................... %8ss  = %s\n' "$TOTAL" "$(human_secs "$TOTAL_INT")" >&2
+printf '  ADR 0016 target ........................ %8ss  = %s\n' "$TARGET_RTO" "$(human_secs "$TARGET_RTO")" >&2
 printf '\n' >&2
-printf '  dump ....... %s, %s de idade\n' "$(human_bytes "$DUMP_BYTES")" "$(human_secs "$DUMP_AGE")" >&2
-printf '  restaurado . %s tabelas, %s tenants, flyway V%s\n' "$TABLES" "$TENANTS" "$FLYWAY_VER" >&2
+printf '  dump ....... %s, %s old\n' "$(human_bytes "$DUMP_BYTES")" "$(human_secs "$DUMP_AGE")" >&2
+printf '  restored ... %s tables, %s tenants, flyway V%s\n' "$TABLES" "$TENANTS" "$FLYWAY_VER" >&2
 printf '\n' >&2
 
 RTO_OK=1
 if [ "$TOTAL_INT" -gt "$TARGET_RTO" ]; then RTO_OK=0; fi
 
 # The warning that keeps this number from becoming internal propaganda.
-warn "ESTE NÚMERO É O PISO DO RTO, NÃO O RTO."
-warn "Não estão medidos aqui: detecção do incidente e decisão humana, restaurar a VM no"
-warn "Proxmox, boot do host, docker compose pull, boot da stack (Spring+Flyway ~30s) e a"
-warn "volta do DNS/túnel. O ensaio completo é o clone de VM em proxmox-deploy.md"
-warn "§Restore drill — este script cobre a parte que dá pra repetir toda semana."
-[ "$USE_TMPFS" -eq 1 ] && warn "E foi rodado com --tmpfs: some ainda mais do disco real."
+warn "THIS NUMBER IS THE RTO FLOOR, NOT THE RTO."
+warn "Not measured here: incident detection and human decision, restoring the VM on"
+warn "Proxmox, host boot, docker compose pull, stack boot (Spring+Flyway ~30s), and the"
+warn "DNS/tunnel coming back. The complete drill is the VM clone in proxmox-deploy.md"
+warn "§Restore drill — this script covers the part that can be repeated every week."
+[ "$USE_TMPFS" -eq 1 ] && warn "And it was run with --tmpfs: that drifts it even further from the real disk."
 
 # ---------------------------------------------------------------------------
 # History (append-only)
 # ---------------------------------------------------------------------------
 VERDICT="OK"
-[ "$RESTORE_RC" -ne 0 ] && VERDICT="RESTORE_FALHOU"
-[ "$RESTORE_RC" -eq 0 ] && [ "$VALIDATION_FAILED" -ne 0 ] && VERDICT="VALIDACAO_FALHOU"
-[ "$RESTORE_RC" -eq 0 ] && [ "$VALIDATION_FAILED" -eq 0 ] && [ "$RTO_OK" -eq 0 ] && VERDICT="RTO_ESTOUROU"
+[ "$RESTORE_RC" -ne 0 ] && VERDICT="RESTORE_FAILED"
+[ "$RESTORE_RC" -eq 0 ] && [ "$VALIDATION_FAILED" -ne 0 ] && VERDICT="VALIDATION_FAILED"
+[ "$RESTORE_RC" -eq 0 ] && [ "$VALIDATION_FAILED" -eq 0 ] && [ "$RTO_OK" -eq 0 ] && VERDICT="RTO_EXCEEDED"
 
 if [ -d "$STATE_DIR" ] && [ -w "$STATE_DIR" ]; then
   if [ ! -f "$DRILL_LOG" ]; then
-    printf 'data_utc\tdump\tbytes\tidade_s\tfase1_s\tfase2_s\tfase3_s\tfase4_s\ttotal_s\talvo_s\tveredito\ttabelas\ttenants\tflyway\tnota\n' > "$DRILL_LOG"
+    printf 'date_utc\tdump\tbytes\tage_s\tphase1_s\tphase2_s\tphase3_s\tphase4_s\ttotal_s\ttarget_s\tverdict\ttables\ttenants\tflyway\tnote\n' > "$DRILL_LOG"
   fi
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$(_ts)" "$(basename "$DUMP_PRIMARY")" "$DUMP_BYTES" "$DUMP_AGE" \
     "$S1" "$S2" "$S3" "$S4" "$TOTAL" "$TARGET_RTO" "$VERDICT" \
     "$TABLES" "$TENANTS" "$FLYWAY_VER" "${NOTE:--}" >> "$DRILL_LOG"
-  log "histórico: $DRILL_LOG"
+  log "history: $DRILL_LOG"
 fi
 
 hr
 if [ "$RESTORE_RC" -ne 0 ]; then
-  err "ENSAIO REPROVADO: o RESTORE falhou. O backup em $DUMP_PRIMARY NÃO é recuperável."
-  err "Isto é exatamente o que o drill existe pra descobrir — antes do incidente."
+  err "DRILL FAILED: the RESTORE failed. The backup at $DUMP_PRIMARY is NOT recoverable."
+  err "This is exactly what the drill exists to find out — before the incident."
   exit 2
 fi
 if [ "$VALIDATION_FAILED" -ne 0 ]; then
-  err "ENSAIO REPROVADO na VALIDAÇÃO: os dados voltaram, mas não íntegros/utilizáveis."
-  err "Reveja os itens marcados 'VALIDAÇÃO' acima antes de confiar neste backup."
+  err "DRILL FAILED at VALIDATION: the data came back, but not intact/usable."
+  err "Review the items marked 'VALIDATION' above before trusting this backup."
   exit 3
 fi
 if [ "$RTO_OK" -eq 0 ]; then
-  warn "ENSAIO OK, mas o RTO da camada de dado ($(human_secs "$TOTAL_INT")) já estourou"
-  warn "sozinho o alvo de $(human_secs "$TARGET_RTO") do ADR 0016 — sem contar VM, boot e DNS."
-  warn "Ou o alvo muda (ADR sucessor: ADRs aceitos são imutáveis), ou o procedimento muda."
+  warn "DRILL OK, but the data-layer RTO ($(human_secs "$TOTAL_INT")) already blew"
+  warn "the $(human_secs "$TARGET_RTO") target from ADR 0016 on its own — not counting VM, boot, and DNS."
+  warn "Either the target changes (successor ADR: accepted ADRs are immutable), or the procedure changes."
   exit 4
 fi
-ok "ENSAIO APROVADO — restore íntegro em $(human_secs "$TOTAL_INT") na camada de dado."
-log "Próximo: rodar o ensaio COMPLETO (clone de VM) trimestralmente, ADR 0016 Gap 3."
+ok "DRILL PASSED — intact restore in $(human_secs "$TOTAL_INT") at the data layer."
+log "Next: run the COMPLETE drill (VM clone) quarterly, ADR 0016 Gap 3."
 exit 0

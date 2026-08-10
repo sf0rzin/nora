@@ -82,40 +82,40 @@ PRUNE_ONLY=0
 
 usage() {
   cat <<EOF
-$SCRIPT_NAME — dump lógico periódico e verificado dos bancos da stack NORA
+$SCRIPT_NAME — periodic, verified logical dump of the NORA stack's databases
 
-USO
-  $SCRIPT_NAME [--once] [--prune-only] [opções]
+USAGE
+  $SCRIPT_NAME [--once] [--prune-only] [options]
 
-  Sem argumentos é o modo serviço: laço infinito a cada BACKUP_INTERVAL_SECONDS.
-  É assim que o compose o executa (entrypoint do serviço 'backup').
+  No arguments is service mode: an infinite loop every BACKUP_INTERVAL_SECONDS.
+  This is how the compose runs it (the 'backup' service's entrypoint).
 
-OPÇÕES
-  --once                 Roda UM ciclo e sai. Código de saída != 0 se algum dump
-                         falhou — é o modo pra backup manual antes de migration
-                         destrutiva, e o que o restore-drill.sh usa.
-  --prune-only           Só aplica a retenção, não gera dump novo.
-  --dir <caminho>        Diretório de saída (default: $BACKUP_DIR)
-  --interval <segundos>  Intervalo entre ciclos (default: $INTERVAL)
-  --retention <dias>     Retenção em dias; 0 desliga a poda (default: $RETENTION)
-  --min-keep <n>         Nº de dumps por banco que a poda NUNCA apaga (default: $MIN_KEEP)
+OPTIONS
+  --once                 Runs ONE cycle and exits. Exit code != 0 if any dump
+                         failed — this is the mode for a manual backup before a
+                         destructive migration, and what restore-drill.sh uses.
+  --prune-only           Only applies retention, does not generate a new dump.
+  --dir <path>           Output directory (default: $BACKUP_DIR)
+  --interval <seconds>   Interval between cycles (default: $INTERVAL)
+  --retention <days>     Retention in days; 0 turns off pruning (default: $RETENTION)
+  --min-keep <n>         Number of dumps per database that pruning NEVER deletes (default: $MIN_KEEP)
   --platform <auto|required|off>
-                         Tratamento do banco de plataforma (default: $PLATFORM_MODE)
-  -h, --help             Esta ajuda
+                         How the platform database is handled (default: $PLATFORM_MODE)
+  -h, --help             This help
 
-VARIÁVEIS (vêm do docker-compose.yml)
-  PGHOST=$PRIMARY_HOST  PGUSER=$PG_USER  PGPASSWORD=<oculta>
-  PLATFORM_PGHOST=$PLATFORM_HOST  PLATFORM_PGPASSWORD=<oculta>
+VARIABLES (come from docker-compose.yml)
+  PGHOST=$PRIMARY_HOST  PGUSER=$PG_USER  PGPASSWORD=<hidden>
+  PLATFORM_PGHOST=$PLATFORM_HOST  PLATFORM_PGPASSWORD=<hidden>
   BACKUP_INTERVAL_SECONDS  BACKUP_RETENTION_DAYS
   BACKUP_MIN_KEEP  BACKUP_MIN_FREE_KB  BACKUP_COMPRESS_LEVEL  BACKUP_PLATFORM_MODE
 
-SAÍDA (em $BACKUP_DIR)
-  <banco>-<UTC>.dump          pg_dump -Fc, JÁ verificado com pg_restore --list
-  <banco>-<UTC>.dump.sha256   checksum
-  <banco>-<UTC>.dump.toc      índice do dump (inspeção sem restaurar)
-  <banco>-<UTC>.dump.part     dump em andamento ou REPROVADO (nunca é um backup)
+OUTPUT (in $BACKUP_DIR)
+  <database>-<UTC>.dump          pg_dump -Fc, ALREADY verified with pg_restore --list
+  <database>-<UTC>.dump.sha256   checksum
+  <database>-<UTC>.dump.toc      dump index (inspection without restoring)
+  <database>-<UTC>.dump.part     dump in progress or REJECTED (never a backup)
 
-EXEMPLOS
+EXAMPLES
   # immediate backup before a destructive migration
   docker compose -p nora exec backup /usr/local/bin/run-backup.sh --once
 
@@ -128,13 +128,13 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --once)        ONCE=1; shift ;;
     --prune-only)  PRUNE_ONLY=1; ONCE=1; shift ;;
-    --dir)         BACKUP_DIR="${2:?--dir exige um valor}"; shift 2 ;;
-    --interval)    INTERVAL="${2:?--interval exige um valor}"; shift 2 ;;
-    --retention)   RETENTION="${2:?--retention exige um valor}"; shift 2 ;;
-    --min-keep)    MIN_KEEP="${2:?--min-keep exige um valor}"; shift 2 ;;
-    --platform)    PLATFORM_MODE="${2:?--platform exige auto|required|off}"; shift 2 ;;
+    --dir)         BACKUP_DIR="${2:?--dir requires a value}"; shift 2 ;;
+    --interval)    INTERVAL="${2:?--interval requires a value}"; shift 2 ;;
+    --retention)   RETENTION="${2:?--retention requires a value}"; shift 2 ;;
+    --min-keep)    MIN_KEEP="${2:?--min-keep requires a value}"; shift 2 ;;
+    --platform)    PLATFORM_MODE="${2:?--platform requires auto|required|off}"; shift 2 ;;
     -h|--help)     usage; exit 0 ;;
-    *) printf 'opção desconhecida: %s\n\n' "$1" >&2; usage >&2; exit 1 ;;
+    *) printf 'unknown option: %s\n\n' "$1" >&2; usage >&2; exit 1 ;;
   esac
 done
 
@@ -192,7 +192,7 @@ SLEEP_PID=""
 on_term() {
   STOP=1
   [ -n "$SLEEP_PID" ] && kill "$SLEEP_PID" 2>/dev/null || true
-  info "event=shutdown.signal msg=$(q 'sinal recebido; encerrando após o ciclo atual')"
+  info "event=shutdown.signal msg=$(q 'signal received; shutting down after the current cycle')"
 }
 trap on_term TERM INT
 
@@ -201,31 +201,31 @@ trap on_term TERM INT
 # ---------------------------------------------------------------------------
 for _bin in pg_dump pg_restore pg_isready psql; do
   command -v "$_bin" >/dev/null 2>&1 || {
-    error "event=preflight.fail bin=$_bin msg=$(q 'binário ausente na imagem — o serviço backup precisa de postgres:16-alpine')"
+    error "event=preflight.fail bin=$_bin msg=$(q 'binary missing from the image — the backup service needs postgres:16-alpine')"
     exit 1
   }
 done
 
 if [ ! -d "$BACKUP_DIR" ]; then
-  error "event=preflight.fail dir=$BACKUP_DIR msg=$(q 'diretório de backup não existe; confira o bind mount BACKUP_DIR do compose')"
+  error "event=preflight.fail dir=$BACKUP_DIR msg=$(q 'backup directory does not exist; check the compose BACKUP_DIR bind mount')"
   exit 1
 fi
 if [ ! -w "$BACKUP_DIR" ]; then
-  error "event=preflight.fail dir=$BACKUP_DIR msg=$(q 'diretório de backup não é gravável; no host: chown do BACKUP_DIR para o uid do container')"
+  error "event=preflight.fail dir=$BACKUP_DIR msg=$(q 'backup directory is not writable; on the host: chown BACKUP_DIR to the container uid')"
   exit 1
 fi
 if [ -z "$PRIMARY_PW" ]; then
-  error "event=preflight.fail msg=$(q 'PGPASSWORD vazia — o compose injeta POSTGRES_ADMIN_PASSWORD; o .env decifrou certo?')"
+  error "event=preflight.fail msg=$(q 'PGPASSWORD empty — the compose injects POSTGRES_ADMIN_PASSWORD; did the .env decrypt correctly?')"
   exit 1
 fi
 case "$PLATFORM_MODE" in
   auto|required|off) : ;;
-  *) error "event=preflight.fail msg=$(q "BACKUP_PLATFORM_MODE inválido: $PLATFORM_MODE (use auto|required|off)")"; exit 1 ;;
+  *) error "event=preflight.fail msg=$(q "invalid BACKUP_PLATFORM_MODE: $PLATFORM_MODE (use auto|required|off)")"; exit 1 ;;
 esac
 
 info "event=start dir=$BACKUP_DIR interval_s=$INTERVAL retention_d=$RETENTION min_keep=$MIN_KEEP platform_mode=$PLATFORM_MODE once=$ONCE"
 if [ "$RETENTION" -eq 0 ]; then
-  warn "event=config.notice msg=$(q 'BACKUP_RETENTION_DAYS=0: poda DESLIGADA, o diretório cresce até encher o disco')"
+  warn "event=config.notice msg=$(q 'BACKUP_RETENTION_DAYS=0: pruning OFF, the directory grows until it fills the disk')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -253,7 +253,7 @@ backup_one() {
 
   # 1) is the database up? pg_isready fails in 5s; pg_dump would hang on the timeout.
   if ! PGPASSWORD="$_pw" pg_isready -h "$_host" -U "$PG_USER" -d "$_db" -t 5 >/dev/null 2>&1; then
-    error "event=dump.unreachable db=$_db host=$_host msg=$(q 'pg_isready falhou: banco fora, DNS interno, ou senha/rede')"
+    error "event=dump.unreachable db=$_db host=$_host msg=$(q 'pg_isready failed: database down, internal DNS, or password/network')"
     return 2
   fi
 
@@ -262,11 +262,11 @@ backup_one() {
   _free_kb="$(free_kb)"
   _free_kb="${_free_kb:-0}"
   if [ "$_free_kb" -lt "$MIN_FREE_KB" ]; then
-    error "event=dump.nospace db=$_db free=$(human_kb "$_free_kb") floor=$(human_kb "$MIN_FREE_KB") msg=$(q 'espaço abaixo do piso; pulando para não encher o disco do Postgres')"
+    error "event=dump.nospace db=$_db free=$(human_kb "$_free_kb") floor=$(human_kb "$MIN_FREE_KB") msg=$(q 'space below the floor; skipping to avoid filling the Postgres disk')"
     return 1
   fi
   if [ "$_need_kb" -gt 0 ] && [ "$_free_kb" -lt $(( _need_kb * 2 )) ]; then
-    warn "event=dump.lowspace db=$_db free=$(human_kb "$_free_kb") last_dump=$(human_kb "$_need_kb") msg=$(q 'menos que 2x o último dump livre; reduza BACKUP_RETENTION_DAYS ou aumente o disco')"
+    warn "event=dump.lowspace db=$_db free=$(human_kb "$_free_kb") last_dump=$(human_kb "$_need_kb") msg=$(q 'less than 2x the last dump free; reduce BACKUP_RETENTION_DAYS or grow the disk')"
   fi
 
   rm -f "$_part"
@@ -289,8 +289,8 @@ backup_one() {
   # 4) VERIFICATION. Runs on the .part: the final name only exists if pg_restore managed
   # to read the whole index. So `ls *.dump` is, by construction, the list of valid backups.
   if ! pg_restore --list "$_part" > "$_part.toc" 2>"$_part.tocerr"; then
-    error "event=verify.fail db=$_db bytes=$_bytes msg=$(q "pg_restore --list rejeitou o arquivo: $(tr '\n' ' ' < "$_part.tocerr" | cut -c1-200)")"
-    error "event=verify.discard db=$_db file=$_part.part msg=$(q 'dump REPROVADO e descartado; backup não verificado não é backup')"
+    error "event=verify.fail db=$_db bytes=$_bytes msg=$(q "pg_restore --list rejected the file: $(tr '\n' ' ' < "$_part.tocerr" | cut -c1-200)")"
+    error "event=verify.discard db=$_db file=$_part.part msg=$(q 'dump REJECTED and discarded; an unverified backup is not a backup')"
     rm -f "$_part" "$_part.toc" "$_part.tocerr"
     return 1
   fi
@@ -301,7 +301,7 @@ backup_one() {
   _tables="$(grep -c ' TABLE DATA ' "$_part.toc" 2>/dev/null || true)"
   _tables="${_tables:-0}"
   if [ "$_entries" -eq 0 ]; then
-    error "event=verify.empty db=$_db msg=$(q 'TOC sem nenhuma entrada — o dump abre mas está vazio; banco errado?')"
+    error "event=verify.empty db=$_db msg=$(q 'TOC has no entries — the dump opens but is empty; wrong database?')"
     rm -f "$_part" "$_part.toc"
     return 1
   fi
@@ -315,7 +315,7 @@ backup_one() {
   if command -v sha256sum >/dev/null 2>&1; then
     ( cd "$BACKUP_DIR" && sha256sum "$(basename "$_out")" > "$(basename "$_out").sha256" )
   else
-    warn "event=checksum.skip db=$_db msg=$(q 'sha256sum ausente na imagem')"
+    warn "event=checksum.skip db=$_db msg=$(q 'sha256sum missing from the image')"
   fi
 
   info "event=dump.ok db=$_db label=$_label file=$(basename "$_out") bytes=$_bytes size=$(human_bytes "$_bytes") duration_s=$(( _t1 - _t0 )) toc_entries=$_entries tables=$_tables verified=true"
@@ -333,7 +333,7 @@ prune_one() {
   _total="$(ls -1 "$BACKUP_DIR/$_db"-*.dump 2>/dev/null | wc -l | tr -d '[:space:]' || true)"
   _total="${_total:-0}"
   [ "$_total" -gt "$MIN_KEEP" ] || {
-    info "event=prune.skip db=$_db total=$_total min_keep=$MIN_KEEP msg=$(q 'nada a podar: no piso de retenção')"
+    info "event=prune.skip db=$_db total=$_total min_keep=$MIN_KEEP msg=$(q 'nothing to prune: at the retention floor')"
     return 0
   }
 
@@ -347,7 +347,7 @@ prune_one() {
     [ -f "$_f" ] || continue
     # Brake (b): never go below MIN_KEEP, however old the file is.
     if [ "$_total" -le "$MIN_KEEP" ]; then
-      warn "event=prune.floor db=$_db min_keep=$MIN_KEEP msg=$(q 'retenção pararia abaixo do piso; arquivos antigos mantidos')"
+      warn "event=prune.floor db=$_db min_keep=$MIN_KEEP msg=$(q 'retention would drop below the floor; old files kept')"
       break
     fi
     _sz="$(file_size "$_f")"
@@ -371,7 +371,7 @@ prune_stale_parts() {
   for _f in $_stale; do
     [ -f "$_f" ] || continue
     rm -f "$_f"
-    warn "event=prune.stale_part file=$(basename "$_f") msg=$(q 'sobra de dump interrompido, removida')"
+    warn "event=prune.stale_part file=$(basename "$_f") msg=$(q 'leftover from an interrupted dump, removed')"
   done
 }
 
@@ -394,27 +394,27 @@ run_cycle() {
   fi
 
   # ---- primary: this is the database that cannot be missing ----
-  if backup_one "primario" "$PRIMARY_HOST" "$PRIMARY_DB" "$PRIMARY_PW"; then
+  if backup_one "primary" "$PRIMARY_HOST" "$PRIMARY_DB" "$PRIMARY_PW"; then
     prune_one "$PRIMARY_DB"        # brake (a): prune only after a good dump
   else
     _rc=1
-    error "event=dump.critical db=$PRIMARY_DB msg=$(q 'banco transacional NÃO foi salvo neste ciclo; retenção NÃO aplicada para não apagar os dumps bons anteriores')"
+    error "event=dump.critical db=$PRIMARY_DB msg=$(q 'transactional database was NOT saved this cycle; retention NOT applied so previous good dumps are not deleted')"
   fi
 
   # ---- platform: rebuildable, but the historical cost telemetry is not ----
   if [ "$PLATFORM_MODE" != "off" ]; then
     set +e
-    backup_one "plataforma" "$PLATFORM_HOST" "$PLATFORM_DB" "$PLATFORM_PW"
+    backup_one "platform" "$PLATFORM_HOST" "$PLATFORM_DB" "$PLATFORM_PW"
     _prc=$?
     set -e
     case "$_prc" in
       0) prune_one "$PLATFORM_DB" ;;
       2)
         if [ "$PLATFORM_MODE" = "required" ]; then
-          error "event=dump.critical db=$PLATFORM_DB msg=$(q 'BACKUP_PLATFORM_MODE=required e o servidor não respondeu')"
+          error "event=dump.critical db=$PLATFORM_DB msg=$(q 'BACKUP_PLATFORM_MODE=required and the server did not respond')"
           _rc=1
         else
-          warn "event=dump.skip db=$PLATFORM_DB msg=$(q 'postgres-platform não responde — esperado com o profile platform desligado; use BACKUP_PLATFORM_MODE=off para silenciar ou =required para reprovar')"
+          warn "event=dump.skip db=$PLATFORM_DB msg=$(q 'postgres-platform not responding — expected with the platform profile off; use BACKUP_PLATFORM_MODE=off to silence or =required to fail')"
         fi
         ;;
       *) _rc=1 ;;
@@ -437,7 +437,7 @@ while : ; do
   set -e
 
   if [ "$ONCE" -eq 1 ]; then
-    [ "$CYCLE_RC" -eq 0 ] || error "event=exit rc=$CYCLE_RC msg=$(q 'ciclo único terminou com falha')"
+    [ "$CYCLE_RC" -eq 0 ] || error "event=exit rc=$CYCLE_RC msg=$(q 'single cycle finished with failure')"
     exit "$CYCLE_RC"
   fi
   [ "$STOP" -eq 1 ] && break
@@ -450,5 +450,5 @@ while : ; do
   [ "$STOP" -eq 1 ] && break
 done
 
-info "event=stop msg=$(q 'serviço de backup encerrado')"
+info "event=stop msg=$(q 'backup service stopped')"
 exit 0

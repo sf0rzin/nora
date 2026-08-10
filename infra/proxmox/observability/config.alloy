@@ -1,50 +1,51 @@
-// NORA — Grafana Alloy (coleta de logs de container -> Loki)
+// NORA — Grafana Alloy (container log collection -> Loki)
 // ============================================================================
-// Substitui o `appLogsConfiguration` do Container Apps Environment: o mecanismo que
-// pegava stdout/stderr de cada réplica e despejava na tabela ContainerAppConsoleLogs_CL
-// do Log Analytics.
+// Replaces the Container Apps Environment's `appLogsConfiguration`: the mechanism that
+// grabbed stdout/stderr from each replica and dumped it into the ContainerAppConsoleLogs_CL
+// table in Log Analytics.
 //
-// Isto NÃO é redundante com o otel-collector. São duas pernas distintas:
-//   - otel-collector : traces + métricas, PUSH do SDK dentro do processo (só a API tem)
-//   - alloy (aqui)   : logs, LIDOS DE FORA pelo socket do Docker (cobre TODO container)
-// Um Collector não faz tail de stdout de container. Sem o Alloy, três dos quatro apps
-// não teriam sinal nenhum.
+// This is NOT redundant with the otel-collector. They are two distinct legs:
+//   - otel-collector : traces + metrics, PUSH from the SDK inside the process (only the API has it)
+//   - alloy (here)   : logs, READ FROM OUTSIDE via the Docker socket (covers EVERY container)
+// A Collector does not tail a container's stdout. Without Alloy, three of the four apps
+// would have no signal at all.
 //
 // ----------------------------------------------------------------------------
-// POR QUE ALLOY E NÃO O LOG DRIVER `loki` DO DOCKER
+// WHY ALLOY AND NOT DOCKER'S `loki` LOG DRIVER
 // ----------------------------------------------------------------------------
-// A alternativa óbvia seria trocar o `driver: json-file` do x-logging (docker-compose.yml:27)
-// pelo plugin loki-docker-driver. Três motivos para não fazer isso:
+// The obvious alternative would be swapping x-logging's `driver: json-file` (docker-compose.yml:27)
+// for the loki-docker-driver plugin. Three reasons not to do that:
 //
-// 1. QUEBRA `docker logs`. O plugin substitui o driver local; `docker logs nora-api`
-//    passa a responder erro. Você perde a ferramenta de debug que funciona quando o
-//    Loki está fora do ar — que é exatamente quando você mais precisa dela. Na
-//    madrugada de um incidente, "vou olhar no Grafana" não é plano B, é plano único.
+// 1. BREAKS `docker logs`. The plugin replaces the local driver; `docker logs nora-api`
+//    starts returning an error. You lose the debugging tool that works when
+//    Loki is down — which is exactly when you need it the most. At
+//    3am during an incident, "I'll look in Grafana" is not plan B, it is the only plan.
 //
-// 2. DESCARTE SILENCIOSO SOB BACKPRESSURE. Em `mode=non-blocking` (o único modo
-//    utilizável, porque o outro é pior) o plugin tem um ring buffer em memória de
-//    tamanho fixo. Cheio o buffer, ele JOGA LINHA FORA. Sem erro no app, sem erro no
-//    daemon, sem contador exposto. O caso patológico é o pior: quando o Loki está
-//    lento é porque tem um incidente rolando, e é justamente aí que as linhas somem.
-//    Você fica com um buraco no log exatamente na janela que precisa investigar.
-//    O modo alternativo, `mode=blocking`, troca perda por travamento do container que
-//    está escrevendo — pior ainda: o Loki cair derruba a API.
+// 2. SILENT DROP UNDER BACKPRESSURE. In `mode=non-blocking` (the only usable
+//    mode, because the other one is worse) the plugin has a fixed-size in-memory
+//    ring buffer. Once the buffer fills, it THROWS LINES AWAY. No error in the app, no
+//    error in the daemon, no exposed counter. The pathological case is the worst one:
+//    when Loki is slow it is because there is an incident happening, and that is exactly
+//    when lines disappear. You end up with a hole in the log in exactly the window you
+//    need to investigate.
+//    The alternative mode, `mode=blocking`, trades loss for the writing container
+//    hanging — even worse: Loki going down takes the API down with it.
 //
-// 3. Plugin é do daemon, não do compose. Instalação e upgrade ficam fora do
-//    docker-compose.yml, então o estado de fato da VM deixa de estar versionado.
+// 3. The plugin belongs to the daemon, not the compose. Installation and upgrade live
+//    outside docker-compose.yml, so the VM's actual state stops being versioned.
 //
-// O Alloy tem WAL em disco (bloco `wal` no loki.write abaixo). Backpressure vira
-// ATRASO, não PERDA: as entradas ficam no WAL até o Loki aceitar. E o json-file
-// continua sendo o driver, então `docker logs` continua funcionando como fallback.
+// Alloy has a WAL on disk (the `wal` block in loki.write below). Backpressure becomes
+// DELAY, not LOSS: entries stay in the WAL until Loki accepts them. And json-file
+// remains the driver, so `docker logs` keeps working as a fallback.
 //
-// >>> RESSALVA IMPORTANTE — o WAL de hoje é volátil <<<
-// O compose roda o Alloy com --storage.path=/var/lib/alloy/data (docker-compose.yml:516)
-// mas NÃO monta volume nesse caminho. O WAL e as posições de leitura vivem na camada
-// de escrita do container: `docker compose up -d --force-recreate` apaga os dois.
-// Consequência: log ainda em buffer é perdido no deploy, e as posições zeram (relê ou
-// pula linhas na volta). Enquanto isso não for corrigido, o argumento "Alloy tem WAL"
-// vale para queda do Loki, mas NÃO para recriação do container do Alloy.
-// Correção — adicionar `alloy_data:` em volumes: e no serviço alloy:
+// >>> IMPORTANT CAVEAT — today's WAL is volatile <<<
+// The compose runs Alloy with --storage.path=/var/lib/alloy/data (docker-compose.yml:516)
+// but does NOT mount a volume at that path. The WAL and the read positions live in the
+// container's writable layer: `docker compose up -d --force-recreate` wipes out both.
+// Consequence: log still in the buffer is lost on deploy, and the positions reset (it
+// re-reads or skips lines on the way back). Until this is fixed, the "Alloy has a WAL"
+// argument holds for Loki going down, but NOT for the Alloy container being recreated.
+// Fix — add `alloy_data:` under volumes: and to the alloy service:
 //     volumes:
 //       - alloy_data:/var/lib/alloy/data
 //       - ./observability/config.alloy:/etc/alloy/config.alloy:ro
@@ -57,36 +58,36 @@ logging {
 }
 
 // ----------------------------------------------------------------------------
-// DESCOBERTA — todo container do daemon, via socket
+// DISCOVERY — every container in the daemon, via socket
 // ----------------------------------------------------------------------------
-// Montado read-only em docker-compose.yml:520. Read-only no socket NÃO é sandbox:
-// a API do Docker é toda por HTTP sobre o socket, e o :ro impede escrita no arquivo,
-// não chamadas de API. Quem tem o socket tem o host. É aceitável aqui porque o Alloy
-// está na bridge `internal` (internal: true, sem rota para a internet) e a imagem é
-// pinada. Não replique esse mount para container que fale com a internet.
+// Mounted read-only in docker-compose.yml:520. Read-only on the socket is NOT a sandbox:
+// the Docker API is entirely HTTP over the socket, and :ro only blocks writes to the file,
+// not API calls. Whoever has the socket has the host. This is acceptable here because Alloy
+// is on the `internal` bridge (internal: true, no route to the internet) and the image is
+// pinned. Do not replicate this mount for a container that talks to the internet.
 discovery.docker "daemon" {
   host             = "unix:///var/run/docker.sock"
   refresh_interval = "10s"
 }
 
 // ----------------------------------------------------------------------------
-// FILTRO — só containers do projeto compose `nora`
+// FILTER — only containers from the `nora` compose project
 // ----------------------------------------------------------------------------
-// Pega os quatro apps (api, worker, web, admin) mais infra: cloudflared, caddy,
+// Picks up the four apps (api, worker, web, admin) plus infra: cloudflared, caddy,
 // postgres, postgres-platform, otel-collector, prometheus, loki, grafana, backup.
-// Sem lista fixa de nomes: serviço novo no compose entra sozinho em ~10s.
+// No fixed name list: a new service in the compose joins on its own within ~10s.
 discovery.relabel "nora" {
   targets = discovery.docker.daemon.targets
 
-  // O `name: nora` do compose vira este label em todo container do projeto.
+  // The compose's `name: nora` becomes this label on every container in the project.
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
     regex         = "nora"
     action        = "keep"
   }
 
-  // O próprio Alloy fora: ele logaria o envio das linhas, gerando linhas, que ele
-  // enviaria, gerando linhas. Loop de amplificação clássico.
+  // Alloy itself excluded: it would log the sending of lines, generating lines, that it
+  // would send, generating lines. A classic amplification loop.
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
     regex         = "alloy"
@@ -95,30 +96,30 @@ discovery.relabel "nora" {
 }
 
 // ----------------------------------------------------------------------------
-// RÓTULOS — quais labels cada stream carrega no Loki
+// LABELS — which labels each stream carries in Loki
 // ----------------------------------------------------------------------------
-// `targets = []` de propósito: este componente existe só para exportar `.rules`,
-// que é o que o loki.source.docker consome. É o padrão documentado do Alloy.
+// `targets = []` on purpose: this component exists only to export `.rules`,
+// which is what loki.source.docker consumes. This is Alloy's documented pattern.
 //
-// Regra de ouro: label é ÍNDICE no Loki. Cada combinação única vira um stream com
-// custo próprio. Nada aqui pode ter cardinalidade não-limitada (nada de request id,
-// user id, trace id — isso vai no corpo da linha, não em label).
+// Golden rule: a label is an INDEX in Loki. Every unique combination becomes a stream
+// with its own cost. Nothing here can have unbounded cardinality (no request id,
+// user id, trace id — those go in the line body, not in a label).
 discovery.relabel "labels" {
   targets = []
 
-  // A API do Docker devolve o nome com barra na frente: "/nora-api" -> "nora-api".
-  // Escolhido como `service` porque bate EXATAMENTE com o OTEL_SERVICE_NAME do
-  // compose (nora-api, nora-worker, nora-web, nora-admin). Isso é o que permite
-  // pular de um painel de métrica (label `job` no Prometheus) para o painel de log
-  // (label `service` no Loki) sem tradução mental.
+  // The Docker API returns the name with a leading slash: "/nora-api" -> "nora-api".
+  // Chosen as `service` because it matches EXACTLY the compose's OTEL_SERVICE_NAME
+  // (nora-api, nora-worker, nora-web, nora-admin). This is what lets you
+  // jump from a metrics panel (label `job` in Prometheus) to a log panel
+  // (label `service` in Loki) without mental translation.
   rule {
     source_labels = ["__meta_docker_container_name"]
     regex         = "/(.*)"
     target_label  = "service"
   }
 
-  // Nome curto do serviço no compose: api, worker, web, admin, postgres...
-  // Útil porque é o nome que aparece no docker-compose.yml e nos comandos do dia a dia.
+  // Short service name in the compose: api, worker, web, admin, postgres...
+  // Useful because it is the name that appears in docker-compose.yml and in day-to-day commands.
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
     target_label  = "compose_service"
@@ -126,20 +127,20 @@ discovery.relabel "labels" {
 }
 
 // ----------------------------------------------------------------------------
-// SPLIT: quem precisa de junção de stack trace e quem NÃO pode receber junção
+// SPLIT: who needs stack-trace joining and who must NOT be joined
 // ----------------------------------------------------------------------------
-// Sem isso, uma NullPointerException do Spring vira 40 entradas separadas no Loki,
-// cada uma com um frame `at com.nora...`. Não dá para ler, não dá para alertar, e a
-// linha da mensagem original fica órfã da causa.
+// Without this, a Spring NullPointerException becomes 40 separate entries in Loki,
+// each one with a single `at com.nora...` frame. You cannot read it, you cannot alert on
+// it, and the original message line is orphaned from its cause.
 //
-// api (Spring Boot) e worker (Python/uvicorn) prefixam cada registro com timestamp
-// ISO-8601 e continuam a exceção em linhas sem prefixo — o padrão que a junção por
-// firstline resolve bem.
+// api (Spring Boot) and worker (Python/uvicorn) prefix every record with an ISO-8601
+// timestamp and continue the exception in unprefixed lines — the pattern that
+// firstline-based joining handles well.
 //
-// web e admin (Next.js) FICAM DE FORA e isso é deliberado: o Next não prefixa
-// timestamp. Se caíssem na mesma regra, NENHUMA linha casaria com o firstline e o
-// Alloy juntaria o log inteiro do processo numa entrada só até estourar max_lines.
-// Pior que não juntar nada.
+// web and admin (Next.js) ARE LEFT OUT and this is deliberate: Next does not prefix a
+// timestamp. If they fell under the same rule, NO line would match the firstline and
+// Alloy would join the process's entire log into a single entry until max_lines blows.
+// Worse than not joining at all.
 discovery.relabel "stacktrace_apps" {
   targets = discovery.relabel.nora.output
 
@@ -161,7 +162,7 @@ discovery.relabel "line_oriented" {
 }
 
 // ----------------------------------------------------------------------------
-// COLETA A — api + worker (com junção de stack trace)
+// COLLECTION A — api + worker (with stack-trace joining)
 // ----------------------------------------------------------------------------
 loki.source.docker "stacktrace_apps" {
   host             = "unix:///var/run/docker.sock"
@@ -172,18 +173,18 @@ loki.source.docker "stacktrace_apps" {
 }
 
 loki.process "stacktrace" {
-  // Uma entrada nova começa quando a linha abre com timestamp ISO-8601 (Spring Boot 3.x
-  // e logging padrão do Python) ou com `{` (se algum dia trocarmos por encoder JSON).
-  // Qualquer outra coisa — `at com.nora.x.Y(Z.java:42)`, `Caused by:`, `Traceback
-  // (most recent call last):`, linhas indentadas — é anexada à entrada anterior.
+  // A new entry starts when the line opens with an ISO-8601 timestamp (Spring Boot 3.x
+  // and Python's default logging) or with `{` (if we ever switch to a JSON encoder).
+  // Anything else — `at com.nora.x.Y(Z.java:42)`, `Caused by:`, `Traceback
+  // (most recent call last):`, indented lines — is appended to the previous entry.
   stage.multiline {
     firstline     = "^(\\{|\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2})"
-    // Teto de espera antes de fechar a entrada mesmo sem ver a próxima firstline.
-    // Este é o atraso máximo que uma linha sofre para aparecer no Grafana.
+    // Wait cap before closing the entry even without seeing the next firstline.
+    // This is the maximum delay a line suffers before appearing in Grafana.
     max_wait_time = "3s"
-    // Fusível contra stack trace patológica (recursão infinita, exceção encadeada
-    // gigante). Sem teto, uma única entrada poderia estourar o limite de tamanho do
-    // push e o Loki rejeitaria o lote inteiro.
+    // Fuse against a pathological stack trace (infinite recursion, a giant chained
+    // exception). Without a cap, a single entry could blow the push size limit
+    // and Loki would reject the whole batch.
     max_lines     = 512
   }
 
@@ -191,7 +192,7 @@ loki.process "stacktrace" {
 }
 
 // ----------------------------------------------------------------------------
-// COLETA B — web, admin e toda a infra (uma linha, uma entrada)
+// COLLECTION B — web, admin, and all the infra (one line, one entry)
 // ----------------------------------------------------------------------------
 loki.source.docker "line_oriented" {
   host             = "unix:///var/run/docker.sock"
@@ -202,14 +203,14 @@ loki.source.docker "line_oriented" {
 }
 
 loki.process "line_oriented" {
-  // Redução de ruído dirigida ao Postgres, e só a ele (stage.match escopa por label).
-  // Motivo concreto: o compose liga log_connections=on e log_disconnections=on
-  // (docker-compose.yml:145-147) e o healthcheck roda pg_isready a cada 10s
-  // (docker-compose.yml:150). São ~17 mil linhas por dia de "connection received"
-  // e "disconnection" que não dizem nada, ocupam a cota de ingestão do limits_config
-  // do Loki e afogam o log real de erro de query.
-  // As linhas de log_min_duration_statement (query lenta > 1s) NÃO casam com este
-  // filtro e continuam passando — são elas que interessam.
+  // Noise reduction targeted at Postgres, and only at it (stage.match scopes by label).
+  // Concrete reason: the compose turns on log_connections=on and log_disconnections=on
+  // (docker-compose.yml:145-147) and the healthcheck runs pg_isready every 10s
+  // (docker-compose.yml:150). That is ~17 thousand lines a day of "connection received"
+  // and "disconnection" that say nothing, eat into the Loki limits_config ingestion
+  // quota, and drown out the real query-error log.
+  // log_min_duration_statement lines (query slower than 1s) do NOT match this
+  // filter and keep passing through — those are the ones that matter.
   stage.match {
     selector = "{compose_service=~\"postgres|postgres-platform\"}"
 
@@ -223,7 +224,7 @@ loki.process "line_oriented" {
 }
 
 // ----------------------------------------------------------------------------
-// ENVIO — Loki
+// SHIPPING — Loki
 // ----------------------------------------------------------------------------
 loki.write "loki" {
   endpoint {
@@ -232,44 +233,44 @@ loki.write "loki" {
     batch_wait     = "1s"
     batch_size     = "1MiB"
     remote_timeout = "10s"
-    // Backoff longo de propósito: um Loki fora do ar por minutos tem que virar
-    // atraso absorvido pelo WAL, não desistência.
+    // Long backoff on purpose: a Loki that is down for minutes has to become
+    // a delay absorbed by the WAL, not a giving-up.
     min_backoff_period  = "500ms"
     max_backoff_period  = "5m"
     max_backoff_retries = 10
   }
 
-  // Aplicado a todo stream. `project` é a âncora das queries do dashboard
-  // ({project="nora"}) e o que separa esta stack de qualquer outra coisa que venha
-  // a escrever no mesmo Loki.
+  // Applied to every stream. `project` is the anchor for the dashboard's queries
+  // ({project="nora"}) and what separates this stack from anything else that might
+  // write to the same Loki.
   external_labels = {
     project = "nora",
   }
 
-  // O ponto inteiro da escolha do Alloy sobre o log driver. Explícito e não por
-  // default, porque é a garantia que está sendo vendida no comentário do topo do
-  // arquivo e no docker-compose.yml:504-507.
+  // The entire point of choosing Alloy over the log driver. Explicit and not
+  // default, because it is the guarantee being sold in the comment at the top of the
+  // file and in docker-compose.yml:504-507.
   wal {
     enabled         = true
     max_segment_age = "1h"
-    // Tempo que o Alloy tenta drenar o WAL no SIGTERM antes de morrer. O deploy
-    // recria containers; sem drain, o que estava em voo some.
+    // Time Alloy tries to drain the WAL on SIGTERM before dying. The deploy
+    // recreates containers; without drain, whatever was in flight disappears.
     drain_timeout   = "30s"
   }
 }
 
 // ============================================================================
-// O QUE ESTE ARQUIVO NÃO RESOLVE
+// WHAT THIS FILE DOES NOT SOLVE
 // ============================================================================
-// - Nível de log como label: não é extraído aqui de propósito. O Loki 3.x detecta o
-//   nível sozinho e o expõe como structured metadata (detected_level), que o painel
-//   de logs do Grafana já usa para colorir. Um stage.regex por app seria mais um
-//   ponto de manutenção para o mesmo resultado.
+// - Log level as a label: not extracted here on purpose. Loki 3.x detects the
+//   level on its own and exposes it as structured metadata (detected_level), which
+//   Grafana's log panel already uses for coloring. A stage.regex per app would be one
+//   more maintenance point for the same result.
 //
-// - Correlação log <-> trace: não existe. Precisaria de trace_id no MDC do logback,
-//   de um backend de traces (não há Tempo na stack) e de derivedFields no datasource
-//   Loki. O "ver a transação deste log" do App Insights não tem substituto hoje.
+// - Log <-> trace correlation: does not exist. It would need trace_id in logback's MDC,
+//   a traces backend (there is no Tempo in the stack), and derivedFields on the Loki
+//   datasource. App Insights' "view this log's transaction" has no substitute today.
 //
-// - Métricas de container: o Alloy poderia coletar (prometheus.exporter.cadvisor),
-//   mas não está configurado aqui — este arquivo é só de log. Ver a nota no fim do
+// - Container metrics: Alloy could collect them (prometheus.exporter.cadvisor),
+//   but it is not configured here — this file is log-only. See the note at the end of
 //   prometheus.yml.

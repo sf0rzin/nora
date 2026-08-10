@@ -21,6 +21,12 @@ cd "$(git rev-parse --show-toplevel)"
 # ---------------------------------------------------------------------------
 # Allowlist — paths where Portuguese is expected. Prefix match against the
 # repo-relative path. Every entry states why it is here.
+#
+# Sections 1-7 are real exemptions: the pt-BR in them is product copy, an e-mail
+# a user receives, demo data, an LLM prompt, an applied migration, an accepted
+# ADR, or coursework whose language is part of the deliverable. Section 8 is a
+# declared GAP — it names the change that removes it. Keep that distinction; an
+# entry added for convenience makes the whole check worthless.
 # ---------------------------------------------------------------------------
 ALLOWED=(
   # --- 0. The detector itself ---
@@ -107,15 +113,31 @@ ALLOWED=(
   "services/api/src/main/resources/db/migration/"
   "services/api/src/main/resources/db/platform/"
 
-  # --- 6. Declared gaps: NOT exemptions. Each one names the change that closes it. ---
-  # Documentation PROSE (including the ~76 pt-BR summary/description lines in
-  # docs/api/openapi.yaml) is translated by the separate documentation pass that follows
-  # this one. THIS pass only renamed doc files, fixed the references and left the prose.
-  "docs/"
-  # infra/proxmox + the legacy infra/bicep were outside the declared scope of this pass.
-  "infra/"
-  "README.md"        # pt-BR fragments, closed by the documentation pass
-  "SECURITY.md"      # pt-BR fragments, closed by the documentation pass
+  # --- 6. Accepted ADRs: permanently exempt, same reasoning as the migrations ---
+  # An accepted ADR is immutable in substance. The pt-BR left in a handful of them sits in
+  # sample JSON payloads, ASCII topology diagrams and a list of BR first names — content, not
+  # prose to improve. The prefix is `docs/adr/0` and not `docs/adr/` on purpose: it matches the
+  # numbered decision records and NOT `docs/adr/README.md`, which is an index, is editable, and
+  # is in English.
+  "docs/adr/0"
+
+  # --- 7. FIAP coursework whose language is part of the deliverable ---
+  # Written in Portuguese for a Portuguese-language course and submitted as-is. Translating
+  # them would not improve the repository; it would misrepresent what was handed in.
+  "docs/challenge/personas-and-empathy-map.md"   # 3 personas + empathy maps (FIAP)
+  "docs/challenge/use-case-diagram.md"           # UML use cases, pt-BR actor and case labels (FIAP)
+
+  # Quotes, verbatim, the pt-BR disclaimer the UI renders. ADR 0005 makes displaying that exact
+  # sentence mandatory, and `apps/web/src/components/productivity-score-card.tsx` is what prints
+  # it. Translating the quotation would misdescribe the product.
+  "docs/engineering/architecture.md"
+
+  # --- 8. Declared gap: NOT an exemption. It names the change that closes it. ---
+  # Legacy Azure infrastructure-as-code. ADR 0034 migrated NORA to a self-hosted Proxmox VM and
+  # `infra/bicep/` describes infrastructure that is being torn down, so the pt-BR in it is
+  # translated by nobody: the directory is deleted when the decommission finishes
+  # (docs/operations/azure-decommission.md). Remove this entry with the directory.
+  "infra/bicep/"
 )
 
 # ---------------------------------------------------------------------------

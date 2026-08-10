@@ -26,7 +26,7 @@ the `.sql` ones run as the superuser `${POSTGRES_ADMIN_USER}` connected to `nora
 
 ```bash
 docker compose logs postgres | grep -F 'NORA initdb'
-# ou, direto no banco:
+# or, straight against the database:
 docker compose exec -T postgres psql -U nora_admin -d nora \
   -c "\du nora_app" -c "\dx"
 ```
@@ -40,7 +40,7 @@ The scripts were written to be **idempotent**, so the way forward is to apply th
 by hand. Do not recreate the volume just to "run the init" — that erases the database.
 
 ```bash
-# do host, na pasta infra/proxmox:
+# from the host, in the infra/proxmox folder:
 docker compose exec -T postgres \
   psql -v ON_ERROR_STOP=1 -U nora_admin -d nora < postgres/init/01-roles-and-db.sql
 ```
@@ -83,8 +83,8 @@ And replicate the same values in the `.env` (`DATASOURCE_PASSWORD` via
 The source of truth for the semantics of the roles is
 [`services/api/src/main/resources/db/operational/R001__provision_app_roles.sql`](../../../../services/api/src/main/resources/db/operational/R001__provision_app_roles.sql)
 (ADR 0026 / 0028). `01-roles-and-db.sql` is its adaptation for the initdb moment,
-where no table exists yet — the section "Diferenças em relação ao
-R001" in the script's header lists item by item what changes and why. Did R001 change?
+where no table exists yet — the section "Differences from R001"
+in the script's header lists item by item what changes and why. Did R001 change?
 Re-evaluate the two files together.
 
 ## Starting over from scratch (destructive)
