@@ -84,6 +84,10 @@ OPTIONS
                        Default: all, in dependency order.
   --tag <tag>          Image tag to roll out (e.g.: sha-a1b2c3d). Applies to the
                        selected application services: ${APP_SERVICES[*]}.
+                       Without --service, a service that has no image at that tag is
+                       SKIPPED and stays where it is: images are published per service
+                       on path filters, so a sha- tag exists only for the services that
+                       commit touched. With --service, a missing image is an error.
   --if-changed         Only deploys if the tag's remote digest on GHCR differs from the
                        last digest recorded in the state. This is the mode used by the
                        systemd timer (nora-deploy.timer) — exits 0 doing nothing when unchanged.
@@ -155,8 +159,12 @@ done
 umask 077
 
 # Validation of the requested services
+# TAG_IS_GLOBAL: --tag was given without --service, so it applies to every application
+# service at once. That distinction decides what a missing image means -- see deploy_service.
+TAG_IS_GLOBAL=0
 if [ "${#SELECTED[@]}" -eq 0 ]; then
   SELECTED=("${ALL_SERVICES[@]}")
+  [ -n "$TAG" ] && TAG_IS_GLOBAL=1
 else
   for s in "${SELECTED[@]}"; do
     contains "$s" "${ALL_SERVICES[@]}" || die "unknown service: '$s'. Valid: ${ALL_SERVICES[*]}"
@@ -518,6 +526,22 @@ deploy_service() {  # <service> -> 0 ok, 1 failed (after a rollback attempt)
     prev_tag=""
     new_tag=""
     log "  image pinned in compose (no managed tag)"
+  fi
+
+  # A GLOBAL --tag names a commit, not an image set. build-images.yml publishes PER SERVICE on
+  # path filters, so `sha-abc1234` exists only for the services that commit touched -- which is
+  # usually one or two of the four. Rolling everything to one SHA therefore fails for every
+  # service whose sources did not change, and reports a broken deploy when nothing is broken.
+  #
+  # So: with a global tag, a service with no image at that tag is SKIPPED and left running on
+  # what it has. With `--service X --tag Y`, the tag was aimed at X deliberately and a missing
+  # image is still an error -- that is the case where silence would hide a typo.
+  if [ -n "$tagvar" ] && [ "$TAG_IS_GLOBAL" -eq 1 ] && [ "$new_tag" != "$prev_tag" ]; then
+    if ! docker manifest inspect "$(image_ref_for "$svc" "$new_tag")" >/dev/null 2>&1; then
+      log "  skipping $svc: no image published at '$new_tag' (its sources did not change in that"
+      log "  commit). It stays on '${prev_tag:-<none>}'. Use --service $svc --tag <t> to force one."
+      return 0
+    fi
   fi
 
   if [ "$DO_PULL" -eq 1 ]; then
