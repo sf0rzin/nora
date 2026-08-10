@@ -51,9 +51,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * scoping predicates can refuse. That is what makes these assertions a test of the filter instead
  * of a test of the authorization gate — and it is why the intruder needs no policy granted to it.
  *
- * <p>Refusals are 404, never 403, matching what {@code MeetingFlowIntegrationTest} and
- * {@code PrivacyFlowIntegrationTest} prove for their aggregates: a 403 would confirm that the
- * session id exists somewhere else.
+ * <p>Refusals are 404, never 403, matching what {@code MeetingFlowIntegrationTest} and {@code
+ * PrivacyFlowIntegrationTest} prove for their aggregates: a 403 would confirm that the session id
+ * exists somewhere else.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")

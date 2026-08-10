@@ -54,8 +54,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * and the test would then pass with the scoping removed entirely.
  *
  * <p>The IAM user roster is exercised through the invitations, which is the tenant's member-
- * management surface — there is no {@code GET /iam/users} endpoint. The other user listing,
- * {@code GET /iam/groups/{id}/members}, is proven in {@code IamIsolationIntegrationTest}.
+ * management surface — there is no {@code GET /iam/users} endpoint. The other user listing, {@code
+ * GET /iam/groups/{id}/members}, is proven in {@code IamIsolationIntegrationTest}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")

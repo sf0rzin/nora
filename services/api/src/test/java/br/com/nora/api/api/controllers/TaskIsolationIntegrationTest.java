@@ -67,9 +67,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * would pass even with the tenant filter deleted. Both intruders here are therefore fully entitled
  * INSIDE their own tenant: the Root of tenant B (whose bypass in {@code AuthorizationService}
  * short-circuits the evaluator entirely) and a non-Root member of B holding {@code task:*} over
- * {@code nora:tenant/{B}:task/*}. The ARN the interceptor checks is built from
- * {@code principal.tenantId()}, so it always lands in the caller's own scope and always matches —
- * leaving the {@code tenant_id} predicate as the only thing that can refuse.
+ * {@code nora:tenant/{B}:task/*}. The ARN the interceptor checks is built from {@code
+ * principal.tenantId()}, so it always lands in the caller's own scope and always matches — leaving
+ * the {@code tenant_id} predicate as the only thing that can refuse.
  *
  * <p>The refusal is 404, not 403: a 403 would confirm that the task id exists in some other tenant.
  * Same convention {@code MeetingFlowIntegrationTest} and {@code PrivacyFlowIntegrationTest} prove

@@ -47,11 +47,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  *
  * <p>The intruder is the Root of tenant B. That is deliberate: since #407 authorization is
  * deny-by-default, so a principal with no policies is refused before tenant scoping is ever
- * consulted and the test would pass even with the tenant filter deleted. Root short-circuits
- * {@code AuthorizationService.isAllowed} before the evaluator runs, so every IAM action is
- * permitted to it — inside its own tenant. And the ARN the interceptor authorizes against is
- * {@code nora:tenant/{caller}:iam/*}, always built from the caller's own tenant claim, so the gate
- * is satisfied no matter which resource id the path carries. Whatever refuses these calls is the
+ * consulted and the test would pass even with the tenant filter deleted. Root short-circuits {@code
+ * AuthorizationService.isAllowed} before the evaluator runs, so every IAM action is permitted to it
+ * — inside its own tenant. And the ARN the interceptor authorizes against is {@code
+ * nora:tenant/{caller}:iam/*}, always built from the caller's own tenant claim, so the gate is
+ * satisfied no matter which resource id the path carries. Whatever refuses these calls is the
  * tenant_id predicate and nothing else.
  *
  * <p>Reads and single-resource mutations answer 404, never 403 — a 403 would confirm that the group
