@@ -10,7 +10,7 @@ const SERVICES: ServiceKey[] = ["chat", "analysis", "multimodal"];
 
 type Notice = { kind: "ok" | "err"; text: string } | null;
 
-export function ModelosClient({
+export function ModelsClient({
   initialModels,
   initialBindings,
 }: {

@@ -41,7 +41,7 @@ public class IamException extends RuntimeException {
      * offending handler is named in the log, never in the response.
      */
     public static IamException authorizationNotDeclared() {
-        return new IamException("IAM_AUTHORIZATION_NOT_DECLARED", "Acao nao permitida.");
+        return new IamException("IAM_AUTHORIZATION_NOT_DECLARED", "Action not allowed.");
     }
 
     /**

@@ -45,7 +45,7 @@ export async function bindServiceAction(
   try {
     const operador = await operadorAutorizado();
     await bindService(service, modelId, enabled, operador);
-    revalidatePath("/modelos");
+    revalidatePath("/models");
     return { ok: true };
   } catch (e) {
     return fail(e);
@@ -56,7 +56,7 @@ export async function removeModelAction(id: string): Promise<ActionResult> {
   try {
     const operador = await operadorAutorizado();
     await removeModel(id, operador);
-    revalidatePath("/modelos");
+    revalidatePath("/models");
     return { ok: true };
   } catch (e) {
     return fail(e);
@@ -67,7 +67,7 @@ export async function addModelAction(input: NewModelInput): Promise<ActionResult
   try {
     const operador = await operadorAutorizado();
     await createModel(input, operador);
-    revalidatePath("/modelos");
+    revalidatePath("/models");
     return { ok: true };
   } catch (e) {
     return fail(e);

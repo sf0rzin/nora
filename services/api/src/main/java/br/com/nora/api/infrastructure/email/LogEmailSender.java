@@ -46,8 +46,8 @@ public class LogEmailSender implements EmailSender {
     public void sendSignupAttemptOnExistingAccount(
             String toEmail, String displayName, String signInUrl) {
         LOG.info(
-                "[email/dev] signup-attempt-on-existing-account -> to={} name={} (setar"
-                        + " RESEND_API_KEY para envio real)",
+                "[email/dev] signup-attempt-on-existing-account -> to={} name={} (set"
+                        + " RESEND_API_KEY for real delivery)",
                 toEmail,
                 displayName);
     }

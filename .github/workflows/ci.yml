@@ -396,6 +396,23 @@ jobs:
           sys.exit(0 if ok else 1)
           PY
 
+      # What makes this job's NAME true. Every relative markdown link in the repo must
+      # resolve; a rename that leaves a dangling link now fails the PR instead of shipping
+      # a 404 into the docs.
+      - name: Relative markdown links
+        run: bash scripts/check-doc-links.sh
+
+  # Always runs (no path filter): the language gate has to see a PR that touches ONE file
+  # as much as one that touches a hundred. It is a single pass of grep over the tracked
+  # files, so it costs seconds.
+  language:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: No Portuguese outside the declared allowlist
+        run: bash scripts/check-language.sh
+
   # ┌──────────────────────────────────────────────────────────────────────────────────┐
   # │ THIS JOB'S NAME IS A CONTRACT — DO NOT RENAME IT.                                │
   # └──────────────────────────────────────────────────────────────────────────────────┘
@@ -536,7 +553,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, api, worker, web, desktop-sidecar, desktop-rust, docs-link-check, infra]
+    needs: [changes, api, worker, web, desktop-sidecar, desktop-rust, docs-link-check, language, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

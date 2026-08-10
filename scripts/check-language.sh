@@ -23,6 +23,9 @@ cd "$(git rev-parse --show-toplevel)"
 # repo-relative path. Every entry states why it is here.
 # ---------------------------------------------------------------------------
 ALLOWED=(
+  # --- 0. The detector itself ---
+  "scripts/check-language.sh"                   # its own pattern list is Portuguese by construction
+
   # --- 1. pt-BR strings rendered to the end user (the product UI is pt-BR) ---
   "apps/web/src/lib/strings.ts"                 # locale module: the pt-BR UI copy lifted out of components
   "apps/web/src/app/(app)/chat/"                # inline pt-BR UI copy not lifted into strings.ts yet
@@ -85,25 +88,35 @@ ALLOWED=(
   "services/nlp-worker/src/nora_nlp/services/stub_analyzer.py"      # pt-BR stub analysis output (offline mode)
   "services/nlp-worker/src/nora_nlp/services/stub_live_analyzer.py" # pt-BR stub live highlights (offline mode)
   "services/nlp-worker/src/nora_nlp/services/stub_split_analyzer.py" # pt-BR stub split output (offline mode)
-  "services/nlp-worker/CONTEXT.md"                                  # documents the literal pt-BR section headers the prompt makes the LLM emit
+  # Quotes, verbatim, the pt-BR markdown headings the (untouchable) prompt template makes
+  # the model emit. Consumers match those exact strings, so they are data, not prose.
+  "services/nlp-worker/CONTEXT.md"
   "packages/nlp-baseline/src/nlp_baseline/stopwords.py"             # pt-BR stopword list (ADR 0010)
   "packages/nlp-baseline/src/nlp_baseline/tokenize.py"              # pt-BR tokenizer rules cite pt-BR examples as data
   "packages/nlp-baseline/src/nlp_baseline/tfidf.py"                 # docstring cites a pt-BR accented character as a worked example
   "apps/desktop/src-tauri/src/stt_local.rs"                         # pt-BR Whisper hallucination blocklist (silence artefacts)
 
-  # --- 5. Declared gaps: NOT exemptions. Each one names the change that closes it. ---
-  # Applied Flyway migrations are checksum-immutable: editing an applied file makes
-  # `flyway:validate` fail against every existing database. The pt-BR COMMENT ON / seed
-  # text here can only be replaced by a NEW forward migration, not by editing these.
+  # --- 5. Applied Flyway migrations: permanently exempt, not a gap ---
+  # Flyway checksums the ENTIRE migration body, comments included. Editing an
+  # already-applied migration changes its checksum, and every database that ran the old
+  # version then fails `validate` on startup and refuses to boot until someone runs
+  # `flyway repair` against it. A migration that has run is a historical record, not a
+  # document to improve — the same immutability as an accepted ADR. The bar for touching
+  # one is "it aborts a deployment" (see the !! CHECKSUM WARNING !! block in V027), never
+  # "it is written in the wrong language".
   "services/api/src/main/resources/db/migration/"
   "services/api/src/main/resources/db/platform/"
+
+  # --- 6. Declared gaps: NOT exemptions. Each one names the change that closes it. ---
   # Documentation PROSE (including the ~76 pt-BR summary/description lines in
   # docs/api/openapi.yaml) is translated by the separate documentation pass that follows
   # this one. THIS pass only renamed doc files, fixed the references and left the prose.
   "docs/"
   # infra/proxmox + the legacy infra/bicep were outside the declared scope of this pass.
   "infra/"
-  "GOAL.md"          # PO-authored brief, kept verbatim on purpose
+  # Superseded run brief (deadline 2026-06-15). The documentation pass DELETES it; this
+  # entry exists only so this branch is green, and must be removed with the file.
+  "GOAL.md"
   "README.md"        # pt-BR fragments, closed by the documentation pass
   "SECURITY.md"      # pt-BR fragments, closed by the documentation pass
 )

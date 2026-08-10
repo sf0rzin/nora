@@ -68,11 +68,16 @@ Complete pipeline:
 ```
 
 ### `summary` field in Markdown
+
+The headings below are quoted VERBATIM: the prompt template makes the model emit them in
+pt-BR, and any consumer that parses the summary matches on these exact strings. They are
+data, not prose — changing them here would only make this document wrong.
+
 - Objective paragraph.
-- `## Decisões` — list.
-- `## Próximos Passos` — list with `-`.
+- `## Decisões` — decisions, as a list.
+- `## Próximos Passos` — next steps, as a `-` list.
 - `## Observações` — relevant notes.
-- Bold `**texto**` for highlights.
+- Bold (`**...**`) for highlights.
 
 ### `participants` field (US13)
 - `name` — the participant's name.
