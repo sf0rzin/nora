@@ -24,7 +24,7 @@ In this order:
 
 These beat any other preference. Violating one means stopping and saying so, not proceeding quietly.
 
-- **Tenant isolation.** `tenant_id` on every tenant-owned table, filtered in the backend. Row-level security exists in the migrations but is not enforced at runtime, so the application-layer predicate is currently the only control — treat it accordingly.
+- **Tenant isolation.** `tenant_id` on every tenant-owned table, filtered in the backend. Row-level security is enforced on the deployed stack and **off by default in the repository**, so in local development the application-layer predicate is still the only control — write as if it were the only one everywhere. Identity and IAM tables are exempt from RLS by design (ADR 0028).
 - **PII redaction.** No raw PII reaches the LLM. The shield in the worker is the last gate (ADR 0012).
 - **Strict JSON Schema** on LLM output (ADR 0003).
 - **Provider-agnostic LLM** (ADR 0004).
