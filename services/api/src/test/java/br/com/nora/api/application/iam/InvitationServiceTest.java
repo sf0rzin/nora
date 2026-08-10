@@ -603,6 +603,12 @@ class InvitationServiceTest {
         }
 
         @Override
+        public void sendSignupAttemptOnExistingAccount(
+                String toEmail, String displayName, String signInUrl) {
+            // InvitationService does not use the signup notice; no-op here.
+        }
+
+        @Override
         public void sendInvitation(
                 String toEmail,
                 String tenantName,

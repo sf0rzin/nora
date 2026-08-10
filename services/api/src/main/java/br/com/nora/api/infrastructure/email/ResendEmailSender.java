@@ -76,6 +76,26 @@ public class ResendEmailSender implements EmailSender {
     }
 
     @Override
+    public void sendSignupAttemptOnExistingAccount(
+            String toEmail, String displayName, String signInUrl) {
+        String btnStyle =
+                "display:inline-block;padding:10px 20px;background:#111;"
+                        + "color:#fff;text-decoration:none;border-radius:6px;";
+        send(
+                toEmail,
+                "Tentativa de cadastro na NORA",
+                """
+                <p>Ola %s,</p>
+                <p>Alguem tentou criar uma conta NORA com este e-mail, que ja tem uma conta.</p>
+                <p>Nada mudou: sua conta e sua senha continuam como estavam.</p>
+                <p><a href="%s" style="%s">Entrar na NORA</a></p>
+                <p>Se foi voce, e so entrar. Se nao lembra da senha, use "esqueci minha senha"
+                na tela de login.</p>
+                """
+                        .formatted(escape(displayName), signInUrl, btnStyle));
+    }
+
+    @Override
     public void sendInvitation(
             String toEmail,
             String tenantName,

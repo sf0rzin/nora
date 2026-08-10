@@ -514,7 +514,7 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
               <polyline points="20 6 9 17 4 12" />
             </svg>
           </div>
-          <h3>Workspace criado.</h3>
+          <h3>Confirme seu e-mail.</h3>
           <p>
             Mandamos um e-mail pra{" "}
             <strong style={{ color: "var(--ink)", fontWeight: 500 }}>{data.email}</strong>. Confirma

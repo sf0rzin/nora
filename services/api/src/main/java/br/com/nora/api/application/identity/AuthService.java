@@ -2,6 +2,7 @@ package br.com.nora.api.application.identity;
 
 import br.com.nora.api.application.ports.AuditPort;
 import br.com.nora.api.application.ports.Clock;
+import br.com.nora.api.application.ports.EmailDispatcher;
 import br.com.nora.api.application.ports.EmailSender;
 import br.com.nora.api.application.ports.JwtIssuer;
 import br.com.nora.api.application.ports.OneTimeTokenRepository;
@@ -23,6 +24,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,9 +79,22 @@ public class AuthService {
     private final SecureTokenGenerator tokenGenerator;
     private final JwtIssuer jwtIssuer;
     private final EmailSender emailSender;
+    private final EmailDispatcher emailDispatcher;
     private final AuditPort audit;
     private final Clock clock;
     private final AuthSettings settings;
+
+    /**
+     * Stand-in operand for the password comparison performed on a login whose address has no
+     * account, so that both outcomes pay one full hashing round instead of the comparison being
+     * skipped whenever there is nothing stored to compare against.
+     *
+     * <p>Produced by the configured {@link PasswordHasher} at construction time, from a value drawn
+     * at random for this instance: that is what makes it a well-formed digest of the deployed cost
+     * factor without hard-coding one. It is never a usable credential — the comparison result is
+     * discarded and the branch always ends in {@link AuthException.InvalidCredentials}.
+     */
+    private final String absentAccountPasswordHash;
 
     public AuthService(
             TenantRepository tenantRepository,
@@ -90,6 +105,7 @@ public class AuthService {
             SecureTokenGenerator tokenGenerator,
             JwtIssuer jwtIssuer,
             EmailSender emailSender,
+            EmailDispatcher emailDispatcher,
             AuditPort audit,
             Clock clock,
             AuthSettings settings) {
@@ -101,9 +117,11 @@ public class AuthService {
         this.tokenGenerator = tokenGenerator;
         this.jwtIssuer = jwtIssuer;
         this.emailSender = emailSender;
+        this.emailDispatcher = emailDispatcher;
         this.audit = audit;
         this.clock = clock;
         this.settings = settings;
+        this.absentAccountPasswordHash = passwordHasher.hash(UUID.randomUUID().toString());
     }
 
     // ----- US01: signup -----
@@ -124,6 +142,10 @@ public class AuthService {
      * <p>For convenience in dev/CI, returns the raw token in {@code emailVerificationDevToken} only
      * when {@link AuthSettings#exposeDevTokens()} is {@code true}. In production that field comes
      * back null.
+     *
+     * <p>An address that already has an account takes {@link #signupNoticeForExistingAccount}
+     * instead of failing: the public endpoint is not a place to answer questions about who is
+     * registered.
      */
     @Transactional
     public SignupResult signup(SignupCommand cmd) {
@@ -134,12 +156,10 @@ public class AuthService {
                         ? email.value().split("@")[0]
                         : cmd.displayName().trim();
 
-        userRepository
-                .findByEmail(email)
-                .ifPresent(
-                        u -> {
-                            throw new AuthException.EmailAlreadyTaken();
-                        });
+        Optional<User> existing = userRepository.findByEmail(email);
+        if (existing.isPresent()) {
+            return signupNoticeForExistingAccount(existing.get(), cmd);
+        }
 
         Instant now = clock.now();
         Tenant tenant = createTenant(displayName, cmd.companyName(), now);
@@ -171,7 +191,9 @@ public class AuthService {
                         Purpose.EMAIL_VERIFICATION));
 
         String link = settings.publicBaseUrl() + "/auth/verify-email?token=" + token.rawToken();
-        emailSender.sendEmailVerification(email.value(), displayName, link);
+        String toAddress = email.value();
+        emailDispatcher.dispatchAfterCommit(
+                () -> emailSender.sendEmailVerification(toAddress, displayName, link));
 
         Map<String, Object> auditPayload = new HashMap<>();
         auditPayload.put("email", email.value());
@@ -197,6 +219,48 @@ public class AuthService {
                 savedUser.id(),
                 savedUser.tenantId(),
                 settings.exposeDevTokens() ? token.rawToken() : null);
+    }
+
+    /**
+     * Signup aimed at an address that already has an account.
+     *
+     * <p>The public endpoint has no business confirming who is registered, so this branch is built
+     * to be indistinguishable from the one that really creates: same result shape, same hashing
+     * cost, same e-mail handed to the same dispatcher. Nothing is written — no tenant, no user, no
+     * token — and the ids that come back are freshly drawn values that match nothing in the
+     * database. The person who owns the address is told what happened, in their own mailbox, which
+     * is the one place that fact belongs.
+     *
+     * <p>The authenticated invitation flow keeps {@code EMAIL_ALREADY_TAKEN} (see {@code
+     * InvitationService}): there the caller already holds a credential for the workspace and is
+     * entitled to know its membership.
+     */
+    private SignupResult signupNoticeForExistingAccount(User existing, SignupCommand cmd) {
+        // Hashed and thrown away: the cost of the request must not depend on the branch it took.
+        passwordHasher.hash(cmd.password());
+        // Generated and never persisted, so the response carries a field of the same shape.
+        GeneratedToken decoyToken = tokenGenerator.generate();
+
+        String toAddress = existing.email().value();
+        String ownerName = existing.displayName();
+        String signInUrl = settings.publicBaseUrl() + "/auth/login";
+        emailDispatcher.dispatchAfterCommit(
+                () ->
+                        emailSender.sendSignupAttemptOnExistingAccount(
+                                toAddress, ownerName, signInUrl));
+
+        audit.record(
+                existing.tenantId(),
+                existing.id(),
+                "auth.user.signup.existing_account_notified",
+                "USER",
+                existing.id(),
+                Map.of("email", toAddress, "flow", "signup-personal"));
+
+        return new SignupResult(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                settings.exposeDevTokens() ? decoyToken.rawToken() : null);
     }
 
     private Tenant createTenant(String displayName, String companyName, Instant now) {
@@ -266,6 +330,11 @@ public class AuthService {
      *
      * <p>The access token is an HS256 JWT (short lived, 15min default) with minimal claims. The
      * refresh is a high-entropy opaque token (256 bits), persisted as a SHA-256 hash.
+     *
+     * <p>Every rejection here costs the same: an address with no account still goes through one
+     * comparison, against {@link #absentAccountPasswordHash}, before the same failure is raised.
+     * BCrypt at the configured cost factor is by far the heaviest step of a login, so skipping it
+     * on that branch made the answer readable from the outside no matter how uniform the body was.
      */
     @Transactional
     public LoginResult login(LoginCommand cmd) {
@@ -275,10 +344,12 @@ public class AuthService {
         } catch (IllegalArgumentException ex) {
             throw new AuthException.InvalidCredentials();
         }
-        User user =
-                userRepository
-                        .findByEmail(email)
-                        .orElseThrow(AuthException.InvalidCredentials::new);
+        Optional<User> maybeUser = userRepository.findByEmail(email);
+        if (maybeUser.isEmpty()) {
+            passwordHasher.matches(cmd.password(), absentAccountPasswordHash);
+            throw new AuthException.InvalidCredentials();
+        }
+        User user = maybeUser.get();
 
         if (!passwordHasher.matches(cmd.password(), user.passwordHash())) {
             throw new AuthException.InvalidCredentials();
@@ -602,8 +673,15 @@ public class AuthService {
 
     /**
      * Resends the verification e-mail (login screen, when login fails with EMAIL_NOT_VERIFIED).
-     * Silent like the reset: a non-existent or already verified e-mail is not distinguishable in
-     * the response (anti-enumeration).
+     *
+     * <p>Three situations reach this method — no such address, address already verified, address
+     * pending verification — and all three return the same result. Two things keep them that way
+     * beyond the body: the token is generated on every branch, so the CSPRNG and digest cost is not
+     * a branch marker, and the message leaves through {@link EmailDispatcher} after the commit, so
+     * the provider round trip is never part of the time to respond.
+     *
+     * <p>Issuing a token retires whatever was outstanding for the user, so only the most recent
+     * link works; what is stored is the digest, never the token itself.
      */
     @Transactional
     public RequestPasswordResetResult resendVerificationEmail(String rawEmail) {
@@ -613,7 +691,10 @@ public class AuthService {
         } catch (IllegalArgumentException ex) {
             return new RequestPasswordResetResult(null);
         }
-        var maybeUser = userRepository.findByEmail(email);
+        // Generated before the branch: every caller pays for it, whatever the address turns out
+        // to be.
+        GeneratedToken token = tokenGenerator.generate();
+        Optional<User> maybeUser = userRepository.findByEmail(email);
         if (maybeUser.isEmpty() || maybeUser.get().isEmailVerified()) {
             return new RequestPasswordResetResult(null);
         }
@@ -622,7 +703,6 @@ public class AuthService {
         // Only the last generated token is valid (same pattern as the password reset).
         tokenRepository.invalidateActiveForUser(user.id(), Purpose.EMAIL_VERIFICATION, now);
 
-        GeneratedToken token = tokenGenerator.generate();
         tokenRepository.save(
                 new OneTimeToken(
                         UUID.randomUUID(),
@@ -635,7 +715,10 @@ public class AuthService {
                         Purpose.EMAIL_VERIFICATION));
 
         String link = settings.publicBaseUrl() + "/auth/verify-email?token=" + token.rawToken();
-        emailSender.sendEmailVerification(email.value(), user.displayName(), link);
+        String toAddress = email.value();
+        String displayName = user.displayName();
+        emailDispatcher.dispatchAfterCommit(
+                () -> emailSender.sendEmailVerification(toAddress, displayName, link));
         audit.record(
                 user.tenantId(),
                 user.id(),
@@ -677,9 +760,12 @@ public class AuthService {
     public record RequestPasswordResetResult(String devToken) {}
 
     /**
-     * US04 step 1: generates the reset token and fires the e-mail. For security, unregistered
-     * e-mails go through the same flow silently (same latency, without revealing the account's
-     * existence).
+     * US04 step 1: generates the reset token and fires the e-mail.
+     *
+     * <p>An address with no account gets the same result as one with an account, and is built to
+     * cost the same: the token is generated before the branch and the message leaves through {@link
+     * EmailDispatcher} after the commit, so neither the CSPRNG work nor the provider round trip
+     * belongs to only one of the two paths.
      */
     @Transactional
     public RequestPasswordResetResult requestPasswordReset(RequestPasswordResetCommand cmd) {
@@ -689,7 +775,10 @@ public class AuthService {
         } catch (IllegalArgumentException ex) {
             return new RequestPasswordResetResult(null);
         }
-        var maybeUser = userRepository.findByEmail(email);
+        // Generated before the branch: every caller pays for it, whatever the address turns out
+        // to be.
+        GeneratedToken token = tokenGenerator.generate();
+        Optional<User> maybeUser = userRepository.findByEmail(email);
         if (maybeUser.isEmpty()) {
             // Indistinguishable response so as not to leak which e-mails exist in the system.
             return new RequestPasswordResetResult(null);
@@ -700,7 +789,6 @@ public class AuthService {
         // Invalidates previous tokens: only the last generated one is valid.
         tokenRepository.invalidateActiveForUser(user.id(), Purpose.PASSWORD_RESET, now);
 
-        GeneratedToken token = tokenGenerator.generate();
         tokenRepository.save(
                 new OneTimeToken(
                         UUID.randomUUID(),
@@ -714,7 +802,10 @@ public class AuthService {
 
         String link =
                 settings.publicBaseUrl() + "/auth/password/reset/confirm?token=" + token.rawToken();
-        emailSender.sendPasswordReset(email.value(), user.displayName(), link);
+        String toAddress = email.value();
+        String displayName = user.displayName();
+        emailDispatcher.dispatchAfterCommit(
+                () -> emailSender.sendPasswordReset(toAddress, displayName, link));
 
         audit.record(
                 user.tenantId(),

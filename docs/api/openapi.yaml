@@ -67,6 +67,12 @@ paths:
         Publico. Rate-limited por IP (`429 RATE_LIMITED`, header `Retry-After`). Cria o usuario e o
         tenant associado. Em ambientes nao-produtivos o token de verificacao volta em
         `emailVerificationDevToken` para facilitar testes.
+
+        O endpoint responde `201` com o mesmo formato de corpo para qualquer e-mail, inclusive um
+        que ja tenha conta: por ser publico e nao autenticado, ele nao confirma quem esta
+        cadastrado. Nesse caso nada e criado e o dono do endereco recebe um aviso por e-mail. O
+        `409 EMAIL_ALREADY_TAKEN` permanece apenas no aceite de convite (`/iam/invites/{id}/accept`),
+        onde quem chama ja tem credencial do workspace.
       requestBody:
         required: true
         content:
@@ -74,12 +80,11 @@ paths:
             schema: { $ref: '#/components/schemas/SignupRequest' }
       responses:
         '201':
-          description: Conta criada (pendente de verificacao)
+          description: Requisicao aceita (verificacao de e-mail pendente)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SignupResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
-        '409': { $ref: '#/components/responses/Conflict' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
   /auth/verify-email:

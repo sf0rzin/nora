@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -240,6 +243,70 @@ class SettingsFlowIntegrationTest {
         assertThat(unknown.get("verificationDevToken").isNull()).isTrue();
     }
 
+    /**
+     * Issue #399. Unknown address, already verified address and pending address must be one single
+     * answer over the wire: same status, same field set, same message. The dev token is the only
+     * value that differs, and only because {@code expose-dev-tokens} is on in the test profile — in
+     * production it is off and every branch returns the same body byte for byte.
+     */
+    @Test
+    void resendVerification_respondeIgualParaDesconhecidoVerificadoENaoVerificado()
+            throws Exception {
+        postJson(
+                        "/auth/signup",
+                        Map.of(
+                                "email",
+                                "resend-p@nora.dev",
+                                "password",
+                                "SenhaForte123",
+                                "displayName",
+                                "Pendente"),
+                        null)
+                .read(HttpStatus.CREATED);
+        signupAndLogin("resend-ok@nora.dev", "SenhaForte123", "Verificada");
+
+        ResponseEntity<String> unknown =
+                postJsonRaw(
+                        "/auth/verify-email/resend", Map.of("email", "resend-x@nora.dev"), null);
+        ResponseEntity<String> verified =
+                postJsonRaw(
+                        "/auth/verify-email/resend", Map.of("email", "resend-ok@nora.dev"), null);
+        ResponseEntity<String> pending =
+                postJsonRaw(
+                        "/auth/verify-email/resend", Map.of("email", "resend-p@nora.dev"), null);
+
+        assertThat(unknown.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(verified.getStatusCode()).isEqualTo(unknown.getStatusCode());
+        assertThat(pending.getStatusCode()).isEqualTo(unknown.getStatusCode());
+
+        JsonNode unknownBody = mapper.readTree(unknown.getBody());
+        JsonNode verifiedBody = mapper.readTree(verified.getBody());
+        JsonNode pendingBody = mapper.readTree(pending.getBody());
+        assertThat(fieldNames(verifiedBody)).isEqualTo(fieldNames(unknownBody));
+        assertThat(fieldNames(pendingBody)).isEqualTo(fieldNames(unknownBody));
+        assertThat(verifiedBody.get("message").asText())
+                .isEqualTo(unknownBody.get("message").asText());
+        assertThat(pendingBody.get("message").asText())
+                .isEqualTo(unknownBody.get("message").asText());
+    }
+
+    /**
+     * The resend payload is bounded like its siblings. It matters here more than on a form field:
+     * the value is used as a rate-limiter bucket key, and the limiter holds its keys in memory for
+     * the length of the window, so what a caller can put there has to be bounded before it lands.
+     */
+    @Test
+    void resendVerification_rejeitaEmailMalformadoOuLongoDemais() throws Exception {
+        ResponseEntity<String> malformed =
+                postJsonRaw("/auth/verify-email/resend", Map.of("email", "nao-e-email"), null);
+        assertThat(malformed.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        String tooLong = "a".repeat(250) + "@nora.dev";
+        ResponseEntity<String> oversized =
+                postJsonRaw("/auth/verify-email/resend", Map.of("email", tooLong), null);
+        assertThat(oversized.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
     @Test
     void deleteAccount_exigeSenha_ePurgaContaEWorkspace() throws Exception {
         Session s = signupAndLogin("settings-del@nora.dev", "SenhaForte123", "Del");
@@ -310,6 +377,14 @@ class SettingsFlowIntegrationTest {
     /* ---------- helpers ---------- */
 
     private record Session(String access, String refresh) {}
+
+    /** Sorted field names of a JSON object — compares body SHAPE without comparing values. */
+    private static List<String> fieldNames(JsonNode node) {
+        List<String> names = new ArrayList<>();
+        node.fieldNames().forEachRemaining(names::add);
+        Collections.sort(names);
+        return names;
+    }
 
     private Session signupAndLogin(String email, String pwd, String name) throws Exception {
         JsonNode signup =

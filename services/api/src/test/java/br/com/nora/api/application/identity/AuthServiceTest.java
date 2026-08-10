@@ -12,6 +12,7 @@ import br.com.nora.api.application.identity.AuthService.RequestPasswordResetComm
 import br.com.nora.api.application.identity.AuthService.SignupCommand;
 import br.com.nora.api.application.identity.AuthService.SignupResult;
 import br.com.nora.api.application.ports.Clock;
+import br.com.nora.api.application.ports.EmailDispatcher;
 import br.com.nora.api.application.ports.EmailSender;
 import br.com.nora.api.application.ports.JwtIssuer;
 import br.com.nora.api.application.ports.OneTimeTokenRepository;
@@ -45,6 +46,7 @@ class AuthServiceTest {
 
     private FakeClock clock;
     private FakeEmailSender mail;
+    private PlainHasher hasher;
     private FakeTokenGenerator tokens;
     private InMemoryTenantRepo tenants;
     private InMemoryUserRepo users;
@@ -58,6 +60,7 @@ class AuthServiceTest {
     void setUp() {
         clock = new FakeClock(Instant.parse("2026-05-04T10:00:00Z"));
         mail = new FakeEmailSender();
+        hasher = new PlainHasher();
         tokens = new FakeTokenGenerator();
         tenants = new InMemoryTenantRepo();
         users = new InMemoryUserRepo();
@@ -71,10 +74,11 @@ class AuthServiceTest {
                         users,
                         tokenRepo,
                         refreshRepo,
-                        new PlainHasher(),
+                        hasher,
                         tokens,
                         jwts,
                         mail,
+                        new InlineEmailDispatcher(),
                         audit,
                         clock,
                         new AuthSettings(
@@ -99,14 +103,45 @@ class AuthServiceTest {
         assertThat(mail.lastVerifyLink).contains(result.emailVerificationDevToken());
     }
 
+    /**
+     * Replaces the old {@code signupRejectsDuplicateEmail}, which asserted that the second signup
+     * threw {@code EmailAlreadyTaken}. That behaviour was the defect: signup is public and
+     * unauthenticated, and a distinct outcome for a registered address answered, for any address
+     * submitted, a question the caller had not earned an answer to. The rejection now lives only in
+     * the authenticated invitation flow (covered by {@code InvitationServiceTest}); what has to
+     * hold here is that the second call looks like the first and changes nothing.
+     */
     @Test
-    void signupRejectsDuplicateEmail() {
-        service.signup(new SignupCommand("dup@nora.dev", "SenhaForte123", "X"));
-        assertThatThrownBy(
-                        () ->
-                                service.signup(
-                                        new SignupCommand("DUP@nora.dev", "SenhaForte123", "Y")))
-                .isInstanceOf(AuthException.EmailAlreadyTaken.class);
+    void signupOnExistingAddressLooksLikeAFreshSignupAndCreatesNothing() {
+        SignupResult first =
+                service.signup(new SignupCommand("dup@nora.dev", "SenhaForte123", "X"));
+
+        SignupResult second =
+                service.signup(new SignupCommand("DUP@nora.dev", "OutraSenha456", "Y"));
+
+        // Same shape as the path that really creates: ids and dev token all present.
+        assertThat(second.userId()).isNotNull().isNotEqualTo(first.userId());
+        assertThat(second.tenantId()).isNotNull().isNotEqualTo(first.tenantId());
+        assertThat(second.emailVerificationDevToken()).isNotBlank();
+
+        // Nothing was persisted: the returned ids match no row and the token verifies nothing.
+        assertThat(users.byId(second.userId())).isEmpty();
+        assertThat(tenants.byId(second.tenantId())).isEmpty();
+        assertThatThrownBy(() -> service.verifyEmail(second.emailVerificationDevToken()))
+                .isInstanceOf(AuthException.TokenInvalid.class);
+
+        // The owner of the address is the one who gets told, and the notice only points them at
+        // the sign-in page — it carries nothing that grants access.
+        assertThat(mail.lastSignupAttemptTo).isEqualTo("dup@nora.dev");
+        assertThat(mail.lastSignupAttemptSignInUrl).isEqualTo("http://localhost:3000/auth/login");
+
+        // And the account that already existed is untouched: the password sent on the second
+        // attempt does not log in, the original one does.
+        service.verifyEmail(first.emailVerificationDevToken());
+        assertThatThrownBy(() -> service.login(new LoginCommand("dup@nora.dev", "OutraSenha456")))
+                .isInstanceOf(AuthException.InvalidCredentials.class);
+        assertThat(service.login(new LoginCommand("dup@nora.dev", "SenhaForte123")).user().id())
+                .isEqualTo(first.userId());
     }
 
     @Test
@@ -132,6 +167,52 @@ class AuthServiceTest {
         clock.advance(Duration.ofDays(2));
         assertThatThrownBy(() -> service.verifyEmail(sr.emailVerificationDevToken()))
                 .isInstanceOf(AuthException.TokenInvalid.class);
+    }
+
+    /**
+     * Issue #399: only the most recently issued verification link may work. Without this, every
+     * resend left one more live link on the account, and each one is a credential that verifies the
+     * address on its own.
+     */
+    @Test
+    void resendingVerificationInvalidatesThePreviousToken() {
+        SignupResult sr = service.signup(new SignupCommand("rv@nora.dev", "SenhaForte123", "RV"));
+
+        var resent = service.resendVerificationEmail("rv@nora.dev");
+        assertThat(resent.devToken()).isNotBlank().isNotEqualTo(sr.emailVerificationDevToken());
+
+        // The link from the signup is dead the moment a new one is issued.
+        assertThatThrownBy(() -> service.verifyEmail(sr.emailVerificationDevToken()))
+                .isInstanceOf(AuthException.TokenInvalid.class);
+
+        service.verifyEmail(resent.devToken());
+        assertThat(users.byId(sr.userId()).orElseThrow().isEmailVerified()).isTrue();
+    }
+
+    /**
+     * Unknown, already verified and pending all come back the same. The dev token is the one field
+     * that differs, and only because {@code exposeDevTokens} is on in this fixture — production
+     * leaves it off and the whole result is identical.
+     */
+    @Test
+    void resendVerificationAnswersTheSameForEveryAccountState() {
+        SignupResult pending =
+                service.signup(new SignupCommand("rs-pend@nora.dev", "SenhaForte123", "P"));
+        SignupResult done =
+                service.signup(new SignupCommand("rs-done@nora.dev", "SenhaForte123", "D"));
+        service.verifyEmail(done.emailVerificationDevToken());
+        mail.lastVerifyTo = null;
+
+        assertThat(service.resendVerificationEmail("rs-ghost@nora.dev").devToken()).isNull();
+        assertThat(mail.lastVerifyTo).isNull();
+
+        assertThat(service.resendVerificationEmail("rs-done@nora.dev").devToken()).isNull();
+        assertThat(mail.lastVerifyTo).isNull();
+
+        assertThat(service.resendVerificationEmail("rs-pend@nora.dev").devToken())
+                .isNotBlank()
+                .isNotEqualTo(pending.emailVerificationDevToken());
+        assertThat(mail.lastVerifyTo).isEqualTo("rs-pend@nora.dev");
     }
 
     // ---------- US03 ----------
@@ -168,6 +249,31 @@ class AuthServiceTest {
     void loginUnknownEmailReturnsGenericError() {
         assertThatThrownBy(() -> service.login(new LoginCommand("nada@nora.dev", "SenhaForte123")))
                 .isInstanceOf(AuthException.InvalidCredentials.class);
+    }
+
+    /**
+     * The two rejected logins must run the same number of password comparisons. Asserting on the
+     * call count and not on elapsed time is deliberate: with BCrypt at the configured cost factor
+     * the comparison IS the cost of a login, so proving it happens on both branches proves they
+     * cost the same, and a wall-clock assertion would only add flakiness to CI.
+     */
+    @Test
+    void loginComparesPasswordEvenWhenTheAddressHasNoAccount() {
+        SignupResult sr = service.signup(new SignupCommand("cmp@nora.dev", "SenhaForte123", "CMP"));
+        service.verifyEmail(sr.emailVerificationDevToken());
+
+        hasher.matchCalls = 0;
+        assertThatThrownBy(() -> service.login(new LoginCommand("cmp@nora.dev", "errada123")))
+                .isInstanceOf(AuthException.InvalidCredentials.class);
+        int forRegistered = hasher.matchCalls;
+
+        hasher.matchCalls = 0;
+        assertThatThrownBy(() -> service.login(new LoginCommand("ghost@nora.dev", "errada123")))
+                .isInstanceOf(AuthException.InvalidCredentials.class);
+        int forUnknown = hasher.matchCalls;
+
+        assertThat(forRegistered).isEqualTo(1);
+        assertThat(forUnknown).isEqualTo(forRegistered);
     }
 
     @Test
@@ -469,6 +575,7 @@ class AuthServiceTest {
 
     static class FakeEmailSender implements EmailSender {
         String lastVerifyTo, lastVerifyLink, lastResetTo, lastResetLink;
+        String lastSignupAttemptTo, lastSignupAttemptSignInUrl;
 
         @Override
         public void sendEmailVerification(String to, String name, String link) {
@@ -480,6 +587,13 @@ class AuthServiceTest {
         public void sendPasswordReset(String to, String name, String link) {
             lastResetTo = to;
             lastResetLink = link;
+        }
+
+        @Override
+        public void sendSignupAttemptOnExistingAccount(
+                String toEmail, String displayName, String signInUrl) {
+            lastSignupAttemptTo = toEmail;
+            lastSignupAttemptSignInUrl = signInUrl;
         }
 
         @Override
@@ -523,7 +637,18 @@ class AuthServiceTest {
         }
     }
 
+    /** Runs the send inline, so a test can assert on it without a thread hop. */
+    static class InlineEmailDispatcher implements EmailDispatcher {
+        @Override
+        public void dispatchAfterCommit(Runnable send) {
+            send.run();
+        }
+    }
+
+    /** Counts {@code matches} calls so a test can check both login branches pay for one. */
     static class PlainHasher implements PasswordHasher {
+        int matchCalls;
+
         @Override
         public String hash(String raw) {
             return "h:" + raw;
@@ -531,6 +656,7 @@ class AuthServiceTest {
 
         @Override
         public boolean matches(String raw, String hash) {
+            matchCalls++;
             return hash.equals("h:" + raw);
         }
     }

@@ -43,6 +43,16 @@ public class LogEmailSender implements EmailSender {
     }
 
     @Override
+    public void sendSignupAttemptOnExistingAccount(
+            String toEmail, String displayName, String signInUrl) {
+        LOG.info(
+                "[email/dev] signup-attempt-on-existing-account -> to={} name={} (setar"
+                        + " RESEND_API_KEY para envio real)",
+                toEmail,
+                displayName);
+    }
+
+    @Override
     public void sendInvitation(
             String toEmail,
             String tenantName,
