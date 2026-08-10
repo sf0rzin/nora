@@ -364,6 +364,10 @@ class IntegrationFlowIntegrationTest {
                 public void sendPasswordReset(String to, String name, String link) {}
 
                 @Override
+                public void sendSignupAttemptOnExistingAccount(
+                        String to, String name, String signInUrl) {}
+
+                @Override
                 public void sendInvitation(
                         String to, String tenant, String invitedBy, String url, int days) {}
 
