@@ -10,7 +10,7 @@
  * Core nav (Enterprise — IAM, tenant context — stays out of here; it is gated
  * to Enterprise, per the Core/Enterprise boundary in the vision).
  *
- * Stratfy changes applied:
+ * Deliberate deviations from the default shell:
  *  - the sidebar logo is only the "Nora" wordmark (no soundwave);
  *  - "Integrações" leaves the main nav and becomes the "Conectores" category;
  *  - the "Sessões" block uses `.side-sec-label--tight` (label pinned close).
@@ -129,7 +129,7 @@ function SearchIcon() {
   );
 }
 
-/** "Nora" wordmark — no soundwave (Stratfy decision). DM Sans 500, -0.02em. */
+/** "Nora" wordmark — no soundwave, by design. DM Sans 500, -0.02em. */
 function NoraWordmark() {
   return (
     <span
