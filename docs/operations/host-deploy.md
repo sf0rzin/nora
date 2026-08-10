@@ -98,23 +98,33 @@ cd /opt/nora
 #    only the reconciliation loop stops.
 sudo systemctl stop nora-deploy.timer
 
-# 1. Move the untracked files across yourself. Git will not do it for you.
-sudo mv infra/proxmox/secrets.env.sops infra/host/secrets.env.sops   2>/dev/null || true
-sudo mv infra/proxmox/env.defaults      infra/host/env.defaults      2>/dev/null || true
-
-# 2. Now pull. --ff-only is deliberate: a local edit should stop you, not be merged.
+# 1. --ff-only refuses if a tracked file was edited by hand here. That is the point:
+#    find out what diverged and put it in the repository, do not merge over it.
+#    `git status --short` names it; `git diff` shows it.
+git status --short
 git pull --ff-only
+
+# 2. NOW move the untracked files, once infra/host/ exists. Git does not move untracked
+#    files, and this is the step whose omission makes every later deploy die on a
+#    missing secrets file.
+sudo mv infra/proxmox/secrets.env.sops infra/host/secrets.env.sops
+[ -f infra/proxmox/env.defaults ] && sudo mv infra/proxmox/env.defaults infra/host/env.defaults
 
 # 3. Repoint the unit at the new path, from the new path.
 sudo infra/host/scripts/bootstrap-host.sh --units-only
 
-# 4. Confirm the old directory is empty and remove it. If it is NOT empty, something
-#    untracked is still in there — look before deleting.
-ls -A infra/proxmox 2>/dev/null && sudo rmdir infra/proxmox 2>/dev/null || true
+# 4. The old directory should now be empty. If `ls -A` prints anything, something
+#    untracked is still in there — look at it before removing.
+ls -A infra/proxmox
+sudo rmdir infra/proxmox
 
 # 5. Deploy from the new path and watch it succeed, then restart the timer.
-sudo env SOPS_AGE_KEY_FILE=/etc/nora/age.key \
-     infra/host/scripts/deploy.sh --tag "sha-$(git rev-parse --short HEAD)"
+#    No --tag: this step proves the RELOCATED machinery works, it does not roll out code.
+#    Passing --tag "sha-$(git rev-parse --short HEAD)" here is a trap — build-images.yml only
+#    publishes on changes under services/ or apps/, so a docs-or-infra commit has no image at
+#    its SHA and every `docker compose pull` fails. deploy.sh reads the running tag when none
+#    is given, which is exactly what is wanted.
+sudo env SOPS_AGE_KEY_FILE=/etc/nora/age.key infra/host/scripts/deploy.sh
 sudo systemctl start nora-deploy.timer
 systemctl list-timers nora-deploy.timer
 ```

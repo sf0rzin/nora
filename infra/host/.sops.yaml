@@ -85,13 +85,20 @@ creation_rules:
   # dies with "no matching creation rules found" -- including via the path
   # described in this file's header.
   - path_regex: secrets\.env(\.sops)?$
-    # PUBLIC age key of the production host. REPLACE with the real value from
-    # `age-keygen -y /etc/nora/age.key` -- this placeholder is not a valid key,
-    # and that is on purpose: sops fails loud instead of encrypting to a wrong
-    # recipient.
+    # PUBLIC age key of the production host. An age recipient is a public key: it can
+    # encrypt and it cannot decrypt, which is why it belongs in a public repository and
+    # the private half at /etc/nora/age.key does not.
+    #
+    # This value is the one the host actually holds, read back with
+    # `age-keygen -y /etc/nora/age.key` on 2026-08-10. It had drifted: the host's key was
+    # regenerated at some point and only the host's working copy was updated, so anything
+    # re-encrypted from a workstation would have produced a file the host could not read —
+    # and the failure would have surfaced as a stack that boots with empty variables, not
+    # as a decryption error. Keep this in step with the host or the drift returns.
     #
     # Multiple recipients: separate with a comma. Strongly recommended to have
     # at least TWO (host + the operator's offline backup), otherwise losing the
-    # host = losing the secrets.
-    #   age: 'age1chave-do-host,age1chave-de-backup-do-operador'
-    age: 'age14czuk9cdn9tsdx6qfp7ss7c4e6xr6d7call3afqqra5v2ndla5nss3kxrq'
+    # host = losing the secrets. There is currently only one — see ADR 0036 section 4 for
+    # what that costs and why the encrypted file is therefore not versioned.
+    #   age: 'age1host-key,age1operator-offline-backup-key'
+    age: 'age1kudamfefsy3pq4ty94zu22jruhhfh37gk8ppclxufjcuym22qsfsgj5r5y'
