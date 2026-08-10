@@ -1,0 +1,97 @@
+# =============================================================================
+# NORA -- SOPS (age) encryption rule for the self-hosted stack secrets.
+# =============================================================================
+#
+# Model: `secrets.env.sops` (ENCRYPTED) is versioned in git; the age private key
+# exists in ONE place only, on the host, at /etc/nora/age.key (chmod 600, root).
+# The deploy decrypts it into a `.env` on tmpfs, runs the compose and the
+# cleartext file is gone on the next reboot -- it never touches the disk.
+#
+# The repository is PUBLIC (ADR 0017). A `.env` committed by mistake is an
+# immediate and irreversible leak: rotating everything is the only remedy. This
+# file exists to make the encrypted path the easiest path.
+#
+# -----------------------------------------------------------------------------
+# SETUP (once per host)
+# -----------------------------------------------------------------------------
+#   # 1. generate the key pair ON THE HOST that will run the stack
+#   sudo mkdir -p /etc/nora
+#   age-keygen -o /etc/nora/age.key
+#   sudo chmod 600 /etc/nora/age.key
+#   sudo chown root:root /etc/nora/age.key
+#
+#   # 2. the PUBLIC key comes out on age-keygen's stdout and also with:
+#   age-keygen -y /etc/nora/age.key        # -> age1...
+#
+#   # 3. paste that public key into the `age:` field of the creation_rule below and commit.
+#
+#   # 4. KEEP THE PRIVATE KEY OFF THE HOST. If the host dies and the key dies with
+#   #    it, secrets.env.sops becomes encrypted garbage and every secret has to
+#   #    be regenerated from scratch. Personal vault, paper in a physical safe,
+#   #    whatever -- but off the machine. See "multiple recipients" in the footer.
+#
+# -----------------------------------------------------------------------------
+# DAILY USE
+# -----------------------------------------------------------------------------
+#   export SOPS_AGE_KEY_FILE=/etc/nora/age.key
+#
+#   # create from the example (fill in the values BEFORE encrypting):
+#   cp secrets.env.example secrets.env
+#   $EDITOR secrets.env
+#   sops --encrypt --input-type dotenv --output-type dotenv \
+#        secrets.env > secrets.env.sops
+#   shred -u secrets.env        # do not leave the cleartext version behind
+#
+#   # edit it later (opens in cleartext in $EDITOR, re-encrypts on save):
+#   sops --input-type dotenv --output-type dotenv secrets.env.sops
+#
+#   # decrypt to tmpfs on deploy:
+#   install -d -m 0700 /run/nora
+#   sops --decrypt --input-type dotenv --output-type dotenv \
+#        secrets.env.sops > /run/nora/.env
+#   chmod 600 /run/nora/.env
+#   docker compose --env-file /run/nora/.env up -d --wait
+#
+# WATCH OUT for `--input-type dotenv`: the file extension is `.sops`, and SOPS
+# infers the format from the extension. Without both flags it treats the content
+# as binary/YAML and the result is not a usable dotenv. They are not optional.
+#
+# -----------------------------------------------------------------------------
+# WHERE THIS IS LOOKED UP
+# -----------------------------------------------------------------------------
+# SOPS looks for `.sops.yaml` starting from the CURRENT WORKING DIRECTORY, walking
+# up the tree -- NOT from the target file's directory. The difference matters:
+#
+#   cd infra/host && sops --encrypt ... secrets.env      # finds this rule
+#   sops --encrypt ... infra/host/secrets.env            # from the root: does NOT
+#
+# There is no `.sops.yaml` at the repo root, so the second command dies with
+# "no matching creation rules found" (fails loud, does not encrypt wrong — but it
+# costs debug time). Always run from inside `infra/host/`, or be explicit:
+#
+#   sops --config infra/host/.sops.yaml --encrypt ... infra/host/secrets.env
+#
+# `path_regex` is anchored only at the end precisely so it matches the path in
+# any form: `secrets.env`, `infra/host/secrets.env.sops` or the temporary
+# plaintext that `secrets-bootstrap.sh` writes to `/dev/shm/nora-secrets.*/`.
+# =============================================================================
+
+creation_rules:
+  # ---- Self-hosted stack secrets -------------------------------------------
+  # Matches the CLEARTEXT file (`secrets.env`, including under /dev/shm) and the
+  # encrypted one (`secrets.env.sops`). The optional `.sops` is not fussiness: on
+  # `--encrypt` sops tests the rule against the INPUT path, which is the
+  # plaintext. A rule anchored only on `\.sops$` never matches when encrypting and
+  # dies with "no matching creation rules found" -- including via the path
+  # described in this file's header.
+  - path_regex: secrets\.env(\.sops)?$
+    # PUBLIC age key of the production host. REPLACE with the real value from
+    # `age-keygen -y /etc/nora/age.key` -- this placeholder is not a valid key,
+    # and that is on purpose: sops fails loud instead of encrypting to a wrong
+    # recipient.
+    #
+    # Multiple recipients: separate with a comma. Strongly recommended to have
+    # at least TWO (host + the operator's offline backup), otherwise losing the
+    # host = losing the secrets.
+    #   age: 'age1chave-do-host,age1chave-de-backup-do-operador'
+    age: 'age14czuk9cdn9tsdx6qfp7ss7c4e6xr6d7call3afqqra5v2ndla5nss3kxrq'

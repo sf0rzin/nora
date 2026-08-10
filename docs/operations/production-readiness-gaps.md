@@ -1,10 +1,19 @@
 # Production Readiness — Gap Analysis
 
-> **Audience:** whoever operates NORA when it is promoted from the `rg-nora-dev` environment (current, the only one) to `rg-nora-prod`.
+> **Historical.** Written against the Azure deployment (`rg-nora-dev`), which is gone — no
+> subscription, no export, nothing to decommission (ADR 0036). NORA now runs self-hosted on a
+> single bare-metal host (ADR 0034/0036); Gaps whose premise was Azure-specific (Bicep params, Key
+> Vault, Container Apps scale-to-zero) no longer apply as written and are partially superseded by
+> ADR 0034 and ADR 0016. What survives is the *shape* of each gap — Gap 2 (migration safety), Gap 6
+> (test coverage) and the underlying "dev ≠ prod" question are still real questions on the current
+> substrate, just answered differently. Kept for the gap-by-gap reasoning, not as an operating
+> runbook — that is `docs/operations/host-deploy.md`.
 >
-> **Status:** descriptive (`docs/`). Implementation is tackled in **Sub-phase 1.12 — Production Hardening**, formalised via **ADR 0016 — Production Readiness Checklist** (to be created).
+> **Audience (as written):** whoever operates NORA when it is promoted from the `rg-nora-dev` environment to `rg-nora-prod`.
 >
-> **Context:** the current `rg-nora-dev` environment (`centralus`, 14 resources, 4 secrets in the KV, 8 Azure pitfalls catalogued) deploys NORA successfully. But **dev ≠ prod**. Seven areas have gaps that need to be addressed before NORA takes commercial traffic or exposes real customer data.
+> **Status:** descriptive (`docs/`). Implementation was tracked in **Sub-phase 1.12 — Production Hardening**, formalised via **ADR 0016 — Production Readiness Checklist**.
+>
+> **Context (as written):** the `rg-nora-dev` environment (`centralus`, 14 resources, 4 secrets in the KV, 8 Azure pitfalls catalogued) deployed NORA successfully. But **dev ≠ prod**. Seven areas had gaps that needed to be addressed before NORA took commercial traffic or exposed real customer data.
 
 ## Gap 1 — Bicep `prod.bicepparam` does not exist
 

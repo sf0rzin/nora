@@ -152,19 +152,21 @@ If Zero Trust is also not enabled (rare, a single screenshot of the panel would 
 
 ### Login is accepted but the page returns 502/timeout
 
-In the ADR 0025 model (Tunnel), a 502 usually means the `cloudflared` sidecar did not connect to Cloudflare. Check:
+In the ADR 0025 model (Tunnel), a 502 usually means `cloudflared` did not connect to Cloudflare. On
+the self-hosted stack (ADR 0034/0036) `cloudflared` is its own compose service, not a Container
+Apps sidecar. Check:
 
 ```bash
-# nora-admin replicas (needs ≥1 always — the sidecar does not scale to zero):
-az containerapp replica list -n nora-admin-dev -g rg-nora-dev --revision latest -o table
+# is the admin service running? (no scale-to-zero on this stack — profile `platform`):
+docker compose -p nora --profile platform ps admin cloudflared
 
-# cloudflared sidecar logs (look for "Registered tunnel connection" and the absence of errors):
-az containerapp logs show -n nora-admin-dev -g rg-nora-dev --container cloudflared --tail 100
+# cloudflared logs (look for "Registered tunnel connection" and the absence of errors):
+docker compose -p nora logs --tail 100 cloudflared
 ```
 
 Common causes:
-- `CLOUDFLARE_TUNNEL_TOKEN` secret missing/wrong → the sidecar does not connect. Re-run `cloudflare-tunnel.yml`, copy the connector token from the log, update the GitHub Secret, redeploy.
-- The Container App scaled to zero → switch `minReplicas` to `≥1` in the admin's Bicep.
+- `CLOUDFLARE_TUNNEL_TOKEN` secret missing/wrong → `cloudflared` does not connect. Re-run `cloudflare-tunnel.yml`, copy the connector token from the log, update `secrets.env.sops`, redeploy.
+- The `admin` service is not up → bring it up with the `platform` profile (`--profile platform` on `docker compose`/`deploy.sh --platform`).
 - The tunnel was deleted/rotated but DNS still points to the old ID → re-run `cloudflare-tunnel.yml` (it recreates the DNS).
 
 ### The email does not arrive (OTP)

@@ -653,7 +653,7 @@ Expected format of `document`:
 
 **Purpose**: semantic search / RAG (US15), delivered in PR #206. Provider-agnostic embeddings (Gemini/OpenAI) via `HttpEmbeddingClient`; `EmbeddingService` generates/persists them and similarity (cosine) is computed in Java over the tenant's embeddings. The Core chat consumes `/meetings/search` as RAG context. ADR 0004 (provider-agnostic).
 
-> Scale note: similarity runs in Java (adequate for dozens/hundreds of meetings per tenant), avoiding a dependency on `pgvector` (which would require an extension allow-list in Azure). `pgvector` (ANN index) is the future optimization when the volume justifies it.
+> Scale note: similarity runs in Java (adequate for dozens/hundreds of meetings per tenant), avoiding a dependency on `pgvector` — originally because Azure's Postgres Flexible Server required an extension allow-list; on the self-hosted stack the extension is available in the `pgvector/pgvector:pg16` image but still not created, a deliberate scope decision (ADR 0034 §excluded scope), not an infra limitation. `pgvector` (ANN index) is the future optimization when the volume justifies it.
 
 > Tenant-owned: RLS `tenant_isolation` enabled in V021 (business table, enforced under V020).
 

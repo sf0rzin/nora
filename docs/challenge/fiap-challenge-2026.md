@@ -28,7 +28,7 @@ This page documents:
 | **Technical architecture (diagrams, flows)** | [`../engineering/architecture.md`](../engineering/architecture.md) — DDD layers, IAM flow, RAG pipeline, multi-tenancy |
 | **Documented architectural decisions** | [`../adr/README.md`](../adr/README.md) — canonical ADR index (durable decisions with context + alternatives) |
 | **Technical validation (tests)** | Real measured test coverage (worker 87%, backend 67%) — see ADR 0018 |
-| **Functional demonstration (deploy)** | NORA deployed on Azure: `https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io` |
+| **Functional demonstration (deploy)** | NORA runs self-hosted on a single bare-metal host (ADR 0034/0036), behind Cloudflare Tunnel at `nora.systems`. The Azure deployment this rubric item originally pointed at is gone — no subscription, no export (ADR 0036) |
 | **Pitch / final presentation** | Sub-phase 1.11 creates a 15-20 min demo script |
 
 ### Technical differentiators (above the rubric minimum)
@@ -42,7 +42,7 @@ NORA delivers elements that go beyond the typical academic rubric:
 - **Multi-tenancy** (ADR 0002) — application filter in the MVP + Postgres RLS with the schema delivered and auth-aware scope; the operational cutover/enforcement in prod remains (ADR 0026/0028)
 - **Opt-in Productivity Score** (ADR 0005) — analysis of the meeting's productivity against the declared goal, with the mandatory disclaimer "an indicator of the meeting, not of the participants"
 - **Customer Confidence** (ADR 0006) — score per meeting with buying signals + objections, delivered full-stack with an authoritative per-account trend (PR #148)
-- **Production-grade Azure deploy** — 8 Azure for Students pitfalls catalogued + OIDC workflow with no secrets, 14 resources provisioned via Bicep IaC
+- **Production-grade self-hosted deploy** (ADR 0034/0036) — pull-based rollout with no inbound port, secrets encrypted with SOPS + age, self-hosting pitfalls catalogued in `docs/operations/host-deploy.md`. The earlier Azure deployment (8 Azure for Students pitfalls, OIDC workflow, 14 resources via Bicep IaC) is gone — no subscription, no export
 - **Rigorous test coverage** (ADR 0018) — critical areas (IAM, Auth, PII) held above 85%
 - **AGPL-3.0 License** (ADR 0017) — protection against clone-and-compete
 

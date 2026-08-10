@@ -1,6 +1,6 @@
 name: cloudflare-dns-cutover
 
-# Points NORA's public hostnames at the Proxmox host's Cloudflare Tunnel.
+# Points NORA's public hostnames at the host's Cloudflare Tunnel.
 #
 # WHY A NEW WORKFLOW AND NOT cloudflare-tunnel.yml
 # ------------------------------------------------

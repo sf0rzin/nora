@@ -20,7 +20,7 @@ PGP key available on request via the email address above.
 - `services/nlp-worker/**` — Python NLP worker (PII Shield, LLM calls, contracts)
 - `apps/web/**` — Next.js frontend (auth flow, XSS, CSRF)
 - `apps/desktop/**` — Tauri app (local secret store, on-device transcription)
-- `infra/proxmox/**` — self-hosted stack (compose, ingress, secret management)
+- `infra/host/**` — self-hosted stack (compose, ingress, secret management)
 - `.github/workflows/**` — CI/CD (secret leakage, supply chain)
 - `packages/**` — shared packages
 

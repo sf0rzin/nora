@@ -1,11 +1,19 @@
 # NORA — Secrets & Environment Variables Cartography
 
+> **Historical, as of the section below.** Written for the Azure deployment (Key Vault + Bicep +
+> Container Apps), which is gone — no subscription, no export (ADR 0036). On the self-hosted stack,
+> production secrets live encrypted in `infra/host/secrets.env.sops` (SOPS + age), decrypted to
+> tmpfs on deploy; there is no Key Vault and no `secretRef`. See `docs/operations/host-deploy.md`
+> §3 (Generate the age key and encrypt the secrets) for the current model and the current secrets
+> inventory. GitHub Secrets/Variables below are still accurate for what CI itself needs — only the
+> **production runtime** storage changed.
+>
 > **Operational document.** Last sweep: 2026-06-03 (senior audit).
 > Repo: `https://github.com/sf0rzin/nora.git` · Default branch: `main` · GitHub environment: `dev` (no protection rules, **empty** — all secrets are at repository level).
 >
 > **Objective:** understand what each secret does, how to obtain/regenerate each one, and where it lives (GitHub Secret vs GitHub Variable vs `.env.local`). Includes a from-scratch recreation checklist.
 >
-> **Golden rule:** never commit real values. The `.env.example` files carry only variable **names**. In production, runtime secrets live in the **Azure Key Vault** (generated/injected by Bicep), and the Container Apps consume them via `secretRef` + Managed Identity (UAI) — the key never enters the browser bundle.
+> **Golden rule:** never commit real values. The `.env.example` files carry only variable **names**. In production (as originally written, on Azure), runtime secrets lived in the **Azure Key Vault** (generated/injected by Bicep), and the Container Apps consumed them via `secretRef` + Managed Identity (UAI) — the key never entered the browser bundle. On the self-hosted stack, the equivalent is SOPS + age (see the banner above).
 
 ## 1. Overview — the three configuration layers
 

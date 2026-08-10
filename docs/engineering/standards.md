@@ -25,9 +25,9 @@
 | **AI** | LLM-agnostic via env vars (default OpenAI `gpt-4o-mini`; Azure OpenAI in Enterprise) | Strict JSON Schema, low temperature, logs without PII. ADR 0004. |
 | **Search/RAG** | pgvector + provider-agnostic HTTP embedding client (Gemini/OpenAI) | Semantic search delivered (PR #206, V021 `meeting_embeddings`); Core chat consumes `/meetings/search` as RAG context |
 | **Auth** | JWT (JJWT 0.12) + stateful refresh tokens (V011); HttpOnly cookies | SSO Entra ID/SAML post-MVP |
-| **Desktop** | Tauri 2 + Rust | Native audio capture; ADR 0008 (Python sidecar removed by ADR 0035). Maintained by @pollotherunner. |
-| **Infra** | Azure (Container Apps + Postgres Flexible + KV + Storage) + Bicep | Declarative IaC; SP OIDC via GitHub Actions |
-| **CI/CD** | GitHub Actions: `ci.yml` + `build-images.yml` + `deploy-infra.yml` | Push to GHCR; automated deploy to `dev` |
+| **Desktop** | Tauri 2 + Rust | Native audio capture; ADR 0008. On-device Whisper is the default path (ADR 0035); the Python sidecar is still in the tree behind the `stt-azure` feature, pending validation on all three targets. Maintained by @pollotherunner. |
+| **Infra** | Self-hosted: single bare-metal Ubuntu host, no hypervisor, Docker Compose (ADR 0034/0036) | Cloudflare Tunnel ingress, SOPS + age secrets, pull-based deploy |
+| **CI/CD** | GitHub Actions: `ci.yml` + `build-images.yml` + `deploy-host.yml` | Push to GHCR; host pulls an immutable release pointer |
 
 ### MVP Scope Decision
 
@@ -48,7 +48,7 @@ nora/
 │   ├── nlp-baseline/           # reusable PT-BR TF-IDF (ADR 0010)
 │   └── shared-contracts/       # shared contracts (error-codes, pii-types, processing-status)
 ├── infra/
-│   ├── bicep/                  # Azure infra (main.bicep + 9 modules)
+│   ├── host/                   # self-hosted stack: compose, Caddy, cloudflared, observability, secrets
 │   └── docker/                 # local Compose, auxiliary Dockerfiles
 ├── data/
 │   ├── synthetic/              # 12 transcripts + 3 contexts (versioned)
@@ -57,7 +57,7 @@ nora/
 ├── docs/
 │   ├── product/                # vision, backlog (real status), roadmap, glossary
 │   ├── engineering/            # architecture, standards (this doc), data-model, data-model-oracle
-│   ├── operations/             # azure-deploy (runbook + 8 pitfalls), production-readiness-gaps
+│   ├── operations/             # host-deploy (runbook + self-hosting pitfalls), production-readiness-gaps
 │   ├── challenge/              # FIAP Challenge 2026 (personas, use cases, README, fiap-challenge-2026)
 │   ├── security/               # threat model, operational LGPD (delivered — ADR 0029)
 │   ├── api/                    # OpenAPI + LLM JSON Schemas + examples
@@ -87,7 +87,7 @@ nora/
 | Technical standards (this doc) | `docs/engineering/standards.md` |
 | Postgres data model | `docs/engineering/data-model.md` |
 | Oracle data model (FIAP DB deliverable) | `docs/engineering/data-model-oracle.md` |
-| Azure deploy runbook + 8 pitfalls (Sub-phase 1.9) | `docs/operations/azure-deploy.md` |
+| Self-hosted deploy runbook + self-hosting pitfalls | `docs/operations/host-deploy.md` |
 | Production-readiness gaps (target Sub-phase 1.12) | `docs/operations/production-readiness-gaps.md` |
 | FIAP Challenge 2026 academic material (personas, use cases, rubric) | `docs/challenge/` |
 | Durable architectural decisions (canonical index) | `docs/adr/NNNN-titulo.md` (index in `docs/adr/README.md`) |
@@ -99,7 +99,7 @@ nora/
 | Synthetic data | `data/synthetic/` |
 | Academic notebooks | `notebooks/` |
 | Example environment variables | `.env.example` in each app/service |
-| Real secrets | **Never in Git.** `.env.local` in dev; Azure Key Vault in prod |
+| Real secrets | **Never in Git.** `.env.local` in dev; `secrets.env.sops` (SOPS + age) in prod |
 
 ## 5. Backend — Java/Spring Boot
 
@@ -462,9 +462,9 @@ Login issues two HttpOnly cookies:
 - **Productivity Score (ADR 0005, Sub-phase 1.8)**: persisted (V012). Opt-in per meeting via `MeetingGoal`. The UI renders `ProductivityScoreCard` only when `productivity` is present.
 - **Customer Confidence (ADR 0006/0015)**: **implemented full-stack** in **#148** (2026-05-21). The worker emits the block; the backend persists it (V017) with an authoritative per-account trend (`CustomerConfidenceService`); `GET /meetings/{id}` returns `customerConfidence`; the `CustomerConfidenceCard` UI is in MeetingDetail. Aggregated Account Health (US50-51) remains deferred (ADR 0014).
 
-### Speech Token Broker (ADR 0009)
+### Speech Token Broker (ADR 0009, superseded as the default by ADR 0035)
 
-The desktop calls `POST /speech/token` (JWT-authenticated) and receives an ephemeral token (~9 min) issued by the backend using `AZURE_SPEECH_KEY` from Key Vault. The desktop **never** sees the key. Rate limit of 6 tokens/min/user (Bucket4j).
+On-device Whisper (ADR 0035) is the default STT path today; `POST /speech/token` answers 410 GONE unless `NORA_SPEECH_PROVIDER=azure` is set as a rollback. As originally built: the desktop calls `POST /speech/token` (JWT-authenticated) and receives an ephemeral token (~9 min) issued by the backend using `AZURE_SPEECH_KEY` (from `secrets.env.sops` on the self-hosted stack; from Key Vault in the original Azure design). The desktop **never** sees the key. Rate limit of 6 tokens/min/user (Bucket4j). The rollback has nothing left to roll back to once the Azure Speech resource is gone (ADR 0036).
 
 ### Web CI: aligned on `npm` (resolved 2026-05-21)
 

@@ -51,17 +51,15 @@ jobs:
               - '**/*.md'
             desktop:
               - 'apps/desktop/**'
-            # The `infra` filter stopped watching infra/bicep/** and now watches the
-            # Proxmox stack — the `infra` job (below) swapped content in the migration.
-            # infra/bicep/** stays in the repo as historical reference until the cutover
-            # ends, but is NOT validated in CI anymore: with no `az bicep` and no deploy,
-            # the lint would only burn runner minutes on a frozen artifact.
+            # The `infra` filter stopped watching infra/bicep/** (deleted; ADR 0036) and now
+            # watches the self-hosted stack — the `infra` job (below) swapped content in the
+            # migration.
             # `.github/workflows/**` is in here so that editing a workflow actually
             # gates on something: the `infra` job runs shellcheck and the action-pin
             # check, and without this entry a PR touching only CI matched no filter at
             # all — every job skipped and ci-gate went green having verified nothing.
             infra:
-              - 'infra/proxmox/**'
+              - 'infra/host/**'
               - 'scripts/**'
               - '.github/workflows/**'
 
@@ -424,12 +422,12 @@ jobs:
   # That is why the MIGRATION SWAPPED THE CONTENT, NOT THE NAME.
   #
   # Before: `az bicep build` of main.bicep + modules/*.bicep (validation of the Azure IaC).
-  # Now: validates the stack that actually goes live (ADR 0034 / Proxmox + Compose):
+  # Now: validates the stack that actually goes live (ADR 0034 / ADR 0036 — self-hosted host + Compose):
   #   1. `docker compose config -q` — the compose is the source of truth of the deploy. It
   #      catches invalid YAML, `depends_on` to a nonexistent service, unknown key and broken
   #      interpolation BEFORE the merge, which is exactly the role bicep build had.
   #   2. shellcheck on the operation scripts — in the pull model, the rollout and the RLS
-  #      cutover are shell running on the host (infra/proxmox/scripts/, scripts/). That shell
+  #      cutover are shell running on the host (infra/host/scripts/, scripts/). That shell
   #      stopped being a utility and became a production path; it deserves the same lint the
   #      IaC had.
   infra:
@@ -444,11 +442,11 @@ jobs:
       # and the compose uses that pattern on purpose in 6 places (POSTGRES_ADMIN_PASSWORD,
       # JWT_SECRET, CLOUDFLARE_TUNNEL_TOKEN, GRAFANA_ADMIN_PASSWORD, CF_ACCESS_TEAM_DOMAIN,
       # CF_ACCESS_AUD) to prevent booting with a missing secret. The real values live
-      # encrypted in infra/proxmox/secrets.env.sops and are only decrypted on the host (age
+      # encrypted in infra/host/secrets.env.sops and are only decrypted on the host (age
       # key in /etc/nora/age.key). CI only needs to prove the GRAPH is valid, so we inject
       # obvious placeholders. No real value goes in here — this file is public.
       - name: Generate the validation .env (placeholders — no real secret)
-        working-directory: infra/proxmox
+        working-directory: infra/host
         run: |
           set -euo pipefail
           cat > .env.ci <<'EOF'
@@ -462,7 +460,7 @@ jobs:
           EOF
 
       - name: Compose config (stack base)
-        working-directory: infra/proxmox
+        working-directory: infra/host
         run: |
           set -euo pipefail
           docker compose --env-file .env.ci -f docker-compose.yml config -q
@@ -472,7 +470,7 @@ jobs:
       # default `config`. Without this second pass, an error inside those two services
       # would slip past CI and only show up on the host, on control plane flip day.
       - name: Compose config (profile platform)
-        working-directory: infra/proxmox
+        working-directory: infra/host
         run: |
           set -euo pipefail
           docker compose --env-file .env.ci -f docker-compose.yml --profile platform config -q
@@ -483,7 +481,7 @@ jobs:
       # `otel-collector`) is perfectly valid YAML, but breaks the OTEL_EXPORTER_OTLP_ENDPOINT
       # of the 4 apps — which resolve the collector by internal hostname.
       - name: Service contract (names = internal hostnames)
-        working-directory: infra/proxmox
+        working-directory: infra/host
         run: |
           set -euo pipefail
           expected="admin alloy api backup caddy cloudflared grafana loki otel-collector postgres postgres-platform prometheus web worker"
@@ -515,9 +513,9 @@ jobs:
         run: |
           set -euo pipefail
           shellcheck --version
-          mapfile -t files < <(find scripts infra/proxmox -name '*.sh' -type f 2>/dev/null | sort)
+          mapfile -t files < <(find scripts infra/host -name '*.sh' -type f 2>/dev/null | sort)
           if [ "${#files[@]}" -eq 0 ]; then
-            echo "::error::No .sh found under scripts/ or infra/proxmox/ — the path filter triggered this job, so a script was moved or deleted without updating CI."
+            echo "::error::No .sh found under scripts/ or infra/host/ — the path filter triggered this job, so a script was moved or deleted without updating CI."
             exit 1
           fi
           printf 'Analyzing %d script(s):\n' "${#files[@]}"
@@ -539,7 +537,7 @@ jobs:
         if: always()
         run: |
           set -uo pipefail
-          mapfile -t files < <(find scripts infra/proxmox -name '*.sh' -type f 2>/dev/null | sort)
+          mapfile -t files < <(find scripts infra/host -name '*.sh' -type f 2>/dev/null | sort)
           [ "${#files[@]}" -eq 0 ] && exit 0
           shellcheck -x -S style "${files[@]}" || true
           exit 0

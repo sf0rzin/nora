@@ -78,5 +78,6 @@ Partially superseded decisions: a successor ADR may mark `Partially supersedes X
 | 0031 | OAuth integrations (Google) and token storage | accepted |
 | 0032 | NORA Flows canvas: React Flow styled with NORA tokens | accepted |
 | 0033 | PII strategy on the chat path (structured in the BFF + PERSON_NAME via the worker) | accepted |
-| 0034 | Migration from Azure Container Apps to self-hosted Proxmox (single VM + Docker Compose) | accepted (supersedes 0009; partially supersedes 0016; extends 0025) |
+| 0034 | Migration from Azure Container Apps to self-hosted Proxmox (single VM + Docker Compose) | accepted (supersedes 0009; partially supersedes 0016; extends 0025; substrate §1 and backup §9 superseded by 0036) |
 | 0035 | Local STT: Whisper embedded in Tauri (Rust), on the client machine | accepted (supersedes 0009; partially supersedes 0008) |
+| 0036 | The substrate is a single bare-metal Ubuntu host, not a Proxmox VM | accepted (supersedes 0034 §1 substrate and §9 backup) |

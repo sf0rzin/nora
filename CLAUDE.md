@@ -21,32 +21,28 @@ NORA (Negotiation Observability & Revenue Assistant) is a SaaS conversational in
 
 For operational context (self-hosted deploy, runbooks):
 
-7. **`docs/operations/proxmox-deploy.md`** — runbook for deploying on the Proxmox VM + the 9 self-hosting pitfalls (**replaces `azure-deploy.md`**)
-8. **`docs/operations/azure-decommission.md`** — safe shutdown order for Azure (DNS → RG deletion). There is no data to rescue; that runbook says so and explains why
-9. **`docs/operations/production-readiness-gaps.md`** — prod-readiness gaps (those anchored in Azure were partially superseded by ADR 0034)
-10. **`docs/operations/azure-deploy.md`** — **historical.** Runbook from the Azure era + the 8 Azure for Students pitfalls. Do not operate from it
+7. **`docs/operations/host-deploy.md`** — runbook for deploying on the production host + the self-hosting pitfalls
+8. **`docs/operations/production-readiness-gaps.md`** — prod-readiness gaps (those anchored in Azure were partially superseded by ADR 0034, then ADR 0036)
 
 For academic context (FIAP Challenge):
 
-11. **`docs/challenge/fiap-challenge-2026.md`** — FIAP context, rubric, deadlines
-12. **`docs/challenge/personas-and-empathy-map.md`** — 3 personas + empathy map
-13. **`docs/challenge/use-case-diagram.md`** — UML use cases
+9. **`docs/challenge/fiap-challenge-2026.md`** — FIAP context, rubric, deadlines
+10. **`docs/challenge/personas-and-empathy-map.md`** — 3 personas + empathy map
+11. **`docs/challenge/use-case-diagram.md`** — UML use cases
 
 ## Current scope
 
-NORA is **migrating off Azure to a self-hosted Proxmox VM** (ADR 0034, 2026-08-07).
-The Azure deployment is **down** (522 on `nora.systems` / `api.nora.systems`; the Azure
-for Students subscription was most likely deactivated). Nothing is currently serving.
-ADR 0034 records that there is no production data and no user base, so the Postgres
-content is reproducible demo material and the decommission has no rescue step. Stack:
+NORA runs on a **single self-hosted bare-metal host** (ADR 0034, 2026-08-07; substrate corrected
+by ADR 0036, 2026-08-10). Azure is gone — no subscription, no export, nothing to decommission —
+and is not being recreated. ADR 0034 records that there was no production data and no user base
+at the time of migration, so the Postgres content is reproducible demo material. Stack:
 
 - **Web + Backend + NLP Worker + Desktop** vertical slice all functional
 - **Backend** is Spring Boot 3 (Java 21) + Postgres 16 (`pgvector/pgvector:pg16` container) + Flyway, with **IAM AWS-style** (Root + Users + Groups + Policies) and **multi-tenancy** via `tenant_id` filter (ADR 0002) + RLS (ADR 0026/0028, **three** roles: `nora_app`, `nora_telemetry`, admin/owner). RLS is **written but not enforced**: the policies are complete but the app still connects as the table owner and the enforcement flag defaults to off, so isolation currently rests on the application filter alone
 - **NLP Worker** is FastAPI (Python 3.12) with **PII Shield** (PERSON_NAME + EMAIL + CPF + CNPJ + PHONE + CREDIT_CARD per ADR 0012) and **JSON Schema strict** LLM output (ADR 0003) via **provider-agnostic client** (ADR 0004, default OpenAI `gpt-4o-mini`)
 - **Web** is Next.js 16 + TypeScript + **raw Tailwind, no shadcn** (ADR 0013) with editorial palette OKLCH + Inter + Instrument Serif fonts. It has **no test suite**
-- **Desktop** is Tauri 2 + Rust with **Whisper STT running on-device** (ADR 0035 — the Python sidecar and the Azure Speech token broker are both removed) — maintained by @pollotherunner
-- **Infra** is `infra/proxmox/docker-compose.yml` (compose project `nora`) on a single Debian VM: **Cloudflare Tunnel as the only ingress** (no inbound port), Caddy routing by Host, secrets in **SOPS + age**, observability via OTel Collector + Prometheus + Loki + Grafana. **Deploy is PULL** (`deploy-proxmox.yml` publishes an immutable release pointer; the host pulls) — never push, because the repo is public (ADR 0017)
-- `infra/bicep/` is **legacy** — the Azure infra it describes is being torn down
+- **Desktop** is Tauri 2 + Rust with **Whisper STT running on-device** (ADR 0035). The Python sidecar and the Azure Speech token broker are **off the default path but still in the tree**: `stt-azure` is still in `default` in `src-tauri/Cargo.toml`, `apps/desktop/sidecar/` still builds, and `AzureSpeechTokenBroker` still compiles — the runtime default is `LocalSttNoopBroker`. Deleting them is pending validation of local STT on all three targets — maintained by @pollotherunner
+- **Infra** is `infra/host/docker-compose.yml` (compose project `nora`) on a single bare-metal Ubuntu host, no hypervisor (ADR 0036): **Cloudflare Tunnel as the only ingress** (no inbound port), Caddy routing by Host, secrets in **SOPS + age**, observability via OTel Collector + Prometheus + Loki + Grafana. **Deploy is PULL** (`deploy-host.yml` publishes an immutable release pointer; the host pulls) — never push, because the repo is public (ADR 0017)
 
 For up-to-date status of each backlog story, see `docs/product/backlog.md` (DONE / PARTIAL / MISSING per US).
 
@@ -59,7 +55,7 @@ Every row below was read out of the file named beside it. Change the manifest, c
 | Java | 21 | `services/api/pom.xml` (`java.version`) |
 | Spring Boot | 3.5.16 | `services/api/pom.xml` (parent) |
 | Flyway | inherited from Spring Boot 3.5.16 | `services/api/pom.xml` |
-| Postgres | 16 (`pgvector/pgvector:pg16`; the pgvector extension is available but **not created** — ADR 0034 §excluded scope) | `infra/proxmox/docker-compose.yml` |
+| Postgres | 16 (`pgvector/pgvector:pg16`; the pgvector extension is available but **not created** — ADR 0034 §excluded scope) | `infra/host/docker-compose.yml` |
 | Python (worker) | >= 3.12 | `services/nlp-worker/pyproject.toml` |
 | FastAPI | >= 0.115 | `services/nlp-worker/pyproject.toml` |
 | Pydantic | >= 2.9 | `services/nlp-worker/pyproject.toml` |
@@ -69,11 +65,11 @@ Every row below was read out of the file named beside it. Change the manifest, c
 | TypeScript | ^5.6.3 | `apps/web/package.json` |
 | Tailwind CSS | ^3.4.13 | `apps/web/package.json` |
 | Tauri (desktop) | 2, on-device STT via `whisper-rs` pinned at `=0.16.0` (ADR 0035) | `apps/desktop/src-tauri/Cargo.toml` |
-| Orchestration | Docker Compose, project `nora` | `infra/proxmox/docker-compose.yml` (`name:`) |
-| Ingress | Cloudflare Tunnel `cloudflared:2026.5.2` + `caddy:2.8-alpine` | `infra/proxmox/docker-compose.yml` |
-| Secrets | SOPS + age (`secrets.env.sops`; private key only on the host) | `infra/proxmox/` |
-| Observability | OTel Collector 0.115.1 · Prometheus v3.1.0 (`--storage.tsdb.retention.time=30d`) · Loki 3.3.2 · Alloy v1.7.1 · Grafana 11.5.1 | `infra/proxmox/docker-compose.yml` |
-| Bicep | **legacy** — `infra/bicep/` describes the Azure infra being shut down | `infra/bicep/` |
+| Orchestration | Docker Compose, project `nora` | `infra/host/docker-compose.yml` (`name:`) |
+| Ingress | Cloudflare Tunnel `cloudflared:2026.5.2` + `caddy:2.8-alpine` | `infra/host/docker-compose.yml` |
+| Secrets | SOPS + age (`secrets.env.sops`; private key only on the host) | `infra/host/` |
+| Observability | OTel Collector 0.115.1 · Prometheus v3.1.0 (`--storage.tsdb.retention.time=30d`) · Loki 3.3.2 · Alloy v1.7.1 · Grafana 11.5.1 | `infra/host/docker-compose.yml` |
+| Hosting | Single bare-metal Ubuntu 24.04 host, no hypervisor (ADR 0036) | `docs/adr/0036-substrate-is-a-single-bare-metal-host.md` |
 
 `docs/engineering/architecture.md` §1 carries the same table with the rationale for each choice.
 
@@ -96,7 +92,7 @@ Every row below was read out of the file named beside it. Change the manifest, c
 - **Commit messages in English** — subject and body — keeping Conventional Commits: `type(scope): subject (#PR)`. This applies to humans and agents. Discussion, issues and PR descriptions remain free to be in Portuguese; the rule covers only the commit text. History prior to 2026-08-09 is mixed and stays as it is — do not rewrite it
 - **Reference IDs** (US##, Sub-phase 1.X, ADR NNNN, PR #) in commits and PR descriptions
 - **Before editing**, inspect the existing patterns in the target module (Grep/Glob)
-- **After editing**, run the smallest relevant verification command (`mvn test`, `pytest`, `npm run typecheck`, `docker compose -f infra/proxmox/docker-compose.yml config`) and report pass/fail
+- **After editing**, run the smallest relevant verification command (`mvn test`, `pytest`, `npm run typecheck`, `docker compose -f infra/host/docker-compose.yml config`) and report pass/fail
 - **After touching documentation**, run both guard scripts and report their exit codes:
   - `bash scripts/check-doc-links.sh` — every relative markdown link must resolve. Renaming or deleting a document without fixing its inbound links fails here
   - `bash scripts/check-language.sh` — no Portuguese outside the allowlist declared at the top of that script. This is how the English rule above is actually kept. Adding a path to the allowlist requires an honest reason in the comment beside it
@@ -112,8 +108,9 @@ Use Opus models for architecture, data modeling, security review and refactors. 
 
 | Date | Change |
 |---|---|
+| 2026-08-10 | Substrate correction (ADR 0036): the host is a single bare-metal Ubuntu machine, no hypervisor. Renamed the infra directory, the deploy runbook and the deploy workflow to host-neutral names (now `infra/host/`, `docs/operations/host-deploy.md`, `.github/workflows/deploy-host.yml`); removed `infra/bicep/`, `azure-decommission.md` and `azure-deploy.md` (Azure is gone, not being decommissioned); updated "Read First", "Current scope" and the Stack table accordingly |
 | 2026-08-10 | Documentation honesty pass: metadata frontmatter, invented owners/roles and decoration removed; stack versions re-verified against the manifests; superseded run brief and pre-presentation audit deleted |
-| 2026-08-07 | Azure → Proxmox migration (ADR 0034) and local STT (ADR 0035): "Current scope", the Stack table and the `docs/operations/` pointers updated. `azure-deploy.md` becomes historical; `proxmox-deploy.md` and `azure-decommission.md` take its place |
+| 2026-08-07 | Azure → self-hosted migration (ADR 0034) and local STT (ADR 0035): "Current scope", the Stack table and the `docs/operations/` pointers updated. `azure-deploy.md` becomes historical; the self-hosting runbook and the decommission runbook take its place. Both of those files were later deleted or renamed by ADR 0036 — this row records what happened on the date, not the paths as they stand today |
 | 2026-06-06 | Doc × code reconciliation + standardization |
 | 2026-05-14 | Rewritten during Sub-phase 1.10 (Docs Refresh): new `docs/` structure in subfolders (product/engineering/operations/challenge/security), updated references, new ADRs linked |
 | (earlier) 2026-05-02+ | Original version created with the initial scaffolding |

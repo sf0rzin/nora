@@ -1,0 +1,346 @@
+name: deploy-host
+
+# Publishes the RELEASE POINTER of the self-hosted stack (bare-metal host + Docker Compose,
+# ADR 0034 / ADR 0036).
+#
+# ============================================================================
+# MODEL: PULL, NOT PUSH. THIS WORKFLOW NEVER TOUCHES THE HOST.
+# ============================================================================
+#
+# What it does:              publishes an immutable pointer "SHA X is ready".
+# What it does NOT do:       connect to the host, run `docker compose`, move a file.
+#
+#   GitHub Actions                     |  Production host (compose project `nora`)
+#   -----------------------------------+------------------------------------------
+#   build-images.yml                   |
+#     -> push ghcr.io/...:sha-<short>  |
+#     -> artifact nora-release-pointer |
+#   deploy-host.yml (here)             |
+#     -> git tag release/prod/<short>  |
+#     -> moves release/prod/current    |
+#     -> (optional) POST to webhook ---+--> pull agent wakes up
+#                                      |      1. reads release/prod/current (git ls-remote)
+#                                      |      2. docker login ghcr.io (PAT read:packages)
+#                                      |      3. merges deploy.env into .env (tmpfs)
+#                                      |      4. sops -d secrets.env.sops (local age key)
+#                                      |      5. docker compose up -d --wait
+#
+# WHY PULL (not a style preference, it is the repo being public — ADR 0017):
+#   1. A self-hosted runner on the home network would execute arbitrary fork PR code.
+#      That was exactly the hole in the old deploy-infra.yml, which had a
+#      `pull_request` trigger — in a public repo that is RCE on the LAN by design.
+#   2. Push over SSH would require a private key in a GitHub Secret + port 22 exposed (or
+#      Tailscale/VPN on the runner). A secret that opens a shell on the host, in a public repo.
+#   3. Pull inverts the direction: the only connection that exists leaves the host. Zero
+#      inbound port, zero host credential on GitHub. The worst GitHub can do is
+#      announce a bad pointer — the agent validates before applying.
+#
+# DOES NOT EXIST HERE, ON PURPOSE:
+#   - `azure/login`, `id-token: write`     (Azure left the scene)
+#   - SSH secret / `appleboy/ssh-action`
+#   - `runs-on: self-hosted`
+#   - `pull_request` trigger               (no deploy path fires on a PR)
+#
+# WHY A GIT TAG AND NOT A GITHUB RELEASE:
+#   `desktop-release.yml` owns `releases/latest` — the endpoint the Tauri updater
+#   queries (`releases/latest/download/latest.json`). Creating a Release for the stack
+#   would make the stack release become "Latest" and the desktop app would try to update to
+#   an asset that is not a bundle. A git tag collides with nothing, does not expire (the
+#   Actions artifact expires in 30 days) and the host reads it with `git ls-remote` without
+#   authentication in a public repo.
+#
+# TAG SAFETY: `release/prod/*` does not match `desktop-v*` (the repo's only `on.push.tags`)
+# and no workflow fires on a branch from a tag push. Beyond that, a push made
+# with the GITHUB_TOKEN does not trigger new workflow runs — no loop is possible.
+#
+# Secrets/Variables:
+#   - NORA_DEPLOY_WEBHOOK_URL  (Secret, OPTIONAL) endpoint published by the Cloudflare
+#       Tunnel that only WAKES the agent. Absent = the agent falls back to polling
+#       release/prod/current (the notification is a latency optimization, not a requirement).
+#   - NORA_DEPLOY_WEBHOOK_TOKEN (Secret, OPTIONAL) bearer the agent validates.
+#   Neither gives access to the host: the webhook takes no command, only a SHA that the
+#   agent checks against the tag before acting.
+
+on:
+  # Chained to build-images: it only makes sense to announce a SHA whose images exist.
+  workflow_run:
+    workflows: [build-images]
+    types: [completed]
+    branches: [main]
+  # Manual rollback / re-announcement. Empty `sha` = HEAD of main.
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Full SHA to promote (empty = HEAD of main). Use it to ROLL BACK to an earlier SHA that already has images in GHCR.'
+        required: false
+        default: ''
+      confirm:
+        description: 'Type PROMOTE to confirm'
+        required: true
+        default: ''
+
+permissions:
+  contents: write   # create/move the release/prod/* tags. That is all.
+  actions: read     # download the nora-release-pointer artifact from the build-images run.
+
+# One pointer at a time. cancel-in-progress:false queues: cancelling a promote midway
+# would leave the immutable tag created and `current` pointing at the previous SHA.
+concurrency:
+  group: nora-release-pointer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: promote (publica release pointer)
+    # workflow_run fires even when the build FAILED — without this guard, a red build
+    # would promote a SHA with no image in GHCR and the host would break on the pull.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Guard — explicit confirmation (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "PROMOTE" ]; then
+            echo "::error::Invalid confirmation. Type exactly PROMOTE."
+            exit 1
+          fi
+
+      - name: Resolve the SHA to promote
+        id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_SHA: ${{ inputs.sha }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            sha="${INPUT_SHA:-$GITHUB_SHA}"
+          else
+            sha="$RUN_SHA"
+          fi
+          if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Invalid SHA: '$sha' (expected 40 hex chars)."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "short=${sha:0:7}" >> "$GITHUB_OUTPUT"
+          echo "Promovendo $sha"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          # Needs the history to create the tag and validate the SHA is on main.
+          fetch-depth: 0
+
+      # Defense against promoting a commit that never went through main's gate: we only
+      # announce a SHA that is an ancestor of refs/heads/main. Without this, a dispatch with
+      # a SHA from any branch would become a production pointer.
+      - name: Guard — the SHA belongs to main
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::$SHA is not an ancestor of origin/main — refused."
+            echo "Only SHAs that went through main's ci-gate can become a release pointer (ADR 0027)."
+            exit 1
+          fi
+          echo "OK — $SHA is on main."
+
+      # Downloads the pointer produced by build-images from the SAME run. On workflow_dispatch
+      # there is no associated run, so the download is best-effort: the promote continues and
+      # the agent resolves the tags by SHA (the images already exist in GHCR — it is a rollback).
+      - name: Download the build-images artifact
+        id: fetch
+        if: github.event_name == 'workflow_run'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: nora-release-pointer
+          path: pointer
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Normaliza o pointer
+        id: pointer
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
+          SHORT: ${{ steps.target.outputs.short }}
+        run: |
+          set -euo pipefail
+          mkdir -p pointer
+          if [ ! -f pointer/release.json ]; then
+            # No artifact (dispatch/rollback): we emit a FULL pointer — all four
+            # services on the same tag. That is only safe because the rollback points at a SHA
+            # that was ALREADY built; the next step confirms it in GHCR before publishing.
+            echo "No artifact — generating a full pointer for SHA $SHORT (rollback mode)."
+            jq -n --arg sha "$SHA" --arg short "$SHORT" \
+              --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              '{schema:"nora.release-pointer/v1", sha:$sha, short_sha:$short, ref:"main",
+                registry:"ghcr.io", image_prefix:"sf0rzin/nora", built_at:$built_at,
+                mode:"rollback-full",
+                services:[
+                  {service:"api",    compose_var:"API_TAG",    tag:("sha-"+$short), image:("ghcr.io/sf0rzin/nora-api:sha-"+$short)},
+                  {service:"worker", compose_var:"WORKER_TAG", tag:("sha-"+$short), image:("ghcr.io/sf0rzin/nora-worker:sha-"+$short)},
+                  {service:"web",    compose_var:"WEB_TAG",    tag:("sha-"+$short), image:("ghcr.io/sf0rzin/nora-web:sha-"+$short)},
+                  {service:"admin",  compose_var:"ADMIN_TAG",  tag:("sha-"+$short), image:("ghcr.io/sf0rzin/nora-admin:sha-"+$short)}
+                ]}' > pointer/release.json
+            jq -r '.services[] | "\(.compose_var)=\(.tag)"' pointer/release.json > pointer/deploy.env
+          fi
+          count=$(jq '.services | length' pointer/release.json)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          cat pointer/release.json
+
+      # Checks that every announced image EXISTS in GHCR before it becomes a pointer.
+      # It is the validation the pull model demands: the host trusts the pointer, so whoever
+      # publishes has to guarantee it resolves. A missing manifest here becomes an error in
+      # CI; there it would become a half-up stack (some services new, others not).
+      - name: Check the manifests in GHCR
+        if: steps.pointer.outputs.count != '0'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          fail=0
+          # `buildx imagetools inspect` and not `docker manifest inspect`: the latter is still
+          # experimental in some CLI versions and would fail on the flag, not on a missing
+          # image — a false negative that would block every deploy.
+          while read -r img; do
+            if docker buildx imagetools inspect "$img" > /dev/null 2>&1; then
+              echo "  OK   $img"
+            else
+              echo "::error::manifest ausente no GHCR: $img"
+              fail=1
+            fi
+          done < <(jq -r '.services[].image' pointer/release.json)
+          [ "$fail" -eq 0 ] || { echo "::error::Pointer refused — image missing."; exit 1; }
+          echo "Every manifest exists."
+
+      # Two tags, different roles:
+      #   release/prod/<short>  IMMUTABLE — the rollout history, the rollback target.
+      #   release/prod/current  MOVABLE   — what the agent queries ("which is the desired one?").
+      # The immutable one is created with `--no-force`: republishing the same SHA is a no-op,
+      # it never rewrites history.
+      - name: Publica as tags release/prod/*
+        if: steps.pointer.outputs.count != '0'
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
+          SHORT: ${{ steps.target.outputs.short }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          immutable="release/prod/${SHORT}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${immutable}" > /dev/null 2>&1; then
+            echo "Tag ${immutable} already exists — kept (immutable)."
+          else
+            git tag -a "$immutable" "$SHA" -m "NORA release pointer ${SHORT} (run ${GITHUB_RUN_ID})"
+            git push origin "refs/tags/${immutable}"
+            echo "Tag ${immutable} publicada."
+          fi
+
+          # `current` is intentionally movable — it is the only ref the agent needs to read.
+          git tag -f "release/prod/current" "$SHA" -m "current -> ${SHORT}"
+          git push --force origin "refs/tags/release/prod/current"
+          echo "release/prod/current -> ${SHORT}"
+
+      - name: Republish the pointer as a long-lived artifact
+        if: steps.pointer.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nora-release-pointer-${{ steps.target.outputs.short }}
+          path: pointer/
+          retention-days: 90
+          if-no-files-found: error
+
+      # OPTIONAL notification. Just a "wake up and reconcile" — it carries no command nor
+      # credential, and the agent checks the SHA against the tag before applying. The endpoint
+      # is published by the Cloudflare Tunnel (egress-only): still no inbound port.
+      # If it fails, it does NOT fail the job: the pointer (tag) is already published and the
+      # agent's polling converges on its own. Notification is latency, not correctness.
+      - name: Notify the agent (webhook via Cloudflare Tunnel — optional)
+        if: steps.pointer.outputs.count != '0'
+        continue-on-error: true
+        env:
+          WEBHOOK_URL: ${{ secrets.NORA_DEPLOY_WEBHOOK_URL }}
+          WEBHOOK_TOKEN: ${{ secrets.NORA_DEPLOY_WEBHOOK_TOKEN }}
+          SHA: ${{ steps.target.outputs.sha }}
+          SHORT: ${{ steps.target.outputs.short }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WEBHOOK_URL:-}" ]; then
+            echo "NORA_DEPLOY_WEBHOOK_URL not configured — the agent will pick it up by polling."
+            exit 0
+          fi
+          payload=$(jq -nc --arg sha "$SHA" --arg short "$SHORT" \
+            --arg ref "release/prod/current" \
+            '{event:"release-pointer", sha:$sha, short_sha:$short, git_ref:$ref}')
+          # Optional header via ARRAY. `${VAR:+-H "Authorization: Bearer $VAR"}` without an
+          # array suffers word splitting and curl receives `-H`, `Authorization:`, `Bearer`,
+          # `<token>` as four arguments — the header comes out malformed and the token leaks
+          # into a field that is not the Authorization.
+          auth=()
+          if [ -n "${WEBHOOK_TOKEN:-}" ]; then
+            auth=(-H "Authorization: Bearer ${WEBHOOK_TOKEN}")
+          fi
+          code=$(curl -sS -o /tmp/hook.out -w '%{http_code}' --max-time 20 \
+            -X POST "$WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            "${auth[@]}" \
+            -d "$payload" || echo "000")
+          echo "webhook HTTP $code"
+          if [ "$code" != "200" ] && [ "$code" != "202" ] && [ "$code" != "204" ]; then
+            echo "::warning::Webhook not confirmed (HTTP $code). The pointer was published anyway; the agent converges by polling."
+            head -c 500 /tmp/hook.out || true
+          fi
+
+      - name: Summary
+        if: always()
+        env:
+          SHORT: ${{ steps.target.outputs.short }}
+          SHA: ${{ steps.target.outputs.sha }}
+          COUNT: ${{ steps.pointer.outputs.count }}
+        run: |
+          {
+            echo "## Release pointer — \`$SHORT\`"
+            echo ""
+            if [ "${COUNT:-0}" = "0" ]; then
+              echo "_Empty pointer: no service changed at this SHA. Nothing published, nothing to do on the host._"
+            else
+              echo "| Item | Valor |"
+              echo "|---|---|"
+              echo "| SHA | \`$SHA\` |"
+              echo "| Immutable tag | \`release/prod/$SHORT\` |"
+              echo "| Moving pointer | \`release/prod/current\` → \`$SHORT\` |"
+              echo ""
+              echo "### O host aplica"
+              echo ""
+              echo '```dotenv'
+              cat pointer/deploy.env 2>/dev/null || jq -r '.services[] | "\(.compose_var)=\(.tag)"' pointer/release.json
+              echo '```'
+              echo ""
+              echo "### Check/force on the host"
+              echo ""
+              echo '```bash'
+              echo "git ls-remote origin refs/tags/release/prod/current   # what the agent sees"
+              echo "sudo systemctl start nora-pull-agent.service          # reconcile now"
+              echo '```'
+              echo ""
+              echo "### Rollback"
+              echo ""
+              echo "Re-run this workflow on \`workflow_dispatch\` with the earlier SHA and \`PROMOTE\`."
+              echo "The old images stay in GHCR under their own \`sha-<short>\` tag —"
+              echo "that is the point of the immutable tag: a rollback re-points, it does not rebuild."
+            fi
+            echo ""
+            echo "> Pull, not push: no step here holds a host credential."
+          } >> "$GITHUB_STEP_SUMMARY"

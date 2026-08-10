@@ -1,8 +1,11 @@
-# Workflows — what changed in the Azure → Proxmox migration
+# Workflows — what changed in the Azure → self-hosted migration
 
-> Context: [ADR 0034](../../docs/adr/0034-azure-to-proxmox-migration.md).
-> Operational runbook: [`docs/operations/proxmox-deploy.md`](../../docs/operations/proxmox-deploy.md).
-> Azure shutdown: [`docs/operations/azure-decommission.md`](../../docs/operations/azure-decommission.md).
+> Context: [ADR 0034](../../docs/adr/0034-azure-to-proxmox-migration.md) (the migration decision)
+> and [ADR 0036](../../docs/adr/0036-substrate-is-a-single-bare-metal-host.md) (the substrate
+> correction: a bare-metal host, no hypervisor).
+> Operational runbook: [`docs/operations/host-deploy.md`](../../docs/operations/host-deploy.md).
+> Azure is gone, not being decommissioned — there was no export and nothing to shut down by the
+> time this was verified; see ADR 0036 §"Azure is gone, not being decommissioned".
 
 There is a single structural change, and everything else follows from it:
 
@@ -16,7 +19,7 @@ GitHub Actions                           GitHub Actions
   az containerapp update  ──push──►        push ghcr.io/...:sha-xxxxxxx
   Container Apps                           tag git release/prod/current
                                                         │
-                                           Host Proxmox │ (pull, every 5 min)
+                                           Host          │ (pull, every 5 min)
                                              nora-deploy.timer
                                              └─► deploy.sh ─► docker compose up -d --wait
 ```
@@ -34,20 +37,22 @@ Pull eliminates both: **zero inbound ports, zero SSH keys in Secrets, zero runne
 
 | Workflow | State | What changed |
 |---|---|---|
-| `ci.yml` | **edited** | The `infra` job stopped validating Bicep (`az bicep build`) and now validates `infra/proxmox/docker-compose.yml` + shellcheck on the scripts. **The job name is still `infra`** — it is a `needs` of `ci-gate`, main's only required check (ADR 0027); renaming it would break branch protection. |
+| `ci.yml` | **edited** | The `infra` job stopped validating Bicep (`az bicep build`) and now validates `infra/host/docker-compose.yml` + shellcheck on the scripts. **The job name is still `infra`** — it is a `needs` of `ci-gate`, main's only required check (ADR 0027); renaming it would break branch protection. |
 | `build-images.yml` | **edited** | Build and push to GHCR **untouched** — that is the part that always worked. Removed the `deploy-apps` job (`azure/login` + `az containerapp update`) and the `permissions: id-token: write` that existed only for OIDC. In its place came `release-pointer`, which merely announces the ready `sha-<short>` tags. The `NEXT_PUBLIC_API_BASE_URL` fallback stopped pointing at the Azure FQDN. |
-| `deploy-proxmox.yml` | **new** | Publishes the release pointer (git tag `release/prod/<short>` + `release/prod/current`) and, optionally, calls a webhook. It never touches the host. |
-| `rls-cutover.yml` | **rewritten** | It no longer connects to any database. It validates `R001` on an ephemeral Postgres and emits the runbook; the real execution became `infra/proxmox/scripts/rls-cutover.sh`, running **on the host**. Reason: the Proxmox Postgres is on the `data` bridge (`internal: true`) publishing only `127.0.0.1:5432` — there is no network path from a runner. |
-| `deploy-infra.yml` | **deleted** | It existed only for the Bicep `az deployment group create`. `infra/bicep/` **remains in the repo** as historical reference until the decommission is finished. |
+| `deploy-host.yml` | **new** | Publishes the release pointer (git tag `release/prod/<short>` + `release/prod/current`) and, optionally, calls a webhook. It never touches the host. |
+| `rls-cutover.yml` | **rewritten** | It no longer connects to any database. It validates `R001` on an ephemeral Postgres and emits the runbook; the real execution became `infra/host/scripts/rls-cutover.sh`, running **on the host**. Reason: the host's Postgres is on the `data` bridge (`internal: true`) publishing only `127.0.0.1:5432` — there is no network path from a runner. |
+| `deploy-infra.yml` | **deleted** | It existed only for the Bicep `az deployment group create`. `infra/bicep/` was deleted with it (ADR 0036) — Azure is gone, not being decommissioned, so there was nothing left for that IaC to describe. |
 | `cloudflare-setup.yml` | edited | Hostname adjustments: the tunnel now serves the whole stack, not just the admin. |
 | `cloudflare-tunnel.yml` | unchanged | It still issues the connector token. It gained importance: it is now the ingress for everything. |
 | `desktop-release.yml` | edited | Adjustments for the local STT (ADR 0035). **Point of attention:** `whisper-rs` compiles `whisper.cpp`, which requires a C++ toolchain on all three targets — this has not yet been validated in a real build. |
 
 ## GitHub Secrets and Variables
 
-### Can be DELETED after the decommission
+### Can be DELETED
 
-Only delete them **after** confirming that Proxmox is serving traffic and the resource group has been removed — see [`azure-decommission.md`](../../docs/operations/azure-decommission.md).
+The Azure subscription is already gone (ADR 0036) — there is no resource group left to remove and
+no orderly shutdown to wait for. These are safe to delete now that the host is confirmed serving
+traffic.
 
 ```
 AZURE_CLIENT_ID              AZURE_TENANT_ID           AZURE_SUBSCRIPTION_ID
@@ -82,7 +87,7 @@ JWT_SECRET       CLOUDFLARE_TUNNEL_TOKEN
 | Name | Type | What for |
 |---|---|---|
 | `GHCR_PULL_TOKEN` | Secret | A PAT with **only** `read:packages`, used by the host for `docker login ghcr.io`. It does not go into GitHub — it goes into the host's `secrets.env.sops`. Listed here because it is generated in the GitHub UI. |
-| `NORA_RELEASE_WEBHOOK` | Secret (optional) | URL that `deploy-proxmox.yml` calls to wake the pull agent before the next 5-minute tick. Without it the deploy is just slower, it does not break. |
+| `NORA_RELEASE_WEBHOOK` | Secret (optional) | URL that `deploy-host.yml` calls to wake the pull agent before the next 5-minute tick. Without it the deploy is just slower, it does not break. |
 | `CF_ACCESS_AUD` | **Secret**, not Variable | See below. |
 
 ## Pre-existing bug that the migration needs to close

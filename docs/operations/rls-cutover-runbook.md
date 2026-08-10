@@ -1,5 +1,13 @@
 # RLS Enforce — Cutover Runbook (ADR 0028)
 
+> **Historical — superseded.** Written for the Azure deployment (Bicep params, `deploy-infra.yml`,
+> the Postgres Flexible Server). Azure is gone — no subscription, no export (ADR 0036). On the
+> self-hosted stack, Step 2 (provisioning the roles) runs as `infra/host/scripts/rls-cutover.sh` on
+> the production host — see `docs/operations/host-deploy.md` §RLS enforce flip — and Step 3 (the
+> flip) is a `NORA_RLS_ENFORCE` variable in the compose `.env`, not a Bicep param. The reasoning
+> below (why two roles, auth-aware scope, rollback shape) is unchanged and still the source of
+> truth for that; only the mechanics of applying it moved.
+
 Turns on Postgres **real Row Level Security** as defense in depth for `tenant_id`
 (on top of the app-level filter, which is already 100% disciplined). Operational companion to
 [ADR 0028](../adr/0028-rls-enforcement-auth-aware.md).

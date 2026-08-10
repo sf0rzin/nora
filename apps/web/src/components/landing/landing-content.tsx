@@ -108,8 +108,8 @@ export function LandingHowItWorks() {
 // ── Privacy ──
 const PROMISES = [
   {
-    title: "Hosting Azure Brasil",
-    body: "Multi-tenancy isolado com RLS Postgres. Seus dados não cruzam fronteira sem você saber.",
+    title: "Infraestrutura própria",
+    body: "Multi-tenancy com isolamento por tenant_id em toda consulta ao banco. Os dados de uma organização não são visíveis para outra.",
     icon: (
       <svg
         width="16"
@@ -371,7 +371,7 @@ const FAQS = [
   },
   {
     q: "Onde os dados ficam armazenados?",
-    a: "Azure (centralus em dev; região BR em produção). Multi-tenancy com isolamento por tenant_id e RLS Postgres. Você pode solicitar exportação ou exclusão de todos os seus dados a qualquer momento.",
+    a: "Em servidor próprio, autogerenciado, sem porta aberta para a internet — o acesso público passa apenas por um túnel de saída. O isolamento entre organizações é feito por tenant_id em toda consulta ao banco. Você pode solicitar exportação ou exclusão de todos os seus dados a qualquer momento.",
   },
 ];
 

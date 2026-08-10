@@ -31,9 +31,8 @@
 | react-markdown | ^10.1.0 | Rendering of the analysis `summary` | `apps/web/package.json:21-22` |
 | **Desktop** Tauri | 2 | Native wrapper + audio capture | `apps/desktop/src-tauri/Cargo.toml:15`, ADR 0008 |
 | Rust | edition 2021 | System-wide audio capture (WASAPI/CoreAudio) | `apps/desktop/src-tauri/Cargo.toml:6` |
-| **Infra** Azure | — | Container Apps + Postgres Flexible + KV + Storage | `infra/bicep/main.bicep` |
-| Bicep | — | Declarative IaC | `infra/bicep/*.bicep` |
-| GitHub Actions | — | CI/CD (ci.yml + build-images.yml + deploy-infra.yml) | `.github/workflows/*.yml` |
+| **Infra** Self-hosted | — | Single bare-metal Ubuntu host, no hypervisor, Docker Compose | `infra/host/docker-compose.yml`, ADR 0034/0036 |
+| GitHub Actions | — | CI/CD (ci.yml + build-images.yml + deploy-host.yml) | `.github/workflows/*.yml` |
 
 Notes:
 
@@ -411,28 +410,33 @@ Step by step in words:
 6. **Frontend polling**: the "Processing" card in `apps/web/src/app/(app)/meetings/[id]/page.tsx` polls every ~2s until `processing_status = COMPLETED`.
 7. **Render**: the UI shows the summary (markdown via `react-markdown`), decisions, action items, risks/opportunities and, if present, `ProductivityScoreCard`.
 
-## §11. Azure infrastructure
+## §11. Self-hosted infrastructure
 
-Provisioned via Bicep (`infra/bicep/main.bicep`) and deployed by `deploy-infra.yml` (Service Principal OIDC). Operational details (the eight Azure for Students pitfalls, recreation commands, troubleshooting) **live in `docs/operations/azure-deploy.md`**.
+NORA runs on a single self-hosted bare-metal host — Ubuntu, no hypervisor, Docker Engine with
+Compose v2 — under compose project `nora` (ADR 0034; substrate corrected by ADR 0036, which found
+no hypervisor and no other guest on the machine). Provisioned via
+`infra/host/docker-compose.yml` and deployed by `deploy-host.yml`, which publishes an immutable
+release pointer that a pull agent on the host applies — the deploy direction is PULL, never PUSH,
+because the repository is public (ADR 0017). Operational details (the self-hosting pitfalls,
+first-deployment steps, rollback, restore drill) live in `docs/operations/host-deploy.md`.
 
-### Resource Group `rg-nora-dev` — current inventory
+### Current inventory
 
-| Resource | Name / Endpoint | Type |
+| Resource | Replaces | Detail |
 |---|---|---|
-| Container Apps Env | `nora-cae-dev` | `Microsoft.App/managedEnvironments` |
-| Container App | `nora-web-dev` | Public Next.js |
-| Container App | `nora-api-dev` | Public Spring API |
-| Container App | `nora-worker-dev` | FastAPI internal-only |
-| Postgres Flexible | `nora-pg-dev-wgl3a3` | B1ms, central US |
-| Key Vault | `nora-kv-dev-wgl3a3` | Standard |
-| Storage Account | `norastdevwgl3a3mz` | Standard_LRS |
-| Log Analytics | `nora-la-dev` | workspace-based |
-| App Insights | `nora-ai-dev` | connected to LA |
-| Speech | provisioned in PR #71 | `Microsoft.CognitiveServices` kind=`SpeechServices` |
-| User-Assigned MI (×3) | api/worker/web | Federated with Service Principal OIDC |
-| AI Search | **not used** (`enableSearch=false`) | semantic search (US15) was delivered via pgvector + an HTTP embedding client, not Azure AI Search (PR #206, `V021`) |
+| `postgres` / `postgres-platform` | Postgres Flexible Server (×2) | `pgvector/pgvector:pg16`, ADR 0022 blast-radius split |
+| `cloudflared` + `caddy` | Container Apps external ingress | Cloudflare Tunnel (only ingress) + Host-based routing |
+| `secrets.env.sops` (SOPS + age) | Key Vault + Managed Identities | Encrypted, versioned in git; private key only on the host |
+| `otel-collector` → `prometheus` | Application Insights | `opentelemetry-javaagent` on the API only |
+| `alloy` → `loki` | Log Analytics | Docker socket log collection |
+| `grafana` | Metrics Explorer / Workbooks | at `grafana.<domain>` |
+| `backup` (hourly `pg_dump`) | 7-day PITR | 14-day retention; no off-host copy today (ADR 0036) |
 
-Service Principal: `sp-nora-github-deploy` (audit §7), with 3 federated credentials (main, pull_request, environment:dev). Roles: `Contributor` + `Role Based Access Control Administrator` on `rg-nora-dev`.
+Azure is gone — no subscription, no export, nothing to decommission (ADR 0036). The historical
+Azure resource inventory (`rg-nora-dev`: Container Apps, Key Vault, Flexible Server, the Service
+Principal and its federated credentials) that used to live in this section is not reproduced here;
+it described infrastructure that no longer exists and is addressable in `git log` on this file
+instead.
 
 ## §12. Stack rationale — why each choice
 

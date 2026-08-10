@@ -1,11 +1,19 @@
 # Runbook — custom domain for the web app (`nora.systems`)
 
-> Wires the root domain `nora.systems` and `www.nora.systems` to the web app (`apps/web`),
-> served by the Azure Container App `nora-web-dev`, with Cloudflare in front (proxied:
-> WAF/DDoS + origin IP hidden) and a TLS certificate managed by Azure.
+> **Historical — superseded.** Written for the Azure deployment, where the web app had public
+> ingress and only the admin console went through a tunnel. Azure is gone — no subscription, no
+> export (ADR 0036). On the self-hosted stack **every** hostname (`nora.systems`, `www`, `api`,
+> `admin`, `grafana`) goes through the same Cloudflare Tunnel to `caddy`; there is no distinct
+> "web app has public ingress" case and no Azure-managed certificate to provision. The current
+> procedure is `docs/operations/host-deploy.md` §4 (Cloudflare Tunnel + Access Applications). Kept
+> here as a record of the DNS cutover that was actually run for the Azure deployment.
+
+> Wires the root domain `nora.systems` and `www.nora.systems` to the web app (`apps/web`), as
+> originally written: served by the Azure Container App `nora-web-dev`, with Cloudflare in front
+> (proxied: WAF/DDoS + origin IP hidden) and a TLS certificate managed by Azure.
 
 Unlike `admin.nora.systems` (which has no public ingress and comes in through a **Cloudflare
-Tunnel**, ADR 0025), the web app **does have public ingress** on Azure. That is why the path is
+Tunnel**, ADR 0025), the web app **did have public ingress** on Azure. That is why the path was
 simpler: proxied DNS pointing at the app + a custom domain with a managed certificate.
 
 ## Outcome

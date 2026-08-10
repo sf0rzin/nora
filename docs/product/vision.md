@@ -57,7 +57,14 @@ NORA is a platform with two plans that share the same AI engine and infrastructu
 
 ## 3. Current State (2026-06-06)
 
-NORA is no longer in the scaffolding phase nor in pure Sprint 1+2 documentation. **It is deployed on Azure** and operational end-to-end in the MVP's central flows:
+> **This section is a dated snapshot, not the current infrastructure.** As of 2026-08-10, Azure is
+> gone — no subscription, no export, nothing to decommission (ADR 0036) — and NORA runs
+> self-hosted on a single bare-metal host (ADR 0034/0036). See `README.md` §Current state or
+> `CLAUDE.md` §Current scope for what is true today. Everything below about the **product** (IAM,
+> Productivity Score, PII Shield, chat, coverage) still describes real, delivered functionality;
+> only the Azure deployment facts are historical.
+
+NORA is no longer in the scaffolding phase nor in pure Sprint 1+2 documentation. **It was deployed on Azure** and operational end-to-end in the MVP's central flows, as of this section's date:
 
 - Web in dev production: <https://nora-web-dev.salmonbeach-349d395f.centralus.azurecontainerapps.io>
 - 14 Azure resources provisioned in `rg-nora-dev` (centralus): Container Apps Env, 3 Container Apps (web + api + worker), Postgres Flexible, Key Vault, Storage Account, App Insights, Log Analytics, Azure Speech, 3 User-Assigned Identities (api/worker/web), and federated credentials on the SP `sp-nora-github-deploy`

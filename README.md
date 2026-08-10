@@ -16,11 +16,9 @@ Personally identifiable information never reaches the language model in the clea
 
 ## Current state
 
-**Nothing is currently serving.** The Azure deployment is down: `nora.systems` and `api.nora.systems` return 522, and the Container App hostname does not connect either. The most likely cause is the Azure for Students subscription being deactivated.
+The stack runs on a single self-hosted bare-metal Ubuntu host under Docker Compose, with Cloudflare Tunnel as the only ingress (no inbound port besides SSH) and secrets encrypted with SOPS and age. Azure is gone — there is no subscription, no export and nothing to decommission. ADR 0034 is the decision to leave it, and ADR 0036 corrects the substrate: it is one physical machine, not a VM on a hypervisor. Both are in the [ADR index](docs/adr/README.md).
 
-The project is migrating to a self-hosted Debian VM on Proxmox, running Docker Compose with Cloudflare Tunnel as the only ingress and secrets encrypted with SOPS and age. There is no data to rescue off the dead deployment — ADR 0034 records that NORA has no production data and no user base, so the Postgres content is reproducible demo material. The shutdown order is in [azure-decommission.md](docs/operations/azure-decommission.md); the decision itself is ADR 0034 in the [ADR index](docs/adr/README.md).
-
-The application is unaffected and runs locally. Web, API and NLP worker are a working vertical slice, and the desktop client captures audio and transcribes it on-device.
+Web, API and NLP worker are a working vertical slice, and the desktop client captures audio and transcribes it on-device.
 
 Two things to know before reading the code as production-ready. Postgres row-level security is written but **not enforced** — the policies are complete, covering every tenant-owned table, but the application still connects as the table owner and the enforcement flag defaults to off, so tenant isolation currently rests entirely on the application-layer `tenant_id` filter rather than on the two layers the ADRs describe. And `apps/web` has no test suite at all.
 
@@ -53,8 +51,7 @@ services/nlp-worker        FastAPI worker: PII redaction, prompting, schema-vali
 packages/nlp-baseline      Interpretable pt-BR TF-IDF baseline
 packages/shared-contracts  Error codes, PII types and status values shared across services
 infra/docker               Local development stack: Postgres + Adminer
-infra/proxmox              Self-hosted stack: compose, Caddy, cloudflared, observability, secrets
-infra/bicep                Azure infrastructure, kept as history while it is decommissioned
+infra/host                 Self-hosted stack: compose, Caddy, cloudflared, observability, secrets
 data/                      Synthetic transcripts and samples used by tests
 notebooks/                 Data-science pipeline over the meeting transcripts
 scripts/                   Repository checks and development helpers
@@ -71,7 +68,7 @@ docs/                      Documentation, see below
 | Database | Postgres 16. Self-hosted runs the `pgvector/pgvector:pg16` image with the extension available but not created; local development runs plain `postgres:16-alpine` |
 | NLP worker | Python 3.12 · FastAPI · Pydantic 2 · provider-agnostic LLM and embeddings client |
 | Desktop | Tauri 2 · Rust · `whisper-rs` for on-device speech-to-text |
-| Hosting | Self-hosted: one Debian VM, Docker Compose, Cloudflare Tunnel, Caddy, SOPS + age |
+| Hosting | Self-hosted: one bare-metal Ubuntu host, no hypervisor, Docker Compose, Cloudflare Tunnel, Caddy, SOPS + age |
 | Observability | OpenTelemetry Collector · Prometheus · Loki · Alloy · Grafana |
 | CI/CD | GitHub Actions. Deployment is pull-based: the host fetches an immutable release pointer |
 | Model | OpenAI `gpt-4o-mini` by default; the client is provider-agnostic |
@@ -112,7 +109,7 @@ For tests, `make api-test` runs the backend suite and `make worker-test` the wor
 
 Start with the [product vision](docs/product/vision.md), then the [architecture](docs/engineering/architecture.md) for how the pieces fit together and why, then the [ADR index](docs/adr/README.md), which is the source of truth for every architectural decision. The [backlog](docs/product/backlog.md) records the real per-story status and the [roadmap](docs/product/roadmap.md) records what shipped when.
 
-For operating it: the [Proxmox runbook](docs/operations/proxmox-deploy.md) is the current one, [azure-decommission.md](docs/operations/azure-decommission.md) covers shutting the old deployment down, and [production-readiness-gaps.md](docs/operations/production-readiness-gaps.md) is an honest list of what is not ready.
+For operating it: the [deployment runbook](docs/operations/host-deploy.md) is the current one, and [production-readiness-gaps.md](docs/operations/production-readiness-gaps.md) is an honest list of what is not ready.
 
 `docs/challenge/` holds the FIAP NEXT Challenge 2026 material. `CLAUDE.md` is the context file for AI coding agents.
 
