@@ -155,9 +155,10 @@ worker-test: worker-setup ## Roda os testes do worker
 web-dev: ## Roda o frontend Next.js em modo dev
 	cd apps/web && npm run dev
 
-.PHONY: web-test
-web-test: ## Roda os testes do web
-	cd apps/web && npm test
+# There is no `web-test`: apps/web has no test script and no test files, so the target
+# it used to declare invoked `npm test` against a package.json that does not define it,
+# and `make test` failed for that reason alone. The gap is real and recorded in ADR 0018;
+# advertising a target that cannot work only hid it.
 
 # --- Qualidade ---
 
@@ -174,4 +175,4 @@ format: ## Formata todos os pacotes (modifica arquivos)
 	cd services/api && mvn spotless:apply
 
 .PHONY: test
-test: api-test worker-test web-test ## Roda toda a bateria de testes
+test: api-test worker-test ## Roda toda a bateria de testes
