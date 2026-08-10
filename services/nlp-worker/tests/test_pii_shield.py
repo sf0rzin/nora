@@ -1422,3 +1422,55 @@ def test_14_digit_non_luhn_not_treated_as_card():
     text = "pedido 3056 9309 0259 09 invalido"  # last digit breaks Luhn
     result = pii_shield.redact(text)
     assert not any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
+
+
+# --------------------------------------------------------------------------------------
+# Title-Case business phrases and weekday names are not people
+# --------------------------------------------------------------------------------------
+# These were live false positives, not hypotheticals: before the negative-list entries,
+# "O time de Customer Success vai revisar" came out as "O time de [[PERSON_NAME_1]] vai
+# revisar" — the phrase that carried the meaning replaced by a person who does not exist,
+# and the model asked to reason about the result.
+
+
+@pytest.mark.parametrize(
+    "text,phrase",
+    [
+        ("O time de Customer Success vai revisar o contrato.", "Customer Success"),
+        ("Machine Learning nao resolve isso sozinho.", "Machine Learning"),
+        ("Abri um Pull Request com a correcao.", "Pull Request"),
+        ("O plano Enterprise cobre isso; o Starter nao.", "Enterprise"),
+        ("Data Science entra na proxima fase.", "Science"),
+    ],
+)
+def test_titlecase_business_phrase_is_not_a_person(text, phrase):
+    """Anti-FP: a Title Case business phrase must survive redaction intact."""
+    result = pii_shield.redact(text)
+    assert phrase in result.redacted_text
+    assert not any(r.type == PiiType.PERSON_NAME for r in result.redactions)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Segunda-feira fechamos o escopo.",
+        "Sexta-feira e o prazo combinado.",
+        "Quinta a gente revisa o orcamento.",
+    ],
+)
+def test_weekday_at_sentence_start_is_not_a_person(text):
+    """Anti-FP: a weekday opening a sentence is Title Case, and it is a deadline, not a name."""
+    result = pii_shield.redact(text)
+    assert not any(r.type == PiiType.PERSON_NAME for r in result.redactions)
+
+
+def test_negative_terms_do_not_shield_an_adjacent_name():
+    """The additions must not become a way to smuggle a name past the shield.
+
+    A negative term SPLITS a candidate run rather than discarding it, so a real name sitting
+    next to one of these words is still redacted. If that ever stops being true, this fails.
+    """
+    result = pii_shield.redact("Na Segunda-feira o Customer Success falou com Carlos Silva.")
+    assert "Carlos" not in result.redacted_text
+    assert "Silva" not in result.redacted_text
+    assert "Customer Success" in result.redacted_text

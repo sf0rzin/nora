@@ -643,6 +643,32 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
         "LGPD",
         "SOC",
         "ISO",
+        # Title-Case business and engineering phrases that the compound-name pattern reads
+        # as a person. These are live false positives, not hypotheticals: without them
+        # "Customer Success", "Machine Learning" and "Pull Request" are redacted as people,
+        # so the model is asked to reason about a meeting where somebody called
+        # [[PERSON_NAME_3]] is mentioned and the phrase that carried the meaning is gone.
+        "Customer",
+        "Success",
+        "Machine",
+        "Learning",
+        "Science",
+        "Pull",
+        "Request",
+        "Enterprise",
+        "Starter",
+        # Weekday names. "Segunda", "Terca" and "Sexta" are ordinary Title-Case words at the
+        # start of a sentence and "Sexta-feira" is one token after the hyphen rule, so a due
+        # date reads as a person and the deadline disappears from the analysis.
+        "Feira",
+        "Segunda",
+        "Terca",
+        "Quarta",
+        "Quinta",
+        "Sexta",
+        # Courtesy words that open a line and land in the same shape as a speaker label.
+        "Obrigado",
+        "Obrigada",
     )
 )
 
