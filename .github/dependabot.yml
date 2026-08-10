@@ -26,8 +26,20 @@ updates:
           - "jakarta.persistence*"
     ignore:
       # Spring Boot 4 = Spring Framework 7 + Jakarta EE 11 + Hibernate 7.
-      # Stack pins 3.3.5 (see CLAUDE.md). We evaluate manually.
+      # The stack is on 3.5.16 (services/api/pom.xml). We evaluate manually.
       - dependency-name: org.springframework.boot:spring-boot-starter-parent
+        update-types: ["version-update:semver-major"]
+      # springdoc-openapi 3.x targets Spring Boot 4 / Spring Framework 7. It COMPILES against
+      # Boot 3.5 — which is why this looks like an ordinary bump — and then no application
+      # context starts: it pulls Boot 4's org.springframework.boot.webmvc.autoconfigure.error
+      # .ErrorMvcAutoConfiguration in alongside Boot 3.5's
+      # org.springframework.boot.autoconfigure.web.servlet.error.ErrorMvcAutoConfiguration, and
+      # the duplicate `conventionErrorViewResolver` bean definition aborts startup. Measured on
+      # PR #387 with `mvn verify`: compile SUCCESS, then 116 errors out of 539 tests, every one
+      # of them a failed context load.
+      # UNBLOCKER: moving the parent to Spring Boot 4 — the ignore directly above this one.
+      # Take both together or neither.
+      - dependency-name: org.springdoc:springdoc-openapi-starter-webmvc-ui
         update-types: ["version-update:semver-major"]
 
   # Python / pip (worker + baseline)
