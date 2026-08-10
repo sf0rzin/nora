@@ -114,6 +114,19 @@ updates:
       # tailwind-merge 3 is in sync with tailwindcss 4 (which we ignore)
       - dependency-name: tailwind-merge
         update-types: ["version-update:semver-major"]
+      # ...except tailwindcss was NOT actually ignored here — only in /apps/desktop below.
+      # The comment above has been referring to an entry that did not exist, which is how
+      # PR #392 kept reappearing. Measured on that PR's branch: `npm run build` fails with
+      #   It looks like you're trying to use `tailwindcss` directly as a PostCSS plugin.
+      #   The PostCSS plugin has moved to a separate package [...] install `@tailwindcss/postcss`
+      # Tailwind 4 is a real migration, not a bump: @tailwindcss/postcss, `@import "tailwindcss"`
+      # replacing the three `@tailwind` directives in src/app/globals.css, config moving from
+      # tailwind.config.ts into `@theme` in CSS, and a changed plugin API — against an editorial
+      # design system with hand-written CSS, so it needs a rendered-page comparison and not just
+      # a green build. ADR 0013 pins raw Tailwind 3.x.
+      # UNBLOCKER: a deliberate migration with before/after page comparison.
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /apps/desktop
