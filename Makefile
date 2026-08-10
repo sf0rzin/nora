@@ -152,7 +152,7 @@ worker-test: worker-setup ## Roda os testes do worker
 # --- Web ---
 
 .PHONY: web-dev
-web-dev: ## Roda o frontend Next.js em modo dev
+web-dev: web-setup ## Roda o frontend Next.js em modo dev
 	cd apps/web && npm run dev
 
 # There is no `web-test`: apps/web has no test script and no test files, so the target
