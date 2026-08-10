@@ -23,7 +23,7 @@ The project is migrating to a self-hosted Debian VM on Proxmox, running Docker C
 
 The application is unaffected and runs locally. Web, API and NLP worker are a working vertical slice, and the desktop client captures audio and transcribes it on-device.
 
-Two things to know before reading the code as production-ready. Postgres row-level security is written but **not enforced** — policies exist on most tables, the application still connects as the table owner, and the enforcement flag is off, so tenant isolation currently rests entirely on the application-layer `tenant_id` filter rather than on the two layers the ADRs describe. And `apps/web` has no test suite at all.
+Two things to know before reading the code as production-ready. Postgres row-level security is written but **not enforced** — the policies are complete, covering every tenant-owned table, but the application still connects as the table owner and the enforcement flag defaults to off, so tenant isolation currently rests entirely on the application-layer `tenant_id` filter rather than on the two layers the ADRs describe. And `apps/web` has no test suite at all.
 
 ## Architecture
 
@@ -79,7 +79,7 @@ docs/                      Documentation, see below
 
 ## Running it locally
 
-You need Java 21, Node.js 22, Python 3.12, Docker with Compose, and Make.
+You need Java 21, Maven, Node.js 22, Python 3.12, Docker with Compose, and Make. There is no Maven wrapper in the repository, so `mvn` has to be on your PATH — CI gets it from `setup-java`, which is why nothing here fails without it.
 
 ```bash
 git clone https://github.com/sf0rzin/nora.git && cd nora
@@ -87,7 +87,9 @@ make env
 make db-up
 ```
 
-`make env` creates `.env.local` at the root and for each service from the `.env.example` files. `make db-up` starts Postgres and Adminer from `infra/docker/docker-compose.yml`.
+`make env` creates `.env.local` at the root and for the API, worker, web and desktop, from their `.env.example` files. `make db-up` starts Postgres and Adminer from `infra/docker/docker-compose.yml`; it needs `.env.local` to exist, so run `make env` first.
+
+One default worth knowing about immediately: `apps/web/.env.local` starts with `NEXT_PUBLIC_USE_MOCKS=true`, so the web application renders fixtures and never calls the backend. That makes the UI work before anything else is running, and it also means you can follow every step here, see a working application, and not be looking at your API. Set it to `false` to exercise the real one.
 
 Then run each service in its own terminal:
 
@@ -103,7 +105,7 @@ The backend serves on 8080, the worker on 8001, the web application on 3000, and
 
 No external credential is needed to bring the stack up. The worker ships with `USE_LLM_STUB=true`, so it answers analysis requests from a local stub at no cost. For real analysis, set `LLM_API_KEY` in `services/nlp-worker/.env.local` and turn the stub off; that file documents how to point the same client at OpenAI, Azure OpenAI, Groq, OpenRouter or a local Ollama.
 
-`apps/admin` has no Make target. Run `npm run dev` inside `apps/admin`; it serves on port 3002.
+`apps/admin` has no Make target. Run `npm install && npm run dev` inside `apps/admin`; it serves on port 3002 and falls back to mock data unless you set `NORA_ADMIN_USE_MOCKS=false`. It needs no `.env` file, which is why `make env` does not create one for it.
 
 For tests, `make api-test` runs the backend suite and `make worker-test` the worker's. `make test` runs both. There is no web test suite.
 
