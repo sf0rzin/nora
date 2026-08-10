@@ -43,7 +43,7 @@
 #   | (empty)   | nora.systems    | HTTP | caddy:80                  |
 #   | www       | nora.systems    | HTTP | caddy:80                  |
 #   | api       | nora.systems    | HTTP | caddy:80                  |
-#   | ssh       | nora.systems    | SSH  | host.docker.internal:22   |  <- Access policy FIRST
+#   | ssh       | nora.systems    | SSH  | 172.17.0.1:22             |  <- Access policy FIRST
 #   | admin     | nora.systems    | HTTP | caddy:80     |
 #   | grafana   | nora.systems    | HTTP | caddy:80     |
 #
@@ -143,12 +143,22 @@ ingress:
   # hostname is a login prompt for the whole internet. The other routes here front an
   # application that at least has its own session; this one fronts sshd directly.
   #
-  # `host.docker.internal` and not `localhost`: the connector is a container, so localhost is
-  # the container's loopback, where nothing listens. Requires the `extra_hosts` entry on the
-  # cloudflared service in ../docker-compose.yml — the two go together or the route dials
-  # 127.0.0.1:22 inside the container and fails with "connection refused".
+  # NOT `localhost`: the connector is a container, so its localhost is the container's own
+  # loopback, where nothing listens. The route has to name the host from the container's side.
+  #
+  # `172.17.0.1` is the gateway of Docker's DEFAULT bridge, which is also what `host-gateway`
+  # resolves to — verified from `nora-caddy`, on the same networks as the connector:
+  #     nc 172.17.0.1 22  ->  SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.18
+  # It is preferred over `nora_edge`'s own gateway (172.20.0.1, which also works) because it
+  # survives recreation of the `nora_edge` network.
+  #
+  # This is what is LIVE in the dashboard today. It becomes `ssh://host.docker.internal:22`
+  # once the `extra_hosts` entry added to the cloudflared service in ../docker-compose.yml has
+  # been deployed — that entry is what makes the name resolve inside the container, and until
+  # then the name would fail with "connection refused". Same address either way; the name is
+  # just the version that does not depend on Docker's address assignment.
   - hostname: ssh.nora.systems
-    service: ssh://host.docker.internal:22
+    service: ssh://172.17.0.1:22
 
   # MANDATORY catch-all: cloudflared refuses the configuration if the last rule
   # has a `hostname`. Any Host not listed dies here, without reaching the

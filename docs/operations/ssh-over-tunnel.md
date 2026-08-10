@@ -4,9 +4,18 @@ Reaches the host from a network that blocks outbound port 22 — corporate firew
 packet inspection are the usual reason. The client speaks TLS to Cloudflare's edge on 443 and the
 SSH stream rides inside it.
 
+**Status: live.** Applied on 2026-08-10 through the Cloudflare API. What exists:
+
+| Thing | Value |
+|---|---|
+| Access application | `nora-ssh`, self-hosted, `ssh.nora.systems`, 24h session |
+| Access policy | `operators-allowlist`, Allow, the same two operator e-mails that gate `admin.nora.systems` |
+| Tunnel ingress rule | `ssh.nora.systems` → `ssh://172.17.0.1:22`, inserted before the `http_status:404` catch-all |
+| DNS | `ssh.nora.systems` CNAME → `<tunnel-id>.cfargotunnel.com`, proxied |
+
 Everything here is **additive**. `sshd`, port 22 and the firewall are untouched, and the direct
-path keeps working. That is deliberate: the direct path is the fallback while the new one is
-being set up, and the way not to get locked out.
+path keeps working. That is deliberate: the direct path is the fallback, and it is how you get
+back in if the tunnel side breaks.
 
 ## Why not just move sshd to 443
 
@@ -26,9 +35,10 @@ Consequences worth stating, because each one is a wasted hour otherwise:
 - `infra/host/cloudflared/config.yml` is **reference documentation**, not live configuration.
   Editing it and restarting changes no routing. Its own header says so.
 - `cloudflared tunnel ingress validate` validates a local config file. There isn't one, so it is
-  not a meaningful gate in this mode. The protection that does exist is better: Cloudflare
+  not a meaningful gate in this mode. What protects the site instead is better: Cloudflare
   validates the rule server-side and pushes it to the connector **without a restart**, so adding
-  a route cannot take `nora.systems` down.
+  a route cannot take `nora.systems` down, and reverting is another API call rather than a
+  redeploy.
 - Routes are changed in the dashboard or through the Cloudflare API, and nowhere else.
 
 ## The mistake to avoid: `ssh://localhost:22`
@@ -37,102 +47,89 @@ The connector is a **container** on the `edge` bridge network. Its `localhost` i
 own loopback, where nothing listens on 22. A route to `ssh://localhost:22` authenticates fine and
 then dies with `dial tcp 127.0.0.1:22: connect: connection refused`.
 
-The service must be `ssh://host.docker.internal:22`, which requires the `extra_hosts` entry on
-the cloudflared service in `docker-compose.yml`. The two go together.
-
-Verified on 2026-08-10, from an ephemeral container on the same network:
+The route must name the host from the container's side. Verified from `nora-caddy`, which shares
+both of the connector's networks:
 
 ```
-$ docker run --rm --network nora_edge --add-host host.docker.internal:host-gateway \
-    caddy:2.8-alpine sh -c 'getent hosts host.docker.internal; nc -w 5 host.docker.internal 22'
-172.17.0.1        host.docker.internal
+$ docker exec nora-caddy sh -c 'nc -w 4 172.17.0.1 22'
+SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.18
+$ docker exec nora-caddy sh -c 'nc -w 4 172.20.0.1 22'
 SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.18
 ```
 
-`sshd` listens on `0.0.0.0:22` and `ufw` is inactive, so nothing blocks the bridge → host leg.
+`172.17.0.1` is the gateway of Docker's **default** bridge; `172.20.0.1` is `nora_edge`'s own.
+Both reach the host, and the route uses `172.17.0.1` because it survives recreation of
+`nora_edge`. `sshd` listens on `0.0.0.0:22` and `ufw` is inactive, so nothing blocks that leg.
+
+`host.docker.internal` resolves to the same `172.17.0.1`, and is the version that does not depend
+on Docker's address assignment at all — but it only resolves inside the container once the
+`extra_hosts` entry on the cloudflared service in `docker-compose.yml` has been deployed. Switch
+the route to `ssh://host.docker.internal:22` after that lands.
 
 ## Order of operations, and why
 
-**Access application and policy first. Public hostname last.**
+**Access application and policy first. DNS last.**
 
 An `ssh://` route has no authentication of its own — it is sshd, exposed at a name anyone can
 resolve. Until the Access policy exists, publishing the hostname is publishing an SSH endpoint to
 the internet. Creating the application first means the name does not resolve at all while the
 policy is being written, which is the safe order rather than the tidy one.
 
-### 1. Access application
+That is the order this was applied in, and the policy attachment was verified before the ingress
+rule was written:
 
-Zero Trust dashboard → **Access → Applications → Add an application → Self-hosted**:
-
-| Field | Value |
-|---|---|
-| Application name | `NORA SSH` |
-| Session duration | `24 hours` |
-| Subdomain / Domain | `ssh` / `nora.systems` |
-| Path | *(empty)* |
-
-Then the policy: name `operator`, action **Allow**, rule **Include → Emails →** the operator's
-address.
-
-If Zero Trust has no login method yet, add **One-time PIN** (Settings → Authentication → Login
-methods). It emails a code and needs no OAuth application. See `cloudflare-access.md` for
-Google/GitHub.
-
-Confirm the application is listed against `ssh.nora.systems` with one policy attached before
-going on.
-
-### 2. The compose change
-
-`infra/host/docker-compose.yml` carries the `extra_hosts` entry. It reaches the host on the next
-deploy that syncs the repo:
-
-```bash
-/opt/nora/infra/host/scripts/deploy.sh --sync --service cloudflared
+```
+GET  /accounts/{acc}/access/apps/{app}/policies   ->  1 policy, decision=allow, 2 e-mails
 ```
 
-This recreates the connector, which drops the tunnel for a few seconds. Do it deliberately, from
-a session that is not the one you would need to recover, and confirm the site afterwards **from
-outside**:
+## How it was applied (and how to redo it)
+
+Credentials are Account API Tokens. Read them into a variable; never echo them.
 
 ```bash
-curl -sS -o /dev/null -w '%{http_code}\n' https://nora.systems
-curl -sS -o /dev/null -w '%{http_code}\n' https://api.nora.systems/actuator/health
+ACC=$(cat .../cloudflare/id)      # account id
+RW=$(cat .../cloudflare/write-all)
+TUN=<tunnel-id>                   # GET /accounts/$ACC/cfd_tunnel?is_deleted=false
 ```
 
-`at` is not installed on this host, so the scheduled-rollback idiom uses systemd instead:
+**1. Access application, with its policy inline.**
 
 ```bash
-# arm, BEFORE applying
-sudo cp /opt/nora/infra/host/docker-compose.yml /root/compose.bak
-sudo systemd-run --on-active=10min --unit=nora-cf-rollback /bin/bash -c \
-  'cp /root/compose.bak /opt/nora/infra/host/docker-compose.yml && \
-   /opt/nora/infra/host/scripts/deploy.sh --service cloudflared'
-
-# ...apply, then verify from a SECOND connection and from outside...
-
-# disarm
-sudo systemctl stop nora-cf-rollback.timer && sudo systemctl reset-failed nora-cf-rollback.timer
+curl -sS -X POST "https://api.cloudflare.com/client/v4/accounts/$ACC/access/apps" \
+  -H "Authorization: Bearer $RW" -H "Content-Type: application/json" -d '{
+    "name": "nora-ssh", "type": "self_hosted", "domain": "ssh.nora.systems",
+    "session_duration": "24h", "app_launcher_visible": false,
+    "policies": [{ "name": "operators-allowlist", "decision": "allow",
+      "include": [{"email":{"email":"..."}}, {"email":{"email":"..."}}] }]
+  }'
 ```
 
-### 3. Public hostname
+Then **verify the policy attached** before going further. An application with zero policies
+denies everyone, but an application that failed to create while the route exists is an open SSH
+endpoint.
 
-Zero Trust → **Networks → Tunnels →** the NORA tunnel → **Configure → Public Hostnames → Add**:
+**2. Tunnel ingress — read, modify, write.** `PUT .../cfd_tunnel/$TUN/configurations` replaces
+the whole config, so `GET` it first, keep every existing rule, insert the new one **before** the
+`http_status:404` catch-all, and preserve `warp-routing`. Save the original as a rollback body
+before writing.
 
-| Field | Value |
-|---|---|
-| Subdomain | `ssh` |
-| Domain | `nora.systems` |
-| Type | **SSH** |
-| URL | `host.docker.internal:22` |
+**3. DNS.** `POST /zones/$ZONE/dns_records` with
+`{"type":"CNAME","name":"ssh","content":"$TUN.cfargotunnel.com","proxied":true}`.
 
-The CNAME `ssh.nora.systems → <tunnel-id>.cfargotunnel.com` is created automatically. Do not also
-create it by hand — two records for one name resolve inconsistently.
+Note that the dashboard's "Add a public hostname" flow creates this record for you; the API path
+does not. Do not do both — two records for one name resolve inconsistently.
 
-**Before the compose change of step 2 has been deployed**, `host.docker.internal` does not resolve
-inside the connector. The working URL in the meantime is the `edge` network's gateway address
-(`docker network inspect nora_edge -f '{{(index .IPAM.Config 0).Gateway}}'`, currently
-`172.20.0.1`). That address is assigned by Docker and changes if the network is recreated, so it
-is a stopgap and not the answer — switch the URL to `host.docker.internal:22` once step 2 lands.
+**4. Verify, from outside.**
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' https://nora.systems               # 200 — unaffected
+curl -sS -o /dev/null -w '%{http_code}\n' https://api.nora.systems/actuator/health   # 200
+curl -sSI https://ssh.nora.systems | grep -i location                        # 302 to the Access login
+```
+
+A 302 to `<team>.cloudflareaccess.com/cdn-cgi/access/login/ssh.nora.systems` is the gate working.
+Anything else — a 200, a connection reset — means the route is live without Access in front, and
+the DNS record should be deleted immediately.
 
 ## Client
 
@@ -161,7 +158,8 @@ Host nora
 ```
 
 The first connection opens a browser for the Access login; the token is cached under
-`~/.cloudflared/` until the session expires.
+`~/.cloudflared/` until the session expires. The key path must be the **private key file**, not
+the directory that contains it — `-i` on a directory fails with `Load key: Is a directory`.
 
 ## The failure mode to expect: corporate SSL inspection
 
@@ -191,6 +189,14 @@ makes this path worth having.
 
 ## Rollback
 
-- Remove the Public Hostname in the dashboard; the DNS record goes with it. Port 22 is unaffected.
-- Revert `extra_hosts` and redeploy the connector. No other route depends on it.
-- Nothing here modifies `sshd`, `ufw`/`nftables`, or the existing web routes.
+In increasing order of severity, each independent of the others:
+
+1. **Revoke access without removing anything:** delete the `operators-allowlist` policy from the
+   `nora-ssh` application. Zero policies denies everyone.
+2. **Remove the route:** delete the `ssh.nora.systems` DNS record, then `PUT` the tunnel
+   configuration back to the saved rollback body. The site is unaffected either way — the other
+   five rules and the catch-all are untouched.
+3. **Remove everything:** also delete the `nora-ssh` Access application.
+
+Nothing here modifies `sshd`, `ufw`/`nftables`, port 22, or the existing web routes, so none of
+these steps can cost you the direct path or the site.
