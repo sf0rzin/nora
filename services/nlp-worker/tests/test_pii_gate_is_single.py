@@ -175,9 +175,7 @@ def test_the_fallback_does_not_rebuild_the_prompt(module) -> None:
 
     def calls_named(node: ast.AST, name: str) -> bool:
         return any(
-            isinstance(n, ast.Call)
-            and isinstance(n.func, ast.Attribute)
-            and n.func.attr == name
+            isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == name
             for n in ast.walk(node)
         )
 
@@ -214,8 +212,7 @@ def test_the_fallback_does_not_rebuild_the_prompt(module) -> None:
         and n.func.attr in {"chat_structured", "chat_json"}
     ]:
         passed = {
-            kw.arg: kw.value.id if isinstance(kw.value, ast.Name) else None
-            for kw in call.keywords
+            kw.arg: kw.value.id if isinstance(kw.value, ast.Name) else None for kw in call.keywords
         }
         assert passed.get("user_prompt") == "user_prompt", (
             f"{module.__name__} passes a provider prompt that is not the `user_prompt` "
