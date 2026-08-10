@@ -21,19 +21,24 @@ impl MonoResampler {
             });
         }
         let chunk_in = (src_sr as usize / 50).max(64); // ~20ms
-        // Argument order is (input rate, output rate, chunk_size, sub_chunks, nbr_channels,
-        // fixed). It used to read (.., 1, chunk_in, 2, ..) with comments claiming the 1 was the
-        // channel count and the 2 was the sub-chunk count — so it actually asked for a chunk of
-        // one frame, 960 sub-chunks and two channels. Every parameter is a usize, so nothing
-        // rejected it at compile time; at run time the resampler was configured for stereo while
-        // the buffers below are mono, process_into_buffer returned WrongNumberOfInputChannels on
-        // every call, and `process` broke out of the loop and returned an empty Vec. In other
-        // words any capture device not already at 16 kHz fed silence into the pipeline.
+        // Argument order under rubato 4 is (input rate, output rate, chunk_size, nbr_channels,
+        // fixed) — `sub_chunks` is gone, chosen automatically to target ~256 frames. Use
+        // `new_custom` if that ever needs controlling.
+        //
+        // Worth keeping, because every parameter here is a usize and nothing rejects a wrong
+        // order at compile time: on rubato 2 this call read (.., 1, chunk_in, 2, ..) with
+        // comments claiming the 1 was the channel count and the 2 the sub-chunk count. It
+        // actually asked for a chunk of one frame, 960 sub-chunks and two channels. At run time
+        // the resampler was configured for stereo while the buffers below are mono,
+        // process_into_buffer returned WrongNumberOfInputChannels on every call, and `process`
+        // broke out of the loop and returned an empty Vec — so any capture device not already
+        // at 16 kHz fed silence into transcription, with nothing failing anywhere. The two
+        // tests at the bottom of this file exist for exactly that: they assert the output is
+        // non-empty and that a tone survives, which is what a swapped argument breaks.
         let inner = Fft::<f32>::new(
             src_sr as usize,
             dst_sr as usize,
             chunk_in, // chunk_size: frames consumed per call (~20ms of input)
-            2,        // sub_chunks
             1,        // nbr_channels: mono
             FixedSync::Input,
         )
