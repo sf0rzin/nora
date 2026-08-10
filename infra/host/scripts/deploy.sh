@@ -536,11 +536,29 @@ deploy_service() {  # <service> -> 0 ok, 1 failed (after a rollback attempt)
   # So: with a global tag, a service with no image at that tag is SKIPPED and left running on
   # what it has. With `--service X --tag Y`, the tag was aimed at X deliberately and a missing
   # image is still an error -- that is the case where silence would hide a typo.
+  #
+  # The distinction between "the tag does not exist" and "I was not allowed to look" matters
+  # and is NOT the exit code -- `docker manifest inspect` returns non-zero for both. Discarding
+  # stderr would turn an authentication failure into "skipped, nothing to do", which is a
+  # deploy that silently did not happen. The packages are public today, so this path is
+  # theoretical; `secrets.env.example` already anticipates them going private.
   if [ -n "$tagvar" ] && [ "$TAG_IS_GLOBAL" -eq 1 ] && [ "$new_tag" != "$prev_tag" ]; then
-    if ! docker manifest inspect "$(image_ref_for "$svc" "$new_tag")" >/dev/null 2>&1; then
-      log "  skipping $svc: no image published at '$new_tag' (its sources did not change in that"
-      log "  commit). It stays on '${prev_tag:-<none>}'. Use --service $svc --tag <t> to force one."
-      return 0
+    local manifest_err
+    if ! manifest_err="$(docker manifest inspect "$(image_ref_for "$svc" "$new_tag")" 2>&1 >/dev/null)"; then
+      case "$manifest_err" in
+        *"manifest unknown"*|*"not found"*|*"no such manifest"*|*"MANIFEST_UNKNOWN"*)
+          log "  skipping $svc: no image published at '$new_tag' (its sources did not change in"
+          log "  that commit). It stays on '${prev_tag:-<none>}'. Use --service $svc --tag <t> to force one."
+          return 0
+          ;;
+        *)
+          err "  could not determine whether '$new_tag' exists for $svc, and this is NOT being"
+          err "  treated as 'no image': that would skip the service and report success."
+          err "  $manifest_err"
+          err "  If the package went private, set GHCR_PULL_TOKEN (read:packages)."
+          return 1
+          ;;
+      esac
     fi
   fi
 

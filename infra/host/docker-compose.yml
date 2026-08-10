@@ -260,15 +260,11 @@ services:
       # which is `internal: true`. See the audit fix about sslmode.
       DATASOURCE_URL: jdbc:postgresql://postgres:5432/nora
       DATASOURCE_USERNAME: ${DATASOURCE_USERNAME:-nora_admin}
-<<<<<<< HEAD
       # Defaults to the admin password so nothing changes before the RLS cutover. After it,
       # DATASOURCE_USERNAME becomes nora_app and DATASOURCE_PASSWORD has to be able to become
       # nora_app's password -- without this indirection the username could be switched and the
       # password could not, which is a login failure at boot with a misleading message.
       DATASOURCE_PASSWORD: ${DATASOURCE_PASSWORD:-${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}}
-=======
-      DATASOURCE_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}
->>>>>>> a3740c4 (chore(infra): operator-facing error strings in English)
 
       # ---- RLS enforce (ADR 0026/0028) — separate flip, see rls-cutover ----
       NORA_RLS_ENFORCE: ${NORA_RLS_ENFORCE:-false}
