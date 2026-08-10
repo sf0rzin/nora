@@ -102,10 +102,10 @@ scrape_configs:
   #
   #   - (1) on its own takes down EVERYTHING here, including `caddy_reverse_proxy_upstreams_healthy`
   #     — if the endpoint is not reachable, there is no scrape at all.
-  #   - (2) only takes down the caddy_http_* family ("Req/s na borda", "5xx/s na borda",
-  #     "Req/s por código HTTP", "Latência na borda"). The upstreams gauge is registered
+  #   - (2) only takes down the caddy_http_* family ("Req/s at the edge", "5xx/s at the edge",
+  #     "Req/s by HTTP code", "Latency at the edge"). The upstreams gauge is registered
   #     by the reverse_proxy module and does NOT depend on the opt-in, so fixing (1) alone
-  #     already lights up "Upstreams saudáveis (Caddy)" and "Upstreams saudáveis por destino".
+  #     already lights up "Healthy upstreams (Caddy)" and "Healthy upstreams by target".
   #
   # This is relevant because those two upstream panels are the ONLY metric with
   # per-service granularity that covers web and admin. Fixing (1) is the biggest gain per

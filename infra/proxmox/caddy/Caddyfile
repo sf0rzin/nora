@@ -1,171 +1,171 @@
 # =============================================================================
-# NORA — Caddy: roteamento por Host + buffer de retry do rolling update.
+# NORA — Caddy: Host-based routing + rolling-update retry buffer.
 # =============================================================================
 #
-# Posição na topologia:
+# Position in the topology:
 #
 #   Internet -> Cloudflare edge (TLS) -> cloudflared (tunnel) -> CADDY -> apps
 #
-# ## Por que NÃO há TLS aqui
+# ## Why there is NO TLS here
 #
-# O TLS do visitante termina na borda da Cloudflare (Universal SSL). O
-# cloudflared abre uma conexão de SAÍDA para a Cloudflare e entrega a
-# requisição em HTTP puro para `caddy:80`, tudo dentro das bridges do Docker
-# (a `internal` é `internal: true`). Não existe porta inbound publicada nesta
-# VM. Por isso `auto_https off`: sem isso o Caddy veria os nomes de host
-# abaixo, tentaria emitir certificado via ACME e falharia em loop (não há
-# :443 alcançável de fora), além de redirecionar 80 -> 443 e derrubar o túnel.
+# The visitor's TLS terminates at the Cloudflare edge (Universal SSL). cloudflared
+# opens an OUTBOUND connection to Cloudflare and delivers the
+# request as plain HTTP to `caddy:80`, all within Docker's bridges
+# (`internal` is `internal: true`). There is no inbound port published on this
+# VM. That is why `auto_https off`: without it Caddy would see the host names
+# below, try to issue a certificate via ACME, and fail in a loop (there is no
+# :443 reachable from outside), on top of redirecting 80 -> 443 and taking down the tunnel.
 #
-# ## Por que este arquivo é o coração do rolling update
+# ## Why this file is the heart of the rolling update
 #
-# `docker compose up -d` DERRUBA o container antigo ANTES de subir o novo —
-# não existe readiness gate como o `activeRevisionsMode: Single` do Container
-# Apps. A API leva ~45s para subir (JVM + Flyway; é o `start_period: 45s` do
-# healthcheck no compose). Nessa janela o nome `api` ou não resolve (NXDOMAIN,
-# o container sumiu) ou resolve para um IP que recusa conexão.
+# `docker compose up -d` TAKES DOWN the old container BEFORE bringing up the new one —
+# there is no readiness gate like Container Apps' `activeRevisionsMode: Single`.
+# The API takes ~45s to come up (JVM + Flyway; that is the compose healthcheck's
+# `start_period: 45s`). In that window the name `api` either does not resolve
+# (NXDOMAIN, the container is gone) or resolves to an IP that refuses the connection.
 #
-# Sem configuração, cada uma dessas requisições vira um 502 imediato. Com
-# `lb_try_duration`, o Caddy SEGURA a requisição e fica retentando o dial a
-# cada `lb_try_interval` até o upstream aceitar. O usuário vê uma requisição
-# lenta em vez de um erro — que é exatamente a troca que se quer num deploy.
+# Without this configuration, every one of these requests becomes an immediate 502. With
+# `lb_try_duration`, Caddy HOLDS the request and keeps retrying the dial every
+# `lb_try_interval` until the upstream accepts it. The user sees a slow
+# request instead of an error — exactly the trade-off you want during a deploy.
 #
-# O retry cobre falha de DIAL (connection refused E falha de DNS), que é
-# justamente o que acontece na recriação do container. Não há health check
-# ativo de propósito: com um único upstream, um `health_uri` errado marcaria o
-# backend como down para sempre e transformaria o buffer numa parede.
+# The retry covers DIAL failure (connection refused AND DNS failure), which is
+# exactly what happens when the container gets recreated. There is no active
+# health check on purpose: with a single upstream, a wrong `health_uri` would mark the
+# backend as down forever and turn the buffer into a wall.
 #
-# ## Validar antes de subir
+# ## Validate before deploying
 #
 #   docker run --rm -v "$PWD/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
 #     caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile
 #
-# Recarregar sem downtime (o Caddy é o único que não pode piscar):
+# Reload without downtime (Caddy is the one thing that cannot blink):
 #   docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
 # =============================================================================
 
 {
 	# ---- Admin API + /metrics (:2019) -------------------------------------
-	# Bind em 0.0.0.0, NÃO em loopback. Duas razões, e a segunda é obrigatória:
+	# Bind on 0.0.0.0, NOT on loopback. Two reasons, and the second is mandatory:
 	#
-	#   1. O healthcheck do compose (docker-compose.yml:101) roda DE DENTRO
-	#      deste container e funcionaria com loopback.
-	#   2. O job `caddy` do ../observability/prometheus.yml faz scrape em
-	#      `caddy:2019` DE FORA, a partir do container do Prometheus. Com o
-	#      default do Caddy (`admin localhost:2019`) esse scrape dá connection
-	#      refused e o painel de borda do Grafana fica "No data" sem erro.
+	#   1. The compose healthcheck (docker-compose.yml:101) runs FROM INSIDE
+	#      this container and would work with loopback.
+	#   2. The `caddy` job in ../observability/prometheus.yml scrapes
+	#      `caddy:2019` FROM OUTSIDE, from the Prometheus container. With
+	#      Caddy's default (`admin localhost:2019`) that scrape gets connection
+	#      refused and Grafana's edge panel shows "No data" with no error.
 	#
-	# O trade-off é real: a admin API reconfigura o proxy inteiro em runtime,
-	# e 0.0.0.0 a expõe para todo container das redes `edge` e `internal`.
-	# Aceitável porque nenhuma das duas tem rota da internet (`internal` é
-	# `internal: true`; na `edge` só existe o cloudflared) e nenhuma porta
-	# :2019 é publicada no host. Se um dia entrar container de terceiro na
-	# `internal`, isto vira `admin localhost:2019` + um exporter dedicado.
+	# The trade-off is real: the admin API reconfigures the entire proxy at runtime,
+	# and 0.0.0.0 exposes it to every container on the `edge` and `internal` networks.
+	# Acceptable because neither has a route to the internet (`internal` is
+	# `internal: true`; on `edge` only cloudflared exists) and no
+	# :2019 port is published on the host. If a third-party container ever joins
+	# `internal`, this becomes `admin localhost:2019` + a dedicated exporter.
 	admin 0.0.0.0:2019
 
-	# ATENÇÃO ao healthcheck do compose:
+	# WATCH OUT for the compose healthcheck:
 	#     wget --quiet --tries=1 --spider http://localhost:2019/config/
-	# `--spider` do busybox emite HEAD, e o handler de /config/ da admin API do
-	# Caddy só trata GET/POST/PUT/PATCH/DELETE — HEAD cai no default e volta
-	# 405, o que faz o wget sair != 0 e o container NUNCA ficar healthy (e o
-	# cloudflared, que tem `condition: service_healthy`, nunca subir).
-	# Trocar por um GET de verdade, ou apontar para o /healthz do bloco :80
-	# lá embaixo (esse é servido por `respond`, que responde HEAD sem reclamar):
+	# busybox's `--spider` issues HEAD, and the Caddy admin API's /config/ handler
+	# only handles GET/POST/PUT/PATCH/DELETE — HEAD falls through to the default and
+	# returns 405, which makes wget exit != 0 and the container NEVER become healthy
+	# (and cloudflared, which has `condition: service_healthy`, never comes up).
+	# Swap it for a real GET, or point it at the :80 block's /healthz
+	# further down (that one is served by `respond`, which answers HEAD without complaint):
 	#     test: ["CMD", "wget", "-qO-", "http://localhost:2019/config/"]
 	#     test: ["CMD", "wget", "--spider", "-q", "http://localhost/healthz"]
 
-	# ---- Sem TLS na origem ------------------------------------------------
-	# Desliga ACME e o redirect automático 80 -> 443. Ver cabeçalho.
+	# ---- No TLS at the origin ----------------------------------------------
+	# Turns off ACME and the automatic 80 -> 443 redirect. See the header comment.
 	auto_https off
 
-	# ---- Logs em JSON no stdout ------------------------------------------
-	# O Alloy lê o socket do Docker e manda o stdout de todo container para o
-	# Loki. Logar em arquivo aqui seria invisível para o pipeline.
-	# `level INFO`: DEBUG no Caddy é extremamente verboso e polui o Loki.
+	# ---- JSON logs to stdout -----------------------------------------------
+	# Alloy reads the Docker socket and sends every container's stdout to
+	# Loki. Logging to a file here would be invisible to the pipeline.
+	# `level INFO`: DEBUG in Caddy is extremely verbose and pollutes Loki.
 	log {
 		output stdout
 		format json
 		level INFO
 	}
 
-	# ---- Encerramento ------------------------------------------------------
-	# Conexões SSE ficam abertas indefinidamente. Sem um limite, o Caddy
-	# esperaria por elas no shutdown e `docker compose stop` só terminaria no
-	# SIGKILL, depois do timeout inteiro do Docker.
+	# ---- Shutdown ------------------------------------------------------------
+	# SSE connections stay open indefinitely. Without a limit, Caddy
+	# would wait for them on shutdown and `docker compose stop` would only finish on
+	# SIGKILL, after Docker's entire timeout.
 	grace_period 15s
 
 	servers {
-		# O client real vem atrás de cloudflared, que está numa bridge
-		# privada. Sem isto o Caddy trataria o IP do cloudflared como cliente
-		# e ignoraria o X-Forwarded-For. (O IP público do visitante também
-		# chega no header `Cf-Connecting-Ip`; para usá-lo como client_ip nos
-		# logs, acrescente `client_ip_headers Cf-Connecting-Ip` aqui.)
+		# The real client sits behind cloudflared, which is on a private
+		# bridge. Without this, Caddy would treat cloudflared's IP as the client
+		# and ignore X-Forwarded-For. (The visitor's public IP also
+		# arrives in the `Cf-Connecting-Ip` header; to use it as client_ip in the
+		# logs, add `client_ip_headers Cf-Connecting-Ip` here.)
 		trusted_proxies static private_ranges
 
-		# Desde o Caddy 2.7 as métricas por-handler são OPT-IN (custo de
-		# cardinalidade). SEM esta linha, :2019/metrics responde 200 mas só
-		# com métricas de runtime Go — nenhuma `caddy_http_request_*`. O
-		# scrape do Prometheus "funciona" e o dashboard fica vazio: é a falha
-		# silenciosa que ../observability/prometheus.yml avisa no job `caddy`.
+		# Since Caddy 2.7 per-handler metrics are OPT-IN (cardinality cost).
+		# WITHOUT this line, :2019/metrics responds 200 but only
+		# with Go runtime metrics — no `caddy_http_request_*`. The
+		# Prometheus scrape "works" and the dashboard stays empty: it is the
+		# silent failure that ../observability/prometheus.yml warns about in the `caddy` job.
 		#
-		# Limite conhecido: o label é `server` (srv0, srv1...), não o Host.
-		# Como web/api/admin/grafana entram todos pelo mesmo listener :80,
-		# isto dá o AGREGADO da borda, não RED por serviço.
+		# Known limitation: the label is `server` (srv0, srv1...), not the Host.
+		# Since web/api/admin/grafana all come in through the same :80 listener,
+		# this gives the edge AGGREGATE, not per-service RED.
 		metrics
 	}
 }
 
-# NOTA sobre compressão: NÃO há `encode` neste arquivo, de propósito. A
-# Cloudflare já comprime na borda, e comprimir um `text/event-stream` no
-# caminho é a forma mais fácil de reintroduzir buffering no chat.
+# NOTE on compression: there is NO `encode` in this file, on purpose.
+# Cloudflare already compresses at the edge, and compressing a `text/event-stream`
+# along the way is the easiest way to reintroduce buffering into the chat.
 
 # =============================================================================
 # APEX + WWW -> web:3000
 # =============================================================================
-# Next.js (SSR + BFF). O `/api/chat` do BFF faz streaming token a token, então
-# esta rota também precisa de `flush_interval -1`.
+# Next.js (SSR + BFF). The BFF's `/api/chat` streams token by token, so
+# this route also needs `flush_interval -1`.
 http://{$NORA_PUBLIC_DOMAIN:nora.systems}, http://www.{$NORA_PUBLIC_DOMAIN:nora.systems} {
 	log
 
 	reverse_proxy web:3000 {
-		# --- buffer do rolling update ---
+		# --- rolling-update buffer ---
 		lb_try_duration 60s
 		lb_try_interval 500ms
 
 		# --- streaming ---
-		# -1 = repassa cada byte imediatamente, sem buffer intermediário.
-		# Sem isto o chat só "aparece" quando a resposta inteira termina.
+		# -1 = forwards every byte immediately, no intermediate buffer.
+		# Without this the chat only "appears" once the entire response finishes.
 		flush_interval -1
 
-		# O TLS terminou na Cloudflare; o app precisa saber que a origem
-		# pública é https para montar URLs absolutas e cookies Secure.
+		# TLS terminated at Cloudflare; the app needs to know the public
+		# origin is https to build absolute URLs and Secure cookies.
 		header_up X-Forwarded-Proto https
 
 		transport http {
-			# Dial curto para o ciclo de retry girar rápido durante o boot.
+			# Short dial so the retry cycle spins fast during boot.
 			dial_timeout 2s
-			# Tempo até o PRIMEIRO byte do header da resposta. Não limita a
-			# duração do stream depois que ele começa.
+			# Time until the FIRST byte of the response header. Does not limit the
+			# stream's duration once it starts.
 			response_header_timeout 120s
 		}
 	}
 }
 
 # =============================================================================
-# api.<domínio> -> api:8080
+# api.<domain> -> api:8080
 # =============================================================================
-# Spring Boot. Rota mais sensível ao rolling update: é a que leva ~45s para
-# ficar de pé (JVM + Flyway) e a que serve SSE do chat.
+# Spring Boot. The route most sensitive to the rolling update: it is the one that takes ~45s to
+# come up (JVM + Flyway) and the one that serves the chat's SSE.
 http://api.{$NORA_PUBLIC_DOMAIN:nora.systems} {
 	log
 
 	reverse_proxy api:8080 {
-		# --- buffer do rolling update ---
-		# 60s > os 45s de `start_period` do healthcheck da API no compose.
-		# Margem deliberada: um Flyway com migration nova demora mais.
+		# --- rolling-update buffer ---
+		# 60s > the API healthcheck's 45s `start_period` in the compose.
+		# Deliberate margin: a Flyway run with a new migration takes longer.
 		lb_try_duration 60s
 		lb_try_interval 500ms
 
-		# --- streaming (SSE do chat) ---
+		# --- streaming (chat SSE) ---
 		flush_interval -1
 
 		header_up X-Forwarded-Proto https
@@ -178,16 +178,16 @@ http://api.{$NORA_PUBLIC_DOMAIN:nora.systems} {
 }
 
 # =============================================================================
-# admin.<domínio> -> admin:3002   (profile `platform`)
+# admin.<domain> -> admin:3002   (profile `platform`)
 # =============================================================================
-# Console do operador. A autenticação acontece na BORDA, na Access Application
-# da Cloudflare; o cloudflared injeta o header `Cf-Access-Jwt-Assertion` e o
-# admin o valida contra o JWKS (CF_ACCESS_TEAM_DOMAIN + CF_ACCESS_AUD).
-# O Caddy repassa headers de entrada sem filtrar — não remova esse header.
+# Operator console. Authentication happens at the EDGE, in Cloudflare's Access
+# Application; cloudflared injects the `Cf-Access-Jwt-Assertion` header and
+# admin validates it against the JWKS (CF_ACCESS_TEAM_DOMAIN + CF_ACCESS_AUD).
+# Caddy passes incoming headers through unfiltered — do not remove that header.
 #
-# Com o profile `platform` DESLIGADO este bloco continua existindo e o
-# upstream `admin` não resolve: a requisição vai retentar por 60s e devolver
-# 502. É o comportamento correto (falha visível), mas não confunda com bug.
+# With the `platform` profile OFF this block still exists and the
+# `admin` upstream does not resolve: the request will retry for 60s and return
+# 502. That is the correct behavior (visible failure), do not mistake it for a bug.
 http://admin.{$NORA_PUBLIC_DOMAIN:nora.systems} {
 	log
 
@@ -195,8 +195,8 @@ http://admin.{$NORA_PUBLIC_DOMAIN:nora.systems} {
 		lb_try_duration 60s
 		lb_try_interval 500ms
 
-		# Next.js: sem streaming crítico, mas manter o comportamento uniforme
-		# evita surpresa em rota nova que use SSE.
+		# Next.js: no critical streaming, but keeping the behavior uniform
+		# avoids surprises on a new route that uses SSE.
 		flush_interval -1
 
 		header_up X-Forwarded-Proto https
@@ -209,11 +209,11 @@ http://admin.{$NORA_PUBLIC_DOMAIN:nora.systems} {
 }
 
 # =============================================================================
-# grafana.<domínio> -> grafana:3000
+# grafana.<domain> -> grafana:3000
 # =============================================================================
-# GF_SERVER_ROOT_URL já está setado como https://grafana.<domínio> no compose,
-# então o Grafana monta os links corretamente. O upgrade de WebSocket (Live /
-# streaming de painéis) é tratado nativamente pelo reverse_proxy.
+# GF_SERVER_ROOT_URL is already set to https://grafana.<domain> in the compose,
+# so Grafana builds its links correctly. The WebSocket upgrade (Live /
+# panel streaming) is handled natively by reverse_proxy.
 http://grafana.{$NORA_PUBLIC_DOMAIN:nora.systems} {
 	log
 
@@ -232,15 +232,15 @@ http://grafana.{$NORA_PUBLIC_DOMAIN:nora.systems} {
 }
 
 # =============================================================================
-# CATCH-ALL — qualquer outro Host na :80
+# CATCH-ALL — any other Host on :80
 # =============================================================================
-# Pega Host desconhecido, acesso por IP direto na bridge e scanner interno.
-# Responde 404 seco em vez de vazar qual serviço existe atrás.
-# `:80` (sem host) é o endereço menos específico possível: os blocos com host
-# acima sempre vencem no roteamento; este só recebe o que sobra.
+# Catches an unknown Host, direct IP access on the bridge, and internal scanners.
+# Answers a bare 404 instead of leaking which service exists behind it.
+# `:80` (no host) is the least specific address possible: the host-matched blocks
+# above always win in routing; this one only gets what is left over.
 :80 {
-	# Conveniência de operação: `docker compose exec <svc> wget -qO- http://caddy/healthz`
-	# confirma que o Caddy está roteando, sem depender da admin API.
+	# Operational convenience: `docker compose exec <svc> wget -qO- http://caddy/healthz`
+	# confirms that Caddy is routing, without depending on the admin API.
 	handle /healthz {
 		respond "ok" 200
 	}

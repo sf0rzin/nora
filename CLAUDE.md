@@ -1,11 +1,3 @@
----
-title: "CLAUDE.md — NORA (main project context)"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # CLAUDE.md — NORA
 
 This file is the main project context for Claude Code and similar AI coding agents. Read it before making code changes.
@@ -16,11 +8,9 @@ NORA (Negotiation Observability & Revenue Assistant) is a SaaS conversational in
 
 **Core promise:** transform meeting transcripts into summaries, decisions, action items and business intelligence using the customer's own company/product context.
 
-**Primary goal:** strong FIAP Challenge 2026 / NEXT 2026 project that doubles as a production-ready commercial SaaS.
+**Primary goal:** a FIAP Challenge 2026 / NEXT 2026 project built to the standards of a commercial SaaS rather than to those of an assignment. It is not operating commercially.
 
 ## Read First (in this order)
-
-> **NOTE:** the `docs/` structure was reorganized in Sub-phase 1.10 (2026-05-14). Old paths (`docs/PROJECT.md`, `docs/development-standards.md`, etc.) **no longer exist**.
 
 1. **`docs/product/vision.md`** — product and boundaries
 2. **`docs/product/roadmap.md`** — prioritized backlog + sub-phase history + what's ahead
@@ -32,7 +22,7 @@ NORA (Negotiation Observability & Revenue Assistant) is a SaaS conversational in
 For operational context (self-hosted deploy, runbooks):
 
 7. **`docs/operations/proxmox-deploy.md`** — runbook for deploying on the Proxmox VM + the 9 self-hosting pitfalls (**replaces `azure-deploy.md`**)
-8. **`docs/operations/azure-decommission.md`** — safe shutdown order for Azure (data rescue → DNS → RG deletion)
+8. **`docs/operations/azure-decommission.md`** — safe shutdown order for Azure (DNS → RG deletion). There is no data to rescue; that runbook says so and explains why
 9. **`docs/operations/production-readiness-gaps.md`** — prod-readiness gaps (those anchored in Azure were partially superseded by ADR 0034)
 10. **`docs/operations/azure-deploy.md`** — **historical.** Runbook from the Azure era + the 8 Azure for Students pitfalls. Do not operate from it
 
@@ -42,54 +32,50 @@ For academic context (FIAP Challenge):
 12. **`docs/challenge/personas-and-empathy-map.md`** — 3 personas + empathy map
 13. **`docs/challenge/use-case-diagram.md`** — UML use cases
 
-## Operating multiple architects
-
-NORA is operated by the **Stratfy team (PO) + multiple Claude instances** running the `nora-architect` skill. Each architect has a declared specialization (Tech Lead, Design, etc.) and a dedicated folder in the Obsidian vault.
-
-Cross-architect coordination happens **async via the Obsidian vault** at `Claude/50-coordenacao-arquitetos/`. The Stratfy team (PO) is always CC.
-
-See `Claude/50-coordenacao-arquitetos/00-papeis.md` (Obsidian vault) for current roles and `Claude/50-coordenacao-arquitetos/CURRENT-STATE.md` for active PRs / blockers.
-
 ## Current scope
 
 NORA is **migrating off Azure to a self-hosted Proxmox VM** (ADR 0034, 2026-08-07).
-Production on Azure went **down** (522 on `nora.systems` / `api.nora.systems`; the Azure
-for Students subscription was most likely deactivated). Rescuing the Postgres data is the
-top priority — see `docs/operations/azure-decommission.md`. Stack:
+The Azure deployment is **down** (522 on `nora.systems` / `api.nora.systems`; the Azure
+for Students subscription was most likely deactivated). Nothing is currently serving.
+ADR 0034 records that there is no production data and no user base, so the Postgres
+content is reproducible demo material and the decommission has no rescue step. Stack:
 
 - **Web + Backend + NLP Worker + Desktop** vertical slice all functional
-- **Backend** is Spring Boot 3 (Java 21) + Postgres 16 (`pgvector/pgvector:pg16` container) + Flyway, with **IAM AWS-style** (Root + Users + Groups + Policies) and **multi-tenancy** via `tenant_id` filter (ADR 0002) + RLS (ADR 0026/0028, **three** roles: `nora_app`, `nora_telemetry`, admin/owner)
+- **Backend** is Spring Boot 3 (Java 21) + Postgres 16 (`pgvector/pgvector:pg16` container) + Flyway, with **IAM AWS-style** (Root + Users + Groups + Policies) and **multi-tenancy** via `tenant_id` filter (ADR 0002) + RLS (ADR 0026/0028, **three** roles: `nora_app`, `nora_telemetry`, admin/owner). RLS is **written but not enforced**: the policies are complete but the app still connects as the table owner and the enforcement flag defaults to off, so isolation currently rests on the application filter alone
 - **NLP Worker** is FastAPI (Python 3.12) with **PII Shield** (PERSON_NAME + EMAIL + CPF + CNPJ + PHONE + CREDIT_CARD per ADR 0012) and **JSON Schema strict** LLM output (ADR 0003) via **provider-agnostic client** (ADR 0004, default OpenAI `gpt-4o-mini`)
-- **Web** is Next.js 14 + TypeScript + **Tailwind cru, no shadcn** (ADR 0013) with editorial palette OKLCH + Inter + Instrument Serif fonts
-- **Desktop** is Tauri 2 + Rust with **Whisper STT running on-device** (ADR 0035 — the Python sidecar and the Azure Speech token broker are both removed) — operated by a separate collaborator
+- **Web** is Next.js 16 + TypeScript + **raw Tailwind, no shadcn** (ADR 0013) with editorial palette OKLCH + Inter + Instrument Serif fonts. It has **no test suite**
+- **Desktop** is Tauri 2 + Rust with **Whisper STT running on-device** (ADR 0035 — the Python sidecar and the Azure Speech token broker are both removed) — maintained by @pollotherunner
 - **Infra** is `infra/proxmox/docker-compose.yml` (compose project `nora`) on a single Debian VM: **Cloudflare Tunnel as the only ingress** (no inbound port), Caddy routing by Host, secrets in **SOPS + age**, observability via OTel Collector + Prometheus + Loki + Grafana. **Deploy is PULL** (`deploy-proxmox.yml` publishes an immutable release pointer; the host pulls) — never push, because the repo is public (ADR 0017)
 - `infra/bicep/` is **legacy** — the Azure infra it describes is being torn down
 
 For up-to-date status of each backlog story, see `docs/product/backlog.md` (DONE / PARTIAL / MISSING per US).
 
-## Stack (verified versions)
+## Stack
 
-| Component | Version |
-|---|---|
-| Java | 21 |
-| Spring Boot | 3.3.5 |
-| Postgres | 16 (`pgvector/pgvector:pg16`; pgvector extension **available but not created** — see ADR 0034 §excluded scope) |
-| Flyway | inherited from Spring Boot 3.3.5 |
-| Python (worker) | >= 3.12 |
-| FastAPI | >= 0.115 |
-| Pydantic | >= 2.9 |
-| OpenAI SDK | >= 1.50 |
-| Next.js | 14.2.15 |
-| TypeScript | ^5.6 |
-| Tailwind CSS | ^3.4 |
-| Tauri (desktop) | 2 (on-device STT via `whisper-rs` — ADR 0035) |
-| Orchestration | Docker Compose (project `nora`, `infra/proxmox/docker-compose.yml`) |
-| Ingress | Cloudflare Tunnel (`cloudflared`) + Caddy 2.8 |
-| Secrets | SOPS + age (`secrets.env.sops`; private key only on the host) |
-| Observability | OTel Collector 0.115 + Prometheus 3.1 (30d) + Loki 3.3 + Alloy 1.7 + Grafana 11.5 |
-| Bicep | **legacy** — `infra/bicep/` describes the Azure infra being shut down |
+Every row below was read out of the file named beside it. Change the manifest, change this table.
 
-See `docs/engineering/architecture.md` §1 for the full table with where to verify each version.
+| Component | Version | Verify in |
+|---|---|---|
+| Java | 21 | `services/api/pom.xml` (`java.version`) |
+| Spring Boot | 3.5.16 | `services/api/pom.xml` (parent) |
+| Flyway | inherited from Spring Boot 3.5.16 | `services/api/pom.xml` |
+| Postgres | 16 (`pgvector/pgvector:pg16`; the pgvector extension is available but **not created** — ADR 0034 §excluded scope) | `infra/proxmox/docker-compose.yml` |
+| Python (worker) | >= 3.12 | `services/nlp-worker/pyproject.toml` |
+| FastAPI | >= 0.115 | `services/nlp-worker/pyproject.toml` |
+| Pydantic | >= 2.9 | `services/nlp-worker/pyproject.toml` |
+| OpenAI SDK | >= 1.50 | `services/nlp-worker/pyproject.toml` |
+| Next.js | 16.3.0 | `apps/web/package.json` |
+| React | 18.3.1 | `apps/web/package.json` |
+| TypeScript | ^5.6.3 | `apps/web/package.json` |
+| Tailwind CSS | ^3.4.13 | `apps/web/package.json` |
+| Tauri (desktop) | 2, on-device STT via `whisper-rs` pinned at `=0.16.0` (ADR 0035) | `apps/desktop/src-tauri/Cargo.toml` |
+| Orchestration | Docker Compose, project `nora` | `infra/proxmox/docker-compose.yml` (`name:`) |
+| Ingress | Cloudflare Tunnel `cloudflared:2026.5.2` + `caddy:2.8-alpine` | `infra/proxmox/docker-compose.yml` |
+| Secrets | SOPS + age (`secrets.env.sops`; private key only on the host) | `infra/proxmox/` |
+| Observability | OTel Collector 0.115.1 · Prometheus v3.1.0 (`--storage.tsdb.retention.time=30d`) · Loki 3.3.2 · Alloy v1.7.1 · Grafana 11.5.1 | `infra/proxmox/docker-compose.yml` |
+| Bicep | **legacy** — `infra/bicep/` describes the Azure infra being shut down | `infra/bicep/` |
+
+`docs/engineering/architecture.md` §1 carries the same table with the rationale for each choice.
 
 ## Non-Negotiables (inviolable rules)
 
@@ -100,8 +86,8 @@ See `docs/engineering/architecture.md` §1 for the full table with where to veri
 - **DDD layers in the backend**: `domain` does not know Spring/HTTP/SDK. `application` orchestrates. `infrastructure` adapts. `api` is thin
 - **No hardcoded TOTVS** in product code. Tenant context is configurable
 - **ADRs are immutable** once accepted. Decision obsolete? Create a successor ADR (see `docs/adr/README.md`)
-- **Defer scope creep**: ADR 0014 declares v1 closed. 13 US explicitly deferred (+ US48/US49 addressed via ADR 0015) — no new scope added until the FIAP pitch (2026-06-15)
-- **Tests**: critical areas (IAM, Auth, PII) >85% coverage sustained (ADR 0018)
+- **Defer scope creep**: ADR 0014 declares v1 closed. It deferred 14 US; US15 was subsequently delivered in PR #206, leaving 13 (US48/US49 addressed via ADR 0015). The gate ADR 0014 set was the FIAP pitch, held 2026-06-15 — reopening scope now needs a successor ADR, not a reading of that deadline
+- **Tests**: two coverage gates are actually enforced in CI, and both are narrow. `mvn verify` runs a JaCoCo rule over the single class `PolicyEvaluator` — instruction >= 90%, branch >= 75% (`services/api/pom.xml`). The worker job runs `pytest --cov=nora_nlp.services.pii_shield --cov-fail-under=90` over that one module (`.github/workflows/ci.yml`). ADR 0018's ">85% sustained across IAM, Auth and PII" is the **aspiration**, not a gate — nothing blocks a regression outside those two scopes, and `apps/web` has no test suite at all
 - **Do not commit secrets**. Use `.env.example` for variable names
 
 ## How we work
@@ -111,28 +97,23 @@ See `docs/engineering/architecture.md` §1 for the full table with where to veri
 - **Reference IDs** (US##, Sub-phase 1.X, ADR NNNN, PR #) in commits and PR descriptions
 - **Before editing**, inspect the existing patterns in the target module (Grep/Glob)
 - **After editing**, run the smallest relevant verification command (`mvn test`, `pytest`, `npm run typecheck`, `docker compose -f infra/proxmox/docker-compose.yml config`) and report pass/fail
+- **After touching documentation**, run both guard scripts and report their exit codes:
+  - `bash scripts/check-doc-links.sh` — every relative markdown link must resolve. Renaming or deleting a document without fixing its inbound links fails here
+  - `bash scripts/check-language.sh` — no Portuguese outside the allowlist declared at the top of that script. This is how the English rule above is actually kept. Adding a path to the allowlist requires an honest reason in the comment beside it
 - **Update the docs** when code diverges: docs are part of the product, not an accessory
-- **The Obsidian vault** is mandatory for non-trivial changes (see the `nora-architect` skill)
 
-## AI Collaboration Pattern (subagents)
+## Working with subagents
 
-For large tasks, split into parallel implementable slices. Use the `nora-architect` skill to:
+For large tasks, split the work into slices that can be implemented independently, dispatch each with a self-contained brief (`Agent` tool), and review the resulting diff rather than the summary. Record a durable decision as an ADR if one is missing.
 
-1. **Understand** (read `MEMORY.md` + `CURRENT-STATE.md` + relevant docs)
-2. **Decide** (present 1-3 approaches + recommend one)
-3. **Break down** into dispatchable slices (independent or declared sequential)
-4. **Ask Stratfy (PO) for authorization** before dispatching a subagent that writes code
-5. **Dispatch** with a self-contained brief (`Agent` tool)
-6. **Review** the diff (do not trust the summary)
-7. **Document** in Obsidian + update memory + suggest an ADR if a durable decision lacked a record
-
-Use **Opus models** for architecture, data modeling, security review and refactors. Use **Sonnet models** or subagents for focused implementation, tests, UI components and mechanical CRUD flows.
+Use Opus models for architecture, data modeling, security review and refactors. Use Sonnet models or subagents for focused implementation, tests, UI components and mechanical CRUD flows.
 
 ## Change history of this file
 
 | Date | Change |
 |---|---|
+| 2026-08-10 | Documentation honesty pass: metadata frontmatter, invented owners/roles and decoration removed; stack versions re-verified against the manifests; superseded run brief and pre-presentation audit deleted |
 | 2026-08-07 | Azure → Proxmox migration (ADR 0034) and local STT (ADR 0035): "Current scope", the Stack table and the `docs/operations/` pointers updated. `azure-deploy.md` becomes historical; `proxmox-deploy.md` and `azure-decommission.md` take its place |
-| 1.0 / 2026-06-06 | NORA Architect (Tech Lead): Doc × code reconciliation + standardization (pre-presentation audit) |
-| 2026-05-14 | Rewritten during Sub-phase 1.10 (Docs Refresh): new `docs/` structure in subfolders (product/engineering/operations/challenge/security), updated references, new ADRs linked, multi-architect structure documented |
+| 2026-06-06 | Doc × code reconciliation + standardization |
+| 2026-05-14 | Rewritten during Sub-phase 1.10 (Docs Refresh): new `docs/` structure in subfolders (product/engineering/operations/challenge/security), updated references, new ADRs linked |
 | (earlier) 2026-05-02+ | Original version created with the initial scaffolding |

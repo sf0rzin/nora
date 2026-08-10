@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Date: 2026-06-05
-- Deciders: Architect + Stratfy (PO)
 - Related: makes concrete the hard-delete foreseen in ADR 0021 (soft-delete); operates under the RLS enforce of ADR 0028; complements the PII Shield (ADR 0012)
 
 ## Context

@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Date: 2026-06-04
-- Deciders: Architect (Opus) + Stratfy (PO/owner)
 - Related: ADR 0018 (test coverage targets), `.github/workflows/ci.yml`, `.github/CODEOWNERS`, foundation audit 2026-06-03
 
 ## Context

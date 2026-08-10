@@ -1,11 +1,3 @@
----
-title: "Glossary — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.1
-last_reviewed: 2026-06-06
----
-
 # Glossary — NORA
 
 > Canonical vocabulary of the NORA project. Terms in alphabetical order. Each entry includes a definition, scope (where it appears) and a reference (ADR / file / PR) when applicable.
@@ -13,9 +5,7 @@ last_reviewed: 2026-06-06
 > Use this doc when:
 > - You are new to the project (human or Claude) and run into an unknown term
 > - You are writing a doc/ADR/spec and need the canonical term
-> - You are discussing with Stratfy (PO) / the Architects and want to align vocabulary
-
----
+> - You are writing a PR description or a commit message and need the canonical term
 
 ## A
 
@@ -193,11 +183,9 @@ Implemented in PolicyEvaluator with glob-style matching.
 
 **Worker NLP** — See NlpWorker.
 
----
-
 ## Document History
 
 | Version | Date | Description |
 |---|---|---|
 | 1.0 | 2026-05-14 | **Initial creation**. Canonical glossary covering product terms (Customer Confidence, Productivity Score, Account Health, MoSCoW, Tenant), architecture (DDD, RAG, JSON Schema strict, Multi-tenancy, RLS), IAM (IAM AWS-style, Effect, Conditions, Wildcard, Deny-first eval, PolicyEvaluator), Azure infra (Container Apps, Key Vault, UAI, OIDC, Soft-delete, Service Principal, rg-nora-dev), implementation (NlpWorker, PII Shield, TF-IDF baseline, packages/nlp-baseline, Speech Token Broker, Refresh token), and process (ADR, Sub-phase, Flyway/V001-V012, BlackHole, AUTH_FILTER_HARD_CAP). 50+ terms in total |
-| 1.1 | 2026-06-06 | NORA Architect (Tech Lead) — Doc x code reconciliation + standardization (pre-presentation audit) |
+| 1.1 | 2026-06-06 | Doc x code reconciliation + standardization |

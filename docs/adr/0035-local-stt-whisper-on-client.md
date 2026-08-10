@@ -2,7 +2,6 @@
 
 - **Status:** accepted
 - **Date:** 2026-08-07
-- **Deciders:** sys0xFF (PO/owner) + NORA Architect (Tech Lead, migration audit)
 - **Supersedes:** ADR 0009 (Speech Token Broker — entirely: the broker, the endpoint, the rate limit and
   the credential cease to exist)
 - **Partially supersedes:** ADR 0008 (Desktop Tauri 2 + Python Sidecar — **Tauri 2 remains**;

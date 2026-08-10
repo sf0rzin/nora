@@ -1,11 +1,3 @@
----
-title: "Runbook — Turning on the Control Plane (operator admin + telemetry)"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Runbook — Turning on the Control Plane (operator admin + telemetry)
 
 > How to promote the control plane from **OFF** (default) to **ON** on Azure. The operator's
@@ -34,7 +26,7 @@ last_reviewed: 2026-06-06
 ## Step 1 — Generate platform secrets
 
 ```powershell
-# Rode local; NÃO cole os valores em chat/PR. São 3 secrets:
+# Run locally; do NOT paste the values in chat/PR. There are 3 secrets:
 [Convert]::ToBase64String((1..24 | ForEach-Object { Get-Random -Max 256 }))  # PG_PLATFORM_ADMIN_PASSWORD
 [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Max 256 }))  # NORA_PLATFORM_INTERNAL_TOKEN
 [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Max 256 }))  # NORA_PLATFORM_ADMIN_TOKEN
@@ -48,7 +40,7 @@ Run the workflow **`cloudflare-tunnel.yml`** (Actions → Run workflow). It is i
 2. Configures the route `admin.nora.systems → http://localhost:3002` (the `cloudflared` sidecar serves
    Next over the pod's localhost).
 3. Upserts the DNS `admin.nora.systems` → `<tunnel-id>.cfargotunnel.com` (proxied).
-4. Prints, in the log of the step **`AUD + instruções do connector token`**: the Access App's **AUD** (for
+4. Prints, in the log of the step **`AUD + connector token instructions`**: the Access App's **AUD** (for
    the Variable `CF_ACCESS_AUD`, a public identifier) and the command to register the **connector
    token**. The token itself **does not appear in the log** — public repo, log readable by anyone; the command
    takes it from the API straight to `gh secret set`.
@@ -62,12 +54,12 @@ Run the workflow **`cloudflare-tunnel.yml`** (Actions → Run workflow). It is i
 
 ```
 # Secrets:
-PG_PLATFORM_ADMIN_PASSWORD   = <Passo 1>
-NORA_PLATFORM_INTERNAL_TOKEN = <Passo 1>
-NORA_PLATFORM_ADMIN_TOKEN    = <Passo 1>
-CLOUDFLARE_TUNNEL_TOKEN      = <connector token do Passo 2>
-# Variable (Variables tab — NÃO é secret):
-CF_ACCESS_AUD                = <AUD do Passo 2>
+PG_PLATFORM_ADMIN_PASSWORD   = <Step 1>
+NORA_PLATFORM_INTERNAL_TOKEN = <Step 1>
+NORA_PLATFORM_ADMIN_TOKEN    = <Step 1>
+CLOUDFLARE_TUNNEL_TOKEN      = <connector token from Step 2>
+# Variable (Variables tab — NOT a secret):
+CF_ACCESS_AUD                = <AUD from Step 2>
 ```
 
 > Without the 3 platform tokens, they become `'unset'` in the KV (admin/internal unlocked). Without
@@ -98,17 +90,17 @@ EMPTY**. The DNS of `admin.nora.systems` now belongs to the tunnel (Step 2); pas
 ## Post-deploy verification
 
 ```bash
-# 1. API subiu com o módulo platform (procurar no log): "módulo HEALTHY"
-# 2. llm-config (precisa do internal token):
+# 1. API came up with the platform module (look in the log for): "module HEALTHY"
+# 2. llm-config (needs the internal token):
 curl -H "X-Internal-Token: $internal" \
   "https://nora-api-dev.<domain>/internal/platform/llm-config?service=chat"
 
-# 3. Conector cloudflared conectado (réplica do nora-admin de pé):
+# 3. cloudflared connector connected (nora-admin replica up):
 az containerapp replica list -n nora-admin-dev -g rg-nora-dev -o table
 
-# 4. Console: abrir https://admin.nora.systems -> redireciona para o Cloudflare Access (OTP/SSO,
-#    só allowlist). Após login, o Next valida o Cf-Access-Jwt-Assertion (Tier 2) e renderiza.
-#    O FQDN interno (nora-admin-dev.internal.<domain>) NÃO é acessível de fora.
+# 4. Console: open https://admin.nora.systems -> redirects to Cloudflare Access (OTP/SSO,
+#    allowlist only). After login, Next validates the Cf-Access-Jwt-Assertion (Tier 2) and renders.
+#    The internal FQDN (nora-admin-dev.internal.<domain>) is NOT accessible from outside.
 ```
 
 ## Rollback

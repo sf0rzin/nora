@@ -2,7 +2,6 @@
 
 - **Status:** accepted
 - **Date:** 2026-06-11
-- **Deciders:** NORA Architect (pitch run) + Stratfy (PO, via GOAL.md)
 - **Related:** ADR 0030 (workflow engine — the actions consume the connections), ADR 0002/0028
   (tenant isolation + RLS), ADR 0020 (token rotation precedent)
 

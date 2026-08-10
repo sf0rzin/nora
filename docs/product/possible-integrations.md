@@ -1,9 +1,9 @@
 # Possible integrations in NORA Flows — catalogue + credential tutorials
 
-> **Who this doc is for:** Stratfy (PO). Each section says what the integration enables in
+> **Who this doc is for:** whoever picks the next integration. Each section says what it enables in
 > Flows, whether it is free and genuinely multi-user, and the step by step for obtaining the
 > credentials. **Agreed workflow:** you obtain the credential, save it in your Windows user
-> env vars under the indicated name, and the architect handles the rest
+> env vars under the indicated name, and the wiring is done from there
 > (GitHub Secrets, Bicep, backend, block on the canvas).
 >
 > Entry criterion for the catalogue: **free** (no per-user/per-use charge at our
@@ -14,9 +14,9 @@
 
 | Integration | Status |
 |---|---|
-| Transactional e-mail (Resend) | ✅ in production (action `send_email`) |
-| Google Gmail + Calendar (OAuth) | ✅ in production (Testing mode — test users; reconnect every 7 days) |
-| Slack (OAuth) | 🟡 backend + Bicep ready; **the app still has to be created** (tutorial below) |
+| Transactional e-mail (Resend) | In production (action `send_email`) |
+| Google Gmail + Calendar (OAuth) | In production (Testing mode — test users; reconnect every 7 days) |
+| Slack (OAuth) | Backend + Bicep ready; **the app still has to be created** (tutorial below) |
 
 ## Recommendation ranking (effort × impact on the demo)
 
@@ -29,9 +29,7 @@
 7. **Trello / Todoist / Linear** — free OAuth, "action item becomes a card/task"
 8. **Microsoft Outlook/Teams** — possible and free, but the Azure AD setup is more of a hassle
 
----
-
-## 1. Generic webhook (HTTP POST) — ⭐ zero credential effort
+## 1. Generic webhook (HTTP POST) — no credentials needed
 
 **What it enables:** the "Call webhook" action — NORA does a POST with the event JSON
 (summary, action items, risks) to any URL the user pastes in. It is what makes
@@ -40,9 +38,7 @@ Flows "integrable with anything" (n8n, Zapier, Make, internal systems).
 **Cost / multi-user:** free by definition; each user pastes their own URL into the node.
 
 **Credential required: NONE.** There is no env var — the URL field lives in the canvas node
-itself. Just ask the architect to implement the action.
-
----
+itself. The action still has to be implemented.
 
 ## 2. Discord — per-channel webhook (no app, no OAuth)
 
@@ -54,11 +50,9 @@ formatted payload — embeds with the NORA colour, summary/action fields).
 
 **Credential required: NONE globally.** Tutorial we will surface in the product:
 
-1. In Discord, open the server → desired channel → ⚙️ **Edit channel** → **Integrations**.
+1. In Discord, open the server → desired channel → **Edit channel** → **Integrations**.
 2. **Webhooks** → **New webhook** → give it a name (e.g. "NORA") → **Copy webhook URL**.
 3. Paste the URL into the "Post to Discord" node on the canvas. Done.
-
----
 
 ## 3. Slack — OAuth v2 (backend already ready!)
 
@@ -84,8 +78,6 @@ enabled** (free, no review for basic bot scopes), any workspace connects via OAu
    - `SLACK_OAUTH_CLIENT_ID`
    - `SLACK_OAUTH_CLIENT_SECRET`
 
----
-
 ## 4. Telegram — bot (single token, no OAuth)
 
 **What it enables:** the "Send on Telegram" action — a notification in a private chat or
@@ -101,8 +93,6 @@ connects by sending `/start` to the bot (NORA captures the `chat_id` via the dee
 2. Display name: `NORA` · username: something like `nora_flows_bot` (it must end in `bot`).
 3. BotFather replies with the **token** (format `123456:ABC-DEF...`).
 4. Save it in your user env var: `NORA_TELEGRAM_BOT_TOKEN`
-
----
 
 ## 5. GitHub — OAuth App (action item becomes an issue)
 
@@ -122,8 +112,6 @@ backlog" narrative.
 4. Save them in your user env vars:
    - `GITHUB_OAUTH_CLIENT_ID`
    - `GITHUB_OAUTH_CLIENT_SECRET`
-
----
 
 ## 6. Notion — public integration OAuth (summary becomes a page)
 
@@ -147,8 +135,6 @@ workspace via OAuth **without needing to be listed in the gallery**
    - `NOTION_OAUTH_CLIENT_ID`
    - `NOTION_OAUTH_CLIENT_SECRET`
 
----
-
 ## 7. Trello — API key (action item becomes a card)
 
 **What it enables:** the "Create Trello card" action — action items become cards in a list.
@@ -167,8 +153,6 @@ user (Atlassian's own authorisation flow, no review).
    - `TRELLO_API_KEY`
    - `TRELLO_API_SECRET` (if there is one)
 
----
-
 ## 8. Todoist — OAuth (action item becomes a task)
 
 **What it enables:** the "Create Todoist task" action — with the due date coming from the
@@ -186,8 +170,6 @@ action item (`dueDate`).
    - `TODOIST_OAUTH_CLIENT_ID`
    - `TODOIST_OAUTH_CLIENT_SECRET`
 
----
-
 ## 9. Linear — OAuth (action item becomes a product issue)
 
 **What it enables:** the "Create Linear issue" action — for the startup/product audience.
@@ -202,8 +184,6 @@ action item (`dueDate`).
 4. Save them in your user env vars:
    - `LINEAR_OAUTH_CLIENT_ID`
    - `LINEAR_OAUTH_CLIENT_SECRET`
-
----
 
 ## 10. Microsoft Outlook / Teams / Calendar (Graph) — possible, medium effort
 
@@ -227,8 +207,6 @@ e-mail/calendar story in the demo. If you want to prepare it:
    `offline_access`, `openid`, `email`.
 6. Env vars: `MS_OAUTH_CLIENT_ID` · `MS_OAUTH_CLIENT_SECRET`
 
----
-
 ## Outside the catalogue (and why)
 
 - **WhatsApp (Meta Cloud API):** requires Meta Business verification — weeks, it is not
@@ -248,13 +226,11 @@ e-mail/calendar story in the demo. If you want to prepare it:
   `[Environment]::SetEnvironmentVariable('NOME', 'valor', 'User')` (or Settings →
   environment variables). **Never** paste the credential into the chat, into a commit or into a
   repo file.
-- The architect propagates it to GitHub Secrets **always via `gh secret set NOME --body ...`**
+- Propagate it to GitHub Secrets **always via `gh secret set NOME --body ...`**
   (never a pipe — the PowerShell BOM corrupts it; see project memory) and to Bicep/the app.
 - Every new integration follows the ADR 0031 pattern: HMAC state, AES-GCM encrypted token in
   the database, server-side refresh.
 
 ## History
 
-| Date | Change |
-|---|---|
-| 2026-06-12 | Created at the PO's request (catalogue + tutorials; local env var flow → architect configures) |
+Created 2026-06-12 as a catalogue plus tutorials, with the credential flow going through local env vars.

@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Date: 2026-05-28
-- Deciders: Co-architects (Opus) + Stratfy (PO/owner)
 - Extends: ADR 0004 (provider-agnostic) — it does not supersede it; 0004 remains the basis. Related: ADR
   0003 (strict JSON Schema), ADR 0022/0023.
 

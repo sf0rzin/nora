@@ -16,9 +16,9 @@ truth about ports, networks and images.
 
 ```
   api (javaagent OTel)  ──OTLP:4317──┐
-  worker / web / admin  ──(nada)─────┤
+  worker / web / admin  ──(none)─────┤
                                      ├──> otel-collector ──remote-write──> prometheus ──┐
-                                     │         └── traces ──> descartados (não há Tempo) │
+                                     │         └── traces ──> discarded (no Tempo) │
                                      │                                                   ├──> grafana
   TODO container ──stdout──> docker.sock ──> alloy ──push──> loki ────────────────────────┘
 ```
@@ -123,31 +123,31 @@ Confirm via the series, not via the file:
 ```bash
 docker compose exec prometheus wget -qO- \
   'http://localhost:9090/api/v1/query?query=loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds'
-# o timestamp tem que avançar a cada ~10min (compaction_interval)
+# the timestamp has to advance every ~10min (compaction_interval)
 ```
 
 ## Quick verification
 
 ```bash
-# 1. o collector está de pé e recebendo?
+# 1. is the collector up and receiving?
 docker compose exec otel-collector wget -qO- http://localhost:13133/
 docker compose exec prometheus wget -qO- \
   'http://localhost:9090/api/v1/query?query=otelcol_receiver_accepted_metric_points_total'
 
-# 2. o remote-write está chegando? (0 aqui = dashboard da API vazio)
+# 2. is remote-write arriving? (0 here = empty API dashboard)
 docker compose exec prometheus wget -qO- \
   'http://localhost:9090/api/v1/query?query=otelcol_exporter_send_failed_metric_points_total'
 
-# 3. quais serviços realmente emitem métrica
+# 3. which services actually emit metrics
 docker compose exec prometheus wget -qO- \
   'http://localhost:9090/api/v1/label/job/values'
-# esperado hoje: prometheus, otel-collector, loki, alloy, grafana, nora-api
+# expected today: prometheus, otel-collector, loki, alloy, grafana, nora-api
 
-# 4. o Alloy está perdendo linha?
+# 4. is Alloy dropping lines?
 docker compose exec prometheus wget -qO- \
   'http://localhost:9090/api/v1/query?query=loki_write_dropped_entries_total'
 
-# 5. os quatro apps estão logando?
+# 5. are the four apps logging?
 docker compose exec loki wget -qO- \
   'http://localhost:3100/loki/api/v1/label/service/values'
 ```

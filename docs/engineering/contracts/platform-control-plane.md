@@ -1,11 +1,3 @@
----
-title: "Contract — Operator Control Plane + AI Telemetry"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Contract — Operator Control Plane + AI Telemetry
 
 > **Supersession note (2026-06-06):** the operator edge identity described in this contract
@@ -15,7 +7,7 @@ last_reviewed: 2026-06-06
 > of the contract (paths, tokens, `X-Internal-Token` / `X-Operator-Email` headers) remains valid.
 
 > **Status:** FROZEN (v1) — 2026-05-28. Attachment point for the `nora-admin` app (Next) and for the
-> hot-paths (worker / chat BFF). Changing a signature here requires agreement between the two architects
+> hot-paths (worker / chat BFF). Changing a signature here requires updating every consumer
 > + the owner. Originating decisions: design note + ruling of 2026-05-28 (ADRs 0022/0023/0024).
 
 ## 1. Security domains
@@ -43,8 +35,6 @@ Auth responses: missing/invalid token → **401**. (We do not use 403 here — t
 permission model in v1; it is all-or-nothing by token.)
 
 `X-Internal-Token` compared with `MessageDigest.isEqual` (constant-time). Tokens are never logged.
-
----
 
 ## 2. `/internal/platform/*` — service-to-service (hot-path)
 
@@ -78,7 +68,7 @@ Cost event ingestion. **Fire-and-forget**: it never blocks the caller, never pro
   "service": "chat",
   "provider": "openai",
   "model": "gpt-4o-mini",
-  "tenantId": "5b1c…uuid ou null",
+  "tenantId": "5b1c…uuid or null",
   "promptTokens": 1234,
   "completionTokens": 567,
   "costUsd": 0.0,
@@ -97,8 +87,6 @@ log) — the caller does not notice. Invalid validation → **400**.
 > **The ANALYSIS path does not use this endpoint:** the API emits the analysis usage **in-process**
 > (`AnalysisService` → `UsageRecorder`), because it already has `tenantId` + tokens + model from the worker's
 > `metadata`. This POST is for the **chat BFF** (and future external callers such as multimodal).
-
----
 
 ## 3. `/admin/platform/*` — operator console (via nora-admin)
 
@@ -188,8 +176,6 @@ operator-only):
   consumer must tolerate it. `analyses`/`tenantsActive` are real. RLS caveat: see the runbook /
   production-readiness-gaps (under RLS enforce, this cross-tenant read requires a BYPASSRLS role).
 
----
-
 ## 4. Integration notes (for the other Opus)
 
 - **Worker** (`/analyze`): it may add the additive block `usage:{model,promptTokens,completionTokens}`
@@ -201,7 +187,7 @@ operator-only):
   `service:"chat"`, the session's `tenantId`, tokens, `latencyMs`, `status`. It reads the active model via
   `GET /internal/platform/llm-config?service=chat`.
 - **nora-admin** (Next): server-side it adds `X-Internal-Token: <admin token>` and
-  `X-Operator-Email: <email do Easy Auth>` to every call to `/admin/platform/**`. It never exposes the
+  `X-Operator-Email: <Easy Auth email>` to every call to `/admin/platform/**`. It never exposes the
   token to the browser.
 
 ## 5. Versioning

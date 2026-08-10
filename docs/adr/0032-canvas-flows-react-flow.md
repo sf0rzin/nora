@@ -2,7 +2,6 @@
 
 - **Status:** accepted
 - **Date:** 2026-06-11
-- **Deciders:** NORA Architect (pitch run) + Stratfy (PO, via GOAL.md)
 - **Related:** ADR 0013 (raw Tailwind, no shadcn, OKLCH tokens), ADR 0030 (workflow engine —
   the canvas edits the definition_json that the engine executes)
 

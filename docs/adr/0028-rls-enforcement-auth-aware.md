@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Date: 2026-06-04
-- Deciders: Architect + Stratfy (PO)
 - Related: supersedes the **enforce design + cutover** part of ADR 0026 (keeps V019 and the role provisioning); extends ADR 0002 / 0019; related to ADR 0024 (telemetry)
 
 ## Context
@@ -11,7 +10,7 @@ ADR 0026 (proposed) delivered V019 (RLS policies on all ~30 tenant-owned tables,
 
 1. **Flyway-DDL.** 0026 has the API connect as `nora_app` (NOBYPASSRLS), and Flyway runs at API boot. But `nora_app` only has `USAGE` on the schema (no `CREATE`/`ALTER`) — the next deploy with a new migration **breaks the API at boot**. (The tables use `ENABLE`, not `FORCE`, RLS — so the owner bypasses; whoever creates the table is the owner.)
 2. **Missing connection switch.** `main.bicep` has no way to point the API's `DATASOURCE` at `nora_app` (the template itself admits this). Turning on `rlsEnforce=true` alone is a **no-op** (the aspect sets the GUC, but the admin connection bypasses it).
-3. **🔴 Auth breaks under enforce (0026 did not see this).** `AuthService.login`/`signup` use `UserRepository.findByEmail` — a **global, cross-tenant** lookup (find the user by email *before* knowing the tenant). The `TenantRlsAspect` only sets the GUC when there is an authenticated tenant (`if tenantId != null`). Under enforce with `nora_app`, unauthenticated requests (login, signup, invitation acceptance, email verification, password reset) end up **without a GUC → fail-closed → the whole auth breaks**.
+3. **Auth breaks under enforce (0026 did not see this).** `AuthService.login`/`signup` use `UserRepository.findByEmail` — a **global, cross-tenant** lookup (find the user by email *before* knowing the tenant). The `TenantRlsAspect` only sets the GUC when there is an authenticated tenant (`if tenantId != null`). Under enforce with `nora_app`, unauthenticated requests (login, signup, invitation acceptance, email verification, password reset) end up **without a GUC → fail-closed → the whole auth breaks**.
 
 RLS only applies to **non-owner** and **NOBYPASSRLS** roles. The app needs to be that role for tenant data, but it needs cross-tenant access for auth. With a single connection role, these conflict.
 

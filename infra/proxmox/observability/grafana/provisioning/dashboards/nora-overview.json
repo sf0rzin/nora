@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "Visao geral da stack NORA self-hosted (Proxmox). Substitui os dashboards de Application Insights + Log Analytics. LACUNA CONHECIDA: so a API tem SDK de metricas/traces; worker, web e admin so tem log. Nao ha backend de traces nesta stack.",
+  "description": "Overview of the NORA self-hosted stack (Proxmox). Replaces the Application Insights + Log Analytics dashboards. KNOWN GAP: only the API has a metrics/traces SDK; worker, web and admin only have logs. There is no traces backend in this stack.",
   "editable": false,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -31,16 +31,16 @@
       },
       "id": 1,
       "panels": [],
-      "title": "Sinais vitais",
+      "title": "Vital signs",
       "type": "row",
-      "description": "Os seis numeros que respondem \"esta de pe?\". Se todos estiverem em branco, o problema nao e o app: e a coleta."
+      "description": "The six numbers that answer \"is it up?\". If they are all blank, the problem is not the app: it is the collection."
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "Quantos alvos de scrape do prometheus.yml estao inalcancaveis. Cobre apenas infra (prometheus, otel-collector, caddy, cloudflared, loki, alloy, grafana) — api/worker/web/admin NAO tem endpoint /metrics e por isso nao aparecem aqui.\n\nEsperado: 0. Se marcar 1 permanentemente, o suspeito numero um e o job cloudflared: no docker-compose.yml atual o cloudflared esta so na rede `edge` e o prometheus so na `internal`, entao nao ha rota. Ver a nota nesse job no prometheus.yml.",
+      "description": "How many prometheus.yml scrape targets are unreachable. Covers infra only (prometheus, otel-collector, caddy, cloudflared, loki, alloy, grafana) — api/worker/web/admin do NOT have a /metrics endpoint and therefore do not appear here.\n\nExpected: 0. If it stays at 1 permanently, suspect number one is the cloudflared job: in the current docker-compose.yml cloudflared is only on the `edge` network and prometheus only on `internal`, so there is no route. See the note on that job in prometheus.yml.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -104,7 +104,7 @@
           "refId": "A"
         }
       ],
-      "title": "Targets Prometheus DOWN",
+      "title": "Prometheus Targets DOWN",
       "type": "stat"
     },
     {
@@ -112,7 +112,7 @@
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "cloudflared_tunnel_ha_connections. O cloudflared abre 4 conexoes de saida para o edge da Cloudflare. Cair para 0 e literalmente o erro 522 que derrubou nora.systems — a Cloudflare atende, mas nao tem por onde chegar na origem.\n\nOs contadores de request do cloudflared (cloudflared_tunnel_total_requests) NAO estao neste dashboard de proposito: ficam zerados no transporte QUIC e dariam falsa impressao de trafego zero.",
+      "description": "cloudflared_tunnel_ha_connections. cloudflared opens 4 outbound connections to the Cloudflare edge. Dropping to 0 is literally the 522 error that took nora.systems down — Cloudflare answers, but has no way to reach the origin.\n\ncloudflared's request counters (cloudflared_tunnel_total_requests) are NOT on this dashboard on purpose: they stay at zero over the QUIC transport and would give a false impression of zero traffic.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -180,7 +180,7 @@
           "refId": "A"
         }
       ],
-      "title": "Tunel: conexoes HA",
+      "title": "Tunnel: HA connections",
       "type": "stat"
     },
     {
@@ -188,7 +188,7 @@
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "caddy_reverse_proxy_upstreams_healthy somado. E o unico sinal por-servico que a borda oferece: o label `upstream` traz api:8080, web:3000, admin:3002, grafana:3000.\n\nDurante um rolling update este numero cai e volta — e o buffer de retry do lb_try_duration segurando a janela em que o container antigo ja morreu e o novo ainda esta no boot do Flyway.",
+      "description": "caddy_reverse_proxy_upstreams_healthy summed. It is the only per-service signal the edge offers: the `upstream` label carries api:8080, web:3000, admin:3002, grafana:3000.\n\nDuring a rolling update this number dips and comes back — it is the lb_try_duration retry buffer holding the window where the old container has already died and the new one is still in Flyway's boot.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -256,7 +256,7 @@
           "refId": "A"
         }
       ],
-      "title": "Upstreams saudaveis (Caddy)",
+      "title": "Healthy upstreams (Caddy)",
       "type": "stat"
     },
     {
@@ -264,7 +264,7 @@
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "Total de requisicoes por segundo vistas pelo Caddy. E o agregado do edge, NAO por servico: os labels do Caddy sao server/handler/code/method e `server` e o nome do listener (srv0), nao o Host. Como web/api/admin/grafana dividem o mesmo listener atras do cloudflared, nao ha como separar por dominio aqui.\n\nDEPENDE de `servers { metrics }` no bloco global do Caddyfile. Desde o Caddy 2.7 as metricas caddy_http_* sao opt-in; sem essa linha o painel fica vazio sem nenhum erro.",
+      "description": "Total requests per second seen by Caddy. This is the edge aggregate, NOT per service: Caddy's labels are server/handler/code/method and `server` is the listener name (srv0), not the Host. Since web/api/admin/grafana share the same listener behind cloudflared, there is no way to split by domain here.\n\nDEPENDS on `servers { metrics }` in the Caddyfile's global block. Since Caddy 2.7 the caddy_http_* metrics are opt-in; without that line the panel stays empty with no error at all.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -324,7 +324,7 @@
           "refId": "A"
         }
       ],
-      "title": "Req/s na borda",
+      "title": "Req/s at the edge",
       "type": "stat"
     },
     {
@@ -332,7 +332,7 @@
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "Requisicoes 5xx por segundo no Caddy.\n\nDetalhe que engana: caddy_http_requests_total NAO tem label `code`. O contador com o codigo de status e o `_count` do histograma de duracao, por isso a query usa caddy_http_request_duration_seconds_count e nao o total.",
+      "description": "5xx requests per second in Caddy.\n\nDeceptive detail: caddy_http_requests_total does NOT have a `code` label. The counter with the status code is the duration histogram's `_count`, which is why the query uses caddy_http_request_duration_seconds_count instead of the total.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -400,7 +400,7 @@
           "refId": "A"
         }
       ],
-      "title": "5xx/s na borda",
+      "title": "5xx/s at the edge",
       "type": "stat"
     },
     {
@@ -408,7 +408,7 @@
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "Latencia p95 agregada da API, do http_server_request_duration_seconds do agent OTel.\n\nSO A API TEM ISTO. worker, web e admin nao tem SDK de metricas — nao existe p95 deles em lugar nenhum desta stack.\n\nSe estiver \"No data\" e o resto do dashboard estiver vivo, a causa quase certa e que a imagem da API ainda carrega o -javaagent do Application Insights: aquele agent exporta para o endpoint Breeze da connection string e IGNORA OTEL_EXPORTER_OTLP_ENDPOINT. Trocar a env do compose nao resolve; e preciso trocar o JAR no services/api/Dockerfile e republicar a imagem.",
+      "description": "Aggregated p95 latency of the API, from the OTel agent's http_server_request_duration_seconds.\n\nONLY THE API HAS THIS. worker, web and admin do not have a metrics SDK — their p95 does not exist anywhere in this stack.\n\nIf it shows \"No data\" while the rest of the dashboard is alive, the near-certain cause is that the API image still carries Application Insights' -javaagent: that agent exports to the connection string's Breeze endpoint and IGNORES OTEL_EXPORTER_OTLP_ENDPOINT. Changing the compose env does not fix it; the JAR in services/api/Dockerfile needs to be swapped and the image republished.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -476,7 +476,7 @@
           "refId": "A"
         }
       ],
-      "title": "p95 da API",
+      "title": "p95 of the API",
       "type": "stat"
     },
     {
@@ -489,16 +489,16 @@
       },
       "id": 8,
       "panels": [],
-      "title": "API — o unico servico instrumentado",
+      "title": "API — the only instrumented service",
       "type": "row",
-      "description": "Tudo nesta linha vem do opentelemetry-javaagent rodando na API. O dropdown $job so lista servicos que realmente emitem metrica: se ele mostrar apenas nora-api, esse e o estado real da instrumentacao, nao um bug do dashboard."
+      "description": "Everything in this row comes from the opentelemetry-javaagent running in the API. The $job dropdown only lists services that actually emit metrics: if it shows only nora-api, that is the real state of the instrumentation, not a dashboard bug."
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "sum by (http_route) do _count do histograma de duracao. `http_route` e o template do Spring (/tasks/{id}), nao a URL concreta — e o que mantem a cardinalidade sob controle.\n\nO label do servico e `job`, nao `service_name`: o exporter prometheusremotewrite traduz o resource attribute service.name para o label job. Ver o comentario no otel-collector.yaml.",
+      "description": "sum by (http_route) of the duration histogram's _count. `http_route` is Spring's template (/tasks/{id}), not the concrete URL — that is what keeps cardinality under control.\n\nThe service label is `job`, not `service_name`: the prometheusremotewrite exporter translates the service.name resource attribute into the job label. See the comment in otel-collector.yaml.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -590,7 +590,7 @@
           "refId": "A"
         }
       ],
-      "title": "Taxa de requisicao por rota — API",
+      "title": "Request rate by route — API",
       "type": "timeseries"
     },
     {
@@ -598,7 +598,7 @@
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "histogram_quantile sobre os buckets. Metrica estavel do semconv HTTP (OTel Java agent 2.x): http.server.request.duration, em SEGUNDOS.\n\nSe voce ver http_server_duration_milliseconds em vez desta, a imagem esta com um agent antigo (semconv legado, unidade em ms) — a query nao casa e o painel fica vazio.\n\np95 e nao media de proposito: media esconde a cauda, e a cauda e o que o usuario sente.",
+      "description": "histogram_quantile over the buckets. Stable HTTP semconv metric (OTel Java agent 2.x): http.server.request.duration, in SECONDS.\n\nIf you see http_server_duration_milliseconds instead of this one, the image has an old agent (legacy semconv, unit in ms) — the query will not match and the panel stays empty.\n\np95 and not average on purpose: average hides the tail, and the tail is what the user feels.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -690,7 +690,7 @@
           "refId": "A"
         }
       ],
-      "title": "Latencia p95 por rota — API",
+      "title": "p95 latency by route — API",
       "type": "timeseries"
     },
     {
@@ -698,7 +698,7 @@
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "Erro do lado do servidor, separado por rota. 4xx fica de fora: cliente mandando request invalido nao e incidente.\n\nO label vem do semconv estavel: http_response_status_code (o legado era http_status_code).",
+      "description": "Server-side error, split by route. 4xx is left out: a client sending an invalid request is not an incident.\n\nThe label comes from the stable semconv: http_response_status_code (the legacy one was http_status_code).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -789,7 +789,7 @@
           "refId": "A"
         }
       ],
-      "title": "Erros 5xx por rota — API",
+      "title": "5xx errors by route — API",
       "type": "timeseries"
     },
     {
@@ -797,7 +797,7 @@
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "jvm_memory_used_bytes por pool de heap, do modulo de runtime do agent OTel (semconv JVM estavel: jvm.memory.used com atributos jvm.memory.type e jvm.memory.pool.name).\n\nO limite de container e 2560M (docker-compose.yml:356) e o heap fica abaixo disso — o resto e metaspace, code cache, threads e off-heap. Heap perto do limite + serrilhado agressivo e o retrato classico de pressao de GC.\n\nNAO ha equivalente para worker/web/admin.",
+      "description": "jvm_memory_used_bytes per heap pool, from the OTel agent's runtime module (stable JVM semconv: jvm.memory.used with the jvm.memory.type and jvm.memory.pool.name attributes).\n\nThe container limit is 2560M (docker-compose.yml:356) and the heap stays below that — the rest is metaspace, code cache, threads, and off-heap. Heap close to the limit plus an aggressive sawtooth is the classic picture of GC pressure.\n\nThere is NO equivalent for worker/web/admin.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -900,7 +900,7 @@
           "refId": "B"
         }
       ],
-      "title": "Heap JVM — API",
+      "title": "JVM heap — API",
       "type": "timeseries"
     },
     {
@@ -913,16 +913,16 @@
       },
       "id": 13,
       "panels": [],
-      "title": "Borda — Caddy e Cloudflare Tunnel",
+      "title": "Edge — Caddy and Cloudflare Tunnel",
       "type": "row",
-      "description": "A unica visao de trafego que cobre TODOS os apps, inclusive os tres sem SDK. Em compensacao e agregada: o Caddy nao separa por Host. Para web, admin e worker, isto e tudo que existe em metrica."
+      "description": "The only traffic view that covers ALL the apps, including the three without an SDK. The trade-off is that it is aggregated: Caddy does not split by Host. For web, admin, and worker, this is all that exists as a metric."
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "Empilhado por codigo de status. Serve como semaforo de deploy: durante o rolling update aparece um degrau de 502 ate o Flyway terminar e o healthcheck da API passar.",
+      "description": "Stacked by status code. Works as a deploy traffic light: during the rolling update a step of 502s shows up until Flyway finishes and the API healthcheck passes.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1013,7 +1013,7 @@
           "refId": "A"
         }
       ],
-      "title": "Req/s por codigo HTTP — Caddy",
+      "title": "Req/s by HTTP code — Caddy",
       "type": "timeseries"
     },
     {
@@ -1021,7 +1021,7 @@
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "p50 / p95 / p99 de caddy_http_request_duration_seconds. Inclui o tempo de upstream, entao a distancia entre esta p95 e a p95 da API e o custo do proxy mais o tempo dos servicos NAO instrumentados.\n\nComparar as duas e o unico jeito indireto de saber se web ou admin estao lentos.",
+      "description": "p50 / p95 / p99 of caddy_http_request_duration_seconds. Includes upstream time, so the gap between this p95 and the API's p95 is the proxy cost plus the time of the services that are NOT instrumented.\n\nComparing the two is the only indirect way to know whether web or admin are slow.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1136,7 +1136,7 @@
           "refId": "C"
         }
       ],
-      "title": "Latencia na borda — Caddy",
+      "title": "Latency at the edge — Caddy",
       "type": "timeseries"
     },
     {
@@ -1144,7 +1144,7 @@
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "caddy_reverse_proxy_upstreams_healthy, quebrado pelo label `upstream` (api:8080, web:3000, admin:3002, grafana:3000). 1 = saudavel, 0 = fora.\n\nE o substituto mais proximo do \"Replica status\" do Container Apps, e e o UNICO painel de metrica com granularidade por servico que cobre web e admin.",
+      "description": "caddy_reverse_proxy_upstreams_healthy, broken down by the `upstream` label (api:8080, web:3000, admin:3002, grafana:3000). 1 = healthy, 0 = down.\n\nIt is the closest substitute for Container Apps' \"Replica status\", and it is the ONLY metrics panel with per-service granularity that covers web and admin.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1237,7 +1237,7 @@
           "refId": "A"
         }
       ],
-      "title": "Upstreams saudaveis por destino — Caddy",
+      "title": "Healthy upstreams by target — Caddy",
       "type": "timeseries"
     },
     {
@@ -1250,16 +1250,16 @@
       },
       "id": 17,
       "panels": [],
-      "title": "Saude dos containers",
+      "title": "Container health",
       "type": "row",
-      "description": "ATENCAO A LACUNA: nao ha CPU/memoria/restarts por container. Isso exigiria cAdvisor ou o receiver docker_stats no otel-collector, e nenhum dos dois esta no docker-compose.yml. Inventar container_cpu_usage_seconds_total aqui so produziria painel vazio. O que segue e o melhor sinal honesto disponivel."
+      "description": "WATCH THE GAP: there is no per-container CPU/memory/restarts. That would require cAdvisor or the docker_stats receiver in the otel-collector, and neither one is in docker-compose.yml. Making up container_cpu_usage_seconds_total here would only produce an empty panel. What follows is the best honest signal available."
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "nora-prometheus"
       },
-      "description": "Serie `up` de cada alvo de scrape. Cobre so infra — api, worker, web e admin nao expoem /metrics e por definicao nao podem aparecer aqui.\n\nPara a saude dos quatro apps, o sinal e o painel ao lado (batimento de log) mais os upstreams do Caddy.",
+      "description": "The `up` series for every scrape target. Covers infra only — api, worker, web, and admin do not expose /metrics and by definition cannot appear here.\n\nFor the health of the four apps, the signal is the panel next to it (log heartbeat) plus Caddy's upstreams.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1343,7 +1343,7 @@
           "refId": "A"
         }
       ],
-      "title": "Alvos de scrape (up)",
+      "title": "Scrape targets (up)",
       "type": "state-timeline"
     },
     {
@@ -1351,7 +1351,7 @@
         "type": "loki",
         "uid": "nora-loki"
       },
-      "description": "Volume de log por container, via Loki. Este e o substituto honesto para \"o container esta vivo?\" nos servicos sem metrica.\n\nCobre os QUATRO apps mais toda a infra, porque o Alloy le o socket do Docker e nao depende de SDK nenhum. Uma serie que despenca a zero e um processo travado ou morto; uma que dispara e um loop de erro.\n\nNao e um healthcheck de verdade: um app pode estar respondendo 500 para tudo e logando normalmente. Leia junto com o painel de erros abaixo.",
+      "description": "Log volume per container, via Loki. This is the honest substitute for \"is the container alive?\" on services without a metric.\n\nCovers all FOUR apps plus the entire infra, because Alloy reads the Docker socket and does not depend on any SDK. A series that drops to zero is a stuck or dead process; one that spikes is an error loop.\n\nIt is not a real healthcheck: an app can be answering 500 to everything and logging normally. Read it together with the errors panel below.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1441,7 +1441,7 @@
           "refId": "A"
         }
       ],
-      "title": "Batimento: linhas de log por servico",
+      "title": "Heartbeat: log lines by service",
       "type": "timeseries"
     },
     {
@@ -1454,16 +1454,16 @@
       },
       "id": 20,
       "panels": [],
-      "title": "Logs (Loki) — a unica cobertura que alcanca os quatro apps",
+      "title": "Logs (Loki) — the only coverage that reaches all four apps",
       "type": "row",
-      "description": "Substitui a tabela ContainerAppConsoleLogs_CL do Log Analytics. A linguagem muda de KQL para LogQL: nenhuma consulta salva do Azure e portavel."
+      "description": "Replaces the ContainerAppConsoleLogs_CL table from Log Analytics. The language changes from KQL to LogQL: no saved Azure query is portable."
     },
     {
       "datasource": {
         "type": "loki",
         "uid": "nora-loki"
       },
-      "description": "Contagem de linhas que casam com error/exception/traceback/fatal/panic, sem diferenciar maiuscula.\n\nE heuristica de texto, nao metrica de erro: pega um \"error\" dentro de uma mensagem inofensiva e perde um erro que nao usou nenhuma dessas palavras. Serve para achar a agulha no palheiro e para alertar em pico relativo — nao como SLI.\n\nPara a API existe coisa melhor: o painel de 5xx por rota, que vem de metrica de verdade. Para worker, web e admin, isto aqui e o que ha.",
+      "description": "Count of lines matching error/exception/traceback/fatal/panic, case-insensitive.\n\nThis is a text heuristic, not an error metric: it catches an \"error\" inside an innocuous message and misses an error that did not use any of those words. Good for finding the needle in the haystack and for alerting on a relative spike — not as an SLI.\n\nFor the API there is something better: the 5xx-by-route panel, which comes from a real metric. For worker, web, and admin, this is what there is.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1553,7 +1553,7 @@
           "refId": "A"
         }
       ],
-      "title": "Linhas com erro por servico",
+      "title": "Error lines by service",
       "type": "timeseries"
     },
     {
@@ -1561,7 +1561,7 @@
         "type": "loki",
         "uid": "nora-loki"
       },
-      "description": "Use o dropdown `service` para escolher o container e a caixa `busca` para filtrar por substring (vazio = tudo).\n\nStack traces de Java e Python chegam JUNTAS, numa entrada so: o stage.multiline do config.alloy remonta a excecao inteira. Next.js (web/admin) fica fora dessa juncao de proposito, porque nao prefixa timestamp — ver o comentario no config.alloy.\n\nRetencao: 30 dias, e ela so funciona porque compactor.retention_enabled esta ligado no loki.yaml. limits_config.retention_period sozinho nao apaga nada.",
+      "description": "Use the `service` dropdown to pick the container and the `busca` box to filter by substring (empty = everything).\n\nJava and Python stack traces arrive TOGETHER, in a single entry: config.alloy's stage.multiline reassembles the whole exception. Next.js (web/admin) is left out of this joining on purpose, because it does not prefix a timestamp — see the comment in config.alloy.\n\nRetention: 30 days, and it only works because compactor.retention_enabled is turned on in loki.yaml. limits_config.retention_period alone deletes nothing.",
       "gridPos": {
         "h": 13,
         "w": 24,
@@ -1622,9 +1622,9 @@
           "uid": "nora-prometheus"
         },
         "definition": "label_values(http_server_request_duration_seconds_count, job)",
-        "description": "Servicos com metricas OTel. Hoje so nora-api aparece: worker, web e admin nao tem SDK instalado. A lista vazia ou com um item so e o estado real da instrumentacao.",
+        "description": "Services with OTel metrics. Today only nora-api shows up: worker, web, and admin do not have an SDK installed. An empty list or one with a single item is the real state of the instrumentation.",
         "includeAll": true,
-        "label": "servico (metricas)",
+        "label": "service (metrics)",
         "multi": true,
         "name": "job",
         "options": [],
@@ -1654,9 +1654,9 @@
           "uid": "nora-loki"
         },
         "definition": "",
-        "description": "Todo container do projeto compose `nora`, descoberto pelo Alloy via socket do Docker. Cobre os quatro apps mais infra — nao depende de SDK.",
+        "description": "Every container in the `nora` compose project, discovered by Alloy via the Docker socket. Covers the four apps plus infra — does not depend on an SDK.",
         "includeAll": true,
-        "label": "servico (logs)",
+        "label": "service (logs)",
         "multi": true,
         "name": "service",
         "options": [],
@@ -1677,7 +1677,7 @@
           "text": "",
           "value": ""
         },
-        "description": "Filtro de substring no painel de logs. Vazio = sem filtro.",
+        "description": "Substring filter on the logs panel. Empty = no filter.",
         "label": "busca",
         "name": "busca",
         "options": [
@@ -1699,7 +1699,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "NORA — Visao geral",
+  "title": "NORA — Overview",
   "uid": "nora-overview",
   "version": 1,
   "weekStart": ""

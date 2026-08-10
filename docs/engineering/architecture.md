@@ -1,18 +1,8 @@
----
-title: "Architecture — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Architecture — NORA
 
 > End-to-end technical view of NORA: stack, layers, flows and the rationale behind the decisions.
 > Every statement here is anchored in code (`path:line`), a Flyway migration or an ADR.
 > When something is planned but not implemented, it is explicitly marked as such.
-
----
 
 ## §1. Stack overview
 
@@ -51,15 +41,13 @@ Notes:
 - Web runs on **raw Tailwind**: the editorial palette and tokens live in `apps/web/src/app/globals.css` and `apps/web/tailwind.config.ts`. There is no dependency on `@shadcn/ui`, MUI, Chakra or similar.
 - The worker has three operating modes: `USE_LLM_STUB=true` (CI / dev without LLM), `LLM_BASE_URL=https://api.openai.com/v1` (MVP default, OpenAI directly) and Azure OpenAI (Enterprise).
 
----
-
 ## §2. Backend DDD layers
 
 The backend follows 4 strict layers, organized under `services/api/src/main/java/br/com/nora/api/`:
 
 ```
-domain/         <- regras puras, zero dependência de framework
-application/    <- casos de uso, services, portas (interfaces)
+domain/         <- pure rules, zero framework dependency
+application/    <- use cases, services, ports (interfaces)
 infrastructure/ <- adapters: JPA, JJWT, HTTP clients, Azure SDK
 api/            <- controllers REST, DTOs, exception handlers
 ```
@@ -88,8 +76,6 @@ api/            <- controllers REST, DTOs, exception handlers
 - **Pure testability in the domain:** `PolicyEvaluator` has 95.8% coverage (audit §12) because it does not require a Spring container.
 - **Infrastructure substitutability:** swapping JJWT for another JWT provider is just implementing `JwtIssuer`. Same for LLM (ADR 0004) and Speech.
 - **Predictable onboarding:** a new dev always finds the business rule in `application/` or `domain/`, never in `infrastructure/` or `api/`.
-
----
 
 ## §3. Multi-tenancy
 
@@ -127,8 +113,6 @@ ADR 0002 promised Row-Level Security in production. **Delivered in the schema in
 
 **Enforcement is opt-in:** the Postgres owner/admin bypasses RLS by default (dev/Testcontainers stay inert — tests untouched). In prod, enable it via the dedicated `nora_app` role (`NOBYPASSRLS`) + the flag `nora.security.rls.enforce=true`. It is defense in depth: even if a query forgets the `WHERE tenant_id`, RLS blocks it. What remains is the operational cutover/enforcement in production (runbook in ADR 0026/0028), not the schema. See `data-model.md §4`.
 
----
-
 ## §4. AWS-style IAM (ADR 0007)
 
 A model identical to AWS IAM, chosen because it gives the Enterprise tenant the freedom to model their own org chart without waiting for the NORA roadmap.
@@ -137,13 +121,13 @@ A model identical to AWS IAM, chosen because it gives the Enterprise tenant the 
 
 ```
 Tenant
-├── Root user           — owner do tenant; bypass total em AuthorizationService
-├── Users               — convidados via /iam/invitations (US06)
-├── Groups              — coleções nomeadas; criadas livremente
-├── Policies            — documentos JSON: Effect / Action / Resource [/ Condition]
+├── Root user           — tenant owner; full bypass in AuthorizationService
+├── Users               — invited via /iam/invitations (US06)
+├── Groups              — named collections; created freely
+├── Policies            — JSON documents: Effect / Action / Resource [/ Condition]
 ├── Users ⇄ Groups       (N:N, `iam_user_groups`)
 ├── Groups ⇄ Policies    (N:N, `iam_group_policies`)
-└── Users ⇄ Policies     (N:N, anexação direta opcional, `iam_user_policies`)
+└── Users ⇄ Policies     (N:N, optional direct attachment, `iam_user_policies`)
 ```
 
 Root uniqueness guarantee: partial index `UNIQUE (tenant_id) WHERE is_root = TRUE` (V006:26-27).
@@ -215,8 +199,6 @@ Canonical resource: `nora:tenant/{tenantId}:{recurso}/{instanceId|*}`. Examples:
 - `iam_policy_versions` (V006:89-99): immutable history of each edit (`PRIMARY KEY (policy_id, version)`)
 - `iam_audit_events` (V006:138-150): every IAM operation records actor, action, target and JSONB payload
 
----
-
 ## §5. LLM pipeline
 
 Meeting analysis flow — triggered when an upload arrives or via `POST /meetings/{id}/reprocess`.
@@ -262,8 +244,6 @@ Variables: `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`. MVP default: `https://api
 
 The canonical schema lives in `docs/api/llm-schemas/meeting-analysis-v1.schema.json` and is mirrored in `models.py` (Pydantic) + transmitted to the LLM via `response_format`. A failure in strict mode falls back to `json_object` (line 7 of `llm_analyzer.py`). Free-form output never crosses a service boundary.
 
----
-
 ## §6. PII Shield (ADR 0012)
 
 A deterministic pipeline that runs before any call to the LLM. Implementation in `services/nlp-worker/src/nora_nlp/services/pii_shield.py`.
@@ -283,11 +263,11 @@ A deterministic pipeline that runs before any call to the LLM. Implementation in
 
 ### Redaction pipeline
 
-Each match becomes a placeholder `[[TIPO_N]]` where N is the incremental index. Example:
+Each match becomes a placeholder `[[TYPE_N]]` where N is the incremental index. Example:
 
 ```
-Antes:   "O Lucas me mandou um e-mail (lucas@acme.com) com o CPF 123.456.789-00"
-Depois:  "O [[PERSON_NAME_1]] me mandou um e-mail ([[EMAIL_1]]) com o CPF [[CPF_1]]"
+Before:  "Lucas sent me an email (lucas@acme.com) with the CPF 123.456.789-00"
+After:   "[[PERSON_NAME_1]] sent me an email ([[EMAIL_1]]) with the CPF [[CPF_1]]"
 ```
 
 The mapping `placeholder → hash(SHA-256, first 16 chars)` is kept in `PiiRedactionV1` for auditing without retaining the original value. The total number of redactions is recorded in `meeting_analyses.pii_redactions_applied` (V005:39).
@@ -295,8 +275,6 @@ The mapping `placeholder → hash(SHA-256, first 16 chars)` is kept in `PiiRedac
 ### Why regex + a hardcoded list instead of NER
 
 ADR 0012: the solution covers the MVP target market (Brazil/TOTVS) **well**, avoids the complexity of multi-language NER models and adds zero extra dependencies. Upgrade triggers are documented (first non-BR tenant; >5% non-pt-BR transcripts; a concrete bug report).
-
----
 
 ## §7. Speech Token Broker (ADR 0009)
 
@@ -329,8 +307,6 @@ Desktop (Tauri)         Backend NORA              Azure Speech
 
 The subscription key **never** leaves the backend. If a Desktop is compromised, the blast radius is the ephemeral token (10 min).
 
----
-
 ## §8. Productivity Score (ADR 0005)
 
 An **opt-in** feature enabled per meeting when the user declares a `MeetingGoal` before/after the upload.
@@ -351,8 +327,6 @@ An **opt-in** feature enabled per meeting when the user declares a `MeetingGoal`
 ### Mandatory disclaimer
 
 The UI (and any future export) **must** display: *"Indicador da reunião, não dos participantes."* Reason: the score measures the meeting's adherence to the declared goal, not individual performance — the risk of punitive use is described in ADR 0005.
-
----
 
 ## §9. Customer Confidence (ADR 0006 + ADR 0015) — implemented full-stack (#148)
 
@@ -380,14 +354,12 @@ The UI (and any future export) **must** display: *"Indicador da reunião, não d
 
 ### Applied decision — ADR 0015 (accepted 2026-05-14, **applied in #148** 2026-05-21)
 
-**ADR 0015 — Customer Confidence: minimum viable persistence** (partially supersedes ADR 0006). Stratfy (PO) block vote: **option (a)** — implement the minimum. Delivered in #148, with two divergences from the original plan:
+**ADR 0015 — Customer Confidence: minimum viable persistence** (partially supersedes ADR 0006). Block vote: **option (a)** — implement the minimum. Delivered in #148, with two divergences from the original plan:
 
 - The migration was delivered as **V017** (the planned V013 slot was used by soft-delete in #114).
 - It came in 1 PR (not in the planned dedicated branch `feat/sub-1.11-...`).
 
 Aggregated Account Health (US50-US51) **remains deferred** via ADR 0014. Alternative (B) — removing Customer Health from the landing page — was rejected: demo credibility > effort saved. Details in `docs/adr/0015-customer-confidence-minimal-persistence.md`.
-
----
 
 ## §10. End-to-end flow "login → upload → analysis → result"
 
@@ -409,14 +381,14 @@ sequenceDiagram
     API->>DB: INSERT meetings (status=PENDING)<br/>INSERT transcripts
     API-->>Web: 202 {meetingId, status: PENDING}
 
-    Note over API: assíncrono<br/>MeetingService.processAsync
+    Note over API: asynchronous<br/>MeetingService.processAsync
     API->>Worker: POST /analyze<br/>(transcript + tenant_context)
     Note over Worker: 1) PII Shield<br/>2) TF-IDF baseline<br/>3) LLM call (JSON Schema)<br/>4) Pydantic validate
     Worker->>LLM: chat/completions (strict)
-    LLM-->>Worker: JSON validado
+    LLM-->>Worker: validated JSON
     Worker-->>API: AnalyzeResponse v1
 
-    API->>DB: INSERT meeting_analyses<br/>INSERT meeting_decisions[]<br/>INSERT meeting_action_items[]<br/>INSERT meeting_risks[]<br/>INSERT meeting_opportunities[]<br/>(se goal) INSERT meeting_productivity_assessments
+    API->>DB: INSERT meeting_analyses<br/>INSERT meeting_decisions[]<br/>INSERT meeting_action_items[]<br/>INSERT meeting_risks[]<br/>INSERT meeting_opportunities[]<br/>(if goal) INSERT meeting_productivity_assessments
     API->>DB: UPDATE meetings SET status=COMPLETED
 
     loop polling
@@ -426,7 +398,7 @@ sequenceDiagram
 
     Web->>API: GET /meetings/{id}
     API-->>Web: status: COMPLETED + analysis payload
-    Note over Web: Render summary (markdown),<br/>decisions, action items,<br/>risks, opportunities,<br/>ProductivityScoreCard (se existe)
+    Note over Web: Render summary (markdown),<br/>decisions, action items,<br/>risks, opportunities,<br/>ProductivityScoreCard (if present)
 ```
 
 Step by step in words:
@@ -436,14 +408,12 @@ Step by step in words:
 3. **Backend → Worker** (`MeetingService.processAsync` → `AnalysisService.requestAnalysis`): assembles the `AnalyzeRequest` with transcript + tenant_context + options.
 4. **Worker** (`/analyze`): PII Shield → TF-IDF baseline → strict LLM → Pydantic validate → returns `AnalyzeResponse`.
 5. **Persistence**: the backend saves `meeting_analyses` + children (`meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities`) + optionally `meeting_productivity_assessments` + `meeting_outcome_coverage`. It updates `meetings.processing_status = COMPLETED`.
-6. **Frontend polling**: the "Processando" card in `apps/web/src/app/(app)/meetings/[id]/page.tsx` polls every ~2s until `processing_status = COMPLETED`.
+6. **Frontend polling**: the "Processing" card in `apps/web/src/app/(app)/meetings/[id]/page.tsx` polls every ~2s until `processing_status = COMPLETED`.
 7. **Render**: the UI shows the summary (markdown via `react-markdown`), decisions, action items, risks/opportunities and, if present, `ProductivityScoreCard`.
-
----
 
 ## §11. Azure infrastructure
 
-Provisioned via Bicep (`infra/bicep/main.bicep`) and deployed by `deploy-infra.yml` (Service Principal OIDC). Operational details (the eight Azure for Students pitfalls, recreation commands, troubleshooting) **live in `docs/operations/azure-deploy.md`** (to be written by the Tech Lead in parallel).
+Provisioned via Bicep (`infra/bicep/main.bicep`) and deployed by `deploy-infra.yml` (Service Principal OIDC). Operational details (the eight Azure for Students pitfalls, recreation commands, troubleshooting) **live in `docs/operations/azure-deploy.md`**.
 
 ### Resource Group `rg-nora-dev` — current inventory
 
@@ -463,8 +433,6 @@ Provisioned via Bicep (`infra/bicep/main.bicep`) and deployed by `deploy-infra.y
 | AI Search | **not used** (`enableSearch=false`) | semantic search (US15) was delivered via pgvector + an HTTP embedding client, not Azure AI Search (PR #206, `V021`) |
 
 Service Principal: `sp-nora-github-deploy` (audit §7), with 3 federated credentials (main, pull_request, environment:dev). Roles: `Contributor` + `Role Based Access Control Administrator` on `rg-nora-dev`.
-
----
 
 ## §12. Stack rationale — why each choice
 
@@ -514,8 +482,6 @@ Service Principal: `sp-nora-github-deploy` (audit §7), with 3 federated credent
 - Explicit control of the contract (versioned prompt + strict JSON Schema — ADR 0003).
 - LangChain would add an abstraction layer that buys nothing for a 1-call pipeline (PII → TF-IDF → LLM → validate).
 - ADR 0004 keeps the provider agnostic via env vars; switching to Azure OpenAI or another Chat Completions-compatible endpoint is just changing `LLM_BASE_URL`.
-
----
 
 ## §13. Security hardening delivered (audit follow-ups, post-1.10)
 

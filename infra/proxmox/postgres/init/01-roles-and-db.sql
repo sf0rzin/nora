@@ -68,7 +68,7 @@
 
 \set ON_ERROR_STOP on
 
-\echo '=== NORA initdb: extensoes + roles de RLS (ADR 0026/0028) ==='
+\echo '=== NORA initdb: extensions + RLS roles (ADR 0026/0028) ==='
 
 -- Empty default BEFORE the \getenv: if the environment variable does not exist,
 -- the psql variable stays an empty string instead of becoming undefined.
@@ -124,10 +124,10 @@ ALTER ROLE nora_app WITH LOGIN NOBYPASSRLS;
 
 \if :have_app_password
 ALTER ROLE nora_app WITH PASSWORD :'app_password';
-\echo '  nora_app: senha definida a partir de NORA_APP_PASSWORD'
+\echo '  nora_app: password set from NORA_APP_PASSWORD'
 \else
-\echo '  nora_app: SEM SENHA (NORA_APP_PASSWORD ausente no ambiente).'
-\echo '            Role criado e inerte -- nao autentica ate um ALTER ROLE.'
+\echo '  nora_app: NO PASSWORD (NORA_APP_PASSWORD absent from the environment).'
+\echo '            Role created and inert -- does not authenticate until an ALTER ROLE.'
 \endif
 
 -- ---- nora_telemetry: cross-tenant aggregate reads for the operator panel ----
@@ -141,11 +141,11 @@ ALTER ROLE nora_telemetry WITH LOGIN BYPASSRLS;
 
 \if :have_telemetry_password
 ALTER ROLE nora_telemetry WITH PASSWORD :'telemetry_password';
-\echo '  nora_telemetry: senha definida (RLS_TELEMETRY_PASSWORD/NORA_TELEMETRY_PASSWORD)'
+\echo '  nora_telemetry: password set (RLS_TELEMETRY_PASSWORD/NORA_TELEMETRY_PASSWORD)'
 \else
-\echo '  nora_telemetry: SEM SENHA (nem RLS_TELEMETRY_PASSWORD nem'
-\echo '                  NORA_TELEMETRY_PASSWORD no ambiente do container).'
-\echo '                  Role criado e inerte -- nao autentica ate um ALTER ROLE.'
+\echo '  nora_telemetry: NO PASSWORD (neither RLS_TELEMETRY_PASSWORD nor'
+\echo '                  NORA_TELEMETRY_PASSWORD in the container environment).'
+\echo '                  Role created and inert -- does not authenticate until an ALTER ROLE.'
 \endif
 
 
@@ -193,11 +193,11 @@ DO $$
 BEGIN
     IF to_regclass('public.meeting_analyses') IS NOT NULL THEN
         EXECUTE 'GRANT SELECT ON public.meeting_analyses TO nora_telemetry';
-        RAISE NOTICE 'nora_telemetry: GRANT SELECT em meeting_analyses aplicado.';
+        RAISE NOTICE 'nora_telemetry: GRANT SELECT on meeting_analyses applied.';
     ELSE
-        RAISE WARNING 'nora_telemetry: meeting_analyses ainda nao existe (vem na V005). '
-                      'GRANT SELECT PENDENTE -- sem ele o painel de negocio retorna zero '
-                      'EM SILENCIO. Rodar apos as migrations.';
+        RAISE WARNING 'nora_telemetry: meeting_analyses does not exist yet (it comes in V005). '
+                      'GRANT SELECT PENDING -- without it the business panel returns zero '
+                      'SILENTLY. Run after the migrations.';
     END IF;
 END
 $$;
@@ -233,7 +233,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE nora_app IN SCHEMA public
 -- ============================================================
 -- 6. Verification -- goes to the container log (`docker compose logs postgres`).
 -- ============================================================
-\echo '--- roles provisionados ---'
+\echo '--- provisioned roles ---'
 SELECT rolname,
        rolcanlogin  AS login,
        rolbypassrls AS bypassrls,
@@ -243,7 +243,7 @@ FROM pg_authid
 WHERE rolname IN ('nora_app', 'nora_telemetry', current_user)
 ORDER BY rolname;
 
-\echo '--- extensoes ---'
+\echo '--- extensions ---'
 SELECT extname FROM pg_extension ORDER BY extname;
 
-\echo '=== NORA initdb: concluido. Proximo passo: Flyway (a API roda no boot). ==='
+\echo '=== NORA initdb: complete. Next step: Flyway (the API runs at boot). ==='

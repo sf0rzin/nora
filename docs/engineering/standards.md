@@ -1,17 +1,7 @@
----
-title: "Engineering Standards — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Engineering Standards — NORA
 
 > Operational guide for humans and AI agents programming NORA.
 > Defines conventions, structure, patterns and tooling. Updated to reflect the **actual state of the code** — not promises.
-
----
 
 ## 1. Engineering Principles
 
@@ -24,8 +14,6 @@ last_reviewed: 2026-06-06
 7. **Security by default.** PII is redacted before any external LLM call (ADR 0012).
 8. **Living documentation.** Durable decision → `docs/adr/`. Transient detail → issue/PR/private vault.
 
----
-
 ## 2. Confirmed stack
 
 | Layer | Stack | Pattern |
@@ -37,7 +25,7 @@ last_reviewed: 2026-06-06
 | **AI** | LLM-agnostic via env vars (default OpenAI `gpt-4o-mini`; Azure OpenAI in Enterprise) | Strict JSON Schema, low temperature, logs without PII. ADR 0004. |
 | **Search/RAG** | pgvector + provider-agnostic HTTP embedding client (Gemini/OpenAI) | Semantic search delivered (PR #206, V021 `meeting_embeddings`); Core chat consumes `/meetings/search` as RAG context |
 | **Auth** | JWT (JJWT 0.12) + stateful refresh tokens (V011); HttpOnly cookies | SSO Entra ID/SAML post-MVP |
-| **Desktop** | Tauri 2 + Rust + Python sidecar | Native audio capture; ADR 0008. Another architect's scope. |
+| **Desktop** | Tauri 2 + Rust | Native audio capture; ADR 0008 (Python sidecar removed by ADR 0035). Maintained by @pollotherunner. |
 | **Infra** | Azure (Container Apps + Postgres Flexible + KV + Storage) + Bicep | Declarative IaC; SP OIDC via GitHub Actions |
 | **CI/CD** | GitHub Actions: `ci.yml` + `build-images.yml` + `deploy-infra.yml` | Push to GHCR; automated deploy to `dev` |
 
@@ -45,40 +33,38 @@ last_reviewed: 2026-06-06
 
 Focus on the **Web + Backend + NLP Worker** slice. Desktop, SSO, audio/video upload, full MCPs and native Salesforce come post-MVP.
 
----
-
 ## 3. Folder structure
 
 ```text
 nora/
 ├── apps/
-│   ├── web/                    # Next.js (Tailwind cru)
-│   ├── admin/                  # console de operador / control plane (ADR 0022-0025)
-│   └── desktop/                # Tauri 2 (outro arquiteto)
+│   ├── web/                    # Next.js (raw Tailwind)
+│   ├── admin/                  # operator console / control plane (ADR 0022-0025)
+│   └── desktop/                # Tauri 2 (@pollotherunner)
 ├── services/
 │   ├── api/                    # Spring Boot backend
 │   └── nlp-worker/             # FastAPI worker NLP/LLM
 ├── packages/
-│   ├── nlp-baseline/           # TF-IDF PT-BR reaproveitável (ADR 0010)
-│   └── shared-contracts/       # contratos compartilhados (error-codes, pii-types, processing-status)
+│   ├── nlp-baseline/           # reusable PT-BR TF-IDF (ADR 0010)
+│   └── shared-contracts/       # shared contracts (error-codes, pii-types, processing-status)
 ├── infra/
-│   ├── bicep/                  # Infra Azure (main.bicep + 9 módulos)
-│   └── docker/                 # Compose local, Dockerfiles auxiliares
+│   ├── bicep/                  # Azure infra (main.bicep + 9 modules)
+│   └── docker/                 # local Compose, auxiliary Dockerfiles
 ├── data/
-│   ├── synthetic/              # 12 transcripts + 3 contextos (versionados)
-│   └── samples/                # pequenos exemplos
-├── notebooks/                  # Entregas Data Science FIAP
+│   ├── synthetic/              # 12 transcripts + 3 contexts (versioned)
+│   └── samples/                # small examples
+├── notebooks/                  # FIAP Data Science deliverables
 ├── docs/
-│   ├── product/                # vision, backlog (status real), roadmap, glossary
-│   ├── engineering/            # architecture, standards (este doc), data-model, data-model-oracle
-│   ├── operations/             # azure-deploy (runbook + 8 armadilhas), production-readiness-gaps
-│   ├── challenge/              # FIAP Challenge 2026 (personas, casos de uso, README, fiap-challenge-2026)
-│   ├── security/               # threat model, LGPD operacional (entregue — ADR 0029)
-│   ├── api/                    # OpenAPI + JSON Schemas LLM + exemplos
-│   └── adr/                    # ADRs (índice canônico em docs/adr/README.md)
-├── scripts/                    # automação local
+│   ├── product/                # vision, backlog (real status), roadmap, glossary
+│   ├── engineering/            # architecture, standards (this doc), data-model, data-model-oracle
+│   ├── operations/             # azure-deploy (runbook + 8 pitfalls), production-readiness-gaps
+│   ├── challenge/              # FIAP Challenge 2026 (personas, use cases, README, fiap-challenge-2026)
+│   ├── security/               # threat model, operational LGPD (delivered — ADR 0029)
+│   ├── api/                    # OpenAPI + LLM JSON Schemas + examples
+│   └── adr/                    # ADRs (canonical index in docs/adr/README.md)
+├── scripts/                    # local automation
 ├── .github/                    # workflows + templates
-├── CLAUDE.md                   # contexto para Claude Code
+├── CLAUDE.md                   # context for Claude Code
 └── README.md
 ```
 
@@ -87,8 +73,6 @@ nora/
 - **There is no `apps/web/src/features/`** (the previous version of the doc foresaw one). The frontend uses a flat `src/components/` + `src/app/` (App Router).
 - **`packages/shared-contracts/`** contains the real shared contracts (`error-codes.md`, `pii-types.json`, `processing-status.json`, `README.md`); full HTTP contracts live in `docs/api/`.
 - **MCPs (calendar, tasks, crm)** remain deferred post-MVP via ADR 0014 (defer commercial gate) as a roadmap concept. There is no `mcp/` folder in the monorepo. ADR 0001 (monorepo) mentions the foreseen structure; reactivation is conditional on the first paying tenant asking for an integration.
-
----
 
 ## 4. Where to store each piece of information
 
@@ -117,8 +101,6 @@ nora/
 | Example environment variables | `.env.example` in each app/service |
 | Real secrets | **Never in Git.** `.env.local` in dev; Azure Key Vault in prod |
 
----
-
 ## 5. Backend — Java/Spring Boot
 
 ### Organization
@@ -126,14 +108,14 @@ nora/
 ```text
 services/api/src/main/java/br/com/nora/api/
 ├── NoraApiApplication.java
-├── domain/                # POJOs/records, lógica pura; ZERO dependência Spring
+├── domain/                # POJOs/records, pure logic; ZERO Spring dependency
 │   ├── iam/               # IamPolicy, PolicyEvaluator, PolicyStatement
 │   ├── meeting/           # Meeting, Participant, ProcessingStatus
-│   ├── analysis/          # MeetingAnalysis + filhos
+│   ├── analysis/          # MeetingAnalysis + children
 │   ├── identity/          # User, Email value object, Password
 │   ├── tenant/            # Tenant
 │   └── productivity/      # MeetingGoal, ProductivityAssessment
-├── application/           # casos de uso, services, portas
+├── application/           # use cases, services, ports
 │   ├── identity/          # AuthService
 │   ├── iam/               # AuthorizationService, IamService
 │   ├── meeting/           # MeetingService
@@ -142,7 +124,7 @@ services/api/src/main/java/br/com/nora/api/
 │   ├── speech/            # SpeechTokenService
 │   └── ports/             # interfaces (UserRepository, MeetingRepository, ...)
 ├── infrastructure/        # adapters: JPA, JJWT, HTTP, Azure
-│   ├── persistence/jpa/   # entities + adapters dos repositories
+│   ├── persistence/jpa/   # entities + repository adapters
 │   ├── security/          # JjwtJwtIssuer, JwtAuthenticationFilter
 │   ├── speech/            # AzureSpeechTokenBroker
 │   └── analysis/          # WorkerHttpClient
@@ -187,8 +169,6 @@ services/api/src/main/java/br/com/nora/api/
 - Infrastructure: integration tests with Testcontainers (real Postgres).
 - API: `@SpringBootTest` or `@WebMvcTest`. Minimum coverage includes denied authorization paths (403/404).
 
----
-
 ## 6. Database
 
 ### Conventions
@@ -222,8 +202,6 @@ updated_at timestamptz not null default now()
 - **A migration is never edited after being applied** — always create a new version (forward-only).
 - See `docs/engineering/data-model.md` for the full migration map (through V021: V018 invitation token hash, V019/V020 full RLS + auth-aware scope, V021 `meeting_embeddings`). Single source of truth for the schema.
 
----
-
 ## 7. NLP Worker — Python/FastAPI
 
 ### Organization
@@ -235,11 +213,11 @@ services/nlp-worker/src/nora_nlp/
 │   ├── analyze.py         # POST /analyze, /live-analyze
 │   └── health.py
 ├── services/
-│   ├── pii_shield.py      # redação determinística antes do LLM
-│   ├── baseline.py        # TF-IDF do nlp-baseline
-│   ├── llm_analyzer.py    # pipeline LLM real
-│   ├── stub_analyzer.py   # determinístico para CI
-│   ├── live_analyzer.py   # análise incremental ao vivo
+│   ├── pii_shield.py      # deterministic redaction before the LLM
+│   ├── baseline.py        # TF-IDF from nlp-baseline
+│   ├── llm_analyzer.py    # real LLM pipeline
+│   ├── stub_analyzer.py   # deterministic for CI
+│   ├── live_analyzer.py   # live incremental analysis
 │   └── stub_live_analyzer.py
 ├── clients/
 │   └── llm.py             # adapter OpenAI-compatible (ADR 0004)
@@ -282,8 +260,6 @@ Canonical schema in `docs/api/llm-schemas/meeting-analysis-v1.schema.json`. It i
 - Never log the raw transcript with PII.
 - An LLM failure produces a controlled error, **not an exposed stack trace**.
 
----
-
 ## 8. Frontend — Next.js (raw Tailwind)
 
 ### Organization
@@ -293,10 +269,10 @@ apps/web/src/
 ├── app/
 │   ├── (auth)/            # login, signup, reset
 │   ├── (app)/             # dashboard, meetings, tasks, settings
-│   └── api/               # route handlers (poucos)
-├── components/            # flat — sem subdivisão features/
-│   ├── ui-primitives/     # button, input, dialog (escritos à mão)
-│   ├── meeting-*          # cards e formulários de reunião
+│   └── api/               # route handlers (few)
+├── components/            # flat — no features/ subdivision
+│   ├── ui-primitives/     # button, input, dialog (hand-written)
+│   ├── meeting-*          # meeting cards and forms
 │   ├── productivity-*     # ProductivityScoreCard, MeetingGoalForm
 │   ├── iam-*              # GroupList, PolicyEditor (Monaco)
 │   └── nora-logo.tsx
@@ -306,10 +282,10 @@ apps/web/src/
 │   └── utils.ts
 └── styles/
     ├── globals.css        # tokens + utilities
-    └── tokens.css         # paleta OKLCH + tipografia
+    └── tokens.css         # OKLCH palette + typography
 ```
 
-**There is no `components/ui/` à la shadcn.** Base components are written by hand using Tailwind classes directly.
+**There is no shadcn-style `components/ui/`.** Base components are written by hand using Tailwind classes directly.
 
 ### Rules
 
@@ -326,8 +302,6 @@ apps/web/src/
 ### Mocks as the default in dev
 
 `apps/web/src/lib/api/client.ts` uses `NEXT_PUBLIC_USE_MOCKS=true` by default (also in CI). To point at the real backend, set `NEXT_PUBLIC_USE_MOCKS=false` and `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080`.
-
----
 
 ## 9. Testing
 
@@ -347,7 +321,7 @@ apps/web/src/
 | NLP Worker | > 85% (current: 87%) |
 | **Backend branch coverage** | > 70% (current: 53%) |
 | Web Next.js | TBD (no runner yet; target after Sub-phase 1.11+) |
-| Desktop Python sidecar | out of scope (another architect) |
+| Desktop client | out of scope here (maintained by @pollotherunner) |
 
 **Current state (2026-05-13):**
 
@@ -367,8 +341,6 @@ A story is only DONE when:
 - No secret or sensitive data in the commit.
 - Documentation adjusted if a contract, architecture or scope changed.
 - The PR was reviewed by another person **or by AI in review mode** + human validation.
-
----
 
 ## 10. Git, Issues and PRs
 
@@ -397,8 +369,6 @@ Each PR contains:
 - Security/multi-tenant risks (even if it is "none, visual change").
 - Screenshots when it is UI.
 
----
-
 ## 11. Use of AI in the project
 
 ### Before asking for code
@@ -414,19 +384,17 @@ Provide the agent with:
 ### Recommended prompt
 
 ```text
-Você está no projeto NORA. Leia CLAUDE.md e docs/engineering/standards.md.
-Implemente a US## do docs/product/backlog.md apenas no service X.
-Não altere escopo fora dessa story.
-Adicione testes e explique como validar.
-Ancore cada afirmação técnica em path:linha ou ADR.
+You are working in the NORA project. Read CLAUDE.md and docs/engineering/standards.md.
+Implement US## from docs/product/backlog.md only in service X.
+Do not change scope outside that story.
+Add tests and explain how to validate.
+Anchor every technical claim in path:line or an ADR.
 ```
 
 ### Model split
 
 - **Opus models**: architecture, security review, data modeling, critical refactors, contract design, ADRs.
 - **Sonnet models**: focused implementation, tests, UI components, CRUD, fixtures, localized documentation.
-
----
 
 ## 12. ADRs as reference
 
@@ -472,8 +440,6 @@ When to create an ADR:
 - A decision that will surprise whoever arrives later.
 - A decision taken after discarding at least **one real alternative**.
 
----
-
 ## 13. Relevant technical notes (post-initial-MVP updates)
 
 ### PII Shield with PERSON_NAME (ADR 0012)
@@ -505,8 +471,6 @@ The desktop calls `POST /speech/token` (JWT-authenticated) and receives an ephem
 The `web` job in `.github/workflows/ci.yml` uses **`npm ci`** (npm cache via `package-lock.json`), consistent with `apps/web/Dockerfile` (`npm ci` → deployed image), the `Makefile` and the committed `package-lock.json`. `apps/web` is an **npm** project (there is no `pnpm-lock.yaml` nor a `packageManager` field).
 
 History: until 2026-05-21 the job used `pnpm install --no-frozen-lockfile`, which **ignored** `package-lock.json` and resolved its own dependency tree — that is, CI validated something potentially different from the artifact the Dockerfile builds and deploys. The previous doc falsely claimed that "PR #73 unified" it on npm. Fixed by aligning CI to npm.
-
----
 
 ## 14. Expected quality
 

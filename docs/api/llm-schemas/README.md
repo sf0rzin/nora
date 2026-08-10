@@ -1,11 +1,3 @@
----
-title: "JSON Schemas — Structured LLM Output"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # JSON Schemas — Structured LLM Output
 
 These schemas are the **source of truth** for the formats the NLP Worker requires from the LLM.

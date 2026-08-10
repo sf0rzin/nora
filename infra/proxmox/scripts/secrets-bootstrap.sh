@@ -62,18 +62,18 @@ else
 fi
 log()  { printf '%s==>%s %s\n' "$C_GRN" "$C_OFF" "$*"; }
 info() { printf '%s    %s%s\n' "$C_DIM" "$*" "$C_OFF"; }
-warn() { printf '%sAVISO:%s %s\n' "$C_YLW" "$C_OFF" "$*" >&2; }
-die()  { printf '%sERRO:%s %s\n' "$C_RED" "$C_OFF" "$*" >&2; exit 1; }
+warn() { printf '%sWARN:%s %s\n' "$C_YLW" "$C_OFF" "$*" >&2; }
+die()  { printf '%sERROR:%s %s\n' "$C_RED" "$C_OFF" "$*" >&2; exit 1; }
 
 usage() { sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//; $d'; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --from-file)  FROM_FILE="${2:?--from-file exige um caminho}"; shift 2 ;;
+    --from-file)  FROM_FILE="${2:?--from-file requires a path}"; shift 2 ;;
     --check)      CHECK_ONLY=1; shift ;;
-    --regenerate) REGENERATE="${2:?--regenerate exige o nome da variavel}"; shift 2 ;;
+    --regenerate) REGENERATE="${2:?--regenerate requires the variable name}"; shift 2 ;;
     -h|--help)    usage; exit 0 ;;
-    *) die "opção desconhecida: $1" ;;
+    *) die "unknown option: $1" ;;
   esac
 done
 
@@ -92,17 +92,17 @@ NORA_INTEGRATIONS_STATE_SECRET|gerado|hex:32
 NORA_INTEGRATIONS_ENC_KEY|gerado|aes256b64
 NORA_APP_PASSWORD|gerado|b64:32
 RLS_TELEMETRY_PASSWORD|gerado|b64:32
-CLOUDFLARE_TUNNEL_TOKEN|coletado|Connector token do tunnel nora-prod (Zero Trust > Networks > Tunnels)
-CF_ACCESS_TEAM_DOMAIN|coletado|ex.: stratfy.cloudflareaccess.com (nao e segredo)
-CF_ACCESS_AUD|coletado|AUD tag da Access Application do admin (nao e segredo)
-GHCR_PULL_TOKEN|opcional|vazio = assume pacotes publicos no GHCR (e o caso hoje)
-OPENAI_API_KEY|opcional|vazio = worker em modo stub e chat 503
-GEMINI_API_KEY|opcional|vazio = embeddings/RAG desligados
-DEEPSEEK_API_KEY|opcional|vazio = provider indisponivel no chat
-RESEND_API_KEY|opcional|vazio = backend cai em LogEmailSender
-GOOGLE_OAUTH_CLIENT_ID|opcional|vazio = integracao Google Calendar nao conecta
-GOOGLE_OAUTH_CLIENT_SECRET|opcional|vazio = integracao Google Calendar nao conecta
-NORA_PLATFORM_ENABLED|opcional|true liga o profile 'platform' (admin + postgres-platform)
+CLOUDFLARE_TUNNEL_TOKEN|coletado|Connector token for the nora-prod tunnel (Zero Trust > Networks > Tunnels)
+CF_ACCESS_TEAM_DOMAIN|coletado|e.g.: stratfy.cloudflareaccess.com (not a secret)
+CF_ACCESS_AUD|coletado|AUD tag of the admin's Access Application (not a secret)
+GHCR_PULL_TOKEN|opcional|empty = assumes public packages on GHCR (the case today)
+OPENAI_API_KEY|opcional|empty = worker in stub mode and chat 503
+GEMINI_API_KEY|opcional|empty = embeddings/RAG off
+DEEPSEEK_API_KEY|opcional|empty = provider unavailable in chat
+RESEND_API_KEY|opcional|empty = backend falls back to LogEmailSender
+GOOGLE_OAUTH_CLIENT_ID|opcional|empty = Google Calendar integration does not connect
+GOOGLE_OAUTH_CLIENT_SECRET|opcional|empty = Google Calendar integration does not connect
+NORA_PLATFORM_ENABLED|opcional|true turns on the 'platform' profile (admin + postgres-platform)
 CAT
 )
 
@@ -117,7 +117,7 @@ gerar() {
     # AES-256-GCM: exactly 32 bytes in STANDARD base64 (with padding). The
     # TokenCipher validates this at boot — base64url or the wrong size takes the API down.
     aes256b64) openssl rand -base64 32 ;;
-    *) die "gerador desconhecido: $1" ;;
+    *) die "unknown generator: $1" ;;
   esac
 }
 
@@ -129,7 +129,7 @@ declare -A COLETA=()
 
 ler_arquivo() {
   local f="$1" linha chave valor
-  [ -r "$f" ] || die "não consigo ler $f"
+  [ -r "$f" ] || die "cannot read $f"
   # Never echoes the content. Only counts how many keys it recognized.
   local reconhecidas=0 ignoradas=0
   while IFS= read -r linha || [ -n "$linha" ]; do
@@ -155,59 +155,59 @@ ler_arquivo() {
         fi ;;
     esac
   done < "$f"
-  info "$f: $reconhecidas chave(s) reconhecida(s), $ignoradas ignorada(s)"
+  info "$f: $reconhecidas key(s) recognized, $ignoradas ignored"
 }
 
 # ---------------------------------------------------------------------------
 # --check: audits the existing .sops without revealing anything
 # ---------------------------------------------------------------------------
 if [ "$CHECK_ONLY" -eq 1 ]; then
-  [ -f "$SOPS_FILE" ] || die "não existe $SOPS_FILE — rode sem --check para criar."
-  command -v sops >/dev/null || die "sops não encontrado (rode o bootstrap-host.sh)."
+  [ -f "$SOPS_FILE" ] || die "$SOPS_FILE does not exist — run without --check to create it."
+  command -v sops >/dev/null || die "sops not found (run bootstrap-host.sh)."
   export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
-  log "Auditando $SOPS_FILE (valores NÃO são exibidos)"
+  log "Auditing $SOPS_FILE (values are NOT shown)"
   tmp="$(mktemp)"; trap 'shred -u "$tmp" 2>/dev/null || rm -f "$tmp"' EXIT
   sops --decrypt --input-type dotenv --output-type dotenv "$SOPS_FILE" > "$tmp" \
-    || die "falha ao decifrar. A chave age em $AGE_KEY_FILE é a certa?"
+    || die "failed to decrypt. Is the age key at $AGE_KEY_FILE the right one?"
   faltando=0
   while IFS='|' read -r nome classe _; do
     v="$(sed -n "s/^$nome=//p" "$tmp" | head -1)"
     n=${#v}
     if [ "$n" -eq 0 ]; then
       case "$classe" in
-        opcional) printf '  %-34s %s[vazio - opcional]%s\n' "$nome" "$C_DIM" "$C_OFF" ;;
-        *)        printf '  %-34s %sFALTANDO%s\n' "$nome" "$C_RED" "$C_OFF"; faltando=$((faltando+1)) ;;
+        opcional) printf '  %-34s %s[empty - optional]%s\n' "$nome" "$C_DIM" "$C_OFF" ;;
+        *)        printf '  %-34s %sMISSING%s\n' "$nome" "$C_RED" "$C_OFF"; faltando=$((faltando+1)) ;;
       esac
     elif [ "$v" = "unset" ]; then
-      printf '  %-34s %sliteral "unset" - quebra o boot%s\n' "$nome" "$C_RED" "$C_OFF"; faltando=$((faltando+1))
+      printf '  %-34s %sliteral "unset" - breaks the boot%s\n' "$nome" "$C_RED" "$C_OFF"; faltando=$((faltando+1))
     else
       printf '  %-34s %s[ok, %s chars]%s\n' "$nome" "$C_GRN" "$n" "$C_OFF"
     fi
   done <<< "$CATALOGO"
   echo
-  [ "$faltando" -eq 0 ] && log "Tudo que é obrigatório está preenchido." \
-    || die "$faltando item(ns) obrigatório(s) faltando."
+  [ "$faltando" -eq 0 ] && log "Everything mandatory is filled in." \
+    || die "$faltando mandatory item(s) missing."
   exit 0
 fi
 
 # ---------------------------------------------------------------------------
 # Preflight
 # ---------------------------------------------------------------------------
-command -v openssl >/dev/null || die "openssl não encontrado."
-command -v sops    >/dev/null || die "sops não encontrado (rode o bootstrap-host.sh)."
-command -v age     >/dev/null || die "age não encontrado (rode o bootstrap-host.sh)."
-[ -r "$AGE_KEY_FILE" ] || die "chave age não legível em $AGE_KEY_FILE. Rode o bootstrap-host.sh primeiro."
+command -v openssl >/dev/null || die "openssl not found."
+command -v sops    >/dev/null || die "sops not found (run bootstrap-host.sh)."
+command -v age     >/dev/null || die "age not found (run bootstrap-host.sh)."
+[ -r "$AGE_KEY_FILE" ] || die "age key not readable at $AGE_KEY_FILE. Run bootstrap-host.sh first."
 
 [ -n "$FROM_FILE" ] && ler_arquivo "$FROM_FILE"
 
 # If a .sops already exists, preserve whatever is in it (this is reconciliation, not reset).
 declare -A ATUAL=()
 if [ -f "$SOPS_FILE" ]; then
-  log "Já existe $SOPS_FILE — preservando os valores atuais"
+  log "$SOPS_FILE already exists — preserving the current values"
   export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
   prev="$(mktemp)"
   sops --decrypt --input-type dotenv --output-type dotenv "$SOPS_FILE" > "$prev" 2>/dev/null \
-    || warn "não consegui decifrar o existente; vou tratar como novo."
+    || warn "could not decrypt the existing file; treating it as new."
   # Do NOT use `IFS='=' read -r k v` here. Bash discards the line's FINAL delimiter
   # when filling the last variable, so a value ending in `=` loses that `=` --
   # which is exactly the padding of every base64. In practice: NORA_INTEGRATIONS_ENC_KEY
@@ -227,7 +227,7 @@ fi
 # Assembles the final set
 # ---------------------------------------------------------------------------
 SHM_FS="$(findmnt -no FSTYPE /dev/shm 2>/dev/null || true)"
-[ "$SHM_FS" = "tmpfs" ] || die "/dev/shm não é tmpfs. Recuso escrever segredo em disco."
+[ "$SHM_FS" = "tmpfs" ] || die "/dev/shm is not tmpfs. Refusing to write secrets to disk."
 WORK="$(mktemp -d /dev/shm/nora-secrets.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 PLAIN="$WORK/secrets.env"
@@ -235,8 +235,8 @@ PLAIN="$WORK/secrets.env"
 
 if [ -e /dev/tty ] && { : < /dev/tty; } 2>/dev/null; then TEM_TTY=1; else TEM_TTY=0; fi
 
-log "Montando o conjunto de segredos"
-if [ "$TEM_TTY" -eq 0 ]; then info "sem terminal: o que não vier do --from-file fica vazio"; fi
+log "Assembling the secrets set"
+if [ "$TEM_TTY" -eq 0 ]; then info "no terminal: whatever does not come from --from-file stays empty"; fi
 echo
 
 declare -a RELATORIO=()
@@ -246,36 +246,36 @@ while IFS='|' read -r nome classe spec; do
   origem=""
 
   if [ -n "$REGENERATE" ] && [ "$nome" = "$REGENERATE" ] && [ "$classe" = "gerado" ]; then
-    valor="$(gerar "$spec")"; origem="regenerado"
+    valor="$(gerar "$spec")"; origem="regenerated"
   elif [ -n "${COLETA[$nome]:-}" ]; then
-    valor="${COLETA[$nome]}"; origem="do arquivo"
+    valor="${COLETA[$nome]}"; origem="from file"
   elif [ -n "${ATUAL[$nome]:-}" ]; then
-    valor="${ATUAL[$nome]}"; origem="preservado"
+    valor="${ATUAL[$nome]}"; origem="preserved"
   elif [ "$classe" = "gerado" ]; then
-    valor="$(gerar "$spec")"; origem="gerado"
+    valor="$(gerar "$spec")"; origem="generated"
   elif [ "$TEM_TTY" -eq 0 ]; then
     # No terminal (ssh without -t, cron, agent): there is no way to ask. Leaves
     # it empty and moves on -- the final report shows the hole, and `--check`
     # demands whatever is mandatory. Asking here would only produce a repeated
     # /dev/tty error, one line per variable.
-    valor=""; origem="sem tty"
+    valor=""; origem="no tty"
   else
     # Collected or optional and still without a value: ask WITHOUT ECHO.
     printf '  %s%s%s\n' "$C_YLW" "$nome" "$C_OFF"
     printf '    %s%s%s\n' "$C_DIM" "$spec" "$C_OFF"
     if [ "$classe" = "opcional" ]; then
-      printf '    valor (ENTER deixa vazio): '
+      printf '    value (ENTER leaves it empty): '
     else
-      printf '    valor: '
+      printf '    value: '
     fi
     read -rs valor < /dev/tty || valor=""
     echo
-    origem=$([ -n "$valor" ] && echo "digitado" || echo "vazio")
+    origem=$([ -n "$valor" ] && echo "typed" || echo "empty")
   fi
 
   printf '%s=%s\n' "$nome" "$valor" >> "$PLAIN"
   RELATORIO+=("$(printf '  %-34s %-12s %s' "$nome" "$origem" \
-    "$([ -n "$valor" ] && echo "[${#valor} chars]" || echo "[vazio]")")")
+    "$([ -n "$valor" ] && echo "[${#valor} chars]" || echo "[empty]")")")
 done <<< "$CATALOGO"
 
 # Sanity check you only discover in production, late:
@@ -288,17 +288,17 @@ if [ -n "$enc" ]; then
   base64 -d < <(printf '%s' "$enc") > "$WORK/enc.bin" 2>/dev/null || true
   bytes="$(wc -c < "$WORK/enc.bin")"
   rm -f "$WORK/enc.bin"
-  [ "$bytes" -eq 32 ] || die "NORA_INTEGRATIONS_ENC_KEY não decodifica para 32 bytes ($bytes).
-       O TokenCipher valida isso no boot e derruba a API. Regere com --regenerate."
+  [ "$bytes" -eq 32 ] || die "NORA_INTEGRATIONS_ENC_KEY does not decode to 32 bytes ($bytes).
+       The TokenCipher validates this at boot and takes the API down. Regenerate with --regenerate."
 fi
-grep -q '=unset$' "$PLAIN" && die 'algum valor ficou como a string literal "unset" — isso quebra o boot.'
+grep -q '=unset$' "$PLAIN" && die 'some value ended up as the literal string "unset" — this breaks the boot.'
 
 # ---------------------------------------------------------------------------
 # Encrypt
 # ---------------------------------------------------------------------------
 export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
 sops --encrypt --input-type dotenv --output-type dotenv "$PLAIN" > "$SOPS_FILE.tmp" \
-  || die "sops falhou ao cifrar. O .sops.yaml tem o recipient age deste host?"
+  || die "sops failed to encrypt. Does .sops.yaml have this host's age recipient?"
 mv -f "$SOPS_FILE.tmp" "$SOPS_FILE"
 chmod 0644 "$SOPS_FILE"   # encrypted: can be versioned
 
@@ -307,26 +307,26 @@ chmod 0644 "$SOPS_FILE"   # encrypted: can be versioned
 # silence. Comparing byte by byte costs nothing and closes the whole bug class.
 verif="$WORK/verify.env"
 sops --decrypt --input-type dotenv --output-type dotenv "$SOPS_FILE" > "$verif" 2>/dev/null \
-  || die "o arquivo recém-cifrado não decifra com a chave em $AGE_KEY_FILE."
+  || die "the newly encrypted file does not decrypt with the key at $AGE_KEY_FILE."
 cmp -s "$PLAIN" "$verif" \
-  || die "o ciclo cifra/decifra não devolveu o mesmo conteúdo. NÃO use este arquivo."
+  || die "the encrypt/decrypt round trip did not return the same content. Do NOT use this file."
 rm -f "$verif"
 
 echo
-log "Resultado (nomes e tamanhos — nenhum valor)"
+log "Result (names and sizes — no values)"
 printf '%s\n' "${RELATORIO[@]}"
 echo
-log "Escrito e cifrado: $SOPS_FILE"
+log "Written and encrypted: $SOPS_FILE"
 cat <<EOF
 
-  O arquivo em claro viveu só em tmpfs e já foi apagado.
+  The cleartext file only lived in tmpfs and has already been deleted.
 
-  Próximos passos:
-    1. git add $SOPS_FILE && git commit    (é seguro: está cifrado)
-    2. ./scripts/secrets-bootstrap.sh --check     (confere sem revelar)
+  Next steps:
+    1. git add $SOPS_FILE && git commit    (safe: it is encrypted)
+    2. ./scripts/secrets-bootstrap.sh --check     (verifies without revealing)
     3. ./scripts/deploy.sh
 
-  A chave PRIVADA age em $AGE_KEY_FILE é a única coisa que decifra isto.
-  Sem backup dela, o arquivo versionado vira lixo. Guarde uma cópia offline.
+  The PRIVATE age key at $AGE_KEY_FILE is the only thing that decrypts this.
+  Without a backup of it, the versioned file turns into garbage. Keep an offline copy.
 
 EOF

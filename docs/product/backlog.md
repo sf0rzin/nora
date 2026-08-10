@@ -1,11 +1,3 @@
----
-title: "Backlog — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.1
-last_reviewed: 2026-06-06
----
-
 # Backlog — NORA
 
 > Living MVP backlog, maintained in MoSCoW format with **real status per user story** (DONE / PARTIAL / MISSING). Updated 2026-05-14, based on the audit `2026-05-13-audit-pre-subfase-1.10.md` §2 and §3.
@@ -15,8 +7,6 @@ last_reviewed: 2026-06-06
 > **Reconciled 2026-05-21 (post-PR #148):** Customer Confidence (US48-49) went from PARTIAL → **DONE** full-stack. The `2026-05-13` audit (and the doc×code reconciliation of 2026-05-21 that preceded it on the same day) were written **before** #148 was merged; this doc reflects the post-merge state.
 >
 > To understand the execution history of the sub-phases that delivered each status, see `docs/product/roadmap.md`.
-
----
 
 ## 1. Epics
 
@@ -33,8 +23,6 @@ last_reviewed: 2026-06-06
 | **E9** | Meeting Productivity | Core + Enterprise | Opt-in assessment: the user declares the objective and expected outcomes; NORA measures coverage and assigns a Productivity Score |
 | **E10** | Customer Confidence & Account Health | Enterprise | The customer's/lead's confidence in the company assessed per meeting; aggregated temporal Account Health Score |
 
----
-
 ## 2. MoSCoW Prioritization + Real Status
 
 > **M** = Must Have · **S** = Should Have · **C** = Could Have · **W** = Won't Have (v1)
@@ -43,8 +31,6 @@ last_reviewed: 2026-06-06
 > - **DONE** = implemented, merged, in the flow (with or without minor debt)
 > - **PARTIAL** = part delivered, some points missing
 > - **MISSING** = not implemented
-
----
 
 ### E1 — Identity & Access
 
@@ -147,8 +133,6 @@ last_reviewed: 2026-06-06
 | US50 | Aggregated Account Health Score per account | S | MISSING | `docs/data-model.md:437-453` foresees `account_health_snapshots` but there is no migration | Deferred as a block via ADR 0014. Reactivate post-pilot once 3+ tenants have enough data to aggregate |
 | US51 | Alert when Account Health changes band | S | MISSING | No code | Deferred as a block via ADR 0014. Reactivate together with US50 |
 
----
-
 ## 3. Workstreams implemented beyond the original backlog
 
 Work that was not in the original MoSCoW but came in via sub-phases or an architectural decision:
@@ -188,8 +172,6 @@ A security/infra workstream that came in after Sub-phase 1.10, labeled "audit fo
 | Composite FK isolation `meetings.(tenant_id,owner_user_id)→users` | #137 | V015 | DONE |
 | **Row-Level Security** (`tenant_isolation` + `TenantRlsAspect`) | #138 | V016 → V019/V020 | DONE (schema V016 + full RLS/auth-aware scope V019/V020; cutover runbook in ADR 0026/0028). What remains is the operational cutover/enforcement in prod, not the schema |
 
----
-
 ## 4. State Summary (2026-05-14)
 
 | MoSCoW | Total | DONE | PARTIAL | MISSING |
@@ -208,11 +190,9 @@ A security/infra workstream that came in after Sub-phase 1.10, labeled "audit fo
 
 **Workstreams that set the product apart beyond the MoSCoW** (12 items): Productivity Score full-stack, PII PERSON_NAME, Bicep IaC, real Azure deployment, synthetic dataset + DS notebook, refresh tokens, Live analysis, visual redesign.
 
----
-
 ## 5. The "Defer Post-MVP" decision — ADR 0014
 
-> Approved as a block by Stratfy on 2026-05-14. This decision closed 14 US as **Won't Have v1** with documented reactivation criteria. **Update:** US15 (semantic search) was subsequently delivered in PR #206 — see the note in the table below.
+> Approved as a block on 2026-05-14. This decision closed 14 US as **Won't Have v1** with documented reactivation criteria. **Update:** US15 (semantic search) was subsequently delivered in PR #206 — see the note in the table below.
 
 **General criterion:** the US below were postponed to free up focus for Sub-phase 1.11 (Demo Polish Plan A) and 1.12 (Production Hardening). None of them blocks the FIAP × TOTVS pitch (15/06/2026) nor the immediate Plan A.
 
@@ -234,13 +214,9 @@ A security/infra workstream that came in after Sub-phase 1.10, labeled "audit fo
 
 > The reactivation criterion per US is descriptive, not blocking. Sub-phase 1.13+ can pick up any of them if the context justifies it.
 
----
-
 ## 6. Known visual bug
 
 A previous version of this document (`docs/backlog-mvp.md`, before 2026-05-14) had a duplicated header on lines 158-159 of the "Priority Summary" table — fixed in this version.
-
----
 
 ## 7. MVP — Version 1.0 Scope
 
@@ -267,8 +243,6 @@ The NORA v1.0 MVP covers exclusively the stories classified as **Must Have**, di
 3. Access the summary and tasks of the visible meetings
 4. Receive a clear message (HTTP 403) when trying to access content outside their permissions
 
----
-
 ## 8. Acceptance Criteria — Critical Stories
 
 ### US11 — Generate the meeting summary
@@ -282,8 +256,6 @@ The NORA v1.0 MVP covers exclusively the stories classified as **Must Have**, di
 - It must be generated within 30 seconds after processing
 - It must use the company context (Enterprise) when available
 
----
-
 ### US14 — Company context in processing
 
 **Given that** the admin has configured the company context,
@@ -294,8 +266,6 @@ The NORA v1.0 MVP covers exclusively the stories classified as **Must Have**, di
 - The context is injected as a base instruction into the AI prompt
 - Updating the context does not reprocess old meetings
 - The context is isolated per tenant (it does not leak between companies)
-
----
 
 ### US19 — Scope-restricted visibility (Enterprise)
 
@@ -308,11 +278,9 @@ The NORA v1.0 MVP covers exclusively the stories classified as **Must Have**, di
 - A direct URL access attempt to a resource outside the permissions returns `403`
 - The tenant's Root has full bypass and sees everything
 
----
-
 ### US36 — IAM policies (Effect/Action/Resource/Condition)
 
-**Given that** the Root opens "Configurações > IAM > Políticas",
+**Given that** the Root opens "Settings > IAM > Policies",
 **when** they create a new policy by submitting a JSON document with `version`, `statements[]` (each with `effect`, `action[]`, `resource[]` and an optional `condition`),
 **then** the policy must be persisted with version 1, validated against the official schema and available to be attached to groups/users.
 

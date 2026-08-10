@@ -2,7 +2,6 @@
 
 - Status: accepted (Python sidecar superseded by ADR 0035 — Whisper embedded in Tauri/Rust; the decision for Tauri 2 and the audio capture remain)
 - Date: 2026-05-07
-- Deciders: NORA Team
 - Related: ADR 0035 (supersedes the Python sidecar part of this decision)
 
 ## Context

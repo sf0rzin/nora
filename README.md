@@ -1,6 +1,5 @@
 # NORA
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-15171a.svg)](LICENSE)
 [![CI](https://github.com/sf0rzin/nora/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sf0rzin/nora/actions/workflows/ci.yml)
 
 Conversation intelligence for meetings: NORA turns a transcript into what the meeting actually produced.
@@ -19,7 +18,7 @@ Personally identifiable information never reaches the language model in the clea
 
 **Nothing is currently serving.** The Azure deployment is down: `nora.systems` and `api.nora.systems` return 522, and the Container App hostname does not connect either. The most likely cause is the Azure for Students subscription being deactivated.
 
-The project is migrating to a self-hosted Debian VM on Proxmox, running Docker Compose with Cloudflare Tunnel as the only ingress and secrets encrypted with SOPS and age. Rescuing the Postgres data off the dead Azure deployment is the open task blocking that; the order of operations is in [azure-decommission.md](docs/operations/azure-decommission.md). The decision itself is ADR 0034 in the [ADR index](docs/adr/README.md).
+The project is migrating to a self-hosted Debian VM on Proxmox, running Docker Compose with Cloudflare Tunnel as the only ingress and secrets encrypted with SOPS and age. There is no data to rescue off the dead deployment — ADR 0034 records that NORA has no production data and no user base, so the Postgres content is reproducible demo material. The shutdown order is in [azure-decommission.md](docs/operations/azure-decommission.md); the decision itself is ADR 0034 in the [ADR index](docs/adr/README.md).
 
 The application is unaffected and runs locally. Web, API and NLP worker are a working vertical slice, and the desktop client captures audio and transcribes it on-device.
 

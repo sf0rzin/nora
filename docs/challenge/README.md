@@ -1,11 +1,3 @@
----
-title: "Docs Challenge — NORA (FIAP 2026)"
-owner: Stratfy Team
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # NORA — Docs Challenge (FIAP 2026)
 
 > NORA is built as a **real commercial product** serving the FIAP × TOTVS partnership. This folder consolidates the material that fulfills the **academic rubric of the FIAP Challenge 2026**, keeping a clear separation between the academic material and the product material (`docs/product/`, `docs/engineering/`, `docs/operations/`).
@@ -25,7 +17,7 @@ last_reviewed: 2026-06-06
 
 ## History
 
-| Version | Date | Responsible | Change |
-|---|---|---|---|
-| (initial) | 2026-05-14 | Stratfy Team | Folder created in Sub-phase 1.10 (Docs Refresh). Documents `personas-and-empathy-map.md` and `use-case-diagram.md` moved from the `docs/` root |
-| 1.0 | 2026-06-06 | Stratfy Team | Doc × code reconciliation + standardization (pre-presentation audit) |
+| Version | Date | Change |
+|---|---|---|
+| (initial) | 2026-05-14 | Folder created in Sub-phase 1.10 (Docs Refresh). Documents `personas-and-empathy-map.md` and `use-case-diagram.md` moved from the `docs/` root |
+| 1.0 | 2026-06-06 | Doc × code reconciliation + standardization |

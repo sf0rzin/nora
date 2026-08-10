@@ -2,7 +2,6 @@
 
 - **Status:** accepted
 - **Date:** 2026-07-06
-- **Deciders:** sys0xFF (PO) + Claude Fable 5 (post-pitch audit)
 - **Related:** ADR 0012 (PERSON_NAME strategy in the worker — **complements**, does not replace it),
   ADR 0004 (provider-agnostic), ADR 0003 (strict JSON Schema). Does not change the analysis pipeline.
 

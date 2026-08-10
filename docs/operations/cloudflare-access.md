@@ -1,11 +1,3 @@
----
-title: "Cloudflare Access — protecting the operator console"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Cloudflare Access — protecting the operator console
 
 Runbook for configuring and operating Cloudflare Access protecting `admin.nora.systems` (the nora-admin console). Updated on 2026-06-02 post-ADR 0025.
@@ -163,10 +155,10 @@ If Zero Trust is also not enabled (rare, a single screenshot of the panel would 
 In the ADR 0025 model (Tunnel), a 502 usually means the `cloudflared` sidecar did not connect to Cloudflare. Check:
 
 ```bash
-# Réplicas do nora-admin (precisa ≥1 sempre — o sidecar não escala a zero):
+# nora-admin replicas (needs ≥1 always — the sidecar does not scale to zero):
 az containerapp replica list -n nora-admin-dev -g rg-nora-dev --revision latest -o table
 
-# Logs do sidecar cloudflared (procurar "Registered tunnel connection" e ausência de erro):
+# cloudflared sidecar logs (look for "Registered tunnel connection" and the absence of errors):
 az containerapp logs show -n nora-admin-dev -g rg-nora-dev --container cloudflared --tail 100
 ```
 

@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Date: 2026-05-11
-- Deciders: Stratfy (PO) + Claude Opus 4.7 (Tech Lead)
 
 ## Context
 

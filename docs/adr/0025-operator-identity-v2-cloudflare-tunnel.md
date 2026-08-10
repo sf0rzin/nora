@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Date: 2026-06-01
-- Deciders: Control Plane Architect (Opus) + Stratfy (PO/owner)
 - Related: ADR 0023 (operator identity v1 — partially superseded), ADR 0022 (platform database), `docs/operations/cloudflare-access.md`, `docs/operations/control-plane-runbook.md`
 
 ## Context

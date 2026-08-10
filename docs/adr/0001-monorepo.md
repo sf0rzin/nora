@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Date: 2026-05-02
-- Deciders: NORA Team
 
 ## Context
 

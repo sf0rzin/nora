@@ -1,14 +1,6 @@
----
-title: "Security Policy"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Security Policy
 
-NORA takes security seriously. This document describes **how to report vulnerabilities, the scope, secure contact, and timeline expectations**.
+How to report a vulnerability in NORA, what is in scope, and what to expect after you do.
 
 ## Reporting a vulnerability
 
@@ -27,8 +19,8 @@ PGP key available on request via the email address above.
 - `services/api/**` — Spring backend (authentication, IAM, persistence, REST contracts)
 - `services/nlp-worker/**` — Python NLP worker (PII Shield, LLM calls, contracts)
 - `apps/web/**` — Next.js frontend (auth flow, XSS, CSRF)
-- `apps/desktop/**` — Tauri app + Python sidecar (token broker, local secret store)
-- `infra/bicep/**` — Azure infrastructure as code (configuration, secret management)
+- `apps/desktop/**` — Tauri app (local secret store, on-device transcription)
+- `infra/proxmox/**` — self-hosted stack (compose, ingress, secret management)
 - `.github/workflows/**` — CI/CD (secret leakage, supply chain)
 - `packages/**` — shared packages
 
@@ -49,7 +41,6 @@ NORA processes sensitive data (meeting transcripts, possible personal data via P
 4. **JWT/refresh token forgery** — forged signature, replay attack, or cookie hijack without detection
 5. **Secrets leakage** — Key Vault secrets exposed in logs, error responses, or via debug endpoints
 6. **SQL injection / NoSQL injection** — in any dynamically built query
-7. **Speech token broker abuse** — a path that lets an attacker obtain an Azure Speech token via NORA without authorization
 
 ## Lower-priority categories
 
@@ -63,28 +54,24 @@ NORA processes sensitive data (meeting transcripts, possible personal data via P
 NORA is licensed under **AGPL-3.0** (see `LICENSE`). Researchers who discover vulnerabilities:
 
 - **Keep copyright** over their research work
-- **Are credited** in `CHANGELOG.md` and in the post-mortem (if they agree)
+- **Are credited** in the release notes and in the post-mortem (if they agree)
 - **Are not pursued** legally for research within the scope declared in this document (good faith security research)
 - **Must not test in production** without prior coordination (use a local clone + your own environment)
-
-## Past acknowledgements
-
-(under construction — the first responsible disclosures will be listed here)
 
 ## DPO / LGPD Data Protection Officer
 
 **Data Protection Officer** (LGPD requires a natural person to be designated):
 
-- **Name:** Anthony Sforzin (Stratfy team member designated as Data Protection Officer)
+- **Name:** Anthony Sforzin (`@sf0rzin`), maintainer of the repository
 - **Contact:** axonogenesis@proton.me (with the `[LGPD-NORA]` prefix)
 
-NORA is operated by the Stratfy team during MVP/Pilot. At GA with >10 tenants, a formal DPO will be hired or a role designated.
+The same person maintains and operates NORA. At GA with >10 tenants, a formal DPO would have to be hired or designated.
 
 ## Active security tooling
 
 - **Dependabot** enabled via `.github/dependabot.yml` — weekly updates grouped by ecosystem (Maven, pip, npm, Cargo, GitHub Actions). Alerts via the Security tab.
-- **JaCoCo + IAM/Auth/PII areas** — ADR 0018 target of >85% coverage. Today it is run manually; the CI gate blocking regressions is in Sub-phase 1.12 (ADR 0016 — production readiness).
-- **GitHub Secret Scanning / Push Protection** — the NORA repository is **private**, so Secret Scanning and Push Protection are not enabled by default (that behavior is default only in public repos). Enabling them in a private repo depends on explicit configuration.
+- **Coverage gates in CI** — two, both narrow. `mvn verify` runs a JaCoCo rule over the single class `PolicyEvaluator` (instruction >= 90%, branch >= 75%, `services/api/pom.xml`), and the worker job runs `pytest --cov=nora_nlp.services.pii_shield --cov-fail-under=90` over that one module. ADR 0018's ">85% across IAM, Auth and PII" is a target, not something any gate enforces.
+- **GitHub Secret Scanning / Push Protection** — the NORA repository is public, so Secret Scanning and Push Protection are available for free and should be confirmed as enabled in the repository's Security settings.
 - **PII Shield** in the worker as the last gate before the LLM (ADR 0012)
 
 ## History
@@ -92,4 +79,4 @@ NORA is operated by the Stratfy team during MVP/Pilot. At GA with >10 tenants, a
 | Date | Change |
 |---|---|
 | 2026-05-14 | Document created during Sub-phase 1.10 (Docs Refresh) |
-| 2026-06-06 | Doc x code reconciliation + standardization (pre-presentation audit) — NORA Architect (Tech Lead) |
+| 2026-06-06 | Doc x code reconciliation + standardization |

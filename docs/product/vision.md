@@ -1,18 +1,8 @@
----
-title: "Product Vision — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.1
-last_reviewed: 2026-06-06
----
-
 # Product Vision — NORA
 
 > Product reference document. Source of truth for **What** NORA is, for **whom**, and **why**.
 >
 > For the **Agile Methodology with Squad Framework** course (Sprint 1+2, FIAP Challenge 2026 × TOTVS) this doc serves as the main Vision Statement.
-
----
 
 ## 1. Vision Statement
 
@@ -26,13 +16,11 @@ last_reviewed: 2026-06-06
 
 **NORA** is a conversational intelligence SaaS platform with two complementary plans — **Core** and **Enterprise** — and three integrated surfaces: web, desktop and API/MCP,
 
-**THAT** automatically processes meeting transcripts and delivers, in seconds, structured summaries, action items and, for commercial teams, advanced signals of opportunity, risk and account health — with context calibrated to the customer's own business, native integration via the **Model Context Protocol (MCP)**, enterprise-grade IAM and full LGPD compliance,
+**THAT** automatically processes meeting transcripts and delivers, in seconds, structured summaries, action items and, for commercial teams, advanced signals of opportunity, risk and account health — with context calibrated to the customer's own business, native integration via the **Model Context Protocol (MCP)**, an IAM model with users, groups and policies, and LGPD compliance,
 
 **UNLIKE** generic transcription tools (Otter.ai, Fireflies) or international Sales Intelligence platforms (Gong, Clari) that use generic knowledge, do not speak Portuguese natively and do not respect Brazilian data protection legislation,
 
 **NORA** is the only conversational intelligence platform that learns each company's vocabulary, products and context — making any organisation capable of extracting real intelligence from its own meetings, regardless of sector or ecosystem. It starts as a personal copilot (Core, freemium) and evolves into a complete revenue engine for teams (Enterprise), with natural bottom-up adoption *(Product-Led Growth)*.
-
----
 
 ## 2. The Platform: Core and Enterprise
 
@@ -40,34 +28,32 @@ NORA is a platform with two plans that share the same AI engine and infrastructu
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        PLATAFORMA  NORA                            │
+│                        NORA  PLATFORM                               │
 ├──────────────────────────────────┬──────────────────────────────────┤
 │          NORA  CORE              │        NORA  ENTERPRISE          │
-│      Profissional Individual     │         Equipes e Empresas       │
+│      Individual professional     │         Teams and companies      │
 ├──────────────────────────────────┼──────────────────────────────────┤
-│ • Resumo automático de reuniões  │ • Tudo do Core +                 │
-│ • Detecção de action items       │ • Product Context via RAG        │
-│ • Productivity Score opt-in      │ • Customer Confidence (por call) │
-│ • Rastreamento de projetos       │ • Account Health Score temporal  │
-│ • PII Shield pessoal (LGPD)      │ • Competitive Radar configurável │
-│ • Integração via MCP:            │ • Next Best Action comercial     │
-│   · Google Calendar / Outlook    │ • IAM estilo AWS: Root + Users + │
+│ • Automatic meeting summaries    │ • Everything in Core, plus       │
+│ • Action item detection          │ • Product Context via RAG        │
+│ • Productivity Score, opt-in     │ • Customer Confidence (per call) │
+│ • Project tracking               │ • Account Health Score over time │
+│ • Personal PII Shield (LGPD)     │ • Configurable Competitive Radar │
+│ • Integration over MCP:          │ • Commercial Next Best Action    │
+│   · Google Calendar / Outlook    │ • AWS-style IAM: Root + Users +  │
 │   · Linear / Jira                │   Groups + Policies              │
-│   · GitHub                       │ • Team Analytics & dashboards    │
-│ • Freemium / plano individual    │ • SSO (Entra ID / SAML 2.0 —     │
-│                                  │   pós-MVP)                       │
-│                                  │ • Multi-tenancy isolado          │
-│                                  │ • SLA enterprise + suporte BR    │
+│   · GitHub                       │ • Team analytics & dashboards    │
+│ • Freemium / individual plan     │ • SSO (Entra ID / SAML 2.0 —     │
+│                                  │   post-MVP)                      │
+│                                  │ • Isolated multi-tenancy         │
+│                                  │ • Enterprise SLA + BR support    │
 ├──────────────────────────────────┴──────────────────────────────────┤
-│  SUPERFÍCIES: Web SaaS · Desktop (Tauri, real-time) · API / MCPs  │
+│  SURFACES: Web SaaS · Desktop (Tauri, real-time) · API / MCPs       │
 ├─────────────────────────────────────────────────────────────────────┤
 │  GO-TO-MARKET: Product-Led Growth                                   │
-│  Indivíduo adota Core (freemium) → apresenta à empresa →            │
-│  empresa contrata Enterprise                                        │
+│  An individual adopts Core (freemium) → shows it to the company →   │
+│  the company buys Enterprise                                        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
-
----
 
 ## 3. Current State (2026-06-06)
 
@@ -88,8 +74,6 @@ The durable decisions are documented in the ADRs (canonical index: `docs/adr/REA
 
 To understand the previous state (Sprint 1+2 documentation) consult the document history at the end of this file and `docs/product/roadmap.md`.
 
----
-
 ## 4. Is — Is Not table
 
 > *Defines what the product IS and what it must NEVER be confused with.*
@@ -106,8 +90,6 @@ To understand the previous state (Sprint 1+2 documentation) consult the document
 | **Integration** | A platform that is **open via MCP**: data *leaves* NORA for the tools the user already uses | A closed system that requires replacing the existing tools |
 | **Data** | An **LGPD-first** system: PII is detected and redacted before any external LLM, with explicit consent | A platform that stores or shares third-party conversation data |
 | **Model** | A SaaS with an **individual freemium** (Core) evolving into **paid enterprise** via PLG | A product that requires a corporate purchase as its entry point |
-
----
 
 ## 5. Does — Does Not table
 
@@ -132,24 +114,22 @@ To understand the previous state (Sprint 1+2 documentation) consult the document
 | **Multi-tenancy** | **Isolation per organisation** via `tenant_id` in every table + application filter (ADR 0002), with **Postgres RLS** (schema in V016, full RLS + auth-aware scope in V019/V020) and a **composite isolation FK (V015)** as defence in depth. Reproducible Bicep IaC | What remains is the operational RLS cutover/enforcement in prod (runbook in ADR 0026/0028); the schema is already delivered. Does not offer on-premises installation in the MVP |
 | **Compliance** | **LGPD by design and operational** (ADR 0029): consent, audited record and **right to be forgotten delivered** — `DELETE /privacy/meetings/{id}` + scheduled `RetentionSweeper` | Does not carry out DPIAs automatically — a manual action by the customer's DPO |
 
----
-
 ## 6. IAM — Enterprise Access Control
 
 NORA Enterprise implements an **AWS IAM-style** model: the tenant creates its own **groups** and its own **policies**. No hierarchical role is imposed by the product. See ADR 0007.
 
 ```
-Empresa (Tenant)
-├── Root user           — owner do tenant; bypass total; não removível
-├── Users               — convidados pelo Root ou por quem tiver permissão de IAM
-├── Groups              — criação livre ("Vendas-SP", "Auditores", etc.)
+Company (Tenant)
+├── Root user           — tenant owner; full bypass; cannot be removed
+├── Users               — invited by the Root or by anyone holding IAM permission
+├── Groups              — created freely ("Sales-SP", "Auditors", etc.)
 │   └── ⇄ Policies
 ├── Users ⇄ Groups       (N:N)
 ├── Users ⇄ Policies     (N:N)
-└── Policies            — documento JSON: Effect / Action / Resource [/ Condition]
+└── Policies            — JSON document: Effect / Action / Resource [/ Condition]
 ```
 
-**Real example:** the tenant admin creates a "Diretoria de Design" group and attaches a policy that allows `meeting:read` and `analysis:read` only on resources with the condition `nora:Department = "design"`.
+**Real example:** the tenant admin creates a "Design Department" group and attaches a policy that allows `meeting:read` and `analysis:read` only on resources with the condition `nora:Department = "design"`.
 → The group's members manage design meetings and **never see** sales transcripts.
 
 **Effect on Product Context:** each department can have its own sub-catalogue. The AI chooses the correct sub-catalogue based on the conditions applicable to the user who triggered the analysis.
@@ -158,29 +138,25 @@ Empresa (Tenant)
 
 **Evaluation order:** Root bypass → explicit Deny → applicable Allow → Default Deny.
 
----
-
 ## 7. Why MCPs change the game
 
 The **Model Context Protocol (MCP)** is an open standard that lets NORA connect to external tools in a secure and standardised way — without fragile integrations or maintenance of ad-hoc webhooks. For the user, it means NORA "talks" to the tools they already use:
 
 ```
-Reunião transcrita no NORA
+Meeting transcribed in NORA
          │
-         ├─── MCP → Google Calendar / Outlook  → Registra resumo no evento da reunião
+         ├─── MCP → Google Calendar / Outlook  → Writes the summary onto the calendar event
          │
-         ├─── MCP → Linear / Jira              → Cria issues com as action items detectadas
+         ├─── MCP → Linear / Jira              → Opens issues from the detected action items
          │
-         ├─── MCP → GitHub                     → Linka discussão técnica ao PR/issue mencionado
+         ├─── MCP → GitHub                     → Links the technical discussion to the PR/issue named
          │
-         └─── MCP → Salesforce / HubSpot / TOTVS CRM → Empurra oportunidade com contexto estruturado
+         └─── MCP → Salesforce / HubSpot / TOTVS CRM → Pushes the opportunity with structured context
 ```
 
 This eliminates the main friction in adopting productivity tools: double data entry. The user transcribes once — NORA distributes it wherever it needs to go.
 
 > In the current MVP no MCP server is implemented. MCPs remain a roadmap concept (post-MVP commercial).
-
----
 
 ## 8. Value Proposition per Plan
 
@@ -189,8 +165,6 @@ This eliminates the main friction in adopting productivity tools: double data en
 
 **NORA Enterprise:**
 > *"Configure NORA with your business's vocabulary and turn every customer meeting into actionable intelligence: see opportunities before the competitor, detect churn weeks in advance and know exactly what the next step is — in your sector, with your products, in your language."*
-
----
 
 ## 9. Personas
 
@@ -201,8 +175,6 @@ Three reference personas guide product decisions:
 - **Rafael** — Enterprise AE. A salesperson who needs to read opportunity and risk signals in every conversation with a customer
 
 Full details, empathy maps, pains and gains: `docs/challenge/personas-and-empathy-map.md`.
-
----
 
 ## 10. Market Context
 
@@ -221,8 +193,6 @@ Full details, empathy maps, pains and gains: `docs/challenge/personas-and-empath
 - ↑ Churn detection 30–60 days in advance.
 - ↑ Rate of upsell captured vs. identified (today estimated at < 20%).
 
----
-
 ## 11. Upcoming Sub-phases
 
 Details in `docs/product/roadmap.md`. Summary:
@@ -230,8 +200,6 @@ Details in `docs/product/roadmap.md`. Summary:
 - **1.11 — Demo Polish Plan A** (in progress): Customer Confidence (#148), AUTH_FILTER_HARD_CAP removed (batched scanning in `MeetingService.listAllForAuthFilter`) and `PolicyEvaluator` expansion (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`) delivered; what remains is polished internal UX + synthetic dataset + demo script
 - **1.12 — Production Hardening**: dedicated production RG (`rg-nora-prod`) + operational cutover/enforcement of Postgres RLS in prod + monitoring alerts + DR runbook + secrets rotation + test coverage targets (ADR 0018 to be created). Operational LGPD has already been delivered (ADR 0029)
 - **1.13+** — Post-TOTVS pitch (15/06+): depends on the outcome of Plan A. Scenarios: pitch dossier / due diligence (Plan A) · Plan C content + Plan B commercial pivot
-
----
 
 ## Document History
 
@@ -242,4 +210,4 @@ Details in `docs/product/roadmap.md`. Summary:
 | 0.3 | 2026-05-02 | Horizontal platform (any company, not just TOTVS) + real-time Desktop (Tauri) + IAM RBAC+ABAC + three surfaces + Product Context via RAG |
 | 0.4 | 2026-05-02 | MVP alignment: SSO and Desktop as post-MVP; audio with temporary TTL-based storage |
 | **1.0** | **2026-05-14** | **Rewrite after the real Azure deploy (Sub-phase 1.9). Corrects drift: Desktop supports macOS via BlackHole (PR #37 — it is no longer "Does not support macOS in the MVP"). Adds the "Current State" section with real endpoints + operational IAM + Productivity Score full-stack + test coverage. Adds the "Upcoming Sub-phases" section with a link to the roadmap. Replaces the previous doc `docs/visao-do-produto.md` (moved to `docs/product/vision.md`).** |
-| 1.1 | 2026-06-06 | NORA Architect (Tech Lead) — Doc x code reconciliation + standardisation (pre-presentation audit) |
+| 1.1 | 2026-06-06 | Doc x code reconciliation + standardisation |

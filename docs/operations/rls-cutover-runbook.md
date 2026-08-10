@@ -1,11 +1,3 @@
----
-title: "RLS Enforce — Cutover Runbook (ADR 0028)"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # RLS Enforce — Cutover Runbook (ADR 0028)
 
 Turns on Postgres **real Row Level Security** as defense in depth for `tenant_id`
@@ -32,7 +24,7 @@ Two GitHub Secrets with strong passwords (the `nora_app` password is the **same*
 by the deployment — the single source of truth is the secret):
 
 ```bash
-# Gerar e setar SEM ecoar o valor (hex = alfanumérico, sem dor de quoting):
+# Generate and set it WITHOUT echoing the value (hex = alphanumeric, no quoting headaches):
 openssl rand -hex 24 | gh secret set NORA_APP_PASSWORD
 openssl rand -hex 24 | gh secret set RLS_TELEMETRY_PASSWORD
 gh secret list | grep -E "NORA_APP_PASSWORD|RLS_TELEMETRY_PASSWORD"
@@ -62,8 +54,8 @@ It is **idempotent** — it can be re-run. The admin password never leaves GitHu
 Add at the end of `infra/bicep/main.dev.bicepparam`:
 
 ```bicep
-// ---- RLS enforce (ADR 0028) — flip do cutover ----
-// nora_app (NOBYPASSRLS) + nora_telemetry (BYPASSRLS) provisionados pelo rls-cutover.yml.
+// ---- RLS enforce (ADR 0028) — cutover flip ----
+// nora_app (NOBYPASSRLS) + nora_telemetry (BYPASSRLS) provisioned by rls-cutover.yml.
 param rlsEnforce = true
 param appDbPassword = readEnvironmentVariable('NORA_APP_PASSWORD')
 param rlsTelemetryDatasourceUrl = 'jdbc:postgresql://nora-pg-dev-wgl3a3.postgres.database.azure.com:5432/nora?sslmode=require'

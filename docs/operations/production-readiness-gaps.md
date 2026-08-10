@@ -1,20 +1,10 @@
----
-title: "Production Readiness — Gap Analysis"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Production Readiness — Gap Analysis
 
-> **Audience:** Tech Lead + future operators when NORA is promoted from the `rg-nora-dev` environment (current, the only one) to `rg-nora-prod`.
+> **Audience:** whoever operates NORA when it is promoted from the `rg-nora-dev` environment (current, the only one) to `rg-nora-prod`.
 >
 > **Status:** descriptive (`docs/`). Implementation is tackled in **Sub-phase 1.12 — Production Hardening**, formalised via **ADR 0016 — Production Readiness Checklist** (to be created).
 >
 > **Context:** the current `rg-nora-dev` environment (`centralus`, 14 resources, 4 secrets in the KV, 8 Azure pitfalls catalogued) deploys NORA successfully. But **dev ≠ prod**. Seven areas have gaps that need to be addressed before NORA takes commercial traffic or exposes real customer data.
-
----
 
 ## Gap 1 — Bicep `prod.bicepparam` does not exist
 
@@ -33,8 +23,6 @@ last_reviewed: 2026-06-06
   - `min replicas = 1` on **all** Container Apps (warm-up — scale-to-zero produces bad UX in prod)
 - Secrets via env vars **from another Service Principal scoped to `rg-nora-prod`** (do not reuse the dev SP)
 - Bicep params validated via `az deployment group what-if` before `create`
-
----
 
 ## Gap 2 — Migrations safety strategy missing
 
@@ -58,8 +46,6 @@ Initial recommendation: **option (1)** for MVP/Pilot, evolving to **(3)** at GA.
 
 ADR 0016 documents the choice.
 
----
-
 ## Gap 3 — Backup RTO/RPO not formalised, restore not tested
 
 **Current situation:** Postgres Flexible Server has a default automatic backup (point-in-time recovery — PITR) with 7 days of retention. The Storage Account has 7-day soft-delete (configured in Bicep). Key Vault soft-delete 7 days (configured).
@@ -78,8 +64,6 @@ ADR 0016 documents the choice.
    - Document the real measured time in `docs/operations/disaster-recovery-runbook.md`
 3. **Define the frequency:** drill once per quarter in a mirror environment
 
----
-
 ## Gap 4 — Monitoring + alerting not wired
 
 **Current situation:** Application Insights is provisioned, receiving telemetry from the 3 Container Apps + Worker. Log Analytics workspace collecting logs. But:
@@ -92,7 +76,7 @@ ADR 0016 documents the choice.
 
 **Plan (Sub-phase 1.12):**
 
-1. **Critical alerts** (Azure Monitor) wired to the email of Stratfy's technical contact (and a future Slack webhook):
+1. **Critical alerts** (Azure Monitor) wired to the maintainer's e-mail (and a future Slack webhook):
    - API Container App: `/actuator/health` non-200 for >2min
    - Postgres: connection failures >10/min or CPU >80% sustained for 5min
    - Container Apps: scale-up failed (replica retries >3)
@@ -107,8 +91,6 @@ ADR 0016 documents the choice.
    - API uptime: 99.0% monthly (allows ~7h downtime/month — realistic for a single-region MVP)
    - p95 latency of `/meetings/{id}`: <1.5s
    - Async LLM analysis: 95% completed in <60s
-
----
 
 ## Gap 5 — Operational LGPD — DELIVERED (ADR 0029)
 
@@ -131,8 +113,6 @@ This gap is no longer Sub-phase 1.12 debt.
 2. Endpoint `DELETE /privacy/meetings/{id}` delivered (right to be forgotten by data subject/tenant).
 3. Administrative endpoint for full tenant deletion (Root only) — future operational refinement.
 4. `docs/security/lgpd-operations.md` with an incident runbook: detection, escalation, ANPD communication if >50 data subjects are affected — future operational refinement.
-
----
 
 ## Gap 6 — Disaster recovery scenario "RG deleted by mistake"
 
@@ -162,15 +142,13 @@ This gap is no longer Sub-phase 1.12 debt.
    - Single-region MVP: accepts the downtime
    - Future (GA): geo-redundancy via Postgres geo-replica + Front Door
 
----
-
 ## Gap 7 — Secrets rotation policy missing
 
 **Current situation:** current secrets in the KV:
 - `postgres-password` — generated randomly when the SP was created
 - `jwt-secret` — generated randomly
 - `openai-api-key` — empty (worker in stub mode by default)
-- `azure-speech-key` — coming from `speech.listKeys().key1` (it would change if a Stratfy member rotated it manually)
+- `azure-speech-key` — coming from `speech.listKeys().key1` (it would change if someone rotated it manually)
 
 **Gap:** none of the 4 has an automated **rotation schedule**. In prod, that is a minimum security requirement.
 
@@ -180,12 +158,10 @@ This gap is no longer Sub-phase 1.12 debt.
 |---|---|---|
 | `postgres-password` | Every 90 days | Script: generates a new password, `ALTER USER ... PASSWORD`, updates the KV secret, forces the Container Apps to pull the new version (revision restart) |
 | `jwt-secret` | Every 180 days | Updates the KV secret + a 24h grace period so valid refresh tokens persist (needs "JWT secret rotation with keyId" logic — future design) |
-| `openai-api-key` | When rotated manually in the OpenAI dashboard by Stratfy | Updates the KV secret + restarts api/worker |
+| `openai-api-key` | When rotated manually in the OpenAI dashboard | Updates the KV secret + restarts api/worker |
 | `azure-speech-key` | Every 90 days | `az cognitiveservices account keys regenerate` + updates the KV secret + restarts api |
 
 A dedicated workflow `.github/workflows/rotate-secrets.yml` with a monthly cron can automate part of it.
-
----
 
 ## Summary
 
@@ -204,8 +180,6 @@ A dedicated workflow `.github/workflows/rotate-secrets.yml` with a monthly cron 
 
 Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Customer Confidence (#148), the AUTH_FILTER fix (silent 500 ceiling removed via batched scanning) and PolicyEvaluator (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`). Remaining are (e) seed and (f) demo script, which do not block 1.12.
 
----
-
 ## Gap 8 — Control plane: business telemetry breaks silently under RLS enforce
 
 **Current situation:** the control plane (ADR 0022/0024) has the **business** telemetry front (cuttable) reading the **primary** database cross-tenant via `PrimaryDbBusinessMetricsSource` (`COUNT(*)` / `COUNT(DISTINCT tenant_id)` on `meeting_analyses`), **without** tenant context — an intentional operator-only aggregation. It works today because the primary datasource runs as the owner role (BYPASSRLS) with `NORA_RLS_ENFORCE=false`.
@@ -218,12 +192,10 @@ Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Custom
 - Minimal alternative: detect the state and return `enabled:false` (instead of `enabled:true` with zeros) when the cross-tenant read is not possible — that way the operator sees "unavailable", not "a real zero".
 - Documented in the Javadoc of `PrimaryDbBusinessMetricsSource` and in the contract (§3). Cost: S. **Does not block v1** (enforce=false today).
 
----
-
 ## History
 
-| Date | Author | Change |
-|---|---|---|
-| 2026-05-14 | Tech Lead | Doc created during Sub-phase 1.10 (Docs Refresh). Analysis informed by the Design Architect's review in the audit (§4.3) |
-| 2026-05-28 | Co-architect (Opus) | Gap 8 added: the control plane's business telemetry (ADR 0022) goes to zero under RLS enforce — a BYPASSRLS role is a prerequisite before turning on RLS enforce |
-| 2026-06-06 | NORA Architect (Tech Lead) | Doc x code reconciliation + standardisation (pre-presentation audit): Gap 5 (operational LGPD) marked as delivered via ADR 0029; reference correction ADR 0019 → ADR 0029 for LGPD |
+| Date | Change |
+|---|---|
+| 2026-05-14 | Doc created during Sub-phase 1.10 (Docs Refresh) |
+| 2026-05-28 | Gap 8 added: the control plane's business telemetry (ADR 0022) goes to zero under RLS enforce — a BYPASSRLS role is a prerequisite before turning on RLS enforce |
+| 2026-06-06 | Doc x code reconciliation + standardisation: Gap 5 (operational LGPD) marked as delivered via ADR 0029; reference correction ADR 0019 → ADR 0029 for LGPD |

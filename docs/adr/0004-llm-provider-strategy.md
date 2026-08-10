@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Date: 2026-05-04
-- Deciders: NORA Team
 - Partially supersedes: 0001 (in the part that names Azure OpenAI as the single provider)
 
 ## Context

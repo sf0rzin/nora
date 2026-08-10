@@ -1,11 +1,3 @@
----
-title: "Runbook — NORA deploy on Azure (HISTORICAL)"
-owner: NORA Architect (Tech Lead)
-status: historical
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # Runbook — NORA deploy on Azure
 
 > **HISTORICAL DOCUMENT — DO NOT OPERATE FROM IT.**
@@ -55,8 +47,6 @@ Provisioned stack (see `infra/bicep/main.bicep`):
 - (optional) 1 Azure AI Search Basic — off by default. Note: semantic search / RAG (US15) has already been delivered (PR #206) via pgvector + a provider-agnostic HTTP embedding client (Gemini/OpenAI), migration V021 `meeting_embeddings` — it does **not** depend on Azure AI Search. This resource remains optional/legacy.
 
 Dev cost (currently provisioned): **~R$110-180/month** (see `docs/engineering/architecture.md` §12 "Stack rationale" and `docs/product/roadmap.md` Unit Economics).
-
----
 
 ## The 8 Azure for Students pitfalls (CATALOGUED)
 
@@ -235,7 +225,7 @@ resource extensionsConfig 'Microsoft.DBforPostgreSQL/flexibleServers/configurati
   parent: server
   name: 'azure.extensions'
   properties: {
-    value: 'PGCRYPTO,CITEXT'   // UPPERCASE, separado por vírgula
+    value: 'PGCRYPTO,CITEXT'   // UPPERCASE, comma-separated
     source: 'user-override'
   }
 }
@@ -250,14 +240,12 @@ az postgres flexible-server parameter set \
   --name azure.extensions \
   --value 'PGCRYPTO,CITEXT'
 
-# Depois restart o API Container App para Flyway tentar de novo:
+# Then restart the API Container App for Flyway to try again:
 az containerapp revision restart \
   --resource-group rg-nora-dev \
   --name nora-api-dev \
   --revision $(az containerapp show --resource-group rg-nora-dev --name nora-api-dev --query "properties.latestRevisionName" -o tsv)
 ```
-
----
 
 ## First deploy from scratch (`rg-nora-dev`)
 
@@ -278,7 +266,7 @@ for p in Microsoft.OperationalInsights Microsoft.DBforPostgreSQL Microsoft.App M
   az provider register --namespace $p
 done
 
-# Aguardar todos ficarem Registered (~5min):
+# Wait for all of them to become Registered (~5min):
 for p in Microsoft.OperationalInsights Microsoft.DBforPostgreSQL Microsoft.App; do
   echo -n "$p: "; az provider show --namespace $p --query "registrationState" -o tsv
 done
@@ -300,18 +288,18 @@ az group create \
 ```bash
 # App registration
 az ad app create --display-name "sp-nora-github-deploy" --query "{appId:appId, id:id}"
-# Anote APP_ID
+# Note down APP_ID
 
 # Service Principal
 az ad sp create --id <APP_ID>
 
-# Role Contributor escopado no RG
+# Contributor role scoped to the RG
 az role assignment create \
   --assignee <APP_ID> \
   --role Contributor \
   --scope /subscriptions/<SUB_ID>/resourceGroups/rg-nora-dev
 
-# Role RBAC Administrator (armadilha 7)
+# RBAC Administrator role (pitfall 7)
 az role assignment create \
   --assignee <APP_ID> \
   --role "Role Based Access Control Administrator" \
@@ -331,10 +319,10 @@ gh secret set AZURE_CLIENT_ID --body "<APP_ID>" --repo sys0xFF/nora
 gh secret set AZURE_TENANT_ID --body "<TENANT_ID>" --repo sys0xFF/nora
 gh secret set AZURE_SUBSCRIPTION_ID --body "<SUB_ID>" --repo sys0xFF/nora
 
-# Secrets de runtime (gerados random ou seus valores):
-gh secret set PG_ADMIN_PASSWORD --body "<senha-forte-28-chars>" --repo sys0xFF/nora
+# Runtime secrets (randomly generated or your own values):
+gh secret set PG_ADMIN_PASSWORD --body "<strong-password-28-chars>" --repo sys0xFF/nora
 gh secret set JWT_SECRET --body "<random-base64-44-chars>" --repo sys0xFF/nora
-gh secret set OPENAI_API_KEY --body "<sk-...>" --repo sys0xFF/nora  # ou vazio para rodar em modo stub
+gh secret set OPENAI_API_KEY --body "<sk-...>" --repo sys0xFF/nora  # or empty to run in stub mode
 ```
 
 ### 7. Trigger the deploy
@@ -361,8 +349,6 @@ Expected URLs:
 - Web: `https://nora-web-dev.<env-suffix>.centralus.azurecontainerapps.io`
 - API: `https://nora-api-dev.<env-suffix>.centralus.azurecontainerapps.io` (health: `/actuator/health`)
 
----
-
 ## Common operations
 
 ### Turning AI Search on/off (cost ~R$13-15/day while active)
@@ -372,7 +358,7 @@ Note: the product's semantic search / RAG (US15) is served by pgvector + an HTTP
 Edit `infra/bicep/main.dev.bicepparam`:
 
 ```bicep
-param enableSearch = true   // ligar (ex.: 29/05 para pitch 15/06)
+param enableSearch = true   // turn on (e.g.: 29/05 for the 15/06 pitch)
 ```
 
 Commit + merge to main → automatic deploy. **AI Search has no pause** — it is either provisioned or destroyed. Recommended strategy: turn it on ~14 days before the FIAP pitch to have time to populate the index and iterate.
@@ -394,18 +380,18 @@ az keyvault secret list --vault-name nora-kv-dev-wgl3a3
 az keyvault secret show --vault-name nora-kv-dev-wgl3a3 --name postgres-password --query value -o tsv
 ```
 
-Requires the role `Key Vault Secrets Officer` (CRUD) or `Key Vault Secrets User` (read-only). Stratfy's Service Principal (`sp-nora-github-deploy`) already has Officer.
+Requires the role `Key Vault Secrets Officer` (CRUD) or `Key Vault Secrets User` (read-only). The deploy Service Principal (`sp-nora-github-deploy`) already has Officer.
 
 ### Connecting to Postgres
 
 ```bash
-# JDBC URL completo:
+# Full JDBC URL:
 az deployment group show \
   --resource-group rg-nora-dev \
   --name <deploy-name> \
   --query properties.outputs.postgresJdbcUrl.value -o tsv
 
-# psql direto (se firewall rule do seu IP estiver criado):
+# direct psql (if the firewall rule for your IP has been created):
 PGPASSWORD=$(az keyvault secret show --vault-name nora-kv-dev-wgl3a3 --name postgres-password --query value -o tsv)
 psql "host=nora-pg-dev-wgl3a3.postgres.database.azure.com port=5432 dbname=nora user=nora_admin sslmode=require"
 ```
@@ -430,11 +416,11 @@ az group delete --name rg-nora-dev --yes --no-wait
 Takes 5-15min (the CAE is the bottleneck). **Remember pitfalls 5 (KV soft-delete) and 5b (Speech soft-delete)** — after deleting the RG, purge before recreating:
 
 ```bash
-sleep 1000  # ou aguardar callback
+sleep 1000  # or wait for the callback
 az keyvault list-deleted --query "[?starts_with(name, 'nora-')]" -o table
 az cognitiveservices account list-deleted --query "[?contains(name, 'nora')]" -o table
 
-# Purge cada um listado:
+# Purge each one listed:
 az keyvault purge --name <kv-name> --location centralus
 az cognitiveservices account purge --location centralus --resource-group rg-nora-dev --name <speech-name>
 ```
@@ -445,8 +431,6 @@ And **role assignments** (pitfall 7) — after recreating the RG, recreate them:
 az role assignment create --assignee <APP_ID> --role Contributor --scope /subscriptions/<SUB_ID>/resourceGroups/rg-nora-dev
 az role assignment create --assignee <APP_ID> --role "Role Based Access Control Administrator" --scope /subscriptions/<SUB_ID>/resourceGroups/rg-nora-dev
 ```
-
----
 
 ## Promoting dev → prod (Sub-phase 1.12)
 
@@ -462,12 +446,10 @@ Summary:
 - Secrets rotation policy
 - Tested DR runbook (quarterly drill)
 
----
-
 ## History
 
 | Date | Change |
 |---|---|
 | 2026-05-14 | Runbook created during Sub-phase 1.10 (Docs Refresh). Covers the 8 Azure for Students pitfalls catalogued in Sub-phase 1.9. Promotion to prod is left to `docs/operations/production-readiness-gaps.md` |
-| 2026-06-06 | v1.0 (NORA Architect / Tech Lead): Doc x code reconciliation + standardisation (pre-presentation audit) |
+| 2026-06-06 | Doc x code reconciliation + standardisation |
 | 2026-08-07 | Marked as **historical** (`status: historical`) by ADR 0034. Replaced by `proxmox-deploy.md`; shutdown in `azure-decommission.md`. Content preserved intact — the 8 pitfalls are a learning record and the stack inventory feeds the decommission |

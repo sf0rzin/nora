@@ -3,7 +3,7 @@ name = "nlp-baseline"
 version = "0.1.0"
 description = "Interpretable TF-IDF baseline for PT-BR. Package shared between NORA's NLP worker and the academic notebook (Data Science Sprint 1+2)."
 requires-python = ">=3.12"
-authors = [{ name = "NORA Team" }]
+authors = [{ name = "sf0rzin" }]
 license = { text = "Proprietary" }
 keywords = ["nlp", "tf-idf", "baseline", "ptbr", "nora"]
 

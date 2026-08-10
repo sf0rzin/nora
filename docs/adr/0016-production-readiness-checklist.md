@@ -2,7 +2,6 @@
 
 - Status: partially superseded by 0034 (the Azure-anchored premises fall: Gap 1 `prod.bicepparam`/separate SP, Gap 3 RPO/RTO resting on Flexible Server PITR, Gap 4 alerts via Azure Monitor/App Insights, Gap 7 rotation via Key Vault. Gap 2 and Gap 6 remain valid on a different substrate; Gap 5 was delivered by ADR 0029)
 - Date: 2026-05-14
-- Deciders: Tech Lead (Stratfy approves the plan before execution in 1.12)
 - Related: ADR 0034 (migration to Proxmox — redefines the substrate, RPO/RTO and secret rotation)
 
 ## Context

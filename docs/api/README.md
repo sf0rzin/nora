@@ -1,11 +1,3 @@
----
-title: "API Contracts — NORA"
-owner: NORA Architect (Tech Lead)
-status: approved
-version: 1.0
-last_reviewed: 2026-06-06
----
-
 # API Contracts — NORA
 
 This folder contains the canonical contracts between **Web ↔ Backend ↔ NLP Worker**.

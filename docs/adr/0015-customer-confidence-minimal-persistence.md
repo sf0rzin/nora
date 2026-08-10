@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Date: 2026-05-14
-- Deciders: Stratfy (PO), Tech Lead, Design Architect
 - Partially supersedes: ADR 0006 (Customer Confidence + Account Health) — Account Health scope deferred
 
 ## Context

@@ -2,7 +2,6 @@
 
 - Status: accepted (retroactive ADR — decision already implemented and merged; formal record created in the 2026-05-21 audit)
 - Date: 2026-05-21
-- Deciders: Tech Lead
 - Related: Sub-phase 1.3 (stateful refresh tokens, PR #59); `data-model.md §2.24`
 
 ## Context
