@@ -100,16 +100,30 @@ fi
 
 cd -- "$COMPOSE_DIR" || fail "could not enter ${COMPOSE_DIR}"
 
-# `docker compose ps -q` empty = service is not up.
-PG_CID="$(docker compose ps -q "$PG_SERVICE" 2>/dev/null || true)"
-[ -n "$PG_CID" ] || fail "service '${PG_SERVICE}' is not running. Start the stack first: docker compose up -d ${PG_SERVICE}"
+# Find the container by its compose LABELS, not with `docker compose ps`.
+#
+# `docker compose ps -q postgres` has to parse the whole compose file first, and the file uses
+# `:?` on several variables (CF_ACCESS_AUD among them). Without `--env-file` those are unset, so
+# interpolation aborts, `ps` prints nothing, and this script reported "service 'postgres' is not
+# running" at a moment when it was up and healthy — sending the operator to restart a working
+# stack in the middle of a cutover. The labels are set by compose itself and need no
+# interpolation, so this answers the question actually being asked: is that container running.
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-nora}"
+PG_CID="$(docker ps -q \
+  --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" \
+  --filter "label=com.docker.compose.service=${PG_SERVICE}" 2>/dev/null | head -1 || true)"
+[ -n "$PG_CID" ] || fail "no running container for service '${PG_SERVICE}' in compose project '${COMPOSE_PROJECT}'.
+      Start the stack first, or set COMPOSE_PROJECT if it is not 'nora':
+        docker ps --filter label=com.docker.compose.project=${COMPOSE_PROJECT}"
 
 # psql over a UNIX SOCKET inside the container: the official image's pg_hba uses `local ... trust`,
 # so the admin password does not even need to leave SOPS for this part. The smoke, by contrast,
 # connects over TCP (127.0.0.1 inside the container) precisely to EXERCISE the password
 # authentication of the new roles — which is what the API will do.
+# `docker exec` on the resolved container id, not `docker compose exec` — same reason as the
+# lookup above: compose has to interpolate the whole file first and cannot, without --env-file.
 psql_admin() {
-  docker compose exec -T "$PG_SERVICE" \
+  docker exec -i "$PG_CID" \
     psql -v ON_ERROR_STOP=1 -U "$PG_ADMIN_USER" -d "$PG_DB" "$@"
 }
 
@@ -154,7 +168,7 @@ fi
 # an escaped SQL literal. Passing them quoted makes the role password include the quotes.
 # The SQL comes in via STDIN so there is no volume to mount nor file to copy into the container.
 log "Running R001 (idempotent)..."
-docker compose exec -T "$PG_SERVICE" \
+docker exec -i "$PG_CID" \
   psql -v ON_ERROR_STOP=1 -U "$PG_ADMIN_USER" -d "$PG_DB" \
     -v app_password="$NORA_APP_PASSWORD" \
     -v telemetry_password="$NORA_TELEMETRY_PASSWORD" \
@@ -176,7 +190,7 @@ FLAGS_OK="$(psql_admin -tAc \
 [ "$FLAGS_OK" = "2" ] || fail "role flags incorrect (expected 2 matches, got ${FLAGS_OK})."
 
 log "Smoke 2/3 — nora_app connects by password, reads an EXEMPT table and an ENFORCED table"
-docker compose exec -T -e PGPASSWORD="$NORA_APP_PASSWORD" "$PG_SERVICE" \
+docker exec -i -e PGPASSWORD="$NORA_APP_PASSWORD" "$PG_CID" \
   psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U nora_app -d "$PG_DB" -tA <<'SQL'
 SELECT 'users_visible=' || count(*) FROM users;
 SET nora.current_tenant_id = '00000000-0000-0000-0000-000000000000';
@@ -187,7 +201,7 @@ SQL
 # in pg_roles but NEVER tested the connection nor the SELECT — exactly the path that fails
 # silently. A missing GRANT on meeting_analyses would only show up as a zeroed panel.
 log "Smoke 3/3 — nora_telemetry connects and reads meeting_analyses CROSS-TENANT (BYPASSRLS)"
-TEL_OUT="$(docker compose exec -T -e PGPASSWORD="$NORA_TELEMETRY_PASSWORD" "$PG_SERVICE" \
+TEL_OUT="$(docker exec -i -e PGPASSWORD="$NORA_TELEMETRY_PASSWORD" "$PG_CID" \
   psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U nora_telemetry -d "$PG_DB" -tAc \
   "SELECT count(*) FROM meeting_analyses" | tr -d '\r')"
 log "  meeting_analyses visible to nora_telemetry: ${TEL_OUT}"
