@@ -94,12 +94,59 @@ const POLICY_SCHEMA = {
 } as const;
 
 /**
+ * Monaco runs its language services in web workers — the JSON schema validation
+ * that draws the squiggles below is one of them. Serving Monaco from the
+ * installed package (see `MonacoEditor`) means the workers stop coming from a
+ * third party too, so the bundler emits them and Monaco has to be told where
+ * they are. This page only ever asks for the `json` worker; any other label
+ * falls back to the generic editor worker.
+ */
+interface MonacoWorkerEnvironment {
+  getWorker: (workerId: string, label: string) => Worker;
+}
+
+function configureMonacoWorkers(): void {
+  const scope = globalThis as unknown as { MonacoEnvironment?: MonacoWorkerEnvironment };
+  scope.MonacoEnvironment = {
+    getWorker: (_workerId, label) =>
+      label === "json"
+        ? new Worker(
+            new URL("monaco-editor/esm/vs/language/json/json.worker.js", import.meta.url),
+            { type: "module", name: label },
+          )
+        : new Worker(new URL("monaco-editor/esm/vs/editor/editor.worker.js", import.meta.url), {
+            type: "module",
+            name: label,
+          }),
+  };
+}
+
+/**
  * Dynamic loading of Monaco. SSR off because Monaco needs `window` and
  * `document`. Loading state shows a lean placeholder.
+ *
+ * Monaco comes from the `monaco-editor` package installed in this app. Left
+ * unconfigured, `@monaco-editor/loader` fetches it from a public CDN instead,
+ * which means the code running in this authenticated IAM page is whatever that
+ * host serves at that moment — not what package-lock.json pins and not what the
+ * `dompurify` override in package.json applies to. Pointing the loader at the
+ * local package makes the reviewed, pinned bytes the ones that execute, and
+ * drops the runtime dependency on a third-party host being reachable.
+ *
+ * Order matters: `loader.config` has to run before the first <Editor> mounts,
+ * because the loader picks its source on the first `init()`. Doing it inside
+ * this factory guarantees that. The `monaco-editor` import has to stay in here
+ * as well — at module scope it would be evaluated while this client component
+ * is rendered on the server, where there is no `window`.
  */
 const MonacoEditor = dynamic(
   async () => {
-    const mod = await import("@monaco-editor/react");
+    const [mod, monaco] = await Promise.all([
+      import("@monaco-editor/react"),
+      import("monaco-editor"),
+    ]);
+    configureMonacoWorkers();
+    mod.loader.config({ monaco });
     return mod.Editor;
   },
   {
@@ -275,14 +322,14 @@ export default function PolicyEditor({
   /**
    * Captures errors from Monaco's dynamic import / loader and turns on the
    * fallback. In production it will rarely fire — it is here so the user is
-   * not left with a blank page on a CDN or bundling problem.
+   * not left with a blank page on a bundling or worker problem.
    *
    * Coverage:
    * 1. `window.error` listener for synchronous loader failures (script error).
    * 2. `window.unhandledrejection` listener for rejected promises (e.g.
    *    Monaco's dynamic import fails).
-   * 3. Watchdog: if `onMount` is not called within 12s (typical slow CDN or
-   *    network block), assume failure and turn on the fallback.
+   * 3. Watchdog: if `onMount` is not called within 12s (slow device, or a chunk
+   *    that never arrives), assume failure and turn on the fallback.
    */
   useEffect(() => {
     if (typeof window === "undefined") return;
