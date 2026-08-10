@@ -1,5 +1,6 @@
 package br.com.nora.api.infrastructure.persistence.meeting;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +23,19 @@ public interface MeetingJpaRepository extends JpaRepository<MeetingJpaEntity, UU
     Optional<MeetingJpaEntity> findByIdAndTenantId(UUID id, UUID tenantId);
 
     /**
+     * How long a PENDING meeting may sit untouched before {@link #claimForReanalysis} stops reading
+     * it as "queued" and lets a reprocess take it.
+     *
+     * <p>Wide enough that an analysis already on its way finishes well inside it, so the guard
+     * against a double dispatch keeps working; narrow enough that one deploy does not leave a
+     * meeting unusable for the rest of the day.
+     *
+     * <p>The column compared is updated_at, which every status transition rewrites: the domain
+     * stamps it on each status change and the claim below sets it explicitly.
+     */
+    Duration STALE_PENDING_CLAIM_WINDOW = Duration.ofMinutes(15);
+
+    /**
      * Atomically claims a meeting for re-analysis: moves it to PENDING and reports whether THIS
      * caller is the one that moved it.
      *
@@ -34,18 +48,31 @@ public interface MeetingJpaRepository extends JpaRepository<MeetingJpaEntity, UU
      * nothing turned the stale read into an error — it failed silently.
      *
      * <p>A conditional UPDATE has no such gap: the database matches the WHERE against the committed
-     * row, so of two concurrent statements exactly one can find the meeting in a terminal state.
-     * Row count 1 means "you moved it, dispatch"; 0 means it was already queued, already running,
-     * or gone.
+     * row, so of two concurrent statements exactly one can find the meeting claimable. Row count 1
+     * means "you moved it, dispatch"; 0 means it is already running, was queued moments ago, or is
+     * gone.
+     *
+     * <p>Claimable is not only COMPLETED and FAILED. A PENDING row counts too once it has sat
+     * untouched for {@link #STALE_PENDING_CLAIM_WINDOW}, because PENDING never proved a dispatch
+     * was on its way: the executor queue lives in memory, so an ordinary restart drops every task
+     * still sitting in it; auto-dispatch can be off by configuration; and the analysis bean can be
+     * absent. Only the analysis itself writes a status afterwards and nothing sweeps abandoned
+     * rows, so the meeting stayed queued forever with its re-analyse button disabled. Inside the
+     * window the guard against a double dispatch is unchanged.
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
             value =
                     "UPDATE meetings SET processing_status = 'PENDING', updated_at = now() "
                             + "WHERE id = :id AND tenant_id = :tenantId "
-                            + "AND processing_status IN ('COMPLETED', 'FAILED')",
+                            + "AND (processing_status IN ('COMPLETED', 'FAILED') "
+                            + "     OR (processing_status = 'PENDING' "
+                            + "         AND updated_at < :stalePendingBefore))",
             nativeQuery = true)
-    int claimForReanalysis(@Param("id") UUID id, @Param("tenantId") UUID tenantId);
+    int claimForReanalysis(
+            @Param("id") UUID id,
+            @Param("tenantId") UUID tenantId,
+            @Param("stalePendingBefore") OffsetDateTime stalePendingBefore);
 
     @Query(
             "SELECT m FROM MeetingJpaEntity m "

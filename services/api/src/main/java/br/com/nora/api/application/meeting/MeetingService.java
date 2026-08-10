@@ -260,9 +260,10 @@ public class MeetingService {
         authorize.accept(meeting);
 
         // One atomic statement decides both whether the transition is legal and whether WE made
-        // it. Reprocessing is valid from a terminal state (COMPLETED, FAILED -> "re-analyse");
-        // PROCESSING and PENDING already have an analysis on the way, and rescheduling would run
-        // a second pipeline over the same meeting.
+        // it. Reprocessing is valid from a terminal state (COMPLETED, FAILED -> "re-analyse") and
+        // from a PENDING row abandoned for longer than the claim window; a PROCESSING row, or one
+        // queued moments ago, still has an analysis on the way, and rescheduling would run a
+        // second pipeline over the same meeting.
         //
         // This used to be read-then-check-then-write with a row lock in front. It did not work:
         // the authorization read above puts the entity in the persistence context, and Hibernate
@@ -276,10 +277,15 @@ public class MeetingService {
         }
         // `meeting` was read BEFORE the authorization callback, which is the very reason the
         // return value below is a re-read rather than a derivation. The payload cannot trust it
-        // either: the claim only fires from COMPLETED or FAILED, so when the snapshot says
-        // PROCESSING the row moved under us and which terminal state it passed through is
-        // unknowable from here. Recording the snapshot anyway filed a permanent audit row
-        // asserting PROCESSING -> PENDING, a transition the state machine explicitly refuses.
+        // either: the claim never fires from PROCESSING, so when the snapshot says PROCESSING the
+        // row moved under us and which terminal state it passed through is unknowable from here.
+        // Recording the snapshot anyway filed a permanent audit row asserting PROCESSING ->
+        // PENDING, a transition the state machine explicitly refuses.
+        //
+        // A PENDING snapshot is no better, and for the same reason: the claim does take a stale
+        // PENDING row, but a row that raced through PROCESSING into a terminal state and got
+        // claimed from there looks identical from here. Both stay UNKNOWN, with the observation
+        // recorded beside them.
         ProcessingStatus observed = meeting.processingStatus();
         boolean snapshotSurvivedTheClaim =
                 observed == ProcessingStatus.COMPLETED || observed == ProcessingStatus.FAILED;
@@ -319,8 +325,9 @@ public class MeetingService {
      * assessment had been deleted, the status said queued, and no path could put it back.
      *
      * <p>No authorization here — the caller has already checked {@code meeting:update} on this
-     * meeting. Returns false when the meeting was not in a terminal state, in which case the
-     * analysis already on its way will pick the new goal up.
+     * meeting. Returns false when the claim found the meeting genuinely busy — running, or queued
+     * recently enough to still count as queued — in which case the analysis already on its way will
+     * pick the new goal up.
      */
     boolean queueAnalysisAfterGoalChange(UUID meetingId, UUID tenantId) {
         if (meetings.claimForReanalysis(meetingId, tenantId) == 0) {
