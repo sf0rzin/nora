@@ -248,6 +248,14 @@ jobs:
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked --features stt-local
 
+      # `cargo check` without --all-targets never looks at #[cfg(test)] code, so a unit test in
+      # this crate could stop compiling and nothing would say so. This step type-checks the test
+      # targets too. It does NOT run them: executing them needs codegen and a link, which on this
+      # Windows runner means paying for whisper.cpp, and that is a separate CI-cost decision.
+      - name: cargo check (test targets compile)
+        working-directory: apps/desktop/src-tauri
+        run: cargo check --locked --all-targets --features stt-local
+
   # Full desktop build (Tauri bundle msi/dmg/deb/AppImage) — runs ONLY on push to
   # main, producing publishable artifacts. On PR validation it is overkill (15-20min
   # cold-cache + fragile across 3 platforms).
