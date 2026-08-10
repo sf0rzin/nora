@@ -28,6 +28,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       infra: ${{ steps.filter.outputs.infra }}
       desktop: ${{ steps.filter.outputs.desktop }}
+      desktop_code: ${{ steps.filter.outputs.desktop_code }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
@@ -49,16 +50,24 @@ jobs:
             docs:
               - 'docs/**'
               - '**/*.md'
+            # TWO desktop filters, on purpose.
+            #
+            # `desktop` gates the PR-time checks and watches this workflow as well, for the
+            # same reason the `infra` filter does: a PR that changes only the desktop job
+            # matched no filter, so every desktop job skipped and ci-gate went green having
+            # verified nothing about the change it contained. Found on the commit that turned
+            # `cargo check --all-targets` into `cargo test`, which CI then did not run.
+            #
+            # `desktop_code` gates the FULL BUNDLE, which is a three-platform Tauri build with
+            # a 60-minute timeout per platform, and it deliberately does NOT watch this file:
+            # otherwise every merge that edits ci.yml for an unrelated reason — a tweak to the
+            # api job, say — would pay for three bundle builds. The compile checks are worth
+            # running on a workflow edit; the release bundle is not.
             desktop:
               - 'apps/desktop/**'
-              # This file too, for the same reason the `infra` filter watches it: a PR that
-              # changes only the desktop job matched no filter, so every desktop job skipped
-              # and ci-gate went green having verified nothing about the change. Found on the
-              # commit that turned `cargo check --all-targets` into `cargo test`, which CI
-              # then did not run. Scoped to this one workflow rather than
-              # `.github/workflows/**`, so editing an unrelated workflow does not pay for a
-              # 30-minute Windows job.
               - '.github/workflows/ci.yml'
+            desktop_code:
+              - 'apps/desktop/**'
             # The `infra` filter stopped watching infra/bicep/** (deleted; ADR 0036) and now
             # watches the self-hosted stack — the `infra` job (below) swapped content in the
             # migration.
@@ -274,6 +283,14 @@ jobs:
         working-directory: apps/desktop/src-tauri
         run: cargo test --locked --all-targets --features stt-local
 
+      # `--all-targets` is `--lib --bins --tests --benches --examples` and explicitly does
+      # NOT include `--doc`, while a bare `cargo test` does. There are no doc-tests in this
+      # crate today, so this is a no-op that costs seconds — and it is here so that the first
+      # one somebody writes is not silently skipped by the flag above.
+      - name: cargo test (doc-tests, which --all-targets excludes)
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --locked --doc --features stt-local
+
   # Full desktop build (Tauri bundle msi/dmg/deb/AppImage) — runs ONLY on push to
   # main, producing publishable artifacts. On PR validation it is overkill (15-20min
   # cold-cache + fragile across 3 platforms).
@@ -287,7 +304,7 @@ jobs:
   # The sidecar logic remains covered by the pytest of the `desktop-sidecar` job.
   desktop-bundle:
     needs: changes
-    if: ${{ (needs.changes.outputs.desktop == 'true' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (needs.changes.outputs.desktop_code == 'true' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
     strategy:
       fail-fast: false
       matrix:
