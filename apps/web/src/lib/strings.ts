@@ -240,3 +240,50 @@ export const strings = {
     },
   },
 } as const;
+
+/**
+ * pt-BR copy for the API's error codes.
+ *
+ * The API's `code` is its contract; the `message` beside it is a developer-facing
+ * detail that happens to be English since the backend was normalised. The client
+ * used to render that message straight into the UI, which put English error text
+ * in a Portuguese product the moment the backend stopped speaking Portuguese.
+ *
+ * Anything absent here falls back to the message, so an unmapped code degrades to
+ * something readable rather than to nothing.
+ */
+export const errorCopy: Record<string, string> = {
+  INVALID_CREDENTIALS: "E-mail ou senha incorretos.",
+  EMAIL_NOT_VERIFIED: "Confirme seu e-mail antes de entrar.",
+  EMAIL_ALREADY_TAKEN: "Esse e-mail já está em uso.",
+  EMAIL_DOMAIN_NOT_ALLOWED: "Esse domínio de e-mail não é aceito neste workspace.",
+  USER_DISABLED: "Esta conta está desativada.",
+  ACCOUNT_TENANT_SHARED: "Esta conta pertence a um workspace compartilhado.",
+  TOKEN_INVALID: "Esse link expirou ou já foi usado.",
+  REFRESH_TOKEN_INVALID: "Sua sessão expirou. Entre novamente.",
+  RATE_LIMITED: "Tentativas demais. Aguarde um momento e tente de novo.",
+  VALIDATION_ERROR: "Confira os campos e tente de novo.",
+  FORBIDDEN: "Você não tem permissão para isso.",
+  IAM_FORBIDDEN: "Você não tem permissão para isso.",
+  IAM_AUTHORIZATION_NOT_DECLARED: "Você não tem permissão para isso.",
+  IAM_USER_NOT_IN_TENANT: "Esse usuário não pertence a este workspace.",
+  IAM_NAME_TAKEN: "Já existe algo com esse nome.",
+  IAM_GROUP_NOT_FOUND: "Grupo não encontrado.",
+  IAM_POLICY_NOT_FOUND: "Política não encontrada.",
+  IAM_INVALID_DOCUMENT: "O documento da política é inválido.",
+  MEETING_NOT_FOUND: "Reunião não encontrada.",
+  CHAT_SESSION_NOT_FOUND: "Conversa não encontrada.",
+  CANNOT_REPROCESS: "Esta reunião não pode ser reanalisada agora.",
+  EMPTY_TRANSCRIPT: "A transcrição está vazia.",
+  FILE_TOO_LARGE: "O arquivo é grande demais.",
+  TRANSCRIPT_TOO_LARGE: "A transcrição é grande demais.",
+  UNSUPPORTED_TRANSCRIPT_FORMAT: "Formato de transcrição não suportado.",
+  SPLIT_UNSUPPORTED_FORMAT: "A divisão automática só funciona com .txt por enquanto.",
+  ANALYSIS_WORKER_UNAVAILABLE: "A análise está indisponível no momento. Tente de novo em instantes.",
+  ANALYSIS_INVALID_RESPONSE: "A análise voltou incompleta. Tente de novo.",
+  ANALYSIS_TRANSCRIPT_MISSING: "A transcrição desta reunião não foi encontrada.",
+  ANALYSIS_MEETING_NOT_FOUND: "Reunião não encontrada.",
+  INTEGRATION_NOT_CONFIGURED: "Essa integração não está configurada.",
+  INTEGRATION_INVALID_STATE: "O retorno da integração não confere. Tente conectar de novo.",
+  CONFLICT: "Esse recurso já existe.",
+};
