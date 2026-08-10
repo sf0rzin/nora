@@ -11,14 +11,16 @@ from __future__ import annotations
 import pytest
 
 from nora_nlp.services import pii_shield
+from nora_nlp.services.pii_shield import redact
 from tests.pii_corpus import pools
 from tests.pii_corpus.cases import KNOWN_GAP, REQUIRED, adversarial_cases, all_cases
 from tests.pii_corpus.harness import evaluate, run
 
-# Measured on 2026-08-10 against main at 27dc6cc, before any change to the shield:
+# Measured on 2026-08-10. `main` at 27dc6cc, then the same corpus after `_split_on_allow_list`:
 #
-#     leak rate             :  21.30%  (943 / 4427 cases)
-#     false-redaction rate  :   5.26%  (109 / 2071 cases)
+#                              before      after
+#     leak rate             :  21.30%  ->  11.57%   (943 -> 512 of 4427)
+#     false-redaction rate  :   5.26%  ->   5.07%   (109 -> 105 of 2071)
 #
 # Both are ceilings, and both must be moved DOWN by any change that claims to improve the
 # shield. Raising either one is a decision, not a detail: it belongs in a commit message that
@@ -26,8 +28,8 @@ from tests.pii_corpus.harness import evaluate, run
 #
 # Written as the measured fractions rather than as rounded decimals, so the gate cannot be
 # passed or failed by the third digit of a number nobody re-derived.
-MAX_LEAK_RATE = 943 / 4427  # 21.30%
-MAX_FALSE_REDACTION_RATE = 109 / 2071  # 5.26%
+MAX_LEAK_RATE = 512 / 4427  # 11.57%
+MAX_FALSE_REDACTION_RATE = 105 / 2071  # 5.07%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
@@ -144,3 +146,83 @@ def test_documented_gap_is_still_a_gap(case) -> None:
         f"{case.case_id} now passes -- promote it to REQUIRED and delete the note.\n"
         f"  note was: {case.note}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Finding 5a as an invariant, rather than as a list of strings
+# --------------------------------------------------------------------------- #
+
+# Both halves on the shield's lists, one half, the other half, and neither -- so a verdict that
+# holds for one quadrant and not the others cannot pass here.
+_ADJACENCY_NAMES = (
+    ("Carlos", "Silva"),
+    ("Carlos", "Kranz"),
+    ("Wanderleia", "Silva"),
+    ("Wanderleia", "Kranz"),
+    ("Kleber", "Zanchetta"),
+)
+
+
+@pytest.mark.parametrize("product", pools.LISTED_PRODUCTS)
+@pytest.mark.parametrize("given,surname", _ADJACENCY_NAMES)
+def test_an_allow_listed_term_does_not_change_the_verdict_beside_it(
+    product: str, given: str, surname: str
+) -> None:
+    """An allow-listed term covers its own surface form and nothing else.
+
+    Finding 5a, stated as the invariant instead of as the five strings that exposed it: whatever
+    the shield decides about a name, it must decide the same thing with a product name sitting in
+    front of it. `SAP CARLOS SILVA` emitted both tokens while `CARLOS SILVA` redacted correctly,
+    and the negative list -- whose only possible effect anywhere in the module is to SUPPRESS a
+    redaction -- was what made the difference.
+
+    Deleting the arbitration in `_split_on_allow_list`, in either direction, fails this.
+    """
+    alone = redact(f"{given} {surname} aprovou o escopo.").redacted_text
+    beside = redact(f"{product} {given} {surname} aprovou o escopo.").redacted_text
+
+    assert ("[[PERSON_NAME_" in beside) == ("[[PERSON_NAME_" in alone), (
+        f"{product!r} changed the verdict on {given} {surname}:\n"
+        f"  alone : {alone!r}\n"
+        f"  beside: {beside!r}"
+    )
+    assert product.lower() in beside.lower(), (
+        f"the allow-listed term itself was swallowed: {beside!r}"
+    )
+
+
+@pytest.mark.parametrize("product", pools.LISTED_PRODUCTS)
+@pytest.mark.parametrize("given,surname", _ADJACENCY_NAMES)
+def test_the_same_invariant_holds_in_upper_case(product: str, given: str, surname: str) -> None:
+    """The all-caps path is a separate implementation, so it needs the invariant separately.
+
+    This is the half that was total: `SAP <NAME>` leaked on 400 of 400 generated cases, because
+    the whole match was discarded rather than split.
+    """
+    alone = redact(f"{given.upper()} {surname.upper()} APROVOU O ESCOPO.").redacted_text
+    beside = redact(
+        f"{product.upper()} {given.upper()} {surname.upper()} APROVOU O ESCOPO."
+    ).redacted_text
+
+    assert ("[[PERSON_NAME_" in beside) == ("[[PERSON_NAME_" in alone), (
+        f"{product!r} changed the verdict on {given} {surname} in upper case:\n"
+        f"  alone : {alone!r}\n"
+        f"  beside: {beside!r}"
+    )
+    assert product.upper() in beside, f"the allow-listed term itself was swallowed: {beside!r}"
+
+
+@pytest.mark.parametrize("product", pools.LISTED_PRODUCTS)
+def test_an_allow_listed_term_is_never_itself_redacted(product: str) -> None:
+    """The other half of the arbitration rule: the term keeps its own surface form.
+
+    A fix that satisfied the invariant above by redacting the product along with the name would
+    be a worse shield, not a better one, and this is what refuses it.
+    """
+    for text in (
+        f"A migracao do {product} entra no proximo trimestre.",
+        f"{product} Carlos Silva aprovou o escopo.",
+        f"{product.upper()} CARLOS SILVA APROVOU O ESCOPO.",
+    ):
+        out = redact(text).redacted_text
+        assert product.lower() in out.lower(), f"{product!r} was redacted out of {text!r}: {out!r}"

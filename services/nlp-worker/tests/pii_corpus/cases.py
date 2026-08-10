@@ -239,16 +239,26 @@ _ROLE_PHRASES_STILL_WRONG: dict[str, str] = {
 # --------------------------------------------------------------------------- #
 
 
-# Finding 5a, in two mechanisms. Both are live on `main` at the commit that introduced this
-# corpus, which is why the cases below are recorded as gaps rather than as passing fixtures: the
-# measurement is committed before the fix, so the fix has a number to move.
+# Finding 5a, in two mechanisms. Both were live on `main` at the commit that introduced this
+# corpus -- the measurement was committed first, as gaps, so the fix had a number to move -- and
+# both are closed by `_split_on_allow_list`. The notes stay as the reason each fixture exists.
 _5A_CAPS = (
-    "finding 5a, mechanism A: `_caps_name_span` discards the whole all-caps run when any token "
-    "is on the negative list, so the allow-listed term covers its neighbours as well as itself"
+    "finding 5a, mechanism A (CLOSED): `_caps_name_span` used to discard the whole all-caps run "
+    "when any token was on the negative list, so the allow-listed term covered its neighbours "
+    "as well as itself"
 )
 _5A_TITLE = (
-    "finding 5a, mechanism B: one negative token anywhere in the candidate demotes every run in "
-    "it off the trusted path, so a name that redacts on its own stops redacting beside a product"
+    "finding 5a, mechanism B (CLOSED): one negative token anywhere in the candidate used to "
+    "demote every run in it off the trusted path, so a name that redacts on its own stopped "
+    "redacting beside a product"
+)
+# The residue neither mechanism explains: a run of ONE token that is on neither name list is
+# refused by `_is_a_name_on_its_own`, which is the backstop that keeps "O Brasil" and "A Nota"
+# from becoming people. Finding 5b is the same limitation reached without a product name.
+_SINGLE_TOKEN = (
+    "an allow-listed term beside one half of a name leaves a run of a single token, and a lone "
+    "token on neither name list is refused by `_is_a_name_on_its_own` -- the same limitation as "
+    "finding 5b, reached by a different route"
 )
 
 
@@ -261,7 +271,6 @@ def _adversarial() -> list[Case]:
             "SAP CARLOS SILVA pelo apoio.",
             ("Carlos", "Silva"),
             ("SAP",),
-            status=KNOWN_GAP,
             note=_5A_CAPS,
         ),
         Case(
@@ -270,7 +279,6 @@ def _adversarial() -> list[Case]:
             "Protheus Wanderleia Kranz apresentou o plano.",
             ("Wanderleia", "Kranz"),
             ("Protheus",),
-            status=KNOWN_GAP,
             note=_5A_TITLE,
         ),
         Case(
@@ -279,7 +287,6 @@ def _adversarial() -> list[Case]:
             "Salesforce Wanderleia Kranz aprovou.",
             ("Wanderleia", "Kranz"),
             ("Salesforce",),
-            status=KNOWN_GAP,
             note=_5A_TITLE,
         ),
         Case(
@@ -297,8 +304,8 @@ def _adversarial() -> list[Case]:
             ("Nora", "Bittencourt"),
             (),
             status=KNOWN_GAP,
-            note="the product's own name is also a given name, so `nora` on the negative list "
-            "suppresses the surname beside it -- " + _5A_TITLE,
+            note="the product's own name is also a given name, so `nora` on the negative "
+            "list splits the pair and leaves the surname alone -- " + _SINGLE_TOKEN,
         ),
         # ---- product after a name ----
         Case(
@@ -330,9 +337,7 @@ def _adversarial() -> list[Case]:
             ("Wanderleia", "Kranz"),
             ("Protheus",),
             status=KNOWN_GAP,
-            note="a product between the halves of a name leaves two runs of ONE token each, and "
-            "a lone off-list token is refused by `_is_a_name_on_its_own` -- the same "
-            "single-token limitation as finding 5b, reached by a different route",
+            note=_SINGLE_TOKEN,
         ),
         # ---- company before a name ----
         Case(
@@ -341,7 +346,6 @@ def _adversarial() -> list[Case]:
             "Acme Wanderleia Kranz confirmou a renovacao.",
             ("Wanderleia", "Kranz"),
             ("Acme",),
-            status=KNOWN_GAP,
             note=_5A_TITLE,
         ),
         Case(
@@ -373,7 +377,6 @@ def _adversarial() -> list[Case]:
             "Wanderleia Kranz Protheus Kleber Zanchetta assinaram a ata.",
             ("Wanderleia", "Kranz", "Kleber", "Zanchetta"),
             ("Protheus",),
-            status=KNOWN_GAP,
             note=_5A_TITLE,
         ),
         # ---- a name that is also a product word ----
@@ -383,7 +386,6 @@ def _adversarial() -> list[Case]:
             "Senior Wanderleia Kranz aprovou o escopo.",
             ("Wanderleia", "Kranz"),
             (),
-            status=KNOWN_GAP,
             note="`senior` is both an ERP vendor on the negative list and an ordinary word -- "
             + _5A_TITLE,
         ),

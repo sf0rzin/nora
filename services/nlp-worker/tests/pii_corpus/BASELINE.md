@@ -1,8 +1,17 @@
-# PII shield — the measurement before the fix
+# PII shield — the measurement, before and after
 
-Produced by `python -m tests.pii_corpus.harness` from `services/nlp-worker`, against `main` at
-`27dc6cc`, with no change to `pii_shield.py`. It is committed before the fix so the fix has a
-number to move rather than an argument to win.
+|                      | before | after  |          |
+|----------------------|--------|--------|----------|
+| leak rate            | 21.30% | 11.57% | 943 -> 512 of 4427 |
+| false-redaction rate |  5.26% |  5.07% | 109 -> 105 of 2071 |
+
+Both numbers come from `python -m tests.pii_corpus.harness` in `services/nlp-worker`. The
+before column is `main` at `27dc6cc` with no change to `pii_shield.py`, and it was committed
+before the fix so the fix had a number to move rather than an argument to win. The after column
+is the same corpus with `_split_on_allow_list` in place; what changed, shape by shape, is at the
+bottom of this file.
+
+## Before
 
 ```
 PII SHIELD CORPUS
@@ -39,7 +48,64 @@ speaker_label                  7/400    1.8%         0/0      0.0%
 two_people_adjacent            0/400    0.0%         0/0      0.0%
 ```
 
+## After
+
+```
+leak rate             :  11.57%  (512 / 4427 cases)  of which documented gaps: 5
+false-redaction rate  :   5.07%  (105 / 2071 cases)  of which documented gaps: 5
+
+shape                                 leak       false redaction
+allcaps                      100/400   25.0%         0/0      0.0%     unchanged
+allcaps_product_before       100/400   25.0%         0/400    0.0%     was 400/400
+company_alone                  0/0      0.0%         0/4      0.0%     was 3/4
+company_before                 0/400    0.0%       100/400   25.0%     leak was 25/400
+product_before                 0/400    0.0%         0/400    0.0%     was 100/400
+product_between              300/400   75.0%         0/400    0.0%     unchanged
+role_phrase                    0/0      0.0%         3/10    30.0%     was 4/10
+speaker_label                  7/400    1.8%         0/0      0.0%     unchanged
+```
+
+Every other shape was 0/400 before and is 0/400 after.
+
+## What moved
+
+**`allcaps_product_before`, 400 -> 100.** `_caps_name_spans` splits the run on allow-listed
+terms instead of discarding it. The residual 100 is the off-list/off-list quadrant, which is the
+same 100 `allcaps` fails without any product in the string: an all-caps run with neither end on
+a name list is admitted only as a speaker label. That gap is unchanged and deliberate.
+
+**`product_before`, 100 -> 0**, and **`company_before` leak 25 -> 0.** A stretch beside an
+allow-listed term is judged as it would be judged standing alone, so `Jira Sidnei Marchetti` now
+matches `Sidnei Marchetti`.
+
+**`company_alone`, 3 -> 0**, and **`role_phrase`, 4 -> 3.** Two false redactions the leak fix
+would otherwise have made worse, closed by two tail rules: a run ending in a corporate suffix is
+a trading name, and a run opening on a job title and ending in ordinary vocabulary is a role.
+`Northwind Software Solutions renovou o contrato` had been returning as a bare placeholder.
+
+## What did not move, and why
+
+**`product_between`, 300 of 400.** A product between the halves of a name leaves two runs of one
+token each, and a lone token on neither name list is refused by `_is_a_name_on_its_own` -- the
+backstop that keeps `O Brasil` and `A Nota` from becoming people. The given name redacts, the
+surname does not. This is finding 5b's single-token limitation reached by a different route, not
+finding 5a, and closing it means changing what a lone Title Case token is worth. That is the one
+change in this module that can make the shield materially worse, and it is not this PR.
+
+**`company_before` false redaction, 100 of 400.** `Northwind Andre Teixeira confirmou a
+renovacao` comes back as `[[PERSON_NAME_1]] confirmou a renovacao` -- the company swallowed into
+the person's placeholder. Present before this change and unaffected by it: `Northwind` is on no
+list, and three Title Case tokens are the shape of a full name. `TotalSys` and `OmniBusiness`
+escape only because an inner capital means they never match `_TITLE_WORD` at all.
+
+**`speaker_label`, 7 of 400.** `DIRCEU PANIZZON: fechamos o escopo.` is not claimed, because
+`_VERB_TAIL_RE` reads the `-eu` ending of `DIRCEU` as a third-person preterite and Pattern 6
+refuses any label containing what looks like a verb. Seven of the sixty off-list given names in
+the corpus end that way.
+
 ## What the shapes say
+
+The reading below is of the *before* column, which is what the fix was designed against.
 
 **`allcaps_product_before` — 400 of 400.** `SAP ANA MARTINS aprovou o escopo.` emits both name
 tokens. `ANA MARTINS aprovou o escopo.` redacts them. The all-caps path discards the entire run
