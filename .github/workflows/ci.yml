@@ -51,6 +51,14 @@ jobs:
               - '**/*.md'
             desktop:
               - 'apps/desktop/**'
+              # This file too, for the same reason the `infra` filter watches it: a PR that
+              # changes only the desktop job matched no filter, so every desktop job skipped
+              # and ci-gate went green having verified nothing about the change. Found on the
+              # commit that turned `cargo check --all-targets` into `cargo test`, which CI
+              # then did not run. Scoped to this one workflow rather than
+              # `.github/workflows/**`, so editing an unrelated workflow does not pay for a
+              # 30-minute Windows job.
+              - '.github/workflows/ci.yml'
             # The `infra` filter stopped watching infra/bicep/** (deleted; ADR 0036) and now
             # watches the self-hosted stack — the `infra` job (below) swapped content in the
             # migration.
