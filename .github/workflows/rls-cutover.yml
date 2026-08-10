@@ -220,7 +220,7 @@ jobs:
           ## Run (on the production host, as the stack operator)
 
           \`\`\`bash
-          cd /srv/nora/repo/infra/host
+          cd /opt/nora/infra/host
           git fetch --all && git checkout ${GITHUB_SHA}
 
           # Secrets: SOPS + age. The private key only exists here, at /etc/nora/age.key.
@@ -289,7 +289,7 @@ jobs:
             echo "### Run on the host"
             echo ""
             echo '```bash'
-            echo "cd /srv/nora/repo/infra/host"
+            echo "cd /opt/nora/infra/host"
             echo "sops -d secrets.env.sops > /dev/shm/nora.env"
             echo "set -a; . /dev/shm/nora.env; set +a"
             echo "./scripts/rls-cutover.sh --yes"

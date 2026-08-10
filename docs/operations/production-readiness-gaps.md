@@ -3,8 +3,9 @@
 > **Historical.** Written against the Azure deployment (`rg-nora-dev`), which is gone — no
 > subscription, no export, nothing to decommission (ADR 0036). NORA now runs self-hosted on a
 > single bare-metal host (ADR 0034/0036); Gaps whose premise was Azure-specific (Bicep params, Key
-> Vault, Container Apps scale-to-zero) no longer apply as written and are partially superseded by
-> ADR 0034 and ADR 0016. What survives is the *shape* of each gap — Gap 2 (migration safety), Gap 6
+> Vault, Container Apps scale-to-zero) no longer apply as written: ADR 0034 partially superseded
+> this document's parent decision (ADR 0016), and ADR 0036 removed the Azure premise entirely.
+> What survives is the *shape* of each gap — Gap 2 (migration safety), Gap 6
 > (test coverage) and the underlying "dev ≠ prod" question are still real questions on the current
 > substrate, just answered differently. Kept for the gap-by-gap reasoning, not as an operating
 > runbook — that is `docs/operations/host-deploy.md`.

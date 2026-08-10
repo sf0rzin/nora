@@ -26,6 +26,15 @@
 #   sudo ./bootstrap-host.sh                    # installs everything
 #   sudo ./bootstrap-host.sh --skip-docker      # docker already exists
 #   sudo ./bootstrap-host.sh --check            # only diagnoses, changes nothing
+#   sudo ./bootstrap-host.sh --units-only       # ONLY rewrites the systemd unit + timer
+#
+# --units-only exists because the unit files embed absolute paths derived from where THIS
+# script sits. Move or rename the directory in the repository and the installed unit keeps
+# pointing at the old path: the timer then fails every interval with 200/CHDIR or 203/EXEC,
+# and nothing in the stack alerts on a failed unit. Re-running the whole bootstrap to fix two
+# generated files would also re-run apt and restart journald on a live host, which is a far
+# bigger change than the problem. Run this from the NEW path, after the repository is at the
+# commit that moved it.
 #
 # After this script, follow docs/operations/host-deploy.md §"first deployment".
 
@@ -53,6 +62,7 @@ PULL_INTERVAL="${PULL_INTERVAL:-5min}"
 
 SKIP_DOCKER=0
 CHECK_ONLY=0
+UNITS_ONLY=0
 
 # ---------------------------------------------------------------------------
 # Output
@@ -77,6 +87,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --skip-docker) SKIP_DOCKER=1; shift ;;
     --check)       CHECK_ONLY=1; shift ;;
+    --units-only)  UNITS_ONLY=1; shift ;;
     -h|--help)     usage; exit 0 ;;
     *) err "unknown option: $1"; echo >&2; usage; exit 1 ;;
   esac
@@ -90,12 +101,86 @@ run() {
   "$@"
 }
 
+# Writes the pull agent's unit and timer. A function, not inline code, so `--units-only`
+# can call it without running anything else — see the header.
+#
+# Every path in the unit is derived from where THIS script sits, so running it from a
+# renamed directory is what repoints the installed unit. That is the whole mechanism;
+# there is no separate source of truth to keep in sync.
+install_pull_agent() {
+  log "Pull agent (systemd)"
+
+  if [ "$CHECK_ONLY" -eq 1 ]; then
+    info "[check] would create nora-deploy.service and nora-deploy.timer"
+    info "[check]   WorkingDirectory=${HOST_DIR}"
+    info "[check]   ExecStart=${SCRIPT_DIR}/deploy.sh --if-changed"
+    return 0
+  fi
+
+  cat > "$SYSTEMD_DIR/nora-deploy.service" <<EOF
+[Unit]
+Description=NORA — reconciles the stack with the latest image published to GHCR
+Documentation=file://${HOST_DIR}/../../docs/operations/host-deploy.md
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Runs as root: needs to read the age key (0400 root) to decrypt the secrets.
+User=root
+WorkingDirectory=${HOST_DIR}
+Environment=SOPS_AGE_KEY_FILE=${AGE_KEY_FILE}
+Environment=NORA_STATE_DIR=${STATE_DIR}
+Environment=BACKUP_DIR=${BACKUP_DIR}
+ExecStart=${SCRIPT_DIR}/deploy.sh --if-changed
+TimeoutStartSec=900
+# deploy.sh already rolls back on its own; do not restart in a loop.
+Restart=no
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  cat > "$SYSTEMD_DIR/nora-deploy.timer" <<EOF
+[Unit]
+Description=NORA — checks GHCR for a new image every ${PULL_INTERVAL}
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=${PULL_INTERVAL}
+# Spreads the trigger so it does not hit GHCR the same second as everyone else.
+RandomizedDelaySec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable nora-deploy.timer
+  info "nora-deploy.timer enabled (interval: $PULL_INTERVAL)"
+  info "  WorkingDirectory=${HOST_DIR}"
+  info "  ExecStart=${SCRIPT_DIR}/deploy.sh --if-changed"
+}
+
 # ---------------------------------------------------------------------------
 # 1. Pre-flight
 # ---------------------------------------------------------------------------
 log "Pre-flight"
 
 [ "$(id -u)" -eq 0 ] || die "run as root (sudo)."
+
+# --units-only stops here: it rewrites two generated files and touches nothing else.
+# Deliberately BEFORE the distro, architecture and /dev/shm checks — those gate an
+# installation, and this is not one.
+if [ "$UNITS_ONLY" -eq 1 ]; then
+  [ -x "$SCRIPT_DIR/deploy.sh" ] || die "--units-only: $SCRIPT_DIR/deploy.sh not found or not executable. Run this from the scripts/ directory of the checkout you want the unit to point at."
+  install_pull_agent
+  info "--units-only: done. The timer keeps its current state; nothing was started or stopped."
+  exit 0
+fi
 
 if [ -r /etc/os-release ]; then
   # shellcheck disable=SC1091
@@ -315,58 +400,7 @@ fi
 # ---------------------------------------------------------------------------
 # 6. Pull agent (systemd unit + timer)
 # ---------------------------------------------------------------------------
-log "Pull agent (systemd)"
-
-if [ "$CHECK_ONLY" -eq 0 ]; then
-  cat > "$SYSTEMD_DIR/nora-deploy.service" <<EOF
-[Unit]
-Description=NORA — reconciles the stack with the latest image published to GHCR
-Documentation=file://${HOST_DIR}/../../docs/operations/host-deploy.md
-After=docker.service network-online.target
-Requires=docker.service
-
-[Service]
-Type=oneshot
-# Runs as root: needs to read the age key (0400 root) to decrypt the secrets.
-User=root
-WorkingDirectory=${HOST_DIR}
-Environment=SOPS_AGE_KEY_FILE=${AGE_KEY_FILE}
-Environment=NORA_STATE_DIR=${STATE_DIR}
-Environment=BACKUP_DIR=${BACKUP_DIR}
-ExecStart=${SCRIPT_DIR}/deploy.sh --if-changed
-TimeoutStartSec=900
-# deploy.sh already rolls back on its own; do not restart in a loop.
-Restart=no
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-  cat > "$SYSTEMD_DIR/nora-deploy.timer" <<EOF
-[Unit]
-Description=NORA — checks GHCR for a new image every ${PULL_INTERVAL}
-
-[Timer]
-OnBootSec=2min
-OnUnitActiveSec=${PULL_INTERVAL}
-# Spreads the trigger so it does not hit GHCR the same second as everyone else.
-RandomizedDelaySec=60
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-
-  systemctl daemon-reload
-  systemctl enable nora-deploy.timer
-  info "nora-deploy.timer enabled (interval: $PULL_INTERVAL)"
-  info "I did NOT start the timer — do the first deploy by hand and validate first:"
-  info "  ${SCRIPT_DIR}/deploy.sh   &&   systemctl start nora-deploy.timer"
-else
-  info "[check] would create nora-deploy.service and nora-deploy.timer"
-fi
+install_pull_agent
 
 # ---------------------------------------------------------------------------
 # 7. Basic hardening

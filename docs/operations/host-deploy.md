@@ -68,6 +68,65 @@ nobody redoes them: the API image carries `opentelemetry-javaagent.jar` (not
 silently, because the App Insights agent ignores that variable), and the control plane reads health
 from `PrometheusHealthSource` rather than the App Insights KQL query API.
 
+## One-time: moving an already-deployed host from `infra/proxmox/` to `infra/host/`
+
+Skip this if the host was bootstrapped after ADR 0036. It applies once, to a host whose checkout
+still predates the rename.
+
+**Do not simply let the timer pull it.** The rename moves the directory the deploy runs *from*, and
+three things break at once:
+
+1. `deploy.sh` resolves `HOST_DIR`, `COMPOSE_FILE` and `SOPS_FILE` from `BASH_SOURCE` at startup and
+   validates the compose file *before* `--sync` pulls. So a `--sync` run passes its preflight
+   against the old tree, pulls the rename out from under itself, and then dies on a compose file
+   and a secrets file that no longer exist at the paths it already resolved. Its header's advice
+   ("if the change is in deploy.sh itself, run it twice") does not apply: the *directory* moved.
+2. The installed systemd unit hard-codes the old absolute paths, because
+   `bootstrap-host.sh` derives them from where it sits. After the pull the timer fails every
+   interval with `200/CHDIR` or `203/EXEC` — and nothing in this stack alerts on a failed unit,
+   so it fails quietly until someone reads the journal.
+3. `secrets.env.sops` is untracked (ADR 0036 §4), so `git pull` leaves it behind in the old
+   directory — which also keeps that directory alive and makes the move look like it worked.
+
+Ordered procedure. Steps 1-3 are the ones that must not be reordered:
+
+```bash
+ssh nora-prod
+cd /opt/nora
+
+# 0. Stop the pull agent BEFORE anything moves. Running containers are untouched;
+#    only the reconciliation loop stops.
+sudo systemctl stop nora-deploy.timer
+
+# 1. Move the untracked files across yourself. Git will not do it for you.
+sudo mv infra/proxmox/secrets.env.sops infra/host/secrets.env.sops   2>/dev/null || true
+sudo mv infra/proxmox/env.defaults      infra/host/env.defaults      2>/dev/null || true
+
+# 2. Now pull. --ff-only is deliberate: a local edit should stop you, not be merged.
+git pull --ff-only
+
+# 3. Repoint the unit at the new path, from the new path.
+sudo infra/host/scripts/bootstrap-host.sh --units-only
+
+# 4. Confirm the old directory is empty and remove it. If it is NOT empty, something
+#    untracked is still in there — look before deleting.
+ls -A infra/proxmox 2>/dev/null && sudo rmdir infra/proxmox 2>/dev/null || true
+
+# 5. Deploy from the new path and watch it succeed, then restart the timer.
+sudo env SOPS_AGE_KEY_FILE=/etc/nora/age.key \
+     infra/host/scripts/deploy.sh --tag "sha-$(git rev-parse --short HEAD)"
+sudo systemctl start nora-deploy.timer
+systemctl list-timers nora-deploy.timer
+```
+
+Verify, in this order — the first two are the ones that fail silently:
+
+```bash
+systemctl cat nora-deploy.service | grep -E 'WorkingDirectory|ExecStart'   # both must say infra/host
+sudo systemctl start nora-deploy.service && systemctl status nora-deploy.service --no-pager
+curl -fsS https://api.nora.systems/actuator/health
+```
+
 ## The 9 self-hosting pitfalls (CATALOGUED)
 
 Same spirit as the 8 Azure for Students pitfalls: each one cost time, and none of them produces an
@@ -249,14 +308,17 @@ Expected: `nora_app` = `f`, `nora_telemetry` = `t`.
 **Symptom:** you point `OTEL_EXPORTER_OTLP_ENDPOINT` at the local collector, the API starts, the
 healthcheck passes — and Prometheus/Grafana end up **with no data at all from the API**.
 
-**Cause:** `JAVA_TOOL_OPTIONS` loads `-javaagent:/app/applicationinsights-agent.jar`
-(`services/api/Dockerfile:39`). That agent exports to the **Breeze** endpoint of the
-`APPLICATIONINSIGHTS_CONNECTION_STRING` and **does not implement** the generic OTLP exporter. With an empty
-connection string it becomes a silent no-op — which is exactly what looks like "working
+**Cause:** the App Insights agent exports to the **Breeze** endpoint of the
+`APPLICATIONINSIGHTS_CONNECTION_STRING` and **does not implement** the generic OTLP exporter. With
+an empty connection string it becomes a silent no-op — which is exactly what looks like "working
 fine".
 
-**Fix:** swap the JAR for `opentelemetry-javaagent.jar` and **republish the image**. That is why it is the first
-item in the blockers.
+**Fix:** swap the JAR for `opentelemetry-javaagent.jar` and republish the image.
+
+**Already applied.** `services/api/Dockerfile:49` sets
+`-javaagent:/app/opentelemetry-javaagent.jar`. The pitfall is kept because it is invisible when
+you hit it and because reverting the Dockerfile would reintroduce it silently — not because there
+is anything left to do.
 
 ## First deployment from scratch
 
@@ -281,7 +343,18 @@ a deliberate, accepted asymmetry given the database holds only reproducible demo
 code, the configuration and the infrastructure definition have GitHub as their only copy.** A
 change made by hand on the host and not committed does not survive a host loss.
 
+The one exception, decided in ADR 0036 §4: `secrets.env.sops` is **not** versioned, so the secrets
+are not reproducible from the repository either. A rebuild regenerates them from
+`secrets.env.example`, which lists every key. That is deliberate — the age private key lives only
+on this host, so a committed ciphertext would be unreadable in exactly the scenario that would
+need it, while being permanently public.
+
 ### 2. Host bootstrap
+
+Throughout this runbook `nora-prod` is a stand-in for however you reach the host — an alias in
+your `~/.ssh/config`, or `user@address` spelled out. The address itself is deliberately not written
+down here: this repository is public, and publishing the origin address is precisely what the
+tunnel exists to make pointless.
 
 ```bash
 ssh nora-prod
@@ -292,12 +365,18 @@ sudo apt-get -y install ca-certificates curl gnupg git age unattended-upgrades \
                         postgresql-client-16 jq
 sudo dpkg-reconfigure -plow unattended-upgrades   # automatic security updates
 
-# --- Docker (official repo; Debian's docker.io is too old for compose v2) ---
+# --- Docker (official repo; the distro's docker.io is too old for compose v2) ---
+# The repo path is per-distro: .../linux/ubuntu on Ubuntu, .../linux/debian on Debian.
+# Getting this wrong gives a 404 on `apt-get update` that names the codename, not the
+# mistake — `noble` under linux/debian looks like a missing release, not a wrong path.
+# `bootstrap-host.sh` derives this from /etc/os-release; this block is the manual equivalent.
+distro="$(. /etc/os-release && echo "$ID")"          # ubuntu | debian
+codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/debian/gpg | \
+curl -fsSL "https://download.docker.com/linux/$distro/gpg" | \
   sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" | \
+https://download.docker.com/linux/$distro $codename stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list
 sudo apt-get update
 sudo apt-get -y install docker-ce docker-ce-cli containerd.io \
@@ -848,8 +927,12 @@ second host to drill them on:
 
 ## History
 
+Rows are what happened on their date. Paths in a row are the paths as they were then; ADR 0036
+later renamed the infra directory and the restore script, and that rename is the 2026-08-10 row,
+not a retroactive edit of the two above it.
+
 | Date | Change |
 |---|---|
 | 2026-08-07 | v1.0 — runbook created together with ADR 0034. Supersedes the historical Azure-era runbook. Covers VM provisioning, bootstrap, SOPS+age, Cloudflare Tunnel/Access, first deployment, restore coming from Azure, verification, the 9 self-hosting pitfalls, 3-level rollback and the quarterly restore drill. |
-| 2026-08-07 | v1.1 — reconciliation with the actual files in `infra/host/`: correct names (`postgres/init/01-roles-and-db.sql`, `R001__provision_app_roles.sql`), the real `deploy.sh` flags (`--platform`, `--tag`, `--service`, `--rollback`, `--if-changed`) in place of `--profile platform` and manual editing of `API_TAG`, rollout state in `/srv/nora/state/deploy-state.env`, tmpfs on `/dev/shm`, and separation of the two configuration planes (`env.defaults` vs. `secrets.env.sops`) in the secrets inventory. Reference to `restore-into-host.sh`. |
+| 2026-08-07 | v1.1 — reconciliation with the actual files in the infra directory: correct names (`postgres/init/01-roles-and-db.sql`, `R001__provision_app_roles.sql`), the real `deploy.sh` flags (`--platform`, `--tag`, `--service`, `--rollback`, `--if-changed`) in place of `--profile platform` and manual editing of `API_TAG`, rollout state in `/srv/nora/state/deploy-state.env`, tmpfs on `/dev/shm`, and separation of the two configuration planes (`env.defaults` vs. `secrets.env.sops`) in the secrets inventory. Reference to the restore-into-host script. |
 | 2026-08-10 | v1.2 — reconciled with ADR 0036: the substrate is a single bare-metal host, no hypervisor. Removed the fictitious VM-provisioning walkthrough (and the host details it exposed), the hypervisor-backup / VM-snapshot rollback and drill, and every link to the deleted Azure runbooks. Rewrote Level 3 rollback and the restore drill around "rebuild from repo" and the disposable-container drill that `restore-drill.sh` actually runs. |

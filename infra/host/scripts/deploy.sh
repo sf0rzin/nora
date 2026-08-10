@@ -208,7 +208,14 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 prepare_env() {
-  [ -f "$SOPS_FILE" ] || die "secrets file not found: $SOPS_FILE"
+  # This file is untracked on purpose (ADR 0036 §4), so a `git pull` that renames the
+  # directory around it leaves it behind rather than moving it. That is the likeliest
+  # reason to be reading this message.
+  if [ ! -f "$SOPS_FILE" ]; then
+    die "secrets file not found: $SOPS_FILE
+    It is not versioned, so nothing moves it for you. If the infra directory was just renamed,
+    see docs/operations/host-deploy.md, section 'moving an already-deployed host'."
+  fi
   command -v sops >/dev/null 2>&1 || die "sops not found. Run bootstrap-host.sh."
 
   # We demand a real tmpfs. Without it, the decrypted .env would touch the disk.

@@ -95,7 +95,31 @@ material, that asymmetry is accepted deliberately — but it is the reason `infr
 reproducing the machine, because for everything that is *not* the database, the repository is the
 only copy.
 
-### 4. Azure
+### 4. The encrypted secrets file stays off the repository
+
+ADR 0034 §4 says `secrets.env.sops` is "versioned encrypted", and `.gitignore` still carries a
+`!` rule to force-include it. In practice it has never been committed on any ref: it exists only
+on the host, untracked. This ADR makes that the decision rather than the accident.
+
+The reason is that versioning it buys nothing here. ADR 0034 §4 also puts the age *private* key
+only on the host, and its own bootstrap output says that without an offline copy of that key the
+encrypted file "turns into garbage". There is no offline copy. So in the one scenario where a
+versioned ciphertext would help — the host is gone — the key needed to read it is gone with it.
+What the repository would gain is nothing; what it would carry is the permanent, public,
+non-retractable ciphertext of every live production secret. A public repository never forgets, and
+`git revert` does not unpublish.
+
+So the honest recovery statement, which belongs next to the rebuild-from-repo model above: **the
+secrets are the one part of the host this repository does not reproduce.** A rebuild regenerates
+them from `secrets.env.example`, which lists every key with its shape. For a project whose
+credentials are a handful of generated passwords and re-issuable third-party API keys, regenerating
+is cheaper than the disclosure risk of the alternative — and it is what would actually happen.
+
+The `!infra/host/secrets.env.sops` rule in `.gitignore` stays. It costs nothing, it documents the
+intent, and if an offline age-key backup ever exists the decision can be revisited by committing
+the file, with no other change.
+
+### 5. Azure
 
 `infra/bicep/` and `docs/operations/azure-decommission.md` are deleted. `docs/operations/azure-deploy.md`,
 already marked historical by ADR 0034, is deleted with them.

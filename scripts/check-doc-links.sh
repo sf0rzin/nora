@@ -137,4 +137,9 @@ if [ "$failures" -gt 0 ]; then
   exit 1
 fi
 
-printf 'OK — every relative markdown link resolves (%d file(s) checked).\n' "${#files[@]}"
+if [ "${#DEAD_ON_PURPOSE[@]}" -gt 0 ]; then
+  printf 'OK — every relative markdown link resolves, except %d declared as dead on purpose (%d file(s) checked).\n' \
+    "${#DEAD_ON_PURPOSE[@]}" "${#files[@]}"
+else
+  printf 'OK — every relative markdown link resolves (%d file(s) checked).\n' "${#files[@]}"
+fi
