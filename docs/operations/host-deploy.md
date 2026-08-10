@@ -734,6 +734,47 @@ docker compose -p nora --profile platform exec admin printenv CF_ACCESS_AUD   # 
 There is nothing to do on Azure before or after: the subscription is gone and there is no
 decommission left to run (ADR 0036).
 
+## Verifying it works: the end-to-end smoke
+
+`scripts/smoke-e2e.sh` is what "it works" means here. Nine steps over the public HTTPS API:
+health, signup, login refused before confirmation, confirm, login, upload, an analysis carrying
+decisions and action items, a second tenant getting 404 on the first tenant's meeting, and
+cleanup.
+
+```bash
+API_BASE=https://api.nora.systems \
+NORA_SMOKE_CONFIRM_CMD="sudo /opt/nora/infra/host/scripts/smoke-confirm.sh" \
+/opt/nora/scripts/smoke-e2e.sh
+```
+
+`API_BASE` has no default on purpose: the script creates two tenants and two root users that no
+endpoint can delete, and runs a real analysis against the deployment's provider key.
+
+`NORA_SMOKE_CONFIRM_CMD` is the one step that cannot go over the API. Confirming an address needs
+the token from the e-mail, this deployment sends real mail, and the token is stored only as a
+SHA-256 hash — there is nothing to read back. `smoke-confirm.sh` marks the account verified
+directly, and refuses any address outside `@smoke.invalid`, which is a literal constant in the
+script rather than a variable. It needs docker access, hence `sudo`.
+
+It is worth knowing what that script can do, because "confirms an address" understates it: the
+same statement also sets `status = 'ACTIVE'`, so it would move a `DISABLED` or `INVITED` account
+to active. It cannot create an account, set a password or authenticate. The domain guard is the
+only thing between it and a real user, which is why it is not configurable.
+
+What a pass tells you, and what it does not:
+
+- **Does** prove the public hostname, Cloudflare's edge, the tunnel, Caddy's routing, the API, the
+  worker, the provider call and the database are all working together, and that the tenant filter
+  refuses a cross-tenant read.
+- **Does not** prove anything about the browser: no page is rendered, no CSP is evaluated, no
+  JavaScript runs. `apps/web` has no test suite, so that gap is real and this script does not
+  close it.
+
+Two smoke tenants are left behind on every run. They are inert — addresses under a domain that
+cannot receive mail — but they accumulate, and there is no tenant-delete endpoint to clean them
+up with. On a demo deployment that is acceptable; it is written here so it is a known cost rather
+than a surprise.
+
 ## Common operations
 
 ### Rolling out a new version
