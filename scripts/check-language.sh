@@ -24,9 +24,8 @@ cd "$(git rev-parse --show-toplevel)"
 #
 # Sections 1-7 are real exemptions: the pt-BR in them is product copy, an e-mail
 # a user receives, demo data, an LLM prompt, an applied migration, an accepted
-# ADR, or coursework whose language is part of the deliverable. Section 8 is a
-# declared GAP — it names the change that removes it. Keep that distinction; an
-# entry added for convenience makes the whole check worthless.
+# ADR, or coursework whose language is part of the deliverable. Keep that
+# distinction; an entry added for convenience makes the whole check worthless.
 # ---------------------------------------------------------------------------
 ALLOWED=(
   # --- 0. The detector itself ---
@@ -131,13 +130,6 @@ ALLOWED=(
   # sentence mandatory, and `apps/web/src/components/productivity-score-card.tsx` is what prints
   # it. Translating the quotation would misdescribe the product.
   "docs/engineering/architecture.md"
-
-  # --- 8. Declared gap: NOT an exemption. It names the change that closes it. ---
-  # Legacy Azure infrastructure-as-code. ADR 0034 migrated NORA to a self-hosted Proxmox VM and
-  # `infra/bicep/` describes infrastructure that is being torn down, so the pt-BR in it is
-  # translated by nobody: the directory is deleted when the decommission finishes
-  # (docs/operations/azure-decommission.md). Remove this entry with the directory.
-  "infra/bicep/"
 )
 
 # ---------------------------------------------------------------------------

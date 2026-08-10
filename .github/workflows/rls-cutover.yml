@@ -5,14 +5,14 @@ name: rls-cutover
 # ============================================================================
 # DECISION: THIS WORKFLOW NO LONGER CONNECTS TO ANY DATABASE.
 # It VALIDATES R001 on an ephemeral Postgres and EMITS the runbook. What runs against
-# the real database is infra/proxmox/scripts/rls-cutover.sh, running ON THE HOST.
+# the real database is infra/host/scripts/rls-cutover.sh, running ON THE HOST.
 # ============================================================================
 #
 # WHY (not a preference — there is no network path):
 #   The previous version did `azure/login`, opened a temporary firewall rule for the
 #   runner IP on the Postgres Flexible Server and talked to the public FQDN
 #   `nora-pg-dev-wgl3a3.postgres.database.azure.com` (hardcoded on line 40, consumed by
-#   three psql invocations). On Proxmox none of that exists: Postgres sits on the `data`
+#   three psql invocations). On the host none of that exists: Postgres sits on the `data`
 #   bridge (internal: true) and publishes only 127.0.0.1:5432 — the host loopback. There
 #   is no firewall to open because there is no port to open.
 #
@@ -23,7 +23,7 @@ name: rls-cutover
 #   Between the two proposed options — (a) a workflow that only generates the SQL, (b)
 #   drop the workflow and move everything into the script — we chose a HYBRID, because
 #   each half pays a different bill:
-#     * the SCRIPT on the host (infra/proxmox/scripts/rls-cutover.sh) is the only place
+#     * the SCRIPT on the host (infra/host/scripts/rls-cutover.sh) is the only place
 #       with database access, so EXECUTION has to live there;
 #     * the WORKFLOW stays useful for what only CI does well: it applies R001 on a
 #       throwaway Postgres and PROVES the three roles come out with the right flags
@@ -38,7 +38,7 @@ name: rls-cutover
 #   - opening/closing the firewall on the Flexible Server
 #   - the Secrets PG_ADMIN_PASSWORD / NORA_APP_PASSWORD / RLS_TELEMETRY_PASSWORD.
 #     A workflow that does not connect to a database has no reason to hold a db password.
-#     The passwords now live encrypted in infra/proxmox/secrets.env.sops (SOPS + age), and
+#     The passwords now live encrypted in infra/host/secrets.env.sops (SOPS + age), and
 #     the private key only exists on the host at /etc/nora/age.key. See README-migration.md
 #     for the list of what to delete.
 #
@@ -217,10 +217,10 @@ jobs:
           The R001 of this commit was applied to an ephemeral Postgres and the THREE roles were
           verified. No real database was touched by this workflow.
 
-          ## Run (on the Proxmox host, as the stack operator)
+          ## Run (on the production host, as the stack operator)
 
           \`\`\`bash
-          cd /srv/nora/repo/infra/proxmox
+          cd /opt/nora/infra/host
           git fetch --all && git checkout ${GITHUB_SHA}
 
           # Secrets: SOPS + age. The private key only exists here, at /etc/nora/age.key.
@@ -289,7 +289,7 @@ jobs:
             echo "### Run on the host"
             echo ""
             echo '```bash'
-            echo "cd /srv/nora/repo/infra/proxmox"
+            echo "cd /opt/nora/infra/host"
             echo "sops -d secrets.env.sops > /dev/shm/nora.env"
             echo "set -a; . /dev/shm/nora.env; set +a"
             echo "./scripts/rls-cutover.sh --yes"

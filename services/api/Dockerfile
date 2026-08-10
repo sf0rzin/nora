@@ -21,7 +21,7 @@ WORKDIR /app
 # a TOTAL and SILENT loss of telemetry, with no error at boot or in the healthcheck.
 #
 # No code change needed: JDBC + HTTP server/client + Spring + Hibernate traces go to the
-# otel-collector when OTEL_EXPORTER_OTLP_ENDPOINT is set (infra/proxmox/docker-compose.yml
+# otel-collector when OTEL_EXPORTER_OTLP_ENDPOINT is set (infra/host/docker-compose.yml
 # sets http://otel-collector:4317). When empty, the ENTRYPOINT disables the SDK — local dev
 # and CI keep working without needing a collector (see the no-op note below).
 #

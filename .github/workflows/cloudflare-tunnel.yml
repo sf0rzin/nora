@@ -182,7 +182,7 @@ jobs:
           # The connector token is NOT fetched here, on purpose.
           #
           # It grants the power to register a connector on the production tunnel — whoever
-          # holds it starts receiving real traffic from the hostnames in ../../infra/proxmox/cloudflared/config.yml.
+          # holds it starts receiving real traffic from the hostnames in ../../infra/host/cloudflared/config.yml.
           # This repository is PUBLIC (ADR 0017), and a run's log is readable by any
           # visitor. A value obtained at runtime does not enter the Actions automatic masking,
           # which only covers registered Secrets — so printing it here would be publishing it.

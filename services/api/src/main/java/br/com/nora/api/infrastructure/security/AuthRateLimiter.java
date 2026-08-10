@@ -192,9 +192,9 @@ public class AuthRateLimiter {
      *
      * <p>{@code CF-Connecting-IP} works because Cloudflare OVERWRITES it at the edge, discarding
      * whatever the client sent. That holds as long as the tunnel is the only ingress — the stack
-     * publishes no API port at all (see {@code infra/proxmox/docker-compose.yml}). If one day the
-     * API becomes reachable by another path, this header becomes forgeable again: that is why its
-     * name is configurable, and leaving it empty forces the use of the connection IP.
+     * publishes no API port at all (see {@code infra/host/docker-compose.yml}). If one day the API
+     * becomes reachable by another path, this header becomes forgeable again: that is why its name
+     * is configurable, and leaving it empty forces the use of the connection IP.
      */
     private String clientKey(HttpServletRequest request) {
         if (!trustedClientIpHeader.isBlank()) {

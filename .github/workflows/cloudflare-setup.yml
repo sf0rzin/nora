@@ -113,12 +113,12 @@ jobs:
             echo "::error::ABORT: CNAME $fqdn points at the Cloudflare Tunnel ($existing_content)."
             echo "::error::Overwriting would take the admin down (ADR 0025: the nora-admin origin is internal — only the tunnel gets in)."
             # Post-migration (ADR 0034) the tunnel stopped being a Container App sidecar and
-            # became the `cloudflared` service of infra/proxmox/docker-compose.yml. There is
+            # became the `cloudflared` service of infra/host/docker-compose.yml. There is
             # no "public ingress" left to migrate: NO service in the stack publishes a port —
             # the only ports in the compose are 127.0.0.1 (loopback, debug via ssh -L). The
             # tunnel is not an exposure option, it is the ONLY one. This input exists purely
             # for back-compat.
-            echo "::error::There is no alternative path: on the Proxmox stack the tunnel is the only ingress"
+            echo "::error::There is no alternative path: on the self-hosted stack the tunnel is the only ingress"
             echo "::error::(no container publishes a port on the external interface). Run WITHOUT admin_hostname."
             exit 1
           fi

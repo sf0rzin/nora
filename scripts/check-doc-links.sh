@@ -19,6 +19,31 @@ cd "$(git rev-parse --show-toplevel)"
 
 failures=0
 
+# ---------------------------------------------------------------------------
+# Deliberately dead links, as exact `<file>|<target>` pairs.
+#
+# An accepted ADR is immutable, so an ADR that pointed at a document a LATER decision
+# deleted or renamed cannot be repaired without rewriting the record of what was decided.
+# The link stays dead and is declared here, naming the successor that killed it.
+#
+# Pairs, not filenames, on purpose: every OTHER link in the same file is still checked, so
+# this cannot quietly grow into "skip that document".
+# ---------------------------------------------------------------------------
+DEAD_ON_PURPOSE=(
+  # ADR 0036 renamed the runbook to host-deploy.md and deleted the Azure decommission
+  # runbook (the subscription is gone; there is nothing left to shut down).
+  "docs/adr/0034-azure-to-proxmox-migration.md|../operations/proxmox-deploy.md"
+  "docs/adr/0034-azure-to-proxmox-migration.md|../operations/azure-decommission.md"
+)
+
+is_dead_on_purpose() {
+  local pair="$1|$2" entry
+  for entry in "${DEAD_ON_PURPOSE[@]}"; do
+    [ "$entry" = "$pair" ] && return 0
+  done
+  return 1
+}
+
 # True when the target is not a repo-relative path we can check on disk.
 is_external() {
   case "$1" in
@@ -53,6 +78,9 @@ check_link() {
   dir=$(dirname "$file")
 
   if [ ! -e "$dir/$target" ]; then
+    if is_dead_on_purpose "$file" "$target"; then
+      return 0
+    fi
     printf '%s:%s: broken relative link -> %s\n' "$file" "$line" "$raw"
     failures=$((failures + 1))
   fi
@@ -109,4 +137,9 @@ if [ "$failures" -gt 0 ]; then
   exit 1
 fi
 
-printf 'OK — every relative markdown link resolves (%d file(s) checked).\n' "${#files[@]}"
+if [ "${#DEAD_ON_PURPOSE[@]}" -gt 0 ]; then
+  printf 'OK — every relative markdown link resolves, except %d declared as dead on purpose (%d file(s) checked).\n' \
+    "${#DEAD_ON_PURPOSE[@]}" "${#files[@]}"
+else
+  printf 'OK — every relative markdown link resolves (%d file(s) checked).\n' "${#files[@]}"
+fi

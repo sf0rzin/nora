@@ -1,8 +1,8 @@
 name: build-images
 
 # Builds + pushes Docker images to GHCR and PUBLISHES the "release pointer" that the pull
-# agent on the Proxmox host consumes. This workflow does NOT talk to the host — it pushes
-# no deploy anywhere (ADR 0034 / Azure -> Proxmox migration).
+# agent on the host consumes. This workflow does NOT talk to the host — it pushes
+# no deploy anywhere (ADR 0034 / Azure -> self-hosted migration; ADR 0036 corrects the substrate).
 #
 # Triggers:
 #   - push on main: rebuild of the services that changed (path filter) + release pointer
@@ -17,7 +17,7 @@ name: build-images
 # ROLLOUT (release-pointer job): replaced the old `deploy-apps`, which did
 # `azure/login` + `az containerapp update` via OIDC. The model is now PULL: this job only
 # ANNOUNCES which IMMUTABLE `sha-<short>` tags were built; the one applying them is the
-# agent on the host (see .github/workflows/deploy-proxmox.yml and infra/proxmox/scripts/).
+# agent on the host (see .github/workflows/deploy-host.yml and infra/host/scripts/).
 #
 # Why the immutable tag is still the mechanism: `docker compose up -d` compares the
 # RESOLVED image of the service. With `:latest` the reference does not change, Compose
@@ -35,7 +35,7 @@ name: build-images
 #
 # Not mandatory: the host authenticates via `docker login ghcr.io` with a PAT scoped
 # `read:packages` (GHCR_PULL_TOKEN in secrets.env.sops), done by `ghcr_login()` in
-# infra/proxmox/scripts/deploy.sh. Public is convenience, not a requirement.
+# infra/host/scripts/deploy.sh. Public is convenience, not a requirement.
 
 on:
   push:
@@ -203,7 +203,7 @@ jobs:
           # NEXT_PUBLIC_* are baked in at build-time. Set via NEXT_PUBLIC_API_BASE_URL here
           # (override by workflow vars/secrets if building for a different environment).
           # The fallback is now the public domain served by Cloudflare Tunnel -> caddy -> api
-          # (infra/proxmox/docker-compose.yml). The old fallback was the Azure Container
+          # (infra/host/docker-compose.yml). The old fallback was the Azure Container
           # Apps FQDN, which is dead. Set `vars.NEXT_PUBLIC_API_BASE_URL` to change it.
           # WARNING: changing the public domain requires a REBUILD of this image — setting
           # the env in the compose does NOT alter an already compiled Next bundle.
@@ -249,7 +249,7 @@ jobs:
   # ANNOUNCES the rollout — does not execute it. Replaced the old `deploy-apps` (azure/login
   # + `az containerapp update`). There is no host credential, SSH, self-hosted runner nor
   # inbound port here: the job only materializes "which immutable tags exist for this SHA" in
-  # two formats consumable by the pull agent running on the Proxmox:
+  # two formats consumable by the pull agent running on the host:
   #
   #   - artifact `nora-release-pointer` (release.json + deploy.env) — the agent downloads it
   #     via the Actions API (GET /repos/{owner}/{repo}/actions/artifacts?name=nora-release-pointer)
@@ -257,7 +257,7 @@ jobs:
   #   - step summary — human reading in the run.
   #
   # Publishing the long-lived "canonical pointer" (git tag `release/prod/*`, which does not
-  # expire in 90 days like the artifact) belongs to deploy-proxmox.yml, which consumes this
+  # expire in 90 days like the artifact) belongs to deploy-host.yml, which consumes this
   # artifact.
   #
   # Only services that CHANGED and whose build passed enter the pointer. Absent service = the
@@ -370,7 +370,7 @@ jobs:
               echo "Services outside the list keep their current tag — on purpose."
             fi
             echo ""
-            echo "> Rollout is **pull**: nothing here touches the host. See \`.github/workflows/deploy-proxmox.yml\`."
+            echo "> Rollout is **pull**: nothing here touches the host. See \`.github/workflows/deploy-host.yml\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
   summary:

@@ -1,11 +1,18 @@
 # Runbook — Turning on the Control Plane (operator admin + telemetry)
 
-> How to promote the control plane from **OFF** (default) to **ON** on Azure. The operator's
-> identity is **Cloudflare Tunnel + Access** (ADR 0025, which replaced the Easy Auth of ADR 0023
-> after the FIAP tenant blocked App Registration). ADRs 0022/0023/0024/0025. Contract:
+> **Historical.** Written for the Azure deployment (Bicep, Container Apps), which is gone — no
+> subscription, no export (ADR 0036). On the self-hosted stack the control plane is the `platform`
+> compose profile in `infra/host/docker-compose.yml` (2nd Postgres `postgres-platform`, the
+> `admin` service, `cloudflared`/`caddy` for ingress) — see `docs/operations/host-deploy.md` §4
+> (Cloudflare Tunnel + Access Applications) and §5 (`deploy.sh --platform`). Kept here for the
+> identity/security reasoning (ADR 0022/0023/0024/0025), which is unchanged.
+>
+> How to promote the control plane from **OFF** (default) to **ON**, as originally written. The
+> operator's identity is **Cloudflare Tunnel + Access** (ADR 0025, which replaced the Easy Auth of
+> ADR 0023 after the FIAP tenant blocked App Registration). ADRs 0022/0023/0024/0025. Contract:
 > `docs/engineering/contracts/platform-control-plane.md`. Cloudflare edge: `cloudflare-access.md`.
 
-## What the IaC already does vs. what is manual
+## What the IaC already does vs. what is manual (as written, on Azure)
 
 | IaC (Bicep, `enablePlatform=true`) | Manual (this runbook) |
 |---|---|
@@ -45,10 +52,11 @@ Run the workflow **`cloudflare-tunnel.yml`** (Actions → Run workflow). It is i
    token**. The token itself **does not appear in the log** — public repo, log readable by anyone; the command
    takes it from the API straight to `gh secret set`.
 
-> **Why Tunnel + Access (ADR 0025):** `nora-admin` comes up with `ingress: internal` — **no public
-> FQDN**. The only entry door is the tunnel, behind Cloudflare Access (allowlist + OTP/SSO).
-> There is no Azure origin to bypass it. Defense in depth: network (Access) + transport (Tunnel)
-> + app (validation of `Cf-Access-Jwt-Assertion` in Next, Tier 2) + service (admin token).
+> **Why Tunnel + Access (ADR 0025):** `nora-admin` has no published port on the self-hosted stack —
+> **no public origin at all**. The only entry door is the tunnel, behind Cloudflare Access
+> (allowlist + OTP/SSO), so there is nothing to bypass it. Defense in depth: network (Access) +
+> transport (Tunnel) + app (validation of `Cf-Access-Jwt-Assertion` in Next, Tier 2) + service
+> (admin token).
 
 ## Step 3 — GitHub Secrets + Variable (repo `sf0rzin/nora`)
 
@@ -115,8 +123,8 @@ the `nora-admin` tunnel in the panel/API and the CNAME.
 - `/admin/platform/**` on the public `nora-api` is protected by the admin token (the network/identity
   isolation is at the `nora-admin` edge via Cloudflare). Keep the admin token strong and
   distinct from the internal one.
-- `nora-admin` has no public FQDN (internal ingress). Entry is only through the Cloudflare Tunnel,
-  behind Access — there is no exposed Azure origin to bypass it.
+- `nora-admin` has no public FQDN and no published port. Entry is only through the Cloudflare
+  Tunnel, behind Access — there is no exposed origin to bypass it.
 - Tier 2 (validation of `Cf-Access-Jwt-Assertion` in Next) runs in a server component because the
   edge middleware would inline `CF_ACCESS_*` at build-time. `/healthz` is a route handler (outside the gate),
   so the Container App probe works without a JWT.

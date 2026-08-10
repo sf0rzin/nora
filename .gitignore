@@ -23,7 +23,7 @@ Thumbs.db
 !.env.example
 # The SOPS-ENCRYPTED file is versioned on purpose (the age key lives only on the host,
 # at /etc/nora/age.key). The `!` guards against any future .env* rule.
-!infra/proxmox/secrets.env.sops
+!infra/host/secrets.env.sops
 
 # --- Logs / temporary ---
 *.log

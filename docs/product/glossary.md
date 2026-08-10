@@ -6,6 +6,13 @@
 > - You are new to the project (human or Claude) and run into an unknown term
 > - You are writing a doc/ADR/spec and need the canonical term
 > - You are writing a PR description or a commit message and need the canonical term
+>
+> **Note on the Azure-era entries below** (Container Apps, Key Vault, UAI, Service Principal,
+> OIDC federated credentials, `rg-nora-dev`/`rg-nora-prod`): Azure is gone — no subscription, no
+> export, nothing to decommission (ADR 0036). NORA now runs self-hosted on a single bare-metal
+> host (ADR 0034/0036), with SOPS + age in place of Key Vault and no managed identities. These
+> entries are kept because the terms still appear in ADRs, PR history and this glossary's own
+> cross-references; they describe what was true through 2026-08-07, not the present.
 
 ## A
 
