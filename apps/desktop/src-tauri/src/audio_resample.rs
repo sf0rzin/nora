@@ -21,12 +21,20 @@ impl MonoResampler {
             });
         }
         let chunk_in = (src_sr as usize / 50).max(64); // ~20ms
+        // Argument order is (input rate, output rate, chunk_size, sub_chunks, nbr_channels,
+        // fixed). It used to read (.., 1, chunk_in, 2, ..) with comments claiming the 1 was the
+        // channel count and the 2 was the sub-chunk count — so it actually asked for a chunk of
+        // one frame, 960 sub-chunks and two channels. Every parameter is a usize, so nothing
+        // rejected it at compile time; at run time the resampler was configured for stereo while
+        // the buffers below are mono, process_into_buffer returned WrongNumberOfInputChannels on
+        // every call, and `process` broke out of the loop and returned an empty Vec. In other
+        // words any capture device not already at 16 kHz fed silence into the pipeline.
         let inner = Fft::<f32>::new(
             src_sr as usize,
             dst_sr as usize,
-            1, // 1 channel (mono)
-            chunk_in,
-            2, // subchunks
+            chunk_in, // chunk_size: frames consumed per call (~20ms of input)
+            2,        // sub_chunks
+            1,        // nbr_channels: mono
             FixedSync::Input,
         )
         .map_err(|e| format!("rubato init: {}", e))?;
@@ -105,6 +113,78 @@ mod tests {
         let input = vec![0.5f32; 160];
         let output = resampler.process(&input);
         assert_eq!(input, output);
+    }
+
+    /// Number of sign changes in the signal. For a clean sine this is proportional to its
+    /// frequency, which is enough to tell "the tone survived resampling" from "the tone is gone"
+    /// without pulling an FFT crate into the desktop build.
+    fn zero_crossings(samples: &[f32]) -> usize {
+        samples
+            .windows(2)
+            .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
+            .count()
+    }
+
+    fn sine(freq_hz: f32, sample_rate: u32, frames: usize) -> Vec<f32> {
+        (0..frames)
+            .map(|n| {
+                (2.0 * std::f32::consts::PI * freq_hz * n as f32 / sample_rate as f32).sin() * 0.5
+            })
+            .collect()
+    }
+
+    /// Regression: the resampler was constructed with chunk_size, sub_chunks and nbr_channels in
+    /// the wrong order, which configured it for two channels against mono buffers. Every call
+    /// failed and `process` returned an empty Vec, so a 48 kHz microphone produced no audio at
+    /// all. Anything that asserts real output would have caught it.
+    #[test]
+    fn resamples_48k_to_16k_and_returns_audio() {
+        let mut resampler = MonoResampler::new(48_000, 16_000).unwrap();
+        // One second of input, fed in ~20ms blocks the way the capture callback does.
+        let input = sine(1_000.0, 48_000, 48_000);
+        let mut output = Vec::new();
+        for block in input.chunks(960) {
+            output.extend(resampler.process(block));
+        }
+
+        assert!(!output.is_empty(), "resampling produced no samples at all");
+
+        // Three input frames per output frame. The tail that has not filled a whole chunk stays
+        // buffered, so this is a range rather than an equality.
+        let expected = input.len() / 3;
+        assert!(
+            output.len() > expected * 9 / 10 && output.len() <= expected,
+            "expected roughly {} frames, got {}",
+            expected,
+            output.len()
+        );
+
+        // The output has to carry the signal, not zeros.
+        let peak = output.iter().fold(0.0f32, |acc, s| acc.max(s.abs()));
+        assert!(peak > 0.1, "output is silent (peak {})", peak);
+    }
+
+    /// A 1 kHz tone stays a 1 kHz tone: at 16 kHz it should cross zero about 2000 times per
+    /// second. A resampler misconfigured on rates or channel count fails this even when it does
+    /// return samples.
+    #[test]
+    fn resampling_preserves_the_tone() {
+        let mut resampler = MonoResampler::new(48_000, 16_000).unwrap();
+        let input = sine(1_000.0, 48_000, 48_000);
+        let mut output = Vec::new();
+        for block in input.chunks(960) {
+            output.extend(resampler.process(block));
+        }
+
+        let seconds = output.len() as f32 / 16_000.0;
+        let crossings_per_second = zero_crossings(&output) as f32 / seconds;
+        // 2 crossings per cycle at 1 kHz. Generous bounds: this is a smoke test for "the right
+        // frequency", not a filter-quality measurement.
+        assert!(
+            (1_800.0..=2_200.0).contains(&crossings_per_second),
+            "expected about 2000 zero crossings per second, got {}",
+            crossings_per_second
+        );
     }
 
     #[test]
