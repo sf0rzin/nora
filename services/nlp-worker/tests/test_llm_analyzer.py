@@ -147,7 +147,14 @@ def test_analyze_returns_valid_response(MockClient):
 
     assert response.metadata.tokens_input == 1500
     assert response.metadata.tokens_output == 800
-    assert response.metadata.pii_redactions_applied == 3
+    # The contract is that the count handed in (from the transcript stage) is carried and
+    # ADDED to whatever the tenant context itself contributes. Asserting the literal 3 also
+    # asserted, incidentally, that this fixture yields no context redactions — which stopped
+    # being true once every free-text leaf of the context started reaching the shield
+    # (ADR 0012): the fixture's marketing copy trips the Title Case name heuristic, and
+    # over-redacting is the direction the shield deliberately fails in.
+    from_tenant_context = analyze(req, settings).metadata.pii_redactions_applied
+    assert response.metadata.pii_redactions_applied == 3 + from_tenant_context
     assert response.metadata.model_version == "openai-gpt-4o-mini"
     assert response.metadata.processing_millis >= 0
 
@@ -254,6 +261,70 @@ def test_analyze_sanitizes_pii_in_tenant_context_glossary(MockClient):
     assert "111.444.777-35" not in user_prompt
     assert "Joao da Silva" not in user_prompt
     assert "[[CPF_1]]" in user_prompt or "[[PERSON_NAME_1]]" in user_prompt
+
+
+def _tenant_ctx_with_pii_in_every_free_text_field() -> dict:
+    """acme fixture with PII pasted into the fields that never reached the shield.
+
+    Additive on purpose (append, not replace) so the redaction count of this context is the
+    count of the pristine fixture plus exactly what is injected here.
+    """
+    ctx = json.loads(
+        (DATA_DIR / "tenants" / "acme-software.context.json").read_text(encoding="utf-8")
+    )
+    ctx["industry"] = "Consultoria fiscal conduzida por Mariana Cardoso"
+    ctx["objectionHandling"].append(
+        "Quando o cliente pedir referencia: falar com Ricardo Almeida, CPF 111.444.777-35."
+    )
+    ctx["products"][0]["keyDifferentiators"].append(
+        "Implantacao acompanhada por Fernanda Barbosa (fernanda.barbosa@acme.com.br)"
+    )
+    return ctx
+
+
+@patch("nora_nlp.services.llm_analyzer.LlmClient")
+def test_analyze_sanitizes_pii_in_every_tenant_context_free_text_field(MockClient):
+    """Regression: the shield was driven by a hand-kept list of field names, so it only
+    covered the shape that list was written against. `objectionHandling` was listed but is a
+    `list[str]`, and the guard on the value accepted a `str` only — it never fired. `industry`
+    and `products[].keyDifferentiators` were not listed at all. Those three fields went into
+    the prompt raw and contributed nothing to `piiRedactionsApplied`, so the audit trail read
+    clean for text nobody had inspected. Violation of ADR 0012.
+    """
+    mock_instance = MagicMock()
+    mock_instance.chat_structured.return_value = (json.dumps(_FAKE_LLM_RESPONSE), 100, 50)
+    MockClient.return_value = mock_instance
+    settings = _make_settings()
+
+    baseline = analyze(_make_request(), settings).metadata.pii_redactions_applied
+
+    transcript = (DATA_DIR / "meetings" / "01-acme-discovery-lead-novo.txt").read_text(
+        encoding="utf-8"
+    )
+    req = AnalyzeRequest(
+        meetingId="test-meeting-context-fields",
+        tenantId="00000000-0000-4000-8000-000000000001",
+        language="pt-BR",
+        transcript=transcript,
+        tenantContext=_tenant_ctx_with_pii_in_every_free_text_field(),
+    )
+    response = analyze(req, settings)
+
+    # Asserted on the payload actually handed to the provider, not on an intermediate.
+    user_prompt = mock_instance.chat_structured.call_args.kwargs["user_prompt"]
+    for raw in (
+        "Mariana Cardoso",
+        "Ricardo Almeida",
+        "111.444.777-35",
+        "Fernanda Barbosa",
+        "fernanda.barbosa@acme.com.br",
+    ):
+        assert raw not in user_prompt
+    assert "[[PERSON_NAME_1]]" in user_prompt
+    assert "[[CPF_1]]" in user_prompt
+    assert "[[EMAIL_1]]" in user_prompt
+    # The audit trail has to grow with the newly shielded fields: 3 names + CPF + e-mail.
+    assert response.metadata.pii_redactions_applied >= baseline + 5
 
 
 @patch("nora_nlp.services.llm_analyzer.LlmClient")

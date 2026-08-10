@@ -36,6 +36,26 @@ def _shield_field(value: str, counter: list[int]) -> str:
     return out.redacted_text
 
 
+def _shield_tree(value: object, counter: list[int]) -> object:
+    """Applies the PII Shield to every string leaf of a nested structure.
+
+    Walks dicts and lists instead of naming the fields to cover. The tenant context is
+    tenant-authored free text from end to end, and a hand-kept list of keys only protects
+    the shape it was written against: a field of a type the list did not expect, or one
+    added to ``TenantContext`` afterwards, stops reaching the shield without anything
+    failing — and the redaction counter then reports a clean audit trail for text that
+    was never inspected. Dict keys are schema names, not tenant input, so they are kept
+    as they are. ADR 0012.
+    """
+    if isinstance(value, str):
+        return _shield_field(value, counter)
+    if isinstance(value, dict):
+        return {k: _shield_tree(v, counter) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_shield_tree(item, counter) for item in value]
+    return value
+
+
 def _build_goal_section(req: AnalyzeRequest, redaction_counter: list[int]) -> str:
     """Renders the prompt section with the user's goal (ADR 0005).
 
@@ -81,34 +101,13 @@ def analyze(
 
     system_prompt, user_template = load_prompt(req.options.prompt_version)
 
-    # tenant_context has long free-text fields (companyName, products,
-    # valueProposition, objectionHandling, glossary) — defense-in-depth
-    # against a tenant that pastes PII into the commercial context.
+    # tenant_context is long free text throughout (companyName, industry, products,
+    # valueProposition, objectionHandling, competitors, glossary) — every string leaf of it
+    # goes through the shield, as defense-in-depth against a tenant that pastes PII into the
+    # commercial context. The walk covers the whole structure so a field added to
+    # TenantContext later is protected by default instead of by remembering to list it.
     extra_redactions = [0]
-    ctx_dict = req.tenant_context.model_dump(by_alias=True)
-    for k in ("companyName", "valueProposition", "idealCustomerProfile", "objectionHandling"):
-        v = ctx_dict.get(k)
-        if isinstance(v, str) and v:
-            ctx_dict[k] = _shield_field(v, extra_redactions)
-    products = ctx_dict.get("products") or []
-    for p in products:
-        if isinstance(p, dict):
-            for k in ("name", "description"):
-                v = p.get(k)
-                if isinstance(v, str) and v:
-                    p[k] = _shield_field(v, extra_redactions)
-    glossary = ctx_dict.get("glossary") or []
-    for g in glossary:
-        if isinstance(g, dict):
-            for k in ("term", "meaning"):
-                v = g.get(k)
-                if isinstance(v, str) and v:
-                    g[k] = _shield_field(v, extra_redactions)
-    competitors = ctx_dict.get("competitors") or []
-    if isinstance(competitors, list):
-        ctx_dict["competitors"] = [
-            _shield_field(c, extra_redactions) if isinstance(c, str) else c for c in competitors
-        ]
+    ctx_dict = _shield_tree(req.tenant_context.model_dump(by_alias=True), extra_redactions)
 
     tenant_ctx_json = json.dumps(ctx_dict, ensure_ascii=False, indent=2)
 
