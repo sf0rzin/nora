@@ -14,6 +14,7 @@ import br.com.nora.api.api.dto.auth.SignupRequest;
 import br.com.nora.api.api.dto.auth.SignupResponse;
 import br.com.nora.api.api.dto.auth.VerifyEmailRequest;
 import br.com.nora.api.api.security.AuthCookies;
+import br.com.nora.api.api.security.AuthorizationNotRequired;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.identity.AuthException;
 import br.com.nora.api.application.identity.AuthService;
@@ -94,6 +95,7 @@ public class AuthController {
      * either way, which is why it talks about the e-mail rather than about a workspace.
      */
     @PostMapping("/signup")
+    @AuthorizationNotRequired(reason = "Public: creating the account precedes any principal.")
     public ResponseEntity<SignupResponse> signup(
             @Valid @RequestBody SignupRequest req, HttpServletRequest httpReq) {
         if (!rateLimiter.allowSignup(httpReq)) {
@@ -117,12 +119,14 @@ public class AuthController {
     }
 
     @PostMapping("/verify-email")
+    @AuthorizationNotRequired(reason = "Public: the verification token is the credential.")
     public ResponseEntity<Void> verifyEmail(@Valid @RequestBody VerifyEmailRequest req) {
         authService.verifyEmail(req.token());
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/login")
+    @AuthorizationNotRequired(reason = "Public: this is where credentials become a JWT.")
     public ResponseEntity<LoginResponse> login(
             @Valid @RequestBody LoginRequest req, HttpServletRequest httpReq) {
         // Two independent caps: by origin and by target account. Changing IP does not reset the
@@ -167,6 +171,7 @@ public class AuthController {
      * Returns 401 REFRESH_TOKEN_INVALID when missing/expired/revoked.
      */
     @PostMapping("/refresh")
+    @AuthorizationNotRequired(reason = "Public: the refresh token is the credential.")
     public ResponseEntity<RefreshResponse> refresh(HttpServletRequest req) {
         String refresh = readCookie(req, AuthCookies.REFRESH_COOKIE);
         boolean fromCookie = refresh != null && !refresh.isBlank();
@@ -210,6 +215,7 @@ public class AuthController {
      * without a token = 204 (no-op). Does not return 401 even without a credential.
      */
     @PostMapping("/logout")
+    @AuthorizationNotRequired(reason = "Public: idempotent; no token means a no-op.")
     public ResponseEntity<Void> logout(HttpServletRequest req) {
         String refresh = readCookie(req, AuthCookies.REFRESH_COOKIE);
         authService.logout(refresh);
@@ -221,6 +227,7 @@ public class AuthController {
 
     /** Identity of the authenticated user (Account tab in settings). */
     @GetMapping("/me")
+    @AuthorizationNotRequired(reason = "Self: reads only the caller's own user row.")
     public MeResponse me() {
         AuthenticatedPrincipal principal = CurrentUser.require();
         User user = authService.me(principal.userId());
@@ -239,6 +246,7 @@ public class AuthController {
      * logged out here.
      */
     @PostMapping("/password/change")
+    @AuthorizationNotRequired(reason = "Self: changes only the caller's own password.")
     public ResponseEntity<Void> changePassword(@Valid @RequestBody PasswordChangeRequest req) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         LoginResult result =
@@ -263,6 +271,7 @@ public class AuthController {
      * front end redirects to the login immediately.
      */
     @PostMapping("/logout-all")
+    @AuthorizationNotRequired(reason = "Self: revokes only the caller's own sessions.")
     public ResponseEntity<Void> logoutAll() {
         AuthenticatedPrincipal principal = CurrentUser.require();
         authService.logoutAllSessions(principal.userId());
@@ -278,6 +287,7 @@ public class AuthController {
      * reset (same abuse vector: flooding someone else's inbox).
      */
     @PostMapping("/verify-email/resend")
+    @AuthorizationNotRequired(reason = "Public: for users who cannot log in; rate-limited.")
     public ResponseEntity<ResendVerificationResponse> resendVerification(
             @Valid @RequestBody ResendVerificationRequest req) {
         String message = "Se houver uma conta nao verificada para este e-mail, reenviamos o link.";
@@ -293,6 +303,7 @@ public class AuthController {
     }
 
     @PostMapping("/password/reset/request")
+    @AuthorizationNotRequired(reason = "Public: for users who cannot log in; rate-limited.")
     public ResponseEntity<RequestPasswordResetResponse> requestPasswordReset(
             @Valid @RequestBody RequestPasswordResetRequest req) {
         // Limits by email (instead of IP) — a spammer who changes IP cannot flood
@@ -321,6 +332,7 @@ public class AuthController {
     }
 
     @PostMapping("/password/reset/confirm")
+    @AuthorizationNotRequired(reason = "Public: the reset token is the credential.")
     public ResponseEntity<Void> confirmPasswordReset(
             @Valid @RequestBody ConfirmPasswordResetRequest req) {
         authService.confirmPasswordReset(

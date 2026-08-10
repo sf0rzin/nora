@@ -6,6 +6,7 @@ import br.com.nora.api.api.dto.chat.ChatSessionCreateRequest;
 import br.com.nora.api.api.dto.chat.ChatSessionDetailResponse;
 import br.com.nora.api.api.dto.chat.ChatSessionRenameRequest;
 import br.com.nora.api.api.dto.chat.ChatSessionSummaryResponse;
+import br.com.nora.api.api.security.AuthorizationNotRequired;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.chat.ChatSessionService;
 import br.com.nora.api.application.chat.ChatSessionService.SessionDetail;
@@ -45,6 +46,7 @@ public class ChatSessionController {
     }
 
     @GetMapping
+    @AuthorizationNotRequired(reason = "Self: lists only the caller's own sessions.")
     public List<ChatSessionSummaryResponse> list() {
         AuthenticatedPrincipal principal = CurrentUser.require();
         return chat.list(principal.tenantId(), principal.userId()).stream()
@@ -53,6 +55,7 @@ public class ChatSessionController {
     }
 
     @PostMapping
+    @AuthorizationNotRequired(reason = "Self: creates a session owned by the caller.")
     public ResponseEntity<ChatSessionSummaryResponse> create(
             @RequestBody(required = false) ChatSessionCreateRequest body) {
         AuthenticatedPrincipal principal = CurrentUser.require();
@@ -62,6 +65,7 @@ public class ChatSessionController {
     }
 
     @GetMapping("/{id}")
+    @AuthorizationNotRequired(reason = "Self: scoped by the caller's own user_id.")
     public ChatSessionDetailResponse get(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         SessionDetail detail = chat.get(id, principal.tenantId(), principal.userId());
@@ -69,6 +73,7 @@ public class ChatSessionController {
     }
 
     @PostMapping("/{id}/messages")
+    @AuthorizationNotRequired(reason = "Self: scoped by the caller's own user_id.")
     public ResponseEntity<ChatMessageResponse> appendMessage(
             @PathVariable("id") UUID id, @Valid @RequestBody ChatMessageCreateRequest body) {
         AuthenticatedPrincipal principal = CurrentUser.require();
@@ -80,6 +85,7 @@ public class ChatSessionController {
     }
 
     @PatchMapping("/{id}")
+    @AuthorizationNotRequired(reason = "Self: scoped by the caller's own user_id.")
     public ChatSessionSummaryResponse rename(
             @PathVariable("id") UUID id, @Valid @RequestBody ChatSessionRenameRequest body) {
         AuthenticatedPrincipal principal = CurrentUser.require();
@@ -89,6 +95,7 @@ public class ChatSessionController {
     }
 
     @DeleteMapping("/{id}")
+    @AuthorizationNotRequired(reason = "Self: scoped by the caller's own user_id.")
     public ResponseEntity<Void> delete(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         chat.delete(id, principal.tenantId(), principal.userId());

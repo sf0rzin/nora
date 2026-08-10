@@ -4,6 +4,7 @@ import br.com.nora.api.api.dto.platform.PlatformDtos.BindRequest;
 import br.com.nora.api.api.dto.platform.PlatformDtos.BindingResponse;
 import br.com.nora.api.api.dto.platform.PlatformDtos.CreateModelRequest;
 import br.com.nora.api.api.dto.platform.PlatformDtos.ModelResponse;
+import br.com.nora.api.api.security.AuthorizationNotRequired;
 import br.com.nora.api.application.platform.BusinessTelemetryService;
 import br.com.nora.api.application.platform.CostTelemetryService;
 import br.com.nora.api.application.platform.FeatureFlagService;
@@ -50,6 +51,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/admin/platform")
+@AuthorizationNotRequired(reason = "Control plane: token chain @Order(2), no IAM principal.")
 public class PlatformAdminController {
 
     static final String OPERATOR_HEADER = "X-Operator-Email";

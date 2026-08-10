@@ -6,7 +6,8 @@ import br.com.nora.api.api.dto.tenant.TenantDomainUpdateResponse;
 import br.com.nora.api.api.dto.tenant.TenantNameUpdateRequest;
 import br.com.nora.api.api.dto.tenant.TenantResponse;
 import br.com.nora.api.api.security.CurrentUser;
-import br.com.nora.api.application.iam.AuthorizationService;
+import br.com.nora.api.api.security.RequiresPermission;
+import br.com.nora.api.api.security.RequiresPermission.ResourceType;
 import br.com.nora.api.application.tenant.TenantService;
 import br.com.nora.api.domain.tenant.Tenant;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
@@ -22,26 +23,25 @@ import org.springframework.web.bind.annotation.RestController;
  * "context" covers product/competitors/glossary (commercial subdomain) whereas tenant flags
  * (corporate domain, future branding, etc) live here.
  *
- * <p>Every operation requires an IAM permission. Root has a bypass via {@link
- * AuthorizationService}.
+ * <p>Every operation requires an IAM permission on {@code nora:tenant/{tenantId}} — the {@code
+ * TENANT} resource type of the annotation, byte-for-byte the ARN each handler used to build by
+ * hand. Root has a bypass in the authorization service.
  */
 @RestController
 @RequestMapping("/tenant")
 public class TenantController {
 
     private final TenantService tenants;
-    private final AuthorizationService authz;
 
-    public TenantController(TenantService tenants, AuthorizationService authz) {
+    public TenantController(TenantService tenants) {
         this.tenants = tenants;
-        this.authz = authz;
     }
 
     /** Current workspace (Workspace tab in settings). */
     @GetMapping
+    @RequiresPermission(action = "tenant:read", resource = ResourceType.TENANT)
     public TenantResponse get() {
         AuthenticatedPrincipal p = CurrentUser.require();
-        authz.require(p.userId(), p.tenantId(), "tenant:read", resource(p));
         Tenant tenant = tenants.get(p.tenantId());
         return new TenantResponse(
                 tenant.id(),
@@ -53,35 +53,30 @@ public class TenantController {
 
     /** Renames the workspace. The slug is immutable (it lives in URLs/invites). */
     @PutMapping("/name")
+    @RequiresPermission(action = "tenant:name:write", resource = ResourceType.TENANT)
     public TenantResponse rename(@Valid @RequestBody TenantNameUpdateRequest body) {
         AuthenticatedPrincipal p = CurrentUser.require();
-        authz.require(p.userId(), p.tenantId(), "tenant:name:write", resource(p));
         Tenant saved = tenants.rename(p.tenantId(), body.name(), p.userId());
         return new TenantResponse(
                 saved.id(), saved.name(), saved.slug(), saved.plan().name(), saved.createdAt());
     }
 
     @GetMapping("/domain")
+    @RequiresPermission(action = "tenant:domain:read", resource = ResourceType.TENANT)
     public TenantDomainResponse getDomain() {
         AuthenticatedPrincipal p = CurrentUser.require();
-        authz.require(p.userId(), p.tenantId(), "tenant:domain:read", resource(p));
         return new TenantDomainResponse(p.tenantId(), tenants.getAllowedEmailDomain(p.tenantId()));
     }
 
     @PutMapping("/domain")
+    @RequiresPermission(action = "tenant:domain:write", resource = ResourceType.TENANT)
     public TenantDomainUpdateResponse updateDomain(
             @Valid @RequestBody TenantDomainUpdateRequest body) {
         AuthenticatedPrincipal p = CurrentUser.require();
-        authz.require(p.userId(), p.tenantId(), "tenant:domain:write", resource(p));
-
         Tenant saved =
                 tenants.updateAllowedEmailDomain(
                         p.tenantId(), body.allowedEmailDomain(), p.userId());
         return new TenantDomainUpdateResponse(
                 saved.id(), saved.allowedEmailDomain(), saved.updatedAt(), p.userId());
-    }
-
-    private static String resource(AuthenticatedPrincipal p) {
-        return "nora:tenant/" + p.tenantId();
     }
 }

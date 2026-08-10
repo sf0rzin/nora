@@ -33,6 +33,20 @@ public final class ResourceArns {
         return base(tenantId) + ":invite/" + (inviteId == null ? "*" : inviteId);
     }
 
+    /** {@code nora:tenant/{t}:workflow/{id|*}} — {@code *} when {@code workflowId} is null. */
+    public static String workflow(UUID tenantId, UUID workflowId) {
+        return base(tenantId) + ":workflow/" + (workflowId == null ? "*" : workflowId);
+    }
+
+    /**
+     * {@code nora:tenant/{t}:integration/*} — the tenant's integrations scope. Connections are
+     * keyed by provider name, not by UUID, and every handler acts on the whole tenant's hub, so the
+     * ARN is the wildcard for the set (same shape as {@link #iamWildcard}).
+     */
+    public static String integrationWildcard(UUID tenantId) {
+        return base(tenantId) + ":integration/*";
+    }
+
     /** {@code nora:tenant/{t}:iam/*} — the tenant's IAM scope. */
     public static String iamWildcard(UUID tenantId) {
         return base(tenantId) + ":iam/*";
@@ -57,6 +71,8 @@ public final class ResourceArns {
             case IAM -> iamWildcard(tenantId);
             case TENANT -> tenant(tenantId);
             case TENANT_CONTEXT -> tenantContext(tenantId);
+            case WORKFLOW -> workflow(tenantId, id);
+            case INTEGRATION -> integrationWildcard(tenantId);
         };
     }
 }

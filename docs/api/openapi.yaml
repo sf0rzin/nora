@@ -870,8 +870,9 @@ paths:
       tags: [Speech]
       summary: Emite token de autorizacao efemero para Azure Speech
       description: |
-        Autenticado (qualquer usuario do tenant). Rate-limited (`429 RATE_LIMIT_EXCEEDED`). Regiao
-        invalida retorna `400 INVALID_REGION`; falha no broker `502 BROKER_ERROR`.
+        Requer `speech:token:issue` em `nora:tenant/{tenantId}` (#51): o token alcanca um provedor
+        externo cobrado do tenant. Rate-limited (`429 RATE_LIMIT_EXCEEDED`). Regiao invalida
+        retorna `400 INVALID_REGION`; falha no broker `502 BROKER_ERROR`.
       parameters:
         - in: query
           name: region
@@ -885,6 +886,7 @@ paths:
               schema: { $ref: '#/components/schemas/SpeechTokenResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '502': { $ref: '#/components/responses/BadGateway' }
 

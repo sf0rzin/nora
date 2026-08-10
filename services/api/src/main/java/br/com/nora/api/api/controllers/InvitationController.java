@@ -6,8 +6,10 @@ import br.com.nora.api.api.dto.iam.InviteListResponse;
 import br.com.nora.api.api.dto.iam.InviteResponse;
 import br.com.nora.api.api.dto.iam.InviteUserRequest;
 import br.com.nora.api.api.security.AuthCookies;
+import br.com.nora.api.api.security.AuthorizationNotRequired;
 import br.com.nora.api.api.security.CurrentUser;
-import br.com.nora.api.application.iam.AuthorizationService;
+import br.com.nora.api.api.security.RequiresPermission;
+import br.com.nora.api.api.security.RequiresPermission.ResourceType;
 import br.com.nora.api.application.iam.InvitationService;
 import br.com.nora.api.application.iam.InvitationService.AcceptResult;
 import br.com.nora.api.domain.iam.IamInvitation;
@@ -52,26 +54,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class InvitationController {
 
     private final InvitationService service;
-    private final AuthorizationService authz;
     private final AuthCookies cookies;
 
-    public InvitationController(
-            InvitationService service, AuthorizationService authz, AuthCookies cookies) {
+    public InvitationController(InvitationService service, AuthCookies cookies) {
         this.service = service;
-        this.authz = authz;
         this.cookies = cookies;
     }
 
     @PostMapping("/users/invite")
     @org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.CREATED)
+    @RequiresPermission(action = "iam:user:invite", resource = ResourceType.INVITE)
     public InviteResponse invite(@Valid @RequestBody InviteUserRequest body) {
         AuthenticatedPrincipal p = CurrentUser.require();
-        authz.require(
-                p.userId(),
-                p.tenantId(),
-                "iam:user:invite",
-                "nora:tenant/" + p.tenantId() + ":invite/*");
-
         var groupIds =
                 body.groupIds() == null
                         ? java.util.Set.<UUID>of()
@@ -83,6 +77,7 @@ public class InvitationController {
     }
 
     @PostMapping("/invites/{token}/accept")
+    @AuthorizationNotRequired(reason = "Public: the invite token is the credential (US06).")
     public ResponseEntity<LoginResponse> accept(
             @PathVariable("token") String token,
             @Valid @RequestBody AcceptInviteRequest body,
@@ -116,15 +111,10 @@ public class InvitationController {
     }
 
     @GetMapping("/invites")
+    @RequiresPermission(action = "iam:invite:read", resource = ResourceType.INVITE)
     public InviteListResponse list(
             @RequestParam(name = "status", required = false) InvitationStatus status) {
         AuthenticatedPrincipal p = CurrentUser.require();
-        authz.require(
-                p.userId(),
-                p.tenantId(),
-                "iam:invite:read",
-                "nora:tenant/" + p.tenantId() + ":invite/*");
-
         List<InviteResponse> items =
                 service.listInvites(p.tenantId(), status).stream()
                         .map(InvitationController::toResponse)
@@ -134,13 +124,12 @@ public class InvitationController {
 
     @DeleteMapping("/invites/{id}")
     @org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresPermission(
+            action = "iam:invite:revoke",
+            resource = ResourceType.INVITE,
+            idParam = "id")
     public void revoke(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal p = CurrentUser.require();
-        authz.require(
-                p.userId(),
-                p.tenantId(),
-                "iam:invite:revoke",
-                "nora:tenant/" + p.tenantId() + ":invite/" + id);
         service.revokeInvite(id, p.tenantId(), p.userId());
     }
 

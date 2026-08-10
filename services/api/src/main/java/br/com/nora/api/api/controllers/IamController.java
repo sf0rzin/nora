@@ -7,7 +7,8 @@ import br.com.nora.api.api.dto.iam.GroupDto;
 import br.com.nora.api.api.dto.iam.PolicyDto;
 import br.com.nora.api.api.dto.iam.UpdatePolicyRequest;
 import br.com.nora.api.api.security.CurrentUser;
-import br.com.nora.api.application.iam.AuthorizationService;
+import br.com.nora.api.api.security.RequiresPermission;
+import br.com.nora.api.api.security.RequiresPermission.ResourceType;
 import br.com.nora.api.application.iam.IamException;
 import br.com.nora.api.application.iam.IamService;
 import br.com.nora.api.domain.iam.IamAuditEvent;
@@ -33,47 +34,40 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * AWS-style IAM endpoints (US35-US40). They require the {@code iam:*} permission on the {@code
- * nora:tenant/{tenantId}:iam/*} resource; the tenant Root has a bypass via {@link
- * AuthorizationService}.
+ * nora:tenant/{tenantId}:iam/*} resource; the tenant Root has a bypass in the authorization
+ * service.
  *
- * <p>The canonical resource for the check is {@code nora:tenant/{tenantId}:iam/*}.
+ * <p>The canonical resource for the check is {@code nora:tenant/{tenantId}:iam/*} — the {@code IAM}
+ * resource type of the annotation. Each handler used to build that ARN by hand and call {@code
+ * authz.require} as its first statement; the declaration is now on the method, evaluated by the
+ * interceptor before the body runs (#51). None of these checks reads resource attributes, so the
+ * decision is identical.
  */
 @RestController
 @RequestMapping("/iam")
 public class IamController {
 
     private final IamService iam;
-    private final AuthorizationService authz;
     private final ObjectMapper json;
 
-    public IamController(IamService iam, AuthorizationService authz, ObjectMapper json) {
+    public IamController(IamService iam, ObjectMapper json) {
         this.iam = iam;
-        this.authz = authz;
         this.json = json;
-    }
-
-    private String resource(UUID tenantId) {
-        return "nora:tenant/" + tenantId + ":iam/*";
-    }
-
-    private void requireIam(String action) {
-        AuthenticatedPrincipal p = CurrentUser.require();
-        authz.require(p.userId(), p.tenantId(), action, resource(p.tenantId()));
     }
 
     // ---------- groups ----------
 
     @GetMapping("/groups")
+    @RequiresPermission(action = "iam:group:read", resource = ResourceType.IAM)
     public List<GroupDto> listGroups() {
-        requireIam("iam:group:read");
         AuthenticatedPrincipal p = CurrentUser.require();
         return iam.listGroups(p.tenantId()).stream().map(IamController::toGroupDto).toList();
     }
 
     @PostMapping("/groups")
     @ResponseStatus(HttpStatus.CREATED)
+    @RequiresPermission(action = "iam:group:create", resource = ResourceType.IAM)
     public GroupDto createGroup(@RequestBody CreateGroupRequest body) {
-        requireIam("iam:group:create");
         if (body.name() == null || body.name().isBlank()) {
             throw new IllegalArgumentException("name is required");
         }
@@ -84,31 +78,31 @@ public class IamController {
 
     @DeleteMapping("/groups/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresPermission(action = "iam:group:delete", resource = ResourceType.IAM)
     public void deleteGroup(@PathVariable("id") UUID id) {
-        requireIam("iam:group:delete");
         AuthenticatedPrincipal p = CurrentUser.require();
         iam.deleteGroup(p.tenantId(), p.userId(), id);
     }
 
     @GetMapping("/groups/{id}/members")
+    @RequiresPermission(action = "iam:group:read", resource = ResourceType.IAM)
     public List<UUID> listGroupMembers(@PathVariable("id") UUID id) {
-        requireIam("iam:group:read");
         AuthenticatedPrincipal p = CurrentUser.require();
         return iam.listGroupMembers(p.tenantId(), id);
     }
 
     @PostMapping("/groups/{id}/members/{userId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresPermission(action = "iam:group:add-member", resource = ResourceType.IAM)
     public void addMember(@PathVariable("id") UUID id, @PathVariable("userId") UUID userId) {
-        requireIam("iam:group:add-member");
         AuthenticatedPrincipal p = CurrentUser.require();
         iam.addUserToGroup(p.tenantId(), p.userId(), id, userId);
     }
 
     @DeleteMapping("/groups/{id}/members/{userId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresPermission(action = "iam:group:remove-member", resource = ResourceType.IAM)
     public void removeMember(@PathVariable("id") UUID id, @PathVariable("userId") UUID userId) {
-        requireIam("iam:group:remove-member");
         AuthenticatedPrincipal p = CurrentUser.require();
         iam.removeUserFromGroup(p.tenantId(), p.userId(), id, userId);
     }
@@ -116,23 +110,23 @@ public class IamController {
     // ---------- policies ----------
 
     @GetMapping("/policies")
+    @RequiresPermission(action = "iam:policy:read", resource = ResourceType.IAM)
     public List<PolicyDto> listPolicies() {
-        requireIam("iam:policy:read");
         AuthenticatedPrincipal p = CurrentUser.require();
         return iam.listPolicies(p.tenantId()).stream().map(this::toPolicyDto).toList();
     }
 
     @GetMapping("/policies/{id}")
+    @RequiresPermission(action = "iam:policy:read", resource = ResourceType.IAM)
     public PolicyDto getPolicy(@PathVariable("id") UUID id) {
-        requireIam("iam:policy:read");
         AuthenticatedPrincipal p = CurrentUser.require();
         return toPolicyDto(iam.getPolicy(p.tenantId(), id));
     }
 
     @PostMapping("/policies")
     @ResponseStatus(HttpStatus.CREATED)
+    @RequiresPermission(action = "iam:policy:create", resource = ResourceType.IAM)
     public PolicyDto createPolicy(@RequestBody CreatePolicyRequest body) {
-        requireIam("iam:policy:create");
         if (body.name() == null || body.name().isBlank()) {
             throw new IllegalArgumentException("name is required");
         }
@@ -151,9 +145,9 @@ public class IamController {
     }
 
     @PutMapping("/policies/{id}")
+    @RequiresPermission(action = "iam:policy:update", resource = ResourceType.IAM)
     public PolicyDto updatePolicy(
             @PathVariable("id") UUID id, @RequestBody UpdatePolicyRequest body) {
-        requireIam("iam:policy:update");
         if (body.document() == null) {
             throw IamException.invalidDocument("document required");
         }
@@ -164,8 +158,8 @@ public class IamController {
 
     @DeleteMapping("/policies/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresPermission(action = "iam:policy:delete", resource = ResourceType.IAM)
     public void deletePolicy(@PathVariable("id") UUID id) {
-        requireIam("iam:policy:delete");
         AuthenticatedPrincipal p = CurrentUser.require();
         iam.deletePolicy(p.tenantId(), p.userId(), id);
     }
@@ -174,36 +168,36 @@ public class IamController {
 
     @PostMapping("/groups/{groupId}/policies/{policyId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresPermission(action = "iam:attachment:create", resource = ResourceType.IAM)
     public void attachToGroup(
             @PathVariable("groupId") UUID groupId, @PathVariable("policyId") UUID policyId) {
-        requireIam("iam:attachment:create");
         AuthenticatedPrincipal p = CurrentUser.require();
         iam.attachPolicyToGroup(p.tenantId(), p.userId(), policyId, groupId);
     }
 
     @DeleteMapping("/groups/{groupId}/policies/{policyId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresPermission(action = "iam:attachment:delete", resource = ResourceType.IAM)
     public void detachFromGroup(
             @PathVariable("groupId") UUID groupId, @PathVariable("policyId") UUID policyId) {
-        requireIam("iam:attachment:delete");
         AuthenticatedPrincipal p = CurrentUser.require();
         iam.detachPolicyFromGroup(p.tenantId(), p.userId(), policyId, groupId);
     }
 
     @PostMapping("/users/{userId}/policies/{policyId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresPermission(action = "iam:attachment:create", resource = ResourceType.IAM)
     public void attachToUser(
             @PathVariable("userId") UUID userId, @PathVariable("policyId") UUID policyId) {
-        requireIam("iam:attachment:create");
         AuthenticatedPrincipal p = CurrentUser.require();
         iam.attachPolicyToUser(p.tenantId(), p.userId(), policyId, userId);
     }
 
     @DeleteMapping("/users/{userId}/policies/{policyId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresPermission(action = "iam:attachment:delete", resource = ResourceType.IAM)
     public void detachFromUser(
             @PathVariable("userId") UUID userId, @PathVariable("policyId") UUID policyId) {
-        requireIam("iam:attachment:delete");
         AuthenticatedPrincipal p = CurrentUser.require();
         iam.detachPolicyFromUser(p.tenantId(), p.userId(), policyId, userId);
     }
@@ -211,10 +205,10 @@ public class IamController {
     // ---------- audit ----------
 
     @GetMapping("/audit")
+    @RequiresPermission(action = "iam:audit:read", resource = ResourceType.IAM)
     public List<AuditEventDto> listAudit(
             @RequestParam(name = "since", required = false) OffsetDateTime since,
             @RequestParam(name = "limit", required = false, defaultValue = "50") int limit) {
-        requireIam("iam:audit:read");
         AuthenticatedPrincipal p = CurrentUser.require();
         return iam.listAudit(p.tenantId(), since, limit).stream()
                 .map(IamController::toAuditDto)

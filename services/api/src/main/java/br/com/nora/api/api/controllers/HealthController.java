@@ -1,5 +1,6 @@
 package br.com.nora.api.api.controllers;
 
+import br.com.nora.api.api.security.AuthorizationNotRequired;
 import java.time.Instant;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class HealthController {
 
     @GetMapping("/healthz")
+    @AuthorizationNotRequired(reason = "Public: liveness probe, exposes no tenant data.")
     public Map<String, Object> healthz() {
         return Map.of(
                 "service", "nora-api",

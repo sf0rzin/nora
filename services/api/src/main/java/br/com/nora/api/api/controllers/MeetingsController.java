@@ -15,7 +15,10 @@ import br.com.nora.api.api.dto.meeting.MeetingUploadMetadata;
 import br.com.nora.api.api.dto.meeting.MeetingUploadResponse;
 import br.com.nora.api.api.dto.meeting.ProductivityAssessmentResponse;
 import br.com.nora.api.api.dto.meeting.SplitPreviewDtos;
+import br.com.nora.api.api.security.AuthorizationNotRequired;
 import br.com.nora.api.api.security.CurrentUser;
+import br.com.nora.api.api.security.RequiresPermission;
+import br.com.nora.api.api.security.RequiresPermission.ResourceType;
 import br.com.nora.api.api.security.ResourceArns;
 import br.com.nora.api.application.analysis.AnalysisException;
 import br.com.nora.api.application.analysis.AnalysisService;
@@ -120,19 +123,15 @@ public class MeetingsController {
      * caller must have a fallback. Spring routes {@code /search} (literal) before {@code /{id}}.
      */
     @GetMapping("/search")
+    @RequiresPermission(action = "meeting:read", resource = ResourceType.MEETING, anyAllow = true)
     public MeetingSearchResponse search(
             @RequestParam("q") String q, @RequestParam(name = "k", defaultValue = "5") int k) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        // Cheap pre-gate, the same one the listing does. Moving authorization to per-item removed
-        // it, and a caller with no meeting:read then reached `embeddings.search` before being
-        // refused — which bills an embedding call to the external provider and scans the tenant's
-        // vectors to build a result the caller was never going to be allowed to see.
-        authz.requireAnyAllow(
-                principal.userId(),
-                principal.tenantId(),
-                "meeting:read",
-                meetingResource(principal.tenantId(), null));
-
+        // The annotation above is the cheap pre-gate, the same one the listing does. Moving
+        // authorization to per-item removed it, and a caller with no meeting:read then reached
+        // `embeddings.search` before being refused — which bills an embedding call to the external
+        // provider and scans the tenant's vectors to build a result the caller was never going to
+        // be allowed to see.
         int limit = Math.min(Math.max(k, 1), 10);
 
         // Loads the candidates and ONLY THEN authorizes, item by item, with the meeting's
@@ -174,14 +173,10 @@ public class MeetingsController {
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequiresPermission(action = "meeting:upload", resource = ResourceType.MEETING)
     public ResponseEntity<MeetingUploadResponse> upload(
             @RequestPart("metadata") String metadataJson, @RequestPart("file") MultipartFile file) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        authz.require(
-                principal.userId(),
-                principal.tenantId(),
-                "meeting:upload",
-                meetingResource(principal.tenantId(), null));
         MeetingUploadMetadata metadata = parseMetadata(metadataJson);
 
         String rawTranscript = readFile(file);
@@ -223,16 +218,11 @@ public class MeetingsController {
      * clear message.
      */
     @PostMapping(value = "/split-preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequiresPermission(action = "meeting:upload", resource = ResourceType.MEETING)
     public SplitPreviewDtos.SplitPreviewResponse splitPreview(
             @RequestPart("file") MultipartFile file,
             @RequestParam(name = "language", required = false) String language) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        authz.require(
-                principal.userId(),
-                principal.tenantId(),
-                "meeting:upload",
-                meetingResource(principal.tenantId(), null));
-
         requireTxtFile(file);
         // Pre-checks the size BEFORE readFile: readFile throws
         // IllegalArgumentException (masked as "Invalid request." in English),
@@ -293,7 +283,11 @@ public class MeetingsController {
                         md.piiRedactionsApplied() == null ? 0 : md.piiRedactionsApplied()));
     }
 
+    // Pre-check in the annotation: the user needs meeting:read on at least some resource of the
+    // tenant. Without it, returns 403 before touching the database. Fine-grained filtering by
+    // attributes happens below.
     @GetMapping
+    @RequiresPermission(action = "meeting:read", resource = ResourceType.MEETING, anyAllow = true)
     public MeetingListResponse list(
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size,
@@ -302,15 +296,6 @@ public class MeetingsController {
             @RequestParam(name = "from", required = false) String from,
             @RequestParam(name = "to", required = false) String to) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        // Pre-check: the user needs meeting:read on at least some resource of the tenant.
-        // Without it, returns 403 before touching the database. Fine-grained filtering by
-        // attributes happens below.
-        authz.requireAnyAllow(
-                principal.userId(),
-                principal.tenantId(),
-                "meeting:read",
-                meetingResource(principal.tenantId(), null));
-
         int safePage = Math.max(0, page);
         int safeSize = Math.min(100, Math.max(1, size));
         MeetingFilter filter = buildFilter(search, status, from, to);
@@ -427,6 +412,7 @@ public class MeetingsController {
     }
 
     @GetMapping("/{id}")
+    @AuthorizationNotRequired(reason = "Body: authorizes on the loaded meeting's attributes.")
     public MeetingDetailResponse get(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         // Resolves first (404 if from another tenant) and uses attributes in the authz context.
@@ -488,6 +474,7 @@ public class MeetingsController {
      * been analyzed, the status changes to PENDING for later reprocessing.
      */
     @PutMapping("/{id}/goal")
+    @AuthorizationNotRequired(reason = "Body: authorizes on the loaded meeting's attributes.")
     public ResponseEntity<MeetingGoalResponse> putGoal(
             @PathVariable("id") UUID id, @Valid @RequestBody MeetingGoalRequest request) {
         AuthenticatedPrincipal principal = CurrentUser.require();
@@ -510,6 +497,7 @@ public class MeetingsController {
 
     /** Removes the goal + linked productivity (ADR 0005). Idempotent. */
     @DeleteMapping("/{id}/goal")
+    @AuthorizationNotRequired(reason = "Body: authorizes on the loaded meeting's attributes.")
     public ResponseEntity<Void> deleteGoal(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         Meeting m = meetings.getById(id, principal.tenantId());
@@ -524,6 +512,7 @@ public class MeetingsController {
     }
 
     @PostMapping("/{id}/reprocess")
+    @AuthorizationNotRequired(reason = "Body: authorizes in-transaction on the attributes.")
     public ResponseEntity<MeetingUploadResponse> reprocess(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         // Reprocess authorizes with an authz callback inside the service's own transaction to
@@ -554,15 +543,9 @@ public class MeetingsController {
     }
 
     @PostMapping("/live-analyze")
+    @RequiresPermission(action = "meeting:analyze:live", resource = ResourceType.MEETING)
     public LiveAnalyzeDtos.LiveAnalyzeResponse liveAnalyze(
             @Valid @RequestBody LiveAnalyzeDtos.LiveAnalyzeRequest req) {
-        AuthenticatedPrincipal principal = CurrentUser.require();
-        authz.require(
-                principal.userId(),
-                principal.tenantId(),
-                "meeting:analyze:live",
-                meetingResource(principal.tenantId(), null));
-
         WorkerDtos.LiveHighlights previous = toWorkerHighlights(req.previousHighlights());
         String language =
                 req.language() == null || req.language().isBlank() ? "pt-BR" : req.language();

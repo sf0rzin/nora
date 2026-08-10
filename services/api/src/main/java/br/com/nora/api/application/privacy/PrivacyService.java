@@ -2,8 +2,10 @@ package br.com.nora.api.application.privacy;
 
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.ports.MeetingRepository;
+import br.com.nora.api.domain.meeting.Meeting;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -37,9 +39,25 @@ public class PrivacyService {
      * PERMANENTLY deletes a meeting and all cascading PII (right to be forgotten). Throws {@link
      * MeetingException.NotFound} if the meeting does not exist in the tenant (avoids leaking
      * cross-tenant existence).
+     *
+     * <p>The meeting is resolved and authorized INSIDE this transaction — the same shape {@code
+     * MeetingService.reprocess} uses, so the attributes the decision was taken on cannot change
+     * between the check and the delete (#51). Resolution comes first on purpose: a meeting of
+     * another tenant answers 404 and never reaches the IAM decision, so this endpoint keeps not
+     * leaking cross-tenant existence.
+     *
+     * @param authorize decides on the loaded meeting, with its attributes in hand, and must throw
+     *     if authorization fails. Authorizing on the id alone leaves the condition attributes out
+     *     of the request context, and a condition over a missing attribute makes the statement not
+     *     match — which silently drops a Deny, on an operation that is a permanent hard-delete of
+     *     the meeting and every piece of PII linked to it.
      */
     @Transactional
-    public void eraseMeeting(UUID meetingId, UUID tenantId) {
+    public void eraseMeeting(UUID meetingId, UUID tenantId, Consumer<Meeting> authorize) {
+        Meeting meeting =
+                meetings.findByIdAndTenant(meetingId, tenantId)
+                        .orElseThrow(MeetingException.NotFound::new);
+        authorize.accept(meeting);
         int rows = meetings.hardErase(meetingId, tenantId);
         if (rows == 0) {
             throw new MeetingException.NotFound();

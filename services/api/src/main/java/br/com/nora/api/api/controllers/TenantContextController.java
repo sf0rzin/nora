@@ -3,7 +3,8 @@ package br.com.nora.api.api.controllers;
 import br.com.nora.api.api.dto.tenant.TenantContextRequest;
 import br.com.nora.api.api.dto.tenant.TenantContextResponse;
 import br.com.nora.api.api.security.CurrentUser;
-import br.com.nora.api.application.iam.AuthorizationService;
+import br.com.nora.api.api.security.RequiresPermission;
+import br.com.nora.api.api.security.RequiresPermission.ResourceType;
 import br.com.nora.api.application.tenant.TenantContextException;
 import br.com.nora.api.application.tenant.TenantContextService;
 import br.com.nora.api.application.tenant.TenantContextService.ProductInput;
@@ -24,35 +25,22 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>The context is injected into the LLM prompt (companyName, valueProposition, products,
  * objectionHandling). Any tenant member able to overwrite the context without a policy check was
  * effectively manipulating the LLM prompt for EVERYONE — so we require `tenant:context:read` /
- * `tenant:context:write` (ADR 0007).
+ * `tenant:context:write` (ADR 0007) on {@code nora:tenant/{tenantId}:tenant/context}.
  */
 @RestController
 @RequestMapping("/tenant/context")
 public class TenantContextController {
 
-    private static final String ACTION_READ = "tenant:context:read";
-    private static final String ACTION_WRITE = "tenant:context:write";
-
     private final TenantContextService service;
-    private final AuthorizationService authz;
 
-    public TenantContextController(TenantContextService service, AuthorizationService authz) {
+    public TenantContextController(TenantContextService service) {
         this.service = service;
-        this.authz = authz;
-    }
-
-    private static String resource(java.util.UUID tenantId) {
-        return "nora:tenant/" + tenantId + ":tenant/context";
     }
 
     @GetMapping
+    @RequiresPermission(action = "tenant:context:read", resource = ResourceType.TENANT_CONTEXT)
     public TenantContextResponse get() {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        authz.require(
-                principal.userId(),
-                principal.tenantId(),
-                ACTION_READ,
-                resource(principal.tenantId()));
         TenantContext ctx =
                 service.find(principal.tenantId())
                         .orElseThrow(
@@ -61,13 +49,9 @@ public class TenantContextController {
     }
 
     @PutMapping
+    @RequiresPermission(action = "tenant:context:write", resource = ResourceType.TENANT_CONTEXT)
     public TenantContextResponse upsert(@Valid @RequestBody TenantContextRequest body) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        authz.require(
-                principal.userId(),
-                principal.tenantId(),
-                ACTION_WRITE,
-                resource(principal.tenantId()));
         UpsertCommand cmd =
                 new UpsertCommand(
                         body.companyName(),

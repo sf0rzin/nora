@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import br.com.nora.api.application.iam.AuthorizationService;
 import br.com.nora.api.application.speech.SpeechException;
 import br.com.nora.api.application.speech.SpeechToken;
 import br.com.nora.api.application.speech.SpeechTokenService;
@@ -36,6 +37,12 @@ class SpeechControllerTest {
 
     @MockBean private SpeechTokenService speechTokenService;
     @MockBean private JjwtJwtIssuer jwtIssuer;
+
+    // POST /speech/token declares @RequiresPermission, and the interceptor is a HandlerInterceptor
+    // — part of the @WebMvcTest slice — so it resolves the AuthorizationService on the first
+    // request. The mock allows by default (require is void), keeping this slice about the broker's
+    // HTTP contract; the IAM gate itself is proven end-to-end in the authorization coverage IT.
+    @MockBean private AuthorizationService authorizationService;
 
     @BeforeEach
     void setUp() {
