@@ -709,9 +709,9 @@ _NAME_SEQUENCE_RE = re.compile(
     f"\\b{_TITLE_WORD}(?:\\s+(?:d[aeo]s?|e)\\s+{_TITLE_WORD}|\\s+{_TITLE_WORD}){{1,7}}\\b"
 )
 
-# Generic alphabetic token (used by `_tokenize` for the negative list — it can
-# be case-insensitive because we only check against the negative list, which also
-# uses casefold).
+# Generic alphabetic token. Splits a candidate into tokens so each can be folded and looked
+# up on its own; it can be case-insensitive because every comparison downstream goes through
+# `_fold`, which casefolds as well as stripping accents.
 _WORD_RE = re.compile(f"[{_UPPER}{_LOWER}]+")
 
 # Isolated BR first name: ONLY matches Title Case (`Joao`, `Marina`). Matching
@@ -764,16 +764,6 @@ class _Match:
 
 def _hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
-
-
-def _tokenize(value: str) -> list[str]:
-    """Breaks a name candidate into alphabetic tokens (discards prefixes with a dot)."""
-    return [tok for tok in _WORD_RE.findall(value)]
-
-
-def _is_negative(value: str) -> bool:
-    """Returns True if any token of the candidate hits the negative list."""
-    return any(_fold(tok) in _PERSON_NAME_NEGATIVE_LIST for tok in _tokenize(value))
 
 
 _NAME_CONNECTIVES: frozenset[str] = frozenset(
@@ -1358,10 +1348,6 @@ _NAME_HONORIFICS: frozenset[str] = frozenset(
     )
 )
 
-# Subset that only appears before a PERSON. Job titles are left out on purpose:
-# "Gerente de Contas", "Diretor Comercial" and "Presidente do Conselho" are roles that exist
-# with nobody in the middle, and accepting them as a person signal in the trimming path turned
-# a job-title phrase into a PERSON_NAME -- with the title's hash in the redaction record.
 # The most frequent Brazilian surnames (IBGE ordering, roughly). Used only as the TAIL signal in
 # `_qualify_run`: a Title Case stretch ending in one of these is a person, even when its first
 # token is outside the 300 given names in `_BR_TOP_NAMES`. Deliberately surnames only -- adding
@@ -1477,6 +1463,10 @@ _BR_TOP_SURNAMES: frozenset[str] = frozenset(
     )
 )
 
+# Subset that only appears before a PERSON. Job titles are left out on purpose:
+# "Gerente de Contas", "Diretor Comercial" and "Presidente do Conselho" are roles that exist
+# with nobody in the middle, and accepting them as a person signal in the trimming path turned
+# a job-title phrase into a PERSON_NAME -- with the title's hash in the redaction record.
 _PERSON_ONLY_HONORIFICS: frozenset[str] = frozenset(
     _fold(h)
     for h in (

@@ -142,9 +142,11 @@ def test_negative_list_blocks_company_and_product():
 def test_negative_token_does_not_shield_the_name_next_to_it():
     """A product glued to the name cannot switch off the name redaction.
 
-    Regression: `_is_negative` was all-or-nothing -- a single negative list token
-    discarded the whole match of the Title Case sequence. Since the regex is greedy,
-    writing "Ana Souza Protheus" made "Ana Souza" come out in the clear.
+    Regression: the negative-list check used to be all-or-nothing -- a single negative list
+    token discarded the whole match of the Title Case sequence. Since the regex is greedy,
+    writing "Ana Souza Protheus" made "Ana Souza" come out in the clear. What runs now is
+    `_spans_without_negatives`, which splits the match on the offending token and qualifies
+    each remaining run on its own; this test exercises that split.
     """
     result = pii_shield.redact("Reuniao com Ana Souza Protheus na terca")
     assert "Ana Souza" not in result.redacted_text
