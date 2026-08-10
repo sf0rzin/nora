@@ -28,6 +28,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       infra: ${{ steps.filter.outputs.infra }}
       desktop: ${{ steps.filter.outputs.desktop }}
+      desktop_code: ${{ steps.filter.outputs.desktop_code }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -49,7 +50,23 @@ jobs:
             docs:
               - 'docs/**'
               - '**/*.md'
+            # TWO desktop filters, on purpose.
+            #
+            # `desktop` gates the PR-time checks and watches this workflow as well, for the
+            # same reason the `infra` filter does: a PR that changes only the desktop job
+            # matched no filter, so every desktop job skipped and ci-gate went green having
+            # verified nothing about the change it contained. Found on the commit that turned
+            # `cargo check --all-targets` into `cargo test`, which CI then did not run.
+            #
+            # `desktop_code` gates the FULL BUNDLE, which is a three-platform Tauri build with
+            # a 60-minute timeout per platform, and it deliberately does NOT watch this file:
+            # otherwise every merge that edits ci.yml for an unrelated reason — a tweak to the
+            # api job, say — would pay for three bundle builds. The compile checks are worth
+            # running on a workflow edit; the release bundle is not.
             desktop:
+              - 'apps/desktop/**'
+              - '.github/workflows/ci.yml'
+            desktop_code:
               - 'apps/desktop/**'
             # The `infra` filter stopped watching infra/bicep/** (deleted; ADR 0036) and now
             # watches the self-hosted stack — the `infra` job (below) swapped content in the
@@ -246,13 +263,33 @@ jobs:
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked --features stt-local
 
-      # `cargo check` without --all-targets never looks at #[cfg(test)] code, so a unit test in
-      # this crate could stop compiling and nothing would say so. This step type-checks the test
-      # targets too. It does NOT run them: executing them needs codegen and a link, which on this
-      # Windows runner means paying for whisper.cpp, and that is a separate CI-cost decision.
-      - name: cargo check (test targets compile)
+      # RUN the tests, do not merely type-check them. This step used to be a
+      # `cargo check --all-targets` with a comment saying executing them "means paying for
+      # whisper.cpp, and that is a separate CI-cost decision". Measured on 2026-08-10: the
+      # whisper.cpp build is a build script, so the `cargo check --features stt-local` step
+      # above already pays for it; `cargo test` adds codegen and a link, and the 21 tests
+      # themselves run in about 1.5 seconds.
+      #
+      # What was going unverified while this was a type-check: `whisper_model.rs` is the gate
+      # that stops a tampered mirror from installing a Whisper model — it hashes the download
+      # and compares against four pinned digests — and its tests had never been executed by any
+      # workflow on any platform. The same is true of the two resampler regressions, which exist
+      # because `rubato::Fft::new` takes every argument as a usize, so a wrong order compiles
+      # and then feeds silence into transcription without failing anything.
+      #
+      # `--all-targets` is kept so a test that stops COMPILING is still caught here rather than
+      # in the middle of the run.
+      - name: cargo test (runs the desktop suite)
         working-directory: apps/desktop/src-tauri
-        run: cargo check --locked --all-targets --features stt-local
+        run: cargo test --locked --all-targets --features stt-local
+
+      # `--all-targets` is `--lib --bins --tests --benches --examples` and explicitly does
+      # NOT include `--doc`, while a bare `cargo test` does. There are no doc-tests in this
+      # crate today, so this is a no-op that costs seconds — and it is here so that the first
+      # one somebody writes is not silently skipped by the flag above.
+      - name: cargo test (doc-tests, which --all-targets excludes)
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --locked --doc --features stt-local
 
   # Full desktop build (Tauri bundle msi/dmg/deb/AppImage) — runs ONLY on push to
   # main, producing publishable artifacts. On PR validation it is overkill (15-20min
@@ -267,7 +304,7 @@ jobs:
   # The sidecar logic remains covered by the pytest of the `desktop-sidecar` job.
   desktop-bundle:
     needs: changes
-    if: ${{ (needs.changes.outputs.desktop == 'true' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (needs.changes.outputs.desktop_code == 'true' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
     strategy:
       fail-fast: false
       matrix:
