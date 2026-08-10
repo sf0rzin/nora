@@ -20,7 +20,11 @@ The stack runs on a single self-hosted bare-metal Ubuntu host under Docker Compo
 
 Web, API and NLP worker are a working vertical slice, and the desktop client captures audio and transcribes it on-device.
 
-Two things to know before reading the code as production-ready. Postgres row-level security is written but **not enforced** — the policies are complete, covering every tenant-owned table, but the application still connects as the table owner and the enforcement flag defaults to off, so tenant isolation currently rests entirely on the application-layer `tenant_id` filter rather than on the two layers the ADRs describe. And `apps/web` has no test suite at all.
+Postgres row-level security **is enforced on the deployed stack** since 2026-08-10: the API connects as `nora_app`, which is `NOBYPASSRLS` and owns nothing, so the policies apply to it and the database refuses a cross-tenant read even if a query forgets its `tenant_id` predicate. The operator console reads through a separate `BYPASSRLS` role for its cross-tenant aggregate. The API refuses to start if that cutover is only half applied — including when the connection still bypasses RLS, which it checks by asking the database rather than trusting a flag.
+
+It is **off by default in the repository** (`NORA_RLS_ENFORCE` defaults to `false`), so a local `make dev` still connects as the owner and the application-layer filter is the only control there. Identity and IAM tables are exempt by design (ADR 0028): login resolves a user by global e-mail before any tenant exists, and RLS with no tenant context would fail that closed.
+
+One thing to know before reading the code as production-ready: `apps/web` has no test suite at all.
 
 ## Architecture
 
