@@ -84,6 +84,10 @@ OPTIONS
                        Default: all, in dependency order.
   --tag <tag>          Image tag to roll out (e.g.: sha-a1b2c3d). Applies to the
                        selected application services: ${APP_SERVICES[*]}.
+                       Without --service, a service that has no image at that tag is
+                       SKIPPED and stays where it is: images are published per service
+                       on path filters, so a sha- tag exists only for the services that
+                       commit touched. With --service, a missing image is an error.
   --if-changed         Only deploys if the tag's remote digest on GHCR differs from the
                        last digest recorded in the state. This is the mode used by the
                        systemd timer (nora-deploy.timer) — exits 0 doing nothing when unchanged.
@@ -135,9 +139,9 @@ contains() { local n="$1"; shift; local x; for x in "$@"; do [ "$x" = "$n" ] && 
 while [ $# -gt 0 ]; do
   case "$1" in
     --service|-s)
-      IFS=',' read -r -a _svcs <<< "${2:?--service exige um valor}"
+      IFS=',' read -r -a _svcs <<< "${2:?--service requires a value}"
       SELECTED+=("${_svcs[@]}"); shift 2 ;;
-    --tag|-t)        TAG="${2:?--tag exige um valor}"; shift 2 ;;
+    --tag|-t)        TAG="${2:?--tag requires a value}"; shift 2 ;;
     --if-changed)    IF_CHANGED=1; shift ;;
     --sync)          SYNC=1; shift ;;
     --rollback)      ROLLBACK_ONLY=1; shift ;;
@@ -145,7 +149,7 @@ while [ $# -gt 0 ]; do
     --no-rollback)   NO_ROLLBACK=1; shift ;;
     --platform)      FORCE_PLATFORM=1; shift ;;
     --no-platform)   FORCE_PLATFORM=0; shift ;;
-    --wait-timeout)  WAIT_TIMEOUT="${2:?--wait-timeout exige um valor}"; shift 2 ;;
+    --wait-timeout)  WAIT_TIMEOUT="${2:?--wait-timeout requires a value}"; shift 2 ;;
     --dry-run)       DRY_RUN=1; shift ;;
     -h|--help)       usage; exit 0 ;;
     *) err "unknown option: $1"; echo >&2; usage; exit 1 ;;
@@ -155,8 +159,12 @@ done
 umask 077
 
 # Validation of the requested services
+# TAG_IS_GLOBAL: --tag was given without --service, so it applies to every application
+# service at once. That distinction decides what a missing image means -- see deploy_service.
+TAG_IS_GLOBAL=0
 if [ "${#SELECTED[@]}" -eq 0 ]; then
   SELECTED=("${ALL_SERVICES[@]}")
+  [ -n "$TAG" ] && TAG_IS_GLOBAL=1
 else
   for s in "${SELECTED[@]}"; do
     contains "$s" "${ALL_SERVICES[@]}" || die "unknown service: '$s'. Valid: ${ALL_SERVICES[*]}"
@@ -518,6 +526,40 @@ deploy_service() {  # <service> -> 0 ok, 1 failed (after a rollback attempt)
     prev_tag=""
     new_tag=""
     log "  image pinned in compose (no managed tag)"
+  fi
+
+  # A GLOBAL --tag names a commit, not an image set. build-images.yml publishes PER SERVICE on
+  # path filters, so `sha-abc1234` exists only for the services that commit touched -- which is
+  # usually one or two of the four. Rolling everything to one SHA therefore fails for every
+  # service whose sources did not change, and reports a broken deploy when nothing is broken.
+  #
+  # So: with a global tag, a service with no image at that tag is SKIPPED and left running on
+  # what it has. With `--service X --tag Y`, the tag was aimed at X deliberately and a missing
+  # image is still an error -- that is the case where silence would hide a typo.
+  #
+  # The distinction between "the tag does not exist" and "I was not allowed to look" matters
+  # and is NOT the exit code -- `docker manifest inspect` returns non-zero for both. Discarding
+  # stderr would turn an authentication failure into "skipped, nothing to do", which is a
+  # deploy that silently did not happen. The packages are public today, so this path is
+  # theoretical; `secrets.env.example` already anticipates them going private.
+  if [ -n "$tagvar" ] && [ "$TAG_IS_GLOBAL" -eq 1 ] && [ "$new_tag" != "$prev_tag" ]; then
+    local manifest_err
+    if ! manifest_err="$(docker manifest inspect "$(image_ref_for "$svc" "$new_tag")" 2>&1 >/dev/null)"; then
+      case "$manifest_err" in
+        *"manifest unknown"*|*"not found"*|*"no such manifest"*|*"MANIFEST_UNKNOWN"*)
+          log "  skipping $svc: no image published at '$new_tag' (its sources did not change in"
+          log "  that commit). It stays on '${prev_tag:-<none>}'. Use --service $svc --tag <t> to force one."
+          return 0
+          ;;
+        *)
+          err "  could not determine whether '$new_tag' exists for $svc, and this is NOT being"
+          err "  treated as 'no image': that would skip the service and report success."
+          err "  $manifest_err"
+          err "  If the package went private, set GHCR_PULL_TOKEN (read:packages)."
+          return 1
+          ;;
+      esac
+    fi
   fi
 
   if [ "$DO_PULL" -eq 1 ]; then

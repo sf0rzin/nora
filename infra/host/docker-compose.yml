@@ -68,7 +68,7 @@ services:
     logging: *default-logging
     command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 run
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN obrigatorio}
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
     # `internal` is not for serving traffic — it is so prometheus (which only lives on
     # it) can reach the :2000 metrics. Without it the `cloudflared` job in prometheus.yml
     # gives "no such host" and the stack loses precisely the signal that the tunnel is up
@@ -132,7 +132,7 @@ services:
     environment:
       POSTGRES_DB: nora
       POSTGRES_USER: ${POSTGRES_ADMIN_USER:-nora_admin}
-      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD obrigatorio}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}
       # pt-BR locale consistent with what the Flexible Server delivered.
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
     volumes:
@@ -296,7 +296,7 @@ services:
       NORA_TELEMETRY_DATASOURCE_PASSWORD: ${NORA_TELEMETRY_DATASOURCE_PASSWORD:-}
 
       # ---- Auth ----
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET obrigatorio (min 32 chars)}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required (min 32 chars)}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       JWT_RS256_PRIVATE_KEY_PEM: ${JWT_RS256_PRIVATE_KEY_PEM:-}
       JWT_RS256_KID: ${JWT_RS256_KID:-nora-key-1}
@@ -481,8 +481,8 @@ services:
       NORA_ADMIN_USE_MOCKS: "false"
       PLATFORM_API_BASE_URL: http://api:8080
       PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_ADMIN_TOKEN:-}
-      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:?CF_ACCESS_TEAM_DOMAIN obrigatorio - sem ele access.ts faz fail-open}
-      CF_ACCESS_AUD: ${CF_ACCESS_AUD:?CF_ACCESS_AUD obrigatorio - sem ele access.ts faz fail-open}
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:?CF_ACCESS_TEAM_DOMAIN is required - without it access.ts fails OPEN}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:?CF_ACCESS_AUD is required - without it access.ts fails OPEN}
       OTEL_SERVICE_NAME: nora-admin
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     # `edge` does NOT publish a port: there is no `ports:` here and the only entry point
@@ -599,7 +599,7 @@ services:
     <<: *default-restart
     logging: *default-logging
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD obrigatorio}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: https://grafana.${NORA_PUBLIC_DOMAIN:-nora.systems}
       GF_ANALYTICS_REPORTING_ENABLED: "false"
@@ -631,7 +631,7 @@ services:
     environment:
       PGHOST: postgres
       PGUSER: ${POSTGRES_ADMIN_USER:-nora_admin}
-      PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD obrigatorio}
+      PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}
       PLATFORM_PGHOST: postgres-platform
       PLATFORM_PGPASSWORD: ${POSTGRES_PLATFORM_ADMIN_PASSWORD:-${POSTGRES_ADMIN_PASSWORD}}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
