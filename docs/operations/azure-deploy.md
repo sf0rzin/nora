@@ -48,8 +48,6 @@ Provisioned stack (see `infra/bicep/main.bicep`):
 
 Dev cost (currently provisioned): **~R$110-180/month** (see `docs/engineering/architecture.md` §12 "Stack rationale" and `docs/product/roadmap.md` Unit Economics).
 
----
-
 ## The 8 Azure for Students pitfalls (CATALOGUED)
 
 These 8 pitfalls were discovered during Sub-phase 1.9 (2026-05-13). Apply the fixes before deploying, otherwise the deploy fails.
@@ -249,8 +247,6 @@ az containerapp revision restart \
   --revision $(az containerapp show --resource-group rg-nora-dev --name nora-api-dev --query "properties.latestRevisionName" -o tsv)
 ```
 
----
-
 ## First deploy from scratch (`rg-nora-dev`)
 
 Scenario: brand-new Azure for Students subscription, nothing provisioned.
@@ -353,8 +349,6 @@ Expected URLs:
 - Web: `https://nora-web-dev.<env-suffix>.centralus.azurecontainerapps.io`
 - API: `https://nora-api-dev.<env-suffix>.centralus.azurecontainerapps.io` (health: `/actuator/health`)
 
----
-
 ## Common operations
 
 ### Turning AI Search on/off (cost ~R$13-15/day while active)
@@ -438,8 +432,6 @@ az role assignment create --assignee <APP_ID> --role Contributor --scope /subscr
 az role assignment create --assignee <APP_ID> --role "Role Based Access Control Administrator" --scope /subscriptions/<SUB_ID>/resourceGroups/rg-nora-dev
 ```
 
----
-
 ## Promoting dev → prod (Sub-phase 1.12)
 
 `rg-nora-prod` does not exist yet. Plan in `docs/operations/production-readiness-gaps.md` (7 gaps) + ADR 0016.
@@ -453,8 +445,6 @@ Summary:
 - Operational LGPD: **delivered** (ADR 0029) — `DELETE /privacy/meetings/{id}` (right to be forgotten) + scheduled `RetentionSweeper` + `PrivacyFlowIntegrationTest`. All that remains is validating retention enforcement in the prod environment.
 - Secrets rotation policy
 - Tested DR runbook (quarterly drill)
-
----
 
 ## History
 

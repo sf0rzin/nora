@@ -3,8 +3,6 @@
 > Reference document for the **Agile Methodology with Squad Framework** course
 > Sprint 1+2 · FIAP Challenge 2026 × TOTVS · Software Engineering, 2nd Year
 
----
-
 ## Actors
 
 | Actor | Type | Description |
@@ -18,19 +16,17 @@
 
 > Note: NORA AI appears in the diagram as an **internal module**, not as an external UML actor.
 
----
-
 ## Diagram
 
 ```mermaid
 graph TD
   %% ─── Estilo dos Atores ───
-  V(["👤 Visitante"])
-  UC(["👤 Usuário Core"])
-  UE(["👤 Usuário Enterprise"])
-  AE(["👤 Admin Enterprise"])
-  SE(["🔌 Serviço Externo"])
-  IDP(["🔐 Provider de Identidade"])
+  V(["Visitante"])
+  UC(["Usuário Core"])
+  UE(["Usuário Enterprise"])
+  AE(["Admin Enterprise"])
+  SE(["Serviço Externo"])
+  IDP(["Provider de Identidade"])
 
   %% ─── Casos de Uso: Acesso ───
   subgraph ACESSO["Módulo: Acesso & Identidade"]
@@ -144,8 +140,6 @@ graph TD
   CU04 --> IDP
 ```
 
----
-
 ## Narrative Description of the Use Cases
 
 ### UC01 — Create account
@@ -158,8 +152,6 @@ graph TD
 4. A Core (Free) account is created
 **Post-condition:** The user is authenticated with access to the Core panel
 
----
-
 ### UC02 — Log in
 **Primary actor:** Core User
 **Pre-condition:** An account was previously created
@@ -168,8 +160,6 @@ graph TD
 2. Enters e-mail and password
 3. NORA validates the credentials and returns a JWT token
 4. The user is redirected to the dashboard
-
----
 
 ### UC04 — Corporate SSO login
 **Primary actor:** Enterprise User / Enterprise Admin
@@ -182,8 +172,6 @@ graph TD
 4. NORA receives the callback and builds the session with the tenant roles
 **Extension:** If SSO is not configured, fall back to login by corporate e-mail
 
----
-
 ### UC05 — Upload of transcript / recording
 **Primary actor:** Core User
 **Pre-condition:** Authenticated user
@@ -193,8 +181,6 @@ graph TD
 3. NORA processes it through the NLP pipeline (UC23 → UC24 → UC25)
 4. The result is available on the panel within 30 seconds
 **Extension:** `.mp3/.mp4` upload comes post-MVP and includes automatic transcription (UC22)
-
----
 
 ### UC06 — Live capture via Desktop App
 **Primary actor:** Core User
@@ -206,8 +192,6 @@ graph TD
 4. Context and partial notes appear in the side panel
 5. When it ends, NORA generates the full report
 
----
-
 ### UC16 — Configure company context
 **Primary actor:** Enterprise Admin
 **Pre-condition:** Active tenant
@@ -216,8 +200,6 @@ graph TD
 2. Describes the company, products, internal glossary and key stakeholders
 3. NORA uses this context as the base instruction when processing the tenant's meetings (UC26)
 4. The context is versioned (change history)
-
----
 
 ### UC17 — Invite and manage users
 **Primary actor:** Tenant root (Enterprise Admin)
@@ -228,8 +210,6 @@ graph TD
 3. (Optional) adds the user to one or more existing groups (see UC18C)
 4. The user receives the invitation, sets a password and accesses only what their IAM policies allow
 
----
-
 ### UC18 — Create IAM groups
 **Primary actor:** Tenant root
 **Pre-condition:** Active tenant
@@ -237,8 +217,6 @@ graph TD
 1. The root goes to "Configurações > IAM > Grupos"
 2. Creates a new group (e.g. "Vendas-SP", "Auditores")
 3. The group becomes available for policy attachment (UC18B) and member addition (UC18C)
-
----
 
 ### UC18A — Create and version IAM policies (JSON)
 **Primary actor:** Tenant root
@@ -250,8 +228,6 @@ graph TD
 4. Each change creates a new version (immutable history)
 **Extension:** The root may start from optional **templates** ("ReadOnlyAccess", "MeetingAnalystAccess") as a starting point.
 
----
-
 ### UC18B — Attach policies to groups/users
 **Primary actor:** Tenant root
 **Main flow:**
@@ -259,16 +235,12 @@ graph TD
 2. Attaches it to one or more groups (recommended) or to a specific user
 3. The system updates permissions immediately; the next requests already reflect the new state
 
----
-
 ### UC18C — Add/remove users in groups
 **Primary actor:** Tenant root
 **Main flow:**
 1. The root opens the desired group
 2. Adds or removes member users
 3. The resulting permissions are re-evaluated on the next request of each affected user
-
----
 
 ### UC28 — Evaluate productivity vs. declared goal (opt-in)
 **Primary actor:** Core User / Enterprise User
@@ -281,8 +253,6 @@ graph TD
 5. The result is visible in the meeting detail
 **Extension (post-MVP):** Instead of the manual `projectStateSnapshot`, NORA pulls the project state via MCP from Jira / Linear / Azure DevOps / GitHub Projects.
 
----
-
 ### UC29 — Evaluate Customer Confidence (Enterprise)
 **Primary actor:** Enterprise User (AE)
 **Pre-condition:** The meeting is linked to a `customer_account`; the tenant is Enterprise
@@ -293,8 +263,6 @@ graph TD
 4. Persists signals and objections with the verbatim quote
 **Result:** the indicator is available in the meeting detail and in the account panel.
 
----
-
 ### UC30 — Update Account Health Score (Enterprise)
 **Primary actor:** System (triggered by UC29)
 **Pre-condition:** A new Customer Confidence has been persisted
@@ -304,8 +272,6 @@ graph TD
 3. Persists a snapshot with a reference to the analysis that triggered it
 4. If the band changed for the worse, it triggers an alert to the authorized users (US51)
 **Result:** the account health time series is updated.
-
----
 
 ## Include and Extend Relationships
 

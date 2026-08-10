@@ -36,8 +36,6 @@ permission model in v1; it is all-or-nothing by token.)
 
 `X-Internal-Token` compared with `MessageDigest.isEqual` (constant-time). Tokens are never logged.
 
----
-
 ## 2. `/internal/platform/*` — service-to-service (hot-path)
 
 ### GET `/internal/platform/llm-config?service={chat|analysis|multimodal}`
@@ -89,8 +87,6 @@ log) — the caller does not notice. Invalid validation → **400**.
 > **The ANALYSIS path does not use this endpoint:** the API emits the analysis usage **in-process**
 > (`AnalysisService` → `UsageRecorder`), because it already has `tenantId` + tokens + model from the worker's
 > `metadata`. This POST is for the **chat BFF** (and future external callers such as multimodal).
-
----
 
 ## 3. `/admin/platform/*` — operator console (via nora-admin)
 
@@ -179,8 +175,6 @@ operator-only):
 - **v1:** `productivityAvg`/`customerConfidenceAvg` may come back `null` (not computed yet); the
   consumer must tolerate it. `analyses`/`tenantsActive` are real. RLS caveat: see the runbook /
   production-readiness-gaps (under RLS enforce, this cross-tenant read requires a BYPASSRLS role).
-
----
 
 ## 4. Integration notes (for the other Opus)
 

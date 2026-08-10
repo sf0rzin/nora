@@ -7,8 +7,6 @@
 >
 > **Note (scope of this doc):** the migrations after V016 — Customer Confidence (delivered full-stack), full/auth-aware-scope RLS, invitation token hash and `meeting_embeddings` (semantic search) — have not yet been mapped to Oracle syntax. This is a debt of the academic mirror, not of the product: the features are delivered and documented in the canonical Postgres schema in `data-model.md` (Customer Confidence in `§2.29-2.33`).
 
----
-
 ## 1. `TENANTS`
 
 ```sql
@@ -43,8 +41,6 @@ CREATE INDEX idx_tenants_deleted_at ON tenants (deleted_at);
 ```
 
 > **Soft-delete (V013)**: the tenant-owned entities `tenants`, `users`, `tenant_contexts` and `meetings` gain `deleted_at`. The backend annotates each `@Entity` with **`@SQLRestriction("deleted_at IS NULL")`**, so every Spring Data query filters to live records by default — the Hibernate equivalent of the `WHERE deleted_at IS NULL` filter. Hard-delete remains possible via native query (LGPD right to be forgotten / retention).
-
----
 
 ## 2. `USERS`
 
@@ -97,8 +93,6 @@ CREATE UNIQUE INDEX uq_users_root_per_tenant
     ON users (CASE WHEN is_root = 1 THEN tenant_id END);
 ```
 
----
-
 ## 3. `ROLES` and `USER_ROLES` (legacy, **not used**)
 
 ```sql
@@ -130,8 +124,6 @@ CREATE TABLE user_roles (
 CREATE INDEX idx_user_roles_tenant ON user_roles (tenant_id);
 ```
 
----
-
 ## 4. `EMAIL_VERIFICATION_TOKENS`
 
 ```sql
@@ -153,8 +145,6 @@ CREATE INDEX idx_email_verif_tokens_user    ON email_verification_tokens (user_i
 CREATE INDEX idx_email_verif_tokens_expires ON email_verification_tokens (expires_at);
 ```
 
----
-
 ## 5. `PASSWORD_RESET_TOKENS`
 
 ```sql
@@ -175,8 +165,6 @@ CREATE TABLE password_reset_tokens (
 CREATE INDEX idx_pwd_reset_tokens_user    ON password_reset_tokens (user_id);
 CREATE INDEX idx_pwd_reset_tokens_expires ON password_reset_tokens (expires_at);
 ```
-
----
 
 ## 6. `MEETINGS`
 
@@ -226,8 +214,6 @@ CREATE SEARCH INDEX idx_meetings_attributes_jsi
     ON meetings (attributes) FOR JSON;
 ```
 
----
-
 ## 7. `MEETING_PARTICIPANTS`
 
 ```sql
@@ -249,8 +235,6 @@ CREATE INDEX idx_meeting_participants_meeting ON meeting_participants (meeting_i
 CREATE INDEX idx_meeting_participants_tenant  ON meeting_participants (tenant_id);
 ```
 
----
-
 ## 8. `MEETING_TAGS`
 
 ```sql
@@ -266,8 +250,6 @@ CREATE TABLE meeting_tags (
 
 CREATE INDEX idx_meeting_tags_tenant_tag ON meeting_tags (tenant_id, tag);
 ```
-
----
 
 ## 9. `TRANSCRIPTS`
 
@@ -290,8 +272,6 @@ CREATE TABLE transcripts (
 
 CREATE INDEX idx_transcripts_tenant ON transcripts (tenant_id);
 ```
-
----
 
 ## 10. `TENANT_CONTEXTS`
 
@@ -322,8 +302,6 @@ CREATE INDEX idx_tenant_contexts_tenant ON tenant_contexts (tenant_id);
 -- Apoia o filtro default deleted_at IS NULL do @SQLRestriction (Spring) — V013.
 CREATE INDEX idx_tenant_contexts_deleted_at ON tenant_contexts (deleted_at);
 ```
-
----
 
 ## 11. `MEETING_ANALYSES` and children
 
@@ -447,8 +425,6 @@ CREATE TABLE meeting_opportunities (
 CREATE INDEX idx_meeting_opportunities_analysis ON meeting_opportunities (analysis_id);
 CREATE INDEX idx_meeting_opportunities_tenant   ON meeting_opportunities (tenant_id);
 ```
-
----
 
 ## 12. AWS-style IAM
 
@@ -583,8 +559,6 @@ CREATE INDEX idx_iam_audit_events_tenant_created
     ON iam_audit_events (tenant_id, created_at DESC);
 ```
 
----
-
 ## 13. Invitations and refresh tokens
 
 ```sql
@@ -654,8 +628,6 @@ CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens (token_hash);
 -- Lookup pela family para revogar toda a cadeia em reuse (V014).
 CREATE INDEX idx_refresh_tokens_family ON refresh_tokens (family_id);
 ```
-
----
 
 ## 14. Productivity Score
 
@@ -727,8 +699,6 @@ CREATE TABLE meeting_outcome_coverage (
 CREATE INDEX idx_meeting_outcome_coverage_assessment ON meeting_outcome_coverage (assessment_id);
 ```
 
----
-
 ## 15. Notable Postgres ↔ Oracle differences
 
 | Topic | Postgres | Oracle |
@@ -747,8 +717,6 @@ CREATE INDEX idx_meeting_outcome_coverage_assessment ON meeting_outcome_coverage
 | **Cascade FK** | `ON DELETE CASCADE` / `ON DELETE RESTRICT` / `ON DELETE SET NULL` | identical (`ON DELETE CASCADE`, `ON DELETE SET NULL`; **`RESTRICT` does not exist** — the default behavior with no clause is equivalent to `NO ACTION`/`RESTRICT`). |
 | **Composite FK** | `FOREIGN KEY (a, b) REFERENCES t(a, b)` (the target needs a composite UNIQUE/PK) | identical — Oracle supports composite FKs natively; the target is the `UNIQUE (tenant_id, id)` (V015, §2). |
 | **Row-Level Security** | `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + `CREATE POLICY … USING (…) WITH CHECK (…)`; context via a session GUC (`SET LOCAL`) + `NOBYPASSRLS` role (V016) | **VPD/FGAC**: `DBMS_RLS.ADD_POLICY` + a PL/SQL policy function that returns the predicate; context via an application context (`SYS_CONTEXT`); bypass via the `EXEMPT ACCESS POLICY` privilege. See §18. |
-
----
 
 ## 16. Portability observations
 
@@ -776,8 +744,6 @@ END;
 
 - **Extensions**: the Oracle equivalent of `CREATE EXTENSION IF NOT EXISTS "pgcrypto"` is nothing — `SYS_GUID()` is available by default.
 
----
-
 ## 17. Oracle ≡ Postgres inventory
 
 | # | Table | Postgres (migration) | Oracle (§ in this doc) |
@@ -802,8 +768,6 @@ END;
 | 18 | Row-Level Security (RLS → VPD/DBMS_RLS) | V016 | §18 |
 
 > `tenants.allowed_email_domain` (V009) is included in §1.
-
----
 
 ## 18. Row-Level Security (V016) — Oracle equivalent: VPD / DBMS_RLS
 

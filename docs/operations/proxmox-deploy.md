@@ -15,8 +15,6 @@
 > named `nora-prod` from the start — the cosmetic rename that stayed pending on Azure (`dev` = production)
 > is not repeated here.
 
----
-
 ## Overview
 
 A Debian VM on Proxmox runs the whole stack with Docker Compose (project `nora`), defined in
@@ -68,8 +66,6 @@ Replacement map, for those coming from Azure:
 - [ ] Supporting files present in `infra/proxmox/`: `caddy/Caddyfile`, `postgres/init/*.sql`,
       `observability/{otel-collector.yaml,prometheus.yml,loki.yaml,config.alloy,grafana/provisioning/}`,
       `backup/run-backup.sh`, `scripts/deploy.sh`.
-
----
 
 ## The 9 self-hosting pitfalls (CATALOGUED)
 
@@ -260,8 +256,6 @@ fine".
 
 **Fix:** swap the JAR for `opentelemetry-javaagent.jar` and **republish the image**. That is why it is the first
 item in the blockers.
-
----
 
 ## First deployment from scratch
 
@@ -725,8 +719,6 @@ docker compose -p nora --profile platform exec admin printenv CF_ACCESS_AUD   # 
 complete cutover order, including what to do on Azure before and after, is in
 [`azure-decommission.md`](azure-decommission.md).
 
----
-
 ## Common operations
 
 ### Rolling out a new version
@@ -831,8 +823,6 @@ Unchanged in design (ADR 0026/0028). What changes is the endpoint: where the
 role provisioning runs through the local `psql` instead of the `rls-cutover.yml` workflow — which
 depended on a runner firewall rule and OIDC, and no longer applies.
 
----
-
 ## Rollback
 
 Three levels. Choose based on what broke, not on what is fastest.
@@ -887,8 +877,6 @@ Proxmox → nora-prod → Snapshots → selecionar → Rollback
 **Before reverting, copy `/srv/nora/backups` off the VM.** Without that you trade a host problem
 for data loss.
 
----
-
 ## Restore drill
 
 **Quarterly**, inherited from ADR 0016 Gap 3. What changes: previously the RTO was guaranteed by the Flexible
@@ -915,8 +903,6 @@ Server's PITR; now it is **a manual procedure**. An RTO that is never measured i
 
 > If the measured RTO exceeds 2h (the ADR 0016 Gap 3 target), either the target is wrong or the procedure
 > is. **Fix one of the two the same day** — do not leave the divergence documented and alive.
-
----
 
 ## History
 

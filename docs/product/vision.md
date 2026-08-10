@@ -4,8 +4,6 @@
 >
 > For the **Agile Methodology with Squad Framework** course (Sprint 1+2, FIAP Challenge 2026 × TOTVS) this doc serves as the main Vision Statement.
 
----
-
 ## 1. Vision Statement
 
 > *Geoffrey Moore format — the market standard for product vision in Agile*
@@ -18,13 +16,11 @@
 
 **NORA** is a conversational intelligence SaaS platform with two complementary plans — **Core** and **Enterprise** — and three integrated surfaces: web, desktop and API/MCP,
 
-**THAT** automatically processes meeting transcripts and delivers, in seconds, structured summaries, action items and, for commercial teams, advanced signals of opportunity, risk and account health — with context calibrated to the customer's own business, native integration via the **Model Context Protocol (MCP)**, enterprise-grade IAM and full LGPD compliance,
+**THAT** automatically processes meeting transcripts and delivers, in seconds, structured summaries, action items and, for commercial teams, advanced signals of opportunity, risk and account health — with context calibrated to the customer's own business, native integration via the **Model Context Protocol (MCP)**, an IAM model with users, groups and policies, and LGPD compliance,
 
 **UNLIKE** generic transcription tools (Otter.ai, Fireflies) or international Sales Intelligence platforms (Gong, Clari) that use generic knowledge, do not speak Portuguese natively and do not respect Brazilian data protection legislation,
 
 **NORA** is the only conversational intelligence platform that learns each company's vocabulary, products and context — making any organisation capable of extracting real intelligence from its own meetings, regardless of sector or ecosystem. It starts as a personal copilot (Core, freemium) and evolves into a complete revenue engine for teams (Enterprise), with natural bottom-up adoption *(Product-Led Growth)*.
-
----
 
 ## 2. The Platform: Core and Enterprise
 
@@ -59,8 +55,6 @@ NORA is a platform with two plans that share the same AI engine and infrastructu
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
----
-
 ## 3. Current State (2026-06-06)
 
 NORA is no longer in the scaffolding phase nor in pure Sprint 1+2 documentation. **It is deployed on Azure** and operational end-to-end in the MVP's central flows:
@@ -80,8 +74,6 @@ The durable decisions are documented in the ADRs (canonical index: `docs/adr/REA
 
 To understand the previous state (Sprint 1+2 documentation) consult the document history at the end of this file and `docs/product/roadmap.md`.
 
----
-
 ## 4. Is — Is Not table
 
 > *Defines what the product IS and what it must NEVER be confused with.*
@@ -98,8 +90,6 @@ To understand the previous state (Sprint 1+2 documentation) consult the document
 | **Integration** | A platform that is **open via MCP**: data *leaves* NORA for the tools the user already uses | A closed system that requires replacing the existing tools |
 | **Data** | An **LGPD-first** system: PII is detected and redacted before any external LLM, with explicit consent | A platform that stores or shares third-party conversation data |
 | **Model** | A SaaS with an **individual freemium** (Core) evolving into **paid enterprise** via PLG | A product that requires a corporate purchase as its entry point |
-
----
 
 ## 5. Does — Does Not table
 
@@ -123,8 +113,6 @@ To understand the previous state (Sprint 1+2 documentation) consult the document
 | **Desktop** | **Tauri 2 app** (Rust + Python sidecar) with system audio capture. **Windows via WASAPI** (official v1) · **macOS via BlackHole** (virtual audio driver; native ScreenCaptureKit is in debt as a nice-to-have) · **Linux via PulseAudio** | It is not a videoconference plugin. It does not run on mobile in the MVP |
 | **Multi-tenancy** | **Isolation per organisation** via `tenant_id` in every table + application filter (ADR 0002), with **Postgres RLS** (schema in V016, full RLS + auth-aware scope in V019/V020) and a **composite isolation FK (V015)** as defence in depth. Reproducible Bicep IaC | What remains is the operational RLS cutover/enforcement in prod (runbook in ADR 0026/0028); the schema is already delivered. Does not offer on-premises installation in the MVP |
 | **Compliance** | **LGPD by design and operational** (ADR 0029): consent, audited record and **right to be forgotten delivered** — `DELETE /privacy/meetings/{id}` + scheduled `RetentionSweeper` | Does not carry out DPIAs automatically — a manual action by the customer's DPO |
-
----
 
 ## 6. IAM — Enterprise Access Control
 
@@ -150,8 +138,6 @@ Empresa (Tenant)
 
 **Evaluation order:** Root bypass → explicit Deny → applicable Allow → Default Deny.
 
----
-
 ## 7. Why MCPs change the game
 
 The **Model Context Protocol (MCP)** is an open standard that lets NORA connect to external tools in a secure and standardised way — without fragile integrations or maintenance of ad-hoc webhooks. For the user, it means NORA "talks" to the tools they already use:
@@ -172,8 +158,6 @@ This eliminates the main friction in adopting productivity tools: double data en
 
 > In the current MVP no MCP server is implemented. MCPs remain a roadmap concept (post-MVP commercial).
 
----
-
 ## 8. Value Proposition per Plan
 
 **NORA Core:**
@@ -181,8 +165,6 @@ This eliminates the main friction in adopting productivity tools: double data en
 
 **NORA Enterprise:**
 > *"Configure NORA with your business's vocabulary and turn every customer meeting into actionable intelligence: see opportunities before the competitor, detect churn weeks in advance and know exactly what the next step is — in your sector, with your products, in your language."*
-
----
 
 ## 9. Personas
 
@@ -193,8 +175,6 @@ Three reference personas guide product decisions:
 - **Rafael** — Enterprise AE. A salesperson who needs to read opportunity and risk signals in every conversation with a customer
 
 Full details, empathy maps, pains and gains: `docs/challenge/personas-and-empathy-map.md`.
-
----
 
 ## 10. Market Context
 
@@ -213,8 +193,6 @@ Full details, empathy maps, pains and gains: `docs/challenge/personas-and-empath
 - ↑ Churn detection 30–60 days in advance.
 - ↑ Rate of upsell captured vs. identified (today estimated at < 20%).
 
----
-
 ## 11. Upcoming Sub-phases
 
 Details in `docs/product/roadmap.md`. Summary:
@@ -222,8 +200,6 @@ Details in `docs/product/roadmap.md`. Summary:
 - **1.11 — Demo Polish Plan A** (in progress): Customer Confidence (#148), AUTH_FILTER_HARD_CAP removed (batched scanning in `MeetingService.listAllForAuthFilter`) and `PolicyEvaluator` expansion (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`) delivered; what remains is polished internal UX + synthetic dataset + demo script
 - **1.12 — Production Hardening**: dedicated production RG (`rg-nora-prod`) + operational cutover/enforcement of Postgres RLS in prod + monitoring alerts + DR runbook + secrets rotation + test coverage targets (ADR 0018 to be created). Operational LGPD has already been delivered (ADR 0029)
 - **1.13+** — Post-TOTVS pitch (15/06+): depends on the outcome of Plan A. Scenarios: pitch dossier / due diligence (Plan A) · Plan C content + Plan B commercial pivot
-
----
 
 ## Document History
 

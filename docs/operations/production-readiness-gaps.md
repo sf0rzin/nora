@@ -6,8 +6,6 @@
 >
 > **Context:** the current `rg-nora-dev` environment (`centralus`, 14 resources, 4 secrets in the KV, 8 Azure pitfalls catalogued) deploys NORA successfully. But **dev ≠ prod**. Seven areas have gaps that need to be addressed before NORA takes commercial traffic or exposes real customer data.
 
----
-
 ## Gap 1 — Bicep `prod.bicepparam` does not exist
 
 **Current situation:** `infra/bicep/main.dev.bicepparam` is the only parameters file. It points to `rg-nora-dev`, region `centralus`, `enableSearch=false`, secrets coming from local env vars (generated randomly for dev).
@@ -25,8 +23,6 @@
   - `min replicas = 1` on **all** Container Apps (warm-up — scale-to-zero produces bad UX in prod)
 - Secrets via env vars **from another Service Principal scoped to `rg-nora-prod`** (do not reuse the dev SP)
 - Bicep params validated via `az deployment group what-if` before `create`
-
----
 
 ## Gap 2 — Migrations safety strategy missing
 
@@ -50,8 +46,6 @@ Initial recommendation: **option (1)** for MVP/Pilot, evolving to **(3)** at GA.
 
 ADR 0016 documents the choice.
 
----
-
 ## Gap 3 — Backup RTO/RPO not formalised, restore not tested
 
 **Current situation:** Postgres Flexible Server has a default automatic backup (point-in-time recovery — PITR) with 7 days of retention. The Storage Account has 7-day soft-delete (configured in Bicep). Key Vault soft-delete 7 days (configured).
@@ -69,8 +63,6 @@ ADR 0016 documents the choice.
    - Validate that the app connects to the restore (temporarily update `DATASOURCE_URL`)
    - Document the real measured time in `docs/operations/disaster-recovery-runbook.md`
 3. **Define the frequency:** drill once per quarter in a mirror environment
-
----
 
 ## Gap 4 — Monitoring + alerting not wired
 
@@ -100,8 +92,6 @@ ADR 0016 documents the choice.
    - p95 latency of `/meetings/{id}`: <1.5s
    - Async LLM analysis: 95% completed in <60s
 
----
-
 ## Gap 5 — Operational LGPD — DELIVERED (ADR 0029)
 
 **Current situation:** PII Shield in the worker (redacts email, CPF, CNPJ, phone, card, BR person_name before sending to the LLM). Multi-tenancy guarantees isolation by `tenant_id`. httpOnly cookies. The operational LGPD layer has been **delivered** via **ADR 0029**:
@@ -123,8 +113,6 @@ This gap is no longer Sub-phase 1.12 debt.
 2. Endpoint `DELETE /privacy/meetings/{id}` delivered (right to be forgotten by data subject/tenant).
 3. Administrative endpoint for full tenant deletion (Root only) — future operational refinement.
 4. `docs/security/lgpd-operations.md` with an incident runbook: detection, escalation, ANPD communication if >50 data subjects are affected — future operational refinement.
-
----
 
 ## Gap 6 — Disaster recovery scenario "RG deleted by mistake"
 
@@ -154,8 +142,6 @@ This gap is no longer Sub-phase 1.12 debt.
    - Single-region MVP: accepts the downtime
    - Future (GA): geo-redundancy via Postgres geo-replica + Front Door
 
----
-
 ## Gap 7 — Secrets rotation policy missing
 
 **Current situation:** current secrets in the KV:
@@ -177,8 +163,6 @@ This gap is no longer Sub-phase 1.12 debt.
 
 A dedicated workflow `.github/workflows/rotate-secrets.yml` with a monthly cron can automate part of it.
 
----
-
 ## Summary
 
 | Gap | Effort | Successor ADR? |
@@ -196,8 +180,6 @@ A dedicated workflow `.github/workflows/rotate-secrets.yml` with a monthly cron 
 
 Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Customer Confidence (#148), the AUTH_FILTER fix (silent 500 ceiling removed via batched scanning) and PolicyEvaluator (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`). Remaining are (e) seed and (f) demo script, which do not block 1.12.
 
----
-
 ## Gap 8 — Control plane: business telemetry breaks silently under RLS enforce
 
 **Current situation:** the control plane (ADR 0022/0024) has the **business** telemetry front (cuttable) reading the **primary** database cross-tenant via `PrimaryDbBusinessMetricsSource` (`COUNT(*)` / `COUNT(DISTINCT tenant_id)` on `meeting_analyses`), **without** tenant context — an intentional operator-only aggregation. It works today because the primary datasource runs as the owner role (BYPASSRLS) with `NORA_RLS_ENFORCE=false`.
@@ -209,8 +191,6 @@ Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Custom
 - Give the operator-only read a dedicated **BYPASSRLS** path: either a telemetry role with `BYPASSRLS`, or a `SECURITY DEFINER` view/function owned by a privileged role with `GRANT SELECT` to `nora_app`. The cross-tenant aggregation is intentional and operator-only.
 - Minimal alternative: detect the state and return `enabled:false` (instead of `enabled:true` with zeros) when the cross-tenant read is not possible — that way the operator sees "unavailable", not "a real zero".
 - Documented in the Javadoc of `PrimaryDbBusinessMetricsSource` and in the contract (§3). Cost: S. **Does not block v1** (enforce=false today).
-
----
 
 ## History
 

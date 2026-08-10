@@ -3,8 +3,6 @@
 > Operational guide for humans and AI agents programming NORA.
 > Defines conventions, structure, patterns and tooling. Updated to reflect the **actual state of the code** — not promises.
 
----
-
 ## 1. Engineering Principles
 
 1. **Vertical slice before expansion.** Delivering one small complete flow > opening several incomplete fronts.
@@ -15,8 +13,6 @@
 6. **Horizontal product.** Zero hardcoded rules for TOTVS. Each tenant configures its own context.
 7. **Security by default.** PII is redacted before any external LLM call (ADR 0012).
 8. **Living documentation.** Durable decision → `docs/adr/`. Transient detail → issue/PR/private vault.
-
----
 
 ## 2. Confirmed stack
 
@@ -36,8 +32,6 @@
 ### MVP Scope Decision
 
 Focus on the **Web + Backend + NLP Worker** slice. Desktop, SSO, audio/video upload, full MCPs and native Salesforce come post-MVP.
-
----
 
 ## 3. Folder structure
 
@@ -80,8 +74,6 @@ nora/
 - **`packages/shared-contracts/`** contains the real shared contracts (`error-codes.md`, `pii-types.json`, `processing-status.json`, `README.md`); full HTTP contracts live in `docs/api/`.
 - **MCPs (calendar, tasks, crm)** remain deferred post-MVP via ADR 0014 (defer commercial gate) as a roadmap concept. There is no `mcp/` folder in the monorepo. ADR 0001 (monorepo) mentions the foreseen structure; reactivation is conditional on the first paying tenant asking for an integration.
 
----
-
 ## 4. Where to store each piece of information
 
 | Information | Location |
@@ -108,8 +100,6 @@ nora/
 | Academic notebooks | `notebooks/` |
 | Example environment variables | `.env.example` in each app/service |
 | Real secrets | **Never in Git.** `.env.local` in dev; Azure Key Vault in prod |
-
----
 
 ## 5. Backend — Java/Spring Boot
 
@@ -179,8 +169,6 @@ services/api/src/main/java/br/com/nora/api/
 - Infrastructure: integration tests with Testcontainers (real Postgres).
 - API: `@SpringBootTest` or `@WebMvcTest`. Minimum coverage includes denied authorization paths (403/404).
 
----
-
 ## 6. Database
 
 ### Conventions
@@ -213,8 +201,6 @@ updated_at timestamptz not null default now()
 - Naming: `V001__create_tenants.sql`, `V002__create_users_and_roles.sql`, etc.
 - **A migration is never edited after being applied** — always create a new version (forward-only).
 - See `docs/engineering/data-model.md` for the full migration map (through V021: V018 invitation token hash, V019/V020 full RLS + auth-aware scope, V021 `meeting_embeddings`). Single source of truth for the schema.
-
----
 
 ## 7. NLP Worker — Python/FastAPI
 
@@ -274,8 +260,6 @@ Canonical schema in `docs/api/llm-schemas/meeting-analysis-v1.schema.json`. It i
 - Never log the raw transcript with PII.
 - An LLM failure produces a controlled error, **not an exposed stack trace**.
 
----
-
 ## 8. Frontend — Next.js (raw Tailwind)
 
 ### Organization
@@ -319,8 +303,6 @@ apps/web/src/
 
 `apps/web/src/lib/api/client.ts` uses `NEXT_PUBLIC_USE_MOCKS=true` by default (also in CI). To point at the real backend, set `NEXT_PUBLIC_USE_MOCKS=false` and `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080`.
 
----
-
 ## 9. Testing
 
 | Layer | Minimum tests |
@@ -339,7 +321,7 @@ apps/web/src/
 | NLP Worker | > 85% (current: 87%) |
 | **Backend branch coverage** | > 70% (current: 53%) |
 | Web Next.js | TBD (no runner yet; target after Sub-phase 1.11+) |
-| Desktop Python sidecar | out of scope (another architect) |
+| Desktop client | out of scope here (maintained by @pollotherunner) |
 
 **Current state (2026-05-13):**
 
@@ -359,8 +341,6 @@ A story is only DONE when:
 - No secret or sensitive data in the commit.
 - Documentation adjusted if a contract, architecture or scope changed.
 - The PR was reviewed by another person **or by AI in review mode** + human validation.
-
----
 
 ## 10. Git, Issues and PRs
 
@@ -389,8 +369,6 @@ Each PR contains:
 - Security/multi-tenant risks (even if it is "none, visual change").
 - Screenshots when it is UI.
 
----
-
 ## 11. Use of AI in the project
 
 ### Before asking for code
@@ -417,8 +395,6 @@ Ancore cada afirmação técnica em path:linha ou ADR.
 
 - **Opus models**: architecture, security review, data modeling, critical refactors, contract design, ADRs.
 - **Sonnet models**: focused implementation, tests, UI components, CRUD, fixtures, localized documentation.
-
----
 
 ## 12. ADRs as reference
 
@@ -464,8 +440,6 @@ When to create an ADR:
 - A decision that will surprise whoever arrives later.
 - A decision taken after discarding at least **one real alternative**.
 
----
-
 ## 13. Relevant technical notes (post-initial-MVP updates)
 
 ### PII Shield with PERSON_NAME (ADR 0012)
@@ -497,8 +471,6 @@ The desktop calls `POST /speech/token` (JWT-authenticated) and receives an ephem
 The `web` job in `.github/workflows/ci.yml` uses **`npm ci`** (npm cache via `package-lock.json`), consistent with `apps/web/Dockerfile` (`npm ci` → deployed image), the `Makefile` and the committed `package-lock.json`. `apps/web` is an **npm** project (there is no `pnpm-lock.yaml` nor a `packageManager` field).
 
 History: until 2026-05-21 the job used `pnpm install --no-frozen-lockfile`, which **ignored** `package-lock.json` and resolved its own dependency tree — that is, CI validated something potentially different from the artifact the Dockerfile builds and deploys. The previous doc falsely claimed that "PR #73 unified" it on npm. Fixed by aligning CI to npm.
-
----
 
 ## 14. Expected quality
 

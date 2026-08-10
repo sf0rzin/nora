@@ -1,6 +1,5 @@
 # NORA
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-15171a.svg)](LICENSE)
 [![CI](https://github.com/sf0rzin/nora/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sf0rzin/nora/actions/workflows/ci.yml)
 
 Conversation intelligence for meetings: NORA turns a transcript into what the meeting actually produced.

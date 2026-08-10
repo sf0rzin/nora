@@ -13,8 +13,6 @@
 > is not trivial is the sequence. Step 5 is irreversible — but, in this project, what it
 > destroys is replaceable infrastructure, not irreplaceable data. See below.
 
----
-
 ## What this runbook does NOT need to do
 
 **There is no data to rescue.** NORA is an educational project (FIAP Challenge 2026 × TOTVS):
@@ -39,8 +37,6 @@ This eliminates the most expensive and most nerve-racking part of a decommission
 > recoverable without the database. In that scenario, a verified dump before anything else goes back to being
 > step 1. Version 1.0 of this document, in the git history, has that procedure.
 
----
-
 ## The safe order
 
 ```
@@ -63,8 +59,6 @@ different from what was expected.
 | 3-4 | partially | credentials can be recreated; federated credentials, redone |
 | **5 (RG delete)** | **NO** | but what is lost is infrastructure declared in `infra/bicep/`, recreatable |
 | 6 | yes | it is versioned code |
-
----
 
 ## Step 0 — Diagnosis: which scenario are you in
 
@@ -94,8 +88,6 @@ On 2026-08-07 both returned a connection error — the origin is down, not a Clo
 problem. If it stays that way, **skip step 3** (observation period with Azure still
 standing): there is nothing standing to observe, and there is no rollback to Azure.
 
----
-
 ## Step 1 — Validate Proxmox serving traffic (still WITHOUT DNS)
 
 The complete procedure is in [`proxmox-deploy.md`](proxmox-deploy.md) — what stays here are
@@ -124,8 +116,6 @@ Exit gates (all mandatory):
 
 **If any of these fails, stop.** Nothing here has a deadline: Azure is already down, so there is
 neither a service degrading nor charges accruing while you investigate.
-
----
 
 ## Step 2 — DNS cutover
 
@@ -182,8 +172,6 @@ Re-point the hostname to the old Container App FQDN (with Azure still standing).
 why step 5 comes **after** an observation period — Azure is your safety
 net during step 3.
 
----
-
 ## Step 3 — Observation period (Azure stays standing)
 
 **Suggested minimum: 7 days** with the new stack serving 100% of the traffic and Azure still
@@ -216,8 +204,6 @@ az postgres flexible-server stop -g rg-nora-dev -n nora-pg-platform-dev-wgl3a3
 
 > **Stopping is not deleting.** While the RG exists, a new `pg_dump` is still possible (just
 > `start` it). It is exactly that option that step 5 eliminates.
-
----
 
 ## Step 4 — Clean up credentials
 
@@ -319,8 +305,6 @@ az ad app delete --id <APP_ID>
 - [ ] **Create** the Access Application for `grafana.nora.systems` (new public route)
 - [ ] Review `CLOUDFLARE_API_TOKEN`: the permissions are still correct for the new tunnel
 
----
-
 ## Step 5 — Delete the resource group (POINT OF NO RETURN)
 
 What is lost here is **infrastructure declared in `infra/bicep/`** — recreatable from
@@ -385,8 +369,6 @@ az cognitiveservices account purge --location centralus \
 az resource list --query "[?contains(name, 'nora')].{name:name, rg:resourceGroup}" -o table
 ```
 
----
-
 ## Step 6 — Clean up the repository
 
 After the RG is deleted, code that references Azure becomes a trap for whoever comes
@@ -427,8 +409,6 @@ grep -rn "azure/login\|AZURE_CLIENT_ID\|azurecontainerapps.io" .github/ infra/ |
 - [ ] `docs/operations/environment-secrets.md` — the entire cartography assumes Key Vault +
       Managed Identity. Rewrite it for SOPS+age (the `CF_ACCESS_AUD` §5.1 stays as a
       historical record of the bug)
-
----
 
 ## Final checklist
 
@@ -474,8 +454,6 @@ REPOSITÓRIO
   [ ] FQDN hardcoded resolvido nos 4 lugares
   [ ] azure-deploy.md marcado como histórico
 ```
-
----
 
 ## History
 

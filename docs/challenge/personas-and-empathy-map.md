@@ -3,8 +3,6 @@
 > Reference document for the **Agile Methodology with Squad Framework** course
 > Sprint 1+2 · FIAP Challenge 2026 × TOTVS · Software Engineering, 2nd Year
 
----
-
 ## About this document
 
 The personas were built to represent the **three central user profiles** of the NORA platform, covering both plans (Core and Enterprise) and the two hierarchy levels of Enterprise (field and management). Each persona comes with an **Empathy Map** structured around the six standard quadrants of the Agile methodology.
@@ -12,8 +10,6 @@ The personas were built to represent the **three central user profiles** of the 
 In the MVP backlog, the official personas are: **Lucas** for individual Core usage, **Rafael** for the Enterprise field user and **Camila** for the Enterprise manager/admin profile.
 
 > **Note about Camila:** in the MVP she accumulates **two roles** that in larger companies could be separate — commercial manager (consumer of dashboards and Account Health) and tenant admin (responsible for company context, IAM, invitations and auditing). Every story marked "Camila (Enterprise Admin)" in the backlog refers to the tenant admin role; when the story is about consuming commercial insights, the same persona appears as a manager. As the product evolves, these roles may be disambiguated into two distinct personas (e.g. "Camila — Commercial Manager" and "Tenant IT/Owner").
-
----
 
 ## Persona 1 — Lucas Mendes
 
@@ -35,8 +31,6 @@ In the MVP backlog, the official personas are: **Lucas** for individual Core usa
 Lucas works at a fast-growing technology startup. He splits his time between feature development and product alignment — which means attending 6 to 8 meetings a week: planning, refinement, design syncs, stakeholder meetings. He is organized by nature, but the pace of the environment does not let him take careful notes. The result: tasks get lost among Slack conversations, decisions are revisited weeks later because nobody recorded them, and Linear piles up issues created in a rush that lose their context.
 
 Lucas discovered transcription tools (Fireflies, Otter.ai) but abandoned all of them because they deliver a wall of text with no useful structure. What he wants is not the transcript — it is knowing **what was decided, who is going to do what and when**.
-
----
 
 ### Empathy Map — Lucas Mendes
 
@@ -110,8 +104,6 @@ Lucas discovered transcription tools (Fireflies, Otter.ai) but abandoned all of 
 **How NORA solves it for Lucas:**
 NORA Core processes the meeting transcript, detects action items and pushes them automatically to Linear via MCP. GitHub issues mentioned in the conversation are linked. The calendar receives the summary on the event. Lucas leaves the call and does not need to do anything else — the context is already distributed.
 
----
-
 ## Persona 2 — Rafael Souza
 
 ### Profile
@@ -134,8 +126,6 @@ Rafael is one of the best salespeople in his region. He has 6 years at the compa
 Rafael fills in Salesforce as best he can — sometimes at the end of the day, sometimes on Thursday before the 1:1 with his manager. The opportunities he records are the obvious ones (the client asked for a proposal). The subtle ones (the client mentioned they are evaluating a competitor, the client complained about the current product) stay only in his head — and slip away as he changes gears in the traffic on the way home.
 
 The result: his manager has no real visibility of the portfolio. Clients about to churn are not flagged in advance. And Rafael, who is competent, looks disorganized in the CRM data.
-
----
 
 ### Empathy Map — Rafael Souza
 
@@ -223,8 +213,6 @@ The result: his manager has no real visibility of the portfolio. Clients about t
 **How NORA solves it for Rafael:**
 NORA Enterprise processes the post-meeting transcript with the company's product catalog configured. It identifies that the client mentioned a competitor (Competitive Radar), detects an upsell signal with a specific suggested product, computes the variation in the account's Account Health Score and pushes everything to Salesforce via MCP along with the Next Best Action. Rafael leaves the meeting and Salesforce is already updated — with real intelligence.
 
----
-
 ## Persona 3 — Camila Torres
 
 ### Profile
@@ -248,8 +236,6 @@ Camila has 15 years of commercial experience and 4 years as a regional manager. 
 Every week she spends hours in 1:1s with each AE trying to understand the real state of the portfolio. It is a verbal handover process — the AE says what he remembers, Camila writes down what she considers relevant, and decisions are made on that basis. When a client churns, the surprise is rarely genuine — the signals were there, in conversations that never reached her in a structured form.
 
 Camila wants to predict problems, not react to them. She wants to know which account needs attention before it is too late. She wants her AEs to spend less time on bureaucracy and more in real meetings.
-
----
 
 ### Empathy Map — Camila Torres
 
@@ -333,8 +319,6 @@ Camila wants to predict problems, not react to them. She wants to know which acc
 **How NORA solves it for Camila:**
 Camila accesses the Enterprise dashboard with the Account Health Score of all the team's accounts, filtered by AE or by risk level. She does not depend on verbal handover — the data comes from the real transcripts. When an account's score degrades, she receives an alert with context ("the client mentioned evaluating a competitor in 2 consecutive meetings"). The weekly 1:1 goes from "what is happening?" to "how are we going to act on these 3 at-risk accounts?".
 
----
-
 ## Synthesis — Persona × Feature cross-reference
 
 | NORA Feature | Lucas (Core) | Rafael (Enterprise) | Camila (Enterprise) |
@@ -349,8 +333,6 @@ Camila accesses the Enterprise dashboard with the Account Health Score of all th
 | Next Best Action | — | Primary use | Input for AE coaching |
 | IAM ABAC (department) | — | Sees only the accounts in their own portfolio | Sees the whole region |
 | Desktop real-time | Possible use (technical meetings) | Coaching during the call | — |
-
----
 
 ## Document History
 

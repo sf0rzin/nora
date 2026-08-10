@@ -164,6 +164,4 @@ curl -sS -I https://nora.systems | grep -iE "^(server|cf-ray):"
 
 ## Document history
 
-| Version | Date | Change |
-|---|---|---|
-| 1.0 | 2026-06-08 | Created after wiring `nora.systems`/`www` to the web app |
+Created 2026-06-08, after wiring `nora.systems`/`www` to the web app.

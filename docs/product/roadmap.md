@@ -7,8 +7,6 @@
 > 2. **Upcoming Sub-phases** — 1.11, 1.12, 1.13+ with target window, scope and prerequisites
 > 3. **Post-MVP phase (long term)** — the vision of phases 4-9 of the original execution plan
 
----
-
 ## 1. History — Sub-phases 1.0 to 1.10
 
 The `1.X` numbering corresponds to a coherent delivery slice, normally 1+ merged PRs that deliver verifiable value. Sub-phases may be implicit (accumulated pre-audit) or explicit (planned + executed).
@@ -43,8 +41,6 @@ The `1.X` numbering corresponds to a coherent delivery slice, normally 1+ merged
 - **Next.js web**: 0% (no runner; debt for 1.12)
 - **Azure dev cost**: R$110-180/month (within the R$500 of Azure for Students)
 
----
-
 ## 2. Upcoming Sub-phases — 1.11, 1.12, 1.13+
 
 > Target windows are **agentic** (Opus models for architecture/security/data and Sonnet models for focused implementation/UI/tests, in parallel via worktrees), not human-hours. They reflect the real complexity of each slice, not human effort.
@@ -55,7 +51,7 @@ The `1.X` numbering corresponds to a coherent delivery slice, normally 1+ merged
 |---|---|---|---|
 | **1.11 — Demo Polish Plan A** | 2-3 agentic weeks (target: close with buffer before the pitch) | (a) **Done (#148)** — **Minimum Customer Confidence** via ADR 0015: schema → persistence (V017) → read-only endpoint `GET /meetings/{id}` → `CustomerConfidenceCard` in MeetingDetail<br>(b) **Done (1.11b)** — **`AUTH_FILTER_HARD_CAP` fix**: silent ceiling of 500 removed; `MeetingService.listAllForAuthFilter` scans in batches before the IAM filter. SQL pushdown via JSONB+GIN remains a future performance optimisation<br>(c) **Done (1.11c)** — **`PolicyEvaluator` expansion**: `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` implemented (fail-closed retained for an unknown operator and a missing attribute)<br>(d) **Polished internal UX**: editorial v3 on the auth pages, fix of the improvised `position:fixed` on login, fine adjustments in MeetingDetail and the dashboard<br>(e) **Realistic TOTVS synthetic seed**: 5-7 meetings with TOTVS vocabulary (Protheus, RM, Datasul, Fluig, RM Consult) + 3 demo tenants (1 with Customer Confidence enabled) + Camila/Rafael/Lucas users + example policies<br>(f) **Demo script**: an 8-10 minute script covering Core (Lucas uploads, sees the summary, marks a task) → Enterprise (Camila configures a policy, Rafael sees only his scope) → Customer Confidence (Rafael sees the lead's signals). Includes a plan B if something fails live | Sub-phase 1.10 closed (docs refresh consolidated); ADR 0015 created and approved |
 | **1.12 — Production Hardening** | 1-2 agentic weeks | (a) **`rg-nora-prod` separate** from `rg-nora-dev` (total isolation: distinct KV, Postgres, Storage, ACA env)<br>(b) **Postgres RLS** — schema delivered in **V016** and completed in **V019/V020** (full RLS + auth-aware scope); only the operational cutover/enforcement in prod remains (`nora_app` role `NOBYPASSRLS` + `nora.security.rls.enforce` flag), as per the cutover runbook (ADR 0026/0028)<br>(c) **Monitoring alerts** in Azure Monitor: P95 latency, 5xx rate, Postgres CPU/conn pool, KV access failures, Speech token exhaustion<br>(d) **Operational LGPD** — **Done (ADR 0029)**: `DELETE /privacy/meetings/{id}` (right to be forgotten) + scheduled `RetentionSweeper` + `PrivacyFlowIntegrationTest`. What remains is evolving the global `audit_events` table (not just IAM) and the retention declared per tenant<br>(e) **DR runbook** (`docs/operations/dr-runbook.md`): Postgres backup + restore drill + declared RTO/RPO + Bicep redeploy from zero<br>(f) **Secrets rotation**: rotation policy for JWT_SECRET, OPENAI_API_KEY, Postgres ConnectionString via KV versions + automatic redeploy<br>(g) **Test coverage targets** (ADR 0018 to be created): >85% in critical areas (IAM, Auth, PII, LLM analyzer), >60% for the rest, >50% web on the main pages, >70% backend branch coverage. Add Vitest on the web | Sub-phase 1.11 closed; ADR 0016 (rg-prod strategy) and ADR 0018 (coverage targets) to be created |
-| **1.13+ — Post-pitch (15/06 onwards)** | Depends on the outcome of Plan A | **Scenario A — Plan A moves (TOTVS signals interest):** technical-commercial pitch dossier · due-diligence material (robust SECURITY.md, STRIDE threat model, complete LGPD checklist, multi-tenant cost projection) · support for the 1st commercial meeting · contracted POC roadmap<br>**Scenario B — Plan A neutral/negative:** Plan C content first (LinkedIn post covering NORA + 8 Azure pitfalls + AWS-style IAM + Productivity Score; Twitter thread; portfolio case) + Plan B commercial pivot (create a landing page with pre-order, define pilot pricing >= R$300/tenant/month based on the unit economics in audit §13, identify 3-5 B2B leads outside TOTVS) | FIAP/TOTVS pitch held 15/06/2026 |
+| **1.13+ — Post-pitch (15/06 onwards)** | Depends on the outcome of Plan A | **Scenario A — Plan A moves (TOTVS signals interest):** technical-commercial pitch dossier · due-diligence material (an expanded SECURITY.md, STRIDE threat model, complete LGPD checklist, multi-tenant cost projection) · support for the 1st commercial meeting · contracted POC roadmap<br>**Scenario B — Plan A neutral/negative:** Plan C content first (LinkedIn post covering NORA + 8 Azure pitfalls + AWS-style IAM + Productivity Score; Twitter thread; portfolio case) + Plan B commercial pivot (create a landing page with pre-order, define pilot pricing >= R$300/tenant/month based on the unit economics in audit §13, identify 3-5 B2B leads outside TOTVS) | FIAP/TOTVS pitch held 15/06/2026 |
 
 ### Criteria for a "closed Sub-phase"
 
@@ -66,8 +62,6 @@ For a sub-phase to be considered **closed** (`DONE`):
 3. New debts catalogued in the audit/memory (not silenced)
 4. ADR created if the sub-phase introduced a durable decision
 5. Roadmap updated, moving the sub-phase from "Upcoming" to "History"
-
----
 
 ## 3. Post-MVP phase (long term)
 
@@ -91,7 +85,7 @@ For a sub-phase to be considered **closed** (`DONE`):
 
 NORA evolves across three horizons:
 
-1. **Horizon H1 (today → 15/06/2026 pitch)**: Plan A validation with TOTVS via a polished demo + visible Customer Confidence + enterprise-grade IAM
+1. **Horizon H1 (today → 15/06/2026 pitch)**: Plan A validation with TOTVS via a polished demo + visible Customer Confidence + the IAM model
 2. **Horizon H2 (Q3-Q4 2026)**: first paid pilots (Plan A if TOTVS signed, or Plan B if it was a commercial pivot). Focus: complete Customer Confidence, tenant metrics, policy simulator, observability. Pricing floor R$300/tenant/month (dev/pilot unit economics estimate ~R$210/tenant in infra)
 3. **Horizon H3 (2027+)**: commercial scale. MCPs (Calendar, Jira, Salesforce/HubSpot), corporate SSO, Audio upload via Whisper/Azure Speech batch, temporal Account Health, multi-region. Eventual exit via acquisition (TOTVS or a competitor) or organic SaaS growth
 
@@ -102,19 +96,15 @@ NORA evolves across three horizons:
 - **SSO Entra ID** depends on SCIM/JIT provisioning + mapping of claims → IAM groups. Non-trivial; reserve 2-3 dedicated sub-phases
 - **Multi-region** depends on stable RLS in prod (1.12) + Postgres replication + Storage replication. Reserve its own phase
 
----
-
 ## 4. Process decisions
 
 Some decisions about **how** we work (not **what** to deliver) that affect the roadmap:
 
 - **1.X numbering**: while the product is MVP/pre-GA. Version 2.X starts when the first paying tenant is in production (not dev/pilot)
-- **Worktrees + parallel subagents**: work split by architect/slice, merged via PR into `main`. Drift between worktrees is real debt (lesson from Sub-phase 1.1)
+- **Worktrees + parallel subagents**: work split by slice, merged via PR into `main`. Drift between worktrees is real debt (lesson from Sub-phase 1.1)
 - **Audit as the basis for docs**: before each Docs Refresh (1.10, 1.13, ...) a read-only audit anchored in PR/migration/path is run. Without an audit, docs become fiction
 - **Immutable ADRs**: once accepted, we do not edit them — we create a successor. ADR 0009 has a minor divergence between the doc (Proposed) and the index (accepted), to be resolved in 1.10
 - **Sub-phases ≠ Sprints**: there is no fixed time cadence. A sub-phase closes when the scope is delivered, not when a timer runs out
-
----
 
 ## Document History
 

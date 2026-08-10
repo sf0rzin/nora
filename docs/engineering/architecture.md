@@ -4,8 +4,6 @@
 > Every statement here is anchored in code (`path:line`), a Flyway migration or an ADR.
 > When something is planned but not implemented, it is explicitly marked as such.
 
----
-
 ## §1. Stack overview
 
 | Component | Version | Purpose | ADR / Source |
@@ -43,8 +41,6 @@ Notes:
 - Web runs on **raw Tailwind**: the editorial palette and tokens live in `apps/web/src/app/globals.css` and `apps/web/tailwind.config.ts`. There is no dependency on `@shadcn/ui`, MUI, Chakra or similar.
 - The worker has three operating modes: `USE_LLM_STUB=true` (CI / dev without LLM), `LLM_BASE_URL=https://api.openai.com/v1` (MVP default, OpenAI directly) and Azure OpenAI (Enterprise).
 
----
-
 ## §2. Backend DDD layers
 
 The backend follows 4 strict layers, organized under `services/api/src/main/java/br/com/nora/api/`:
@@ -81,8 +77,6 @@ api/            <- controllers REST, DTOs, exception handlers
 - **Infrastructure substitutability:** swapping JJWT for another JWT provider is just implementing `JwtIssuer`. Same for LLM (ADR 0004) and Speech.
 - **Predictable onboarding:** a new dev always finds the business rule in `application/` or `domain/`, never in `infrastructure/` or `api/`.
 
----
-
 ## §3. Multi-tenancy
 
 Root decision: **ADR 0002 — application-level filter in the MVP, RLS in production.**
@@ -118,8 +112,6 @@ In SQL this becomes `WHERE tenant_id = :tenantId AND id = :id` — never just `W
 ADR 0002 promised Row-Level Security in production. **Delivered in the schema in `V016__row_level_security.sql`** (it is no longer "pending debt"): `tenant_isolation` policies + `ENABLE ROW LEVEL SECURITY` on 10 tenant-owned tables (plus the 3 from V017: `customer_accounts`, `meeting_account_links`, `customer_confidence_assessments` → 13 in total), with the predicate `tenant_id = nora.current_tenant_id()` (which reads the session GUC `nora.current_tenant_id`). `V019`/`V020` complete the RLS coverage and make the scope auth-aware. `infrastructure/security/TenantRlsAspect` performs the `SET LOCAL` per `@Transactional`.
 
 **Enforcement is opt-in:** the Postgres owner/admin bypasses RLS by default (dev/Testcontainers stay inert — tests untouched). In prod, enable it via the dedicated `nora_app` role (`NOBYPASSRLS`) + the flag `nora.security.rls.enforce=true`. It is defense in depth: even if a query forgets the `WHERE tenant_id`, RLS blocks it. What remains is the operational cutover/enforcement in production (runbook in ADR 0026/0028), not the schema. See `data-model.md §4`.
-
----
 
 ## §4. AWS-style IAM (ADR 0007)
 
@@ -207,8 +199,6 @@ Canonical resource: `nora:tenant/{tenantId}:{recurso}/{instanceId|*}`. Examples:
 - `iam_policy_versions` (V006:89-99): immutable history of each edit (`PRIMARY KEY (policy_id, version)`)
 - `iam_audit_events` (V006:138-150): every IAM operation records actor, action, target and JSONB payload
 
----
-
 ## §5. LLM pipeline
 
 Meeting analysis flow — triggered when an upload arrives or via `POST /meetings/{id}/reprocess`.
@@ -254,8 +244,6 @@ Variables: `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`. MVP default: `https://api
 
 The canonical schema lives in `docs/api/llm-schemas/meeting-analysis-v1.schema.json` and is mirrored in `models.py` (Pydantic) + transmitted to the LLM via `response_format`. A failure in strict mode falls back to `json_object` (line 7 of `llm_analyzer.py`). Free-form output never crosses a service boundary.
 
----
-
 ## §6. PII Shield (ADR 0012)
 
 A deterministic pipeline that runs before any call to the LLM. Implementation in `services/nlp-worker/src/nora_nlp/services/pii_shield.py`.
@@ -288,8 +276,6 @@ The mapping `placeholder → hash(SHA-256, first 16 chars)` is kept in `PiiRedac
 
 ADR 0012: the solution covers the MVP target market (Brazil/TOTVS) **well**, avoids the complexity of multi-language NER models and adds zero extra dependencies. Upgrade triggers are documented (first non-BR tenant; >5% non-pt-BR transcripts; a concrete bug report).
 
----
-
 ## §7. Speech Token Broker (ADR 0009)
 
 Desktop needs to transcribe in real time with Azure Speech without exposing the subscription key. Solution: a **broker in the backend** that issues ephemeral tokens.
@@ -321,8 +307,6 @@ Desktop (Tauri)         Backend NORA              Azure Speech
 
 The subscription key **never** leaves the backend. If a Desktop is compromised, the blast radius is the ephemeral token (10 min).
 
----
-
 ## §8. Productivity Score (ADR 0005)
 
 An **opt-in** feature enabled per meeting when the user declares a `MeetingGoal` before/after the upload.
@@ -343,8 +327,6 @@ An **opt-in** feature enabled per meeting when the user declares a `MeetingGoal`
 ### Mandatory disclaimer
 
 The UI (and any future export) **must** display: *"Indicador da reunião, não dos participantes."* Reason: the score measures the meeting's adherence to the declared goal, not individual performance — the risk of punitive use is described in ADR 0005.
-
----
 
 ## §9. Customer Confidence (ADR 0006 + ADR 0015) — implemented full-stack (#148)
 
@@ -378,8 +360,6 @@ The UI (and any future export) **must** display: *"Indicador da reunião, não d
 - It came in 1 PR (not in the planned dedicated branch `feat/sub-1.11-...`).
 
 Aggregated Account Health (US50-US51) **remains deferred** via ADR 0014. Alternative (B) — removing Customer Health from the landing page — was rejected: demo credibility > effort saved. Details in `docs/adr/0015-customer-confidence-minimal-persistence.md`.
-
----
 
 ## §10. End-to-end flow "login → upload → analysis → result"
 
@@ -431,8 +411,6 @@ Step by step in words:
 6. **Frontend polling**: the "Processando" card in `apps/web/src/app/(app)/meetings/[id]/page.tsx` polls every ~2s until `processing_status = COMPLETED`.
 7. **Render**: the UI shows the summary (markdown via `react-markdown`), decisions, action items, risks/opportunities and, if present, `ProductivityScoreCard`.
 
----
-
 ## §11. Azure infrastructure
 
 Provisioned via Bicep (`infra/bicep/main.bicep`) and deployed by `deploy-infra.yml` (Service Principal OIDC). Operational details (the eight Azure for Students pitfalls, recreation commands, troubleshooting) **live in `docs/operations/azure-deploy.md`**.
@@ -455,8 +433,6 @@ Provisioned via Bicep (`infra/bicep/main.bicep`) and deployed by `deploy-infra.y
 | AI Search | **not used** (`enableSearch=false`) | semantic search (US15) was delivered via pgvector + an HTTP embedding client, not Azure AI Search (PR #206, `V021`) |
 
 Service Principal: `sp-nora-github-deploy` (audit §7), with 3 federated credentials (main, pull_request, environment:dev). Roles: `Contributor` + `Role Based Access Control Administrator` on `rg-nora-dev`.
-
----
 
 ## §12. Stack rationale — why each choice
 
@@ -506,8 +482,6 @@ Service Principal: `sp-nora-github-deploy` (audit §7), with 3 federated credent
 - Explicit control of the contract (versioned prompt + strict JSON Schema — ADR 0003).
 - LangChain would add an abstraction layer that buys nothing for a 1-call pipeline (PII → TF-IDF → LLM → validate).
 - ADR 0004 keeps the provider agnostic via env vars; switching to Azure OpenAI or another Chat Completions-compatible endpoint is just changing `LLM_BASE_URL`.
-
----
 
 ## §13. Security hardening delivered (audit follow-ups, post-1.10)
 

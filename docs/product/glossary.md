@@ -7,8 +7,6 @@
 > - You are writing a doc/ADR/spec and need the canonical term
 > - You are writing a PR description or a commit message and need the canonical term
 
----
-
 ## A
 
 **Account Health Score** — Score aggregated per **account** (not per meeting), expressing the temporal health of the relationship with an Enterprise customer/lead. Scale 0-100 with bands `AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`. Computed from Customer Confidence + risks + opportunities. ADR 0006 accepted; implementation postponed via ADR 0014 (defer post-MVP). Reactivation: post-pilot with 3+ tenants having >10 meetings per account.
@@ -184,8 +182,6 @@ Implemented in PolicyEvaluator with glob-style matching.
 **WireMock** — Java library (standalone version 3.9.1) used in the backend's integration tests to mock external HTTP responses (NLP worker, Azure Speech, OpenAI). Allows testing without a network.
 
 **Worker NLP** — See NlpWorker.
-
----
 
 ## Document History
 

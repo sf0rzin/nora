@@ -85,7 +85,7 @@ JWT_SECRET       CLOUDFLARE_TUNNEL_TOKEN
 | `NORA_RELEASE_WEBHOOK` | Secret (optional) | URL that `deploy-proxmox.yml` calls to wake the pull agent before the next 5-minute tick. Without it the deploy is just slower, it does not break. |
 | `CF_ACCESS_AUD` | **Secret**, not Variable | See below. |
 
-## ⚠️ Pre-existing bug that the migration needs to close
+## Pre-existing bug that the migration needs to close
 
 `CF_ACCESS_AUD` is registered as a **Secret**, but `deploy-infra.yml:158` and `:239` were reading
 `${{ vars.CF_ACCESS_AUD }}` — the *Variables* namespace, not the *Secrets* one. The value arrived
