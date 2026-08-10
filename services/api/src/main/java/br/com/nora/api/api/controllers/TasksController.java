@@ -5,11 +5,15 @@ import br.com.nora.api.api.dto.task.TaskListResponse;
 import br.com.nora.api.api.dto.task.TaskUpdateRequest;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.api.security.RequiresPermission;
+import br.com.nora.api.api.security.RequiresPermission.ResourceType;
+import br.com.nora.api.api.security.ResourceArns;
+import br.com.nora.api.application.iam.AuthorizationService;
 import br.com.nora.api.application.ports.TaskRepository.TaskRow;
 import br.com.nora.api.application.task.TaskService;
 import br.com.nora.api.domain.analysis.ActionItemStatus;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -27,26 +31,42 @@ import org.springframework.web.bind.annotation.RestController;
 public class TasksController {
 
     private final TaskService tasks;
+    private final AuthorizationService authz;
 
-    public TasksController(TaskService tasks) {
+    public TasksController(TaskService tasks, AuthorizationService authz) {
         this.tasks = tasks;
+        this.authz = authz;
     }
 
+    /**
+     * Listing: the annotation is only the pre-gate ({@code requireAnyAllow} reasons about sets) and
+     * the visible set is decided per item below.
+     *
+     * <p>The strict check used to run here against the literal ARN {@code ...:task/*}. The {@code
+     * *} goes into the evaluator as a value, matched as plain text on the resource side, so a Deny
+     * written against one specific task id never fired — and the handler then returned every action
+     * item of the tenant with no filtering at all. Same shape {@code GET /meetings} already uses.
+     */
     @GetMapping
-    @RequiresPermission(action = "task:read", resource = RequiresPermission.ResourceType.TASK)
+    @RequiresPermission(action = "task:read", resource = ResourceType.TASK, anyAllow = true)
     public TaskListResponse list(@RequestParam(name = "status", required = false) String status) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         ActionItemStatus parsed = parseStatus(status);
         List<TaskRow> rows = tasks.list(principal.tenantId(), parsed);
-        List<TaskListItem> items = rows.stream().map(TasksController::toDto).toList();
+        List<TaskRow> visible =
+                authz.filterAllowed(
+                        principal.userId(),
+                        principal.tenantId(),
+                        "task:read",
+                        rows,
+                        r -> ResourceArns.task(principal.tenantId(), r.id()),
+                        r -> Map.of());
+        List<TaskListItem> items = visible.stream().map(TasksController::toDto).toList();
         return new TaskListResponse(items);
     }
 
     @PatchMapping("/{id}")
-    @RequiresPermission(
-            action = "task:write",
-            resource = RequiresPermission.ResourceType.TASK,
-            idParam = "id")
+    @RequiresPermission(action = "task:write", resource = ResourceType.TASK, idParam = "id")
     public TaskListItem update(@PathVariable("id") UUID id, @RequestBody TaskUpdateRequest body) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         if ((body.status() == null || body.status().isBlank())

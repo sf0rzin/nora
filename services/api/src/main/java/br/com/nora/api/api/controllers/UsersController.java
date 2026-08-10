@@ -4,6 +4,7 @@ import br.com.nora.api.api.dto.auth.MeResponse;
 import br.com.nora.api.api.dto.user.DeleteAccountRequest;
 import br.com.nora.api.api.dto.user.UpdateMeRequest;
 import br.com.nora.api.api.security.AuthCookies;
+import br.com.nora.api.api.security.AuthorizationNotRequired;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.application.identity.AuthService;
 import br.com.nora.api.domain.identity.User;
@@ -35,6 +36,7 @@ public class UsersController {
     }
 
     @PatchMapping("/me")
+    @AuthorizationNotRequired(reason = "Self: updates only the caller's own profile.")
     public MeResponse updateMe(@Valid @RequestBody UpdateMeRequest req) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         User user = authService.updateDisplayName(principal.userId(), req.displayName());
@@ -53,6 +55,7 @@ public class UsersController {
      * the response.
      */
     @DeleteMapping("/me")
+    @AuthorizationNotRequired(reason = "Self: deletes only the caller's own account.")
     public ResponseEntity<Void> deleteMe(@Valid @RequestBody DeleteAccountRequest req) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         authService.deleteAccount(principal.userId(), principal.tenantId(), req.password());

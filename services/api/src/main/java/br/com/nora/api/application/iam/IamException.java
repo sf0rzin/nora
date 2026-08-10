@@ -35,6 +35,16 @@ public class IamException extends RuntimeException {
     }
 
     /**
+     * A controller handler reached the request pipeline without declaring an authorization decision
+     * (neither the permission annotation nor the justified opt-out). Distinct from {@link
+     * #forbidden} so the logs separate a coding mistake from an ordinary policy denial; the
+     * offending handler is named in the log, never in the response.
+     */
+    public static IamException authorizationNotDeclared() {
+        return new IamException("IAM_AUTHORIZATION_NOT_DECLARED", "Acao nao permitida.");
+    }
+
+    /**
      * Target user of the binding does not belong to the caller's tenant. Raised when translating
      * the composite FK violation from V027 -- there is no legitimate path that produces it.
      */

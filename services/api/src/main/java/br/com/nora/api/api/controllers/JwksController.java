@@ -1,5 +1,6 @@
 package br.com.nora.api.api.controllers;
 
+import br.com.nora.api.api.security.AuthorizationNotRequired;
 import br.com.nora.api.infrastructure.security.RsaJwtIssuer;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Base64;
@@ -29,6 +30,7 @@ public class JwksController {
     }
 
     @GetMapping(path = "/.well-known/jwks.json", produces = MediaType.APPLICATION_JSON_VALUE)
+    @AuthorizationNotRequired(reason = "Public: publishes the RSA PUBLIC key (RFC 7517).")
     public Map<String, Object> jwks() {
         RSAPublicKey pub = issuer.publicKey();
         Map<String, Object> key =

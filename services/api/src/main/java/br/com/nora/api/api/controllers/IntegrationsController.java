@@ -1,6 +1,9 @@
 package br.com.nora.api.api.controllers;
 
+import br.com.nora.api.api.security.AuthorizationNotRequired;
 import br.com.nora.api.api.security.CurrentUser;
+import br.com.nora.api.api.security.RequiresPermission;
+import br.com.nora.api.api.security.RequiresPermission.ResourceType;
 import br.com.nora.api.application.integration.IntegrationException;
 import br.com.nora.api.application.integration.IntegrationService;
 import br.com.nora.api.application.integration.IntegrationService.ProviderStatus;
@@ -27,6 +30,13 @@ import org.springframework.web.bind.annotation.RestController;
  * OAuth integrations hub (NORA Flows Phase 2). The callback is PUBLIC by design (provider redirect;
  * the signed state identifies tenant/user and blocks forgery) and always REDIRECTS to the front end
  * (/integracoes) with a success/error query — it never returns JSON to the user's browser.
+ *
+ * <p>Every other handler is gated by IAM (#51): a connection is tenant-wide, so connecting,
+ * disconnecting or pairing a provider changes what the whole workspace's automations can reach, and
+ * the status listing enumerates which external accounts the tenant is wired to. Reading the hub
+ * takes {@code integration:read}; anything that mutates a connection takes {@code
+ * integration:write}. The resource is the tenant's integrations scope, {@code
+ * nora:tenant/{t}:integration/*}.
  */
 @RestController
 @RequestMapping("/integrations")
@@ -51,6 +61,7 @@ public class IntegrationsController {
     }
 
     @GetMapping
+    @RequiresPermission(action = "integration:read", resource = ResourceType.INTEGRATION)
     public List<ProviderStatus> status() {
         AuthenticatedPrincipal principal = CurrentUser.require();
         return integrations.status(principal.tenantId());
@@ -58,6 +69,7 @@ public class IntegrationsController {
 
     /** Starts the OAuth flow: returns the authorization URL for the front end to redirect to. */
     @PostMapping("/{provider}/oauth/start")
+    @RequiresPermission(action = "integration:write", resource = ResourceType.INTEGRATION)
     public ResponseEntity<StartResponse> start(@PathVariable("provider") String provider) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         IntegrationProvider parsed;
@@ -76,6 +88,7 @@ public class IntegrationsController {
      * service routes Google/Slack to the dedicated flows and the rest to the generic one.
      */
     @GetMapping("/{provider}/oauth/callback")
+    @AuthorizationNotRequired(reason = "Public: the signed OAuth state is the credential.")
     public ResponseEntity<Void> oauthCallback(
             @PathVariable("provider") String provider,
             @RequestParam(name = "code", required = false) String code,
@@ -107,6 +120,7 @@ public class IntegrationsController {
     }
 
     @DeleteMapping("/{provider}")
+    @RequiresPermission(action = "integration:write", resource = ResourceType.INTEGRATION)
     public ResponseEntity<Void> disconnect(@PathVariable("provider") String provider) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         integrations.disconnect(principal.tenantId(), provider);
@@ -118,6 +132,7 @@ public class IntegrationsController {
      * link ({@code t.me/<bot>?start=<código>}) for the hub to display.
      */
     @PostMapping("/telegram/pairing/start")
+    @RequiresPermission(action = "integration:write", resource = ResourceType.INTEGRATION)
     public TelegramPairingService.PairingStart telegramPairingStart() {
         AuthenticatedPrincipal principal = CurrentUser.require();
         return telegramPairing.start(principal.tenantId(), principal.userId());
@@ -129,6 +144,7 @@ public class IntegrationsController {
      * actionable message.
      */
     @PostMapping("/telegram/pairing/verify")
+    @RequiresPermission(action = "integration:write", resource = ResourceType.INTEGRATION)
     public ProviderStatus telegramPairingVerify() {
         AuthenticatedPrincipal principal = CurrentUser.require();
         return telegramPairing.verify(principal.tenantId());
@@ -139,6 +155,7 @@ public class IntegrationsController {
      * connection. Invalid token = 502 {@code INTEGRATION_PROVIDER_ERROR} with guidance.
      */
     @PostMapping("/trello/token")
+    @RequiresPermission(action = "integration:write", resource = ResourceType.INTEGRATION)
     public ProviderStatus saveTrelloToken(@RequestBody TrelloTokenRequest body) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         return integrations.saveTrelloToken(

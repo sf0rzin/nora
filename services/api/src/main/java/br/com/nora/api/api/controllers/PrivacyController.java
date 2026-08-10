@@ -1,5 +1,6 @@
 package br.com.nora.api.api.controllers;
 
+import br.com.nora.api.api.security.AuthorizationNotRequired;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.api.security.ResourceArns;
 import br.com.nora.api.application.iam.AuthorizationService;
@@ -39,16 +40,27 @@ public class PrivacyController {
      * Permanently deletes the meeting and all the linked PII. 204 on success; 404 if it does not
      * exist in the tenant (does not leak cross-tenant existence). Requires {@code meeting:update}
      * (same gate as the destructive goal removal).
+     *
+     * <p>The check runs inside the service transaction, on the resolved meeting, so it sees the
+     * meeting's attributes. It used to authorize on the id alone, with an empty condition context:
+     * every other meeting mutation ({@code MeetingsController} get / putGoal / deleteGoal /
+     * reprocess) passes {@code m.attributes()}, and without them a condition never resolves — which
+     * is fail-closed for an Allow but drops an attribute-scoped Deny, here over a hard-delete.
      */
     @DeleteMapping("/meetings/{id}")
+    @AuthorizationNotRequired(reason = "Body: authorizes on the loaded meeting's attributes.")
     public ResponseEntity<Void> eraseMeeting(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        authz.require(
-                principal.userId(),
+        privacy.eraseMeeting(
+                id,
                 principal.tenantId(),
-                "meeting:update",
-                meetingResource(principal.tenantId(), id));
-        privacy.eraseMeeting(id, principal.tenantId());
+                m ->
+                        authz.require(
+                                principal.userId(),
+                                principal.tenantId(),
+                                "meeting:update",
+                                meetingResource(principal.tenantId(), m.id()),
+                                m.attributes()));
         return ResponseEntity.noContent().build();
     }
 }

@@ -1,6 +1,7 @@
 package br.com.nora.api.api.controllers;
 
 import br.com.nora.api.api.dto.platform.PlatformDtos.UsageRequest;
+import br.com.nora.api.api.security.AuthorizationNotRequired;
 import br.com.nora.api.application.platform.LlmConfigResolver;
 import br.com.nora.api.application.platform.PlatformValidationException;
 import br.com.nora.api.application.platform.UsageRecorder;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/internal/platform")
+@AuthorizationNotRequired(reason = "Control plane: token chain @Order(1), no IAM principal.")
 public class PlatformInternalController {
 
     private final LlmConfigResolver resolver;

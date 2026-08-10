@@ -230,6 +230,7 @@ public class GlobalExceptionHandler {
                     case "IAM_GROUP_NOT_FOUND", "IAM_POLICY_NOT_FOUND" -> HttpStatus.NOT_FOUND;
                     case "IAM_NAME_TAKEN" -> HttpStatus.CONFLICT;
                     case "IAM_FORBIDDEN" -> HttpStatus.FORBIDDEN;
+                    case "IAM_AUTHORIZATION_NOT_DECLARED" -> HttpStatus.FORBIDDEN;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)
