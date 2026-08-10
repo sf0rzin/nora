@@ -17,7 +17,13 @@ type PiiType = "EMAIL" | "PHONE" | "CPF" | "CNPJ" | "CREDIT_CARD";
 
 // Patterns mirrored 1:1 from the worker. Flag `g` required for matchAll (which clones
 // the regex internally — safe to reuse the module instance across calls).
-const EMAIL_RE = /(?<![\w@])[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b/g;
+// The local part is bounded to 64, the RFC 5321 maximum, and the bound is also what keeps
+// this linear. `-` is not a `\w`, so the left anchor succeeds after every hyphen, and an
+// unbounded `+` rescans to the end of the string from each one — quadratic on hyphen-dense
+// input. The worker's copy of this pattern was bounded for exactly that reason; this one was
+// left unbounded in the same commit, so the mirror the file's header promises had silently
+// stopped holding on the one pattern that is reachable from an unauthenticated-adjacent path.
+const EMAIL_RE = /(?<![\w@])[a-zA-Z0-9._%+\-]{1,64}@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b/g;
 // BR phone (audit 2026-06-16): DDD required (a phone has no check digit).
 // Tolerates the +55 prefix, parentheses with an inner space "( 11 )", DDD with a zero "(011)",
 // the mobile's 9th digit dictated LOOSE "(11) 9 8765-4321" and the "/" separator.
