@@ -114,9 +114,6 @@ ALLOWED=(
   "docs/"
   # infra/proxmox + the legacy infra/bicep were outside the declared scope of this pass.
   "infra/"
-  # Superseded run brief (deadline 2026-06-15). The documentation pass DELETES it; this
-  # entry exists only so this branch is green, and must be removed with the file.
-  "GOAL.md"
   "README.md"        # pt-BR fragments, closed by the documentation pass
   "SECURITY.md"      # pt-BR fragments, closed by the documentation pass
 )
