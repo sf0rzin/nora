@@ -106,7 +106,7 @@ def _sentence(given, surname, other, i):
     return (
         f"{given} {surname} apresentou o plano de rollout na reuniao de ontem.",
         (given, surname),
-        (),
+        ("plano", "rollout", "reuniao"),
     )
 
 
@@ -134,16 +134,24 @@ def _two_people_adjacent(given, surname, other, i):
     return (
         f"{given} {surname} {other[0]} {other[1]} fecharam o escopo.",
         (given, surname, other[0], other[1]),
-        (),
+        ("fecharam", "escopo"),
     )
 
 
 def _at_end(given, surname, other, i):
-    return f"O plano de rollout foi aprovado por {given} {surname}", (given, surname), ()
+    return (
+        f"O plano de rollout foi aprovado por {given} {surname}",
+        (given, surname),
+        ("plano", "rollout"),
+    )
 
 
 def _allcaps(given, surname, other, i):
-    return f"{given.upper()} {surname.upper()} aprovou o escopo.", (given, surname), ()
+    return (
+        f"{given.upper()} {surname.upper()} aprovou o escopo.",
+        (given, surname),
+        ("aprovou", "escopo"),
+    )
 
 
 def _allcaps_product_before(given, surname, other, i):
@@ -156,7 +164,78 @@ def _allcaps_product_before(given, surname, other, i):
 
 
 def _speaker_label(given, surname, other, i):
-    return f"{given.upper()} {surname.upper()}: fechamos o escopo.", (given, surname), ()
+    return (
+        f"{given.upper()} {surname.upper()}: fechamos o escopo.",
+        (given, surname),
+        ("fechamos", "escopo"),
+    )
+
+
+# The three shapes below exist because a review found the corpus structurally blind to the
+# defect a *refusal* rule causes. Every shape above puts the product or company BEFORE, AFTER or
+# BETWEEN the halves of a name, and none of them puts an ordinary or corporate word at the TAIL
+# of a run that opens on a person -- which is where a rule that refuses to redact does its
+# damage. Two such rules were added in this PR and the corpus punished neither: 4,482 cases
+# reported zero regressions while 2,300 hand-built cases leaked.
+#
+# A rule that refuses to redact needs cases that make the refusal expensive. These are them.
+
+
+def _name_then_company_suffix(given, surname, other, i):
+    """The commonest company-name shape: a person, then a corporate word."""
+    suffix = COMPANY_SUFFIXES[i % len(COMPANY_SUFFIXES)]
+    return (
+        f"{given} {surname} {suffix} confirmou o prazo.",
+        (given, surname),
+        (suffix,),
+    )
+
+
+def _signature_block(given, surname, other, i):
+    """An attendee list or a signature block, which is most of a set of minutes.
+
+    Only the AREA is required to survive, not the title. A job title directly attached to a name
+    is claimed with it by Pattern 1 -- "Dr. Carlos Silva" is one span by design and has been
+    since the module was written -- and smuggling that older question in here would make this
+    shape permanently red for a reason unrelated to what it tests.
+    """
+    title = SIGNATURE_TITLES[i % len(SIGNATURE_TITLES)]
+    area = COMPANY_SUFFIXES[i % len(COMPANY_SUFFIXES)]
+    return (
+        f"Ata assinada por\n{given} {surname}\n{title} de {area}\n",
+        (given, surname),
+        (area,),
+    )
+
+
+def _title_then_name_then_label(given, surname, other, i):
+    """A job title in front and an ordinary word behind: still a person in the middle.
+
+    The trailing label is on the NEXT LINE and belongs to no name, so it has to survive.
+    `Coordenador` is not required to, for the reason given in `_signature_block`.
+    """
+    label = ORDINARY_TAILS[i % len(ORDINARY_TAILS)]
+    return (
+        f"Coordenador {given} {surname}\n{label} - apoio\n",
+        (given, surname),
+        (label,),
+    )
+
+
+COMPANY_SUFFIXES: tuple[str, ...] = (
+    "Sistemas",
+    "Solutions",
+    "Tecnologia",
+    "Consultoria",
+    "Digital",
+    "Engenharia",
+    "Servicos",
+    "Software",
+)
+
+SIGNATURE_TITLES: tuple[str, ...] = ("Diretora", "Gerente", "Coordenador", "Diretor")
+
+ORDINARY_TAILS: tuple[str, ...] = ("Relatorio", "Contato", "Ata", "Prazo", "Responsavel")
 
 
 SHAPES = (
@@ -171,6 +250,9 @@ SHAPES = (
     ("allcaps", _allcaps),
     ("allcaps_product_before", _allcaps_product_before),
     ("speaker_label", _speaker_label),
+    ("name_then_company_suffix", _name_then_company_suffix),
+    ("signature_block", _signature_block),
+    ("title_then_name_then_label", _title_then_name_then_label),
 )
 
 

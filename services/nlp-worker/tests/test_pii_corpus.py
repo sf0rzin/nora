@@ -8,19 +8,29 @@ redacts the whole transcript.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from nora_nlp.services import pii_shield
 from nora_nlp.services.pii_shield import redact
 from tests.pii_corpus import pools
-from tests.pii_corpus.cases import KNOWN_GAP, REQUIRED, adversarial_cases, all_cases
+from tests.pii_corpus.cases import (
+    KNOWN_GAP,
+    PAIRS_PER_QUADRANT_PER_SHAPE,
+    QUADRANTS,
+    REQUIRED,
+    SHAPES,
+    adversarial_cases,
+    all_cases,
+)
 from tests.pii_corpus.harness import evaluate, run
 
 # Measured on 2026-08-10. `main` at 27dc6cc, then the same corpus after `_split_on_allow_list`:
 #
 #                              before      after
-#     leak rate             :  21.30%  ->  11.57%   (943 -> 512 of 4427)
-#     false-redaction rate  :   5.26%  ->   5.07%   (109 -> 105 of 2071)
+#     leak rate             :  16.76%  ->   9.10%   (943 -> 512 of 5627)
+#     false-redaction rate  :  24.83%  ->   9.58%   (1309 -> 505 of 5271)
 #
 # Both are ceilings, and both must be moved DOWN by any change that claims to improve the
 # shield. Raising either one is a decision, not a detail: it belongs in a commit message that
@@ -28,12 +38,12 @@ from tests.pii_corpus.harness import evaluate, run
 #
 # Written as the measured fractions rather than as rounded decimals, so the gate cannot be
 # passed or failed by the third digit of a number nobody re-derived.
-MAX_LEAK_RATE = 512 / 4427  # 11.57%
-MAX_FALSE_REDACTION_RATE = 105 / 2071  # 5.07%
+MAX_LEAK_RATE = 512 / 5627  # 9.10%
+MAX_FALSE_REDACTION_RATE = 505 / 5271  # 9.58%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
-MIN_GENERATED_NAME_CASES = 4400
+MIN_GENERATED_NAME_CASES = 5600
 
 
 @pytest.fixture(scope="module")
@@ -82,8 +92,18 @@ def test_unlisted_products_are_really_off_the_negative_list(product: str) -> Non
 
 
 def test_the_corpus_did_not_shrink() -> None:
-    generated = [c for c in all_cases() if "/" in c.case_id and c.case_id.count("/") == 2]
-    assert len(generated) >= MIN_GENERATED_NAME_CASES
+    """Counted off the shape table, not off the id format.
+
+    The first version counted any id with two slashes, which matches `adv/product_before/caps`
+    as well -- so the adversarial set padded the total and 32 generated cases could have been
+    deleted without tripping this.
+    """
+    generated_shapes = {name for name, _ in SHAPES}
+    generated = [c for c in all_cases() if c.shape in generated_shapes]
+    assert len(generated) >= MIN_GENERATED_NAME_CASES, (
+        f"{len(generated)} generated cases, floor is {MIN_GENERATED_NAME_CASES}"
+    )
+    assert len(generated) == len(SHAPES) * len(QUADRANTS) * PAIRS_PER_QUADRANT_PER_SHAPE
 
 
 # --------------------------------------------------------------------------- #
@@ -210,6 +230,47 @@ def test_the_same_invariant_holds_in_upper_case(product: str, given: str, surnam
         f"  beside: {beside!r}"
     )
     assert product.upper() in beside, f"the allow-listed term itself was swallowed: {beside!r}"
+
+
+@pytest.mark.parametrize(
+    "text,must_vanish,must_survive",
+    [
+        # The corporate suffix is subtracted from the run, never used to refuse it. Refusing
+        # sent the run to `_qualify_run`, which reads the surname off the TAIL -- the slot the
+        # corporate word occupies -- so the fallback could not rescue it either, and an attendee
+        # block leaked in full.
+        ("Wanderleia Kranz Sistemas confirmou o prazo.", ("Wanderleia", "Kranz"), ("Sistemas",)),
+        ("Kleber Silva Solutions fechou o acordo", ("Kleber", "Silva"), ("Solutions",)),
+        ("Nivaldo Zanchetta Digital assumiu a conta", ("Nivaldo", "Zanchetta"), ("Digital",)),
+        ("Ata assinada por\nMarina Kranz\nDiretora de Tecnologia\n", ("Marina", "Kranz"), ()),
+        # A single token left by the subtraction is still judged on its own merits. This one is
+        # a listed surname, so it redacts -- the guard that used to refuse it here turned a
+        # redaction into a leak, and nothing covered that.
+        ("Silva Solutions fechou o acordo", ("Silva",), ("Solutions",)),
+        # ...and one that is on no list is refused downstream, which is what keeps a trading
+        # name whole.
+        ("Northwind Software Solutions renovou o contrato", (), ("Northwind", "Solutions")),
+        # A job title makes the run a role only when the run holds nobody.
+        ("Gerente Wanderleia Prazo confirmou", ("Wanderleia",), ()),
+        ("Coordenador Edson Silva\nRelatorio - apoio", ("Edson", "Silva"), ()),
+    ],
+    ids=lambda v: str(v)[:40],
+)
+def test_a_refusal_rule_never_refuses_a_person(
+    text: str, must_vanish: tuple[str, ...], must_survive: tuple[str, ...]
+) -> None:
+    """The two tail rules are refusals, and a refusal to redact is a potential leak.
+
+    Every case here redacted correctly on `main` and stopped redacting under the first version
+    of those rules, which discarded the whole run instead of subtracting the word. Review found
+    them; they are pinned so the next refusal rule has to pay for itself.
+    """
+    out = redact(text).redacted_text
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
+    for token in must_vanish:
+        assert token not in stripped, f"{token!r} leaked: {out!r}"
+    for token in must_survive:
+        assert token in stripped, f"{token!r} was swallowed: {out!r}"
 
 
 @pytest.mark.parametrize("product", pools.LISTED_PRODUCTS)

@@ -1614,27 +1614,54 @@ def _trusted_span(run: list[re.Match[str]], offset: int, text: str) -> tuple[int
     """
     if not run or _is_a_genitive_chain(run):
         return None
-    # A corporate suffix CLOSES a company, never a person. Symmetrical to the ordinary-head test
-    # below and needed for the same reason: two or three Title Case tokens are the shape of a
-    # full name and equally the shape of a trading name, and this is the one signal that tells
-    # them apart. "Northwind Software Solutions renovou o contrato" was coming back as a bare
-    # placeholder with the customer gone from the summary -- measured at three of four companies
-    # in the corpus, the fourth escaping only because `acme` happens to be on the negative list.
-    if _fold(run[-1].group(0)) in _COMPANY_TAIL_WORDS:
-        return None
-    # A job title opening a run of ordinary vocabulary is a ROLE, and a role has nobody in it.
-    # "Gerente de Contas" and "Diretor Comercial" were both coming back as people on `main` --
-    # `test_a_job_title_alone_is_not_a_person` looks like it covers this and does not: every
+    # A corporate suffix CLOSES a company, never a person -- "Northwind Software Solutions
+    # renovou o contrato" was coming back as a bare placeholder with the customer gone from the
+    # summary. It is SUBTRACTED from the run, never used to refuse it, which is the same rule
+    # `_split_on_allow_list` applies to the negative list and for the same reason.
+    #
+    # The first version of this refused the whole run, and reintroduced finding 5a pointing the
+    # other way. Refusing sent the run to `_qualify_run`, which reads the surname signal off the
+    # TAIL -- the slot the corporate word now occupied -- so the fallback could not rescue it
+    # either. Measured against `main`: "Wanderleia Kranz\nDiretora de Tecnologia" redacted
+    # before and leaked after, and so did "Kleber Silva Solutions", whose surname is on
+    # `_BR_TOP_SURNAMES`. The attendee block of a set of minutes is exactly that shape and it
+    # leaked 500 of 500 generated cases. An allow list that reaches past its own characters can
+    # only ever produce a leak, whichever list it is.
+    while len(run) > 1 and _fold(run[-1].group(0)) in _COMPANY_TAIL_WORDS:
+        run = run[:-1]
+    # Subtraction and nothing else. Two guards used to sit here -- refuse a lone corporate word,
+    # and refuse whatever single token the subtraction left -- and a mutation run showed neither
+    # changed any outcome. The first is genuinely dead: `_is_a_name_on_its_own` already refuses
+    # "Solutions" downstream, and every path into this function passes through it. The second
+    # was not dead, it was uncovered, and it refused in the wrong direction -- it turned
+    # "Silva Solutions" from a redaction into a leak of a listed surname. Both are gone rather
+    # than kept as a control that reads as protection, which is the defect class this file has
+    # been chasing for six rounds. "Northwind Software Solutions" still survives whole:
+    # "Northwind" is on no name list, so the downstream check refuses it.
+    # A job title opening a run makes it a ROLE only when the run holds NOBODY -- every token a
+    # title, a connective or ordinary vocabulary. "Gerente de Contas" and "Diretor Comercial"
+    # are roles; "Coordenador Edson Silva" and "Gerente Wanderleia Prazo" are people with a
+    # title in front. Reading only the last word refused those too, and a differential fuzz over
+    # 40,000 strings found five regressions against `main`, all of them that.
+    #
+    # The rule is needed because `main` redacts "Gerente de Contas" as a person.
+    # `test_a_job_title_alone_is_not_a_person` looks like it covers that and does not: every
     # string in it carries a term from the negative list ("Oracle", "Senior"), and what made the
-    # assertion pass was finding 5a demoting the whole candidate. Drop the product and `main`
-    # redacts the job title. So the property the test names was never true, and closing 5a is
-    # what made that visible. Person-only honorifics are excluded: "Sr." and "Dr." mark a
-    # person whatever follows, which is the distinction `_PERSON_ONLY_HONORIFICS` exists for.
+    # assertion pass was finding 5a demoting the whole candidate. Drop the product and the job
+    # title is redacted. The property the test names was never true.
+    #
+    # Person-only honorifics are excluded: "Sr." and "Dr." mark a person whatever follows,
+    # which is the distinction `_PERSON_ONLY_HONORIFICS` exists for.
     head = _fold(run[0].group(0))
     if (
         head in _NAME_HONORIFICS
         and head not in _PERSON_ONLY_HONORIFICS
-        and _fold(run[-1].group(0)) in _COMMON_PHRASE_HEADS
+        and all(
+            _fold(t.group(0)) in _NAME_HONORIFICS
+            or _fold(t.group(0)) in _NAME_CONNECTIVES
+            or _fold(t.group(0)) in _COMMON_PHRASE_HEADS
+            for t in run
+        )
     ):
         return None
     # Ordinary vocabulary does not open a name either. "Contas Medicas" and "Nota Fiscal

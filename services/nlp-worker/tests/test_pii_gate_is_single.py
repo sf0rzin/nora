@@ -20,6 +20,7 @@ Three things are checked, each of which has a plausible way of going wrong:
 
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 import re
@@ -156,42 +157,112 @@ def test_the_live_json_fallback_sends_the_shielded_prompt(MockClient) -> None:
     [llm_analyzer, live_analyzer, split_analyzer],
     ids=lambda m: m.__name__.rsplit(".", 1)[-1],
 )
-def test_the_fallback_reuses_the_prompt_variable(module) -> None:
-    """Source-level companion to the two tests above, for the paths they cannot both cover.
+def test_the_fallback_does_not_rebuild_the_prompt(module) -> None:
+    """Source-level companion to the two tests above, for the path they cannot cover.
 
     `split_analyzer` loops over windows and would need a much larger fixture to drive through
-    the API; the property is the same one, and it is cheap to state directly: whatever string is
-    handed to `chat_structured` is the string handed to `chat_json`.
+    the API, so the property is asserted directly: the string handed to `chat_json` is the
+    string handed to `chat_structured`, not a fresh one built from the request.
+
+    Read on the AST rather than by regex. The first version matched `user_prompt=user_prompt`
+    in the call text, which pins the keyword spelling and nothing else -- a handler that does
+    `user_prompt = render_template(tpl, transcript=req.transcript)` and then passes
+    `user_prompt=user_prompt` satisfies it while sending raw text to the provider. Review
+    demonstrated exactly that. What matters is that the name is not REBOUND between the two
+    calls, which is a question about assignments, not about spelling.
     """
-    source = inspect.getsource(module)
-    structured = re.findall(r"chat_structured\((.*?)\n\s*\)", source, re.S)
-    fallback = re.findall(r"chat_json\((.*?)\n\s*\)", source, re.S)
-    assert structured and fallback, f"{module.__name__}: no provider call found"
-    for block in structured + fallback:
-        assert "user_prompt=user_prompt" in block, (
-            f"{module.__name__} builds a provider prompt from something other than the "
-            f"`user_prompt` the shield produced:\n{block}"
+    tree = ast.parse(inspect.getsource(module))
+
+    def calls_named(node: ast.AST, name: str) -> bool:
+        return any(
+            isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == name
+            for n in ast.walk(node)
+        )
+
+    handlers = [
+        h
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Try)
+        for h in n.handlers
+        if calls_named(h, "chat_json")
+    ]
+    assert handlers, f"{module.__name__}: no fallback handler calling chat_json"
+
+    for handler in handlers:
+        rebound = [
+            t.id
+            for n in ast.walk(handler)
+            if isinstance(n, (ast.Assign, ast.AugAssign, ast.AnnAssign))
+            for t in ast.walk(n)
+            if isinstance(t, ast.Name)
+            and isinstance(t.ctx, ast.Store)
+            and t.id in {"user_prompt", "system_prompt"}
+        ]
+        assert not rebound, (
+            f"{module.__name__} rebinds {sorted(set(rebound))} inside the fallback handler, so "
+            f"the JSON-mode call can carry a prompt the shield never saw"
+        )
+
+    # And the calls really do pass those names, so the check above has something to protect.
+    for call in [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr in {"chat_structured", "chat_json"}
+    ]:
+        passed = {
+            kw.arg: kw.value.id if isinstance(kw.value, ast.Name) else None
+            for kw in call.keywords
+        }
+        assert passed.get("user_prompt") == "user_prompt", (
+            f"{module.__name__} passes a provider prompt that is not the `user_prompt` "
+            f"variable: {passed}"
         )
 
 
-def test_the_worker_holds_no_retry_of_its_own() -> None:
+def test_the_worker_holds_no_retry_or_backoff_of_its_own() -> None:
     """Retries are the SDK's, on an already-built request body, so they resend redacted text.
 
     If a retry ever moves into the worker it will rebuild something, and that is the moment this
     reasoning stops holding.
+
+    Three signals, because the first version had only the first and review demonstrated the
+    hole: `for attempt in range(3): try: ... except: time.sleep(2**attempt)` is a retry loop and
+    imports nothing. A hand-rolled retry needs either a sleep or a loop around the provider
+    call, so both are checked on the AST.
     """
-    source = inspect.getsource(llm_client_module)
-    assert "max_retries=2" in source
+    assert "max_retries=" in inspect.getsource(llm_client_module), (
+        "the SDK-level retry setting is gone; the reasoning in this file's docstring rests on it"
+    )
     worker_src = Path(llm_client_module.__file__).parent.parent
-    # An import or a decorator, not the word: `llm.py`'s own comment says "exponential backoff"
-    # and matching prose made this fail on the file it exists to bless.
     retry_library = re.compile(r"(?m)^\s*(?:from|import)\s+(?:tenacity|backoff)\b|^\s*@retry\b")
-    offenders = [
-        str(path)
-        for path in worker_src.rglob("*.py")
-        if retry_library.search(path.read_text(encoding="utf-8"))
-    ]
-    assert not offenders, f"a retry library appeared in the worker: {offenders}"
+
+    offenders: list[str] = []
+    for path in worker_src.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        if retry_library.search(text):
+            offenders.append(f"{path.name}: retry library")
+        tree = ast.parse(text)
+        for node in ast.walk(tree):
+            # `split_analyzer`'s window loop is not a retry: it calls the provider once per
+            # window, each with a DIFFERENT prompt. No static rule separates that from a retry
+            # loop, so it is named here rather than pattern-matched.
+            if not isinstance(node, (ast.For, ast.While)) or path.name == "split_analyzer.py":
+                continue
+            if any(
+                isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and n.func.attr in {"chat_structured", "chat_json", "sleep"}
+                for n in ast.walk(node)
+            ):
+                offenders.append(f"{path.name}: provider call or sleep inside a loop")
+    assert not offenders, (
+        "a hand-rolled retry may have appeared in the worker. If it is intentional, the prompt "
+        f"it resends has to be re-checked against the shield: {sorted(set(offenders))}"
+    )
 
 
 def test_there_is_no_embeddings_call_to_shield() -> None:
@@ -201,10 +272,14 @@ def test_there_is_no_embeddings_call_to_shield() -> None:
     none" is the kind of claim that silently stops being true.
     """
     worker_src = Path(llm_client_module.__file__).parent.parent
+    # `/v1/embeddings` is in here because the first version matched only the SDK's method
+    # shapes, and review pointed out that `httpx.post("https://api.openai.com/v1/embeddings")`
+    # is a provider call the SDK never sees. It is the URL that makes it one.
+    embeddings = re.compile(r"\.embeddings\b|embeddings\.create|def .*embed|/v1/embeddings|embed_")
     offenders = [
-        str(path)
+        str(path.name)
         for path in worker_src.rglob("*.py")
-        if re.search(r"\.embeddings\b|embeddings\.create|def .*embed", path.read_text("utf-8"))
+        if embeddings.search(path.read_text("utf-8"))
     ]
     assert not offenders, (
         "an embeddings call appeared in the worker. It is a provider call like any other and "
