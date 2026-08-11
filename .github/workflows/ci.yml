@@ -330,43 +330,65 @@ jobs:
           KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-          sudo apt-get install -y minisign
+          set -uo pipefail
+          sudo apt-get install -y minisign >/dev/null
+
+          : > /tmp/diag.txt
+          note() { echo "$*" >> /tmp/diag.txt; }
+
           # Tauri stores the minisign secret key base64-wrapped. Decode when it is, use as-is
           # when it is not, so this does not depend on a format nobody promised us.
-          printf '%s' "$KEY" | base64 -d > /tmp/k.sec 2>/dev/null || printf '%s' "$KEY" > /tmp/k.sec
-          head -c 18 /tmp/k.sec | grep -q 'untrusted comment' || {
-            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not a minisign secret key"; exit 1; }
+          if printf '%s' "$KEY" | base64 -d > /tmp/k.sec 2>/dev/null; then
+            note "- secret decoded from base64: yes"
+          else
+            printf '%s' "$KEY" > /tmp/k.sec
+            note "- secret decoded from base64: no, used as-is"
+          fi
+          note "- secret length: $(wc -c < /tmp/k.sec) bytes"
+          note "- first line: \`$(head -1 /tmp/k.sec | cut -c1-60)\`"
+          note "- password set: $([ -n "${KEY_PASSWORD:-}" ] && echo yes || echo 'no/empty')"
+
           # -R recreates the public key from the secret one. minisign reads the password from
           # stdin when there is no tty, which is the case here.
-          printf '%s\n' "${KEY_PASSWORD:-}" | minisign -R -s /tmp/k.sec -p /tmp/k.pub
+          ERR=$(printf '%s\n' "${KEY_PASSWORD:-}" | minisign -R -s /tmp/k.sec -p /tmp/k.pub 2>&1)
+          RC=$?
           rm -f /tmp/k.sec
+          note "- minisign -R exit: $RC"
+          [ -n "$ERR" ] && note "- minisign said: \`$ERR\`"
 
-          NEW_ID=$(head -1 /tmp/k.pub)
-          NEW_B64=$(base64 -w0 /tmp/k.pub)
           OLD_ID=$(jq -r '.plugins.updater.pubkey' apps/desktop/src-tauri/tauri.conf.json \
                    | base64 -d | head -1)
 
           # Posted as a PR comment, not left in the job log: this repository is operated from
           # networks where GitHub's log CDN is unreachable while api.github.com is not, and a
           # value nobody can read is a job that did not run. A public key is not a secret —
-          # it is compiled into every shipped client and published in latest.json.
+          # it is compiled into every shipped client and published in latest.json. Only the
+          # derived PUBLIC key and the bounded diagnostics above are ever written here.
           {
             echo "### Updater public key, derived from the CI signing secret"
             echo
-            echo "| | |"
-            echo "|---|---|"
-            echo "| secret in CI produces | \`$NEW_ID\` |"
-            echo "| tauri.conf.json says  | \`$OLD_ID\` |"
-            echo
-            echo "Value for \`plugins.updater.pubkey\`:"
-            echo
-            echo '```'
-            echo "$NEW_B64"
-            echo '```'
+            if [ "$RC" -eq 0 ] && [ -s /tmp/k.pub ]; then
+              echo "| | |"
+              echo "|---|---|"
+              echo "| secret in CI produces | \`$(head -1 /tmp/k.pub)\` |"
+              echo "| tauri.conf.json says  | \`$OLD_ID\` |"
+              echo
+              echo "Value for \`plugins.updater.pubkey\`:"
+              echo
+              echo '```'
+              base64 -w0 /tmp/k.pub
+              echo
+              echo '```'
+            else
+              echo "**Derivation failed.** Diagnostics:"
+              echo
+              cat /tmp/diag.txt
+              echo
+              echo "tauri.conf.json currently says \`$OLD_ID\`."
+            fi
           } > /tmp/comment.md
           gh pr comment 432 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
-          echo "posted to #432"
+          exit "$RC"
 
   desktop-bundle:
     needs: changes
