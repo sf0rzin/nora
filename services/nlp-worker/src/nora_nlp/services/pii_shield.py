@@ -1667,15 +1667,22 @@ def _trusted_span(run: list[re.Match[str]], offset: int, text: str) -> tuple[int
     # The price is real and is paid on the false-redaction rate: a three-token trading name
     # ending in a corporate word keeps only that word ("Northwind Software Solutions" ->
     # "[[PERSON_NAME_1]] Solutions"). Still better than `main`, which swallowed all three.
-    # A run of NOTHING BUT corporate words is a trading name with no person in it. This is what
-    # keeps "Acme Software Solutions" whole once the negative list has taken `Acme` out.
-    if all(_fold(t.group(0)) in _COMPANY_TAIL_WORDS for t in run):
-        return None
+    # There is deliberately NO "a run of only corporate words is a trading name" test here. One
+    # was written, and a mutation run showed it survives deletion: `_COMPANY_TAIL_WORDS` is a
+    # subset of the union the role refusal below tests against, so `all(corporate)` implies
+    # `all(title|connective|ordinary|corporate)` and the refusal already covers it. Keeping it
+    # would be a second control that reads as protection and cannot fire — the defect class this
+    # file spends paragraphs disavowing, introduced by the change that was fixing another one.
+    #
     # Counted on NAME-BEARING tokens, not on `len(run)`: the connectives and the leading
     # ordinary vocabulary are stripped further down, so "do Kranz Solutions" and
     # "Contato Kranz Solutions" are three tokens that become one, and a plain length test let
     # both leak.
-    while _fold(run[-1].group(0)) in _COMPANY_TAIL_WORDS and len(_name_bearing(run[:-1])) >= 2:
+    # `if`, not `while`, and the difference is nothing: every span this returns is re-qualified
+    # by `_qualify_and_claim` over the narrowed slice, which calls back into here, so a second
+    # corporate word is subtracted on the next pass. A mutation run proved the loop's iteration
+    # is exercised by no test at all, which is the same thing said from the other side.
+    if _fold(run[-1].group(0)) in _COMPANY_TAIL_WORDS and len(_name_bearing(run[:-1])) >= 2:
         run = run[:-1]
     # A job title opening a run makes it a ROLE only when the run holds NOBODY -- every token a
     # title, a connective or ordinary vocabulary. "Gerente de Contas" and "Diretor Comercial"
@@ -1689,25 +1696,49 @@ def _trusted_span(run: list[re.Match[str]], offset: int, text: str) -> tuple[int
     # assertion pass was finding 5a demoting the whole candidate. Drop the product and the job
     # title is redacted. The property the test names was never true.
     #
-    # The `all(...)` is the whole rule. Two conditions that read as protection were dropped
-    # from this branch after review measured them:
+    # A CORPORATE WORD counts as "nobody" here too, and leaving it out was a leak.
+    # "Odair Gerente Software confirmou." -- a person, a title and a corporate word -- went:
     #
-    #   `head in _NAME_HONORIFICS`      subsumed. A run whose every token is a title, a
-    #                                   connective or ordinary vocabulary already has such a
-    #                                   head, or is caught by the `_COMMON_PHRASE_HEADS` branch
-    #                                   below. Deleting it changed 0 of 13,500 strings.
-    #   `head not in _PERSON_ONLY_HONORIFICS`
-    #                                   worse than dead. It was written to mean "Sr." and "Dr."
-    #                                   mark a person whatever follows -- but this branch only
-    #                                   ever REFUSES, so excluding those heads can only make the
-    #                                   shield redact MORE, never less. Its one measurable
-    #                                   effect on 13,500 strings was to leave "Sr. Grupo
-    #                                   confirmou." unredacted. It protected nothing and cost a
-    #                                   redaction.
+    #   Pattern 1 matched "Gerente Software" and this rule did not refuse it, because
+    #   `software` is on none of the three lists above. So Pattern 1 CLAIMED the role phrase as
+    #   a person. Pattern 2's "Odair Gerente Software" then overlapped that claim,
+    #   `_claim_free_parts` trimmed it to the lone token "Odair", and `_is_a_name_on_its_own`
+    #   threw it away. The person's own ground was taken by a claim on the words beside them.
+    #
+    # 4,484 hits in a 400,000-string differential. Finding 5a in a fourth costume, and this one
+    # was invisible to a diff against `main` -- `main` has no `_COMPANY_TAIL_WORDS` at all and
+    # leaks the same shape, so only a three-way diff against the PREVIOUS COMMIT showed it.
+    #
+    # `head not in _PERSON_ONLY_HONORIFICS` is deliberately NOT here, and the reasoning is
+    # worth keeping because two measurements disagreed and the disagreement is the point.
+    #
+    # Measured IN ISOLATION on top of the previous commit, restoring it looked beneficial: it
+    # made "Sr. Gerente Solutions confirmou." keep the corporate word instead of swallowing it,
+    # 100 differences out of 100 in that direction. Refusing here is not fail-closed the way it
+    # reads -- it hands the run to `_qualify_run`, which gets the UN-subtracted run and claims
+    # the whole thing -- so the condition really does reduce over-redaction.
+    #
+    # Measured TOGETHER with the corporate word above, it is a leak. Any
+    # `<person> Sr./Dr. <corporate word>` stops the refusal from firing, Pattern 1 claims the
+    # "Sr. Software" phrase as a person, Pattern 2's longer match overlaps it and is trimmed to
+    # the lone person token, and `_is_a_name_on_its_own` discards it:
+    #
+    #   "Odair Sr. Software confirmou."   with the condition -> "Odair [[PERSON_NAME_1]] ..."
+    #                                     without it         -> "[[PERSON_NAME_1]] Software ..."
+    #
+    # 1,728 of 9,600 generated strings, against the previous commit. So the condition trades a
+    # swallowed corporate word for a leaked name, and ADR 0012 decides that: it stays out.
+    # Composition is the lesson -- the isolated measurement was correct and the conclusion drawn
+    # from it was not.
+    #
+    # `head in _NAME_HONORIFICS` is also gone, subsumed by the `all(...)`. The comment that
+    # removed it claimed "0 of 13,500 strings"; the real figure is 20, all of them the shield
+    # inventing fewer people. Beneficial, wrongly evidenced, corrected here.
     if all(
         _fold(t.group(0)) in _NAME_HONORIFICS
         or _fold(t.group(0)) in _NAME_CONNECTIVES
         or _fold(t.group(0)) in _COMMON_PHRASE_HEADS
+        or _fold(t.group(0)) in _COMPANY_TAIL_WORDS
         for t in run
     ):
         return None
@@ -1737,8 +1768,23 @@ def _trusted_span(run: list[re.Match[str]], offset: int, text: str) -> tuple[int
 def _has_a_person_head(run: list[re.Match[str]]) -> bool:
     """Whether the run OPENS with something that only a person opens with."""
     head = _fold(run[0].group(0))
-    if head in _BR_TOP_NAMES or head in _PERSON_ONLY_HONORIFICS:
+    if head in _BR_TOP_NAMES:
         return True
+    if head in _PERSON_ONLY_HONORIFICS:
+        # "Sr." and "Dr." mark a person whatever follows -- but only if something follows that
+        # COULD be one. "Sr. Software" is a title and a corporate word, and vouching for it
+        # made `_qualify_run` claim the pair as a person: Pattern 1 then owned that ground,
+        # Pattern 2's longer "Odair Sr. Software" was trimmed to the lone "Odair", and
+        # `_is_a_name_on_its_own` discarded it. 1,728 of 9,600 generated strings leaked that
+        # way, and the refusal added above could not stop it because this vouching happens
+        # AFTER `_trusted_span` has already declined.
+        return any(
+            _fold(t.group(0)) not in _NAME_HONORIFICS
+            and _fold(t.group(0)) not in _NAME_CONNECTIVES
+            and _fold(t.group(0)) not in _COMMON_PHRASE_HEADS
+            and _fold(t.group(0)) not in _COMPANY_TAIL_WORDS
+            for t in run[1:]
+        )
     # A job title is not a person on its own -- "Gerente de Contas" is a role with nobody in
     # it -- but it does not cancel the given name that follows it either. "Diretor Carlos da
     # Silva" is a person, and reading only token 0 would throw him away.

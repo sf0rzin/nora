@@ -274,6 +274,32 @@ def test_the_same_invariant_holds_in_upper_case(product: str, given: str, surnam
         # everyday shape of these transcripts.
         ("O Protheus do Kranz Solutions travou.", ("Kranz",), ("Protheus",)),
         ("Contato Kranz Solutions", ("Kranz",), ()),
+        # A person, a job title and a corporate word. Pattern 1 used to claim "Gerente Software"
+        # as a person; Pattern 2's longer match then overlapped it, was trimmed to the lone
+        # "Odair", and thrown away. 4,484 hits in a differential, and invisible against `main`
+        # because `main` has no corporate-word rule and leaks the same shape — only a diff
+        # against the PREVIOUS COMMIT showed it.
+        ("Odair Gerente Software confirmou.", ("Odair",), ("Software",)),
+        ("Nardelli Presidente Holding confirmou.", ("Nardelli",), ("Holding",)),
+        ("Zanchetta Diretor Industria apresentou a proposta.", ("Zanchetta",), ("Industria",)),
+        # Same shape with a PERSON-ONLY honorific. `Sr.` and `Dr.` vouch for whatever follows
+        # them in `_has_a_person_head`, so `Sr. Software` was claimed as a person and took the
+        # ground from `Odair` exactly as above — 1,728 of 9,600 generated strings, and the role
+        # refusal could not stop it because the vouching happens after `_trusted_span` declines.
+        ("Odair Sr. Software confirmou.", ("Odair",), ("Software",)),
+        ("Kranz Dr. Holding aprovou.", ("Kranz",), ("Holding",)),
+        # TWO corporate words in a row, so the subtraction has to ITERATE. With `while` replaced
+        # by `if` the second one is never removed and it goes into the placeholder — a mutation
+        # that survived the whole suite until this case existed.
+        (
+            "Wanderleia Kranz Digital Solutions fechou.",
+            ("Wanderleia", "Kranz"),
+            ("Digital", "Solutions"),
+        ),
+        # A three-token trading name. The person-facing half is nothing (there is no person),
+        # and what this pins is that the LAST word survives — `_name_bearing` must not also
+        # exclude corporate words, which is a mutation that survived until this case came back.
+        ("Northwind Software Solutions renovou o contrato", (), ("Solutions",)),
         # A job title makes the run a role only when the run holds nobody.
         ("Gerente Wanderleia Prazo confirmou", ("Wanderleia",), ()),
         ("Coordenador Edson Silva\nRelatorio - apoio", ("Edson", "Silva"), ()),
