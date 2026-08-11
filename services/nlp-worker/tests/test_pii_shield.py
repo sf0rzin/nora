@@ -249,33 +249,42 @@ def test_an_ordinary_genitive_phrase_is_not_a_person(text):
     assert result.redacted_text == text
 
 
-@pytest.mark.parametrize(
-    "given, surname",
-    [
-        ("Edson", "Costa"),
-        ("Wanderleia", "Martins"),
-        ("Osvaldo", "Pinheiro"),
-        ("Genoveva", "Silveira"),
-        ("Anastacio", "Magalhães"),
-        ("Teodolinda", "Brandão"),
-        ("Jocimar", "Barros"),
-        ("Adilson", "Correa"),
-    ],
-)
+# Shared by the test below and by its counter-proof, so the two cannot drift apart.
+_IBGE_TOP_SURNAME_PAIRS = [
+    ("Edson", "Costa"),
+    ("Wanderleia", "Martins"),
+    ("Osvaldo", "Pinheiro"),
+    ("Genoveva", "Silveira"),
+    ("Anastacio", "Magalhães"),
+    ("Teodolinda", "Brandão"),
+    ("Jocimar", "Barros"),
+    ("Adilson", "Correa"),
+]
+
+
+@pytest.mark.parametrize("given, surname", _IBGE_TOP_SURNAME_PAIRS)
 def test_the_tail_list_covers_the_most_common_brazilian_surnames(given, surname):
     """Regression: the list was missing names from the IBGE top 10, Costa and Martins among
     them, so a full name built on one of them had no tail signal and left in the clear.
 
-    Every case carries "Protheus". Without it the phrase is a clean 2-token Title Case
+    Every case is wrapped in "Contrato de ...". Bare, the phrase is a clean 2-token Title Case
     sequence, which `_spans_without_negatives` trusts whole WITHOUT ever consulting
-    `_BR_TOP_SURNAMES` -- so the earlier version of this test passed on Pattern 2 and only one
-    of its six cases actually exercised the list. Deleting Martins from the list left it
-    green. The negative term is what forces the qualification path where the tail is read.
+    `_BR_TOP_SURNAMES` -- so an earlier version of this test passed on Pattern 2 and only one
+    of its cases actually exercised the list. Deleting Martins from the list left it green. An
+    ordinary-vocabulary head plus a genitive preposition is a chain `_trusted_span` refuses, and
+    that is what forces the qualification path where the tail is read.
+
+    The forcing wrapper used to be a trailing "Protheus", which worked for a reason that no
+    longer exists and should not have existed: a term from the negative list demoted the WHOLE
+    candidate off the trusted path. That was finding 5a. `_split_on_allow_list` now confines an
+    allow-listed term to its own surface form, so "Edson Costa Protheus" takes the trusted path
+    like any other clean pair and stops proving anything about the tail list. Same assertions,
+    same property; a forcing mechanism that is not a defect.
     """
-    result = pii_shield.redact(f"{given} {surname} Protheus")
+    result = pii_shield.redact(f"Contrato de {given} {surname}")
     assert given not in result.redacted_text
     assert surname not in result.redacted_text
-    assert "Protheus" in result.redacted_text
+    assert "Contrato" in result.redacted_text
 
 
 def test_the_surname_list_is_what_carries_that_test(monkeypatch):
@@ -284,9 +293,14 @@ def test_the_surname_list_is_what_carries_that_test(monkeypatch):
     Without this, a future edit that made the qualification path stop consulting
     `_BR_TOP_SURNAMES` would go unnoticed -- the assertions would keep passing for some other
     reason, which is exactly how the previous version of the test broke.
+
+    All eight pairs, not one: the counter-proof is only worth as much as its coverage of the
+    test it counter-proves.
     """
     monkeypatch.setattr(pii_shield, "_BR_TOP_SURNAMES", frozenset())
-    assert pii_shield.redact("Edson Costa Protheus").redacted_text == "Edson Costa Protheus"
+    for given, surname in _IBGE_TOP_SURNAME_PAIRS:
+        text = f"Contrato de {given} {surname}"
+        assert pii_shield.redact(text).redacted_text == text, text
 
 
 def test_a_job_title_does_not_cancel_the_given_name_after_it():

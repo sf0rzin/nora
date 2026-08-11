@@ -142,6 +142,16 @@ jobs:
           --cov-report=term-missing
           --cov-fail-under=90
           tests/test_pii_shield.py
+      # The two rates, in the log, on every run. `tests/test_pii_corpus.py` is what fails the
+      # build — on either rate — and this step is what puts the numbers where a reviewer can
+      # read them without re-running anything. Both or neither: a leak rate published without a
+      # false-redaction rate beside it is how a redaction defect gets closed by redacting the
+      # whole transcript. Under a second for the whole corpus — no case count here on purpose,
+      # because it grew from 4,482 to 5,682 in one review and a stale number in a comment is
+      # exactly the kind of claim this project forbids.
+      - name: PII corpus — leak rate and false-redaction rate
+        working-directory: services/nlp-worker
+        run: python -m tests.pii_corpus.harness
 
   web:
     needs: changes

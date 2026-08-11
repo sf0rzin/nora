@@ -1489,6 +1489,93 @@ _PERSON_ONLY_HONORIFICS: frozenset[str] = frozenset(
 )
 
 
+def _split_on_allow_list(
+    tokens: list[re.Match[str]],
+    separators: frozenset[str] = frozenset(),
+) -> list[list[re.Match[str]]]:
+    """Contiguous stretches of `tokens` with the allow-listed terms taken out.
+
+    ARBITRATION. This is the one place where an allow-listed term meets a name candidate, and
+    the rule is a sentence: **the term covers its own surface form and nothing else.** It is
+    removed from the candidate, it does not widen over a neighbour, and it does not lower the
+    standing of what is left -- each surviving stretch is judged exactly as it would be judged
+    standing alone. Where that judgement is ambiguous the stretch is REDACTED, because an
+    over-redaction costs a worse summary and an under-redaction sends a person's name to a
+    third-party provider, which ADR 0012 forbids.
+
+    Both halves of that rule used to be broken, and finding 5a is the pair of them:
+
+    - `_caps_name_span` returned None for the WHOLE match when any token was allow-listed, so
+      "SAP CARLOS SILVA" emitted a name that "CARLOS SILVA" redacts correctly. Three characters
+      of allow list covering fourteen characters of person.
+    - This function computed `has_negative` over the entire candidate and demoted *every*
+      stretch in it onto a path that demands a listed given name or a listed surname, so
+      "Protheus Wanderleia Kranz" emitted a name that "Wanderleia Kranz" redacts correctly. The
+      lists hold 271 given names and 101 surnames; most real names are on neither, which is the
+      whole reason the trusted path exists.
+
+    Note what the allow list can and cannot do, because it is easy to read it the other way: its
+    only possible effect anywhere in this module is to SUPPRESS a redaction. It can never cause
+    one. So an allow-listed term reaching past its own characters can only ever produce a leak.
+
+    `separators` are tokens that split a run without being allow-listed. The coordinating `e`
+    is the only one: it joins two DIFFERENT people, so each side is a candidate of its own.
+    Keeping the run whole made "Pesquisa e Desenvolvimento" one PERSON_NAME and made "Osvaldo
+    Pinheiro e Marina Alves" stand or fall together.
+    """
+    runs: list[list[re.Match[str]]] = []
+    current: list[re.Match[str]] = []
+    for tok in tokens:
+        folded = _fold(tok.group(0))
+        if folded in _PERSON_NAME_NEGATIVE_LIST or folded in separators:
+            if current:
+                runs.append(current)
+            current = []
+        else:
+            current.append(tok)
+    if current:
+        runs.append(current)
+    return runs
+
+
+# Words that close a trading name. Kept separate from `_COMMON_PHRASE_HEADS`, which decides what
+# may OPEN a phrase: this list decides what may close one, and the two questions have different
+# answers -- "Sistemas" heads "Sistemas de Gestao" and also closes "Acme Sistemas".
+#
+# Every entry has to be a word no Brazilian carries as a surname, because refusing a span here is
+# a refusal to redact. Checked against `_BR_TOP_SURNAMES` and `_BR_TOP_NAMES`: none of them
+# appears on either.
+_COMPANY_TAIL_WORDS: frozenset[str] = frozenset(
+    _fold(w)
+    for w in (
+        "Software",
+        "Solutions",
+        "Solucoes",
+        "Sistemas",
+        "Tecnologia",
+        "Tecnologias",
+        "Consultoria",
+        "Servicos",
+        "Industria",
+        "Comercio",
+        "Participacoes",
+        "Holding",
+        "Group",
+        "Grupo",
+        "Labs",
+        "Digital",
+        "Fintech",
+        "Telecom",
+        "Engenharia",
+        "Ltda",
+    )
+)
+# Deliberately absent: "SA", "ME", "EPP". This list is consulted from `_trusted_span`, which
+# only ever sees Title Case runs, and `_TITLE_WORD` requires a lowercase letter after the first
+# -- so those three could never match here. An entry that cannot fire is a control that reads as
+# protection and is not, which is the defect class this module has been chasing for six rounds.
+
+
 def _spans_without_negatives(value: str, offset: int, text: str) -> list[tuple[int, int]]:
     """All stretches of the candidate that still hold as a name, left to right.
 
@@ -1497,35 +1584,37 @@ def _spans_without_negatives(value: str, offset: int, text: str) -> list[tuple[i
     which kept only the longest via `max()`, the first one on a tie -- discarded
     "Carlos Silva" entirely. The surname went out in the clear.
     """
-    tokens = list(_WORD_RE.finditer(value))
-    has_negative = any(_fold(t.group(0)) in _PERSON_NAME_NEGATIVE_LIST for t in tokens)
-
-    runs: list[list[re.Match[str]]] = []
-    current: list[re.Match[str]] = []
-    for tok in tokens:
-        folded = _fold(tok.group(0))
-        # `e` separates as well: it coordinates two DIFFERENT people, so each side is a
-        # candidate of its own. Keeping the run whole made "Pesquisa e Desenvolvimento" one
-        # PERSON_NAME, and made "Osvaldo Pinheiro e Marina Alves" stand or fall together.
-        if folded in _PERSON_NAME_NEGATIVE_LIST or folded == _CONJUNCTION:
-            if current:
-                runs.append(current)
-            current = []
-        else:
-            current.append(tok)
-    if current:
-        runs.append(current)
-
+    runs = _split_on_allow_list(
+        list(_WORD_RE.finditer(value)),
+        separators=frozenset({_CONJUNCTION}),
+    )
     spans: list[tuple[int, int]] = []
     for run in runs:
-        # A run that no negative term split is trusted on the strength of the regex alone;
-        # one that WAS split is a fragment of a larger phrase and has to qualify.
-        span = None if has_negative else _trusted_span(run, offset, text)
+        # Each stretch takes the same two chances an unsplit candidate takes, in the same order.
+        # Skipping the first of them for a stretch that merely sat NEXT TO an allow-listed term
+        # is what finding 5a was.
+        span = _trusted_span(run, offset, text)
         if span is None:
             span = _qualify_run(run, offset, text)
         if span is not None:
             spans.append(span)
     return spans
+
+
+def _name_bearing(run: list[re.Match[str]]) -> list[re.Match[str]]:
+    """The tokens of a run that could carry a name.
+
+    Connectives and ordinary vocabulary are stripped later by `_trusted_span` and
+    `_tighten_to_tokens`, so counting raw tokens overestimates what a run has left. The
+    corporate-suffix subtraction has to know how much would ACTUALLY survive: "do Kranz
+    Solutions" is three tokens and one name, and a raw length test let it collapse to nothing.
+    """
+    return [
+        t
+        for t in run
+        if _fold(t.group(0)) not in _NAME_CONNECTIVES
+        and _fold(t.group(0)) not in _COMMON_PHRASE_HEADS
+    ]
 
 
 def _trusted_span(run: list[re.Match[str]], offset: int, text: str) -> tuple[int, int] | None:
@@ -1540,6 +1629,118 @@ def _trusted_span(run: list[re.Match[str]], offset: int, text: str) -> tuple[int
     mid-word emits a fragment: "Eng. Schürmann" once matched as "Eng. Sch".
     """
     if not run or _is_a_genitive_chain(run):
+        return None
+    # A corporate suffix CLOSES a company, never a person -- "Northwind Software Solutions
+    # renovou o contrato" was coming back as a bare placeholder with the customer gone from the
+    # summary. It is SUBTRACTED from the run, never used to refuse it, which is the same rule
+    # `_split_on_allow_list` applies to the negative list and for the same reason.
+    #
+    # The first version of this refused the whole run, and reintroduced finding 5a pointing the
+    # other way. Refusing sent the run to `_qualify_run`, which reads the surname signal off the
+    # TAIL -- the slot the corporate word now occupied -- so the fallback could not rescue it
+    # either. Measured against `main`: "Wanderleia Kranz\nDiretora de Tecnologia" redacted
+    # before and leaked after, and so did "Kleber Silva Solutions", whose surname is on
+    # `_BR_TOP_SURNAMES`. The attendee block of a set of minutes is exactly that shape and it
+    # leaked 500 of 500 generated cases. An allow list that reaches past its own characters can
+    # only ever produce a leak, whichever list it is.
+    # `> 2`, NOT `> 1`, and the difference is a leak of a thousand generated cases.
+    #
+    # Subtracting down to a single token destroys the run instead of narrowing it:
+    # `_is_a_name_on_its_own`, downstream in `_qualify_and_claim`, refuses a lone token that is
+    # on neither name list, so NOTHING is claimed -- not the corporate word and not the person.
+    # `main` claimed the pair whole. Measured, `main` against the `> 1` version:
+    #
+    #     "Wanderleia Solutions fechou o acordo."      main redacts, `> 1` LEAKS
+    #     "Zanchetta Tecnologia apresentou a proposta."  main redacts, `> 1` LEAKS
+    #
+    # 600 of 600 off-list given names and 400 of 400 off-list surnames, and it reached through
+    # the genitive route too ("O Protheus do Kranz Solutions travou"). That is finding 5a again,
+    # in a third costume: a list reaching past its own characters, this time via the backstop
+    # rather than via the qualification path. The lists hold 271 given names and 101 surnames,
+    # so "most real names" is exactly the half that leaked.
+    #
+    # Stopping at two tokens means an ambiguous pair is never taken apart, so it is judged as
+    # `main` judged it -- redacted, with the corporate word swallowed. That is the fail-closed
+    # side of a case with no lexical signal: "Wanderleia Tecnologia" is a person and a
+    # department, "Acme Solutions" is a company, and nothing in the text tells them apart.
+    #
+    # The price is real and is paid on the false-redaction rate: a three-token trading name
+    # ending in a corporate word keeps only that word ("Northwind Software Solutions" ->
+    # "[[PERSON_NAME_1]] Solutions"). Still better than `main`, which swallowed all three.
+    # There is deliberately NO "a run of only corporate words is a trading name" test here. One
+    # was written, and a mutation run showed it survives deletion: `_COMPANY_TAIL_WORDS` is a
+    # subset of the union the role refusal below tests against, so `all(corporate)` implies
+    # `all(title|connective|ordinary|corporate)` and the refusal already covers it. Keeping it
+    # would be a second control that reads as protection and cannot fire — the defect class this
+    # file spends paragraphs disavowing, introduced by the change that was fixing another one.
+    #
+    # Counted on NAME-BEARING tokens, not on `len(run)`: the connectives and the leading
+    # ordinary vocabulary are stripped further down, so "do Kranz Solutions" and
+    # "Contato Kranz Solutions" are three tokens that become one, and a plain length test let
+    # both leak.
+    # `if`, not `while`, and the difference is nothing: every span this returns is re-qualified
+    # by `_qualify_and_claim` over the narrowed slice, which calls back into here, so a second
+    # corporate word is subtracted on the next pass. A mutation run proved the loop's iteration
+    # is exercised by no test at all, which is the same thing said from the other side.
+    if _fold(run[-1].group(0)) in _COMPANY_TAIL_WORDS and len(_name_bearing(run[:-1])) >= 2:
+        run = run[:-1]
+    # A job title opening a run makes it a ROLE only when the run holds NOBODY -- every token a
+    # title, a connective or ordinary vocabulary. "Gerente de Contas" and "Diretor Comercial"
+    # are roles; "Coordenador Edson Silva" and "Gerente Wanderleia Prazo" are people with a
+    # title in front. Reading only the last word refused those too, and a differential fuzz over
+    # 40,000 strings found five regressions against `main`, all of them that.
+    #
+    # The rule is needed because `main` redacts "Gerente de Contas" as a person.
+    # `test_a_job_title_alone_is_not_a_person` looks like it covers that and does not: every
+    # string in it carries a term from the negative list ("Oracle", "Senior"), and what made the
+    # assertion pass was finding 5a demoting the whole candidate. Drop the product and the job
+    # title is redacted. The property the test names was never true.
+    #
+    # A CORPORATE WORD counts as "nobody" here too, and leaving it out was a leak.
+    # "Odair Gerente Software confirmou." -- a person, a title and a corporate word -- went:
+    #
+    #   Pattern 1 matched "Gerente Software" and this rule did not refuse it, because
+    #   `software` is on none of the three lists above. So Pattern 1 CLAIMED the role phrase as
+    #   a person. Pattern 2's "Odair Gerente Software" then overlapped that claim,
+    #   `_claim_free_parts` trimmed it to the lone token "Odair", and `_is_a_name_on_its_own`
+    #   threw it away. The person's own ground was taken by a claim on the words beside them.
+    #
+    # 4,484 hits in a 400,000-string differential. Finding 5a in a fourth costume, and this one
+    # was invisible to a diff against `main` -- `main` has no `_COMPANY_TAIL_WORDS` at all and
+    # leaks the same shape, so only a three-way diff against the PREVIOUS COMMIT showed it.
+    #
+    # `head not in _PERSON_ONLY_HONORIFICS` is deliberately NOT here, and the reasoning is
+    # worth keeping because two measurements disagreed and the disagreement is the point.
+    #
+    # Measured IN ISOLATION on top of the previous commit, restoring it looked beneficial: it
+    # made "Sr. Gerente Solutions confirmou." keep the corporate word instead of swallowing it,
+    # 100 differences out of 100 in that direction. Refusing here is not fail-closed the way it
+    # reads -- it hands the run to `_qualify_run`, which gets the UN-subtracted run and claims
+    # the whole thing -- so the condition really does reduce over-redaction.
+    #
+    # Measured TOGETHER with the corporate word above, it is a leak. Any
+    # `<person> Sr./Dr. <corporate word>` stops the refusal from firing, Pattern 1 claims the
+    # "Sr. Software" phrase as a person, Pattern 2's longer match overlaps it and is trimmed to
+    # the lone person token, and `_is_a_name_on_its_own` discards it:
+    #
+    #   "Odair Sr. Software confirmou."   with the condition -> "Odair [[PERSON_NAME_1]] ..."
+    #                                     without it         -> "[[PERSON_NAME_1]] Software ..."
+    #
+    # 1,728 of 9,600 generated strings, against the previous commit. So the condition trades a
+    # swallowed corporate word for a leaked name, and ADR 0012 decides that: it stays out.
+    # Composition is the lesson -- the isolated measurement was correct and the conclusion drawn
+    # from it was not.
+    #
+    # `head in _NAME_HONORIFICS` is also gone, subsumed by the `all(...)`. The comment that
+    # removed it claimed "0 of 13,500 strings"; the real figure is 20, all of them the shield
+    # inventing fewer people. Beneficial, wrongly evidenced, corrected here.
+    if all(
+        _fold(t.group(0)) in _NAME_HONORIFICS
+        or _fold(t.group(0)) in _NAME_CONNECTIVES
+        or _fold(t.group(0)) in _COMMON_PHRASE_HEADS
+        or _fold(t.group(0)) in _COMPANY_TAIL_WORDS
+        for t in run
+    ):
         return None
     # Ordinary vocabulary does not open a name either. "Contas Medicas" and "Nota Fiscal
     # Eletronica" were being claimed as people, with the hash of the phrase filed, purely
@@ -1567,8 +1768,23 @@ def _trusted_span(run: list[re.Match[str]], offset: int, text: str) -> tuple[int
 def _has_a_person_head(run: list[re.Match[str]]) -> bool:
     """Whether the run OPENS with something that only a person opens with."""
     head = _fold(run[0].group(0))
-    if head in _BR_TOP_NAMES or head in _PERSON_ONLY_HONORIFICS:
+    if head in _BR_TOP_NAMES:
         return True
+    if head in _PERSON_ONLY_HONORIFICS:
+        # "Sr." and "Dr." mark a person whatever follows -- but only if something follows that
+        # COULD be one. "Sr. Software" is a title and a corporate word, and vouching for it
+        # made `_qualify_run` claim the pair as a person: Pattern 1 then owned that ground,
+        # Pattern 2's longer "Odair Sr. Software" was trimmed to the lone "Odair", and
+        # `_is_a_name_on_its_own` discarded it. 1,728 of 9,600 generated strings leaked that
+        # way, and the refusal added above could not stop it because this vouching happens
+        # AFTER `_trusted_span` has already declined.
+        return any(
+            _fold(t.group(0)) not in _NAME_HONORIFICS
+            and _fold(t.group(0)) not in _NAME_CONNECTIVES
+            and _fold(t.group(0)) not in _COMMON_PHRASE_HEADS
+            and _fold(t.group(0)) not in _COMPANY_TAIL_WORDS
+            for t in run[1:]
+        )
     # A job title is not a person on its own -- "Gerente de Contas" is a role with nobody in
     # it -- but it does not cancel the given name that follows it either. "Diretor Carlos da
     # Silva" is a person, and reading only token 0 would throw him away.
@@ -1763,8 +1979,31 @@ def _widen_over_hyphens(start: int, end: int, text: str) -> tuple[int, int]:
     return start, end
 
 
-def _caps_name_span(match: re.Match[str], text: str) -> tuple[int, int] | None:
-    """The stretch of an ALL-CAPS run that is a name, or None if none of it is.
+def _caps_name_spans(match: re.Match[str], text: str) -> list[tuple[int, int]]:
+    """The stretches of an ALL-CAPS run that are names, at most one per allow-list-free stretch.
+
+    Returns a list for the same reason `_spans_without_negatives` does: an allow-listed term
+    inside the match separates two candidates rather than cancelling both. "SAP CARLOS SILVA"
+    is a product and a person, and returning None for the pair -- which is what this did until
+    finding 5a -- published the person.
+    """
+    # There is deliberately NO guard against overlapping a placeholder from the basic-pattern
+    # stage. One was written, and three independent reviewers proved it unreachable: a
+    # placeholder is "[[TYPE_N]]", and `_CAPS_SEQUENCE_RE` needs `\s+` between its words, which
+    # the "_1]] [[" between two placeholders is not. Keeping it meant a test that certified a
+    # control that cannot fire -- the defect class this file has been chasing for five rounds.
+    # `test_a_placeholder_from_the_earlier_stage_is_not_read_as_an_all_caps_name` still asserts
+    # the OUTCOME end to end, which is the part that is real.
+    spans: list[tuple[int, int]] = []
+    for run in _split_on_allow_list(list(_WORD_RE.finditer(match.group(0)))):
+        span = _caps_span_for_run(run, match.start(), text)
+        if span is not None:
+            spans.append(span)
+    return spans
+
+
+def _caps_span_for_run(tokens: list[re.Match[str]], base: int, text: str) -> tuple[int, int] | None:
+    """The stretch of one allow-list-free ALL-CAPS run that is a name, or None.
 
     The run must NOT be claimed whole. "CARLOS SILVA APROVOU O ESCOPO" matched three tokens and
     took all of them: the verb vanished from the text the model reads -- the decision itself --
@@ -1776,19 +2015,9 @@ def _caps_name_span(match: re.Match[str], text: str) -> tuple[int, int] | None:
     is also what keeps "ACOMPANHAMENTO DE CAMPOS" and "LISTA DE CAMPOS" out, which the previous
     head-OR-tail rule read as people -- a third of the surname list doubles as an ordinary
     Portuguese noun.
-    """
-    # There is deliberately NO guard against overlapping a placeholder from the basic-pattern
-    # stage. One was written, and three independent reviewers proved it unreachable: a
-    # placeholder is "[[TYPE_N]]", and `_CAPS_SEQUENCE_RE` needs `\s+` between its words, which
-    # the "_1]] [[" between two placeholders is not. Keeping it meant a test that certified a
-    # control that cannot fire -- the defect class this file has been chasing for five rounds.
-    # `test_a_placeholder_from_the_earlier_stage_is_not_read_as_an_all_caps_name` still asserts
-    # the OUTCOME end to end, which is the part that is real.
-    tokens = list(_WORD_RE.finditer(match.group(0)))
-    if any(_fold(t.group(0)) in _PERSON_NAME_NEGATIVE_LIST for t in tokens):
-        return None
 
-    base = match.start()
+    `base` is where the enclosing match starts, since the token offsets are relative to it.
+    """
     for i, head in enumerate(tokens):
         folded_head = _fold(head.group(0))
         if folded_head in _NAME_CONNECTIVES or folded_head in _COMMON_PHRASE_HEADS:
@@ -2027,10 +2256,10 @@ def _redact_person_names(
     # name lists. That is the same head-or-tail test `_qualify_run` applies, used here as the
     # admission rule rather than as a fallback.
     for m in _CAPS_SEQUENCE_RE.finditer(text):
-        span = _caps_name_span(m, text)
-        if span is None or _is_covered(span[0], span[1]):
-            continue
-        _claim(span[0], span[1], text[span[0] : span[1]])
+        for span in _caps_name_spans(m, text):
+            if _is_covered(span[0], span[1]):
+                continue
+            _claim(span[0], span[1], text[span[0] : span[1]])
 
     # Pattern 5: a one-word ALL-CAPS speaker label, "MARINA: fechamos o escopo". Pattern 4
     # needs two tokens, so this shape matched nothing. Runs after it, so "CARLOS SILVA:" is
