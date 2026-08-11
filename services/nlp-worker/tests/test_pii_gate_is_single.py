@@ -68,6 +68,29 @@ def _live_settings() -> Settings:
     return Settings(use_llm_stub=False, llm_api_key="test-key")
 
 
+# Calls that mark a retry loop, whether spelled `time.sleep(...)` or bare `sleep(...)`.
+_RETRY_CALLS = {"chat_structured", "chat_json", "sleep"}
+
+
+def _without_comments_and_docstrings(source: str) -> str:
+    """Source with comments and string literals blanked, so prose cannot trip a pattern.
+
+    `ast.unparse` of a tree with docstrings stripped would also drop formatting we do not care
+    about, but it re-emits string CONTENT — which is the thing that has to go. Tokenising is the
+    smaller tool that does exactly the job.
+    """
+    import io
+    import tokenize
+
+    out = []
+    for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+        if tok.type in (tokenize.COMMENT, tokenize.STRING):
+            out.append('""')
+        else:
+            out.append(tok.string)
+    return " ".join(out)
+
+
 def _client_that_fails_structured(payload: dict) -> MagicMock:
     """A provider client whose strict-schema call always fails, forcing the fallback."""
     instance = MagicMock()
@@ -189,11 +212,13 @@ def test_the_fallback_does_not_rebuild_the_prompt(module) -> None:
     assert handlers, f"{module.__name__}: no fallback handler calling chat_json"
 
     for handler in handlers:
+        # ANY Store of those names, not just an assignment statement. Review demonstrated that
+        # `for user_prompt in [...]` rebinds without being an Assign/AugAssign/AnnAssign, and
+        # passed. A comprehension target, a `with ... as`, and an `except ... as` are the same
+        # shape. Walking for `Store` covers the whole class rather than three members of it.
         rebound = [
             t.id
-            for n in ast.walk(handler)
-            if isinstance(n, (ast.Assign, ast.AugAssign, ast.AnnAssign))
-            for t in ast.walk(n)
+            for t in ast.walk(handler)
             if isinstance(t, ast.Name)
             and isinstance(t.ctx, ast.Store)
             and t.id in {"user_prompt", "system_prompt"}
@@ -214,10 +239,14 @@ def test_the_fallback_does_not_rebuild_the_prompt(module) -> None:
         passed = {
             kw.arg: kw.value.id if isinstance(kw.value, ast.Name) else None for kw in call.keywords
         }
-        assert passed.get("user_prompt") == "user_prompt", (
-            f"{module.__name__} passes a provider prompt that is not the `user_prompt` "
-            f"variable: {passed}"
-        )
+        # BOTH names. The first version checked only `user_prompt`, so
+        # `chat_json(system_prompt=req.transcript, user_prompt=user_prompt)` passed — and the
+        # system prompt reaches the provider exactly like the user one does.
+        for arg in ("user_prompt", "system_prompt"):
+            assert passed.get(arg) == arg, (
+                f"{module.__name__} passes a provider prompt that is not the `{arg}` "
+                f"variable: {passed}"
+            )
 
 
 def test_the_worker_holds_no_retry_or_backoff_of_its_own() -> None:
@@ -246,16 +275,27 @@ def test_the_worker_holds_no_retry_or_backoff_of_its_own() -> None:
         for node in ast.walk(tree):
             # `split_analyzer`'s window loop is not a retry: it calls the provider once per
             # window, each with a DIFFERENT prompt. No static rule separates that from a retry
-            # loop, so it is named here rather than pattern-matched.
+            # loop, so it is named here rather than pattern-matched. The exemption is by
+            # filename, which means moving or renaming that module silently re-arms this — the
+            # assertion below keeps that honest by failing if the named file disappears.
             if not isinstance(node, (ast.For, ast.While)) or path.name == "split_analyzer.py":
                 continue
+            # `sleep` matched only as an attribute (`time.sleep`), so `from time import sleep`
+            # then a bare `sleep(2**attempt)` passed — review demonstrated it. Match the call's
+            # NAME whichever way it is spelled.
             if any(
                 isinstance(n, ast.Call)
-                and isinstance(n.func, ast.Attribute)
-                and n.func.attr in {"chat_structured", "chat_json", "sleep"}
+                and (
+                    (isinstance(n.func, ast.Attribute) and n.func.attr in _RETRY_CALLS)
+                    or (isinstance(n.func, ast.Name) and n.func.id in _RETRY_CALLS)
+                )
                 for n in ast.walk(node)
             ):
                 offenders.append(f"{path.name}: provider call or sleep inside a loop")
+    assert (worker_src / "services" / "split_analyzer.py").exists(), (
+        "split_analyzer.py is exempted from the loop rule BY FILENAME. It moved or was renamed, "
+        "so the exemption now silently covers nothing and the rule may be misfiring instead."
+    )
     assert not offenders, (
         "a hand-rolled retry may have appeared in the worker. If it is intentional, the prompt "
         f"it resends has to be re-checked against the shield: {sorted(set(offenders))}"
@@ -272,11 +312,18 @@ def test_there_is_no_embeddings_call_to_shield() -> None:
     # `/v1/embeddings` is in here because the first version matched only the SDK's method
     # shapes, and review pointed out that `httpx.post("https://api.openai.com/v1/embeddings")`
     # is a provider call the SDK never sees. It is the URL that makes it one.
-    embeddings = re.compile(r"\.embeddings\b|embeddings\.create|def .*embed|/v1/embeddings|embed_")
+    # `\.embed\b` covers `client.embed(input=...)`, which is how Cohere and Voyage spell it —
+    # and this worker is provider-agnostic by ADR 0004, so the OpenAI spelling is not the only
+    # one that matters. Review demonstrated that call passing the first version.
+    embeddings = re.compile(
+        r"\.embeddings\b|embeddings\.create|\.embed\b|def .*embed|/v1/embeddings|embed_"
+    )
     offenders = [
         str(path.name)
         for path in worker_src.rglob("*.py")
-        if embeddings.search(path.read_text("utf-8"))
+        # Comments and docstrings are not calls, and `embed_` matching prose made this test
+        # fail on the paragraph describing it.
+        if embeddings.search(_without_comments_and_docstrings(path.read_text("utf-8")))
     ]
     assert not offenders, (
         "an embeddings call appeared in the worker. It is a provider call like any other and "

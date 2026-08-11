@@ -194,10 +194,14 @@ def _name_then_company_suffix(given, surname, other, i):
 def _signature_block(given, surname, other, i):
     """An attendee list or a signature block, which is most of a set of minutes.
 
-    Only the AREA is required to survive, not the title. A job title directly attached to a name
-    is claimed with it by Pattern 1 -- "Dr. Carlos Silva" is one span by design and has been
-    since the module was written -- and smuggling that older question in here would make this
-    shape permanently red for a reason unrelated to what it tests.
+    Only the AREA is required to survive. An earlier version of this docstring justified
+    dropping the TITLE by saying Pattern 1 claims a job title together with the name it precedes
+    -- which is true of "Dr. Carlos Silva" and irrelevant here, because the title FOLLOWS the
+    name. `_NAME_PREFIX_RE.finditer` returns [] on this string; what swallows the title is
+    Pattern 2 spanning the newline. The reason was wrong even though the decision is defensible,
+    and review measured that restoring the title fails 400/400 -- so it is a REAL residual, not
+    a technicality, and it is recorded as one in BASELINE.md rather than hidden behind a
+    rationale that does not hold.
     """
     title = SIGNATURE_TITLES[i % len(SIGNATURE_TITLES)]
     area = COMPANY_SUFFIXES[i % len(COMPANY_SUFFIXES)]
@@ -222,14 +226,31 @@ def _title_then_name_then_label(given, surname, other, i):
     )
 
 
+# EVERY entry of `_COMPANY_TAIL_WORDS`, not a sample. Review found that twelve of the twenty
+# could be deleted from the shield with zero test failures — the reachability audit above the
+# list checked that each entry CAN fire and never checked that any of them is exercised. A list
+# whose members no case touches is a list nobody is measuring.
+# `test_every_company_tail_word_is_exercised` asserts the two stay in step.
 COMPANY_SUFFIXES: tuple[str, ...] = (
     "Sistemas",
     "Solutions",
+    "Solucoes",
     "Tecnologia",
+    "Tecnologias",
     "Consultoria",
-    "Digital",
-    "Engenharia",
     "Servicos",
+    "Industria",
+    "Comercio",
+    "Participacoes",
+    "Holding",
+    "Group",
+    "Grupo",
+    "Labs",
+    "Digital",
+    "Fintech",
+    "Telecom",
+    "Engenharia",
+    "Ltda",
     "Software",
 )
 

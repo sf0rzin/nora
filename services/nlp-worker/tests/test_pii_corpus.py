@@ -16,6 +16,7 @@ from nora_nlp.services import pii_shield
 from nora_nlp.services.pii_shield import redact
 from tests.pii_corpus import pools
 from tests.pii_corpus.cases import (
+    COMPANY_SUFFIXES,
     KNOWN_GAP,
     PAIRS_PER_QUADRANT_PER_SHAPE,
     QUADRANTS,
@@ -39,7 +40,7 @@ from tests.pii_corpus.harness import evaluate, run
 # Written as the measured fractions rather than as rounded decimals, so the gate cannot be
 # passed or failed by the third digit of a number nobody re-derived.
 MAX_LEAK_RATE = 512 / 5627  # 9.10%
-MAX_FALSE_REDACTION_RATE = 505 / 5271  # 9.58%
+MAX_FALSE_REDACTION_RATE = 506 / 5271  # 9.60%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
@@ -89,6 +90,21 @@ def test_listed_products_are_really_on_the_negative_list(product: str) -> None:
 @pytest.mark.parametrize("product", pools.UNLISTED_PRODUCTS)
 def test_unlisted_products_are_really_off_the_negative_list(product: str) -> None:
     assert pii_shield._fold(product) not in pii_shield._PERSON_NAME_NEGATIVE_LIST
+
+
+def test_every_company_tail_word_is_exercised() -> None:
+    """A list entry no case touches is an entry nobody is measuring.
+
+    Review deleted twelve of the twenty `_COMPANY_TAIL_WORDS` and the whole suite still passed:
+    the audit above that list checked only that each entry CAN fire, never that any of them
+    does. Reachability and coverage are different questions and this file had only asked one.
+    """
+    exercised = {pii_shield._fold(w) for w in COMPANY_SUFFIXES}
+    missing = sorted(pii_shield._COMPANY_TAIL_WORDS - exercised)
+    assert not missing, (
+        f"{len(missing)} entries of _COMPANY_TAIL_WORDS are in no corpus case: {missing}. "
+        f"Add them to cases.COMPANY_SUFFIXES or delete them from the shield."
+    )
 
 
 def test_the_corpus_did_not_shrink() -> None:
@@ -243,13 +259,21 @@ def test_the_same_invariant_holds_in_upper_case(product: str, given: str, surnam
         ("Kleber Silva Solutions fechou o acordo", ("Kleber", "Silva"), ("Solutions",)),
         ("Nivaldo Zanchetta Digital assumiu a conta", ("Nivaldo", "Zanchetta"), ("Digital",)),
         ("Ata assinada por\nMarina Kranz\nDiretora de Tecnologia\n", ("Marina", "Kranz"), ()),
-        # A single token left by the subtraction is still judged on its own merits. This one is
-        # a listed surname, so it redacts -- the guard that used to refuse it here turned a
-        # redaction into a leak, and nothing covered that.
-        ("Silva Solutions fechou o acordo", ("Silva",), ("Solutions",)),
-        # ...and one that is on no list is refused downstream, which is what keeps a trading
-        # name whole.
-        ("Northwind Software Solutions renovou o contrato", (), ("Northwind", "Solutions")),
+        # TWO-TOKEN runs, which is where the first version of the subtraction leaked. Shrinking
+        # a pair to one token hands it to `_is_a_name_on_its_own`, which refuses anything off
+        # both name lists -- so nothing at all was claimed and the person went out in the clear.
+        # The listed-surname variant was the ONLY two-token case in the first version of this
+        # test, and it is the one input in the class that survives either way. Its off-list
+        # twins are what caught the defect.
+        ("Silva Solutions fechou o acordo", ("Silva",), ()),
+        ("Kranz Solutions fechou o acordo", ("Kranz",), ()),
+        ("Wanderleia Solutions fechou o acordo.", ("Wanderleia",), ()),
+        ("Zanchetta Tecnologia apresentou a proposta.", ("Zanchetta",), ()),
+        ("Nardelli Consultoria enviou a proposta.", ("Nardelli",), ()),
+        # ...and through the genitive route, which `_qualify_run`'s own comment calls the
+        # everyday shape of these transcripts.
+        ("O Protheus do Kranz Solutions travou.", ("Kranz",), ("Protheus",)),
+        ("Contato Kranz Solutions", ("Kranz",), ()),
         # A job title makes the run a role only when the run holds nobody.
         ("Gerente Wanderleia Prazo confirmou", ("Wanderleia",), ()),
         ("Coordenador Edson Silva\nRelatorio - apoio", ("Edson", "Silva"), ()),

@@ -1601,6 +1601,22 @@ def _spans_without_negatives(value: str, offset: int, text: str) -> list[tuple[i
     return spans
 
 
+def _name_bearing(run: list[re.Match[str]]) -> list[re.Match[str]]:
+    """The tokens of a run that could carry a name.
+
+    Connectives and ordinary vocabulary are stripped later by `_trusted_span` and
+    `_tighten_to_tokens`, so counting raw tokens overestimates what a run has left. The
+    corporate-suffix subtraction has to know how much would ACTUALLY survive: "do Kranz
+    Solutions" is three tokens and one name, and a raw length test let it collapse to nothing.
+    """
+    return [
+        t
+        for t in run
+        if _fold(t.group(0)) not in _NAME_CONNECTIVES
+        and _fold(t.group(0)) not in _COMMON_PHRASE_HEADS
+    ]
+
+
 def _trusted_span(run: list[re.Match[str]], offset: int, text: str) -> tuple[int, int] | None:
     """The fast path: taken whole, without demanding a listed given name or surname.
 
@@ -1627,17 +1643,40 @@ def _trusted_span(run: list[re.Match[str]], offset: int, text: str) -> tuple[int
     # `_BR_TOP_SURNAMES`. The attendee block of a set of minutes is exactly that shape and it
     # leaked 500 of 500 generated cases. An allow list that reaches past its own characters can
     # only ever produce a leak, whichever list it is.
-    while len(run) > 1 and _fold(run[-1].group(0)) in _COMPANY_TAIL_WORDS:
+    # `> 2`, NOT `> 1`, and the difference is a leak of a thousand generated cases.
+    #
+    # Subtracting down to a single token destroys the run instead of narrowing it:
+    # `_is_a_name_on_its_own`, downstream in `_qualify_and_claim`, refuses a lone token that is
+    # on neither name list, so NOTHING is claimed -- not the corporate word and not the person.
+    # `main` claimed the pair whole. Measured, `main` against the `> 1` version:
+    #
+    #     "Wanderleia Solutions fechou o acordo."      main redacts, `> 1` LEAKS
+    #     "Zanchetta Tecnologia apresentou a proposta."  main redacts, `> 1` LEAKS
+    #
+    # 600 of 600 off-list given names and 400 of 400 off-list surnames, and it reached through
+    # the genitive route too ("O Protheus do Kranz Solutions travou"). That is finding 5a again,
+    # in a third costume: a list reaching past its own characters, this time via the backstop
+    # rather than via the qualification path. The lists hold 271 given names and 101 surnames,
+    # so "most real names" is exactly the half that leaked.
+    #
+    # Stopping at two tokens means an ambiguous pair is never taken apart, so it is judged as
+    # `main` judged it -- redacted, with the corporate word swallowed. That is the fail-closed
+    # side of a case with no lexical signal: "Wanderleia Tecnologia" is a person and a
+    # department, "Acme Solutions" is a company, and nothing in the text tells them apart.
+    #
+    # The price is real and is paid on the false-redaction rate: a three-token trading name
+    # ending in a corporate word keeps only that word ("Northwind Software Solutions" ->
+    # "[[PERSON_NAME_1]] Solutions"). Still better than `main`, which swallowed all three.
+    # A run of NOTHING BUT corporate words is a trading name with no person in it. This is what
+    # keeps "Acme Software Solutions" whole once the negative list has taken `Acme` out.
+    if all(_fold(t.group(0)) in _COMPANY_TAIL_WORDS for t in run):
+        return None
+    # Counted on NAME-BEARING tokens, not on `len(run)`: the connectives and the leading
+    # ordinary vocabulary are stripped further down, so "do Kranz Solutions" and
+    # "Contato Kranz Solutions" are three tokens that become one, and a plain length test let
+    # both leak.
+    while _fold(run[-1].group(0)) in _COMPANY_TAIL_WORDS and len(_name_bearing(run[:-1])) >= 2:
         run = run[:-1]
-    # Subtraction and nothing else. Two guards used to sit here -- refuse a lone corporate word,
-    # and refuse whatever single token the subtraction left -- and a mutation run showed neither
-    # changed any outcome. The first is genuinely dead: `_is_a_name_on_its_own` already refuses
-    # "Solutions" downstream, and every path into this function passes through it. The second
-    # was not dead, it was uncovered, and it refused in the wrong direction -- it turned
-    # "Silva Solutions" from a redaction into a leak of a listed surname. Both are gone rather
-    # than kept as a control that reads as protection, which is the defect class this file has
-    # been chasing for six rounds. "Northwind Software Solutions" still survives whole:
-    # "Northwind" is on no name list, so the downstream check refuses it.
     # A job title opening a run makes it a ROLE only when the run holds NOBODY -- every token a
     # title, a connective or ordinary vocabulary. "Gerente de Contas" and "Diretor Comercial"
     # are roles; "Coordenador Edson Silva" and "Gerente Wanderleia Prazo" are people with a
@@ -1650,18 +1689,26 @@ def _trusted_span(run: list[re.Match[str]], offset: int, text: str) -> tuple[int
     # assertion pass was finding 5a demoting the whole candidate. Drop the product and the job
     # title is redacted. The property the test names was never true.
     #
-    # Person-only honorifics are excluded: "Sr." and "Dr." mark a person whatever follows,
-    # which is the distinction `_PERSON_ONLY_HONORIFICS` exists for.
-    head = _fold(run[0].group(0))
-    if (
-        head in _NAME_HONORIFICS
-        and head not in _PERSON_ONLY_HONORIFICS
-        and all(
-            _fold(t.group(0)) in _NAME_HONORIFICS
-            or _fold(t.group(0)) in _NAME_CONNECTIVES
-            or _fold(t.group(0)) in _COMMON_PHRASE_HEADS
-            for t in run
-        )
+    # The `all(...)` is the whole rule. Two conditions that read as protection were dropped
+    # from this branch after review measured them:
+    #
+    #   `head in _NAME_HONORIFICS`      subsumed. A run whose every token is a title, a
+    #                                   connective or ordinary vocabulary already has such a
+    #                                   head, or is caught by the `_COMMON_PHRASE_HEADS` branch
+    #                                   below. Deleting it changed 0 of 13,500 strings.
+    #   `head not in _PERSON_ONLY_HONORIFICS`
+    #                                   worse than dead. It was written to mean "Sr." and "Dr."
+    #                                   mark a person whatever follows -- but this branch only
+    #                                   ever REFUSES, so excluding those heads can only make the
+    #                                   shield redact MORE, never less. Its one measurable
+    #                                   effect on 13,500 strings was to leave "Sr. Grupo
+    #                                   confirmou." unredacted. It protected nothing and cost a
+    #                                   redaction.
+    if all(
+        _fold(t.group(0)) in _NAME_HONORIFICS
+        or _fold(t.group(0)) in _NAME_CONNECTIVES
+        or _fold(t.group(0)) in _COMMON_PHRASE_HEADS
+        for t in run
     ):
         return None
     # Ordinary vocabulary does not open a name either. "Contas Medicas" and "Nota Fiscal
