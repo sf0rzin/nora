@@ -69,7 +69,7 @@
       "endpoints": [
         "https://github.com/sf0rzin/nora/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkgRDg5OUJDNDJFQUQ1OUIxNgpSV1FXbTlYcVFyeVoyRTV3U3RXcGpCTmNPNjAxN0JHc1hPeGJuSWZjWm5nN2dqQU40RU5ZMjdZcwo=",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ4OTlCQzQyRUFENTlCMTYKUldRV205WHFRcnlaMkU1d1N0V3BqQk5jTzYwMTdCR3NYT3hibklmY1puZzdnakFONEVOWTI3WXMK",
       "windows": {
         "installMode": "passive"
       }
