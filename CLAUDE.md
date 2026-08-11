@@ -22,13 +22,14 @@ NORA (Negotiation Observability & Revenue Assistant) is a SaaS conversational in
 For operational context (self-hosted deploy, runbooks):
 
 7. **`docs/operations/host-deploy.md`** — runbook for deploying on the production host + the self-hosting pitfalls
-8. **`docs/operations/production-readiness-gaps.md`** — prod-readiness gaps (those anchored in Azure were partially superseded by ADR 0034, then ADR 0036)
+8. **`docs/operations/ssh-over-tunnel.md`** — reaching the host from a network that blocks outbound 22 (ADR 0037), and the rollback
+9. **`docs/operations/production-readiness-gaps.md`** — prod-readiness gaps (those anchored in Azure were partially superseded by ADR 0034, then ADR 0036)
 
 For academic context (FIAP Challenge):
 
-9. **`docs/challenge/fiap-challenge-2026.md`** — FIAP context, rubric, deadlines
-10. **`docs/challenge/personas-and-empathy-map.md`** — 3 personas + empathy map
-11. **`docs/challenge/use-case-diagram.md`** — UML use cases
+10. **`docs/challenge/fiap-challenge-2026.md`** — FIAP context, rubric, deadlines
+11. **`docs/challenge/personas-and-empathy-map.md`** — 3 personas + empathy map
+12. **`docs/challenge/use-case-diagram.md`** — UML use cases
 
 ## Current scope
 
@@ -42,7 +43,7 @@ at the time of migration, so the Postgres content is reproducible demo material.
 - **NLP Worker** is FastAPI (Python 3.12) with **PII Shield** (PERSON_NAME + EMAIL + CPF + CNPJ + PHONE + CREDIT_CARD per ADR 0012) and **JSON Schema strict** LLM output (ADR 0003) via **provider-agnostic client** (ADR 0004, default OpenAI `gpt-4o-mini`)
 - **Web** is Next.js 16 + TypeScript + **raw Tailwind, no shadcn** (ADR 0013) with editorial palette OKLCH + Inter + Instrument Serif fonts. It has **no test suite**
 - **Desktop** is Tauri 2 + Rust with **Whisper STT running on-device** (ADR 0035). The Python sidecar and the Azure Speech token broker are **off the default path but still in the tree**: `stt-azure` is still in `default` in `src-tauri/Cargo.toml`, `apps/desktop/sidecar/` still builds, and `AzureSpeechTokenBroker` still compiles — the runtime default is `LocalSttNoopBroker`. Deleting them is pending validation of local STT on all three targets — maintained by @pollotherunner
-- **Infra** is `infra/host/docker-compose.yml` (compose project `nora`) on a single bare-metal Ubuntu host, no hypervisor (ADR 0036): **Cloudflare Tunnel as the only ingress** (no inbound port), Caddy routing by Host, secrets in **SOPS + age**, observability via OTel Collector + Prometheus + Loki + Grafana. **Deploy is PULL** (`deploy-host.yml` publishes an immutable release pointer; the host pulls) — never push, because the repo is public (ADR 0017)
+- **Infra** is `infra/host/docker-compose.yml` (compose project `nora`) on a single bare-metal Ubuntu host, no hypervisor (ADR 0036): **Cloudflare Tunnel as the only ingress** (no inbound port), Caddy routing by Host, secrets in **SOPS + age**, observability via OTel Collector + Prometheus + Loki + Grafana. **Deploy is PULL** (`deploy-host.yml` publishes an immutable release pointer; the host pulls) — never push, because the repo is public (ADR 0017). The same tunnel also carries **SSH** at `ssh.nora.systems`, behind a Cloudflare Access allow-list (ADR 0037), for networks that block outbound 22; **port 22 stays open** and is the recovery path, so administrative access does not depend on Cloudflare being up
 
 For up-to-date status of each backlog story, see `docs/product/backlog.md` (DONE / PARTIAL / MISSING per US).
 
@@ -108,6 +109,7 @@ Use Opus models for architecture, data modeling, security review and refactors. 
 
 | Date | Change |
 |---|---|
+| 2026-08-11 | SSH over the existing tunnel recorded as ADR 0037 (applied 2026-08-10): `ssh.nora.systems` gated by a Cloudflare Access allow-list, sshd and port 22 untouched. Added the runbook to "Read First" and the route to "Current scope" |
 | 2026-08-10 | RLS enforce cutover executed on the deployed stack: the API connects as `nora_app` (NOBYPASSRLS), the operator aggregate reads through `nora_telemetry` (BYPASSRLS), and the API refuses to boot on a half-applied cutover. Off by default in the repository |
 | 2026-08-10 | Substrate correction (ADR 0036): the host is a single bare-metal Ubuntu machine, no hypervisor. Renamed the infra directory, the deploy runbook and the deploy workflow to host-neutral names (now `infra/host/`, `docs/operations/host-deploy.md`, `.github/workflows/deploy-host.yml`); removed `infra/bicep/`, `azure-decommission.md` and `azure-deploy.md` (Azure is gone, not being decommissioned); updated "Read First", "Current scope" and the Stack table accordingly |
 | 2026-08-10 | Documentation honesty pass: metadata frontmatter, invented owners/roles and decoration removed; stack versions re-verified against the manifests; superseded run brief and pre-presentation audit deleted |
