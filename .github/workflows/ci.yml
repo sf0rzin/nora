@@ -319,12 +319,16 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v6
       - name: Derive the public key from the signing secret
         env:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           sudo apt-get install -y minisign
@@ -336,14 +340,33 @@ jobs:
           # -R recreates the public key from the secret one. minisign reads the password from
           # stdin when there is no tty, which is the case here.
           printf '%s\n' "${KEY_PASSWORD:-}" | minisign -R -s /tmp/k.sec -p /tmp/k.pub
-          echo "---- key id ----"
-          head -1 /tmp/k.pub
-          echo "---- value for plugins.updater.pubkey in tauri.conf.json ----"
-          base64 -w0 /tmp/k.pub
-          echo
-          echo "---- what tauri.conf.json says today ----"
-          jq -r '.plugins.updater.pubkey' apps/desktop/src-tauri/tauri.conf.json | base64 -d | head -1
           rm -f /tmp/k.sec
+
+          NEW_ID=$(head -1 /tmp/k.pub)
+          NEW_B64=$(base64 -w0 /tmp/k.pub)
+          OLD_ID=$(jq -r '.plugins.updater.pubkey' apps/desktop/src-tauri/tauri.conf.json \
+                   | base64 -d | head -1)
+
+          # Posted as a PR comment, not left in the job log: this repository is operated from
+          # networks where GitHub's log CDN is unreachable while api.github.com is not, and a
+          # value nobody can read is a job that did not run. A public key is not a secret —
+          # it is compiled into every shipped client and published in latest.json.
+          {
+            echo "### Updater public key, derived from the CI signing secret"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| secret in CI produces | \`$NEW_ID\` |"
+            echo "| tauri.conf.json says  | \`$OLD_ID\` |"
+            echo
+            echo "Value for \`plugins.updater.pubkey\`:"
+            echo
+            echo '```'
+            echo "$NEW_B64"
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment 432 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
+          echo "posted to #432"
 
   desktop-bundle:
     needs: changes
