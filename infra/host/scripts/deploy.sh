@@ -323,13 +323,25 @@ remote_digest() {
             "https://ghcr.io/token?scope=repository:${repo}:pull&service=ghcr.io" 2>/dev/null \
            | jq -r '.token // empty' 2>/dev/null || true)"
   [ -n "$token" ] || { printf ''; return; }
+  # The `Accept` list is not decoration: GHCR answers 404 — not 406 — when it does not name
+  # the manifest's OWN media type, and a 404 here is indistinguishable from "the tag does not
+  # exist". buildx publishes these images as `application/vnd.oci.image.manifest.v1+json`
+  # (single-arch, no index), which was missing from this list, so EVERY lookup returned empty
+  # and `--if-changed` fell through to its "deploying as a precaution" branch on every tick.
+  # Measured on the host on 2026-08-11, one token, one tag, `Accept` as the only variable:
+  #   3 types (without the OCI image manifest) -> 404, content-type: application/json
+  #   4 types (with it)                        -> 200, content-type: application/vnd.oci.image.manifest.v1+json
+  # Separate `-H Accept:` headers and one comma-joined header behave identically; the shape
+  # was never the problem. Keep the index/list types too — they are what a multi-arch build
+  # would return, and dropping them would break this again the day the images go multi-arch.
   digest="$(curl -fsSL --max-time 20 -o /dev/null -D - -X GET \
               -H "Authorization: Bearer $token" \
               -H "Accept: application/vnd.oci.image.index.v1+json" \
+              -H "Accept: application/vnd.oci.image.manifest.v1+json" \
               -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
               -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
               "https://ghcr.io/v2/${repo}/manifests/${tag}" 2>/dev/null \
-            | awk 'BEGIN{IGNORECASE=1} /^docker-content-digest:/{print $2}' | tr -d '\r' | tail -1)"
+            | awk 'BEGIN{IGNORECASE=1} /^docker-content-digest:/{print $2}' | tr -d '\r' | tail -1 || true)"
   printf '%s' "$digest"
 }
 
@@ -809,6 +821,15 @@ if [ "$ROLLBACK_ONLY" -eq 1 ]; then
 fi
 
 # --if-changed: compares the remote digest with the recorded one. It is what the timer uses.
+#
+# WHAT THIS DOES NOT DO, so a working gate is not mistaken for continuous deployment.
+# The timer calls this with no `--tag` (bootstrap-host.sh:135), so the tag probed below is the
+# tag ALREADY RUNNING (`want_tag="${TAG:-$(running_tag "$s")}"`). Rollouts use immutable
+# `sha-<short>` tags, and an immutable tag's digest never changes — so this branch is a check
+# that the running release is intact, NOT a check for a newer one. Rolling forward would mean
+# reading the release pointer that `deploy-host.yml` publishes (git tag `release/prod/current`),
+# and no script under `infra/host/` reads it: the producer exists, the consumer was never
+# written. Until it is, moving to a new release is `deploy.sh --tag sha-<short>` by hand.
 if [ "$IF_CHANGED" -eq 1 ] && [ "$REPO_MOVED" -eq 1 ]; then
   hr
   log "--if-changed: the repo moved (--sync), so the config may have changed — deploying everything"
@@ -817,6 +838,8 @@ elif [ "$IF_CHANGED" -eq 1 ]; then
   hr
   log "--if-changed: comparing digests on GHCR"
   CHANGED=()
+  PROBED=0
+  UNRESOLVED=0
   for s in "${FINAL[@]}"; do
     tagvar="$(tag_var_for "$s")"
     [ -n "$tagvar" ] || continue
@@ -826,7 +849,9 @@ elif [ "$IF_CHANGED" -eq 1 ]; then
     [ -n "$want_tag" ] || want_tag="latest"
     rd="$(remote_digest "${IMAGE_PREFIX}-${s}" "$want_tag")"
     sd="$(state_get "${key}_REMOTE_DIGEST")"
+    PROBED=$((PROBED + 1))
     if [ -z "$rd" ]; then
+      UNRESOLVED=$((UNRESOLVED + 1))
       warn "  $s: could not resolve the remote digest of '$want_tag' — deploying as a precaution"
       CHANGED+=("$s")
     elif [ "$rd" != "$sd" ]; then
@@ -838,6 +863,35 @@ elif [ "$IF_CHANGED" -eq 1 ]; then
       log "  $s: digest unchanged ($want_tag) — skipping"
     fi
   done
+
+  # One service failing to resolve is a GHCR hiccup and the precaution above is the right
+  # answer. ALL of them failing is not a hiccup — it means this gate is not working, and the
+  # timer has quietly stopped being "deploy when the image changes" and become "recreate
+  # everything every tick". That is how the missing OCI media type in remote_digest went
+  # unnoticed: the per-service warn was accurate and nobody reads four accurate warns a
+  # cycle. This line names the failure instead of describing its symptom.
+  #
+  # It warns and continues rather than failing: a real GHCR outage must not stop deploys.
+  # `*_REMOTE_DIGEST` staying absent from the state file is the durable tell — if the gate
+  # were working, a successful deploy would have written one per application service.
+  if [ "$PROBED" -gt 0 ] && [ "$UNRESOLVED" -eq "$PROBED" ]; then
+    hr
+    warn "DIGEST GATE DEGRADED — 0 of $PROBED services resolved a remote digest."
+    warn "  Every tick will now redeploy everything, so '--if-changed' is doing nothing."
+    warn "  This is a bug here or an outage there, not a normal state. Check by hand — and vary"
+    warn "  Accept, because that is the variable this fails on:"
+    warn "    T=\$(curl -sS \"https://ghcr.io/token?service=ghcr.io&scope=repository:${IMAGE_PREFIX}-api:pull\" | jq -r .token)"
+    warn "    curl -sS -o /dev/null -D - -H \"Authorization: Bearer \$T\" \\"
+    warn "      -H 'Accept: application/vnd.oci.image.index.v1+json' \\"
+    warn "      -H 'Accept: application/vnd.oci.image.manifest.v1+json' \\"
+    warn "      -H 'Accept: application/vnd.docker.distribution.manifest.list.v2+json' \\"
+    warn "      -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \\"
+    warn "      https://ghcr.io/v2/${IMAGE_PREFIX}-api/manifests/<tag>"
+    warn "  GHCR answers 404 — not 406 — when Accept does not name the manifest's own media"
+    warn "  type, so a 404 here on a tag that \`docker manifest inspect\` resolves means this"
+    warn "  list is missing one. Dropping the Accept headers entirely tells you nothing."
+  fi
+
   if [ "${#CHANGED[@]}" -eq 0 ]; then
     ok "nothing changed on GHCR. No deploy necessary."
     exit 0
