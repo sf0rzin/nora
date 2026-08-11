@@ -195,26 +195,40 @@ updates:
       # upload-artifact v5+ changed merge semantics (PR paths break)
       - dependency-name: actions/upload-artifact
         update-types: ["version-update:semver-major"]
-      # tauri-action 1.0.0 renamed the input `includeUpdaterJson` to `uploadUpdaterJson`
-      # (tauri-apps/tauri-action#1208). desktop-release.yml still passes the old name, and
-      # Dependabot's bump changes only the pinned SHA — so merging it would leave the action
-      # silently not publishing `latest.json`, which is the endpoint every installed desktop
-      # client polls (`plugins.updater.endpoints` in tauri.conf.json). Green build, created
-      # release, signed bundles, and an updater that goes quiet.
+      # tauri-action 1.0.0 changes how `latest.json` is produced, and this repository has no
+      # way to exercise that before a real release.
       #
-      # Three further 1.0.0 changes touch this workflow: latest.json download URLs move to the
-      # GitHub URL form (#1315), the action now rewrites the name and body of an existing
-      # release (#1277), and macOS .app.tar.gz/.sig filenames gain the version (#1194 — not
-      # this matrix, which is Windows + Ubuntu). The rest of our `with:` block is unaffected.
+      # What actually matters, checked against both action.yml files rather than inferred from
+      # the changelog:
+      #   - #1315 — the download URLs written into `latest.json` move to the GitHub URL form.
+      #     `latest.json` is what every installed client polls
+      #     (`plugins.updater.endpoints` in tauri.conf.json), so a client that cannot fetch the
+      #     new URL form stops updating and nothing fails on our side.
+      #   - #1277 — the action now rewrites the name and body of an existing release.
+      #   - #1189 — an asset's `label` is now used internally to build those download URLs.
+      #   - #1194 — macOS `.app.tar.gz`/`.sig` filenames gain the version. Not this matrix,
+      #     which is Windows + Ubuntu.
+      # The rest of our `with:` block survives 1.0.0 unrenamed.
       #
-      # The reason this cannot simply be fixed and merged: desktop-release.yml fires on a
-      # `desktop-v*` tag and on NO other trigger, so no workflow run exercises tauri-action.
-      # The first execution of any change to it is a real release, signing real bundles with
-      # the updater key. ci.yml verifies the SIGNING (minisign against the shipped pubkey);
-      # it does not and cannot verify the release step.
-      # UNBLOCKER: a release rehearsal — `desktop-release.yml` against a throwaway
-      # `desktop-v0.0.0-rehearsal` tag into a draft release, assets and latest.json checked,
-      # tag and draft deleted. Then take the major together with the input rename.
-      # Closed PR #419 carries the full audit.
+      # NOT a reason, and recorded because an earlier version of this comment said it was:
+      # #1208 renamed `includeUpdaterJson` to `uploadUpdaterJson`, and `desktop-release.yml`
+      # still passes the old name — but BOTH default to 'true' (verified in action.yml at
+      # v0.6.2 and v1.0.0), so the removed input is an "unexpected input" warning and
+      # `latest.json` is still uploaded. The claim that the updater would go quiet was wrong.
+      #
+      # UNBLOCKER: a release rehearsal. `desktop-release.yml` has `workflow_dispatch` with a
+      # `tag` input, so this needs no throwaway git tag — but two things have to be fixed first
+      # or the rehearsal is worse than not running it:
+      #   (a) `releaseDraft: false` and `prerelease: false` are hardcoded with no input to
+      #       override them, so a dispatch publishes a NON-draft release that GitHub resolves
+      #       as "Latest" — hijacking `releases/latest/download/latest.json`, the endpoint the
+      #       rehearsal exists to protect;
+      #   (b) `actions/checkout` has no `ref:`, so a dispatch builds the selected BRANCH while
+      #       `tagName` uses the input — the rehearsal would not test what it claims to.
+      # And before any of that: the signing key in `TAURI_SIGNING_PRIVATE_KEY` no longer
+      # matches `plugins.updater.pubkey` (key id D899BC42EAD59B16 vs E314FF3F6A268266), so a
+      # release today produces bundles no installed client accepts. Fix that first.
+      #
+      # Closed PR #419 carries the audit, with the correction.
       - dependency-name: tauri-apps/tauri-action
         update-types: ["version-update:semver-major"]
