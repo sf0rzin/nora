@@ -322,6 +322,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v6
       - name: Derive the public key from the signing secret
@@ -352,9 +353,43 @@ jobs:
           # stdin when there is no tty, which is the case here.
           ERR=$(printf '%s\n' "${KEY_PASSWORD:-}" | minisign -R -s /tmp/k.sec -p /tmp/k.pub 2>&1)
           RC=$?
-          rm -f /tmp/k.sec
           note "- minisign -R exit: $RC"
           [ -n "$ERR" ] && note "- minisign said: \`$ERR\`"
+
+          # Fallback. `minisign -R` reads the password from /dev/tty, which does not exist on a
+          # runner, so it can fail even with the right password. The secret-key file format is
+          # documented and parseable: base64 of
+          #   "Ed" | "Sc" | "B2" | salt(32) | ops(8) | mem(8) | [keyid(8) | sk(64) | cksum(32)]
+          # where the last block is XORed with an scrypt stream. With NO password the KDF
+          # limits are zero and no XOR is applied, and the Ed25519 public key is simply the
+          # second half of sk. That covers the common CI case; a password-protected key still
+          # needs minisign.
+          if [ "$RC" -ne 0 ]; then
+            note "- trying the no-password fallback"
+            python3 - <<'PY' >> /tmp/diag.txt 2>&1 && RC=0
+          import base64, pathlib, sys
+          raw = pathlib.Path("/tmp/k.sec").read_text().splitlines()
+          blob = base64.b64decode("".join(l for l in raw if not l.startswith("untrusted")))
+          sig_alg, kdf_alg, ck_alg = blob[0:2], blob[2:4], blob[4:6]
+          ops = int.from_bytes(blob[38:46], "little")
+          mem = int.from_bytes(blob[46:54], "little")
+          print(f"- algs: {sig_alg!r} {kdf_alg!r} {ck_alg!r}, ops={ops}, mem={mem}")
+          if ops or mem:
+              print("- key IS password-protected; the fallback cannot open it")
+              sys.exit(1)
+          keynum = blob[54:]
+          keyid, sk = keynum[0:8], keynum[8:72]
+          pub = sk[32:64]
+          out = sig_alg + keyid + pub
+          kid = "".join(f"{b:02X}" for b in reversed(keyid))
+          pathlib.Path("/tmp/k.pub").write_text(
+              f"untrusted comment: minisign public key: {kid}\n"
+              + base64.b64encode(out).decode() + "\n")
+          print("- fallback derived the public key")
+          PY
+            note "- fallback exit: $RC"
+          fi
+          rm -f /tmp/k.sec
 
           OLD_ID=$(jq -r '.plugins.updater.pubkey' apps/desktop/src-tauri/tauri.conf.json \
                    | base64 -d | head -1)
