@@ -33,10 +33,14 @@
 # -----------------------------------------------------------------------------
 # WHAT TO REGISTER IN THE DASHBOARD (1:1 equivalent of the `ingress:` block below)
 # -----------------------------------------------------------------------------
-# Four Public Hostnames, ALL pointing at the same `http://caddy:80` service
-# — what decides which app answers is Caddy, by the Host header (see ../caddy/Caddyfile).
-# The connector resolves `caddy` through Docker's internal DNS, so cloudflared and
-# caddy have to share the `edge` network (they already do in the compose).
+# Six Public Hostnames. FIVE of them point at the same `http://caddy:80` service — what decides
+# which app answers is Caddy, by the Host header (see ../caddy/Caddyfile). The connector resolves
+# `caddy` through Docker's internal DNS, so cloudflared and caddy have to share the `edge`
+# network (they already do in the compose).
+#
+# The sixth, `ssh`, is the exception in every way: a different protocol, a different origin, and
+# the only one whose origin is the host itself rather than a container. It said "Four ... ALL"
+# here while the block below already listed five, and the ssh row made "ALL" false as well.
 #
 #   | Subdomain | Domain          | Type | URL                       |
 #   |-----------|-----------------|------|---------------------------|

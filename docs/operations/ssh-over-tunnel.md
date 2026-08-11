@@ -63,8 +63,51 @@ Both reach the host, and the route uses `172.17.0.1` because it survives recreat
 
 `host.docker.internal` resolves to the same `172.17.0.1`, and is the version that does not depend
 on Docker's address assignment at all — but it only resolves inside the container once the
-`extra_hosts` entry on the cloudflared service in `docker-compose.yml` has been deployed. Switch
-the route to `ssh://host.docker.internal:22` after that lands.
+`extra_hosts` entry on the cloudflared service in `docker-compose.yml` has been deployed.
+
+## Applying `extra_hosts`, and why it is not free
+
+`extra_hosts` is written into the container's `/etc/hosts` at CREATION, so it takes effect only
+when the connector is recreated. Until that happens the entry is inert and the route must keep
+naming the IP — which is the state the repository is in as this is written.
+
+**Recreating `cloudflared` drops the only ingress.** `docs/operations/host-deploy.md` records
+that this stack has no rolling update: `docker compose up -d` tears the old container down before
+bringing the new one up. For every other service Caddy holds the request; for the connector there
+is nothing in front of it. So the site is unreachable for the few seconds it takes, and the
+statement "adding a route cannot take `nora.systems` down" — true of the API-side ingress edit —
+is **not** true of this compose change.
+
+Do it deliberately, from a session that is not the one you would need to recover, with the direct
+path on port 22 available as the fallback:
+
+```bash
+# 1. arm the rollback FIRST. This host has no `at`; systemd-run is the equivalent.
+sudo cp /opt/nora/infra/host/docker-compose.yml /root/compose.bak
+sudo systemd-run --on-active=10min --unit=nora-cf-rollback /bin/bash -c \
+  'cp /root/compose.bak /opt/nora/infra/host/docker-compose.yml && \
+   /opt/nora/infra/host/scripts/deploy.sh --service cloudflared'
+
+# 2. deploy through the pull path, never by hand
+/opt/nora/infra/host/scripts/deploy.sh --sync --service cloudflared
+
+# 3. verify FROM OUTSIDE, from a second connection
+curl -sS -o /dev/null -w '%{http_code}\n' https://nora.systems                    # 200
+curl -sS -o /dev/null -w '%{http_code}\n' https://api.nora.systems/actuator/health # 200
+
+# 4. switch the route to the name, in the same window
+#    Zero Trust > Networks > Tunnels > Configure > Public Hostnames > ssh
+#    URL: host.docker.internal:22
+#    then re-verify: ssh nora
+
+# 5. disarm
+sudo systemctl stop nora-cf-rollback.timer && sudo systemctl reset-failed nora-cf-rollback.timer
+```
+
+Step 4 belongs in the same window as step 2: between the recreation and the URL switch the route
+still points at `172.17.0.1`, which continues to work — the IP does not change when the container
+is recreated, only when the Docker network is. Doing them together just avoids leaving the
+repository describing one thing and the dashboard another.
 
 ## Order of operations, and why
 
@@ -72,8 +115,13 @@ the route to `ssh://host.docker.internal:22` after that lands.
 
 An `ssh://` route has no authentication of its own — it is sshd, exposed at a name anyone can
 resolve. Until the Access policy exists, publishing the hostname is publishing an SSH endpoint to
-the internet. Creating the application first means the name does not resolve at all while the
-policy is being written, which is the safe order rather than the tidy one.
+the internet.
+
+The mechanism that makes the order safe is the **DNS record being created last**, not the Access
+application being created first — creating an application has no effect on name resolution. An
+earlier version of this section said otherwise. Access-before-DNS is still the right order; the
+reason is that until the CNAME exists the hostname resolves to nothing, so there is no window in
+which an ungated route is reachable.
 
 That is the order this was applied in, and the policy attachment was verified before the ingress
 rule was written:
@@ -127,9 +175,20 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://api.nora.systems/actuator/heal
 curl -sSI https://ssh.nora.systems | grep -i location                        # 302 to the Access login
 ```
 
-A 302 to `<team>.cloudflareaccess.com/cdn-cgi/access/login/ssh.nora.systems` is the gate working.
-Anything else — a 200, a connection reset — means the route is live without Access in front, and
-the DNS record should be deleted immediately.
+A 302 to `<team>.cloudflareaccess.com/cdn-cgi/access/login/ssh.nora.systems` means Access is
+intercepting. Anything else — a 200, a connection reset, or a **502** — means the route is live
+without Access in front, and the DNS record should be deleted immediately. 502 is the likely one:
+an HTTP GET against an `ssh://` origin is a protocol mismatch, so an ungated route answers with a
+gateway error rather than with anything that looks like a refusal.
+
+**A 302 does not prove the policy is restrictive**, only that Access is in front. An
+allow-everyone policy 302s identically. Confirm the policy separately:
+
+```bash
+gh api "https://api.cloudflare.com/client/v4/accounts/$ACC/access/apps/$APP/policies"
+```
+
+One policy, `decision: allow`, with an `include` naming the operators — and not `everyone`.
 
 ## Client
 
@@ -189,14 +248,20 @@ makes this path worth having.
 
 ## Rollback
 
-In increasing order of severity, each independent of the others:
+In increasing order of severity. **Steps 1 and 2 are independent; step 3 REQUIRES step 2 first.**
 
 1. **Revoke access without removing anything:** delete the `operators-allowlist` policy from the
-   `nora-ssh` application. Zero policies denies everyone.
+   `nora-ssh` application. Zero policies denies everyone, so the route stays but nobody passes.
 2. **Remove the route:** delete the `ssh.nora.systems` DNS record, then `PUT` the tunnel
    configuration back to the saved rollback body. The site is unaffected either way — the other
    five rules and the catch-all are untouched.
-3. **Remove everything:** also delete the `nora-ssh` Access application.
+3. **Remove everything:** delete the `nora-ssh` Access application — **only after step 2.**
+   Deleting the application while the ingress rule and the DNS record still exist removes the
+   only authentication in front of sshd and leaves it answering on a public name. That is
+   precisely the state the ordering section above exists to avoid, and an earlier version of
+   this list described the three steps as independent, which made the dangerous reading the
+   natural one.
 
 Nothing here modifies `sshd`, `ufw`/`nftables`, port 22, or the existing web routes, so none of
-these steps can cost you the direct path or the site.
+these steps can cost you the direct path or the site. Step 3 taken out of order costs you the
+*gate*, which is a different thing and is the one worth being careful about.

@@ -79,10 +79,16 @@ services:
     #   getent -> 172.17.0.1, and `nc host.docker.internal 22` returns
     #   SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.18
     #
+    # INERT UNTIL THIS CONTAINER IS RECREATED, and inert until the route is switched to the
+    # name. `extra_hosts` is written into /etc/hosts at container creation, and the live ingress
+    # rule currently names the IP (`ssh://172.17.0.1:22`, see cloudflared/config.yml). Both
+    # steps, and the fact that recreating this container drops the only ingress for a few
+    # seconds, are in docs/operations/ssh-over-tunnel.md under "Applying extra_hosts".
+    #
     # This adds no exposure by itself. A Public Hostname is only reachable once it exists in
     # the tunnel's ingress, and the one in front of ssh:// is gated by a Cloudflare Access
-    # policy — see docs/operations/ssh-over-tunnel.md. sshd, port 22 and the firewall are
-    # untouched: the direct path keeps working exactly as before.
+    # policy. sshd, port 22 and the firewall are untouched: the direct path keeps working
+    # exactly as before.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # `internal` is not for serving traffic — it is so prometheus (which only lives on
