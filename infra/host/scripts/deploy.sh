@@ -341,7 +341,7 @@ remote_digest() {
               -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
               -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
               "https://ghcr.io/v2/${repo}/manifests/${tag}" 2>/dev/null \
-            | awk 'BEGIN{IGNORECASE=1} /^docker-content-digest:/{print $2}' | tr -d '\r' | tail -1)"
+            | awk 'BEGIN{IGNORECASE=1} /^docker-content-digest:/{print $2}' | tr -d '\r' | tail -1 || true)"
   printf '%s' "$digest"
 }
 
@@ -821,6 +821,15 @@ if [ "$ROLLBACK_ONLY" -eq 1 ]; then
 fi
 
 # --if-changed: compares the remote digest with the recorded one. It is what the timer uses.
+#
+# WHAT THIS DOES NOT DO, so a working gate is not mistaken for continuous deployment.
+# The timer calls this with no `--tag` (bootstrap-host.sh:135), so the tag probed below is the
+# tag ALREADY RUNNING (`want_tag="${TAG:-$(running_tag "$s")}"`). Rollouts use immutable
+# `sha-<short>` tags, and an immutable tag's digest never changes — so this branch is a check
+# that the running release is intact, NOT a check for a newer one. Rolling forward would mean
+# reading the release pointer that `deploy-host.yml` publishes (git tag `release/prod/current`),
+# and no script under `infra/host/` reads it: the producer exists, the consumer was never
+# written. Until it is, moving to a new release is `deploy.sh --tag sha-<short>` by hand.
 if [ "$IF_CHANGED" -eq 1 ] && [ "$REPO_MOVED" -eq 1 ]; then
   hr
   log "--if-changed: the repo moved (--sync), so the config may have changed — deploying everything"
@@ -869,11 +878,18 @@ elif [ "$IF_CHANGED" -eq 1 ]; then
     hr
     warn "DIGEST GATE DEGRADED — 0 of $PROBED services resolved a remote digest."
     warn "  Every tick will now redeploy everything, so '--if-changed' is doing nothing."
-    warn "  This is a bug here or an outage there, not a normal state. Check by hand:"
-    warn "    curl -sS \"https://ghcr.io/token?service=ghcr.io&scope=repository:${IMAGE_PREFIX}-api:pull\" | jq -r .token"
-    warn "  then GET /v2/${IMAGE_PREFIX}-api/manifests/<tag> with that token and read the"
-    warn "  status. A 404 on a tag that \`docker manifest inspect\` resolves means the Accept"
-    warn "  list in remote_digest() is missing that image's media type."
+    warn "  This is a bug here or an outage there, not a normal state. Check by hand — and vary"
+    warn "  Accept, because that is the variable this fails on:"
+    warn "    T=\$(curl -sS \"https://ghcr.io/token?service=ghcr.io&scope=repository:${IMAGE_PREFIX}-api:pull\" | jq -r .token)"
+    warn "    curl -sS -o /dev/null -D - -H \"Authorization: Bearer \$T\" \\"
+    warn "      -H 'Accept: application/vnd.oci.image.index.v1+json' \\"
+    warn "      -H 'Accept: application/vnd.oci.image.manifest.v1+json' \\"
+    warn "      -H 'Accept: application/vnd.docker.distribution.manifest.list.v2+json' \\"
+    warn "      -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \\"
+    warn "      https://ghcr.io/v2/${IMAGE_PREFIX}-api/manifests/<tag>"
+    warn "  GHCR answers 404 — not 406 — when Accept does not name the manifest's own media"
+    warn "  type, so a 404 here on a tag that \`docker manifest inspect\` resolves means this"
+    warn "  list is missing one. Dropping the Accept headers entirely tells you nothing."
   fi
 
   if [ "${#CHANGED[@]}" -eq 0 ]; then
