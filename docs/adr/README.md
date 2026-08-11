@@ -81,3 +81,4 @@ Partially superseded decisions: a successor ADR may mark `Partially supersedes X
 | 0034 | Migration from Azure Container Apps to self-hosted Proxmox (single VM + Docker Compose) | accepted (supersedes 0009; partially supersedes 0016; extends 0025; substrate §1 and backup §9 superseded by 0036) |
 | 0035 | Local STT: Whisper embedded in Tauri (Rust), on the client machine | accepted (supersedes 0009; partially supersedes 0008) |
 | 0036 | The substrate is a single bare-metal Ubuntu host, not a Proxmox VM | accepted (supersedes 0034 §1 substrate and §9 backup) |
+| 0037 | SSH reaches the host through the existing Cloudflare Tunnel, gated by Access | accepted (extends 0025 and 0034 §2) |
