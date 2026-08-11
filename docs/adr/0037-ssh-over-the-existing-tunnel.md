@@ -25,10 +25,16 @@ symptom that forced the decision was concrete: `Test-NetConnection <host> -Port 
 
 Two facts about the existing edge shaped what was available:
 
-1. **A Cloudflare Tunnel already terminates all inbound traffic** (ADR 0025, ADR 0034). The host
-   publishes no port to the internet; `cloudflared` dials *out* and Cloudflare routes hostnames
-   into it. Adding SSH is therefore adding a service to something already load-bearing, not
-   opening a new door.
+1. **A Cloudflare Tunnel already terminates all inbound HTTP** (ADR 0034 §2, which extended ADR
+   0025 from `nora-admin` alone to the whole stack). No *web* port is published; `cloudflared`
+   dials *out* and Cloudflare routes hostnames into it. Adding SSH is therefore adding a service
+   to something already load-bearing, not opening a new door.
+
+   The qualifier matters, because "the host publishes no port" is the shorthand this repository
+   uses and it is not true of 22. Measured on the host on 2026-08-11: `ufw` **inactive**, iptables
+   `INPUT` policy `ACCEPT` with no rule naming `dport 22`, and sshd listening on `0.0.0.0:22`. So
+   port 22 is reachable from the whole internet, not from a LAN. See §3, which is the only part of
+   this decision that rests on that fact.
 2. **That tunnel is remotely managed.** `infra/host/docker-compose.yml` runs the connector with
    `TUNNEL_TOKEN` and no `--config`, so the ingress rules live in Cloudflare and are fetched on
    connect. This is a constraint, not a preference — see Consequences.
@@ -49,20 +55,41 @@ front of it. Leave sshd, port 22 and the firewall untouched.**
 | DNS | `ssh` CNAME → `<tunnel-id>.cfargotunnel.com`, proxied |
 | Client | `cloudflared access ssh` as an SSH `ProxyCommand` |
 
-`172.17.0.1` is the gateway of Docker's default bridge as seen from inside the connector
-container. The container's own `localhost` is not the host — a route to `ssh://localhost:22`
-authenticates and then fails with `connection refused`, which is the single most likely way to
-lose an hour here, so the runbook says it in those words.
+`172.17.0.1` is the gateway of Docker's **default** bridge, which the host also answers on. The
+connector is not attached to that bridge — it is on `edge` and `internal`, whose own gateway is
+`172.20.0.1` — but both addresses reach the host, and the route uses `172.17.0.1` because it
+survives recreation of `nora_edge`. What must not be used is `ssh://localhost:22`: the connector
+is a container, its `localhost` is its own loopback, and that route authenticates and then fails
+with `connection refused`. It is the single most likely way to lose an hour here, so the runbook
+says it in those words.
 
 ### 2. The order of operations is part of the decision
 
 **Access application and policy first, DNS record last.**
 
 An `ssh://` route carries no authentication of its own. It is sshd, published at a name anyone
-can resolve. The property that makes the order safe is that **the CNAME is created last**: until
-it exists the hostname resolves to nothing, so there is no interval in which an ungated route is
-reachable. Creating the Access application first does not by itself protect anything — it has no
-effect on name resolution — but it means the gate is in place before the name is.
+can resolve. Two different things close the window, and which one is load-bearing depends on how
+the hostname is registered:
+
+- **Through the API**, which is how this was applied, ingress and DNS are separate calls. The
+  CNAME is created last, so until then the hostname resolves to nothing and there is no interval
+  in which an ungated route is reachable.
+- **Through the dashboard**, "Add a public hostname" creates the DNS record for you — ingress and
+  name appear together, and there is no CNAME-last step to rely on. There the pre-existing Access
+  application is the *only* thing standing in front of sshd from the first moment the name
+  resolves.
+
+So the instruction is "Access first, DNS last" on both paths, but for different reasons, and an
+earlier draft of this ADR gave only the first reason while claiming the Access application
+"does not by itself protect anything". That is wrong: Access does not affect name *resolution*,
+but it intercepts at the edge from the moment the name resolves, which is exactly the protection
+the dashboard path depends on. `infra/host/cloudflared/config.yml` says the same in capitals.
+
+One precondition neither this ADR nor the runbook had checked: the CNAME-last argument assumes
+the zone has no wildcard record. Checked on 2026-08-11 — 13 records in `nora.systems`, six
+proxied CNAMEs matching the six ingress rules one for one, **zero wildcards**. If a proxied `*`
+record is ever added, the API path loses its safety property and only the Access-first ordering
+remains.
 
 The same asymmetry governs teardown, and it is the reverse: deleting the Access application while
 the route and the record still exist removes the only authentication in front of sshd. The
@@ -75,6 +102,13 @@ direct path on 22 works exactly as it did.
 
 That is not laziness about finishing the job. The direct path is the recovery path: it is what
 gets you in when the tunnel side breaks, and the tunnel side has more moving parts than sshd does.
+It only works as a recovery path because 22 is reachable from anywhere rather than from a LAN —
+the measurement in the Context section is what that rests on, and it is worth re-checking rather
+than assuming, because `docs/operations/host-deploy.md` provisions `ufw default deny incoming`
+plus `ufw allow from 192.168.0.0/16 to any port 22`, and that bootstrap step is **not in effect**
+on this machine. If it is ever applied, the argument in this section stops holding and closing 22
+becomes a decision about the LAN rather than about the internet.
+
 Closing 22 is worth doing eventually, and the preconditions are:
 
 1. the tunnel route has survived a `cloudflared` restart **and** a host reboot, and
@@ -82,6 +116,13 @@ Closing 22 is worth doing eventually, and the preconditions are:
 
 Both are about the same scenario: the tunnel is the only way in, and it is down. Without (2) that
 scenario is unrecoverable without physical access to the machine.
+
+The cost of leaving it open is not zero and is worth stating with a number rather than a feeling:
+sshd is key-only (`passwordauthentication no`, `kbdinteractiveauthentication no`,
+`permitrootlogin without-password`), and in the 24 hours to 2026-08-11 it logged **1283** failed
+authentication attempts. That is background internet scanning finding an open 22, which is what an
+open 22 gets. Key-only authentication is what makes it tolerable; it is not what makes it
+invisible.
 
 ## Consequences
 
@@ -101,10 +142,19 @@ scenario is unrecoverable without physical access to the machine.
   that editing it changes nothing. The trade-off is stated in that file's own footer — remotely
   managed "keeps only the `TUNNEL_TOKEN`, at the cost of the real routing living outside the repo"
   — and this ADR inherits it, adding one more rule to the set that has to be kept in sync by hand.
-- **`cloudflared tunnel ingress validate` is not a gate in this mode.** It validates a local
-  config file, and there isn't one. What replaces it is better: Cloudflare validates the rule
-  server-side and pushes it to the connector without a restart, so adding a route cannot take
-  `nora.systems` down and reverting is another API call.
+- **`cloudflared tunnel ingress validate` does not gate what actually ships.** It validates a
+  local config file. One exists — `infra/host/cloudflared/config.yml` is a complete, valid
+  cloudflared config — but the connector does not read it, so validating it proves the *mirror* is
+  well formed and says nothing about the rules Cloudflare will serve. That is still worth doing,
+  precisely because the mirror is maintained by hand; what it is not is a pre-flight check on a
+  routing change.
+
+  What Cloudflare gives instead is that a rule is validated server-side and pushed to the
+  connector without a restart, so a route change needs no redeploy and reverts with another API
+  call. That is **not** the same as "a route change cannot take the site down": the configuration
+  endpoint is a whole-document `PUT`, so a read-modify-write that loses a rule is perfectly valid
+  and removes it. The runbook demands the original be saved as a rollback body before writing for
+  exactly that reason.
 - **The compose change that would make the route independent of Docker's addressing is not free.**
   `extra_hosts: host.docker.internal:host-gateway` on the connector only takes effect when the
   container is **recreated**, and recreating the connector drops the only ingress for a few
@@ -117,15 +167,19 @@ scenario is unrecoverable without physical access to the machine.
 
 ## Alternatives Considered
 
-1. **Move sshd to port 443.** Rejected, and it would not have worked. A bare sshd sends
-   `SSH-2.0-...` in cleartext as its first bytes; an appliance doing deep packet inspection
-   compares protocol to port, finds SSH where TLS belongs, and drops the connection. Detecting
-   exactly that is what such appliances are for. It would also have meant publishing a port on a
-   host whose whole ingress design is that it publishes none.
+1. **Move sshd to port 443.** Rejected on an expectation, and the expectation is worth labelling
+   as one because it was never tested: a bare sshd sends `SSH-2.0-...` in cleartext as its first
+   bytes, and an appliance doing deep packet inspection compares protocol to port, finds SSH where
+   TLS belongs, and drops the connection. That is what such appliances are for. What was actually
+   *observed* on the blocking network is a different mechanism — full TLS interception, which
+   `cloudflared` reported as `x509: certificate signed by unknown authority` — and an appliance
+   that terminates and re-signs 443 is not thereby proven to protocol-police it. So this is the
+   reasoned expectation, not a measurement, and it stays rejected on the weaker ground that it
+   moves the administrative port to the one port the network scrutinises most.
 2. **Run sshd on 443 behind a TLS wrapper (stunnel, sslh).** Rejected. It reaches the same place
    as the accepted option — SSH inside TLS on 443 — but by adding a component to the host, giving
-   it a certificate to renew, and publishing a port. The tunnel already terminates TLS for this
-   host and already has an authentication layer in front of it.
+   it a certificate to renew, and publishing a second port. The tunnel already terminates TLS for
+   this host and already has an authentication layer in front of it.
 3. **Cloudflare WARP with a private network route.** Rejected for this use, kept as the better
    answer to a different question. WARP routes a CIDR rather than publishing a hostname, which is
    the right shape for reaching several services on a private network. Here there is one service
