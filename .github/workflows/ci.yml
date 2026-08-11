@@ -405,6 +405,57 @@ jobs:
           NORA_API_BASE_URL: ${{ vars.NORA_API_BASE_URL || 'https://api.nora.systems' }}
         run: npx tauri build ${{ matrix.args }}
 
+      # What signing verification this repository has, and what it does not.
+      #
+      # `createUpdaterArtifacts: true` makes `tauri build` FAIL when the signing key is absent,
+      # so a missing key is already caught here. What was not caught is a signature that stops
+      # being produced, or one produced against a key the installed app will not accept — and
+      # this job publishes bundles. The public key below is the one compiled into the client
+      # (`plugins.updater.pubkey` in tauri.conf.json), so verifying against it walks the same
+      # chain the updater walks: sign with the CI secret, verify with the shipped key.
+      #
+      # Ubuntu only. minisign is one apt package there and the check takes seconds, and a
+      # signing regression is not platform-specific — it comes from the key or from the config,
+      # and both are shared across the matrix.
+      #
+      # This does NOT verify `tauri-action`, which is what `desktop-release.yml` uses to create
+      # the release and publish `latest.json`. That action runs on a `desktop-v*` tag and on no
+      # other trigger, so no workflow run exercises it. See SECURITY-FINDINGS item 11.
+      - name: Verify the updater signatures against the shipped public key
+        if: matrix.platform == 'ubuntu-latest'
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y minisign
+          jq -r '.plugins.updater.pubkey' src-tauri/tauri.conf.json | base64 -d > /tmp/nora.pub
+          head -1 /tmp/nora.pub | grep -q 'minisign public key' || {
+            echo "::error::tauri.conf.json pubkey does not decode to a minisign public key"
+            exit 1
+          }
+
+          mapfile -t sigs < <(find src-tauri/target -name '*.sig' | sort)
+          if [ "${#sigs[@]}" -eq 0 ]; then
+            echo "::error::no .sig produced. createUpdaterArtifacts is on, so either the"
+            echo "::error::updater bundle was not built or signing silently stopped."
+            exit 1
+          fi
+
+          for sig in "${sigs[@]}"; do
+            artifact="${sig%.sig}"
+            [ -f "$artifact" ] || { echo "::error::signature with no artifact: $sig"; exit 1; }
+            # Tauri writes the signature base64-encoded — it is the same string that goes into
+            # latest.json. Decoded when it is, used as-is when it is not, so this keeps working
+            # if that ever changes rather than failing on a format nobody promised us.
+            if base64 -d < "$sig" > /tmp/sig 2>/dev/null &&
+               head -c 18 /tmp/sig | grep -q 'untrusted comment'; then
+              :
+            else
+              cp "$sig" /tmp/sig
+            fi
+            minisign -V -p /tmp/nora.pub -x /tmp/sig -m "$artifact"
+            echo "verified $(basename "$artifact")"
+          done
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
