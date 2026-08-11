@@ -36,9 +36,10 @@ Internet ──> Cloudflare edge ──(tunnel, egress-only)──> cloudflared
 **No inbound port is opened on the host by the stack.** The only ports the compose publishes are
 on `127.0.0.1` (`5432` → postgres, `5433` → postgres-platform) for debugging via `ssh -L`.
 
-The qualifier is load-bearing and this document used to omit it: **sshd's port 22 is open to the
-internet**, and the firewall block further down explains why it has been left that way. "The
-tunnel is the only ingress" is true of HTTP and of nothing else.
+The qualifier is load-bearing and this document used to omit it: **sshd's port 22 was open to the
+internet when this was measured on 2026-08-11** — `ufw` inactive, `iptables -S INPUT` policy
+`ACCEPT`, no rule naming port 22 — and the firewall block further down explains why it has been
+left that way. "The tunnel is the only ingress" is true of HTTP and of nothing else.
 
 Replacement map, for those coming from Azure:
 
@@ -342,7 +343,7 @@ is anything left to do.
 kernel 6.8, Docker Engine with Compose v2. `systemd-detect-virt` returns `none` — there is no
 hypervisor and no other guest. This runbook does not cover racking or ordering a machine; it
 starts from an Ubuntu (or Debian) host that already exists and is reachable over SSH, and assumes
-no inbound port other than SSH is open (the tunnel is the only ingress — see Overview).
+no inbound port other than SSH is open (the tunnel is the only ingress *for HTTP* — see Overview).
 
 > **Consequence worth stating rather than implying** (ADR 0036): on a VM, a host that survives can
 > restart the guest; here the host is the guest. There is no snapshot or clone to fall back on — see
@@ -408,7 +409,7 @@ curl -fsSLo /tmp/sops "https://github.com/getsops/sops/releases/download/v${SOPS
 sudo install -m 0755 /tmp/sops /usr/local/bin/sops
 
 # --- firewall: no inbound besides SSH ---
-# READ THE PARAGRAPH BELOW BEFORE RUNNING THESE FOUR LINES.
+# READ THE SECOND BLOCKQUOTE UNDER THIS BLOCK BEFORE RUNNING THESE FOUR LINES.
 sudo apt-get -y install ufw
 sudo ufw default deny incoming && sudo ufw default allow outgoing
 sudo ufw allow 22/tcp

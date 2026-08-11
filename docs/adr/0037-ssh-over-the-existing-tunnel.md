@@ -33,8 +33,8 @@ Two facts about the existing edge shaped what was available:
    The qualifier matters, because "the host publishes no port" is the shorthand this repository
    uses and it is not true of 22. Measured on the host on 2026-08-11: `ufw` **inactive**, iptables
    `INPUT` policy `ACCEPT` with no rule naming `dport 22`, and sshd listening on `0.0.0.0:22`. So
-   port 22 is reachable from the whole internet, not from a LAN. See §3, which is the only part of
-   this decision that rests on that fact.
+   port 22 is reachable from the whole internet, not from a LAN. §3 is where that fact does most of
+   its work; Alternative 2 leans on it too.
 2. **That tunnel is remotely managed.** `infra/host/docker-compose.yml` runs the connector with
    `TUNNEL_TOKEN` and no `--config`, so the ingress rules live in Cloudflare and are fetched on
    connect. This is a constraint, not a preference — see Consequences.
@@ -56,9 +56,9 @@ front of it. Leave sshd, port 22 and the firewall untouched.**
 | Client | `cloudflared access ssh` as an SSH `ProxyCommand` |
 
 `172.17.0.1` is the gateway of Docker's **default** bridge, which the host also answers on. The
-connector is not attached to that bridge — it is on `edge` and `internal`, whose own gateway is
-`172.20.0.1` — but both addresses reach the host, and the route uses `172.17.0.1` because it
-survives recreation of `nora_edge`. What must not be used is `ssh://localhost:22`: the connector
+connector is not attached to that bridge — it is on `edge` and `internal`, and `nora_edge`'s own
+gateway is `172.20.0.1` — but both addresses reach the host, and the route uses `172.17.0.1`
+because it survives recreation of `nora_edge`. What must not be used is `ssh://localhost:22`: the connector
 is a container, its `localhost` is its own loopback, and that route authenticates and then fails
 with `connection refused`. It is the single most likely way to lose an hour here, so the runbook
 says it in those words.
@@ -102,12 +102,12 @@ direct path on 22 works exactly as it did.
 
 That is not laziness about finishing the job. The direct path is the recovery path: it is what
 gets you in when the tunnel side breaks, and the tunnel side has more moving parts than sshd does.
-It only works as a recovery path because 22 is reachable from anywhere rather than from a LAN —
-the measurement in the Context section is what that rests on, and it is worth re-checking rather
-than assuming, because `docs/operations/host-deploy.md` provisions `ufw default deny incoming`
-plus `ufw allow from 192.168.0.0/16 to any port 22`, and that bootstrap step is **not in effect**
-on this machine. If it is ever applied, the argument in this section stops holding and closing 22
-becomes a decision about the LAN rather than about the internet.
+It only works as a recovery path because 22 is reachable from anywhere rather than from a LAN, and
+that is a measurement (see Context), not a design guarantee — no firewall enforces it. Re-check it
+before relying on it. `docs/operations/host-deploy.md` used to provision `ufw default deny
+incoming` with an allow rule scoped to `192.168.0.0/16`, which was never applied and which would
+have locked out every operator on this machine; it now provisions `ufw allow 22/tcp`, and that is
+not in effect either. The day a firewall is enabled here, this section is the one to revisit.
 
 Closing 22 is worth doing eventually, and the preconditions are:
 
@@ -117,20 +117,23 @@ Closing 22 is worth doing eventually, and the preconditions are:
 Both are about the same scenario: the tunnel is the only way in, and it is down. Without (2) that
 scenario is unrecoverable without physical access to the machine.
 
-The cost of leaving it open is not zero and is worth stating with a number rather than a feeling:
-sshd is key-only (`passwordauthentication no`, `kbdinteractiveauthentication no`,
-`permitrootlogin without-password`), and in the 24 hours to 2026-08-11 it logged **1283** failed
-authentication attempts. That is background internet scanning finding an open 22, which is what an
+The cost of leaving it open is not zero and is worth stating with a number rather than a feeling.
+Read from `sshd -T` on 2026-08-11, sshd is key-only — `passwordauthentication no`,
+`kbdinteractiveauthentication no`, `permitrootlogin without-password` — and in the 24 hours to
+that date it logged **1283** failed authentication attempts. That is background internet scanning finding an open 22, which is what an
 open 22 gets. Key-only authentication is what makes it tolerable; it is not what makes it
 invisible.
 
 ## Consequences
 
-- **Administrative access to the host now depends on Cloudflare being up.** Not only the tunnel —
-  also Access, and the identity provider behind it. This is a real reduction in independence and
-  is accepted knowingly, because the alternative available on a blocked network was no access at
-  all. It is also the reason (3) above keeps port 22 open: the direct path is what makes the
-  dependency a preference rather than a single point of failure.
+- **Reaching the host through the tunnel depends on Cloudflare being up** — not only the tunnel,
+  also Access and the identity provider behind it. On a network that blocks 22 that is the *only*
+  path, so on such a network administrative access does depend on all three. This is a real
+  reduction in independence, accepted knowingly, because the alternative available there was no
+  access at all. It is also exactly why §3 keeps port 22 open: from an unfiltered network the
+  direct path makes the dependency a preference rather than a single point of failure. Both
+  halves have to be said together — an earlier draft of this bullet said only the first and
+  `CLAUDE.md` said only the second, which is how the two ended up asserting opposite things.
 - **A revoked or expired Access session costs an interactive login.** The token is cached under
   `~/.cloudflared/` for the session duration; when it lapses, `cloudflared` opens a browser and
   waits for a one-time code delivered by e-mail. That is correct behaviour for an authentication

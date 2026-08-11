@@ -34,11 +34,16 @@ Consequences worth stating, because each one is a wasted hour otherwise:
 
 - `infra/host/cloudflared/config.yml` is **reference documentation**, not live configuration.
   Editing it and restarting changes no routing. Its own header says so.
-- `cloudflared tunnel ingress validate` validates a local config file. There isn't one, so it is
-  not a meaningful gate in this mode. What protects the site instead is better: Cloudflare
-  validates the rule server-side and pushes it to the connector **without a restart**, so adding
-  a route cannot take `nora.systems` down, and reverting is another API call rather than a
-  redeploy.
+- `cloudflared tunnel ingress validate` validates a local config file. One exists —
+  `infra/host/cloudflared/config.yml` is a complete, valid config — but **the connector does not
+  read it**, so validating it checks that the hand-maintained mirror is well formed and tells you
+  nothing about the rules Cloudflare will actually serve. Worth running on the mirror; not a
+  pre-flight check on a routing change.
+- Cloudflare validates a rule server-side and pushes it to the connector **without a restart**, so
+  a routing change needs no redeploy and reverts with another API call. That is not the same as
+  "a routing change cannot take `nora.systems` down": the configuration endpoint is a
+  whole-document `PUT`, so a read-modify-write that loses a rule is perfectly valid and removes
+  it. That is why the procedure below saves the original as a rollback body before writing.
 - Routes are changed in the dashboard or through the Cloudflare API, and nowhere else.
 
 ## The mistake to avoid: `ssh://localhost:22`
@@ -74,9 +79,9 @@ naming the IP — which is the state the repository is in as this is written.
 **Recreating `cloudflared` drops the only ingress.** `docs/operations/host-deploy.md` records
 that this stack has no rolling update: `docker compose up -d` tears the old container down before
 bringing the new one up. For every other service Caddy holds the request; for the connector there
-is nothing in front of it. So the site is unreachable for the few seconds it takes, and the
-statement "adding a route cannot take `nora.systems` down" — true of the API-side ingress edit —
-is **not** true of this compose change.
+is nothing in front of it. So the site is unreachable for the few seconds it takes. A routing
+change at least needs no restart; this one does, which makes it the more dangerous of the two
+even though it looks like the smaller edit.
 
 Do it deliberately, from a session that is not the one you would need to recover, with the direct
 path on port 22 available as the fallback:
@@ -117,11 +122,22 @@ An `ssh://` route has no authentication of its own — it is sshd, exposed at a 
 resolve. Until the Access policy exists, publishing the hostname is publishing an SSH endpoint to
 the internet.
 
-The mechanism that makes the order safe is the **DNS record being created last**, not the Access
-application being created first — creating an application has no effect on name resolution. An
-earlier version of this section said otherwise. Access-before-DNS is still the right order; the
-reason is that until the CNAME exists the hostname resolves to nothing, so there is no window in
-which an ungated route is reachable.
+Two different things close that window, and which one is load-bearing depends on how you register
+the hostname:
+
+- **Through the API**, which is how this was applied, ingress and DNS are separate calls, so the
+  **CNAME is created last** and until then the hostname resolves to nothing. That assumes the zone
+  has no wildcard record — checked on 2026-08-11, thirteen records, zero wildcards. Add a proxied
+  `*` and this property is gone.
+- **Through the dashboard**, "Add a public hostname" creates the DNS record *with* the ingress
+  rule (see the note further down). There is no CNAME-last step to rely on, so the **pre-existing
+  Access application is the only thing** standing in front of sshd from the first moment the name
+  resolves.
+
+Access does not affect name *resolution*, but it intercepts at the edge as soon as the name
+resolves — which is precisely the protection the dashboard path depends on. Two earlier versions
+of this paragraph got this wrong in opposite directions; ADR 0037 §2 records both mechanisms, and
+`infra/host/cloudflared/config.yml` states the Access-first requirement in capitals.
 
 That is the order this was applied in, and the policy attachment was verified before the ingress
 rule was written:
