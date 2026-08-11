@@ -302,6 +302,49 @@ jobs:
   #     cd apps/desktop/sidecar && python build_sidecar.py && cd ..
   #     npx tauri build -- --config src-tauri/tauri.azure.conf.json
   # The sidecar logic remains covered by the pytest of the `desktop-sidecar` job.
+  # TEMPORARY, dispatch-only. Prints the PUBLIC key that corresponds to the private key in
+  # `TAURI_SIGNING_PRIVATE_KEY`, so `plugins.updater.pubkey` in tauri.conf.json can be set to
+  # match it. A public key is not a secret — it is already compiled into every shipped client
+  # and published in `latest.json` — so printing it discloses nothing. The private key is
+  # written to a file and never echoed.
+  #
+  # Why this is needed: the secret was rotated after release desktop-v0.2.5 (2026-06-15) and
+  # tauri.conf.json was never updated, so bundles are signed with a key no installed client
+  # trusts and every auto-update is silently rejected. `desktop-bundle`'s verification step
+  # catches it now; this job is what produces the value that fixes it.
+  #
+  # DELETE THIS JOB once the pubkey is committed. It decrypts the signing key on every run,
+  # and a step that handles that key should not exist for longer than it is needed.
+  derive-updater-pubkey:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Derive the public key from the signing secret
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y minisign
+          # Tauri stores the minisign secret key base64-wrapped. Decode when it is, use as-is
+          # when it is not, so this does not depend on a format nobody promised us.
+          printf '%s' "$KEY" | base64 -d > /tmp/k.sec 2>/dev/null || printf '%s' "$KEY" > /tmp/k.sec
+          head -c 18 /tmp/k.sec | grep -q 'untrusted comment' || {
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not a minisign secret key"; exit 1; }
+          # -R recreates the public key from the secret one. minisign reads the password from
+          # stdin when there is no tty, which is the case here.
+          printf '%s\n' "${KEY_PASSWORD:-}" | minisign -R -s /tmp/k.sec -p /tmp/k.pub
+          echo "---- key id ----"
+          head -1 /tmp/k.pub
+          echo "---- value for plugins.updater.pubkey in tauri.conf.json ----"
+          base64 -w0 /tmp/k.pub
+          echo
+          echo "---- what tauri.conf.json says today ----"
+          jq -r '.plugins.updater.pubkey' apps/desktop/src-tauri/tauri.conf.json | base64 -d | head -1
+          rm -f /tmp/k.sec
+
   desktop-bundle:
     needs: changes
     if: ${{ (needs.changes.outputs.desktop_code == 'true' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
