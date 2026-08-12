@@ -410,7 +410,8 @@ SPLIT_FLANK_ALLCAPS: tuple[tuple[str, str, str, str], ...] = (("O", "Portal", "S
 # returns on `stripped_a_label` BEFORE reaching the lone-token lookup that would have recognised
 # a surname. So a phrase head followed by a single name token publishes the name.
 #
-# Measured on `main`, 13 heads x 6 surnames: **78 of 78 leak.** `Com Silva aprovou o escopo.`
+# Measured on `main`: every head x surname combination leaks -- 28 of 28 as the pool ships,
+# and 78 of 78 on the wider 13 x 6 sweep it was cut down from. `Com Silva aprovou o escopo.`
 # comes back untouched.
 #
 # Nothing in this branch caused it. It is the state of the shield today, and the corpus could not
@@ -448,7 +449,7 @@ LEAK_SURNAMES: tuple[str, ...] = (
 # --------------------------------------------------------------------------- #
 # The two shapes that two rejected changes broke, and that no case could see
 #
-# Both are CLEAN on `main` -- 0 of 48 and 0 of 60 measured before these pools existed -- which is
+# Both are CLEAN on `main` -- 0 of 48 and 0 of 40 measured before these pools existed -- which is
 # exactly what makes them worth having. A fixture that already fails records a defect; a fixture
 # that passes and would break under a specific change is the thing that stops the change.
 #

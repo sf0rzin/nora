@@ -50,7 +50,7 @@ from tests.pii_corpus.harness import evaluate, run
 #       false redaction  10.24%  -> 10.24%   (558 of 5449 -> 558 of 5450)
 #
 #   2026-08-12, corpus grew by `lone_name_after_head`, `pii_shield.py` UNCHANGED:
-#       leak              9.11%  ->  9.55%   (513 of 5629 -> 541 of 5657)
+#       leak              9.11%  ->  9.56%   (513 of 5629 -> 541 of 5657)
 #       false redaction  10.24%  -> 10.19%   (558 of 5450 -> 558 of 5478)
 #
 # None of those rows is a regression. The shield did not change in any of them. The corpus
@@ -70,8 +70,13 @@ from tests.pii_corpus.harness import evaluate, run
 #   and the ALL CAPS twin -- `pii_shield.py` changed only by the Pattern 6 guard:
 #       leak              9.48%  ->  9.42%   (541 of 5705 -> 541 of 5745)
 #       false redaction   9.21%  ->  9.14%   (508 of 5518 -> 508 of 5558)
+#
+#   2026-08-12, review round 4: Pattern 6 made structural, five surname-shaped calendar words
+#   removed, and every entry of both sets given a case:
+#       leak              9.42%  ->  9.42%   (541 of 5745, unchanged -- the three leaks closed)
+#       false redaction   9.14%  ->  9.20%   (508 of 5558 -> 523 of 5684)
 MAX_LEAK_RATE = 541 / 5745  # 9.42%
-MAX_FALSE_REDACTION_RATE = 508 / 5558  # 9.14%
+MAX_FALSE_REDACTION_RATE = 523 / 5684  # 9.20%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
@@ -293,22 +298,91 @@ def test_every_sentence_opener_can_fire() -> None:
     )
 
 
-def test_no_ordinary_second_token_is_shadowed_by_the_phrase_head_path() -> None:
-    """The mirror question for the second slot, which has the opposite answer.
+# The two halves of `_ORDINARY_AFTER_OPENER`, split by whether another guard already covers the
+# word. Recorded, not just counted, because the split decides how much damage an entry can do.
+#
+# The first version of this test asserted only that the SHADOWED half is non-empty. That measured
+# the harmless side: those 17 are on `_COMMON_PHRASE_HEADS`, which Pattern 6's per-token blocklist
+# already read, so adding them changed nothing there. The 18 EXPOSED words are the ones that were
+# newly able to silence Pattern 6 -- and `expedicao`, `recepcao` and the calendar words are
+# exactly what published `WANDERLEIA KRANZ EXPEDICAO:` and `NIVALDO MAIO:`.
+#
+# A test that watches the harmless half and not the dangerous one is worse than no test, because
+# it reads like coverage.
+_ORDINARY_SHADOWED_BY_PHRASE_HEADS = frozenset(
+    {
+        "almoxarifado",
+        "auditoria",
+        "comercial",
+        "compliance",
+        "compras",
+        "diretoria",
+        "faturamento",
+        "financeiro",
+        "fiscal",
+        "juridico",
+        "logistica",
+        "manutencao",
+        "marketing",
+        "operacoes",
+        "producao",
+        "qualidade",
+        "suprimentos",
+    }
+)
 
-    17 of the 40 `_ORDINARY_AFTER_OPENER` words are also on `_COMMON_PHRASE_HEADS`, and that is
-    fine: nothing strips slot 2, so they are reachable there. Asserted as an inequality rather
-    than left implicit, because the symmetry with the test above is exactly the thing a reader
-    would assume and get wrong.
+_ORDINARY_ON_NO_OTHER_LIST = frozenset(
+    {
+        "contabilidade",
+        "dezembro",
+        "expedicao",
+        "fevereiro",
+        "julho",
+        "junho",
+        "novembro",
+        "outubro",
+        "presidencia",
+        "quarta",
+        "quinta",
+        "recepcao",
+        "sabado",
+        "segunda",
+        "setembro",
+        "sexta",
+        "terca",
+        "tesouraria",
+    }
+)
+
+
+def test_the_two_halves_of_the_ordinary_set_are_recorded() -> None:
+    """Both halves, pinned, because only one of them is dangerous.
+
+    An entry that is ALSO on `_COMMON_PHRASE_HEADS` is already covered by every rule that reads
+    that set. An entry on no other list is covered by nothing else, so it is the one that can
+    turn a rule reading `_ORDINARY_AFTER_OPENER` into a leak -- which is what happened when
+    Pattern 6 read it per-token.
+
+    Adding a word to the exposed half is the change to think hardest about: ask whether it is a
+    plausible Brazilian surname, not whether it is on the shield's 372-entry list.
     """
-    reachable = [
+    shadowed = frozenset(
         w for w in pii_shield._ORDINARY_AFTER_OPENER if w in pii_shield._COMMON_PHRASE_HEADS
-    ]
-    assert reachable, (
-        "no `_ORDINARY_AFTER_OPENER` entry is on `_COMMON_PHRASE_HEADS` any more. That is not a "
-        "failure in itself, but this test exists to record that the overlap is HARMLESS in slot "
-        "2 -- unlike slot 1 -- so if the overlap is now empty, check that it was emptied on "
-        "purpose and not by copying the rule for openers."
+    )
+    exposed = frozenset(pii_shield._ORDINARY_AFTER_OPENER) - shadowed
+
+    assert shadowed == _ORDINARY_SHADOWED_BY_PHRASE_HEADS, (
+        "the shadowed half moved.\n"
+        f"  added:   {sorted(shadowed - _ORDINARY_SHADOWED_BY_PHRASE_HEADS)}\n"
+        f"  removed: {sorted(_ORDINARY_SHADOWED_BY_PHRASE_HEADS - shadowed)}"
+    )
+    assert exposed == _ORDINARY_ON_NO_OTHER_LIST, (
+        f"the EXPOSED half moved, and this is the half that leaks.\n"
+        f"  added:   {sorted(exposed - _ORDINARY_ON_NO_OTHER_LIST)}\n"
+        f"  removed: {sorted(_ORDINARY_ON_NO_OTHER_LIST - exposed)}\n\n"
+        "A word here is covered by no other guard. Before adding one, ask whether it is a "
+        "plausible pt-BR surname -- `Maio`, `Janeiro`, `Abril`, `Agosto` and `Domingo` all are, "
+        "none is on `_BR_TOP_SURNAMES`, and all five were removed after they leaked."
     )
 
 
@@ -582,7 +656,28 @@ def test_a_name_after_an_opener_and_an_ordinary_word_still_vanishes(case) -> Non
 
 @pytest.mark.parametrize(
     "case",
-    [c for c in _OPENER_AND_PLACE if c.shape == "opener_caps_label"],
+    [c for c in _OPENER_AND_PLACE if c.shape == "opener_caps_label" and c.status == KNOWN_GAP],
+    ids=lambda c: c.case_id,
+)
+def test_a_held_back_calendar_word_is_still_redacted(case) -> None:
+    """The cost of holding `Janeiro` and friends out of `_ORDINARY_AFTER_OPENER`, asserted.
+
+    They are plausible pt-BR surnames, so the opener rule cannot separate `Depois Maio` from a
+    person and the words stay off the set. The price is that the date is redacted, and the price
+    is pinned here so that putting one back has to promote its cases rather than absorb them.
+    """
+    result = evaluate(case)
+    assert not result.ok, (
+        f"{case.case_id} now passes -- if a held-back calendar word was added back to "
+        "`_ORDINARY_AFTER_OPENER`, promote these to REQUIRED and say in the commit why the "
+        "surname reading is no longer a risk.\n"
+        f"  note was: {case.note}"
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in _OPENER_AND_PLACE if c.shape == "opener_caps_label" and c.status == REQUIRED],
     ids=lambda c: c.case_id,
 )
 def test_the_all_caps_twin_of_the_opener_rule_agrees(case) -> None:

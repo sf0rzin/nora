@@ -1474,9 +1474,23 @@ _SENTENCE_OPENERS: frozenset[str] = frozenset(
 # unknown token behind an opener stays a person, which is the direction this module fails in
 # everywhere else.
 #
-# `Marco` is deliberately absent. `_fold` strips accents, so the month collapses onto `marco`, a
-# top-100 pt-BR given name; holding it would stop `Em Marco` being a person in a sentence where
-# it might be one. It was the only one of 41 candidates that collided with a name list.
+# SIX CALENDAR WORDS ARE DELIBERATELY ABSENT, AND THE REASON THE LIST OF SIX GREW IS WORTH
+# READING BEFORE ADDING ONE BACK.
+#
+# `Marco` went first, on the mechanical test: `_fold` strips accents, so the month collapses onto
+# `marco`, which is on `_BR_TOP_NAMES`. It was the only one of 41 candidates that collided with a
+# name list, and the audit stopped there.
+#
+# That audit was not enough, and review found the leak it missed. `Maio`, `Janeiro`, `Abril`,
+# `Agosto` and `Domingo` are attested pt-BR surnames that are simply not in a 101-entry frequency
+# table, and `Depois Maio confirmou o contrato.` was published because of it. The disjointness
+# check that guards these sets is an oracle of 271 given names and 101 surnames; the shapes this
+# set feeds are the ones for names OUTSIDE both, so that check could never have caught it.
+#
+# The cost is real and is accepted in the direction this module always fails: `Em Janeiro` stays
+# redacted, because a month that is also a surname cannot be told from the surname, and losing a
+# date is cheaper than publishing a person. A calendar word belongs here only if it is not a
+# plausible Brazilian surname -- and "not on the shield's list" is not the same question.
 _ORDINARY_AFTER_OPENER: frozenset[str] = frozenset(
     _fold(w)
     for w in (
@@ -1487,14 +1501,9 @@ _ORDINARY_AFTER_OPENER: frozenset[str] = frozenset(
         "Quinta",
         "Sexta",
         "Sabado",
-        "Domingo",
-        "Janeiro",
         "Fevereiro",
-        "Abril",
-        "Maio",
         "Junho",
         "Julho",
-        "Agosto",
         "Setembro",
         "Outubro",
         "Novembro",
@@ -2524,10 +2533,33 @@ def _redact_person_names(
         if any(
             t in _PERSON_NAME_NEGATIVE_LIST
             or t in _COMMON_PHRASE_HEADS
-            or t in _ORDINARY_AFTER_OPENER
             or t in _NAME_CONNECTIVES
             or _VERB_TAIL_RE.search(t)
             for t in tokens
+        ):
+            continue
+        # The opener rule, applied STRUCTURALLY rather than as another per-token entry.
+        #
+        # The first version of this put `_ORDINARY_AFTER_OPENER` in the `any(...)` above, and it
+        # leaked. That set means "not a person in slot 2, BEHIND AN OPENER" -- its own comment
+        # says an unknown token behind an opener stays a person. The blocklist above drops the
+        # opener context and reads a set as "not a person anywhere in this label", so 23 words
+        # became 23 new chances per label to silence the pattern:
+        #
+        #     'WANDERLEIA KRANZ EXPEDICAO: fechamos o escopo.'  published both names
+        #     'NIVALDO MAIO: fechamos o escopo.'                published both names
+        #
+        # Pattern 6 is specifically the pattern for names on NEITHER list (see its header), so
+        # the disjointness check that guards these sets -- 271 given names and 101 surnames --
+        # is structurally unable to protect this path. `Maio`, `Janeiro`, `Abril`, `Agosto` and
+        # `Domingo` are attested pt-BR surnames outside both lists.
+        #
+        # Matching the whole label instead keeps the opener context that makes the set mean what
+        # it says: `NA SEXTA:` is skipped, `NIVALDO MAIO:` is not.
+        if (
+            len(tokens) == 2
+            and tokens[0] in _SENTENCE_OPENERS
+            and tokens[1] in _ORDINARY_AFTER_OPENER
         ):
             continue
         start, end = m.start(1), m.end(1)

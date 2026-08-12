@@ -10,7 +10,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from nora_nlp.services import pii_shield
+
 from . import pools
+
+
+def pii_shield_openers() -> frozenset[str]:
+    """Read from the shield, not mirrored here.
+
+    `COMPANY_SUFFIXES` mirrors `_COMPANY_TAIL_WORDS` and a test keeps the two in step, which
+    works but needs the test. Deriving the cases straight from the set removes the second copy:
+    a word added to the shield gets a case automatically, and one removed loses its case.
+    """
+    return pii_shield._SENTENCE_OPENERS
+
+
+def pii_shield_ordinary() -> frozenset[str]:
+    return pii_shield._ORDINARY_AFTER_OPENER
+
 
 REQUIRED = "REQUIRED"
 KNOWN_GAP = "KNOWN_GAP"
@@ -365,6 +382,23 @@ def _negatives() -> list[Case]:
 # of the commonest given names in pt-BR, so that trade buys a month and sells a person. The
 # signal that separates them is the temporal preposition in front (`em`, `para`, `ate`, `desde`),
 # which is a different mechanism from anything 5b touches and belongs in its own change.
+# Calendar words held OUT of `_ORDINARY_AFTER_OPENER` because they are plausible pt-BR surnames,
+# so the opener rule cannot tell `Depois Maio` from a person. None is on `_BR_TOP_SURNAMES` --
+# that list has 101 entries and the country has rather more, which is exactly why the mechanical
+# disjointness check did not catch them and review did.
+#
+# The cost is that these stay redacted behind an opener. A lost date is cheaper than a published
+# name, which is the direction this module fails in everywhere.
+_CALENDAR_HELD_BACK: dict[str, str] = {
+    "Janeiro": "also a pt-BR surname, so the opener rule cannot separate it from a person; "
+    "held out of `_ORDINARY_AFTER_OPENER` after `Depois Maio` leaked for the same reason",
+    "Maio": "same",
+    "Abril": "same",
+    "Agosto": "same",
+    "Domingo": "same",
+    "Marco": "accent folding collapses it onto `marco` on `_BR_TOP_NAMES`",
+}
+
 _MONTHS_STILL_WRONG: dict[str, str] = {
     "Marco": "accent folding collapses the month onto `marco`, a top-100 pt-BR given name, so "
     "the month is redacted as a person",
@@ -511,6 +545,8 @@ def _false_positives() -> list[Case]:
                     shape="fp_preposition",
                     text=f"{prep} {noun} o time revisou o escopo.",
                     must_survive=(prep, noun),
+                    status=KNOWN_GAP if noun in _CALENDAR_HELD_BACK else REQUIRED,
+                    note=_CALENDAR_HELD_BACK.get(noun, ""),
                     tags=(f"prep_{pi:02d}", f"noun_{ni:02d}"),
                 )
             )
@@ -904,7 +940,7 @@ def _adversarial() -> list[Case]:
 #
 # The corpus has 5,628 leak-scope cases and not one of them is this shape, because every
 # generated builder emits `{given} {surname}` as a pair. So `Com Silva aprovou o escopo.` had
-# never been asked, and it leaks: 78 of 78 head x surname combinations publish the name on
+# never been asked, and it leaks: 28 of 28 head x surname combinations publish the name on
 # `main` today.
 #
 # These go in as gaps, with `main`'s behaviour as measured. They are the reason the leak ceiling
@@ -1020,6 +1056,36 @@ def _opener_and_place_shapes() -> list[Case]:
                 )
             )
 
+    # EVERY entry of both sets, once each.
+    #
+    # The samples above touch 13 of the 91 openers and 7 of the 35 ordinary words, so 78 and 28
+    # entries were in no case at all -- deletable from the shield with the suite green. That is
+    # the defect `test_every_company_tail_word_is_exercised` exists to stop, and this branch
+    # committed it while quoting that test.
+    #
+    # One case per entry rather than the cross product: 91 x 35 would be 3,185 cases pinning one
+    # rule, which buys coverage by making every other rate unreadable. The fixed partner in each
+    # direction is chosen to be on no other list, so the opener rule is the only thing that can
+    # be doing the work.
+    for opener in sorted(pii_shield_openers()):
+        cases.append(
+            Case(
+                case_id=f"opener_coverage/{opener}",
+                shape="opener_coverage",
+                text=f"{opener.capitalize()} Contabilidade o time revisou o escopo.",
+                must_survive=(opener, "Contabilidade"),
+            )
+        )
+    for word in sorted(pii_shield_ordinary()):
+        cases.append(
+            Case(
+                case_id=f"ordinary_coverage/{word}",
+                shape="ordinary_coverage",
+                text=f"Na {word.capitalize()} o time revisou o escopo.",
+                must_survive=("Na", word),
+            )
+        )
+
     # The ALL CAPS twin of the opener rule, in the speaker-label position.
     #
     # The opener rule lives in `_is_a_name_on_its_own`, which the all-caps patterns never call,
@@ -1038,6 +1104,8 @@ def _opener_and_place_shapes() -> list[Case]:
                     shape="opener_caps_label",
                     text=f"{opener.upper()} {word.upper()}: fechamos o escopo.",
                     must_survive=(opener, word),
+                    status=KNOWN_GAP if word in _CALENDAR_HELD_BACK else REQUIRED,
+                    note=_CALENDAR_HELD_BACK.get(word, ""),
                 )
             )
     return cases
