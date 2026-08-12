@@ -1345,6 +1345,25 @@ _COMMON_PHRASE_HEADS: frozenset[str] = frozenset(
 #
 # `da`, `do`, `de`, `das`, `dos` are absent from the openers: they occur inside real pt-BR names
 # (`Maria da Silva`) and are already on `_NAME_CONNECTIVES`.
+#
+# EVERY ENTRY HERE CAN FIRE, and the list is 91 rather than 130 for that reason.
+#
+# The 39 removed -- `com para por sem sob sobre entre ate apos desde contra conforme que mas
+# como quando onde hoje ontem amanha agora ja ainda tambem seu sua nosso nossa toda todo todas
+# todos cada esta este essa esse ficou vamos` -- are also on `_COMMON_PHRASE_HEADS`, and both
+# `_trusted_span` and `_qualify_run` strip a leading phrase head before anything reaches
+# `_is_a_name_on_its_own`. So no value arriving there could begin with one, and those entries
+# were unreachable: `Sobre Sexta o time revisou.` behaves identically with and without them,
+# checked before and after removing them.
+#
+# That is the defect this file rejects in three other places -- an entry that cannot fire is a
+# control that reads as protection and is not. These sets were audited for name collision and
+# not for reachability, which is one of the two questions;
+# `test_every_sentence_opener_can_fire` in the corpus asks the other.
+#
+# Removing them changes no behaviour: those sentences are handled by the phrase-head path, which
+# is why they were dead. If a word ever leaves `_COMMON_PHRASE_HEADS`, that path stops covering
+# it and the word has to be added back here deliberately.
 _SENTENCE_OPENERS: frozenset[str] = frozenset(
     _fold(w)
     for w in (
@@ -1398,27 +1417,10 @@ _SENTENCE_OPENERS: frozenset[str] = frozenset(
         "Daqueles",
         "Daquelas",
         # simple prepositions and conjunctions
-        "Com",
-        "Para",
-        "Por",
-        "Sem",
-        "Sob",
-        "Sobre",
-        "Entre",
-        "Ate",
-        "Apos",
-        "Desde",
-        "Contra",
-        "Conforme",
         "Perante",
         "Mediante",
         "Exceto",
         "Se",
-        "Que",
-        "Mas",
-        "Como",
-        "Quando",
-        "Onde",
         "Enquanto",
         "Porem",
         "Contudo",
@@ -1447,33 +1449,13 @@ _SENTENCE_OPENERS: frozenset[str] = frozenset(
         "Provavelmente",
         "Certamente",
         "Realmente",
-        "Hoje",
-        "Ontem",
-        "Amanha",
-        "Agora",
-        "Ja",
-        "Ainda",
-        "Tambem",
         # determiners and possessives
         "Mesmo",
         "Mesma",
         "Meu",
         "Minha",
-        "Seu",
-        "Sua",
-        "Nosso",
-        "Nossa",
         "Tal",
         "Quaisquer",
-        "Toda",
-        "Todo",
-        "Todas",
-        "Todos",
-        "Cada",
-        "Esta",
-        "Este",
-        "Essa",
-        "Esse",
         # verb forms that open a sentence in minutes
         "Foi",
         "Sendo",
@@ -1481,8 +1463,6 @@ _SENTENCE_OPENERS: frozenset[str] = frozenset(
         "Havendo",
         "Devemos",
         "Podemos",
-        "Ficou",
-        "Vamos",
     )
 )
 
@@ -2527,12 +2507,24 @@ def _redact_person_names(
     # provider -- Pattern 5 above only covers labels that ARE on the given-name list -- and that
     # leak is what this pattern was added to close. A missed heading is fixed by naming it in
     # `_COMMON_PHRASE_HEADS`, not by narrowing the shape.
+    # `_ORDINARY_AFTER_OPENER` is read here as well as in the opener rule, and it has to be.
+    # Without it the two cases disagree on the same words:
+    #
+    #     'Na Sexta: fechamos o escopo.'  ->  untouched          (the opener rule fires)
+    #     'NA SEXTA: fechamos o escopo.'  ->  '[[PERSON_NAME_1]]: ...'   (this guard did not)
+    #
+    # 23 of the 40 entries are absent from `_COMMON_PHRASE_HEADS`, so this guard could not see
+    # them. `test_pii_shield.py` pins "upper-casing an ordinary phrase must not change the
+    # answer", and before this line the module held two registries of ordinary vocabulary with
+    # only one of them wired into the all-caps path -- which is how a rejected earlier attempt
+    # broke the same property from the other direction.
     for m in _CAPS_SPEAKER_RE.finditer(text):
         label = m.group(1)
         tokens = [_fold(t.group(0)) for t in _WORD_RE.finditer(label)]
         if any(
             t in _PERSON_NAME_NEGATIVE_LIST
             or t in _COMMON_PHRASE_HEADS
+            or t in _ORDINARY_AFTER_OPENER
             or t in _NAME_CONNECTIVES
             or _VERB_TAIL_RE.search(t)
             for t in tokens

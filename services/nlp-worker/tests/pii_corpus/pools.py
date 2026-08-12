@@ -515,6 +515,28 @@ PLACE_TAILS: tuple[str, ...] = (
     "Rocha",
 )
 
+# Ordinary words that `_ORDINARY_AFTER_OPENER` holds, for the shape where a NAME follows them.
+#
+# `<opener> <ordinary> <given> <surname>` is the shape that tests the token-count guard in
+# `_is_an_opener_and_an_ordinary_word`. Without it, relaxing `len(parts) != 2` to `< 2` passes
+# the entire suite and publishes `Na Contabilidade Wanderleia Kranz apresentou o plano.` --
+# measured, 907 tests green with the mutation applied.
+#
+# The 48 `opener_then_name` cases do not cover it: none of their second tokens is in
+# `_ORDINARY_AFTER_OPENER`, so they only ever exercise the branch where the pair is NOT refused.
+#
+# Unpunctuated on purpose. Raw ASR output has no commas, so this is how the sentence arrives.
+OPENER_ORDINARY_WORDS: tuple[str, ...] = (
+    "Contabilidade",
+    "Sexta",
+    "Janeiro",
+    "Financeiro",
+    "Qualidade",
+)
+
+# Both halves off every shield list, which is the case Pattern 3 cannot rescue.
+OPENER_ORDINARY_NAME: tuple[str, str] = ("Wanderleia", "Kranz")
+
 
 # Phrases that are roles, artefacts or ordinary business vocabulary. Every one of these is a
 # false redaction if a `[[PERSON_NAME_n]]` comes back in its place.

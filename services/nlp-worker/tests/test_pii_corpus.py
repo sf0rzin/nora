@@ -65,8 +65,13 @@ from tests.pii_corpus.harness import evaluate, run
 #   2026-08-12, `_SENTENCE_OPENERS` + `_ORDINARY_AFTER_OPENER`, one call site (#438):
 #       leak              9.48%  ->  9.48%   (541 of 5705, unchanged -- no new leak)
 #       false redaction  10.11%  ->  9.21%   (558 -> 508 of 5518)
-MAX_LEAK_RATE = 541 / 5705  # 9.48%
-MAX_FALSE_REDACTION_RATE = 508 / 5518  # 9.21%
+#
+#   2026-08-12, the three shapes review asked for -- token-count guard, opener reachability,
+#   and the ALL CAPS twin -- `pii_shield.py` changed only by the Pattern 6 guard:
+#       leak              9.48%  ->  9.42%   (541 of 5705 -> 541 of 5745)
+#       false redaction   9.21%  ->  9.14%   (508 of 5518 -> 508 of 5558)
+MAX_LEAK_RATE = 541 / 5745  # 9.42%
+MAX_FALSE_REDACTION_RATE = 508 / 5558  # 9.14%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
@@ -261,6 +266,49 @@ def test_every_ordinary_vocabulary_set_is_covered_by_the_overlap_record() -> Non
         f"{len(missing)} frozenset(s) of vocabulary are not covered by the overlap check: "
         f"{missing}.\nAdd each to `_ORDINARY_VOCABULARY_SETS` or `_NAME_VOCABULARY_SETS`, or to "
         "the exclusion in this test with a reason."
+    )
+
+
+def test_every_sentence_opener_can_fire() -> None:
+    """The other half of the audit these sets got, and did not.
+
+    They were checked for name collision -- no entry may be a person -- and not for
+    reachability. 39 of the original 130 openers were also on `_COMMON_PHRASE_HEADS`, and both
+    `_trusted_span` and `_qualify_run` strip a leading phrase head before anything reaches
+    `_is_a_name_on_its_own`. Those 39 could never fire: `Sobre Sexta o time revisou.` behaved
+    identically with and without them.
+
+    This is the same question `test_every_company_tail_word_is_exercised` asks, for the same
+    reason: an entry that cannot fire is a control that reads as protection and is not.
+    """
+    unreachable = sorted(
+        w for w in pii_shield._SENTENCE_OPENERS if w in pii_shield._COMMON_PHRASE_HEADS
+    )
+    assert not unreachable, (
+        f"{len(unreachable)} sentence openers are also on _COMMON_PHRASE_HEADS: {unreachable}.\n"
+        "A leading phrase head is stripped by `_trusted_span` and `_qualify_run` before "
+        "`_is_a_name_on_its_own` runs, so these can never reach the opener rule. Either delete "
+        "them from _SENTENCE_OPENERS, or delete them from _COMMON_PHRASE_HEADS if the opener "
+        "rule is the one that should own them -- but do not keep both."
+    )
+
+
+def test_no_ordinary_second_token_is_shadowed_by_the_phrase_head_path() -> None:
+    """The mirror question for the second slot, which has the opposite answer.
+
+    17 of the 40 `_ORDINARY_AFTER_OPENER` words are also on `_COMMON_PHRASE_HEADS`, and that is
+    fine: nothing strips slot 2, so they are reachable there. Asserted as an inequality rather
+    than left implicit, because the symmetry with the test above is exactly the thing a reader
+    would assume and get wrong.
+    """
+    reachable = [
+        w for w in pii_shield._ORDINARY_AFTER_OPENER if w in pii_shield._COMMON_PHRASE_HEADS
+    ]
+    assert reachable, (
+        "no `_ORDINARY_AFTER_OPENER` entry is on `_COMMON_PHRASE_HEADS` any more. That is not a "
+        "failure in itself, but this test exists to record that the overlap is HARMLESS in slot "
+        "2 -- unlike slot 1 -- so if the overlap is now empty, check that it was emptied on "
+        "purpose and not by copying the rule for openers."
     )
 
 
@@ -509,6 +557,47 @@ def test_a_name_behind_a_sentence_opener_still_vanishes(case) -> None:
         + "\n  A capitalised word in front of a name does not stop it being a name.\n"
         "  If you are changing how a two-token Title Case sequence is judged, this is the\n"
         "  side of it that leaks."
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in _OPENER_AND_PLACE if c.shape == "opener_ordinary_then_name"],
+    ids=lambda c: c.case_id,
+)
+def test_a_name_after_an_opener_and_an_ordinary_word_still_vanishes(case) -> None:
+    """The token-count guard in `_is_an_opener_and_an_ordinary_word`, which nothing exercised.
+
+    Relaxing `len(parts) != 2` to `< 2` passed all 907 tests before these cases existed, while
+    publishing `Na Contabilidade Wanderleia Kranz apresentou o plano.` The rule may only ever
+    refuse a PAIR; three tokens or more is a name with something in front of it.
+    """
+    result = evaluate(case)
+    assert result.ok, result.describe() + (
+        "\n  An opener and an ordinary word in front of a name do not stop it being a name.\n"
+        "  This is the shape that tests the two-token guard -- if you widened what the opener\n"
+        "  rule may refuse, this is what it costs."
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in _OPENER_AND_PLACE if c.shape == "opener_caps_label"],
+    ids=lambda c: c.case_id,
+)
+def test_the_all_caps_twin_of_the_opener_rule_agrees(case) -> None:
+    """`NA SEXTA:` must answer the same as `Na Sexta:`.
+
+    The opener rule lives in `_is_a_name_on_its_own`, which no all-caps pattern calls, so
+    Pattern 6 needs `_ORDINARY_AFTER_OPENER` in its own guard. Removing it again passed all 909
+    tests before these cases existed -- caught only by the rate, which says the number moved and
+    not which property broke.
+    """
+    result = evaluate(case)
+    assert result.ok, result.describe() + (
+        "\n  Upper-casing an ordinary phrase must not change the answer -- `test_pii_shield.py`\n"
+        "  pins that property, and the two registries of ordinary vocabulary have to stay in\n"
+        "  step for it to hold."
     )
 
 

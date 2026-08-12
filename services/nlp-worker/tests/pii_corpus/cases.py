@@ -991,6 +991,55 @@ def _opener_and_place_shapes() -> list[Case]:
                     must_survive=(place, tail),
                 )
             )
+
+    # `<opener> <ordinary> <given> <surname>` -- the shape that tests the token-count guard.
+    #
+    # `_is_an_opener_and_an_ordinary_word` refuses only a pair, and its docstring calls that the
+    # anti-leak guard. Nothing exercised it: relaxing `len(parts) != 2` to `< 2` passed all 907
+    # tests while publishing `Na Contabilidade Wanderleia Kranz apresentou o plano.` Measured,
+    # not argued.
+    #
+    # The name is off-list on both halves, which is the case Pattern 3 cannot rescue. With an
+    # on-list given name the mutation leaks only the surname, which is worse to read and easier
+    # to miss.
+    #
+    # `must_vanish` only, for the same reason as `opener_then_name` above: today the whole run
+    # collapses into one placeholder, so neither the opener nor the ordinary word survives --
+    # `Na Contabilidade Wanderleia Kranz apresentou o plano.` comes back `[[PERSON_NAME_1]]
+    # apresentou o plano.`, measured at 40 of 40. Asserting that too would make every case fail
+    # for a second reason, and a case that fails for a second reason cannot guard the first.
+    given, surname = pools.OPENER_ORDINARY_NAME
+    for opener in pools.SENTENCE_OPENERS:
+        for word in pools.OPENER_ORDINARY_WORDS:
+            cases.append(
+                Case(
+                    case_id=f"opener_ordinary_then_name/{opener}/{word}",
+                    shape="opener_ordinary_then_name",
+                    text=f"{opener} {word} {given} {surname} apresentou o plano.",
+                    must_vanish=(given, surname),
+                )
+            )
+
+    # The ALL CAPS twin of the opener rule, in the speaker-label position.
+    #
+    # The opener rule lives in `_is_a_name_on_its_own`, which the all-caps patterns never call,
+    # so Pattern 6 needs `_ORDINARY_AFTER_OPENER` in its own guard or the two cases disagree:
+    # `Na Sexta:` was left alone while `NA SEXTA:` became `[[PERSON_NAME_1]]:`. Wiring the set
+    # into Pattern 6 closed that, and removing it again passed all 909 tests -- so the fix had
+    # no test until these cases existed, which is the same hole the shape above was added for.
+    #
+    # `test_pii_shield.py` pins "upper-casing an ordinary phrase must not change the answer".
+    # The Title Case side is already covered by `fp_preposition`; this is the other half.
+    for opener in pools.SENTENCE_OPENERS:
+        for word in pools.OPENER_ORDINARY_WORDS:
+            cases.append(
+                Case(
+                    case_id=f"opener_caps_label/{opener}/{word}",
+                    shape="opener_caps_label",
+                    text=f"{opener.upper()} {word.upper()}: fechamos o escopo.",
+                    must_survive=(opener, word),
+                )
+            )
     return cases
 
 
