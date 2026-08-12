@@ -837,6 +837,31 @@ def _adversarial() -> list[Case]:
             (),
             ("Lista", "Campos", "Protheus"),
         ),
+        # The two sides of `_COMMON_PHRASE_HEADS & _BR_TOP_SURNAMES`, which
+        # `test_the_overlap_between_ordinary_and_name_vocabulary_is_recorded` pins as
+        # {campos, dias}. The record says the overlap is a deliberate trade; these are what it
+        # trades, so the claim is testable rather than a paragraph.
+        Case(
+            "adv/overlap/place_wins",
+            "adv_overlap",
+            "LOJA CAMPOS fechou ontem.",
+            (),
+            ("LOJA", "CAMPOS"),
+            note="what `campos` is on the phrase-head list FOR -- a third of the surname list "
+            "doubles as a place name",
+        ),
+        Case(
+            "adv/overlap/name_loses",
+            "adv_overlap",
+            "Dias Silva aprovou o escopo.",
+            ("Dias", "Silva"),
+            (),
+            status=KNOWN_GAP,
+            note="the price of the line above, and it is a LEAK: `dias` heads the run, is "
+            "stripped as ordinary vocabulary, one token is left and the run dies -- so a full "
+            "name reaches the provider. Closing it means resolving the overlap, not patching "
+            "this shape",
+        ),
         Case(
             "adv/false/role_phrase",
             "adv_false_redaction",

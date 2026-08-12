@@ -47,8 +47,8 @@ from tests.pii_corpus.harness import evaluate, run
 # to `fp_preposition`, where 49 of 49 cases fail and always did. A ceiling that rises because
 # the measurement got less wrong is a different thing from one that rises because the code got
 # worse, and the difference belongs in writing rather than in a reader's assumption.
-MAX_LEAK_RATE = 512 / 5628  # 9.10%
-MAX_FALSE_REDACTION_RATE = 558 / 5449  # 10.24%
+MAX_LEAK_RATE = 513 / 5629  # 9.11%
+MAX_FALSE_REDACTION_RATE = 558 / 5450  # 10.24%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
@@ -126,6 +126,125 @@ def test_every_company_tail_word_is_exercised() -> None:
     assert not missing, (
         f"{len(missing)} entries of _COMPANY_TAIL_WORDS are in no corpus case: {missing}. "
         f"Add them to cases.COMPANY_SUFFIXES or delete them from the shield."
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Where the shield's two vocabularies overlap
+#
+# The module keeps sets that mean "this token is ordinary vocabulary" and sets that mean "this
+# token is a person". A word in both is a word whose verdict depends on which rule reaches it
+# first, and that is exactly where a leak hides.
+#
+# This exists because of a specific mistake. A change was written that keyed a new
+# "this pair is not a name" rule on `_COMMON_PHRASE_HEADS`, on the reasonable-sounding basis
+# that the set means "ordinary word". It does not mean only that: `campos` and `dias` are on it
+# AND on `_BR_TOP_SURNAMES`, so the new rule published `Em Campos assinou a ata.` and
+# `Depois Dias confirmou o contrato.` -- both redacted before it. Nothing in the repository
+# recorded that the intersection was non-empty, and adversarial review found it by reading the
+# literals, which is not a method that scales.
+#
+# The overlap is pinned rather than forbidden, because it is deliberate and it is a trade with
+# a cost on both sides:
+#
+#   `campos` is on `_COMMON_PHRASE_HEADS` so that "LOJA CAMPOS fechou ontem." and
+#   "REGIONAL CAMPOS reportou." are not people -- the comment above that section of the shield
+#   says a third of the surname list doubles as a place name.
+#
+#   The price is paid in the other direction and is a LEAK, live on `main`:
+#   "Dias Silva aprovou o escopo." comes back untouched. `dias` heads the run, is stripped as
+#   an ordinary label, one token is left and the run dies. A full name goes to the provider.
+#
+# So: the test does not demand the intersection be empty. It demands that it be WRITTEN DOWN.
+# --------------------------------------------------------------------------- #
+
+# Measured on `main` at d330449. Read as: "these words carry both meanings, on purpose, and
+# somebody has looked at what that costs."
+KNOWN_ORDINARY_NAME_OVERLAPS: dict[tuple[str, str], frozenset[str]] = {
+    ("_COMMON_PHRASE_HEADS", "_BR_TOP_SURNAMES"): frozenset({"campos", "dias"}),
+}
+
+# Every set the shield reads to mean "ordinary vocabulary, not a person".
+_ORDINARY_VOCABULARY_SETS = (
+    "_COMMON_PHRASE_HEADS",
+    "_PERSON_NAME_NEGATIVE_LIST",
+    "_COMPANY_TAIL_WORDS",
+    "_NAME_CONNECTIVES",
+    "_GENITIVE_PREPOSITIONS",
+)
+
+# ...and the ones it reads to mean "person", or "a person follows". Honorifics are in this list
+# rather than excluded from the check: `Sr` or `Dr` turning up on an ordinary-vocabulary set
+# would break the prefix pattern in the same way `campos` broke the pair rule, and the overlap
+# being empty today is worth pinning rather than assuming.
+_NAME_VOCABULARY_SETS = (
+    "_BR_TOP_NAMES",
+    "_BR_TOP_SURNAMES",
+    "_NAME_HONORIFICS",
+    "_PERSON_ONLY_HONORIFICS",
+)
+
+
+@pytest.mark.parametrize("ordinary_name", _ORDINARY_VOCABULARY_SETS)
+@pytest.mark.parametrize("name_set_name", _NAME_VOCABULARY_SETS)
+def test_the_overlap_between_ordinary_and_name_vocabulary_is_recorded(
+    ordinary_name: str, name_set_name: str
+) -> None:
+    """Fails in BOTH directions, and the shrinking direction is not pedantry.
+
+    Growing means a word just acquired two meanings and some rule now decides it by accident.
+    Shrinking means someone resolved one and the note beside it is now describing a tension that
+    no longer exists -- which is how a comment starts lying.
+    """
+    ordinary = set(getattr(pii_shield, ordinary_name))
+    names = set(getattr(pii_shield, name_set_name))
+    actual = frozenset(ordinary & names)
+    expected = KNOWN_ORDINARY_NAME_OVERLAPS.get((ordinary_name, name_set_name), frozenset())
+
+    assert actual == expected, (
+        f"{ordinary_name} & {name_set_name} is {sorted(actual)}, "
+        f"recorded as {sorted(expected)}.\n\n"
+        f"  added:   {sorted(actual - expected)}\n"
+        f"  removed: {sorted(expected - actual)}\n\n"
+        "A word in both sets means 'ordinary' to one rule and 'person' to another, and which one\n"
+        "wins depends on which reaches it first. Before changing this record, work out what the\n"
+        "word does on BOTH paths -- `Em Campos assinou a ata.` and `LOJA CAMPOS fechou ontem.`\n"
+        "are the two sides for the existing pair, and they pull opposite ways.\n\n"
+        "If you are adding a rule that reads an ordinary-vocabulary set to decide 'not a person',\n"
+        "this list is what that rule will get wrong."
+    )
+
+
+def test_every_ordinary_vocabulary_set_is_covered_by_the_overlap_record() -> None:
+    """The record above is only worth having if it is checked against every set that exists.
+
+    A new frozenset of ordinary vocabulary added to the shield and not listed here would be
+    unchecked, and the test above would pass by not looking.
+    """
+    checked = set(_ORDINARY_VOCABULARY_SETS) | set(_NAME_VOCABULARY_SETS)
+    frozensets = {
+        name
+        for name in dir(pii_shield)
+        if name.isupper() and isinstance(getattr(pii_shield, name), frozenset)
+    }
+    missing = sorted(frozensets - checked)
+    assert not missing, (
+        f"{len(missing)} frozenset(s) of vocabulary are not covered by the overlap check: "
+        f"{missing}.\nAdd each to `_ORDINARY_VOCABULARY_SETS` or `_NAME_VOCABULARY_SETS`, or to "
+        "the exclusion in this test with a reason."
+    )
+
+
+def test_person_only_honorifics_stay_a_subset_of_the_honorifics() -> None:
+    """`_has_a_person_head` reads one and `_NAME_PREFIX_RE` the other; the containment is assumed.
+
+    An entry in `_PERSON_ONLY_HONORIFICS` that is not in `_NAME_HONORIFICS` would vouch for a run
+    the prefix pattern never matched, which is a claim with nothing behind it.
+    """
+    orphans = sorted(set(pii_shield._PERSON_ONLY_HONORIFICS) - set(pii_shield._NAME_HONORIFICS))
+    assert not orphans, (
+        f"{orphans} are in _PERSON_ONLY_HONORIFICS but not in _NAME_HONORIFICS. The first is "
+        "meant to be the person-only subset of the second."
     )
 
 
