@@ -898,13 +898,59 @@ def _adversarial() -> list[Case]:
     ]
 
 
+# --------------------------------------------------------------------------- #
+# A name ALONE behind a phrase head
+#
+# The corpus has 5,628 leak-scope cases and not one of them is this shape, because every
+# generated builder emits `{given} {surname}` as a pair. So `Com Silva aprovou o escopo.` had
+# never been asked, and it leaks: 78 of 78 head x surname combinations publish the name on
+# `main` today.
+#
+# These go in as gaps, with `main`'s behaviour as measured. They are the reason the leak ceiling
+# rises in the commit that adds them, and the shield is untouched there -- the rate moves because
+# the measurement stopped being blind, not because anything got worse.
+# --------------------------------------------------------------------------- #
+
+_LONE_NAME_GAP = (
+    "`_COMMON_PHRASE_HEADS` is consumed by two rules that discard the whole run once the head is "
+    "stripped and one token is left: `_trusted_span` gives up below two tokens, and "
+    "`_qualify_run` returns on `stripped_a_label` before it reaches the lone-token lookup that "
+    "recognises a surname. The label in front decides, which is exactly what the comment above "
+    "that lookup says it must not do"
+)
+
+
+def _lone_name_after_head() -> list[Case]:
+    cases: list[Case] = []
+    for head in pools.LEAK_HEADS:
+        for surname in pools.LEAK_SURNAMES:
+            cases.append(
+                Case(
+                    case_id=f"lone_name_after_head/{head}/{surname}",
+                    shape="lone_name_after_head",
+                    text=f"{head} {surname} aprovou o escopo.",
+                    must_vanish=(surname,),
+                    must_survive=(head,),
+                    status=KNOWN_GAP,
+                    note=_LONE_NAME_GAP,
+                )
+            )
+    return cases
+
+
 def all_cases() -> list[Case]:
     """The whole corpus, generated and hand written, in a stable order."""
-    return _generated() + _negatives() + _false_positives() + _adversarial()
+    return (
+        _generated() + _negatives() + _false_positives() + _lone_name_after_head() + _adversarial()
+    )
 
 
 def false_positive_cases() -> list[Case]:
     return _false_positives()
+
+
+def lone_name_after_head_cases() -> list[Case]:
+    return _lone_name_after_head()
 
 
 def adversarial_cases() -> list[Case]:

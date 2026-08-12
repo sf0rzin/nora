@@ -25,6 +25,7 @@ from tests.pii_corpus.cases import (
     adversarial_cases,
     all_cases,
     false_positive_cases,
+    lone_name_after_head_cases,
 )
 from tests.pii_corpus.harness import evaluate, run
 
@@ -43,12 +44,24 @@ from tests.pii_corpus.harness import evaluate, run
 #       leak              9.10%  ->  9.10%   (512 of 5627 -> 512 of 5628)
 #       false redaction   9.60%  -> 10.24%   (506 of 5271 -> 558 of 5449)
 #
-# The second row is not a regression. The shield did not change; the corpus stopped being blind
-# to `fp_preposition`, where 49 of 49 cases fail and always did. A ceiling that rises because
-# the measurement got less wrong is a different thing from one that rises because the code got
-# worse, and the difference belongs in writing rather than in a reader's assumption.
-MAX_LEAK_RATE = 513 / 5629  # 9.11%
-MAX_FALSE_REDACTION_RATE = 558 / 5450  # 10.24%
+#   2026-08-12, the two `adv/overlap` cases that make the pinned overlap testable (#439):
+#       leak              9.10%  ->  9.11%   (512 of 5628 -> 513 of 5629)
+#       false redaction  10.24%  -> 10.24%   (558 of 5449 -> 558 of 5450)
+#
+#   2026-08-12, corpus grew by `lone_name_after_head`, `pii_shield.py` UNCHANGED:
+#       leak              9.11%  ->  9.55%   (513 of 5629 -> 541 of 5657)
+#       false redaction  10.24%  -> 10.19%   (558 of 5450 -> 558 of 5478)
+#
+# None of those rows is a regression. The shield did not change in any of them. The corpus
+# stopped being blind: first to `fp_preposition`, where 49 of 49 fail and always did, then to
+# `lone_name_after_head`, where 28 of 28 leak and always did. A ceiling that rises because the
+# measurement got less wrong is a different thing from one that rises because the code got worse,
+# and the difference belongs in writing rather than in a reader's assumption.
+#
+# The LEAK ceiling rising is the more serious of the two and is worth saying plainly: it means 28
+# names that this corpus previously reported as safe were being published, and nobody had asked.
+MAX_LEAK_RATE = 541 / 5657  # 9.56%
+MAX_FALSE_REDACTION_RATE = 558 / 5478  # 10.19%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
@@ -67,6 +80,11 @@ MIN_FALSE_POSITIVE_CASES = 150
 # both run, not reasoned. Set below the measurement on purpose: the assertion is that the pool
 # bites, not that it bites exactly as hard as on the day it was written.
 MIN_CASES_BROKEN_BY_LOOSENING = 20
+
+# `lone_name_after_head`. Floored for the same reason as the pool above and one worse: these are
+# LEAK cases, so deleting them lowers the leak ceiling, which is the number this whole corpus
+# exists to hold down.
+MIN_LONE_NAME_CASES = 28
 
 
 @pytest.fixture(scope="module")
@@ -399,6 +417,49 @@ def test_an_ordinary_word_is_not_a_person(case) -> None:
 )
 def test_documented_false_positive_is_still_wrong(case) -> None:
     """A gap that closes must be promoted, not absorbed -- as in the adversarial set."""
+    result = evaluate(case)
+    assert not result.ok, (
+        f"{case.case_id} now passes -- promote it to REQUIRED and delete the note.\n"
+        f"  note was: {case.note}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# A name alone behind a phrase head
+# --------------------------------------------------------------------------- #
+
+_LONE_NAME = lone_name_after_head_cases()
+
+
+def test_the_lone_name_pool_did_not_shrink() -> None:
+    assert len(_LONE_NAME) >= MIN_LONE_NAME_CASES, (
+        f"{len(_LONE_NAME)} lone-name cases, floor is {MIN_LONE_NAME_CASES}. These are leak "
+        "cases: deleting them lowers the leak ceiling, which is the number this corpus exists "
+        "to hold down."
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in _LONE_NAME if c.status == REQUIRED],
+    ids=lambda c: c.case_id,
+)
+def test_a_name_behind_a_phrase_head_still_vanishes(case) -> None:
+    result = evaluate(case)
+    assert result.ok, (
+        result.describe() + "\n  A word in front of a name cannot be what decides. The comment "
+        "above the lone-token lookup in `_qualify_run` says exactly that, and this is the shape "
+        "that tests it."
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in _LONE_NAME if c.status == KNOWN_GAP],
+    ids=lambda c: c.case_id,
+)
+def test_documented_lone_name_leak_is_still_a_leak(case) -> None:
+    """As everywhere else here: a gap that closes must be promoted, not absorbed."""
     result = evaluate(case)
     assert not result.ok, (
         f"{case.case_id} now passes -- promote it to REQUIRED and delete the note.\n"

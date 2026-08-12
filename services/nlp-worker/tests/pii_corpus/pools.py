@@ -402,6 +402,49 @@ SPLIT_FLANK: tuple[tuple[str, str, str, str], ...] = (
 SPLIT_FLANK_ALLCAPS: tuple[tuple[str, str, str, str], ...] = (("O", "Portal", "SAP", "Financeiro"),)
 
 
+# --------------------------------------------------------------------------- #
+# The leak the phrase-head list causes, which no case had ever put in front of the shield
+#
+# `_COMMON_PHRASE_HEADS` is consumed by two rules that drop a run entirely once the head is
+# stripped and one token is left: `_trusted_span` gives up below two tokens, and `_qualify_run`
+# returns on `stripped_a_label` BEFORE reaching the lone-token lookup that would have recognised
+# a surname. So a phrase head followed by a single name token publishes the name.
+#
+# Measured on `main`, 13 heads x 6 surnames: **78 of 78 leak.** `Com Silva aprovou o escopo.`
+# comes back untouched.
+#
+# Nothing in this branch caused it. It is the state of the shield today, and the corpus could not
+# see it because every generated builder emits `{given} {surname}` as a PAIR -- no shape has ever
+# put a name ALONE behind a Title Case word. That blindness is the same one BASELINE.md already
+# records, in a third direction.
+#
+# The all-caps counterpart is real too (`MARINA NOVA` and `MARINA SANTA` are lost whole) and is
+# deliberately NOT in the corpus: a token on the phrase-head list is by construction an ordinary
+# word, so `MARINA NOVA` is genuinely ambiguous between a person and a place, and asserting it is
+# a person would be inventing an expectation to make a point. It is in the finding instead.
+# --------------------------------------------------------------------------- #
+
+# All already on `_COMMON_PHRASE_HEADS`, chosen so this shape cannot be read as something a later
+# change introduced.
+LEAK_HEADS: tuple[str, ...] = (
+    "Com",
+    "Para",
+    "Por",
+    "Sem",
+    "Ate",
+    "Sobre",
+    "Conforme",
+)
+
+# Two on the shield's surname list, two off it, so the case does not depend on the list.
+LEAK_SURNAMES: tuple[str, ...] = (
+    "Silva",
+    "Costa",
+    "Kranz",
+    "Zanchetta",
+)
+
+
 # Phrases that are roles, artefacts or ordinary business vocabulary. Every one of these is a
 # false redaction if a `[[PERSON_NAME_n]]` comes back in its place.
 ROLE_PHRASES: tuple[str, ...] = (
