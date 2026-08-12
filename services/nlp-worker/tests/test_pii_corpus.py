@@ -26,6 +26,7 @@ from tests.pii_corpus.cases import (
     all_cases,
     false_positive_cases,
     lone_name_after_head_cases,
+    opener_and_place_cases,
 )
 from tests.pii_corpus.harness import evaluate, run
 
@@ -60,8 +61,8 @@ from tests.pii_corpus.harness import evaluate, run
 #
 # The LEAK ceiling rising is the more serious of the two and is worth saying plainly: it means 28
 # names that this corpus previously reported as safe were being published, and nobody had asked.
-MAX_LEAK_RATE = 541 / 5657  # 9.56%
-MAX_FALSE_REDACTION_RATE = 558 / 5478  # 10.19%
+MAX_LEAK_RATE = 541 / 5705  # 9.48%
+MAX_FALSE_REDACTION_RATE = 558 / 5518  # 10.11%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
@@ -464,6 +465,59 @@ def test_documented_lone_name_leak_is_still_a_leak(case) -> None:
     assert not result.ok, (
         f"{case.case_id} now passes -- promote it to REQUIRED and delete the note.\n"
         f"  note was: {case.note}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# The two shapes that priced two rejected changes
+#
+# These have per-case tests and not only a place in the rates, and the difference is the point.
+# Run without them, the rejected `stripped_a_label` change fails exactly one thing:
+# `test_false_redaction_rate_does_not_regress`. That says "the number moved". It does not say
+# "an address became a person", and the number moving is what a reviewer then has to go and
+# interpret. A named failure is the difference between a gate and a hint.
+# --------------------------------------------------------------------------- #
+
+_OPENER_AND_PLACE = opener_and_place_cases()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in _OPENER_AND_PLACE if c.shape == "opener_then_name"],
+    ids=lambda c: c.case_id,
+)
+def test_a_name_behind_a_sentence_opener_still_vanishes(case) -> None:
+    """The property two rejected attempts at the opener defect broke.
+
+    Both tried to make `Na Sexta` stop being a person, and both took `Depois Wanderleia` and
+    `Em Campos` with it. A capitalised word in front of a name is not a reason to publish the
+    name.
+    """
+    result = evaluate(case)
+    assert result.ok, (
+        result.describe()
+        + "\n  A capitalised word in front of a name does not stop it being a name.\n"
+        "  If you are changing how a two-token Title Case sequence is judged, this is the\n"
+        "  side of it that leaks."
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in _OPENER_AND_PLACE if c.shape == "place_head_then_tail"],
+    ids=lambda c: c.case_id,
+)
+def test_an_address_is_not_a_person(case) -> None:
+    """The property the rejected `stripped_a_label` narrowing broke.
+
+    `Vila Prado`, `Galpao Prado`, `Bairro Cruz` are places. A third of the surname list doubles
+    as a place name, which is why those heads are on `_COMMON_PHRASE_HEADS` at all, and any
+    change to how a stripped head is judged lands here first.
+    """
+    result = evaluate(case)
+    assert result.ok, result.describe() + (
+        "\n  This is an address or a site label, not a person. The place head is on\n"
+        "  `_COMMON_PHRASE_HEADS` precisely so that it is not read as one."
     )
 
 

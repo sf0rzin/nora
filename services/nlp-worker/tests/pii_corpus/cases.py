@@ -938,10 +938,70 @@ def _lone_name_after_head() -> list[Case]:
     return cases
 
 
+# --------------------------------------------------------------------------- #
+# The two shapes that priced two rejected changes, neither of which the rates could see
+#
+# Both pass on `main` -- measured at 0 of 48 and 0 of 40 before these existed. They are not here
+# to record a defect; they are here so that the next attempt at the sentence-opener defect fails
+# a test instead of a review.
+#
+# `opener_then_name`      a name behind a sentence opener MUST still vanish.
+#                         Broken by putting the openers on `_COMMON_PHRASE_HEADS`, and again by
+#                         a rule that read that set to mean "ordinary word" when two of its
+#                         members are surnames.
+#
+# `place_head_then_tail`  an address MUST NOT become a person.
+#                         Broken by narrowing `stripped_a_label`, which made `Galpao Prado`
+#                         redact while `GALPAO PRADO` did not -- the case-invariance property
+#                         `test_pii_shield.py` pins.
+# --------------------------------------------------------------------------- #
+
+
+def _opener_and_place_shapes() -> list[Case]:
+    cases: list[Case] = []
+    # `must_vanish` only, and the omission is deliberate.
+    #
+    # The opener does NOT survive today: `Depois Silva aprovou o escopo.` comes back
+    # `[[PERSON_NAME_1]] aprovou o escopo.`, with `Depois` inside the placeholder. Measured at
+    # 48 of 48. That is a real if minor false redaction and it is pre-existing.
+    #
+    # It is not asserted here because the harness scores a case pass/fail as a whole, not per
+    # direction. Adding `must_survive=(opener,)` would make every one of these fail on the
+    # opener, so they would have to be KNOWN_GAP -- and a KNOWN_GAP is asserted to FAIL, which
+    # would stop pinning the thing they exist for: that the NAME still vanishes. A case that
+    # fails for a second reason cannot guard the first one.
+    for opener in pools.SENTENCE_OPENERS:
+        for name in pools.OPENER_NAMES:
+            cases.append(
+                Case(
+                    case_id=f"opener_then_name/{opener}/{name}",
+                    shape="opener_then_name",
+                    text=f"{opener} {name} aprovou o escopo.",
+                    must_vanish=(name,),
+                )
+            )
+    for place in pools.PLACE_HEADS:
+        for tail in pools.PLACE_TAILS:
+            cases.append(
+                Case(
+                    case_id=f"place_head_then_tail/{place}/{tail}",
+                    shape="place_head_then_tail",
+                    text=f"{place} {tail} entrou na pauta.",
+                    must_survive=(place, tail),
+                )
+            )
+    return cases
+
+
 def all_cases() -> list[Case]:
     """The whole corpus, generated and hand written, in a stable order."""
     return (
-        _generated() + _negatives() + _false_positives() + _lone_name_after_head() + _adversarial()
+        _generated()
+        + _negatives()
+        + _false_positives()
+        + _lone_name_after_head()
+        + _opener_and_place_shapes()
+        + _adversarial()
     )
 
 
@@ -951,6 +1011,10 @@ def false_positive_cases() -> list[Case]:
 
 def lone_name_after_head_cases() -> list[Case]:
     return _lone_name_after_head()
+
+
+def opener_and_place_cases() -> list[Case]:
+    return _opener_and_place_shapes()
 
 
 def adversarial_cases() -> list[Case]:

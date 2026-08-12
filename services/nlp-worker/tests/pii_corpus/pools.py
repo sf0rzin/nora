@@ -445,6 +445,77 @@ LEAK_SURNAMES: tuple[str, ...] = (
 )
 
 
+# --------------------------------------------------------------------------- #
+# The two shapes that two rejected changes broke, and that no case could see
+#
+# Both are CLEAN on `main` -- 0 of 48 and 0 of 60 measured before these pools existed -- which is
+# exactly what makes them worth having. A fixture that already fails records a defect; a fixture
+# that passes and would break under a specific change is the thing that stops the change.
+#
+# The history is the argument for them. Two attempts at the same defect were written, reviewed
+# and rejected, and in both cases the rates said nothing:
+#
+#   putting sentence openers on `_COMMON_PHRASE_HEADS` published `Depois Wanderleia`,
+#   `Inclusive Kranz` and `Na Kranz` -- 30 of 30 off-list names behind those words
+#
+#   keying a "not a name" rule on `_COMMON_PHRASE_HEADS` published `Depois Dias` and
+#   `Em Campos`, because two members of that set are also on `_BR_TOP_SURNAMES` (#439)
+#
+#   narrowing `stripped_a_label` started redacting `Galpao Prado`, `Vila Prado` and
+#   `Bairro Santa Cruz`, and broke the case-invariance property `test_pii_shield.py` pins
+#
+# Adversarial review found all of it by reading the literals. These pools are the version that
+# a test run finds.
+# --------------------------------------------------------------------------- #
+
+# A sample across the classes: contracted prepositions, adverbs, a verb form, a determiner.
+SENTENCE_OPENERS: tuple[str, ...] = (
+    "Em",
+    "Na",
+    "Depois",
+    "Apenas",
+    "Inclusive",
+    "Foi",
+    "Mesmo",
+    "Talvez",
+)
+
+# On the shield's surname list, off it, and -- the two that matter most -- the pair that is on
+# `_COMMON_PHRASE_HEADS` as well, pinned by `KNOWN_ORDINARY_NAME_OVERLAPS`. Any rule that reads
+# an ordinary-vocabulary set to decide "not a person" gets those two wrong first.
+OPENER_NAMES: tuple[str, ...] = (
+    "Silva",
+    "Costa",
+    "Dias",
+    "Campos",
+    "Kranz",
+    "Zanchetta",
+)
+
+# Words that open a Brazilian address or site label. All ten are on `_COMMON_PHRASE_HEADS`,
+# because a third of the surname list doubles as a place name -- the shield's own comment.
+PLACE_HEADS: tuple[str, ...] = (
+    "Vila",
+    "Bairro",
+    "Galpao",
+    "Loja",
+    "Regional",
+    "Obra",
+    "Rua",
+    "Avenida",
+    "Jardim",
+    "Centro",
+)
+
+# Surnames that are also plausible place names, which is the whole difficulty.
+PLACE_TAILS: tuple[str, ...] = (
+    "Prado",
+    "Campos",
+    "Cruz",
+    "Rocha",
+)
+
+
 # Phrases that are roles, artefacts or ordinary business vocabulary. Every one of these is a
 # false redaction if a `[[PERSON_NAME_n]]` comes back in its place.
 ROLE_PHRASES: tuple[str, ...] = (
