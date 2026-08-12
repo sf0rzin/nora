@@ -326,27 +326,39 @@ def _negatives() -> list[Case]:
 
 
 # --------------------------------------------------------------------------- #
-# Single-token false positives -- the price list for finding 5b
+# False positives: ordinary words that must not become people
 #
-# 5b is closed by making a lone Title Case token worth something when it sits beside a name.
-# Every case below is a lone Title Case token that is NOT a name, so together they are what that
-# change costs if it is done carelessly. They are committed BEFORE the fix, and their measured
-# behaviour goes into BASELINE.md as a column, so "the leak rate improved" can be checked against
-# "and this did not get worse" rather than asserted.
+# Three groups, and they are NOT of equal weight. Saying so here because the first version of
+# this block claimed all of them priced finding 5b, and measurement said otherwise.
 #
-# Each word appears twice: bare, which is the hardest case because there is no sentence context
-# at all, and inside a realistic sentence, which is the form that actually shows up in a
-# transcript. A fix that passes the second and fails the first has bought nothing -- meeting
-# minutes are full of fragments.
+#   `fp_article` / `fp_weekday` / `fp_month` / `fp_department`
+#       One Title Case token, in a sentence or bare. These assert something true and worth
+#       asserting -- an ordinary noun is not a person -- but they do NOT price a loosening of
+#       the single-token rule. Forcing `_is_a_name_on_its_own` to return True changes 0 of them,
+#       because `_is_a_name_on_its_own` is only reachable through a pattern that needs two
+#       adjacent `_TITLE_WORD` tokens, and a lone noun never gets there.
+#
+#   `fp_preposition`
+#       A capitalised preposition in front of one of those nouns. Two Title Case tokens, so the
+#       sequence pattern claims it. These fail TODAY -- `Na Sexta` comes back
+#       `[[PERSON_NAME_1]]` -- and they are recorded as gaps, not as a future risk.
+#
+#   `fp_split_flank`
+#       An allow-listed term between two ordinary Title Case words. This is the position 5b's
+#       fix acts on, so this is the group that actually prices it: four of the ten break when
+#       the rule is loosened, six hold.
+#
+# `test_the_false_positive_pool_is_not_inert` enforces the distinction mechanically, so the
+# claim cannot drift back to the comfortable version.
 # --------------------------------------------------------------------------- #
 
 
 # Found by these fixtures on `main`, before any 5b work, which is what they are for.
 #
-# `_fold` strips accents before every list lookup, so `Marco` folds to the same key as `Marco`
-# the given name -- and so does `Marco` with its cedilla. Both were checked: `Marco` and `Marco`
-# each come back `[[PERSON_NAME_1]]`, while lowercase `marco` survives (the deliberate lowercase
-# gap). The practical effect is that a transcript writing the month capitalised loses it.
+# `_fold` strips accents before every list lookup, so the month folds onto the key of `marco` the
+# given name. The accented spelling is now a case of its own (`fp_accent`) rather than a claim in
+# a comment -- the earlier version asserted that both spellings behave alike while the corpus
+# contained no accented character to check it with.
 #
 # Not fixed here, and deliberately not fixed by deleting `marco` from `_BR_TOP_NAMES`: it is one
 # of the commonest given names in pt-BR, so that trade buys a month and sells a person. The
@@ -354,8 +366,17 @@ def _negatives() -> list[Case]:
 # which is a different mechanism from anything 5b touches and belongs in its own change.
 _MONTHS_STILL_WRONG: dict[str, str] = {
     "Marco": "accent folding collapses the month onto `marco`, a top-100 pt-BR given name, so "
-    "the month is redacted as a person -- verified on the cedilla form too",
+    "the month is redacted as a person",
 }
+
+# The live defect, recorded as a gap rather than as a risk. See SECURITY-FINDINGS entry 16 for
+# the full sweep: 196 of 392 preposition-noun pairs, with the seven failing prepositions being
+# exactly the ones that are on no shield list.
+_PREPOSITION_GAP = (
+    "a capitalised preposition and a capitalised noun are two `_TITLE_WORD` tokens, which is the "
+    "shape `_NAME_SEQUENCE_RE` trusts -- `na`, `no`, `nas`, `nos`, `pela`, `pelo` and `em` are on "
+    "no list, unlike `da`/`do`/`de` which are on `_NAME_CONNECTIVES` and therefore survive"
+)
 
 
 def _false_positives() -> list[Case]:
@@ -396,6 +417,11 @@ def _false_positives() -> list[Case]:
                 must_survive=(day,),
             )
         )
+
+    # Only segunda..sexta take `-feira`. The earlier version generated `Sabado-feira` and
+    # `Domingo-feira`, which no transcript can contain, in a pool whose whole justification is
+    # that its strings are real.
+    for i, day in enumerate(pools.FEIRA_WEEKDAYS):
         cases.append(
             Case(
                 case_id=f"fp_weekday/{i:03d}/feira",
@@ -444,6 +470,74 @@ def _false_positives() -> list[Case]:
                 shape="fp_department",
                 text=f"O {dept} pediu mais um ciclo antes de aprovar.",
                 must_survive=(dept,),
+            )
+        )
+
+    # Accent folding is asserted everywhere in this module and was, until now, never exercised:
+    # the corpus contained no accented character at all, so "`Marco` behaves like `Marco`" was a
+    # claim about two spellings written identically.
+    for i, (accented, plain) in enumerate(pools.ACCENTED_SPELLINGS):
+        note = _MONTHS_STILL_WRONG.get(plain, "")
+        cases.append(
+            Case(
+                case_id=f"fp_accent/{i:03d}",
+                shape="fp_accent",
+                text=f"O rollout foi adiado para {accented} do ano que vem.",
+                must_survive=(accented,),
+                status=KNOWN_GAP if note else REQUIRED,
+                note=note,
+            )
+        )
+
+    # The live defect. Two Title Case tokens, so the sequence pattern reaches them, and it claims
+    # them: every one of these comes back `[[PERSON_NAME_1]]` today.
+    for pi, prep in enumerate(pools.PREPOSITIONS):
+        for ni, noun in enumerate(pools.PREPOSITION_NOUNS):
+            cases.append(
+                Case(
+                    case_id=f"fp_preposition/{prep}/{noun}",
+                    shape="fp_preposition",
+                    text=f"{prep} {noun} o time revisou o escopo.",
+                    must_survive=(prep, noun),
+                    status=KNOWN_GAP,
+                    note=_PREPOSITION_GAP,
+                    tags=(f"prep_{pi:02d}", f"noun_{ni:02d}"),
+                )
+            )
+
+    # The group that prices finding 5b: an allow-listed term between two ordinary Title Case
+    # words, which is the position the fix acts on. All ten pass today.
+    for i, (article, first, term, second) in enumerate(pools.SPLIT_FLANK):
+        cases.append(
+            Case(
+                case_id=f"fp_split_flank/{i:03d}",
+                shape="fp_split_flank",
+                text=f"{article} {first} {term} {second} entrou na pauta de ontem.",
+                must_survive=(first, term, second),
+            )
+        )
+
+    # The conjunction path into the same rule: `_split_on_allow_list` cuts on `e` too, so an
+    # ordinary word after a real name lands in the lone-run position. The name must still go.
+    cases.append(
+        Case(
+            case_id="fp_split_flank/conjunction",
+            shape="fp_split_flank",
+            text="Marina Alves e Contabilidade fecharam a apuracao.",
+            must_vanish=("Marina", "Alves"),
+            must_survive=("Contabilidade",),
+        )
+    )
+
+    # An ordinary word in the `product_between` slot -- the mirror of the shape 5b is measured
+    # on. If the fix keys on structure rather than on the name lists, these become people.
+    for i, (first, second) in enumerate((("Segunda", "Contabilidade"), ("Janeiro", "Fevereiro"))):
+        cases.append(
+            Case(
+                case_id=f"fp_split_flank/between/{i:03d}",
+                shape="fp_split_flank",
+                text=f"{first} Protheus {second} entraram no ciclo.",
+                must_survive=(first, "Protheus", second),
             )
         )
 

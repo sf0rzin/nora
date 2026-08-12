@@ -28,33 +28,45 @@ from tests.pii_corpus.cases import (
 )
 from tests.pii_corpus.harness import evaluate, run
 
-# Measured on 2026-08-10. `main` at 27dc6cc, then the same corpus after `_split_on_allow_list`:
-#
-#                              before      after
-#     leak rate             :  16.76%  ->   9.10%   (943 -> 512 of 5627)
-#     false-redaction rate  :  24.83%  ->   9.58%   (1309 -> 505 of 5271)
-#
 # Both are ceilings, and both must be moved DOWN by any change that claims to improve the
 # shield. Raising either one is a decision, not a detail: it belongs in a commit message that
 # says which cases were traded away and why.
 #
 # Written as the measured fractions rather than as rounded decimals, so the gate cannot be
 # passed or failed by the third digit of a number nobody re-derived.
-MAX_LEAK_RATE = 512 / 5627  # 9.10%
-MAX_FALSE_REDACTION_RATE = 508 / 5352  # 9.49%
+#
+#   2026-08-10, `main` at 27dc6cc -> after `_split_on_allow_list` (#431):
+#       leak             16.76%  ->  9.10%   (943 -> 512 of 5627)
+#       false redaction  24.83%  ->  9.60%   (1309 -> 506 of 5271)
+#
+#   2026-08-11, corpus grew by the false-positive pool, `pii_shield.py` UNCHANGED:
+#       leak              9.10%  ->  9.10%   (512 of 5627 -> 512 of 5628)
+#       false redaction   9.60%  -> 10.31%   (506 of 5271 -> 558 of 5413)
+#
+# The second row is not a regression. The shield did not change; the corpus stopped being blind
+# to `fp_preposition`, where 49 of 49 cases fail and always did. A ceiling that rises because
+# the measurement got less wrong is a different thing from one that rises because the code got
+# worse, and the difference belongs in writing rather than in a reader's assumption.
+MAX_LEAK_RATE = 512 / 5628  # 9.10%
+MAX_FALSE_REDACTION_RATE = 558 / 5413  # 10.31%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
 MIN_GENERATED_NAME_CASES = 5600
 
-# The single-token false positives, added ahead of finding 5b for the reason written over
-# `_false_positives` in cases.py: 5b is closed by making a lone Title Case token worth
-# something, and these are what that costs if it is done carelessly.
-#
-# The floor matters more here than anywhere else in this file. The cheapest way to pass a
+# The false-positive pool. The floor matters here because the cheapest way to pass a
 # false-redaction ceiling after loosening the single-token rule is to delete the cases the
-# loosening broke, and every one of those cases lives in this pool.
-MIN_FALSE_POSITIVE_CASES = 81
+# loosening broke.
+MIN_FALSE_POSITIVE_CASES = 120
+
+# And the floor that matters MORE, because the first version of this pool passed the one above
+# while being entirely inert: 81 cases, 0 of which could fail under any loosening of the rule
+# they claimed to price. A count is not a guarantee; this is.
+#
+# Measured at 8 with the pool as it stands, and at 0 with the pool as it was first written --
+# both run, not reasoned. Set below the measurement on purpose: the assertion is that the pool
+# bites, not that it bites exactly as hard as on the day it was written.
+MIN_CASES_BROKEN_BY_LOOSENING = 5
 
 
 @pytest.fixture(scope="module")
@@ -209,6 +221,39 @@ def test_the_false_positive_pool_did_not_shrink() -> None:
     assert len(_FALSE_POSITIVES) >= MIN_FALSE_POSITIVE_CASES, (
         f"{len(_FALSE_POSITIVES)} false-positive cases, floor is {MIN_FALSE_POSITIVE_CASES}. "
         "Deleting these is the cheapest way to make a single-token change look free."
+    )
+
+
+def test_the_false_positive_pool_is_not_inert(monkeypatch) -> None:
+    """A pool that cannot fail is not a price list.
+
+    The first version of this pool was 81 cases that all passed vacuously: every one was a lone
+    Title Case token, `_is_a_name_on_its_own` is reachable only through a pattern needing two
+    adjacent title words, and so not one of them could ever meet the rule they were written to
+    guard. The rates said nothing was wrong because nothing in the corpus could go wrong.
+
+    This test makes that failure mode mechanical rather than a matter of care. It applies the
+    largest possible loosening of the rule -- every lone token is a name -- and demands that the
+    pool NOTICE. If a future change makes the guarding cases unreachable, or deletes them, or
+    replaces them with something inert, this fails while every rate still looks fine.
+
+    The floor is deliberately below the measured count. This asserts that the pool bites, not
+    that it bites exactly as hard as it did on the day it was written.
+    """
+    before = {c.case_id: evaluate(c).ok for c in _FALSE_POSITIVES}
+    monkeypatch.setattr(pii_shield, "_is_a_name_on_its_own", lambda value: True)
+    after = {c.case_id: evaluate(c).ok for c in _FALSE_POSITIVES}
+
+    broken = sorted(cid for cid in before if before[cid] and not after[cid])
+    assert len(broken) >= MIN_CASES_BROKEN_BY_LOOSENING, (
+        f"only {len(broken)} of {len(_FALSE_POSITIVES)} false-positive cases break when "
+        f"`_is_a_name_on_its_own` is forced to accept every lone token, and the floor is "
+        f"{MIN_CASES_BROKEN_BY_LOOSENING}.\n\n"
+        "That means this pool does not price a loosening of the single-token rule. Add cases "
+        "that put an ordinary word where the shield can actually reach it -- inside a run that "
+        "an allow-listed term or a conjunction splits -- rather than a lone noun in a sentence, "
+        "which never enters that code path at all.\n\n"
+        f"currently breaking: {broken}"
     )
 
 

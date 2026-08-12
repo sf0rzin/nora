@@ -176,20 +176,29 @@ COMPANIES: tuple[str, ...] = (
 )
 
 # --------------------------------------------------------------------------- #
-# The single-token pools
+# The vocabulary pools
 #
-# Everything below is ONE Title Case token. That is the shape finding 5b's fix has to loosen --
-# today a lone token on neither name list is refused outright by `_is_a_name_on_its_own`, and
-# that refusal is the only thing standing between these words and a `[[PERSON_NAME_n]]`.
+# Ordinary pt-BR business words that are not people. A `[[PERSON_NAME_n]]` in place of any of
+# them is a false redaction.
 #
-# So these pools exist to make the loosening expensive. They are committed BEFORE the fix, with
-# their measured behaviour recorded, precisely so that a change which buys leak rate by eating
-# ordinary vocabulary shows up as a number moving the wrong way instead of as a silent trade.
-# BASELINE.md states the general form of this: a rule that refuses to redact needs cases that
-# make the refusal expensive, and the inverse holds too.
+# READ THIS BEFORE ADDING A WORD HERE AND CALLING IT A GUARD. An earlier version of this block
+# claimed these pools "make the loosening expensive" for finding 5b. They do not, and the claim
+# was checked the only way it can be: `_is_a_name_on_its_own` was forced to return True -- the
+# maximum possible loosening of the rule they were supposed to price -- and **0 of 81** cases
+# built from them changed. Every one passed vacuously.
+#
+# The reason is structural. `_is_a_name_on_its_own` is reachable only through a Pattern 1 or
+# Pattern 2 match, and both need two adjacent `_TITLE_WORD` tokens. A lone token in a sentence
+# never enters that path at all, so it is not guarded by the rule -- it simply never meets it.
+#
+# What actually prices a loosening lives in `PREPOSITIONS` and in the `fp_split_flank` cases in
+# cases.py, both of which put an ordinary word where the shield can reach it. The single-token
+# pools below are kept because they assert something worth asserting, and because a future change
+# elsewhere could make them bite -- but they are not the price list, and
+# `test_the_false_positive_pool_is_not_inert` is what stops that claim being made again.
 # --------------------------------------------------------------------------- #
 
-# On no shield list whatsoever. `_is_a_name_on_its_own` is the entire defence.
+# On no shield list whatsoever.
 WEEKDAYS: tuple[str, ...] = (
     "Segunda",
     "Terca",
@@ -218,8 +227,29 @@ MONTHS: tuple[str, ...] = (
     "Dezembro",
 )
 
-# Business areas. Several are on `_COMMON_PHRASE_HEADS`, several are on nothing; the mix is the
-# point, because a fix that only respects the list leaves the rest exposed.
+# The same words with their real accents. `_fold` strips accents before every list lookup, so
+# these SHOULD behave identically to their unaccented spellings -- and the only way that is a
+# fact rather than an assumption is to run both. An earlier comment asserted the equivalence for
+# `Marco` while the corpus contained no accented character at all.
+ACCENTED_SPELLINGS: tuple[tuple[str, str], ...] = (
+    ("Março", "Marco"),
+    ("Terça", "Terca"),
+    ("Sábado", "Sabado"),
+)
+
+# Only these five take the `-feira` suffix in pt-BR. `Sabado-feira` is not a string any
+# transcript can contain, and a corpus whose stated rationale is realism should not invent one.
+FEIRA_WEEKDAYS: tuple[str, ...] = (
+    "Segunda",
+    "Terca",
+    "Quarta",
+    "Quinta",
+    "Sexta",
+)
+
+# Business areas. Eleven of the twelve are on `_COMMON_PHRASE_HEADS`; only `Contabilidade` is on
+# no list. Counted rather than described as "several" -- the earlier wording implied a mix and
+# the real ratio is 11 to 1, which matters when judging what these cases can and cannot guard.
 DEPARTMENTS: tuple[str, ...] = (
     "Financeiro",
     "Juridico",
@@ -237,14 +267,104 @@ DEPARTMENTS: tuple[str, ...] = (
 
 # The article-plus-token shape the brief names by hand. Written as (article, token) so the case
 # builder can put them in a sentence without guessing agreement.
+#
+# `A`/`O` are single letters, so they never match `_TITLE_WORD` and never form a sequence with
+# the noun behind them. That is why these pass today and why they keep passing under any
+# loosening of the single-token rule -- see `PREPOSITIONS` for the shape where it goes wrong.
 ARTICLE_TOKENS: tuple[tuple[str, str], ...] = (
     ("O", "Brasil"),
     ("A", "Nota"),
     ("O", "Protheus"),
     ("A", "TOTVS"),
     ("O", "RM"),
-    ("O", "Financeiro"),
 )
+
+
+# --------------------------------------------------------------------------- #
+# The pool that actually reaches the rule
+#
+# A capitalised preposition in front of an ordinary capitalised noun is TWO `_TITLE_WORD`
+# tokens, which is the exact shape `_NAME_SEQUENCE_RE` trusts. `Na Sexta` is therefore claimed
+# as a person today -- this is not a hypothetical about some future loosening, it is live.
+#
+# Swept on 2026-08-11, 14 prepositions x 28 ordinary nouns: 196 of 392 are false redactions, and
+# the split is perfectly regular.
+#
+#     Na  No  Nas  Nos  Pela  Pelo  Em     ->  wrong with every noun
+#     Da  Do  Das  Dos  De                 ->  correct: they are on `_NAME_CONNECTIVES`,
+#                                              because they really do occur inside pt-BR names
+#     A  O                                 ->  correct by accident: one letter is not a
+#                                              `_TITLE_WORD`
+#
+# The corpus carries a 7 x 7 sample rather than the full 196: enough to hold every failing
+# preposition and one noun from each family, without letting a single defect dominate a rate that
+# has to stay readable. The full sweep is in the finding.
+# --------------------------------------------------------------------------- #
+
+PREPOSITIONS: tuple[str, ...] = (
+    "Na",
+    "No",
+    "Nas",
+    "Nos",
+    "Pela",
+    "Pelo",
+    "Em",
+)
+
+# One from each family the sweep covered: two weekdays, two months, three business areas --
+# including `Contabilidade`, the only department on no shield list at all.
+PREPOSITION_NOUNS: tuple[str, ...] = (
+    "Segunda",
+    "Sexta",
+    "Janeiro",
+    "Outubro",
+    "Financeiro",
+    "Qualidade",
+    "Contabilidade",
+)
+
+# --------------------------------------------------------------------------- #
+# The price list for finding 5b, arrived at by measurement rather than by intuition
+#
+# 5b is closed by making a lone Title Case token worth something when an allow-listed term has
+# split it off from the rest of a name. To price that, a case has to put an ordinary word in
+# exactly that position -- inside a run the shield already reached, which the split then cuts.
+#
+# These ten were checked by forcing `_is_a_name_on_its_own` to return True and diffing the
+# output, in the exact sentence frame the case builder uses. Five break; the five that hold do so
+# on `_COMMON_PHRASE_HEADS`, and they are kept as controls, because a price list of only breakage
+# says nothing about what a careful fix should preserve.
+#
+#     BREAKS   Central Oracle Cloud            `Central Cloud` reads as a name
+#     BREAKS   Licenca Salesforce Enterprise   `Licenca Enterprise`
+#     BREAKS   Servidor Postgres Homologacao   only the first half goes
+#     BREAKS   Painel Jira Executivo           only the second half goes
+#     BREAKS   Relatorio Datasul Gerencial     only the second half goes
+#     holds    Portal SAP Financeiro, Modulo Protheus Fiscal, Base Postgres Producao,
+#              Ambiente Kubernetes Producao, Integracao Fluig Contabil
+#
+# `Relatorio Datasul Gerencial` is in this list because of something worth knowing: it HELD in an
+# earlier sentence frame ("saiu com erro") and BREAKS in this one ("entrou na pauta de ontem").
+# The verdict on a candidate depends on what follows it, so a fixture measured in one frame has
+# been measured in one frame -- which is the reason the count above is stated for the frame the
+# builder actually emits, and re-derived rather than carried over.
+#
+# `SPLIT_FLANK` entries are (leading article, first word, allow-listed term, second word).
+# --------------------------------------------------------------------------- #
+
+SPLIT_FLANK: tuple[tuple[str, str, str, str], ...] = (
+    ("A", "Central", "Oracle", "Cloud"),
+    ("A", "Licenca", "Salesforce", "Enterprise"),
+    ("O", "Servidor", "Postgres", "Homologacao"),
+    ("O", "Painel", "Jira", "Executivo"),
+    ("O", "Portal", "SAP", "Financeiro"),
+    ("O", "Modulo", "Protheus", "Fiscal"),
+    ("A", "Base", "Postgres", "Producao"),
+    ("O", "Ambiente", "Kubernetes", "Producao"),
+    ("A", "Integracao", "Fluig", "Contabil"),
+    ("O", "Relatorio", "Datasul", "Gerencial"),
+)
+
 
 # Phrases that are roles, artefacts or ordinary business vocabulary. Every one of these is a
 # false redaction if a `[[PERSON_NAME_n]]` comes back in its place.
