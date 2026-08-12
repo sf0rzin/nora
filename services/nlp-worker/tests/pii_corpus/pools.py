@@ -291,14 +291,23 @@ ARTICLE_TOKENS: tuple[tuple[str, str], ...] = (
 # the split is perfectly regular.
 #
 #     Na  No  Nas  Nos  Pela  Pelo  Em     ->  wrong with every noun
-#     Da  Do  Das  Dos  De                 ->  correct: they are on `_NAME_CONNECTIVES`,
-#                                              because they really do occur inside pt-BR names
-#     A  O                                 ->  correct by accident: one letter is not a
-#                                              `_TITLE_WORD`
+#     Da  Do  Das  Dos  De                 ->  right today -- see below, this is NOT immunity
+#     A  O                                 ->  right, and structurally so: one letter never
+#                                              matches `_TITLE_WORD`, so the pair is never seen
 #
 # The corpus carries a 7 x 7 sample rather than the full 196: enough to hold every failing
 # preposition and one noun from each family, without letting a single defect dominate a rate that
-# has to stay readable. The full sweep is in the finding.
+# has to stay readable.
+#
+# The `Da`/`Do` row needed correcting and the correction is the useful part. An earlier version
+# of this note filed them beside `A`/`O` as "correct", implying the same kind of safety. They are
+# not the same. `Da Segunda` DOES match `_NAME_SEQUENCE_RE`, DOES reach `_trusted_span`, and is
+# saved at the last step by `_is_a_name_on_its_own("Segunda")` returning False -- the very rule
+# 5b has to loosen. Measured: of 35 `Da`/`Do`/`Das`/`Dos`/`De` x noun pairs, 0 are wrong today and
+# **25 break** when that rule is forced open.
+#
+# So they are not immune, they are the cheapest price-list cases in the file: realistic, correct
+# today, and load-bearing tomorrow. `A`/`O` are the only genuinely structural pass.
 # --------------------------------------------------------------------------- #
 
 PREPOSITIONS: tuple[str, ...] = (
@@ -309,6 +318,16 @@ PREPOSITIONS: tuple[str, ...] = (
     "Pela",
     "Pelo",
     "Em",
+)
+
+# On `_NAME_CONNECTIVES`, because they really do occur inside pt-BR names (`Maria da Silva`).
+# Correct today, and fragile in exactly the way 5b's fix has to be careful about.
+NAME_CONNECTIVE_PREPOSITIONS: tuple[str, ...] = (
+    "Da",
+    "Do",
+    "Das",
+    "Dos",
+    "De",
 )
 
 # One from each family the sweep covered: two weekdays, two months, three business areas --
@@ -330,24 +349,35 @@ PREPOSITION_NOUNS: tuple[str, ...] = (
 # split it off from the rest of a name. To price that, a case has to put an ordinary word in
 # exactly that position -- inside a run the shield already reached, which the split then cuts.
 #
-# These ten were checked by forcing `_is_a_name_on_its_own` to return True and diffing the
-# output, in the exact sentence frame the case builder uses. Five break; the five that hold do so
-# on `_COMMON_PHRASE_HEADS`, and they are kept as controls, because a price list of only breakage
-# says nothing about what a careful fix should preserve.
+# Each was checked by forcing `_is_a_name_on_its_own` to return True and diffing the output, in
+# the exact sentence frame the case builder uses. Six break; four hold on `_COMMON_PHRASE_HEADS`
+# and are kept as controls, because a price list of only breakage says nothing about what a
+# careful fix should preserve.
 #
 #     BREAKS   Central Oracle Cloud            `Central Cloud` reads as a name
 #     BREAKS   Licenca Salesforce Enterprise   `Licenca Enterprise`
 #     BREAKS   Servidor Postgres Homologacao   only the first half goes
 #     BREAKS   Painel Jira Executivo           only the second half goes
 #     BREAKS   Relatorio Datasul Gerencial     only the second half goes
-#     holds    Portal SAP Financeiro, Modulo Protheus Fiscal, Base Postgres Producao,
-#              Ambiente Kubernetes Producao, Integracao Fluig Contabil
+#     BREAKS   Portal Sankhya Financeiro       see the paragraph below
+#     holds    Modulo Protheus Fiscal, Base Postgres Producao, Ambiente Kubernetes Producao,
+#              Integracao Fluig Contabil    -- all four have BOTH ends on a phrase list
 #
-# `Relatorio Datasul Gerencial` is in this list because of something worth knowing: it HELD in an
-# earlier sentence frame ("saiu com erro") and BREAKS in this one ("entrou na pauta de ontem").
-# The verdict on a candidate depends on what follows it, so a fixture measured in one frame has
-# been measured in one frame -- which is the reason the count above is stated for the frame the
-# builder actually emits, and re-derived rather than carried over.
+# This list used to open with `Portal SAP Financeiro` and count it among the holds. Review found
+# it could not fail: `SAP` is all-caps, so it is not a `_TITLE_WORD`, so the string contains no
+# two ADJACENT title words and `_NAME_SEQUENCE_RE` never matches it. Nothing about the shield was
+# holding it -- the pattern never saw it. And `Portal` is on no list at all, so the "holds on
+# `_COMMON_PHRASE_HEADS`" attribution was wrong for that row specifically.
+#
+# That is the same defect this branch deleted 81 cases over, so it gets the same treatment rather
+# than a quiet edit: the string moves to `SPLIT_FLANK_ALLCAPS` and is labelled as the structural
+# control it actually is, and `Portal Sankhya Financeiro` takes its place here. Swapping the term
+# for a Title Case one makes the string break, which is the proof the shape was worth keeping.
+#
+# `Relatorio Datasul Gerencial` HELD in an earlier sentence frame ("saiu com erro") and BREAKS in
+# this one ("entrou na pauta de ontem"). The verdict depends on what follows, which is why every
+# count here is stated for the frame the builder emits and was re-derived rather than carried
+# over from an earlier probe.
 #
 # `SPLIT_FLANK` entries are (leading article, first word, allow-listed term, second word).
 # --------------------------------------------------------------------------- #
@@ -357,13 +387,19 @@ SPLIT_FLANK: tuple[tuple[str, str, str, str], ...] = (
     ("A", "Licenca", "Salesforce", "Enterprise"),
     ("O", "Servidor", "Postgres", "Homologacao"),
     ("O", "Painel", "Jira", "Executivo"),
-    ("O", "Portal", "SAP", "Financeiro"),
+    ("O", "Portal", "Sankhya", "Financeiro"),
     ("O", "Modulo", "Protheus", "Fiscal"),
     ("A", "Base", "Postgres", "Producao"),
     ("O", "Ambiente", "Kubernetes", "Producao"),
     ("A", "Integracao", "Fluig", "Contabil"),
     ("O", "Relatorio", "Datasul", "Gerencial"),
 )
+
+# An ALL-CAPS term between two Title Case words. A different shape, kept separate so it can never
+# be miscounted as a price-list control again: it cannot form a Title Case sequence, so no
+# loosening of the single-token rule can reach it. It asserts only that the all-caps path leaves
+# the string alone.
+SPLIT_FLANK_ALLCAPS: tuple[tuple[str, str, str, str], ...] = (("O", "Portal", "SAP", "Financeiro"),)
 
 
 # Phrases that are roles, artefacts or ordinary business vocabulary. Every one of these is a

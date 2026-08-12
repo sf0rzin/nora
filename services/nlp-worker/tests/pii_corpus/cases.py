@@ -345,8 +345,9 @@ def _negatives() -> list[Case]:
 #
 #   `fp_split_flank`
 #       An allow-listed term between two ordinary Title Case words. This is the position 5b's
-#       fix acts on, so this is the group that actually prices it: four of the ten break when
-#       the rule is loosened, six hold.
+#       fix acts on, so this is the group that actually prices it: six of the ten break when
+#       the rule is loosened, four hold. `fp_connective` (`Da Segunda`, `Do Financeiro`) prices
+#       it too, and more cheaply -- correct today, and 25 of 35 break under the loosening.
 #
 # `test_the_false_positive_pool_is_not_inert` enforces the distinction mechanically, so the
 # claim cannot drift back to the comfortable version.
@@ -369,9 +370,10 @@ _MONTHS_STILL_WRONG: dict[str, str] = {
     "the month is redacted as a person",
 }
 
-# The live defect, recorded as a gap rather than as a risk. See SECURITY-FINDINGS entry 16 for
-# the full sweep: 196 of 392 preposition-noun pairs, with the seven failing prepositions being
-# exactly the ones that are on no shield list.
+# The live defect, recorded as a gap rather than as a risk. Full sweep, measured 2026-08-11:
+# 196 of 392 preposition-noun pairs are wrong, and the seven failing prepositions are exactly the
+# ones on no shield list. The numbers are written here rather than behind a pointer -- the
+# repository is public and an untracked working file is not a citation anyone else can follow.
 _PREPOSITION_GAP = (
     "a capitalised preposition and a capitalised noun are two `_TITLE_WORD` tokens, which is the "
     "shape `_NAME_SEQUENCE_RE` trusts -- `na`, `no`, `nas`, `nos`, `pela`, `pelo` and `em` are on "
@@ -476,13 +478,22 @@ def _false_positives() -> list[Case]:
     # Accent folding is asserted everywhere in this module and was, until now, never exercised:
     # the corpus contained no accented character at all, so "`Marco` behaves like `Marco`" was a
     # claim about two spellings written identically.
+    #
+    # Each accented word is put in the SAME sentence frame as its unaccented twin above, so the
+    # comparison is a differential rather than two unrelated measurements. An earlier version put
+    # all three in the month frame, which meant `Terca` and `Sabado` had nothing to differ from.
+    _FRAMES = {
+        "month": "O rollout foi adiado para {} do ano que vem.",
+        "weekday": "Ficou combinado que {} o time revisa o escopo.",
+    }
     for i, (accented, plain) in enumerate(pools.ACCENTED_SPELLINGS):
         note = _MONTHS_STILL_WRONG.get(plain, "")
+        frame = _FRAMES["month"] if plain in pools.MONTHS else _FRAMES["weekday"]
         cases.append(
             Case(
-                case_id=f"fp_accent/{i:03d}",
+                case_id=f"fp_accent/{i:03d}/{plain}",
                 shape="fp_accent",
-                text=f"O rollout foi adiado para {accented} do ano que vem.",
+                text=frame.format(accented),
                 must_survive=(accented,),
                 status=KNOWN_GAP if note else REQUIRED,
                 note=note,
@@ -506,7 +517,8 @@ def _false_positives() -> list[Case]:
             )
 
     # The group that prices finding 5b: an allow-listed term between two ordinary Title Case
-    # words, which is the position the fix acts on. All ten pass today.
+    # words, which is the position the fix acts on. All ten pass today; six break when the rule
+    # is forced open.
     for i, (article, first, term, second) in enumerate(pools.SPLIT_FLANK):
         cases.append(
             Case(
@@ -516,6 +528,33 @@ def _false_positives() -> list[Case]:
                 must_survive=(first, term, second),
             )
         )
+
+    # The all-caps counterpart, in its own shape so it is never counted as a price-list control.
+    for i, (article, first, term, second) in enumerate(pools.SPLIT_FLANK_ALLCAPS):
+        cases.append(
+            Case(
+                case_id=f"fp_allcaps_flank/{i:03d}",
+                shape="fp_allcaps_flank",
+                text=f"{article} {first} {term} {second} entrou na pauta de ontem.",
+                must_survive=(first, term, second),
+            )
+        )
+
+    # `Da Segunda` and friends. These are on `_NAME_CONNECTIVES`, so unlike `Na`/`Em` they are
+    # correct today -- but not structurally so: the sequence pattern DOES match them, and what
+    # saves them is `_is_a_name_on_its_own` refusing the noun. Measured: 0 of 35 wrong today,
+    # 25 of 35 break when that refusal is forced open. That makes them the cheapest cases in this
+    # file -- realistic, correct now, and load-bearing the moment 5b is touched.
+    for prep in pools.NAME_CONNECTIVE_PREPOSITIONS:
+        for noun in pools.PREPOSITION_NOUNS:
+            cases.append(
+                Case(
+                    case_id=f"fp_connective/{prep}/{noun}",
+                    shape="fp_connective",
+                    text=f"{prep} {noun} o time revisou o escopo.",
+                    must_survive=(prep, noun),
+                )
+            )
 
     # The conjunction path into the same rule: `_split_on_allow_list` cuts on `e` too, so an
     # ordinary word after a real name lands in the lone-run position. The name must still go.

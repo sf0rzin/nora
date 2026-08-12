@@ -41,14 +41,14 @@ from tests.pii_corpus.harness import evaluate, run
 #
 #   2026-08-11, corpus grew by the false-positive pool, `pii_shield.py` UNCHANGED:
 #       leak              9.10%  ->  9.10%   (512 of 5627 -> 512 of 5628)
-#       false redaction   9.60%  -> 10.31%   (506 of 5271 -> 558 of 5413)
+#       false redaction   9.60%  -> 10.24%   (506 of 5271 -> 558 of 5449)
 #
 # The second row is not a regression. The shield did not change; the corpus stopped being blind
 # to `fp_preposition`, where 49 of 49 cases fail and always did. A ceiling that rises because
 # the measurement got less wrong is a different thing from one that rises because the code got
 # worse, and the difference belongs in writing rather than in a reader's assumption.
 MAX_LEAK_RATE = 512 / 5628  # 9.10%
-MAX_FALSE_REDACTION_RATE = 558 / 5413  # 10.31%
+MAX_FALSE_REDACTION_RATE = 558 / 5449  # 10.24%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
@@ -57,16 +57,16 @@ MIN_GENERATED_NAME_CASES = 5600
 # The false-positive pool. The floor matters here because the cheapest way to pass a
 # false-redaction ceiling after loosening the single-token rule is to delete the cases the
 # loosening broke.
-MIN_FALSE_POSITIVE_CASES = 120
+MIN_FALSE_POSITIVE_CASES = 150
 
 # And the floor that matters MORE, because the first version of this pool passed the one above
 # while being entirely inert: 81 cases, 0 of which could fail under any loosening of the rule
 # they claimed to price. A count is not a guarantee; this is.
 #
-# Measured at 8 with the pool as it stands, and at 0 with the pool as it was first written --
+# Measured at 34 with the pool as it stands, and at 0 with the pool as it was first written --
 # both run, not reasoned. Set below the measurement on purpose: the assertion is that the pool
 # bites, not that it bites exactly as hard as on the day it was written.
-MIN_CASES_BROKEN_BY_LOOSENING = 5
+MIN_CASES_BROKEN_BY_LOOSENING = 20
 
 
 @pytest.fixture(scope="module")
@@ -207,11 +207,11 @@ def test_documented_gap_is_still_a_gap(case) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# The single-token false positives
+# The false positives
 #
 # Same two-test discipline as the adversarial set, applied to the pool that finding 5b's fix is
 # most likely to break. Kept separate from the adversarial tests so a failure names the cost
-# rather than the shape: "a weekday became a person" reads differently from "a gap moved".
+# rather than the shape: "an ordinary word became a person" reads differently from "a gap moved".
 # --------------------------------------------------------------------------- #
 
 _FALSE_POSITIVES = false_positive_cases()
@@ -266,8 +266,10 @@ def test_an_ordinary_word_is_not_a_person(case) -> None:
     result = evaluate(case)
     assert result.ok, (
         result.describe()
-        + "\n  This is a weekday, a month, a business area or an article plus one noun. "
-        "Nothing in it is a person, and a `[[PERSON_NAME_n]]` here is a summary nobody can read."
+        + f"\n  shape: {case.shape}. Nothing in this string is a person -- it is ordinary pt-BR "
+        "business vocabulary, and a `[[PERSON_NAME_n]]` here is a summary nobody can read.\n"
+        "  If this is `fp_split_flank` or `fp_connective`, it is one of the cases that price a "
+        "loosening of the single-token rule, so read it as the bill for whatever just changed."
     )
 
 
