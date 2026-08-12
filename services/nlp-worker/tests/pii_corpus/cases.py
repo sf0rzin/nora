@@ -370,15 +370,16 @@ _MONTHS_STILL_WRONG: dict[str, str] = {
     "the month is redacted as a person",
 }
 
-# The live defect, recorded as a gap rather than as a risk. Full sweep, measured 2026-08-11:
-# 196 of 392 preposition-noun pairs are wrong, and the seven failing prepositions are exactly the
-# ones on no shield list. The numbers are written here rather than behind a pointer -- the
-# repository is public and an untracked working file is not a citation anyone else can follow.
-_PREPOSITION_GAP = (
-    "a capitalised preposition and a capitalised noun are two `_TITLE_WORD` tokens, which is the "
-    "shape `_NAME_SEQUENCE_RE` trusts -- `na`, `no`, `nas`, `nos`, `pela`, `pelo` and `em` are on "
-    "no list, unlike `da`/`do`/`de` which are on `_NAME_CONNECTIVES` and therefore survive"
-)
+# `fp_preposition` was 49 of 49 failing and is now 0. The history stays because the cases only
+# make sense with it.
+#
+# A capitalised opener and a capitalised noun are two `_TITLE_WORD` tokens, which is the shape
+# `_NAME_SEQUENCE_RE` trusts, so `Na Sexta` was claimed as a person -- measured on the deployed
+# worker and swept at 196 of 392 opener x noun pairs. Closed by
+# `_is_an_opener_and_an_ordinary_word`, which reads two curated sets and nothing else.
+#
+# Two earlier attempts at the same defect were rejected on review, and `opener_then_name` exists
+# because of them: both published names behind those same openers while the rates said nothing.
 
 
 def _false_positives() -> list[Case]:
@@ -510,8 +511,6 @@ def _false_positives() -> list[Case]:
                     shape="fp_preposition",
                     text=f"{prep} {noun} o time revisou o escopo.",
                     must_survive=(prep, noun),
-                    status=KNOWN_GAP,
-                    note=_PREPOSITION_GAP,
                     tags=(f"prep_{pi:02d}", f"noun_{ni:02d}"),
                 )
             )
@@ -877,8 +876,10 @@ def _adversarial() -> list[Case]:
             "Na Segunda-feira o time revisou o escopo.",
             (),
             ("Segunda",),
-            status=KNOWN_GAP,
-            note="`Segunda` is spliced out of `Segunda-feira`, leaving `-feira` behind",
+            note="was a gap: `Na Segunda` matched `_NAME_SEQUENCE_RE` and `Segunda` was spliced "
+            "out of `Segunda-feira`, leaving `-feira` behind. Closed by "
+            "`_is_an_opener_and_an_ordinary_word` -- `na` is an opener and `segunda` is on "
+            "`_ORDINARY_AFTER_OPENER`, so the pair is no longer read as a name",
         ),
         # ---- both sides in one string ----
         Case(

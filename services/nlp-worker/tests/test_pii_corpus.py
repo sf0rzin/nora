@@ -61,8 +61,12 @@ from tests.pii_corpus.harness import evaluate, run
 #
 # The LEAK ceiling rising is the more serious of the two and is worth saying plainly: it means 28
 # names that this corpus previously reported as safe were being published, and nobody had asked.
+#
+#   2026-08-12, `_SENTENCE_OPENERS` + `_ORDINARY_AFTER_OPENER`, one call site (#438):
+#       leak              9.48%  ->  9.48%   (541 of 5705, unchanged -- no new leak)
+#       false redaction  10.11%  ->  9.21%   (558 -> 508 of 5518)
 MAX_LEAK_RATE = 541 / 5705  # 9.48%
-MAX_FALSE_REDACTION_RATE = 558 / 5518  # 10.11%
+MAX_FALSE_REDACTION_RATE = 508 / 5518  # 9.21%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
@@ -190,6 +194,12 @@ _ORDINARY_VOCABULARY_SETS = (
     "_COMPANY_TAIL_WORDS",
     "_NAME_CONNECTIVES",
     "_GENITIVE_PREPOSITIONS",
+    # The sentence-opener rule's two sets. These are the reason the check exists: the attempt
+    # that read `_COMMON_PHRASE_HEADS` instead of curating a set published `Depois Dias` and
+    # `Em Campos`, because two of that set's members are surnames. Both of these are expected
+    # to be EMPTY against both name lists, and the record below says so by omission.
+    "_SENTENCE_OPENERS",
+    "_ORDINARY_AFTER_OPENER",
 )
 
 # ...and the ones it reads to mean "person", or "a person follows". Honorifics are in this list

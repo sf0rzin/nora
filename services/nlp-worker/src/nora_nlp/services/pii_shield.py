@@ -1317,6 +1317,234 @@ _COMMON_PHRASE_HEADS: frozenset[str] = frozenset(
     )
 )
 
+# --------------------------------------------------------------------------------------------
+# The sentence-opener rule: two sets, one call site, and nothing borrowed
+#
+# `Na Sexta o time fecha o escopo.` was published as `[[PERSON_NAME_1]] o time fecha o escopo.`
+# Two Title Case tokens are the shape `_NAME_SEQUENCE_RE` trusts, and at the start of a sentence
+# the first word is capitalised by orthography rather than by being a proper noun. Swept at 196
+# of 392 opener x noun pairs, measured on the deployed worker.
+#
+# TWO EARLIER ATTEMPTS AT THIS WERE REJECTED, AND BOTH FAILURES ARE THE REASON FOR THE SHAPE HERE.
+#
+#   1. Putting the openers on `_COMMON_PHRASE_HEADS`. That set feeds `_name_bearing`,
+#      `_trusted_span`, `_has_a_person_head`, `_qualify_run` and the all-caps path, so 91
+#      function words were wired into five unrelated decisions at once. Measured result: 30 of 30
+#      off-list names behind those words leaked -- `Depois Wanderleia`, `Inclusive Kranz`.
+#
+#   2. Keying the rule on `_COMMON_PHRASE_HEADS` to mean "ordinary word". It does not mean only
+#      that: `campos` and `dias` are on it AND on `_BR_TOP_SURNAMES`, so `Em Campos assinou a
+#      ata.` and `Depois Dias confirmou o contrato.` were published. That intersection is now
+#      pinned by `KNOWN_ORDINARY_NAME_OVERLAPS` in the corpus, which is the test that would have
+#      caught it.
+#
+# So this rule borrows nothing. Both sets are curated here, read by
+# `_is_an_opener_and_an_ordinary_word` and by no other function, and every entry was checked
+# against `_BR_TOP_NAMES` and `_BR_TOP_SURNAMES` -- the corpus asserts that disjointness rather
+# than trusting this comment.
+#
+# `da`, `do`, `de`, `das`, `dos` are absent from the openers: they occur inside real pt-BR names
+# (`Maria da Silva`) and are already on `_NAME_CONNECTIVES`.
+_SENTENCE_OPENERS: frozenset[str] = frozenset(
+    _fold(w)
+    for w in (
+        # contractions of em / a / por / de with an article or demonstrative
+        "Em",
+        "Na",
+        "No",
+        "Nas",
+        "Nos",
+        "Num",
+        "Numa",
+        "Ao",
+        "Aos",
+        "As",
+        "Os",
+        "Pela",
+        "Pelo",
+        "Pelas",
+        "Pelos",
+        "Pra",
+        "Nele",
+        "Nela",
+        "Neles",
+        "Nelas",
+        "Dele",
+        "Dela",
+        "Deles",
+        "Delas",
+        "Neste",
+        "Nesta",
+        "Nestes",
+        "Nestas",
+        "Nesse",
+        "Nessa",
+        "Nesses",
+        "Nessas",
+        "Naquele",
+        "Naquela",
+        "Naqueles",
+        "Naquelas",
+        "Deste",
+        "Desta",
+        "Destes",
+        "Destas",
+        "Desse",
+        "Dessa",
+        "Desses",
+        "Dessas",
+        "Daquele",
+        "Daquela",
+        "Daqueles",
+        "Daquelas",
+        # simple prepositions and conjunctions
+        "Com",
+        "Para",
+        "Por",
+        "Sem",
+        "Sob",
+        "Sobre",
+        "Entre",
+        "Ate",
+        "Apos",
+        "Desde",
+        "Contra",
+        "Conforme",
+        "Perante",
+        "Mediante",
+        "Exceto",
+        "Se",
+        "Que",
+        "Mas",
+        "Como",
+        "Quando",
+        "Onde",
+        "Enquanto",
+        "Porem",
+        "Contudo",
+        "Todavia",
+        "Entretanto",
+        "Portanto",
+        # sentence adverbs
+        "Logo",
+        "Entao",
+        "Assim",
+        "Antes",
+        "Depois",
+        "Durante",
+        "Talvez",
+        "Apenas",
+        "Somente",
+        "Inclusive",
+        "Alem",
+        "Sobretudo",
+        "Especialmente",
+        "Principalmente",
+        "Finalmente",
+        "Inicialmente",
+        "Atualmente",
+        "Recentemente",
+        "Provavelmente",
+        "Certamente",
+        "Realmente",
+        "Hoje",
+        "Ontem",
+        "Amanha",
+        "Agora",
+        "Ja",
+        "Ainda",
+        "Tambem",
+        # determiners and possessives
+        "Mesmo",
+        "Mesma",
+        "Meu",
+        "Minha",
+        "Seu",
+        "Sua",
+        "Nosso",
+        "Nossa",
+        "Tal",
+        "Quaisquer",
+        "Toda",
+        "Todo",
+        "Todas",
+        "Todos",
+        "Cada",
+        "Esta",
+        "Este",
+        "Essa",
+        "Esse",
+        # verb forms that open a sentence in minutes
+        "Foi",
+        "Sendo",
+        "Tendo",
+        "Havendo",
+        "Devemos",
+        "Podemos",
+        "Ficou",
+        "Vamos",
+    )
+)
+
+# What may follow an opener and still not be a person. Curated in full rather than reused from
+# `_COMMON_PHRASE_HEADS`, because reusing that set is what leaked `Depois Dias`.
+#
+# `Na Sexta` and `Na Kranz` are lexically identical -- an opener, then one Title Case token on no
+# name list -- so the rule cannot decide from the shape. It decides from THIS list, and an
+# unknown token behind an opener stays a person, which is the direction this module fails in
+# everywhere else.
+#
+# `Marco` is deliberately absent. `_fold` strips accents, so the month collapses onto `marco`, a
+# top-100 pt-BR given name; holding it would stop `Em Marco` being a person in a sentence where
+# it might be one. It was the only one of 41 candidates that collided with a name list.
+_ORDINARY_AFTER_OPENER: frozenset[str] = frozenset(
+    _fold(w)
+    for w in (
+        # the calendar, which is the commonest thing to find behind an opener in minutes
+        "Segunda",
+        "Terca",
+        "Quarta",
+        "Quinta",
+        "Sexta",
+        "Sabado",
+        "Domingo",
+        "Janeiro",
+        "Fevereiro",
+        "Abril",
+        "Maio",
+        "Junho",
+        "Julho",
+        "Agosto",
+        "Setembro",
+        "Outubro",
+        "Novembro",
+        "Dezembro",
+        # business areas
+        "Financeiro",
+        "Juridico",
+        "Comercial",
+        "Marketing",
+        "Operacoes",
+        "Compras",
+        "Suprimentos",
+        "Faturamento",
+        "Contabilidade",
+        "Fiscal",
+        "Logistica",
+        "Qualidade",
+        "Producao",
+        "Manutencao",
+        "Almoxarifado",
+        "Expedicao",
+        "Recepcao",
+        "Diretoria",
+        "Presidencia",
+        "Tesouraria",
+        "Auditoria",
+        "Compliance",
+    )
+)
+
 # Honorifics and job titles accepted by `_NAME_PREFIX_RE`. Repeated here as a
 # set because, in the trimming path below, the prefix is itself the signal that the
 # remaining stretch is a person ("Dr. Carlos" still holds after removing a product).
@@ -2073,9 +2301,25 @@ def _is_a_name_on_its_own(value: str) -> bool:
     spans became a PERSON_NAME.
     """
     if _NAME_PREFIX_RE.fullmatch(value) or _NAME_SEQUENCE_RE.fullmatch(value):
-        return True
+        return not _is_an_opener_and_an_ordinary_word(value)
     folded = _fold(value)
     return folded in _BR_TOP_NAMES or folded in _BR_TOP_SURNAMES
+
+
+def _is_an_opener_and_an_ordinary_word(value: str) -> bool:
+    """`Na Sexta` -- a capitalised sentence opener in front of a capitalised ordinary word.
+
+    Reads `_SENTENCE_OPENERS` and `_ORDINARY_AFTER_OPENER` and nothing else; see the comment
+    above those two sets for why nothing here is borrowed from `_COMMON_PHRASE_HEADS`.
+
+    Exactly two tokens on purpose. Three or more is a name with something in front of it --
+    `Na Marina Alves` -- and refusing that would publish the name, which is what the first
+    rejected attempt did.
+    """
+    parts = value.split()
+    if len(parts) != 2:
+        return False
+    return _fold(parts[0]) in _SENTENCE_OPENERS and _fold(parts[1]) in _ORDINARY_AFTER_OPENER
 
 
 def _apply_basic_patterns(
