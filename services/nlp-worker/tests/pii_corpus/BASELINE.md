@@ -129,3 +129,53 @@ improvement.
 A case can count towards both, and most of the interesting ones do: `SAP CARLOS SILVA` has to
 lose `CARLOS SILVA` and keep `SAP`. Driving the leak rate to zero by redacting every capitalised
 token drives the second number through the roof, and the pair is what makes that visible.
+
+## The single-token false positives, added before finding 5b
+
+`product_between` above is 300 of 400 for one reason: a product between the halves of a name
+leaves two runs of one token each, and a lone token on neither name list is refused by
+`_is_a_name_on_its_own`. Closing 5b means loosening that refusal, and the note above already says
+it is "the one change in this module that can make the shield materially worse."
+
+So the price list was committed first — 81 cases, every one a lone Title Case token that is not a
+person, each appearing bare and inside a realistic sentence:
+
+| shape | cases | what it is |
+|---|---|---|
+| `fp_article` | 12 | `O Brasil`, `A Nota`, `O Protheus`, `A TOTVS`, `O RM`, `O Financeiro` |
+| `fp_weekday` | 21 | the seven weekdays, bare, in a sentence, and in the `-feira` form |
+| `fp_month` | 24 | the twelve months |
+| `fp_department` | 24 | twelve business areas |
+
+Measured on `main` at `964ca22`, with no change to `pii_shield.py`:
+
+```
+leak rate             :   9.10%  (512 / 5627)   unchanged — none of these carries a name
+false-redaction rate  :   9.49%  (508 / 5352)   was 9.60% (506 / 5271)
+
+fp_article       0/12    0.0%
+fp_department    0/24    0.0%
+fp_month         2/24    8.3%   <- both are `Marco`
+fp_weekday       0/21    0.0%
+```
+
+The rate moved *down* because the denominator grew by 81 while the failures grew by 2. That is
+not an improvement and is not claimed as one; the ceiling in `test_pii_corpus.py` is rewritten to
+the new measured fraction so the gate keeps meaning the same thing.
+
+### What the fixtures found on the way in
+
+**`Marco`, both forms, 2 of 24.** `_fold` strips accents before every list lookup, so the month
+folds onto `marco`, which is on `_BR_TOP_NAMES`. Checked on the cedilla form too — `Marco` also
+comes back `[[PERSON_NAME_1]]`, so this is not an artefact of the corpus writing months without
+accents. Lowercase `marco` survives, which is the deliberate lowercase gap.
+
+Recorded as a `KNOWN_GAP` rather than fixed. The obvious fix — dropping `marco` from
+`_BR_TOP_NAMES` — buys a month and sells one of the commonest given names in pt-BR. The signal
+that actually separates them is the temporal preposition in front (`em`, `para`, `ate`, `desde`),
+which is a different mechanism from anything 5b touches.
+
+**Everything else passes today**, including the `-feira` form, which the older
+`adv/false/weekday` gap says fails. Both are true: that case is `Na Segunda-feira o time...`,
+sentence-initial, and this one is `A entrega foi remarcada para Segunda-feira.` The position is
+what differs, and the pair is more useful than either alone.

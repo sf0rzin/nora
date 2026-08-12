@@ -24,6 +24,7 @@ from tests.pii_corpus.cases import (
     SHAPES,
     adversarial_cases,
     all_cases,
+    false_positive_cases,
 )
 from tests.pii_corpus.harness import evaluate, run
 
@@ -40,11 +41,20 @@ from tests.pii_corpus.harness import evaluate, run
 # Written as the measured fractions rather than as rounded decimals, so the gate cannot be
 # passed or failed by the third digit of a number nobody re-derived.
 MAX_LEAK_RATE = 512 / 5627  # 9.10%
-MAX_FALSE_REDACTION_RATE = 506 / 5271  # 9.60%
+MAX_FALSE_REDACTION_RATE = 508 / 5352  # 9.49%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
 MIN_GENERATED_NAME_CASES = 5600
+
+# The single-token false positives, added ahead of finding 5b for the reason written over
+# `_false_positives` in cases.py: 5b is closed by making a lone Title Case token worth
+# something, and these are what that costs if it is done carelessly.
+#
+# The floor matters more here than anywhere else in this file. The cheapest way to pass a
+# false-redaction ceiling after loosening the single-token rule is to delete the cases the
+# loosening broke, and every one of those cases lives in this pool.
+MIN_FALSE_POSITIVE_CASES = 81
 
 
 @pytest.fixture(scope="module")
@@ -177,6 +187,52 @@ def test_documented_gap_is_still_a_gap(case) -> None:
     A `KNOWN_GAP` that starts passing is good news and still fails here, because the alternative
     is a corpus that slowly fills with cases nobody has looked at since they were written.
     """
+    result = evaluate(case)
+    assert not result.ok, (
+        f"{case.case_id} now passes -- promote it to REQUIRED and delete the note.\n"
+        f"  note was: {case.note}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# The single-token false positives
+#
+# Same two-test discipline as the adversarial set, applied to the pool that finding 5b's fix is
+# most likely to break. Kept separate from the adversarial tests so a failure names the cost
+# rather than the shape: "a weekday became a person" reads differently from "a gap moved".
+# --------------------------------------------------------------------------- #
+
+_FALSE_POSITIVES = false_positive_cases()
+
+
+def test_the_false_positive_pool_did_not_shrink() -> None:
+    assert len(_FALSE_POSITIVES) >= MIN_FALSE_POSITIVE_CASES, (
+        f"{len(_FALSE_POSITIVES)} false-positive cases, floor is {MIN_FALSE_POSITIVE_CASES}. "
+        "Deleting these is the cheapest way to make a single-token change look free."
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in _FALSE_POSITIVES if c.status == REQUIRED],
+    ids=lambda c: c.case_id,
+)
+def test_an_ordinary_word_is_not_a_person(case) -> None:
+    result = evaluate(case)
+    assert result.ok, (
+        result.describe()
+        + "\n  This is a weekday, a month, a business area or an article plus one noun. "
+        "Nothing in it is a person, and a `[[PERSON_NAME_n]]` here is a summary nobody can read."
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in _FALSE_POSITIVES if c.status == KNOWN_GAP],
+    ids=lambda c: c.case_id,
+)
+def test_documented_false_positive_is_still_wrong(case) -> None:
+    """A gap that closes must be promoted, not absorbed -- as in the adversarial set."""
     result = evaluate(case)
     assert not result.ok, (
         f"{case.case_id} now passes -- promote it to REQUIRED and delete the note.\n"

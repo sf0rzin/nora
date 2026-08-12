@@ -325,6 +325,131 @@ def _negatives() -> list[Case]:
     return cases
 
 
+# --------------------------------------------------------------------------- #
+# Single-token false positives -- the price list for finding 5b
+#
+# 5b is closed by making a lone Title Case token worth something when it sits beside a name.
+# Every case below is a lone Title Case token that is NOT a name, so together they are what that
+# change costs if it is done carelessly. They are committed BEFORE the fix, and their measured
+# behaviour goes into BASELINE.md as a column, so "the leak rate improved" can be checked against
+# "and this did not get worse" rather than asserted.
+#
+# Each word appears twice: bare, which is the hardest case because there is no sentence context
+# at all, and inside a realistic sentence, which is the form that actually shows up in a
+# transcript. A fix that passes the second and fails the first has bought nothing -- meeting
+# minutes are full of fragments.
+# --------------------------------------------------------------------------- #
+
+
+# Found by these fixtures on `main`, before any 5b work, which is what they are for.
+#
+# `_fold` strips accents before every list lookup, so `Marco` folds to the same key as `Marco`
+# the given name -- and so does `Marco` with its cedilla. Both were checked: `Marco` and `Marco`
+# each come back `[[PERSON_NAME_1]]`, while lowercase `marco` survives (the deliberate lowercase
+# gap). The practical effect is that a transcript writing the month capitalised loses it.
+#
+# Not fixed here, and deliberately not fixed by deleting `marco` from `_BR_TOP_NAMES`: it is one
+# of the commonest given names in pt-BR, so that trade buys a month and sells a person. The
+# signal that separates them is the temporal preposition in front (`em`, `para`, `ate`, `desde`),
+# which is a different mechanism from anything 5b touches and belongs in its own change.
+_MONTHS_STILL_WRONG: dict[str, str] = {
+    "Marco": "accent folding collapses the month onto `marco`, a top-100 pt-BR given name, so "
+    "the month is redacted as a person -- verified on the cedilla form too",
+}
+
+
+def _false_positives() -> list[Case]:
+    cases: list[Case] = []
+
+    for i, (article, token) in enumerate(pools.ARTICLE_TOKENS):
+        cases.append(
+            Case(
+                case_id=f"fp_article/{i:03d}/bare",
+                shape="fp_article",
+                text=f"{article} {token}",
+                must_survive=(token,),
+            )
+        )
+        cases.append(
+            Case(
+                case_id=f"fp_article/{i:03d}/sentence",
+                shape="fp_article",
+                text=f"{article} {token} ficou de fora do escopo desta fase.",
+                must_survive=(token,),
+            )
+        )
+
+    for i, day in enumerate(pools.WEEKDAYS):
+        cases.append(
+            Case(
+                case_id=f"fp_weekday/{i:03d}/bare",
+                shape="fp_weekday",
+                text=day,
+                must_survive=(day,),
+            )
+        )
+        cases.append(
+            Case(
+                case_id=f"fp_weekday/{i:03d}/sentence",
+                shape="fp_weekday",
+                text=f"Ficou combinado que {day} o time revisa o escopo.",
+                must_survive=(day,),
+            )
+        )
+        cases.append(
+            Case(
+                case_id=f"fp_weekday/{i:03d}/feira",
+                shape="fp_weekday",
+                text=f"A entrega foi remarcada para {day}-feira.",
+                must_survive=(day,),
+            )
+        )
+
+    for i, month in enumerate(pools.MONTHS):
+        note = _MONTHS_STILL_WRONG.get(month, "")
+        status = KNOWN_GAP if note else REQUIRED
+        cases.append(
+            Case(
+                case_id=f"fp_month/{i:03d}/bare",
+                shape="fp_month",
+                text=month,
+                must_survive=(month,),
+                status=status,
+                note=note,
+            )
+        )
+        cases.append(
+            Case(
+                case_id=f"fp_month/{i:03d}/sentence",
+                shape="fp_month",
+                text=f"O rollout foi adiado para {month} do ano que vem.",
+                must_survive=(month,),
+                status=status,
+                note=note,
+            )
+        )
+
+    for i, dept in enumerate(pools.DEPARTMENTS):
+        cases.append(
+            Case(
+                case_id=f"fp_department/{i:03d}/bare",
+                shape="fp_department",
+                text=f"O {dept}",
+                must_survive=(dept,),
+            )
+        )
+        cases.append(
+            Case(
+                case_id=f"fp_department/{i:03d}/sentence",
+                shape="fp_department",
+                text=f"O {dept} pediu mais um ciclo antes de aprovar.",
+                must_survive=(dept,),
+            )
+        )
+
+    return cases
+
+
 # Phrases the shield still reads as people. Each one degrades a summary rather than leaking a
 # name, which is why they are recorded and not urgent -- and why they are not silently dropped
 # from the corpus either. Adding them to `_PERSON_NAME_NEGATIVE_LIST` is the obvious fix and was
@@ -617,7 +742,11 @@ def _adversarial() -> list[Case]:
 
 def all_cases() -> list[Case]:
     """The whole corpus, generated and hand written, in a stable order."""
-    return _generated() + _negatives() + _adversarial()
+    return _generated() + _negatives() + _false_positives() + _adversarial()
+
+
+def false_positive_cases() -> list[Case]:
+    return _false_positives()
 
 
 def adversarial_cases() -> list[Case]:
