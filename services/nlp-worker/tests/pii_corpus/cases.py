@@ -325,6 +325,264 @@ def _negatives() -> list[Case]:
     return cases
 
 
+# --------------------------------------------------------------------------- #
+# False positives: ordinary words that must not become people
+#
+# Three groups, and they are NOT of equal weight. Saying so here because the first version of
+# this block claimed all of them priced finding 5b, and measurement said otherwise.
+#
+#   `fp_article` / `fp_weekday` / `fp_month` / `fp_department`
+#       One Title Case token, in a sentence or bare. These assert something true and worth
+#       asserting -- an ordinary noun is not a person -- but they do NOT price a loosening of
+#       the single-token rule. Forcing `_is_a_name_on_its_own` to return True changes 0 of them,
+#       because `_is_a_name_on_its_own` is only reachable through a pattern that needs two
+#       adjacent `_TITLE_WORD` tokens, and a lone noun never gets there.
+#
+#   `fp_preposition`
+#       A capitalised preposition in front of one of those nouns. Two Title Case tokens, so the
+#       sequence pattern claims it. These fail TODAY -- `Na Sexta` comes back
+#       `[[PERSON_NAME_1]]` -- and they are recorded as gaps, not as a future risk.
+#
+#   `fp_split_flank`
+#       An allow-listed term between two ordinary Title Case words. This is the position 5b's
+#       fix acts on, so this is the group that actually prices it: six of the ten break when
+#       the rule is loosened, four hold. `fp_connective` (`Da Segunda`, `Do Financeiro`) prices
+#       it too, and more cheaply -- correct today, and 25 of 35 break under the loosening.
+#
+# `test_the_false_positive_pool_is_not_inert` enforces the distinction mechanically, so the
+# claim cannot drift back to the comfortable version.
+# --------------------------------------------------------------------------- #
+
+
+# Found by these fixtures on `main`, before any 5b work, which is what they are for.
+#
+# `_fold` strips accents before every list lookup, so the month folds onto the key of `marco` the
+# given name. The accented spelling is now a case of its own (`fp_accent`) rather than a claim in
+# a comment -- the earlier version asserted that both spellings behave alike while the corpus
+# contained no accented character to check it with.
+#
+# Not fixed here, and deliberately not fixed by deleting `marco` from `_BR_TOP_NAMES`: it is one
+# of the commonest given names in pt-BR, so that trade buys a month and sells a person. The
+# signal that separates them is the temporal preposition in front (`em`, `para`, `ate`, `desde`),
+# which is a different mechanism from anything 5b touches and belongs in its own change.
+_MONTHS_STILL_WRONG: dict[str, str] = {
+    "Marco": "accent folding collapses the month onto `marco`, a top-100 pt-BR given name, so "
+    "the month is redacted as a person",
+}
+
+# The live defect, recorded as a gap rather than as a risk. Full sweep, measured 2026-08-11:
+# 196 of 392 preposition-noun pairs are wrong, and the seven failing prepositions are exactly the
+# ones on no shield list. The numbers are written here rather than behind a pointer -- the
+# repository is public and an untracked working file is not a citation anyone else can follow.
+_PREPOSITION_GAP = (
+    "a capitalised preposition and a capitalised noun are two `_TITLE_WORD` tokens, which is the "
+    "shape `_NAME_SEQUENCE_RE` trusts -- `na`, `no`, `nas`, `nos`, `pela`, `pelo` and `em` are on "
+    "no list, unlike `da`/`do`/`de` which are on `_NAME_CONNECTIVES` and therefore survive"
+)
+
+
+def _false_positives() -> list[Case]:
+    cases: list[Case] = []
+
+    for i, (article, token) in enumerate(pools.ARTICLE_TOKENS):
+        cases.append(
+            Case(
+                case_id=f"fp_article/{i:03d}/bare",
+                shape="fp_article",
+                text=f"{article} {token}",
+                must_survive=(token,),
+            )
+        )
+        cases.append(
+            Case(
+                case_id=f"fp_article/{i:03d}/sentence",
+                shape="fp_article",
+                text=f"{article} {token} ficou de fora do escopo desta fase.",
+                must_survive=(token,),
+            )
+        )
+
+    for i, day in enumerate(pools.WEEKDAYS):
+        cases.append(
+            Case(
+                case_id=f"fp_weekday/{i:03d}/bare",
+                shape="fp_weekday",
+                text=day,
+                must_survive=(day,),
+            )
+        )
+        cases.append(
+            Case(
+                case_id=f"fp_weekday/{i:03d}/sentence",
+                shape="fp_weekday",
+                text=f"Ficou combinado que {day} o time revisa o escopo.",
+                must_survive=(day,),
+            )
+        )
+
+    # Only segunda..sexta take `-feira`. The earlier version generated `Sabado-feira` and
+    # `Domingo-feira`, which no transcript can contain, in a pool whose whole justification is
+    # that its strings are real.
+    for i, day in enumerate(pools.FEIRA_WEEKDAYS):
+        cases.append(
+            Case(
+                case_id=f"fp_weekday/{i:03d}/feira",
+                shape="fp_weekday",
+                text=f"A entrega foi remarcada para {day}-feira.",
+                must_survive=(day,),
+            )
+        )
+
+    for i, month in enumerate(pools.MONTHS):
+        note = _MONTHS_STILL_WRONG.get(month, "")
+        status = KNOWN_GAP if note else REQUIRED
+        cases.append(
+            Case(
+                case_id=f"fp_month/{i:03d}/bare",
+                shape="fp_month",
+                text=month,
+                must_survive=(month,),
+                status=status,
+                note=note,
+            )
+        )
+        cases.append(
+            Case(
+                case_id=f"fp_month/{i:03d}/sentence",
+                shape="fp_month",
+                text=f"O rollout foi adiado para {month} do ano que vem.",
+                must_survive=(month,),
+                status=status,
+                note=note,
+            )
+        )
+
+    for i, dept in enumerate(pools.DEPARTMENTS):
+        cases.append(
+            Case(
+                case_id=f"fp_department/{i:03d}/bare",
+                shape="fp_department",
+                text=f"O {dept}",
+                must_survive=(dept,),
+            )
+        )
+        cases.append(
+            Case(
+                case_id=f"fp_department/{i:03d}/sentence",
+                shape="fp_department",
+                text=f"O {dept} pediu mais um ciclo antes de aprovar.",
+                must_survive=(dept,),
+            )
+        )
+
+    # Accent folding is asserted everywhere in this module and was, until now, never exercised:
+    # the corpus contained no accented character at all, so "`Marco` behaves like `Marco`" was a
+    # claim about two spellings written identically.
+    #
+    # Each accented word is put in the SAME sentence frame as its unaccented twin above, so the
+    # comparison is a differential rather than two unrelated measurements. An earlier version put
+    # all three in the month frame, which meant `Terca` and `Sabado` had nothing to differ from.
+    _FRAMES = {
+        "month": "O rollout foi adiado para {} do ano que vem.",
+        "weekday": "Ficou combinado que {} o time revisa o escopo.",
+    }
+    for i, (accented, plain) in enumerate(pools.ACCENTED_SPELLINGS):
+        note = _MONTHS_STILL_WRONG.get(plain, "")
+        frame = _FRAMES["month"] if plain in pools.MONTHS else _FRAMES["weekday"]
+        cases.append(
+            Case(
+                case_id=f"fp_accent/{i:03d}/{plain}",
+                shape="fp_accent",
+                text=frame.format(accented),
+                must_survive=(accented,),
+                status=KNOWN_GAP if note else REQUIRED,
+                note=note,
+            )
+        )
+
+    # The live defect. Two Title Case tokens, so the sequence pattern reaches them, and it claims
+    # them: every one of these comes back `[[PERSON_NAME_1]]` today.
+    for pi, prep in enumerate(pools.PREPOSITIONS):
+        for ni, noun in enumerate(pools.PREPOSITION_NOUNS):
+            cases.append(
+                Case(
+                    case_id=f"fp_preposition/{prep}/{noun}",
+                    shape="fp_preposition",
+                    text=f"{prep} {noun} o time revisou o escopo.",
+                    must_survive=(prep, noun),
+                    status=KNOWN_GAP,
+                    note=_PREPOSITION_GAP,
+                    tags=(f"prep_{pi:02d}", f"noun_{ni:02d}"),
+                )
+            )
+
+    # The group that prices finding 5b: an allow-listed term between two ordinary Title Case
+    # words, which is the position the fix acts on. All ten pass today; six break when the rule
+    # is forced open.
+    for i, (article, first, term, second) in enumerate(pools.SPLIT_FLANK):
+        cases.append(
+            Case(
+                case_id=f"fp_split_flank/{i:03d}",
+                shape="fp_split_flank",
+                text=f"{article} {first} {term} {second} entrou na pauta de ontem.",
+                must_survive=(first, term, second),
+            )
+        )
+
+    # The all-caps counterpart, in its own shape so it is never counted as a price-list control.
+    for i, (article, first, term, second) in enumerate(pools.SPLIT_FLANK_ALLCAPS):
+        cases.append(
+            Case(
+                case_id=f"fp_allcaps_flank/{i:03d}",
+                shape="fp_allcaps_flank",
+                text=f"{article} {first} {term} {second} entrou na pauta de ontem.",
+                must_survive=(first, term, second),
+            )
+        )
+
+    # `Da Segunda` and friends. These are on `_NAME_CONNECTIVES`, so unlike `Na`/`Em` they are
+    # correct today -- but not structurally so: the sequence pattern DOES match them, and what
+    # saves them is `_is_a_name_on_its_own` refusing the noun. Measured: 0 of 35 wrong today,
+    # 25 of 35 break when that refusal is forced open. That makes them the cheapest cases in this
+    # file -- realistic, correct now, and load-bearing the moment 5b is touched.
+    for prep in pools.NAME_CONNECTIVE_PREPOSITIONS:
+        for noun in pools.PREPOSITION_NOUNS:
+            cases.append(
+                Case(
+                    case_id=f"fp_connective/{prep}/{noun}",
+                    shape="fp_connective",
+                    text=f"{prep} {noun} o time revisou o escopo.",
+                    must_survive=(prep, noun),
+                )
+            )
+
+    # The conjunction path into the same rule: `_split_on_allow_list` cuts on `e` too, so an
+    # ordinary word after a real name lands in the lone-run position. The name must still go.
+    cases.append(
+        Case(
+            case_id="fp_split_flank/conjunction",
+            shape="fp_split_flank",
+            text="Marina Alves e Contabilidade fecharam a apuracao.",
+            must_vanish=("Marina", "Alves"),
+            must_survive=("Contabilidade",),
+        )
+    )
+
+    # An ordinary word in the `product_between` slot -- the mirror of the shape 5b is measured
+    # on. If the fix keys on structure rather than on the name lists, these become people.
+    for i, (first, second) in enumerate((("Segunda", "Contabilidade"), ("Janeiro", "Fevereiro"))):
+        cases.append(
+            Case(
+                case_id=f"fp_split_flank/between/{i:03d}",
+                shape="fp_split_flank",
+                text=f"{first} Protheus {second} entraram no ciclo.",
+                must_survive=(first, "Protheus", second),
+            )
+        )
+
+    return cases
+
+
 # Phrases the shield still reads as people. Each one degrades a summary rather than leaking a
 # name, which is why they are recorded and not urgent -- and why they are not silently dropped
 # from the corpus either. Adding them to `_PERSON_NAME_NEGATIVE_LIST` is the obvious fix and was
@@ -617,7 +875,11 @@ def _adversarial() -> list[Case]:
 
 def all_cases() -> list[Case]:
     """The whole corpus, generated and hand written, in a stable order."""
-    return _generated() + _negatives() + _adversarial()
+    return _generated() + _negatives() + _false_positives() + _adversarial()
+
+
+def false_positive_cases() -> list[Case]:
+    return _false_positives()
 
 
 def adversarial_cases() -> list[Case]:

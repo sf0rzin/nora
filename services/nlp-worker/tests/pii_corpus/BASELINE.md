@@ -3,7 +3,7 @@
 |                      | before  | after  |                      |
 |----------------------|---------|--------|----------------------|
 | leak rate            | 16.76%  | 9.10%  | 943 -> 512 of 5627   |
-| false-redaction rate | 24.83%  | 9.58%  | 1309 -> 505 of 5271  |
+| false-redaction rate | 24.83%  | 9.60%  | 1309 -> 506 of 5271  |
 
 Both numbers come from `python -m tests.pii_corpus.harness` in `services/nlp-worker`. The before
 column is `main` at `27dc6cc` with no change to `pii_shield.py`; the after column is the same
@@ -40,7 +40,7 @@ title_then_name_then_label     0/400    0.0%       400/400  100.0%
 
 ```
 leak rate             :   9.10%  (512 / 5627 cases)
-false-redaction rate  :   9.58%  (505 / 5271 cases)
+false-redaction rate  :   9.60%  (506 / 5271 cases)
 
 allcaps                      100/400   25.0%         0/400    0.0%    unchanged
 allcaps_product_before       100/400   25.0%         0/400    0.0%    was 400/400
@@ -129,3 +129,103 @@ improvement.
 A case can count towards both, and most of the interesting ones do: `SAP CARLOS SILVA` has to
 lose `CARLOS SILVA` and keep `SAP`. Driving the leak rate to zero by redacting every capitalised
 token drives the second number through the roof, and the pair is what makes that visible.
+
+## The false-positive pool, and the first version of it that was worthless
+
+`product_between` above is 300 of 400 for one reason: a product between the halves of a name
+leaves two runs of one token each, and a lone token on neither name list is refused by
+`_is_a_name_on_its_own`. Closing 5b means loosening that refusal, and the note above already says
+it is "the one change in this module that can make the shield materially worse." So the price
+list goes in before the fix.
+
+**The first attempt at that price list priced nothing.** It was 81 cases, each a lone Title Case
+noun — weekdays, months, business areas — and the claim was that they made a loosening expensive.
+The claim was checked the only way it can be, by applying the largest loosening the rule admits:
+
+```
+_is_a_name_on_its_own = lambda value: True
+
+cases in the pool                       81
+cases whose output changed               0
+```
+
+Zero. `_is_a_name_on_its_own` is reachable only through a pattern needing two adjacent
+`_TITLE_WORD` tokens, and a lone noun in a sentence never enters that path. Every one of the 81
+passed because it could not fail.
+
+The same measurement on the whole corpus is the part worth keeping:
+
+```
+                       today          maximally loosened
+leak rate              9.0990%   ->   3.7498%    (512 -> 211)
+false-redaction rate   9.4918%   ->   9.4918%    (508 -> 508, identical)
+```
+
+A change closing 301 leaks registered **no cost at all** across 5,763 cases, while hand-written
+realistic strings broke under it. That is the same structural blindness recorded above from the
+opposite direction, and `test_the_false_positive_pool_is_not_inert` exists so it cannot recur:
+it applies that loosening and fails unless the pool notices.
+
+## The pool as it now stands
+
+| shape | cases | what it is | today |
+|---|---|---|---|
+| `fp_article` | 10 | `O Brasil`, `A Nota`, `O Protheus`, `A TOTVS`, `O RM` | 0 fail |
+| `fp_weekday` | 19 | seven weekdays, bare and in a sentence; `-feira` for the five that take it | 0 fail |
+| `fp_month` | 24 | the twelve months | 2 fail |
+| `fp_department` | 24 | twelve business areas | 0 fail |
+| `fp_accent` | 3 | `Março`, `Terça`, `Sábado` — real accents, so folding is exercised | 1 fails |
+| `fp_preposition` | 49 | `Na Sexta`, `Em Janeiro`, … — seven prepositions × seven nouns | **49 fail** |
+| `fp_split_flank` | 13 | an allow-listed term between two ordinary words | 0 fail |
+
+Measured on `main` at `964ca22` with `pii_shield.py` untouched:
+
+```
+leak rate             :   9.10%  (512 / 5628)   was 9.10% (512 / 5627)
+false-redaction rate  :  10.31%  (558 / 5413)   was 9.60% (506 / 5271)
+```
+
+**The false-redaction rate rose because the measurement got less wrong, not because the shield
+got worse.** `pii_shield.py` is byte-identical. 49 of the 52 new failures are `fp_preposition`,
+which fails today and always has.
+
+### `fp_preposition` — a live defect the corpus could not see
+
+`Na Sexta o time fecha o escopo.` comes back `[[PERSON_NAME_1]] o time fecha o escopo.` A
+capitalised preposition and a capitalised noun are two `_TITLE_WORD` tokens, which is exactly the
+shape the sequence pattern trusts.
+
+Swept at 14 prepositions × 28 nouns: **196 of 392 wrong**, split perfectly by list membership —
+`Na No Nas Nos Pela Pelo Em` fail with every noun, `Da Do Das Dos De` pass because they are on
+`_NAME_CONNECTIVES` (they occur inside real names), and `A O` pass because one letter is not a
+`_TITLE_WORD`. The corpus carries a 7 × 7 sample so one defect does not swamp the rate.
+
+### `fp_split_flank` — the group that actually prices 5b
+
+Ten strings of the form `<Ordinary> <allow-listed> <Ordinary>`, plus the conjunction path and the
+`product_between` mirror. All pass today. Under the maximal loosening, five of the ten break:
+
+```
+BREAKS   Central Oracle Cloud            `Central Cloud` reads as a name
+BREAKS   Licenca Salesforce Enterprise   `Licenca Enterprise`
+BREAKS   Servidor Postgres Homologacao
+BREAKS   Painel Jira Executivo
+BREAKS   Relatorio Datasul Gerencial
+holds    Portal SAP Financeiro, Modulo Protheus Fiscal, Base Postgres Producao,
+         Ambiente Kubernetes Producao, Integracao Fluig Contabil
+```
+
+`Relatorio Datasul Gerencial` held in one sentence frame and breaks in another, so the counts
+above are stated for the frame the builder emits and were re-derived rather than carried over.
+
+### `Marco`, and the accented spellings
+
+`_fold` strips accents before every list lookup, so the month folds onto `marco`, which is on
+`_BR_TOP_NAMES`. The earlier version of this section asserted that the cedilla spelling behaves
+identically — in a corpus that contained no accented character anywhere. `fp_accent` now carries
+`Março`, `Terça` and `Sábado` with their real accents, and `Março` does fail, so the equivalence
+is measured instead of assumed.
+
+Recorded as a `KNOWN_GAP`. Dropping `marco` from `_BR_TOP_NAMES` buys a month and sells one of the
+commonest given names in pt-BR; the signal that separates them is the temporal preposition in
+front, which is its own change.
