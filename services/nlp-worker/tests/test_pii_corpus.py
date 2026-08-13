@@ -769,22 +769,17 @@ def test_no_tenant_term_can_free_a_planted_name_anywhere_in_the_corpus() -> None
     `hostile` is the corpus's own person-name pools declared as trade names: the worst input
     this feature can receive, and one no gate would ever admit.
     """
-    # WHAT THIS SWEEP DOES NOT DO, measured rather than assumed, because the honest limit is
-    # more useful than an overstated claim: with the guard stubbed to never reject, BOTH term
-    # sets below still produce ZERO violations here. 3,423 and 101 cases change output
-    # respectively, and not one frees an undeclared planted name even with no guard at all.
+    # A NOTE THAT WAS WRONG HERE, kept as a warning because the wrong version was confident.
+    # It said: "with the guard stubbed to never reject, BOTH term sets still produce ZERO
+    # violations -- that is a property of the corpus, not a bug in the sweep." The observation
+    # was real and the diagnosis was invented. The sweep was passing an UNFOLDED haystack to
+    # `_contains_token`, which folds only the needle, so every Title Case name missed and the
+    # condition collapsed to `True and False` for every case. Zero violations, always, for any
+    # shield. I measured the symptom, believed the first explanation that fit, and wrote it
+    # down as fact.
     #
-    # That is a property of the corpus, not a bug in the sweep. The corpus plants names in
-    # shapes where an admitted term either splits nothing or strands nothing -- the shapes
-    # where it does are the three hand-built cases in
-    # `test_a_tenant_term_never_frees_a_person_it_did_not_declare`, and those are what catch a
-    # broken or absent guard. Both mutations (guard removed, guard reverted to the aggregate
-    # version) fail there and pass here.
-    #
-    # So read this test as breadth and that one as depth. This one is worth keeping because it
-    # is 11,770 independent chances for a shape nobody anticipated to violate the contract; it
-    # is not a liveness check for the guard, and `assert changed > 500` is the only line here
-    # that fails when the feature is switched off.
+    # With the fold fixed and the guard stubbed to never reject, this test FAILS -- so it is a
+    # liveness check after all. Measured on both term sets, 2,466 and 101 cases changing.
     #
     #   `hostile`  — declare the very names the corpus plants: the worst input possible.
     #   `disjoint` — declare only trade vocabulary, sharing no token with any planted name.
@@ -832,8 +827,14 @@ def _collect_freed_names(case, base: str, out: str, terms, violations: list) -> 
     corpus -- and not something this feature did. Comparison is `_contains_token`, the corpus
     harness's own, so this oracle shares no code with the guard it is checking.
     """
-    base_clear = _PLACEHOLDER_IN_TESTS.sub(" ", base)
-    out_clear = _PLACEHOLDER_IN_TESTS.sub(" ", out)
+    # `_fold` ON THE HAYSTACK, and the parameter name in `harness.py` is the contract:
+    # `_contains_token(haystack_folded, token)` folds the NEEDLE and does a case-sensitive
+    # search. Passing raw text made every Title Case name miss -- `kranz` never matches
+    # "Kranz" -- so both calls returned False, the condition collapsed to `True and False`,
+    # and this sweep was unconditionally green for every corpus, term set and shield.
+    # Measured after the fix, not reasoned. `harness.evaluate` folds at the same point.
+    base_clear = pii_shield._fold(_PLACEHOLDER_IN_TESTS.sub(" ", base))
+    out_clear = pii_shield._fold(_PLACEHOLDER_IN_TESTS.sub(" ", out))
     for token in case.must_vanish:
         if pii_shield._fold(token) in terms:
             continue  # declared by this tenant: freeing it is the feature, not a violation
@@ -908,24 +909,65 @@ def test_the_residual_risk_is_what_the_contract_says_it_is() -> None:
 def test_declared_means_fold_equivalent_not_equal() -> None:
     """The residual is wider than "the exact string the tenant typed", and that is worth pinning.
 
-    `_fold` strips accents, so declaring "Ines Consultoria" also declares "Ines". Every
+    `_fold` strips accents, so a declaration covers every accent variant of itself. Every
     membership test in the shield is on folded tokens, so this is the only self-consistent
     rule -- a narrower one here would make a declared term fail to match the text it was
-    declared for. But nobody reading a settings page would infer it, so it is asserted rather
-    than described.
+    declared for. But nobody reading a settings page would infer it, so it is asserted.
+
+    The example USED to be "Ines Consultoria", which now fails admission and rightly so:
+    `ines` is person vocabulary, and the gate refuses those since a competitor named after a
+    surname was measured exposing third parties. The property being pinned here is about
+    folding, so it needs a term that is not a name -- otherwise this test would be quietly
+    asserting two things and breaking for the wrong reason.
     """
     assert pii_shield._fold("Ant\u00f4nio") == pii_shield._fold("Antonio")
-    assert pii_shield._fold("In\u00eas") == pii_shield._fold("Ines")
+    assert pii_shield._fold("Inova\u00e7\u00e3o") == pii_shield._fold("Inovacao")
 
-    terms = pii_shield.admissible_tenant_terms("Ines Consultoria", [])
-    assert pii_shield._fold("In\u00eas") in terms, (
+    terms = pii_shield.admissible_tenant_terms("Inovacao Digital", [])
+    assert pii_shield._fold("Inova\u00e7\u00e3o") in terms, (
         "the accented form is no longer covered by the unaccented declaration. That is a "
         "narrower residual, which is fine -- but the guard compares folded tokens, so check "
         "that a declared term still matches the text it was declared for before relaxing this."
     )
 
-    # The point of the guard survives it: a person NOT fold-equivalent to any declared term is
-    # still redacted in the same sentence.
-    out = redact("Ines Consultoria e In\u00eas Moreira assinaram.", terms).redacted_text
+    # The accented spelling survives in the transcript even though the tenant typed it plain...
+    out = redact("Inova\u00e7\u00e3o Digital e Beatriz Moreira assinaram.", terms).redacted_text
+    assert "Inova\u00e7\u00e3o" in out, f"the accented form was not covered: {out!r}"
+    # ...and a person who is not fold-equivalent to any declared term is still redacted.
     stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
     assert "Moreira" not in stripped, f"an undeclared surname leaked: {out!r}"
+    assert "Beatriz" not in stripped, f"an undeclared given name leaked: {out!r}"
+
+
+@pytest.mark.parametrize(
+    "competitor,text,third_party_surname",
+    [
+        ("Silva Tecnologia", "Dr. Carlos Silva aprovou o contrato.", "Silva"),
+        ("Santos Group", "Dr. Marina Santos assinou a proposta.", "Santos"),
+        ("Oliveira Labs", "Contato: Bruno Oliveira, diretor.", "Oliveira"),
+    ],
+)
+def test_a_competitor_named_after_a_surname_does_not_expose_third_parties(
+    competitor: str, text: str, third_party_surname: str
+) -> None:
+    """The half of the residual that was NOT tested, and it is the half that matters.
+
+    `test_the_residual_risk_is_what_the_contract_says_it_is` covers the benign case: the token
+    the tenant declared IS the tenant. This covers the malign one -- a `competitors` entry
+    named after a surname, and a THIRD PARTY on the call who happens to share it. Silva is the
+    commonest surname in Brazil.
+
+    Measured before this test existed, with the vocabulary check removed from the gate:
+    "Dr. Carlos Silva aprovou o contrato." came out as "[[PERSON_NAME_1]] Silva aprovou o
+    contrato." in 4 of 4 shapes tried. The guard permitted it correctly by its own contract --
+    `silva` was declared -- which is exactly why the guard cannot be the only control.
+    """
+    terms = pii_shield.admissible_tenant_terms(None, [competitor])
+    assert terms == frozenset(), (
+        f"{competitor!r} was admitted. Its surname token is person vocabulary, and admitting it "
+        f"exposes every {third_party_surname} in this tenant's transcripts -- people who are "
+        "not the tenant and never agreed to anything."
+    )
+    assert redact(text, terms).redacted_text == redact(text).redacted_text
+    visible = _PLACEHOLDER_IN_TESTS.sub(" ", redact(text, terms).redacted_text)
+    assert third_party_surname not in visible, f"third-party surname exposed: {visible!r}"

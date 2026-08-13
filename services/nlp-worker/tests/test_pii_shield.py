@@ -1538,7 +1538,11 @@ def test_admissible_tenant_terms_shape():
     assert gate("Northwind Traders", []) == frozenset({"northwind", "traders"})
     assert gate(None, ["Contoso", "Zendesk"]) == frozenset({"contoso", "zendesk"})
     # Folded, so the declaration matches the text it was declared for.
-    assert gate("In\u00eas Consultoria", []) == frozenset({"ines", "consultoria"})
+    assert gate("Inova\u00e7\u00e3o Digital", []) == frozenset({"inovacao", "digital"})
+    # ...but a term whose token is person vocabulary is refused WHOLE, so a competitor named
+    # after a surname cannot expose third parties who happen to share it.
+    assert gate(None, ["Silva Tecnologia"]) == frozenset()
+    assert gate(None, ["Santos Group"]) == frozenset()
     # A term with a token below the minimum length contributes nothing at all.
     assert gate("AB Tech", []) == frozenset()
     # Non-strings and blanks are skipped rather than raising.

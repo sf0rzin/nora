@@ -2139,7 +2139,7 @@ def _redact_person_names(
     text: str,
     counters: dict[PiiType, int],
     tenant_terms: frozenset[str] = frozenset(),
-) -> tuple[str, list[Redaction]]:
+) -> tuple[str, list[Redaction], list[tuple[int, int]]]:
     """Detects and redacts proper names over `text` (already partially redacted).
 
     Applies three heuristics in order, always skipping ranges already covered:
@@ -2389,6 +2389,23 @@ def admissible_tenant_terms(
         tokens = [_fold(t.group(0)) for t in _WORD_RE.finditer(term)]
         if not tokens or any(len(tok) < _TENANT_TERM_MIN_LENGTH for tok in tokens):
             continue
+        # Whole-term rejection when any token is person vocabulary. This check WAS the control
+        # in the first attempt at 5c, review proved it insufficient, and I then removed it
+        # entirely -- which was an overcorrection with a measured cost. "Insufficient as the
+        # only control" is not "worthless as a layer":
+        #
+        #     competitors=["Silva Tecnologia"]  +  "Dr. Carlos Silva aprovou o contrato."
+        #       without this check -> "[[PERSON_NAME_1]] Silva aprovou o contrato."
+        #
+        # The guard permits that, correctly by its own contract, because `silva` was declared.
+        # But the person exposed is a THIRD PARTY on the call, not the tenant, and Silva is the
+        # commonest surname in Brazil. Measured 4 of 4 on Silva/Santos/Oliveira shapes.
+        #
+        # It is still not the safety control -- `redact`'s guard is, and it catches the shapes
+        # this cannot see. It is the cheap layer that closes the high-blast-radius case, and
+        # rejection is per TERM so "Silva Tecnologia" contributes nothing, not `tecnologia`.
+        if any(tok in _BR_TOP_NAMES or tok in _BR_TOP_SURNAMES for tok in tokens):
+            continue
         admitted.update(tokens)
 
     # Deterministic truncation: `sorted` because a set has no order worth relying on, and the
@@ -2451,12 +2468,14 @@ def redact(text: str, tenant_terms: frozenset[str] = frozenset()) -> PiiRedactio
     """
     text = unicodedata.normalize("NFC", text)
 
-    baseline_text, baseline_redactions, baseline_spans = _one_pass(text, frozenset())
+    baseline_text, baseline_redactions, baseline_spans, intermediate = _one_pass(text, frozenset())
     if not tenant_terms:
         return PiiRedactionV1(redactedText=baseline_text, redactions=baseline_redactions)
 
-    candidate_text, candidate_redactions, candidate_spans = _one_pass(text, tenant_terms)
-    intermediate = _apply_basic_patterns(text)[0]
+    # `intermediate` comes from the baseline pass and the span coordinates belong to it. The
+    # candidate pass recomputes the same string -- `_apply_basic_patterns` takes no tenant
+    # terms -- so it is returned and discarded rather than recomputed a third time here.
+    candidate_text, candidate_redactions, candidate_spans, _ = _one_pass(text, tenant_terms)
 
     if _frees_anything_undeclared(intermediate, baseline_spans, candidate_spans, tenant_terms):
         return PiiRedactionV1(redactedText=baseline_text, redactions=baseline_redactions)
@@ -2466,18 +2485,18 @@ def redact(text: str, tenant_terms: frozenset[str] = frozenset()) -> PiiRedactio
 
 def _one_pass(
     text: str, tenant_terms: frozenset[str]
-) -> tuple[str, list[Redaction], list[tuple[int, int]]]:
+) -> tuple[str, list[Redaction], list[tuple[int, int]], str]:
     """One full redaction over already-NFC `text`. Independent of any other call.
 
     Counters are created inside `_apply_basic_patterns`, so two passes never share numbering
-    and the discarded pass leaves nothing behind. The third element is the PERSON_NAME spans
-    actually applied, in intermediate-text coordinates.
+    and the discarded pass leaves nothing behind. Returns the redacted text, its redactions,
+    the PERSON_NAME spans actually applied, and the intermediate text those spans index into.
     """
     intermediate, basic_redactions, counters = _apply_basic_patterns(text)
     final_text, person_redactions, spans = _redact_person_names(
         intermediate, counters, tenant_terms
     )
-    return final_text, basic_redactions + person_redactions, spans
+    return final_text, basic_redactions + person_redactions, spans, intermediate
 
 
 def _frees_anything_undeclared(
@@ -2516,9 +2535,18 @@ def _frees_anything_undeclared(
     if not baseline_spans:
         return False
 
+    # LINEAR MERGE, with a cursor carried across baseline spans. Both lists come out of the
+    # rebuild loop already ascending and disjoint, so a shared index is enough -- and the
+    # alternative is the mistake this file already paid for once: the note above `_is_covered`
+    # records a scan-from-zero costing 6.76s on a 200KB transcript before `bisect` replaced it.
+    # A per-span rescan here would reintroduce exactly that shape, on a 1MB input cap, on the
+    # request thread.
     covered = sorted(candidate_spans)
+    index = 0
     for start, end in baseline_spans:
-        for gap_start, gap_end in _uncovered_parts(start, end, covered):
+        while index < len(covered) and covered[index][1] <= start:
+            index += 1
+        for gap_start, gap_end in _uncovered_parts(start, end, covered[index:]):
             for tok in _WORD_RE.finditer(intermediate[gap_start:gap_end]):
                 if _fold(tok.group(0)) not in tenant_terms:
                     return True
