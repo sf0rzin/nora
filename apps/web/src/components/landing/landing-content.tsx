@@ -371,7 +371,7 @@ const FAQS = [
   },
   {
     q: "Onde os dados ficam armazenados?",
-    a: "Em servidor próprio, autogerenciado, sem porta aberta para a internet — o acesso público passa apenas por um túnel de saída. O isolamento entre organizações é feito por tenant_id em toda consulta ao banco. Você pode solicitar exportação ou exclusão de todos os seus dados a qualquer momento.",
+    a: "Em servidor próprio, autogerenciado. A aplicação não publica nenhuma porta: todo o acesso público entra por um túnel de saída, e o servidor nunca aparece diretamente na internet. O isolamento entre organizações é feito por tenant_id em toda consulta ao banco. Você pode solicitar exportação ou exclusão de todos os seus dados a qualquer momento.",
   },
 ];
 
