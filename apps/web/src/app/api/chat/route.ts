@@ -36,6 +36,12 @@ const API_BASE_URL = (
 ).replace(/\/$/, "");
 const PLATFORM_TOKEN = process.env.NORA_PLATFORM_INTERNAL_TOKEN ?? "";
 
+// How long to wait for the provider's RESPONSE HEADERS before giving up. Deliberately well
+// under Caddy's `response_header_timeout 120s` (infra/host/caddy/Caddyfile), so a stalled
+// provider surfaces as this route's own 502 rather than as an edge timeout with no server-side
+// trace. It does NOT bound the stream once it starts: a long answer is not a failure.
+const PROVIDER_HEADER_TIMEOUT_MS = 30_000;
+
 /**
  * Input budget of a single request. The history filter below caps the NUMBER of
  * messages (`.slice(-16)`); these two cap their SIZE, which is what the provider
@@ -537,9 +543,30 @@ export async function POST(req: Request): Promise<Response> {
   const startedAt = Date.now();
 
   let upstream: Response;
+  // `cache: "no-store"` is NOT decoration here, and its absence is what broke this route in
+  // production: every other fetch in this file carries it and this one did not. Next patches
+  // the global fetch inside a route handler, and an un-annotated response is a candidate for
+  // its cache layer -- which means being read to completion before it is handed back. A
+  // streaming completion never "completes" in the sense that wants, so the response headers
+  // were never flushed. Measured symptom: Caddy logging `net/http: timeout awaiting response
+  // headers` from web:3000 after 120s, Cloudflare returning 504, and a socket to the provider
+  // held open for the whole window while the client got zero bytes.
+  //
+  // `AbortSignal.timeout` is the second half, and it is the part that matters even if the
+  // first is ever wrong again: without it, ANY stall on the provider side pins a request until
+  // the edge gives up two minutes later. With it the route fails as a 502 that a human can
+  // read, in a bounded time. A hang is a worse failure than an error because nothing reports it.
+  // The timeout is CLEARED as soon as the headers land, which is why this is a controller and
+  // not `AbortSignal.timeout`. That helper aborts the whole exchange, body included, so a long
+  // but healthy answer would be cut off mid-sentence at the deadline. What needs bounding is
+  // the wait for the FIRST byte, not the length of the reply.
+  const headerDeadline = new AbortController();
+  const headerTimer = setTimeout(() => headerDeadline.abort(), PROVIDER_HEADER_TIMEOUT_MS);
   try {
     upstream = await fetch(`${cfg.baseUrl}/chat/completions`, {
       method: "POST",
+      cache: "no-store",
+      signal: headerDeadline.signal,
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
@@ -554,12 +581,15 @@ export async function POST(req: Request): Promise<Response> {
       }),
     });
   } catch {
+    clearTimeout(headerTimer);
     recordUsage(cfg, tenantId, { promptTokens: 0, completionTokens: 0 }, Date.now() - startedAt, "error");
     return new Response(JSON.stringify({ error: "Falha ao contatar o provedor de IA." }), {
       status: 502,
       headers: { "Content-Type": "application/json" },
     });
   }
+  // Headers are in: the deadline has done its job and must not fire during the stream.
+  clearTimeout(headerTimer);
 
   if (!upstream.ok || !upstream.body) {
     const detail = await upstream.text().catch(() => "");
