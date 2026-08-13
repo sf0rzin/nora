@@ -673,3 +673,128 @@ def test_an_allow_listed_term_is_never_itself_redacted(product: str) -> None:
     ):
         out = redact(text).redacted_text
         assert product.lower() in out.lower(), f"{product!r} was redacted out of {text!r}: {out!r}"
+
+
+# --------------------------------------------------------------------------- #
+# Finding 5c: the tenant's own trade names, admitted per request
+#
+# The feature is small; the ways it can go wrong are not. These tests are ordered by what
+# they protect, and the first three matter more than the one that proves 5c works at all.
+# --------------------------------------------------------------------------- #
+
+# Eleven of these eighteen are in the shield's person vocabulary. That is not a contrived
+# ratio -- pt-BR trading names are built on surnames -- and it is the whole reason the gate
+# exists. Measured on main at 21becff; `test_the_gate_still_faces_a_real_hazard` re-measures
+# it, so this comment cannot quietly stop being true.
+SURNAME_SHAPED_TENANT_TERMS = [
+    "Andrade", "Siqueira", "Camargo", "Vasconcelos", "Moreira", "Nogueira",
+    "Teixeira", "Pinheiro", "Rocha", "Barros", "Guimaraes",
+]
+SAFE_TENANT_TERMS = ["Northwind", "Contoso", "Zendesk", "Protheus", "Datasul"]
+
+
+@pytest.mark.parametrize("term", SURNAME_SHAPED_TENANT_TERMS)
+def test_a_surname_shaped_tenant_term_is_refused(term: str) -> None:
+    """The gate, stated as the thing it prevents rather than as what it computes.
+
+    An admitted term can only SUPPRESS a redaction -- `_split_on_allow_list` says so and the
+    whole module depends on it. So admitting "Andrade" does not make the shield slightly
+    chattier about one company; it stops redacting every person surnamed Andrade in that
+    tenant's transcripts, and sends them to a third-party provider. ADR 0012 forbids exactly
+    that, and no configuration field should be able to opt out of it.
+    """
+    assert pii_shield.admissible_tenant_terms(None, [term]) == frozenset()
+    assert pii_shield.admissible_tenant_terms(term, []) == frozenset()
+
+
+@pytest.mark.parametrize("term", SURNAME_SHAPED_TENANT_TERMS)
+def test_a_refused_term_does_not_survive_inside_a_longer_name(term: str) -> None:
+    """Whole-term rejection, which is the part that is easy to get wrong by being reasonable.
+
+    Dropping only the offending token and keeping the rest looks tidier and is the bug:
+    "Andrade Consultoria" would contribute `consultoria` today and `andrade` the moment
+    someone decides a one-token rejection is too blunt. The unit of admission is the term.
+    """
+    assert pii_shield.admissible_tenant_terms(None, [f"{term} Consultoria"]) == frozenset()
+    assert pii_shield.admissible_tenant_terms(None, [f"Grupo {term}"]) == frozenset()
+
+
+def test_the_gate_still_faces_a_real_hazard() -> None:
+    """Re-measures the collision ratio the gate exists for, so the claim cannot go stale.
+
+    Fails in both directions. If it drops to zero the gate is dead code and the comment above
+    is fiction; if it climbs, someone widened the name vocabulary and more tenants just lost
+    the ability to name themselves.
+    """
+    vocab = set(pii_shield._BR_TOP_NAMES) | set(pii_shield._BR_TOP_SURNAMES)
+    colliding = [t for t in SURNAME_SHAPED_TENANT_TERMS if pii_shield._fold(t) in vocab]
+    assert len(colliding) == len(SURNAME_SHAPED_TENANT_TERMS), (
+        f"only {len(colliding)}/{len(SURNAME_SHAPED_TENANT_TERMS)} of the sample still collide "
+        f"with the person vocabulary: {colliding}.\n"
+        "These terms are the justification for the admission gate. If they stopped colliding, "
+        "re-derive the sample from the current vocabulary rather than deleting this test."
+    )
+    for term in SAFE_TENANT_TERMS:
+        assert pii_shield._fold(term) not in vocab, (
+            f"{term!r} is now person vocabulary, so it belongs in the refused sample, not the "
+            "admitted one. The two lists must not drift into each other."
+        )
+
+
+def test_empty_tenant_terms_change_nothing_at_all() -> None:
+    """"Empty must not fail open", checked as identity against the un-parameterised call.
+
+    Weaker phrasings of this pass while being wrong -- asserting the result is "still
+    redacted" would hold even if the empty case silently took a different path.
+    """
+    for empty in (
+        pii_shield.admissible_tenant_terms("", []),
+        pii_shield.admissible_tenant_terms(None, None),
+        pii_shield.admissible_tenant_terms(None, []),
+        frozenset(),
+    ):
+        assert empty == frozenset()
+        for case in all_cases():
+            assert redact(case.text, empty).redacted_text == redact(case.text).redacted_text
+
+
+def test_volume_cannot_switch_the_shield_off() -> None:
+    """The second fail-open direction: not an empty list, an enormous one.
+
+    Each term individually passes the gate. Five thousand of them would turn PERSON_NAME
+    redaction off wholesale, and every per-term test in this file would still be green.
+    """
+    def word(i: int) -> str:
+        a = "abcdefghijklmnopqrstuvwxyz"
+        return "Zx" + a[i // 676 % 26] + a[i // 26 % 26] + a[i % 26]
+
+    flood = pii_shield.admissible_tenant_terms(None, [word(i) for i in range(5000)])
+    assert len(flood) == pii_shield._MAX_TENANT_TERMS
+    assert flood == pii_shield.admissible_tenant_terms(None, [word(i) for i in range(5000)]), (
+        "the cap must be deterministic, or the same request redacts differently on a retry"
+    )
+    out = redact("Beatriz Nogueira aprovou o plano.", flood).redacted_text
+    assert "Beatriz" not in out and "Nogueira" not in out, f"person leaked under flood: {out!r}"
+
+
+@pytest.mark.parametrize("company", SAFE_TENANT_TERMS)
+@pytest.mark.parametrize("given,surname", [("Andre", "Teixeira"), ("Marina", "Alves")])
+def test_an_admitted_term_keeps_its_name_without_freeing_the_person(
+    company: str, given: str, surname: str
+) -> None:
+    """5c itself, and the second assertion is the one that decides whether it ships.
+
+    Measured before writing it: of six company-in-front-of-a-person cases, three had the
+    company eaten and SIX had the person correctly redacted. So this was never a leak -- it
+    was a quality defect -- and a fix that improves the summary by leaking the person would
+    be a straight downgrade, not a trade.
+    """
+    terms = pii_shield.admissible_tenant_terms(company, [])
+    assert terms, f"{company!r} should be admissible"
+    text = f"{company} {given} {surname} confirmou a renovacao."
+    out = redact(text, terms).redacted_text
+
+    assert company in out, f"{company!r} was eaten with the person: {out!r}"
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
+    assert given not in stripped, f"{given!r} leaked: {out!r}"
+    assert surname not in stripped, f"{surname!r} leaked: {out!r}"
