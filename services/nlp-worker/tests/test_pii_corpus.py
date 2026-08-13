@@ -819,3 +819,29 @@ def test_the_residual_risk_is_what_the_contract_says_it_is() -> None:
     )
     # ...and the same surname is still redacted for a tenant that did NOT declare it.
     assert "Nardelli" not in redact("Nardelli Consultoria enviou a proposta.").redacted_text
+
+
+def test_declared_means_fold_equivalent_not_equal() -> None:
+    """The residual is wider than "the exact string the tenant typed", and that is worth pinning.
+
+    `_fold` strips accents, so declaring "Ines Consultoria" also declares "Ines". Every
+    membership test in the shield is on folded tokens, so this is the only self-consistent
+    rule -- a narrower one here would make a declared term fail to match the text it was
+    declared for. But nobody reading a settings page would infer it, so it is asserted rather
+    than described.
+    """
+    assert pii_shield._fold("Ant\u00f4nio") == pii_shield._fold("Antonio")
+    assert pii_shield._fold("In\u00eas") == pii_shield._fold("Ines")
+
+    terms = pii_shield.admissible_tenant_terms("Ines Consultoria", [])
+    assert pii_shield._fold("In\u00eas") in terms, (
+        "the accented form is no longer covered by the unaccented declaration. That is a "
+        "narrower residual, which is fine -- but the guard compares folded tokens, so check "
+        "that a declared term still matches the text it was declared for before relaxing this."
+    )
+
+    # The point of the guard survives it: a person NOT fold-equivalent to any declared term is
+    # still redacted in the same sentence.
+    out = redact("Ines Consultoria e In\u00eas Moreira assinaram.", terms).redacted_text
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
+    assert "Moreira" not in stripped, f"an undeclared surname leaked: {out!r}"

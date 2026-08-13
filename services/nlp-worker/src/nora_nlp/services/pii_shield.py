@@ -2420,6 +2420,14 @@ def redact(text: str, tenant_terms: frozenset[str] = frozenset()) -> PiiRedactio
     candidate pass. Under the guard the candidate is thrown away and the baseline stands, so
     the worst case of this feature is the behaviour that existed before it.
 
+    "DECLARED" MEANS FOLD-EQUIVALENT, NOT EQUAL, and that is wider than it sounds. `_fold`
+    strips accents, so a tenant declaring "Ines Consultoria" has also declared "Inês", and
+    "Sao Paulo Servicos" covers "São". Checked rather than assumed: `_fold("Antônio") ==
+    _fold("Antonio")`. This is not a hole in the guard -- every membership test in this module
+    is on folded tokens, so a narrower rule here would make terms fail to match the text they
+    were declared for -- but it does mean the residual below covers accent variants of a
+    declared term, which nobody would infer from the field name in the tenant's settings page.
+
     Empty `tenant_terms` skips the second pass entirely and is byte-identical to the old
     single-pass function.
 
