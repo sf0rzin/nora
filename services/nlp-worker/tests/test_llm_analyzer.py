@@ -430,3 +430,65 @@ def test_analyze_parses_customer_confidence(MockClient):
     dumped = response.model_dump(by_alias=True)
     assert dumped["customerConfidence"]["accountName"] == "ACME Manufatura S.A."
     assert dumped["customerConfidence"]["buyingSignals"][0]["type"] == "PROPOSAL_REQUESTED"
+
+
+@patch("nora_nlp.services.llm_analyzer.LlmClient")
+def test_the_prompt_does_not_contradict_itself_about_the_tenants_own_name(MockClient):
+    """Finding 5c, in the half that was left undone until review pointed at it.
+
+    The transcript keeps the tenant's trade name -- that is the whole feature -- but the
+    tenant-context block was shielded with NO tenant terms, so a multi-word name like
+    "Kranz Solutions" came back as `[[PERSON_NAME_1]]` in the context JSON while surviving
+    verbatim in the transcript of the same request. One entity, two spellings, one prompt.
+
+    Over-redaction, never a leak, which is why it was classed as a coherence defect rather
+    than a security one. It is still the feature only half delivered.
+
+    The assertion checks the CONTEXT BLOCK specifically, not just the prompt as a whole:
+    the name is in the transcript either way, so `"Kranz Solutions" in user_prompt` would
+    pass while the bug was live.
+    """
+    mock_instance = MagicMock()
+    mock_instance.chat_structured.return_value = (json.dumps(_FAKE_LLM_RESPONSE), 100, 50)
+    MockClient.return_value = mock_instance
+
+    tenant_ctx = json.loads(
+        (DATA_DIR / "tenants" / "acme-software.context.json").read_text(encoding="utf-8")
+    )
+    tenant_ctx["companyName"] = "Kranz Solutions"
+
+    req = AnalyzeRequest(
+        meetingId="test-meeting-5c-coherence",
+        tenantId="00000000-0000-4000-8000-000000000001",
+        language="pt-BR",
+        transcript="Kranz Solutions fechou o contrato com a equipe hoje.",
+        tenantContext=tenant_ctx,
+    )
+
+    analyze(req, _make_settings())
+    user_prompt = mock_instance.chat_structured.call_args.kwargs["user_prompt"]
+
+    # The context block is the JSON object; isolate it so the transcript cannot satisfy this.
+    start = user_prompt.index('"companyName"')
+    context_slice = user_prompt[start : start + 200]
+    assert "Kranz Solutions" in context_slice, (
+        "the tenant's own name was redacted out of the context block while surviving in the "
+        f"transcript -- the prompt contradicts itself. Context said: {context_slice[:120]!r}"
+    )
+
+    # ...and the shield is still deciding: a person in the context is still redacted.
+    tenant_ctx_with_person = dict(tenant_ctx)
+    tenant_ctx_with_person["industry"] = "Consultoria conduzida por Mariana Cardoso"
+    req2 = AnalyzeRequest(
+        meetingId="test-meeting-5c-coherence-2",
+        tenantId="00000000-0000-4000-8000-000000000001",
+        language="pt-BR",
+        transcript="Kranz Solutions fechou o contrato com a equipe hoje.",
+        tenantContext=tenant_ctx_with_person,
+    )
+    analyze(req2, _make_settings())
+    prompt2 = mock_instance.chat_structured.call_args.kwargs["user_prompt"]
+    assert "Mariana Cardoso" not in prompt2, (
+        "a person pasted into the tenant context reached the provider -- the terms are not "
+        "supposed to weaken the shield, only to stop it eating the trade name"
+    )
