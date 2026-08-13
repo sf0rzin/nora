@@ -2356,21 +2356,34 @@ def admissible_tenant_terms(
 ) -> frozenset[str]:
     """The tenant's own trade names, folded to tokens. DEFENCE IN DEPTH, not the safety control.
 
-    An earlier version of this function WAS the safety control, and that was the mistake. It
-    refused any term colliding with `_BR_TOP_NAMES | _BR_TOP_SURNAMES` and treated surviving
-    terms as safe. Review killed it, correctly: those two sets hold 372 tokens, while this
-    module catches most names by SHAPE -- `_trusted_span` and the speaker-label patterns need
-    no list at all, and the comment at the top of `_split_on_allow_list` says so outright. So
-    the gate was blind for exactly the names the module says are the common case. All twenty
-    surnames in the test corpus's own OFF_LIST_SURNAME pool passed it. "Andrade Consultoria"
-    was refused and "Nardelli Consultoria" admitted, on nothing but a frequency table.
+    THE HISTORY MATTERS HERE, because this function has been through both errors and the
+    docstring has twice described a version of it that no longer existed.
 
-    A gate cannot PREDICT which terms are safe, because safety depends on the transcript, not
-    on the term. So it stopped trying: `redact` MEASURES the effect of these terms on this
-    text and discards them if any person got freed. See the guard there.
+    It began as the safety control: refuse any term colliding with `_BR_TOP_NAMES |
+    _BR_TOP_SURNAMES`, treat the survivors as safe. Review killed that, correctly. Those two
+    sets hold 372 tokens while the module catches most names by SHAPE -- `_trusted_span` and
+    the speaker-label patterns need no list at all -- so the gate was blind for exactly the
+    names the module calls the common case, and every one of the twenty surnames in the test
+    corpus's OFF_LIST_SURNAME pool sailed through it.
 
-    What is left here is cheap and still worth doing -- it keeps obviously-bad terms out
-    before they cost a second pass -- but nothing downstream trusts it.
+    The correction was to stop PREDICTING: safety depends on the transcript, not on the term,
+    so `redact` MEASURES the effect of these terms on this text and discards them if any person
+    was freed. That is the control. It is in `redact`, not here.
+
+    The over-correction was then deleting the vocabulary check entirely, and it had a cost:
+    `competitors=["Silva Tecnologia"]` turned "Dr. Carlos Silva aprovou o contrato." into
+    "[[PERSON_NAME_1]] Silva aprovou o contrato." -- permitted by the guard, since `silva` was
+    declared, but the person exposed is a THIRD PARTY on the call and Silva is the commonest
+    surname in Brazil. So the check is back, below, as a LAYER rather than as the control.
+
+    WHAT IT COSTS, stated because the test suite does not show it: rejection is per whole term
+    and the tenant's `company_name` goes through the same door, so a company named after its
+    founder gets no feature at all. "Souza Cruz", "Camargo Correa", "Andrade Gutierrez", any
+    "<Surname> Solucoes" -- refused entirely. That is the commonest pt-BR naming convention.
+    The residual is again split by a frequency table ("Andrade Consultoria" refused, "Nardelli
+    Consultoria" admitted), which was a fair criticism of the first version and is a fair
+    criticism of this one; the difference is that it no longer decides whether a leak happens,
+    only whether the feature is available. See `test_the_gate_refuses_the_common_pt_br_shape`.
     """
     raw: list[str] = []
     if company_name:
@@ -2441,12 +2454,16 @@ def redact(text: str, tenant_terms: frozenset[str] = frozenset()) -> PiiRedactio
     the worst case of this feature is the behaviour that existed before it.
 
     "DECLARED" MEANS FOLD-EQUIVALENT, NOT EQUAL, and that is wider than it sounds. `_fold`
-    strips accents, so a tenant declaring "Ines Consultoria" has also declared "Inês", and
-    "Sao Paulo Servicos" covers "São". Checked rather than assumed: `_fold("Antônio") ==
-    _fold("Antonio")`. This is not a hole in the guard -- every membership test in this module
-    is on folded tokens, so a narrower rule here would make terms fail to match the text they
-    were declared for -- but it does mean the residual below covers accent variants of a
-    declared term, which nobody would infer from the field name in the tenant's settings page.
+    strips accents, so a tenant declaring "Inovacao Digital" has also declared "Inovação".
+    Checked rather than assumed: `_fold("Antônio") == _fold("Antonio")`. This is not a hole in
+    the guard -- every membership test in this module is on folded tokens, so a narrower rule
+    would make terms fail to match the text they were declared for -- but it does mean the
+    residual covers accent variants, which nobody would infer from a settings field.
+
+    (This paragraph used to teach the same point with "Ines Consultoria" and "Sao Paulo
+    Servicos". Both are refused whole now -- `ines` and `paulo` are given names -- so the
+    examples taught a behaviour the code no longer has. Same staleness that was fixed in the
+    tests and left here, which is how product code ends up lying while CI stays green.)
 
     Empty `tenant_terms` skips the second pass entirely and is byte-identical to the old
     single-pass function.
@@ -2535,29 +2552,48 @@ def _frees_anything_undeclared(
     if not baseline_spans:
         return False
 
-    # LINEAR MERGE, with a cursor carried across baseline spans. Both lists come out of the
-    # rebuild loop already ascending and disjoint, so a shared index is enough -- and the
-    # alternative is the mistake this file already paid for once: the note above `_is_covered`
-    # records a scan-from-zero costing 6.76s on a 200KB transcript before `bisect` replaced it.
-    # A per-span rescan here would reintroduce exactly that shape, on a 1MB input cap, on the
-    # request thread.
+    # Linear merge with a cursor carried across baseline spans, passed as an INDEX rather than
+    # by slicing -- see `_uncovered_parts`, where slicing turned out to be the same C^2/2 shape
+    # in a smaller constant. The mistake being avoided is one this file already paid for: the
+    # note above `_is_covered` records a scan-from-zero costing 6.76s on a 200KB transcript
+    # before `bisect` replaced it, and the input cap here is 1MB on the request thread.
+    #
+    # Correctness does not rest on the cursor. `_uncovered_parts` subtracts the union of what
+    # it is given, so starting later can only make it see FEWER covering spans, and subtracting
+    # less can only produce gaps that are equal or LARGER -- more text inspected, never less.
+    # An over-advanced cursor therefore rejects a candidate it could have accepted; it cannot
+    # free anything. The ascending-and-disjoint property of both lists (from the rebuild loop's
+    # `m.start < cursor` skip) is what makes it exact rather than merely safe.
     covered = sorted(candidate_spans)
     index = 0
     for start, end in baseline_spans:
         while index < len(covered) and covered[index][1] <= start:
             index += 1
-        for gap_start, gap_end in _uncovered_parts(start, end, covered[index:]):
+        for gap_start, gap_end in _uncovered_parts(start, end, covered, index):
             for tok in _WORD_RE.finditer(intermediate[gap_start:gap_end]):
                 if _fold(tok.group(0)) not in tenant_terms:
                     return True
     return False
 
 
-def _uncovered_parts(start: int, end: int, covered: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Parts of [start, end) that no span in `covered` overlaps. `covered` must be sorted."""
+def _uncovered_parts(
+    start: int, end: int, covered: list[tuple[int, int]], first: int = 0
+) -> list[tuple[int, int]]:
+    """Parts of [start, end) that no span in `covered` overlaps. `covered` must be sorted.
+
+    `first` is the index to start scanning from, and it exists so the caller can carry a cursor
+    across successive windows WITHOUT slicing. `covered[first:]` allocates and increfs one
+    element per remaining span on every call, which is the same C^2/2 shape as the
+    scan-from-zero it was supposed to replace -- a smaller constant, not a better order. Worth
+    the parameter because the comment in the caller cites the `_is_covered` incident, which was
+    about a 1MB transcript on the request thread, and the 2.20x -> 2.01x number backing it was
+    measured on single-sentence corpus cases where that term cannot appear at all. A claim that
+    invokes a specific past failure should be true of the shape that failure had.
+    """
     gaps: list[tuple[int, int]] = []
     cursor = start
-    for c_start, c_end in covered:
+    for i in range(first, len(covered)):
+        c_start, c_end = covered[i]
         if c_end <= cursor:
             continue
         if c_start >= end:

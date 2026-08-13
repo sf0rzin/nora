@@ -1586,3 +1586,46 @@ def test_redact_keeps_the_candidate_pass_when_only_declared_terms_are_freed():
     visible = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
     assert "Andre" not in visible
     assert "Teixeira" not in visible
+
+
+def test_guard_cursor_across_multiple_baseline_spans():
+    """The cursor loop, which the single-span cases above never iterate.
+
+    `_frees_anything_undeclared` carries an index across baseline spans so it does not rescan
+    `covered` from zero each time. That advance is the riskiest line in the guard, and every
+    other test here passes exactly one baseline span, so the loop body never ran.
+    """
+    #        0123456789...
+    text = "Alfa Bravo aaa Charlie Delta bbb Echo Foxtrot"
+    #        0    5     10  15      23    29  33   38
+    baseline = [(0, 10), (15, 28), (33, 45)]
+
+    # All three covered exactly -> nothing exposed.
+    assert not pii_shield._frees_anything_undeclared(text, baseline, list(baseline), frozenset())
+    # The LAST one uncovered: only reachable if the cursor did not overshoot past it.
+    assert pii_shield._frees_anything_undeclared(text, baseline, [(0, 10), (15, 28)], frozenset())
+    # The MIDDLE one uncovered, with covers on both sides.
+    assert pii_shield._frees_anything_undeclared(text, baseline, [(0, 10), (33, 45)], frozenset())
+    # The FIRST one uncovered.
+    assert pii_shield._frees_anything_undeclared(text, baseline, [(15, 28), (33, 45)], frozenset())
+    # Uncovered, but every exposed token is declared -> accept.
+    assert not pii_shield._frees_anything_undeclared(
+        text, baseline, [(0, 10), (15, 28)], frozenset({"echo", "foxtrot"})
+    )
+    # A candidate span that spills past a baseline span must not consume the NEXT one's cover.
+    assert pii_shield._frees_anything_undeclared(text, baseline, [(0, 14)], frozenset())
+
+
+def test_uncovered_parts_first_index_matches_slicing():
+    """`first=` must be equivalent to slicing, which is what it replaced.
+
+    The slice version was correct and quadratic in allocations; this asserts the cheap version
+    did not change the answer, over every start index of a small covered list.
+    """
+    covered = [(0, 5), (8, 12), (20, 25), (30, 33)]
+    for first in range(len(covered) + 1):
+        for start in range(0, 35, 3):
+            for end in range(start + 1, 36, 4):
+                assert pii_shield._uncovered_parts(
+                    start, end, covered, first
+                ) == pii_shield._uncovered_parts(start, end, covered[first:])

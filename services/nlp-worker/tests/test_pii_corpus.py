@@ -947,27 +947,58 @@ def test_declared_means_fold_equivalent_not_equal() -> None:
         ("Oliveira Labs", "Contato: Bruno Oliveira, diretor.", "Oliveira"),
     ],
 )
-def test_a_competitor_named_after_a_surname_does_not_expose_third_parties(
+def test_the_gate_refuses_a_competitor_named_after_a_surname(
     competitor: str, text: str, third_party_surname: str
 ) -> None:
-    """The half of the residual that was NOT tested, and it is the half that matters.
+    """THE GATE refuses it. Named for what it checks, after the first name overclaimed.
 
-    `test_the_residual_risk_is_what_the_contract_says_it_is` covers the benign case: the token
-    the tenant declared IS the tenant. This covers the malign one -- a `competitors` entry
-    named after a surname, and a THIRD PARTY on the call who happens to share it. Silva is the
-    commonest surname in Brazil.
+    It was called `..._does_not_expose_third_parties`, which is a property about the GUARD, and
+    this test never reaches the guard: the gate rejects the term, so `redact` takes the
+    empty-terms early return and the guard is not consulted at all. The property in that name
+    is in fact NOT true of the guard and is not meant to be -- the documented residual says a
+    DECLARED token may be freed, and `silva` would be declared. Naming a test for a property it
+    cannot exercise is how a suite ends up looking stronger than it is.
 
-    Measured before this test existed, with the vocabulary check removed from the gate:
-    "Dr. Carlos Silva aprovou o contrato." came out as "[[PERSON_NAME_1]] Silva aprovou o
-    contrato." in 4 of 4 shapes tried. The guard permitted it correctly by its own contract --
-    `silva` was declared -- which is exactly why the guard cannot be the only control.
+    What is real here: with the vocabulary check removed, `competitors=["Silva Tecnologia"]`
+    turned "Dr. Carlos Silva aprovou o contrato." into "[[PERSON_NAME_1]] Silva aprovou o
+    contrato." in 4 of 4 shapes measured. The gate is what stops that, so the gate is what is
+    asserted.
     """
     terms = pii_shield.admissible_tenant_terms(None, [competitor])
     assert terms == frozenset(), (
         f"{competitor!r} was admitted. Its surname token is person vocabulary, and admitting it "
         f"exposes every {third_party_surname} in this tenant's transcripts -- people who are "
-        "not the tenant and never agreed to anything."
+        "not the tenant and never agreed to anything. Note the guard will NOT catch this: the "
+        "token would be declared, and freeing a declared token is inside its contract."
     )
-    assert redact(text, terms).redacted_text == redact(text).redacted_text
+    # Deliberately NOT asserting `redact(text, terms) == redact(text)` here. With `terms` proven
+    # empty on the line above, that is `f(x) == f(x)`, and the corpus-wide version of it already
+    # lives in `test_empty_tenant_terms_change_nothing_at_all`.
     visible = _PLACEHOLDER_IN_TESTS.sub(" ", redact(text, terms).redacted_text)
-    assert third_party_surname not in visible, f"third-party surname exposed: {visible!r}"
+    assert third_party_surname not in visible, (
+        f"third-party surname exposed: {visible!r}. This one is a BASELINE shield property, not "
+        "a 5c property -- it would fail if the shield regressed, not if the gate did."
+    )
+
+
+@pytest.mark.parametrize(
+    "company",
+    ["Souza Cruz", "Camargo Correa", "Andrade Gutierrez", "Costa Solucoes", "Alves Tech"],
+)
+def test_the_gate_refuses_the_common_pt_br_shape(company: str) -> None:
+    """What the gate COSTS, asserted, because every other sample in this file hides it.
+
+    The admitted-term samples elsewhere are Northwind, Contoso, Zendesk, Nardelli, Inovacao
+    Digital -- all chosen, without meaning to, from the set the gate happens to allow. So CI is
+    green and the narrowing is invisible. A pt-BR company named after its founder, which is the
+    commonest naming convention in the target market, gets NO feature at all: rejection is per
+    whole term and `company_name` goes through the same door as `competitors`.
+
+    This is not asserting the cost is acceptable. It is asserting that it is known, so that
+    whoever decides to trade it away is doing it on purpose.
+    """
+    assert pii_shield.admissible_tenant_terms(company, []) == frozenset(), (
+        f"{company!r} is now admitted, so the gate has been loosened. That may be right, but it "
+        "is the decision this test exists to force: re-read `admissible_tenant_terms`'s "
+        "docstring and the third-party measurement before changing it."
+    )
