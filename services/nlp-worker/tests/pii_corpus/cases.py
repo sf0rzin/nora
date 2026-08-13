@@ -623,6 +623,18 @@ _SINGLE_TOKEN = (
 )
 
 
+_LONE_AFTER_HEAD = (
+    "a phrase head strips to one token and the run dies: `_trusted_span` gives up below two "
+    "tokens and `_qualify_run` returns on `stripped_a_label` before reaching the lone-token "
+    "lookup that would have recognised the surname -- so a real name reaches the provider"
+)
+
+_GENITIVE = (
+    "the genitive, and the commonest of these shapes in Portuguese: the head is stripped, the "
+    "preposition is on `_NAME_CONNECTIVES`, and one token is left -- " + _LONE_AFTER_HEAD
+)
+
+
 def _adversarial() -> list[Case]:
     return [
         # ---- product before a name: finding 5a itself ----
@@ -879,6 +891,204 @@ def _adversarial() -> list[Case]:
             ("Segunda",),
             status=KNOWN_GAP,
             note="`Segunda` is spliced out of `Segunda-feira`, leaving `-feira` behind",
+        ),
+        # ---- a lone surname behind a phrase head, and the genitive ----
+        #
+        # THREE LEAKS THAT PREDATE ALL OF THIS WORK AND ARE LIVE IN PRODUCTION. They were
+        # found while trying to fix the sentence-opener false redaction above, are worse in
+        # kind than the defect being chased at the time, and had no corpus shape at all --
+        # which is why the two rates said nothing about them.
+        #
+        # `_COMMON_PHRASE_HEADS` is consumed by two rules that discard the whole run once the
+        # head is stripped and one token is left: `_trusted_span` gives up below two tokens,
+        # and `_qualify_run` returns on `stripped_a_label` before reaching the lone-token
+        # lookup that would have recognised the surname. The comment above that lookup says
+        # "the label in front cannot be what decides"; in this shape it decides.
+        #
+        # Measured against the shield before these cases were written, so they record
+        # behaviour rather than the finding's memory of it. Over the WHOLE head list --
+        # `_COMMON_PHRASE_HEADS` (486 entries) x six surnames -- 2,912 of 2,916 leak, 99.86%.
+        # `meta` is the only head that ever survives, rescued by the negative list. A smaller
+        # probe first reported "50 of 60", which understated it: that denominator included
+        # `foco`, which is not a head at all and is the control below.
+        #
+        # Genitive: 15 of 15 measured combinations leak -- every one.
+        #
+        # `foco` is the CONTROL and it is the whole mechanism in one line. It is not on
+        # `_COMMON_PHRASE_HEADS`, so `Foco Silva` is two Title Case tokens and redacts
+        # correctly, while `Prazo Silva` -- identical shape, head on the list -- does not.
+        # A fix that closes the leaks must keep this passing; one that "fixes" it by
+        # emptying the head list would trade these leaks for the false redactions that list
+        # exists to prevent.
+        Case(
+            "adv/lone_after_head/control_offlist_head",
+            "adv_lone_after_head",
+            "Foco Silva aprovou o escopo.",
+            ("Silva",),
+            (),
+            note="CONTROL, and it passes: `foco` is on no head list, so this is an ordinary "
+            "two-token run. It is the comparison that makes the cases below mean something. "
+            "Worth knowing about the `good` side of that contrast: `Foco` goes INSIDE the "
+            "placeholder, so an ordinary business noun is swallowed with the name. Correct "
+            "for the leak this group is about, and not free",
+        ),
+        Case(
+            "adv/lone_after_head/com",
+            "adv_lone_after_head",
+            "Com Silva aprovou o escopo.",
+            ("Silva",),
+            ("Com",),
+            status=KNOWN_GAP,
+            note=_LONE_AFTER_HEAD,
+        ),
+        Case(
+            "adv/lone_after_head/contato",
+            "adv_lone_after_head",
+            "Contato Costa aprovou o escopo.",
+            ("Costa",),
+            ("Contato",),
+            status=KNOWN_GAP,
+            note=_LONE_AFTER_HEAD,
+        ),
+        Case(
+            "adv/lone_after_head/prazo",
+            "adv_lone_after_head",
+            "Prazo Kranz aprovou o escopo.",
+            ("Kranz",),
+            ("Prazo",),
+            status=KNOWN_GAP,
+            note=_LONE_AFTER_HEAD,
+        ),
+        Case(
+            "adv/lone_after_head/proposta",
+            "adv_lone_after_head",
+            "Proposta Bittencourt aprovou o escopo.",
+            ("Bittencourt",),
+            ("Proposta",),
+            status=KNOWN_GAP,
+            note=_LONE_AFTER_HEAD,
+        ),
+        Case(
+            "adv/lone_after_head/escopo",
+            "adv_lone_after_head",
+            "Escopo Almeida aprovou o orcamento.",
+            ("Almeida",),
+            ("Escopo",),
+            status=KNOWN_GAP,
+            note=_LONE_AFTER_HEAD,
+        ),
+        Case(
+            "adv/lone_after_head/reuniao",
+            "adv_lone_after_head",
+            "Reuniao Nogueira definiu o prazo.",
+            ("Nogueira",),
+            ("Reuniao",),
+            status=KNOWN_GAP,
+            note=_LONE_AFTER_HEAD,
+        ),
+        # `dias` and `campos` are the overlap pinned by KNOWN_ORDINARY_NAME_OVERLAPS: on
+        # `_COMMON_PHRASE_HEADS` so that `LOJA CAMPOS` is not a person, and on
+        # `_BR_TOP_SURNAMES` because they really are surnames. Here the head reading wins and
+        # a full name reaches the provider.
+        Case(
+            "adv/lone_after_head/dias_overlap",
+            "adv_lone_after_head",
+            "Dias Costa aprovou o escopo.",
+            ("Dias", "Costa"),
+            (),
+            status=KNOWN_GAP,
+            note="both tokens are real surnames and `dias` is also ordinary vocabulary -- "
+            + _LONE_AFTER_HEAD,
+        ),
+        Case(
+            "adv/lone_after_head/campos_overlap",
+            "adv_lone_after_head",
+            "Campos Almeida aprovou o escopo.",
+            ("Campos", "Almeida"),
+            (),
+            status=KNOWN_GAP,
+            note="the same overlap as the line above, on the other member of it -- "
+            + _LONE_AFTER_HEAD,
+        ),
+        # The genitive. Commonest of the three shapes in Portuguese by a distance -- "o
+        # contato do Silva", "a proposta da Costa" -- and 15 of 15 measured combinations
+        # leak. The head is stripped, the preposition is on `_NAME_CONNECTIVES`, and what is
+        # left is one token.
+        Case(
+            "adv/lone_after_head/genitive_do",
+            "adv_lone_after_head",
+            "Contato do Silva aprovou o escopo.",
+            ("Silva",),
+            ("Contato",),
+            status=KNOWN_GAP,
+            note=_GENITIVE,
+        ),
+        Case(
+            "adv/lone_after_head/genitive_da",
+            "adv_lone_after_head",
+            "A proposta da Costa foi aceita.",
+            ("Costa",),
+            ("proposta",),
+            status=KNOWN_GAP,
+            note=_GENITIVE,
+        ),
+        Case(
+            "adv/lone_after_head/genitive_article",
+            "adv_lone_after_head",
+            "O contato do Kranz respondeu ontem.",
+            ("Kranz",),
+            ("contato",),
+            status=KNOWN_GAP,
+            note=_GENITIVE,
+        ),
+        Case(
+            "adv/lone_after_head/genitive_verb_first",
+            "adv_lone_after_head",
+            "Falei com o Bittencourt sobre o prazo.",
+            ("Bittencourt",),
+            ("prazo",),
+            status=KNOWN_GAP,
+            note=_GENITIVE,
+        ),
+        Case(
+            "adv/lone_after_head/genitive_delivery",
+            "adv_lone_after_head",
+            "A entrega do Nogueira atrasou.",
+            ("Nogueira",),
+            ("entrega",),
+            status=KNOWN_GAP,
+            note=_GENITIVE,
+        ),
+        # The heads themselves must keep surviving. If a fix for the above starts redacting
+        # `Prazo` or `Contato`, it has traded a leak for exactly the false redaction that
+        # `_COMMON_PHRASE_HEADS` exists to prevent -- and the false-redaction rate would say
+        # so only if something asserts it.
+        # THE CASE THAT TELLS A GOOD FIX FROM A BAD ONE, and the first version of it was
+        # INVERTED. It declared `must_vanish=()`, which makes `Case.expects_no_person` true,
+        # which makes the harness score ANY `[[PERSON_NAME_n]]` as an invented person -- in a
+        # string containing `Costa` and `Kranz`, the two surnames this whole group argues must
+        # be redacted. So it was green only because the shield is broken, and it would have
+        # gone RED the moment somebody fixed the gap correctly, while scoring a correct
+        # redaction as a false one.
+        #
+        # Declaring both sides is what makes it discriminate:
+        #
+        #   today          `Costa`/`Kranz` leak            -> KNOWN_GAP holds
+        #   a correct fix  both redacted, heads survive    -> passes, promote it
+        #   the naive fix  heads eaten with them           -> over_redacted=(Contato, Prazo)
+        #
+        # Emptying `_COMMON_PHRASE_HEADS` would close every leak in this group and fail here,
+        # which is the entire reason the case exists.
+        Case(
+            "adv/lone_after_head/head_survives",
+            "adv_lone_after_head",
+            "Contato Costa aprovou o escopo, e o Prazo Kranz mudou.",
+            ("Costa", "Kranz"),
+            ("Contato", "Prazo"),
+            status=KNOWN_GAP,
+            note="both surnames leak today -- " + _LONE_AFTER_HEAD + ". What this case adds "
+            "over its neighbours is the OTHER direction: a fix that closes the leak by "
+            "emptying the head list eats `Contato` and `Prazo` and fails here",
         ),
         # ---- both sides in one string ----
         Case(

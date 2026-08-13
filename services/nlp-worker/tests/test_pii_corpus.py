@@ -43,12 +43,30 @@ from tests.pii_corpus.harness import evaluate, run
 #       leak              9.10%  ->  9.10%   (512 of 5627 -> 512 of 5628)
 #       false redaction   9.60%  -> 10.24%   (506 of 5271 -> 558 of 5449)
 #
-# The second row is not a regression. The shield did not change; the corpus stopped being blind
-# to `fp_preposition`, where 49 of 49 cases fail and always did. A ceiling that rises because
-# the measurement got less wrong is a different thing from one that rises because the code got
-# worse, and the difference belongs in writing rather than in a reader's assumption.
-MAX_LEAK_RATE = 513 / 5629  # 9.11%
-MAX_FALSE_REDACTION_RATE = 558 / 5450  # 10.24%
+#   2026-08-12, corpus grew by `adv_lone_after_head`, `pii_shield.py` UNCHANGED:
+#       leak              9.11%  ->  9.34%   (513 of 5629 -> 527 of 5644)
+#       false redaction  10.24%  -> 10.22%   (558 of 5450 -> 558 of 5462)
+#
+#   Note the false-redaction ceiling went DOWN. The new cases assert their phrase heads
+#   survive, so they add 12 to that denominator and nothing to its numerator. A leak-shaped
+#   addition that tightens the other rate is the shape an honest one has.
+#
+# NEITHER of the two CORPUS-GROWTH rows above — 2026-08-11 and 2026-08-12 — is a regression,
+# and both raised a ceiling, which is exactly the situation where that has to be said rather
+# than assumed. (The first row is the #431 fix and lowered both rates.) The shield did not
+# change in either of the two. The first: the corpus stopped being blind to `fp_preposition`,
+# where 49 of 49 cases fail and always did. The second: it stopped being blind to a lone
+# surname behind a phrase head and to the genitive -- `Com Silva`, `Contato do Silva`,
+# `A proposta da Costa` -- which are LIVE LEAKS in production and had no shape here at all.
+# Measured before the cases were written: over the whole `_COMMON_PHRASE_HEADS` list x six
+# surnames, 2,912 of 2,916 leak (99.86%), and 15 of 15 genitive forms.
+#
+# A ceiling that rises because the measurement got less wrong is a different thing from one
+# that rises because the code got worse. The difference belongs in writing rather than in a
+# reader's assumption, and the false-redaction rate holding at 10.24% across both is the
+# evidence that nothing was traded for it.
+MAX_LEAK_RATE = 527 / 5644  # 9.34%
+MAX_FALSE_REDACTION_RATE = 558 / 5462  # 10.22%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
@@ -67,6 +85,12 @@ MIN_FALSE_POSITIVE_CASES = 150
 # both run, not reasoned. Set below the measurement on purpose: the assertion is that the pool
 # bites, not that it bites exactly as hard as on the day it was written.
 MIN_CASES_BROKEN_BY_LOOSENING = 20
+
+# Floors for `test_the_corpus_prices_a_loosening_on_both_rates`. Deliberately well below the
+# measured values (301 and 34 on 2026-08-12): this asserts that the corpus can SEE both sides
+# of a loosening, not that it sees exactly as much as it did the day the floors were written.
+MIN_LEAKS_CLOSED_BY_LOOSENING = 150
+MIN_FALSE_REDACTIONS_CAUSED_BY_LOOSENING = 10
 
 
 @pytest.fixture(scope="module")
@@ -373,6 +397,81 @@ def test_the_false_positive_pool_is_not_inert(monkeypatch) -> None:
         "an allow-listed term or a conjunction splits -- rather than a lone noun in a sentence, "
         "which never enters that code path at all.\n\n"
         f"currently breaking: {broken}"
+    )
+
+
+def test_the_corpus_prices_a_loosening_on_both_rates(monkeypatch) -> None:
+    """The whole corpus, not one pool, must be able to see BOTH sides of a trade.
+
+    THIS IS THE PROPERTY FINDING 16 SAID DID NOT EXIST, and the reason 5b was never
+    attempted. Measured then, over the whole corpus, forcing `_is_a_name_on_its_own` to
+    accept every lone token:
+
+        leak rate              9.0990%  ->  3.7498%   (512 -> 211)
+        false-redaction rate   9.4918%  ->  9.4918%   (508 -> 508, IDENTICAL)
+
+    A change that closed 301 leaks registered ZERO cost, while four of ten hand-written
+    realistic strings broke under it. An instrument that reports a loosening as free cannot
+    be used to judge one, which is why the note beside 5b says the corpus was the blocker
+    rather than the fifteen lines of rule.
+
+    Re-measured on 2026-08-12, after the false-positive pool, `fp_preposition`, the overlap
+    guards and `adv_lone_after_head`:
+
+        leak rate              9.3213%  ->  3.9872%   (526 -> 225)
+        false-redaction rate  10.2367%  -> 10.8604%   (558 -> 592, +34)
+
+    The instrument now works. This test is what keeps it working: a future corpus that
+    shrinks, or that grows only in the leak direction, fails here while both rates still
+    look perfectly healthy.
+
+    ASSERTED IN BOTH DIRECTIONS ON PURPOSE. A corpus that only sees leaks closing would
+    approve any loosening; one that only sees false redactions appearing would reject every
+    loosening including a good one. Judging a trade needs both numbers to move.
+
+    WHICH HALF IS ACTUALLY NEW, stated because review found the other half redundant. The 34
+    cases `caused` counts are the SAME 34 that `test_the_false_positive_pool_is_not_inert`
+    already counts, and against a stricter floor (20 there, 10 here) — so `caused` can never
+    fail without that test failing first and harder. That capability arrived with the
+    false-positive pool in #437, not here. The genuinely new assertion is `closed`: nothing
+    previously checked that the corpus still contains the shapes a loosening would HELP, and
+    a corpus pruned in that direction would price every loosening as pure cost.
+
+    `caused` is kept anyway, because the pair is what makes the docstring readable as a
+    statement about trades rather than two unrelated floors — and because if the pool test is
+    ever narrowed, this is the second place that notices.
+    """
+    cases = all_cases()
+
+    def measure() -> tuple[int, int]:
+        # One pass, and it reuses `run()` rather than re-deriving the filters. The first
+        # version evaluated the corpus twice per call — four times for the test — and scoped
+        # false redaction to `must_survive` alone, while the published rate uses
+        # `must_survive or expects_no_person`. The numerators happened to agree; a future case
+        # with neither tuple would have counted toward the ceiling and been invisible here.
+        report = run(cases)
+        return report.leak.failed, report.false_redaction.failed
+
+    leaks_before, fr_before = measure()
+    monkeypatch.setattr(pii_shield, "_is_a_name_on_its_own", lambda value: True)
+    leaks_after, fr_after = measure()
+
+    closed = leaks_before - leaks_after
+    caused = fr_after - fr_before
+
+    assert closed >= MIN_LEAKS_CLOSED_BY_LOOSENING, (
+        f"the maximum loosening closes only {closed} leaks, and the floor is "
+        f"{MIN_LEAKS_CLOSED_BY_LOOSENING}. The corpus has stopped containing the shapes a "
+        "loosening would help, so it can no longer show the BENEFIT side of the trade."
+    )
+    assert caused >= MIN_FALSE_REDACTIONS_CAUSED_BY_LOOSENING, (
+        f"the maximum loosening causes only {caused} false redactions, and the floor is "
+        f"{MIN_FALSE_REDACTIONS_CAUSED_BY_LOOSENING}.\n\n"
+        "This is the failure finding 16 recorded: an instrument that prices a loosening at "
+        "zero. It does not mean the loosening is free — it means the corpus cannot see what "
+        "it costs, and any 5b-shaped change judged against it would be judged on the benefit "
+        "alone. Add cases that put ordinary vocabulary where a relaxed single-token rule "
+        "would reach it, rather than more names."
     )
 
 
