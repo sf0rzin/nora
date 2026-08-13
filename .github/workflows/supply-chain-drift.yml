@@ -1,0 +1,106 @@
+name: supply-chain-drift
+
+# The scheduled half of the supply-chain check. `ci.yml`'s `supply-chain` job runs only when
+# the desktop or that workflow changes, which catches a regression a pull request INTRODUCES
+# and is blind to the more common case: an advisory published against a lock nobody touched.
+#
+# Without this, a new advisory sits invisible until somebody happens to open a desktop pull
+# request, and then reds THEIR check for something they did not do. Worst of both — no
+# continuous coverage, and the blame lands on the wrong author.
+#
+# DELIBERATELY NOT IN `ci-gate`. This is a separate workflow with no `pull_request` trigger,
+# so it can never block a merge. Its job is to be noticed, not to be a gate: a failing
+# scheduled run is a red mark on the Actions tab and an e-mail to the repository owner.
+#
+# It reuses `apps/desktop/src-tauri/deny.toml` unchanged, so there is exactly one policy and
+# the scheduled run cannot drift from the gating one.
+
+# TWO THINGS TO KNOW ABOUT `schedule:` BEFORE TRUSTING IT, since this is the repository's
+# first one:
+#   * GitHub DISABLES scheduled workflows after 60 days with no repository activity, and
+#     re-enabling is a manual click. On a repo that goes quiet this stops silently — which is
+#     exactly when a new advisory would matter most.
+#   * `desktop` in ci.yml's path filter does not watch this file, so editing it alone does not
+#     re-run the policy. The `infra` filter does watch `.github/workflows/**`, so shellcheck
+#     and the action-pin check still cover it.
+on:
+  schedule:
+    # Mondays 06:17 UTC. Off the hour on purpose: GitHub queues scheduled runs and the top of
+    # the hour is the most contended slot, which delays them by tens of minutes.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-drift
+  cancel-in-progress: false
+
+jobs:
+  advisories:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable branch @ 2026-08-05
+        with:
+          toolchain: stable
+
+      # KEEP IN STEP WITH the `supply-chain` job in ci.yml — same binary, same version, same
+      # checksum. Bumping one and not the other leaves both files internally consistent and
+      # silently runs two different tools against one deny.toml.
+      - name: Install cargo-deny (pinned, checksum-verified)
+        env:
+          DENY_VERSION: '0.20.2'
+          DENY_SHA256: '9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f'
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin" /tmp/sc && cd /tmp/sc
+          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors -o deny.tgz \
+            "https://github.com/EmbarkStudios/cargo-deny/releases/download/${DENY_VERSION}/cargo-deny-${DENY_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          echo "${DENY_SHA256}  deny.tgz" | sha256sum -c -
+          tar xzf deny.tgz --strip-components=1
+          install -m755 cargo-deny "$HOME/.local/bin/"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # No cache here on purpose, unlike the ci.yml job: a weekly run wants the current
+      # advisory database and a cold registry, not whatever a previous run happened to hold.
+      #
+      # `-D advisory-not-detected` is the ONE way this differs from the gate, and it is the
+      # reason the two jobs are not the same command. It escalates "an ignore entry stopped
+      # matching" to an error. That is right here and wrong on `ci-gate`: an entry stops
+      # matching when RustSec withdraws an advisory or a dependency finally moves — neither
+      # of which is anything to do with the pull request that would have been blocked.
+      # deny.toml therefore leaves `unused-ignored-advisory` at its default, and the
+      # strictness lives here, where a red mark costs a look rather than a merge.
+      #
+      # The flag goes AFTER `check`; `cargo-deny -D … check` is an argument error.
+      #
+      # `--log-level info` prints the `note[advisory-ignored]` lines with their reason
+      # strings — at the default level three ignores produce `advisories ok` and no trace.
+      - name: cargo-deny (the same policy ci.yml gates on, plus stale-ignore detection)
+        working-directory: apps/desktop/src-tauri
+        run: cargo-deny --log-level info --format human check -D advisory-not-detected
+
+      - name: Explain a failure where somebody will read it
+        if: failure()
+        run: |
+          {
+            echo "## Supply-chain drift"
+            echo ""
+            echo "\`cargo-deny\` failed on a lock file that nobody changed, so this is almost"
+            echo "certainly a NEWLY PUBLISHED advisory rather than something a commit did."
+            echo ""
+            echo "Two other things produce this, and they look identical in the checks UI:"
+            echo ""
+            echo "- an \`ignore\` entry in \`apps/desktop/src-tauri/deny.toml\` stopped matching."
+            echo "  \`unused-ignored-advisory = \"deny\"\` is intentional — the dependency moved"
+            echo "  and the entry should be DELETED, not renewed."
+            echo "- a crate was yanked from crates.io."
+            echo ""
+            echo "Read the log before editing the policy. Adding an \`ignore\` is the last"
+            echo "resort and needs the same reachability argument the existing entries carry."
+          } >> "$GITHUB_STEP_SUMMARY"

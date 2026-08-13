@@ -4,6 +4,24 @@ version = "0.2.5"
 description = "NORA Desktop - Meeting Intelligence"
 authors = ["sf0rzin"]
 edition = "2021"
+# Absent until cargo-deny reported this crate as unlicensed. `-only` because the root
+# LICENSE is the plain AGPLv3 text with no "or any later version" clause. No other
+# manifest in this repository declares one either.
+#
+# NOT inert: tauri-bundler's BundleSettings::license defaults to the Cargo.toml license
+# when `bundle.license` is unset in tauri.conf.json, which it is, and `bundle.targets` is
+# "all". So AGPL-3.0-only now appears in the Linux package metadata where nothing
+# appeared before. Correct, and worth knowing rather than discovering.
+license = "AGPL-3.0-only"
+# Never goes to crates.io — this is the desktop application, not a library. Inert for the
+# build: nothing in .github/, scripts/ or apps/desktop/ runs `cargo publish` or
+# `cargo package`, and it does not affect `cargo build` or `tauri build`.
+#
+# It IS load-bearing for the supply-chain gate, which is the non-obvious part. It is what
+# makes `[licenses.private] ignore = true` in deny.toml apply to this crate. Delete it as
+# redundant and `cargo deny check licenses` fails with `error[rejected]` on our own AGPL,
+# because that allow list is for dependencies and deliberately does not contain it.
+publish = false
 
 [lib]
 name = "nora_desktop_lib"
