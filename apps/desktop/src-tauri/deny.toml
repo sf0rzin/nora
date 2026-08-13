@@ -1,0 +1,139 @@
+# =============================================================================
+# cargo-deny — supply-chain policy for the desktop Rust crate.
+# =============================================================================
+#
+# Run by the `cargo-deny` job in ../../../.github/workflows/ci.yml, and locally with:
+#
+#     cd apps/desktop/src-tauri && cargo deny check
+#
+# WHY THIS EXISTS: until now nothing in any workflow looked at the Rust dependency
+# graph. The `glib` unsoundness was noticed only because `git push` happened to print
+# a Dependabot warning — see SECURITY-FINDINGS item 7.
+#
+# WHAT THIS TOOL CANNOT SEE, stated here so a green run is not read as more than it is.
+# cargo-deny 0.20.2 has no configuration for `informational = "unsound"` advisories:
+# `[advisories]` accepts db-path, db-urls, ignore and git-fetch-with-cli, and nothing
+# else. Measured, not assumed — RUSTSEC-2024-0429 (glib) is in the local advisory
+# database, affects the resolved `glib 0.18.5`, and does not appear anywhere in this
+# tool's output. That is why the CI job runs `cargo-audit` as well: cargo-audit DOES
+# report unsound advisories, and it is what surfaced RUSTSEC-2026-0190 on `anyhow`,
+# which was then fixed by a lock bump in the same commit that added this file.
+#
+# So: cargo-deny owns vulnerabilities, licenses, bans and sources. cargo-audit owns
+# the informational tail. Neither is a superset of the other.
+
+[graph]
+# The three targets the desktop client actually ships to. Without this, cargo-deny
+# evaluates the union of every platform's dependencies, which pulls in graphs that are
+# never built here. The gtk/glib stack is Linux-only and is included on purpose.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+]
+
+# =============================================================================
+[advisories]
+# =============================================================================
+# Everything here is an error unless it is on `ignore` with a reason. An ignored
+# advisory still prints a note on every run, which is the property that makes this
+# better than dismissing an alert in a web UI: it stays visible and it stays in review.
+
+# Unmaintained crates are checked against the WORKSPACE only, not the whole transitive
+# graph. With the default ("all") this check reports 17 errors, none of them actionable:
+# 10 are the gtk-rs GTK3 bindings, 5 are the rust-unic Unicode crates reached through
+# urlpattern, and one is proc-macro-error. Every one of them is pinned by Tauri 2 and
+# moves when Tauri moves. A gate that is red for something no commit here can change
+# teaches people to ignore it, which costs more than it buys.
+#
+# "workspace" keeps the check where it bites: a crate WE add that is unmaintained still
+# fails. That is the actionable half, and it is the half that was never being watched.
+unmaintained = "workspace"
+
+ignore = [
+    # ---------------------------------------------------------------------
+    # quick-xml — two denial-of-service advisories, same crate, same fix.
+    # ---------------------------------------------------------------------
+    # RUSTSEC-2026-0194: quadratic duplicate-attribute-name check in
+    #   BytesStart::attributes(). RUSTSEC-2026-0195: unbounded namespace-declaration
+    #   allocation in NsReader. Both patched in >= 0.41.0; the lock has 0.39.3.
+    #
+    # WHY NOT FIXED: it cannot be, from here. Measured rather than assumed —
+    #
+    #     $ cargo update -p quick-xml --precise 0.41.0
+    #     error: failed to select a version for the requirement `quick-xml = "^0.39.2"`
+    #     required by package `plist v1.9.0`
+    #       ... which satisfies dependency `plist = "^1"` of package `tauri v2.11.5`
+    #
+    # It moves when plist relaxes that bound, or when Tauri moves off plist 1.9.
+    #
+    # REACHABILITY, which is a different claim from presence: quick-xml arrives only
+    # through `plist`, and plist is used for Apple property lists. The call sites in
+    # the resolved graph are tauri-utils' `file_associations_plist` (which BUILDS a
+    # plist), tauri-codegen, tauri-plugin and embed_plist — all bundle-time or
+    # own-metadata paths. Our own crate never names plist or quick_xml. Both
+    # advisories require PARSING attacker-controlled XML, and no path here does.
+    #
+    # Limits of that check, so it is not read as stronger than it is: it is a
+    # source-level grep over the registry cache, so it would miss a call assembled by
+    # a macro, and it is a snapshot rather than an analysis of a linked binary.
+    #
+    # REVISIT WHEN: Tauri bumps plist. Delete these two entries and re-run — if they
+    # have gone, the ignore was temporary as intended.
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml pinned at ^0.39.2 by plist 1.9.0 via tauri; no untrusted-XML path in this product" },
+    { id = "RUSTSEC-2026-0195", reason = "same crate, same pin, same reachability argument as RUSTSEC-2026-0194" },
+]
+
+# =============================================================================
+[licenses]
+# =============================================================================
+# NORA is AGPL-3.0 (ADR 0017) and the desktop client is distributed as a binary, so
+# what its dependencies are licensed under is a real question rather than paperwork.
+#
+# The list below is the complete set present in the resolved graph today. Nothing was
+# added speculatively: a new license shows up as a failure, gets read, and gets added
+# here deliberately or the dependency does not land. There is no GPL, LGPL or AGPL
+# anywhere in the tree — the strongest copyleft present is MPL-2.0, which is
+# file-level and imposes nothing on a binary that merely links it.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unlicense",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
+    "CC0-1.0",
+    "BSL-1.0",
+]
+
+# `nora-desktop` itself now declares `license = "AGPL-3.0-only"` in Cargo.toml — it
+# declared nothing at all before this file existed, which is what made cargo-deny
+# report the crate as unlicensed. AGPL is deliberately NOT in the allow list above:
+# that list is for dependencies, and our own crate is covered by `private` below.
+[licenses.private]
+ignore = true
+
+# =============================================================================
+[bans]
+# =============================================================================
+# `warn`, not `deny`. Duplicate versions are normal in a graph this size (gtk-rs 0.18
+# and the tauri stack disagree on several crates) and turning that into a merge
+# blocker would produce noise rather than safety. It is here to be readable in the log.
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+# =============================================================================
+[sources]
+# =============================================================================
+# This one IS a hard denial, and it is the cheapest real protection in the file: a
+# dependency that resolves to a git URL or a registry other than crates.io is either
+# a mistake or something that needs a human. Measured clean today.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

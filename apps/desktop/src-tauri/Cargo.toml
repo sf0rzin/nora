@@ -4,6 +4,15 @@ version = "0.2.5"
 description = "NORA Desktop - Meeting Intelligence"
 authors = ["sf0rzin"]
 edition = "2021"
+# The repository is AGPL-3.0 (ADR 0017) and the root LICENSE carries the plain AGPLv3
+# text with no "or any later version" clause, which is what makes this `-only`. It was
+# absent until cargo-deny reported the crate as unlicensed; no other manifest in the
+# repo declares one either.
+license = "AGPL-3.0-only"
+# Never goes to crates.io — it is the desktop application, not a library. This also
+# makes `[licenses.private] ignore = true` in deny.toml apply to it, which is what
+# stops our own AGPL from having to appear in a list meant for dependencies.
+publish = false
 
 [lib]
 name = "nora_desktop_lib"
