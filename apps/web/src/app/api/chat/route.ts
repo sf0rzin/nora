@@ -376,6 +376,31 @@ function openAiSseToText(
   };
 
   return new ReadableStream<Uint8Array>({
+    // FLUSHES THE RESPONSE HEADERS BEFORE THE MODEL HAS SAID ANYTHING, and this one byte
+    // sequence is the difference between a working chat and a dead one.
+    //
+    // The configured model is a REASONING model: its deltas carry `reasoning_content` for
+    // several seconds before the first `content` token — measured against the deployed
+    // provider, fields `role, content, reasoning_content`, first `content` at 9,571ms on a
+    // one-line question with a minimal prompt, and longer with the real prompt. The loop below
+    // enqueues only on `content`, so for that whole stretch the stream produced nothing, the
+    // headers were never flushed, and Caddy killed the request with
+    // `net/http: timeout awaiting response headers` at its 120s limit. Measured end to end:
+    // 504 at 120,064ms. The chat was not slow, it was unreachable.
+    //
+    // Once ANY byte is out, that timeout is satisfied and the stream may take as long as the
+    // answer needs — the Caddyfile says so beside the setting: "Does not limit the stream's
+    // duration once it starts."
+    //
+    // U+200B (zero-width space) rather than a space or a newline: the client appends every
+    // decoded chunk straight into the visible message, so a real character would show up as a
+    // stray indent before the first word of every single answer.
+    start(controller) {
+      // Written as an escape on purpose: as a literal it is an invisible character in the
+      // source that a reformat, a copy-paste or an editor's "strip invisibles" would silently
+      // delete, taking the fix with it and leaving the comment above describing nothing.
+      controller.enqueue(encoder.encode("\u200B"));
+    },
     async pull(controller) {
       const { done, value } = await reader.read();
       if (done) {
