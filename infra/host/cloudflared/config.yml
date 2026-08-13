@@ -58,11 +58,16 @@
 # for — the api has its own session.
 #
 # `admin` says "required" rather than "fail-open without it", which is what this comment used
-# to imply and is backwards. Deleting the Access Application fails CLOSED: with
-# CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD set, apps/admin/src/lib/access.ts blocks any request
-# arriving without a `Cf-Access-Jwt-Assertion` header. The fail-OPEN condition is those two
-# variables being EMPTY, which is why ../docker-compose.yml marks both `:?` — see the comment
-# on the admin service there.
+# to imply and is backwards. Deleting the Access Application fails CLOSED:
+# apps/admin/src/lib/access.ts blocks any request arriving without a `Cf-Access-Jwt-Assertion`
+# header — as long as it is enforcing, which takes THREE conditions, not two:
+#
+#     NORA_ADMIN_USE_MOCKS == "false"     hardcoded on the admin service in ../docker-compose.yml
+#     CF_ACCESS_TEAM_DOMAIN  non-empty    marked `:?` there, so the stack will not start without it
+#     CF_ACCESS_AUD          non-empty    same
+#
+# The fail-OPEN condition is any of those three missing. All three hold in this compose, which
+# is why the conclusion above is true HERE and is not a property of access.ts on its own.
 #
 # HTTP type (not HTTPS): the origin has no TLS on purpose — the visitor's TLS
 # terminates at the Cloudflare edge and the cloudflared -> caddy leg never leaves

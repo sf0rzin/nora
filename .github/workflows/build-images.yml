@@ -1,8 +1,13 @@
 name: build-images
 
-# Builds + pushes Docker images to GHCR and PUBLISHES the "release pointer" that the pull
-# agent on the host consumes. This workflow does NOT talk to the host — it pushes
-# no deploy anywhere (ADR 0034 / Azure -> self-hosted migration; ADR 0036 corrects the substrate).
+# Builds + pushes Docker images to GHCR and PUBLISHES a "release pointer". This workflow does
+# NOT talk to the host — it pushes no deploy anywhere (ADR 0034 / Azure -> self-hosted
+# migration; ADR 0036 corrects the substrate).
+#
+# NOTE, BEFORE THE REST OF THIS FILE TALKS ABOUT "the pull agent": the pointer has no
+# consumer. Nothing on the host reads it, and rolling forward is a manual `deploy.sh --tag`.
+# The full statement, with the commands behind it, is in the header of deploy-host.yml.
+# Every "the agent does X" below describes the design.
 #
 # Triggers:
 #   - push on main: rebuild of the services that changed (path filter) + release pointer
@@ -16,8 +21,9 @@ name: build-images
 #
 # ROLLOUT (release-pointer job): replaced the old `deploy-apps`, which did
 # `azure/login` + `az containerapp update` via OIDC. The model is now PULL: this job only
-# ANNOUNCES which IMMUTABLE `sha-<short>` tags were built; the one applying them is the
-# agent on the host (see .github/workflows/deploy-host.yml and infra/host/scripts/).
+# ANNOUNCES which IMMUTABLE `sha-<short>` tags were built. Applying them was meant to be the
+# agent's job; there is no agent, so today it is an operator running
+# `infra/host/scripts/deploy.sh --tag sha-<short>`. See deploy-host.yml's header.
 #
 # Why the immutable tag is still the mechanism: `docker compose up -d` compares the
 # RESOLVED image of the service. With `:latest` the reference does not change, Compose

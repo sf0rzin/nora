@@ -30,7 +30,9 @@ name: deploy-host
 # #  real; the consumer that was supposed to read it was never written.                    #
 # ##########################################################################################
 #
-#   $ git ls-remote --tags origin 'refs/tags/release/prod/*' | wc -l   -> 52  (26 tags)
+#   $ git ls-remote --tags origin 'refs/tags/release/prod/*'           -> dozens of tags, one
+#                                                                        per promoted SHA, and
+#                                                                        one more on every merge
 #   $ grep -rn "ls-remote\|release/prod" infra/host/                   -> one hit, and it is a
 #                                                                         comment in deploy.sh
 #                                                                         saying exactly this.
@@ -301,7 +303,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${WEBHOOK_URL:-}" ]; then
-            echo "NORA_DEPLOY_WEBHOOK_URL not configured — the agent will pick it up by polling."
+            echo "NORA_DEPLOY_WEBHOOK_URL not configured. Nothing polls for this pointer either —"
+            echo "roll forward with: deploy.sh --tag sha-<short>  (see this workflow's header)."
             exit 0
           fi
           payload=$(jq -nc --arg sha "$SHA" --arg short "$SHORT" \
@@ -322,7 +325,7 @@ jobs:
             -d "$payload" || echo "000")
           echo "webhook HTTP $code"
           if [ "$code" != "200" ] && [ "$code" != "202" ] && [ "$code" != "204" ]; then
-            echo "::warning::Webhook not confirmed (HTTP $code). The pointer was published anyway; the agent converges by polling."
+            echo "::warning::Webhook not confirmed (HTTP $code). The pointer was published anyway — but nothing consumes it, so roll forward manually with deploy.sh --tag."
             head -c 500 /tmp/hook.out || true
           fi
 
@@ -345,7 +348,7 @@ jobs:
               echo "| Immutable tag | \`release/prod/$SHORT\` |"
               echo "| Moving pointer | \`release/prod/current\` → \`$SHORT\` |"
               echo ""
-              echo "### O host aplica"
+              echo "### What a deploy applies on the host"
               echo ""
               echo '```dotenv'
               cat pointer/deploy.env 2>/dev/null || jq -r '.services[] | "\(.compose_var)=\(.tag)"' pointer/release.json
