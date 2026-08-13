@@ -157,7 +157,12 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Raised from 15 for the Playwright steps below: a chromium download plus the suite adds
+    # a few minutes, and this job now also starts a server. The e2e steps live HERE rather
+    # than in a job of their own so they reuse this job's `npm ci` and `next build` — the
+    # suite runs `next start` against exactly the build this job just verified, which is
+    # both cheaper and a stronger statement than testing a separate build would be.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v7
@@ -174,11 +179,48 @@ jobs:
       - name: Typecheck
         working-directory: apps/web
         run: npm run typecheck
+      # `NEXT_PUBLIC_API_BASE_URL` is new here and is not cosmetic. Unset, `next.config.mjs`'s
+      # `apiOrigin()` returns null and the CSP ships `connect-src 'self'` — while
+      # `src/lib/api/client.ts` still falls back to its own hardcoded `http://localhost:8080`.
+      # The two disagree about where the API lives, so the application violates its own policy
+      # on every page that fetches. The e2e suite caught exactly that, on four of six pages.
+      #
+      # Production builds set this (to https://api.nora.systems), so production does not have
+      # the defect; the DEFAULT does. Setting it here makes CI measure a coherent configuration
+      # rather than one that exists nowhere. The underlying mismatch — two files with different
+      # defaults for one value — is a defect in its own right and is recorded as such.
       - name: Build
         working-directory: apps/web
         env:
           NEXT_PUBLIC_USE_MOCKS: 'true'
+          NEXT_PUBLIC_API_BASE_URL: 'http://localhost:8080'
         run: npm run build
+
+      # chromium only. The suite checks response headers, middleware redirects and CSP
+      # violations — none of which is browser-specific, and a three-browser matrix would
+      # triple the download for no additional statement.
+      - name: Install Playwright browsers
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      # The first automated test `apps/web` has ever had. It runs `next start` against the
+      # build above (see playwright.config.ts) — NOT `next dev`, whose injected scripts and
+      # websocket would raise CSP violations that exist in no deployed build.
+      # No `env:` here on purpose. Both variables are `NEXT_PUBLIC_*`, inlined into the client
+      # bundle at BUILD time — setting them on the test step changes nothing and would read as
+      # a guarantee it cannot make. The build step above is the only place they matter.
+      - name: E2E — security headers, route protection, CSP violations
+        working-directory: apps/web
+        run: npm run test:e2e
+
+      - name: Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
 
   # Light job on PR: only sidecar tests (cheaper) + Python sanity check.
   # The sidecar is the only part with testable domain logic outside Tauri/Rust;
