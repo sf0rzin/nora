@@ -1,8 +1,13 @@
 name: build-images
 
-# Builds + pushes Docker images to GHCR and PUBLISHES the "release pointer" that the pull
-# agent on the host consumes. This workflow does NOT talk to the host — it pushes
-# no deploy anywhere (ADR 0034 / Azure -> self-hosted migration; ADR 0036 corrects the substrate).
+# Builds + pushes Docker images to GHCR and PUBLISHES a "release pointer". This workflow does
+# NOT talk to the host — it pushes no deploy anywhere (ADR 0034 / Azure -> self-hosted
+# migration; ADR 0036 corrects the substrate).
+#
+# NOTE, BEFORE THE REST OF THIS FILE TALKS ABOUT "the pull agent": the pointer has no
+# consumer. Nothing on the host reads it, and rolling forward is a manual `deploy.sh --tag`.
+# The full statement, with the commands behind it, is in the header of deploy-host.yml.
+# Every "the agent does X" below describes the design.
 #
 # Triggers:
 #   - push on main: rebuild of the services that changed (path filter) + release pointer
@@ -16,8 +21,9 @@ name: build-images
 #
 # ROLLOUT (release-pointer job): replaced the old `deploy-apps`, which did
 # `azure/login` + `az containerapp update` via OIDC. The model is now PULL: this job only
-# ANNOUNCES which IMMUTABLE `sha-<short>` tags were built; the one applying them is the
-# agent on the host (see .github/workflows/deploy-host.yml and infra/host/scripts/).
+# ANNOUNCES which IMMUTABLE `sha-<short>` tags were built. Applying them was meant to be the
+# agent's job; there is no agent, so today it is an operator running
+# `infra/host/scripts/deploy.sh --tag sha-<short>`. See deploy-host.yml's header.
 #
 # Why the immutable tag is still the mechanism: `docker compose up -d` compares the
 # RESOLVED image of the service. With `:latest` the reference does not change, Compose
@@ -249,7 +255,9 @@ jobs:
   # ANNOUNCES the rollout — does not execute it. Replaced the old `deploy-apps` (azure/login
   # + `az containerapp update`). There is no host credential, SSH, self-hosted runner nor
   # inbound port here: the job only materializes "which immutable tags exist for this SHA" in
-  # two formats consumable by the pull agent running on the host:
+  # two formats a pull agent on the host could consume. NOTE: that agent does not exist — see
+  # the header block in deploy-host.yml. These artifacts are produced and nothing reads them.
+  # The two formats are:
   #
   #   - artifact `nora-release-pointer` (release.json + deploy.env) — the agent downloads it
   #     via the Actions API (GET /repos/{owner}/{repo}/actions/artifacts?name=nora-release-pointer)
@@ -307,8 +315,10 @@ jobs:
             fi
             if [ "$result" != "success" ]; then
               # Warning, not error: a broken build must not drag down the pointer of the
-              # services that passed. The host applies the partial one and the broken
-              # service stays on the previous tag (which is up).
+              # services that passed. A deploy applies the partial pointer and the broken
+              # service stays on the previous tag (which is up). "A deploy" because it is an
+              # operator running deploy.sh — nothing applies this automatically, see the NOTE
+              # at the top of this file.
               echo "::warning::$name: build=$result — left out of the pointer"
               return
             fi
@@ -361,7 +371,8 @@ jobs:
             if [ "${COUNT:-0}" = "0" ]; then
               echo "_No service in the pointer at this SHA (nothing changed, or the builds failed)._"
             else
-              echo "The pull agent on the host applies these lines to the compose \`.env\`:"
+              echo "These are the lines a deploy applies to the compose \`.env\` on the host."
+              echo "Nothing applies them automatically — see the header of \`deploy-host.yml\`:"
               echo ""
               echo '```dotenv'
               cat pointer/deploy.env

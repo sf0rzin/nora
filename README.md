@@ -74,7 +74,7 @@ docs/                      Documentation, see below
 | Desktop | Tauri 2 · Rust · `whisper-rs` for on-device speech-to-text |
 | Hosting | Self-hosted: one bare-metal Ubuntu host, no hypervisor, Docker Compose, Cloudflare Tunnel, Caddy, SOPS + age |
 | Observability | OpenTelemetry Collector · Prometheus · Loki · Alloy · Grafana |
-| CI/CD | GitHub Actions. Deployment is pull-based: the host fetches an immutable release pointer |
+| CI/CD | GitHub Actions. Deployment is pull-based — nothing pushes to the host. The release pointer is published but has no consumer yet, so rolling forward is a manual `deploy.sh --tag` |
 | Model | OpenAI `gpt-4o-mini` by default; the client is provider-agnostic |
 
 ## Running it locally

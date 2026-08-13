@@ -416,8 +416,11 @@ NORA runs on a single self-hosted bare-metal host — Ubuntu, no hypervisor, Doc
 Compose v2 — under compose project `nora` (ADR 0034; substrate corrected by ADR 0036, which found
 no hypervisor and no other guest on the machine). Provisioned via
 `infra/host/docker-compose.yml` and deployed by `deploy-host.yml`, which publishes an immutable
-release pointer that a pull agent on the host applies — the deploy direction is PULL, never PUSH,
-because the repository is public (ADR 0017). Operational details (the self-hosting pitfalls,
+release pointer. The deploy direction is PULL, never PUSH, because the repository is public
+(ADR 0017) — but the consumer half was never written: nothing on the host reads that pointer, so
+rolling forward is a manual `deploy.sh --tag sha-<short>` today. The installed `nora-deploy.timer`
+runs `deploy.sh --if-changed` with no `--tag`, which re-checks the release already running rather
+than discovering a newer one. See the header of `.github/workflows/deploy-host.yml`. Operational details (the self-hosting pitfalls,
 first-deployment steps, rollback, restore drill) live in `docs/operations/host-deploy.md`.
 
 ### Current inventory
@@ -425,7 +428,7 @@ first-deployment steps, rollback, restore drill) live in `docs/operations/host-d
 | Resource | Replaces | Detail |
 |---|---|---|
 | `postgres` / `postgres-platform` | Postgres Flexible Server (×2) | `pgvector/pgvector:pg16`, ADR 0022 blast-radius split |
-| `cloudflared` + `caddy` | Container Apps external ingress | Cloudflare Tunnel (only ingress) + Host-based routing |
+| `cloudflared` + `caddy` | Container Apps external ingress | Cloudflare Tunnel (the only ingress for HTTP) + Host-based routing |
 | `secrets.env.sops` (SOPS + age) | Key Vault + Managed Identities | Encrypted, versioned in git; private key only on the host |
 | `otel-collector` → `prometheus` | Application Insights | `opentelemetry-javaagent` on the API only |
 | `alloy` → `loki` | Log Analytics | Docker socket log collection |
