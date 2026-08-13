@@ -44,6 +44,13 @@ type Fixtures = {
  * a test that passes without ever reaching its subject. A separate context makes the two
  * genuinely independent, so the anonymous fixture is anonymous.
  */
+// `react-hooks/rules-of-hooks` is turned off for `e2e/**` in .eslintrc.json, and this is the
+// line that needs it: the rule matches any identifier starting with `use` called outside a
+// component, and Playwright's fixture callback argument is named `use`. There is no React in
+// this directory. The alternative — an eslint-disable comment on every fixture anyone ever
+// writes — is worse, and the override is scoped so the rule keeps protecting the real
+// component code. (`.eslintrc.json` cannot carry this note itself: eslint rejects an unknown
+// key, including `comment`, which is how the first version of the override failed CI.)
 export const test = base.extend<Fixtures>({
   authedPage: async ({ browser, baseURL }, use) => {
     const url = new URL(baseURL ?? "http://127.0.0.1:3100");

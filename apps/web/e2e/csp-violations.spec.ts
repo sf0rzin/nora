@@ -1,3 +1,5 @@
+import type { Page } from "@playwright/test";
+
 import { test, expect, collectCspViolations } from "./fixtures";
 
 /**
@@ -95,7 +97,7 @@ test.describe("CSP violations", () => {
   });
 });
 
-async function assertNoViolations(page: import("@playwright/test").Page, path: string) {
+async function assertNoViolations(page: Page, path: string) {
   const read = await collectCspViolations(page);
 
   const response = await page.goto(path);
