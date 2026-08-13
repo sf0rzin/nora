@@ -20,6 +20,12 @@ ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_USE_MOCKS=false
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 ENV NEXT_PUBLIC_USE_MOCKS=${NEXT_PUBLIC_USE_MOCKS}
+# The CSP measurement switch (see next.config.mjs). Declared here because Docker DISCARDS a
+# --build-arg for an ARG that is not declared, silently: without these two lines,
+# `docker build --build-arg NORA_CSP_PROBE=strict` produces an ordinary image and says
+# nothing, which is precisely the silent no-op that switch exists to avoid.
+ARG NORA_CSP_PROBE=
+ENV NORA_CSP_PROBE=${NORA_CSP_PROBE}
 RUN npm run build
 
 # --- runtime ---
