@@ -27,7 +27,7 @@
 | **Auth** | JWT (JJWT 0.12) + stateful refresh tokens (V011); HttpOnly cookies | SSO Entra ID/SAML post-MVP |
 | **Desktop** | Tauri 2 + Rust | Native audio capture; ADR 0008. On-device Whisper is the default path (ADR 0035); the Python sidecar is still in the tree behind the `stt-azure` feature, pending validation on all three targets. Maintained by @pollotherunner. |
 | **Infra** | Self-hosted: single bare-metal Ubuntu host, no hypervisor, Docker Compose (ADR 0034/0036) | Cloudflare Tunnel ingress, SOPS + age secrets, pull-based deploy |
-| **CI/CD** | GitHub Actions: `ci.yml` + `build-images.yml` + `deploy-host.yml` | Push to GHCR; host pulls an immutable release pointer |
+| **CI/CD** | GitHub Actions: `ci.yml` + `build-images.yml` + `deploy-host.yml` | Push to GHCR; the host pulls, but rolling forward is still manual — see CLAUDE.md |
 
 ### MVP Scope Decision
 

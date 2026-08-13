@@ -18,11 +18,24 @@ GitHub Actions                           GitHub Actions
   azure/login (federated OIDC)             (no deploy credential)
   az containerapp update  ──push──►        push ghcr.io/...:sha-xxxxxxx
   Container Apps                           tag git release/prod/current
-                                                        │
-                                           Host          │ (pull, every 5 min)
-                                             nora-deploy.timer
-                                             └─► deploy.sh ─► docker compose up -d --wait
+                                                        ╳  nothing reads this
+                                           Host
+                                             nora-deploy.timer  (every 5 min)
+                                             └─► deploy.sh --if-changed
+                                                   └─► re-checks the tag ALREADY running
+                                             operator, by hand, to roll forward:
+                                             └─► deploy.sh --tag sha-xxxxxxx
+                                                   └─► docker compose up -d --wait
 ```
+
+**Read the `╳`.** An earlier version of this diagram drew a line from the published tag
+down into the timer, and that line is the one thing here that does not exist. The tag is
+published; nothing on the host consumes it. The timer is real and runs every five minutes,
+but with no `--tag` it re-probes the release already running — whose digest never changes,
+rollouts being immutable `sha-<short>` tags — so it verifies rather than advances.
+
+That made the drawing more convincing than the prose, and it is why it outlived three
+rounds of correcting the prose. The full statement is in the header of `deploy-host.yml`.
 
 ## Why pull, and not push
 
@@ -31,7 +44,9 @@ It is not a matter of style preference — both push alternatives are closed off
 - **Self-hosted runner** — the repository is **public** (ADR 0017) and `deploy-infra.yml` had a `pull_request` trigger. A persistent runner on the home network would execute PR code from an arbitrary fork. Critical risk, not hypothetical.
 - **SSH from the GitHub-hosted runner** — it would require exposing `sshd` to the internet, because hosted runners do not have a stable IP range to allowlist.
 
-Pull eliminates both: **zero inbound ports, zero SSH keys in Secrets, zero runners.** The host opens an outbound connection to GHCR and to Cloudflare, and nothing else.
+Pull eliminates both: **the deploy path opens no inbound port, needs zero SSH keys in Secrets and zero runners.** For the deploy to work, the host only ever opens outbound connections — to GHCR and to Cloudflare.
+
+That is a property of the deploy path, not of the machine. sshd listens on 22 independently of any of this, and when last measured (2026-08-11) it was reachable from the internet. See `docs/operations/host-deploy.md` §firewall.
 
 ## Workflow by workflow
 
@@ -87,7 +102,7 @@ JWT_SECRET       CLOUDFLARE_TUNNEL_TOKEN
 | Name | Type | What for |
 |---|---|---|
 | `GHCR_PULL_TOKEN` | Secret | A PAT with **only** `read:packages`, used by the host for `docker login ghcr.io`. It does not go into GitHub — it goes into the host's `secrets.env.sops`. Listed here because it is generated in the GitHub UI. |
-| `NORA_RELEASE_WEBHOOK` | Secret (optional) | URL that `deploy-host.yml` calls to wake the pull agent before the next 5-minute tick. Without it the deploy is just slower, it does not break. |
+| `NORA_RELEASE_WEBHOOK` | Secret (optional) | URL that `deploy-host.yml` would call to wake the pull agent. **That agent was never written**, so this is unset and the POST step is skipped. See the header block in `deploy-host.yml`. |
 | `CF_ACCESS_AUD` | **Secret**, not Variable | See below. |
 
 ## Pre-existing bug that the migration needs to close

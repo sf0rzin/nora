@@ -823,7 +823,8 @@ fi
 # --if-changed: compares the remote digest with the recorded one. It is what the timer uses.
 #
 # WHAT THIS DOES NOT DO, so a working gate is not mistaken for continuous deployment.
-# The timer calls this with no `--tag` (bootstrap-host.sh:135), so the tag probed below is the
+# The timer calls this with no `--tag` (see bootstrap-host.sh's `ExecStart=` line — no line
+# number here on purpose: it has drifted twice already), so the tag probed below is the
 # tag ALREADY RUNNING (`want_tag="${TAG:-$(running_tag "$s")}"`). Rollouts use immutable
 # `sha-<short>` tags, and an immutable tag's digest never changes — so this branch is a check
 # that the running release is intact, NOT a check for a newer one. Rolling forward would mean
