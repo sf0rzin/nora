@@ -315,8 +315,10 @@ jobs:
             fi
             if [ "$result" != "success" ]; then
               # Warning, not error: a broken build must not drag down the pointer of the
-              # services that passed. The host applies the partial one and the broken
-              # service stays on the previous tag (which is up).
+              # services that passed. A deploy applies the partial pointer and the broken
+              # service stays on the previous tag (which is up). "A deploy" because it is an
+              # operator running deploy.sh — nothing applies this automatically, see the NOTE
+              # at the top of this file.
               echo "::warning::$name: build=$result — left out of the pointer"
               return
             fi

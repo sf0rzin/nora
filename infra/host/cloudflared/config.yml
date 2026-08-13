@@ -59,8 +59,9 @@
 #
 # `admin` says "required" rather than "fail-open without it", which is what this comment used
 # to imply and is backwards. Deleting the Access Application fails CLOSED:
-# apps/admin/src/lib/access.ts blocks any request arriving without a `Cf-Access-Jwt-Assertion`
-# header — as long as it is enforcing, which takes THREE conditions, not two:
+# apps/admin/src/lib/access.ts blocks every route that calls it, when a request arrives with no
+# `Cf-Access-Jwt-Assertion` header — as long as it is enforcing, which takes THREE conditions,
+# not two:
 #
 #     NORA_ADMIN_USE_MOCKS == "false"     hardcoded on the admin service in ../docker-compose.yml
 #     CF_ACCESS_TEAM_DOMAIN  non-empty    marked `:?` there, so the stack will not start without it
@@ -68,6 +69,11 @@
 #
 # The fail-OPEN condition is any of those three missing. All three hold in this compose, which
 # is why the conclusion above is true HERE and is not a property of access.ts on its own.
+#
+# "every route that calls it" rather than "every request": apps/admin/src/app/healthz/route.ts
+# is `force-static` and calls no gate. It returns the string "ok" and reaches no data, so this
+# is a precision note rather than a hole. Every route that renders or mutates anything —
+# layout, page, models, telemetry, and the model actions — goes through checkAccess/requireAccess.
 #
 # HTTP type (not HTTPS): the origin has no TLS on purpose — the visitor's TLS
 # terminates at the Cloudflare edge and the cloudflared -> caddy leg never leaves

@@ -428,7 +428,7 @@ first-deployment steps, rollback, restore drill) live in `docs/operations/host-d
 | Resource | Replaces | Detail |
 |---|---|---|
 | `postgres` / `postgres-platform` | Postgres Flexible Server (×2) | `pgvector/pgvector:pg16`, ADR 0022 blast-radius split |
-| `cloudflared` + `caddy` | Container Apps external ingress | Cloudflare Tunnel (only ingress) + Host-based routing |
+| `cloudflared` + `caddy` | Container Apps external ingress | Cloudflare Tunnel (the only ingress for HTTP) + Host-based routing |
 | `secrets.env.sops` (SOPS + age) | Key Vault + Managed Identities | Encrypted, versioned in git; private key only on the host |
 | `otel-collector` → `prometheus` | Application Insights | `opentelemetry-javaagent` on the API only |
 | `alloy` → `loki` | Log Analytics | Docker socket log collection |

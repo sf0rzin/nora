@@ -33,6 +33,9 @@ name: deploy-host
 #   $ git ls-remote --tags origin 'refs/tags/release/prod/*'           -> dozens of tags, one
 #                                                                        per promoted SHA, and
 #                                                                        one more on every merge
+#                                                                        that changes a service
+#                                                                        (the tag step is
+#                                                                        guarded on count != 0)
 #   $ grep -rn "ls-remote\|release/prod" infra/host/                   -> one hit, and it is a
 #                                                                         comment in deploy.sh
 #                                                                         saying exactly this.
@@ -290,8 +293,10 @@ jobs:
       # OPTIONAL notification. Just a "wake up and reconcile" — it carries no command nor
       # credential, and the agent checks the SHA against the tag before applying. The endpoint
       # is published by the Cloudflare Tunnel (egress-only): still no inbound port.
-      # If it fails, it does NOT fail the job: the pointer (tag) is already published and the
-      # agent's polling converges on its own. Notification is latency, not correctness.
+      # If it fails, it does NOT fail the job: the pointer (tag) is already published, and in
+      # the design the agent's polling converges on its own. There is no agent and nothing
+      # polls, so today the failure of this step changes nothing at all — rolling forward was
+      # already going to be a manual `deploy.sh --tag`.
       - name: Notify the agent (webhook via Cloudflare Tunnel — optional)
         if: steps.pointer.outputs.count != '0'
         continue-on-error: true

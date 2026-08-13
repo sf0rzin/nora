@@ -18,11 +18,24 @@ GitHub Actions                           GitHub Actions
   azure/login (federated OIDC)             (no deploy credential)
   az containerapp update  ──push──►        push ghcr.io/...:sha-xxxxxxx
   Container Apps                           tag git release/prod/current
-                                                        │
-                                           Host          │ (pull, every 5 min)
-                                             nora-deploy.timer
-                                             └─► deploy.sh ─► docker compose up -d --wait
+                                                        ╳  nothing reads this
+                                           Host
+                                             nora-deploy.timer  (every 5 min)
+                                             └─► deploy.sh --if-changed
+                                                   └─► re-checks the tag ALREADY running
+                                             operator, by hand, to roll forward:
+                                             └─► deploy.sh --tag sha-xxxxxxx
+                                                   └─► docker compose up -d --wait
 ```
+
+**Read the `╳`.** An earlier version of this diagram drew a line from the published tag
+down into the timer, and that line is the one thing here that does not exist. The tag is
+published; nothing on the host consumes it. The timer is real and runs every five minutes,
+but with no `--tag` it re-probes the release already running — whose digest never changes,
+rollouts being immutable `sha-<short>` tags — so it verifies rather than advances.
+
+That made the drawing more convincing than the prose, and it is why it outlived three
+rounds of correcting the prose. The full statement is in the header of `deploy-host.yml`.
 
 ## Why pull, and not push
 
