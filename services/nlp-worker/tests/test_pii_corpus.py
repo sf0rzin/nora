@@ -673,3 +673,149 @@ def test_an_allow_listed_term_is_never_itself_redacted(product: str) -> None:
     ):
         out = redact(text).redacted_text
         assert product.lower() in out.lower(), f"{product!r} was redacted out of {text!r}: {out!r}"
+
+
+# --------------------------------------------------------------------------- #
+# Finding 5c: the tenant's own trade names, guarded by measurement
+#
+# The first attempt at 5c (PR #451, closed unmerged) tried to decide in advance which terms
+# were safe, by refusing any that collided with _BR_TOP_NAMES | _BR_TOP_SURNAMES. Review
+# proved that cannot work: those sets hold 372 tokens and this module catches most names by
+# SHAPE, so the gate was blind exactly where the module says the common case lives. The three
+# cases below all passed that gate and leaked a full name.
+#
+# So nothing here trusts a term. `redact` runs twice and keeps the second result only if every
+# token it freed was declared by the tenant. These tests are the contract, not the gate.
+# --------------------------------------------------------------------------- #
+
+# Verbatim from the review that closed #451. Each one is redacted correctly on the baseline
+# pass and leaked a full name on the candidate pass.
+LEAKED_UNDER_THE_OLD_GATE = [
+    ("Northwind", "NORTHWIND NIVALDO ZANCHETTA: fechamos o escopo", ("NIVALDO", "ZANCHETTA")),
+    ("Kranz Digital Solutions", "Wanderleia Kranz Digital Solutions fechou.", ("Wanderleia",)),
+    ("Casa das Maquinas", "Nivaldo das Neves aprovou o plano.", ("Nivaldo", "Neves")),
+]
+
+
+@pytest.mark.parametrize("company,text,must_vanish", LEAKED_UNDER_THE_OLD_GATE)
+def test_a_tenant_term_never_frees_a_person_it_did_not_declare(
+    company: str, text: str, must_vanish: tuple[str, ...]
+) -> None:
+    """The regressions that killed the previous attempt, pinned as tests.
+
+    `Wanderleia` is the one to look at: she is not the trade name, not adjacent to it by
+    intent, and was freed only because an admitted token split the run and stranded her as a
+    lone name. No list-based gate can see that, because it depends on the transcript.
+    """
+    terms = pii_shield.admissible_tenant_terms(company, [])
+    assert terms, f"{company!r} should still be admitted -- the guard, not the gate, is the control"
+    out = redact(text, terms).redacted_text
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
+    for token in must_vanish:
+        assert token not in stripped, (
+            f"{token!r} leaked with tenant terms {sorted(terms)}: {out!r}\n"
+            "The guard in `redact` should have discarded the candidate pass and returned the "
+            "baseline. Either the guard stopped running or _surviving_tokens stopped seeing it."
+        )
+    assert out == redact(text).redacted_text, (
+        "when the guard rejects, the result must be EXACTLY the baseline pass -- a third "
+        "behaviour here would be a shield nobody has measured"
+    )
+
+
+def test_no_tenant_term_can_free_an_undeclared_token_anywhere_in_the_corpus() -> None:
+    """The contract, over all 5,885 cases, with the most hostile term set available.
+
+    The terms are the corpus's OWN person-name pools declared as trade names -- the worst
+    input this feature can receive, and one no gate would ever admit. The assertion is not
+    "nothing changed": 2,466 cases DO change. It is that nothing outside the declared set was
+    ever freed, which is the only promise this feature makes.
+    """
+    hostile = frozenset(
+        pii_shield._fold(n) for n in (list(pools.OFF_LIST_SURNAME) + list(pools.OFF_LIST_GIVEN))
+    )
+    violations = []
+    changed = 0
+    for case in all_cases():
+        base = redact(case.text).redacted_text
+        out = redact(case.text, hostile).redacted_text
+        if out != base:
+            changed += 1
+        escaped = set(pii_shield._surviving_tokens(out) - pii_shield._surviving_tokens(base))
+        if escaped - hostile:
+            violations.append((case.text, sorted(escaped - hostile)))
+
+    assert not violations, (
+        f"{len(violations)} case(s) freed a token nobody declared. First few:\n"
+        + "\n".join(f"  {t!r} -> {e}" for t, e in violations[:5])
+    )
+    # The pool has to be able to fail, or a green run means nothing -- same rule as
+    # `test_the_false_positive_pool_is_not_inert`.
+    assert changed > 500, (
+        f"only {changed} cases changed under hostile terms; this check has stopped exercising "
+        "the guard and would pass with the feature disabled"
+    )
+
+
+def test_empty_tenant_terms_change_nothing_at_all() -> None:
+    """Empty must not fail open -- as IDENTITY, over the corpus, not as "still redacts"."""
+    for empty in (
+        pii_shield.admissible_tenant_terms("", []),
+        pii_shield.admissible_tenant_terms(None, None),
+        frozenset(),
+    ):
+        assert empty == frozenset()
+        for case in all_cases():
+            assert redact(case.text, empty).redacted_text == redact(case.text).redacted_text
+
+
+@pytest.mark.parametrize("company", ["Northwind", "Contoso", "Zendesk"])
+@pytest.mark.parametrize("given,surname", [("Andre", "Teixeira"), ("Marina", "Alves")])
+def test_an_admitted_term_keeps_its_name_without_freeing_the_person(
+    company: str, given: str, surname: str
+) -> None:
+    """5c itself. The company survives; the person does not.
+
+    None of these three is in `_PERSON_NAME_NEGATIVE_LIST` -- checked by
+    `test_the_5c_sample_is_not_already_handled` below, because the previous attempt's sample
+    included Protheus and Datasul, which are, so four of its ten cases were inert.
+    """
+    terms = pii_shield.admissible_tenant_terms(company, [])
+    text = f"{company} {given} {surname} confirmou a renovacao."
+    out = redact(text, terms).redacted_text
+
+    assert company in out, f"{company!r} was eaten with the person: {out!r}"
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
+    assert given not in stripped, f"{given!r} leaked: {out!r}"
+    assert surname not in stripped, f"{surname!r} leaked: {out!r}"
+
+
+@pytest.mark.parametrize("company", ["Northwind", "Contoso", "Zendesk"])
+def test_the_5c_sample_is_not_already_handled(company: str) -> None:
+    """Stops the headline test above from going inert the way the previous one did.
+
+    A term already on the static negative list produces identical output with and without the
+    feature, so a sample drawn from those would assert nothing about 5c at all.
+    """
+    assert pii_shield._fold(company) not in pii_shield._PERSON_NAME_NEGATIVE_LIST, (
+        f"{company!r} is now on the static negative list, so this case no longer exercises "
+        "the tenant-term path. Pick a term that is not already handled."
+    )
+
+
+def test_the_residual_risk_is_what_the_contract_says_it_is() -> None:
+    """The honest limit, pinned so it cannot drift into a stronger claim.
+
+    A tenant that declares a term which is ALSO a person's surname keeps that surname in the
+    clear for its own transcripts. That is not a hole in the guard -- the token was declared,
+    and the feature is definitionally "let the tenant keep its own name". It is the
+    irreducible cost, and it is recorded here rather than in a comment nobody re-runs.
+    """
+    terms = pii_shield.admissible_tenant_terms("Nardelli Consultoria", [])
+    out = redact("Nardelli Consultoria enviou a proposta.", terms).redacted_text
+    assert "Nardelli" in out, (
+        "the residual changed shape. Re-derive it before relaxing this test: the guard's "
+        "promise is 'no UNDECLARED token is freed', never 'no surname is ever freed'."
+    )
+    # ...and the same surname is still redacted for a tenant that did NOT declare it.
+    assert "Nardelli" not in redact("Nardelli Consultoria enviou a proposta.").redacted_text

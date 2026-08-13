@@ -46,7 +46,14 @@ logger = logging.getLogger(__name__)
 
 @router.post("/analyze", response_model=AnalyzeResponse, response_model_by_alias=True)
 def analyze(req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> AnalyzeResponse:
-    redaction = pii_shield.redact(req.transcript)
+    # Computed from THIS request's body and discarded when the call returns: no module cache,
+    # no ContextVar, no memoisation, so one tenant's trade names cannot reach another tenant's
+    # transcript by construction rather than by discipline. `redact` does not trust them --
+    # it measures their effect on this text and throws the pass away if any person was freed.
+    tenant_terms = pii_shield.admissible_tenant_terms(
+        req.tenant_context.company_name, req.tenant_context.competitors
+    )
+    redaction = pii_shield.redact(req.transcript, tenant_terms)
     safe_req = req.model_copy(update={"transcript": redaction.redacted_text})
 
     # Baseline TF-IDF over ALREADY REDACTED text --- ensures PII does not leak
@@ -131,6 +138,9 @@ def analyze_live(
     Does not generate summary, sentiment, topics or TF-IDF baseline.
     Returns only: decisions, nextSteps, observations, tasks.
     """
+    # No tenant terms, deliberately: `LiveAnalyzeRequest` carries no tenant context to compute
+    # them from. This path keeps over-redacting a company name in front of a person and never
+    # under-redacts a person, which is the right default for the endpoint that cannot ask.
     redaction = pii_shield.redact(req.transcript_chunk)
     safe_req = req.model_copy(update={"transcript_chunk": redaction.redacted_text})
 
