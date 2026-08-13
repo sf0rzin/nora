@@ -687,8 +687,17 @@ def test_an_allow_listed_term_is_never_itself_redacted(product: str) -> None:
 # exists. Measured on main at 21becff; `test_the_gate_still_faces_a_real_hazard` re-measures
 # it, so this comment cannot quietly stop being true.
 SURNAME_SHAPED_TENANT_TERMS = [
-    "Andrade", "Siqueira", "Camargo", "Vasconcelos", "Moreira", "Nogueira",
-    "Teixeira", "Pinheiro", "Rocha", "Barros", "Guimaraes",
+    "Andrade",
+    "Siqueira",
+    "Camargo",
+    "Vasconcelos",
+    "Moreira",
+    "Nogueira",
+    "Teixeira",
+    "Pinheiro",
+    "Rocha",
+    "Barros",
+    "Guimaraes",
 ]
 SAFE_TENANT_TERMS = ["Northwind", "Contoso", "Zendesk", "Protheus", "Datasul"]
 
@@ -742,7 +751,7 @@ def test_the_gate_still_faces_a_real_hazard() -> None:
 
 
 def test_empty_tenant_terms_change_nothing_at_all() -> None:
-    """"Empty must not fail open", checked as identity against the un-parameterised call.
+    """Empty must not fail open -- checked as IDENTITY against the un-parameterised call.
 
     Weaker phrasings of this pass while being wrong -- asserting the result is "still
     redacted" would hold even if the empty case silently took a different path.
@@ -764,6 +773,7 @@ def test_volume_cannot_switch_the_shield_off() -> None:
     Each term individually passes the gate. Five thousand of them would turn PERSON_NAME
     redaction off wholesale, and every per-term test in this file would still be green.
     """
+
     def word(i: int) -> str:
         a = "abcdefghijklmnopqrstuvwxyz"
         return "Zx" + a[i // 676 % 26] + a[i // 26 % 26] + a[i % 26]
