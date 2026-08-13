@@ -43,30 +43,45 @@ from tests.pii_corpus.harness import evaluate, run
 #       leak              9.10%  ->  9.10%   (512 of 5627 -> 512 of 5628)
 #       false redaction   9.60%  -> 10.24%   (506 of 5271 -> 558 of 5449)
 #
-#   2026-08-12, corpus grew by `adv_lone_after_head`, `pii_shield.py` UNCHANGED:
-#       leak              9.11%  ->  9.34%   (513 of 5629 -> 527 of 5644)
-#       false redaction  10.24%  -> 10.22%   (558 of 5450 -> 558 of 5462)
+#   2026-08-12, corpus grew by `adv_lone_after_head` (#449), `pii_shield.py` UNCHANGED.
+#   2026-08-13, corpus grew by `adv_lone_in_prose` (#450), `pii_shield.py` UNCHANGED.
 #
-#   Note the false-redaction ceiling went DOWN. The new cases assert their phrase heads
-#   survive, so they add 12 to that denominator and nothing to its numerator. A leak-shaped
-#   addition that tightens the other rate is the shape an honest one has.
+#   Those two landed together and the constants below are the COMBINED measurement, taken
+#   from a fresh run of the merged corpus rather than from either branch:
 #
-# NEITHER of the two CORPUS-GROWTH rows above — 2026-08-11 and 2026-08-12 — is a regression,
-# and both raised a ceiling, which is exactly the situation where that has to be said rather
-# than assumed. (The first row is the #431 fix and lowered both rates.) The shield did not
-# change in either of the two. The first: the corpus stopped being blind to `fp_preposition`,
-# where 49 of 49 cases fail and always did. The second: it stopped being blind to a lone
-# surname behind a phrase head and to the genitive -- `Com Silva`, `Contato do Silva`,
-# `A proposta da Costa` -- which are LIVE LEAKS in production and had no shape here at all.
-# Measured before the cases were written: over the whole `_COMMON_PHRASE_HEADS` list x six
-# surnames, 2,912 of 2,916 leak (99.86%), and 15 of 15 genitive forms.
+#       leak              9.11%  ->  9.43%   (513 of 5629 -> 533 of 5652)
+#       false redaction  10.24%  -> 10.20%   (558 of 5450 -> 558 of 5470)
+#
+#   RECOMPUTED ON PURPOSE, and this is the part worth knowing. Both branches raised the leak
+#   ceiling and both LOWERED the false-redaction one, so resolving the merge conflict by
+#   keeping either branch's pair looks reasonable and is wrong in an asymmetric way: the leak
+#   side fails loudly (9.43% actual against 9.34% or 9.21%), while the false-redaction side
+#   PASSES SILENTLY, because both branches' values (10.22%) are looser than the true combined
+#   10.20% and would leave about a case of slack on the ceiling nobody would notice.
+#
+# NONE of the corpus-growth rows above is a regression, and every one of them raised the leak
+# ceiling, which is exactly the situation where that has to be said rather than assumed. (The
+# first row is the #431 fix and lowered both rates.) The shield did not change in any of them:
+#
+#   2026-08-11  the corpus stopped being blind to `fp_preposition`, where 49 of 49 cases fail
+#               and always did.
+#   2026-08-12  it stopped being blind to a lone surname behind a phrase head and to the
+#               genitive -- `Com Silva`, `Contato do Silva`, `A proposta da Costa` -- all LIVE
+#               LEAKS in production with no shape here at all. Measured before the cases were
+#               written: over the whole `_COMMON_PHRASE_HEADS` list x six surnames, 2,912 of
+#               2,916 leak (99.86%), and 15 of 15 genitive forms.
+#   2026-08-13  it stopped being blind to finding 5b's own shape. A 5b attempt measured ZERO
+#               leaks closed and two false redactions caused -- a reject under the rule, and
+#               then a verdict on the INSTRUMENT rather than on the rule: 424 existing cases
+#               already matched that shape and not one leaked. Every one was a negative. The
+#               corpus held the cost side in detail and the benefit side not at all.
 #
 # A ceiling that rises because the measurement got less wrong is a different thing from one
-# that rises because the code got worse. The difference belongs in writing rather than in a
-# reader's assumption, and the false-redaction rate holding at 10.24% across both is the
-# evidence that nothing was traded for it.
-MAX_LEAK_RATE = 527 / 5644  # 9.34%
-MAX_FALSE_REDACTION_RATE = 558 / 5462  # 10.22%
+# that rises because the code got worse. The false-redaction rate FALLING across all three is
+# the evidence that nothing was traded for any of them: every case added asserts something
+# that must survive, so they add to that denominator and nothing to its numerator.
+MAX_LEAK_RATE = 533 / 5652  # 9.43%
+MAX_FALSE_REDACTION_RATE = 558 / 5470  # 10.20%
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
