@@ -6,8 +6,20 @@ name: desktop-release
 # (workflow_dispatch providing the tag). tauri-action builds, SIGNS the
 # bundles with the updater key (secrets TAURI_SIGNING_PRIVATE_KEY[_PASSWORD]),
 # creates the release on GitHub and generates/merges `latest.json` — which is the endpoint
-# the app queries (releases/latest/download/latest.json). prerelease:false so the
-# release becomes "Latest" and the endpoint resolves.
+# the app queries (releases/latest/download/latest.json).
+#
+# ON A TAG PUSH: prerelease:false, so the release becomes "Latest" and the endpoint
+# resolves. Unchanged.
+#
+# ON A DISPATCH: a DRAFT PRERELEASE by default, so it cannot become "Latest". This is not
+# caution for its own sake — a dispatch is the only way to rehearse this workflow without
+# spending a real version, and with the old hardcoded false/false the rehearsal would have
+# repointed `releases/latest/download/latest.json`, which is the exact endpoint the
+# rehearsal exists to protect. Pass `publish: PUBLISH` to opt out.
+#
+# NOTHING RUNS THIS WORKFLOW ON A PULL REQUEST or a push, by design and by necessity: it
+# holds the signing key. So a dispatch is the only pre-release evidence available, and the
+# two defects fixed here are what stood between it and being worth running.
 #
 # Bootstrap: the first version WITH the updater (0.2.5) has to be installed by hand;
 # from it onward the update-available button in the sidebar does the rest.
@@ -19,11 +31,15 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. desktop-v0.2.5). It must exist or will be created."
+        description: "Existing tag to build. For a REHEARSAL it must NOT match desktop-v* and must have no release yet (e.g. rehearsal-2026-08-13). The guard below enforces both."
         required: true
+      publish:
+        description: "Type PUBLISH (case-insensitive) for a real release. Anything else, including empty, makes a DRAFT prerelease."
+        required: false
+        default: ""
 
 concurrency:
-  group: desktop-release-${{ github.event.inputs.tag || github.ref_name }}
+  group: desktop-release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -45,7 +61,68 @@ jobs:
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     steps:
+      # `ref:` matters, and its absence is what made a dispatch untrustworthy. Without it
+      # checkout takes the branch the dispatch was launched from, while `tagName` below takes
+      # the input — so the workflow would build one thing and label it another. A rehearsal
+      # that does not build the tag it names proves nothing about the release it rehearses.
+      #
+      # This is why the `tag` input now says the tag MUST already exist. It used to say "or
+      # will be created", which is where the trap came from: tauri-action would create the tag
+      # at whatever was built, retroactively making the wrong build correct.
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      # THE GUARD THAT MAKES THE DRAFT DEFAULT MEAN ANYTHING. Without it those flags are
+      # decoration in the case a rehearsal is most likely to be in, and review found this
+      # before it merged.
+      #
+      # `tauri-action` applies `releaseDraft`/`prerelease` only when it CREATES the release.
+      # Read at the pinned SHA: `src/create-release.ts` searches existing releases for the tag
+      # and reuses one if found — with no draft filter, and no `updateRelease` call anywhere in
+      # the action. `upload-release-assets.ts` then deletes any same-named asset before
+      # uploading, and `upload-version-json.ts` deletes and replaces `latest.json` outright.
+      #
+      # So rehearsing against a tag that already HAS a release overwrites that release's assets
+      # and its latest.json — the endpoint hijack the draft default exists to prevent, arriving
+      # through the other door.
+      #
+      # And the tag NAME matters as much as the release. Cutting a `desktop-v*` tag to rehearse
+      # against fires `on.push.tags` above, down the unchanged false/false path, publishing a
+      # real release before the rehearsal even starts. Creating the tag IS the hijack — which
+      # made the first version of this change worse than no change, because it told the
+      # operator the tag had to exist first.
+      - name: Guard — a rehearsal may not touch an existing release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          # Lower-cased because GitHub's own `==` ignores case, so `Publish` already opts out
+          # of the draft default. Matching that here keeps one rule rather than two.
+          if [ "$(printf '%s' "$PUBLISH" | tr '[:upper:]' '[:lower:]')" = "publish" ]; then
+            echo "publish=PUBLISH — this is a real release. The guard does not apply."
+            exit 0
+          fi
+          fail=0
+          case "$TAG" in
+            desktop-v*)
+              echo "::error::'$TAG' matches desktop-v*, which this workflow's push trigger fires on."
+              echo "::error::Creating such a tag publishes a REAL release before any rehearsal runs."
+              echo "::error::Use a name the trigger ignores, e.g. rehearsal-\$(date +%F)."
+              fail=1
+              ;;
+          esac
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::A release already exists for '$TAG'."
+            echo "::error::tauri-action REUSES an existing release and ignores releaseDraft/prerelease,"
+            echo "::error::then replaces its assets and its latest.json. Rehearse against a fresh tag."
+            fail=1
+          fi
+          [ "$fail" -eq 0 ] || exit 1
+          echo "OK — '$TAG' has no release and is outside the push trigger. Safe to rehearse."
 
       - uses: actions/setup-node@v7
         with:
@@ -109,10 +186,27 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: apps/desktop
-          tagName: ${{ github.event.inputs.tag || github.ref_name }}
-          releaseName: "Nora Desktop ${{ github.event.inputs.tag || github.ref_name }}"
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: "Nora Desktop ${{ inputs.tag || github.ref_name }}"
           releaseBody: "Nora Desktop update. From v0.2.5 on, installation is automatic through the sidebar button."
-          releaseDraft: false
-          prerelease: false
+          # A TAG PUSH is unchanged: false/false, a real release that becomes Latest.
+          #
+          # A DISPATCH defaults to a DRAFT PRERELEASE, and this is the whole point. The
+          # endpoint every installed client polls is
+          # releases/latest/download/latest.json, and GitHub resolves "latest" to the most
+          # recent non-draft, non-prerelease release. With these hardcoded to false, a
+          # dispatch — the only way to rehearse this workflow without burning a real
+          # version — would HIJACK that endpoint and point every client at whatever the
+          # rehearsal produced. The thing the rehearsal exists to protect was the thing it
+          # would have broken.
+          #
+          # Draft AND prerelease, not just one: a draft is invisible to the "latest"
+          # resolution, and prerelease is the belt to that braces if someone publishes the
+          # draft by hand from the UI.
+          #
+          # `publish: PUBLISH` opts out, for the case where a dispatch really is the
+          # intended release path (a tag push that failed halfway, say).
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.publish != 'PUBLISH' }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.publish != 'PUBLISH' }}
           includeUpdaterJson: true
           args: ${{ matrix.args }}
