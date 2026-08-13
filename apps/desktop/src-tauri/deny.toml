@@ -1,0 +1,214 @@
+# =============================================================================
+# cargo-deny — supply-chain policy for the desktop Rust crate.
+# =============================================================================
+#
+# Run by the `supply-chain` job in ../../../.github/workflows/ci.yml, by the weekly
+# ../../../.github/workflows/supply-chain-drift.yml, and locally with:
+#
+#     cd apps/desktop/src-tauri && cargo deny check
+#
+# WHY THIS EXISTS: until now nothing in any workflow looked at the Rust dependency graph.
+# The `glib` unsoundness below was noticed only because `git push` happened to print a
+# Dependabot warning printed by `git push`. That is not a control, it is a coincidence.
+#
+# A NOTE ON HOW THIS FILE WAS WRITTEN, because it was written wrong once. An earlier
+# version claimed `[advisories]` accepts only db-path, db-urls, ignore and
+# git-fetch-with-cli, and built a second tool (cargo-audit) on top of that claim to cover
+# `unsound` advisories. That was read off `cargo deny init`'s generated template. THE
+# TEMPLATE IS NOT THE SCHEMA. Feeding the binary an unknown key makes it enumerate the
+# real list:
+#
+#     $ printf '[advisories]\nbogus-key = 1\n' > /tmp/probe.toml
+#     $ cargo-deny --config /tmp/probe.toml check advisories
+#     error[unexpected-keys]: found 1 unexpected keys, expected: ["version", "db-path",
+#       "db-urls", "vulnerability", "notice", "unmaintained", "unsound", "yanked",
+#       "ignore", "severity-threshold", "git-fetch-with-cli", "disable-yank-checking",
+#       "maximum-db-staleness", "unused-ignored-advisory"]
+#
+# Fourteen keys. `unsound` is one of them, it takes the same scope enum as `unmaintained`,
+# and with it set this tool reports both advisories the second tool had been added to
+# catch. One line of config, gating, instead of a second binary that only warned.
+
+[graph]
+# The three targets the desktop client actually ships to. Without this, cargo-deny
+# evaluates the union of every platform's dependencies, pulling in graphs that are never
+# built here. The gtk/glib stack is Linux-only and is included on purpose.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+]
+
+# =============================================================================
+[advisories]
+# =============================================================================
+
+# The line this whole file exists for. Without it, `informational = "unsound"` advisories
+# are not checked at all, and glib's RUSTSEC-2024-0429 below passes silently — as did the
+# anyhow one that is fixed rather than ignored.
+unsound = "all"
+
+# Unmaintained crates are checked against the WORKSPACE only, not the whole transitive
+# graph. With the default this check reports 16 errors, none of them actionable: 10 are
+# the gtk-rs GTK3 bindings, 5 are the rust-unic Unicode crates reached through
+# urlpattern, and one is proc-macro-error. Every one is pinned by Tauri 2 and moves when
+# Tauri moves. A gate that is red for something no commit here can change teaches people
+# to ignore it, which costs more than it buys.
+#
+# "workspace" keeps the check where it bites: a crate WE add that is unmaintained still
+# fails. That is the actionable half, and it is the half nobody was watching.
+unmaintained = "workspace"
+
+# NOT SET, and the omission is deliberate — the default is "warn", which is what is wanted
+# here. An ignored advisory that stops applying still gets reported, so the list is still
+# self-cleaning, but it does not turn a REQUIRED check red.
+#
+# It was "deny" for one revision and that was wrong for this file, because this file is
+# shared by the gating job and the weekly one. The things that make an entry stop matching
+# are all outside the pull request being gated: RustSec withdrawing or renaming an advisory,
+# a stale or partial advisory database (a DB predating 2026 loses both quick-xml entries and
+# still passes the default 90-day staleness check), or an edit to `[graph] targets` dropping
+# the Linux target and with it glib. Any of those would red the gate and blame whoever
+# happened to open the next desktop PR — which is the exact failure the two-workflow split
+# exists to prevent, re-imported into `ci-gate`.
+#
+# The strictness lives where it cannot block a merge: `supply-chain-drift.yml` runs the same
+# policy with `-D advisory-not-detected`, so a stale entry is a red mark on a weekly job.
+
+ignore = [
+    # ---------------------------------------------------------------------
+    # quick-xml — two denial-of-service advisories, same crate, same fix.
+    # ---------------------------------------------------------------------
+    # RUSTSEC-2026-0194: quadratic duplicate-attribute-name check in
+    #   BytesStart::attributes(). RUSTSEC-2026-0195: unbounded namespace-declaration
+    #   allocation in NsReader. Both patched in >= 0.41.0; the lock has 0.39.3.
+    #
+    # WHY NOT FIXED: it cannot be, from here. Measured rather than assumed —
+    #
+    #     $ cargo update -p quick-xml --precise 0.41.0
+    #     error: failed to select a version for the requirement `quick-xml = "^0.39.2"`
+    #     required by package `plist v1.9.0`
+    #       ... which satisfies dependency `plist = "^1"` of package `tauri v2.11.5`
+    #
+    # It moves when plist relaxes that bound, or when Tauri moves off plist 1.9. When it
+    # does, the weekly job's `-D advisory-not-detected` turns these two lines red rather
+    # than leaving them to rot.
+    #
+    # REACHABILITY, which is a different claim from presence — and this paragraph was
+    # WRONG in its first version, so read the correction rather than the conclusion. It
+    # said the plist call sites were "all bundle-time or own-metadata paths". They are
+    # not. `tauri-2.11.5/src/process.rs:112` calls `plist::from_file` on
+    # `Contents/Info.plist` inside `restart_macos_app()`, reached from `App::restart()`.
+    # That is a real parse, at runtime, in the shipped binary, through
+    # plist -> quick-xml. And it IS reachable here: src/lib.rs registers
+    # tauri_plugin_updater, and capabilities/updater-remote.json grants
+    # `updater:allow-download-and-install` together with `process:allow-restart`.
+    #
+    # The conclusion survives, for a reason that has to be stated rather than assumed:
+    # the file parsed on that path is the application's OWN Info.plist, and after an
+    # update it comes from a bundle minisign-verified against the public key compiled
+    # into the client (`plugins.updater.pubkey` in tauri.conf.json). An attacker who can
+    # choose the bytes of that plist has already replaced a signed bundle. Neither
+    # advisory is reachable with attacker-chosen XML.
+    #
+    # Limits of that check, so it is not read as stronger than it is: it is a
+    # source-level grep over the registry cache, so it would miss a call assembled by a
+    # macro, and it is a snapshot rather than an analysis of a linked binary.
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml pinned at ^0.39.2 by plist 1.9.0 via tauri; the only runtime parse is the app's own Info.plist, which arrives in a minisign-verified bundle" },
+    { id = "RUSTSEC-2026-0195", reason = "same crate, same pin, same reachability argument as RUSTSEC-2026-0194" },
+
+    # ---------------------------------------------------------------------
+    # glib — the advisory this whole file was written for.
+    # ---------------------------------------------------------------------
+    # RUSTSEC-2024-0429, unsoundness in the Iterator and DoubleEndedIterator impls for
+    # `glib::VariantStrIter`, affecting >= 0.15.0 < 0.20.0. The lock has 0.18.5.
+    #
+    # WHY NOT FIXED: glib 0.18.5 is pinned by the entire gtk-rs 0.18 stack that Tauri 2
+    # depends on — 12 crates name it as a direct dependency — so there is no `cargo update -p
+# glib` that moves it. Measured: `cargo update -p glib --precise 0.20.9` is refused by
+# `gtk v0.18.2`'s `^0.18`.
+    # It moves when Tauri moves to gtk-rs 0.20. Linux-only (the gtk path).
+    #
+    # REACHABILITY: `Variant::array_iter_str()` is the only constructor of
+    # VariantStrIter, and it has no callers anywhere in the resolved graph — not in gtk,
+    # gio, cairo-rs, pango, soup3, javascriptcore-rs, libappindicator, tauri, or our own
+    # crate. The vulnerable type is present and never instantiated. Same source-grep
+    # limitation as above.
+    #
+    # It is ignored HERE rather than dismissed in the Dependabot UI on purpose: an alert
+    # dismissed for "tolerable risk" is invisible afterwards, while an entry in this file
+    # is in the diff of every change to it. Both workflows also pass `--log-level info`,
+    # which is what makes cargo-deny actually PRINT `note[advisory-ignored]` with the reason
+    # string and the dependency tree — at the default log level a run with three ignores
+    # prints `advisories ok` and nothing else, so the note has to be asked for.
+    { id = "RUSTSEC-2024-0429", reason = "glib 0.18.5 pinned by the gtk-rs 0.18 stack under Tauri 2; VariantStrIter's only constructor has no caller in the resolved graph" },
+]
+
+# =============================================================================
+[licenses]
+# =============================================================================
+# NORA is AGPL-3.0 (ADR 0017) and the desktop client is distributed as a binary, so what
+# its dependencies are licensed under is a real question rather than paperwork.
+#
+# The list below is A SET SUFFICIENT TO SATISFY EVERY CRATE'S EXPRESSION — not, as an
+# earlier version of this comment claimed, "the complete set present in the graph". The two
+# differ in both directions and the distinction is the whole reason to state it: `0BSD`
+# (adler2) and `MIT-0` (dunce) ARE present and are not listed, because each sits in an OR
+# expression satisfied by something that is; `BSL-1.0` IS listed although only `ryu` offers
+# it, and `ryu` also offers Apache-2.0. Nothing is speculative either way — a license that
+# cannot be satisfied shows up as a failure, gets read, and gets added deliberately or the
+# dependency does not land.
+#
+# On copyleft: NO CRATE IN THE EVALUATED GRAPH IS GPL/LGPL/AGPL-ONLY. The strongest copyleft
+# in effect is MPL-2.0, which is file-level and imposes nothing on a binary that links it.
+#
+# `r-efi` declares `MIT OR Apache-2.0 OR LGPL-2.1-or-later` and an earlier version of this
+# comment said cargo-deny "takes MIT/Apache" from that disjunction. It does not see r-efi at
+# all: it is a UEFI-target dependency, and `[graph] targets` above filters the evaluation to
+# 456 of the lock's 574 packages. Remove that block and the count goes to 540 and r-efi
+# appears. The conclusion is stronger than the original — the crate is not built here — but
+# the mechanism was wrong.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unlicense",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
+    "CC0-1.0",
+    "BSL-1.0",
+]
+
+# `nora-desktop` declares `license = "AGPL-3.0-only"` and `publish = false` in Cargo.toml.
+# The `publish = false` is what makes this section skip it; the license field is hygiene.
+# Getting that backwards is easy and the failure is confusing, so it is measured here:
+# with the license field alone, this check FAILS with `error[rejected]`, because AGPL is
+# deliberately not in the list above — that list is for dependencies. See the comment in
+# Cargo.toml.
+[licenses.private]
+ignore = true
+
+# =============================================================================
+[bans]
+# =============================================================================
+# `warn`, not `deny`. Duplicate versions are normal in a graph this size (gtk-rs 0.18 and
+# the tauri stack disagree on several crates) and turning that into a merge blocker would
+# produce noise rather than safety. It is here to be readable in the log.
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+# =============================================================================
+[sources]
+# =============================================================================
+# A hard denial, and the cheapest real protection in the file: a dependency that resolves
+# to a git URL or to a registry other than crates.io is either a mistake or something
+# that needs a human. Measured clean today.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
