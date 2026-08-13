@@ -31,9 +31,10 @@ name: deploy-host
 #      `pull_request` trigger — in a public repo that is RCE on the LAN by design.
 #   2. Push over SSH would require a private key in a GitHub Secret + port 22 exposed (or
 #      Tailscale/VPN on the runner). A secret that opens a shell on the host, in a public repo.
-#   3. Pull inverts the direction: the only connection that exists leaves the host. Zero
-#      inbound port, zero host credential on GitHub. The worst GitHub can do is
-#      announce a bad pointer — the agent validates before applying.
+#   3. Pull inverts the direction: every connection this path needs leaves the host. No
+#      inbound port for the deploy, zero host credential on GitHub. The worst GitHub can do is
+#      announce a bad pointer — the agent validates before applying. (The machine's own sshd
+#      is unrelated to this path and does accept inbound; see host-deploy.md §firewall.)
 #
 # DOES NOT EXIST HERE, ON PURPOSE:
 #   - `azure/login`, `id-token: write`     (Azure left the scene)

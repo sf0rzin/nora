@@ -39,17 +39,22 @@
 # network (they already do in the compose).
 #
 # The sixth, `ssh`, is the exception in every way: a different protocol, a different origin, and
-# the only one whose origin is the host itself rather than a container. It said "Four ... ALL"
-# here while the block below already listed five, and the ssh row made "ALL" false as well.
+# the only one whose origin is the host itself rather than a container.
 #
-#   | Subdomain | Domain          | Type | URL                       |
-#   |-----------|-----------------|------|---------------------------|
-#   | (empty)   | nora.systems    | HTTP | caddy:80                  |
-#   | www       | nora.systems    | HTTP | caddy:80                  |
-#   | api       | nora.systems    | HTTP | caddy:80                  |
-#   | ssh       | nora.systems    | SSH  | 172.17.0.1:22             |  <- Access policy FIRST
-#   | admin     | nora.systems    | HTTP | caddy:80     |
-#   | grafana   | nora.systems    | HTTP | caddy:80     |
+# Rows are in the same order as the `ingress:` block below, so the two can be diffed by eye.
+#
+#   | Subdomain | Domain       | Type | URL             | Cloudflare Access          |
+#   |-----------|--------------|------|-----------------|----------------------------|
+#   | (empty)   | nora.systems | HTTP | caddy:80        | no — public site           |
+#   | www       | nora.systems | HTTP | caddy:80        | no — public site           |
+#   | api       | nora.systems | HTTP | caddy:80        | no — own session/JWT       |
+#   | admin     | nora.systems | HTTP | caddy:80        | YES (fail-open without it) |
+#   | grafana   | nora.systems | HTTP | caddy:80        | YES                        |
+#   | ssh       | nora.systems | SSH  | 172.17.0.1:22   | YES — policy BEFORE route  |
+#
+# The Access column was verified against the deployed edge on 2026-08-12: an unauthenticated
+# GET on admin and on grafana both return 302 to stratfy.cloudflareaccess.com. The two routes
+# marked "no" answered directly, which is what they are for.
 #
 # HTTP type (not HTTPS): the origin has no TLS on purpose — the visitor's TLS
 # terminates at the Cloudflare edge and the cloudflared -> caddy leg never leaves
@@ -78,11 +83,15 @@ no-autoupdate: true
 # cloudflared_tunnel_ha_connections shows up — expected 4; dropping to 0 is exactly
 # the 522 that took nora.systems down.
 #
-# The `cloudflared` job ALREADY EXISTS in ../observability/prometheus.yml and TODAY
-# COLLECTS NOTHING: this service is only on the `edge` network and prometheus only on
-# `internal`, so the scrape resolves to "no such host". One line in the compose closes
-# it, on the cloudflared service:  networks: [edge, internal]  — it does not increase
-# exposure, `internal` is `internal: true`. See the job's comment over there.
+# The `cloudflared` job in ../observability/prometheus.yml IS collecting. It used not to —
+# this service was only on `edge` and prometheus only on `internal`, so the scrape resolved
+# to "no such host" — and `networks: [edge, internal]` on the cloudflared service in
+# ../docker-compose.yml closed it. `internal` is `internal: true`, so it adds an interface on
+# the inside without widening exposure. Measured on the deployed stack, 2026-08-12:
+#
+#     up{job="cloudflared"}                   = 1
+#     cloudflared_tunnel_ha_connections       = 4
+#     docker inspect nora-cloudflared         -> nora_edge nora_internal
 metrics: 0.0.0.0:2000
 
 # Logs on stdout for Alloy to collect (same pipeline as the other containers).
@@ -133,8 +142,10 @@ ingress:
   - hostname: admin.nora.systems
     service: http://caddy:80
 
-  # Grafana. Protected only by the admin password, unless an Access Application
-  # is put in front of it too (recommended).
+  # Grafana. Fronted by a Cloudflare Access Application, like admin — verified 2026-08-12:
+  # an unauthenticated GET returns 302 to stratfy.cloudflareaccess.com/cdn-cgi/access/login/
+  # grafana.nora.systems. So the Grafana admin password is the second factor here, not the
+  # only one. Removing that Access Application publishes the dashboards to the internet.
   - hostname: grafana.nora.systems
     service: http://caddy:80
 

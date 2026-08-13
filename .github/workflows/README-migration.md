@@ -31,7 +31,9 @@ It is not a matter of style preference — both push alternatives are closed off
 - **Self-hosted runner** — the repository is **public** (ADR 0017) and `deploy-infra.yml` had a `pull_request` trigger. A persistent runner on the home network would execute PR code from an arbitrary fork. Critical risk, not hypothetical.
 - **SSH from the GitHub-hosted runner** — it would require exposing `sshd` to the internet, because hosted runners do not have a stable IP range to allowlist.
 
-Pull eliminates both: **zero inbound ports, zero SSH keys in Secrets, zero runners.** The host opens an outbound connection to GHCR and to Cloudflare, and nothing else.
+Pull eliminates both: **the deploy path opens no inbound port, needs zero SSH keys in Secrets and zero runners.** For the deploy to work, the host only ever opens outbound connections — to GHCR and to Cloudflare.
+
+That is a property of the deploy path, not of the machine. sshd listens on 22 independently of any of this, and when last measured (2026-08-11) it was reachable from the internet. See `docs/operations/host-deploy.md` §firewall.
 
 ## Workflow by workflow
 

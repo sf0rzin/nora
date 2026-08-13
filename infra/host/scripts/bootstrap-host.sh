@@ -11,7 +11,12 @@
 #   critical risk, not a hypothetical one. And the alternative path (GitHub Actions with an
 #   SSH key) would require exposing sshd to the internet, because GitHub-hosted runners have
 #   no stable IP range. So the direction is inverted: CI only does build and push to GHCR,
-#   and THIS host pulls. Result: zero inbound port, zero SSH key in GitHub Secrets, zero runner.
+#   and THIS host pulls. Result: the deploy path opens no inbound port, keeps zero SSH keys in
+#   GitHub Secrets and needs zero runners.
+#
+#   That is a claim about the DEPLOY PATH, not about the machine. sshd listens on 22 and, when
+#   last measured (2026-08-11), was reachable from the internet: `ufw` inactive, iptables INPUT
+#   policy ACCEPT, no rule naming 22. See docs/operations/host-deploy.md §firewall.
 #
 # What it installs/configures:
 #   1. Pre-flight: Debian or Ubuntu, root, architecture, /dev/shm as tmpfs.
@@ -429,9 +434,11 @@ CONF
   sysctl --quiet --load /etc/sysctl.d/99-nora.conf || warn "sysctl partially applied."
 fi
 
-# No inbound firewall rule is necessary: cloudflared opens an OUTBOUND connection.
-# If you have ufw active, you do NOT need to open 80/443.
-info "No inbound port: traffic comes in via the Cloudflare Tunnel (outbound-only)."
+# No inbound firewall rule is necessary FOR HTTP: cloudflared opens an OUTBOUND connection.
+# If you have ufw active, you do NOT need to open 80/443. Port 22 is a separate question and
+# this script does not touch it.
+info "HTTP needs no inbound port: traffic comes in via the Cloudflare Tunnel (outbound-only)."
+info "This says nothing about sshd — check port 22 separately (see host-deploy.md §firewall)."
 
 # ---------------------------------------------------------------------------
 # Summary
