@@ -21,22 +21,37 @@ import time
 from ..clients.llm import LlmClient, build_json_schema_for_analysis
 from ..models import AnalyzeRequest, AnalyzeResponse, MeetingAnalysisV1
 from ..settings import Settings
+from .pii_shield import admissible_tenant_terms
 from .pii_shield import redact as pii_redact
 from .prompt_utils import load_prompt, render_template
 
 logger = logging.getLogger(__name__)
 
 
-def _shield_field(value: str, counter: list[int]) -> str:
-    """Applies PII Shield to an individual field, counting redactions."""
+def _shield_field(
+    value: str, counter: list[int], tenant_terms: frozenset[str] = frozenset()
+) -> str:
+    """Applies PII Shield to an individual field, counting redactions.
+
+    `tenant_terms` is this request's admitted trade names, and passing them here is what stops
+    the prompt from contradicting itself. Without it the transcript kept "Kranz Solutions" --
+    that is the whole point of finding 5c -- while this block turned the same string into
+    `[[PERSON_NAME_1]]`, so the model saw one entity written two ways in a single request.
+    Over-redaction, never a leak, but half a feature.
+
+    The shield still decides. These terms are not trusted here any more than anywhere else:
+    `redact` runs its two passes and discards the second if a person was freed.
+    """
     if not value:
         return value
-    out = pii_redact(value)
+    out = pii_redact(value, tenant_terms)
     counter[0] += len(out.redactions)
     return out.redacted_text
 
 
-def _shield_tree(value: object, counter: list[int]) -> object:
+def _shield_tree(
+    value: object, counter: list[int], tenant_terms: frozenset[str] = frozenset()
+) -> object:
     """Applies the PII Shield to every string leaf of a nested structure.
 
     Walks dicts and lists instead of naming the fields to cover. The tenant context is
@@ -48,15 +63,19 @@ def _shield_tree(value: object, counter: list[int]) -> object:
     as they are. ADR 0012.
     """
     if isinstance(value, str):
-        return _shield_field(value, counter)
+        return _shield_field(value, counter, tenant_terms)
     if isinstance(value, dict):
-        return {k: _shield_tree(v, counter) for k, v in value.items()}
+        return {k: _shield_tree(v, counter, tenant_terms) for k, v in value.items()}
     if isinstance(value, list):
-        return [_shield_tree(item, counter) for item in value]
+        return [_shield_tree(item, counter, tenant_terms) for item in value]
     return value
 
 
-def _build_goal_section(req: AnalyzeRequest, redaction_counter: list[int]) -> str:
+def _build_goal_section(
+    req: AnalyzeRequest,
+    redaction_counter: list[int],
+    tenant_terms: frozenset[str] = frozenset(),
+) -> str:
     """Renders the prompt section with the user's goal (ADR 0005).
 
     Without a goal, returns an explicit instruction to the LLM to emit productivity=null.
@@ -67,11 +86,13 @@ def _build_goal_section(req: AnalyzeRequest, redaction_counter: list[int]) -> st
     if req.goal is None:
         return "Nenhum objetivo foi declarado para esta reuniao. DEVE emitir `productivity` = null."
 
-    purpose = _shield_field(req.goal.purpose, redaction_counter)
-    outcomes_shielded = [_shield_field(o, redaction_counter) for o in req.goal.expected_outcomes]
+    purpose = _shield_field(req.goal.purpose, redaction_counter, tenant_terms)
+    outcomes_shielded = [
+        _shield_field(o, redaction_counter, tenant_terms) for o in req.goal.expected_outcomes
+    ]
     outcomes_md = "\n".join(f"- {o}" for o in outcomes_shielded)
     if req.goal.project_state_snapshot:
-        snap = _shield_field(req.goal.project_state_snapshot, redaction_counter)
+        snap = _shield_field(req.goal.project_state_snapshot, redaction_counter, tenant_terms)
         state_block = f"\n\nEstado atual do projeto (informado pelo usuario):\n```\n{snap}\n```"
     else:
         state_block = ""
@@ -106,12 +127,21 @@ def analyze(
     # goes through the shield, as defense-in-depth against a tenant that pastes PII into the
     # commercial context. The walk covers the whole structure so a field added to
     # TenantContext later is protected by default instead of by remembering to list it.
+    #
+    # The terms are recomputed here rather than threaded down from the router, and that is
+    # deliberate: they are derived from `req.tenant_context`, which this function already holds,
+    # so there is one source and no parameter to forget. Per request, no cache, no module state.
     extra_redactions = [0]
-    ctx_dict = _shield_tree(req.tenant_context.model_dump(by_alias=True), extra_redactions)
+    tenant_terms = admissible_tenant_terms(
+        req.tenant_context.company_name, req.tenant_context.competitors
+    )
+    ctx_dict = _shield_tree(
+        req.tenant_context.model_dump(by_alias=True), extra_redactions, tenant_terms
+    )
 
     tenant_ctx_json = json.dumps(ctx_dict, ensure_ascii=False, indent=2)
 
-    goal_section = _build_goal_section(req, extra_redactions)
+    goal_section = _build_goal_section(req, extra_redactions, tenant_terms)
 
     pii_redactions_applied = pii_redactions_applied + extra_redactions[0]
 

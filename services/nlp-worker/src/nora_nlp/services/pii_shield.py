@@ -14,6 +14,7 @@ import hashlib
 import re
 import unicodedata
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from ..models import PiiRedactionV1, PiiType, Redaction
@@ -1492,6 +1493,7 @@ _PERSON_ONLY_HONORIFICS: frozenset[str] = frozenset(
 def _split_on_allow_list(
     tokens: list[re.Match[str]],
     separators: frozenset[str] = frozenset(),
+    tenant_terms: frozenset[str] = frozenset(),
 ) -> list[list[re.Match[str]]]:
     """Contiguous stretches of `tokens` with the allow-listed terms taken out.
 
@@ -1527,7 +1529,7 @@ def _split_on_allow_list(
     current: list[re.Match[str]] = []
     for tok in tokens:
         folded = _fold(tok.group(0))
-        if folded in _PERSON_NAME_NEGATIVE_LIST or folded in separators:
+        if folded in _PERSON_NAME_NEGATIVE_LIST or folded in tenant_terms or folded in separators:
             if current:
                 runs.append(current)
             current = []
@@ -1576,7 +1578,9 @@ _COMPANY_TAIL_WORDS: frozenset[str] = frozenset(
 # protection and is not, which is the defect class this module has been chasing for six rounds.
 
 
-def _spans_without_negatives(value: str, offset: int, text: str) -> list[tuple[int, int]]:
+def _spans_without_negatives(
+    value: str, offset: int, text: str, tenant_terms: frozenset[str] = frozenset()
+) -> list[tuple[int, int]]:
     """All stretches of the candidate that still hold as a name, left to right.
 
     Returns a list because a negative token in the MIDDLE separates two distinct names: in
@@ -1587,6 +1591,7 @@ def _spans_without_negatives(value: str, offset: int, text: str) -> list[tuple[i
     runs = _split_on_allow_list(
         list(_WORD_RE.finditer(value)),
         separators=frozenset({_CONJUNCTION}),
+        tenant_terms=tenant_terms,
     )
     spans: list[tuple[int, int]] = []
     for run in runs:
@@ -1979,7 +1984,9 @@ def _widen_over_hyphens(start: int, end: int, text: str) -> tuple[int, int]:
     return start, end
 
 
-def _caps_name_spans(match: re.Match[str], text: str) -> list[tuple[int, int]]:
+def _caps_name_spans(
+    match: re.Match[str], text: str, tenant_terms: frozenset[str] = frozenset()
+) -> list[tuple[int, int]]:
     """The stretches of an ALL-CAPS run that are names, at most one per allow-list-free stretch.
 
     Returns a list for the same reason `_spans_without_negatives` does: an allow-listed term
@@ -1995,7 +2002,9 @@ def _caps_name_spans(match: re.Match[str], text: str) -> list[tuple[int, int]]:
     # `test_a_placeholder_from_the_earlier_stage_is_not_read_as_an_all_caps_name` still asserts
     # the OUTCOME end to end, which is the part that is real.
     spans: list[tuple[int, int]] = []
-    for run in _split_on_allow_list(list(_WORD_RE.finditer(match.group(0)))):
+    for run in _split_on_allow_list(
+        list(_WORD_RE.finditer(match.group(0))), tenant_terms=tenant_terms
+    ):
         span = _caps_span_for_run(run, match.start(), text)
         if span is not None:
             spans.append(span)
@@ -2129,7 +2138,8 @@ def _apply_basic_patterns(
 def _redact_person_names(
     text: str,
     counters: dict[PiiType, int],
-) -> tuple[str, list[Redaction]]:
+    tenant_terms: frozenset[str] = frozenset(),
+) -> tuple[str, list[Redaction], list[tuple[int, int]]]:
     """Detects and redacts proper names over `text` (already partially redacted).
 
     Applies three heuristics in order, always skipping ranges already covered:
@@ -2193,7 +2203,7 @@ def _redact_person_names(
             _qualify_and_claim(cursor, end)
 
     def _qualify_and_claim(start: int, end: int) -> None:
-        for s, e in _spans_without_negatives(text[start:end], start, text):
+        for s, e in _spans_without_negatives(text[start:end], start, text, tenant_terms):
             tightened = _tighten_to_tokens(s, e, text)
             if tightened is None:
                 continue
@@ -2206,12 +2216,12 @@ def _redact_person_names(
 
     # Pattern 1: prefix (honorific / job title + name)
     for m in _NAME_PREFIX_RE.finditer(text):
-        for start, end in _spans_without_negatives(m.group(0), m.start(), text):
+        for start, end in _spans_without_negatives(m.group(0), m.start(), text, tenant_terms):
             _claim_free_parts(start, end)
 
     # Pattern 2: Title Case sequence (2-4 words)
     for m in _NAME_SEQUENCE_RE.finditer(text):
-        for start, end in _spans_without_negatives(m.group(0), m.start(), text):
+        for start, end in _spans_without_negatives(m.group(0), m.start(), text, tenant_terms):
             _claim_free_parts(start, end)
 
     # Pattern 3: isolated BR first name (Title Case, against the hardcoded list).
@@ -2256,7 +2266,7 @@ def _redact_person_names(
     # name lists. That is the same head-or-tail test `_qualify_run` applies, used here as the
     # admission rule rather than as a fallback.
     for m in _CAPS_SEQUENCE_RE.finditer(text):
-        for span in _caps_name_spans(m, text):
+        for span in _caps_name_spans(m, text, tenant_terms):
             if _is_covered(span[0], span[1]):
                 continue
             _claim(span[0], span[1], text[span[0] : span[1]])
@@ -2302,6 +2312,11 @@ def _redact_person_names(
     person_matches.sort(key=lambda x: x.start)
 
     redactions: list[Redaction] = []
+    # The spans actually redacted, in the coordinates of `text` -- which is the output of
+    # `_apply_basic_patterns` and identical across both of `redact`'s passes, because that
+    # function takes no tenant terms. That identity is what makes these spans comparable
+    # between passes, and it is the whole basis of the guard.
+    applied_spans: list[tuple[int, int]] = []
     rebuilt: list[str] = []
     cursor = 0
     for m in person_matches:
@@ -2318,14 +2333,141 @@ def _redact_person_names(
                 originalHash=_hash(m.value),
             )
         )
+        applied_spans.append((m.start, m.end))
         cursor = m.end
 
     rebuilt.append(text[cursor:])
-    return "".join(rebuilt), redactions
+    return "".join(rebuilt), redactions, applied_spans
 
 
-def redact(text: str) -> PiiRedactionV1:
+# Refuse a token shorter than this. A two-letter trade name as ordinary vocabulary would
+# suppress an initial, and initials sit inside names.
+_TENANT_TERM_MIN_LENGTH = 3
+
+# A ceiling on how much vocabulary one request may declare ordinary. The guard below already
+# makes an over-admission harmless, so this is not the safety control -- it is a bound on the
+# work a request can ask for, since every admitted term is a term the guard has to price.
+_MAX_TENANT_TERMS = 200
+
+
+def admissible_tenant_terms(
+    company_name: str | None,
+    competitors: Iterable[str] | None = None,
+) -> frozenset[str]:
+    """The tenant's own trade names, folded to tokens. DEFENCE IN DEPTH, not the safety control.
+
+    THE HISTORY MATTERS HERE, because this function has been through both errors and the
+    docstring has twice described a version of it that no longer existed.
+
+    It began as the safety control: refuse any term colliding with `_BR_TOP_NAMES |
+    _BR_TOP_SURNAMES`, treat the survivors as safe. Review killed that, correctly. Those two
+    sets hold 372 tokens while the module catches most names by SHAPE -- `_trusted_span` and
+    the speaker-label patterns need no list at all -- so the gate was blind for exactly the
+    names the module calls the common case, and every one of the twenty surnames in the test
+    corpus's OFF_LIST_SURNAME pool sailed through it.
+
+    The correction was to stop PREDICTING: safety depends on the transcript, not on the term,
+    so `redact` MEASURES the effect of these terms on this text and discards them if any person
+    was freed. That is the control. It is in `redact`, not here.
+
+    The over-correction was then deleting the vocabulary check entirely, and it had a cost:
+    `competitors=["Silva Tecnologia"]` turned "Dr. Carlos Silva aprovou o contrato." into
+    "[[PERSON_NAME_1]] Silva aprovou o contrato." -- permitted by the guard, since `silva` was
+    declared, but the person exposed is a THIRD PARTY on the call and Silva is the commonest
+    surname in Brazil. So the check is back, below, as a LAYER rather than as the control.
+
+    WHAT IT COSTS, stated because the test suite does not show it: rejection is per whole term
+    and the tenant's `company_name` goes through the same door, so a company named after its
+    founder gets no feature at all. "Souza Cruz", "Camargo Correa", "Andrade Gutierrez", any
+    "<Surname> Solucoes" -- refused entirely. That is the commonest pt-BR naming convention.
+    The residual is again split by a frequency table ("Andrade Consultoria" refused, "Nardelli
+    Consultoria" admitted), which was a fair criticism of the first version and is a fair
+    criticism of this one; the difference is that it no longer decides whether a leak happens,
+    only whether the feature is available. See `test_the_gate_refuses_the_common_pt_br_shape`.
+    """
+    raw: list[str] = []
+    if company_name:
+        raw.append(company_name)
+    if competitors:
+        raw.extend(competitors)
+
+    admitted: set[str] = set()
+    for term in raw:
+        if not isinstance(term, str) or not term.strip():
+            continue
+        # No `isalpha()` check. There was one, and it was dead: `_WORD_RE` matches only
+        # letters, so a non-alphabetic token cannot reach here. A control that cannot fire
+        # reads as protection and is not any, which is the defect class this file keeps
+        # finding in itself.
+        tokens = [_fold(t.group(0)) for t in _WORD_RE.finditer(term)]
+        if not tokens or any(len(tok) < _TENANT_TERM_MIN_LENGTH for tok in tokens):
+            continue
+        # Whole-term rejection when any token is person vocabulary. This check WAS the control
+        # in the first attempt at 5c, review proved it insufficient, and I then removed it
+        # entirely -- which was an overcorrection with a measured cost. "Insufficient as the
+        # only control" is not "worthless as a layer":
+        #
+        #     competitors=["Silva Tecnologia"]  +  "Dr. Carlos Silva aprovou o contrato."
+        #       without this check -> "[[PERSON_NAME_1]] Silva aprovou o contrato."
+        #
+        # The guard permits that, correctly by its own contract, because `silva` was declared.
+        # But the person exposed is a THIRD PARTY on the call, not the tenant, and Silva is the
+        # commonest surname in Brazil. Measured 4 of 4 on Silva/Santos/Oliveira shapes.
+        #
+        # It is still not the safety control -- `redact`'s guard is, and it catches the shapes
+        # this cannot see. It is the cheap layer that closes the high-blast-radius case, and
+        # rejection is per TERM so "Silva Tecnologia" contributes nothing, not `tecnologia`.
+        if any(tok in _BR_TOP_NAMES or tok in _BR_TOP_SURNAMES for tok in tokens):
+            continue
+        admitted.update(tokens)
+
+    # Deterministic truncation: `sorted` because a set has no order worth relying on, and the
+    # same request must redact identically on a retry in a different process.
+    if len(admitted) > _MAX_TENANT_TERMS:
+        admitted = set(sorted(admitted)[:_MAX_TENANT_TERMS])
+    return frozenset(admitted)
+
+
+def redact(text: str, tenant_terms: frozenset[str] = frozenset()) -> PiiRedactionV1:
     """Replaces PII with placeholders in the `[[TYPE_N]]` format.
+
+    `tenant_terms` are this request's trade names, from `admissible_tenant_terms`. They let a
+    company name survive in front of a person -- "Northwind Andre Teixeira confirmou" kept the
+    account instead of redacting it away with the person.
+
+    THEY ARE NOT TRUSTED. The shield runs twice: once without them and once with them, and the
+    second result is kept only if every token it freed is a term the tenant declared. Any
+    other token means a person the shield caught without the feature would go to the provider
+    with it, and the whole pass is discarded. ADR 0012 is not negotiable against a config field.
+
+    That structure exists because the obvious alternative does not work. A term cannot be
+    judged safe in isolation: an allow-listed token is a run-splitter here, so admitting one
+    can strand a NEIGHBOUR as a lone token and free a person whose name has nothing to do with
+    the tenant. Three shapes that a list-based gate passed and this guard catches:
+
+        "NORTHWIND NIVALDO ZANCHETTA: fechamos o escopo"  with `northwind`
+        "Wanderleia Kranz Digital Solutions fechou."      with `kranz digital solutions`
+        "Nivaldo das Neves aprovou o plano."              with `casa das maquinas`
+
+    All three are redacted correctly on the baseline pass and leaked a full name on the
+    candidate pass. Under the guard the candidate is thrown away and the baseline stands, so
+    the worst case of this feature is the behaviour that existed before it.
+
+    "DECLARED" MEANS FOLD-EQUIVALENT, NOT EQUAL, and that is wider than it sounds. `_fold`
+    strips accents, so a tenant declaring "Inovacao Digital" has also declared "Inovação".
+    Checked rather than assumed: `_fold("Antônio") == _fold("Antonio")`. This is not a hole in
+    the guard -- every membership test in this module is on folded tokens, so a narrower rule
+    would make terms fail to match the text they were declared for -- but it does mean the
+    residual covers accent variants, which nobody would infer from a settings field.
+
+    (This paragraph used to teach the same point with "Ines Consultoria" and "Sao Paulo
+    Servicos". Both are refused whole now -- `ines` and `paulo` are given names -- so the
+    examples taught a behaviour the code no longer has. Same staleness that was fixed in the
+    tests and left here, which is how product code ends up lying while CI stays green.)
+
+    Empty `tenant_terms` skips the second pass entirely and is byte-identical to the old
+    single-pass function.
+
 
     Two-stage flow:
       1. Basic deterministic patterns (email/CPF/CNPJ/card/phone).
@@ -2342,9 +2484,125 @@ def redact(text: str) -> PiiRedactionV1:
     text should be on the way to the model.
     """
     text = unicodedata.normalize("NFC", text)
+
+    baseline_text, baseline_redactions, baseline_spans, intermediate = _one_pass(text, frozenset())
+    if not tenant_terms:
+        return PiiRedactionV1(redactedText=baseline_text, redactions=baseline_redactions)
+
+    # `intermediate` comes from the baseline pass and the span coordinates belong to it. The
+    # candidate pass recomputes the same string -- `_apply_basic_patterns` takes no tenant
+    # terms -- so it is returned and discarded rather than recomputed a third time here.
+    candidate_text, candidate_redactions, candidate_spans, _ = _one_pass(text, tenant_terms)
+
+    if _frees_anything_undeclared(intermediate, baseline_spans, candidate_spans, tenant_terms):
+        return PiiRedactionV1(redactedText=baseline_text, redactions=baseline_redactions)
+
+    return PiiRedactionV1(redactedText=candidate_text, redactions=candidate_redactions)
+
+
+def _one_pass(
+    text: str, tenant_terms: frozenset[str]
+) -> tuple[str, list[Redaction], list[tuple[int, int]], str]:
+    """One full redaction over already-NFC `text`. Independent of any other call.
+
+    Counters are created inside `_apply_basic_patterns`, so two passes never share numbering
+    and the discarded pass leaves nothing behind. Returns the redacted text, its redactions,
+    the PERSON_NAME spans actually applied, and the intermediate text those spans index into.
+    """
     intermediate, basic_redactions, counters = _apply_basic_patterns(text)
-    final_text, person_redactions = _redact_person_names(intermediate, counters)
-    return PiiRedactionV1(
-        redactedText=final_text,
-        redactions=basic_redactions + person_redactions,
+    final_text, person_redactions, spans = _redact_person_names(
+        intermediate, counters, tenant_terms
     )
+    return final_text, basic_redactions + person_redactions, spans, intermediate
+
+
+def _frees_anything_undeclared(
+    intermediate: str,
+    baseline_spans: list[tuple[int, int]],
+    candidate_spans: list[tuple[int, int]],
+    tenant_terms: frozenset[str],
+) -> bool:
+    """Did the candidate pass leave in the clear any character the baseline redacted?
+
+    POSITIONAL, and the version this replaces was not -- that is the bug it fixes. The old
+    guard compared a document-wide multiset of surviving tokens, so a token FREED at one site
+    was cancelled by the same token NEWLY REDACTED at another and the guard saw nothing.
+    Review produced the counter-example and it reproduces exactly as traced:
+
+        "Zanchetta Northwind Kranz fechou o contrato.
+         Relatorio de Vendas Northwind Zanchetta Kranz."      declaring only `northwind`
+
+    The baseline redacts the first mention and leaks the second, which is a pre-existing gap
+    of this module. The candidate does the opposite: `northwind` splits the first run into two
+    lone off-list tokens that `_is_a_name_on_its_own` refuses, while the second run, shortened
+    by the same split, becomes a clean Title Case pair and IS claimed. `zanchetta` and `kranz`
+    each appear once in both outputs, the aggregate difference is empty, and a person the
+    shield had redacted went to the provider in the clear. "Freed here" and "caught there"
+    were being paid in the same currency.
+
+    So: characters rather than tokens, and the BASELINE's spans rather than a global tally.
+    For every stretch the baseline redacted, whatever the candidate leaves uncovered inside it
+    must fold to a term this tenant declared. Redacting more somewhere else earns nothing.
+
+    Both span lists are in the coordinates of `intermediate`, which is the output of
+    `_apply_basic_patterns` -- a function that takes no tenant terms and is therefore identical
+    across the two passes. That identity is what makes the offsets comparable at all, and it is
+    the assumption to re-check first if this guard ever starts behaving oddly.
+    """
+    if not baseline_spans:
+        return False
+
+    # Linear merge with a cursor carried across baseline spans, passed as an INDEX rather than
+    # by slicing -- see `_uncovered_parts`, where slicing turned out to be the same C^2/2 shape
+    # in a smaller constant. The mistake being avoided is one this file already paid for: the
+    # note above `_is_covered` records a scan-from-zero costing 6.76s on a 200KB transcript
+    # before `bisect` replaced it, and the input cap here is 1MB on the request thread.
+    #
+    # Correctness does not rest on the cursor. `_uncovered_parts` subtracts the union of what
+    # it is given, so starting later can only make it see FEWER covering spans, and subtracting
+    # less can only produce gaps that are equal or LARGER -- more text inspected, never less.
+    # An over-advanced cursor therefore rejects a candidate it could have accepted; it cannot
+    # free anything. The ascending-and-disjoint property of both lists (from the rebuild loop's
+    # `m.start < cursor` skip) is what makes it exact rather than merely safe.
+    covered = sorted(candidate_spans)
+    index = 0
+    for start, end in baseline_spans:
+        while index < len(covered) and covered[index][1] <= start:
+            index += 1
+        for gap_start, gap_end in _uncovered_parts(start, end, covered, index):
+            for tok in _WORD_RE.finditer(intermediate[gap_start:gap_end]):
+                if _fold(tok.group(0)) not in tenant_terms:
+                    return True
+    return False
+
+
+def _uncovered_parts(
+    start: int, end: int, covered: list[tuple[int, int]], first: int = 0
+) -> list[tuple[int, int]]:
+    """Parts of [start, end) that no span in `covered` overlaps. `covered` must be sorted.
+
+    `first` is the index to start scanning from, and it exists so the caller can carry a cursor
+    across successive windows WITHOUT slicing. `covered[first:]` allocates and increfs one
+    element per remaining span on every call, which is the same C^2/2 shape as the
+    scan-from-zero it was supposed to replace -- a smaller constant, not a better order. Worth
+    the parameter because the comment in the caller cites the `_is_covered` incident, which was
+    about a 1MB transcript on the request thread, and the 2.20x -> 2.01x number backing it was
+    measured on single-sentence corpus cases where that term cannot appear at all. A claim that
+    invokes a specific past failure should be true of the shape that failure had.
+    """
+    gaps: list[tuple[int, int]] = []
+    cursor = start
+    for i in range(first, len(covered)):
+        c_start, c_end = covered[i]
+        if c_end <= cursor:
+            continue
+        if c_start >= end:
+            break
+        if c_start > cursor:
+            gaps.append((cursor, min(c_start, end)))
+        cursor = max(cursor, c_end)
+        if cursor >= end:
+            return gaps
+    if cursor < end:
+        gaps.append((cursor, end))
+    return gaps

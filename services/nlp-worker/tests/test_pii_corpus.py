@@ -26,7 +26,11 @@ from tests.pii_corpus.cases import (
     all_cases,
     false_positive_cases,
 )
-from tests.pii_corpus.harness import evaluate, run
+from tests.pii_corpus.harness import _contains_token, evaluate, run
+
+# The corpus harness's own placeholder pattern, used by the 5c tests so their oracle shares no
+# code with the guard they are checking.
+_PLACEHOLDER_IN_TESTS = re.compile(r"\[\[[A-Z_]+_\d+\]\]")
 
 # Both are ceilings, and both must be moved DOWN by any change that claims to improve the
 # shield. Raising either one is a decision, not a detail: it belongs in a commit message that
@@ -673,3 +677,328 @@ def test_an_allow_listed_term_is_never_itself_redacted(product: str) -> None:
     ):
         out = redact(text).redacted_text
         assert product.lower() in out.lower(), f"{product!r} was redacted out of {text!r}: {out!r}"
+
+
+# --------------------------------------------------------------------------- #
+# Finding 5c: the tenant's own trade names, guarded by measurement
+#
+# The first attempt at 5c (PR #451, closed unmerged) tried to decide in advance which terms
+# were safe, by refusing any that collided with _BR_TOP_NAMES | _BR_TOP_SURNAMES. Review
+# proved that cannot work: those sets hold 372 tokens and this module catches most names by
+# SHAPE, so the gate was blind exactly where the module says the common case lives. The three
+# cases below all passed that gate and leaked a full name.
+#
+# So nothing here trusts a term. `redact` runs twice and keeps the second result only if every
+# token it freed was declared by the tenant. These tests are the contract, not the gate.
+# --------------------------------------------------------------------------- #
+
+# Every one of these was produced by a review that broke a previous version of this feature,
+# and every one is redacted correctly by the baseline pass. They are kept in the order the
+# reviews found them.
+#
+# `NORTHWIND NIVALDO ZANCHETTA: fechamos o escopo` used to sit at the top of this list and was
+# REMOVED, because it turned out to be inert: Pattern 6 never receives tenant terms, so the
+# label is claimed identically in both passes and the guard is not exercised at all. It passed
+# for a reason that had nothing to do with the code under test -- the same defect the rest of
+# this file spends paragraphs disavowing.
+LEAKED_UNDER_AN_EARLIER_GUARD = [
+    # From the review that closed #451: an admitted token splits the run and strands a person
+    # who has no relationship to the trade name at all.
+    ("Kranz Digital Solutions", "Wanderleia Kranz Digital Solutions fechou.", ("Wanderleia",)),
+    ("Casa das Maquinas", "Nivaldo das Neves aprovou o plano.", ("Nivaldo", "Neves")),
+    # From the review of #452, and this is the one that killed the AGGREGATE guard. The
+    # baseline redacts the first mention and leaks the second; the candidate does the exact
+    # opposite. Token counts are identical in both outputs, so a multiset comparison sees
+    # nothing while a person moves into the clear. Only a positional guard catches it.
+    (
+        "Northwind",
+        "Zanchetta Northwind Kranz fechou o contrato. "
+        "Relatorio de Vendas Northwind Zanchetta Kranz.",
+        ("Zanchetta", "Kranz"),
+    ),
+]
+
+
+@pytest.mark.parametrize("company,text,watch", LEAKED_UNDER_AN_EARLIER_GUARD)
+def test_a_tenant_term_never_frees_a_person_it_did_not_declare(
+    company: str, text: str, watch: tuple[str, ...]
+) -> None:
+    """The regressions that killed two earlier versions, pinned.
+
+    THE ASSERTION IS "THE OUTPUT IS THE BASELINE", not "the token is absent, and the
+    difference matters for the third case. There the baseline itself leaks both tokens at the
+    second mention -- a pre-existing gap of this module that 5c neither causes nor fixes -- so
+    "token absent" would fail with the feature switched off entirely. What must hold is that
+    the candidate pass was DISCARDED. Anything else is the feature moving a person into the
+    clear, whether or not that person's name appears elsewhere in the sentence.
+    """
+    terms = pii_shield.admissible_tenant_terms(company, [])
+    assert terms, f"{company!r} should still be admitted -- the guard, not the gate, is the control"
+    baseline = redact(text).redacted_text
+    out = redact(text, terms).redacted_text
+
+    assert out == baseline, (
+        f"the guard accepted a candidate pass it should have rejected.\n"
+        f"  terms    : {sorted(terms)}\n  baseline : {baseline!r}\n  got      : {out!r}\n"
+        f"  watching : {list(watch)}"
+    )
+    # ...and nothing the baseline managed to hide may be in the clear in the output.
+    hidden_by_baseline = [
+        t for t in watch if t not in re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", baseline)
+    ]
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
+    for token in hidden_by_baseline:
+        assert token not in stripped, f"{token!r} leaked: {out!r}"
+
+
+def test_no_tenant_term_can_free_a_planted_name_anywhere_in_the_corpus() -> None:
+    """The contract over all 5,885 cases, with an INDEPENDENT oracle.
+
+    The previous version of this test was TAUTOLOGICAL and review said so. It recomputed the
+    guard's own expression, with the guard's own helper, on the guard's own output -- so it
+    reduced to `x - x == the empty set` and was empty for every possible corpus and every
+    possible term set. It could catch the guard being DELETED (it did, under mutation) and
+    could never catch the guard's oracle being WRONG, which is precisely what the aggregate
+    version was. 5,885 green cases certified nothing.
+
+    So the oracle here shares no code with the guard. It is `_contains_token`, the corpus
+    harness's own comparison -- the same one the published leak rate is computed with, written
+    long before this feature existed. Each case knows which names it planted; this asserts that
+    a name the baseline HID is not sitting in the clear in the output.
+
+    `hostile` is the corpus's own person-name pools declared as trade names: the worst input
+    this feature can receive, and one no gate would ever admit.
+    """
+    # A NOTE THAT WAS WRONG HERE, kept as a warning because the wrong version was confident.
+    # It said: "with the guard stubbed to never reject, BOTH term sets still produce ZERO
+    # violations -- that is a property of the corpus, not a bug in the sweep." The observation
+    # was real and the diagnosis was invented. The sweep was passing an UNFOLDED haystack to
+    # `_contains_token`, which folds only the needle, so every Title Case name missed and the
+    # condition collapsed to `True and False` for every case. Zero violations, always, for any
+    # shield. I measured the symptom, believed the first explanation that fit, and wrote it
+    # down as fact.
+    #
+    # With the fold fixed and the guard stubbed to never reject, this test FAILS -- so it is a
+    # liveness check after all. Measured on both term sets, 2,466 and 101 cases changing.
+    #
+    #   `hostile`  — declare the very names the corpus plants: the worst input possible.
+    #   `disjoint` — declare only trade vocabulary, sharing no token with any planted name.
+    hostile = frozenset(
+        pii_shield._fold(n) for n in (list(pools.OFF_LIST_SURNAME) + list(pools.OFF_LIST_GIVEN))
+    )
+    disjoint = frozenset(
+        pii_shield._fold(n)
+        for n in (list(COMPANY_SUFFIXES) + list(pools.UNLISTED_PRODUCTS))
+        if len(pii_shield._fold(n)) >= pii_shield._TENANT_TERM_MIN_LENGTH
+    )
+    assert not (disjoint & hostile), (
+        "the 'disjoint' term set now shares a token with the corpus's person pools, so it can "
+        "no longer prove anything a broken guard would fail. Re-derive it."
+    )
+
+    violations = []
+    changed = 0
+    for case in all_cases():
+        base = redact(case.text).redacted_text
+        for terms in (hostile, disjoint):
+            out = redact(case.text, terms).redacted_text
+            if out != base:
+                changed += 1
+            _collect_freed_names(case, base, out, terms, violations)
+
+    assert not violations, (
+        f"{len(violations)} case(s) moved a planted name into the clear. First few:\n"
+        + "\n".join(
+            f"  {t!r}\n    token={k!r}\n    base={b!r}\n    out={o!r}"
+            for t, k, b, o in violations[:5]
+        )
+    )
+    # It has to be able to fail, or a green run means nothing.
+    assert changed > 500, (
+        f"only {changed} cases changed under the term sets; this check has stopped exercising "
+        "the guard and would pass with the feature disabled"
+    )
+
+
+def _collect_freed_names(case, base: str, out: str, terms, violations: list) -> None:
+    """A planted name the BASELINE hid must not be in the clear in `out`.
+
+    Names the baseline already leaks are excluded: that is a gap of the shield -- 9.43% of the
+    corpus -- and not something this feature did. Comparison is `_contains_token`, the corpus
+    harness's own, so this oracle shares no code with the guard it is checking.
+    """
+    # `_fold` ON THE HAYSTACK, and the parameter name in `harness.py` is the contract:
+    # `_contains_token(haystack_folded, token)` folds the NEEDLE and does a case-sensitive
+    # search. Passing raw text made every Title Case name miss -- `kranz` never matches
+    # "Kranz" -- so both calls returned False, the condition collapsed to `True and False`,
+    # and this sweep was unconditionally green for every corpus, term set and shield.
+    # Measured after the fix, not reasoned. `harness.evaluate` folds at the same point.
+    base_clear = pii_shield._fold(_PLACEHOLDER_IN_TESTS.sub(" ", base))
+    out_clear = pii_shield._fold(_PLACEHOLDER_IN_TESTS.sub(" ", out))
+    for token in case.must_vanish:
+        if pii_shield._fold(token) in terms:
+            continue  # declared by this tenant: freeing it is the feature, not a violation
+        if not _contains_token(base_clear, token) and _contains_token(out_clear, token):
+            violations.append((case.text, token, base, out))
+
+
+def test_empty_tenant_terms_change_nothing_at_all() -> None:
+    """Empty must not fail open -- as IDENTITY, over the corpus, not as "still redacts"."""
+    for empty in (
+        pii_shield.admissible_tenant_terms("", []),
+        pii_shield.admissible_tenant_terms(None, None),
+        frozenset(),
+    ):
+        assert empty == frozenset()
+        for case in all_cases():
+            assert redact(case.text, empty).redacted_text == redact(case.text).redacted_text
+
+
+@pytest.mark.parametrize("company", ["Northwind", "Contoso", "Zendesk"])
+@pytest.mark.parametrize("given,surname", [("Andre", "Teixeira"), ("Marina", "Alves")])
+def test_an_admitted_term_keeps_its_name_without_freeing_the_person(
+    company: str, given: str, surname: str
+) -> None:
+    """5c itself. The company survives; the person does not.
+
+    None of these three is in `_PERSON_NAME_NEGATIVE_LIST` -- checked by
+    `test_the_5c_sample_is_not_already_handled` below, because the previous attempt's sample
+    included Protheus and Datasul, which are, so four of its ten cases were inert.
+    """
+    terms = pii_shield.admissible_tenant_terms(company, [])
+    text = f"{company} {given} {surname} confirmou a renovacao."
+    out = redact(text, terms).redacted_text
+
+    assert company in out, f"{company!r} was eaten with the person: {out!r}"
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
+    assert given not in stripped, f"{given!r} leaked: {out!r}"
+    assert surname not in stripped, f"{surname!r} leaked: {out!r}"
+
+
+@pytest.mark.parametrize("company", ["Northwind", "Contoso", "Zendesk"])
+def test_the_5c_sample_is_not_already_handled(company: str) -> None:
+    """Stops the headline test above from going inert the way the previous one did.
+
+    A term already on the static negative list produces identical output with and without the
+    feature, so a sample drawn from those would assert nothing about 5c at all.
+    """
+    assert pii_shield._fold(company) not in pii_shield._PERSON_NAME_NEGATIVE_LIST, (
+        f"{company!r} is now on the static negative list, so this case no longer exercises "
+        "the tenant-term path. Pick a term that is not already handled."
+    )
+
+
+def test_the_residual_risk_is_what_the_contract_says_it_is() -> None:
+    """The honest limit, pinned so it cannot drift into a stronger claim.
+
+    A tenant that declares a term which is ALSO a person's surname keeps that surname in the
+    clear for its own transcripts. That is not a hole in the guard -- the token was declared,
+    and the feature is definitionally "let the tenant keep its own name". It is the
+    irreducible cost, and it is recorded here rather than in a comment nobody re-runs.
+    """
+    terms = pii_shield.admissible_tenant_terms("Nardelli Consultoria", [])
+    out = redact("Nardelli Consultoria enviou a proposta.", terms).redacted_text
+    assert "Nardelli" in out, (
+        "the residual changed shape. Re-derive it before relaxing this test: the guard's "
+        "promise is 'no UNDECLARED token is freed', never 'no surname is ever freed'."
+    )
+    # ...and the same surname is still redacted for a tenant that did NOT declare it.
+    assert "Nardelli" not in redact("Nardelli Consultoria enviou a proposta.").redacted_text
+
+
+def test_declared_means_fold_equivalent_not_equal() -> None:
+    """The residual is wider than "the exact string the tenant typed", and that is worth pinning.
+
+    `_fold` strips accents, so a declaration covers every accent variant of itself. Every
+    membership test in the shield is on folded tokens, so this is the only self-consistent
+    rule -- a narrower one here would make a declared term fail to match the text it was
+    declared for. But nobody reading a settings page would infer it, so it is asserted.
+
+    The example USED to be "Ines Consultoria", which now fails admission and rightly so:
+    `ines` is person vocabulary, and the gate refuses those since a competitor named after a
+    surname was measured exposing third parties. The property being pinned here is about
+    folding, so it needs a term that is not a name -- otherwise this test would be quietly
+    asserting two things and breaking for the wrong reason.
+    """
+    assert pii_shield._fold("Ant\u00f4nio") == pii_shield._fold("Antonio")
+    assert pii_shield._fold("Inova\u00e7\u00e3o") == pii_shield._fold("Inovacao")
+
+    terms = pii_shield.admissible_tenant_terms("Inovacao Digital", [])
+    assert pii_shield._fold("Inova\u00e7\u00e3o") in terms, (
+        "the accented form is no longer covered by the unaccented declaration. That is a "
+        "narrower residual, which is fine -- but the guard compares folded tokens, so check "
+        "that a declared term still matches the text it was declared for before relaxing this."
+    )
+
+    # The accented spelling survives in the transcript even though the tenant typed it plain...
+    out = redact("Inova\u00e7\u00e3o Digital e Beatriz Moreira assinaram.", terms).redacted_text
+    assert "Inova\u00e7\u00e3o" in out, f"the accented form was not covered: {out!r}"
+    # ...and a person who is not fold-equivalent to any declared term is still redacted.
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
+    assert "Moreira" not in stripped, f"an undeclared surname leaked: {out!r}"
+    assert "Beatriz" not in stripped, f"an undeclared given name leaked: {out!r}"
+
+
+@pytest.mark.parametrize(
+    "competitor,text,third_party_surname",
+    [
+        ("Silva Tecnologia", "Dr. Carlos Silva aprovou o contrato.", "Silva"),
+        ("Santos Group", "Dr. Marina Santos assinou a proposta.", "Santos"),
+        ("Oliveira Labs", "Contato: Bruno Oliveira, diretor.", "Oliveira"),
+    ],
+)
+def test_the_gate_refuses_a_competitor_named_after_a_surname(
+    competitor: str, text: str, third_party_surname: str
+) -> None:
+    """THE GATE refuses it. Named for what it checks, after the first name overclaimed.
+
+    It was called `..._does_not_expose_third_parties`, which is a property about the GUARD, and
+    this test never reaches the guard: the gate rejects the term, so `redact` takes the
+    empty-terms early return and the guard is not consulted at all. The property in that name
+    is in fact NOT true of the guard and is not meant to be -- the documented residual says a
+    DECLARED token may be freed, and `silva` would be declared. Naming a test for a property it
+    cannot exercise is how a suite ends up looking stronger than it is.
+
+    What is real here: with the vocabulary check removed, `competitors=["Silva Tecnologia"]`
+    turned "Dr. Carlos Silva aprovou o contrato." into "[[PERSON_NAME_1]] Silva aprovou o
+    contrato." in 4 of 4 shapes measured. The gate is what stops that, so the gate is what is
+    asserted.
+    """
+    terms = pii_shield.admissible_tenant_terms(None, [competitor])
+    assert terms == frozenset(), (
+        f"{competitor!r} was admitted. Its surname token is person vocabulary, and admitting it "
+        f"exposes every {third_party_surname} in this tenant's transcripts -- people who are "
+        "not the tenant and never agreed to anything. Note the guard will NOT catch this: the "
+        "token would be declared, and freeing a declared token is inside its contract."
+    )
+    # Deliberately NOT asserting `redact(text, terms) == redact(text)` here. With `terms` proven
+    # empty on the line above, that is `f(x) == f(x)`, and the corpus-wide version of it already
+    # lives in `test_empty_tenant_terms_change_nothing_at_all`.
+    visible = _PLACEHOLDER_IN_TESTS.sub(" ", redact(text, terms).redacted_text)
+    assert third_party_surname not in visible, (
+        f"third-party surname exposed: {visible!r}. This one is a BASELINE shield property, not "
+        "a 5c property -- it would fail if the shield regressed, not if the gate did."
+    )
+
+
+@pytest.mark.parametrize(
+    "company",
+    ["Souza Cruz", "Camargo Correa", "Andrade Gutierrez", "Costa Solucoes", "Alves Tech"],
+)
+def test_the_gate_refuses_the_common_pt_br_shape(company: str) -> None:
+    """What the gate COSTS, asserted, because every other sample in this file hides it.
+
+    The admitted-term samples elsewhere are Northwind, Contoso, Zendesk, Nardelli, Inovacao
+    Digital -- all chosen, without meaning to, from the set the gate happens to allow. So CI is
+    green and the narrowing is invisible. A pt-BR company named after its founder, which is the
+    commonest naming convention in the target market, gets NO feature at all: rejection is per
+    whole term and `company_name` goes through the same door as `competitors`.
+
+    This is not asserting the cost is acceptable. It is asserting that it is known, so that
+    whoever decides to trade it away is doing it on purpose.
+    """
+    assert pii_shield.admissible_tenant_terms(company, []) == frozenset(), (
+        f"{company!r} is now admitted, so the gate has been loosened. That may be right, but it "
+        "is the decision this test exists to force: re-read `admissible_tenant_terms`'s "
+        "docstring and the third-party measurement before changing it."
+    )

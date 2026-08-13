@@ -1436,3 +1436,196 @@ def test_14_digit_non_luhn_not_treated_as_card():
     text = "pedido 3056 9309 0259 09 invalido"  # last digit breaks Luhn
     result = pii_shield.redact(text)
     assert not any(r.type == PiiType.CREDIT_CARD for r in result.redactions)
+
+
+# --------------------------------------------------------------------------- #
+# Finding 5c: the tenant-term guard, unit-level.
+#
+# These live HERE and not only in `test_pii_corpus.py` because the coverage gate in CI runs
+# `pytest tests/test_pii_shield.py` alone (`.github/workflows/ci.yml`). Guard code exercised
+# only from the corpus file counts for nothing at that gate, which is how a first attempt at
+# this shipped 86% while a full-suite run said 96%. The behaviour tests are in the corpus file;
+# what is here is the arithmetic, which is where a silent hole would live.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "start,end,covered,expected",
+    [
+        # Nothing covered -> the whole span is a gap.
+        (10, 20, [], [(10, 20)]),
+        # Exactly covered, and the two edge-aligned variants.
+        (10, 20, [(10, 20)], []),
+        (10, 20, [(0, 30)], []),
+        (10, 20, [(10, 25)], []),
+        (10, 20, [(5, 20)], []),
+        # Partial at each edge.
+        (10, 20, [(10, 15)], [(15, 20)]),
+        (10, 20, [(15, 20)], [(10, 15)]),
+        (10, 20, [(12, 16)], [(10, 12), (16, 20)]),
+        # Two holes.
+        (10, 30, [(12, 14), (20, 22)], [(10, 12), (14, 20), (22, 30)]),
+        # Spans that end before or start after the window contribute nothing.
+        (10, 20, [(0, 5), (25, 30)], [(10, 20)]),
+        # Touching spans leave no gap between them.
+        (10, 20, [(10, 15), (15, 20)], []),
+        # Overlapping covers must not re-open an earlier gap.
+        (10, 20, [(10, 16), (14, 20)], []),
+        # Duplicates are harmless.
+        (10, 20, [(10, 15), (10, 15)], [(15, 20)]),
+    ],
+)
+def test_uncovered_parts(start, end, covered, expected):
+    """Hand-rolled interval arithmetic, so every shape is pinned rather than reasoned about.
+
+    The dangerous direction is returning FEWER gaps than the truth: a gap that goes missing is
+    a stretch of text the guard never inspects, which is a person it never notices being freed.
+    """
+    assert pii_shield._uncovered_parts(start, end, sorted(covered)) == expected
+
+
+def test_uncovered_parts_never_reports_less_than_the_truth():
+    """Brute force over small windows, checked against a naive per-character model.
+
+    The parametrised cases above are the shapes somebody thought of. This is the one that
+    catches the shape nobody thought of.
+    """
+    for a in range(6):
+        for b in range(a + 1, 7):
+            for c in range(7):
+                for d in range(c + 1, 8):
+                    for e in range(7):
+                        for f in range(e + 1, 8):
+                            covered = sorted([(c, d), (e, f)])
+                            gaps = pii_shield._uncovered_parts(a, b, covered)
+                            got = {i for gs, ge in gaps for i in range(gs, ge)}
+                            want = {i for i in range(a, b) if not (c <= i < d) and not (e <= i < f)}
+                            assert got == want, (
+                                f"window=({a},{b}) covered={covered}: "
+                                f"reported {sorted(got)}, truth {sorted(want)}"
+                            )
+
+
+def test_guard_rejects_when_a_baseline_span_is_left_uncovered():
+    """`_frees_anything_undeclared` directly, without going through two full passes."""
+    intermediate = "Zanchetta Northwind Kranz fechou"
+    baseline_spans = [(0, 25)]  # "Zanchetta Northwind Kranz"
+
+    # Candidate redacted nothing there: two undeclared tokens are exposed -> reject.
+    assert pii_shield._frees_anything_undeclared(
+        intermediate, baseline_spans, [], frozenset({"northwind"})
+    )
+    # Candidate redacted the same stretch -> nothing exposed -> accept.
+    assert not pii_shield._frees_anything_undeclared(
+        intermediate, baseline_spans, [(0, 25)], frozenset({"northwind"})
+    )
+    # Only the declared term is left in the clear -> accept.
+    assert not pii_shield._frees_anything_undeclared(
+        intermediate, baseline_spans, [(0, 9), (20, 25)], frozenset({"northwind"})
+    )
+    # Redacting MORE somewhere else buys nothing: the gap is still uncovered.
+    assert pii_shield._frees_anything_undeclared(
+        intermediate, baseline_spans, [(26, 32)], frozenset({"northwind"})
+    )
+    # No baseline spans at all -> nothing to free.
+    assert not pii_shield._frees_anything_undeclared(intermediate, [], [], frozenset())
+
+
+def test_admissible_tenant_terms_shape():
+    gate = pii_shield.admissible_tenant_terms
+    assert gate(None, None) == frozenset()
+    assert gate("", []) == frozenset()
+    assert gate("Northwind Traders", []) == frozenset({"northwind", "traders"})
+    assert gate(None, ["Contoso", "Zendesk"]) == frozenset({"contoso", "zendesk"})
+    # Folded, so the declaration matches the text it was declared for.
+    assert gate("Inova\u00e7\u00e3o Digital", []) == frozenset({"inovacao", "digital"})
+    # ...but a term whose token is person vocabulary is refused WHOLE, so a competitor named
+    # after a surname cannot expose third parties who happen to share it.
+    assert gate(None, ["Silva Tecnologia"]) == frozenset()
+    assert gate(None, ["Santos Group"]) == frozenset()
+    # A term with a token below the minimum length contributes nothing at all.
+    assert gate("AB Tech", []) == frozenset()
+    # Non-strings and blanks are skipped rather than raising.
+    assert gate(None, ["", "   ", "Contoso"]) == frozenset({"contoso"})
+
+
+def test_empty_tenant_terms_take_the_single_pass_path():
+    text = "Northwind Andre Teixeira confirmou a renovacao."
+    assert (
+        pii_shield.redact(text, frozenset()).redacted_text == pii_shield.redact(text).redacted_text
+    )
+
+
+def test_redact_discards_the_candidate_pass_when_it_would_free_a_person():
+    """End to end, so the REJECTION branch inside `redact` is exercised and not just the helper.
+
+    This is the counter-example that broke the aggregate version of the guard: the baseline
+    redacts the first mention and leaks the second, the candidate does the reverse, and the
+    two texts hold the same tokens in the same counts. Only a positional comparison sees it.
+    """
+    text = (
+        "Zanchetta Northwind Kranz fechou o contrato. "
+        "Relatorio de Vendas Northwind Zanchetta Kranz."
+    )
+    terms = pii_shield.admissible_tenant_terms("Northwind", [])
+    assert terms
+
+    baseline = pii_shield.redact(text).redacted_text
+    guarded = pii_shield.redact(text, terms).redacted_text
+    assert guarded == baseline, (
+        "the guard accepted a pass that moves a person into the clear at the first mention "
+        f"while redacting the second.\n  baseline={baseline!r}\n  got     ={guarded!r}"
+    )
+
+
+def test_redact_keeps_the_candidate_pass_when_only_declared_terms_are_freed():
+    """The accept branch, so both sides of the guard's decision are covered."""
+    terms = pii_shield.admissible_tenant_terms("Northwind", [])
+    out = pii_shield.redact("Northwind Andre Teixeira confirmou a renovacao.", terms).redacted_text
+    assert "Northwind" in out
+    visible = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
+    assert "Andre" not in visible
+    assert "Teixeira" not in visible
+
+
+def test_guard_cursor_across_multiple_baseline_spans():
+    """The cursor loop, which the single-span cases above never iterate.
+
+    `_frees_anything_undeclared` carries an index across baseline spans so it does not rescan
+    `covered` from zero each time. That advance is the riskiest line in the guard, and every
+    other test here passes exactly one baseline span, so the loop body never ran.
+    """
+    #        0123456789...
+    text = "Alfa Bravo aaa Charlie Delta bbb Echo Foxtrot"
+    #        0    5     10  15      23    29  33   38
+    baseline = [(0, 10), (15, 28), (33, 45)]
+
+    # All three covered exactly -> nothing exposed.
+    assert not pii_shield._frees_anything_undeclared(text, baseline, list(baseline), frozenset())
+    # The LAST one uncovered: only reachable if the cursor did not overshoot past it.
+    assert pii_shield._frees_anything_undeclared(text, baseline, [(0, 10), (15, 28)], frozenset())
+    # The MIDDLE one uncovered, with covers on both sides.
+    assert pii_shield._frees_anything_undeclared(text, baseline, [(0, 10), (33, 45)], frozenset())
+    # The FIRST one uncovered.
+    assert pii_shield._frees_anything_undeclared(text, baseline, [(15, 28), (33, 45)], frozenset())
+    # Uncovered, but every exposed token is declared -> accept.
+    assert not pii_shield._frees_anything_undeclared(
+        text, baseline, [(0, 10), (15, 28)], frozenset({"echo", "foxtrot"})
+    )
+    # A candidate span that spills past a baseline span must not consume the NEXT one's cover.
+    assert pii_shield._frees_anything_undeclared(text, baseline, [(0, 14)], frozenset())
+
+
+def test_uncovered_parts_first_index_matches_slicing():
+    """`first=` must be equivalent to slicing, which is what it replaced.
+
+    The slice version was correct and quadratic in allocations; this asserts the cheap version
+    did not change the answer, over every start index of a small covered list.
+    """
+    covered = [(0, 5), (8, 12), (20, 25), (30, 33)]
+    for first in range(len(covered) + 1):
+        for start in range(0, 35, 3):
+            for end in range(start + 1, 36, 4):
+                assert pii_shield._uncovered_parts(
+                    start, end, covered, first
+                ) == pii_shield._uncovered_parts(start, end, covered[first:])
