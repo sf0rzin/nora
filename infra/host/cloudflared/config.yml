@@ -48,13 +48,21 @@
 #   | (empty)   | nora.systems | HTTP | caddy:80        | no — public site           |
 #   | www       | nora.systems | HTTP | caddy:80        | no — public site           |
 #   | api       | nora.systems | HTTP | caddy:80        | no — own session/JWT       |
-#   | admin     | nora.systems | HTTP | caddy:80        | YES (fail-open without it) |
+#   | admin     | nora.systems | HTTP | caddy:80        | YES — required             |
 #   | grafana   | nora.systems | HTTP | caddy:80        | YES                        |
 #   | ssh       | nora.systems | SSH  | 172.17.0.1:22   | YES — policy BEFORE route  |
 #
 # The Access column was verified against the deployed edge on 2026-08-12: an unauthenticated
-# GET on admin and on grafana both return 302 to stratfy.cloudflareaccess.com. The two routes
-# marked "no" answered directly, which is what they are for.
+# GET on admin and on grafana both return 302 to stratfy.cloudflareaccess.com. The three
+# routes marked "no" answered directly (apex 200, www 301, api 401), which is what they are
+# for — the api has its own session.
+#
+# `admin` says "required" rather than "fail-open without it", which is what this comment used
+# to imply and is backwards. Deleting the Access Application fails CLOSED: with
+# CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD set, apps/admin/src/lib/access.ts blocks any request
+# arriving without a `Cf-Access-Jwt-Assertion` header. The fail-OPEN condition is those two
+# variables being EMPTY, which is why ../docker-compose.yml marks both `:?` — see the comment
+# on the admin service there.
 #
 # HTTP type (not HTTPS): the origin has no TLS on purpose — the visitor's TLS
 # terminates at the Cloudflare edge and the cloudflared -> caddy leg never leaves
@@ -145,7 +153,9 @@ ingress:
   # Grafana. Fronted by a Cloudflare Access Application, like admin — verified 2026-08-12:
   # an unauthenticated GET returns 302 to stratfy.cloudflareaccess.com/cdn-cgi/access/login/
   # grafana.nora.systems. So the Grafana admin password is the second factor here, not the
-  # only one. Removing that Access Application publishes the dashboards to the internet.
+  # only one. Removing that Access Application would publish Grafana's LOGIN PAGE to the
+  # internet, not the dashboards: GF_SECURITY_ADMIN_PASSWORD is required by the compose and
+  # anonymous auth is not enabled. It would still be a downgrade from two gates to one.
   - hostname: grafana.nora.systems
     service: http://caddy:80
 

@@ -11,8 +11,10 @@
 # The visitor's TLS terminates at the Cloudflare edge (Universal SSL). cloudflared
 # opens an OUTBOUND connection to Cloudflare and delivers the
 # request as plain HTTP to `caddy:80`, all within Docker's bridges
-# (`internal` is `internal: true`). There is no inbound port published on this
-# VM. That is why `auto_https off`: without it Caddy would see the host names
+# (`internal` is `internal: true`). The stack publishes no inbound port on this host — every
+# compose binding is on 127.0.0.1, and there is no hypervisor: it is one physical machine
+# (ADR 0036). sshd on 22 is the host's own and is a separate matter. That is why
+# `auto_https off`: without it Caddy would see the host names
 # below, try to issue a certificate via ACME, and fail in a loop (there is no
 # :443 reachable from outside), on top of redirecting 80 -> 443 and taking down the tunnel.
 #

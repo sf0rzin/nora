@@ -249,7 +249,9 @@ jobs:
   # ANNOUNCES the rollout — does not execute it. Replaced the old `deploy-apps` (azure/login
   # + `az containerapp update`). There is no host credential, SSH, self-hosted runner nor
   # inbound port here: the job only materializes "which immutable tags exist for this SHA" in
-  # two formats consumable by the pull agent running on the host:
+  # two formats a pull agent on the host could consume. NOTE: that agent does not exist — see
+  # the header block in deploy-host.yml. These artifacts are produced and nothing reads them.
+  # The two formats are:
   #
   #   - artifact `nora-release-pointer` (release.json + deploy.env) — the agent downloads it
   #     via the Actions API (GET /repos/{owner}/{repo}/actions/artifacts?name=nora-release-pointer)
@@ -361,7 +363,8 @@ jobs:
             if [ "${COUNT:-0}" = "0" ]; then
               echo "_No service in the pointer at this SHA (nothing changed, or the builds failed)._"
             else
-              echo "The pull agent on the host applies these lines to the compose \`.env\`:"
+              echo "These are the lines a deploy applies to the compose \`.env\` on the host."
+              echo "Nothing applies them automatically — see the header of \`deploy-host.yml\`:"
               echo ""
               echo '```dotenv'
               cat pointer/deploy.env

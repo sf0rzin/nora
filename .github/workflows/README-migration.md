@@ -89,7 +89,7 @@ JWT_SECRET       CLOUDFLARE_TUNNEL_TOKEN
 | Name | Type | What for |
 |---|---|---|
 | `GHCR_PULL_TOKEN` | Secret | A PAT with **only** `read:packages`, used by the host for `docker login ghcr.io`. It does not go into GitHub — it goes into the host's `secrets.env.sops`. Listed here because it is generated in the GitHub UI. |
-| `NORA_RELEASE_WEBHOOK` | Secret (optional) | URL that `deploy-host.yml` calls to wake the pull agent before the next 5-minute tick. Without it the deploy is just slower, it does not break. |
+| `NORA_RELEASE_WEBHOOK` | Secret (optional) | URL that `deploy-host.yml` would call to wake the pull agent. **That agent was never written**, so this is unset and the POST step is skipped. See the header block in `deploy-host.yml`. |
 | `CF_ACCESS_AUD` | **Secret**, not Variable | See below. |
 
 ## Pre-existing bug that the migration needs to close
