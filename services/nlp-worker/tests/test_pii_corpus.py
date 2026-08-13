@@ -26,7 +26,11 @@ from tests.pii_corpus.cases import (
     all_cases,
     false_positive_cases,
 )
-from tests.pii_corpus.harness import evaluate, run
+from tests.pii_corpus.harness import _contains_token, evaluate, run
+
+# The corpus harness's own placeholder pattern, used by the 5c tests so their oracle shares no
+# code with the guard they are checking.
+_PLACEHOLDER_IN_TESTS = re.compile(r"\[\[[A-Z_]+_\d+\]\]")
 
 # Both are ceilings, and both must be moved DOWN by any change that claims to improve the
 # shield. Raising either one is a decision, not a detail: it belongs in a commit message that
@@ -688,73 +692,153 @@ def test_an_allow_listed_term_is_never_itself_redacted(product: str) -> None:
 # token it freed was declared by the tenant. These tests are the contract, not the gate.
 # --------------------------------------------------------------------------- #
 
-# Verbatim from the review that closed #451. Each one is redacted correctly on the baseline
-# pass and leaked a full name on the candidate pass.
-LEAKED_UNDER_THE_OLD_GATE = [
-    ("Northwind", "NORTHWIND NIVALDO ZANCHETTA: fechamos o escopo", ("NIVALDO", "ZANCHETTA")),
+# Every one of these was produced by a review that broke a previous version of this feature,
+# and every one is redacted correctly by the baseline pass. They are kept in the order the
+# reviews found them.
+#
+# `NORTHWIND NIVALDO ZANCHETTA: fechamos o escopo` used to sit at the top of this list and was
+# REMOVED, because it turned out to be inert: Pattern 6 never receives tenant terms, so the
+# label is claimed identically in both passes and the guard is not exercised at all. It passed
+# for a reason that had nothing to do with the code under test -- the same defect the rest of
+# this file spends paragraphs disavowing.
+LEAKED_UNDER_AN_EARLIER_GUARD = [
+    # From the review that closed #451: an admitted token splits the run and strands a person
+    # who has no relationship to the trade name at all.
     ("Kranz Digital Solutions", "Wanderleia Kranz Digital Solutions fechou.", ("Wanderleia",)),
     ("Casa das Maquinas", "Nivaldo das Neves aprovou o plano.", ("Nivaldo", "Neves")),
+    # From the review of #452, and this is the one that killed the AGGREGATE guard. The
+    # baseline redacts the first mention and leaks the second; the candidate does the exact
+    # opposite. Token counts are identical in both outputs, so a multiset comparison sees
+    # nothing while a person moves into the clear. Only a positional guard catches it.
+    (
+        "Northwind",
+        "Zanchetta Northwind Kranz fechou o contrato. "
+        "Relatorio de Vendas Northwind Zanchetta Kranz.",
+        ("Zanchetta", "Kranz"),
+    ),
 ]
 
 
-@pytest.mark.parametrize("company,text,must_vanish", LEAKED_UNDER_THE_OLD_GATE)
+@pytest.mark.parametrize("company,text,watch", LEAKED_UNDER_AN_EARLIER_GUARD)
 def test_a_tenant_term_never_frees_a_person_it_did_not_declare(
-    company: str, text: str, must_vanish: tuple[str, ...]
+    company: str, text: str, watch: tuple[str, ...]
 ) -> None:
-    """The regressions that killed the previous attempt, pinned as tests.
+    """The regressions that killed two earlier versions, pinned.
 
-    `Wanderleia` is the one to look at: she is not the trade name, not adjacent to it by
-    intent, and was freed only because an admitted token split the run and stranded her as a
-    lone name. No list-based gate can see that, because it depends on the transcript.
+    THE ASSERTION IS "THE OUTPUT IS THE BASELINE", not "the token is absent, and the
+    difference matters for the third case. There the baseline itself leaks both tokens at the
+    second mention -- a pre-existing gap of this module that 5c neither causes nor fixes -- so
+    "token absent" would fail with the feature switched off entirely. What must hold is that
+    the candidate pass was DISCARDED. Anything else is the feature moving a person into the
+    clear, whether or not that person's name appears elsewhere in the sentence.
     """
     terms = pii_shield.admissible_tenant_terms(company, [])
     assert terms, f"{company!r} should still be admitted -- the guard, not the gate, is the control"
+    baseline = redact(text).redacted_text
     out = redact(text, terms).redacted_text
-    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
-    for token in must_vanish:
-        assert token not in stripped, (
-            f"{token!r} leaked with tenant terms {sorted(terms)}: {out!r}\n"
-            "The guard in `redact` should have discarded the candidate pass and returned the "
-            "baseline. Either the guard stopped running or _surviving_tokens stopped seeing it."
-        )
-    assert out == redact(text).redacted_text, (
-        "when the guard rejects, the result must be EXACTLY the baseline pass -- a third "
-        "behaviour here would be a shield nobody has measured"
+
+    assert out == baseline, (
+        f"the guard accepted a candidate pass it should have rejected.\n"
+        f"  terms    : {sorted(terms)}\n  baseline : {baseline!r}\n  got      : {out!r}\n"
+        f"  watching : {list(watch)}"
     )
+    # ...and nothing the baseline managed to hide may be in the clear in the output.
+    hidden_by_baseline = [
+        t for t in watch if t not in re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", baseline)
+    ]
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
+    for token in hidden_by_baseline:
+        assert token not in stripped, f"{token!r} leaked: {out!r}"
 
 
-def test_no_tenant_term_can_free_an_undeclared_token_anywhere_in_the_corpus() -> None:
-    """The contract, over all 5,885 cases, with the most hostile term set available.
+def test_no_tenant_term_can_free_a_planted_name_anywhere_in_the_corpus() -> None:
+    """The contract over all 5,885 cases, with an INDEPENDENT oracle.
 
-    The terms are the corpus's OWN person-name pools declared as trade names -- the worst
-    input this feature can receive, and one no gate would ever admit. The assertion is not
-    "nothing changed": 2,466 cases DO change. It is that nothing outside the declared set was
-    ever freed, which is the only promise this feature makes.
+    The previous version of this test was TAUTOLOGICAL and review said so. It recomputed the
+    guard's own expression, with the guard's own helper, on the guard's own output -- so it
+    reduced to `x - x == the empty set` and was empty for every possible corpus and every
+    possible term set. It could catch the guard being DELETED (it did, under mutation) and
+    could never catch the guard's oracle being WRONG, which is precisely what the aggregate
+    version was. 5,885 green cases certified nothing.
+
+    So the oracle here shares no code with the guard. It is `_contains_token`, the corpus
+    harness's own comparison -- the same one the published leak rate is computed with, written
+    long before this feature existed. Each case knows which names it planted; this asserts that
+    a name the baseline HID is not sitting in the clear in the output.
+
+    `hostile` is the corpus's own person-name pools declared as trade names: the worst input
+    this feature can receive, and one no gate would ever admit.
     """
+    # WHAT THIS SWEEP DOES NOT DO, measured rather than assumed, because the honest limit is
+    # more useful than an overstated claim: with the guard stubbed to never reject, BOTH term
+    # sets below still produce ZERO violations here. 3,423 and 101 cases change output
+    # respectively, and not one frees an undeclared planted name even with no guard at all.
+    #
+    # That is a property of the corpus, not a bug in the sweep. The corpus plants names in
+    # shapes where an admitted term either splits nothing or strands nothing -- the shapes
+    # where it does are the three hand-built cases in
+    # `test_a_tenant_term_never_frees_a_person_it_did_not_declare`, and those are what catch a
+    # broken or absent guard. Both mutations (guard removed, guard reverted to the aggregate
+    # version) fail there and pass here.
+    #
+    # So read this test as breadth and that one as depth. This one is worth keeping because it
+    # is 11,770 independent chances for a shape nobody anticipated to violate the contract; it
+    # is not a liveness check for the guard, and `assert changed > 500` is the only line here
+    # that fails when the feature is switched off.
+    #
+    #   `hostile`  — declare the very names the corpus plants: the worst input possible.
+    #   `disjoint` — declare only trade vocabulary, sharing no token with any planted name.
     hostile = frozenset(
         pii_shield._fold(n) for n in (list(pools.OFF_LIST_SURNAME) + list(pools.OFF_LIST_GIVEN))
     )
+    disjoint = frozenset(
+        pii_shield._fold(n)
+        for n in (list(COMPANY_SUFFIXES) + list(pools.UNLISTED_PRODUCTS))
+        if len(pii_shield._fold(n)) >= pii_shield._TENANT_TERM_MIN_LENGTH
+    )
+    assert not (disjoint & hostile), (
+        "the 'disjoint' term set now shares a token with the corpus's person pools, so it can "
+        "no longer prove anything a broken guard would fail. Re-derive it."
+    )
+
     violations = []
     changed = 0
     for case in all_cases():
         base = redact(case.text).redacted_text
-        out = redact(case.text, hostile).redacted_text
-        if out != base:
-            changed += 1
-        escaped = set(pii_shield._surviving_tokens(out) - pii_shield._surviving_tokens(base))
-        if escaped - hostile:
-            violations.append((case.text, sorted(escaped - hostile)))
+        for terms in (hostile, disjoint):
+            out = redact(case.text, terms).redacted_text
+            if out != base:
+                changed += 1
+            _collect_freed_names(case, base, out, terms, violations)
 
     assert not violations, (
-        f"{len(violations)} case(s) freed a token nobody declared. First few:\n"
-        + "\n".join(f"  {t!r} -> {e}" for t, e in violations[:5])
+        f"{len(violations)} case(s) moved a planted name into the clear. First few:\n"
+        + "\n".join(
+            f"  {t!r}\n    token={k!r}\n    base={b!r}\n    out={o!r}"
+            for t, k, b, o in violations[:5]
+        )
     )
-    # The pool has to be able to fail, or a green run means nothing -- same rule as
-    # `test_the_false_positive_pool_is_not_inert`.
+    # It has to be able to fail, or a green run means nothing.
     assert changed > 500, (
-        f"only {changed} cases changed under hostile terms; this check has stopped exercising "
+        f"only {changed} cases changed under the term sets; this check has stopped exercising "
         "the guard and would pass with the feature disabled"
     )
+
+
+def _collect_freed_names(case, base: str, out: str, terms, violations: list) -> None:
+    """A planted name the BASELINE hid must not be in the clear in `out`.
+
+    Names the baseline already leaks are excluded: that is a gap of the shield -- 9.43% of the
+    corpus -- and not something this feature did. Comparison is `_contains_token`, the corpus
+    harness's own, so this oracle shares no code with the guard it is checking.
+    """
+    base_clear = _PLACEHOLDER_IN_TESTS.sub(" ", base)
+    out_clear = _PLACEHOLDER_IN_TESTS.sub(" ", out)
+    for token in case.must_vanish:
+        if pii_shield._fold(token) in terms:
+            continue  # declared by this tenant: freeing it is the feature, not a violation
+        if not _contains_token(base_clear, token) and _contains_token(out_clear, token):
+            violations.append((case.text, token, base, out))
 
 
 def test_empty_tenant_terms_change_nothing_at_all() -> None:

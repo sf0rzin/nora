@@ -13,7 +13,7 @@ import bisect
 import hashlib
 import re
 import unicodedata
-from collections import Counter, defaultdict
+from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -2312,6 +2312,11 @@ def _redact_person_names(
     person_matches.sort(key=lambda x: x.start)
 
     redactions: list[Redaction] = []
+    # The spans actually redacted, in the coordinates of `text` -- which is the output of
+    # `_apply_basic_patterns` and identical across both of `redact`'s passes, because that
+    # function takes no tenant terms. That identity is what makes these spans comparable
+    # between passes, and it is the whole basis of the guard.
+    applied_spans: list[tuple[int, int]] = []
     rebuilt: list[str] = []
     cursor = 0
     for m in person_matches:
@@ -2328,14 +2333,12 @@ def _redact_person_names(
                 originalHash=_hash(m.value),
             )
         )
+        applied_spans.append((m.start, m.end))
         cursor = m.end
 
     rebuilt.append(text[cursor:])
-    return "".join(rebuilt), redactions
+    return "".join(rebuilt), redactions, applied_spans
 
-
-# Matches what `redact` emits, so the guard can subtract placeholders before comparing text.
-_PLACEHOLDER_RE = re.compile(r"\[\[[A-Z_]+_\d+\]\]")
 
 # Refuse a token shorter than this. A two-letter trade name as ordinary vocabulary would
 # suppress an initial, and initials sit inside names.
@@ -2448,50 +2451,94 @@ def redact(text: str, tenant_terms: frozenset[str] = frozenset()) -> PiiRedactio
     """
     text = unicodedata.normalize("NFC", text)
 
-    baseline_text, baseline_redactions = _one_pass(text, frozenset())
+    baseline_text, baseline_redactions, baseline_spans = _one_pass(text, frozenset())
     if not tenant_terms:
         return PiiRedactionV1(redactedText=baseline_text, redactions=baseline_redactions)
 
-    candidate_text, candidate_redactions = _one_pass(text, tenant_terms)
+    candidate_text, candidate_redactions, candidate_spans = _one_pass(text, tenant_terms)
+    intermediate = _apply_basic_patterns(text)[0]
 
-    # THE GUARD. Everything the candidate pass left standing that the baseline pass redacted
-    # must be a term this tenant declared. Anything else is a person the shield would have
-    # caught without the feature, and the feature does not get to free them.
-    freed = _surviving_tokens(candidate_text) - _surviving_tokens(baseline_text)
-    escaped = set(freed) - tenant_terms
-    if escaped:
+    if _frees_anything_undeclared(intermediate, baseline_spans, candidate_spans, tenant_terms):
         return PiiRedactionV1(redactedText=baseline_text, redactions=baseline_redactions)
 
     return PiiRedactionV1(redactedText=candidate_text, redactions=candidate_redactions)
 
 
-def _one_pass(text: str, tenant_terms: frozenset[str]) -> tuple[str, list[Redaction]]:
+def _one_pass(
+    text: str, tenant_terms: frozenset[str]
+) -> tuple[str, list[Redaction], list[tuple[int, int]]]:
     """One full redaction over already-NFC `text`. Independent of any other call.
 
     Counters are created inside `_apply_basic_patterns`, so two passes never share numbering
-    and the discarded pass leaves nothing behind.
+    and the discarded pass leaves nothing behind. The third element is the PERSON_NAME spans
+    actually applied, in intermediate-text coordinates.
     """
     intermediate, basic_redactions, counters = _apply_basic_patterns(text)
-    final_text, person_redactions = _redact_person_names(intermediate, counters, tenant_terms)
-    return final_text, basic_redactions + person_redactions
+    final_text, person_redactions, spans = _redact_person_names(
+        intermediate, counters, tenant_terms
+    )
+    return final_text, basic_redactions + person_redactions, spans
 
 
-def _surviving_tokens(redacted: str) -> Counter[str]:
-    """Folded word tokens still in the clear, as a MULTISET.
+def _frees_anything_undeclared(
+    intermediate: str,
+    baseline_spans: list[tuple[int, int]],
+    candidate_spans: list[tuple[int, int]],
+    tenant_terms: frozenset[str],
+) -> bool:
+    """Did the candidate pass leave in the clear any character the baseline redacted?
 
-    A multiset and not a set, and the claim here is deliberately weaker than it was. The
-    argument for counting is that a token surviving in the baseline for an unrelated reason
-    would hide a second, freed occurrence from set subtraction -- "Silva Consultoria e Ana
-    Silva", where `silva` stands either way. That argument is sound in the abstract and I
-    could NOT produce a case where it changes the verdict: ten constructed attempts across two
-    shapes, every one agreeing with the set-based version. Replacing this `Counter` with a set
-    also fails no test in the suite, which is checked rather than assumed.
+    POSITIONAL, and the version this replaces was not -- that is the bug it fixes. The old
+    guard compared a document-wide multiset of surviving tokens, so a token FREED at one site
+    was cancelled by the same token NEWLY REDACTED at another and the guard saw nothing.
+    Review produced the counter-example and it reproduces exactly as traced:
 
-    It stays a multiset because it is free and strictly the safer of two orderings, not
-    because a leak was demonstrated. If you are reading this because you want to simplify it:
-    the thing to produce first is the counter-example nobody has produced yet.
+        "Zanchetta Northwind Kranz fechou o contrato.
+         Relatorio de Vendas Northwind Zanchetta Kranz."      declaring only `northwind`
 
-    Placeholders are stripped first: `[[PERSON_NAME_1]]` would otherwise contribute the tokens
-    `person` and `name`, which are in neither text.
+    The baseline redacts the first mention and leaks the second, which is a pre-existing gap
+    of this module. The candidate does the opposite: `northwind` splits the first run into two
+    lone off-list tokens that `_is_a_name_on_its_own` refuses, while the second run, shortened
+    by the same split, becomes a clean Title Case pair and IS claimed. `zanchetta` and `kranz`
+    each appear once in both outputs, the aggregate difference is empty, and a person the
+    shield had redacted went to the provider in the clear. "Freed here" and "caught there"
+    were being paid in the same currency.
+
+    So: characters rather than tokens, and the BASELINE's spans rather than a global tally.
+    For every stretch the baseline redacted, whatever the candidate leaves uncovered inside it
+    must fold to a term this tenant declared. Redacting more somewhere else earns nothing.
+
+    Both span lists are in the coordinates of `intermediate`, which is the output of
+    `_apply_basic_patterns` -- a function that takes no tenant terms and is therefore identical
+    across the two passes. That identity is what makes the offsets comparable at all, and it is
+    the assumption to re-check first if this guard ever starts behaving oddly.
     """
-    return Counter(_fold(m.group(0)) for m in _WORD_RE.finditer(_PLACEHOLDER_RE.sub(" ", redacted)))
+    if not baseline_spans:
+        return False
+
+    covered = sorted(candidate_spans)
+    for start, end in baseline_spans:
+        for gap_start, gap_end in _uncovered_parts(start, end, covered):
+            for tok in _WORD_RE.finditer(intermediate[gap_start:gap_end]):
+                if _fold(tok.group(0)) not in tenant_terms:
+                    return True
+    return False
+
+
+def _uncovered_parts(start: int, end: int, covered: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Parts of [start, end) that no span in `covered` overlaps. `covered` must be sorted."""
+    gaps: list[tuple[int, int]] = []
+    cursor = start
+    for c_start, c_end in covered:
+        if c_end <= cursor:
+            continue
+        if c_start >= end:
+            break
+        if c_start > cursor:
+            gaps.append((cursor, min(c_start, end)))
+        cursor = max(cursor, c_end)
+        if cursor >= end:
+            return gaps
+    if cursor < end:
+        gaps.append((cursor, end))
+    return gaps
