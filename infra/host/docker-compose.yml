@@ -408,7 +408,18 @@ services:
       PLATFORM_DATASOURCE_USERNAME: ${PLATFORM_DATASOURCE_USERNAME:-${POSTGRES_ADMIN_USER:-nora_admin}}
       PLATFORM_DATASOURCE_PASSWORD: ${POSTGRES_PLATFORM_ADMIN_PASSWORD:-${POSTGRES_ADMIN_PASSWORD}}
       NORA_PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_INTERNAL_TOKEN:-}
-      NORA_PLATFORM_ADMIN_TOKEN: ${NORA_PLATFORM_ADMIN_TOKEN:-}
+      # `:?` and not `:-`, unlike the line above, and the asymmetry is the whole point.
+      #
+      # PlatformProperties.adminTokenResolved() falls back to internalToken when adminToken is
+      # blank. That fallback cannot be reached by an attacker — InternalTokenAuthFilter refuses
+      # a blank expected token outright — but when internalToken IS set and adminToken is not,
+      # the WORKER's service token authenticates /admin/platform/**. The operator console and
+      # the worker stop being distinct principals, silently, on a host provisioned without this
+      # one variable. Fail-open by construction is worth one line of compose to close.
+      #
+      # Measured on the running stack before making it mandatory, values not printed: both
+      # tokens are set, 64 characters each, and DISTINCT. So this breaks nothing that is up.
+      NORA_PLATFORM_ADMIN_TOKEN: ${NORA_PLATFORM_ADMIN_TOKEN:?NORA_PLATFORM_ADMIN_TOKEN is required - without it the worker's internal token authenticates the operator console}
       # Control plane health: replaces the App Insights Query REST API (KQL) with the
       # Prometheus Query API. See PrometheusHealthSource (ADR 0034).
       NORA_PLATFORM_HEALTH_PROMETHEUS_URL: http://prometheus:9090

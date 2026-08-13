@@ -66,12 +66,20 @@ worker-setup: ## Create the worker venv and install its dependencies (idempotent
 	fi
 
 .PHONY: web-setup
+# `npm ci`, not `npm install`. The guard already makes this first-install-only, so nothing
+# is gained by letting npm resolve fresh — and `npm install` REWRITES package-lock.json:
+# measured on a clean worktree, it produced 60 deletions on this lock, stripping `libc`
+# fields written by a newer npm. A setup target that dirties the tree teaches people to
+# `git checkout` the lock, which is how a real dependency change gets discarded one day.
+# `npm ci` is deterministic, never touches the lock, and fails loudly if it and
+# package.json disagree — which is a thing worth knowing rather than silently fixing.
+# It is also what CI already runs.
 web-setup: ## Install the web dependencies (idempotent)
 	@if [ ! -d "apps/web/node_modules" ]; then \
-		echo ">> installing the web dependencies (npm)..."; \
-		cd apps/web && npm install; \
+		echo ">> installing the web dependencies (npm ci)..."; \
+		cd apps/web && npm ci; \
 	else \
-		echo ">> web: node_modules already exists (npm install skipped)"; \
+		echo ">> web: node_modules already exists (npm ci skipped)"; \
 	fi
 
 .PHONY: dev
@@ -154,6 +162,26 @@ worker-test: worker-setup ## Run the worker tests
 .PHONY: web-dev
 web-dev: web-setup ## Run the Next.js frontend in dev mode
 	cd apps/web && npm run dev
+
+# apps/admin had no target at all, and nothing in the repository installed it. The README
+# said "run npm install && npm run dev inside apps/admin", which documents the trap rather
+# than removing it — the same argument that gave web-dev a web-setup prerequisite.
+#
+# It is deliberately NOT in `make dev`. The operator console is a separate concern from the
+# product slice, it serves on 3002, and it renders mock data unless NORA_ADMIN_USE_MOCKS is
+# set to false, so starting it alongside everything else would mostly add a port and a log.
+.PHONY: admin-setup
+admin-setup: ## Install the operator console dependencies (idempotent)
+	@if [ ! -d "apps/admin/node_modules" ]; then \
+		echo ">> installing the admin dependencies (npm ci)..."; \
+		cd apps/admin && npm ci; \
+	else \
+		echo ">> admin: node_modules already exists (npm ci skipped)"; \
+	fi
+
+.PHONY: admin-dev
+admin-dev: admin-setup ## Run the operator console in dev mode (port 3002)
+	cd apps/admin && npm run dev
 
 # There is no `web-test`: apps/web has no test script and no test files, so the target
 # it used to declare invoked `npm test` against a package.json that does not define it,

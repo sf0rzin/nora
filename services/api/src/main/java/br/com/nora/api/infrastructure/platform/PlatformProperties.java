@@ -18,7 +18,10 @@ public class PlatformProperties {
     private String internalToken = "";
 
     /**
-     * Admin token (nora-admin → /admin/platform/**). Empty = falls back to internalToken (WARN).
+     * Admin token (nora-admin → /admin/platform/**). Empty = falls back to internalToken, which
+     * means the worker's service credential authenticates the operator console. Warned about in
+     * PlatformSecurityConfig's constructor, and refused outright by the production compose, which
+     * marks this variable `:?`.
      */
     private String adminToken = "";
 

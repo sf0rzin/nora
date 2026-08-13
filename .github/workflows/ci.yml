@@ -537,9 +537,12 @@ jobs:
       - uses: actions/checkout@v6
 
       # `docker compose config` FAILS on `${VAR:?message}` when the variable does not exist —
-      # and the compose uses that pattern on purpose in 6 places (POSTGRES_ADMIN_PASSWORD,
+      # and the compose uses that pattern on purpose on 7 variables (POSTGRES_ADMIN_PASSWORD,
       # JWT_SECRET, CLOUDFLARE_TUNNEL_TOKEN, GRAFANA_ADMIN_PASSWORD, CF_ACCESS_TEAM_DOMAIN,
-      # CF_ACCESS_AUD) to prevent booting with a missing secret. The real values live
+      # CF_ACCESS_AUD, NORA_PLATFORM_ADMIN_TOKEN) to prevent booting with a missing secret.
+      # Keep this list and the heredoc below in step: a variable added there and not here is
+      # only a stale comment, but one added to the compose and to neither turns this job red.
+      # The real values live
       # encrypted in infra/host/secrets.env.sops and are only decrypted on the host (age
       # key in /etc/nora/age.key). CI only needs to prove the GRAPH is valid, so we inject
       # obvious placeholders. No real value goes in here — this file is public.
@@ -555,6 +558,7 @@ jobs:
           GRAFANA_ADMIN_PASSWORD=ci-placeholder
           CF_ACCESS_TEAM_DOMAIN=ci-placeholder.cloudflareaccess.com
           CF_ACCESS_AUD=ci-placeholder-aud
+          NORA_PLATFORM_ADMIN_TOKEN=ci-placeholder-admin-token
           EOF
 
       - name: Compose config (stack base)

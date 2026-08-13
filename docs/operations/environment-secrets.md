@@ -47,7 +47,7 @@ Reads env vars via `application.yml` (`${VAR:default}` placeholders) and `@Value
 | `NORA_RLS_ENFORCE` (default false) | Turns on Postgres Row Level Security (ADR 0002/0019). | not set | No |
 | **Control plane (only when `NORA_PLATFORM_ENABLED=true`):** | | | |
 | `NORA_PLATFORM_INTERNAL_TOKEN` | Service-to-service token (worker/BFF → `/internal/platform/**`). KV `internal-service-token`. | GitHub Secret → KV | Yes (platform on) |
-| `NORA_PLATFORM_ADMIN_TOKEN` | Console token (nora-admin → `/admin/platform/**`). KV `admin-bridge-token`. Least-privilege, distinct from the internal one. | GitHub Secret → KV | Yes (platform on) |
+| `NORA_PLATFORM_ADMIN_TOKEN` | Console token (nora-admin → `/admin/platform/**`). KV `admin-bridge-token`. Least-privilege, distinct from the internal one — blank means the worker's credential authenticates the console. | GitHub Secret → KV | Yes, always (`${VAR:?}` on the unprofiled `api` service) |
 | `PLATFORM_DATASOURCE_*` | 2nd Postgres (platform, isolated blast radius — ADR 0022). Password = KV `postgres-platform-password` (origin GitHub `PG_PLATFORM_ADMIN_PASSWORD`). | Bicep + KV | Yes (platform on) |
 | `NORA_PLATFORM_HEALTH_APP_ID` / `NORA_PLATFORM_HEALTH_API_KEY` | Health telemetry via the App Insights REST API. **Not provisioned anywhere** → the health panel stays "unavailable". | **missing** | No (degrades) |
 | `NORA_PLATFORM_FALLBACK_*`, `NORA_PLATFORM_BUSINESS_ENABLED` | Model resolver fallback + business telemetry toggle. | defaults | No |

@@ -27,9 +27,12 @@ server-side with the **admin token** + `X-Operator-Email`. Spring **never** read
 
 **Tokens** (KV secrets, injected as env into `nora-api`, the worker and web as applicable):
 - `NORA_PLATFORM_INTERNAL_TOKEN` → enables `/internal/platform/**`.
-- `NORA_PLATFORM_ADMIN_TOKEN` → enables `/admin/platform/**`. If not set, it falls back to the internal token
-  (with a WARN in the log). **Recommended to keep them distinct** (least-privilege: a leak of the worker's token
-  does not grant access to admin mutations).
+- `NORA_PLATFORM_ADMIN_TOKEN` → enables `/admin/platform/**`. **Required**, not recommended. If it is blank
+  the code falls back to the internal token (`PlatformProperties.adminTokenResolved`, with a WARN in the log),
+  and what that means is that the **worker's service credential authenticates the operator console** — the two
+  stop being distinct principals, silently, with nothing refused. The production compose marks it `${VAR:?}`
+  so a host cannot be provisioned without it. It is not an authentication bypass: a blank *pair* fails closed,
+  because `InternalTokenAuthFilter` refuses a blank expected token outright.
 
 Auth responses: missing/invalid token → **401**. (We do not use 403 here — there is no fine-grained operator
 permission model in v1; it is all-or-nothing by token.)
