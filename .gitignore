@@ -40,6 +40,14 @@ out/
 coverage/
 .pnpm-store/
 
+# Playwright output. `playwright-report/` and `test-results/` are regenerated on every run;
+# `.last-run.json` records which tests failed last time and is per-machine state.
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+*/.last-run.json
+
 # --- Java / Spring ---
 target/
 *.class

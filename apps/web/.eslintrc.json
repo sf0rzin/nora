@@ -11,5 +11,11 @@
     "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
     "@typescript-eslint/consistent-type-imports": "warn"
   },
-  "ignorePatterns": ["node_modules", ".next", "out", "coverage"]
+  "ignorePatterns": ["node_modules", ".next", "out", "coverage"],
+  "overrides": [
+    {
+      "files": ["e2e/**/*.ts"],
+      "rules": { "react-hooks/rules-of-hooks": "off" }
+    }
+  ]
 }
