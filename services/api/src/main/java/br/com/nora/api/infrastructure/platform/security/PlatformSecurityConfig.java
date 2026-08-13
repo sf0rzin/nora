@@ -42,9 +42,21 @@ public class PlatformSecurityConfig {
                                 + " /internal/platform/** will refuse everything (401).");
             }
             if (props.getAdminToken() == null || props.getAdminToken().isBlank()) {
+                // Deliberately not phrased as a recommendation. With the internal token set and
+                // this one empty, the WORKER's service token authenticates /admin/platform/**:
+                // the operator console and the worker stop being distinct principals. Nothing
+                // fails and no request is refused — this line is the only trace, and only when
+                // the platform is enabled, because the whole block is inside that guard. The
+                // /admin/platform/** chain is registered either way.
+                //
+                // The compose closes it at the door — NORA_PLATFORM_ADMIN_TOKEN is `:?` there,
+                // so the stack refuses to start without it. This warning is what remains for a
+                // deployment that does not go through that compose.
                 LOG.warn(
-                        "NORA_PLATFORM_ADMIN_TOKEN empty — /admin/platform/** falls back to the"
-                                + " internal token (recommended to configure distinct tokens).");
+                        "NORA_PLATFORM_ADMIN_TOKEN is empty — /admin/platform/** will accept the"
+                                + " INTERNAL token, so the worker's service credential"
+                                + " authenticates the operator console. Set a distinct admin"
+                                + " token.");
             }
         }
     }
