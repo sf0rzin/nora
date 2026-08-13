@@ -32,6 +32,15 @@ type Role = "user" | "assistant";
 interface Msg {
   role: Role;
   content: string;
+  /**
+   * The model's chain of thought, kept SEPARATE from `content` on purpose.
+   *
+   * The configured chat model reasons before answering and streams that reasoning first —
+   * measured, 105 reasoning chunks ahead of 48 content chunks on a one-line question. Folding
+   * it into `content` would make the thinking read as the answer. Shown dimmed while it
+   * streams, so the user sees progress instead of an empty bubble.
+   */
+  reasoning?: string;
   /** Marks an answer cut off by the user (stop button) — enables "Tentar de novo". */
   interrupted?: boolean;
 }
@@ -150,13 +159,38 @@ function ChatRoom() {
           throw new Error(err.error ?? `Erro ${res.status}`);
         }
 
+        // The body is NDJSON now: one `{"t":"r"|"c","c":"..."}` per line. `r` is the model
+        // thinking out loud, `c` is the answer. They are accumulated apart because the
+        // reasoning must never end up inside `content` — it would read as the answer, and a
+        // reasoning model spends far more tokens thinking than replying.
+        //
+        // `frames` holds the tail of a chunk that split mid-line: SSE and NDJSON both cut on
+        // arbitrary byte boundaries, so the last piece is never assumed to be whole.
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
+        let thinking = "";
+        let frames = "";
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
-          acc += decoder.decode(value, { stream: true });
-          setMessages([...history, { role: "assistant", content: acc }]);
+          frames += decoder.decode(value, { stream: true });
+          const lines = frames.split("\n");
+          frames = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const f = JSON.parse(line) as { t?: string; c?: string };
+              if (f.t === "r" && f.c) thinking += f.c;
+              else if (f.t === "c" && f.c) acc += f.c;
+            } catch {
+              // a frame that does not parse is dropped rather than shown: printing raw
+              // protocol at the user is worse than losing one delta.
+            }
+          }
+          setMessages([
+            ...history,
+            { role: "assistant", content: acc, reasoning: thinking || undefined },
+          ]);
         }
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
@@ -457,11 +491,12 @@ function ChatBubble({
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {msg.reasoning && <ReasoningBlock text={msg.reasoning} streaming={streaming && !msg.content} />}
       <div style={{ display: "flex", justifyContent: "flex-start" }}>
         <div className="nora-prose" style={{ maxWidth: "100%", fontSize: 14.5, lineHeight: 1.65, color: "var(--ink)" }}>
           {msg.content ? (
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-          ) : streaming ? (
+          ) : streaming && !msg.reasoning ? (
             <ThinkingDots />
           ) : null}
         </div>
@@ -549,5 +584,74 @@ function SendButton({ active, busy, onClick }: { active: boolean; busy: boolean;
         </svg>
       )}
     </button>
+  );
+}
+
+/**
+ * The model's chain of thought while it works, rendered apart from the answer.
+ *
+ * Open by default WHILE it streams and collapsed once the answer starts: the reasoning is the
+ * only thing on screen during the first several seconds — measured, 105 reasoning chunks before
+ * the first content token — so hiding it there would reproduce the empty bubble this whole
+ * change exists to remove. Once there is an answer, the thinking is reference material.
+ *
+ * Deliberately NOT markdown-rendered: it is raw model output, and running it through the same
+ * prose renderer as the answer would make half-finished syntax flicker as it streams.
+ */
+function ReasoningBlock({ text, streaming }: { text: string; streaming: boolean }) {
+  const [open, setOpen] = useState(true);
+  const wasStreaming = useRef(streaming);
+  useEffect(() => {
+    // Collapse exactly once, on the transition out of streaming — not on every render, or the
+    // user could never re-open it while the answer is still arriving.
+    if (wasStreaming.current && !streaming) setOpen(false);
+    wasStreaming.current = streaming;
+  }, [streaming]);
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--line)",
+        borderRadius: 10,
+        background: "var(--surface-2, rgba(0,0,0,0.02))",
+        fontSize: 12.5,
+        color: "var(--muted)",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          width: "100%",
+          padding: "8px 12px",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          color: "inherit",
+          font: "inherit",
+          textAlign: "left",
+        }}
+        aria-expanded={open}
+      >
+        <span style={{ opacity: 0.7 }}>{open ? "▾" : "▸"}</span>
+        <span>{streaming ? "Raciocinando…" : "Raciocínio"}</span>
+      </button>
+      {open && (
+        <div
+          style={{
+            padding: "0 12px 10px 12px",
+            whiteSpace: "pre-wrap",
+            lineHeight: 1.6,
+            maxHeight: 260,
+            overflowY: "auto",
+          }}
+        >
+          {text}
+        </div>
+      )}
+    </div>
   );
 }
