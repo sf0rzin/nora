@@ -125,6 +125,21 @@ interface Usage {
   completionTokens: number;
 }
 
+/**
+ * What the stream loop actually saw, logged once per request when it closes.
+ *
+ * It exists because this route is opaque from outside: Next logs no requests in production, so
+ * a stream that ends carrying nothing looks identical to one that was never started. Two wrong
+ * diagnoses were shipped by reading the shape of a timeout instead of the contents of the loop.
+ */
+interface StreamTrace {
+  startedAt: number;
+  firstByteMs: number | null;
+  sseLines: number;
+  reasoningChunks: number;
+  contentChunks: number;
+}
+
 const SYSTEM_PROMPT = `Você é a Nora, copiloto pessoal de reuniões do plano Core.
 
 Personalidade e regras:
@@ -356,6 +371,7 @@ async function buildWorkspaceContext(cookieHeader: string, query: string): Promi
 function openAiSseToText(
   upstream: ReadableStream<Uint8Array>,
   onComplete: (usage: Usage) => void,
+  trace: StreamTrace,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -363,6 +379,9 @@ function openAiSseToText(
   const usage: Usage = { promptTokens: 0, completionTokens: 0 };
   let finished = false;
   const reader = upstream.getReader();
+
+  const frame = (kind: "r" | "c", text: string) =>
+    encoder.encode(`${JSON.stringify({ t: kind, c: text })}\n`);
 
   const finish = (controller: ReadableStreamDefaultController<Uint8Array>) => {
     if (finished) return;
@@ -372,47 +391,51 @@ function openAiSseToText(
     } catch {
       /* never propagates */
     }
+    // ONE line per request, and it exists because its absence cost two wrong fixes. This route
+    // is a black box from outside: Next logs no requests in production, so a stream that ends
+    // with nothing in it looks exactly like a stream that was never asked for. Twice I inferred
+    // a cause from the shape of a timeout instead of from what the loop actually saw.
+    console.log(
+      `[chat] upstream done: reasoning=${trace.reasoningChunks} content=${trace.contentChunks} ` +
+        `sse=${trace.sseLines} firstByteMs=${trace.firstByteMs ?? "never"} ` +
+        `totalMs=${Date.now() - trace.startedAt} tokens=${usage.completionTokens}`,
+    );
     controller.close();
   };
 
   return new ReadableStream<Uint8Array>({
-    // FLUSHES THE RESPONSE HEADERS BEFORE THE MODEL HAS SAID ANYTHING, and this one byte
-    // sequence is the difference between a working chat and a dead one.
+    // THE SILENCE IS THE BUG, and the fix is to stop having one rather than to paper over it.
     //
-    // The configured model is a REASONING model: its deltas carry `reasoning_content` for
-    // several seconds before the first `content` token — measured against the deployed
-    // provider, fields `role, content, reasoning_content`, first `content` at 9,571ms on a
-    // one-line question with a minimal prompt, and longer with the real prompt. The loop below
-    // enqueues only on `content`, so for that whole stretch the stream produced nothing, the
-    // headers were never flushed, and Caddy killed the request with
-    // `net/http: timeout awaiting response headers` at its 120s limit. Measured end to end:
-    // 504 at 120,064ms. The chat was not slow, it was unreachable.
+    // The configured model REASONS before it answers: its deltas carry `reasoning_content` for
+    // several seconds before the first `content` token. Measured against the deployed provider
+    // on a one-line question: fields `role, content, reasoning_content`, 105 reasoning chunks
+    // ahead of 48 content chunks. The previous loop enqueued only on `content`, so that whole
+    // stretch produced no bytes, the response headers were never flushed, and Caddy killed the
+    // request with `net/http: timeout awaiting response headers`. Through the edge: 504 at
+    // 120,064ms. The chat was not slow, it was unreachable.
     //
-    // Once ANY byte is out, that timeout is satisfied and the stream may take as long as the
-    // answer needs — the Caddyfile says so beside the setting: "Does not limit the stream's
-    // duration once it starts."
+    // An earlier attempt emitted a single zero-width space here purely to flush the headers. It
+    // worked in the narrow sense — 504 became 200 — and was still the wrong shape: it hid the
+    // symptom and left the user watching an empty bubble for two minutes. The reasoning IS what
+    // there is to show while the model thinks.
     //
-    // U+200B (zero-width space) rather than a space or a newline: the client appends every
-    // decoded chunk straight into the visible message, so a real character would show up as a
-    // stray indent before the first word of every single answer.
-    start(controller) {
-      // Written as an escape on purpose: as a literal it is an invisible character in the
-      // source that a reformat, a copy-paste or an editor's "strip invisibles" would silently
-      // delete, taking the fix with it and leaving the comment above describing nothing.
-      controller.enqueue(encoder.encode("\u200B"));
-    },
+    // Frames are NDJSON, one `{"t":"r"|"c","c":"..."}` per line, because reasoning has to reach
+    // the UI as something it can render apart from the answer. Appended into the same string it
+    // would BE the answer, which is worse than showing nothing at all.
     async pull(controller) {
       const { done, value } = await reader.read();
       if (done) {
         finish(controller);
         return;
       }
+      if (trace.firstByteMs === null) trace.firstByteMs = Date.now() - trace.startedAt;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed.startsWith("data:")) continue;
+        trace.sseLines += 1;
         const payload = trimmed.slice(5).trim();
         if (payload === "[DONE]") {
           finish(controller);
@@ -420,11 +443,20 @@ function openAiSseToText(
         }
         try {
           const json = JSON.parse(payload) as {
-            choices?: Array<{ delta?: { content?: string } }>;
+            choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>;
             usage?: { prompt_tokens?: number; completion_tokens?: number };
           };
-          const text = json.choices?.[0]?.delta?.content;
-          if (text) controller.enqueue(encoder.encode(text));
+          const delta = json.choices?.[0]?.delta;
+          const thinking = delta?.reasoning_content;
+          if (thinking) {
+            trace.reasoningChunks += 1;
+            controller.enqueue(frame("r", thinking));
+          }
+          const text = delta?.content;
+          if (text) {
+            trace.contentChunks += 1;
+            controller.enqueue(frame("c", text));
+          }
           if (json.usage) {
             usage.promptTokens = json.usage.prompt_tokens ?? usage.promptTokens;
             usage.completionTokens = json.usage.completion_tokens ?? usage.completionTokens;
@@ -627,13 +659,25 @@ export async function POST(req: Request): Promise<Response> {
     });
   }
 
-  const stream = openAiSseToText(upstream.body, (usage) => {
-    recordUsage(cfg, tenantId, usage, Date.now() - startedAt, "ok");
-  });
+  const stream = openAiSseToText(
+    upstream.body,
+    (usage) => {
+      recordUsage(cfg, tenantId, usage, Date.now() - startedAt, "ok");
+    },
+    {
+      startedAt: Date.now(),
+      firstByteMs: null,
+      sseLines: 0,
+      reasoningChunks: 0,
+      contentChunks: 0,
+    },
+  );
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "text/plain; charset=utf-8",
+      // NDJSON, not text/plain: the body is one frame per line now, and a client that reads it
+      // as prose would print the JSON at the user. The type is the contract.
+      "Content-Type": "application/x-ndjson; charset=utf-8",
       "Cache-Control": "no-store",
       "X-Accel-Buffering": "no",
     },
