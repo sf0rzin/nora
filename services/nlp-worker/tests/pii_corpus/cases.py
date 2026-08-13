@@ -634,6 +634,13 @@ _GENITIVE = (
     "preposition is on `_NAME_CONNECTIVES`, and one token is left -- " + _LONE_AFTER_HEAD
 )
 
+_LONE_IN_PROSE = (
+    "finding 5b: an article plus a single off-list Title Case token reaches NO pattern at all "
+    "-- `_NAME_SEQUENCE_RE` needs two Title Case words, and `o`/`a` are single letters that "
+    "never match `_TITLE_WORD`. Loosening `_is_a_name_on_its_own` does not help because it is "
+    "never called on this shape"
+)
+
 
 def _adversarial() -> list[Case]:
     return [
@@ -1089,6 +1096,106 @@ def _adversarial() -> list[Case]:
             note="both surnames leak today -- " + _LONE_AFTER_HEAD + ". What this case adds "
             "over its neighbours is the OTHER direction: a fix that closes the leak by "
             "emptying the head list eats `Contato` and `Prazo` and fails here",
+        ),
+        # ---- finding 5b: a single off-list first name in running prose ----
+        #
+        # THE SHAPE THE CORPUS COULD NOT PRICE, and this group is the whole reason a 5b
+        # attempt on this branch was rejected rather than merged.
+        #
+        # 424 existing cases match `O <Title> <word>` and NOT ONE of them leaks -- they are
+        # `product_after` ("... vai migrar o Protheus"), `fp_department`, `fp_article`,
+        # `role_phrase`. All negative. So the corpus held the COST side of 5b in detail and
+        # the BENEFIT side not at all, and a pattern implementing 5b measured as: zero leaks
+        # closed, two false redactions caused. That is a reject under the rule, and it is also
+        # not a verdict on the rule -- it is a verdict on the instrument.
+        #
+        # Measured on `main` before these cases were written. Six leak, two do not:
+        #
+        #   O Cleiton ficou de mandar o resumo.    LEAK
+        #   A Wanderleia aprovou o escopo.         LEAK
+        #   O Nivaldo assumiu a entrega.           LEAK
+        #   A Kranz apresentou o plano.            LEAK
+        #   O Bittencourt confirmou o prazo.       LEAK
+        #   A Zanchetta revisou a ata.             LEAK
+        #   O Carlos aprovou o orcamento.          redacted  <- on _BR_TOP_NAMES
+        #   A Marina fechou o contrato.            redacted  <- on _BR_TOP_NAMES
+        #
+        # The last two are the CONTROLS and they matter as much as the six. They prove the
+        # shape itself is not the problem -- the shield handles it whenever the token is on a
+        # list -- so 5b is precisely "the same shape, off-list", and a fix that breaks these
+        # has broken something that already worked.
+        Case(
+            "adv/lone_in_prose/offlist_given_a",
+            "adv_lone_in_prose",
+            "O Cleiton ficou de mandar o resumo.",
+            ("Cleiton",),
+            ("resumo",),
+            status=KNOWN_GAP,
+            note=_LONE_IN_PROSE,
+        ),
+        Case(
+            "adv/lone_in_prose/offlist_given_b",
+            "adv_lone_in_prose",
+            "A Wanderleia aprovou o escopo.",
+            ("Wanderleia",),
+            ("escopo",),
+            status=KNOWN_GAP,
+            note=_LONE_IN_PROSE,
+        ),
+        Case(
+            "adv/lone_in_prose/offlist_given_c",
+            "adv_lone_in_prose",
+            "O Nivaldo assumiu a entrega.",
+            ("Nivaldo",),
+            ("entrega",),
+            status=KNOWN_GAP,
+            note=_LONE_IN_PROSE,
+        ),
+        Case(
+            "adv/lone_in_prose/offlist_surname_a",
+            "adv_lone_in_prose",
+            "A Kranz apresentou o plano.",
+            ("Kranz",),
+            ("plano",),
+            status=KNOWN_GAP,
+            note="a surname rather than a given name, same shape -- " + _LONE_IN_PROSE,
+        ),
+        Case(
+            "adv/lone_in_prose/offlist_surname_b",
+            "adv_lone_in_prose",
+            "O Bittencourt confirmou o prazo.",
+            ("Bittencourt",),
+            ("prazo",),
+            status=KNOWN_GAP,
+            note=_LONE_IN_PROSE,
+        ),
+        Case(
+            "adv/lone_in_prose/offlist_surname_c",
+            "adv_lone_in_prose",
+            "A Zanchetta revisou a ata.",
+            ("Zanchetta",),
+            ("ata",),
+            status=KNOWN_GAP,
+            note=_LONE_IN_PROSE,
+        ),
+        # The two controls. REQUIRED, and they pass today.
+        Case(
+            "adv/lone_in_prose/control_onlist_given_a",
+            "adv_lone_in_prose",
+            "O Carlos aprovou o orcamento.",
+            ("Carlos",),
+            ("orcamento",),
+            note="CONTROL: identical shape, token on `_BR_TOP_NAMES`, and it redacts today. "
+            "So the shape is not what defeats the shield -- being off-list is. A 5b fix that "
+            "breaks this has broken something that already worked",
+        ),
+        Case(
+            "adv/lone_in_prose/control_onlist_given_b",
+            "adv_lone_in_prose",
+            "A Marina fechou o contrato.",
+            ("Marina",),
+            ("contrato",),
+            note="the second control, same reason as the line above",
         ),
         # ---- both sides in one string ----
         Case(
