@@ -490,8 +490,13 @@ services:
   # ==========================================================================
   # Still with no direct public route: it is only reached via Caddy when cloudflared
   # delivers the Host admin.<domain>, and Cloudflare's Access Application is what
-  # authenticates at the edge. CF_ACCESS_AUD MUST be filled in — access.ts does fail-OPEN
-  # when empty, and today in production it arrives empty (it was `vars.` reading a Secret).
+  # authenticates at the edge. access.ts enforces only when THREE things hold, and fails OPEN
+  # if any is missing: NORA_ADMIN_USE_MOCKS == "false" (hardcoded below), CF_ACCESS_TEAM_DOMAIN
+  # non-empty and CF_ACCESS_AUD non-empty (both `:?` below, so the stack refuses to start).
+  #
+  # This comment used to end "and today in production it arrives empty (it was `vars.` reading a
+  # Secret)". That is no longer true — measured on the running container, 2026-08-12, values not
+  # printed: NORA_ADMIN_USE_MOCKS=false, CF_ACCESS_TEAM_DOMAIN length 28, CF_ACCESS_AUD length 64.
   admin:
     image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sf0rzin/nora}-admin:${ADMIN_TAG:-latest}
     container_name: nora-admin

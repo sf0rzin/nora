@@ -9,7 +9,7 @@
 # WHY THE OPERATION LEFT CI (see the header of .github/workflows/rls-cutover.yml):
 #   The host's Postgres has no public address. It sits on the `data` bridge
 #   (internal: true) and the only published port is 127.0.0.1:5432 — the host loopback.
-#   There is no firewall to "open temporarily": there is no inbound path. A GitHub
+#   There is no firewall to "open temporarily": there is no inbound path TO POSTGRES. A GitHub
 #   runner would only reach that Postgres with a reverse tunnel, VPN or self-hosted runner —
 #   the three things the migration to the pull model exists to eliminate (public repo,
 #   ADR 0017). So CI moved to GENERATING the plan and the host moved to EXECUTING it.

@@ -301,6 +301,89 @@ jobs:
         working-directory: apps/desktop/src-tauri
         run: cargo test --locked --doc --features stt-local
 
+  # Supply-chain policy over the desktop Rust graph. Until this job existed, nothing in any
+  # workflow looked at that graph at all — the `glib` unsoundness was noticed only because
+  # `git push` happened to print a Dependabot warning.
+  #
+  # TWO TOOLS, ON PURPOSE, because neither is a superset of the other. Measured, not assumed:
+  #
+  #   cargo-deny  vulnerabilities, licenses, bans, sources. It has NO configuration for
+  #               `informational = "unsound"` advisories — its `[advisories]` table accepts
+  #               db-path, db-urls, ignore, unmaintained and git-fetch-with-cli and nothing
+  #               else. RUSTSEC-2024-0429 (glib) is in the advisory database, affects the
+  #               resolved glib 0.18.5, and appears nowhere in cargo-deny's output.
+  #   cargo-audit reports exactly that tail. It is what surfaced RUSTSEC-2026-0190 on
+  #               `anyhow`, which was a plain patch bump and is fixed in the lock.
+  #
+  # ubuntu-latest, not the windows runner desktop-rust uses: this reads Cargo.lock and never
+  # compiles, and `[graph] targets` in deny.toml pins the three shipped targets explicitly, so
+  # the result does not depend on which platform evaluates it.
+  #
+  # Binaries are downloaded and checksum-verified rather than installed through a third-party
+  # action — same pattern as infra/host/scripts/bootstrap-host.sh does for sops and age, and
+  # it keeps the repo's pinned-action count where it is. `cargo install` from source would add
+  # several minutes per run for the same result.
+  supply-chain:
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      # Pinned by version AND by digest. A release asset can be replaced in place on GitHub;
+      # the checksum is what makes that visible instead of silent.
+      - name: Install cargo-deny and cargo-audit (pinned, checksum-verified)
+        env:
+          DENY_VERSION: '0.20.2'
+          DENY_SHA256: '9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f'
+          AUDIT_VERSION: '0.22.2'
+          AUDIT_SHA256: '7fb9497f8594b389e5fce5ef9b92db08432996895b2e0c5a0167a69ed445c428'
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin" /tmp/sc && cd /tmp/sc
+
+          curl -fsSL -o deny.tgz \
+            "https://github.com/EmbarkStudios/cargo-deny/releases/download/${DENY_VERSION}/cargo-deny-${DENY_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          echo "${DENY_SHA256}  deny.tgz" | sha256sum -c -
+          tar xzf deny.tgz --strip-components=1
+          install -m755 cargo-deny "$HOME/.local/bin/"
+
+          curl -fsSL -o audit.tgz \
+            "https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv${AUDIT_VERSION}/cargo-audit-x86_64-unknown-linux-musl-v${AUDIT_VERSION}.tgz"
+          echo "${AUDIT_SHA256}  audit.tgz" | sha256sum -c -
+          tar xzf audit.tgz --strip-components=1
+          install -m755 cargo-audit "$HOME/.local/bin/"
+
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/cargo-deny" --version
+          "$HOME/.local/bin/cargo-audit" --version
+
+      # Version note worth keeping: cargo-deny 0.18.2 and cargo-audit 0.21.2 both DIE on the
+      # current advisory database with `unsupported CVSS version: 4.0`, because a 2026
+      # advisory uses CVSS 4.0 and their bundled `rustsec` cannot parse it. Bumping these
+      # pins backwards is not a safe rollback.
+      - name: cargo-deny (advisories, licenses, bans, sources)
+        working-directory: apps/desktop/src-tauri
+        run: cargo-deny --format human check
+
+      # The ignore list is DERIVED from deny.toml so the two tools cannot drift apart.
+      # The extraction is deliberately narrow — `id = "..."` lines inside the `ignore = [`
+      # block only. A naive grep over the whole file matches the advisory IDs mentioned in the
+      # comments too, which are RUSTSEC-2024-0429 (glib) and RUSTSEC-2026-0190 (anyhow): the
+      # two this job exists to surface. Silencing them by accident is the failure mode here.
+      - name: cargo-audit (the unsound/informational tail cargo-deny cannot see)
+        working-directory: apps/desktop/src-tauri
+        run: |
+          set -euo pipefail
+          mapfile -t ids < <(awk '/^ignore = \[/,/^\]/' deny.toml \
+            | grep -oE 'id = "RUSTSEC-[0-9]{4}-[0-9]{4}"' \
+            | grep -oE 'RUSTSEC-[0-9]{4}-[0-9]{4}' | sort -u)
+          echo "Ignoring, from deny.toml's ignore block: ${ids[*]:-(none)}"
+          args=()
+          for id in "${ids[@]:-}"; do [ -n "$id" ] && args+=(--ignore "$id"); done
+          cargo-audit audit -f Cargo.lock "${args[@]}"
+
   # Full desktop build (Tauri bundle msi/dmg/deb/AppImage) — runs ONLY on push to
   # main, producing publishable artifacts. On PR validation it is overkill (15-20min
   # cold-cache + fragile across 3 platforms).
@@ -649,7 +732,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, api, worker, web, desktop-sidecar, desktop-rust, docs-link-check, language, infra]
+    needs: [changes, api, worker, web, desktop-sidecar, desktop-rust, supply-chain, docs-link-check, language, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

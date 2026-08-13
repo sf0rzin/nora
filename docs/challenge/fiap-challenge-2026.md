@@ -42,8 +42,8 @@ NORA delivers elements that go beyond the typical academic rubric:
 - **Multi-tenancy** (ADR 0002) — application filter in the MVP + Postgres RLS with the schema delivered and auth-aware scope; the operational cutover/enforcement in prod remains (ADR 0026/0028)
 - **Opt-in Productivity Score** (ADR 0005) — analysis of the meeting's productivity against the declared goal, with the mandatory disclaimer "an indicator of the meeting, not of the participants"
 - **Customer Confidence** (ADR 0006) — score per meeting with buying signals + objections, delivered full-stack with an authoritative per-account trend (PR #148)
-- **Production-grade self-hosted deploy** (ADR 0034/0036) — pull-based rollout with no inbound port, secrets encrypted with SOPS + age, self-hosting pitfalls catalogued in `docs/operations/host-deploy.md`. The earlier Azure deployment (8 Azure for Students pitfalls, OIDC workflow, 14 resources via Bicep IaC) is gone — no subscription, no export
-- **Rigorous test coverage** (ADR 0018) — critical areas (IAM, Auth, PII) held above 85%
+- **Production-grade self-hosted deploy** (ADR 0034/0036) — pull-based rollout whose deploy path opens no inbound port (the machine's own sshd is a separate matter, and is open), secrets encrypted with SOPS + age, self-hosting pitfalls catalogued in `docs/operations/host-deploy.md`. Rolling forward is still a manual `deploy.sh --tag` — the release pointer is published but nothing on the host consumes it. The earlier Azure deployment (8 Azure for Students pitfalls, OIDC workflow, 14 resources via Bicep IaC) is gone — no subscription, no export
+- **Test coverage on the two areas CI actually gates** (ADR 0018) — a JaCoCo rule over `PolicyEvaluator` (instruction >= 90%, branch >= 75%) and `--cov-fail-under=90` over the PII shield. ADR 0018's ">85% across IAM, Auth and PII" is the aspiration; those two gates are what blocks a merge, and `apps/web` has no test suite
 - **AGPL-3.0 License** (ADR 0017) — protection against clone-and-compete
 
 ## Deadlines
