@@ -100,6 +100,15 @@ LLM_MODEL=gpt-4o-mini
 LLM_TEMPERATURE=0.2
 
 USE_LLM_STUB=false   # true for stub (default in CI/dev)
+
+# Internal service-to-service auth (ADR 0023 §3-4). The API sends this value as the
+# `X-Internal-Token` header on /analyze, /split and /analyze-live.
+# Set        -> the header is required; 401 on mismatch.
+# Empty      -> those three routes answer 503 (fail-closed).
+# Empty + NORA_WORKER_ALLOW_UNAUTHENTICATED=true -> open, with a WARN. Local dev only.
+# /healthz and /readyz are never gated: the container healthcheck calls them with no header.
+NORA_WORKER_INTERNAL_TOKEN=
+NORA_WORKER_ALLOW_UNAUTHENTICATED=true
 ```
 
 ### Switching provider
@@ -118,7 +127,8 @@ services/nlp-worker/src/nora_nlp/
 ├── __init__.py
 ├── main.py                    # FastAPI app
 ├── models.py                  # Pydantic schemas (includes Participant)
-├── settings.py                # env-based config (LLM_*)
+├── security.py                # X-Internal-Token dependency (analysis routes only)
+├── settings.py                # env-based config (LLM_*, NORA_WORKER_*)
 ├── clients/
 │   ├── __init__.py
 │   └── llm.py                 # LlmClient agnostic + JSON schema builder

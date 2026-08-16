@@ -28,6 +28,13 @@ nora:
     trusted-client-ip-header: ""
   app:
     public-base-url: http://localhost:3000
+  integrations:
+    # The 26 @SpringBootTest classes boot the whole context, TokenCipher included, and none of
+    # them sets NORA_INTEGRATIONS_ENC_KEY. Since an empty key is now fail-closed, the test
+    # profile has to take the plaintext opt-in explicitly or every integration test dies on
+    # context startup. What the tests exercise is the OAuth flow, not the cipher — the cipher's
+    # own behaviour, including that the opt-in is required, is covered by TokenCipherTest.
+    allow-plaintext-tokens: true
   analysis:
     auto-dispatch: false
 

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from .routers import analyze, health
+from .security import require_internal_token
 
 app = FastAPI(
     title="NORA NLP Worker",
@@ -12,8 +13,15 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# The health router is deliberately NOT guarded. The compose healthcheck calls /healthz from
+# inside the container without a header; gating it leaves the container permanently unhealthy
+# and cloudflared, which waits on `service_healthy`, never comes up — the whole stack stays
+# unreachable. Applying the dependency to the app instead of to this one router is the way to
+# reproduce that.
 app.include_router(health.router, tags=["health"])
-app.include_router(analyze.router, tags=["analysis"])
+app.include_router(
+    analyze.router, tags=["analysis"], dependencies=[Depends(require_internal_token)]
+)
 
 
 def main() -> None:  # pragma: no cover

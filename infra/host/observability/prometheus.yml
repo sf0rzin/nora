@@ -70,47 +70,39 @@ scrape_configs:
   # ---------------------------------------------------------------------------
   # Caddy — edge metrics (the closest thing to "Container Apps ingress requests")
   # ---------------------------------------------------------------------------
-  # >>> THIS JOB DOES NOT WORK WITH THE CADDYFILE AS IT IS. <<<
+  # There are TWO independent preconditions for this job to produce anything, and
+  # caddy/Caddyfile now meets both. Keep them straight: they fail differently, and one of
+  # the two failures looks exactly like success.
   #
-  # There are TWO preconditions, and today's caddy/Caddyfile meets NEITHER of them:
+  #   1) An endpoint reachable from OUTSIDE the caddy container.
+  #      That endpoint is the dedicated `http://:2021 { metrics /metrics }` site block, not
+  #      the admin API. The admin API is on `admin localhost:2019` — deliberately, because
+  #      it has no authentication and reconfigures the whole proxy at runtime, and caddy is
+  #      attached to both `edge` and `internal`: on 0.0.0.0 every container on either
+  #      bridge could rewrite where nora.systems traffic goes. The :2021 block reads from
+  #      the same Prometheus registry and exposes no configuration surface.
+  #      (:2019 cannot host the site block: written as `:2019` it binds every interface and
+  #      collides with the admin's loopback listener. That is where 2021 comes from.)
   #
-  #   1) admin reachable from outside the container.
-  #      The Caddyfile has `admin localhost:2019` (caddy/Caddyfile:53) — bound only to
-  #      loopback. The compose healthcheck (docker-compose.yml:101) works because it runs
-  #      INSIDE the container; a scrape coming from Prometheus gets connection refused.
-  #      Do NOT switch to `admin 0.0.0.0:2019` without thinking: the admin API reconfigures
-  #      the whole proxy at runtime and would become exposed to EVERY container on the
-  #      `edge` and `internal` networks — including cloudflared, which is what receives
-  #      traffic from the internet. That trade-off is documented in the Caddyfile:47-53 itself.
-  #      The way out without that cost is to serve the metrics from a dedicated site block,
-  #      which uses the same Prometheus registry but does NOT expose the admin API:
-  #
-  #          http://:2021 {
-  #              metrics /metrics
-  #          }
-  #
-  #      ...and then switch the target below to ["caddy:2021"]. (You cannot use :2019
-  #      in the site block: 0.0.0.0:2019 collides with the admin's 127.0.0.1:2019.)
-  #
-  #   2) global `servers { metrics }` block — absent today.
+  #   2) The global `servers { metrics }` block in the Caddyfile.
   #      Since Caddy 2.7 the per-handler metrics (caddy_http_*) are OPT-IN, because of
-  #      cardinality. Without it, the endpoint answers 200 but only with Go runtime and
-  #      admin metrics — no caddy_http_request_duration_seconds at all.
+  #      cardinality. Without it, the endpoint answers 200 but only with Go runtime
+  #      metrics — no caddy_http_request_duration_seconds at all.
   #
-  # The two preconditions do not block the same set of panels, and the difference matters
-  # when prioritizing:
+  # The two do not block the same set of panels, which is what makes them worth separating
+  # when the edge dashboard comes up empty:
   #
-  #   - (1) on its own takes down EVERYTHING here, including `caddy_reverse_proxy_upstreams_healthy`
-  #     — if the endpoint is not reachable, there is no scrape at all.
-  #   - (2) only takes down the caddy_http_* family ("Req/s at the edge", "5xx/s at the edge",
-  #     "Req/s by HTTP code", "Latency at the edge"). The upstreams gauge is registered
-  #     by the reverse_proxy module and does NOT depend on the opt-in, so fixing (1) alone
-  #     already lights up "Healthy upstreams (Caddy)" and "Healthy upstreams by target".
+  #   - (1) broken takes down EVERYTHING here, including `caddy_reverse_proxy_upstreams_healthy`
+  #     — if the endpoint is not reachable, there is no scrape at all. Symptom: the target
+  #     is `down` in Prometheus.
+  #   - (2) broken only takes down the caddy_http_* family ("Req/s at the edge", "5xx/s at
+  #     the edge", "Req/s by HTTP code", "Latency at the edge"). The upstreams gauge is
+  #     registered by the reverse_proxy module and does NOT depend on the opt-in. Symptom:
+  #     the target is `up` and the http panels are empty.
   #
-  # This is relevant because those two upstream panels are the ONLY metric with
-  # per-service granularity that covers web and admin. Fixing (1) is the biggest gain per
-  # changed line in the whole stack. None of this raises an error: it is collection turned
-  # off, not a broken panel.
+  # Those two upstream panels are the ONLY metric with per-service granularity that covers
+  # web and admin. None of this raises an error: it is collection turned off, not a broken
+  # panel.
   #
   # Real limitation: Caddy's labels are server/handler/code/method. `server` is the
   # autogenerated listener name (srv0, srv1...), NOT the Host. Since web/api/admin/grafana
@@ -119,7 +111,7 @@ scrape_configs:
   # caddy_reverse_proxy_upstreams_healthy — and only for health, not for latency.
   - job_name: caddy
     static_configs:
-      - targets: ["caddy:2019"]
+      - targets: ["caddy:2021"]
         labels:
           component: edge
 

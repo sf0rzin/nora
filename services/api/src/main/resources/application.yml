@@ -138,8 +138,13 @@ nora:
     # NORA Flows Phase 2 — OAuth with external providers (Gmail/Calendar and Slack).
     # Without client-id/redirect-uri the hub shows "not configured" and start returns 422 (fail-visible).
     state-secret: ${NORA_INTEGRATIONS_STATE_SECRET:}
-    # AES-256-GCM for tokens at rest: 32 bytes in base64. Empty (dev) = stores unencrypted w/ WARN.
+    # AES-256-GCM for tokens at rest: 32 bytes in base64. Empty = FAIL-CLOSED: the boot dies
+    # naming the variable, because an empty key means OAuth access AND refresh tokens are
+    # written to the database as `plain:...`. Degrading is a local-dev convenience, so it now
+    # takes the explicit opt-in below (ADR 0031 kept the `plain:` path; it stopped being the
+    # default). The compose on the host does not pass the opt-in on purpose.
     encryption-key: ${NORA_INTEGRATIONS_ENC_KEY:}
+    allow-plaintext-tokens: ${NORA_INTEGRATIONS_ALLOW_PLAINTEXT:false}
     google:
       client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
       client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET:}
@@ -179,6 +184,11 @@ nora:
       api-key: ${TRELLO_API_KEY:}
   worker:
     base-url: ${NLP_WORKER_BASE_URL:http://localhost:8001}
+    # Sent as X-Internal-Token on every worker call (ADR 0023 §3-4). NOT the same secret as
+    # nora.platform.internal-token below, which travels the other way (worker/BFF -> this API).
+    # Empty = the header is not sent; the worker then refuses with 503 unless it was started
+    # with NORA_WORKER_ALLOW_UNAUTHENTICATED=true. Empty is not a bypass.
+    internal-token: ${NORA_WORKER_INTERNAL_TOKEN:}
 
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:1420}

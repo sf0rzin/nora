@@ -14,9 +14,18 @@ import org.springframework.stereotype.Component;
 /**
  * Encrypts OAuth tokens at rest (AES-256-GCM, random IV per value). Stored format: {@code
  * enc:v1:base64(iv):base64(ciphertext)}. 32-byte key in base64 via {@code
- * NORA_INTEGRATIONS_ENC_KEY}; with NO key (local dev), stores {@code plain:...} with a WARN at boot
- * — honest and visible, never silent. Decrypt accepts both formats (smooth migration once the key
- * lands).
+ * NORA_INTEGRATIONS_ENC_KEY}.
+ *
+ * <p>With NO key the cipher stores {@code plain:...} — the local-dev degradation ADR 0031 records.
+ * That degradation is <strong>opt-in</strong>: without {@code
+ * NORA_INTEGRATIONS_ALLOW_PLAINTEXT=true} a missing key kills the boot instead. It used to be the
+ * unconditional default, and one WARN line at startup is not a control: a deployment that forgot
+ * the key wrote every provider's access and refresh token to the database in the clear and looked
+ * healthy doing it.
+ *
+ * <p>Decrypt keeps accepting both formats, so a database that already holds {@code plain:} values
+ * stays readable once the key lands. Turning the key on does <strong>not</strong> migrate those
+ * rows: they remain in the clear until the integration is reconnected.
  */
 @Component
 public class TokenCipher {
@@ -30,13 +39,23 @@ public class TokenCipher {
     private final SecretKeySpec key;
     private final SecureRandom random = new SecureRandom();
 
-    public TokenCipher(@Value("${nora.integrations.encryption-key:}") String base64Key) {
+    public TokenCipher(
+            @Value("${nora.integrations.encryption-key:}") String base64Key,
+            @Value("${nora.integrations.allow-plaintext-tokens:false}") boolean allowPlaintext) {
         if (base64Key == null || base64Key.isBlank()) {
+            if (!allowPlaintext) {
+                throw new IllegalStateException(
+                        "NORA_INTEGRATIONS_ENC_KEY is missing. Without it OAuth access and refresh"
+                                + " tokens would be written to the database unencrypted. Set it to"
+                                + " 32 bytes in base64 (openssl rand -base64 32), or set"
+                                + " NORA_INTEGRATIONS_ALLOW_PLAINTEXT=true to accept plaintext"
+                                + " storage in local dev.");
+            }
             this.key = null;
             LOG.warn(
-                    "NORA_INTEGRATIONS_ENC_KEY missing — OAuth tokens will be stored UNENCRYPTED"
-                            + " (acceptable only in local dev; configure 32 base64 bytes in"
-                            + " production)");
+                    "NORA_INTEGRATIONS_ENC_KEY missing and NORA_INTEGRATIONS_ALLOW_PLAINTEXT=true —"
+                            + " OAuth tokens will be stored UNENCRYPTED (acceptable only in local"
+                            + " dev; configure 32 base64 bytes in production)");
         } else {
             byte[] raw = Base64.getDecoder().decode(base64Key.trim());
             if (raw.length != 32) {

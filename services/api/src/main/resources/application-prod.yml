@@ -23,6 +23,12 @@ nora:
     expose-dev-tokens: false
   auth:
     cookie-secure: true
+  integrations:
+    # Pinned, not read from env, on purpose: under the prod profile there is no legitimate
+    # reason to store OAuth access/refresh tokens as `plain:` in the database, so the escape
+    # hatch NORA_INTEGRATIONS_ALLOW_PLAINTEXT offers local dev is not reachable here. A prod
+    # boot without NORA_INTEGRATIONS_ENC_KEY fails, naming the variable.
+    allow-plaintext-tokens: false
 
 logging:
   level:
