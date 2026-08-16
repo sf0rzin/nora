@@ -3,7 +3,8 @@
  *
  * Server-side reads against the Spring API (/admin/platform/*), sending the bridge token
  * (X-Internal-Token) and — on mutations — the operator's e-mail (X-Operator-Email, from the
- * Cloudflare Access identity) for auditing. Mocks only when NORA_ADMIN_USE_MOCKS != "false" (local dev).
+ * Cloudflare Access identity) for auditing. Mocks only when NORA_ADMIN_USE_MOCKS == "true", which
+ * has to be asked for: anything else — including forgetting the variable — reads the real API.
  *
  * Contract note: the backend's ModelResponse uses `displayName`/`priceInputPerMTok`; the front-end
  * contract uses `label`/`inputCostPer1M`. `toModel` is the anticorruption layer that reconciles the two.
@@ -27,7 +28,10 @@ import {
   MOCK_MODELS,
 } from "./mock";
 
-const USE_MOCKS = process.env.NORA_ADMIN_USE_MOCKS !== "false";
+// Opt-IN, and it has to agree with the identical constant in ./access.ts — the two together are
+// what makes "forgot the variable" mean "real data behind a real gate" instead of "fabricated data
+// with no gate at all". See the long note on that constant.
+const USE_MOCKS = process.env.NORA_ADMIN_USE_MOCKS === "true";
 const API_BASE_URL = (process.env.PLATFORM_API_BASE_URL ?? "http://localhost:8080").replace(/\/$/, "");
 const INTERNAL_TOKEN = process.env.PLATFORM_INTERNAL_TOKEN ?? "";
 
@@ -187,7 +191,7 @@ export async function createModel(input: NewModelInput, operator: string): Promi
   await platformSend("POST", "/admin/platform/models", operator, { ...input, enabled: true });
 }
 
-// ---- real transport (enabled when NORA_ADMIN_USE_MOCKS=false) ----
+// ---- real transport (the default; mocks require NORA_ADMIN_USE_MOCKS=true) ----
 
 async function platformGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {

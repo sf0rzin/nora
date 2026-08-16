@@ -72,8 +72,9 @@ CF_ACCESS_AUD                = <AUD from Step 2>
 
 > Without the 3 platform tokens, they become `'unset'` in the KV (admin/internal unlocked). Without
 > `CLOUDFLARE_TUNNEL_TOKEN`, the `cloudflared` sidecar does not come up and the admin stays internal/inaccessible
-> (safe, but offline). Without `CF_ACCESS_AUD`, Tier 2 degrades to edge-only (Tunnel + Access still
-> protect it). `EASYAUTH_*` became inert (ADR 0025) — it can be left empty.
+> (safe, but offline). Without `CF_ACCESS_AUD`, Tier 2 used to degrade to edge-only; since 2026-08-16
+> `apps/admin/src/lib/access.ts` blocks every console route instead, so an empty AUD is an outage
+> rather than a silent downgrade. `EASYAUTH_*` became inert (ADR 0025) — it can be left empty.
 
 ## Step 4 — Deploy
 

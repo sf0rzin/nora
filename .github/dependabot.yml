@@ -63,7 +63,7 @@ updates:
       - dependencies
       - baseline
 
-  # Node / npm (web + desktop)
+  # Node / npm (web + admin + desktop)
   - package-ecosystem: npm
     directory: /apps/web
     schedule:
@@ -128,20 +128,29 @@ updates:
       - dependency-name: tailwindcss
         update-types: ["version-update:semver-major"]
 
+  # Operator console (ADR 0023/0025). It had no entry here at all until 2026-08-16, so its
+  # dependencies — including `jose`, which is the library that verifies the Cloudflare Access
+  # JWT — were the only npm tree in the repository nothing watched for advisories.
+  #
+  # The ignores below are NOT copied wholesale from /apps/web: they are the majors this
+  # package.json is actually pinned away from. apps/admin has no monaco-editor and no
+  # tailwind-merge, so the two entries covering those are absent rather than inherited.
   - package-ecosystem: npm
-    directory: /apps/desktop
+    directory: /apps/admin
     schedule:
       interval: weekly
       day: tuesday
     open-pull-requests-limit: 5
     labels:
       - dependencies
-      - desktop
+      - admin
     ignore:
-      # Tailwind 4 breaks PostCSS/config; ADR 0013 pins raw Tailwind 3.x
-      - dependency-name: tailwindcss
+      # The console pins `next 16.3.0` exactly and apps/web ignores this same major. A Next
+      # major is a migration for both Next apps at once, and the operator console is not where
+      # it gets rehearsed.
+      - dependency-name: next
         update-types: ["version-update:semver-major"]
-      # React 19 + react-router 7 (Remix merge) breaking
+      # React 19: same shared migration as the entry in /apps/web, which pins react 18.3.1.
       - dependency-name: react
         update-types: ["version-update:semver-major"]
       - dependency-name: "@types/react"
@@ -150,15 +159,67 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@types/react-dom"
         update-types: ["version-update:semver-major"]
-      - dependency-name: react-router-dom
+      # TypeScript 6 not yet GA stable for this stack (`typescript ^5.6.3` here).
+      - dependency-name: typescript
         update-types: ["version-update:semver-major"]
-      # Vite plugin v6 requires Vite 6 (we are on Vite 5)
-      - dependency-name: "@vitejs/plugin-react"
+      # The ESLint 9 flat-config knot, identical to /apps/web's: this package.json pins
+      # `eslint ^8.57.1` with `@typescript-eslint ^7.18.0`, and TS-ESLint 8 requires ESLint 9.
+      # `eslint-config-prettier` 10 and `eslint-config-next` 16 both require ESLint 9 as well,
+      # so all five move together or none of them does.
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@typescript-eslint/eslint-plugin"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@typescript-eslint/parser"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: eslint-config-prettier
+        update-types: ["version-update:semver-major"]
+      - dependency-name: eslint-config-next
+        update-types: ["version-update:semver-major"]
+      # @types/node ahead of the Node LTS the Dockerfile and the CI job use.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # Tailwind 4 is a migration, not a bump (PostCSS plugin moved out, `@theme` in CSS).
+      # ADR 0013 pins raw Tailwind 3.x; `tailwindcss ^3.4.13` here.
+      - dependency-name: tailwindcss
         update-types: ["version-update:semver-major"]
 
+  - package-ecosystem: npm
+    directory: /apps/desktop
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 5
+    # `labels:` appeared TWICE in this mapping until 2026-08-16 — once here and once after
+    # `ignore:` — with identical content. YAML takes the last, so this one was silently dropped;
+    # js-yaml in strict mode refuses the whole file over it. Keep exactly one per block.
     labels:
       - dependencies
       - desktop
+    ignore:
+      # Tailwind 4 breaks PostCSS/config; ADR 0013 pins raw Tailwind 3.x
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
+      # React 19 is a migration shared with the two Next apps, not a per-app bump: all three
+      # front-ends pin React 18 and ignore this major together.
+      - dependency-name: react
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react-dom
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
+      # TWO ENTRIES USED TO SIT HERE and neither did what its comment claimed. Removed on
+      # 2026-08-16, recorded so nobody restores them from a changelog reading:
+      #   - `react-router-dom` — not a dependency of this app and, as far as package.json goes,
+      #     never was. The local UI that would have used it was deleted in PR #465.
+      #   - `@vitejs/plugin-react` — the comment read "Vite plugin v6 requires Vite 6 (we are on
+      #     Vite 5)". Measured against apps/desktop/package.json: it pins `vite ^8.1.5` and
+      #     `@vitejs/plugin-react ^6.0.3`, so BOTH halves of that sentence were false and the
+      #     rule was holding back updates past a version already installed. What actually
+      #     catches a plugin major that breaks the build is `desktop-rust` in ci.yml, which runs
+      #     `npm ci && npm run build` on every PR touching apps/desktop.
 
   # Rust / Cargo (Tauri backend)
   - package-ecosystem: cargo

@@ -86,9 +86,9 @@ Files: `apps/admin/src/lib/{access.ts,data.ts}`.
 |---|---|---|---|
 | `PLATFORM_API_BASE_URL` | Base of the Spring API for the console (server-side). | Bicep | Yes (platform on) |
 | `PLATFORM_INTERNAL_TOKEN` | Token to call `/admin/platform/**`. secretRef `admin-bridge-token` (origin GitHub `NORA_PLATFORM_ADMIN_TOKEN`). | GitHub Secret → KV | Yes (platform on) |
-| `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team domain (`stratfy.cloudflareaccess.com`). Validates the `Cf-Access-Jwt-Assertion` JWT against JWKS (Tier 2). | Bicep (literal) | No (degrades) |
-| `CF_ACCESS_AUD` | AUD of the Access App (`admin.nora.systems`). Validates the audience of the Access JWT. **Today it arrives empty due to a bug — see §5.** | GitHub **Variable** (it should be) | No (degrades) |
-| `NORA_ADMIN_USE_MOCKS` | Turns the real data layer on/off. Prod = `false`. | Bicep | — |
+| `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team domain (`stratfy.cloudflareaccess.com`). Validates the `Cf-Access-Jwt-Assertion` JWT against JWKS (Tier 2). | Bicep (literal) | **Yes** — since 2026-08-16 an empty value blocks every console route instead of degrading |
+| `CF_ACCESS_AUD` | AUD of the Access App (`admin.nora.systems`). Validates the audience of the Access JWT. On Azure it arrived empty due to the bug in §5.1. | GitHub **Variable** (it should be) | **Yes** — same change; empty no longer degrades, it blocks |
+| `NORA_ADMIN_USE_MOCKS` | Serves fabricated data instead of calling the API. **Opt-in:** only the literal `"true"` turns mocks on; anything else, including unset, is the real data layer. It read `!== "false"` until 2026-08-16, which made forgetting it serve mocks with the JWT gate off. | Bicep | No — the default is the production shape |
 
 ### 2.5 Local infra — root + `infra/docker`
 
@@ -252,6 +252,7 @@ For reference only (not audited). It does not share server secrets. Local variab
 - **Fix (choose one):**
   - **(A) recommended:** delete the `CF_ACCESS_AUD` Secret and create a **Variable** `CF_ACCESS_AUD` with the same value (the AUD is public). No code change.
   - (B) change the workflow to `${{ secrets.CF_ACCESS_AUD }}` (keeping it as a Secret) — it works, but it contradicts the design (the AUD is not a secret) and the runbook.
+- **What changed since:** the Azure deployment this describes is gone (ADR 0034/0036) and `apps/admin/src/lib/access.ts` no longer degrades on an empty value — it blocks every console route with a 403 naming both `CF_ACCESS_*` variables. An empty AUD is now an outage rather than a silent downgrade. The registration mistake is still a mistake; its consequence changed sign.
 
 ### 5.2 MEDIUM — `EASYAUTH_CLIENT_ID` / `EASYAUTH_CLIENT_SECRET` orphaned in the workflow
 - Referenced in `deploy-infra.yml` but they do not exist as Secrets. Inert per ADR 0025 (Entra abandoned in favour of Cloudflare). They resolve empty without breaking. **I recommend removing the 4 lines** from the workflow to reduce confusion.
