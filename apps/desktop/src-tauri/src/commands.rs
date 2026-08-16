@@ -412,45 +412,13 @@ pub async fn upload_meeting(
     })
 }
 
-#[tauri::command]
-pub fn check_system_audio_prerequisites() -> Result<serde_json::Value, String> {
-    #[cfg(target_os = "macos")]
-    {
-        let has_blackhole = crate::system_audio::is_blackhole_installed();
-        let supports_sck = false; // TODO: Issue #15 — ScreenCaptureKit
-        
-        Ok(serde_json::json!({
-            "platform": "macos",
-            "available": has_blackhole,
-            "missingDriver": if has_blackhole { serde_json::Value::Null } else { serde_json::json!("blackhole") },
-            "supportsScreenCaptureKit": supports_sck,
-            "message": if has_blackhole {
-                "Virtual driver detected"
-            } else {
-                "BlackHole not installed. Install it to capture system audio."
-            }
-        }))
-    }
-    
-    #[cfg(target_os = "linux")]
-    {
-        Ok(serde_json::json!({
-            "platform": "linux",
-            "available": true,
-            "missingDriver": null,
-            "supportsScreenCaptureKit": false,
-            "message": "Linux usa PulseAudio nativamente"
-        }))
-    }
-    
-    #[cfg(target_os = "windows")]
-    {
-        Ok(serde_json::json!({
-            "platform": "windows",
-            "available": true,
-            "missingDriver": null,
-            "supportsScreenCaptureKit": false,
-            "message": "Windows usa WASAPI loopback nativamente"
-        }))
-    }
-}
+// `check_system_audio_prerequisites` used to live here and was deleted with the
+// Windows-only cut. It branched three ways: the macOS arm reported whether the user had
+// installed the BlackHole virtual driver and carried a `supportsScreenCaptureKit` flag for
+// an integration nobody was going to write, the Linux arm reported PulseAudio, and the
+// Windows arm answered a hardcoded yes — WASAPI loopback is part of the OS and needs no
+// driver, no permission prompt and no user setup. Dropping the other two platforms left a
+// probe whose every field was a compile-time constant, and both of its callers went at the
+// same time: the overlay's "install BlackHole" notice here, and `src/pages/settings.tsx`
+// with the local UI (PR #465). Bring it back if there is ever something it can answer "no"
+// to.

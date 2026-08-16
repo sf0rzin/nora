@@ -167,7 +167,6 @@ pub fn run() {
             commands::stop_recording,
             commands::get_recording_status,
             commands::upload_meeting,
-            commands::check_system_audio_prerequisites,
             http_proxy::http_proxy,
             secrets::secret_set,
             secrets::secret_get,

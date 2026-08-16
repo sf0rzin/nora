@@ -4,6 +4,12 @@ Desktop application for real-time audio capture and meeting transcription.
 Transcription runs **locally on the user's machine** (embedded Whisper). There is
 no cloud STT backend and no subprocess: audio does not leave the machine.
 
+> **Windows only.** macOS and Linux were dropped: the macOS path required the user to
+> install the BlackHole virtual driver and the Linux path shelled out to PulseAudio's
+> `parecord`, and neither had ever been exercised by anyone. ADR 0008 and ADR 0035 describe
+> a three-platform client — they are accepted records of what was decided at the time, and
+> this is what the client does now.
+
 ## Stack
 
 - **Frontend**: React 18 + TypeScript + Tailwind CSS
@@ -14,21 +20,7 @@ no cloud STT backend and no subprocess: audio does not leave the machine.
 ## Prerequisites
 
 > `whisper.cpp` is compiled from C++ source by the `whisper-rs-sys` build
-> script. That puts **CMake + a C++ compiler** on the list of prerequisites on
-> all three targets.
-
-### Linux
-
-```bash
-# Debian/Ubuntu
-sudo apt-get update
-sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
-  build-essential cmake libasound2-dev
-
-# Fedora
-sudo dnf install webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel patchelf \
-  gcc-c++ cmake alsa-lib-devel
-```
+> script. That puts **CMake + a C++ compiler** on the list of prerequisites.
 
 ### Windows
 
@@ -46,12 +38,6 @@ sudo dnf install webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel p
 > ```powershell
 > $env:CARGO_TARGET_DIR = "C:\nrt"
 > ```
-
-### macOS
-
-- Xcode Command Line Tools: `xcode-select --install` (brings clang++ and make)
-- CMake: `brew install cmake`
-- Node.js 20, Rust
 
 ## Development
 
@@ -76,11 +62,7 @@ NORA_WHISPER_MODEL=tiny npx tauri dev
 ## Production Build
 
 ```bash
-# Linux / Windows / macOS
 npx tauri build
-
-# macOS (Apple Silicon)
-npx tauri build --target aarch64-apple-darwin
 ```
 
 > `tauri.conf.json` declares no `externalBin`, so nothing has to be packaged
@@ -110,7 +92,7 @@ apps/desktop/
     │   ├── stt.rs                # SttBackend trait + backend selection
     │   ├── stt_local.rs          # STT: whisper.cpp in-process
     │   ├── whisper_model.rs      # Download/cache/checksum of the GGML model
-    │   ├── system_audio.rs       # System audio (Linux/Win/macOS)
+    │   ├── system_audio.rs       # System audio (WASAPI loopback)
     │   ├── live_analysis.rs      # Live highlights + overlay toggle
     │   ├── stealth_mode.rs       # Hide the windows from screen capture (Windows only)
     │   ├── windows.rs            # Window management (dock, overlay, focus)
@@ -227,33 +209,10 @@ listen to that event yet — the hook is ready, the progress bar UI is not.
   *oversubscription* and worsens latency.
 - **RAM**: model + KV cache + the Tauri webview.
 - **Disk**: the size of the model, once, in the app data dir.
-- **GPU**: Metal is on by default on macOS. Vulkan/CUDA are explicit opt-in
+- **GPU**: none by default — whisper.cpp runs on CPU. Vulkan/CUDA are explicit opt-in
   (`--features whisper-vulkan` / `whisper-cuda`) because they require the vendor SDK
-  on the **build** machine, not just the runtime one.
-- **macOS 11+**, and this is *mandatory*: `bundle.macOS.minimumSystemVersion` is
-  pinned to `"11.0"` in `tauri.conf.json`.
-
-#### Why the macOS floor lives in `tauri.conf.json`, and not in CI
-
-whisper.cpp's `ggml` uses `std::filesystem`, which Apple's libc++ only exposes from
-deployment target **10.15** onward. With Tauri's default (**10.13**), clang
-aborts with `'path' is unavailable: introduced in macOS 10.15` in
-`ggml-backend-reg.cpp`, and the `whisper-rs-sys` build script panics.
-
-**Setting `MACOSX_DEPLOYMENT_TARGET` in the workflow does not fix it** — that was tried in
-[#358](https://github.com/sf0rzin/nora/pull/358) and failed. `tauri build`
-*exports* that variable from `bundle.macOS.minimumSystemVersion` and
-overwrites whatever is in the environment. The value has to be in the Tauri config,
-which is also where it applies for local builds.
-
-`11.0` instead of `10.15` because the target is `aarch64-apple-darwin`: Apple Silicon
-does not exist before macOS 11, so no real compatibility is being discarded.
-
-> Do not try to document this with a `"//"` key inside `bundle.macOS`. The
-> Tauri schema rejects an unknown field there and takes the build down with
-> `unknown field '//'` — that happened in
-> [#359](https://github.com/sf0rzin/nora/pull/359). That is why the explanation
-> lives here.
+  on the **build** machine, not just the runtime one. (Metal used to be on by default,
+  automatically, on macOS. It went with macOS support.)
 
 ### What this means for the user
 
@@ -305,50 +264,21 @@ NORA_WHISPER_MODEL=small      # tiny | base | small | medium
 
 ## CI/CD
 
-The CI workflow builds automatically for all platforms:
+The `desktop-bundle` job builds one artifact, Windows (x86_64) `.msi`, and it runs only on
+a push to `main` — not on pull requests. See `.github/workflows/ci.yml` for details.
 
-- Ubuntu (x86_64): `.deb` and `.AppImage`
-- Windows (x86_64): `.msi`
-- macOS (aarch64): `.dmg`
-
-See `.github/workflows/ci.yml` for details.
-
-> **Known pending item — `desktop-release.yml` has not been adjusted yet.**
-> Compiling `whisper.cpp` from source changes the CI requirements and that
-> **has not been validated on a runner**:
+> **Known pending item.** Compiling `whisper.cpp` from source changes the CI requirements
+> and that **has not been validated on a runner**:
 >
 > - The current `timeout-minutes: 60` may not be enough on a cold *cache miss*: the
->   ggml/whisper C++ build lands on the critical path of both runners.
-> - The matrix today is only `windows-latest` + `ubuntu-latest` — **there is no macOS
->   runner**, so the Metal path is never exercised by that workflow.
+>   ggml/whisper C++ build lands on the critical path.
 > - `swatinem/rust-cache` caches `target/`, which includes the C++ artifacts —
 >   but the key is invalidated on every `Cargo.lock` change.
+> - The updater-signature verification moved from the Ubuntu runner (where `minisign` was
+>   an apt package) to the Windows one, where it installs through Chocolatey. Because the
+>   job does not run on pull requests, the first push to `main` is what proves that port.
 
 ## Troubleshooting
-
-### Linux: Audio error
-
-Check that PulseAudio is running:
-```bash
-pactl info
-```
-
-### macOS: System audio capture
-
-Capturing system audio (the voices of other participants on calls) currently requires
-the **BlackHole** virtual driver:
-
-1. Install BlackHole 2ch: https://existential.audio/blackhole/
-2. In **Audio MIDI Setup → Multi-Output Device**, create a device combining your speakers
-   and BlackHole 2ch so you keep hearing the audio while NORA captures it.
-3. Select that Multi-Output Device as the system output during the meeting.
-4. On the first run, macOS will ask for **Microphone** and (in the future) **Screen Recording**
-   permission in *Privacy & Security*. Approve both.
-
-> **Roadmap (Issue #15):** native support via ScreenCaptureKit on macOS 13+ (no virtual driver)
-> is planned. The entitlements (`NSScreenCaptureUsageDescription`) and version detection
-> are already in the code; only the integration with the `screencapturekit` crate is missing — it requires
-> validation on Apple hardware.
 
 ### Windows: `error MSB6003` / `DirectoryNotFoundException` when compiling whisper.cpp
 
@@ -389,13 +319,6 @@ In this order:
 
 If `GAP of Nms in the audio (inference lagging)` shows up in the log, the machine is not
 keeping up with real time and audio is being dropped.
-
-### Build fails on Linux
-
-Install the system dependencies:
-```bash
-sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-```
 
 ## License
 

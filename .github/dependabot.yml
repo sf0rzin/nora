@@ -201,7 +201,7 @@ updates:
       #   - #1277 — the action now rewrites the name and body of an existing release.
       #   - #1189 — an asset's `label` is now used internally to build those download URLs.
       #   - #1194 — macOS `.app.tar.gz`/`.sig` filenames gain the version. Not this matrix,
-      #     which is Windows + Ubuntu.
+      #     which is Windows and nothing else.
       # The rest of our `with:` block survives 1.0.0 unrenamed.
       #
       # NOT a reason, and recorded because an earlier version of this comment said it was:

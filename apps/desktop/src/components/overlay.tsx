@@ -521,12 +521,6 @@ function HighlightsColumn({ onCollapse }: { onCollapse: () => void }) {
 }
 
 // ── Audio config section ──────────────────────────────────────────────
-interface AudioPrerequisites {
-  platform: string;
-  available: boolean;
-  missingDriver: string | null;
-}
-
 function AudioConfigSection({
   currentMic,
   currentSysAudio,
@@ -538,20 +532,16 @@ function AudioConfigSection({
   const [mic, setMic] = useState<string>(currentMic || "");
   const [sysEnabled, setSysEnabled] = useState<boolean>(currentSysAudio !== null);
   const [sysDevice, setSysDevice] = useState<string>(currentSysAudio ?? "");
-  const [platform, setPlatform] = useState<string | null>(null);
-  const [needsBlackHole, setNeedsBlackHole] = useState(false);
   const [applying, setApplying] = useState(false);
 
+  // There used to be a `check_system_audio_prerequisites` call here whose only job was to
+  // put up an "install BlackHole" notice on macOS. The client is Windows-only now, where
+  // WASAPI loopback needs no driver, so there is nothing left for the probe to warn about —
+  // the Tauri command went with it.
   useEffect(() => {
     invoke<string[]>("list_audio_devices")
       .then(setDevices)
       .catch((e) => console.error("[overlay] list_audio_devices:", e));
-    invoke<AudioPrerequisites>("check_system_audio_prerequisites")
-      .then((p) => {
-        setPlatform(p.platform);
-        if (p.platform === "macos" && !p.available) setNeedsBlackHole(true);
-      })
-      .catch(() => {});
   }, []);
 
   // Re-sync local state when the recording status changes
@@ -705,34 +695,6 @@ function AudioConfigSection({
         />
         <span style={{ color: "var(--ink)" }}>Capturar áudio do sistema</span>
       </label>
-      {needsBlackHole && platform === "macos" && (
-        <div
-          className="mt-2"
-          style={{
-            padding: "7px 10px",
-            background: "var(--accent-soft)",
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            fontSize: 11.5,
-            color: "var(--accent-ink)",
-            lineHeight: 1.5,
-          }}
-        >
-          No macOS, instale{" "}
-          <a
-            href="https://existential.audio/blackhole/"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              color: "var(--accent-ink)",
-              textDecoration: "underline",
-            }}
-          >
-            BlackHole
-          </a>{" "}
-          pra capturar áudio do sistema.
-        </div>
-      )}
     </div>
   );
 }

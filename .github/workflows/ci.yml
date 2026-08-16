@@ -324,8 +324,8 @@ jobs:
   # GATES on the two advisories the second tool only warned about. See deny.toml's header.
   #
   # ubuntu-latest, not the Windows runner `desktop-rust` uses: this reads Cargo.lock and never
-  # compiles, and `[graph] targets` in deny.toml pins the three shipped targets explicitly, so
-  # the verdict does not depend on which platform evaluates it.
+  # compiles, and `[graph] targets` in deny.toml pins the shipped target explicitly, so the
+  # verdict does not depend on which platform evaluates it.
   #
   # WHAT THIS JOB DOES NOT DO: discover a new advisory published against an unchanged lock.
   # It only runs when the desktop or this workflow changes. `supply-chain-drift.yml` is the
@@ -399,9 +399,13 @@ jobs:
         working-directory: apps/desktop/src-tauri
         run: cargo-deny --log-level info --format human check
 
-  # Full desktop build (Tauri bundle msi/dmg/deb/AppImage) — runs ONLY on push to
-  # main, producing publishable artifacts. On PR validation it is overkill (15-20min
-  # cold-cache + fragile across 3 platforms).
+  # Full desktop build (Tauri bundle, .msi) — runs ONLY on push to main, producing
+  # publishable artifacts. On PR validation it is overkill (15-20min cold-cache).
+  #
+  # ONE platform. The client is Windows-only: the macOS path needed the user to install
+  # the BlackHole virtual driver and the Linux path shelled out to PulseAudio, and neither
+  # was ever exercised by anybody. Building all three cost three 60-minute Tauri builds per
+  # merge to keep two of them unvalidated.
   #
   # There is no PyInstaller sidecar to build: the Azure Speech path was deleted, so
   # transcription is whisper.cpp compiled into the binary and nothing else.
@@ -413,16 +417,10 @@ jobs:
       matrix:
         include:
           # No `args`: `stt-local` is the only feature and it is already the default, so
-          # naming it bought nothing. `label` only names the artifact.
-          - platform: ubuntu-latest
-            args: ""
-            label: x86_64-unknown-linux-gnu
+          # naming it bought nothing, and there is no `--target` because the build is
+          # native. `label` only names the artifact.
           - platform: windows-latest
-            args: ""
             label: x86_64-pc-windows-msvc
-          - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
-            label: aarch64-apple-darwin
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     steps:
@@ -440,7 +438,6 @@ jobs:
         uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable branch @ 2026-08-05
         with:
           toolchain: stable
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
 
       # whisper-rs-sys compiles whisper.cpp with CMake, which generates deep scratch
       # paths and can blow past Windows' 260-char MAX_PATH.
@@ -453,7 +450,6 @@ jobs:
       # local checkout. If it ever blows up anyway, the way out is to set
       # CARGO_TARGET_DIR **and** derive the upload paths from it — not just the first.
       - name: Long paths (Windows, whisper.cpp/CMake)
-        if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
           git config --global core.longpaths true
@@ -465,12 +461,6 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
 
-      - name: Install dependencies (Ubuntu)
-        if: matrix.platform == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
-
       - name: Install frontend dependencies
         working-directory: apps/desktop
         run: npm ci
@@ -478,11 +468,6 @@ jobs:
       - name: Build Tauri app
         working-directory: apps/desktop
         env:
-          # Do NOT set MACOSX_DEPLOYMENT_TARGET here: `tauri build` EXPORTS that variable
-          # from `bundle.macOS.minimumSystemVersion` in tauri.conf.json and overwrites
-          # whatever is in the environment (that is what took down #358). The 11.0 floor
-          # required by whisper.cpp lives there, which is also where it holds for local build.
-          #
           # createUpdaterArtifacts:true in tauri.conf requires the signing key
           # at build (otherwise tauri build fails). Same secrets as desktop-release.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -494,7 +479,7 @@ jobs:
           # being the Azure Container Apps FQDN (dead) and became the public domain
           # served by the Cloudflare Tunnel. Same swap in desktop-release.yml.
           NORA_API_BASE_URL: ${{ vars.NORA_API_BASE_URL || 'https://api.nora.systems' }}
-        run: npx tauri build ${{ matrix.args }}
+        run: npx tauri build
 
       # What signing verification this repository has, and what it does not.
       #
@@ -505,21 +490,38 @@ jobs:
       # (`plugins.updater.pubkey` in tauri.conf.json), so verifying against it walks the same
       # chain the updater walks: sign with the CI secret, verify with the shipped key.
       #
-      # Ubuntu only. minisign is one apt package there and the check takes seconds, and a
-      # signing regression is not platform-specific — it comes from the key or from the config,
-      # and both are shared across the matrix.
+      # THIS STEP MOVED FROM UBUNTU TO WINDOWS, and the move is the whole reason it still
+      # exists. It used to carry `if: matrix.platform == 'ubuntu-latest'`, because minisign
+      # is one apt package there — so cutting the matrix down to Windows would have deleted
+      # the repository's only signing check by omission, silently and with a green run.
+      # A signing regression is not platform-specific anyway: it comes from the key or from
+      # the config, and both were always shared across the matrix.
+      #
+      # `choco` is preinstalled on windows-latest and ships minisign; `shell: bash` is
+      # explicit because the rest of the script is bash and Windows runners default to pwsh.
+      # HONEST LIMIT: this port has not been exercised. `desktop-bundle` does not run on
+      # `pull_request` (see the `if:` on the job), so the first push to main that touches
+      # desktop code is what proves it. If choco ever stops carrying the package, replace
+      # the install with a pinned, checksum-verified download the way `supply-chain` does
+      # for cargo-deny — do not drop the step.
       #
       # This does NOT verify `tauri-action`, which is what `desktop-release.yml` uses to create
       # the release and publish `latest.json`. That action runs on a `desktop-v*` tag and on no
       # other trigger, so no workflow run exercises it. See SECURITY-FINDINGS item 11.
       - name: Verify the updater signatures against the shipped public key
-        if: matrix.platform == 'ubuntu-latest'
         working-directory: apps/desktop
+        shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get install -y minisign
-          jq -r '.plugins.updater.pubkey' src-tauri/tauri.conf.json | base64 -d > /tmp/nora.pub
-          head -1 /tmp/nora.pub | grep -q 'minisign public key' || {
+          choco install minisign -y --no-progress
+
+          # Scratch files go in a RELATIVE directory, not /tmp. Git Bash rewrites
+          # POSIX-looking arguments into Windows paths before handing them to a native
+          # .exe, and minisign.exe is native — a relative path sidesteps that translation
+          # entirely instead of relying on it.
+          mkdir -p .sigcheck
+          jq -r '.plugins.updater.pubkey' src-tauri/tauri.conf.json | base64 -d > .sigcheck/nora.pub
+          head -1 .sigcheck/nora.pub | grep -q 'minisign public key' || {
             echo "::error::tauri.conf.json pubkey does not decode to a minisign public key"
             exit 1
           }
@@ -537,13 +539,13 @@ jobs:
             # Tauri writes the signature base64-encoded — it is the same string that goes into
             # latest.json. Decoded when it is, used as-is when it is not, so this keeps working
             # if that ever changes rather than failing on a format nobody promised us.
-            if base64 -d < "$sig" > /tmp/sig 2>/dev/null &&
-               head -c 18 /tmp/sig | grep -q 'untrusted comment'; then
+            if base64 -d < "$sig" > .sigcheck/sig 2>/dev/null &&
+               head -c 18 .sigcheck/sig | grep -q 'untrusted comment'; then
               :
             else
-              cp "$sig" /tmp/sig
+              cp "$sig" .sigcheck/sig
             fi
-            minisign -V -p /tmp/nora.pub -x /tmp/sig -m "$artifact"
+            minisign -V -p .sigcheck/nora.pub -x .sigcheck/sig -m "$artifact"
             echo "verified $(basename "$artifact")"
           done
 
@@ -551,15 +553,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nora-desktop-${{ matrix.label }}
-          # The leading `target/**` covers both layouts: a native build writes to
-          # `target/release/bundle/`, and the build with `--target <triple>` (macOS) writes
-          # to `target/<triple>/release/bundle/`. Without the leading `**`, the macOS dmg
-          # would not be found — and `if-no-files-found: ignore` would hide that.
+          # `target/**` rather than `target/release/**`: the build is native and writes to
+          # `target/release/bundle/`, but CARGO_TARGET_DIR or a `--target <triple>` would
+          # move that, and `if-no-files-found: ignore` would hide the miss rather than
+          # report it.
           path: |
-            apps/desktop/src-tauri/target/**/bundle/**/*.deb
-            apps/desktop/src-tauri/target/**/bundle/**/*.AppImage
             apps/desktop/src-tauri/target/**/bundle/**/*.msi
-            apps/desktop/src-tauri/target/**/bundle/**/*.dmg
           if-no-files-found: ignore
 
   docs-link-check:
