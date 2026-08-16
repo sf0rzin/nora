@@ -410,7 +410,7 @@ The canonical and always up-to-date index of the ADRs is in **`docs/adr/README.m
 | 0006 | Customer Confidence + Account Health | accepted (persistence: ADR 0015) |
 | 0007 | AWS-style IAM (Root + Users + Groups + Policies) | accepted |
 | 0008 | Desktop with Tauri 2 + Python sidecar | accepted |
-| 0009 | Speech Token Broker (Azure Speech credentials) | accepted |
+| 0009 | Speech Token Broker (Azure Speech credentials) | superseded by 0035 |
 | 0010 | `nlp-baseline` package for PT-BR TF-IDF | accepted |
 | 0011 | Invite flow + corporate domain | accepted |
 | 0012 | PII PERSON_NAME (BR in the MVP, NER later) | accepted |
