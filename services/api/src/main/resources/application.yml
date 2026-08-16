@@ -172,25 +172,6 @@ nora:
       api-key: ${TRELLO_API_KEY:}
   worker:
     base-url: ${NLP_WORKER_BASE_URL:http://localhost:8001}
-  speech:
-    # ADR 0035 (successor of 0009): STT left the cloud and moved to the client.
-    # local  = STT runs on the client (on-device Whisper on the desktop). POST /speech/token answers
-    #          410 GONE with SPEECH_PROVIDER_GONE — a terminal signal for the old client.
-    # azure  = previous behaviour (regional STS). Kept only for the transition window;
-    #          the rollback of local STT is NORA_SPEECH_PROVIDER=azure, with no code revert.
-    provider: ${NORA_SPEECH_PROVIDER:local}
-    # The azure block is only used with provider=azure. `default-region` still feeds the
-    # SpeechTokenService region validation in both modes.
-    azure:
-      subscription-key: ${AZURE_SPEECH_KEY:}
-      default-region: ${AZURE_SPEECH_REGION:brazilsouth}
-      token-endpoint-template: "https://%s.api.cognitive.microsoft.com/sts/v1.0/issueToken"
-      token-ttl-seconds: 540
-      request-timeout-ms: 5000
-    # Applies to BOTH providers: an old desktop in a retry loop against the 410 stays
-    # limited to 6 req/min per user.
-    rate-limit:
-      tokens-per-minute: 6
 
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:1420}

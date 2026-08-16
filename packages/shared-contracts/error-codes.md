@@ -68,7 +68,6 @@ The NORA backend returns errors in the format:
 - `TENANT_DOMAIN_INVALID`
 
 ### 429 TOO_MANY_REQUESTS
-- `RATE_LIMIT_EXCEEDED` — Speech token broker
 - `RATE_LIMITED` — auth endpoints (login/signup/reset)
 
 ### 500 INTERNAL_ERROR
@@ -77,7 +76,6 @@ The NORA backend returns errors in the format:
 ### 502 BAD_GATEWAY
 - `ANALYSIS_WORKER_UNAVAILABLE` — NLP worker down/timeout
 - `ANALYSIS_INVALID_RESPONSE` — the worker returned invalid JSON
-- `BROKER_ERROR` — Azure Speech STS returned an error
 
 ## Conventions
 - `code` is UPPER_SNAKE_CASE, maximum 32 chars
