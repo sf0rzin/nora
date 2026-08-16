@@ -121,12 +121,10 @@ services/api/src/main/java/br/com/nora/api/
 │   ├── meeting/           # MeetingService
 │   ├── analysis/          # AnalysisService
 │   ├── productivity/      # ProductivityService
-│   ├── speech/            # SpeechTokenService
 │   └── ports/             # interfaces (UserRepository, MeetingRepository, ...)
-├── infrastructure/        # adapters: JPA, JJWT, HTTP, Azure
+├── infrastructure/        # adapters: JPA, JJWT, HTTP
 │   ├── persistence/jpa/   # entities + repository adapters
 │   ├── security/          # JjwtJwtIssuer, JwtAuthenticationFilter
-│   ├── speech/            # AzureSpeechTokenBroker
 │   └── analysis/          # WorkerHttpClient
 └── api/                   # controllers, DTOs, exception handlers
     ├── controllers/       # AuthController, MeetingsController, IamController, ...
@@ -461,10 +459,6 @@ Login issues two HttpOnly cookies:
 
 - **Productivity Score (ADR 0005, Sub-phase 1.8)**: persisted (V012). Opt-in per meeting via `MeetingGoal`. The UI renders `ProductivityScoreCard` only when `productivity` is present.
 - **Customer Confidence (ADR 0006/0015)**: **implemented full-stack** in **#148** (2026-05-21). The worker emits the block; the backend persists it (V017) with an authoritative per-account trend (`CustomerConfidenceService`); `GET /meetings/{id}` returns `customerConfidence`; the `CustomerConfidenceCard` UI is in MeetingDetail. Aggregated Account Health (US50-51) remains deferred (ADR 0014).
-
-### Speech Token Broker (ADR 0009, superseded as the default by ADR 0035)
-
-On-device Whisper (ADR 0035) is the default STT path today; `POST /speech/token` answers 410 GONE unless `NORA_SPEECH_PROVIDER=azure` is set as a rollback. As originally built: the desktop calls `POST /speech/token` (JWT-authenticated) and receives an ephemeral token (~9 min) issued by the backend using `AZURE_SPEECH_KEY` (from `secrets.env.sops` on the self-hosted stack; from Key Vault in the original Azure design). The desktop **never** sees the key. Rate limit of 6 tokens/min/user (Bucket4j). The rollback has nothing left to roll back to once the Azure Speech resource is gone (ADR 0036).
 
 ### Web CI: aligned on `npm` (resolved 2026-05-21)
 

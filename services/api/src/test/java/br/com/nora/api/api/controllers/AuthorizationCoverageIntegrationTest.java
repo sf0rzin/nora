@@ -185,9 +185,6 @@ class AuthorizationCoverageIntegrationTest {
         // privacy: a permanent hard-delete of the meeting and every piece of PII linked to it
         calls.delete("/privacy/meetings/" + meeting);
 
-        // STT credential broker
-        calls.post("/speech/token", null);
-
         for (Call c : calls.items) {
             assertThat(status(c, member))
                     .as("%s %s must be forbidden without policies", c.method(), c.path())

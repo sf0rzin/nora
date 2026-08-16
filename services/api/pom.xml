@@ -108,7 +108,7 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Rate limiting (Speech Token Broker, Auth) -->
+        <!-- Rate limiting (Auth) -->
         <dependency>
             <groupId>com.bucket4j</groupId>
             <artifactId>bucket4j-core</artifactId>

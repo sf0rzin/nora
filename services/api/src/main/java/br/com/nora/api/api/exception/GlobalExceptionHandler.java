@@ -7,7 +7,6 @@ import br.com.nora.api.application.iam.IamException;
 import br.com.nora.api.application.iam.InvitationException;
 import br.com.nora.api.application.identity.AuthException;
 import br.com.nora.api.application.meeting.MeetingException;
-import br.com.nora.api.application.speech.SpeechException;
 import br.com.nora.api.application.task.TaskException;
 import br.com.nora.api.application.tenant.TenantContextException;
 import br.com.nora.api.application.tenant.TenantException;
@@ -254,26 +253,6 @@ public class GlobalExceptionHandler {
                 .body(
                         new ErrorResponse(
                                 ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
-    }
-
-    @ExceptionHandler(SpeechException.class)
-    public ResponseEntity<ErrorResponse> handleSpeechDomain(SpeechException ex) {
-        HttpStatus status =
-                switch (ex.code()) {
-                    case "RATE_LIMIT_EXCEEDED" -> HttpStatus.TOO_MANY_REQUESTS;
-                    case "INVALID_REGION" -> HttpStatus.BAD_REQUEST;
-                    case "BROKER_ERROR" -> HttpStatus.BAD_GATEWAY;
-                    // 410, not 500: the cloud provider went away on purpose (STT is local on
-                    // the client). GONE is terminal — the old desktop stops retrying.
-                    case "SPEECH_PROVIDER_GONE" -> HttpStatus.GONE;
-                    default -> HttpStatus.BAD_REQUEST;
-                };
-        ResponseEntity.BodyBuilder builder = ResponseEntity.status(status);
-        if (status == HttpStatus.TOO_MANY_REQUESTS) {
-            builder.header(HttpHeaders.RETRY_AFTER, "60");
-        }
-        return builder.body(
-                new ErrorResponse(ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

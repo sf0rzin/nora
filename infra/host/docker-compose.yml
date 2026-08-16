@@ -334,23 +334,6 @@ services:
       # ---- Worker ----
       NLP_WORKER_BASE_URL: http://worker:8001
 
-      # ---- Speech / STT (ADR 0035) ----
-      # `local`: the desktop transcribes with on-device Whisper. POST /speech/token still
-      # exists and answers 410 GONE + SPEECH_PROVIDER_GONE — a terminal signal for the old
-      # client, instead of the generic 404 (which it would read as "API is down" and turn into
-      # an infinite retry). SpeechRateLimiter applies in both modes.
-      #
-      # `azure`: restores the AzureSpeechTokenBroker. This was the ROLLBACK LEVER of the local
-      # STT — change the value and redeploy, no code revert. It required the two vars below
-      # filled in AND the Azure Speech resource existing; the subscription is gone (ADR 0036),
-      # so this lever no longer has anything to roll back to.
-      #
-      # The beans are mutually exclusive via @ConditionalOnProperty. A third value leaves
-      # the app WITHOUT a broker and the boot fails on an unsatisfied dependency.
-      NORA_SPEECH_PROVIDER: ${NORA_SPEECH_PROVIDER:-local}
-      AZURE_SPEECH_KEY: ${AZURE_SPEECH_KEY:-}
-      AZURE_SPEECH_REGION: ${AZURE_SPEECH_REGION:-brazilsouth}
-
       # ---- Embeddings (RAG) ----
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

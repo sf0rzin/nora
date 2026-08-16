@@ -14,7 +14,7 @@
 | Postgres | 16 | Transactional, multi-tenant database | ADR 0002 |
 | JJWT | 0.12.6 | JWT issuance and parsing | `services/api/pom.xml:80-95` |
 | springdoc-openapi | 2.6.0 | Automatic OpenAPI spec generation | `services/api/pom.xml:73-76` |
-| Bucket4j | 8.10.1 | Rate limiting (Speech Token Broker) | `services/api/pom.xml:112-116` |
+| Bucket4j | 8.10.1 | Rate limiting (`AuthRateLimiter`: login/signup/reset) | `services/api/pom.xml:112-116` |
 | Testcontainers | 1.21.0 | Real Postgres integration in tests | `services/api/pom.xml:27,131` |
 | WireMock | 3.9.1 | NLP worker stub in integration tests | `services/api/pom.xml:141-146` |
 | **NLP Worker** Python | ≥3.12 | FastAPI + Pydantic + OpenAI | `services/nlp-worker/pyproject.toml:5` |
@@ -67,13 +67,12 @@ api/            <- controllers REST, DTOs, exception handlers
 | `AuthorizationService` (`application/iam/AuthorizationService.java:17`) | application | Orchestrates `UserRepository` + `IamRepository` (ports) |
 | `MeetingService` (`application/meeting/MeetingService.java`) | application | Upload, listing, reprocessing via repos |
 | `JjwtJwtIssuer` (`infrastructure/security/JjwtJwtIssuer.java`) | infrastructure | Implements `JwtIssuer` (port) with the JJWT library |
-| `AzureSpeechTokenBroker` (`infrastructure/speech/AzureSpeechTokenBroker.java`) | infrastructure | HTTP adapter for Azure `/issueToken` |
 | `MeetingsController` (`api/controllers/MeetingsController.java:64`) | api | Thin controller that delegates to `MeetingService` |
 
 ### Why DDD in strict layers
 
 - **Pure testability in the domain:** `PolicyEvaluator` has 95.8% coverage (audit §12) because it does not require a Spring container.
-- **Infrastructure substitutability:** swapping JJWT for another JWT provider is just implementing `JwtIssuer`. Same for LLM (ADR 0004) and Speech.
+- **Infrastructure substitutability:** swapping JJWT for another JWT provider is just implementing `JwtIssuer`. Same for the LLM (ADR 0004).
 - **Predictable onboarding:** a new dev always finds the business rule in `application/` or `domain/`, never in `infrastructure/` or `api/`.
 
 ## §3. Multi-tenancy
@@ -179,7 +178,6 @@ Exhaustive map extracted from the controllers (Grep in `services/api/src/main/ja
 | **task** | `task:read`, `task:write` |
 | **workflow** (#51) | `workflow:read`, `workflow:write`, `workflow:test` |
 | **integration** (#51) | `integration:read`, `integration:write` |
-| **speech** (#51) | `speech:token:issue` |
 
 `workflow:test` is deliberately separate from read and write: it executes the wired actions for real (e-mail, Slack, issue creation) against the tenant's integrations.
 
@@ -275,38 +273,7 @@ The mapping `placeholder → hash(SHA-256, first 16 chars)` is kept in `PiiRedac
 
 ADR 0012: the solution covers the MVP target market (Brazil/TOTVS) **well**, avoids the complexity of multi-language NER models and adds zero extra dependencies. Upgrade triggers are documented (first non-BR tenant; >5% non-pt-BR transcripts; a concrete bug report).
 
-## §7. Speech Token Broker (ADR 0009)
-
-Desktop needs to transcribe in real time with Azure Speech without exposing the subscription key. Solution: a **broker in the backend** that issues ephemeral tokens.
-
-### Flow
-
-```
-Desktop (Tauri)         Backend NORA              Azure Speech
-     |                       |                         |
-     |-- POST /speech/token ▶|                         |
-     |   Authorization:JWT   |-- POST /issueToken ▶   |
-     |                       |   (AZURE_SPEECH_KEY     |
-     |                       |    do Key Vault)        |
-     |                       |◀-- token (~9-10 min)    |
-     |◀--{token, region}-----|                         |
-     |                       |                         |
-     |--- SpeechConfig.from_authorization_token(...) ─▶|
-     |                       |                         |
-     |--- Audio Stream WebSocket ─────────────────────▶|
-     |◀── partial / final transcription ──────────────│
-```
-
-### Implementation
-
-- **Endpoint**: `SpeechController.issueToken` (`services/api/src/main/java/br/com/nora/api/api/controllers/SpeechController.java:24-32`), `POST /speech/token` authenticated by JWT.
-- **Azure adapter**: `AzureSpeechTokenBroker` in `infrastructure/speech/` calls the Azure `/issueToken` endpoint using `AZURE_SPEECH_KEY` resolved via a Key Vault reference (`infra/bicep/`).
-- **Rate limit**: Bucket4j 6 tokens/minute/user (audit §3, ADR 0009).
-- **TTL**: ~9-10 min (controlled by Azure itself). Desktop renews every ~8 min in long sessions.
-
-The subscription key **never** leaves the backend. If a Desktop is compromised, the blast radius is the ephemeral token (10 min).
-
-## §8. Productivity Score (ADR 0005)
+## §7. Productivity Score (ADR 0005)
 
 An **opt-in** feature enabled per meeting when the user declares a `MeetingGoal` before/after the upload.
 
@@ -327,7 +294,7 @@ An **opt-in** feature enabled per meeting when the user declares a `MeetingGoal`
 
 The UI (and any future export) **must** display: *"Indicador da reunião, não dos participantes."* Reason: the score measures the meeting's adherence to the declared goal, not individual performance — the risk of punitive use is described in ADR 0005.
 
-## §9. Customer Confidence (ADR 0006 + ADR 0015) — implemented full-stack (#148)
+## §8. Customer Confidence (ADR 0006 + ADR 0015) — implemented full-stack (#148)
 
 **Current status: IMPLEMENTED.** It was delivered in PR #148 (2026-05-21) via ADR 0015: LLM schema → worker emits → backend persists in the pipeline → read endpoint → UI. **Aggregated** Account Health (US50-51) remains deferred (ADR 0014).
 
@@ -360,7 +327,7 @@ The UI (and any future export) **must** display: *"Indicador da reunião, não d
 
 Aggregated Account Health (US50-US51) **remains deferred** via ADR 0014. Alternative (B) — removing Customer Health from the landing page — was rejected: demo credibility > effort saved. Details in `docs/adr/0015-customer-confidence-minimal-persistence.md`.
 
-## §10. End-to-end flow "login → upload → analysis → result"
+## §9. End-to-end flow "login → upload → analysis → result"
 
 ```mermaid
 sequenceDiagram
@@ -410,7 +377,7 @@ Step by step in words:
 6. **Frontend polling**: the "Processing" card in `apps/web/src/app/(app)/meetings/[id]/page.tsx` polls every ~2s until `processing_status = COMPLETED`.
 7. **Render**: the UI shows the summary (markdown via `react-markdown`), decisions, action items, risks/opportunities and, if present, `ProductivityScoreCard`.
 
-## §11. Self-hosted infrastructure
+## §10. Self-hosted infrastructure
 
 NORA runs on a single self-hosted bare-metal host — Ubuntu, no hypervisor, Docker Engine with
 Compose v2 — under compose project `nora` (ADR 0034; substrate corrected by ADR 0036, which found
@@ -441,7 +408,7 @@ Principal and its federated credentials) that used to live in this section is no
 it described infrastructure that no longer exists and is addressable in `git log` on this file
 instead.
 
-## §12. Stack rationale — why each choice
+## §11. Stack rationale — why each choice
 
 ### Postgres 16 (vs MongoDB / Cosmos DB)
 
@@ -490,7 +457,7 @@ instead.
 - LangChain would add an abstraction layer that buys nothing for a 1-call pipeline (PII → TF-IDF → LLM → validate).
 - ADR 0004 keeps the provider agnostic via env vars; switching to Azure OpenAI or another Chat Completions-compatible endpoint is just changing `LLM_BASE_URL`.
 
-## §13. Security hardening delivered (audit follow-ups, post-1.10)
+## §12. Security hardening delivered (audit follow-ups, post-1.10)
 
 A hardening wave (PRs ~#114–#138, labeled "audit follow-up #N") landed in `main` after Sub-phase 1.10. Documented retroactively in **ADR 0019** (RLS + composite FK), **ADR 0020** (token rotation) and **ADR 0021** (soft-delete):
 
@@ -509,8 +476,8 @@ Catalogued technical debt, prioritization and planned successor ADRs live in **`
 
 - **AUTH_FILTER_HARD_CAP**: **resolved** (Sub-phase 1.11b) — the silent cap of `500` was removed; `MeetingService.listAllForAuthFilter` scans all the tenant's meetings in batches before the in-memory IAM filter. SQL pushdown via `meeting_attributes @>` + GIN (V008) remains a future **performance** optimization (not a fix), for when some tenant reaches that scale.
 - **PolicyEvaluator** operators: **resolved** (Sub-phase 1.11c) — `SUPPORTED_CONDITION_OPERATORS` now covers `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (fail-closed kept for unknown operators and missing attributes).
-- **Postgres RLS**: **delivered in the schema (V016 + V019/V020)** — only the operational cutover/enforcement in prod is missing (role `nora_app` + flag; runbook in ADR 0026/0028). See §3/§13.
+- **Postgres RLS**: **delivered in the schema (V016 + V019/V020)** — only the operational cutover/enforcement in prod is missing (role `nora_app` + flag; runbook in ADR 0026/0028). See §3/§12.
 - **`tenant_contexts.version`** (US31): column missing; no version history for the context. Target Sub-phase 1.12.
-- **Global `audit_events`** (not just IAM): auth already has its own log (§13); what is missing is consolidating MEETING_UPLOAD, CONTEXT_UPDATE into a single trail. Target Sub-phase 1.12.
+- **Global `audit_events`** (not just IAM): auth already has its own log (§12); what is missing is consolidating MEETING_UPLOAD, CONTEXT_UPDATE into a single trail. Target Sub-phase 1.12.
 - **Customer Confidence**: **implemented full-stack** (PR #148, 2026-05-21) — V017 + worker emit + `AnalysisService` wiring (server-side trend) + `GET /meetings/{id}` + `CustomerConfidenceCard`. Narrative debt resolved. **Aggregated** Account Health (US50-51) remains deferred (ADR 0014). See `docs/adr/0015-customer-confidence-minimal-persistence.md`.
 - **Hardening ADRs**: documented retroactively in ADR 0019 (RLS + composite FK), 0020 (refresh-token rotation), 0021 (soft-delete). What remains is evaluating an ADR for JWT RS256/JWKS (candidate).

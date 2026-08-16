@@ -5,8 +5,8 @@ info:
   description: |
     REST API for the NORA backend (Spring Boot 3 / Java 21). Covers authentication with httpOnly
     cookies, AWS-style IAM (groups + policies + attachments + audit), email invitations, tenant
-    commercial context, corporate domain, meeting upload/listing/detail, extracted task management,
-    live analysis and ephemeral token issuance for Azure Speech.
+    commercial context, corporate domain, meeting upload/listing/detail, extracted task management
+    and live analysis.
 
     ## Authentication
     Most endpoints require a JWT. There are two equivalent transport modes:
@@ -49,8 +49,6 @@ tags:
     description: Upload, listing, detail, goal, reprocessing and live analysis.
   - name: Tasks
     description: Listing and updating extracted tasks.
-  - name: Speech
-    description: Ephemeral token for Azure Speech.
   - name: System
     description: Health check and JWKS.
 
@@ -864,34 +862,6 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ----------------------------------------------------------------------------
-  # Speech
-  # ----------------------------------------------------------------------------
-  /speech/token:
-    post:
-      tags: [Speech]
-      summary: Issues an ephemeral authorization token for Azure Speech
-      description: |
-        Requires `speech:token:issue` on `nora:tenant/{tenantId}` (#51): the token reaches an
-        external provider billed to the tenant. Rate-limited (`429 RATE_LIMIT_EXCEEDED`). An invalid
-        region returns `400 INVALID_REGION`; a broker failure returns `502 BROKER_ERROR`.
-      parameters:
-        - in: query
-          name: region
-          required: false
-          schema: { type: string, example: brazilsouth }
-      responses:
-        '200':
-          description: Token issued
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/SpeechTokenResponse' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-        '502': { $ref: '#/components/responses/BadGateway' }
-
-  # ----------------------------------------------------------------------------
   # System
   # ----------------------------------------------------------------------------
   /healthz:
@@ -1032,12 +1002,12 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     RateLimited:
-      description: Rate limit exceeded (`RATE_LIMITED`, `RATE_LIMIT_EXCEEDED`). Header `Retry-After`.
+      description: Rate limit exceeded (`RATE_LIMITED`). Header `Retry-After`.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
     BadGateway:
-      description: Upstream dependency failed (`ANALYSIS_WORKER_UNAVAILABLE`, `BROKER_ERROR`, ...)
+      description: Upstream dependency failed (`ANALYSIS_WORKER_UNAVAILABLE`, ...)
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1643,21 +1613,6 @@ components:
       properties:
         status: { $ref: '#/components/schemas/ActionItemStatus' }
         title: { type: string }
-
-    # ---- speech ----
-    SpeechTokenResponse:
-      type: object
-      required: [token, region, expiresAt]
-      properties:
-        token:
-          type: string
-          description: Ephemeral token (<= 10 min).
-        region:
-          type: string
-          example: brazilsouth
-        expiresAt:
-          type: string
-          format: date-time
 
     # ---- system ----
     Jwks:
