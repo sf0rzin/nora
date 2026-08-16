@@ -276,22 +276,19 @@ jobs:
       # typecheck. tauri-build resolves `externalBin` in the BUILD SCRIPT, which is why
       # having it in the base config used to make even a `cargo check` fail.
 
-      # TWO invocations on purpose: both configurations need to compile.
-      #  - without the feature: the default set, which is now the same thing;
-      #  - with stt-local: the embedded whisper.cpp (ADR 0035), which is what goes to release.
-      # Checking only one of them lets the other rot with nobody noticing.
-      - name: cargo check (without stt-local — legacy path)
+      # One configuration, one check. There used to be two invocations here, on the belief
+      # that omitting `--features stt-local` exercised a second, legacy backend. It never
+      # did: `--features` ADDS to the default set rather than replacing it, so both steps
+      # compiled the identical feature set. Only `--no-default-features` would have made
+      # them differ, and now there is nothing left to differ about.
+      - name: cargo check
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked
-
-      - name: cargo check (with stt-local — embedded whisper)
-        working-directory: apps/desktop/src-tauri
-        run: cargo check --locked --features stt-local
 
       # RUN the tests, do not merely type-check them. This step used to be a
       # `cargo check --all-targets` with a comment saying executing them "means paying for
       # whisper.cpp, and that is a separate CI-cost decision". Measured on 2026-08-10: the
-      # whisper.cpp build is a build script, so the `cargo check --features stt-local` step
+      # whisper.cpp build is a build script, so the `cargo check` step
       # above already pays for it; `cargo test` adds codegen and a link, and the 21 tests
       # themselves run in about 1.5 seconds.
       #
@@ -306,7 +303,7 @@ jobs:
       # in the middle of the run.
       - name: cargo test (runs the desktop suite)
         working-directory: apps/desktop/src-tauri
-        run: cargo test --locked --all-targets --features stt-local
+        run: cargo test --locked --all-targets
 
       # `--all-targets` is `--lib --bins --tests --benches --examples` and explicitly does
       # NOT include `--doc`, while a bare `cargo test` does. There are no doc-tests in this
@@ -314,7 +311,7 @@ jobs:
       # one somebody writes is not silently skipped by the flag above.
       - name: cargo test (doc-tests, which --all-targets excludes)
         working-directory: apps/desktop/src-tauri
-        run: cargo test --locked --doc --features stt-local
+        run: cargo test --locked --doc
 
   # Supply-chain policy over the desktop Rust graph — advisories, licenses, bans, sources.
   # Until this job existed, nothing in any workflow looked at that graph at all: the `glib`
@@ -415,17 +412,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `stt-local` is already the only default feature, so the flag is redundant
-          # here — kept explicit while the release workflow still names it. `label` only
-          # names the artifact.
+          # No `args`: `stt-local` is the only feature and it is already the default, so
+          # naming it bought nothing. `label` only names the artifact.
           - platform: ubuntu-latest
-            args: "--features stt-local"
+            args: ""
             label: x86_64-unknown-linux-gnu
           - platform: windows-latest
-            args: "--features stt-local"
+            args: ""
             label: x86_64-pc-windows-msvc
           - platform: macos-latest
-            args: "--target aarch64-apple-darwin --features stt-local"
+            args: "--target aarch64-apple-darwin"
             label: aarch64-apple-darwin
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60

@@ -51,13 +51,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `--features stt-local` turns on the embedded STT (whisper.cpp via whisper-rs,
-          # ADR 0035). WITHOUT this flag the bundle ships with the old Azure Speech path
-          # active — which depends on a `/speech/token` that today answers 410 GONE.
+          # No `args`: the embedded STT (whisper.cpp via whisper-rs, ADR 0035) is the only
+          # backend and is already the default feature. The flag that used to be here was
+          # believed to exclude an Azure Speech path; it never did, and that path is gone.
           - platform: windows-latest
-            args: "--features stt-local"
+            args: ""
           - platform: ubuntu-latest
-            args: "--features stt-local"
+            args: ""
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     steps:
