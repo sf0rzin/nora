@@ -343,6 +343,10 @@ services:
       NORA_EMAIL_FROM: ${NORA_EMAIL_FROM:-NORA <onboarding@resend.dev>}
 
       # ---- LGPD (ADR 0029) ----
+      # 0 or negative = retention OFF (nothing is purged, and that is this default);
+      # N >= 1 = purge meetings older than N days. There is no value meaning "purge
+      # now" — lowering it towards zero turns the purge off. The API logs which state
+      # is active at boot. See infra/host/.env.example for the full note.
       NORA_PRIVACY_RETENTION_DAYS: ${NORA_PRIVACY_RETENTION_DAYS:-0}
       NORA_PRIVACY_RETENTION_CRON: ${NORA_PRIVACY_RETENTION_CRON:-0 30 3 * * *}
 

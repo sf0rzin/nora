@@ -110,7 +110,14 @@ nora:
     public-base-url: ${NORA_APP_PUBLIC_BASE_URL:http://localhost:3000}
   privacy:
     # LGPD retention (ADR 0029): the sweeper purges meetings + transcript (raw_text = PII at rest) +
-    # children older than N days. 0 = OFF (default — destructive, opt-in per environment).
+    # children older than N days. The value is an AGE IN DAYS and the sentinel is at the BOTTOM of
+    # the range:
+    #   0 or negative -> retention OFF, nothing is ever purged (this default).
+    #   N >= 1        -> retention ON, meetings created more than N days ago are purged.
+    # There is no value meaning "purge immediately": lowering the number towards zero turns the
+    # purge OFF, it does not accelerate it. The purge is an irreversible hard delete with CASCADE,
+    # so OFF is the only safe default for an environment that forgot to set the variable.
+    # RetentionSweeper logs which of the two states is active at boot.
     retention-days: ${NORA_PRIVACY_RETENTION_DAYS:0}
     retention-cron: ${NORA_PRIVACY_RETENTION_CRON:0 30 3 * * *}
   embedding:
