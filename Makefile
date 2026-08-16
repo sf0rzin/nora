@@ -168,8 +168,20 @@ web-dev: web-setup ## Run the Next.js frontend in dev mode
 # than removing it — the same argument that gave web-dev a web-setup prerequisite.
 #
 # It is deliberately NOT in `make dev`. The operator console is a separate concern from the
-# product slice, it serves on 3002, and it renders mock data unless NORA_ADMIN_USE_MOCKS is
-# set to false, so starting it alongside everything else would mostly add a port and a log.
+# product slice and it serves on 3002, so starting it alongside everything else would mostly
+# add a port and a log.
+#
+# READ THIS BEFORE REPORTING admin-dev AS BROKEN. Until 2026-08-16 it rendered mock data by
+# default and this comment said so. The default is now the opposite, on purpose: the variable
+# has to spell NORA_ADMIN_USE_MOCKS=true, and without it the console runs its real data layer
+# with Cloudflare Access JWT validation on — which, on a laptop with no CF_ACCESS_* set, means
+# every page answers 403 naming the two missing variables. That is the console working, not
+# failing. For local work:
+#
+#     NORA_ADMIN_USE_MOCKS=true make admin-dev
+#
+# The old default was the reason the inversion happened: forgetting one variable served
+# fabricated data with the identity gate switched off, and nothing anywhere said so.
 .PHONY: admin-setup
 admin-setup: ## Install the operator console dependencies (idempotent)
 	@if [ ! -d "apps/admin/node_modules" ]; then \
@@ -180,7 +192,7 @@ admin-setup: ## Install the operator console dependencies (idempotent)
 	fi
 
 .PHONY: admin-dev
-admin-dev: admin-setup ## Run the operator console in dev mode (port 3002)
+admin-dev: admin-setup ## Run the operator console in dev mode (port 3002; NORA_ADMIN_USE_MOCKS=true for mock data)
 	cd apps/admin && npm run dev
 
 # There is no `web-test`: apps/web has no test script and no test files, so the target

@@ -25,6 +25,7 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       worker: ${{ steps.filter.outputs.worker }}
       web: ${{ steps.filter.outputs.web }}
+      admin: ${{ steps.filter.outputs.admin }}
       docs: ${{ steps.filter.outputs.docs }}
       infra: ${{ steps.filter.outputs.infra }}
       desktop: ${{ steps.filter.outputs.desktop }}
@@ -47,6 +48,16 @@ jobs:
               - 'apps/web/**'
               - 'packages/**'
               - 'docs/api/**'
+            # The operator console was invisible to this workflow until 2026-08-16: no filter
+            # matched `apps/admin/**`, so a pull request touching only the console matched
+            # NOTHING, every job skipped, and ci-gate reported green having verified precisely
+            # nothing about the change it contained. That is the third time this file has had
+            # the same hole — see the two notes below, which fixed it for `desktop` and for
+            # `infra`. `.github/workflows/ci.yml` is in here for the same reason it is in those
+            # two: otherwise editing the admin job below gates on nothing.
+            admin:
+              - 'apps/admin/**'
+              - '.github/workflows/ci.yml'
             docs:
               - 'docs/**'
               - '**/*.md'
@@ -221,6 +232,42 @@ jobs:
           path: apps/web/playwright-report/
           retention-days: 7
           if-no-files-found: ignore
+
+  # Operator console (ADR 0023/0025). Lint + typecheck + build, which is every check its
+  # package.json defines — there is no test script and no test file in apps/admin, and inventing
+  # a `npm test` that runs nothing would read as coverage this app does not have.
+  #
+  # No `env:` on the build, on purpose, and that absence is the interesting part. The console's
+  # own default is now the production shape: `NORA_ADMIN_USE_MOCKS` unset means the real data
+  # layer with Cloudflare Access JWT validation ON (src/lib/access.ts), so building with an empty
+  # environment builds what the host runs. The build log carries the fail-closed warning from
+  # access.ts as a side effect, which is the intended noise rather than a defect. Setting
+  # NORA_ADMIN_USE_MOCKS=true here would compile the branch nobody deploys; `tsc --noEmit` already
+  # typechecks mock.ts either way, since it reads files rather than reachable branches.
+  admin:
+    needs: changes
+    if: needs.changes.outputs.admin == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/admin/package-lock.json
+      - name: Install
+        working-directory: apps/admin
+        run: npm ci
+      - name: Lint
+        working-directory: apps/admin
+        run: npm run lint
+      - name: Typecheck
+        working-directory: apps/admin
+        run: npm run typecheck
+      - name: Build
+        working-directory: apps/admin
+        run: npm run build
 
   # Compile-check of the Desktop Rust on PR (cargo check, no bundle). desktop-bundle (full
   # build) only runs on push/main — without this job a compile error in src-tauri would only
@@ -760,7 +807,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, api, worker, web, desktop-rust, supply-chain, docs-link-check, language, infra]
+    needs: [changes, api, worker, web, admin, desktop-rust, supply-chain, docs-link-check, language, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -60,15 +60,14 @@
 # `admin` says "required" rather than "fail-open without it", which is what this comment used
 # to imply and is backwards. Deleting the Access Application fails CLOSED:
 # apps/admin/src/lib/access.ts blocks every route that calls it, when a request arrives with no
-# `Cf-Access-Jwt-Assertion` header — as long as it is enforcing, which takes THREE conditions,
-# not two:
+# `Cf-Access-Jwt-Assertion` header.
 #
-#     NORA_ADMIN_USE_MOCKS == "false"     hardcoded on the admin service in ../docker-compose.yml
-#     CF_ACCESS_TEAM_DOMAIN  non-empty    marked `:?` there, so the stack will not start without it
-#     CF_ACCESS_AUD          non-empty    same
-#
-# The fail-OPEN condition is any of those three missing. All three hold in this compose, which
-# is why the conclusion above is true HERE and is not a property of access.ts on its own.
+# That used to hold only because THREE conditions happened to be satisfied by this compose —
+# mocks off plus both `CF_ACCESS_*` present — and any one of them missing flipped access.ts to
+# fail-OPEN. Since 2026-08-16 it is a property of access.ts itself: enforcement is on unless
+# `NORA_ADMIN_USE_MOCKS=true` is asked for, and missing `CF_ACCESS_*` blocks rather than
+# degrades. The compose still pins all three, which now buys a loud failure at `up` time
+# instead of a console that comes up answering 403 to its own operators.
 #
 # "every route that calls it" rather than "every request": apps/admin/src/app/healthz/route.ts
 # is `force-static` and calls no gate. It returns the string "ok" and reaches no data, so this
@@ -155,9 +154,11 @@ ingress:
     service: http://caddy:80
 
   # Operator console (`platform` profile). Authentication happens at the EDGE:
-  # this route MUST have a Cloudflare Access Application in front, otherwise the
-  # admin is wide open — apps/admin/src/lib/access.ts does fail-OPEN when
-  # CF_ACCESS_AUD arrives empty. The connector injects `Cf-Access-Jwt-Assertion`.
+  # this route SHOULD have a Cloudflare Access Application in front, and the connector is what
+  # injects `Cf-Access-Jwt-Assertion`. Without that application the console no longer opens up —
+  # apps/admin/src/lib/access.ts stopped failing OPEN on an empty CF_ACCESS_AUD on 2026-08-16 —
+  # it goes the other way and answers 403 to everyone, because no request carries an assertion.
+  # Removing the application is a self-inflicted outage now, not a silent exposure.
   - hostname: admin.nora.systems
     service: http://caddy:80
 

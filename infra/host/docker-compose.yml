@@ -508,9 +508,20 @@ services:
   # ==========================================================================
   # Still with no direct public route: it is only reached via Caddy when cloudflared
   # delivers the Host admin.<domain>, and Cloudflare's Access Application is what
-  # authenticates at the edge. access.ts enforces only when THREE things hold, and fails OPEN
-  # if any is missing: NORA_ADMIN_USE_MOCKS == "false" (hardcoded below), CF_ACCESS_TEAM_DOMAIN
-  # non-empty and CF_ACCESS_AUD non-empty (both `:?` below, so the stack refuses to start).
+  # authenticates at the edge.
+  #
+  # access.ts changed shape on 2026-08-16 and this comment with it. It used to enforce only when
+  # THREE things held and to fail OPEN if any was missing, which meant that the safe state was
+  # the insecure one and that the three `:?`/literal below were the only thing standing between
+  # a forgotten variable and an unauthenticated console. Now enforcement is on unless mocks are
+  # explicitly requested, and an incomplete Access configuration BLOCKS instead of standing
+  # aside. The three settings below did not become pointless — they became belt to the app's
+  # braces, and they still fail the deploy loudly at parse time rather than at first request:
+  #   NORA_ADMIN_USE_MOCKS "false"  hardcoded below. Any value other than "true" means the same
+  #                                 thing now; it stays spelled out because a control plane is
+  #                                 not the place to rely on a default.
+  #   CF_ACCESS_TEAM_DOMAIN `:?`    without it the console answers 403 to everything, which is
+  #   CF_ACCESS_AUD         `:?`    correct but useless — better to never come up.
   #
   # This comment used to end "and today in production it arrives empty (it was `vars.` reading a
   # Secret)". That is no longer true — measured on the running container, 2026-08-12, values not
@@ -526,8 +537,8 @@ services:
       NORA_ADMIN_USE_MOCKS: "false"
       PLATFORM_API_BASE_URL: http://api:8080
       PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_ADMIN_TOKEN:-}
-      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:?CF_ACCESS_TEAM_DOMAIN is required - without it access.ts fails OPEN}
-      CF_ACCESS_AUD: ${CF_ACCESS_AUD:?CF_ACCESS_AUD is required - without it access.ts fails OPEN}
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:?CF_ACCESS_TEAM_DOMAIN is required - without it access.ts blocks every request}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:?CF_ACCESS_AUD is required - without it access.ts blocks every request}
       OTEL_SERVICE_NAME: nora-admin
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     # `edge` does NOT publish a port: there is no `ports:` here and the only entry point

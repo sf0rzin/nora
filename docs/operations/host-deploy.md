@@ -240,25 +240,29 @@ tag. There is no env-var shortcut.
 > Since the domain is still `nora.systems`, **the `web` image already in GHCR works without a rebuild**.
 > This only becomes a problem if someone tries to validate the stack on a test domain.
 
-### Pitfall 5 — an empty `CF_ACCESS_AUD` makes the admin FAIL-OPEN
+### Pitfall 5 — an empty `CF_ACCESS_AUD` used to make the admin FAIL-OPEN
 
-**Symptom:** none. `admin.<dom>` responds normally. The ADR 0025 Tier 2 validation simply
-**does not happen**.
+**Symptom, as it was:** none. `admin.<dom>` responded normally and the ADR 0025 Tier 2 validation
+simply **did not happen**. In production on Azure that was live for months: `CF_ACCESS_AUD` was
+registered as a **Secret** but read as `vars.` in the workflows, so it arrived empty (see
+`environment-secrets.md` §5.1).
 
-**Cause:** `apps/admin/src/lib/access.ts` degrades to "edge-only" when `CF_ACCESS_TEAM_DOMAIN` or
-`CF_ACCESS_AUD` are empty — **fail-OPEN, silently**. In production on Azure this has been active for
-months: `CF_ACCESS_AUD` was registered as a **Secret** but is read as `vars.` in the workflows, so it
-arrives empty (see `environment-secrets.md` §5.1).
+**Symptom now:** the opposite, and loud. Since 2026-08-16 `apps/admin/src/lib/access.ts` blocks
+every console route when `CF_ACCESS_TEAM_DOMAIN` or `CF_ACCESS_AUD` is empty, with a 403 page that
+names both variables. It no longer degrades to "edge-only", because the Tunnel and the edge Access
+Application are exactly what an attacker reaching the origin from inside the environment has
+already gone around.
 
-**Fix (already in the compose):** both variables are mandatory with `:?` — without them the `admin` container
-**does not start**:
+**Fix (already in the compose, and now the second line rather than the only one):** both variables
+are mandatory with `:?`, so the `admin` container **does not start** without them — which beats
+starting and answering 403 to its own operators:
 
 ```yaml
-CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:?... without it access.ts fails open}
-CF_ACCESS_AUD:         ${CF_ACCESS_AUD:?... without it access.ts fails open}
+CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:?... without it access.ts blocks every request}
+CF_ACCESS_AUD:         ${CF_ACCESS_AUD:?... without it access.ts blocks every request}
 ```
 
-Trading silent fail-open for noisy fail-closed is the point. Check after the deployment:
+Check after the deployment:
 
 ```bash
 docker compose -p nora --profile platform exec admin printenv CF_ACCESS_AUD

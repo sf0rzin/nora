@@ -105,7 +105,7 @@ The backend serves on 8080, the worker on 8001, the web application on 3000, and
 
 No external credential is needed to bring the stack up. The worker ships with `USE_LLM_STUB=true`, so it answers analysis requests from a local stub at no cost. For real analysis, set `LLM_API_KEY` in `services/nlp-worker/.env.local` and turn the stub off; that file documents how to point the same client at OpenAI, Azure OpenAI, Groq, OpenRouter or a local Ollama.
 
-`make admin-dev` starts the operator console; it installs its dependencies first, the same way `make web-dev` does. It serves on port 3002 and falls back to mock data unless you set `NORA_ADMIN_USE_MOCKS=false`. It needs no `.env` file, which is why `make env` does not create one for it, and it is deliberately not part of `make dev` — it is a separate concern from the product slice.
+`make admin-dev` starts the operator console; it installs its dependencies first, the same way `make web-dev` does. It serves on port 3002 and its default is the production shape: the real data layer with Cloudflare Access JWT validation on, which on a machine with no `CF_ACCESS_*` set means every page answers 403 naming the two missing variables. Run `NORA_ADMIN_USE_MOCKS=true make admin-dev` for the mock data. The variable used to default the other way, and the point of the change is that forgetting it can no longer serve fabricated data with the identity gate off. It needs no `.env` file, which is why `make env` does not create one for it, and it is deliberately not part of `make dev` — it is a separate concern from the product slice.
 
 For tests, `make api-test` runs the backend suite and `make worker-test` the worker's. `make test` runs both. There is no web test suite.
 

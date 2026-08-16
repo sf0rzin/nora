@@ -109,10 +109,13 @@ JWT_SECRET       CLOUDFLARE_TUNNEL_TOKEN
 
 `CF_ACCESS_AUD` is registered as a **Secret**, but `deploy-infra.yml:158` and `:239` were reading
 `${{ vars.CF_ACCESS_AUD }}` — the *Variables* namespace, not the *Secrets* one. The value arrived
-**empty** at `nora-admin`, and `apps/admin/src/lib/access.ts` **fails open** when it is empty.
+**empty** at `nora-admin`, and `apps/admin/src/lib/access.ts` **failed open** when it was empty.
 
-Effect in production today: Cloudflare Access Tier 2 is **off**, and an Access JWT
-issued for **another application in the same Cloudflare organization** is accepted by the operator console.
+Effect in production at the time: Cloudflare Access Tier 2 was **off**, and an Access JWT
+issued for **another application in the same Cloudflare organization** was accepted by the operator
+console. That second half stopped being possible on 2026-08-16 — `access.ts` now blocks every route
+when either `CF_ACCESS_*` variable is empty, so the same misregistration would take the console down
+instead of opening it.
 
 In the new `docker-compose.yml` this can no longer go unnoticed — `CF_ACCESS_AUD` and
 `CF_ACCESS_TEAM_DOMAIN` use the `${VAR:?message}` syntax, so the container **refuses to
