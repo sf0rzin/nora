@@ -7,8 +7,9 @@
  * navigation (Link + usePathname), user profile from the session cookie,
  * logout, ⌘K command palette with semantic search and mobile drawer.
  *
- * Core nav (Enterprise — IAM, tenant context — stays out of here; it is gated
- * to Enterprise, per the Core/Enterprise boundary in the vision).
+ * The primary nav stays lean — day-to-day surfaces only. Administration (IAM) sits in its
+ * own labelled section below it, the same shape "Conectores" uses, so that a feature which
+ * exists and is wired to the API is reachable by clicking instead of by typing its URL.
  *
  * Deliberate deviations from the default shell:
  *  - the sidebar logo is only the "Nora" wordmark (no soundwave);
@@ -80,6 +81,14 @@ function PlugIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 0 1-10 0z" />
       <path d="M12 16v6" />
+    </svg>
+  );
+}
+function ShieldIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l7 3v5.5c0 4.4-2.9 8.3-7 9.5-4.1-1.2-7-5.1-7-9.5V6z" />
+      <path d="M9.5 12l1.8 1.8 3.2-3.6" />
     </svg>
   );
 }
@@ -162,6 +171,22 @@ const CONNECTORS: NavItem = {
   href: "/integrations" as Route,
   icon: <PlugIcon />,
   hint: "MCP",
+};
+
+/**
+ * IAM (users, groups, policies, invites, corporate domain, audit). Kept out of the primary
+ * NAV on purpose — it is an administration surface, not a daily one — but present on every
+ * page, because the alternative it replaces was no entry point at all.
+ *
+ * No plan gating here: the entry is shown to everyone signed in, and the page itself is
+ * guarded by the backend, which answers 403 on the `iam:*` permissions to a member who does
+ * not hold them. Hiding the link in the client would not be a control, only a disguise.
+ */
+const ADMINISTRATION: NavItem = {
+  label: "IAM",
+  href: "/settings/iam" as Route,
+  icon: <ShieldIcon />,
+  hint: "Enterprise",
 };
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -263,7 +288,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="name">{user?.displayName ?? "Carregando…"}</div>
         <div className="mail">{user?.email ? `${user.email} · Core` : "—"}</div>
       </div>
-      <Link className="icon-btn" href={"/settings/context" as Route} aria-label="Configurações" title="Configurações">
+      {/* `/settings` rather than `/settings/context`: the gear means settings, and the
+          prefix now resolves (it used to 404) by redirecting to the hub's first section. */}
+      <Link className="icon-btn" href={"/settings" as Route} aria-label="Configurações" title="Configurações">
         <SettingsIcon />
       </Link>
       <button type="button" className="icon-btn" onClick={handleLogout} disabled={loggingOut} aria-label="Sair" title="Sair">
@@ -285,6 +312,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div>
           <div className="side-sec-label">Conectores</div>
           <NavLink item={CONNECTORS} onNavigate={onNavigate} />
+        </div>
+
+        <div>
+          <div className="side-sec-label">Administração</div>
+          <NavLink item={ADMINISTRATION} onNavigate={onNavigate} />
         </div>
 
         <Suspense fallback={null}>

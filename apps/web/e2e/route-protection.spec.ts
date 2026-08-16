@@ -7,11 +7,15 @@ import { test, expect } from "./fixtures";
  * looks broken, and the only symptom is that a signed-out visitor sees it.
  *
  * ONE REAL PAGE PER PROTECTED PREFIX. The first version of this file used the prefixes
- * themselves, and two of them do not exist: `/meetings` and `/settings` are 404s — only
- * `/meetings/[id]`, `/meetings/upload`, `/settings/context` and `/settings/iam` are real. The
+ * themselves, and two of them did not exist: `/meetings` and `/settings` were 404s — only
+ * `/meetings/[id]`, `/meetings/upload`, `/settings/context` and `/settings/iam` were real. The
  * signed-out assertions still held (the middleware redirects before the route resolves), but
  * `with a session cookie, /meetings is not redirected away` passed because a 404 is not a
  * redirect. Two vacuous tests, reported as coverage.
+ *
+ * `/settings` has since become a real route (it redirects to `/settings/context`); `/meetings`
+ * has not. The table below still names one concrete page per prefix, which is the invariant
+ * that keeps the authenticated case from being vacuous whichever prefixes happen to resolve.
  *
  * So the authenticated case now asserts a 200 as well. "The page did not redirect" and "the
  * page exists" are different claims and only one of them was being made.

@@ -78,7 +78,7 @@ function splitLines(s: string): string[] {
     .filter(Boolean);
 }
 
-// ── hub sections (no IAM: Core is individual) ──
+// ── hub sections (IAM is not one of them: it is its own route, settings/iam) ──
 const SECTIONS = ["conta", "seguranca", "workspace", "contexto"] as const;
 type Section = (typeof SECTIONS)[number];
 

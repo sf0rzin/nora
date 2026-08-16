@@ -20,7 +20,7 @@ type CommandItem = {
   kind: "cmd";
   label: string;
   sub?: string;
-  icon: "plus" | "chat" | "tasks" | "flow" | "gear";
+  icon: "plus" | "chat" | "tasks" | "flow" | "gear" | "shield";
   href: Route;
 };
 
@@ -31,7 +31,8 @@ const COMMANDS: CommandItem[] = [
   { kind: "cmd", label: "Nova sessão de chat", icon: "chat", href: "/chat" as Route },
   { kind: "cmd", label: "Ver action items", icon: "tasks", href: "/tasks" as Route },
   { kind: "cmd", label: "Fluxos", icon: "flow", href: "/flows" as Route },
-  { kind: "cmd", label: "Abrir configurações", icon: "gear", href: "/settings/context" as Route },
+  { kind: "cmd", label: "Abrir configurações", icon: "gear", href: "/settings" as Route },
+  { kind: "cmd", label: "IAM — usuários, grupos e policies", icon: "shield", href: "/settings/iam" as Route },
 ];
 
 function CmdIcon({ name }: { name: CommandItem["icon"] | "doc" | "search" }) {
@@ -68,6 +69,13 @@ function CmdIcon({ name }: { name: CommandItem["icon"] | "doc" | "search" }) {
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H7a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3l7 3v5.5c0 4.4-2.9 8.3-7 9.5-4.1-1.2-7-5.1-7-9.5V6z" />
+          <path d="M9.5 12l1.8 1.8 3.2-3.6" />
         </svg>
       );
     case "doc":
