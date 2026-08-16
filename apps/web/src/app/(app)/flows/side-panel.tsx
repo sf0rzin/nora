@@ -617,6 +617,28 @@ function FormParams({
     );
   }
 
+  // One event per extracted item: the fan-out is the thing the user needs to know before
+  // wiring an e-mail action to it.
+  if (t === "action_item.created") {
+    return (
+      <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0, lineHeight: 1.6 }}>
+        Este gatilho dispara <strong>uma vez para cada action item</strong> extraído da reunião —
+        uma reunião com cinco itens executa o fluxo cinco vezes. Não tem parâmetros.
+      </p>
+    );
+  }
+
+  // The backend guards this event on Severity.HIGH; saying "any risk" here would be false.
+  if (t === "meeting.risk_detected") {
+    return (
+      <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0, lineHeight: 1.6 }}>
+        Este gatilho dispara quando a análise aponta um risco de{" "}
+        <strong>severidade alta</strong> na reunião. Riscos médios e baixos não disparam. Não tem
+        parâmetros.
+      </p>
+    );
+  }
+
   if (t === "productivity_score_below" || t === "customer_confidence_below") {
     const rotulo = t === "productivity_score_below" ? "Productivity Score" : "Customer Confidence";
     const v = no.data.params.value;

@@ -16,9 +16,10 @@
  * analyzing → ready, when it becomes the "Ver analise" CTA). On `FAILED`
  * we show an error with a "Tentar novamente" cta.
  *
- * The card also hooks into NORA Flows: if the user has an active flow with
- * the `meeting.analysis_completed` trigger, we warn that the flows will fire
- * when the analysis finishes; otherwise, we suggest creating one at /flows.
+ * The card also hooks into NORA Flows: if the user has an active flow on any
+ * trigger the analysis pipeline fires (ANALYSIS_TRIGGERS), we warn that the
+ * flows will fire when the analysis finishes; otherwise, we suggest creating
+ * one at /flows.
  *
  * Timeout: 5 minutes (150 polls of 2s). After that we show a notice with a
  * manual link — we do not stop the analysis in the backend, only the polling.
@@ -68,6 +69,17 @@ const MAX_POLLS = 150;
 const BATCH_CONCURRENCY = 2;
 /** Confidence threshold below which we show the amber warning badge. */
 const SPLIT_CONFIDENCE_WARN = 0.7;
+/**
+ * Triggers the analysis pipeline fires when it finishes — all three come out of the same run
+ * (`AnalysisService` publishes the three events), so a flow on any of them will fire from this
+ * upload. Checking only the anchor trigger told users with a risk or action-item flow that they
+ * had none.
+ */
+const ANALYSIS_TRIGGERS: string[] = [
+  "meeting.analysis_completed",
+  "action_item.created",
+  "meeting.risk_detected",
+];
 
 type Phase = "form" | "split-loading" | "split-confirm" | "uploading" | "polling" | "completed" | "failed" | "timeout";
 
@@ -481,7 +493,7 @@ export default function UploadMeetingPage() {
       .then((flows) => {
         if (cancelled) return;
         const hasAnalysisFlow = flows.some(
-          (f) => f.active && f.triggerType === "meeting.analysis_completed",
+          (f) => f.active && ANALYSIS_TRIGGERS.includes(f.triggerType),
         );
         setFlowsHint(hasAnalysisFlow ? "has-flows" : "no-flows");
       })
