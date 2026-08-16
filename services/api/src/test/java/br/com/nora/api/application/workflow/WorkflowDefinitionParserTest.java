@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import br.com.nora.api.application.workflow.WorkflowDefinition.NodeKind;
+import br.com.nora.api.domain.workflow.TriggerType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -94,6 +95,35 @@ class WorkflowDefinitionParserTest {
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
                 .hasMessageContaining("unknown trigger");
+    }
+
+    /**
+     * The three triggers the canvas offers are exactly the three {@code WorkflowEngine} dispatches.
+     * If a fourth ever gains a handler, this test is where the parity is asserted.
+     */
+    @Test
+    void acceptsEveryDispatchedTrigger() {
+        for (TriggerType trigger : TriggerType.values()) {
+            if (!trigger.hasDispatcher()) {
+                continue;
+            }
+            WorkflowDefinition def = parser.parse(flowWith(trigger.wire()), actions);
+            assertThat(def.triggerNode().type()).isEqualTo(trigger.wire());
+        }
+    }
+
+    /**
+     * {@code schedule.cron} is a known value with no dispatcher. It has to be refused on save — and
+     * the message has to say "not implemented", not "unknown": the user picked something the API
+     * itself declares.
+     */
+    @Test
+    void rejectsScheduleCronBecauseNothingDispatchesIt() {
+        assertThatThrownBy(() -> parser.parse(flowWith("schedule.cron"), actions))
+                .isInstanceOf(WorkflowException.InvalidDefinition.class)
+                .hasMessageContaining("schedule.cron")
+                .hasMessageContaining("not implemented")
+                .hasMessageContaining("no dispatcher");
     }
 
     @Test
@@ -360,5 +390,16 @@ class WorkflowDefinitionParserTest {
         assertThatThrownBy(() -> parser.parse(json, actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
                 .hasMessageContaining("unknown condition");
+    }
+
+    /** Minimal valid flow (one trigger wired to one action) parameterized by the trigger wire. */
+    private String flowWith(String triggerWire) {
+        return """
+                {"nodes":[
+                  {"id":"t1","kind":"trigger","type":"%s"},
+                  {"id":"a1","kind":"action","type":"send_email","params":{"to":"x@nora.dev"}}],
+                 "edges":[{"id":"e1","source":"t1","target":"a1"}]}
+                """
+                .formatted(triggerWire);
     }
 }

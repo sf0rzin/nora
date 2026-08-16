@@ -107,7 +107,7 @@ ADR 0016 documents the choice.
 **Current situation:** PII Shield in the worker (redacts email, CPF, CNPJ, phone, card, BR person_name before sending to the LLM). Multi-tenancy guarantees isolation by `tenant_id`. httpOnly cookies. The operational LGPD layer has been **delivered** via **ADR 0029**:
 
 - **Right to be forgotten:** endpoint `DELETE /privacy/meetings/{id}` (deletion by data subject/tenant).
-- **Retention:** a scheduled `RetentionSweeper` applies the retention policy automatically.
+- **Retention:** a scheduled `RetentionSweeper` purges meetings past a **global age cutoff**, and it is **off by default** — see the residue below for what that actually means.
 - **Coverage:** `PrivacyFlowIntegrationTest` validates the end-to-end flow.
 - **DPO declared** in `SECURITY.md` (contact: axonogenesis@proton.me).
 
@@ -115,11 +115,12 @@ This gap is no longer Sub-phase 1.12 debt.
 
 **Residue (operational, non-blocking):**
 
-1. **Data retention policy** documented in ADR 0029:
-   - Transcripts: retained while the tenant is active + 30 days after cancellation
-   - LLM analyses: same
-   - Application Insights logs: 30 days (current default)
-   - Revoked refresh tokens: immediate hard delete
+1. **Data retention policy.** What ADR 0016 listed as the intended policy — "transcripts and analyses retained while the tenant is active + 30 days after cancellation" — **was never built and does not exist in the code**. What exists is narrower, and this is the honest statement of it:
+   - Meetings, and everything that cascades from them (transcript with `raw_text`, participants, tags, analyses), are purged by a **flat age cutoff**: `NORA_PRIVACY_RETENTION_DAYS` days since creation. Nothing consults tenant status, plan or cancellation date.
+   - The window is **global** — one number for every tenant. There is no per-tenant column and no per-plan window (ADR 0029 records this as a deferred trade-off).
+   - The sentinel sits at the **bottom** of the range: `0` or a negative value means retention is **OFF** and nothing is purged. That is the shipped default, because the purge is an irreversible hard delete with CASCADE. `N >= 1` turns it on with an N-day window. There is no value meaning "purge immediately".
+   - Revoked refresh tokens: cleanup of an old token chain is still debt (ADR 0020), not an implemented retention rule.
+   - Prometheus keeps 30 days (`--storage.tsdb.retention.time=30d`) and Loki is configured for 30 days; the Application Insights line above is Azure-era and no longer applies (ADR 0034/0036).
 2. Endpoint `DELETE /privacy/meetings/{id}` delivered (right to be forgotten by data subject/tenant).
 3. Administrative endpoint for full tenant deletion (Root only) — future operational refinement.
 4. `docs/security/lgpd-operations.md` with an incident runbook: detection, escalation, ANPD communication if >50 data subjects are affected — future operational refinement.

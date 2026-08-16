@@ -75,6 +75,17 @@ export const strings = {
         name: "Reunião analisada",
         description: "Dispara quando a análise de uma reunião termina",
       },
+      // Fires once PER action item extracted from the meeting — a flow with an e-mail action
+      // here sends N e-mails for one meeting. The description has to say so.
+      "action_item.created": {
+        name: "Action item criado",
+        description: "Dispara uma vez por action item extraído da reunião",
+      },
+      // The backend only publishes this event for HIGH severity. "Any risk" would be a lie.
+      "meeting.risk_detected": {
+        name: "Risco de severidade alta",
+        description: "Dispara quando a análise aponta um risco de severidade alta",
+      },
       productivity_score_below: {
         name: "Productivity Score abaixo de…",
         description: "Segue só se o score ficar abaixo do limite",

@@ -150,11 +150,21 @@ public class WorkflowDefinitionParser {
             throw new WorkflowException.InvalidDefinition(
                     "the flow needs exactly one trigger (found " + triggers.size() + ")");
         }
+        TriggerType trigger;
         try {
-            TriggerType.fromWire(triggers.get(0).type());
+            trigger = TriggerType.fromWire(triggers.get(0).type());
         } catch (IllegalArgumentException ex) {
             throw new WorkflowException.InvalidDefinition(
                     "unknown trigger: " + triggers.get(0).type());
+        }
+        // Declared in the enum but never fired by anything (see TriggerType). Saying "unknown"
+        // here would be a lie: the value is known, it is just not implemented.
+        if (!trigger.hasDispatcher()) {
+            throw new WorkflowException.InvalidDefinition(
+                    "trigger '"
+                            + trigger.wire()
+                            + "' is not implemented: no dispatcher fires it, so the flow"
+                            + " would never run");
         }
 
         for (Edge e : definition.edges()) {

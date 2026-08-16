@@ -244,12 +244,35 @@ export interface BlockMeta {
   Icon?: (props: { size?: number }) => ReactNode;
 }
 
-/** Catalog v1 — exactly the types the engine runs today. */
+/**
+ * Catalog v1 — exactly the types the engine runs today.
+ *
+ * The three triggers below are the three events `AnalysisService` publishes and `WorkflowEngine`
+ * dispatches. `schedule.cron` exists in the backend enum but has no dispatcher, so it is NOT
+ * offered here and the API refuses it on save.
+ *
+ * The FIRST trigger in this list is the one `/flows/new` drops on an empty canvas
+ * (`flow-editor.tsx`), so keep the anchor trigger at the top.
+ */
 export const CATALOG: BlockMeta[] = [
   {
     kind: "trigger",
     type: "meeting.analysis_completed",
     ...COPY["meeting.analysis_completed"],
+    defaultParams: {},
+    summary: () => null,
+  },
+  {
+    kind: "trigger",
+    type: "action_item.created",
+    ...COPY["action_item.created"],
+    defaultParams: {},
+    summary: () => null,
+  },
+  {
+    kind: "trigger",
+    type: "meeting.risk_detected",
+    ...COPY["meeting.risk_detected"],
     defaultParams: {},
     summary: () => null,
   },
