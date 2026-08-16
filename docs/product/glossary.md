@@ -32,7 +32,7 @@
 
 **BlackHole** — macOS virtual audio driver used by the NORA Desktop to capture system audio (pre-ScreenCaptureKit workaround). Added in PR #37. Contradicts earlier documentation that said "Does not support macOS in the MVP".
 
-**Bucket4j** — Java library (version 8.10.1) used for rate limiting in the backend. Used mainly in `SpeechController` to prevent abuse of the Speech Token Broker (which costs Azure money).
+**Bucket4j** — Java library (version 8.10.1) used for rate limiting in the backend. Its only consumer is `AuthRateLimiter`, which caps signup, login and password-reset attempts. It used to also protect the Speech Token Broker, which no longer exists.
 
 ## C
 
@@ -155,7 +155,7 @@ Internal-only — only the Spring backend talks to it. Hosted in `nora-worker-de
 
 **Soft-delete** — Default behavior of Key Vault and Cognitive Services (Azure Speech) where deleted resources remain recoverable for 7 days. Blocks recreation with the same name. Fix: `az keyvault purge` / `az cognitiveservices account purge`. Azure for Students pitfalls #4 and #5.
 
-**Speech Token Broker** — Backend endpoint (`SpeechController`) that issues an ephemeral Azure Speech token (~9 minutes) for the Desktop. **Does not expose the Speech key** — only the token. Bucket4j rate limit. ADR 0009.
+**Speech Token Broker** — *Historical.* A backend endpoint (`SpeechController`) that issued an ephemeral Azure Speech token to the Desktop without exposing the Speech key (ADR 0009). Superseded by ADR 0035, which moved transcription onto the client, and deleted outright once the Azure subscription was gone (ADR 0034). Kept as an entry because the term appears throughout the ADRs, which are immutable.
 
 **Sub-phase** — NORA's unit of work. Numbering `X.Y` (e.g., `1.10`). Each sub-phase = 1+ merged PRs + a coherent, verifiable delivery. A sub-phase closes when the scope is delivered, not when a timer runs out. Full roadmap in `docs/product/roadmap.md`.
 
