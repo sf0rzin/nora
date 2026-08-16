@@ -56,6 +56,7 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
     private static final Logger LOG = LoggerFactory.getLogger(HttpNlpWorkerClient.class);
     private static final String DEFAULT_VALUE_PROPOSITION = "(not provided)";
     private static final String DEFAULT_COMPANY_NAME = "(company not configured)";
+    private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
 
     private final WebClient client;
     private final WebClient liveClient;
@@ -78,11 +79,12 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
                                                 .addHandlerLast(
                                                         new WriteTimeoutHandler(
                                                                 timeoutMs, TimeUnit.MILLISECONDS)));
-        this.client =
+        WebClient.Builder analyzeBuilder =
                 builder.baseUrl(props.getBaseUrl())
                         .clientConnector(new ReactorClientHttpConnector(http))
-                        .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
-                        .build();
+                        .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+        applyInternalToken(analyzeBuilder, props);
+        this.client = analyzeBuilder.build();
         long liveTimeoutMs = Math.max(1_000L, Math.min(15_000L, props.getTimeoutMillis()));
         HttpClient liveHttp =
                 HttpClient.create()
@@ -100,11 +102,29 @@ public class HttpNlpWorkerClient implements NlpWorkerClient {
                                                         new WriteTimeoutHandler(
                                                                 liveTimeoutMs,
                                                                 TimeUnit.MILLISECONDS)));
-        this.liveClient =
+        WebClient.Builder liveBuilder =
                 builder.baseUrl(props.getBaseUrl())
                         .clientConnector(new ReactorClientHttpConnector(liveHttp))
-                        .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
-                        .build();
+                        .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+        applyInternalToken(liveBuilder, props);
+        this.liveClient = liveBuilder.build();
+    }
+
+    /**
+     * Adds {@code X-Internal-Token} only when a value is configured.
+     *
+     * <p>The guard is not cosmetic: {@code defaultHeader} with an empty string sends the header
+     * present and empty, which is a different thing from not sending it — it reads as a malformed
+     * credential rather than as an absent one.
+     *
+     * <p>Both WebClients go through here. The live one is easy to forget, and forgetting it would
+     * break only {@code /analyze-live}, the path with the thinnest test coverage.
+     */
+    private static void applyInternalToken(WebClient.Builder target, NlpWorkerProperties props) {
+        String token = props.getInternalToken();
+        if (token != null && !token.isBlank()) {
+            target.defaultHeader(INTERNAL_TOKEN_HEADER, token);
+        }
     }
 
     @Override

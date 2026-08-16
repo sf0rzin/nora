@@ -16,6 +16,20 @@ uvicorn nora_nlp.main:app --reload --port 8001
 Healthcheck: `GET http://localhost:8001/healthz`
 Analysis:    `POST http://localhost:8001/analyze`
 
+## Internal authentication
+
+The analysis routes (`/analyze`, `/split`, `/analyze-live`) require the `X-Internal-Token`
+header. The API sends it; `NORA_WORKER_INTERNAL_TOKEN` is what the worker compares it against,
+in constant time. Reaching the port is not supposed to be enough to spend an LLM call.
+
+With no token configured those three routes answer `503 INTERNAL_AUTH_NOT_CONFIGURED` rather
+than serving anyone — fail-closed. For local work, either set a token on both sides or set
+`NORA_WORKER_ALLOW_UNAUTHENTICATED=true` (what `.env.example`, and therefore `make env`, ships).
+
+`/healthz` and `/readyz` stay open: the container healthcheck calls `/healthz` with no header,
+and a gated one would leave the container unhealthy forever. `/readyz` reports
+`"internalAuth": "on" | "off"` so the state of the gate is visible without reading the env.
+
 ## Execution modes
 
 - `USE_LLM_STUB=true` (default): uses the deterministic stub in `services/stub_analyzer.py`. No external call, no cost. It lets the backend and the web evolve without depending on the LLM provider.
@@ -27,6 +41,7 @@ Analysis:    `POST http://localhost:8001/analyze`
 src/nora_nlp/
   main.py              # FastAPI app
   settings.py          # Settings via env
+  security.py          # X-Internal-Token dependency (analysis routes only)
   models.py            # Pydantic models mirroring docs/api/llm-schemas/
   routers/
     health.py
@@ -40,6 +55,7 @@ src/nora_nlp/
   prompts/             # templates versionados (markdown)
 tests/
   test_health.py
+  test_internal_auth.py # the X-Internal-Token gate (conftest neutralizes it elsewhere)
   test_pii_shield.py
   test_analyze_stub.py # roda contra data/synthetic/
 ```

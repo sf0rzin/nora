@@ -627,9 +627,10 @@ jobs:
       - uses: actions/checkout@v6
 
       # `docker compose config` FAILS on `${VAR:?message}` when the variable does not exist —
-      # and the compose uses that pattern on purpose on 7 variables (POSTGRES_ADMIN_PASSWORD,
+      # and the compose uses that pattern on purpose on 9 variables (POSTGRES_ADMIN_PASSWORD,
       # JWT_SECRET, CLOUDFLARE_TUNNEL_TOKEN, GRAFANA_ADMIN_PASSWORD, CF_ACCESS_TEAM_DOMAIN,
-      # CF_ACCESS_AUD, NORA_PLATFORM_ADMIN_TOKEN) to prevent booting with a missing secret.
+      # CF_ACCESS_AUD, NORA_PLATFORM_ADMIN_TOKEN, NORA_INTEGRATIONS_ENC_KEY and
+      # NORA_WORKER_INTERNAL_TOKEN) to prevent booting with a missing secret.
       # Keep this list and the heredoc below in step: a variable added there and not here is
       # only a stale comment, but one added to the compose and to neither turns this job red.
       # The real values live
@@ -649,6 +650,8 @@ jobs:
           CF_ACCESS_TEAM_DOMAIN=ci-placeholder.cloudflareaccess.com
           CF_ACCESS_AUD=ci-placeholder-aud
           NORA_PLATFORM_ADMIN_TOKEN=ci-placeholder-admin-token
+          NORA_INTEGRATIONS_ENC_KEY=Y2ktcGxhY2Vob2xkZXItbm90LWEtcmVhbC1rZXktMzI=
+          NORA_WORKER_INTERNAL_TOKEN=ci-placeholder-worker-internal-token
           EOF
 
       - name: Compose config (stack base)
@@ -667,6 +670,20 @@ jobs:
           set -euo pipefail
           docker compose --env-file .env.ci -f docker-compose.yml --profile platform config -q
           echo "docker-compose.yml valid (platform profile)."
+
+      # The Caddyfile is the routing plane of the only HTTP ingress, and `docker compose config`
+      # says nothing about it: it is a bind-mounted file, so a syntax error or an unknown
+      # directive is only discovered when the container restarts and takes the whole site with
+      # it. Same reasoning that put the compose itself under CI. The env placeholders in the
+      # file all carry defaults (`{$NORA_PUBLIC_DOMAIN:nora.systems}`), so validate needs no
+      # environment. Keep the image tag in step with the `caddy` service in the compose.
+      - name: Caddyfile validate
+        working-directory: infra/host
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile
+          echo "Caddyfile valid."
 
       # Checks that the contract services exist under the expected name. `config -q` validates
       # syntax, not intent: a service renamed by mistake (e.g. `otel` instead of

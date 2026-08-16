@@ -39,6 +39,16 @@ class Settings(BaseSettings):
 
     use_llm_stub: bool = Field(default=True, alias="USE_LLM_STUB")
 
+    # Service-to-service auth for the analysis routes (ADR 0023 §3-4, same shape as the
+    # backend's InternalTokenAuthFilter but in the opposite direction: API -> worker).
+    # Distinct from NORA_PLATFORM_INTERNAL_TOKEN, which authenticates worker/BFF -> API.
+    worker_internal_token: str = Field(default="", alias="NORA_WORKER_INTERNAL_TOKEN")
+    # Fail-closed by default: with no token configured the analysis routes answer 503 rather
+    # than serve anyone who can reach the port. Local dev opts out explicitly.
+    allow_unauthenticated_internal: bool = Field(
+        default=False, alias="NORA_WORKER_ALLOW_UNAUTHENTICATED"
+    )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

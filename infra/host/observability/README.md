@@ -83,14 +83,14 @@ signal, (b) `caddy_reverse_proxy_upstreams_healthy` as an "it is accepting conne
 
 None of these raises an error. All of them produce an empty panel or data loss without warning.
 
-1. **The Caddy scrape does not work.** The `Caddyfile` has `admin localhost:2019` (unreachable
-   from outside the container) and does not have `servers { metrics }` (the `caddy_http_*` are opt-in
-   since Caddy 2.7). With both pending, six edge panels sit at "No data" —
-   precisely the only ones that see web and admin. Making the endpoint reachable already lights up
-   the two `caddy_reverse_proxy_upstreams_healthy` panels (that gauge does not depend on the
-   opt-in), which are the **only** per-service metric that covers web/admin. It is the biggest gain
-   per changed line in the stack. Detail and suggested fix — without exposing the admin API — in the
-   `caddy` job of `prometheus.yml`.
+1. ~~**The Caddy scrape does not work.**~~ **Resolved.** Both preconditions are met in the tree:
+   the `Caddyfile` serves the metrics from a dedicated `http://:2021 { metrics /metrics }` site
+   block (the admin API stays on `admin localhost:2019`, unauthenticated and able to rewrite the
+   whole proxy, which is why it is not the scrape target), and the global `servers { metrics }`
+   block turns on the opt-in `caddy_http_*` families. `prometheus.yml` points the `caddy` job at
+   `caddy:2021`. If the edge panels are still empty after a deploy, check the two conditions
+   separately — target `up`, then presence of `caddy_http_request_duration_seconds` — because they
+   fail in different ways and one of them looks like success. Detail in the `caddy` job's comment.
 2. **The cloudflared scrape does not work.** `cloudflared` is only on the `edge` network and
    `prometheus` only on `internal`; there is no route. A one-line fix in the compose
    (`networks: [edge, internal]`). Without it, `cloudflared_tunnel_ha_connections` — the signal

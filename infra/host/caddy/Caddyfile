@@ -46,23 +46,23 @@
 # =============================================================================
 
 {
-	# ---- Admin API + /metrics (:2019) -------------------------------------
-	# Bind on 0.0.0.0, NOT on loopback. Two reasons, and the second is mandatory:
+	# ---- Admin API (:2019, loopback only) ---------------------------------
+	# The admin API has NO authentication and reconfigures the whole proxy at runtime:
+	# whoever reaches it rewrites where the traffic for nora.systems goes. Caddy sits on
+	# both `edge` and `internal` (docker-compose.yml), so binding it on 0.0.0.0 — which
+	# this file did until the loopback change — handed that power to every container on
+	# either bridge. "No route to the internet" bounds the blast radius of a compromise;
+	# it does not prevent one.
 	#
-	#   1. The compose healthcheck (docker-compose.yml:101) runs FROM INSIDE
-	#      this container and would work with loopback.
-	#   2. The `caddy` job in ../observability/prometheus.yml scrapes
-	#      `caddy:2019` FROM OUTSIDE, from the Prometheus container. With
-	#      Caddy's default (`admin localhost:2019`) that scrape gets connection
-	#      refused and Grafana's edge panel shows "No data" with no error.
+	# It is bound to loopback here, which is what Caddy defaults to. Nothing legitimate
+	# needs it from outside: the compose healthcheck runs INSIDE the container, and
+	# `docker compose exec caddy caddy reload` does too.
 	#
-	# The trade-off is real: the admin API reconfigures the entire proxy at runtime,
-	# and 0.0.0.0 exposes it to every container on the `edge` and `internal` networks.
-	# Acceptable because neither has a route to the internet (`internal` is
-	# `internal: true`; on `edge` only cloudflared exists) and no
-	# :2019 port is published on the host. If a third-party container ever joins
-	# `internal`, this becomes `admin localhost:2019` + a dedicated exporter.
-	admin 0.0.0.0:2019
+	# The one thing that DID need it from outside was Prometheus scraping metrics from
+	# the `caddy` job in ../observability/prometheus.yml. That is why the dedicated
+	# `http://:2021` site block further down exists: same metrics registry, no admin
+	# surface. See the `caddy` job's comment for the two independent preconditions.
+	admin localhost:2019
 
 	# WATCH OUT for the compose healthcheck:
 	#     wget --quiet --tries=1 --spider http://localhost:2019/config/
@@ -74,6 +74,10 @@
 	# further down (that one is served by `respond`, which answers HEAD without complaint):
 	#     test: ["CMD", "wget", "-qO-", "http://localhost:2019/config/"]
 	#     test: ["CMD", "wget", "--spider", "-q", "http://localhost/healthz"]
+	# The compose uses the second form today, which is also the only one that keeps
+	# working now that the admin API answers on loopback only. Do not regress it to the
+	# admin API: from the healthcheck's point of view both work, so the mistake would
+	# only surface the day someone moves the check out of the container.
 
 	# ---- No TLS at the origin ----------------------------------------------
 	# Turns off ACME and the automatic 80 -> 443 redirect. See the header comment.
@@ -104,10 +108,12 @@
 		trusted_proxies static private_ranges
 
 		# Since Caddy 2.7 per-handler metrics are OPT-IN (cardinality cost).
-		# WITHOUT this line, :2019/metrics responds 200 but only
+		# WITHOUT this line, the `metrics` handler responds 200 but only
 		# with Go runtime metrics — no `caddy_http_request_*`. The
 		# Prometheus scrape "works" and the dashboard stays empty: it is the
 		# silent failure that ../observability/prometheus.yml warns about in the `caddy` job.
+		# This is independent of WHERE the metrics are served: moving them off the admin
+		# API to the :2021 block below does not make the opt-in unnecessary.
 		#
 		# Known limitation: the label is `server` (srv0, srv1...), not the Host.
 		# Since web/api/admin/grafana all come in through the same :80 listener,
@@ -119,6 +125,28 @@
 # NOTE on compression: there is NO `encode` in this file, on purpose.
 # Cloudflare already compresses at the edge, and compressing a `text/event-stream`
 # along the way is the easiest way to reintroduce buffering into the chat.
+
+# =============================================================================
+# METRICS — :2021 (Prometheus scrape target, read-only)
+# =============================================================================
+# Exists so the `caddy` job in ../observability/prometheus.yml has something to scrape
+# from the Prometheus container now that the admin API is on loopback. Same registry as
+# the admin API's /metrics, and nothing else: this listener exposes no configuration
+# surface, so a container on `internal` can read counters and cannot rewrite routing.
+#
+# It has to be 2021, not 2019: a site block written as `:2019` binds every interface and
+# collides with the admin's loopback listener on the same port.
+#
+# Do NOT publish 2021 in the compose's `ports:`. Prometheus reaches it over the `internal`
+# bridge; publishing it on the host would reopen from the outside what this design closed
+# from the inside.
+#
+# The metrics themselves still depend on the global `servers { metrics }` above. Without
+# it this endpoint answers 200 with Go runtime metrics only — the failure that looks like
+# success. Those are two separate conditions; check them separately when a panel is empty.
+http://:2021 {
+	metrics /metrics
+}
 
 # =============================================================================
 # APEX + WWW -> web:3000

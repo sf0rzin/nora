@@ -132,7 +132,9 @@ services:
       # HEAD falls into the default and comes back 405. wget exits != 0, the container never
       # becomes healthy, and cloudflared (`condition: service_healthy`) never comes up: the
       # whole stack is unreachable with no obvious error. The /healthz of the :80 block is
-      # served by `respond`, which handles HEAD without complaining. See caddy/Caddyfile:65-74 and :241-246.
+      # served by `respond`, which handles HEAD without complaining. Second reason to keep it
+      # this way: the admin API binds loopback only, so a check that ever moves out of this
+      # container would not reach :2019 at all. See caddy/Caddyfile §admin and its `:80` block.
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/healthz"]
       interval: 15s
       timeout: 5s
@@ -247,6 +249,13 @@ services:
       # Control plane (ADR 0024) — only with the platform profile.
       NORA_PLATFORM_INTERNAL_TOKEN: ${NORA_PLATFORM_INTERNAL_TOKEN:-}
       NORA_API_BASE_URL: http://api:8080
+      # Service-to-service auth for /analyze, /split and /analyze-live: the API sends this in
+      # `X-Internal-Token` and the worker verifies it. Required (`:?`) because the worker is
+      # otherwise open to every container on `internal` and `edge` — posting a transcript is
+      # all it takes to spend an LLM call on this project's account. Must be the SAME value
+      # the `api` service gets below, and a DIFFERENT one from NORA_PLATFORM_INTERNAL_TOKEN
+      # (that one travels worker -> API; same word, opposite direction, distinct secret).
+      NORA_WORKER_INTERNAL_TOKEN: ${NORA_WORKER_INTERNAL_TOKEN:?NORA_WORKER_INTERNAL_TOKEN is required (openssl rand -hex 32); it authenticates api -> worker and is NOT NORA_PLATFORM_INTERNAL_TOKEN}
     # `edge` does NOT publish a port: there is no `ports:` here and the only entry point
     # is still cloudflared -> caddy. It exists because the `internal` and `data` networks
     # are `internal: true`, which blocks egress AND external DNS resolution. Without it the
@@ -333,6 +342,8 @@ services:
 
       # ---- Worker ----
       NLP_WORKER_BASE_URL: http://worker:8001
+      # Same value the `worker` service above requires — this is the sending side.
+      NORA_WORKER_INTERNAL_TOKEN: ${NORA_WORKER_INTERNAL_TOKEN:?NORA_WORKER_INTERNAL_TOKEN is required (openssl rand -hex 32); it authenticates api -> worker and is NOT NORA_PLATFORM_INTERNAL_TOKEN}
 
       # ---- Embeddings (RAG) ----
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
@@ -380,7 +391,16 @@ services:
       NORA_INTEGRATIONS_STATE_SECRET: ${NORA_INTEGRATIONS_STATE_SECRET:-}
       # AES-256-GCM, 32 bytes base64. NEVER pass "unset" here: TokenCipher validates
       # base64 and kills the boot (that was the 2026-06-11 incident with KV-reference).
-      NORA_INTEGRATIONS_ENC_KEY: ${NORA_INTEGRATIONS_ENC_KEY:-}
+      #
+      # `:?` and not `:-`, same shape as JWT_SECRET above. It used to default to EMPTY, and
+      # an empty key is not "no encryption feature": TokenCipher falls back to writing
+      # `plain:<token>` into oauth_connections, so the access AND refresh tokens of all nine
+      # providers (Google, Slack, GitHub, Notion, Todoist, Linear, Microsoft, Telegram,
+      # Trello) sit in the clear in Postgres. The only signal was one WARN line at boot,
+      # which nobody re-reads three weeks into a deployment. Degrading is still possible
+      # for local dev, but it now takes an explicit NORA_INTEGRATIONS_ALLOW_PLAINTEXT=true
+      # and that opt-in is deliberately NOT wired here: on this host the key is mandatory.
+      NORA_INTEGRATIONS_ENC_KEY: ${NORA_INTEGRATIONS_ENC_KEY:?NORA_INTEGRATIONS_ENC_KEY is required (base64 of 32 bytes; openssl rand -base64 32). Set NORA_INTEGRATIONS_ALLOW_PLAINTEXT=true only in local dev to store OAuth tokens unencrypted}
 
       # ---- Control plane (ADR 0022/0023/0024) ----
       NORA_PLATFORM_ENABLED: ${NORA_PLATFORM_ENABLED:-false}

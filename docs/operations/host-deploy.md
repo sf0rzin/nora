@@ -519,8 +519,11 @@ DEEPSEEK_API_KEY=
 GEMINI_API_KEY=
 RESEND_API_KEY=
 
+# Worker (api -> worker, ADR 0023 §3-4) — REQUIRED, `:?` on both services
+NORA_WORKER_INTERNAL_TOKEN=         # openssl rand -hex 32; NOT NORA_PLATFORM_INTERNAL_TOKEN
+
 # Integrations (ADR 0031) — only the SECRETS; the *_OAUTH_CLIENT_ID ones are public
-NORA_INTEGRATIONS_ENC_KEY=          # AES-256-GCM, 32 bytes BASE64 — see the warning below
+NORA_INTEGRATIONS_ENC_KEY=          # REQUIRED. AES-256-GCM, 32 bytes BASE64 — warning below
 NORA_INTEGRATIONS_STATE_SECRET=     # openssl rand -hex 32
 GOOGLE_OAUTH_CLIENT_SECRET= ...     # (slack, github, notion, todoist, linear, ms)
 NORA_TELEGRAM_BOT_TOKEN=
@@ -541,11 +544,22 @@ GRAFANA_ADMIN_PASSWORD=             # openssl rand -base64 24
 (`API_TAG`/`WORKER_TAG`/`WEB_TAG`/`ADMIN_TAG`, which `deploy.sh --tag` overrides).
 
 > **No value may be the string `unset`.** Inherited from the Bicep, which wrote `'unset'` into the
-> Key Vault when a secret came in empty. Empty is safe; `unset` is fatal.
+> Key Vault when a secret came in empty. `unset` is fatal. Empty is safe for most of these — but
+> not for the ones the compose marks `${VAR:?}`, where empty stops `docker compose up` on purpose.
 
 > **`NORA_INTEGRATIONS_ENC_KEY`:** never put the string `unset` nor a non-base64 value there. The
 > `TokenCipher` validates base64 and **brings the boot down** — that was the 2026-06-11 incident with
-> the KV reference. Generate it with `openssl rand -base64 32`.
+> the KV reference. Generate it with `openssl rand -base64 32`. Empty is no longer a soft landing
+> either: it used to make the cipher write every provider's OAuth access and refresh token to
+> Postgres as `plain:<token>`, with one WARN line at boot as the only signal. The variable is now
+> `${VAR:?}` in the compose, and the API itself refuses to start without it unless
+> `NORA_INTEGRATIONS_ALLOW_PLAINTEXT=true` — a local-dev escape hatch the host compose does not
+> pass through and the `prod` profile pins to false.
+
+> **`NORA_WORKER_INTERNAL_TOKEN`:** the same value has to reach the `api` service (which sends it
+> as `X-Internal-Token`) and the `worker` service (which verifies it). Different values mean every
+> analysis fails with 401; a missing value stops the stack at `docker compose up`. It is a
+> different secret from `NORA_PLATFORM_INTERNAL_TOKEN`, which travels worker → API.
 
 Age key rotation (ADR 0016 Gap 7 policy, now without Key Vault):
 
