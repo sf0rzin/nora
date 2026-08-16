@@ -17,7 +17,7 @@ type ShaderOrbProps = {
 /**
  * NORA signature WebGL orb — radial mass displaced by FBM noise, blue palette.
  *
- * Faithful port of `project/shader-orb.jsx` from the Claude Design bundle. Client-only
+ * Faithful port of `project/shader-orb.jsx` from the v3 design bundle. Client-only
  * (uses WebGL/canvas). Under `prefers-reduced-motion` it renders a single frame instead
  * of animating.
  */

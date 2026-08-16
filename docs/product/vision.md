@@ -60,7 +60,7 @@ NORA is a platform with two plans that share the same AI engine and infrastructu
 > **This section is a dated snapshot, not the current infrastructure.** As of 2026-08-10, Azure is
 > gone — no subscription, no export, nothing to decommission (ADR 0036) — and NORA runs
 > self-hosted on a single bare-metal host (ADR 0034/0036). See `README.md` §Current state or
-> `CLAUDE.md` §Current scope for what is true today. Everything below about the **product** (IAM,
+> `AGENTS.md` §Current scope for what is true today. Everything below about the **product** (IAM,
 > Productivity Score, PII Shield, chat, coverage) still describes real, delivered functionality;
 > only the Azure deployment facts are historical.
 

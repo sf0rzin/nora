@@ -3,7 +3,7 @@
 > Canonical vocabulary of the NORA project. Terms in alphabetical order. Each entry includes a definition, scope (where it appears) and a reference (ADR / file / PR) when applicable.
 >
 > Use this doc when:
-> - You are new to the project (human or Claude) and run into an unknown term
+> - You are new to the project (human or an AI agent) and run into an unknown term
 > - You are writing a doc/ADR/spec and need the canonical term
 > - You are writing a PR description or a commit message and need the canonical term
 >

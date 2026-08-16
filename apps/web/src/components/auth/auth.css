@@ -1,4 +1,4 @@
-/* NORA Auth v3 — login + multi-step signup (port of the Claude Design /auth bundle).
+/* NORA Auth v3 — login + multi-step signup (port of the v3 design /auth bundle).
  *
  * Global, but EVERY selector is scoped under `.nora-auth` so it does not leak into
  * the app. Tokens in styles/tokens.css. Left panel = "ambient" variant (live

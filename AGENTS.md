@@ -1,6 +1,6 @@
-# CLAUDE.md — NORA
+# AGENTS.md — NORA
 
-This file is the main project context for Claude Code and similar AI coding agents. Read it before making code changes.
+This file is the main project context for AI coding agents. Read it before making code changes.
 
 ## Project
 
@@ -109,6 +109,7 @@ Use Opus models for architecture, data modeling, security review and refactors. 
 
 | Date | Change |
 |---|---|
+| 2026-08-16 | Renamed from `CLAUDE.md` to `AGENTS.md` and stripped of vendor-specific AI attribution, along with the rest of the repository: the `nora-architect` skill under `.claude/skills/` was deleted, two ADR history rows lost a `+ Claude` co-author, and the design-provenance comments and `hero-claude` CSS classes were renamed. The file keeps its role as the context an AI coding agent reads first. ADR 0037 still names `CLAUDE.md` because accepted ADRs are immutable and the reference is accurate for its date |
 | 2026-08-11 | SSH over the existing tunnel recorded as ADR 0037 (applied 2026-08-10): `ssh.nora.systems` gated by a Cloudflare Access allow-list, sshd and port 22 untouched by that change. Added the runbook to "Read First" and the route to "Current scope". Also corrected a claim this file and two runbooks had been making in different directions: port 22 is open to the internet (measured — `ufw` inactive), so "no inbound port" was only ever true of the stack, not of the machine |
 | 2026-08-10 | RLS enforce cutover executed on the deployed stack: the API connects as `nora_app` (NOBYPASSRLS), the operator aggregate reads through `nora_telemetry` (BYPASSRLS), and the API refuses to boot on a half-applied cutover. Off by default in the repository |
 | 2026-08-10 | Substrate correction (ADR 0036): the host is a single bare-metal Ubuntu machine, no hypervisor. Renamed the infra directory, the deploy runbook and the deploy workflow to host-neutral names (now `infra/host/`, `docs/operations/host-deploy.md`, `.github/workflows/deploy-host.yml`); removed `infra/bicep/`, `azure-decommission.md` and `azure-deploy.md` (Azure is gone, not being decommissioned); updated "Read First", "Current scope" and the Stack table accordingly |

@@ -41,7 +41,7 @@
  *   timeout: we do not abort polling on the first 5xx; the backend may
  *   still be processing.
  *
- * Visual: port of the Claude Design prototype (upload.html) — dropzone with
+ * Visual: port of the v3 design prototype (upload.html) — dropzone with
  * drag&drop, participant/tag chips, optional start/end fields.
  */
 

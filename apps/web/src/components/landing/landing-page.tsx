@@ -14,7 +14,7 @@ import {
 } from "./landing-content";
 
 /**
- * Public landing v3 — port of the Claude Design bundle.
+ * Public landing v3 — port of the v3 design bundle.
  *
  * Section order mirrors the bundle's `landing/app.jsx`: Nav · Hero · HowItWorks
  * · Features · Demo · Privacy · Pricing · FAQ · CTA · Footer. Styles in

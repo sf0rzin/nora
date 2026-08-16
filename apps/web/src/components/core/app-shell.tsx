@@ -3,7 +3,7 @@
 /**
  * NORA Core — app shell (chat-first sidebar + main area).
  *
- * Visual port of the Claude Design prototype (shell.js) to Next: route-based
+ * Visual port of the v3 design prototype (shell.js) to Next: route-based
  * navigation (Link + usePathname), user profile from the session cookie,
  * logout, ⌘K command palette with semantic search and mobile drawer.
  *

@@ -1,8 +1,8 @@
-/* NORA — design tokens (v3 · DM Sans rebrand / Claude Design bundle).
+/* NORA — design tokens (v3 · DM Sans rebrand).
  *
  * LIGHT cool-neutral palette ("OpenAI feel"). The primary names below
  * (--canvas, --sidebar, --chip, --ink, --muted, --accent-ink, --accent-soft)
- * come straight from the Claude Design bundle and are used by landing v3 +
+ * come straight from the v3 design bundle and are used by landing v3 +
  * new screens (login, core). The old names (--bg, --surface, --fg, --paper, --brand…)
  * stay as ALIASES pointing at the new ones, so as not to break screens
  * already implemented (dashboard, meetings, IAM, settings).

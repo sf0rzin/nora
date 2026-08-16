@@ -115,7 +115,7 @@ Start with the [product vision](docs/product/vision.md), then the [architecture]
 
 For operating it: the [deployment runbook](docs/operations/host-deploy.md) is the current one, and [production-readiness-gaps.md](docs/operations/production-readiness-gaps.md) is an honest list of what is not ready.
 
-`docs/challenge/` holds the FIAP NEXT Challenge 2026 material. `CLAUDE.md` is the context file for AI coding agents.
+`docs/challenge/` holds the FIAP NEXT Challenge 2026 material. `AGENTS.md` is the context file for AI coding agents.
 
 ## Security
 

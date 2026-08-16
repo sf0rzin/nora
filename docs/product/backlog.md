@@ -156,7 +156,7 @@ Work that was not in the original MoSCoW but came in via sub-phases or an archit
 | `meeting_attributes` JSONB + GIN index | V007 + V008 | ADR 0007 | DONE (arbitrary attributes for IAM conditions) |
 | Meeting reprocessing | #46 | — | DONE (`POST /meetings/{id}/reprocess`) |
 | CORS configurable per env | #42 | — | DONE (`CORS_ALLOWED_ORIGINS` in `application.yml`) |
-| `nora-architect` skill for Claude Code | #53 | — | DONE (in `.claude/skills/`) |
+| `nora-architect` skill for AI coding agents | #53 | — | Delivered in #53, **removed 2026-08-16** when vendor-specific AI tooling was stripped from the repository |
 
 ### Post-1.10 hardening wave (audit follow-ups #114–#138)
 
@@ -182,7 +182,7 @@ A security/infra workstream that came in after Sub-phase 1.10, labeled "audit fo
 | **Won't Have v1 (W)** | 7 | **1** (US09) | — | **6** |
 | **Total** | **58** | **37** | **3** | **18** |
 
-> *US05 and US08 are `M` in the original MoSCoW but were **re-labeled as W via a scope decision** (CLAUDE.md + PROJECT.md). Here they count as MISSING/W in practice.
+> *US05 and US08 are `M` in the original MoSCoW but were **re-labeled as W via a scope decision** (AGENTS.md + PROJECT.md). Here they count as MISSING/W in practice.
 
 **Effective MVP coverage** (M + S desirable for the demo):
 - Must Have delivered: **29 of 31** (94%) — Customer Confidence (US48-49) was delivered full-stack in #148; only US05/US08 (re-labeled W) remain

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-// Design system v3 (Claude Design rebrand): DM Sans is the only UI family
+// Design system v3: DM Sans is the only UI family
 // (sans + display). JetBrains Mono is reserved only for code contexts
 // (e.g.: policies editor). See docs/engineering/standards.md §8.
 const dmSans = DM_Sans({
