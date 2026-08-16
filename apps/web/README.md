@@ -47,8 +47,9 @@ src/
       tasks/  projects/
       flows/                    # workflow canvas: list, new, [id] (ADR 0030/0032)
       integrations/             # OAuth connector hub (ADR 0031)
+      settings/                 # page.tsx redirects the bare prefix to context/
       settings/context/         # tenant company/product context
-      settings/iam/             # groups, policies, invitations, audit (no nav entry — see below)
+      settings/iam/             # groups, policies, invitations, audit
     api/chat/route.ts           # BFF: the only server route, holds the provider key
   components/                   # flat, no feature folders
   lib/
@@ -59,8 +60,10 @@ src/
   middleware.ts                 # route protection
 ```
 
-`/settings/iam` is fully wired to the API but nothing in the app links to it — the sidebar gear
-and the command palette both point at `/settings/context`. It is reachable only by typing the URL.
+`/settings/iam` is fully wired to the API and is reached from the administration section of the
+sidebar and from the command palette. The entry is shown to every signed-in user: whether the
+caller may actually read groups, policies or the audit log is decided by the backend's `iam:*`
+permissions, not by hiding the link.
 
 ## Scripts
 

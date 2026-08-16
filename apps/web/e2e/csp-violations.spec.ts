@@ -27,10 +27,11 @@ import { test, expect, collectCspViolations } from "./fixtures";
  *      own policy. The test was right and the claim was wrong — see the note on the page list.
  *   2. `page` and `authedPage` were the same object (fixed in fixtures.ts), so the "landing
  *      (public)" case was measuring the dashboard.
- *   3. Two of the six routes did not exist. `/meetings` and `/settings` are 404s — only
- *      `/meetings/[id]`, `/meetings/upload`, `/settings/context` and `/settings/iam` are real —
- *      and a 404 page fetches nothing, so those two cases passed vacuously. They were, in fact,
- *      the only two that passed.
+ *   3. Two of the six routes did not exist. `/meetings` and `/settings` were 404s at the time —
+ *      only `/meetings/[id]`, `/meetings/upload`, `/settings/context` and `/settings/iam` were
+ *      real — and a 404 page fetches nothing, so those two cases passed vacuously. They were,
+ *      in fact, the only two that passed. (`/settings` has since become a real route: it
+ *      redirects to `/settings/context`. `/meetings` is still a 404.)
  *
  * Of six page tests, four failed for a real reason and two could not fail at all. The status
  * assertion below exists so a route that stops existing can never again be mistaken for a

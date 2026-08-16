@@ -6,7 +6,9 @@
  * empresa) and the respective panels live in the client page (context/page.tsx),
  * where the active section state can drive the panel switch.
  *
- * No IAM here: Core is individual; teams and permissions belong to Enterprise.
+ * IAM is a sibling ROUTE under this layout (settings/iam), not one of those sections: it
+ * carries its own data loading and forms, so it keeps its own page. It is reached from the
+ * "Administração" entry in the sidebar and from the command palette.
  */
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   return (
