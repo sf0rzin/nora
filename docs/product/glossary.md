@@ -30,7 +30,7 @@
 - **Productivity Score** and **Customer Confidence**: `LOW` / `MEDIUM` / `HIGH`
 - **Account Health**: `AT_RISK` / `WATCH` / `HEALTHY` / `STRONG`
 
-**BlackHole** — macOS virtual audio driver used by the NORA Desktop to capture system audio (pre-ScreenCaptureKit workaround). Added in PR #37. Contradicts earlier documentation that said "Does not support macOS in the MVP".
+**BlackHole** — *historical.* macOS virtual audio driver that the NORA Desktop used to capture system audio (a pre-ScreenCaptureKit workaround), added in PR #37. **No longer applicable:** the desktop client is Windows-only, and the macOS capture path was deleted. The entry is kept because the glossary's own change history (below) cites the term.
 
 **Bucket4j** — Java library (version 8.10.1) used for rate limiting in the backend. Its only consumer is `AuthRateLimiter`, which caps signup, login and password-reset attempts. It used to also protect the Speech Token Broker, which no longer exists.
 

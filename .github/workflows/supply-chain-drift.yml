@@ -80,7 +80,7 @@ jobs:
       # The flag goes AFTER `check`; `cargo-deny -D … check` is an argument error.
       #
       # `--log-level info` prints the `note[advisory-ignored]` lines with their reason
-      # strings — at the default level three ignores produce `advisories ok` and no trace.
+      # strings — at the default level the ignores produce `advisories ok` and no trace.
       - name: cargo-deny (the same policy ci.yml gates on, plus stale-ignore detection)
         working-directory: apps/desktop/src-tauri
         run: cargo-deny --log-level info --format human check -D advisory-not-detected

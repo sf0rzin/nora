@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "tauri:linux": "cross-env GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 tauri"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
@@ -22,7 +21,6 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^6.0.3",
     "autoprefixer": "^10.5.4",
-    "cross-env": "^7.0.3",
     "postcss": "^8.5.25",
     "tailwindcss": "^3.4.4",
     "typescript": "^7.0.2",

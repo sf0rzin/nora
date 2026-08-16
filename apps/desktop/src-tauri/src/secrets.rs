@@ -10,10 +10,9 @@ const ALLOWED_KEYS: &[&str] = &[
 
 /// Secret store backed by the OS keychain (keyring crate).
 ///
-/// Cross-platform:
-/// - Windows: Credential Manager (DPAPI)
-/// - macOS: Keychain
-/// - Linux: Secret Service (D-Bus)
+/// Windows Credential Manager (DPAPI), and only that: `keyring` is built with the
+/// `windows-native` feature alone. The Keychain and Secret Service backends went with
+/// macOS and Linux support.
 pub struct SecretStore;
 
 impl SecretStore {

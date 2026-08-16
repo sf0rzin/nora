@@ -51,13 +51,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # No `args`: the embedded STT (whisper.cpp via whisper-rs, ADR 0035) is the only
-          # backend and is already the default feature. The flag that used to be here was
-          # believed to exclude an Azure Speech path; it never did, and that path is gone.
+          # ONE entry, and the matrix is kept for exactly that reason: it is the place a
+          # second platform would be added back, and `runs-on` plus the artifact naming
+          # already read from it. Windows is the only target the client supports — macOS
+          # (BlackHole) and Linux (PulseAudio) were never exercised by anyone and were
+          # dropped rather than kept as a promise.
+          #
+          # No `args` either. There used to be a `--features stt-local` here, believed to
+          # exclude an Azure Speech path; it never did, and that path is gone. The embedded
+          # STT (whisper.cpp via whisper-rs, ADR 0035) is the only backend and is already
+          # the default feature, so `tauri build` takes no flags at all.
           - platform: windows-latest
-            args: ""
-          - platform: ubuntu-latest
-            args: ""
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     steps:
@@ -150,7 +154,6 @@ jobs:
       # not finding what to package. The runner workspace is already short; LongPathsEnabled
       # covers the rest. (In ci.yml's desktop-rust job, which uploads no artifact, we set it.)
       - name: Windows — long paths (whisper.cpp/CMake)
-        if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
           git config --global core.longpaths true
@@ -161,12 +164,6 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: apps/desktop/src-tauri
-
-      - name: Install dependencies (Ubuntu)
-        if: matrix.platform == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
       - name: Install frontend dependencies
         working-directory: apps/desktop
@@ -209,4 +206,3 @@ jobs:
           releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.publish != 'PUBLISH' }}
           prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.publish != 'PUBLISH' }}
           includeUpdaterJson: true
-          args: ${{ matrix.args }}

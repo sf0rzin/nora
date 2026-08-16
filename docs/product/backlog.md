@@ -49,7 +49,7 @@
 |---|---|---|---|---|---|
 | US07 | Transcript upload (`.txt`, `.vtt`, `.srt`) | M | DONE | `MeetingsController.upload` (line 98-136) · migration V004 · PR #5 | — |
 | US08 | Audio/video upload (`.mp3`, `.mp4`) | **W** | MISSING | `ALLOWED_FORMATS = {TXT,VTT,SRT}` in `MeetingsController.java:66` | Post-MVP. Deferred as a block via ADR 0014 |
-| US09 | Live capture on the Desktop | **W** (declared W in the backlog, but **implemented**) | DONE | `apps/desktop/src-tauri/.../system_audio.rs`, `audio_capture.rs`, `stt_local.rs` · PRs #8, #65 · ADRs 0008 + 0035 | Validation in a real Windows/Teams environment still pending. macOS via BlackHole works; native ScreenCaptureKit is nice-to-have (contributor's scope) |
+| US09 | Live capture on the Desktop | **W** (declared W in the backlog, but **implemented**) | DONE | `apps/desktop/src-tauri/.../system_audio.rs`, `audio_capture.rs`, `stt_local.rs` · PRs #8, #65 · ADRs 0008 + 0035 | Validation in a real Windows/Teams environment still pending. Windows-only: the macOS (BlackHole) and Linux (PulseAudio) capture paths were deleted, never having been exercised |
 | US10 | Name and categorize the meeting at upload | S | DONE | `MeetingUploadMetadata` accepts `title` and `tags` (`MeetingsController.java:107,120`) | — |
 
 ### E3 — AI Processing

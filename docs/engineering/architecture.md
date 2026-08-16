@@ -447,7 +447,7 @@ instead.
 ### Tauri 2 (vs Electron)
 
 - Binary ~10× smaller (no embedded Node runtime).
-- System-wide audio capture done in Rust (`system_audio.rs` in `apps/desktop/src-tauri/`) with WASAPI on Windows, CoreAudio/BlackHole on macOS.
+- System-wide audio capture done in Rust (`system_audio.rs` in `apps/desktop/src-tauri/`) with WASAPI loopback. The client is Windows-only: the macOS module (BlackHole virtual driver) and the Linux one (PulseAudio `parecord`) were deleted because neither had ever been exercised.
 - Transcription runs in-process in Rust (ADR 0035), so there is no subprocess and no IPC protocol to keep in sync. ADR 0008's Python sidecar and its NDJSON protocol were deleted once the Azure Speech path stopped being the default.
 - Typed IPC between the frontend (web view) and the Rust backend via Tauri commands.
 

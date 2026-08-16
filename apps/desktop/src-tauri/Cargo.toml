@@ -10,8 +10,8 @@ edition = "2021"
 #
 # NOT inert: tauri-bundler's BundleSettings::license defaults to the Cargo.toml license
 # when `bundle.license` is unset in tauri.conf.json, which it is, and `bundle.targets` is
-# "all". So AGPL-3.0-only now appears in the Linux package metadata where nothing
-# appeared before. Correct, and worth knowing rather than discovering.
+# "all". So AGPL-3.0-only reaches the generated package metadata where nothing appeared
+# before. Correct, and worth knowing rather than discovering.
 license = "AGPL-3.0-only"
 # Never goes to crates.io — this is the desktop application, not a library. Inert for the
 # build: nothing in .github/, scripts/ or apps/desktop/ runs `cargo publish` or
@@ -40,12 +40,13 @@ tauri-build = { version = "2", features = [] }
 # The feature is kept rather than inlined because the GPU features below hang off
 # the optional `whisper-rs` dependency it pulls in.
 #
-# GPU acceleration: `whisper-metal` is turned on automatically on macOS by the
-# [target.'cfg(target_os = "macos")'.dependencies] section below. Vulkan/CUDA
-# stay explicit opt-in because they require the vendor SDK on the BUILD machine
-# (not only on the runtime one) — on by default would break CI on all three targets.
-#   cargo build --features whisper-vulkan     # Windows/Linux with Vulkan SDK
-#   cargo build --features whisper-cuda       # Windows/Linux with CUDA Toolkit
+# GPU acceleration is explicit opt-in, all of it. There used to be a `metal` feature
+# switched on automatically by a [target.'cfg(target_os = "macos")'.dependencies] section;
+# that section went with macOS support. Vulkan/CUDA stay opt-in because they require the
+# vendor SDK on the BUILD machine (not only on the runtime one), so on by default would
+# break CI.
+#   cargo build --features whisper-vulkan     # with the Vulkan SDK installed
+#   cargo build --features whisper-cuda       # with the CUDA Toolkit installed
 #
 # CPU is always the fallback: with no GPU feature whisper.cpp runs on CPU.
 [features]
@@ -63,7 +64,7 @@ whisper-openblas = ["whisper-rs?/openblas"]
 [dependencies]
 # Pinned at "=0.16.0" on purpose: whisper-rs vendors whisper.cpp as a
 # submodule and a minor bump has swapped the FullParams/State API before
-# (0.13 -> 0.14 renamed the log gate). Bump only with cargo check on the 3 targets.
+# (0.13 -> 0.14 renamed the log gate). Bump only with a real cargo check behind it.
 whisper-rs = { version = "=0.16.0", optional = true }
 sha2 = { version = "0.11", optional = true }
 
@@ -81,24 +82,16 @@ audioadapter-buffers = "4.0.0"
 url = "2.5.8"
 urlencoding = "2"
 chrono = { version = "0.4", features = ["serde"] }
-keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+# Only the Windows backend (Credential Manager / DPAPI). `apple-native` (Keychain) and
+# `sync-secret-service` (D-Bus) were the macOS and Linux stores and pulled their platform
+# stacks into the lock for platforms this client no longer builds for.
+keyring = { version = "3", features = ["windows-native"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 
-[target.'cfg(target_os = "linux")'.dependencies]
-libc = "0.2"
-x11 = { version = "2", features = ["xlib"] }
-raw-window-handle = "0.6"
-
-[target.'cfg(target_os = "macos")'.dependencies]
-libc = "0.2"
-# Metal by default on macOS: Cargo takes the UNION of the features of this section
-# with those of [dependencies], so the macOS build gets "metal" and the others do
-# not. whisper.cpp falls back to CPU on its own if the Metal device does not
-# initialize, so this does not break old Intel. Does not apply to CoreML: the CoreML
-# encoder needs a per-model .mlmodelc, which we do not download (see whisper_model.rs).
-whisper-rs = { version = "=0.16.0", features = ["metal"], optional = true }
-
+# One target section, because there is one target. The Linux section here used to pull in
+# `libc`, `x11` and `raw-window-handle`, and the macOS one `libc` plus a second
+# `whisper-rs` entry that force-enabled the `metal` feature. Both went with the platforms.
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", features = [
     "Win32_Media_Audio",

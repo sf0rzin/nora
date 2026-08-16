@@ -30,13 +30,19 @@
 # catch. One line of config, gating, instead of a second binary that only warned.
 
 [graph]
-# The three targets the desktop client actually ships to. Without this, cargo-deny
-# evaluates the union of every platform's dependencies, pulling in graphs that are never
-# built here. The gtk/glib stack is Linux-only and is included on purpose.
+# The one target the desktop client ships to. Without this, cargo-deny evaluates the union
+# of every platform's dependencies, pulling in graphs that are never built here — which,
+# now that the client is Windows-only, is most of them.
+#
+# CUTTING THIS LIST DELETES ADVISORIES FROM THE GRAPH, and that is the trap to know about
+# before editing it again. `RUSTSEC-2024-0429` (glib) entered only through the Linux gtk
+# stack, so dropping `x86_64-unknown-linux-gnu` left its `ignore` entry below matching
+# nothing — and `supply-chain-drift.yml` runs this same policy with
+# `-D advisory-not-detected`, where an entry that matches nothing FAILS. The entry was
+# removed in the same change. Measured, rather than assumed, with
+# `cargo tree --target x86_64-pc-windows-msvc -i <crate>`.
 targets = [
-    "x86_64-unknown-linux-gnu",
     "x86_64-pc-windows-msvc",
-    "aarch64-apple-darwin",
 ]
 
 # =============================================================================
@@ -49,11 +55,13 @@ targets = [
 unsound = "all"
 
 # Unmaintained crates are checked against the WORKSPACE only, not the whole transitive
-# graph. With the default this check reports 16 errors, none of them actionable: 10 are
-# the gtk-rs GTK3 bindings, 5 are the rust-unic Unicode crates reached through
-# urlpattern, and one is proc-macro-error. Every one is pinned by Tauri 2 and moves when
-# Tauri moves. A gate that is red for something no commit here can change teaches people
-# to ignore it, which costs more than it buys.
+# graph. With the default this check reported 16 errors, none of them actionable: 10 were
+# the gtk-rs GTK3 bindings, 5 the rust-unic Unicode crates reached through urlpattern, and
+# one proc-macro-error. Every one is pinned by Tauri 2 and moves when Tauri moves. A gate
+# that is red for something no commit here can change teaches people to ignore it, which
+# costs more than it buys. (That count was taken while Linux was still a target, so the
+# gtk-rs ten are no longer in the evaluated graph. The argument does not depend on the
+# number, and the number was not re-measured.)
 #
 # "workspace" keeps the check where it bites: a crate WE add that is unmaintained still
 # fails. That is the actionable half, and it is the half nobody was watching.
@@ -68,7 +76,7 @@ unmaintained = "workspace"
 # are all outside the pull request being gated: RustSec withdrawing or renaming an advisory,
 # a stale or partial advisory database (a DB predating 2026 loses both quick-xml entries and
 # still passes the default 90-day staleness check), or an edit to `[graph] targets` dropping
-# the Linux target and with it glib. Any of those would red the gate and blame whoever
+# the target a crate arrives through. Any of those would red the gate and blame whoever
 # happened to open the next desktop PR — which is the exact failure the two-workflow split
 # exists to prevent, re-imported into `ci-gate`.
 #
@@ -94,54 +102,48 @@ ignore = [
     # does, the weekly job's `-D advisory-not-detected` turns these two lines red rather
     # than leaving them to rot.
     #
+    # STILL IN THE GRAPH AFTER THE WINDOWS-ONLY CUT, and that is worth stating because the
+    # obvious guess is the opposite. `plist` reads as a macOS crate, but it arrives on
+    # `x86_64-pc-windows-msvc` all the same — `tauri -> tauri-utils -> plist` as a normal
+    # dependency and `tauri-build -> tauri-utils -> plist` as a build one. Measured:
+    # `cargo tree --target x86_64-pc-windows-msvc -i quick-xml` prints the tree rather than
+    # "nothing to print", which is what the same command says for glib.
+    #
     # REACHABILITY, which is a different claim from presence — and this paragraph was
     # WRONG in its first version, so read the correction rather than the conclusion. It
-    # said the plist call sites were "all bundle-time or own-metadata paths". They are
-    # not. `tauri-2.11.5/src/process.rs:112` calls `plist::from_file` on
-    # `Contents/Info.plist` inside `restart_macos_app()`, reached from `App::restart()`.
-    # That is a real parse, at runtime, in the shipped binary, through
-    # plist -> quick-xml. And it IS reachable here: src/lib.rs registers
-    # tauri_plugin_updater, and capabilities/updater-remote.json grants
-    # `updater:allow-download-and-install` together with `process:allow-restart`.
+    # said the plist call sites were "all bundle-time or own-metadata paths". At the time
+    # they were not: `tauri-2.11.5/src/process.rs:112` calls `plist::from_file` on
+    # `Contents/Info.plist` inside `restart_macos_app()`, reached from `App::restart()`,
+    # which is a real parse at runtime in the shipped binary, through plist -> quick-xml.
     #
-    # The conclusion survives, for a reason that has to be stated rather than assumed:
-    # the file parsed on that path is the application's OWN Info.plist, and after an
-    # update it comes from a bundle minisign-verified against the public key compiled
-    # into the client (`plugins.updater.pubkey` in tauri.conf.json). An attacker who can
-    # choose the bytes of that plist has already replaced a signed bundle. Neither
-    # advisory is reachable with attacker-chosen XML.
+    # What changed with the Windows-only cut is that `restart_macos_app` is declared
+    # `#[cfg(target_os = "macos")]` (read at tauri-2.11.5/src/process.rs:91), so it is not
+    # compiled into this client at all any more. The only other plist call site in the two
+    # crates is `tauri_utils::config::file_associations_plist`, which GENERATES a plist for
+    # the macOS/iOS bundlers and parses nothing. So the argument is now simply that the
+    # vulnerable parser has no reachable parse here — a stronger claim than the previous
+    # one, which had to lean on the parsed file arriving inside a minisign-verified bundle.
     #
     # Limits of that check, so it is not read as stronger than it is: it is a
     # source-level grep over the registry cache, so it would miss a call assembled by a
     # macro, and it is a snapshot rather than an analysis of a linked binary.
-    { id = "RUSTSEC-2026-0194", reason = "quick-xml pinned at ^0.39.2 by plist 1.9.0 via tauri; the only runtime parse is the app's own Info.plist, which arrives in a minisign-verified bundle" },
-    { id = "RUSTSEC-2026-0195", reason = "same crate, same pin, same reachability argument as RUSTSEC-2026-0194" },
-
-    # ---------------------------------------------------------------------
-    # glib — the advisory this whole file was written for.
-    # ---------------------------------------------------------------------
-    # RUSTSEC-2024-0429, unsoundness in the Iterator and DoubleEndedIterator impls for
-    # `glib::VariantStrIter`, affecting >= 0.15.0 < 0.20.0. The lock has 0.18.5.
     #
-    # WHY NOT FIXED: glib 0.18.5 is pinned by the entire gtk-rs 0.18 stack that Tauri 2
-    # depends on — 12 crates name it as a direct dependency — so there is no `cargo update -p
-# glib` that moves it. Measured: `cargo update -p glib --precise 0.20.9` is refused by
-# `gtk v0.18.2`'s `^0.18`.
-    # It moves when Tauri moves to gtk-rs 0.20. Linux-only (the gtk path).
-    #
-    # REACHABILITY: `Variant::array_iter_str()` is the only constructor of
-    # VariantStrIter, and it has no callers anywhere in the resolved graph — not in gtk,
-    # gio, cairo-rs, pango, soup3, javascriptcore-rs, libappindicator, tauri, or our own
-    # crate. The vulnerable type is present and never instantiated. Same source-grep
-    # limitation as above.
-    #
-    # It is ignored HERE rather than dismissed in the Dependabot UI on purpose: an alert
+    # Ignored HERE rather than dismissed in the Dependabot UI on purpose: an alert
     # dismissed for "tolerable risk" is invisible afterwards, while an entry in this file
     # is in the diff of every change to it. Both workflows also pass `--log-level info`,
     # which is what makes cargo-deny actually PRINT `note[advisory-ignored]` with the reason
-    # string and the dependency tree — at the default log level a run with three ignores
-    # prints `advisories ok` and nothing else, so the note has to be asked for.
-    { id = "RUSTSEC-2024-0429", reason = "glib 0.18.5 pinned by the gtk-rs 0.18 stack under Tauri 2; VariantStrIter's only constructor has no caller in the resolved graph" },
+    # string and the dependency tree — at the default log level a run with ignores prints
+    # `advisories ok` and nothing else, so the note has to be asked for.
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml pinned at ^0.39.2 by plist 1.9.0 via tauri; the one runtime parse was macOS-only and is no longer compiled" },
+    { id = "RUSTSEC-2026-0195", reason = "same crate, same pin, same reachability argument as RUSTSEC-2026-0194" },
+
+    # REMOVED HERE, deliberately: RUSTSEC-2024-0429 (glib unsoundness in VariantStrIter).
+    # glib reached this graph only through the gtk-rs 0.18 stack Tauri uses on Linux, and
+    # with `x86_64-unknown-linux-gnu` gone from `[graph] targets` the advisory is no longer
+    # detected at all. `cargo tree --target x86_64-pc-windows-msvc -i glib` says "nothing to
+    # print". Leaving the entry would have failed `supply-chain-drift.yml`, which runs this
+    # policy with `-D advisory-not-detected` — a weekly red on a job nobody is required to
+    # look at. Put it back with the Linux target, not before.
 ]
 
 # =============================================================================
@@ -164,10 +166,16 @@ ignore = [
 #
 # `r-efi` declares `MIT OR Apache-2.0 OR LGPL-2.1-or-later` and an earlier version of this
 # comment said cargo-deny "takes MIT/Apache" from that disjunction. It does not see r-efi at
-# all: it is a UEFI-target dependency, and `[graph] targets` above filters the evaluation to
-# 456 of the lock's 574 packages. Remove that block and the count goes to 540 and r-efi
-# appears. The conclusion is stronger than the original — the crate is not built here — but
-# the mechanism was wrong.
+# all: it is a UEFI-target dependency, and `[graph] targets` above filters it out of the
+# evaluation entirely. Remove that block and r-efi appears. The conclusion is stronger than
+# the original — the crate is not built here — but the mechanism was wrong.
+#
+# The package counts that used to sit in this paragraph (456 evaluated of 574 in the lock)
+# were measured against the old three-target list and are NOT re-measured here, so they were
+# taken out rather than left to be quietly wrong. The list below is unchanged by the
+# Windows-only cut: it is a superset now, so an entry that no longer has a crate behind it
+# shows up as cargo-deny's `unused-allowed-license` warning rather than as a failure. Prune
+# it from a real run's output, not from a guess about which crates were Linux-only.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -196,9 +204,9 @@ ignore = true
 # =============================================================================
 [bans]
 # =============================================================================
-# `warn`, not `deny`. Duplicate versions are normal in a graph this size (gtk-rs 0.18 and
-# the tauri stack disagree on several crates) and turning that into a merge blocker would
-# produce noise rather than safety. It is here to be readable in the log.
+# `warn`, not `deny`. Duplicate versions are normal in a graph this size — the tauri stack
+# and the windows-rs bindings disagree on several crates — and turning that into a merge
+# blocker would produce noise rather than safety. It is here to be readable in the log.
 multiple-versions = "warn"
 wildcards = "deny"
 highlight = "all"
