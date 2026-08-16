@@ -1,6 +1,6 @@
 # Roadmap — NORA
 
-> **Living and official** roadmap of NORA. Replaces the old `docs/plano-de-execucao.md` (archived — discontinued on 2026-05-14, because it described a week-by-week split between two developers that no longer matches the real flow: today the work is done via Claude Code with subagents in parallel via worktrees).
+> **Living and official** roadmap of NORA. Replaces the old `docs/plano-de-execucao.md` (archived — discontinued on 2026-05-14, because it described a week-by-week split between two developers that no longer matches the real flow: one maintainer, working with AI coding agents in parallel worktrees).
 >
 > **Structure:**
 > 1. **History** — all Sub-phases 1.0 to 1.10 with PRs and ADRs (cross-checked with audit §11)

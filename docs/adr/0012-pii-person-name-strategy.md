@@ -123,4 +123,4 @@ When the trigger condition is met:
 
 | Date | Decider | Change |
 |---|---|---|
-| 2026-05-12 | Stratfy + Claude | ADR created and accepted |
+| 2026-05-12 | Stratfy | ADR created and accepted |

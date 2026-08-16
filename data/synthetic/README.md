@@ -72,7 +72,7 @@ Para validar o suporte a múltiplos formatos do upload (US07: `.txt`, `.vtt`, `.
 
 ## Política de PII
 
-Todos os dados aqui são fictícios. Nomes, empresas, CNPJs e valores são ilustrativos. Mesmo assim, o pipeline deve passar pelo PII Shield para validar que o redactor não quebra a análise. Se algum dado pessoal real for inserido por engano, o redactor deve mascarar antes de qualquer chamada de LLM (ver `CLAUDE.md` — não-negociáveis).
+Todos os dados aqui são fictícios. Nomes, empresas, CNPJs e valores são ilustrativos. Mesmo assim, o pipeline deve passar pelo PII Shield para validar que o redactor não quebra a análise. Se algum dado pessoal real for inserido por engano, o redactor deve mascarar antes de qualquer chamada de LLM (ver `AGENTS.md` — não-negociáveis).
 
 ## Política de Hardcode
 

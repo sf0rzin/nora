@@ -92,7 +92,7 @@ const SUGGESTIONS = [
   },
 ];
 
-/** Hero "Claude-style": headline + composer + soundwave + suggestions + logos. */
+/** Hero: headline + composer + soundwave + suggestions + logos. */
 export function LandingHero() {
   const [prompt, setPrompt] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -107,10 +107,10 @@ export function LandingHero() {
   const trimmed = prompt.trim();
 
   return (
-    <section className="hero-claude">
+    <section className="hero-main">
       <HeroSoundwave />
 
-      <div className="container hero-claude-inner">
+      <div className="container hero-main-inner">
         <div className="hero-content">
           <h1>
             Saia de qualquer reunião

@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * First test suite `apps/web` has ever had. README and CLAUDE.md both say so plainly, and
+ * First test suite `apps/web` has ever had. README and AGENTS.md both say so plainly, and
  * this does not change that sentence much — it is a thin suite over three things that are
  * cheap to check and expensive to get wrong:
  *

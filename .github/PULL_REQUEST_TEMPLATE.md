@@ -20,7 +20,7 @@ Issue / Story: `#`
 ## Checklist
 
 - [ ] Follows the standards in `docs/engineering/standards.md`
-- [ ] Commit messages in **English**, in Conventional Commits format (see `CLAUDE.md` › How we work)
+- [ ] Commit messages in **English**, in Conventional Commits format (see `AGENTS.md` › How we work)
 - [ ] Multi-tenancy preserved (`tenant_id` filter or RLS) — when applicable
 - [ ] PII Shield applied to user input before the LLM (ADR 0012) — when applicable
 - [ ] No secrets in the diff

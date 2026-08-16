@@ -8,7 +8,7 @@ NORA is a production-minded FIAP Challenge 2026 project: a conversational intell
 
 Always read and respect (new structure after Sub-phase 1.10):
 
-- `CLAUDE.md`
+- `AGENTS.md`
 - `docs/product/vision.md` (product + boundaries)
 - `docs/product/backlog.md` (US tracking + MoSCoW)
 - `docs/engineering/architecture.md` (end-to-end architecture)

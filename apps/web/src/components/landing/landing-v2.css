@@ -1,4 +1,4 @@
-/* NORA Landing v3 — faithful port of the Claude Design bundle
+/* NORA Landing v3 — faithful port of the v3 design bundle
  * (landing/styles.css + styles-v2.css + privacy.css + feature-anims.css).
  *
  * Global, but EVERY selector is scoped under `.nora-landing` so it does not leak
@@ -143,8 +143,8 @@
   text-wrap: balance;
 }
 
-/* ── Hero (Claude-style) ── */
-.nora-landing .hero-claude {
+/* ── Hero ── */
+.nora-landing .hero-main {
   position: relative;
   min-height: calc(100vh - 60px);
   display: flex;
@@ -153,13 +153,13 @@
   padding: 80px 0 40px;
   overflow: visible;
 }
-.nora-landing .hero-claude > .container {
+.nora-landing .hero-main > .container {
   max-width: none;
   margin: 0;
   width: 100%;
   padding: 0 clamp(24px, 6vw, 96px);
 }
-.nora-landing .hero-claude-inner {
+.nora-landing .hero-main-inner {
   flex: 1;
   display: flex;
   align-items: center;
@@ -171,7 +171,7 @@
   position: relative;
   z-index: 3;
 }
-.nora-landing .hero-claude h1 {
+.nora-landing .hero-main h1 {
   font-family: var(--display);
   font-size: clamp(36px, 4.4vw, 60px);
   font-weight: 500;
@@ -181,7 +181,7 @@
   color: var(--ink);
   text-wrap: balance;
 }
-.nora-landing .hero-claude h1 em {
+.nora-landing .hero-main h1 em {
   font-style: normal;
   background: linear-gradient(180deg, var(--accent) 0%, var(--accent-ink) 100%);
   -webkit-background-clip: text;
@@ -1700,11 +1700,11 @@
   .nora-landing section {
     padding: 80px 0;
   }
-  .nora-landing .hero-claude {
+  .nora-landing .hero-main {
     padding: 48px 0 24px;
     min-height: auto;
   }
-  .nora-landing .hero-claude h1 {
+  .nora-landing .hero-main h1 {
     font-size: clamp(30px, 7vw, 44px);
     margin-bottom: 24px;
   }

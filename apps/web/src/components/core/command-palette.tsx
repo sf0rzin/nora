@@ -3,7 +3,7 @@
 /**
  * NORA Core — command palette (⌘K) with semantic meeting search.
  *
- * Port of the Claude Design prototype (shell.js · mountPalette/renderPalette):
+ * Port of the v3 design prototype (shell.js · mountPalette/renderPalette):
  * fixed commands + meeting results via `searchMeetings(q)` (real RAG, scoped
  * to the tenant). No mock: the meeting list comes from the backend.
  *

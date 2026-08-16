@@ -27,7 +27,7 @@
 | **Auth** | JWT (JJWT 0.12) + stateful refresh tokens (V011); HttpOnly cookies | SSO Entra ID/SAML post-MVP |
 | **Desktop** | Tauri 2 + Rust | Native audio capture; ADR 0008. On-device Whisper is the default path (ADR 0035); the Python sidecar is still in the tree behind the `stt-azure` feature, pending validation on all three targets. Maintained by @pollotherunner. |
 | **Infra** | Self-hosted: single bare-metal Ubuntu host, no hypervisor, Docker Compose (ADR 0034/0036) | Cloudflare Tunnel ingress, SOPS + age secrets, pull-based deploy |
-| **CI/CD** | GitHub Actions: `ci.yml` + `build-images.yml` + `deploy-host.yml` | Push to GHCR; the host pulls, but rolling forward is still manual — see CLAUDE.md |
+| **CI/CD** | GitHub Actions: `ci.yml` + `build-images.yml` + `deploy-host.yml` | Push to GHCR; the host pulls, but rolling forward is still manual — see AGENTS.md |
 
 ### MVP Scope Decision
 
@@ -64,7 +64,7 @@ nora/
 │   └── adr/                    # ADRs (canonical index in docs/adr/README.md)
 ├── scripts/                    # local automation
 ├── .github/                    # workflows + templates
-├── CLAUDE.md                   # context for Claude Code
+├── AGENTS.md                   # context for AI coding agents
 └── README.md
 ```
 
@@ -384,7 +384,7 @@ Provide the agent with:
 ### Recommended prompt
 
 ```text
-You are working in the NORA project. Read CLAUDE.md and docs/engineering/standards.md.
+You are working in the NORA project. Read AGENTS.md and docs/engineering/standards.md.
 Implement US## from docs/product/backlog.md only in service X.
 Do not change scope outside that story.
 Add tests and explain how to validate.

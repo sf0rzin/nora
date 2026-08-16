@@ -78,4 +78,4 @@ on a name causing a leak) — the NER backstop (spaCy) already proven in #289 is
 
 | Date | Decider | Change |
 |---|---|---|
-| 2026-07-06 | sys0xFF + Claude | ADR created and accepted. RAG query fix delivered; PERSON_NAME in the chat via the worker declared as a follow-up. |
+| 2026-07-06 | sys0xFF | ADR created and accepted. RAG query fix delivered; PERSON_NAME in the chat via the worker declared as a follow-up. |
