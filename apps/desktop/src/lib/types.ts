@@ -93,8 +93,8 @@ export interface MeetingAnalysis {
 export interface Decision {
   id: string;
   text: string;
-  /** Optional: not every backend/version fills it. The `confidence !== undefined`
-   *  guard in meeting-detail only makes sense with an honest type. Audit #69. */
+  /** Optional: not every backend/version fills it, so consumers have to guard on
+   *  `confidence !== undefined` rather than trust the field. Audit #69. */
   confidence?: number;
 }
 

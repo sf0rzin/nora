@@ -5,7 +5,7 @@ interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> 
 }
 
 /**
- * Square, consistent icon-only button (titlebar, toolbars, row actions).
+ * Square, consistent icon-only button (overlay header, toolbars, row actions).
  * 30x30 (md) or 26x26 (sm) — kills the ad-hoc 28/30/26 scattered around.
  */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(

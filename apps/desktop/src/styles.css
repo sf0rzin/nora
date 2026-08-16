@@ -2,6 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Web font ──────────────────────────────────────────────────────────
+   These two @font-face blocks used to live inline in index.html, which was
+   the entry point of a local UI that no window ever rendered. `@font-face`
+   applies per document and each Tauri window loads its own HTML, so the two
+   windows that DO render — overlay and dock — were falling back to
+   ui-sans-serif despite --sans/--display naming "DM Sans" below. Declaring
+   them here, in the stylesheet all entry points import, is what makes the
+   declared family the family that actually loads. */
+@font-face {
+  font-family: "DM Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/dm-sans-latin.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "DM Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/dm-sans-latin-ext.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 /* ── Design tokens — NORA editorial palette (light, OKLCH) ─────────────
    Single source of truth for Desktop, mirroring apps/web/src/styles/tokens.css.
    Every color/radius/shadow/timing lives here; components NEVER hardcode values —
@@ -54,9 +85,6 @@
   /* Default easings (mirror the web tokens.css). */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-
-  /* Height of the custom titlebar — used by the window layout and the resize handles. */
-  --titlebar-h: 40px;
 }
 
 /* ── UI primitives ─────────────────────────────────────────────────────
@@ -106,7 +134,7 @@
 }
 .ui-card--pad { padding: 20px 22px; }
 
-/* Input / textarea / select */
+/* Input */
 .ui-input {
   font-family: var(--sans);
   font-size: 13.5px;
@@ -122,15 +150,8 @@
 }
 .ui-input::placeholder { color: var(--muted); }
 .ui-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
-textarea.ui-input { resize: none; line-height: 1.5; }
 
-/* Field (label + control + help) */
-.ui-field { display: flex; flex-direction: column; gap: 6px; }
-.ui-field-label { font-size: 12.5px; font-weight: 500; color: var(--ink); letter-spacing: -0.005em; }
-.ui-field-help { font-size: 11.5px; color: var(--muted); }
-.ui-field-help.is-err { color: var(--danger-ink); }
-
-/* Icon button — consistent square control (titlebar, toolbars). */
+/* Icon button — consistent square control (overlay header, toolbars). */
 .ui-icon-btn {
   display: grid;
   place-items: center;
@@ -150,19 +171,13 @@ textarea.ui-input { resize: none; line-height: 1.5; }
 
 html,
 body,
-#root,
 #overlay-root {
   height: 100%;
   margin: 0;
 }
 
-/* The body background lives in the entry-point HTMLs (index.html canvas /
-   overlay.html transparent). Here we only set it on #root to cover the main
-   window without affecting the transparent overlay. */
-#root {
-  background: var(--canvas);
-}
-
+/* No background rule here on purpose: the two remaining windows are both
+   transparent and set that themselves, in overlay.html and dock.html. */
 body {
   font-family: var(--sans);
   color: var(--ink);
@@ -207,18 +222,6 @@ select option { background: var(--canvas); color: var(--ink); }
 }
 
 /* ── Reusable animations ─────────────────────────────────────────── */
-@keyframes panelIn {
-  from { opacity: 0; transform: translateX(-6px) scaleX(0.985); }
-  to   { opacity: 1; transform: translateX(0) scaleX(1); }
-}
-@keyframes orbPulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50%      { transform: scale(1.15); opacity: 0.85; }
-}
-@keyframes thinkBlink {
-  0%, 100% { opacity: 0.25; transform: translateY(0); }
-  50%      { opacity: 1;    transform: translateY(-2px); }
-}
 @keyframes revealUp {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -228,62 +231,16 @@ select option { background: var(--canvas); color: var(--ink); }
   50%      { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(201, 119, 102, 0); }
 }
 
-/* Live transcription animation on the login (variant C) */
-@keyframes tLineCycle {
-  0%   { opacity: 0; transform: translateY(8px); }
-  6%   { opacity: 1; transform: translateY(0); }
-  88%  { opacity: 1; transform: translateY(0); }
-  100% { opacity: 0; transform: translateY(-6px); }
-}
-@keyframes tTagPop {
-  0%, 8%   { opacity: 0; transform: scale(0.85) translateY(2px); }
-  12%      { opacity: 1; transform: scale(1) translateY(0); }
-  78%      { opacity: 1; transform: scale(1) translateY(0); }
-  88%      { opacity: 0; transform: scale(0.95) translateY(-2px); }
-  100%     { opacity: 0; }
-}
 @keyframes dotPulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.4; }
 }
-@keyframes badgeFadeIn {
-  to { opacity: 1; }
-}
-/* Modal/palette — used by the new-meeting-modal AND by the overlay's
-   CloseConfirmDialog; they must be here (not inline in the modal) to apply in the
-   overlay window. */
+/* Modal/palette — used by the overlay's CloseConfirmDialog; it lives here (not
+   inline in the component) so it applies inside the overlay window. */
 @keyframes paletteFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes paletteSlideIn {
   from { opacity: 0; transform: translateY(-8px) scale(0.985); }
   to   { opacity: 1; transform: translateY(0)    scale(1); }
-}
-
-/* ── Prose overrides (Markdown in the Meeting Detail) ─────────────── */
-.nora-prose {
-  font-family: var(--sans);
-  font-size: 14.5px;
-  line-height: 1.65;
-  color: var(--ink);
-}
-.nora-prose p { margin: 0 0 12px; }
-.nora-prose p:last-child { margin-bottom: 0; }
-.nora-prose strong { font-weight: 500; color: var(--ink); }
-.nora-prose em { font-style: italic; color: var(--ink); }
-.nora-prose ul, .nora-prose ol {
-  margin: 0 0 12px;
-  padding-left: 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.nora-prose li::marker { color: var(--muted); }
-.nora-prose a { color: var(--accent-ink); text-decoration: underline; text-decoration-color: var(--border); }
-.nora-prose code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  background: var(--chip);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 12.5px;
 }
 
 /* ── Brand logo (5 DM Sans bars) ──────────────────────────────────── */
