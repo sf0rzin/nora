@@ -1,65 +1,95 @@
 # NORA Web
 
-The NORA project's Next.js 14 (App Router) + TypeScript + Tailwind front end.
+The NORA project's Next.js 16 (App Router) + TypeScript + Tailwind front end. It is also the
+BFF: provider keys stay server-side and the session is an httpOnly cookie.
 
 ## Prerequisites
 
-- Node.js 20+
-- pnpm or npm
+- Node.js 22 (what CI uses)
+- npm — this app has a `package-lock.json` and no other lockfile, and CI runs `npm ci`
 
 ## Quickstart
 
 ```bash
 cd apps/web
-pnpm install            # or: npm install
+npm install
 cp .env.example .env.local
-pnpm dev                # http://localhost:3000
+npm run dev             # http://localhost:3000
 ```
 
 ## Mock mode vs real API
 
-- `NEXT_PUBLIC_USE_MOCKS=true` (the skeleton default): pages render from
-  `src/fixtures/*.json` (copies of `docs/api/examples/`). Allows working without a backend.
-- `NEXT_PUBLIC_USE_MOCKS=false` + `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080`:
-  the client in `src/lib/api/client.ts` does a real fetch against the NORA API.
+`NEXT_PUBLIC_USE_MOCKS=true` is the default in `.env.example`, but it does **not** make the whole
+app work without a backend, and the fixtures directory shows why: there are two of them.
+
+`USE_MOCKS` is read in exactly two functions in `src/lib/api/client.ts` — `listMeetings` and
+`getMeeting`. The other 64 exported functions in that file always issue a real fetch. So on the
+documented default, the meeting list and the meeting detail render from
+`src/fixtures/*.json`, and `/tasks`, `/flows`, `/integrations`, `/projects`, `/settings/context`,
+`/settings/iam` and the chat sidebar all fail against a backend that is not there.
+
+Set `NEXT_PUBLIC_USE_MOCKS=false` and `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080` to exercise
+the real API — which is what every screen except two is doing regardless.
 
 ## Structure
 
 ```
 src/
   app/
-    layout.tsx              # root
-    page.tsx                # / (login mock)
-    (app)/
-      layout.tsx            # authenticated shell (sidebar)
-      dashboard/page.tsx    # meeting list
-      meetings/[id]/page.tsx
-    globals.css
+    page.tsx                    # / — public landing
+    layout.tsx                  # root
+    auth/                       # login, signup, verify e-mail, password reset, invite accept
+    (app)/                      # authenticated shell
+      chat/                     # the Core surface: chat over meetings, with RAG
+      dashboard/                # chronological meeting inbox
+      meetings/upload/
+      meetings/[id]/            # detail, plus report/ for the printable view
+      tasks/  projects/
+      flows/                    # workflow canvas: list, new, [id] (ADR 0030/0032)
+      integrations/             # OAuth connector hub (ADR 0031)
+      settings/context/         # tenant company/product context
+      settings/iam/             # groups, policies, invitations, audit (no nav entry — see below)
+    api/chat/route.ts           # BFF: the only server route, holds the provider key
+  components/                   # flat, no feature folders
   lib/
-    api/
-      client.ts             # fetch wrapper, switches mock/real
-      types.ts              # types mirroring OpenAPI
-    utils.ts                # cn(), formatDateTime
-  fixtures/                 # copy of docs/api/examples/*.json
+    api/client.ts               # fetch wrapper; 66 exported functions
+    api/types.ts                # types mirroring OpenAPI
+  fixtures/                     # two files, see "Mock mode" above
+  styles/                       # tokens.css + components.css
+  middleware.ts                 # route protection
 ```
+
+`/settings/iam` is fully wired to the API but nothing in the app links to it — the sidebar gear
+and the command palette both point at `/settings/context`. It is reachable only by typing the URL.
 
 ## Scripts
 
 ```bash
-pnpm dev          # dev server
-pnpm build        # production build
-pnpm start        # serve build
-pnpm lint         # eslint (next/core-web-vitals)
-pnpm format       # prettier write
-pnpm typecheck    # tsc --noEmit
+npm run dev           # dev server
+npm run build         # production build
+npm run start         # serve build
+npm run lint          # eslint (next/core-web-vitals)
+npm run format        # prettier write
+npm run format:check  # prettier check
+npm run typecheck     # tsc --noEmit
+npm run test:e2e      # playwright
+npm run test:e2e:ui   # playwright, headed
 ```
 
-## CSS Strategy (ADR 0013)
+There is no `test` script: this app has no unit-test runner. The Playwright suite under `e2e/`
+covers routing, response headers and CSP violations only — no product behaviour.
 
-The project uses **raw Tailwind + CSS Modules** — `shadcn/ui` was **discarded** via ADR 0013.
-Reasons: the OKLCH editorial palette, full control over tokens, and a monorepo policy that
-forbids deps that trigger an interactive npx. Do not run `npx shadcn add`.
+## CSS strategy (ADR 0013)
 
-Legacy aliases (`background`, `foreground`, `primary`, `muted`, `border`) still
-exist in `tailwind.config.ts` for compatibility with the meeting detail page,
-which uses `text-muted-foreground` — being removed gradually.
+Raw Tailwind. `shadcn/ui` was discarded via ADR 0013 — reasons: the OKLCH editorial palette, full
+control over tokens, and a monorepo policy against dependencies that trigger an interactive npx.
+Do not run `npx shadcn add`.
+
+There are **no CSS Modules** in this app: zero `.module.css` files exist. What the codebase
+actually uses alongside Tailwind is `src/styles/` for shared classes and roughly 684 inline
+`style={{}}` objects. That is a real trade-off ADR 0013 did not anticipate, not a convention to
+copy deliberately.
+
+Legacy aliases (`background`, `foreground`, `primary`, `muted`, `border`) still exist in
+`tailwind.config.ts` for the meeting detail page, which uses `text-muted-foreground` — being
+removed gradually.
