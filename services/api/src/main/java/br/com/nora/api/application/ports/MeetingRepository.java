@@ -30,6 +30,26 @@ public interface MeetingRepository {
      */
     int claimForReanalysis(UUID id, UUID tenantId);
 
+    /**
+     * Moves every PROCESSING meeting of the tenant last touched before {@code staleBefore} to
+     * FAILED, and returns how many were moved.
+     *
+     * <p>PROCESSING is written by the analysis pipeline and only the pipeline itself ever leaves it
+     * — COMPLETED on success, FAILED from its own catch. A JVM that dies mid-roundtrip never runs
+     * that catch, so the row keeps claiming an analysis is in flight when nothing is left to finish
+     * it. {@link #claimForReanalysis} refuses PROCESSING by design (it cannot tell "running" from
+     * "abandoned"), which left such a meeting with its re-analyse button disabled forever, with no
+     * way out through the product.
+     *
+     * <p>Time is the only signal available, so the caller owns the window and must keep it
+     * comfortably above the worker timeout: a meeting that is merely slow must never be reaped.
+     * Once FAILED, the meeting is claimable again and the user can re-analyse it.
+     *
+     * <p>The condition is evaluated by the database inside the write, so a pipeline that commits
+     * COMPLETED concurrently is not overwritten.
+     */
+    int failStuckProcessing(UUID tenantId, OffsetDateTime staleBefore);
+
     /** Paginated list by tenant ordered by created_at desc. Page and size are 0-based. */
     PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size);
 

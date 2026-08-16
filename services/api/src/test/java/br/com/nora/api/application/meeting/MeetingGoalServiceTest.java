@@ -207,6 +207,11 @@ class MeetingGoalServiceTest {
         }
 
         @Override
+        public int failStuckProcessing(UUID tenantId, java.time.OffsetDateTime staleBefore) {
+            return 0;
+        }
+
+        @Override
         public Meeting save(Meeting meeting) {
             store.put(meeting.id(), meeting);
             return meeting;

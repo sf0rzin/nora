@@ -61,6 +61,14 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
     }
 
     @Override
+    @Transactional
+    public int failStuckProcessing(UUID tenantId, OffsetDateTime staleBefore) {
+        // The cutoff is computed by the caller (the sweeper owns the configurable window) and bound
+        // as a parameter, same shape `claimForReanalysis` and `purgeOlderThan` already use.
+        return jpa.failStuckProcessing(tenantId, staleBefore);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size) {
         MeetingFilter f = filter == null ? MeetingFilter.empty() : filter;
