@@ -25,4 +25,13 @@ public abstract class TaskException extends RuntimeException {
             super("TASK_INVALID_TITLE", "task title cannot be blank");
         }
     }
+
+    /** The raw value is not echoed back: the code and the expected shape are enough. */
+    public static final class InvalidDueDate extends TaskException {
+        public InvalidDueDate() {
+            super(
+                    "TASK_INVALID_DUE_DATE",
+                    "task due date must be an ISO date (yyyy-MM-dd), or empty to clear it");
+        }
+    }
 }

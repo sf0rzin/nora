@@ -9,9 +9,12 @@ import br.com.nora.api.api.security.RequiresPermission.ResourceType;
 import br.com.nora.api.api.security.ResourceArns;
 import br.com.nora.api.application.iam.AuthorizationService;
 import br.com.nora.api.application.ports.TaskRepository.TaskRow;
+import br.com.nora.api.application.task.TaskException;
 import br.com.nora.api.application.task.TaskService;
 import br.com.nora.api.domain.analysis.ActionItemStatus;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -65,26 +68,64 @@ public class TasksController {
         return new TaskListResponse(items);
     }
 
+    /**
+     * Partial update: at least one of {@code status}, {@code title} or {@code dueDate} must be
+     * present, and the request is rejected when none is.
+     *
+     * <p>Due-date semantics, spelled out because a nullable column cannot express them on its own:
+     * an ABSENT {@code dueDate} leaves the stored value alone, and an EMPTY string clears it. Both
+     * are needed — the date is written by the extraction rather than by the user, so being able to
+     * correct a wrong one but never to remove it would only be half a fix.
+     *
+     * <p>Everything is validated before anything is written. Each field is its own statement, so
+     * parsing a bad value halfway through would otherwise leave the task partially updated. The
+     * returned row comes from the last write, which re-reads the task and therefore carries every
+     * field touched by this call.
+     */
     @PatchMapping("/{id}")
     @RequiresPermission(action = "task:write", resource = ResourceType.TASK, idParam = "id")
     public TaskListItem update(@PathVariable("id") UUID id, @RequestBody TaskUpdateRequest body) {
         AuthenticatedPrincipal principal = CurrentUser.require();
-        if ((body.status() == null || body.status().isBlank())
-                && (body.title() == null || body.title().isBlank())) {
-            throw new IllegalArgumentException("at least one of 'status' or 'title' is required");
+        boolean hasStatus = body.status() != null && !body.status().isBlank();
+        boolean hasTitle = body.title() != null && !body.title().isBlank();
+        // Presence, not blankness: "" is the documented way to clear the date.
+        boolean hasDueDate = body.dueDate() != null;
+        if (!hasStatus && !hasTitle && !hasDueDate) {
+            throw new IllegalArgumentException(
+                    "at least one of 'status', 'title' or 'dueDate' is required");
         }
-        TaskRow row = null;
-        if (body.status() != null && !body.status().isBlank()) {
-            ActionItemStatus newStatus = parseStatus(body.status());
+        ActionItemStatus newStatus = null;
+        if (hasStatus) {
+            newStatus = parseStatus(body.status());
             if (newStatus == null) {
                 throw new IllegalArgumentException("invalid status: " + body.status());
             }
+        }
+        LocalDate newDueDate = hasDueDate ? parseDueDate(body.dueDate()) : null;
+
+        TaskRow row = null;
+        if (hasStatus) {
             row = tasks.updateStatus(id, principal.tenantId(), newStatus);
         }
-        if (body.title() != null && !body.title().isBlank()) {
+        if (hasTitle) {
             row = tasks.updateTitle(id, principal.tenantId(), body.title());
         }
+        if (hasDueDate) {
+            row = tasks.updateDueDate(id, principal.tenantId(), newDueDate);
+        }
         return toDto(row);
+    }
+
+    /** Empty clears the date (null); anything else must parse as an ISO {@code yyyy-MM-dd}. */
+    private LocalDate parseDueDate(String raw) {
+        if (raw.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(raw.trim());
+        } catch (DateTimeParseException ex) {
+            throw new TaskException.InvalidDueDate();
+        }
     }
 
     private ActionItemStatus parseStatus(String raw) {

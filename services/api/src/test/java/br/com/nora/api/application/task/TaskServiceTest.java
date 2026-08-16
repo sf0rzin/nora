@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import br.com.nora.api.application.ports.TaskRepository;
 import br.com.nora.api.domain.analysis.ActionItemStatus;
 import br.com.nora.api.domain.analysis.Priority;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -72,6 +73,38 @@ class TaskServiceTest {
         UUID id = repo.seed(tenant, meetingId, "Old", ActionItemStatus.OPEN);
         var row = service.updateTitle(id, tenant, "  New title  ");
         assertThat(row.title()).isEqualTo("New title");
+    }
+
+    @Test
+    void updateDueDate_writesTheDate() {
+        // The whole point of the field being writable: the extraction guesses the date and the
+        // user has to be able to correct it.
+        UUID id = repo.seed(tenant, meetingId, "Task Z", ActionItemStatus.OPEN);
+        assertThat(service.list(tenant, null).get(0).dueDate()).isNull();
+
+        var row = service.updateDueDate(id, tenant, LocalDate.of(2026, 9, 1));
+
+        assertThat(row.dueDate()).isEqualTo(LocalDate.of(2026, 9, 1));
+    }
+
+    @Test
+    void updateDueDate_clearsTheDateOnNull() {
+        // Correcting a wrong date is only half the fix; removing one the meeting never agreed to
+        // is the other half, and null is how the controller expresses it.
+        UUID id = repo.seed(tenant, meetingId, "Task W", ActionItemStatus.OPEN);
+        service.updateDueDate(id, tenant, LocalDate.of(2026, 9, 1));
+
+        var row = service.updateDueDate(id, tenant, null);
+
+        assertThat(row.dueDate()).isNull();
+    }
+
+    @Test
+    void updateDueDate_respectsTenantScope() {
+        UUID id = repo.seed(tenant, meetingId, "Task V", ActionItemStatus.OPEN);
+
+        assertThatThrownBy(() -> service.updateDueDate(id, otherTenant, LocalDate.of(2026, 9, 1)))
+                .isInstanceOf(TaskException.NotFound.class);
     }
 
     /* ---------- in-memory repo ---------- */
@@ -149,6 +182,25 @@ class TaskServiceTest {
                                 newTitle,
                                 r.assignee(),
                                 r.dueDate(),
+                                r.priority(),
+                                r.status(),
+                                r.meetingId(),
+                                r.meetingTitle(),
+                                OffsetDateTime.now()));
+            }
+        }
+
+        @Override
+        public void updateDueDate(UUID id, UUID tenantId, LocalDate newDueDate) {
+            TaskRow r = store.get(id);
+            if (r != null && belongsToTenant(r, tenantId)) {
+                store.put(
+                        id,
+                        new TaskRow(
+                                r.id(),
+                                r.title(),
+                                r.assignee(),
+                                newDueDate,
                                 r.priority(),
                                 r.status(),
                                 r.meetingId(),

@@ -108,6 +108,19 @@ nora:
     cookie-domain: ${AUTH_COOKIE_DOMAIN:}
   app:
     public-base-url: ${NORA_APP_PUBLIC_BASE_URL:http://localhost:3000}
+  analysis:
+    # Fire-and-forget dispatch of the pipeline right after an upload. Declared here because it was
+    # only ever a @Value default in MeetingService, and this section would otherwise read as if the
+    # sweep keys below were all of nora.analysis. The test profile turns it off.
+    auto-dispatch: ${NORA_ANALYSIS_AUTO_DISPATCH:true}
+    # Stuck-analysis sweep: a meeting whose pipeline died mid-roundtrip (deploy, OOM, restart) stays
+    # in PROCESSING forever, and re-analysis refuses PROCESSING by design. The sweeper moves such a
+    # row to FAILED so the user can retry it. Non-destructive (a status is rewritten, nothing is
+    # deleted), so unlike retention it is ON by default.
+    # The window MUST stay well above nora.worker.timeout-millis or a slow-but-healthy analysis is
+    # reaped as a dead one; StuckAnalysisSweeper refuses anything below timeout + 5 min and WARNs.
+    stuck-window-minutes: ${NORA_ANALYSIS_STUCK_WINDOW_MINUTES:30}
+    stuck-sweep-cron: ${NORA_ANALYSIS_STUCK_SWEEP_CRON:0 */5 * * * *}
   privacy:
     # LGPD retention (ADR 0029): the sweeper purges meetings + transcript (raw_text = PII at rest) +
     # children older than N days. The value is an AGE IN DAYS and the sentinel is at the BOTTOM of
@@ -189,6 +202,10 @@ nora:
     # Empty = the header is not sent; the worker then refuses with 503 unless it was started
     # with NORA_WORKER_ALLOW_UNAUTHENTICATED=true. Empty is not a bypass.
     internal-token: ${NORA_WORKER_INTERNAL_TOKEN:}
+    # Total timeout of the /analyze roundtrip. Declared here (it used to live only as a Java
+    # default) because nora.analysis.stuck-window-minutes is floored against it: the two numbers
+    # have to be readable side by side, or the floor gets silently invalidated by a raised timeout.
+    timeout-millis: ${NLP_WORKER_TIMEOUT_MILLIS:120000}
 
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:1420}

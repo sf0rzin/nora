@@ -74,6 +74,44 @@ public interface MeetingJpaRepository extends JpaRepository<MeetingJpaEntity, UU
             @Param("tenantId") UUID tenantId,
             @Param("stalePendingBefore") OffsetDateTime stalePendingBefore);
 
+    /**
+     * Marks as FAILED every meeting of the tenant that has been sitting in PROCESSING with nothing
+     * writing to it for longer than the sweep window.
+     *
+     * <p>PROCESSING is only ever left by the pipeline itself: {@code AnalysisService} writes
+     * COMPLETED on success and FAILED from its own catch. A JVM that dies mid-roundtrip — deploy,
+     * OOM, container restart — never runs that catch, so the row keeps a status that claims an
+     * analysis is in flight when no thread is left to finish it. {@link #claimForReanalysis}
+     * deliberately refuses PROCESSING, precisely because it cannot tell "running" from "abandoned",
+     * which left the re-analyse button disabled forever.
+     *
+     * <p>This is the same reasoning that gave PENDING its {@link #STALE_PENDING_CLAIM_WINDOW}, and
+     * it is answered the same way: time is the only signal available. The caller passes the cutoff
+     * (see {@code StuckAnalysisSweeper}, which keeps the window configurable and floors it above
+     * the worker timeout), so a slow analysis is never reaped as an abandoned one.
+     *
+     * <p>Conditional UPDATE rather than read-then-write: a pipeline that commits COMPLETED between
+     * the read and the write would otherwise be overwritten with FAILED. Matching on {@code
+     * processing_status = 'PROCESSING'} inside the statement leaves that race to the database.
+     *
+     * <p>{@code deleted_at IS NULL} because a native query bypasses the soft-delete restriction the
+     * entity declares: a soft-deleted meeting is invisible to the product, so there is no stuck
+     * button to release and no reason to rewrite its row.
+     *
+     * @return how many rows were released
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+            value =
+                    "UPDATE meetings SET processing_status = 'FAILED', updated_at = now() "
+                            + "WHERE tenant_id = :tenantId "
+                            + "AND processing_status = 'PROCESSING' "
+                            + "AND deleted_at IS NULL "
+                            + "AND updated_at < :staleBefore",
+            nativeQuery = true)
+    int failStuckProcessing(
+            @Param("tenantId") UUID tenantId, @Param("staleBefore") OffsetDateTime staleBefore);
+
     @Query(
             "SELECT m FROM MeetingJpaEntity m "
                     + "WHERE m.tenantId = :tenantId "
