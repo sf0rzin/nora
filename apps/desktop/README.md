@@ -1,23 +1,21 @@
 # NORA Desktop
 
 Desktop application for real-time audio capture and meeting transcription.
-Transcription runs **locally on the user's machine** (embedded Whisper); the
-Azure Speech backend remains available as legacy during the transition.
+Transcription runs **locally on the user's machine** (embedded Whisper). There is
+no cloud STT backend and no subprocess: audio does not leave the machine.
 
 ## Stack
 
 - **Frontend**: React 18 + TypeScript + Tailwind CSS
 - **Backend**: Tauri 2 (Rust)
-- **STT (default)**: `whisper.cpp` in-process via the [`whisper-rs`](https://crates.io/crates/whisper-rs) crate — offline, no network
-- **STT (legacy)**: Python sidecar with the Azure Speech SDK, behind the `stt-azure` feature
-- **Build**: Vite + Tauri CLI (+ PyInstaller only for the legacy sidecar)
+- **STT**: `whisper.cpp` in-process via the [`whisper-rs`](https://crates.io/crates/whisper-rs) crate — offline, no network
+- **Build**: Vite + Tauri CLI
 
 ## Prerequisites
 
-> **New:** `whisper.cpp` is compiled from C++ source by the `whisper-rs-sys` build
-> script. That adds **CMake + a C++ compiler** to the list of
-> prerequisites on all three targets. Python became optional (it is only needed
-> for the legacy Azure sidecar).
+> `whisper.cpp` is compiled from C++ source by the `whisper-rs-sys` build
+> script. That puts **CMake + a C++ compiler** on the list of prerequisites on
+> all three targets.
 
 ### Linux
 
@@ -38,7 +36,6 @@ sudo dnf install webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel p
 - [CMake](https://cmake.org/download/) on the `PATH`
 - [Node.js 20](https://nodejs.org/)
 - [Rust](https://rustup.rs/)
-- Python 3.12 — **optional**, only for the legacy Azure sidecar
 
 > **Long path (MAX_PATH):** the MSBuild that CMake uses underneath still has
 > parts limited to 260 characters. If the repository is in a deep
@@ -55,7 +52,6 @@ sudo dnf install webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel p
 - Xcode Command Line Tools: `xcode-select --install` (brings clang++ and make)
 - CMake: `brew install cmake`
 - Node.js 20, Rust
-- Python 3.12 — **optional**, only for the legacy Azure sidecar
 
 ## Development
 
@@ -64,79 +60,58 @@ sudo dnf install webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel p
 cd apps/desktop
 
 # Install dependencies
-pnpm install
+npm install
 
-# Run in dev mode — no longer need to build the Python sidecar.
-# The first `start_recording` downloads the Whisper model (~488 MB on `small`).
-pnpm tauri dev
+# Run in dev mode. The first `start_recording` downloads the Whisper
+# model (~488 MB on `small`).
+npx tauri dev
 ```
 
 To iterate quickly without waiting for the large model:
 
 ```bash
-NORA_WHISPER_MODEL=tiny pnpm tauri dev
+NORA_WHISPER_MODEL=tiny npx tauri dev
 ```
 
 ## Production Build
 
 ```bash
-# Linux / Windows / macOS — local backend (default), no Python
-pnpm tauri build
+# Linux / Windows / macOS
+npx tauri build
 
 # macOS (Apple Silicon)
-pnpm tauri build --target aarch64-apple-darwin
+npx tauri build --target aarch64-apple-darwin
 ```
 
-Legacy Azure backend (requires the Python sidecar and the config overlay that
-declares `externalBin`):
-
-```bash
-cd sidecar && pip install -e ".[dev]" && python build_sidecar.py && cd ..
-pnpm tauri build -- --config src-tauri/tauri.azure.conf.json
-```
-
-> The base `tauri.conf.json` no longer declares `externalBin`. With it in the base,
-> `tauri-build` required the PyInstaller binary to exist already at *build script*
-> time — meaning not even `cargo check` would run without packaging Python
-> first. Since the local backend is the default, the sidecar cannot be a compilation
-> prerequisite.
+> `tauri.conf.json` declares no `externalBin`, so nothing has to be packaged
+> before the Rust compiles — `cargo check` on a clean checkout is enough.
 
 ## Structure
 
 ```
 apps/desktop/
 ├── src/                    # React frontend
-│   ├── pages/             # Pages (recording, meetings, etc)
-│   ├── hooks/             # Custom hooks (useRecording)
+│   ├── pages/             # Pages (meetings, meeting detail, chat, settings, login)
+│   ├── hooks/             # Custom hooks (use-recording, use-live-transcript)
 │   ├── lib/               # Utilities and API client
-│   └── components/        # Reusable components
-├── src-tauri/             # Rust backend
-│   ├── src/
-│   │   ├── audio_capture.rs      # Audio capture (cpal)
-│   │   ├── audio_resample.rs     # Resampling (rubato)
-│   │   ├── stt.rs                # SttBackend trait + backend selection
-│   │   ├── stt_local.rs          # Local STT: whisper.cpp in-process (DEFAULT)
-│   │   ├── whisper_model.rs      # Download/cache/checksum of the GGML model
-│   │   ├── stt_sidecar.rs        # Legacy STT: Azure sidecar (feature stt-azure)
-│   │   ├── speech_token.rs       # Azure token (only in the stt-azure feature)
-│   │   ├── system_audio.rs       # System audio (Linux/Win/macOS)
-│   │   ├── http_proxy.rs         # HTTP proxy for the API
-│   │   ├── secrets.rs            # Secrets storage
-│   │   └── commands.rs           # Tauri commands
-│   ├── tauri.conf.json           # Base config (local backend, no externalBin)
-│   ├── tauri.azure.conf.json     # Legacy bundle overlay (declares externalBin)
-│   └── Cargo.toml
-└── sidecar/               # Python sidecar (LEGACY — only with the azure backend)
+│   └── components/        # Reusable components + the overlay and the dock
+└── src-tauri/             # Rust backend
     ├── src/
-    │   └── nora_stt_sidecar/
-    │       ├── transcriber.py    # Azure Speech SDK
-    │       ├── protocol.py       # JSON Lines protocol
-    │       └── audio_pipe.py     # Audio pipe
-    ├── tests/                    # pytest
-    ├── build_sidecar.py          # PyInstaller script (cross-platform)
-    ├── sidecar-linux.spec        # PyInstaller spec (Linux)
-    ├── sidecar-macos.spec        # PyInstaller spec (macOS)
-    └── sidecar-windows.spec      # PyInstaller spec (Windows)
+    │   ├── audio_capture.rs      # Audio capture (cpal)
+    │   ├── audio_resample.rs     # Resampling (rubato)
+    │   ├── stt.rs                # SttBackend trait + backend selection
+    │   ├── stt_local.rs          # STT: whisper.cpp in-process
+    │   ├── whisper_model.rs      # Download/cache/checksum of the GGML model
+    │   ├── system_audio.rs       # System audio (Linux/Win/macOS)
+    │   ├── live_analysis.rs      # Live highlights + overlay toggle
+    │   ├── stealth_mode.rs       # Hide the windows from screen capture (Windows only)
+    │   ├── windows.rs            # Window management (dock, overlay, focus)
+    │   ├── auth_bridge.rs        # Reads the session JWT out of the main webview
+    │   ├── http_proxy.rs         # HTTP proxy for the API
+    │   ├── secrets.rs            # Secrets storage
+    │   └── commands.rs           # Tauri commands
+    ├── tauri.conf.json           # Tauri config
+    └── Cargo.toml
 ```
 
 ## Architecture
@@ -144,19 +119,19 @@ apps/desktop/
 ```
 ┌───────────────────────────────────────────────────────┐
 │                   NORA Desktop App                    │
-│  ┌─────────────┐         ┌────────────────────────┐  │
-│  │  Frontend   │◄───────►│     Rust Backend       │  │
-│  │  (React)    │  event  │       (Tauri)          │  │
-│  └─────────────┘"transcript"└──────────┬───────────┘  │
-│                                        │              │
-│              backend selected at runtime               │
-│                    ┌───────────────────┴──────┐       │
-│                    ▼                          ▼       │
-│      ┌─────────────────────────┐   ┌──────────────┐  │
-│      │  stt_local.rs (DEFAULT) │   │Sidecar Python│  │
-│      │  whisper.cpp in-process │   │(Azure Speech)│  │
-│      │  offline, no network    │   │   LEGACY     │  │
-│      └─────────────────────────┘   └──────────────┘  │
+│                                                       │
+│   ┌─────────────┐                ┌────────────────┐   │
+│   │  Frontend   │◄──────────────►│  Rust Backend  │   │
+│   │  (React)    │  "transcript"  │    (Tauri)     │   │
+│   └─────────────┘     event      └──┬─────────────┘   │
+│                                     │                 │
+│      backend selected at runtime    │                 │
+│                                     ▼                 │
+│                        ┌────────────────────────┐     │
+│                        │ stt_local.rs           │     │
+│                        │ whisper.cpp in-process │     │
+│                        │ offline, no network    │     │
+│                        └────────────────────────┘     │
 └───────────────────────────────────────────────────────┘
 ```
 
@@ -164,27 +139,35 @@ apps/desktop/
 
 1. **Capture**: Rust (cpal) captures audio from the microphone and from the system
 2. **Resampling**: converts to PCM 16 kHz / 16-bit / mono
-3. **Routing**: one STT backend per track (`mic` and `system`), both behind the `SttBackend` trait
-4. **Transcription**: `whisper.cpp` in-process (default) or the Azure sidecar (legacy)
-5. **UI**: both emit the **same** Tauri `transcript` event — the frontend does not distinguish them
+3. **Routing**: one STT session per track (`mic` and `system`), both behind the `SttBackend` trait
+4. **Transcription**: `whisper.cpp` in-process, one re-decode loop per track
+5. **UI**: both tracks emit the **same** Tauri `transcript` event — the frontend does not distinguish them
 
 ## Speech-to-Text (STT)
 
 ### Backend selection
 
-Resolved at **runtime**, in this priority order (`src/stt.rs`):
+There is **one** backend, `local`. It is still resolved at **runtime**, in this
+priority order (`src/stt.rs`):
 
 1. env `NORA_STT_BACKEND` (only works when launching the app from a terminal)
 2. env injected at build time by `build.rs` (CI/release)
 3. `plugins.nora.sttBackend` in `tauri.conf.json`
 4. default: `local`
 
-An unknown value falls back to the default with a warning — it never takes the app down. Asking for a
-backend that was not compiled degrades to whichever one exists.
+The only accepted values are `local` and `whisper`. Anything else — including a
+stale `azure` left in an old config or in a shell — falls back to the default
+with a warning on stderr instead of failing; it never takes the app down.
+
+The selection machinery is kept on purpose even with a single implementation:
+cloud transcription is planned to come back as a second backend, and the seam is
+worth more than the few lines it costs.
+
+`stt-local` is the only default feature, so a plain build is the local backend:
 
 ```bash
-cargo build                                          # both backends in the binary
-cargo build --no-default-features --features stt-local   # pure local, no Python
+cargo build                                # stt-local, CPU
+cargo build --features whisper-vulkan      # opt-in GPU, needs the Vulkan SDK
 ```
 
 ### Speaker attribution: PER TRACK (there is no online diarization)
@@ -206,8 +189,8 @@ speaker-rename UI would be permanently empty and `participants` would never be
 filled in on upload. Renaming in the overlay keeps working normally.
 
 **Real consequence:** on a call with 3 remote people, all three appear
-grouped under a single label. This is a regression compared with Azure's diarization
-(`Guest-1`/`Guest-2`) and it is intentional.
+grouped under a single label. That is intentional — it is the price of having no
+online diarization, not a bug.
 
 ### Model
 
@@ -264,26 +247,26 @@ does not exist before macOS 11, so no real compatibility is being discarded.
 > [#359](https://github.com/sf0rzin/nora/pull/359). That is why the explanation
 > lives here.
 
-### What changes for the user
+### What this means for the user
 
-| | Azure (before) | Local (now) |
-| --- | --- | --- |
-| Network | required | **not used** |
-| `/speech/token` | on every recording | **not called** |
-| Audio leaves the machine | yes | **no** |
-| Cost per minute | yes | zero |
-| First use | immediate | downloads the model (~488 MB) |
-| Diarization | `Guest-1`/`Guest-2` | per track (see above) |
-| Latency | ~200-400 ms | pseudo-real-time, ~1 s per partial |
-| `confidence` | calibrated (`NBest[0]`) | **not calibrated** (see below) |
+| | |
+| --- | --- |
+| Network | **not used** for transcription |
+| Audio leaving the machine | **never** |
+| Cost per minute | zero |
+| First use | downloads the model (~488 MB on `small`) |
+| Diarization | per track (see above) |
+| Latency | pseudo-real-time, ~1 s per partial |
+| `confidence` | **not calibrated** (see below) |
 
 ### Note on `confidence`
 
 The emitted value is `exp(mean of the tokens' ln(p))` — Whisper's `avg_logprob`
-normalized. It is **not comparable** with Azure's `NBest[0].Confidence`, which was a
-trained score. A fluent hallucination scores **high**, and the scale changes with the
-model size. It is good for ordering segments within the same session and the same
-model, and nothing else. Any threshold on top of it needs to be recalibrated.
+normalized. It is **not comparable** with the `NBest[0].Confidence` of the Azure
+Speech backend this replaced, which was a trained score. A fluent hallucination
+scores **high**, and the scale changes with the model size. It is good for ordering
+segments within the same session and the same model, and nothing else. Any threshold
+carried over from the old scale needs to be recalibrated.
 
 ### Streaming: how it works
 
@@ -305,7 +288,7 @@ See `.env.example` for the full, commented list.
 NORA_API_BASE_URL=http://localhost:8080
 
 # STT
-NORA_STT_BACKEND=local        # local | azure
+NORA_STT_BACKEND=local        # local | whisper — anything else falls back to local
 NORA_WHISPER_MODEL=small      # tiny | base | small | medium
 ```
 
@@ -329,9 +312,7 @@ See `.github/workflows/ci.yml` for details.
 > - The current `timeout-minutes: 60` may not be enough on a cold *cache miss*: the
 >   ggml/whisper C++ build lands on the critical path of both runners.
 > - The matrix today is only `windows-latest` + `ubuntu-latest` — **there is no macOS
->   runner**, so the Metal path is never exercised by CI.
-> - The `setup-python` / `build_sidecar.py` steps became optional for the default
->   bundle, but they are still in the workflow.
+>   runner**, so the Metal path is never exercised by that workflow.
 > - `swatinem/rust-cache` caches `target/`, which includes the C++ artifacts —
 >   but the key is invalidated on every `Cargo.lock` change.
 
@@ -400,22 +381,6 @@ In this order:
 
 If `GAP of Nms in the audio (inference lagging)` shows up in the log, the machine is not
 keeping up with real time and audio is being dropped.
-
-### Sidecar not found
-
-> Only applies to the **azure** (legacy) backend. There is no sidecar in the local backend.
-> If you are seeing this with `sttBackend: "local"`, something forced `NORA_STT_BACKEND=azure`.
-
-The sidecar must be in `src-tauri/binaries/` with the correct name:
-- Linux x86_64: `nora-stt-sidecar-x86_64-unknown-linux-gnu`
-- Linux ARM64: `nora-stt-sidecar-aarch64-unknown-linux-gnu`
-- Windows x86_64: `nora-stt-sidecar-x86_64-pc-windows-msvc.exe`
-- macOS Intel: `nora-stt-sidecar-x86_64-apple-darwin`
-- macOS Apple Silicon: `nora-stt-sidecar-aarch64-apple-darwin`
-
-`build_sidecar.py` detects the platform automatically and generates the binary with the
-correct name based on `platform.system()` + `platform.machine()`. The corresponding
-PyInstaller specs are `sidecar-linux.spec`, `sidecar-macos.spec` and `sidecar-windows.spec`.
 
 ### Build fails on Linux
 

@@ -33,12 +33,12 @@ tauri-build = { version = "2", features = [] }
 # ============================================================================
 # FEATURES — STT backend selection
 # ============================================================================
-# During the Azure -> local transition BOTH backends compile by default. The
-# effective backend is chosen at RUNTIME (env `NORA_STT_BACKEND`, see stt.rs),
-# not at build-time; the feature only controls whether the code enters the binary.
+# `stt-local` is the only backend. The Azure Speech sidecar that used to sit
+# beside it was deleted; `NORA_STT_BACKEND` still exists in stt.rs but now has
+# exactly one valid value, and anything else falls back with a warning.
 #
-# For a "pure local" build (without the Python sidecar in the bundle):
-#   cargo build --no-default-features --features stt-local
+# The feature is kept rather than inlined because the GPU features below hang off
+# the optional `whisper-rs` dependency it pulls in.
 #
 # GPU acceleration: `whisper-metal` is turned on automatically on macOS by the
 # [target.'cfg(target_os = "macos")'.dependencies] section below. Vulkan/CUDA
@@ -49,15 +49,10 @@ tauri-build = { version = "2", features = [] }
 #
 # CPU is always the fallback: with no GPU feature whisper.cpp runs on CPU.
 [features]
-default = ["stt-local", "stt-azure"]
+default = ["stt-local"]
 
 # Local STT, in-process, via whisper.cpp (whisper-rs crate).
 stt-local = ["dep:whisper-rs", "dep:sha2"]
-
-# STT via Python sidecar + Azure Speech SDK. LEGACY — kept behind a flag
-# during the transition. Remove together with apps/desktop/sidecar/ once local
-# is validated on real hardware on all three targets.
-stt-azure = []
 
 # `?` = "if the optional dep is active, turn on its feature" — without the `?` the
 # GPU feature would force-enable whisper-rs even with stt-local turned off.

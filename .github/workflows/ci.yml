@@ -222,30 +222,6 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # Light job on PR: only sidecar tests (cheaper) + Python sanity check.
-  # The sidecar is the only part with testable domain logic outside Tauri/Rust;
-  # the rest (TypeScript + Rust) is validated on release/main by the full build.
-  desktop-sidecar:
-    needs: changes
-    if: needs.changes.outputs.desktop == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: apps/desktop/sidecar/pyproject.toml
-
-      - name: Install sidecar deps + tests
-        working-directory: apps/desktop/sidecar
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-          pytest -v
-
   # Compile-check of the Desktop Rust on PR (cargo check, no bundle). desktop-bundle (full
   # build) only runs on push/main — without this job a compile error in src-tauri would only
   # show up after the merge. tauri-build reads frontendDist, so we build the front (produces
@@ -295,16 +271,13 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
 
-      # The "sidecar binary stub" step no longer exists here, and that is
-      # intentional: `externalBin` left the base `tauri.conf.json` (ADR 0035) and now
-      # lives only in the opt-in overlay `tauri.azure.conf.json`. Since tauri-build
-      # resolves `externalBin` in the BUILD SCRIPT, having it in the base made even a
-      # `cargo check` fail with "resource path binaries/nora-stt-sidecar-<triple>.exe
-      # doesn't exist" — forcing anyone who just wants to typecheck Rust to run
-      # PyInstaller first. With the base clean, the stub became dead code.
+      # No `externalBin` anywhere any more: the Azure Speech sidecar and its overlay
+      # config were deleted, so nothing here has to stub a binary before Rust will
+      # typecheck. tauri-build resolves `externalBin` in the BUILD SCRIPT, which is why
+      # having it in the base config used to make even a `cargo check` fail.
 
       # TWO invocations on purpose: both configurations need to compile.
-      #  - without the feature: the legacy path (Azure sidecar), still supported in the transition;
+      #  - without the feature: the default set, which is now the same thing;
       #  - with stt-local: the embedded whisper.cpp (ADR 0035), which is what goes to release.
       # Checking only one of them lets the other rot with nobody noticing.
       - name: cargo check (without stt-local — legacy path)
@@ -433,13 +406,8 @@ jobs:
   # main, producing publishable artifacts. On PR validation it is overkill (15-20min
   # cold-cache + fragile across 3 platforms).
   #
-  # It no longer builds the PyInstaller sidecar. After ADR 0035 `externalBin` left the
-  # base `tauri.conf.json`, so the bundle produced here does NOT package the sidecar — and
-  # running PyInstaller on the 3 platforms produced a binary nobody consumed. To
-  # package the legacy bundle with Azure Speech, use the explicit overlay:
-  #     cd apps/desktop/sidecar && python build_sidecar.py && cd ..
-  #     npx tauri build -- --config src-tauri/tauri.azure.conf.json
-  # The sidecar logic remains covered by the pytest of the `desktop-sidecar` job.
+  # There is no PyInstaller sidecar to build: the Azure Speech path was deleted, so
+  # transcription is whisper.cpp compiled into the binary and nothing else.
   desktop-bundle:
     needs: changes
     if: ${{ (needs.changes.outputs.desktop_code == 'true' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
@@ -447,10 +415,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `--features stt-local` is mandatory: without it the bundle ships with the
-          # legacy Azure Speech path active, depending on a /speech/token that now
-          # answers 410 GONE. `label` only names the artifact (it was `sidecar_target`,
-          # renamed because there is no sidecar in this job anymore).
+          # `stt-local` is already the only default feature, so the flag is redundant
+          # here — kept explicit while the release workflow still names it. `label` only
+          # names the artifact.
           - platform: ubuntu-latest
             args: "--features stt-local"
             label: x86_64-unknown-linux-gnu
@@ -781,7 +748,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, api, worker, web, desktop-sidecar, desktop-rust, supply-chain, docs-link-check, language, infra]
+    needs: [changes, api, worker, web, desktop-rust, supply-chain, docs-link-check, language, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
