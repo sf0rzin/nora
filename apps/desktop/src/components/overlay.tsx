@@ -952,7 +952,7 @@ export function OverlayPage() {
 
   // Overlay drag via startDragging() — works on WebKitGTK (Linux), where
   // data-tauri-drag-region / -webkit-app-region do NOT work. Same pattern as the
-  // titlebar and the dock. Left button only; the controls sit outside the region.
+  // dock. Left button only; the controls sit outside the region.
   const overlayWin = useMemo(() => getCurrentWebviewWindow(), []);
   const onHeaderDragMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;

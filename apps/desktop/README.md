@@ -88,13 +88,21 @@ npx tauri build --target aarch64-apple-darwin
 
 ## Structure
 
+> The app declares three windows (`tauri.conf.json` → `app.windows`), and only
+> two of them are built from this directory. The `main` window loads the
+> product's web UI from `https://nora.systems/dashboard`; `overlay` and `dock`
+> are the local React surfaces. There is no local page tree — the router and its
+> five screens were compiled into every bundle and rendered by nothing, and were
+> deleted.
+
 ```
 apps/desktop/
-├── src/                    # React frontend
-│   ├── pages/             # Pages (meetings, meeting detail, chat, settings, login)
+├── overlay.html            # Entry point of the `overlay` window
+├── dock.html               # Entry point of the `dock` window
+├── src/                    # React frontend — overlay and dock ONLY
 │   ├── hooks/             # Custom hooks (use-recording, use-live-transcript)
 │   ├── lib/               # Utilities and API client
-│   └── components/        # Reusable components + the overlay and the dock
+│   └── components/        # The overlay, the dock and their shared primitives
 └── src-tauri/             # Rust backend
     ├── src/
     │   ├── audio_capture.rs      # Audio capture (cpal)

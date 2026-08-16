@@ -14,8 +14,10 @@ export default defineConfig(async () => ({
   clearScreen: false,
   build: {
     rollupOptions: {
+      // Two entry points, and no `main`: the main window loads the remote web app
+      // (`app.windows[0].url` in tauri.conf.json), so the desktop bundle only ships
+      // the two windows it actually renders itself.
       input: {
-        main: path.resolve(import.meta.dirname, "index.html"),
         overlay: path.resolve(import.meta.dirname, "overlay.html"),
         dock: path.resolve(import.meta.dirname, "dock.html"),
       },

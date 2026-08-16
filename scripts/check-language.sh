@@ -57,7 +57,6 @@ ALLOWED=(
   "apps/admin/src/"                             # operator console UI is pt-BR
   "apps/desktop/src/"                           # desktop product UI is pt-BR
   "apps/desktop/dock.html"                      # desktop product UI is pt-BR
-  "apps/desktop/index.html"                     # desktop product UI is pt-BR
   "apps/desktop/overlay.html"                   # desktop product UI is pt-BR
   "apps/desktop/src-tauri/Info.plist"           # macOS permission prompts shown to the user, in pt-BR
   "apps/desktop/src-tauri/src/lib.rs"           # pt-BR tray-menu labels (display text, not identifiers)
