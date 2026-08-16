@@ -99,6 +99,23 @@ export default function TasksPage() {
     }
   }
 
+  // The extraction guesses the due date and it drives the Flows follow-up scheduler, so the user
+  // has to be able to both correct and remove it. An emptied input sends "" — the API's documented
+  // way to clear the column. Sending undefined would mean "leave it alone" instead.
+  async function changeDueDate(t: TaskListItemDto, value: string) {
+    if ((t.dueDate ?? "") === value) return;
+    const previous = items;
+    const optimistic: TaskListItemDto = { ...t, dueDate: value === "" ? undefined : value };
+    setItems((curr) => curr.map((x) => (x.id === t.id ? optimistic : x)));
+    try {
+      const updated = await updateTask(t.id, { dueDate: value });
+      setItems((curr) => curr.map((x) => (x.id === t.id ? updated : x)));
+    } catch (e) {
+      setItems(previous);
+      setError(e instanceof ApiRequestError ? e.message : "Falha ao atualizar a data.");
+    }
+  }
+
   function beginEdit(t: TaskListItemDto) {
     setEditingId(t.id);
     setEditTitle(t.title);
@@ -306,6 +323,15 @@ export default function TasksPage() {
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <input
+                    type="date"
+                    className="input"
+                    value={t.dueDate ?? ""}
+                    onChange={(e) => void changeDueDate(t, e.target.value)}
+                    style={{ fontSize: 12.5, padding: "4px 8px", borderRadius: 7 }}
+                    aria-label={`Alterar data de vencimento de "${t.title}"`}
+                    title="Data de vencimento (vazio remove)"
+                  />
                   <select
                     className="select"
                     value={t.status}

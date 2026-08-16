@@ -97,6 +97,21 @@ public class TaskRepositoryAdapter implements TaskRepository {
                 .executeUpdate();
     }
 
+    @Override
+    @Transactional
+    public void updateDueDate(UUID id, UUID tenantId, LocalDate newDueDate) {
+        // The value is bound as text and CAST in SQL, the same idiom the listing already uses for
+        // its nullable status filter: a native query cannot infer the type of a plain null bind,
+        // and clearing the date is exactly the case that binds null.
+        em.createNativeQuery(
+                        "UPDATE meeting_action_items SET due_date = CAST(:dueDate AS date), "
+                                + "updated_at = NOW() WHERE id = :id AND tenant_id = :tenantId")
+                .setParameter("dueDate", newDueDate == null ? null : newDueDate.toString())
+                .setParameter("id", id)
+                .setParameter("tenantId", tenantId)
+                .executeUpdate();
+    }
+
     private TaskRow toRow(Object[] r) {
         UUID id = (UUID) r[0];
         String title = (String) r[1];

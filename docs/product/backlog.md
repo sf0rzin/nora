@@ -78,10 +78,10 @@
 | ID | Title | MoSCoW | Status | Evidence | Known debt |
 |---|---|---|---|---|---|
 | US22 | Consolidated task list | M | DONE | `TasksController.list` · `apps/web/src/app/(app)/tasks/page.tsx` | — |
-| US23 | Mark a task as completed | M | DONE | `TasksController.update` (line 53-77) | — |
+| US23 | Mark a task as completed | M | DONE | `TasksController.update` accepts `status` | — |
 | US24 | Edit task text | S | DONE | `update` accepts `title` | — |
 | US25 | Export tasks as CSV/MD | S | MISSING | No endpoint | Deferred as a block via ADR 0014. Reactivate when pilot feedback indicates usage outside the app |
-| US26 | Due date on a task | C | **PARTIAL** | `due_date` column in migration V005:82 | Date-picker UI not inspected (conservative PARTIAL) |
+| US26 | Due date on a task | C | DONE | `due_date` column in migration V005:82 · `PATCH /tasks/{id}` accepts `dueDate` (`TaskService.updateDueDate`) · date input on `apps/web/src/app/(app)/tasks/page.tsx` · `TaskDueDateFlowIntegrationTest` | An empty string clears the date; the Flows follow-up scheduler only picks up dates after today, and the UI does not warn when a past date is saved |
 
 ### E6 — MCP Integrations
 

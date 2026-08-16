@@ -840,10 +840,15 @@ paths:
   /tasks/{id}:
     patch:
       tags: [Tasks]
-      summary: Updates a task's status and/or title
+      summary: Updates a task's status, title and/or due date
       description: |
-        IAM action: `task:write`. At least one of `status`/`title` must be provided. A non-existent
-        task returns `404 TASK_NOT_FOUND`.
+        IAM action: `task:write`. At least one of `status`/`title`/`dueDate` must be provided. A
+        non-existent task returns `404 TASK_NOT_FOUND`.
+
+        `dueDate` is an ISO date (`yyyy-MM-dd`). Omitting the field leaves the stored value alone;
+        sending an empty string clears it — the date comes from the extraction, so it has to be
+        removable and not only correctable. A value that does not parse returns
+        `400 TASK_INVALID_DUE_DATE`.
       parameters: [{ $ref: '#/components/parameters/TaskId' }]
       requestBody:
         required: true
@@ -1609,10 +1614,16 @@ components:
           items: { $ref: '#/components/schemas/Task' }
     TaskUpdateRequest:
       type: object
-      description: At least one of `status`/`title` must be provided.
+      description: |
+        At least one of `status`/`title`/`dueDate` must be provided. An absent `dueDate` leaves the
+        stored value alone; an empty string clears it.
       properties:
         status: { $ref: '#/components/schemas/ActionItemStatus' }
         title: { type: string }
+        dueDate:
+          type: string
+          description: ISO date `yyyy-MM-dd`, or an empty string to clear the current value.
+          example: '2026-09-01'
 
     # ---- system ----
     Jwks:

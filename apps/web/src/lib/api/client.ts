@@ -520,9 +520,11 @@ export async function listTasks(status?: TaskStatus): Promise<TaskListResponse> 
   return request<TaskListResponse>(path);
 }
 
+// `dueDate` is an ISO date (yyyy-MM-dd). Omitting the key leaves the stored value alone; sending an
+// empty string clears it. That distinction is the contract, so do not collapse "" into undefined.
 export async function updateTask(
   id: string,
-  patch: { status?: TaskStatus; title?: string },
+  patch: { status?: TaskStatus; title?: string; dueDate?: string },
 ): Promise<TaskListItemDto> {
   return request<TaskListItemDto>(`/tasks/${encodeURIComponent(id)}`, {
     method: 'PATCH',

@@ -32,4 +32,10 @@ public interface TaskRepository {
     void updateStatus(UUID id, UUID tenantId, ActionItemStatus newStatus);
 
     void updateTitle(UUID id, UUID tenantId, String newTitle);
+
+    /**
+     * Sets the task's due date, or clears it when {@code newDueDate} is null. The column is a
+     * {@code date}, not a timestamp — see {@link TaskRow#dueDate()}.
+     */
+    void updateDueDate(UUID id, UUID tenantId, LocalDate newDueDate);
 }
