@@ -88,7 +88,7 @@
 
 ## L
 
-**Live Analysis** — Real-time analysis during a meeting (Desktop captures audio + Python sidecar transcribes + NLP worker returns highlights). Endpoint `POST /meetings/live-analyze`. Schema `LiveHighlightsV1`. PR #65.
+**Live Analysis** — Real-time analysis during a meeting (Desktop captures audio + transcribes on-device + NLP worker returns highlights). Endpoint `POST /meetings/live-analyze`. Schema `LiveHighlightsV1`. PR #65.
 
 **LLM** — Large Language Model. In NORA, the default is OpenAI `gpt-4o-mini` (configurable per tenant via env, provider-agnostic per ADR 0004). In Enterprise it can be Azure OpenAI. Output mandatorily via JSON Schema strict (ADR 0003).
 

@@ -475,13 +475,13 @@ instead.
 - **Total control of the visual identity**: NORA's OKLCH editorial palette, typography (Inter + Instrument Serif + JetBrains Mono) and Enterprise density need to be unique. Off-the-shelf libraries constrain that.
 - Smaller bundle: no `@radix-ui`, no external theming engine.
 - Tokens declared in `tailwind.config.ts` + CSS vars in `globals.css`. A visual refactor is a surgical diff.
-- Cost: every component is handmade. Mitigated by the simple desktop sidecar and a UI focused on few flows.
+- Cost: every component is handmade. Mitigated by a desktop client with one job and a UI focused on few flows.
 
 ### Tauri 2 (vs Electron)
 
 - Binary ~10× smaller (no embedded Node runtime).
 - System-wide audio capture done in Rust (`system_audio.rs` in `apps/desktop/src-tauri/`) with WASAPI on Windows, CoreAudio/BlackHole on macOS.
-- The Python sidecar (ADR 0008) runs the Azure Speech client locally for low latency; NDJSON protocol between Rust and Python.
+- Transcription runs in-process in Rust (ADR 0035), so there is no subprocess and no IPC protocol to keep in sync. ADR 0008's Python sidecar and its NDJSON protocol were deleted once the Azure Speech path stopped being the default.
 - Typed IPC between the frontend (web view) and the Rust backend via Tauri commands.
 
 ### OpenAI SDK directly (vs LangChain / LlamaIndex)

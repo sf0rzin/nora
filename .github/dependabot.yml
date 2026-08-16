@@ -156,12 +156,6 @@ updates:
       - dependency-name: "@vitejs/plugin-react"
         update-types: ["version-update:semver-major"]
 
-  - package-ecosystem: pip
-    directory: /apps/desktop/sidecar
-    schedule:
-      interval: weekly
-      day: tuesday
-    open-pull-requests-limit: 3
     labels:
       - dependencies
       - desktop
@@ -177,7 +171,7 @@ updates:
       - dependencies
       - desktop
     ignore:
-      # cpal 0.17 breaks the audio API (the Azure Speech sidecar depends on it)
+      # cpal 0.17 breaks the audio API used by audio_capture.rs
       - dependency-name: cpal
         versions: [">=0.16.0"]
 

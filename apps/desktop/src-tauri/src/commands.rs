@@ -9,15 +9,14 @@ pub type CaptureState = Arc<Mutex<AudioCapture>>;
 
 /// Brings up ONE STT backend for a track, already resolved by config.
 ///
-/// The event contract for the front end is identical on both paths (`transcript`
-/// event with `TranscriptEvent`); the only difference visible here is that the
-/// local path does not need any token.
+/// The event contract for the front end is `transcript` with a `TranscriptEvent`
+/// payload, and it is what any future backend has to keep emitting. Only the local
+/// whisper.cpp path exists today, and it needs no token of any kind.
 async fn start_stt_backend(
     app_handle: &AppHandle,
     backend: SttBackendKind,
     language: &str,
     track_label: &str,
-    azure: Option<&crate::stt::AzureStartParams>,
 ) -> Result<Box<dyn SttBackend>, String> {
     match backend {
         #[cfg(feature = "stt-local")]
@@ -32,66 +31,6 @@ async fn start_stt_backend(
         }
         #[cfg(not(feature = "stt-local"))]
         SttBackendKind::Local => Err("binary compiled without the stt-local feature".to_string()),
-
-        #[cfg(feature = "stt-azure")]
-        SttBackendKind::Azure => {
-            let az = azure.ok_or("azure backend without speech token credentials")?;
-            let h = crate::stt_sidecar::SidecarHandle::start(
-                app_handle.clone(),
-                az.region.clone(),
-                az.auth_token.clone(),
-                language.to_string(),
-                track_label.to_string(),
-                az.backend_url.clone(),
-                az.access_token.clone(),
-            )
-            .await?;
-            Ok(Box::new(h))
-        }
-        #[cfg(not(feature = "stt-azure"))]
-        SttBackendKind::Azure => {
-            let _ = azure;
-            Err("binary compiled without the stt-azure feature".to_string())
-        }
-    }
-}
-
-/// Fetches the Azure Speech token and assembles the sidecar start parameters.
-///
-/// Only exists when the `stt-azure` feature is compiled: in the pure-local build
-/// (`--no-default-features --features stt-local`) the `crate::speech_token` module
-/// does not even enter the binary, so referencing `crate::speech_token::*` from a
-/// non-gated path would break compilation. It is also the reason the app has no
-/// way to fail at boot/start trying to talk to `/speech/token`.
-#[cfg(feature = "stt-azure")]
-async fn fetch_azure_params(
-    app_handle: &AppHandle,
-    backend_url: &str,
-    access_token: &str,
-) -> Result<crate::stt::AzureStartParams, String> {
-    match crate::speech_token::fetch_speech_token(
-        backend_url,
-        access_token,
-        None, // Use default region from backend
-    )
-    .await
-    {
-        Ok(t) => {
-            log_line(app_handle, "start_recording: speech token ok");
-            Ok(crate::stt::AzureStartParams {
-                region: t.region,
-                auth_token: t.token,
-                backend_url: backend_url.to_string(),
-                access_token: access_token.to_string(),
-            })
-        }
-        Err(e) => {
-            log_line(
-                app_handle,
-                &format!("start_recording: speech token ERROR: {}", e),
-            );
-            Err(format!("Failed to fetch speech token: {}", e))
-        }
     }
 }
 
@@ -170,44 +109,26 @@ pub async fn start_recording(
         ),
     );
 
-    let access_token = match crate::auth_bridge::web_session_jwt(&app_handle) {
-        Ok(t) => {
-            log_line(&app_handle, "start_recording: auth ok");
-            t
-        }
-        Err(e) => {
-            log_line(&app_handle, &format!("start_recording: auth ERROR: {}", e));
-            return Err(e);
-        }
-    };
-    let backend_url = crate::api_base_url();
+    // Refuse to start without a web session: a recording nobody can upload is worse
+    // than a clear error up front. Only the CHECK matters here — the token itself is
+    // not carried into the recording, because `upload_meeting` resolves its own token
+    // and base URL at the moment it needs them.
+    //
+    // This used to bind the token and the base URL for the Azure path, which fetched
+    // `/speech/token` before recording could begin. Transcription is now in-process,
+    // so there is no round-trip and starting a recording no longer depends on the API
+    // being reachable at all — only on the user being logged in.
+    if let Err(e) = crate::auth_bridge::web_session_jwt(&app_handle) {
+        log_line(&app_handle, &format!("start_recording: auth ERROR: {}", e));
+        return Err(e);
+    }
+    log_line(&app_handle, "start_recording: auth ok");
 
     let backend = crate::stt::configured_backend();
     log_line(
         &app_handle,
         &format!("start_recording: backend stt = {}", backend.as_str()),
     );
-
-    // AZURE-ONLY. On the local backend there is no token to fetch: no call to
-    // `/speech/token`, no network round-trip, and the recording does not depend on the
-    // API being up. This `if` is what keeps the app from dying at start when
-    // the backend is down.
-    #[cfg(feature = "stt-azure")]
-    let azure_params = if backend == SttBackendKind::Azure {
-        Some(fetch_azure_params(&app_handle, &backend_url, &access_token).await?)
-    } else {
-        None
-    };
-
-    // Pure-local build: there is not even the credential type to fill in.
-    #[cfg(not(feature = "stt-azure"))]
-    let azure_params: Option<crate::stt::AzureStartParams> = {
-        // `backend_url`/`access_token` keep being resolved above on purpose:
-        // the session check still applies (the meeting upload will need it),
-        // only the token round-trip is what disappears.
-        let _ = (&backend_url, &access_token);
-        None
-    };
 
     let language = request.language.unwrap_or_else(|| "pt-BR".to_string());
     let capture_system = request.capture_system_audio.unwrap_or(false);
@@ -228,15 +149,7 @@ pub async fn start_recording(
     // One backend per track. The `mic` track is the local user; the `system` track is
     // the loopback audio (remote participants). Speaker attribution is PER
     // TRACK — see crate::stt::SYSTEM_SPEAKER_ID.
-    let mic_sidecar = match start_stt_backend(
-        &app_handle,
-        backend,
-        &language,
-        "mic",
-        azure_params.as_ref(),
-    )
-    .await
-    {
+    let mic_sidecar = match start_stt_backend(&app_handle, backend, &language, "mic").await {
         Ok(s) => {
             log_line(&app_handle, "start_recording: stt mic ok");
             s
@@ -248,15 +161,7 @@ pub async fn start_recording(
     };
 
     let system_sidecar = if capture_system {
-        match start_stt_backend(
-            &app_handle,
-            backend,
-            &language,
-            "system",
-            azure_params.as_ref(),
-        )
-        .await
-        {
+        match start_stt_backend(&app_handle, backend, &language, "system").await {
             Ok(s) => {
                 log_line(&app_handle, "start_recording: stt system ok");
                 Some(s)

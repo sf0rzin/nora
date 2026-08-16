@@ -8,18 +8,9 @@ pub mod commands;
 mod http_proxy;
 mod live_analysis;
 mod secrets;
-// `speech_token` only exists for the azure backend. In the pure-local build
-// (`--no-default-features --features stt-local`) it does not even enter the binary — that is
-// why the app has no way to fail trying to talk to `/speech/token`.
-#[cfg(feature = "stt-azure")]
-mod speech_token;
 mod stt;
 #[cfg(feature = "stt-local")]
 mod stt_local;
-#[cfg(feature = "stt-azure")]
-mod stt_sidecar;
-#[cfg(all(test, feature = "stt-azure"))]
-mod stt_sidecar_test;
 #[cfg(feature = "stt-local")]
 mod whisper_model;
 mod stealth_mode;

@@ -1,15 +1,14 @@
-//! Common contract of the desktop speech-to-text backends.
+//! Common contract of the desktop speech-to-text backend.
 //!
-//! There are two, chosen at RUNTIME (not at build-time):
+//! There is one — `local`, whisper.cpp in-process, see `stt_local.rs`. It uses no
+//! network, no `/speech/token`, and spawns no subprocess. The Azure Speech sidecar
+//! that used to sit beside it was deleted; `NORA_STT_BACKEND` is still read, but
+//! every value other than `local`/`whisper` now falls back with a warning.
 //!
-//!   * `local` — whisper.cpp in-process, see `stt_local.rs`. Default since
-//!               leaving Azure. Uses no network, no `/speech/token`, spawns no
-//!               subprocess.
-//!   * `azure` — Python sidecar + Azure Speech SDK, see `stt_sidecar.rs`. LEGACY,
-//!               kept behind the Cargo feature `stt-azure` during the
-//!               transition.
+//! The runtime-selection machinery is kept deliberately: cloud transcription comes
+//! back as a second backend, so the seam is worth more than the few lines it costs.
 //!
-//! THE CONTRACT WITH THE FRONT DOES NOT CHANGE. Both emit:
+//! THE CONTRACT WITH THE FRONT DOES NOT CHANGE. It emits:
 //!   * `transcript` — `TranscriptEvent` payload (camelCase), consumed by
 //!     `use-live-transcript.tsx`, `use-recording.ts` and `overlay.tsx`;
 //!   * `stt-error`  — opaque JSON object with `code` and `message`.
@@ -114,9 +113,8 @@ pub trait SttBackend: Send {
     fn audio_tx(&self) -> mpsc::Sender<Vec<i16>>;
 
     /// Ends the session. Consumes the handle (`Box<Self>`) to prevent use after
-    /// the stop. The backends do a final flush before dying, so there MAY be
-    /// one last `transcript` event after this call — the Azure sidecar already
-    /// behaved this way (`stop_continuous_recognition` flushes).
+    /// the stop. The backend does a final flush before dying, so there MAY be
+    /// one last `transcript` event after this call.
     fn stop(self: Box<Self>);
 }
 
@@ -124,14 +122,12 @@ pub trait SttBackend: Send {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SttBackendKind {
     Local,
-    Azure,
 }
 
 impl SttBackendKind {
     pub fn as_str(self) -> &'static str {
         match self {
             SttBackendKind::Local => "local",
-            SttBackendKind::Azure => "azure",
         }
     }
 }
@@ -142,9 +138,11 @@ impl SttBackendKind {
 ///    from a shell (dev). App opened from Finder/Explorer does NOT inherit the user env.
 /// 2. `NORA_STT_BACKEND` injected at build-time by `build.rs` (CI/release).
 /// 3. `plugins.nora.sttBackend` in `tauri.conf.json`.
-/// 4. Default: `local` if the `stt-local` feature is compiled in, else `azure`.
+/// 4. Default: `local`, the only backend there is.
 ///
 /// Unknown value falls back to the default with a warning — never kills the app.
+/// Since the Azure sidecar was removed, `azure` and `sidecar` are unknown values
+/// like any other, so an old config or a stale env var degrades instead of failing.
 pub fn configured_backend() -> SttBackendKind {
     static KIND: std::sync::OnceLock<SttBackendKind> = std::sync::OnceLock::new();
     *KIND.get_or_init(|| {
@@ -158,7 +156,6 @@ pub fn configured_backend() -> SttBackendKind {
         let resolved = match raw.trim().to_ascii_lowercase().as_str() {
             "" => default_backend(),
             "local" | "whisper" => SttBackendKind::Local,
-            "azure" | "sidecar" => SttBackendKind::Azure,
             other => {
                 eprintln!(
                     "[stt] NORA_STT_BACKEND unknown: {:?} — using {}",
@@ -173,7 +170,6 @@ pub fn configured_backend() -> SttBackendKind {
         // the one that exists instead of blowing up mid-recording.
         let available = match resolved {
             SttBackendKind::Local => cfg!(feature = "stt-local"),
-            SttBackendKind::Azure => cfg!(feature = "stt-azure"),
         };
         if !available {
             eprintln!(
@@ -189,21 +185,7 @@ pub fn configured_backend() -> SttBackendKind {
 }
 
 const fn default_backend() -> SttBackendKind {
-    if cfg!(feature = "stt-local") {
-        SttBackendKind::Local
-    } else {
-        SttBackendKind::Azure
-    }
-}
-
-/// Credentials only the azure backend needs. `None` in local mode — that is why
-/// `commands.rs` does not call `fetch_speech_token` when the backend is local.
-#[allow(dead_code)]
-pub struct AzureStartParams {
-    pub region: String,
-    pub auth_token: String,
-    pub backend_url: String,
-    pub access_token: String,
+    SttBackendKind::Local
 }
 
 #[cfg(test)]
@@ -229,6 +211,5 @@ mod tests {
     #[test]
     fn backend_kind_round_trip() {
         assert_eq!(SttBackendKind::Local.as_str(), "local");
-        assert_eq!(SttBackendKind::Azure.as_str(), "azure");
     }
 }
