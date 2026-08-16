@@ -73,9 +73,7 @@ def test_analyze_503_when_token_not_configured(_enforce_internal_auth):
 
 def test_analyze_open_when_opt_out_enabled(_enforce_internal_auth):
     """Explicit local-dev opt-out: no token, no header, and the gate steps aside."""
-    _use_settings(
-        worker_internal_token="", allow_unauthenticated_internal=True, use_llm_stub=True
-    )
+    _use_settings(worker_internal_token="", allow_unauthenticated_internal=True, use_llm_stub=True)
     resp = client.post("/analyze", json={}, headers={})
     assert resp.status_code == 422, resp.text
 
