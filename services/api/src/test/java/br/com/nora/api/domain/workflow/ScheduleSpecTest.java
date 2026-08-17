@@ -90,9 +90,7 @@ class ScheduleSpecTest {
     @Test
     void refusesAnUnknownFrequency() {
         assertThatThrownBy(
-                        () ->
-                                ScheduleSpec.parse(
-                                        Map.of("frequency", "every_minute", "minute", 0)))
+                        () -> ScheduleSpec.parse(Map.of("frequency", "every_minute", "minute", 0)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("hourly, daily or weekly");
     }

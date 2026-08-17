@@ -213,10 +213,7 @@ public class WorkflowDefinitionParser {
             ScheduleSpec.parse(trigger.params());
         } catch (IllegalArgumentException ex) {
             throw new WorkflowException.InvalidDefinition(
-                    "trigger 'On a schedule' (node '"
-                            + trigger.id()
-                            + "'): "
-                            + ex.getMessage());
+                    "trigger 'On a schedule' (node '" + trigger.id() + "'): " + ex.getMessage());
         }
     }
 

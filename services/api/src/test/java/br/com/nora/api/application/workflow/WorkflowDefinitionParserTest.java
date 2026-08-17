@@ -120,11 +120,8 @@ class WorkflowDefinitionParserTest {
      */
     @Test
     void acceptsScheduleCronWithAValidSchedule() {
-        WorkflowDefinition def =
-                parser.parse(
-                        flowWith("schedule.cron", "{\"frequency\":\"weekly\",\"weekday\":\"MON\","
-                                + "\"hour\":9,\"minute\":0}"),
-                        actions);
+        String weekly = "{\"frequency\":\"weekly\",\"weekday\":\"MON\",\"hour\":9,\"minute\":0}";
+        WorkflowDefinition def = parser.parse(flowWith("schedule.cron", weekly), actions);
         assertThat(def.triggerNode().type()).isEqualTo("schedule.cron");
         assertThat(def.triggerNode().params()).containsEntry("weekday", "MON");
     }
@@ -145,9 +142,8 @@ class WorkflowDefinitionParserTest {
     /** A full expression is refused by name — the vocabulary cannot honour "every second". */
     @Test
     void rejectsScheduleCronWithARawExpression() {
-        String params = "{\"cron\":\"* * * * * *\",\"frequency\":\"daily\",\"hour\":9,"
-                + "\"minute\":0}";
-        assertThatThrownBy(() -> parser.parse(flowWith("schedule.cron", params), actions))
+        String raw = "{\"cron\":\"* * * * * *\",\"frequency\":\"daily\",\"hour\":9,\"minute\":0}";
+        assertThatThrownBy(() -> parser.parse(flowWith("schedule.cron", raw), actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
                 .hasMessageContaining("does not take a raw");
     }
