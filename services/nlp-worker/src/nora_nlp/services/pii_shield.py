@@ -1649,17 +1649,30 @@ def _split_with_provenance(
     separators: frozenset[str] = frozenset(),
     tenant_terms: frozenset[str] = frozenset(),
 ) -> list[tuple[list[re.Match[str]], bool]]:
-    """`_split_on_allow_list`, plus whether an allow-listed TERM abuts each stretch.
+    """`_split_on_allow_list`, plus whether a STATIC allow-listed term abuts each stretch.
 
     The flag is what `_spans_and_vouched` needs and it cannot be recovered afterwards: by then
     the term is gone from the token list, and "this stretch is what a product name cut out of a
     name" reads identically to "this stretch is one side of a conjunction".
 
-    The distinction matters because the two are not the same claim. A negative-list term sitting
-    INSIDE a candidate ("Wanderleia Protheus Kranz") is a product name that fell between the
-    halves of one name; the coordinating `e` joins two DIFFERENT things ("Marina Alves e
-    Contabilidade"), so a stretch beside it is not a piece of the stretch on the other side and
-    must not inherit anything from it.
+    Two things are excluded from it, for two different reasons.
+
+    THE CONJUNCTION, because it is not the same claim. A negative-list term sitting INSIDE a
+    candidate ("Wanderleia Protheus Kranz") is a product name that fell between the halves of one
+    name; the coordinating `e` joins two DIFFERENT things ("Marina Alves e Contabilidade"), so a
+    stretch beside it is not a piece of the stretch on the other side and must not inherit
+    anything from it.
+
+    `tenant_terms`, because they are input. They still SPLIT -- that is the 5c feature and it is
+    unchanged -- but a term the caller supplied may not vouch for anything. This is not a
+    hypothetical narrowing; it was measured. Declaring "Casa das Maquinas" admits `das`, which
+    splits "Nivaldo das Neves" into two lone tokens, and with the tenant term vouching for them
+    the candidate pass came back as `[[PERSON_NAME_1]] das [[PERSON_NAME_2]]` where the baseline
+    had one placeholder over the whole name. No person was freed and the output still DIVERGED
+    from the baseline, which is the property `redact`'s guard is built on: the candidate is kept
+    only when it is the baseline plus declared terms in the clear. A tenant's configuration
+    deciding how a name is carved up is the thing ADR 0012 is not negotiable about, whichever
+    direction the carving goes.
     """
     bounds: list[tuple[int, int]] = []
     start: int | None = None
@@ -1673,10 +1686,13 @@ def _split_with_provenance(
     if start is not None:
         bounds.append((start, len(tokens) - 1))
 
+    def _static(index: int) -> bool:
+        return _fold(tokens[index].group(0)) in _PERSON_NAME_NEGATIVE_LIST
+
     runs: list[tuple[list[re.Match[str]], bool]] = []
     for first, last in bounds:
-        before = first > 0 and _is_an_allow_listed_term(tokens[first - 1], tenant_terms)
-        after = last + 1 < len(tokens) and _is_an_allow_listed_term(tokens[last + 1], tenant_terms)
+        before = first > 0 and _static(first - 1)
+        after = last + 1 < len(tokens) and _static(last + 1)
         runs.append((tokens[first : last + 1], before or after))
     return runs
 
@@ -1754,10 +1770,9 @@ def _spans_and_vouched(
 
     Three things it deliberately does not do:
 
-    - It does not fire on the conjunction. `Marina Alves e Contabilidade` splits on `e`, and `e`
-      joins two DIFFERENT things -- inheriting the verdict across it turns an ordinary noun into
-      a person. That is `fp_split_flank/conjunction`, and it is why `_split_with_provenance`
-      exists at all.
+    - It does not fire on the conjunction, and it does not fire on a term the TENANT declared --
+      see `_split_with_provenance`, which is where both exclusions are argued and where the
+      measurement behind the second one is recorded.
     - It does not fire without a sibling that stands alone, which is what keeps every
       `fp_split_flank` case out: `A Central Oracle Cloud entrou na pauta` splits into `Central`
       and `Cloud`, and neither is on any name list, so nothing vouches for anything. All ten of

@@ -1818,6 +1818,17 @@ def test_the_split_records_which_separator_ended_each_run():
     runs = pii_shield._split_with_provenance(tokens, frozenset({pii_shield._CONJUNCTION}))
     assert [beside for _, beside in runs] == [False, False]
 
+    # A tenant term SPLITS and does not vouch. Measured on "Casa das Maquinas", whose admitted
+    # `das` cuts "Nivaldo das Neves" in two: with the flag reading tenant terms, the candidate
+    # pass came back with two placeholders where the baseline had one, and `redact`'s guard is
+    # built on the candidate being the baseline plus declared terms in the clear.
+    tokens = list(pii_shield._WORD_RE.finditer("Nivaldo das Neves"))
+    runs = pii_shield._split_with_provenance(
+        tokens, frozenset({pii_shield._CONJUNCTION}), frozenset({"das"})
+    )
+    assert [[t.group(0) for t in run] for run, _ in runs] == [["Nivaldo"], ["Neves"]]
+    assert [beside for _, beside in runs] == [False, False]
+
 
 # --------------------------------------------------------------------------- #
 # One ordinary word in front of a name, and two
