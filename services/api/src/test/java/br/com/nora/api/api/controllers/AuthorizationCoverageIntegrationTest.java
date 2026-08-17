@@ -185,6 +185,10 @@ class AuthorizationCoverageIntegrationTest {
         // privacy: a permanent hard-delete of the meeting and every piece of PII linked to it
         calls.delete("/privacy/meetings/" + meeting);
 
+        // realtime STT: mints a credential that reaches a paid provider billed to the tenant, so
+        // it is gated like a tenant capability and not like a "self" endpoint (ADR 0045)
+        calls.post("/stt/sessions", json(Map.of("language", "pt-BR")));
+
         for (Call c : calls.items) {
             assertThat(status(c, member))
                     .as("%s %s must be forbidden without policies", c.method(), c.path())

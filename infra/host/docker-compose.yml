@@ -345,9 +345,20 @@ services:
       # Same value the `worker` service above requires — this is the sending side.
       NORA_WORKER_INTERNAL_TOKEN: ${NORA_WORKER_INTERNAL_TOKEN:?NORA_WORKER_INTERNAL_TOKEN is required (openssl rand -hex 32); it authenticates api -> worker and is NOT NORA_PLATFORM_INTERNAL_TOKEN}
 
-      # ---- Embeddings (RAG) ----
+      # ---- Embeddings (RAG) + realtime STT session broker (ADR 0039/0045) ----
+      # OPENAI_API_KEY now feeds two things in this service: embeddings, and the key exchange
+      # behind POST /stt/sessions. It stays in this container: the endpoint returns a short-lived
+      # client secret, never the key, and the desktop bundle never carries one.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Bare key = pass through from the host env, and DO NOT SET when it is absent. The
+      # `${VAR:-}` form used elsewhere in this file would inject an empty string, and an empty
+      # string is a resolved value: it would win over the `${OPENAI_API_KEY:}` fallback that
+      # application.yml declares for this property, silently disabling STT on a host that has a
+      # perfectly good OPENAI_API_KEY.
+      NORA_STT_OPENAI_API_KEY:
+      NORA_STT_MODEL: ${NORA_STT_MODEL:-gpt-live-transcribe}
+      NORA_STT_SESSIONS_PER_MINUTE: ${NORA_STT_SESSIONS_PER_MINUTE:-12}
 
       # ---- Email ----
       RESEND_API_KEY: ${RESEND_API_KEY:-}

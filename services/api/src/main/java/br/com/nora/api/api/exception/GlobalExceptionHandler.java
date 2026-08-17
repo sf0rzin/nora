@@ -7,6 +7,7 @@ import br.com.nora.api.application.iam.IamException;
 import br.com.nora.api.application.iam.InvitationException;
 import br.com.nora.api.application.identity.AuthException;
 import br.com.nora.api.application.meeting.MeetingException;
+import br.com.nora.api.application.stt.SttException;
 import br.com.nora.api.application.task.TaskException;
 import br.com.nora.api.application.tenant.TenantContextException;
 import br.com.nora.api.application.tenant.TenantException;
@@ -214,6 +215,26 @@ public class GlobalExceptionHandler {
         HttpStatus status =
                 switch (ex.code()) {
                     case "CHAT_SESSION_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
+    /**
+     * Realtime STT session failures (ADR 0045). {@code STT_NOT_CONFIGURED} is a 503 rather than a
+     * 500 because it is a deployment state, not a bug, and the desktop should tell the user to try
+     * later instead of reporting a crash.
+     */
+    @ExceptionHandler(SttException.class)
+    public ResponseEntity<ErrorResponse> handleStt(SttException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "STT_RATE_LIMITED" -> HttpStatus.TOO_MANY_REQUESTS;
+                    case "STT_NOT_CONFIGURED" -> HttpStatus.SERVICE_UNAVAILABLE;
+                    case "STT_BROKER_ERROR" -> HttpStatus.BAD_GATEWAY;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)
