@@ -41,6 +41,7 @@ const PAGES = [
   { path: "/", label: "landing (public)", authed: false },
   { path: "/dashboard", label: "dashboard", authed: true },
   { path: "/tasks", label: "tasks", authed: true },
+  { path: "/trends", label: "trends panel", authed: true },
   { path: "/settings/context", label: "settings / tenant context", authed: true },
   { path: "/settings/iam", label: "settings / IAM (mounts Monaco)", authed: true },
   { path: "/chat", label: "chat", authed: true },

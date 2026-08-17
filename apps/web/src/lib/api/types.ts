@@ -425,3 +425,74 @@ export interface IntegrationStatus {
   /** ISO-8601; null when disconnected. */
   connectedAt: string | null;
 }
+
+// ---------- Trends panel (US21) ----------
+
+/** Bucket size of the time axis. */
+export type TrendsGranularity = 'WEEK' | 'MONTH';
+
+/**
+ * What the panel is allowed to claim. `OK` with every counter at zero means a real period with no
+ * activity; the other two mean there is nothing to draw, and for different reasons.
+ */
+export type TrendsDataState = 'NO_MEETINGS' | 'NO_ANALYSED_MEETINGS' | 'OK';
+
+/** Which aggregate-authorization path produced the numbers (see TrendsController). */
+export type TrendsScopeStrategy = 'TENANT_UNIFORM' | 'PER_MEETING_FILTER';
+
+/** One point of the task-load series. `bucketStart` is a local date in `TrendsResponse.timezone`. */
+export interface TrendsPoint {
+  bucketStart: string;
+  opened: number;
+  completed: number;
+}
+
+export interface TrendsTaskLoad {
+  buckets: TrendsPoint[];
+  /** Snapshot at request time, NOT limited to the range: a backlog is a state, not an interval. */
+  open: number;
+  overdue: number;
+  byPriority: Record<'HIGH' | 'MEDIUM' | 'LOW', number>;
+  /** False when the scope holds no action item at all. */
+  hasData: boolean;
+}
+
+/** A theme and the number of distinct meetings it appeared in. */
+export interface TrendsTheme {
+  label: string;
+  meetings: number;
+}
+
+export interface TrendsThemeBucket {
+  bucketStart: string;
+  meetings: number;
+  /** False when the bucket had too few analysed meetings to rank; `items` is then empty. */
+  sufficient: boolean;
+  items: TrendsTheme[];
+}
+
+export interface TrendsThemes {
+  /** Where the themes come from: `ANALYSIS_TOPICS` today, on the wire so a change is visible. */
+  source: string;
+  /** `LEXICAL` — spellings are folded, synonyms are not merged. */
+  matching: string;
+  minimumMeetings: number;
+  sufficient: boolean;
+  overall: TrendsTheme[];
+  buckets: TrendsThemeBucket[];
+}
+
+/** GET /trends. */
+export interface TrendsResponse {
+  granularity: TrendsGranularity;
+  /** IANA zone the buckets were cut in, so the numbers can be reproduced. */
+  timezone: string;
+  from: string;
+  to: string;
+  scopeStrategy: TrendsScopeStrategy;
+  dataState: TrendsDataState;
+  meetings: number;
+  analysedMeetings: number;
+  taskLoad: TrendsTaskLoad;
+  themes: TrendsThemes;
+}

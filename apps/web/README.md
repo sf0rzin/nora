@@ -23,9 +23,9 @@ npm run dev             # http://localhost:3000
 app work without a backend, and the fixtures directory shows why: there are two of them.
 
 `USE_MOCKS` is read in exactly two functions in `src/lib/api/client.ts` — `listMeetings` and
-`getMeeting`. The other 64 exported functions in that file always issue a real fetch. So on the
+`getMeeting`. The other 67 exported functions in that file always issue a real fetch. So on the
 documented default, the meeting list and the meeting detail render from
-`src/fixtures/*.json`, and `/tasks`, `/flows`, `/integrations`, `/projects`, `/settings/context`,
+`src/fixtures/*.json`, and `/tasks`, `/trends`, `/flows`, `/integrations`, `/projects`, `/settings/context`,
 `/settings/iam` and the chat sidebar all fail against a backend that is not there.
 
 Set `NEXT_PUBLIC_USE_MOCKS=false` and `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080` to exercise
@@ -45,6 +45,7 @@ src/
       meetings/upload/
       meetings/[id]/            # detail, plus report/ for the printable view
       tasks/  projects/
+      trends/                   # US21 panel: task load over time + recurring themes
       flows/                    # workflow canvas: list, new, [id] (ADR 0030/0032)
       integrations/             # OAuth connector hub (ADR 0031)
       settings/                 # page.tsx redirects the bare prefix to context/
@@ -53,7 +54,7 @@ src/
     api/chat/route.ts           # BFF: the only server route, holds the provider key
   components/                   # flat, no feature folders
   lib/
-    api/client.ts               # fetch wrapper; 66 exported functions
+    api/client.ts               # fetch wrapper; 69 exported functions
     api/types.ts                # types mirroring OpenAPI
   fixtures/                     # two files, see "Mock mode" above
   styles/                       # tokens.css + components.css
@@ -89,11 +90,11 @@ keeps them apart.
 
 **What each one covers, and what neither does.** The Playwright suite checks routing, response
 headers and CSP violations against a real `next start` — no product behaviour, by design (see the
-note at the top of `e2e/fixtures.ts`). The Vitest suite covers five `src/lib` modules: the
-`request()` function that all 66 exported wrappers in `src/lib/api/client.ts` go through, the
-Markdown report builder, the task-list CSV/Markdown exporter, the BFF's PII redaction and the
-password policy. **No page and no component has a unit test**, which is why whole-app coverage is
-around 6%.
+note at the top of `e2e/fixtures.ts`). The Vitest suite covers six `src/lib` modules: the
+`request()` function that all 69 exported wrappers in `src/lib/api/client.ts` go through, the
+Markdown report builder, the task-list CSV/Markdown exporter, the BFF's PII redaction, the password
+policy and the trends panel's date/axis helpers. **No page and no component has a unit test**, which
+is why whole-app coverage is around 6%.
 
 Two of those tests are mirrors and read files from other services: `src/lib/pii/redact.test.ts`
 compares its pattern literals with the worker's PII Shield, and `src/lib/password-policy.test.ts`

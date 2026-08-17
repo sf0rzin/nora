@@ -3,9 +3,9 @@
 > A mirror of the Postgres schema in **Oracle 19c+ (PL/SQL DDL)** syntax.
 > NORA runs **on Postgres in production** (see `data-model.md`). This document is an academic deliverable for FIAP's Database Design course, which requires Oracle modeling.
 > Each table corresponds 1:1 to the schema documented in `data-model.md`, with the type and syntax adaptations described in §20.
-> It covers migrations **V001–V028** — the whole canonical schema, including soft-delete (V013), refresh token rotation (V014), the two composite FKs (V015, V027), the hashed invitation token (V018), Customer Confidence (V017), semantic search (V021), chat sessions (V022), NORA Flows (V023), the OAuth integration connections (V024–V026), the company-context history (V028) and Row-Level Security (V016/V017/V019/V020/V021–V024/V028 — Oracle equivalent via VPD/DBMS_RLS in §23). Full inventory in §22.
+> It covers migrations **V001–V030** — the whole canonical schema, including soft-delete (V013), refresh token rotation (V014), the two composite FKs (V015, V027), the hashed invitation token (V018), Customer Confidence (V017), semantic search (V021), chat sessions (V022), NORA Flows (V023), the OAuth integration connections (V024–V026), the company-context history (V028), the trends panel's completion timestamp (V030) and Row-Level Security (V016/V017/V019/V020/V021–V024/V028 — Oracle equivalent via VPD/DBMS_RLS in §23). Full inventory in §22.
 >
-> **Note (scope of this doc), checked 2026-08-17:** the mirror is **complete up to V028**. Every table documented in `data-model.md` §2 has Oracle DDL here, and every migration V001–V028 has a row in §22. Two things are deliberately **not** mirrored, and both are Postgres-side operational objects rather than schema: the role provisioning in `services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` (the Oracle counterpart is a privilege grant, not a script — see §23.4) and the **separate control-plane database** of ADR 0022 (`services/api/src/main/resources/db/platform/`), which `data-model.md` does not cover either. This file carries **42 tables** (`grep -c '^CREATE TABLE '`) against the **40** `### 2.x` sections of `data-model.md`: the two counts differ by design, because §2.3 (`roles` + `user_roles`) and §2.23 (`iam_user_invitations` + `iam_invitation_groups`) each document two tables. A looser `grep -c 'CREATE TABLE'` returns 45, matching three prose mentions as well.
+> **Note (scope of this doc), checked 2026-08-17:** the mirror is **complete up to V030**. Every table documented in `data-model.md` §2 has Oracle DDL here, and every migration V001–V030 has a row in §22. Two things are deliberately **not** mirrored, and both are Postgres-side operational objects rather than schema: the role provisioning in `services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` (the Oracle counterpart is a privilege grant, not a script — see §23.4) and the **separate control-plane database** of ADR 0022 (`services/api/src/main/resources/db/platform/`), which `data-model.md` does not cover either. This file carries **42 tables** (`grep -c '^CREATE TABLE '`) against the **40** `### 2.x` sections of `data-model.md`: the two counts differ by design, because §2.3 (`roles` + `user_roles`) and §2.23 (`iam_user_invitations` + `iam_invitation_groups`) each document two tables. A looser `grep -c 'CREATE TABLE'` returns 45, matching three prose mentions as well.
 
 ## 1. `TENANTS`
 
@@ -428,6 +428,10 @@ CREATE TABLE meeting_action_items (
     position      NUMBER(5) NOT NULL,
     created_at    TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
     updated_at    TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    -- V030 (US21): when the item entered DONE. NULL while it is not DONE. Separate from
+    -- updated_at, which also moves on a title or due-date edit and would therefore date a
+    -- completion by the last time anyone touched the row.
+    completed_at  TIMESTAMP WITH TIME ZONE NULL,
 
     CONSTRAINT mai_analysis_fk FOREIGN KEY (analysis_id) REFERENCES meeting_analyses(id) ON DELETE CASCADE,
     CONSTRAINT mai_tenant_fk   FOREIGN KEY (tenant_id)   REFERENCES tenants(id)          ON DELETE CASCADE,
@@ -439,6 +443,20 @@ CREATE TABLE meeting_action_items (
 CREATE INDEX idx_meeting_action_items_analysis ON meeting_action_items (analysis_id);
 CREATE INDEX idx_meeting_action_items_tenant   ON meeting_action_items (tenant_id);
 CREATE INDEX idx_meeting_action_items_status   ON meeting_action_items (tenant_id, status);
+
+-- V030: the two indexes the trends panel aggregates on.
+CREATE INDEX idx_meeting_action_items_tenant_created ON meeting_action_items (tenant_id, created_at);
+
+-- Postgres uses a PARTIAL index here (WHERE completed_at IS NOT NULL): an item that is not DONE
+-- can never be a completion candidate, so indexing the open backlog would cost size for nothing.
+-- Oracle <23ai has no partial index, and the emulation is the same one the soft-delete uses in §1:
+-- a function-based index over an expression that is NULL for the rows to be excluded. Oracle does
+-- not store an entry when every indexed expression is NULL, so the effect is identical.
+CREATE INDEX idx_meeting_action_items_tenant_completed
+    ON meeting_action_items (
+        CASE WHEN completed_at IS NOT NULL THEN tenant_id END,
+        completed_at
+    );
 
 
 CREATE TABLE meeting_risks (
@@ -1221,7 +1239,7 @@ END;
 
 ## 22. Oracle ≡ Postgres inventory
 
-Every migration V001–V028 appears in exactly one row below, so the two schemas can be checked
+Every migration V001–V030 appears in exactly one row below, so the two schemas can be checked
 against each other line by line.
 
 | # | Table | Postgres (migration) | Oracle (§ in this doc) |
@@ -1251,7 +1269,8 @@ against each other line by line.
 | 23 | integration_connections | V024, V025 + V026 (provider CHECK) | §19 |
 | 24 | composite FK iam_user_groups / iam_user_policies .(tenant_id, user_id) → users.(tenant_id, id) | V027 | §12 |
 | 25 | tenant_context_versions + `tenant_contexts.current_version` (company-context history, US31) | V028 | §10 |
-| 26 | Row-Level Security (RLS → VPD/DBMS_RLS), all waves | V016, V017, V019, V020, V021, V022, V023, V024, V028 | §23 |
+| 26 | `meeting_action_items.completed_at` + its two aggregation indexes (trends panel, US21) | V030 | §11 |
+| 27 | Row-Level Security (RLS → VPD/DBMS_RLS), all waves | V016, V017, V019, V020, V021, V022, V023, V024, V028 | §23 |
 
 > **V027 carries a checksum warning on the Postgres side that has no Oracle counterpart.** The
 > migration was edited after it had already been applied, so a database that ran the earlier

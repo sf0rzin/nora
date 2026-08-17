@@ -25,6 +25,7 @@ const PROTECTED: ReadonlyArray<{ prefix: string; page: string }> = [
   { prefix: "/meetings", page: "/meetings/upload" },
   { prefix: "/settings", page: "/settings/context" },
   { prefix: "/tasks", page: "/tasks" },
+  { prefix: "/trends", page: "/trends" },
   { prefix: "/chat", page: "/chat" },
   { prefix: "/projects", page: "/projects" },
   { prefix: "/integrations", page: "/integrations" },

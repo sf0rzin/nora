@@ -159,7 +159,7 @@ services/api/src/main/java/br/com/nora/api/
 │   ├── platform/          # 2nd datasource, operator security, cost telemetry (ADR 0022-0025)
 │   └── audit/ config/ email/ observability/
 └── api/                   # controllers, DTOs, exception handlers
-    ├── controllers/       # 16 of them: AuthController, MeetingsController, IamController, ...
+    ├── controllers/       # 18 of them: AuthController, MeetingsController, IamController, ...
     ├── dto/               # request/response records
     ├── security/          # CurrentUser, AuthCookies
     └── exception/         # GlobalExceptionHandler

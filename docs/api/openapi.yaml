@@ -6,12 +6,13 @@ info:
     REST API for the NORA backend (Spring Boot 3 / Java 21). Covers authentication and session
     management with httpOnly cookies, self-service account operations, AWS-style IAM (groups +
     policies + attachments + audit), email invitations, workspace settings and commercial context,
-    meeting upload/listing/detail/semantic search, extracted task management, live analysis, chat
-    sessions, NORA Flows (workflow CRUD, manual run and execution history), the OAuth integration
-    hub, the LGPD erasure endpoint, and the operator control plane.
+    meeting upload/listing/detail/semantic search, extracted task management, the trends panel's
+    temporal aggregation, live analysis, chat sessions, NORA Flows (workflow CRUD, manual run and
+    execution history), the OAuth integration hub, the LGPD erasure endpoint, and the operator
+    control plane.
 
     ## Scope of this document
-    Every route the 16 controllers under
+    Every route the 18 controllers under
     `services/api/src/main/java/br/com/nora/api/api/controllers/` expose is described here, and
     nothing else is. `scripts/check-openapi-coverage.sh` enforces that in both directions in CI:
     a route added to a controller and not to this file fails the build, and so does an operation
@@ -71,6 +72,12 @@ tags:
       analysis.
   - name: Tasks
     description: Listing and updating extracted tasks.
+  - name: Trends
+    description: |
+      Temporal aggregation over the tenant's meetings (US21): task load per period and the themes
+      that keep coming back. Read-only, no model call — the task half is SQL over
+      `meeting_action_items` and the theme half reads the `topics` each analysis already persisted,
+      so the panel does not depend on the RAG index of ADR 0044 being backfilled.
   - name: Chat
     description: |
       Persisted chat sessions for the NORA assistant (migration V022). Scoped by tenant AND by the
@@ -1268,6 +1275,66 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  # ----------------------------------------------------------------------------
+  # Trends — temporal aggregation (US21)
+  # ----------------------------------------------------------------------------
+  /trends:
+    get:
+      tags: [Trends]
+      summary: Task load over time and recurring themes
+      description: |
+        IAM action: `meeting:read`. Aggregates over the meetings the caller is allowed to open,
+        never over the tenant as a whole unless those two sets are the same.
+
+        **Aggregate authorization.** A count computed by `WHERE tenant_id = ?` respects the tenant
+        but not the per-item policy — a user carrying a conditional `Deny` over some meetings would
+        see those meetings inside a number they can never drill into, and a number is information.
+        So the endpoint resolves the caller's position first: when no statement can tell two
+        meetings of the tenant apart (Root, or a plain `meeting:read` Allow over the wildcard) the
+        aggregate runs tenant-wide, which is provably the same set; otherwise the visible meetings
+        are resolved item by item and every aggregate is restricted to those ids. The answer says
+        which path ran, in `scopeStrategy`.
+
+        **Empty state is part of the contract, not of the UI.** `dataState` separates "no meetings
+        in range" and "meetings but none analysed" from a real period of zero activity, and
+        `themes.sufficient` is false when the range holds fewer than `themes.minimumMeetings`
+        analysed meetings — a ranking over three meetings is a list, not a trend. A client must
+        read those flags rather than infer emptiness from a series of zeros.
+
+        **Time zone.** Buckets are cut in the zone reported in `timezone`, not in UTC, so a Friday
+        evening meeting counts in the week it happened. Every `bucketStart` is a local date in that
+        zone.
+
+        **Themes.** `themes.source` is `ANALYSIS_TOPICS`: the `topics` array each analysis already
+        wrote. `themes.matching` is `LEXICAL` — spellings are folded (case, accents, punctuation)
+        but synonyms are not merged, so "preco" and "precificacao" stay two entries. The field
+        exists so that replacing the source later is a visible change and not a silent one.
+      parameters:
+        - in: query
+          name: granularity
+          description: Bucket size. Defaults to `WEEK`.
+          schema: { $ref: '#/components/schemas/TrendsGranularity' }
+        - in: query
+          name: from
+          description: |
+            Start of the range, inclusive, ISO-8601 offset date-time. Absent means the last 12
+            weeks (or 6 months). A range longer than the ceiling — 52 weeks or 24 months — is
+            clamped forward rather than refused, and the applied range comes back in the response.
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          description: End of the range, exclusive. Absent means now.
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: OK — read `dataState` before drawing anything
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrendsResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   # ----------------------------------------------------------------------------
   # Chat — persisted assistant sessions (migration V022)
@@ -3162,6 +3229,142 @@ components:
           type: string
           description: ISO date `yyyy-MM-dd`, or an empty string to clear the current value.
           example: '2026-09-01'
+
+    # ---- trends (US21) ----
+    TrendsGranularity:
+      type: string
+      enum: [WEEK, MONTH]
+      description: Bucket size. Weeks are ISO — they start on Monday, in `timezone`.
+    TrendsDataState:
+      type: string
+      enum: [NO_MEETINGS, NO_ANALYSED_MEETINGS, OK]
+      description: |
+        What the panel is allowed to claim. `OK` with every counter at zero means a real period
+        with no activity; the other two mean there is nothing to draw, and for different reasons.
+    TrendsScopeStrategy:
+      type: string
+      enum: [TENANT_UNIFORM, PER_MEETING_FILTER]
+      description: |
+        Which aggregate-authorization path produced the numbers. `TENANT_UNIFORM` means no
+        statement of this caller distinguishes two meetings of the tenant, so the aggregate ran
+        tenant-wide over a provably identical set. `PER_MEETING_FILTER` means the visible meetings
+        were resolved one by one and the aggregate was restricted to them.
+    TrendsPoint:
+      type: object
+      required: [bucketStart, opened, completed]
+      properties:
+        bucketStart:
+          type: string
+          format: date
+          description: First day of the bucket, a LOCAL date in `timezone`.
+        opened:
+          type: integer
+          description: Action items created in the bucket (`meeting_action_items.created_at`).
+        completed:
+          type: integer
+          description: |
+            Action items that entered DONE in the bucket (`completed_at`, migration V030). Rows
+            already DONE when V030 ran carry their previous `updated_at`, which is an upper bound
+            on the real instant rather than a measurement.
+    TrendsTaskLoad:
+      type: object
+      required: [buckets, open, overdue, byPriority, hasData]
+      properties:
+        buckets:
+          type: array
+          items: { $ref: '#/components/schemas/TrendsPoint' }
+          description: Dense — every bucket of the range is present, including the empty ones.
+        open:
+          type: integer
+          description: |
+            Items not DONE right now. A snapshot, deliberately NOT limited to the range: a backlog
+            is a state at a point in time and not an interval.
+        overdue:
+          type: integer
+          description: Of those, how many have a due date in the past.
+        byPriority:
+          type: object
+          description: Open items by priority. Always carries all three keys, zeros included.
+          properties:
+            HIGH: { type: integer }
+            MEDIUM: { type: integer }
+            LOW: { type: integer }
+        hasData:
+          type: boolean
+          description: False when the scope holds no action item at all.
+    TrendsTheme:
+      type: object
+      required: [label, meetings]
+      properties:
+        label:
+          type: string
+          description: The spelling written most often for this theme, not the folded key.
+        meetings:
+          type: integer
+          description: Distinct meetings the theme appeared in — not a count of mentions.
+    TrendsThemeBucket:
+      type: object
+      required: [bucketStart, meetings, sufficient, items]
+      properties:
+        bucketStart: { type: string, format: date }
+        meetings:
+          type: integer
+          description: Analysed meetings in the bucket, whether or not they carried any topic.
+        sufficient:
+          type: boolean
+          description: False when the bucket held too few analysed meetings to rank; `items` is
+            then empty on purpose.
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TrendsTheme' }
+    TrendsThemes:
+      type: object
+      required: [source, matching, minimumMeetings, sufficient, overall, buckets]
+      properties:
+        source:
+          type: string
+          description: Where the themes come from. `ANALYSIS_TOPICS` today.
+          example: ANALYSIS_TOPICS
+        matching:
+          type: string
+          description: How two spellings are decided to be one theme. `LEXICAL` — never semantic.
+          example: LEXICAL
+        minimumMeetings:
+          type: integer
+          description: Analysed meetings in the range below which no ranking is returned at all.
+        sufficient:
+          type: boolean
+          description: Whether the range cleared `minimumMeetings`. False means `overall` is empty
+            because the data is thin, not because there are no themes.
+        overall:
+          type: array
+          items: { $ref: '#/components/schemas/TrendsTheme' }
+        buckets:
+          type: array
+          items: { $ref: '#/components/schemas/TrendsThemeBucket' }
+    TrendsResponse:
+      type: object
+      required:
+        [granularity, timezone, from, to, scopeStrategy, dataState, meetings, analysedMeetings,
+         taskLoad, themes]
+      properties:
+        granularity: { $ref: '#/components/schemas/TrendsGranularity' }
+        timezone:
+          type: string
+          description: IANA zone the buckets were cut in, so the numbers can be reproduced.
+          example: America/Sao_Paulo
+        from: { type: string, format: date-time, description: Applied range start, inclusive. }
+        to: { type: string, format: date-time, description: Applied range end, exclusive. }
+        scopeStrategy: { $ref: '#/components/schemas/TrendsScopeStrategy' }
+        dataState: { $ref: '#/components/schemas/TrendsDataState' }
+        meetings:
+          type: integer
+          description: Meetings in the range the caller is allowed to open.
+        analysedMeetings:
+          type: integer
+          description: How many of those carry a persisted analysis.
+        taskLoad: { $ref: '#/components/schemas/TrendsTaskLoad' }
+        themes: { $ref: '#/components/schemas/TrendsThemes' }
 
     # ---- chat ----
     ChatRole:

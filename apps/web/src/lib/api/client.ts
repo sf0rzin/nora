@@ -33,6 +33,8 @@ import type {
   SplitPreviewResponse,
   TelegramPairingStart,
   TenantInfo,
+  TrendsGranularity,
+  TrendsResponse,
   WorkflowDefinition,
   WorkflowExecutionResponse,
   WorkflowResponse,
@@ -45,6 +47,7 @@ export type { ChatMessage, ChatSessionDetail, ChatSessionSummary };
 export type { WorkflowDefinition, WorkflowExecutionResponse, WorkflowResponse };
 export type { IntegrationProvider, IntegrationStatus, TelegramPairingStart };
 export type { MeResponse, TenantInfo };
+export type { TrendsGranularity, TrendsResponse };
 import meetingsListFixture from '@/fixtures/meetings-list-response.json';
 import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
 import { handleSessionExpired, sharedRefresh } from '@/lib/auth';
@@ -576,6 +579,32 @@ export async function updateTask(
     method: 'PATCH',
     body: JSON.stringify(patch),
   });
+}
+
+// ---------- Trends (US21) ----------
+
+export interface TrendsParams {
+  granularity?: TrendsGranularity;
+  /** ISO-8601. Absent means the last 12 weeks (or 6 months). */
+  from?: string;
+  /** ISO-8601. Absent means now. */
+  to?: string;
+}
+
+/**
+ * Trends panel (GET /trends). The response is deliberately explicit about what it is allowed to
+ * claim: `dataState` separates "no meetings" and "no analysed meetings" from a real period of zero
+ * activity, and `themes.sufficient` is false when the range holds too few analysed meetings for a
+ * ranking to mean anything. The screen must read those flags and not infer emptiness from a series
+ * of zeros — the whole point of the endpoint returning them.
+ */
+export async function getTrends(params?: TrendsParams): Promise<TrendsResponse> {
+  const qs = new URLSearchParams();
+  if (params?.granularity) qs.set('granularity', params.granularity);
+  if (params?.from) qs.set('from', params.from);
+  if (params?.to) qs.set('to', params.to);
+  const q = qs.toString();
+  return request<TrendsResponse>(q ? `/trends?${q}` : '/trends');
 }
 
 // ---------- IAM (AWS-style) ----------

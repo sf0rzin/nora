@@ -122,7 +122,7 @@ done in.
 | US18 | Search by keyword/period | M | DONE | `list` accepts `search`, `status`, `from`, `to` (`MeetingsController.java:291-296`) | — |
 | US19 | Scope-restricted visibility via IAM | M | DONE | `AuthorizationService.isAllowed` + `IamScopingIntegrationTest` · every endpoint gated by `@RequiresPermission` deny-by-default since PR #407 · PR #35 | `PolicyEvaluator` supports `StringEquals`/`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan` |
 | US20 | Root sees everything in the tenant | M | DONE | Bypass in `AuthorizationService` · `PolicyEvaluator` | — |
-| US21 | Trends panel (themes + task load) | C | MISSING | No endpoint and no component | **Reactivated by ADR 0038 §5.** Its ADR 0014 criterion was "after US15 is turned on", and US15 shipped in PR #206 — the criterion was met and nobody noticed. Open scope, not deferred scope. Its real dependency, an embeddings backfill, is US86 — merged, but the panel is only worth anything for a tenant whose backfill has actually been *run* |
+| US21 | Trends panel (themes + task load) | C | DONE | `TrendsController` (`GET /trends`) · `application/trends/TrendsService` + `TopicNormalizer` · `TrendsRepositoryAdapter` · migration V030 (`meeting_action_items.completed_at`) · `apps/web/src/app/(app)/trends/` · `trendsAggregate_excludesAMeetingCoveredByASpecificDeny` | **Reactivated by ADR 0038 §5**; delivered on the topics the analysis already persists, not on the embeddings. That choice makes the panel independent of whether a tenant's US86 backfill has been *run* — the sentence this row carried while the story was open. Two limits are stated on the wire rather than hidden: theme matching is `LEXICAL` (spellings are folded, synonyms are not), and no ranking is produced below 5 analysed meetings in the range. Completions before V030 are dated from the old `updated_at`, an upper bound rather than a measurement |
 | US59 | Printable meeting report (save as PDF) | S | DONE | `apps/web/src/app/(app)/meetings/[id]/report/page.tsx` + `report/print-button.tsx` — A4 print CSS, native `window.print` dialog, zero PDF libraries · PR #225 | The shell chrome is hidden by a `<style>` scoped to the route rather than by restructuring the `(app)` layout |
 | US60 | Export a meeting as Markdown | S | DONE | `apps/web/src/lib/report/markdown.ts` (`meetingToMarkdown`, `meetingReportFileName`) · `apps/web/src/app/(app)/meetings/[id]/export-menu.tsx` — generated client-side, downloaded via Blob, no server round-trip · PR #225 | — |
 | US61 | Projects view: meetings grouped by tag | C | DONE | `apps/web/src/app/(app)/projects/page.tsx` · PR #165 | Client-side grouping over `MeetingListItem.tags`, with drill-down through `?tag=`. **There is no project entity and no backend**: a "project" is a tag, so renaming or merging one is not possible |
@@ -285,15 +285,18 @@ then ADR 0038's, argued is worth keeping.
 
 ## 4. State Summary (2026-08-17)
 
-Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0044), US25 and US31.
+Recounted by parsing the §2 tables, not by hand. Two parallel deliveries each recounted with only
+their own story once, and the Total row was found stale in the same pass — so the check runs in both
+directions: the per-row sums against the Total row, and `DONE + PARTIAL + MISSING + WONT` against the
+number of stories.
 
 | MoSCoW | Total | DONE | PARTIAL | MISSING | WONT |
 |---|---|---|---|---|---|
 | **Must Have (M)** | 28 | **28** | 0 | 0 | 0 |
 | **Should Have (S)** | 40 | **33** | **2** (US13, US42) | **5** (US27, US33, US34, US41, US80) | 0 |
-| **Could Have (C)** | 12 | **9** | 0 | **3** (US21, US44, US75) | 0 |
+| **Could Have (C)** | 12 | **10** | 0 | **2** (US44, US75) | 0 |
 | **Won't Have v1 (W)** | 6 | **1** (US09) | 0 | **1** (US08) | **4** (US05, US47, US50, US51) |
-| **Total** | **86** | **71** | **2** | **9** | **4** |
+| **Total** | **86** | **72** | **2** | **8** | **4** |
 
 **What changed against the 2026-05-14 revision, and why the totals move so much:**
 
@@ -312,16 +315,21 @@ Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0044), US25 and 
   reactivatable under a criterion, and these four are not waiting for anything.
 - **US86 was added after that revision** (ADR 0044), for the same reason the 34 above were: the RAG
   index had a defect nobody had written down.
-- **US25, US31 and US43 all went MISSING → DONE** after that revision, in the same wave. They are
-  three of the four stories ADR 0038 §5 reactivated; only US21 is still open.
+- **US25, US31, US43 and US21 all went MISSING → DONE** after that revision, in the same wave. They
+  are the four stories ADR 0038 §5 reactivated, and none of them is open any more.
+- **US21 was delivered on `meeting_analyses.topics` rather than on the embeddings**, which is why
+  its row no longer carries "only worth anything once the backfill has been run": the panel does not
+  read the RAG index at all.
 
 **Effective coverage**
 
 - Must Have: **28 of 28** (100%). The v1.0 MVP of §6 is complete.
 - Should Have: **33 of 40** (83%). The remaining gaps are the MCP server (US27), tenant-facing
   metrics and export (US33, US34), policy templates (US41), tenant-wide erasure and portability
-  (US80), and two partials (US13, US42). Of the four ADR 0038 reactivations only US21 is still
-  open, and it lives in `C`.
+  (US80), and two partials (US13, US42). All four of the ADR 0038 reactivations have landed — the
+  last of them, US21, in `C`.
+- Could Have: **10 of 12** (83%). What is left is permission boundaries (US44) and scheduled flows
+  (US75).
 
 ## 5. Scope decisions in force
 
@@ -335,7 +343,7 @@ section now points rather than copies: **the ADR decides, the backlog records.**
 | US51 — Account Health band alert | **WONT** | ADR 0038 §4 |
 | US47 — MCP project state | **WONT** | ADR 0041 §Effect on the backlog |
 | Enterprise DPA and SLA (not user stories) | **Closed** | ADR 0038 §4 |
-| US21 — Trends panel | **Reactivated** | ADR 0038 §5 |
+| US21 — Trends panel | **Reactivated**, and delivered — migration V030 | ADR 0038 §5 |
 | US25 — CSV/MD task export | **Reactivated**, and delivered | ADR 0038 §5 |
 | US31 — Company-context history | **Reactivated**, and delivered — migration V028 | ADR 0038 §5 |
 | US43 — Policy simulator | **Reactivated**, and delivered — `POST /iam/simulate` | ADR 0038 §5 |
