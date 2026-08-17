@@ -675,47 +675,67 @@ function openAiSseToText(
     // Frames are NDJSON, one `{"t":"r"|"c","c":"..."}` per line, because reasoning has to reach
     // the UI as something it can render apart from the answer. Appended into the same string it
     // would BE the answer, which is worse than showing nothing at all.
-    async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) {
-        finish(controller);
-        return;
-      }
-      if (trace.firstByteMs === null) trace.firstByteMs = Date.now() - trace.startedAt;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data:")) continue;
-        trace.sseLines += 1;
-        const payload = trimmed.slice(5).trim();
-        if (payload === "[DONE]") {
+    // `start`, NOT `pull`, and that is the whole of the second fix.
+    //
+    // `pull` runs only when the CONSUMER asks for data. Phase markers on the deployed route
+    // showed the request completing every step — session, model, context, redaction, provider
+    // headers, stream built, Response returned — in about 600ms, and then, for roughly two
+    // requests in five, nothing further: no `upstream done`, 0% CPU, and the edge killing the
+    // request at exactly 120s. The stream was returned and never drained. `pull` was never
+    // called, so nothing was enqueued, so the headers were never flushed, so the client had
+    // nothing to read and the loop had no reason to run. A deadlock, not a stall.
+    //
+    // `start` pushes as soon as the stream exists, whether or not anyone has pulled yet. The
+    // first chunk lands in the queue, Next flushes the headers, and the request stops depending
+    // on a consumer that may not arrive.
+    //
+    // Everything upstream of this was measured and cleared first: the provider answers 12/12 in
+    // under 700ms from inside this container, all six internal calls in under 62ms, DNS in 8ms,
+    // TCP in 5ms, and the same request straight at web:3000 hangs at the same rate as through
+    // Caddy — so it was never the network, the provider or the proxy.
+    async start(controller) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
           finish(controller);
           return;
         }
-        try {
-          const json = JSON.parse(payload) as {
-            choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>;
-            usage?: { prompt_tokens?: number; completion_tokens?: number };
-          };
-          const delta = json.choices?.[0]?.delta;
-          const thinking = delta?.reasoning_content;
-          if (thinking) {
-            trace.reasoningChunks += 1;
-            controller.enqueue(frame("r", thinking));
+        if (trace.firstByteMs === null) trace.firstByteMs = Date.now() - trace.startedAt;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          trace.sseLines += 1;
+          const payload = trimmed.slice(5).trim();
+          if (payload === "[DONE]") {
+            finish(controller);
+            return;
           }
-          const text = delta?.content;
-          if (text) {
-            trace.contentChunks += 1;
-            controller.enqueue(frame("c", text));
+          try {
+            const json = JSON.parse(payload) as {
+              choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>;
+              usage?: { prompt_tokens?: number; completion_tokens?: number };
+            };
+            const delta = json.choices?.[0]?.delta;
+            const thinking = delta?.reasoning_content;
+            if (thinking) {
+              trace.reasoningChunks += 1;
+              controller.enqueue(frame("r", thinking));
+            }
+            const text = delta?.content;
+            if (text) {
+              trace.contentChunks += 1;
+              controller.enqueue(frame("c", text));
+            }
+            if (json.usage) {
+              usage.promptTokens = json.usage.prompt_tokens ?? usage.promptTokens;
+              usage.completionTokens = json.usage.completion_tokens ?? usage.completionTokens;
+            }
+          } catch {
+            // partial fragment — ignore, the next chunk completes it
           }
-          if (json.usage) {
-            usage.promptTokens = json.usage.prompt_tokens ?? usage.promptTokens;
-            usage.completionTokens = json.usage.completion_tokens ?? usage.completionTokens;
-          }
-        } catch {
-          // partial fragment — ignore, the next chunk completes it
         }
       }
     },
