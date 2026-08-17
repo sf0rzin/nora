@@ -21,6 +21,7 @@ Issue / Story: `#`
 
 - [ ] Follows the standards in `docs/engineering/standards.md`
 - [ ] Commit messages in **English**, in Conventional Commits format (see `AGENTS.md` › How we work)
+- [ ] **The PR title above** is English and Conventional Commits — the squash takes the commit subject from it, and `main` cannot be rewritten afterwards. The `pr-title` CI job enforces this
 - [ ] Multi-tenancy preserved (`tenant_id` filter or RLS) — when applicable
 - [ ] PII Shield applied to user input before the LLM (ADR 0012) — when applicable
 - [ ] No secrets in the diff
