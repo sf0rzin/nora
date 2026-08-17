@@ -80,7 +80,7 @@ nora/
 |---|---|
 | Product vision (Is/Is Not, Does/Does Not, Geoffrey Moore) | `docs/product/vision.md` |
 | Prioritized backlog (MoSCoW + real status DONE/PARTIAL/MISSING) | `docs/product/backlog.md` |
-| Living roadmap (history of sub-phases 1.0–1.10 + future 1.11+) | `docs/product/roadmap.md` |
+| Delivery history (sub-phases 1.0–1.11, then by theme) + what is ahead | `docs/product/roadmap.md` |
 | NORA glossary (canonical terms: Productivity Score, Customer Confidence, IAM Policy, etc.) | `docs/product/glossary.md` |
 | Technical architecture (DDD layers, end-to-end flows, stack rationale) | `docs/engineering/architecture.md` |
 | Data Science pipeline for the TOTVS transcripts (EDA + TF-IDF + LLM) | `notebooks/totvs_transcricoes_eda.py` |
@@ -88,7 +88,7 @@ nora/
 | Postgres data model | `docs/engineering/data-model.md` |
 | Oracle data model (FIAP DB deliverable) | `docs/engineering/data-model-oracle.md` |
 | Self-hosted deploy runbook + self-hosting pitfalls | `docs/operations/host-deploy.md` |
-| Production-readiness gaps (target Sub-phase 1.12) | `docs/operations/production-readiness-gaps.md` |
+| Production-readiness gaps — **Azure-era and unreconciled**; ADR 0038 §6 is the current position | `docs/operations/production-readiness-gaps.md` |
 | FIAP Challenge 2026 academic material (personas, use cases, rubric) | `docs/challenge/` |
 | Durable architectural decisions (canonical index) | `docs/adr/NNNN-titulo.md` (index in `docs/adr/README.md`) |
 | HTTP contracts | `docs/api/openapi.yaml` — hand-written, complete, and compared to the controllers in CI by `scripts/check-openapi-coverage.sh`. springdoc is on the classpath for cross-checking, not as the source |
