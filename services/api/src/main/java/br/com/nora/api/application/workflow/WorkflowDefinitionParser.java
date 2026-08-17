@@ -3,6 +3,7 @@ package br.com.nora.api.application.workflow;
 import br.com.nora.api.application.workflow.WorkflowDefinition.Edge;
 import br.com.nora.api.application.workflow.WorkflowDefinition.Node;
 import br.com.nora.api.application.workflow.WorkflowDefinition.NodeKind;
+import br.com.nora.api.domain.workflow.ScheduleSpec;
 import br.com.nora.api.domain.workflow.TriggerType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -157,14 +158,19 @@ public class WorkflowDefinitionParser {
             throw new WorkflowException.InvalidDefinition(
                     "unknown trigger: " + triggers.get(0).type());
         }
-        // Declared in the enum but never fired by anything (see TriggerType). Saying "unknown"
-        // here would be a lie: the value is known, it is just not implemented.
+        // A value declared in the enum but fired by nothing (see TriggerType). Every value is
+        // dispatched today, so this branch is unreachable — it stays because the invariant it
+        // enforces is what US75 was about: saying "unknown" would be a lie, since the value is
+        // known, and accepting it would produce a flow that sits ACTIVE and never runs.
         if (!trigger.hasDispatcher()) {
             throw new WorkflowException.InvalidDefinition(
                     "trigger '"
                             + trigger.wire()
                             + "' is not implemented: no dispatcher fires it, so the flow"
                             + " would never run");
+        }
+        if (trigger == TriggerType.SCHEDULE_CRON) {
+            validateSchedule(triggers.get(0));
         }
 
         for (Edge e : definition.edges()) {
@@ -193,6 +199,24 @@ public class WorkflowDefinitionParser {
         if (!hasAction) {
             throw new WorkflowException.InvalidDefinition(
                     "the flow needs at least one action wired to the trigger");
+        }
+    }
+
+    /**
+     * The {@code schedule.cron} trigger's own params, against the restricted vocabulary of {@link
+     * ScheduleSpec} (ADR 0047 §2). Rejection here is what makes the trigger honest: the parser must
+     * refuse what the scheduler cannot honour rather than accept it and drift, which is the shape
+     * of the defect this trigger had for its whole life before US75.
+     */
+    private void validateSchedule(Node trigger) {
+        try {
+            ScheduleSpec.parse(trigger.params());
+        } catch (IllegalArgumentException ex) {
+            throw new WorkflowException.InvalidDefinition(
+                    "trigger 'On a schedule' (node '"
+                            + trigger.id()
+                            + "'): "
+                            + ex.getMessage());
         }
     }
 

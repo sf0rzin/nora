@@ -602,23 +602,27 @@ stop the others fired by the same event.
 The `ActionExecutor` contract requires a failure to **propagate an exception**. An action that
 swallows its own error and reports success is the one outcome the design refuses.
 
-### The four triggers, and the three that fire
+### The four triggers, and the four that fire
 
-`domain/workflow/TriggerType.java` declares four values. Three carry `hasDispatcher() == true` and
-have a handler in the engine; `schedule.cron` does not:
+`domain/workflow/TriggerType.java` declares four values. All four carry `hasDispatcher() == true`:
 
 | Trigger | Dispatcher | In the canvas |
 |---|---|---|
 | `meeting.analysis_completed` | `WorkflowEngine.onMeetingAnalysisCompleted` | Offered (and the one `/flows/new` drops on an empty canvas) |
 | `action_item.created` | `WorkflowEngine.onActionItemCreated` | Offered |
 | `meeting.risk_detected` | `WorkflowEngine.onMeetingRiskDetected` | Offered |
-| `schedule.cron` | **none — nothing in the backend schedules a workflow** | Not offered, and refused on save |
+| `schedule.cron` | `ScheduledFlowRunner`, a `@Scheduled` tick (§23) | Offered, carrying its schedule in the trigger node's params |
 
-`schedule.cron` stays in the enum because rows already persisted with that value must keep
-deserialising; what keeps it out of new definitions is `WorkflowDefinitionParser.java:162`, which
-rejects it with "no dispatcher fires it, so the flow would never run" rather than the lie that the
-value is unknown. Until PR #468 the canvas offered only the first trigger and the API accepted
-`schedule.cron` silently, which produced flows that sat ACTIVE and never ran.
+`schedule.cron` had **no** dispatcher until US75 (§23, ADR 0047): nothing in the backend scheduled a
+workflow, so a flow saved with it sat ACTIVE and never ran. PR #468 stopped that by making
+`WorkflowDefinitionParser` refuse the trigger on save — rejecting it with "no dispatcher fires it,
+so the flow would never run" rather than the lie that the value is unknown — and the enum value
+survived only so rows persisted before that rule kept deserialising. Before #468 the canvas offered
+only the first trigger and the API accepted `schedule.cron` silently.
+
+The `hasDispatcher()` check outlives the fix on purpose. Every value returns true today, so the
+branch is unreachable; it stays because the invariant it enforces is the one this trigger broke for
+its whole life — a value in the catalogue must be a value something actually fires.
 
 ### Storage and API
 
@@ -632,7 +636,9 @@ edge to a nonexistent node, known action and condition types — and a violation
 
 **Accepted debt, from the ADR:** there is no outbox. If the process dies between the `COMPLETED`
 commit and the listener dispatch, that event is lost with no retry; the manual recovery is
-`POST /workflows/{id}/test` or a reprocess.
+`POST /workflows/{id}/test` or a reprocess. The fourth trigger is the exception rather than the
+fix — it reads committed rows instead of an in-memory event, so it cannot lose a meeting that way
+(§23). The three event triggers still can.
 
 ## §12. OAuth integrations and token storage (ADR 0031)
 
@@ -716,7 +722,7 @@ category, since it imposes no appearance and the nodes stay our own React compon
 | File | Role |
 |---|---|
 | `flow-editor.tsx` | Canvas, selection, validation before save, and the serialisation in both directions |
-| `catalog.tsx` | The block catalog: 3 triggers, 4 conditions, 14 actions, each with copy, default params and a one-line summary |
+| `catalog.tsx` | The block catalog: 4 triggers, 4 conditions, 14 actions, each with copy, default params and a one-line summary |
 | `block-node.tsx` | The node component — inline styles over `var(--token)`, no library chrome |
 | `block-palette.tsx` | The palette the user drags from |
 | `side-panel.tsx` | Per-block parameter editing and the execution history |
@@ -1292,6 +1298,81 @@ One template (`department-scoped-meeting-reader`) ships the placeholder value `C
 `policy-form-editor.tsx` edits Effect / Action / Resource / Condition as fields. The condition operator is a `<select>` over exactly `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan` and `DateLessThan` — the five `PolicyEvaluator` implements. Offering a sixth would not produce an error, it would produce an `Allow` that never allows, because fail-closed denies what it cannot evaluate (§4). The JSON editor's schema was tightened the same way.
 
 The conversion lives in `apps/web/src/lib/iam/policy-document.ts` and is unit-tested (Vitest, ADR 0042), including the round trip. **The form refuses to open a document it cannot represent exactly** — an unknown field, an unsupported operator, a value shape the evaluator would stringify into something else — and names why. Silently dropping what it cannot render would let a user save a policy that no longer says what it said; the refusal costs one click to the JSON tab, which is still there and is still where anything unusual is written.
+## §23. Scheduled Flows — the fourth trigger, and what a run without a principal may do (US75)
+
+§11 is the event half of Flows. This is the timer half: `schedule.cron` had been declared since
+ADR 0030 with no dispatcher, and ADR 0047 gave it one. The code is
+`application/workflow/ScheduledFlowRunner`, `ScheduleOccurrences`, `domain/workflow/ScheduleSpec`
+and migration **V032** (`workflow_schedules`).
+
+### The vocabulary is closed, and that is the design
+
+The trigger does **not** accept a cron expression. It accepts three shapes in the trigger node's
+params — `hourly` + `minute`, `daily` + `hour`/`minute`, `weekly` + `weekday`/`hour`/`minute` —
+which `ScheduleSpec` compiles to a canonical six-field Spring expression (`0 M * * * *`,
+`0 M H * * *`, `0 M H * * DOW`) stored in `workflow_schedules.cron`.
+
+A full parser accepts `* * * * * *`, which fires every second, and the only honest answers to that
+are to run it (a single host cannot) or to accept it and quietly not run it — which is the exact
+defect this trigger had. A closed vocabulary makes the fastest expressible schedule **hourly** by
+construction rather than by a rejection rule that has to be remembered. Anything outside it,
+including a raw `cron` param passed by someone expecting an expression language, is a 422 at save.
+
+Occurrences are computed in **`America/Sao_Paulo`** — the same constant as §19's reporting zone and
+the two calendar actions — and the zone is written into every row rather than assumed, so a
+per-tenant zone later is a backfill and not an excavation.
+
+### The two timestamps, and why an outage costs punctuality and not data
+
+`workflow_schedules` carries `next_fire_at` and `window_from`, and they move at different moments:
+
+| Column | Advanced | Consequence |
+|---|---|---|
+| `next_fire_at` | at **claim**, to the next occurrence after now | three missed occurrences collapse into ONE run on recovery |
+| `window_from` | at **release**, to the instant the run fired | a run that dies mid-flight does not take its meetings with it |
+
+So occurrences are at-most-once and meetings are at-least-once. A host down six hours across three
+occurrences fires once, and that one run covers the whole six hours. The two values diverging is
+itself the visible evidence that a run died between claim and release.
+
+The claim is a **compare-and-swap**: the `UPDATE` matches the `next_fire_at` the tick read a moment
+earlier, so of two processes reading the same due row only one wins. ADR 0036 says there is one API
+container, but that is a deployment fact and not a property of the code. `claimed_at` doubles as the
+overlap guard — a due row with a live claim is **skipped**, never queued — and is believed for
+`nora.flows.schedule.claim-lease-minutes` (default 30, floored at 5 with a WARN) before being
+presumed abandoned, because a claim left by a dead JVM would otherwise freeze the schedule forever.
+
+Tenant context is the same shape the two existing timers use: no HTTP request means no GUC, so the
+runner iterates `TenantRepository.allActiveTenantIds()` and propagates through `TenantRlsContext`.
+Without it, under RLS enforce, every statement would match zero rows and the job would report
+"nothing due" forever.
+
+### What a run does, and what it is not
+
+One execution **per meeting analysed in the window**, most recent first, capped by
+`nora.flows.schedule.max-meetings-per-run` (default 50). The fan-out is the same shape
+`action_item.created` has, and it is what lets all four conditions and all fourteen actions work
+unchanged: each of them reads a `WorkflowEventContext` built from one meeting.
+
+**It is not a digest.** No aggregate placeholder exists, and the canvas copy says what the trigger
+does rather than what a scheduled trigger usually implies. A window with no analysed meetings writes
+**no** execution row at all — one empty row per occurrence would be a truer record, and an hourly
+schedule on a quiet week would fill the 50-row history with no-ops and push the real runs off the
+end of the list the user opens.
+
+### Under whose authority a timer-fired run acts
+
+**No IAM decision is made at fire time, because there is no principal to make one about.** The
+actions resolve the *tenant's* integration connections — `integration_connections` is
+`UNIQUE (tenant_id, provider)` (§12) and the async listener has worked that way since ADR 0030 — so
+a timer reaches no credential an analysis-triggered flow could not already reach. The authorization
+happened at save, where `workflow:write` was required.
+
+The consequence is named rather than engineered around: **revoking a user's `workflow:write` does
+not stop a flow they already created.** Deactivating or deleting the flow does, and so does the
+tenant leaving `allActiveTenantIds`. Re-evaluating the creator's policy at fire time was rejected in
+ADR 0047 §6 — it invents an offline principal resolution IAM does not have, and it would make a flow
+stop silently months later, which is the class of failure this story exists to end.
 
 ## Next architectural refactors
 

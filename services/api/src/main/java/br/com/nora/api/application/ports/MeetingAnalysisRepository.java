@@ -1,6 +1,7 @@
 package br.com.nora.api.application.ports;
 
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
+import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -21,6 +22,19 @@ public interface MeetingAnalysisRepository {
      * enrich the listing without N+1.
      */
     List<AnalysisCounts> countsByMeetingIds(Collection<UUID> meetingIds, UUID tenantId);
+
+    /**
+     * Ids of the tenant's meetings whose analysis was generated in {@code [from, toExclusive)},
+     * most recent first, at most {@code limit} of them. This is the window a scheduled flow runs
+     * over (US75, ADR 0047).
+     *
+     * <p>It reads COMMITTED state rather than an in-memory event, which is the one property that
+     * makes {@code schedule.cron} behave differently from the three event triggers: the analysis
+     * either committed inside the period or it did not, so a scheduled flow cannot lose a meeting
+     * to the gap ADR 0030 accepted between the COMPLETED commit and the listener dispatch.
+     */
+    List<UUID> meetingIdsAnalysedBetween(
+            UUID tenantId, OffsetDateTime from, OffsetDateTime toExclusive, int limit);
 
     /** Counts of an analysis for the listing row. */
     record AnalysisCounts(UUID meetingId, int actionItems, int risks, int opportunities) {}

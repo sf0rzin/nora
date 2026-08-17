@@ -98,8 +98,9 @@ class WorkflowDefinitionParserTest {
     }
 
     /**
-     * The three triggers the canvas offers are exactly the three {@code WorkflowEngine} dispatches.
-     * If a fourth ever gains a handler, this test is where the parity is asserted.
+     * The triggers the canvas offers are exactly the ones something dispatches. Since US75 that is
+     * all four, and this loop is where the parity is asserted: a value added to the enum without a
+     * dispatcher fails here rather than reaching a user as a flow that sits ACTIVE and never runs.
      */
     @Test
     void acceptsEveryDispatchedTrigger() {
@@ -110,20 +111,53 @@ class WorkflowDefinitionParserTest {
             WorkflowDefinition def = parser.parse(flowWith(trigger.wire()), actions);
             assertThat(def.triggerNode().type()).isEqualTo(trigger.wire());
         }
+        assertThat(TriggerType.SCHEDULE_CRON.hasDispatcher()).isTrue();
     }
 
     /**
-     * {@code schedule.cron} is a known value with no dispatcher. It has to be refused on save — and
-     * the message has to say "not implemented", not "unknown": the user picked something the API
-     * itself declares.
+     * {@code schedule.cron} was refused on save for its whole life before US75, because nothing
+     * fired it. It is accepted now — but only carrying a schedule the runner can actually honour.
      */
     @Test
-    void rejectsScheduleCronBecauseNothingDispatchesIt() {
-        assertThatThrownBy(() -> parser.parse(flowWith("schedule.cron"), actions))
+    void acceptsScheduleCronWithAValidSchedule() {
+        WorkflowDefinition def =
+                parser.parse(
+                        flowWith("schedule.cron", "{\"frequency\":\"weekly\",\"weekday\":\"MON\","
+                                + "\"hour\":9,\"minute\":0}"),
+                        actions);
+        assertThat(def.triggerNode().type()).isEqualTo("schedule.cron");
+        assertThat(def.triggerNode().params()).containsEntry("weekday", "MON");
+    }
+
+    /**
+     * The half that keeps the acceptance honest: what the scheduler cannot honour is refused at
+     * save, not accepted and quietly drifted. A trigger with no schedule at all is the case a
+     * definition written by hand hits first.
+     */
+    @Test
+    void rejectsScheduleCronWithNoSchedule() {
+        assertThatThrownBy(() -> parser.parse(flowWith("schedule.cron", "{}"), actions))
                 .isInstanceOf(WorkflowException.InvalidDefinition.class)
-                .hasMessageContaining("schedule.cron")
-                .hasMessageContaining("not implemented")
-                .hasMessageContaining("no dispatcher");
+                .hasMessageContaining("On a schedule")
+                .hasMessageContaining("frequency");
+    }
+
+    /** A full expression is refused by name — the vocabulary cannot honour "every second". */
+    @Test
+    void rejectsScheduleCronWithARawExpression() {
+        String params = "{\"cron\":\"* * * * * *\",\"frequency\":\"daily\",\"hour\":9,"
+                + "\"minute\":0}";
+        assertThatThrownBy(() -> parser.parse(flowWith("schedule.cron", params), actions))
+                .isInstanceOf(WorkflowException.InvalidDefinition.class)
+                .hasMessageContaining("does not take a raw");
+    }
+
+    @Test
+    void rejectsScheduleCronWithAnOutOfRangeHour() {
+        String params = "{\"frequency\":\"daily\",\"hour\":99,\"minute\":0}";
+        assertThatThrownBy(() -> parser.parse(flowWith("schedule.cron", params), actions))
+                .isInstanceOf(WorkflowException.InvalidDefinition.class)
+                .hasMessageContaining("hour");
     }
 
     @Test
@@ -394,12 +428,23 @@ class WorkflowDefinitionParserTest {
 
     /** Minimal valid flow (one trigger wired to one action) parameterized by the trigger wire. */
     private String flowWith(String triggerWire) {
+        return flowWith(triggerWire, defaultTriggerParams(triggerWire));
+    }
+
+    /** Same, with the trigger's own params. {@code schedule.cron} is the only trigger with any. */
+    private String flowWith(String triggerWire, String triggerParams) {
         return """
                 {"nodes":[
-                  {"id":"t1","kind":"trigger","type":"%s"},
+                  {"id":"t1","kind":"trigger","type":"%s","params":%s},
                   {"id":"a1","kind":"action","type":"send_email","params":{"to":"x@nora.dev"}}],
                  "edges":[{"id":"e1","source":"t1","target":"a1"}]}
                 """
-                .formatted(triggerWire);
+                .formatted(triggerWire, triggerParams);
+    }
+
+    private static String defaultTriggerParams(String triggerWire) {
+        return "schedule.cron".equals(triggerWire)
+                ? "{\"frequency\":\"daily\",\"hour\":9,\"minute\":0}"
+                : "{}";
     }
 }

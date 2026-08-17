@@ -215,10 +215,10 @@ done in.
 | ID | Title | MoSCoW | Status | Evidence | Known debt |
 |---|---|---|---|---|---|
 | US71 | Build an automation on a visual canvas | S | DONE | `apps/web/src/app/(app)/flows/` — `page.tsx`, `new/page.tsx`, `[id]/page.tsx`, `catalog.tsx`, `flow-editor.tsx`, `side-panel.tsx` · React Flow styled with NORA tokens · ADR 0032 · PRs #223, #226, #248, #250 | The block that lands on an empty canvas is the first trigger in `CATALOG`, so the array order is load-bearing — flagged in the file's own comment after PR #468 added two more triggers |
-| US72 | Automations fire on what the analysis found | S | DONE | Three dispatched triggers in `TriggerType.java` — `meeting.analysis_completed`, `action_item.created`, `meeting.risk_detected` — published by `AnalysisService` and handled by `WorkflowEngine` · in-process post-commit event bus, ADR 0030 · `TriggerEventsIntegrationTest` · PRs #220, #227, #468 | Two of the three existed in the backend for months without appearing in the canvas catalog; PR #468 exposed them |
+| US72 | Automations fire on what the analysis found | S | DONE | Three dispatched **event** triggers in `TriggerType.java` — `meeting.analysis_completed`, `action_item.created`, `meeting.risk_detected` — published by `AnalysisService` and handled by `WorkflowEngine` · in-process post-commit event bus, ADR 0030 · `TriggerEventsIntegrationTest` · PRs #220, #227, #468 | Two of the three existed in the backend for months without appearing in the canvas catalog; PR #468 exposed them. The fourth trigger, `schedule.cron`, is not one of these — it is fired by a timer, not by the bus (US75) |
 | US73 | Test a flow before activating it | C | DONE | `POST /workflows/{id}/test` (`WorkflowsController.java:128`), gated by its own `workflow:test` IAM action because it really executes the wired actions | A test run sends real e-mail and creates real issues against the tenant's own connections. That is deliberate and is why it is a distinct IAM action, but there is no dry-run mode |
 | US74 | See a flow's execution history | S | DONE | `GET /workflows/{id}/executions` (`WorkflowsController.java:135`) · `workflow_executions` in migration V023 with `status` CHECK in `RUNNING`/`SUCCESS`/`FAILED` and a `log_json` JSONB trail · `ExecutionLogBuilder.java` · `WorkflowFlowIntegrationTest` | — |
-| US75 | Flows on a schedule (cron) | C | MISSING | `TriggerType.SCHEDULE_CRON` is declared with `hasDispatcher() == false` (`TriggerType.java:18`) and `WorkflowDefinitionParser` refuses it on save since PR #468. **Nothing in the backend schedules a workflow** | **Reactivated by ADR 0046 §1.** The enum value survived only so rows persisted before PR #468 stay readable. It is the one place where the Flows catalogue advertises something the engine cannot do |
+| US75 | Flows on a schedule (cron) | C | DONE | `ScheduledFlowRunner.java` — a `@Scheduled` tick that claims each due run in `workflow_schedules` (migration **V032**) before executing it · `ScheduleSpec.java` (the restricted vocabulary: hourly / daily / weekly, compiled to a canonical cron expression) · `TriggerType.SCHEDULE_CRON.hasDispatcher()` is now true and `WorkflowDefinitionParser` accepts it with a valid schedule and refuses it without one · offered in the canvas as the "on a schedule" trigger block (`catalog.tsx`, `side-panel.tsx`) · ADR 0047, architecture §23 · `ScheduleSpecTest`, `ScheduledFlowRunnerTest` | **Reactivated by ADR 0046 §1, built.** Deliberately **not a digest**: the run fires once per meeting analysed since the previous window opened (the fan-out `action_item.created` has), because every condition and action reads a one-meeting context and no aggregate placeholder exists. A period with no analysed meetings writes no execution row, so "it ran and found nothing" is invisible in the history — the alternative filled a 50-row history with no-ops. A timer-fired run carries **no principal**: it acts under the tenant's integration connections, so revoking `workflow:write` does not stop a flow already created (ADR 0047 §6) |
 | US76 | Send the meeting summary by e-mail from a flow | S | DONE | `SendEmailAction.java` + `MarkdownLite.java` (renders the summary's Markdown into the message body) · PR #245 | Goes through NORA's own transactional sender; US65 is the variant that sends through the user's connected mailbox |
 | US77 | Schedule the calendar follow-up from the extracted due date | C | DONE | `FollowUpSchedule.java` — shared by the Google and Outlook calendar actions; picks the nearest action-item due date strictly after today, falls back to "tomorrow", and an explicit `startInDays` on the node always wins · PR #252 | A due date extracted for today is skipped on purpose (it may already have passed), which is invisible to the user |
 
@@ -337,8 +337,8 @@ number of stories.
   US34), policy templates (US41), tenant-wide erasure and portability (US80), and two partials
   (US13, US42). All four of the ADR 0038 reactivations have landed — the last of them, US21, in
   `C` — and US27 left this list when the MCP server shipped.
-- Could Have: **10 of 12** (83%). What is left is permission boundaries (US44) and scheduled flows
-  (US75).
+- Could Have: **10 of 12** (83%), pending the recount that follows this wave's parallel deliveries.
+  What is left is permission boundaries (US44); scheduled flows (US75) shipped under ADR 0047.
 
 ## 5. Scope decisions in force
 
@@ -365,7 +365,7 @@ section now points rather than copies: **the ADR decides, the backlog records.**
 | US42 — Form-based policy editor | **Reactivated**, and delivered — form beside the JSON editor | ADR 0046 §1 |
 | US44 — Permission boundaries | **Reactivated**, on the thinnest argument of the seven, and the ADR says so | ADR 0046 §1 |
 | US13 — Mentioned participants | **Reactivated** | ADR 0046 §1 |
-| US75 — Flows on a schedule (cron) | **Reactivated** | ADR 0046 §1 |
+| US75 — Flows on a schedule (cron) | **Reactivated**, and built — the scheduler's five undocumented semantics are decided in ADR 0047 | ADR 0046 §1 · ADR 0047 |
 | US08 — Audio/video upload | **WONT** — batch transcription is a second provider surface, not a small addition to a streaming one | ADR 0046 §2 |
 
 **The limbo this paragraph used to describe is closed by ADR 0046.** It read: *"Still deferred, and
@@ -492,6 +492,8 @@ recorded in `workflow_executions` with its status and log — whether it succeed
 - The three dispatched triggers are `meeting.analysis_completed`, `action_item.created` and
   `meeting.risk_detected`. All three come out of the same analysis round.
 - The bus is in-process and post-commit: a flow never observes data that was rolled back.
-- `schedule.cron` has no dispatcher and is refused on save. A flow that could never run must not be
-  storable in the `ACTIVE` state.
+- `schedule.cron` is the fourth trigger and does not come from the bus: a timer fires it (US75,
+  ADR 0047), once per meeting analysed since the previous run's window opened. Before US75 it had
+  no dispatcher and was refused on save, because a flow that could never run must not be storable
+  in the `ACTIVE` state — which is still the rule, now satisfied by having a dispatcher.
 - A failing action fails its own run and is logged; it does not fail the analysis that triggered it.

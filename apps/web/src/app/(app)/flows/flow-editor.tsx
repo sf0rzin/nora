@@ -45,7 +45,14 @@ import {
   type WorkflowExecutionResponse,
 } from "@/lib/api/client";
 
-import { CATALOG, isGitHubRepo, isDiscordWebhook, blockMeta, type BlockMeta } from "./catalog";
+import {
+  CATALOG,
+  isGitHubRepo,
+  isDiscordWebhook,
+  isValidSchedule,
+  blockMeta,
+  type BlockMeta,
+} from "./catalog";
 import { BlockNode, type RFNode } from "./block-node";
 import { SidePanel, type PanelTab } from "./side-panel";
 import { BlockPalette } from "./block-palette";
@@ -267,6 +274,15 @@ function FlowEditorInterno({ workflowId }: { workflowId: string | null }) {
     if (gatilhos.length === 0)
       return "O fluxo precisa de um gatilho — adicione “Reunião analisada” pela paleta.";
     if (gatilhos.length > 1) return "O fluxo só pode ter um gatilho — remova os extras.";
+    // The schedule trigger is the only one with params, and the backend refuses an incomplete one
+    // (a schedule it cannot honour is rejected, never accepted and quietly not run).
+    const agendaIncompleta = gatilhos.find(
+      (n) => n.data.blockType === "schedule.cron" && !isValidSchedule(n.data.params),
+    );
+    if (agendaIncompleta) {
+      focarNo(agendaIncompleta.id);
+      return "O gatilho “Em um horário” precisa da frequência e do horário completos.";
+    }
     if (!nodes.some((n) => n.data.kind === "action"))
       return "Adicione ao menos uma ação (ex.: “Enviar e-mail”).";
     const tiposEmail = ["send_email", "gmail_send_email", "outlook_send_email"];

@@ -208,6 +208,16 @@ export function TrelloIcon({ size = 14 }: { size?: number }): ReactNode {
   );
 }
 
+/** Clock — the `schedule.cron` trigger (fires on a timer, not on an event). */
+export function ClockIcon({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg {...svgProps(size)}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 1.8" />
+    </svg>
+  );
+}
+
 /** Valid Discord channel webhook prefixes — same rule as the backend. */
 export const DISCORD_WEBHOOK_PREFIXES = [
   "https://discord.com/api/webhooks/",
@@ -226,9 +236,61 @@ export function isGitHubRepo(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0 && value.trim().includes("/");
 }
 
+/**
+ * The schedule vocabulary the backend accepts (ADR 0047 §2): three frequencies, and no way to
+ * express anything faster than hourly. It is deliberately NOT a cron expression — a full parser
+ * accepts one that fires every second, which this substrate cannot honour.
+ */
+export const SCHEDULE_FREQUENCIES = ["hourly", "daily", "weekly"] as const;
+export type ScheduleFrequency = (typeof SCHEDULE_FREQUENCIES)[number];
+
+/** Weekday wire values, in the order the select shows them. */
+export const SCHEDULE_WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const;
+
 const PRIORITY_LABEL = strings.flows.priority;
+const WEEKDAY_LABEL = strings.flows.weekday;
 const COPY = strings.flows.blocks;
 const SUMMARY = strings.flows.blockSummary;
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && /^\d+$/.test(value.trim())) {
+    return Number(value.trim());
+  }
+  return null;
+}
+
+function pad2(value: number): string {
+  return value < 10 ? `0${value}` : String(value);
+}
+
+/**
+ * true when the schedule params are complete and in range — the SAME rule the backend applies in
+ * `ScheduleSpec.parse`. Duplicated on purpose: the canvas has to refuse before the round trip, and
+ * the backend has to refuse regardless of what the canvas sent.
+ */
+export function isValidSchedule(params: Record<string, unknown>): boolean {
+  const minute = asNumber(params.minute);
+  if (minute === null || minute < 0 || minute > 59) return false;
+  if (params.frequency === "hourly") return true;
+  const hour = asNumber(params.hour);
+  if (hour === null || hour < 0 || hour > 23) return false;
+  if (params.frequency === "daily") return true;
+  if (params.frequency === "weekly") {
+    return typeof params.weekday === "string" && params.weekday in WEEKDAY_LABEL;
+  }
+  return false;
+}
+
+/** One-line schedule rendering inside the canvas node — e.g. "todo dia 09:00". */
+export function scheduleSummary(params: Record<string, unknown>): string {
+  if (!isValidSchedule(params)) return SUMMARY.setSchedule;
+  const minute = asNumber(params.minute) as number;
+  if (params.frequency === "hourly") return SUMMARY.scheduleHourly(pad2(minute));
+  const time = `${pad2(asNumber(params.hour) as number)}:${pad2(minute)}`;
+  if (params.frequency === "daily") return SUMMARY.scheduleDaily(time);
+  return SUMMARY.scheduleWeekly(WEEKDAY_LABEL[params.weekday as string], time);
+}
 
 export interface BlockMeta {
   kind: WorkflowNodeKind;
@@ -247,9 +309,10 @@ export interface BlockMeta {
 /**
  * Catalog v1 — exactly the types the engine runs today.
  *
- * The three triggers below are the three events `AnalysisService` publishes and `WorkflowEngine`
- * dispatches. `schedule.cron` exists in the backend enum but has no dispatcher, so it is NOT
- * offered here and the API refuses it on save.
+ * The first three triggers are the three events `AnalysisService` publishes and `WorkflowEngine`
+ * dispatches. The fourth, `schedule.cron`, is fired by `ScheduledFlowRunner` on a timer (US75,
+ * ADR 0047) — until that existed it was refused on save, because a flow the backend never runs
+ * must not be offered here.
  *
  * The FIRST trigger in this list is the one `/flows/new` drops on an empty canvas
  * (`flow-editor.tsx`), so keep the anchor trigger at the top.
@@ -275,6 +338,16 @@ export const CATALOG: BlockMeta[] = [
     ...COPY["meeting.risk_detected"],
     defaultParams: {},
     summary: () => null,
+  },
+  {
+    kind: "trigger",
+    type: "schedule.cron",
+    ...COPY["schedule.cron"],
+    // Daily at 09:00 rather than hourly: the default a user keeps without thinking should be the
+    // quiet one, and hourly on a workspace with meetings every day is a lot of Slack messages.
+    defaultParams: { frequency: "daily", hour: 9, minute: 0 },
+    summary: (p) => scheduleSummary(p),
+    Icon: ClockIcon,
   },
   {
     kind: "condition",

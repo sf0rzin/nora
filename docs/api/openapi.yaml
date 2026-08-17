@@ -1587,9 +1587,13 @@ paths:
       description: |
         IAM action: `workflow:write`. The trigger is NOT sent as a field: it is derived from the
         trigger node inside `definition`, so the canvas graph stays the single source of truth. A
-        definition whose trigger is unknown, or is `schedule.cron`, returns
-        `422 WORKFLOW_INVALID_DEFINITION` — the value survives in the enum only so rows persisted
-        before the rule keep reading, and nothing in the backend schedules a workflow.
+        definition whose trigger is unknown returns `422 WORKFLOW_INVALID_DEFINITION`, and so does a
+        `schedule.cron` trigger whose `params` fall outside the schedule vocabulary (see
+        `TriggerType`).
+
+        This is also where the authorization of a scheduled flow happens, and the only place it can:
+        the timer that fires it later carries no principal, so `workflow:write` here is the grant
+        that lets the standing instruction exist (ADR 0047 §6).
       requestBody:
         required: true
         content:
@@ -1626,7 +1630,12 @@ paths:
       summary: Replaces a workflow
       description: |
         IAM action: `workflow:write`. Full replacement, same body as create; the trigger is
-        re-derived from the definition and the same `schedule.cron` refusal applies.
+        re-derived from the definition and the same schedule-vocabulary validation applies.
+
+        A save also rewrites the flow's schedule state: a flow that stops being `schedule.cron`
+        loses it, and one whose schedule changed — or that was paused past its next occurrence —
+        restarts from now. A save that leaves the schedule untouched keeps the running window, so
+        editing an action does not drop the meetings analysed since the last run.
       parameters: [{ $ref: '#/components/parameters/WorkflowId' }]
       requestBody:
         required: true
@@ -3968,11 +3977,31 @@ components:
         Wire form of `TriggerType`, as stored in `workflows.trigger_type` and in the canvas trigger
         node.
 
-        The first three are dispatched: each is published by `AnalysisService` and handled by
-        `WorkflowEngine`. `schedule.cron` is NOT — nothing in the backend schedules a workflow, so
-        a flow saved with it would sit active and never run. It is still listed here because rows
-        persisted before that rule keep reading, but it is REFUSED on save with
-        `422 WORKFLOW_INVALID_DEFINITION`, and the canvas catalog does not offer it.
+        All four are dispatched. The first three are published by `AnalysisService` and handled by
+        `WorkflowEngine`. `schedule.cron` is fired on a timer by `ScheduledFlowRunner` (US75,
+        ADR 0047): it runs the flow once per meeting analysed since the previous run's window
+        opened — the same fan-out `action_item.created` has — and produces no execution at all when
+        nothing was analysed in the period. It is deliberately not a digest; no aggregate
+        placeholder exists.
+
+        Until US75 it had NO dispatcher and was refused on save, because a flow saved with it would
+        have sat active and never run.
+
+        Its trigger node carries the schedule in `params`, as a RESTRICTED VOCABULARY rather than a
+        cron expression — a full parser accepts expressions that fire every second, which a single
+        host cannot honour:
+
+        | `frequency` | Other params | Meaning |
+        |---|---|---|
+        | `hourly` | `minute` (0-59) | every hour at that minute |
+        | `daily` | `hour` (0-23), `minute` | every day at that time |
+        | `weekly` | `weekday` (`MON`..`SUN`), `hour`, `minute` | that weekday, at that time |
+
+        Occurrences are computed in **America/Sao_Paulo**, the same zone the trends panel reports
+        in. Anything outside the vocabulary — an unknown `frequency`, an out-of-range `hour` or
+        `minute`, a `weekly` with no `weekday`, or a raw `cron`/`expression` param — is refused on
+        save with `422 WORKFLOW_INVALID_DEFINITION`. The parser rejects what the scheduler cannot
+        honour rather than accepting it and drifting.
     Workflow:
       type: object
       required: [id, name, triggerType, active, definition, createdAt, updatedAt]
