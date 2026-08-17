@@ -29,7 +29,7 @@ This page documents:
 | **Documented architectural decisions** | [`../adr/README.md`](../adr/README.md) — canonical ADR index (durable decisions with context + alternatives) |
 | **Technical validation (tests)** | Coverage measured by CI on every run, not quoted from a snapshot: worker **92.4%** over `nora_nlp` (863 tests), backend **77.1-77.3%** instruction / **61.5-61.6%** branch (578 tests), `apps/web` unmeasured (Playwright e2e, no coverage instrumentation) — measured 2026-08-17, see the "Measured coverage" section below |
 | **Functional demonstration (deploy)** | NORA runs self-hosted on a single bare-metal host (ADR 0034/0036), behind Cloudflare Tunnel at `nora.systems`. The Azure deployment this rubric item originally pointed at is gone — no subscription, no export (ADR 0036) |
-| **Pitch / final presentation** | Sub-phase 1.11 creates a 15-20 min demo script |
+| **Pitch / final presentation** | [`demo-script.md`](demo-script.md) — block-by-block script with a plan B per block, paired with the seed in `scripts/seed-demo.sh`. **The running time is declared there and nowhere else**, because this page and the roadmap used to carry two different numbers for a script that did not exist |
 
 ### Technical differentiators (above the rubric minimum)
 
@@ -100,7 +100,7 @@ The FIAP rubric is the **visible academic layer**; the commercial product runs i
 
 ## Next steps before the pitch (15/06)
 
-- **Sub-phase 1.11 — Demo Polish Plan A** (2-3 agentic weeks): polish the internal UX (dashboard, meeting detail, tasks, settings) + realistic synthetic TOTVS seed + recorded demo script. Items previously listed here have already been delivered: Customer Confidence full-stack (PR #148), removal of AUTH_FILTER_HARD_CAP (batch scanning in `MeetingService.listAllForAuthFilter`) and the PolicyEvaluator operators (StringEquals, StringIn, StringLike, DateGreaterThan, DateLessThan, fail-closed)
+- **Sub-phase 1.11 — Demo Polish Plan A** (2-3 agentic weeks): what remains is polishing the internal UX (dashboard, meeting detail, tasks, settings), which is item (d) and is subjective by construction. Everything else is delivered: Customer Confidence full-stack (PR #148), removal of AUTH_FILTER_HARD_CAP (batch scanning in `MeetingService.listAllForAuthFilter`), the PolicyEvaluator operators (StringEquals, StringIn, StringLike, DateGreaterThan, DateLessThan, fail-closed), the demonstration seed (`scripts/seed-demo.sh` plus the `meridian-erp` material in `data/synthetic/`) and the demo script ([`demo-script.md`](demo-script.md)). The seed's vendor is fictional rather than TOTVS, for the reasons recorded in `data/synthetic/README.md`
 - **Sub-phase 1.12 — Production Hardening** (if there is time left before the pitch): a separate rg-nora-prod, monitoring alerts, secrets rotation, RLS cutover/enforcement in prod. Operational LGPD is already delivered (ADR 0029: `DELETE /privacy/meetings/{id}` + scheduled RetentionSweeper). **It can be left until after the pitch without harming the demo.**
 
 ## History
@@ -110,3 +110,4 @@ The FIAP rubric is the **visible academic layer**; the commercial product runs i
 | 2026-05-14 | Doc created in Sub-phase 1.10 (Docs Refresh) consolidating the FIAP × TOTVS framing |
 | 2026-06-06 | Doc x code reconciliation + standardization |
 | 2026-08-17 | Coverage re-measured in CI and the document's contradiction about it resolved: the rubric row no longer calls a figure from May "real measured", and a "Measured coverage" section now separates what is measured from what is gated |
+| 2026-08-17 | The pitch row of the rubric table and the 1.11 line point at `demo-script.md` instead of restating a duration. The running time this page used to assert is gone: it disagreed with the one in the roadmap, and neither described a script that existed |
