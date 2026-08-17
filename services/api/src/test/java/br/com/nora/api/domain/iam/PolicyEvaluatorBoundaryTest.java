@@ -143,19 +143,11 @@ class PolicyEvaluatorBoundaryTest {
 
         assertThat(
                         PolicyEvaluator.isAllowed(
-                                own,
-                                boundary,
-                                READ,
-                                ONE_MEETING,
-                                Map.of("department", "Vendas")))
+                                own, boundary, READ, ONE_MEETING, Map.of("department", "Vendas")))
                 .isTrue();
         assertThat(
                         PolicyEvaluator.isAllowed(
-                                own,
-                                boundary,
-                                READ,
-                                ONE_MEETING,
-                                Map.of("department", "Suporte")))
+                                own, boundary, READ, ONE_MEETING, Map.of("department", "Suporte")))
                 .isFalse();
     }
 
@@ -173,11 +165,7 @@ class PolicyEvaluatorBoundaryTest {
 
         assertThat(
                         PolicyEvaluator.isAllowed(
-                                own,
-                                boundary,
-                                READ,
-                                ONE_MEETING,
-                                Map.of("department", "Vendas")))
+                                own, boundary, READ, ONE_MEETING, Map.of("department", "Vendas")))
                 .isFalse();
     }
 

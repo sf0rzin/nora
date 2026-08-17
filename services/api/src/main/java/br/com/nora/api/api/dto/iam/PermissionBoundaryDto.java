@@ -19,11 +19,7 @@ import java.util.UUID;
  * @param attachedAt when it was set, null when there is no boundary
  */
 public record PermissionBoundaryDto(
-        UUID userId,
-        UUID policyId,
-        String policyName,
-        UUID attachedBy,
-        OffsetDateTime attachedAt) {
+        UUID userId, UUID policyId, String policyName, UUID attachedBy, OffsetDateTime attachedAt) {
 
     /** The answer for a user that carries no cap: present, and explicitly empty. */
     public static PermissionBoundaryDto none(UUID userId) {
