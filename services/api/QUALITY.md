@@ -8,7 +8,7 @@
 - **Formatter**: [Spotless](https://github.com/diffplug/spotless) with the **Google Java Format** profile (AOSP).
 - **Static lint**: Checkstyle (lean profile) + Error Prone via Maven.
 - **Tests**: JUnit 5 + AssertJ + Spring Boot Test + Testcontainers (real Postgres for integration).
-- **Coverage**: JaCoCo. The report runs on `verify` and is printed by CI (`scripts/report-coverage.sh`); the only **gate** is a rule over the single class `PolicyEvaluator` — instruction >= 90%, branch >= 75%, `haltOnFailure` (`pom.xml`). There is **no** 70%-of-lines rule on `application` and `domain`; this file claimed one until 2026-08-17 and the build never enforced it. Measured 2026-08-17: 77.3% instruction / 61.6% branch overall.
+- **Coverage**: JaCoCo. The report runs on `verify` and is printed by CI (`scripts/report-coverage.sh`); the only **gate** is a rule over the single class `PolicyEvaluator` — instruction >= 90%, branch >= 75%, `haltOnFailure` (`pom.xml`). There is **no** 70%-of-lines rule on `application` and `domain`; this file claimed one until 2026-08-17 and the build never enforced it. Measured 2026-08-17: 77.1-77.3% instruction / 61.5-61.6% branch overall.
 
 ## Commands
 

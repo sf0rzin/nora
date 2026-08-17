@@ -24,7 +24,7 @@ Postgres row-level security **is enforced on the deployed stack** since 2026-08-
 
 It is **off by default in the repository** (`NORA_RLS_ENFORCE` defaults to `false`), so a local `make dev` still connects as the owner and the application-layer filter is the only control there. Identity and IAM tables are exempt by design (ADR 0028): login resolves a user by global e-mail before any tenant exists, and RLS with no tenant context would fail that closed.
 
-One thing to know before reading the code as production-ready: `apps/web` has no unit tests. Its whole automated suite is three Playwright e2e specs (security headers, route protection, CSP violations) and nothing measures its coverage, so the web is the one surface with no coverage figure at all. The backend and worker are measured on every CI run — 77.3% instruction and 92.4% statement respectively on 2026-08-17 (`scripts/report-coverage.sh`).
+One thing to know before reading the code as production-ready: `apps/web` has no unit tests. Its whole automated suite is three Playwright e2e specs (security headers, route protection, CSP violations) and nothing measures its coverage, so the web is the one surface with no coverage figure at all. The backend and worker are measured on every CI run — 77.1-77.3% instruction and 92.4% statement respectively on 2026-08-17 (`scripts/report-coverage.sh`).
 
 ## Architecture
 

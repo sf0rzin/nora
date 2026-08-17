@@ -317,9 +317,9 @@ ADR 0018 is accepted and immutable; the targets below are its, unchanged. The **
 | Area | Sustained target (ADR 0018) | Measured 2026-08-17 |
 |---|---|---|
 | **Critical areas** (IAM, Auth, PII, LLM analyzer) | **> 85%** | IAM packages 90.9% instr · Auth/identity packages 93.8% instr · PII shield 96.6% stmt · `llm_analyzer.py` 84.7% stmt |
-| Other backend areas | > 60% | overall backend 77.3% instruction / 78.1% line |
+| Other backend areas | > 60% | overall backend 77.1-77.3% instruction / 78.0-78.1% line (see the repeatability note below) |
 | NLP Worker | > 85% | **92.4%** statement over `nora_nlp` |
-| **Backend branch coverage** | > 70% | **61.6%** — still short of the target, by 8.4 points |
+| **Backend branch coverage** | > 70% | **61.5-61.6%** — still short of the target, by about 8.5 points |
 | Web Next.js | TBD | unmeasured — Playwright e2e exists, coverage instrumentation does not |
 | Desktop client | out of scope here (maintained by @pollotherunner) | not measured |
 
@@ -327,7 +327,7 @@ ADR 0018 is accepted and immutable; the targets below are its, unchanged. The **
 
 **Two of these are gates. The rest are reports.** `mvn verify` fails on the JaCoCo rule over `PolicyEvaluator` (instruction >= 90%, branch >= 75%) and the worker job fails on `--cov-fail-under=90` over `pii_shield`. Nothing fails on any other row, including the branch-coverage row that misses its target.
 
-**The overall backend figure is not exactly repeatable.** Two consecutive CI runs of the same commit reported 77.2% and 77.3% instruction — ten instructions out of 41,596 — while every other row above was byte-identical. Something in the integration suite takes a slightly different path between runs. The point is not the tenth of a percent; it is that a backend figure quoted to two decimal places is quoting noise, and the honest precision here is one decimal at best.
+**The overall backend figure is not repeatable, and that is measured, not assumed.** Three CI runs of the same branch reported 77.1%, 77.2% and 77.3% instruction (32,083 / 32,128 / 32,138 covered of a constant 41,596), with branch at 61.5-61.6% and line at 78.0-78.1%. Something in the integration suite takes a slightly different path from run to run. The per-area rows above did **not** move: IAM, Auth and `PolicyEvaluator` came out byte-identical all three times, which is the useful half of this finding — the numbers ADR 0018 actually cares about are stable, and the aggregate is the noisy one. Consequence for anyone quoting these: a backend total is good to about ±0.1 point, so a decision that turns on a tenth of a percent is a decision resting on nothing.
 
 **Counters are not interchangeable.** JaCoCo's *instruction* coverage is what the backend gate counts and what the backend figures above use; coverage.py reports *statement* coverage for the worker. A line percentage and an instruction percentage are different numbers for the same code — quoting one under the other's name is how "67%" survived three months without anyone being able to say what it measured.
 
