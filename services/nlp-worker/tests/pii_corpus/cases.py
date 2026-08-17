@@ -657,12 +657,17 @@ def _false_positives() -> list[Case]:
 # name, which is why they are recorded and not urgent -- and why they are not silently dropped
 # from the corpus either. Adding them to `_PERSON_NAME_NEGATIVE_LIST` is the obvious fix and was
 # rejected while finding 5a was live; see the finding for the trade.
-_ROLE_PHRASES_STILL_WRONG: dict[str, str] = {
-    "Customer Success": "two Title Case tokens, neither on any list, so the sequence pattern "
-    "trusts its own shape",
-    "Machine Learning": "same shape as above",
-    "Pull Request": "same shape as above",
-}
+# EMPTY NOW, and the emptiness is the record. It held `Customer Success`, `Machine Learning` and
+# `Pull Request`, each described as "two Title Case tokens, neither on any list, so the sequence
+# pattern trusts its own shape". All three are on `_PERSON_NAME_NEGATIVE_LIST` as of the change
+# that closed the all-caps pair gap: the note beside them said adding them there was "the obvious
+# fix and was rejected while finding 5a was live", and finding 5a has been closed since
+# `_split_on_allow_list` landed.
+#
+# Kept as an empty dict rather than deleted: the shape it describes is still a real gap for any
+# English function name nobody has listed, which is what
+# `adv/allcaps_pair/english_role_phrase` now records.
+_ROLE_PHRASES_STILL_WRONG: dict[str, str] = {}
 
 
 # --------------------------------------------------------------------------- #
@@ -689,19 +694,38 @@ _5A_TITLE = (
 _SINGLE_TOKEN = (
     "an allow-listed term beside one half of a name leaves a run of a single token, and a lone "
     "token on neither name list is refused by `_is_a_name_on_its_own` -- the same limitation as "
-    "finding 5b, reached by a different route"
+    "finding 5b, reached by a different route. `_spans_and_vouched` closes this shape when the "
+    "OTHER half of the split is recognisable; here NEITHER half is, so nothing vouches for "
+    "anything and the shield has no lexical signal at all -- which is exactly what separates it "
+    "from the `fp_split_flank` strings, whose halves are equally unrecognisable and are not people"
 )
 
 
+# WHAT IS LEFT OF THIS SHAPE, after the phrase-head fix. `_qualify_run` used to refuse the
+# lone-token lookup whenever ANY ordinary head had been stripped; it now refuses only when two or
+# more were, so `<head> <listed surname>` and `<head> do <listed surname>` are claimed. What
+# still leaks is the same shape with an OFF-LIST surname, because the lookup that survives is
+# still a lookup: `Prazo Kranz` and `Proposta Bittencourt` reduce to one token that no list
+# knows, and `_is_a_name_on_its_own` refuses it. That is finding 5b, not this one.
 _LONE_AFTER_HEAD = (
-    "a phrase head strips to one token and the run dies: `_trusted_span` gives up below two "
-    "tokens and `_qualify_run` returns on `stripped_a_label` before reaching the lone-token "
-    "lookup that would have recognised the surname -- so a real name reaches the provider"
+    "a phrase head strips the run to ONE token and the surviving token is on neither name list, "
+    "so `_is_a_name_on_its_own` refuses it -- the phrase-head half of this is closed, the "
+    "single-token half is finding 5b and is not"
 )
 
-_GENITIVE = (
-    "the genitive, and the commonest of these shapes in Portuguese: the head is stripped, the "
-    "preposition is on `_NAME_CONNECTIVES`, and one token is left -- " + _LONE_AFTER_HEAD
+# The four genitive cases below carry THIS note and not `_LONE_AFTER_HEAD`, and the correction is
+# the useful part. The note they used to carry said "the head is stripped, the preposition is on
+# `_NAME_CONNECTIVES`, and one token is left" -- a description of `_qualify_run`'s behaviour on a
+# run these strings never produce. `A proposta da Costa foi aceita.` has exactly ONE capitalised
+# word in it, so `_NAME_SEQUENCE_RE` (which needs two adjacent title words) never matches and no
+# run is built at all. The explanation was wrong before the phrase-head fix and is wrong after
+# it; what is true of them is finding 5b, and `Contato do Silva aprovou o escopo.` -- with a
+# capitalised head, therefore a real two-token match -- is the one that was really about the head
+# list, and it is REQUIRED now.
+_GENITIVE_IN_PROSE = (
+    "the genitive with a LOWERCASE head: only one capitalised word in the string, so "
+    "`_NAME_SEQUENCE_RE` never matches and nothing reaches the phrase-head rules at all. This is "
+    "finding 5b's shape, reached through the genitive"
 )
 
 _LONE_IN_PROSE = (
@@ -869,14 +893,33 @@ def _adversarial() -> list[Case]:
         ),
         # ---- ALL CAPS ----
         Case("adv/caps/onlist", "adv_caps", "CARLOS SILVA aprovou o escopo.", ("Carlos", "Silva")),
+        # PROMOTED. The note it carried said an all-caps run with neither end on a name list "is
+        # indistinguishable from an acronym string" in running prose. That was true of the RUN
+        # and not of the run in its context: an acronym string does not sit as a two-word stretch
+        # inside a sentence that goes on in lower case. `_caps_pair_in_running_prose` is that
+        # rule, and `fp_allcaps_pair` is what it costs.
         Case(
             "adv/caps/offlist",
             "adv_caps",
             "WANDERLEIA KRANZ aprovou o escopo.",
             ("Wanderleia", "Kranz"),
+        ),
+        # ...and the residual of that rule, stated as a case rather than as a paragraph. Two
+        # all-caps English words that no list knows are the shape of a name and are a department.
+        # It is the same residual the Title Case path has always had -- `role_phrase` recorded
+        # `Customer Success` as exactly this, one case shorter -- and those three are on the
+        # negative list now, which closes the commonest instance and not the class.
+        Case(
+            "adv/allcaps_pair/english_role_phrase",
+            "adv_caps",
+            "SALES ENABLEMENT assumiu a conta.",
+            (),
+            ("SALES", "ENABLEMENT"),
             status=KNOWN_GAP,
-            note="an all-caps run with neither end on a name list is admitted only as a speaker "
-            "label; in running prose it is indistinguishable from an acronym string",
+            note="an English function name in all caps is two off-list tokens of four letters or "
+            "more, followed by lower-case prose -- every condition `_caps_pair_in_running_prose` "
+            "asks for. Closing it means naming the phrase, which is what the negative list did "
+            "for the three that were already measured",
         ),
         Case(
             "adv/caps/speaker_label_offlist",
@@ -951,14 +994,16 @@ def _adversarial() -> list[Case]:
             "name reaches the provider. Closing it means resolving the overlap, not patching "
             "this shape",
         ),
+        # PROMOTED. `customer` and `success` are on `_PERSON_NAME_NEGATIVE_LIST` now. The note it
+        # carried -- "two off-list Title Case tokens are the exact shape of a full name" -- is
+        # still true of the SHAPE, and `adv/allcaps_pair/english_role_phrase` is where the shape
+        # is measured for a phrase nobody has named.
         Case(
             "adv/false/role_phrase",
             "adv_false_redaction",
             "O Customer Success ficou de revisar o escopo.",
             (),
             ("Customer", "Success"),
-            status=KNOWN_GAP,
-            note="two off-list Title Case tokens are the exact shape of a full name",
         ),
         Case(
             "adv/false/weekday",
@@ -1009,14 +1054,15 @@ def _adversarial() -> list[Case]:
             "placeholder, so an ordinary business noun is swallowed with the name. Correct "
             "for the leak this group is about, and not free",
         ),
+        # PROMOTED. One ordinary head in front of a listed surname is claimed now, and the head
+        # itself survives -- which is the pair of properties that tells a good fix from the one
+        # that empties `_COMMON_PHRASE_HEADS`.
         Case(
             "adv/lone_after_head/com",
             "adv_lone_after_head",
             "Com Silva aprovou o escopo.",
             ("Silva",),
             ("Com",),
-            status=KNOWN_GAP,
-            note=_LONE_AFTER_HEAD,
         ),
         Case(
             "adv/lone_after_head/contato",
@@ -1024,8 +1070,6 @@ def _adversarial() -> list[Case]:
             "Contato Costa aprovou o escopo.",
             ("Costa",),
             ("Contato",),
-            status=KNOWN_GAP,
-            note=_LONE_AFTER_HEAD,
         ),
         Case(
             "adv/lone_after_head/prazo",
@@ -1051,8 +1095,6 @@ def _adversarial() -> list[Case]:
             "Escopo Almeida aprovou o orcamento.",
             ("Almeida",),
             ("Escopo",),
-            status=KNOWN_GAP,
-            note=_LONE_AFTER_HEAD,
         ),
         Case(
             "adv/lone_after_head/reuniao",
@@ -1060,8 +1102,6 @@ def _adversarial() -> list[Case]:
             "Reuniao Nogueira definiu o prazo.",
             ("Nogueira",),
             ("Reuniao",),
-            status=KNOWN_GAP,
-            note=_LONE_AFTER_HEAD,
         ),
         # `dias` and `campos` are the overlap pinned by KNOWN_ORDINARY_NAME_OVERLAPS: on
         # `_COMMON_PHRASE_HEADS` so that `LOJA CAMPOS` is not a person, and on
@@ -1091,14 +1131,14 @@ def _adversarial() -> list[Case]:
         # contato do Silva", "a proposta da Costa" -- and 15 of 15 measured combinations
         # leak. The head is stripped, the preposition is on `_NAME_CONNECTIVES`, and what is
         # left is one token.
+        # PROMOTED, and it is the one genitive case that was ever about the head list: the head
+        # is CAPITALISED, so the string really does produce a two-token run.
         Case(
             "adv/lone_after_head/genitive_do",
             "adv_lone_after_head",
             "Contato do Silva aprovou o escopo.",
             ("Silva",),
             ("Contato",),
-            status=KNOWN_GAP,
-            note=_GENITIVE,
         ),
         Case(
             "adv/lone_after_head/genitive_da",
@@ -1107,7 +1147,7 @@ def _adversarial() -> list[Case]:
             ("Costa",),
             ("proposta",),
             status=KNOWN_GAP,
-            note=_GENITIVE,
+            note=_GENITIVE_IN_PROSE,
         ),
         Case(
             "adv/lone_after_head/genitive_article",
@@ -1116,7 +1156,7 @@ def _adversarial() -> list[Case]:
             ("Kranz",),
             ("contato",),
             status=KNOWN_GAP,
-            note=_GENITIVE,
+            note=_GENITIVE_IN_PROSE,
         ),
         Case(
             "adv/lone_after_head/genitive_verb_first",
@@ -1125,7 +1165,7 @@ def _adversarial() -> list[Case]:
             ("Bittencourt",),
             ("prazo",),
             status=KNOWN_GAP,
-            note=_GENITIVE,
+            note=_GENITIVE_IN_PROSE,
         ),
         Case(
             "adv/lone_after_head/genitive_delivery",
@@ -1134,7 +1174,7 @@ def _adversarial() -> list[Case]:
             ("Nogueira",),
             ("entrega",),
             status=KNOWN_GAP,
-            note=_GENITIVE,
+            note=_GENITIVE_IN_PROSE,
         ),
         # The heads themselves must keep surviving. If a fix for the above starts redacting
         # `Prazo` or `Contato`, it has traded a leak for exactly the false redaction that
@@ -1163,9 +1203,12 @@ def _adversarial() -> list[Case]:
             ("Costa", "Kranz"),
             ("Contato", "Prazo"),
             status=KNOWN_GAP,
-            note="both surnames leak today -- " + _LONE_AFTER_HEAD + ". What this case adds "
-            "over its neighbours is the OTHER direction: a fix that closes the leak by "
-            "emptying the head list eats `Contato` and `Prazo` and fails here",
+            note="HALF CLOSED, which is why it is still a gap and still worth reading. `Costa` "
+            "is redacted now and `Kranz` is not: the surviving lookup is a LIST lookup, so the "
+            "listed surname is claimed and the off-list one is refused -- " + _LONE_AFTER_HEAD
+            + ". What this case adds over its neighbours is the OTHER direction: a fix that "
+            "closes the leak by emptying the head list eats `Contato` and `Prazo` and fails here, "
+            "and both of them survive today",
         ),
         # ---- finding 5b: a single off-list first name in running prose ----
         #

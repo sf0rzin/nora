@@ -1,17 +1,22 @@
 """The gate: both rates, the adversarial fixtures, and the property behind finding 5a.
 
-`tests/pii_corpus/harness.py` does the measuring; this file is what fails the build. The two
-ceilings below are the measured rates, not aspirations -- a change that pushes either one up
-fails here, which is the only thing that stops a leak fix from being paid for with a shield that
-redacts the whole transcript.
+`tests/pii_corpus/harness.py` does the measuring; this file is what fails the build. The rates
+below are the measured ones, not aspirations -- a change that pushes either one up fails here,
+which is the only thing that stops a leak fix from being paid for with a shield that redacts the
+whole transcript.
+
+Each rate is held by THREE constants rather than one; see the block above `MAX_LEAK_RATE` for
+why a ceiling on its own never improves anything.
 """
 
 from __future__ import annotations
 
 import re
+from datetime import date
 
 import pytest
 
+from nora_nlp.models import PiiType
 from nora_nlp.services import pii_shield
 from nora_nlp.services.pii_shield import redact
 from tests.pii_corpus import pools
@@ -22,6 +27,7 @@ from tests.pii_corpus.cases import (
     QUADRANTS,
     REQUIRED,
     SHAPES,
+    address_cases,
     adversarial_cases,
     all_cases,
     false_positive_cases,
@@ -84,8 +90,76 @@ _PLACEHOLDER_IN_TESTS = re.compile(r"\[\[[A-Z_]+_\d+\]\]")
 # that rises because the code got worse. The false-redaction rate FALLING across all three is
 # the evidence that nothing was traded for any of them: every case added asserts something
 # that must survive, so they add to that denominator and nothing to its numerator.
-MAX_LEAK_RATE = 533 / 5652  # 9.43%
-MAX_FALSE_REDACTION_RATE = 558 / 5470  # 10.20%
+#   2026-08-17, corpus grew by `address`, `fp_address`, `fp_allcaps_pair` and
+#   `adv/allcaps_pair/english_role_phrase`, `pii_shield.py` UNCHANGED. Measured in CI, on the
+#   commit that added the cases and nothing else, so the two columns below are taken on the SAME
+#   corpus and the shield is the only thing that differs between them:
+#
+#       leak              9.43%  ->  9.60%   (533 of 5652 -> 544 of 5664)
+#       false redaction  10.20%  -> 10.13%   (558 of 5470 -> 558 of 5506)
+#
+#   The leak ceiling rose because ADDRESS was measured for the first time: eleven of the twelve
+#   address cases leak, and the twelfth passes by accident (`Largo do Machado` happens to be two
+#   Title Case tokens the sequence pattern already claims as a person). The false-redaction rate
+#   fell purely by denominator -- 36 new cases that all pass. Both are corpus movements, not
+#   shield movements, and this is the row the "corpus grew" discipline exists for.
+#
+#   2026-08-17, the shield changes of this branch, same corpus:
+#
+#       leak              9.60%  ->  ?       (544 of 5664 -> ? of 5664)
+#       false redaction  10.13%  ->  ?       (558 of 5506 -> ? of 5507)
+#
+# --------------------------------------------------------------------------- #
+# A ceiling, a ratchet and a goal
+#
+# THIS USED TO BE TWO CEILINGS AND NOTHING ELSE, and a ceiling on its own never improves
+# anything: it forbids getting worse and is entirely satisfied by standing still. Worse, it reads
+# to anybody who has not opened this file as a statement that a leak rate of 9.43% is acceptable.
+# It never was; it was what the shield did.
+#
+# Three constants per rate now, doing three different jobs, with three different failure messages
+# so a red build says which one fired:
+#
+#   MAX_*                the regression guard. Unchanged in meaning: nothing may get worse.
+#   RATCHET_SLACK_CASES  the ceiling may sit at most this far ABOVE the measurement. Improve the
+#                        shield and leave the ceiling alone and the build fails, telling you to
+#                        lower it. This is the part that makes the ceiling decrease: without it a
+#                        ceiling banks every improvement as slack and "maximum" quietly becomes
+#                        "target".
+#   *_GOAL / *_GOAL_DUE  the number this work is heading for, and the date by which it is owed.
+#                        Once the date passes with the goal unmet, the build fails. A goal with
+#                        no deadline is a wish, and this repository has a folder of those.
+#
+# The dated failure is deliberate and is the one part of this that will surprise somebody: CI can
+# go red on a day when nobody pushed. That is the mechanism working. The two legitimate responses
+# are to do the named work or to move the date on purpose, in a commit that says why -- and the
+# second one is a decision somebody made rather than a number nobody looked at.
+MAX_LEAK_RATE = 120 / 5664
+MAX_FALSE_REDACTION_RATE = 555 / 5507
+
+# Counted in CASES, not in percentage points: the corpus grows, and a slack written as a fraction
+# would silently widen every time it did.
+RATCHET_SLACK_CASES = 5
+
+# WHAT IS BEING COMMITTED TO, and what has to happen for it.
+#
+# Leak, 1.0%. What stands between here and there is one shape: `product_between` in the
+# off-list/off-list quadrant -- `Wanderleia Protheus Kranz`, a product name between the halves of
+# a name where NEITHER half is on a list, 100 cases and about 1.8 points. `_spans_and_vouched`
+# closes the shape whenever one half is recognisable and cannot close this one, because the same
+# string with ordinary words in it (`Central Oracle Cloud`) is what `fp_split_flank` holds. That
+# is finding 5b proper, and it costs false redactions: the maximum loosening buys 100 leaks for
+# 34 of them. Nobody should reach 1.0% by paying that bill blind, which is why the goal has a
+# date and not a ceiling.
+#
+# False redaction, 4.0%. One shape again: `title_then_name_then_label`, 400 cases and 7.3 points
+# on its own -- a job title, a name, and an ordinary word on the NEXT LINE that `_NAME_SEQUENCE_RE`
+# swallows into the placeholder because `\s+` matches a newline. It is a defect of the pattern's
+# reach rather than of any list, and it has been measured at 400 of 400 since the corpus was
+# written.
+LEAK_RATE_GOAL = 0.010
+FALSE_REDACTION_RATE_GOAL = 0.040
+RATE_GOALS_DUE = date(2027, 6, 30)
 
 # The generated half of the corpus. Asserted so that shrinking it -- the cheapest way to make
 # any rate look better -- fails instead of passing quietly.
@@ -106,10 +180,32 @@ MIN_FALSE_POSITIVE_CASES = 150
 MIN_CASES_BROKEN_BY_LOOSENING = 20
 
 # Floors for `test_the_corpus_prices_a_loosening_on_both_rates`. Deliberately well below the
-# measured values (301 and 34 on 2026-08-12): this asserts that the corpus can SEE both sides
-# of a loosening, not that it sees exactly as much as it did the day the floors were written.
-MIN_LEAKS_CLOSED_BY_LOOSENING = 150
+# measured values: this asserts that the corpus can SEE both sides of a loosening, not that it
+# sees exactly as much as it did the day the floors were written.
+#
+# `MIN_LEAKS_CLOSED_BY_LOOSENING` was 150, measured at 301 on 2026-08-12, and was LOWERED to 80
+# on 2026-08-17. That direction needs a reason, because lowering a floor is how a corpus stops
+# noticing things:
+#
+#   The floor asks "does the corpus still contain the shapes a loosening would HELP". It does --
+#   `product_between` is still 400 cases and `test_the_corpus_did_not_shrink` is what guards
+#   that. What changed is that the SHIELD now closes two thirds of them without any loosening at
+#   all (`_spans_and_vouched`), so what is left for a loosening to buy is the off-list/off-list
+#   quadrant, about 100 cases. The number fell because the shield improved, not because the
+#   corpus stopped looking.
+#
+# If this floor ever has to be lowered again, that distinction is the thing to establish first.
+MIN_LEAKS_CLOSED_BY_LOOSENING = 80
 MIN_FALSE_REDACTIONS_CAUSED_BY_LOOSENING = 10
+
+# The ADDRESS group. A floor, for the same reason the other pools have one: deleting the cases is
+# the cheapest way to make a recogniser that stopped working look fine.
+MIN_ADDRESS_CASES = 10
+
+# Floors for the two pools added with ADDRESS and with the all-caps pair rule. Both measured by
+# the tests that use them (8 and 10 on 2026-08-17) and set below the measurement on purpose.
+MIN_ADDRESS_CASES_BROKEN_BY_LOOSENING = 5
+MIN_CAPS_PAIRS_BROKEN_BY_LOOSENING = 6
 
 
 @pytest.fixture(scope="module")
@@ -214,6 +310,12 @@ _ORDINARY_VOCABULARY_SETS = (
     "_COMPANY_TAIL_WORDS",
     "_NAME_CONNECTIVES",
     "_GENITIVE_PREPOSITIONS",
+    # Ordinary vocabulary in the same sense as the rest, and checked for the opposite reason: a
+    # street type word that is also a GIVEN name would open an address on the first word of a
+    # full name and take the person with it, under the wrong type. Every entry is on
+    # `_COMMON_PHRASE_HEADS` except `Largo` and `Av`, which is the overlap this pair of lists is
+    # supposed to have -- see the block above `_ADDRESS_STREET_TYPE_WORDS`.
+    "_ADDRESS_STREET_TYPES",
 )
 
 # ...and the ones it reads to mean "person", or "a person follows". Honorifics are in this list
@@ -314,16 +416,93 @@ def test_the_corpus_did_not_shrink() -> None:
 def test_leak_rate_does_not_regress(report) -> None:
     rate = report.leak
     assert rate.value <= MAX_LEAK_RATE, (
-        f"leak rate {rate.value:.4%} exceeds the ceiling {MAX_LEAK_RATE:.4%}\n\n" + report.render()
+        f"REGRESSION: leak rate {rate.value:.4%} exceeds the ceiling {MAX_LEAK_RATE:.4%}.\n"
+        "Something that was redacted is not any more. Find which cases moved before touching the "
+        "constant: raising this ceiling is a decision about which people reach the provider, and "
+        "it belongs in a commit message that names them.\n\n" + report.render()
     )
 
 
 def test_false_redaction_rate_does_not_regress(report) -> None:
     rate = report.false_redaction
     assert rate.value <= MAX_FALSE_REDACTION_RATE, (
-        f"false-redaction rate {rate.value:.4%} exceeds the ceiling "
-        f"{MAX_FALSE_REDACTION_RATE:.4%}\n\n" + report.render()
+        f"REGRESSION: false-redaction rate {rate.value:.4%} exceeds the ceiling "
+        f"{MAX_FALSE_REDACTION_RATE:.4%}.\n"
+        "This is the half that catches a leak fix paid for by redacting more. If the leak rate "
+        "fell in the same change, the two numbers together are the trade -- state it.\n\n"
+        + report.render()
     )
+
+
+def test_the_leak_ceiling_is_re_tightened_when_the_rate_improves(report) -> None:
+    """The ratchet. Without it, `MAX_` is a target the moment anybody beats it.
+
+    Fires in two situations and the message has to cover both, because they need different
+    responses: the shield got better (lower the constant, and say by which cases), or the corpus
+    grew and diluted the rate (re-measure and re-pin BOTH columns, per the "corpus grew"
+    discipline above -- a rate that fell because the denominator moved is not an improvement and
+    must not be recorded as one).
+    """
+    rate = report.leak
+    slack = RATCHET_SLACK_CASES / rate.total
+    assert MAX_LEAK_RATE - rate.value <= slack, (
+        f"CEILING NOT RE-TIGHTENED: the leak rate is {rate.value:.4%} ({rate.failed} of "
+        f"{rate.total}) and the ceiling is still {MAX_LEAK_RATE:.4%}, which is more than "
+        f"{RATCHET_SLACK_CASES} cases of slack.\n"
+        f"Set MAX_LEAK_RATE = {rate.failed} / {rate.total} and add a row to the history above "
+        "saying WHY it moved -- a better shield and a bigger corpus are different events and the "
+        "record has to tell them apart."
+    )
+
+
+def test_the_false_redaction_ceiling_is_re_tightened_when_the_rate_improves(report) -> None:
+    rate = report.false_redaction
+    slack = RATCHET_SLACK_CASES / rate.total
+    assert MAX_FALSE_REDACTION_RATE - rate.value <= slack, (
+        f"CEILING NOT RE-TIGHTENED: the false-redaction rate is {rate.value:.4%} "
+        f"({rate.failed} of {rate.total}) and the ceiling is still "
+        f"{MAX_FALSE_REDACTION_RATE:.4%}.\n"
+        f"Set MAX_FALSE_REDACTION_RATE = {rate.failed} / {rate.total} and record why it moved."
+    )
+
+
+def test_the_leak_rate_goal_is_met_or_still_has_time(report) -> None:
+    """The target, as a dated commitment rather than as an adjective.
+
+    Deliberately able to fail on a day nobody pushed. That is what separates a target from a
+    ceiling: the ceiling asks nothing of anybody, and this asks for a specific shape to be closed
+    by a specific date.
+    """
+    rate = report.leak
+    if rate.value <= LEAK_RATE_GOAL:
+        return
+    assert date.today() <= RATE_GOALS_DUE, (
+        f"TARGET NOT MET BY ITS DEADLINE: the leak rate is {rate.value:.4%} and the goal was "
+        f"{LEAK_RATE_GOAL:.4%} by {RATE_GOALS_DUE}.\n"
+        "Read the note above LEAK_RATE_GOAL: it names the shape that stands in the way and the "
+        "price of closing it. Two honest responses -- do that work, or move the date in a commit "
+        "that says what changed about the judgement. Deleting this test is not one of them.\n\n"
+        + report.render()
+    )
+
+
+def test_the_false_redaction_rate_goal_is_met_or_still_has_time(report) -> None:
+    rate = report.false_redaction
+    if rate.value <= FALSE_REDACTION_RATE_GOAL:
+        return
+    assert date.today() <= RATE_GOALS_DUE, (
+        f"TARGET NOT MET BY ITS DEADLINE: the false-redaction rate is {rate.value:.4%} and the "
+        f"goal was {FALSE_REDACTION_RATE_GOAL:.4%} by {RATE_GOALS_DUE}.\n"
+        "The note above FALSE_REDACTION_RATE_GOAL names the shape that carries most of it.\n\n"
+        + report.render()
+    )
+
+
+def test_the_goals_are_below_the_ceilings() -> None:
+    """A goal at or above the ceiling is a ceiling with a second name, which is what this whole
+    block exists to stop being true."""
+    assert LEAK_RATE_GOAL < MAX_LEAK_RATE
+    assert FALSE_REDACTION_RATE_GOAL < MAX_FALSE_REDACTION_RATE
 
 
 def test_the_report_never_states_one_rate_without_the_other(report) -> None:
@@ -522,6 +701,138 @@ def test_documented_false_positive_is_still_wrong(case) -> None:
         f"{case.case_id} now passes -- promote it to REQUIRED and delete the note.\n"
         f"  note was: {case.note}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# ADDRESS, and the two pools that price the rules added with it
+#
+# Same two-test discipline as everywhere else in this file: a group that says what the rule
+# BUYS, and a group that says what it COSTS, with the cost group proved able to fail by removing
+# the guard it claims to price. A recogniser measured only against the strings it was written for
+# is a recogniser nobody has measured.
+# --------------------------------------------------------------------------- #
+
+_ADDRESS_CASES = address_cases()
+
+
+def test_the_address_group_did_not_shrink() -> None:
+    assert len(_ADDRESS_CASES) >= MIN_ADDRESS_CASES, (
+        f"{len(_ADDRESS_CASES)} address cases, floor is {MIN_ADDRESS_CASES}."
+    )
+
+
+def test_the_shield_emits_the_address_type() -> None:
+    """`PiiType.ADDRESS` was in the published enum and in
+    `packages/shared-contracts/pii-types.json` and was never emitted by anything.
+
+    Asserted on the REDACTION RECORD rather than on the text: a placeholder in the output only
+    says something vanished, and what the contract promises is that clients rendering redactions
+    can rely on the type.
+    """
+    emitted = [
+        case.case_id
+        for case in _ADDRESS_CASES
+        if any(r.type == PiiType.ADDRESS for r in redact(case.text).redactions)
+    ]
+    assert len(emitted) == len(_ADDRESS_CASES), (
+        "cases where no ADDRESS redaction was recorded: "
+        f"{sorted({c.case_id for c in _ADDRESS_CASES} - set(emitted))}"
+    )
+
+
+# The largest loosening the ADDRESS recogniser admits: accept a lower-case word where it demands
+# a capitalised one. Built from the shield's own components rather than by editing its pattern
+# text, so it cannot silently stop being the same rule minus one condition.
+_LOOSE_ADDRESS_WORD = f"[{pii_shield._UPPER}{pii_shield._LOWER}][{pii_shield._LOWER}]+"
+_LOOSE_ADDRESS_NAME_PART = f"(?:d[aeo]s?\\s+|e\\s+)?{_LOOSE_ADDRESS_WORD}"
+_LOOSENED_ADDRESS_RE = re.compile(
+    f"\\b(?:{'|'.join(pii_shield._ADDRESS_STREET_TYPE_WORDS)})\\.?\\s+"
+    f"{_LOOSE_ADDRESS_NAME_PART}(?:\\s+{_LOOSE_ADDRESS_NAME_PART}){{0,3}}"
+)
+
+
+def test_the_address_pool_is_not_inert(monkeypatch) -> None:
+    """`fp_address` has to be able to fail, or ADDRESS is a rule nobody priced.
+
+    The condition being priced is the only one the recogniser really has: the token after the
+    street type must be capitalised. Remove it and `Rua sem saida`, `Avenida principal do
+    projeto` and `Estrada de ferro` all become addresses -- which is what a recogniser keyed on
+    the street type word alone would do, and is the version this pool exists to reject.
+
+    Patched on `_BASIC_PATTERNS` rather than on `_ADDRESS_RE`, because that list holds the
+    compiled object and rebinding the module name would change nothing -- a control that cannot
+    fire, which is the defect class this file spends paragraphs on.
+    """
+    pool = [c for c in false_positive_cases() if c.shape == "fp_address"]
+    assert pool, "the fp_address pool is empty"
+    before = {c.case_id: evaluate(c).ok for c in pool}
+
+    loosened = [
+        (pii_type, _LOOSENED_ADDRESS_RE if pattern is pii_shield._ADDRESS_RE else pattern)
+        for pii_type, pattern in pii_shield._BASIC_PATTERNS
+    ]
+    monkeypatch.setattr(pii_shield, "_BASIC_PATTERNS", loosened)
+    after = {c.case_id: evaluate(c).ok for c in pool}
+
+    broken = sorted(cid for cid in before if before[cid] and not after[cid])
+    assert len(broken) >= MIN_ADDRESS_CASES_BROKEN_BY_LOOSENING, (
+        f"only {len(broken)} of {len(pool)} fp_address cases break when the recogniser is "
+        f"allowed to take a lower-case word as a street name, and the floor is "
+        f"{MIN_ADDRESS_CASES_BROKEN_BY_LOOSENING}. This pool no longer prices ADDRESS.\n"
+        f"currently breaking: {broken}"
+    )
+
+
+def _unguarded_caps_pair(tokens, base, text):
+    """`_caps_pair_in_running_prose` with every guard removed: any all-caps pair is a person."""
+    if len(tokens) != 2:
+        return None
+    return base + tokens[0].start(), base + tokens[1].end()
+
+
+def test_the_all_caps_pair_pool_is_not_inert(monkeypatch) -> None:
+    """`fp_allcaps_pair` has to be able to fail for the same reason.
+
+    The all-caps pair rule is the one change in this branch that claims a stretch NO list
+    recognises, which makes it the one most able to invent people. Its four guards -- ordinary
+    vocabulary, the negative list, the four-letter floor, the preterite tail -- are what hold the
+    pool, and this removes them all at once.
+    """
+    pool = [c for c in false_positive_cases() if c.shape == "fp_allcaps_pair"]
+    assert pool, "the fp_allcaps_pair pool is empty"
+    before = {c.case_id: evaluate(c).ok for c in pool}
+
+    monkeypatch.setattr(pii_shield, "_caps_pair_in_running_prose", _unguarded_caps_pair)
+    after = {c.case_id: evaluate(c).ok for c in pool}
+
+    broken = sorted(cid for cid in before if before[cid] and not after[cid])
+    assert len(broken) >= MIN_CAPS_PAIRS_BROKEN_BY_LOOSENING, (
+        f"only {len(broken)} of {len(pool)} fp_allcaps_pair cases break when every guard on the "
+        f"all-caps pair rule is removed, and the floor is "
+        f"{MIN_CAPS_PAIRS_BROKEN_BY_LOOSENING}.\ncurrently breaking: {broken}"
+    )
+
+
+def test_the_street_type_words_stay_on_the_phrase_head_list() -> None:
+    """The reconciliation between the two lists, asserted rather than described.
+
+    Implementing ADDRESS by DELETING `Rua`, `Avenida` and friends from `_COMMON_PHRASE_HEADS` is
+    the obvious move and is the wrong one: those entries are what keeps `Bairro SANTA CRUZ` and
+    `Vila Prado` from becoming people, and the recogniser only covers the stretches it claims.
+    The design is that both hold at once, in a fixed order, so both are pinned here.
+
+    `Largo` and `Av` are deliberately absent from the head list: neither heads an ordinary
+    Brazilian noun phrase the way the others do.
+    """
+    on_both = {"rua", "avenida", "praca", "rodovia", "alameda", "travessa", "estrada"}
+    for word in on_both:
+        assert word in pii_shield._ADDRESS_STREET_TYPES, word
+        assert word in pii_shield._COMMON_PHRASE_HEADS, (
+            f"{word!r} was removed from _COMMON_PHRASE_HEADS. The ADDRESS recogniser does not "
+            "replace what that list does -- it only claims the stretches it recognises, and "
+            "everything it declines falls back to the head rules. Removing it reopens the false "
+            "positive the head list was added for."
+        )
 
 
 # --------------------------------------------------------------------------- #

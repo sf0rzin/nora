@@ -1629,3 +1629,307 @@ def test_uncovered_parts_first_index_matches_slicing():
                 assert pii_shield._uncovered_parts(
                     start, end, covered, first
                 ) == pii_shield._uncovered_parts(start, end, covered[first:])
+
+
+# --------------------------------------------------------------------------- #
+# ADDRESS
+#
+# The type was in the published enum and in `packages/shared-contracts/pii-types.json` from the
+# beginning and nothing ever emitted it. What made it awkward is that the words which OPEN a
+# Brazilian address are on `_COMMON_PHRASE_HEADS`, where their job is to stop a place name being
+# read as a person -- so the two rules only reconcile through ORDER, and the order is what these
+# tests pin.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "text, gone",
+    [
+        ("O escritorio fica na Rua das Flores, 210.", ("Rua", "Flores", "210")),
+        ("Confirmamos a entrega na Avenida Paulista, 1578.", ("Avenida", "Paulista", "1578")),
+        ("Fica na Travessa Bela Vista, 12.", ("Travessa", "Bela", "Vista")),
+        ("A obra e na Rodovia Castelo Branco.", ("Rodovia", "Castelo", "Branco")),
+        ("Mudamos para a Praca da Republica, 90.", ("Praca", "Republica", "90")),
+        ("O ponto e o Largo do Machado.", ("Largo", "Machado")),
+        ("Enviar para a Av. Brasil, 1000.", ("Av", "Brasil", "1000")),
+        ("Reuniao na Rua Sete de Setembro.", ("Rua", "Sete", "Setembro")),
+        ("Fica na Rua Marechal Deodoro, 88, sala 12.", ("Rua", "Marechal", "Deodoro", "88")),
+    ],
+)
+def test_an_address_is_redacted_whole(text, gone):
+    """The WHOLE stretch, street type word included.
+
+    A redaction that keeps `Rua` and hides only the name tells the model nothing and leaves the
+    street in the clear, which is most of what identifies an address in a city.
+    """
+    result = pii_shield.redact(text)
+    assert any(r.type == PiiType.ADDRESS for r in result.redactions), result.redacted_text
+    for token in gone:
+        assert token not in result.redacted_text, result.redacted_text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Rua sem saida na entrada do galpao.",
+        "Avenida principal do projeto ainda nao foi aprovada.",
+        "A Estrada nova entrou no orcamento.",
+        "Praca do time de vendas ficou pequena.",
+        "Travessa da planilha ficou com erro no fechamento.",
+        "Alameda foi o codinome do projeto no ano passado.",
+        "Estrada de ferro segue no escopo do estudo.",
+        "Rodovia com pedagio novo entrou na conta.",
+        "Rua 25 esta interditada desde ontem.",
+        "A rua sem saida atrasou a entrega da obra.",
+        "Discutimos a rodovia e o pedagio na reuniao.",
+        "A Sala Azul foi reservada para a reuniao.",
+        "O Bairro Novo entrou no plano de expansao.",
+    ],
+)
+def test_a_street_type_word_alone_is_not_an_address(text):
+    """The counter-proof, and the only condition the recogniser really has.
+
+    A street type word followed by a LOWER-CASE word is a sentence about a street. `Bairro` and
+    `Sala` are not street types at all -- `Bairro` deliberately, because "Vila Prado" and
+    "Bairro SANTA CRUZ" are the strings `_COMMON_PHRASE_HEADS` was extended for, and claiming
+    them here would be the same over-redaction wearing a different type.
+    """
+    assert pii_shield.redact(text).redacted_text == text
+
+
+def test_a_person_beside_an_address_is_still_a_person():
+    """The two stages meet here, and the order decides who wins.
+
+    ADDRESS runs in the deterministic stage, so by the time the person-name heuristics see the
+    text the address is already a placeholder. The person must still be found, and the address
+    must not have widened over them.
+    """
+    result = pii_shield.redact("Marina Alves mora na Rua das Acacias, 30.")
+    assert result.redacted_text == "[[PERSON_NAME_1]] mora na [[ADDRESS_1]]."
+    assert sorted(r.type.value for r in result.redactions) == ["ADDRESS", "PERSON_NAME"]
+
+
+def test_the_street_type_words_are_still_ordinary_vocabulary():
+    """The half of the design that is easiest to break by "cleaning up".
+
+    `Rua`, `Avenida` and the rest stay on `_COMMON_PHRASE_HEADS`, and everything the recogniser
+    declines still falls back to the head rules. If a future change removes them on the grounds
+    that ADDRESS now covers them, this is what fails -- and the string below is the one the head
+    list was extended for in the first place.
+    """
+    for word in ("rua", "avenida", "praca", "rodovia", "alameda", "travessa", "estrada"):
+        assert word in pii_shield._COMMON_PHRASE_HEADS
+    assert (
+        pii_shield.redact("Bairro SANTA CRUZ na proposta.").redacted_text
+        == "Bairro SANTA CRUZ na proposta."
+    )
+
+
+def test_the_address_pattern_stays_linear_on_a_large_input():
+    """Regex over a large transcript has gone quadratic in this module twice.
+
+    The pattern's repetition is bounded and every iteration consumes a whole capitalised token,
+    so this should be linear -- measured rather than argued, because both previous incidents were
+    "should be linear" as well. The bound is generous: this is a cliff detector, not a benchmark.
+    """
+    unit = "Fica na Rua das Flores Bela Vista Nova Alameda, 210. "
+    small_seconds = _time_redact(unit * 400)
+    large_seconds = _time_redact(unit * 1600)
+    assert large_seconds < max(1.0, small_seconds * 12), (
+        f"4x the input cost {large_seconds / max(small_seconds, 1e-6):.1f}x the time "
+        f"({small_seconds:.3f}s -> {large_seconds:.3f}s)"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# The single-token limitation, narrowed
+#
+# A product name between the halves of a name leaves two runs of one token each, and a lone token
+# on neither name list is refused. That was 300 of 400 generated cases. The rule added here is
+# one sentence -- an allow-listed term that cut a candidate in two cannot leave one half a name
+# and the other half nothing -- and the tests below are its two sides.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "text, gone, kept",
+    [
+        # one half on a list, the other not: the recognised half vouches for its sibling
+        ("Carlos Protheus Kranz assumiu a entrega.", ("Carlos", "Kranz"), "Protheus"),
+        ("Wanderleia Protheus Silva assumiu a entrega.", ("Wanderleia", "Silva"), "Protheus"),
+        ("Marina Jira Zanchetta fechou o escopo.", ("Marina", "Zanchetta"), "Jira"),
+        ("Bittencourt Oracle Costa assinou a ata.", ("Bittencourt", "Costa"), "Oracle"),
+    ],
+)
+def test_a_product_between_the_halves_of_a_name_does_not_free_the_other_half(text, gone, kept):
+    result = pii_shield.redact(text)
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", result.redacted_text)
+    for token in gone:
+        assert token not in stripped, result.redacted_text
+    assert kept in result.redacted_text, result.redacted_text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # NEITHER half recognisable: nothing vouches for anything, and the string is
+        # indistinguishable from the ordinary ones below
+        "Wanderleia Protheus Kranz assumiu a entrega.",
+        # ordinary words on both sides of an allow-listed term -- the shape the rule must not
+        # reach, and the reason it asks for a sibling that stands on its own
+        "A Central Oracle Cloud entrou na pauta de ontem.",
+        "O Painel Jira Executivo entrou na pauta de ontem.",
+        "A Licenca Salesforce Enterprise entrou na pauta de ontem.",
+        "O Servidor Postgres Homologacao entrou na pauta de ontem.",
+    ],
+)
+def test_an_unrecognisable_pair_around_a_product_is_not_vouched_for(text):
+    """The cost side, and the honest limit of the rule.
+
+    The first string leaks a full name and the other four are servers, and no lexical signal
+    separates them: two Title Case tokens with a product name between them, none of the four on
+    any list. The rule declines all five rather than claim all five, and the first one stays a
+    documented gap in `tests/pii_corpus` rather than being closed at the others' expense.
+    """
+    assert "PERSON_NAME" not in pii_shield.redact(text).redacted_text
+
+
+def test_the_conjunction_does_not_vouch_for_what_is_beside_it():
+    """`e` joins two DIFFERENT things, so a verdict must not travel across it.
+
+    This is why the split records WHICH separator ended each run. Without that, "Marina Alves e
+    Contabilidade" hands the department the name's verdict and invents a person out of an
+    accounting team.
+    """
+    result = pii_shield.redact("Marina Alves e Contabilidade fecharam a apuracao.")
+    assert "Contabilidade" in result.redacted_text, result.redacted_text
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", result.redacted_text)
+    assert "Marina" not in stripped and "Alves" not in stripped, result.redacted_text
+
+
+def test_the_split_records_which_separator_ended_each_run():
+    """The provenance flag directly, because the behaviour above depends on it entirely."""
+    tokens = list(pii_shield._WORD_RE.finditer("Wanderleia Protheus Kranz"))
+    runs = pii_shield._split_with_provenance(tokens, frozenset({pii_shield._CONJUNCTION}))
+    assert [[t.group(0) for t in run] for run, _ in runs] == [["Wanderleia"], ["Kranz"]]
+    assert [beside for _, beside in runs] == [True, True]
+
+    tokens = list(pii_shield._WORD_RE.finditer("Marina Alves e Contabilidade"))
+    runs = pii_shield._split_with_provenance(tokens, frozenset({pii_shield._CONJUNCTION}))
+    assert [beside for _, beside in runs] == [False, False]
+
+
+# --------------------------------------------------------------------------- #
+# One ordinary word in front of a name, and two
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "text, gone, kept",
+    [
+        ("Com Silva aprovou o escopo.", "Silva", "Com"),
+        ("Contato Costa aprovou o escopo.", "Costa", "Contato"),
+        ("Escopo Almeida aprovou o orcamento.", "Almeida", "Escopo"),
+        ("Reuniao Nogueira definiu o prazo.", "Nogueira", "Reuniao"),
+        ("Contato do Silva aprovou o escopo.", "Silva", "Contato"),
+        ("Prazo de Oliveira mudou.", "Oliveira", "Prazo"),
+    ],
+)
+def test_one_label_in_front_of_a_surname_does_not_switch_the_shield_off(text, gone, kept):
+    """The genitive and phrase-head leak, which was 2,912 of 2,916 measured combinations.
+
+    `_qualify_run` used to refuse the lone-token lookup as soon as ANY ordinary head had been
+    stripped, so "Contato Costa" and "Contato do Silva" both reduced to a listed surname and both
+    went out in the clear. One label plus a name is the everyday shape of minutes.
+
+    The label itself has to survive, which is the half that tells this fix from the one that
+    empties `_COMMON_PHRASE_HEADS`.
+    """
+    result = pii_shield.redact(text)
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", result.redacted_text)
+    assert gone not in stripped, result.redacted_text
+    assert kept in result.redacted_text, result.redacted_text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Falta o Relatorio de Vendas do Prado.",
+        "O Plano de Acao da Rocha.",
+        "Precisamos da Lista de Campos do Protheus.",
+        "Abrimos a Ordem de Servico da Cruz Azul.",
+        "A conta e no Banco do Brasil.",
+    ],
+)
+def test_two_ordinary_nouns_in_front_still_make_it_a_phrase(text):
+    """The line the fix above had to stop at.
+
+    What survives the stripping of a NOUN PHRASE is that phrase's own last word, not a name --
+    `Prado`, `Rocha` and `Campos` are all on the surname list and all nobody here. One head is a
+    label in front of a person; two heads joined by a particle is an artefact.
+    """
+    assert pii_shield.redact(text).redacted_text == text
+
+
+# --------------------------------------------------------------------------- #
+# The all-caps pair in running prose
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "text, name",
+    [
+        ("WANDERLEIA KRANZ aprovou o escopo.", ("WANDERLEIA", "KRANZ")),
+        ("SAP WANDERLEIA KRANZ aprovou o escopo.", ("WANDERLEIA", "KRANZ")),
+        ("DIRCEU PANIZZON: fechamos o escopo.", ("DIRCEU", "PANIZZON")),
+        ("Falei com NIVALDO ZANCHETTA ontem.", ("NIVALDO", "ZANCHETTA")),
+    ],
+)
+def test_an_all_caps_pair_in_running_prose_is_a_person(text, name):
+    """The gap `BASELINE.md` recorded as deliberate, closed with the context the run has.
+
+    "An all-caps run with neither end on a name list is indistinguishable from an acronym
+    string" was true of the RUN and not of the run in its sentence: an acronym string does not
+    sit as a two-word stretch that the line then continues past in lower case. `DIRCEU` is here
+    because its own ending reads as a preterite, which is what kept seven speaker labels in the
+    clear.
+    """
+    result = pii_shield.redact(text)
+    for token in name:
+        assert token not in result.redacted_text, result.redacted_text
+    assert "[[PERSON_NAME_" in result.redacted_text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # ordinary vocabulary on either side
+        "NOTA FISCAL chegou com erro.",
+        "PRAZO FINAL mudou para sexta.",
+        "GOVERNANCA CORPORATIVA aprovou a politica.",
+        "LOJA CAMPOS fechou ontem.",
+        # on the negative list
+        "CRM ERP integraram os dados.",
+        "SAP FIORI travou ontem.",
+        # under the four-letter floor
+        "TI RH resolveram o chamado.",
+        # a preterite in the tail: the verb is not a surname
+        "WANDERLEIA APROVOU o escopo.",
+        # a heading, so the line does not continue in lower case
+        "PROTHEUS SEGUE COMO PRIORIDADE DO TRIMESTRE.",
+        "PAUTA GERAL\nCONTRATO NOVO\n",
+    ],
+)
+def test_an_all_caps_pair_that_is_not_a_person_survives(text):
+    """The four guards, one string each, plus the head-list case the rule must not touch."""
+    assert pii_shield.redact(text).redacted_text == text
+
+
+def test_the_all_caps_pair_rule_needs_the_whole_run():
+    """Only a PAIR, and only when the pair is the entire allow-list-free run.
+
+    A longer all-caps stretch is a heading or an acronym string far more often than a name, and
+    requiring the whole run is what keeps this rule out of the middle of one.
+    """
+    tokens = list(pii_shield._WORD_RE.finditer("ALFA BRAVO CHARLIE"))
+    assert pii_shield._caps_pair_in_running_prose(tokens, 0, "ALFA BRAVO CHARLIE aprovou.") is None
