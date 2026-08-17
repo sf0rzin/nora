@@ -1,5 +1,171 @@
 # PII shield — the measurement, before and after
 
+Two measurements live in this file. The current one is first; the one that produced
+`_split_on_allow_list` is kept below it, because a record that gets overwritten every time stops
+being a record.
+
+---
+
+# 2026-08-17 — the broken shapes, and ADDRESS
+
+|                      | before  | after   |                      |
+|----------------------|---------|---------|----------------------|
+| leak rate            | 9.60%   | 2.12%   | 544 -> 120 of 5664   |
+| false-redaction rate | 10.13%  | 10.08%  | 558 -> 555 of 5507   |
+
+Both columns come from `python -m tests.pii_corpus.harness`, run in CI one commit apart, **with
+the corpus byte-identical between them**. That is the whole discipline of this file: the cases
+this change moves were committed *first*, alone, so that the before column is taken on the final
+corpus and the difference between the two columns is the shield and nothing else.
+
+The false-redaction denominator moves by one, and only because the change adds a case for its own
+residual (`adv/allcaps_pair/english_role_phrase`). Everything else in both denominators is
+identical.
+
+**Neither rate rose.** The leak rate fell by 424 cases; the false-redaction rate fell by 3. That
+matters more than the headline: the failure mode this corpus exists to catch is a leak fix paid
+for with a shield that redacts more, and the second number is the only thing that can see it.
+
+## What the corpus growth did on its own
+
+Measured with `pii_shield.py` untouched, so it is separated from the fix rather than mixed into
+it:
+
+```
+                       before the new cases     after them
+leak rate              9.43%  (533 / 5652)      9.60%  (544 / 5664)
+false-redaction rate  10.20%  (558 / 5470)     10.13%  (558 / 5506)
+```
+
+The leak rate ROSE because ADDRESS was measured for the first time: eleven of the twelve address
+cases leak, and the twelfth passes by accident — `Largo do Machado` happens to be two Title Case
+tokens that the person-name sequence already claims. The false-redaction rate FELL purely by
+denominator: 36 new cases, all passing. Neither movement is the shield changing, and this is
+exactly the situation the "corpus grew once" section at the bottom of this file was written for.
+
+## After, by shape — only the rows that moved
+
+```
+shape                        leak    was          false redaction   was
+address                      0/12    11/12               0/10       unchanged
+allcaps                      0/400   100/400             0/400      unchanged
+allcaps_product_before       0/400   100/400             0/400      unchanged
+product_between            100/400   300/400             0/400      unchanged
+speaker_label                0/400   7/400               0/400      unchanged
+adv_lone_after_head          9/15    14/15               0/12       unchanged
+adv_caps                     0/3     1/3                 1/1        0/0
+adv_false_redaction          0/0     unchanged           1/5        2/5
+role_phrase                  0/0     unchanged           0/10       3/10
+```
+
+`adv_caps` moves in both columns and for two different reasons: `WANDERLEIA KRANZ aprovou o
+escopo.` is redacted now, and the residual case added with the rule
+(`adv/allcaps_pair/english_role_phrase`) carries no person, so it enters the false-redaction
+denominator and not the leak one.
+
+Every remaining leak in the corpus is either the 100 `product_between` cases named below or one
+of the 20 documented gaps. The two largest false-redaction blocks —
+`title_then_name_then_label` at 400/400 and `company_before` at 100/400 — are untouched by this
+change and are what the false-redaction goal in `test_pii_corpus.py` is aimed at.
+
+## What moved, and why
+
+**`product_between`, 300 → 100.** A product name between the halves of a name leaves two runs of
+one token each, and a lone token on neither name list is refused. The rule added is one sentence:
+*an allow-listed term that cut a candidate in two cannot leave one half a name and the other half
+nothing*. It fires only when another stretch of the same candidate stands on its own as a name, so
+`Carlos Protheus Kranz` and `Wanderleia Protheus Silva` close and `Wanderleia Protheus Kranz` —
+where neither half is recognisable — does not.
+
+That residual 100 is the off-list/off-list quadrant and it is **deliberately not closed**, which
+is the most important sentence in this section. The same string with ordinary words in it is
+`fp_split_flank`: `A Central Oracle Cloud entrou na pauta` splits into two unrecognisable Title
+Case tokens in exactly the same shape, and it is a server. There is no lexical signal separating
+them. The maximum loosening buys those 100 leaks for 34 false redactions, and that trade is what
+`LEAK_RATE_GOAL` in `test_pii_corpus.py` names and dates rather than takes blind.
+
+**`allcaps` and `allcaps_product_before`, 100 → 0 each; `speaker_label` 7 → 0.** This file
+recorded the gap as deliberate: *"an all-caps run with neither end on a name list is admitted only
+as a speaker label; in running prose it is indistinguishable from an acronym string."* That was
+true of the run and not of the run in its sentence. An acronym string does not sit as a two-word
+stretch that the line then continues past in lower case, and a heading is upper case to the end of
+its line. Four guards bound it — both tokens off every ordinary-vocabulary and negative list, four
+letters or more each, no third-person preterite in the tail, a lower-case continuation on the same
+line — and `fp_allcaps_pair` is the thirteen strings that price them. The seven `speaker_label`
+cases were `DIRCEU`, whose own ending reads as a preterite; checking the tail rather than every
+token is what frees them without letting `WANDERLEIA APROVOU` be claimed whole.
+
+**`address`, 11 → 0.** `PiiType.ADDRESS` was in the published enum and in
+`packages/shared-contracts/pii-types.json` and was never emitted by anything.
+
+**`adv_lone_after_head`, 14 → 9.** `_qualify_run` refused the lone-token lookup as soon as *any*
+ordinary head had been stripped. `Contato Costa` and `Contato do Silva` both reduce to a listed
+surname and both went out in the clear — measured over `_COMMON_PHRASE_HEADS` × six surnames,
+2,912 of 2,916. The refusal now applies only when two or more heads were stripped, which is what
+the note it replaces was really about: what survives the stripping of a *noun phrase*
+(`Relatorio de Vendas do Prado`) is that phrase's own last word.
+
+**`role_phrase` 3 → 0 and `adv_false_redaction` 2 → 1.** `Customer`, `Success`, `Machine`,
+`Learning`, `Pull` and `Request` are on the negative list. The note beside them said this was "the
+obvious fix and was rejected while finding 5a was live"; 5a has been closed since
+`_split_on_allow_list` landed.
+
+**`adv_caps` gains one false redaction.** `SALES ENABLEMENT assumiu a conta.` is the all-caps
+rule's residual, recorded as a case rather than as a paragraph. It is the same residual the Title
+Case path has always had, one word shorter.
+
+## The ADDRESS design, and why the two lists do not contradict each other
+
+`Rua`, `Avenida`, `Rodovia`, `Alameda`, `Praca`, `Estrada` and `Travessa` are on
+`_COMMON_PHRASE_HEADS`, and the comment beside that block says what for: roughly a third of the
+surname list doubles as a place name, so recognising the word that *opens* a place name is what
+keeps `Bairro SANTA CRUZ` and `Vila Prado` from becoming people. Membership there means the word
+is stripped, and the only possible effect of that list anywhere is to **suppress** a redaction.
+
+Implementing ADDRESS by deleting those entries therefore trades one defect for the other. Instead
+the recogniser runs in the deterministic stage, **before** every person-name heuristic, and claims
+the whole stretch; the head list goes on doing its own job for everything the recogniser declines.
+**The order is the reconciliation.** Anybody reading the two lists without being told which runs
+first will conclude they contradict each other, which is why it is said here, in the module
+docstring, and in a test.
+
+The only condition the recogniser really has is that the token after the street type is
+capitalised — `Rua das Flores` against `Rua sem saida` — and `fp_address` is the thirteen strings
+that price it. `Bairro`, `Vila`, `Jardim`, `Parque` and `Centro` are deliberately **not** street
+types: they open a neighbourhood, and claiming them would be the same over-redaction the head list
+exists to prevent, wearing a different type.
+
+## The ceiling became a target
+
+`MAX_LEAK_RATE` used to be the whole gate, and a ceiling on its own never improves anything: it
+forbids getting worse and is entirely satisfied by standing still. Each rate now carries three
+constants, in `test_pii_corpus.py`:
+
+| | what it does | how it fails |
+|---|---|---|
+| `MAX_*` | the regression guard | `REGRESSION` |
+| `RATCHET_SLACK_CASES` | the ceiling may sit at most five cases above the measurement | `CEILING NOT RE-TIGHTENED` |
+| `*_GOAL` + `RATE_GOALS_DUE` | the number being worked towards, and the date it is owed | `TARGET NOT MET BY ITS DEADLINE` |
+
+The ratchet is the part that makes the ceiling decrease: without it a ceiling banks every
+improvement as slack, and "maximum" quietly becomes "target". The dated goal can turn CI red on a
+day nobody pushed — that is the mechanism working, and the two honest responses are to do the
+named work or to move the date on purpose.
+
+**Committed to: a leak rate of 1.0% and a false-redaction rate of 4.0% by 2027-06-30.** Each names
+one shape. The leak side is `product_between`'s off-list/off-list quadrant, described above. The
+false-redaction side is `title_then_name_then_label`: 400 cases and 7.3 points on its own, where a
+job title, a name and an ordinary word on the *next line* are swallowed together because
+`_NAME_SEQUENCE_RE`'s `\s+` matches a newline.
+
+---
+
+# 2026-08-10 — `_split_on_allow_list` (finding 5a)
+
+Kept as it was written. The numbers below are on the corpus of that date (5,627 cases) and are
+**not** comparable to the ones above; what is still worth reading is the reasoning, particularly
+"The corpus grew once" and the two sections on pools that price nothing.
+
 |                      | before  | after  |                      |
 |----------------------|---------|--------|----------------------|
 | leak rate            | 16.76%  | 9.10%  | 943 -> 512 of 5627   |

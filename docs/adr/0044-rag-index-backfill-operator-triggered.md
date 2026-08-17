@@ -1,4 +1,4 @@
-# 0042 — The RAG index gets a backfill path, triggered by an operator
+# 0044 — The RAG index gets a backfill path, triggered by an operator
 
 - Status: accepted
 - Date: 2026-08-17

@@ -402,6 +402,92 @@ SPLIT_FLANK: tuple[tuple[str, str, str, str], ...] = (
 SPLIT_FLANK_ALLCAPS: tuple[tuple[str, str, str, str], ...] = (("O", "Portal", "SAP", "Financeiro"),)
 
 
+# --------------------------------------------------------------------------- #
+# Addresses, and the words that open one without being one
+#
+# `Rua`, `Avenida`, `Rodovia`, `Alameda`, `Praca`, `Estrada` and `Travessa` are on
+# `_COMMON_PHRASE_HEADS`, and the comment beside that block says why: a third of the surname
+# list doubles as a place name, so `Bairro SANTA CRUZ` and `Vila Prado` are kept from becoming
+# people by recognising the word that OPENS them. Implementing ADDRESS by taking those words off
+# that list would reopen exactly that false positive.
+#
+# So ADDRESS is a recogniser of its own, running before the person-name heuristics and claiming
+# the whole stretch. The head list keeps doing its own job for everything the recogniser
+# declines, and the pool below is what prices the boundary between the two: what an address
+# looks like, and what merely begins with the same word.
+# --------------------------------------------------------------------------- #
+
+# (the address as written, the tokens that must vanish with it). The tokens include the street
+# type word itself: a redaction that keeps `Rua` and hides only the name has published the
+# street name's neighbours and told the model nothing.
+ADDRESSES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Rua das Flores, 210", ("Rua", "Flores", "210")),
+    ("Avenida Paulista, 1578", ("Avenida", "Paulista", "1578")),
+    ("Alameda Santos, 45", ("Alameda", "Santos", "45")),
+    ("Travessa Bela Vista, 12", ("Travessa", "Bela", "Vista", "12")),
+    ("Rodovia Castelo Branco", ("Rodovia", "Castelo", "Branco")),
+    ("Estrada Velha de Campinas", ("Estrada", "Velha", "Campinas")),
+    ("Praca da Republica, 90", ("Praca", "Republica", "90")),
+    ("Largo do Machado", ("Largo", "Machado")),
+    ("Av. Brasil, 1000", ("Av", "Brasil", "1000")),
+    ("Rua Sete de Setembro", ("Rua", "Sete", "Setembro")),
+    ("Rua Marechal Deodoro, 88, sala 12", ("Rua", "Marechal", "Deodoro", "88")),
+    ("Avenida Presidente Vargas, 500", ("Avenida", "Presidente", "Vargas", "500")),
+)
+
+# The other half. Every one of these opens on a street type word and is NOT an address, and the
+# only thing separating them is that the word after the street type is not a name: it is
+# lowercase, or a bare number, or the phrase is about a street rather than at one.
+#
+# `test_the_address_pool_is_not_inert` applies the largest loosening the recogniser admits --
+# accepting a lowercase word where it demands a capitalised one -- and requires this pool to
+# notice. A pool of addresses alone would price the benefit and nothing else, which is the
+# failure `fp_split_flank` was written after.
+NOT_ADDRESSES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Rua sem saida na entrada do galpao.", ("Rua", "saida")),
+    ("Avenida principal do projeto ainda nao foi aprovada.", ("Avenida", "principal")),
+    ("A Estrada nova entrou no orcamento.", ("Estrada", "nova")),
+    ("Praca do time de vendas ficou pequena.", ("Praca", "time")),
+    ("Travessa da planilha ficou com erro no fechamento.", ("Travessa", "planilha")),
+    ("Alameda foi o codinome do projeto no ano passado.", ("Alameda", "codinome")),
+    ("Estrada de ferro segue no escopo do estudo.", ("Estrada", "ferro")),
+    ("Rodovia com pedagio novo entrou na conta.", ("Rodovia", "pedagio")),
+    ("Rua 25 esta interditada desde ontem.", ("Rua", "25")),
+    ("A rua sem saida atrasou a entrega da obra.", ("rua", "saida")),
+    ("Discutimos a rodovia e o pedagio na reuniao.", ("rodovia", "pedagio")),
+    ("A Sala Azul foi reservada para a reuniao.", ("Sala", "Azul")),
+    ("O Bairro Novo entrou no plano de expansao.", ("Bairro", "Novo")),
+)
+
+# --------------------------------------------------------------------------- #
+# All-caps pairs that are not people
+#
+# Pattern 4 admits a two-token all-caps run that no list recognises when it sits inside
+# normally-cased prose. That is the shape of a diarised speaker and of an attendee line, and it
+# is also the shape of a two-word heading, so the rule is bounded by four guards: both tokens
+# off every ordinary-vocabulary list, both at least four letters, the tail not a preterite, and
+# a lower-case continuation on the same line.
+#
+# Each entry below is held by one of those guards, and `test_the_all_caps_pair_pool_is_not_inert`
+# proves it by removing them. Kept in its own shape so it is never counted as a control for the
+# single-token rule, which it does not price at all.
+ALLCAPS_PAIRS_THAT_ARE_NOT_PEOPLE: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("NOTA FISCAL chegou com erro.", ("NOTA", "FISCAL")),
+    ("PRAZO FINAL mudou para sexta.", ("PRAZO", "FINAL")),
+    ("CONTRATO NOVO entrou em vigor.", ("CONTRATO", "NOVO")),
+    ("RELATORIO MENSAL saiu ontem.", ("RELATORIO", "MENSAL")),
+    ("PROPOSTA COMERCIAL foi aceita.", ("PROPOSTA", "COMERCIAL")),
+    ("PAUTA GERAL comecou tarde.", ("PAUTA", "GERAL")),
+    ("REUNIAO EXTRAORDINARIA comecou tarde.", ("REUNIAO", "EXTRAORDINARIA")),
+    ("ATA ANEXA segue para assinatura.", ("ATA", "ANEXA")),
+    ("GOVERNANCA CORPORATIVA aprovou a politica.", ("GOVERNANCA", "CORPORATIVA")),
+    ("CRM ERP integraram os dados.", ("CRM", "ERP")),
+    ("API REST respondeu rapido.", ("API", "REST")),
+    ("SAP FIORI travou ontem.", ("SAP", "FIORI")),
+    ("TI RH resolveram o chamado.", ("TI", "RH")),
+)
+
+
 # Phrases that are roles, artefacts or ordinary business vocabulary. Every one of these is a
 # false redaction if a `[[PERSON_NAME_n]]` comes back in its place.
 ROLE_PHRASES: tuple[str, ...] = (

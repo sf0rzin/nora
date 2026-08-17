@@ -75,12 +75,34 @@ npm run lint          # eslint (next/core-web-vitals)
 npm run format        # prettier write
 npm run format:check  # prettier check
 npm run typecheck     # tsc --noEmit
+npm run test          # vitest, unit suite under src/
+npm run test:watch    # vitest, watch mode
+npm run test:coverage # vitest + v8 coverage, applies the per-module thresholds
 npm run test:e2e      # playwright
 npm run test:e2e:ui   # playwright, headed
 ```
 
-There is no `test` script: this app has no unit-test runner. The Playwright suite under `e2e/`
-covers routing, response headers and CSP violations only — no product behaviour.
+Two suites, and they never see each other's files: Playwright owns `e2e/`, Vitest owns
+`src/**/*.test.ts`. Both packages export a global `test` and a global `expect`, so a glob that
+crossed the line would have Vitest collect Playwright specs and fail confusingly; `vitest.config.mts`
+keeps them apart.
+
+**What each one covers, and what neither does.** The Playwright suite checks routing, response
+headers and CSP violations against a real `next start` — no product behaviour, by design (see the
+note at the top of `e2e/fixtures.ts`). The Vitest suite covers four `src/lib` modules: the
+`request()` function that all 66 exported wrappers in `src/lib/api/client.ts` go through, the
+Markdown report builder, the BFF's PII redaction and the password policy. **No page and no
+component has a unit test**, which is why whole-app coverage is around 5%.
+
+Two of those tests are mirrors and read files from other services: `src/lib/pii/redact.test.ts`
+compares its pattern literals with the worker's PII Shield, and `src/lib/password-policy.test.ts`
+compares its constants with the backend's `PasswordPolicy` and DTO bounds. They fail loudly if
+those files move — do not turn that into a skip.
+
+`npm run test:coverage` is also the gate: `vitest.config.mts` declares per-module coverage floors
+on `redact.ts`, `markdown.ts` and `password-policy.ts`, each set below the measured rate so it
+fires on a regression. There is no whole-app threshold, and none on `client.ts`. ADR 0042 has the
+reasoning; `scripts/report-coverage.sh web` prints both scopes.
 
 ## CSS strategy (ADR 0013)
 

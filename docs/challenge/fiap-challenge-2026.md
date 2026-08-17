@@ -27,7 +27,7 @@ This page documents:
 | **Oracle data model (DB deliverable)** | [`../engineering/data-model-oracle.md`](../engineering/data-model-oracle.md) — Oracle 19c+ DDL equivalent to the Postgres schema |
 | **Technical architecture (diagrams, flows)** | [`../engineering/architecture.md`](../engineering/architecture.md) — DDD layers, IAM flow, RAG pipeline, multi-tenancy |
 | **Documented architectural decisions** | [`../adr/README.md`](../adr/README.md) — canonical ADR index (durable decisions with context + alternatives) |
-| **Technical validation (tests)** | Coverage measured by CI on every run, not quoted from a snapshot: worker **92.4%** over `nora_nlp` (863 tests), backend **77.1-77.3%** instruction / **61.5-61.6%** branch (578 tests), `apps/web` unmeasured (Playwright e2e, no coverage instrumentation) — measured 2026-08-17, see the "Measured coverage" section below |
+| **Technical validation (tests)** | Coverage measured by CI on every run, not quoted from a snapshot: worker **92.4%** over `nora_nlp` (863 tests), backend **77.1-77.3%** instruction / **61.5-61.6%** branch (578 tests), `apps/web` **5.5%** statement whole-app (85 tests; a unit suite over four `src/lib` modules, no page or component) — measured 2026-08-17, see the "Measured coverage" section below |
 | **Functional demonstration (deploy)** | NORA runs self-hosted on a single bare-metal host (ADR 0034/0036), behind Cloudflare Tunnel at `nora.systems`. The Azure deployment this rubric item originally pointed at is gone — no subscription, no export (ADR 0036) |
 | **Pitch / final presentation** | [`demo-script.md`](demo-script.md) — block-by-block script with a plan B per block, paired with the seed in `scripts/seed-demo.sh`. **The running time is declared there and nowhere else**, because this page and the roadmap used to carry two different numbers for a script that did not exist |
 
@@ -43,14 +43,14 @@ NORA delivers elements that go beyond the typical academic rubric:
 - **Opt-in Productivity Score** (ADR 0005) — analysis of the meeting's productivity against the declared goal, with the mandatory disclaimer "an indicator of the meeting, not of the participants"
 - **Customer Confidence** (ADR 0006) — score per meeting with buying signals + objections, delivered full-stack with an authoritative per-account trend (PR #148)
 - **Production-grade self-hosted deploy** (ADR 0034/0036) — pull-based rollout whose deploy path opens no inbound port (the machine's own sshd is a separate matter, and is open), secrets encrypted with SOPS + age, self-hosting pitfalls catalogued in `docs/operations/host-deploy.md`. Rolling forward is still a manual `deploy.sh --tag` — the release pointer is published but nothing on the host consumes it. The earlier Azure deployment (8 Azure for Students pitfalls, OIDC workflow, 14 resources via Bicep IaC) is gone — no subscription, no export
-- **Test coverage on the two areas CI actually gates** (ADR 0018) — a JaCoCo rule over `PolicyEvaluator` (instruction >= 90%, branch >= 75%) and `--cov-fail-under=90` over the PII shield. ADR 0018's ">85% across IAM, Auth and PII" is the aspiration; those two gates are what blocks a merge. See "Measured coverage" below for what the rest of the code actually measures
+- **Test coverage on the three areas CI actually gates** (ADR 0018, ADR 0042) — a JaCoCo rule over `PolicyEvaluator` (instruction >= 90%, branch >= 75%), `--cov-fail-under=90` over the PII shield, and per-module coverage floors on three `apps/web/src/lib` modules. ADR 0018's ">85% across IAM, Auth and PII" is the aspiration; those three gates are what blocks a merge. See "Measured coverage" below for what the rest of the code actually measures
 - **AGPL-3.0 License** (ADR 0017) — protection against clone-and-compete
 
 ### Measured coverage
 
 Two different things get confused whenever this project quotes a coverage number, and this section separates them because the rubric line is graded on the first while the engineering claim rests on the second.
 
-**What is measured** — every CI run. `scripts/report-coverage.sh` reads the report the test run just wrote (JaCoCo's CSV, coverage.py's data file) and prints it to the job log and to the run summary page. It measures nothing itself, so a figure read in CI and a figure read on a workstation come from one implementation.
+**What is measured** — every CI run. `scripts/report-coverage.sh` reads the report the test run just wrote (JaCoCo's CSV, coverage.py's data file, Vitest's coverage summary) and prints it to the job log and to the run summary page. It measures nothing itself, so a figure read in CI and a figure read on a workstation come from one implementation.
 
 | Scope | Measured 2026-08-17 | How |
 |---|---|---|
@@ -61,12 +61,16 @@ Two different things get confused whenever this project quotes a coverage number
 | `PolicyEvaluator` — the one gated class | 96.3% instruction · 86.0% branch | idem |
 | NLP worker, whole package | **92.4%** statement (863 tests) | `pytest --cov=nora_nlp` |
 | Worker PII shield — the one gated module | 96.6% statement | idem |
-| `apps/web` | **unmeasured** | three Playwright e2e specs run in CI; no coverage instrumentation, so no percentage exists |
+| `apps/web`, whole app | **5.5%** statement · 4.6% branch · 5.4% line (85 tests) | `npm run test:coverage` → Vitest + v8 |
+| ↳ *why that row is so low* | the unit suite covers four `src/lib` modules; **no page and no component has a unit test** | the three Playwright e2e specs exercise routing, headers and CSP, and are not counted here |
+| `apps/web` gated modules | `redact.ts` 96.6% · `markdown.ts` 97.7% · `password-policy.ts` 100% statement | idem |
+| `apps/web/src/lib/api/client.ts` | 36.5% statement — reported, deliberately not gated | one `request()` plus 66 one-line wrappers; the percentage counts wrappers |
 
-**What is gated** — two narrow rules, and only two. A regression anywhere outside them fails nothing:
+**What is gated** — three narrow rules, and only three. A regression anywhere outside them fails nothing:
 
 - `services/api/pom.xml` — a JaCoCo rule over the single class `PolicyEvaluator` (instruction >= 90%, branch >= 75%), `haltOnFailure`
 - `.github/workflows/ci.yml` — `pytest --cov=nora_nlp.services.pii_shield --cov-fail-under=90` over that one module
+- `apps/web/vitest.config.mts` — per-module `coverage.thresholds` over `redact.ts`, `markdown.ts` and `password-policy.ts`, applied by the `web` job's test run (ADR 0042). Each is a **floor below the measured rate**, so it fires on a regression rather than certifying a level
 
 The table above is a report, not a threshold. Making it one would mean picking a global minimum, which ADR 0018 considered and rejected on the grounds that forcing a number on boilerplate produces valueless tests.
 
