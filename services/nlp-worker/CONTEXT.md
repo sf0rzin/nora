@@ -80,9 +80,18 @@ data, not prose — changing them here would only make this document wrong.
 - Bold (`**...**`) for highlights.
 
 ### `participants` field (US13)
-- `name` — the participant's name.
+- `name` — the participant's name **as the model saw it**, which after the PII Shield is normally a
+  `[[PERSON_NAME_n]]` placeholder. The prompt already instructs the model to record the placeholder
+  as the name (`prompts/meeting-analysis-v1.md`, item 12).
 - `role` — job title/function (if mentioned), otherwise `null`.
-- `mentionCount` — how many times they took part/spoke.
+- `mentionCount` — how many times they took part/spoke, counted over the redacted text.
+
+> **This array is emitted and nothing consumes it.** `WorkerDtos.AnalyzeResponse` in `services/api`
+> has no `participants` field, so the backend never reads it and nothing is persisted from it. It is
+> also not where participant identity is decided: `_redact_person_names` gives **every occurrence**
+> its own number, so two mentions of one name are two placeholders and no algorithm on this side can
+> join them. Deduplication and matching therefore run in the API, over the roster the user declared
+> on upload — ADR 0048, which also says why the field is kept rather than removed.
 
 ---
 
