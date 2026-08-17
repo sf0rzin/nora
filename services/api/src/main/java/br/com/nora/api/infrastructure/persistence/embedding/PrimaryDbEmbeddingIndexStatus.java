@@ -21,11 +21,10 @@ import org.springframework.stereotype.Component;
  * <p><b>Which role answers, and why the answer says so.</b> Under {@code NORA_RLS_ENFORCE=true} the
  * primary datasource runs as {@code nora_app} (NOBYPASSRLS) and this read does not go through a
  * {@code @Transactional}, so no GUC is set and the {@code tenant_isolation} policy returns nothing
- * — a silent there-is-nothing-to-backfill that means the opposite. When the dedicated
- * {@code nora_telemetry} datasource (BYPASSRLS, read-only) is configured it answers instead;
- * otherwise the primary template does, where in dev and CI the owner bypasses RLS anyway.
- * {@link #source()} names whichever answered, so a real zero is distinguishable from a fail-closed
- * one.
+ * — a silent there-is-nothing-to-backfill that means the opposite. When the dedicated {@code
+ * nora_telemetry} datasource (BYPASSRLS, read-only) is configured it answers instead; otherwise the
+ * primary template does, where in dev and CI the owner bypasses RLS anyway. {@link #source()} names
+ * whichever answered, so a real zero is distinguishable from a fail-closed one.
  */
 @Component
 public class PrimaryDbEmbeddingIndexStatus implements EmbeddingIndexStatusSource {

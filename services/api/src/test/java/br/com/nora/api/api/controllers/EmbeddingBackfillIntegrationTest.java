@@ -88,8 +88,7 @@ class EmbeddingBackfillIntegrationTest {
         setSnippet(idB, "onboarding de novo cliente e configuração de suporte");
 
         // Search is blind to both, and says so by returning nothing at all.
-        JsonNode before =
-                read(authGet("/meetings/search?q=" + enc("preço do contrato"), token));
+        JsonNode before = read(authGet("/meetings/search?q=" + enc("preço do contrato"), token));
         assertThat(before.get("items")).isEmpty();
 
         // The preview costs nothing and counts them.

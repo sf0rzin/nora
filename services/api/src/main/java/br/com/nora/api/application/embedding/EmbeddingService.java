@@ -16,10 +16,10 @@ import org.springframework.stereotype.Service;
  * over the tenant's vectors (see V021: no pgvector at this scale). All best-effort: an embedding
  * failure never takes down the caller.
  *
- * <p>Every provider call made here is billed, so each one emits a usage event through
- * {@link UsageRecorder} (ADR 0024) — the same path the analysis uses, not a second report. The
- * {@code service} dimension separates ordinary product traffic from an operator-initiated backfill,
- * which is the one that can spend a lot at once.
+ * <p>Every provider call made here is billed, so each one emits a usage event through {@link
+ * UsageRecorder} (ADR 0024) — the same path the analysis uses, not a second report. The {@code
+ * service} dimension separates ordinary product traffic from an operator-initiated backfill, which
+ * is the one that can spend a lot at once.
  */
 @Service
 public class EmbeddingService {
