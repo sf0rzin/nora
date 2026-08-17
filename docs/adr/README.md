@@ -58,7 +58,7 @@ Partially superseded decisions: a successor ADR may mark `Partially supersedes X
 | 0011 | Invite-based onboarding with optional corporate domain restriction | accepted |
 | 0012 | PII PERSON_NAME: regional BR strategy in the MVP, NER upgrade when internationalizing | accepted |
 | 0013 | Frontend CSS strategy (raw Tailwind, no shadcn, OKLCH tokens) | proposed (Design is refining) |
-| 0014 | Defer post-MVP commercial gate (14 US deferred with a reactivation criterion) | accepted |
+| 0014 | Defer post-MVP commercial gate (14 US deferred with a reactivation criterion) | superseded by 0038 (its gate was the FIAP pitch, held 2026-06-15) |
 | 0015 | Customer Confidence — minimum viable persistence in Sub-phase 1.11 | accepted (partially supersedes 0006) |
 | 0016 | Production-readiness checklist and `rg-nora-prod` separation | partially superseded by 0034 (the Azure premises of Gaps 1/3/4/7 fall; Gaps 2 and 6 hold on a different substrate; Gap 5 delivered by 0029) |
 | 0017 | License: AGPL-3.0 | accepted |
@@ -79,6 +79,10 @@ Partially superseded decisions: a successor ADR may mark `Partially supersedes X
 | 0032 | NORA Flows canvas: React Flow styled with NORA tokens | accepted |
 | 0033 | PII strategy on the chat path (structured in the BFF + PERSON_NAME via the worker) | accepted |
 | 0034 | Migration from Azure Container Apps to self-hosted Proxmox (single VM + Docker Compose) | accepted (supersedes 0009; partially supersedes 0016; extends 0025; substrate §1 and backup §9 superseded by 0036) |
-| 0035 | Local STT: Whisper embedded in Tauri (Rust), on the client machine | accepted (supersedes 0009; partially supersedes 0008) |
+| 0035 | Local STT: Whisper embedded in Tauri (Rust), on the client machine | superseded by 0039 (it supersedes 0009 and partially supersedes 0008; those parts stand) |
 | 0036 | The substrate is a single bare-metal Ubuntu host, not a Proxmox VM | accepted (supersedes 0034 §1 substrate and §9 backup) |
 | 0037 | SSH reaches the host through the existing Cloudflare Tunnel, gated by Access | accepted (extends 0025 and 0034 §2) |
+| 0038 | Post-pitch scope realignment | accepted (supersedes 0014) |
+| 0039 | Cloud STT: OpenAI transcription reached with an ephemeral session token | accepted (supersedes 0035) |
+| 0040 | The PII non-negotiable is scoped to analysis; transcription becomes a declared subprocessor | accepted (relates to 0012 and 0033; supersedes neither) |
+| 0041 | NORA as an MCP server (the inbound path) | accepted (relates to 0031, the outbound path) |

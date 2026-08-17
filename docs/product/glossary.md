@@ -64,7 +64,7 @@
 
 **Federated Credential** — Azure OIDC mechanism to authenticate GitHub Actions without storing a client secret. The Service Principal `sp-nora-github-deploy` has 3 separate federated credentials: (main) / (pull_request) / (environment:dev). Lesson: you need one fed cred per (branch, environment) pair.
 
-**Flyway** — Tool for versioned SQL migrations. Migrations in `services/api/src/main/resources/db/migration/V001__*.sql` up to V021 (canonical source: `docs/engineering/data-model.md`). Each migration is immutable once merged into main.
+**Flyway** — Tool for versioned SQL migrations. Migrations in `services/api/src/main/resources/db/migration/V001__*.sql` up to V027 (canonical source: `docs/engineering/data-model.md`). Each migration is immutable once merged into main — with one recorded exception, V027, which was edited after being applied and therefore needs `flyway repair` on any database that ran the earlier version (`data-model.md` §2.17).
 
 ## G
 

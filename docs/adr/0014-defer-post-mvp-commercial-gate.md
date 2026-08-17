@@ -1,6 +1,6 @@
 # 0014 — Defer post-MVP commercial gate
 
-- Status: accepted
+- Status: superseded by 0038
 - Date: 2026-05-14
 
 ## Context

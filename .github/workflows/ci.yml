@@ -685,6 +685,22 @@ jobs:
       - name: No Portuguese outside the declared allowlist
         run: bash scripts/check-language.sh
 
+  # Always runs (no path filter), and that is the whole point: this check compares TWO
+  # sides that live under different filters. `docs/api/openapi.yaml` matches `docs`;
+  # `services/api/**` matches `api`. A PR that deletes a controller touches only the
+  # second, so gating this on `docs` would let exactly the deletion case through — which
+  # is the case that left `POST /speech/token` in the spec after the handler was gone.
+  # Under a filter it would also fail open on the reverse: a new controller with no spec
+  # entry, in a PR that touches no doc.
+  # Cost is a few seconds of awk, the same reason the `language` job above has no filter.
+  openapi-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: The OpenAPI spec and the controllers agree, both directions
+        run: bash scripts/check-openapi-coverage.sh
+
   # ┌──────────────────────────────────────────────────────────────────────────────────┐
   # │ THIS JOB'S NAME IS A CONTRACT — DO NOT RENAME IT.                                │
   # └──────────────────────────────────────────────────────────────────────────────────┘
@@ -846,7 +862,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, api, worker, web, admin, desktop-rust, supply-chain, docs-link-check, language, infra]
+    needs: [changes, api, worker, web, admin, desktop-rust, supply-chain, docs-link-check, language, openapi-coverage, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

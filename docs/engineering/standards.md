@@ -91,7 +91,7 @@ nora/
 | Production-readiness gaps (target Sub-phase 1.12) | `docs/operations/production-readiness-gaps.md` |
 | FIAP Challenge 2026 academic material (personas, use cases, rubric) | `docs/challenge/` |
 | Durable architectural decisions (canonical index) | `docs/adr/NNNN-titulo.md` (index in `docs/adr/README.md`) |
-| HTTP contracts | `docs/api/openapi.yaml` (to be generated) or via springdoc-openapi |
+| HTTP contracts | `docs/api/openapi.yaml` — hand-written, complete, and compared to the controllers in CI by `scripts/check-openapi-coverage.sh`. springdoc is on the classpath for cross-checking, not as the source |
 | Payload examples | `docs/api/examples/*.json` |
 | LLM schemas | `docs/api/llm-schemas/*.schema.json` |
 | Worker prompts | `services/nlp-worker/src/nora_nlp/prompts/{version}.md` |
