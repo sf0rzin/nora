@@ -157,6 +157,30 @@ public class TrendsRepositoryAdapter implements TrendsRepository {
     @Override
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
+    public List<BucketCount> meetingsPerBucket(Scope scope, Window window) {
+        // No join to meeting_analyses: this is every meeting of the bucket, which is what makes
+        // the analysed count next to it readable as a coverage figure rather than as a total.
+        String bucket = bucketOf(MEETING_INSTANT);
+        String sql =
+                "SELECT "
+                        + bucket
+                        + " AS bucket, COUNT(*) "
+                        + "FROM meetings m "
+                        + "WHERE m.tenant_id = :tenantId "
+                        + "  AND m.deleted_at IS NULL "
+                        + MEETING_IN_WINDOW
+                        + meetingRestriction(scope)
+                        + " GROUP BY 1 ORDER BY 1";
+        Query query = em.createNativeQuery(sql);
+        bindScope(query, scope);
+        bindBucketing(query, window);
+        bindRange(query, window);
+        return toBuckets((List<Object[]>) query.getResultList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @SuppressWarnings("unchecked")
     public List<BucketCount> analysedMeetingsPerBucket(Scope scope, Window window) {
         String bucket = bucketOf(MEETING_INSTANT);
         String sql =

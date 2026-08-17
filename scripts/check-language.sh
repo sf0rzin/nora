@@ -41,6 +41,7 @@ ALLOWED=(
   "apps/web/src/app/(app)/settings/"            # inline pt-BR UI copy not lifted into strings.ts yet
   "apps/web/src/app/(app)/tasks/"               # inline pt-BR UI copy not lifted into strings.ts yet
   "apps/web/src/app/(app)/trends/"              # inline pt-BR UI copy not lifted into strings.ts yet
+  "apps/web/src/app/(app)/usage/"               # inline pt-BR UI copy not lifted into strings.ts yet
   "apps/web/src/app/(app)/flows/flow-editor.tsx"  # inline pt-BR UI copy not lifted into strings.ts yet
   "apps/web/src/app/(app)/flows/side-panel.tsx"   # inline pt-BR UI copy not lifted into strings.ts yet
   "apps/web/src/app/api/chat/route.ts"          # pt-BR system prompt + UI-facing chat copy
@@ -55,6 +56,7 @@ ALLOWED=(
   "apps/web/src/lib/password-policy.ts"         # pt-BR password-rule copy shown in the UI
   "apps/web/src/lib/report/markdown.ts"         # pt-BR headings of the exported meeting report
   "apps/web/src/lib/report/tasks-export.ts"     # pt-BR column headers and labels of the exported task list
+  "apps/web/src/lib/report/usage-report.ts"     # pt-BR headings, columns and caveats of the exported period report
   "apps/web/src/middleware.ts"                  # pt-BR copy on the auth redirect path
   "apps/admin/src/"                             # operator console UI is pt-BR
   "apps/desktop/src/"                           # desktop product UI is pt-BR
@@ -82,9 +84,10 @@ ALLOWED=(
   "services/nlp-worker/tests/"                                            # pt-BR sample transcripts and PII fixtures
   # Web unit tests whose ASSERTIONS are the pt-BR the module under test produces. Listed one by
   # one rather than as an `apps/web/src/**/*.test.ts` prefix: the modules whose output is pt-BR
-  # are these four, and a broad prefix would exempt every future web test from the check.
+  # are these five, and a broad prefix would exempt every future web test from the check.
   "apps/web/src/lib/report/markdown.test.ts"                              # asserts on the pt-BR headings of the exported meeting report
   "apps/web/src/lib/report/tasks-export.test.ts"                          # asserts on the pt-BR columns and labels of the exported task list
+  "apps/web/src/lib/report/usage-report.test.ts"                          # asserts on the pt-BR caveats of the exported period report
   "apps/web/src/lib/pii/redact.test.ts"                                   # pt-BR sample sentences carrying the BR PII under test
   "apps/web/src/lib/api/client.test.ts"                                   # asserts on the pt-BR error copy the client maps API codes to
   "packages/nlp-baseline/tests/"                                          # pt-BR tokenizer/TF-IDF fixtures

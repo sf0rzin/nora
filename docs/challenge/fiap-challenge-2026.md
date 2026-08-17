@@ -62,16 +62,16 @@ Two different things get confused whenever this project quotes a coverage number
 | `PolicyEvaluator` — the one gated class | 96.3% instruction · 86.0% branch | idem |
 | NLP worker, whole package | **92.4%** statement (863 tests) | `pytest --cov=nora_nlp` |
 | Worker PII shield — the one gated module | 96.6% statement | idem |
-| `apps/web`, whole app | **6.2%** statement · 5.2% branch · 6.0% line (104 tests) | `npm run test:coverage` → Vitest + v8 |
-| ↳ *why that row is so low* | the unit suite covers five `src/lib` modules; **no page and no component has a unit test** | the three Playwright e2e specs exercise routing, headers and CSP, and are not counted here |
-| `apps/web` gated modules | `redact.ts` 96.6% · `markdown.ts` 97.7% · `tasks-export.ts` 100% · `password-policy.ts` 100% statement | idem |
-| `apps/web/src/lib/api/client.ts` | 36.5% statement — reported, deliberately not gated | one `request()` plus 66 one-line wrappers; the percentage counts wrappers |
+| `apps/web`, whole app | **7.7%** statement · 6.6% branch · 7.6% line (130 tests) | `npm run test:coverage` → Vitest + v8 |
+| ↳ *why that row is so low* | the unit suite covers seven `src/lib` modules; **no page and no component has a unit test** | the three Playwright e2e specs exercise routing, headers and CSP, and are not counted here |
+| `apps/web` gated modules | `redact.ts` 96.6% · `markdown.ts` 97.7% · `tasks-export.ts` 100% · `usage-report.ts` 98.4% · `password-policy.ts` 100% statement | idem |
+| `apps/web/src/lib/api/client.ts` | 30.9% statement — reported, deliberately not gated | one `request()` plus 74 one-line wrappers; the percentage counts wrappers |
 
 **What is gated** — three narrow rules, and only three. A regression anywhere outside them fails nothing:
 
 - `services/api/pom.xml` — a JaCoCo rule over the single class `PolicyEvaluator` (instruction >= 90%, branch >= 75%), `haltOnFailure`
 - `.github/workflows/ci.yml` — `pytest --cov=nora_nlp.services.pii_shield --cov-fail-under=90` over that one module
-- `apps/web/vitest.config.mts` — per-module `coverage.thresholds` over `redact.ts`, `markdown.ts`, `tasks-export.ts` and `password-policy.ts`, applied by the `web` job's test run (ADR 0042). Each is a **floor below the measured rate**, so it fires on a regression rather than certifying a level
+- `apps/web/vitest.config.mts` — per-module `coverage.thresholds` over `redact.ts`, `markdown.ts`, `tasks-export.ts`, `usage-report.ts` and `password-policy.ts`, applied by the `web` job's test run (ADR 0042). Each is a **floor below the measured rate**, so it fires on a regression rather than certifying a level
 
 The table above is a report, not a threshold. Making it one would mean picking a global minimum, which ADR 0018 considered and rejected on the grounds that forcing a number on boilerplate produces valueless tests.
 

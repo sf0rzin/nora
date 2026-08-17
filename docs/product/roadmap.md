@@ -90,7 +90,7 @@ status per user story is in [`backlog.md`](backlog.md); this table is chronology
 - **334 PRs** merged into `main` (measured 2026-08-17; the most recent merged number is #484). The count includes the "audit follow-up" hardening wave #114–#138 and the 2026-08 realignment wave
 - **ADRs**: 44 numbered, of which seven (0038–0044) record the August 2026 realignment and its first builds. `docs/adr/README.md` is the canonical index and the single source for status — several ADRs are partially superseded and the index is where that is tracked
 - **Migrations**: 27, ceiling `V027__composite_fk_iam_user_attachments.sql`. `docs/engineering/data-model.md` is the single source for the schema. Recent milestones: V016/V019/V020 RLS, V017 Customer Confidence, V021 `meeting_embeddings`, V022 chat sessions, V023 workflows, V024–V026 integration connections, V027 composite FK on the IAM attachment tables
-- **HTTP surface**: 16 controllers in `services/api`, described in full by `docs/api/openapi.yaml`, whose coverage against the code is checked in CI by `scripts/check-openapi-coverage.sh`
+- **HTTP surface**: 21 controllers in `services/api`, described in full by `docs/api/openapi.yaml`, whose coverage against the code is checked in CI by `scripts/check-openapi-coverage.sh`
 - **Test coverage**: **not restated here.** The figures this section carried until 2026-08-17 — worker 87%, backend 67% line / 53% branch, web 0% — were measured on **2026-05-13**, carried a "to be re-measured" note that nobody acted on, and were quoted for three months across the pitch material. They are withdrawn rather than hand-refreshed: `docs/engineering/standards.md` §Test coverage targets is the single source, and `scripts/report-coverage.sh` now re-measures on every run in the `api`, `worker` and `web` jobs. Read the last CI run, not this bullet
 - **Infrastructure cost**: **no number.** The line this section used to carry ("Azure dev cost R$110-180/month") described a subscription ADR 0034 shut down on 2026-08-07. The bare-metal host's real running cost has never been measured, and an unmeasured number is worse than none
 
@@ -202,11 +202,13 @@ is the authority, and this roadmap does not schedule what that document plans.
 - **Closed scope (`WONT`)** — corporate SSO (US05), aggregated Account Health (US50) and its band
   alert (US51), and the Enterprise DPA and SLA. These are not waiting for a criterion (ADR 0038 §4).
   US47 — pulling project state out of external trackers — is closed by ADR 0041.
-- **Open, with no scheduled trigger** — US08 (audio upload), US33 and US34 (tenant metrics and
-  period export), US41 (policy templates), US44 (permission boundaries). ADR 0038 neither kills nor
-  reactivates them; each of their ADR 0014 criteria was commercial, and ADR 0038 §1 says none of
-  those conditions will occur. "Open with no trigger" is a weaker statement than "deferred until X", and
-  it is the true one.
+- **Open, with no scheduled trigger** — US08 (audio upload), US41 (policy templates), US44
+  (permission boundaries). ADR 0038 neither kills nor reactivates them; each of their ADR 0014
+  criteria was commercial, and ADR 0038 §1 says none of those conditions will occur. "Open with no
+  trigger" is a weaker statement than "deferred until X", and it is the true one. **US33 and US34
+  left this category**: ADR 0046 §1 reactivated them and both are delivered — `GET /usage` and the
+  client-side period export. ADR 0046 also decides the other three, and where this bullet and that
+  ADR disagree the ADR is the authority.
 - **The operations block** — one reactivation trigger for all of it: **NORA acquires a user who is
   not the maintainer** (ADR 0038 §6).
 
@@ -240,7 +242,7 @@ For a sub-phase to be considered **closed** (`DONE`):
 | **Trends panel** (US21) | **Reactivated** by ADR 0038 §5 and **delivered**: `GET /trends`, task load from SQL over `meeting_action_items` (with `completed_at` added by V030, because `updated_at` moves on any edit and would have dated completions wrong) and themes from `meeting_analyses.topics`. The prerequisite everyone assumed — a backfilled embedding index — turned out not to be one: the panel reads topics, not vectors, so ADR 0044's "the index has to be *run*, not just merged" does not gate it |
 | **Policy templates + Simulator** (US41 + US43) | US43 **reactivated** by ADR 0038 §5 and **delivered** — `POST /iam/simulate`. US41 open with no trigger |
 | **Permission boundaries** (US44) | Open, no trigger. It needs an organisational hierarchy and IAM delegation that nothing else asks for |
-| **Tenant metrics and Export** (US33 + US34) | Open, no trigger. The operator-facing telemetry that exists (`/admin/platform/telemetry/*`) is a different thing behind Cloudflare Access |
+| **Tenant metrics and Export** (US33 + US34) | **Reactivated** by ADR 0046 §1 and **delivered**: `GET /usage` answers the tenant's own consumption, and the consolidated period report is generated client-side like US25/US60. The operator-facing telemetry (`/admin/platform/telemetry/*`) stays a different thing behind Cloudflare Access — its cross-tenant query was deliberately not reused, because it has no tenant predicate to forget |
 
 ### The long-term horizons, and why they are historical
 

@@ -7,12 +7,12 @@ info:
     management with httpOnly cookies, self-service account operations, AWS-style IAM (groups +
     policies + attachments + audit), email invitations, workspace settings and commercial context,
     meeting upload/listing/detail/semantic search, extracted task management, the trends panel's
-    temporal aggregation, live analysis, chat sessions, NORA Flows (workflow CRUD, manual run and
-    execution history), the OAuth integration hub, the LGPD erasure endpoint, the inbound MCP server
-    and its tokens, and the operator control plane.
+    temporal aggregation, the tenant's own usage figures, live analysis, chat sessions, NORA Flows
+    (workflow CRUD, manual run and execution history), the OAuth integration hub, the LGPD erasure
+    endpoint, the inbound MCP server and its tokens, and the operator control plane.
 
     ## Scope of this document
-    Every route the 20 controllers under
+    Every route the 21 controllers under
     `services/api/src/main/java/br/com/nora/api/api/controllers/` expose is described here, and
     nothing else is. `scripts/check-openapi-coverage.sh` enforces that in both directions in CI:
     a route added to a controller and not to this file fails the build, and so does an operation
@@ -78,6 +78,12 @@ tags:
       that keep coming back. Read-only, no model call — the task half is SQL over
       `meeting_action_items` and the theme half reads the `topics` each analysis already persisted,
       so the panel does not depend on the RAG index of ADR 0044 being backfilled.
+  - name: Usage
+    description: |
+      The tenant's own consumption over a period (US33): meetings held and analysed, AI calls,
+      tokens and an estimated cost. Not to be confused with `Platform Admin`, which answers the
+      same shape of question for the operator across every tenant — this one is authenticated by
+      the ordinary tenant JWT and its query names a single tenant in the WHERE clause.
   - name: Chat
     description: |
       Persisted chat sessions for the NORA assistant (migration V022). Scoped by tenant AND by the
@@ -1340,6 +1346,74 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TrendsResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ----------------------------------------------------------------------------
+  # Usage — the tenant's own consumption over a period (US33)
+  # ----------------------------------------------------------------------------
+  /usage:
+    get:
+      tags: [Usage]
+      summary: Meetings, AI calls, tokens and estimated cost over a period
+      description: |
+        IAM action: `meeting:read`. The tenant-facing half of the telemetry pipeline whose operator
+        half is `GET /admin/platform/telemetry/business`. **The two are different endpoints on
+        different planes**: that one is reached through Cloudflare Access with an operator identity
+        and aggregates every tenant; this one takes the ordinary tenant JWT and its query binds one
+        tenant in the WHERE clause. The operator aggregation is not reused — it carries no tenant
+        predicate at all.
+
+        **Two halves, two guarantees.** Meetings and analyses come from the primary database and
+        are restricted to the meetings the caller may open, exactly as `GET /trends` does it:
+        `scopeStrategy` reports whether the IAM decision was uniform over the tenant or whether the
+        visible meetings had to be resolved item by item. The AI half comes from the control plane
+        of ADR 0022, which is optional infrastructure, so it carries its own `ai.state`.
+
+        **`ai.state` is the field that must be read before any AI number is drawn.**
+        `AVAILABLE` — the numbers are a measurement. `UNAVAILABLE` — the control plane is off or
+        degraded, so the zeros mean "unknown" and not "no consumption".
+        `WITHHELD_RESTRICTED_SCOPE` — the caller's IAM position distinguishes meetings and
+        `usage_events` carries no meeting id, so a tenant-wide total would disclose activity from
+        meetings the caller may not open; there is no honest per-item answer, so none is given.
+
+        **The cost is an estimate and says so.** `ai.costBasis` is `CATALOG_LIST_PRICE`: the model
+        catalog's list price multiplied by the measured token counts, in `ai.currency` (USD). It is
+        not an invoice. `ai.unmeteredCalls` counts the calls that contribute to `ai.calls` and to
+        nothing else — today that is live transcription, whose events are session issuances rather
+        than minutes transcribed (ADR 0045 §4), so their tokens and cost are structurally zero.
+        Every `byService` entry repeats the distinction in `metered`.
+
+        **Empty state is part of the contract.** `dataState` separates `NO_DATA` and
+        `NO_ANALYSED_MEETINGS` from a real period of zero activity. When `ai.state` is not
+        `AVAILABLE` it is decided over the meetings half alone, because an absent measurement is
+        not a zero.
+
+        **Time zone.** Buckets are cut in the zone reported in `timezone`, not in UTC. Every
+        `bucketStart` is a local date in that zone.
+      parameters:
+        - in: query
+          name: granularity
+          description: Bucket size. Defaults to `MONTH` — consumption is read per billing period.
+          schema: { $ref: '#/components/schemas/TrendsGranularity' }
+        - in: query
+          name: from
+          description: |
+            Start of the range, inclusive, ISO-8601 offset date-time. Absent means the last 6
+            months (or 12 weeks). A range longer than the ceiling — 24 months or 52 weeks — is
+            clamped forward rather than refused, and the applied range comes back in the response.
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          description: End of the range, exclusive. Absent means now.
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: OK — read `dataState` and `ai.state` before drawing anything
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UsageResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -3635,6 +3709,136 @@ components:
           description: How many of those carry a persisted analysis.
         taskLoad: { $ref: '#/components/schemas/TrendsTaskLoad' }
         themes: { $ref: '#/components/schemas/TrendsThemes' }
+
+    # ---- tenant usage (US33) ----
+    UsageDataState:
+      type: string
+      enum: [NO_DATA, NO_ANALYSED_MEETINGS, OK]
+      description: |
+        What the screen is allowed to claim. `OK` with a counter at zero means a real zero;
+        `NO_DATA` means no meeting and no AI call the API can see, and `NO_ANALYSED_MEETINGS` means
+        meetings exist but none is analysed. When `ai.state` is not `AVAILABLE` this is decided
+        over the meetings half alone — an absent measurement is not a zero.
+    UsageAiState:
+      type: string
+      enum: [AVAILABLE, UNAVAILABLE, WITHHELD_RESTRICTED_SCOPE]
+      description: |
+        Whether the AI half is a measurement, an absence of one, or a refusal. `UNAVAILABLE`: the
+        control plane of ADR 0022 is off or degraded, so the counters below mean "unknown".
+        `WITHHELD_RESTRICTED_SCOPE`: the caller's IAM position distinguishes meetings and
+        `usage_events` carries no meeting id, so a tenant-wide total would disclose activity from
+        meetings they may not open.
+    UsageMeetingBucket:
+      type: object
+      required: [bucketStart, meetings, analysedMeetings]
+      properties:
+        bucketStart:
+          type: string
+          format: date
+          description: First day of the bucket, a LOCAL date in `timezone`.
+        meetings:
+          type: integer
+          description: Meetings of the bucket the caller may open, analysed or not.
+        analysedMeetings:
+          type: integer
+          description: How many of those carry a persisted analysis.
+    UsageAiBucket:
+      type: object
+      required: [bucketStart, calls, promptTokens, completionTokens, costUsd]
+      properties:
+        bucketStart: { type: string, format: date }
+        calls:
+          type: integer
+          description: Recorded AI events of the bucket, failures included, stub runs excluded.
+        promptTokens: { type: integer }
+        completionTokens: { type: integer }
+        costUsd:
+          type: number
+          description: Catalog list price × measured tokens for this bucket. Not an invoice.
+    UsageServiceUsage:
+      type: object
+      required: [service, metered, calls, promptTokens, completionTokens, costUsd]
+      properties:
+        service:
+          type: string
+          description: '`analysis`, `chat`, `embedding`, `stt` — whatever `UsageRecorder` wrote.'
+          example: analysis
+        metered:
+          type: boolean
+          description: |
+            False when the service's events carry no token count by construction, so its zero cost
+            is a property of the design and not an observation. `stt` is the case that exists: with
+            the ephemeral-credential design of ADR 0039/0045 the audio never crosses NORA's
+            infrastructure, so what is recorded is a session issued and never a minute transcribed.
+        calls: { type: integer }
+        promptTokens: { type: integer }
+        completionTokens: { type: integer }
+        costUsd: { type: number }
+    UsageAi:
+      type: object
+      required:
+        [state, costBasis, currency, calls, unmeteredCalls, promptTokens, completionTokens,
+         costUsd, byService, buckets]
+      properties:
+        state: { $ref: '#/components/schemas/UsageAiState' }
+        costBasis:
+          type: string
+          description: Where the money figure comes from. `CATALOG_LIST_PRICE` today.
+          example: CATALOG_LIST_PRICE
+        currency:
+          type: string
+          description: ISO 4217 code of every `costUsd`. Always `USD` — the catalog's currency.
+          example: USD
+        calls:
+          type: integer
+          description: Recorded AI events in the range, failures included, stub runs excluded.
+        unmeteredCalls:
+          type: integer
+          description: |
+            How many of `calls` came from a service whose cost is not measurable, so a reader can
+            see how much of the total the money figure does not cover.
+        promptTokens: { type: integer }
+        completionTokens: { type: integer }
+        costUsd: { type: number }
+        byService:
+          type: array
+          items: { $ref: '#/components/schemas/UsageServiceUsage' }
+          description: Busiest first, ties broken by name.
+        buckets:
+          type: array
+          items: { $ref: '#/components/schemas/UsageAiBucket' }
+          description: |
+            Dense over the same axis as `meetingBuckets` — every bucket of the range is present,
+            including the empty ones. Empty when `state` is not `AVAILABLE`.
+    UsageResponse:
+      type: object
+      required:
+        [granularity, timezone, from, to, scopeStrategy, dataState, meetings, analysedMeetings,
+         meetingBuckets, ai]
+      properties:
+        granularity: { $ref: '#/components/schemas/TrendsGranularity' }
+        timezone:
+          type: string
+          description: IANA zone the buckets were cut in, so the numbers can be reproduced.
+          example: America/Sao_Paulo
+        from: { type: string, format: date-time, description: Applied range start, inclusive. }
+        to: { type: string, format: date-time, description: Applied range end, exclusive. }
+        scopeStrategy:
+          allOf: [{ $ref: '#/components/schemas/TrendsScopeStrategy' }]
+          description: |
+            Same two aggregate-authorization paths `GET /trends` reports, with the same meaning.
+        dataState: { $ref: '#/components/schemas/UsageDataState' }
+        meetings:
+          type: integer
+          description: Meetings in the range the caller is allowed to open.
+        analysedMeetings:
+          type: integer
+          description: How many of those carry a persisted analysis.
+        meetingBuckets:
+          type: array
+          items: { $ref: '#/components/schemas/UsageMeetingBucket' }
+          description: Dense — every bucket of the range is present, including the empty ones.
+        ai: { $ref: '#/components/schemas/UsageAi' }
 
     # ---- chat ----
     ChatRole:

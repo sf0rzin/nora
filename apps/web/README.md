@@ -46,6 +46,7 @@ src/
       meetings/[id]/            # detail, plus report/ for the printable view
       tasks/  projects/
       trends/                   # US21 panel: task load over time + recurring themes
+      usage/                    # US33 panel + US34 period report: meetings, AI calls, cost
       flows/                    # workflow canvas: list, new, [id] (ADR 0030/0032)
       integrations/             # OAuth connector hub (ADR 0031)
       settings/                 # page.tsx redirects the bare prefix to context/
@@ -54,7 +55,7 @@ src/
     api/chat/route.ts           # BFF: the only server route, holds the provider key
   components/                   # flat, no feature folders
   lib/
-    api/client.ts               # fetch wrapper; 69 exported functions
+    api/client.ts               # fetch wrapper; 74 exported functions
     api/types.ts                # types mirroring OpenAPI
   fixtures/                     # two files, see "Mock mode" above
   styles/                       # tokens.css + components.css
@@ -90,11 +91,11 @@ keeps them apart.
 
 **What each one covers, and what neither does.** The Playwright suite checks routing, response
 headers and CSP violations against a real `next start` — no product behaviour, by design (see the
-note at the top of `e2e/fixtures.ts`). The Vitest suite covers six `src/lib` modules: the
-`request()` function that all 69 exported wrappers in `src/lib/api/client.ts` go through, the
-Markdown report builder, the task-list CSV/Markdown exporter, the BFF's PII redaction, the password
-policy and the trends panel's date/axis helpers. **No page and no component has a unit test**, which
-is why whole-app coverage is around 6%.
+note at the top of `e2e/fixtures.ts`). The Vitest suite covers seven `src/lib` modules: the
+`request()` function that all 74 exported wrappers in `src/lib/api/client.ts` go through, the
+Markdown report builder, the task-list CSV/Markdown exporter, the consolidated period report, the
+BFF's PII redaction, the password policy and the trends panel's date/axis helpers. **No page and no
+component has a unit test**, which is why whole-app coverage is around 8%.
 
 Two of those tests are mirrors and read files from other services: `src/lib/pii/redact.test.ts`
 compares its pattern literals with the worker's PII Shield, and `src/lib/password-policy.test.ts`
@@ -102,8 +103,8 @@ compares its constants with the backend's `PasswordPolicy` and DTO bounds. They 
 those files move — do not turn that into a skip.
 
 `npm run test:coverage` is also the gate: `vitest.config.mts` declares per-module coverage floors
-on `redact.ts`, `markdown.ts`, `tasks-export.ts` and `password-policy.ts`, each set below the
-measured rate so it fires on a regression. There is no whole-app threshold, and none on
+on `redact.ts`, `markdown.ts`, `tasks-export.ts`, `usage-report.ts` and `password-policy.ts`, each
+set below the measured rate so it fires on a regression. There is no whole-app threshold, and none on
 `client.ts`. ADR 0042 has the reasoning; `scripts/report-coverage.sh web` prints both scopes.
 
 ## CSS strategy (ADR 0013)

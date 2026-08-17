@@ -8,8 +8,11 @@ import java.util.Locale;
 import java.util.UUID;
 
 /**
- * Read-only temporal aggregation behind the trends panel (US21). Every method answers for one
- * tenant and, optionally, for one explicit set of meetings — the set the caller is allowed to open.
+ * Read-only temporal aggregation behind the panels that report over a period: the trends panel
+ * (US21) and the tenant usage panel (US33), which shares this port rather than growing a second one
+ * so the two screens cannot quote different meeting counts for the same tenant and range. Every
+ * method answers for one tenant and, optionally, for one explicit set of meetings — the set the
+ * caller is allowed to open.
  *
  * <p>The meeting restriction is not a filter for convenience: an aggregate computed only by {@code
  * WHERE tenant_id = ?} respects the tenant but not the per-item policy, so a user carrying a
@@ -98,6 +101,14 @@ public interface TrendsRepository {
 
     /** Meetings in the window and how many are analysed — the input to the empty-state decision. */
     MeetingCoverage meetingCoverage(Scope scope, Window window);
+
+    /**
+     * Meetings per bucket, analysed or not (US33). The usage panel draws it next to {@link
+     * #analysedMeetingsPerBucket} because the gap between the two is the number a consumption
+     * screen is actually asked about: a month with ten meetings and four analyses spent four
+     * analyses.
+     */
+    List<BucketCount> meetingsPerBucket(Scope scope, Window window);
 
     /**
      * Analysed meetings per bucket. Counted separately from {@link #topicOccurrences} on purpose:

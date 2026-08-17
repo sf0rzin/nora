@@ -496,3 +496,89 @@ export interface TrendsResponse {
   taskLoad: TrendsTaskLoad;
   themes: TrendsThemes;
 }
+
+// ---------- Tenant usage panel (US33) ----------
+
+/**
+ * What the usage screen is allowed to claim. `OK` with a counter at zero means a real zero; the
+ * other two mean there is nothing to draw, and for different reasons. When `ai.state` is not
+ * `AVAILABLE` this is decided over the meetings half alone — an absent measurement is not a zero.
+ */
+export type UsageDataState = 'NO_DATA' | 'NO_ANALYSED_MEETINGS' | 'OK';
+
+/**
+ * Whether the AI half is a measurement, an absence of one, or a refusal.
+ *
+ * `UNAVAILABLE` means the control plane (ADR 0022) is off or degraded, so the zeros below mean
+ * "unknown". `WITHHELD_RESTRICTED_SCOPE` means the caller's IAM position distinguishes meetings
+ * and `usage_events` carries no meeting id, so a tenant-wide total would disclose activity from
+ * meetings they may not open.
+ */
+export type UsageAiState = 'AVAILABLE' | 'UNAVAILABLE' | 'WITHHELD_RESTRICTED_SCOPE';
+
+/** Meetings of one bucket and how many of them carry an analysis. */
+export interface UsageMeetingBucket {
+  /** First day of the bucket, a LOCAL date in `UsageResponse.timezone`. */
+  bucketStart: string;
+  meetings: number;
+  analysedMeetings: number;
+}
+
+/** One point of the AI series. */
+export interface UsageAiBucket {
+  bucketStart: string;
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+  /** `BigDecimal` on the wire: a JSON number, but read as `string | number` so no digit is lost. */
+  costUsd: string | number;
+}
+
+/** One service's slice of the range. */
+export interface UsageServiceUsage {
+  /** `analysis`, `chat`, `embedding`, `stt` — whatever `UsageRecorder` wrote. */
+  service: string;
+  /**
+   * False when the service's events carry no token count by construction, so its zero cost is a
+   * property of the design and not an observation. `stt` is the case that exists (ADR 0045: what
+   * is recorded is a session issued, never a minute transcribed).
+   */
+  metered: boolean;
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+  costUsd: string | number;
+}
+
+/** AI consumption over the range. */
+export interface UsageAi {
+  state: UsageAiState;
+  /** `CATALOG_LIST_PRICE`: catalog price times measured tokens, never an invoiced amount. */
+  costBasis: string;
+  /** ISO 4217 code of `costUsd`. Always `USD` — the currency the model catalog is priced in. */
+  currency: string;
+  calls: number;
+  /** How many of `calls` came from a service whose cost is not measurable. */
+  unmeteredCalls: number;
+  promptTokens: number;
+  completionTokens: number;
+  costUsd: string | number;
+  byService: UsageServiceUsage[];
+  buckets: UsageAiBucket[];
+}
+
+/** GET /usage. */
+export interface UsageResponse {
+  granularity: TrendsGranularity;
+  /** IANA zone the buckets were cut in, so the numbers can be reproduced. */
+  timezone: string;
+  from: string;
+  to: string;
+  /** Reuses the trends vocabulary: same two aggregate-authorization paths, same meaning. */
+  scopeStrategy: TrendsScopeStrategy;
+  dataState: UsageDataState;
+  meetings: number;
+  analysedMeetings: number;
+  meetingBuckets: UsageMeetingBucket[];
+  ai: UsageAi;
+}

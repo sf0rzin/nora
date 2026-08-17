@@ -159,7 +159,7 @@ services/api/src/main/java/br/com/nora/api/
 │   ├── platform/          # 2nd datasource, operator security, cost telemetry (ADR 0022-0025)
 │   └── audit/ config/ email/ observability/
 └── api/                   # controllers, DTOs, exception handlers
-    ├── controllers/       # 18 of them: AuthController, MeetingsController, IamController, ...
+    ├── controllers/       # 21 of them: AuthController, MeetingsController, IamController, ...
     ├── dto/               # request/response records
     ├── security/          # CurrentUser, AuthCookies
     └── exception/         # GlobalExceptionHandler
@@ -375,12 +375,12 @@ ADR 0018 is accepted and immutable; the targets below are its, unchanged. The **
 | Other backend areas | > 60% | overall backend 77.1-77.3% instruction / 78.0-78.1% line (see the repeatability note below) |
 | NLP Worker | > 85% | **92.4%** statement over `nora_nlp` |
 | **Backend branch coverage** | > 70% | **61.5-61.6%** — still short of the target, by about 8.5 points |
-| Web Next.js | ADR 0018's per-page table (auth pages > 50%, dashboard/meeting-detail/tasks > 40%, shared components > 60%) — **not enforced, not met** | **6.2%** statement whole-app; the four gated `src/lib` modules at 96.6% (`redact.ts`), 97.7% (`markdown.ts`), 100% (`tasks-export.ts`) and 100% (`password-policy.ts`); `client.ts` 36.5%, reported and not gated |
+| Web Next.js | ADR 0018's per-page table (auth pages > 50%, dashboard/meeting-detail/tasks > 40%, shared components > 60%) — **not enforced, not met** | **7.7%** statement whole-app; the five gated `src/lib` modules at 96.6% (`redact.ts`), 97.7% (`markdown.ts`), 100% (`tasks-export.ts`), 98.4% (`usage-report.ts`) and 100% (`password-policy.ts`); `client.ts` 30.9%, reported and not gated |
 | Desktop client | out of scope here (maintained by @pollotherunner) | not measured |
 
 **Where these come from.** `scripts/report-coverage.sh` runs in the `api`, `worker` and `web` CI jobs and prints the figures to the job log and to the run summary page. It reads the report the test run just wrote (`target/site/jacoco/jacoco.csv`, `.coverage`, `apps/web/coverage/coverage-summary.json`) rather than measuring anything itself, so the same command on a workstation gives the same number. Read the current figures there; the date above is when this table was last copied from a run, not a promise about today.
 
-**Three of these are gates. The rest are reports.** `mvn verify` fails on the JaCoCo rule over `PolicyEvaluator` (instruction >= 90%, branch >= 75%); the worker job fails on `--cov-fail-under=90` over `pii_shield`; the web job fails on the per-module `coverage.thresholds` in `apps/web/vitest.config.mts` over `redact.ts`, `markdown.ts`, `tasks-export.ts` and `password-policy.ts`. Nothing fails on any other row, including the branch-coverage row that misses its target and the 6.2% whole-app web row. The web numbers are **floors deliberately set below the measured rate** (ADR 0042): they exist to catch a regression, not to certify a level, and raising coverage means raising the floor in the same pull request.
+**Three of these are gates. The rest are reports.** `mvn verify` fails on the JaCoCo rule over `PolicyEvaluator` (instruction >= 90%, branch >= 75%); the worker job fails on `--cov-fail-under=90` over `pii_shield`; the web job fails on the per-module `coverage.thresholds` in `apps/web/vitest.config.mts` over `redact.ts`, `markdown.ts`, `tasks-export.ts`, `usage-report.ts` and `password-policy.ts`. Nothing fails on any other row, including the branch-coverage row that misses its target and the 7.7% whole-app web row. The web numbers are **floors deliberately set below the measured rate** (ADR 0042): they exist to catch a regression, not to certify a level, and raising coverage means raising the floor in the same pull request.
 
 **The overall backend figure is not repeatable, and that is measured, not assumed.** Three CI runs of the same branch reported 77.1%, 77.2% and 77.3% instruction (32,083 / 32,128 / 32,138 covered of a constant 41,596), with branch at 61.5-61.6% and line at 78.0-78.1%. Something in the integration suite takes a slightly different path from run to run. The per-area rows above did **not** move: IAM, Auth and `PolicyEvaluator` came out byte-identical all three times, which is the useful half of this finding — the numbers ADR 0018 actually cares about are stable, and the aggregate is the noisy one. Consequence for anyone quoting these: a backend total is good to about ±0.1 point, so a decision that turns on a tenth of a percent is a decision resting on nothing.
 
