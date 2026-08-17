@@ -96,7 +96,7 @@ done in.
 | ID | Title | MoSCoW | Status | Evidence | Known debt |
 |---|---|---|---|---|---|
 | US07 | Transcript upload (`.txt`, `.vtt`, `.srt`) | M | DONE | `MeetingsController.upload` (`MeetingsController.java:175`) · migration V004 · PR #5 | — |
-| US08 | Audio/video upload (`.mp3`, `.mp4`) | **W** | MISSING | `ALLOWED_FORMATS = {TXT,VTT,SRT}` (`MeetingsController.java:79`), `ALLOWED_EXTENSIONS` (line 691) | Still deferred. ADR 0038 neither kills it (§4) nor reactivates it (§5); its ADR 0014 criterion was commercial ("&gt;30% of uploads are audio in a pilot") and is unreachable under ADR 0038 §1. Open but unscheduled |
+| US08 | Audio/video upload (`.mp3`, `.mp4`) | **W** | **WONT** | `ALLOWED_FORMATS = {TXT,VTT,SRT}` (`MeetingsController.java:79`), `ALLOWED_EXTENSIONS` (line 691) | **WONT by ADR 0046 §2**, and the reason is now verifiable where the inherited one was not. ADR 0014 gated this on ">30% of uploads are audio in a pilot", a criterion with no pilot to measure. The real reason: transcription is a **streaming realtime** session since ADR 0039/0045, so a file upload needs the provider's **batch** API — a second provider surface, credential path, cost model and failure mode. It is a new capability wearing the clothes of a small addition |
 | US09 | Live capture on the Desktop | **W** (declared W in the backlog, but **implemented**) | DONE | `apps/desktop/src-tauri/src/system_audio.rs` (WASAPI loopback), `audio_capture.rs`, `audio_resample.rs`, `stt.rs`, `live_analysis.rs` · `POST /meetings/live-analyze` (`MeetingsController.java:545`) · PRs #8, #65 · ADR 0008 | **Windows-only** — `system_audio.rs:14` raises `compile_error!` on any other target, and the macOS (BlackHole) and Linux (PulseAudio) paths were deleted by ADR 0038 §2, never having been exercised. **The transcription engine was replaced**: ADR 0039 (contract in ADR 0045) moved STT to OpenAI's realtime API over an ephemeral session token minted by `POST /stt/sessions`; `stt_cloud.rs` and `stt_token.rs` are the client, and `stt_local.rs` / `whisper_model.rs` are out of the tree. The audio now leaves the machine unredacted — ADR 0040 is where that is recorded. Validation in a real Windows/Teams environment is still pending |
 | US10 | Name and categorize the meeting at upload | S | DONE | `MeetingUploadMetadata` accepts `title` (line 12) and `tags` (line 19) · consumed at `MeetingsController.java:175` | — |
 | US56 | Upload several transcripts in one go | S | DONE | Multi-file dropzone in `apps/web/src/app/(app)/meetings/upload/page.tsx` (header, "Batch (multi-upload)") · PR #253 | With 2+ files the per-meeting title, start, end and format fields are hidden: the title derives from the file name and the format from the extension |
@@ -108,7 +108,7 @@ done in.
 |---|---|---|---|---|---|
 | US11 | Automatic meeting summary | M | DONE | `services/nlp-worker/src/nora_nlp/llm_analyzer.py` + `stub_analyzer.py` · canonical schema in `docs/api/llm-schemas/meeting-analysis-v1.schema.json` · ADR 0003 · PRs #7, #32 | — |
 | US12 | Extracted tasks and decisions | M | DONE | `actionItems` + `decisions` in `MeetingAnalysisV1` · `GET /tasks` (`TasksController.java:53`) | — |
-| US13 | Identify mentioned participants | S | **PARTIAL** | `Participant` model in `services/nlp-worker/src/nora_nlp/models.py:137-142` (`name`, `role`, `mentionCount`) · migration V004 | No dedup and no participant matching across meetings — the same person named two ways is two participants |
+| US13 | Identify mentioned participants | S | **PARTIAL** | `Participant` model in `services/nlp-worker/src/nora_nlp/models.py:137-142` (`name`, `role`, `mentionCount`) · migration V004 | **Reactivated by ADR 0046 §1.** No dedup and no participant matching across meetings — the same person named two ways is two participants, in a product whose central claim is understanding a conversation |
 | US14 | Company context injected into the LLM | M | DONE | `TenantContextController` · migration V005 · injected into the analysis prompt by `AnalysisService` | The chat path reads the same context only since PR #467 — that is US69, recorded separately because it was a distinct gap |
 | US15 | Semantic search via embeddings | S | DONE | `EmbeddingService.java` · `HttpEmbeddingClient.java` · migration V021 (`meeting_embeddings`) · `GET /meetings/search` (`MeetingsController.java:125`) · `RagSearchIntegrationTest` · PR #206 | **Correction to the previous revision, which claimed this runs "via pgvector". It does not.** `V021` stores the vector as a JSON array in a `TEXT` column and `EmbeddingService.cosine` (line 75) computes the similarity in Java over the tenant's rows. The image is `pgvector/pgvector:pg16`, but the extension is never created. Adequate for tens or hundreds of meetings per tenant; an ANN index is the future optimization. Indexing is best-effort and can silently not happen (no credential, provider failing), which used to be permanent — US86 is the path back |
 | US58 | An abandoned analysis is released instead of hanging forever | S | DONE | `StuckAnalysisSweeper.java` — moves to `FAILED` every meeting left untouched in `PROCESSING` beyond the configured window · PR #470 | The window is floored at the worker timeout plus a margin, so a slow-but-healthy analysis is not reaped. Time is the only signal that separates "running" from "abandoned" |
@@ -163,8 +163,8 @@ done in.
 | US30 | Configure the company context | M | DONE | `TenantContextController` (`GET` line 40, `PUT` line 51) · migration V005 · `apps/web/src/app/(app)/settings/context/page.tsx` · PR #33 | — |
 | US31 | Version history of the company context | S | DONE | migration `V028__tenant_context_versions.sql` (immutable table + `tenant_contexts.current_version` + backfill of version 1 + RLS) · `TenantContextRepositoryAdapter.save` writes the version in the upsert transaction · `GET /tenant/context/versions` and `GET /tenant/context/versions/{version}` (`TenantContextController`) · history block in `settings/context/page.tsx` · `TenantContextHistoryIntegrationTest` | Reactivated by ADR 0038 §5. **No restore endpoint, deliberately**: the UI loads a past version into the form and the user saves, which appends version N+1 through the audited write path instead of rewriting history. A save that does not change the document writes no version. Version 1 of a pre-V028 context carries an approximate `created_at` — the true one was never recorded |
 | US32 | Tenant's corporate domain | M | DONE | `TenantController.updateDomain` (`TenantController.java:71`) · migration V009 · ADR 0011 · `TenantDomainIntegrationTest` · PR #55 | — |
-| US33 | Tenant usage metrics | S | MISSING | No tenant-facing endpoint. `GET /admin/platform/telemetry/business` (`PlatformAdminController.java:164`) exists but is the **operator's** view of the whole platform, behind Cloudflare Access — it is US83, not this | Still deferred. ADR 0038 neither kills nor reactivates it; its ADR 0014 criterion ("5+ paying tenants in a pilot") is unreachable under ADR 0038 §1 |
-| US34 | Export of a consolidated report for the period | S | MISSING | No endpoint. US59/US60 export **one** meeting; nothing aggregates a period | Still deferred, and its dependency on US33 still holds |
+| US33 | Tenant usage metrics | S | MISSING | No tenant-facing endpoint. `GET /admin/platform/telemetry/business` (`PlatformAdminController.java:164`) exists but is the **operator's** view of the whole platform, behind Cloudflare Access — it is US83, not this | **Reactivated by ADR 0046 §1.** The data already exists and is already aggregated — `UsageRecorder` writes every external AI call with tenant, service, provider and model. What was missing is the tenant-facing half of a pipeline that is built: the operator can see a tenant's consumption and the tenant cannot see their own |
+| US34 | Export of a consolidated report for the period | S | MISSING | No endpoint. US59/US60 export **one** meeting; nothing aggregates a period | **Reactivated by ADR 0046 §1.** Its stated dependency was US33, which lands in the same wave; US59/US60 already set the shape for exporting one meeting |
 
 ### E8 — Enterprise IAM (AWS-style)
 
@@ -176,10 +176,10 @@ done in.
 | US38 | Add/remove users from groups | M | DONE | `IamController.java:94` / line 102 · composite FK on `iam_user_groups` since V027 | — |
 | US39 | Clear HTTP 403 when out of scope | M | DONE | `GlobalExceptionHandler` · `AuthorizationCoverageIntegrationTest` asserts every endpoint is gated | Stability of the error-message detail is not asserted |
 | US40 | IAM audit log | M | DONE | `IamController.listAudit` (line 207) · `iam_audit_events` table in V006 | The auth audit log (login/refresh/logout) exists separately since PR #118; there is still no single global `audit_events` table |
-| US41 | Policy templates | S | MISSING | No endpoint. The `is_template` column is not in V006 — `docs/engineering/data-model.md:360` records that the old design foresaw it and the migration never carried it | Still deferred. ADR 0038 neither kills nor reactivates it |
-| US42 | Visual policy editor (form-based) | S | **PARTIAL** | Monaco JSON editor in `apps/web/src/components/policy-editor.tsx` · `apps/web/src/app/(app)/settings/iam/page.tsx`, reachable from the sidebar since PR #467 · PR #55 | It is JSON with syntax highlighting and schema validation, not a form. The form-based version paired with US43, and US43 has shipped: the simulator now runs on this same screen, so the form is the half still missing |
+| US41 | Policy templates | S | MISSING | No endpoint. The `is_template` column is not in V006 — `docs/engineering/data-model.md:360` records that the old design foresaw it and the migration never carried it | **Reactivated by ADR 0046 §1.** ADR 0038 §3 makes IAM the Enterprise tier's main artefact, and US43 shipped for that reason — a simulator that explains a decision, paired with an editor that still needs hand-written JSON, is half an argument |
+| US42 | Visual policy editor (form-based) | S | **PARTIAL** | Monaco JSON editor in `apps/web/src/components/policy-editor.tsx` · `apps/web/src/app/(app)/settings/iam/page.tsx`, reachable from the sidebar since PR #467 · PR #55 | **Reactivated by ADR 0046 §1.** It is JSON with syntax highlighting and schema validation, not a form. Pairs with US43, which has shipped: the simulator runs on this same screen, so the form is the half still missing |
 | US43 | Policy simulator ("can user X do Y on Z?") | S | DONE | `POST /iam/simulate` (`IamController.java`), gated by its own `iam:policy:simulate` action · `PolicyEvaluator.explain` · simulator section in `apps/web/src/app/(app)/settings/iam/page.tsx` · `IamSimulationIntegrationTest` | The answer carries the reason and the deciding statement, and the Root case is reported as `ROOT_BYPASS` instead of a mute `true`. `isAllowed` is `explain(...).allowed()`, so the explanation cannot drift from the decision. No user picker: no endpoint lists the tenant's users, so the field takes a user id like the rest of the screen |
-| US44 | Permission boundaries | C | MISSING | No code | Still deferred. ADR 0038 neither kills nor reactivates it; it needs an organizational hierarchy and IAM delegation that nothing else asks for |
+| US44 | Permission boundaries | C | MISSING | No code | **Reactivated by ADR 0046 §1**, on a thinner argument than the other six and the ADR says so: it does need an organizational hierarchy nothing else asks for. What changed is that a boundary is the one IAM concept a reviewer looks for and does not find |
 
 ### E9 — Meeting Productivity
 
@@ -218,7 +218,7 @@ done in.
 | US72 | Automations fire on what the analysis found | S | DONE | Three dispatched triggers in `TriggerType.java` — `meeting.analysis_completed`, `action_item.created`, `meeting.risk_detected` — published by `AnalysisService` and handled by `WorkflowEngine` · in-process post-commit event bus, ADR 0030 · `TriggerEventsIntegrationTest` · PRs #220, #227, #468 | Two of the three existed in the backend for months without appearing in the canvas catalog; PR #468 exposed them |
 | US73 | Test a flow before activating it | C | DONE | `POST /workflows/{id}/test` (`WorkflowsController.java:128`), gated by its own `workflow:test` IAM action because it really executes the wired actions | A test run sends real e-mail and creates real issues against the tenant's own connections. That is deliberate and is why it is a distinct IAM action, but there is no dry-run mode |
 | US74 | See a flow's execution history | S | DONE | `GET /workflows/{id}/executions` (`WorkflowsController.java:135`) · `workflow_executions` in migration V023 with `status` CHECK in `RUNNING`/`SUCCESS`/`FAILED` and a `log_json` JSONB trail · `ExecutionLogBuilder.java` · `WorkflowFlowIntegrationTest` | — |
-| US75 | Flows on a schedule (cron) | C | MISSING | `TriggerType.SCHEDULE_CRON` is declared with `hasDispatcher() == false` (`TriggerType.java:18`) and `WorkflowDefinitionParser` refuses it on save since PR #468. **Nothing in the backend schedules a workflow** | The enum value is kept only so rows persisted before PR #468 stay readable. Before that change a flow saved with `schedule.cron` sat `ACTIVE` and silently never ran, which is the defect PR #468 closed by rejecting it loudly |
+| US75 | Flows on a schedule (cron) | C | MISSING | `TriggerType.SCHEDULE_CRON` is declared with `hasDispatcher() == false` (`TriggerType.java:18`) and `WorkflowDefinitionParser` refuses it on save since PR #468. **Nothing in the backend schedules a workflow** | **Reactivated by ADR 0046 §1.** The enum value survived only so rows persisted before PR #468 stay readable. It is the one place where the Flows catalogue advertises something the engine cannot do |
 | US76 | Send the meeting summary by e-mail from a flow | S | DONE | `SendEmailAction.java` + `MarkdownLite.java` (renders the summary's Markdown into the message body) · PR #245 | Goes through NORA's own transactional sender; US65 is the variant that sends through the user's connected mailbox |
 | US77 | Schedule the calendar follow-up from the extracted due date | C | DONE | `FollowUpSchedule.java` — shared by the Google and Outlook calendar actions; picks the nearest action-item due date strictly after today, falls back to "tomorrow", and an explicit `startInDays` on the node always wins · PR #252 | A due date extracted for today is skipped on purpose (it may already have passed), which is invisible to the user |
 
@@ -295,8 +295,8 @@ number of stories.
 | **Must Have (M)** | 28 | **28** | 0 | 0 | 0 |
 | **Should Have (S)** | 40 | **34** | **2** (US13, US42) | **4** (US33, US34, US41, US80) | 0 |
 | **Could Have (C)** | 12 | **10** | 0 | **2** (US44, US75) | 0 |
-| **Won't Have v1 (W)** | 6 | **1** (US09) | 0 | **1** (US08) | **4** (US05, US47, US50, US51) |
-| **Total** | **86** | **73** | **2** | **7** | **4** |
+| **Won't Have v1 (W)** | 6 | **1** (US09) | 0 | 0 | **5** (US05, US08, US47, US50, US51) |
+| **Total** | **86** | **73** | **2** | **6** | **5** |
 
 > **The numerals in this table are recomputed by script**, not by hand, after the parallel branches
 > of the 2026-08 wave merge. Each branch sees only its own delivery, so a branch that recounted the
@@ -358,14 +358,28 @@ section now points rather than copies: **the ADR decides, the backlog records.**
 | US43 — Policy simulator | **Reactivated**, and delivered — `POST /iam/simulate` | ADR 0038 §5 |
 | US27 — NORA as an MCP server | **Reframed and reactivated**, and delivered — read-only first cut, migration V029 | ADR 0041 |
 | US28, US29 — calendar and task managers | **Reframed**: delivered by OAuth, removed from MCP scope | ADR 0041 §Effect on the backlog |
-| US80 — tenant deletion and LGPD export | **Declared deferral** | ADR 0038 §6h |
+| US80 — tenant deletion and LGPD export | **Declared deferral**, reaffirmed rather than reopened | ADR 0038 §6h · ADR 0046 §2 |
+| US33 — Tenant usage metrics | **Reactivated** | ADR 0046 §1 |
+| US34 — Consolidated period report | **Reactivated** | ADR 0046 §1 |
+| US41 — Policy templates | **Reactivated** | ADR 0046 §1 |
+| US42 — Form-based policy editor | **Reactivated** | ADR 0046 §1 |
+| US44 — Permission boundaries | **Reactivated**, on the thinnest argument of the seven, and the ADR says so | ADR 0046 §1 |
+| US13 — Mentioned participants | **Reactivated** | ADR 0046 §1 |
+| US75 — Flows on a schedule (cron) | **Reactivated** | ADR 0046 §1 |
+| US08 — Audio/video upload | **WONT** — batch transcription is a second provider surface, not a small addition to a streaming one | ADR 0046 §2 |
 
-**Still deferred, and honestly so: US08, US33, US34, US41, US44.** ADR 0038 supersedes ADR 0014
-including its reactivation criteria, but it neither kills these five (§4) nor reactivates them (§5).
-Each of their ADR 0014 criteria was commercial — a paying tenant, a pilot, a volume of demand — and
-ADR 0038 §1 declares that none of those will happen. They are therefore open scope with no
-scheduled trigger, which is a weaker statement than "deferred until X" and is the true one. Nothing
-in this document promises them.
+**The limbo this paragraph used to describe is closed by ADR 0046.** It read: *"Still deferred, and
+honestly so: US08, US33, US34, US41, US44 — ADR 0038 neither kills these five (§4) nor reactivates
+them (§5) … open scope with no scheduled trigger."* That was accurate and it was not a status. A row
+whose state rests on nobody having decided is indistinguishable from a forgotten one, and worse,
+because it reads as deliberate — which is the exact failure ADR 0038 was written to end and had
+reproduced in a corner of its own sorting.
+
+ADR 0046 empties it: **US33, US34, US41, US42, US44, US13 and US75 are reactivated and built**;
+**US08 becomes WONT** with a reason that can be checked, replacing an inherited commercial criterion
+that never could be. **Every story in §2 now has a status some accepted decision is responsible
+for** — which matters more than any single row, because one unexplained status makes the others
+unverifiable too.
 
 The operations block — monitoring alerts, off-host backup, restore-drill cadence, secret rotation,
 the roll-forward consumer, desktop code signing and the RLS repository default — is not backlog
