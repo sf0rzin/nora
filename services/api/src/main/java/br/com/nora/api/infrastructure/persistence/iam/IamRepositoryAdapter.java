@@ -1,6 +1,7 @@
 package br.com.nora.api.infrastructure.persistence.iam;
 
 import br.com.nora.api.application.ports.IamRepository;
+import br.com.nora.api.domain.iam.AttachedPolicy;
 import br.com.nora.api.domain.iam.Effect;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
@@ -318,26 +319,44 @@ public class IamRepositoryAdapter implements IamRepository {
 
     @Override
     @Transactional(readOnly = true)
-    @SuppressWarnings("unchecked")
     public List<PolicyStatement> collectStatementsForUser(UUID userId, UUID tenantId) {
+        List<PolicyStatement> out = new ArrayList<>();
+        for (AttachedPolicy p : collectAttachedPoliciesForUser(userId, tenantId)) {
+            out.addAll(p.statements());
+        }
+        return out;
+    }
+
+    /**
+     * The single query behind both collectors — the flat one above is this one flattened, so the
+     * set of policies a decision is taken from and the set a simulation explains it from cannot
+     * diverge.
+     *
+     * <p>Ordered by name only to make the answer deterministic; statement order does not change a
+     * decision, since a Deny wins wherever it sits.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    @SuppressWarnings("unchecked")
+    public List<AttachedPolicy> collectAttachedPoliciesForUser(UUID userId, UUID tenantId) {
         String sql =
-                "SELECT document::text FROM iam_policies p "
+                "SELECT p.id, p.name, p.document::text FROM iam_policies p "
                         + "WHERE p.tenant_id = :t AND p.id IN ("
                         + "  SELECT policy_id FROM iam_user_policies WHERE user_id = :u AND tenant_id = :t "
                         + "  UNION "
                         + "  SELECT gp.policy_id FROM iam_group_policies gp "
                         + "    JOIN iam_user_groups ug ON ug.group_id = gp.group_id "
-                        + "    WHERE ug.user_id = :u AND ug.tenant_id = :t)";
-        List<String> docs =
-                (List<String>)
-                        em.createNativeQuery(sql)
-                                .setParameter("t", tenantId)
-                                .setParameter("u", userId)
-                                .getResultList();
-        List<PolicyStatement> out = new ArrayList<>();
-        for (String docJson : docs) {
-            PolicyDocument doc = parseDocument(docJson);
-            out.addAll(doc.statements());
+                        + "    WHERE ug.user_id = :u AND ug.tenant_id = :t) "
+                        + "ORDER BY p.name";
+        List<Object[]> rows =
+                em.createNativeQuery(sql)
+                        .setParameter("t", tenantId)
+                        .setParameter("u", userId)
+                        .getResultList();
+        List<AttachedPolicy> out = new ArrayList<>(rows.size());
+        for (Object[] r : rows) {
+            PolicyDocument doc = parseDocument((String) r[2]);
+            out.add(new AttachedPolicy((UUID) r[0], (String) r[1], doc.statements()));
         }
         return out;
     }

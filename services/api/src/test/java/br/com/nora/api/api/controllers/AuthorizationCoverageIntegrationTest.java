@@ -178,6 +178,9 @@ class AuthorizationCoverageIntegrationTest {
         calls.post("/iam/users/" + id + "/policies/" + id, null);
         calls.delete("/iam/users/" + id + "/policies/" + id);
         calls.get("/iam/audit");
+        calls.post(
+                "/iam/simulate",
+                json(Map.of("userId", id, "action", "meeting:read", "resource", "arn")));
 
         // invitations
         calls.post("/iam/users/invite", json(Map.of("email", "convidado@nora.dev")));

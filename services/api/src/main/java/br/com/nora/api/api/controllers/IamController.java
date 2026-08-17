@@ -5,20 +5,26 @@ import br.com.nora.api.api.dto.iam.CreateGroupRequest;
 import br.com.nora.api.api.dto.iam.CreatePolicyRequest;
 import br.com.nora.api.api.dto.iam.GroupDto;
 import br.com.nora.api.api.dto.iam.PolicyDto;
+import br.com.nora.api.api.dto.iam.SimulatePolicyRequest;
+import br.com.nora.api.api.dto.iam.SimulatePolicyResponse;
 import br.com.nora.api.api.dto.iam.UpdatePolicyRequest;
 import br.com.nora.api.api.security.CurrentUser;
 import br.com.nora.api.api.security.RequiresPermission;
 import br.com.nora.api.api.security.RequiresPermission.ResourceType;
 import br.com.nora.api.application.iam.IamException;
 import br.com.nora.api.application.iam.IamService;
+import br.com.nora.api.application.iam.PolicyExplanation;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
+import br.com.nora.api.domain.iam.PolicyDecision;
+import br.com.nora.api.domain.iam.PolicyStatement;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -215,7 +221,67 @@ public class IamController {
                 .toList();
     }
 
+    // ---------- simulation ----------
+
+    /**
+     * US43 — answers "can this user do this action on this resource?" without performing the
+     * action, and names the statement that decided.
+     *
+     * <p>Gated by its own {@code iam:policy:simulate} rather than by {@code iam:policy:read}: the
+     * answer is derived from which policies are ATTACHED to which user, and no endpoint of this API
+     * exposes that graph, so reusing the policy-read grant would silently widen what its holders
+     * can learn. Being a separate action it is deny-by-default — an existing grant of {@code
+     * iam:policy:read} does not acquire it, while the {@code iam:*} shape admin policies use picks
+     * it up on its own.
+     */
+    @PostMapping("/simulate")
+    @RequiresPermission(action = "iam:policy:simulate", resource = ResourceType.IAM)
+    public SimulatePolicyResponse simulate(@RequestBody SimulatePolicyRequest body) {
+        if (body.userId() == null) {
+            throw new IllegalArgumentException("userId is required");
+        }
+        if (body.action() == null || body.action().isBlank()) {
+            throw new IllegalArgumentException("action is required");
+        }
+        if (body.resource() == null || body.resource().isBlank()) {
+            throw new IllegalArgumentException("resource is required");
+        }
+        AuthenticatedPrincipal p = CurrentUser.require();
+        PolicyExplanation explained =
+                iam.simulate(
+                        p.tenantId(),
+                        body.userId(),
+                        body.action(),
+                        body.resource(),
+                        body.context() == null ? Map.of() : body.context());
+        return toSimulationDto(body, explained);
+    }
+
     // ---------- mapping ----------
+
+    private static SimulatePolicyResponse toSimulationDto(
+            SimulatePolicyRequest req, PolicyExplanation explained) {
+        PolicyDecision decision = explained.decision();
+        return new SimulatePolicyResponse(
+                req.userId(),
+                req.action(),
+                req.resource(),
+                decision.allowed(),
+                decision.reason().name(),
+                explained.policyId(),
+                explained.policyName(),
+                explained.statementIndex(),
+                toStatementDto(decision.statement()),
+                explained.statementsEvaluated());
+    }
+
+    private static SimulatePolicyResponse.Statement toStatementDto(PolicyStatement s) {
+        if (s == null) {
+            return null;
+        }
+        return new SimulatePolicyResponse.Statement(
+                s.effect().name(), s.actions(), s.resources(), s.condition());
+    }
 
     private static GroupDto toGroupDto(IamGroup g) {
         return new GroupDto(

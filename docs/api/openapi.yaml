@@ -662,6 +662,43 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
 
   # ----------------------------------------------------------------------------
+  # IAM — policy simulator (US43)
+  # ----------------------------------------------------------------------------
+  /iam/simulate:
+    post:
+      tags: [IAM]
+      summary: Simulates an authorization decision for a user of the tenant
+      description: |
+        IAM action: `iam:policy:simulate`. Its own action rather than `iam:policy:read`, because
+        the answer is derived from which policies are ATTACHED to which user, and no other endpoint
+        exposes that graph.
+
+        Answers what the authorization pipeline WOULD decide for `userId`, without performing the
+        operation, and names the statement that decided. It is the same evaluation the real request
+        takes — `PolicyEvaluator.isAllowed` is this decision's boolean — so the two cannot disagree.
+
+        The tenant Root is reported as `ROOT_BYPASS` rather than a bare `true`: the bypass applies
+        before any statement is read (ADR 0007, rule 1), so no statement explains it.
+
+        `userId` is resolved inside the CALLER's tenant. A user of another tenant answers `404
+        IAM_USER_NOT_FOUND`, never a decision — a decision would confirm the id exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SimulatePolicyRequest' }
+      responses:
+        '200':
+          description: Decision with its explanation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SimulatePolicyResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ----------------------------------------------------------------------------
   # Invitations
   # ----------------------------------------------------------------------------
   /iam/users/invite:
@@ -2467,6 +2504,61 @@ components:
           type: [object, 'null']
           additionalProperties: true
         createdAt: { type: string, format: date-time }
+    SimulatePolicyRequest:
+      type: object
+      required: [userId, action, resource]
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: Subject of the simulation. Must be a user of the caller's own tenant.
+        action: { type: string, example: 'meeting:read' }
+        resource: { type: string, example: 'nora:tenant/{tenantId}:meeting/{meetingId}' }
+        context:
+          type: [object, 'null']
+          description: |
+            Attributes the statement conditions read (`StringEquals`, `StringIn`, `StringLike`,
+            `DateGreaterThan`, `DateLessThan`). An attribute missing from here makes a condition
+            that reads it not match, which is fail-closed — the same rule the real request path
+            applies.
+          additionalProperties: { type: string }
+    SimulatePolicyResponse:
+      type: object
+      required: [userId, action, resource, allowed, reason, statementsEvaluated]
+      properties:
+        userId: { type: string, format: uuid }
+        action: { type: string, example: 'meeting:read' }
+        resource: { type: string, example: 'nora:tenant/{tenantId}:meeting/{meetingId}' }
+        allowed: { type: boolean }
+        reason:
+          type: string
+          enum: [NO_STATEMENTS, NO_MATCHING_STATEMENT, EXPLICIT_DENY, ALLOW, ROOT_BYPASS]
+          description: |
+            How the decision was reached. `ROOT_BYPASS` is the tenant Root: allowed before any
+            statement is consulted (ADR 0007, rule 1). `NO_STATEMENTS` means no policy is attached
+            to the user; `NO_MATCHING_STATEMENT` means statements were evaluated and none matched.
+        policyId: { type: [string, 'null'], format: uuid }
+        policyName: { type: [string, 'null'] }
+        statementIndex:
+          type: [integer, 'null']
+          description: Position of the deciding statement inside that policy's document.
+        statement:
+          type: [object, 'null']
+          description: The deciding statement, with the field names the policy document uses.
+          properties:
+            effect: { type: string, enum: [ALLOW, DENY] }
+            action:
+              type: array
+              items: { type: string }
+            resource:
+              type: array
+              items: { type: string }
+            condition:
+              type: [object, 'null']
+              additionalProperties: true
+        statementsEvaluated:
+          type: integer
+          description: How many statements applied to the user. `0` for a Root.
 
     # ---- invitations ----
     InviteUserRequest:

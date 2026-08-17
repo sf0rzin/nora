@@ -248,7 +248,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleIam(IamException ex) {
         HttpStatus status =
                 switch (ex.code()) {
-                    case "IAM_GROUP_NOT_FOUND", "IAM_POLICY_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+                    case "IAM_GROUP_NOT_FOUND", "IAM_POLICY_NOT_FOUND", "IAM_USER_NOT_FOUND" ->
+                            HttpStatus.NOT_FOUND;
                     case "IAM_NAME_TAKEN" -> HttpStatus.CONFLICT;
                     case "IAM_FORBIDDEN" -> HttpStatus.FORBIDDEN;
                     case "IAM_AUTHORIZATION_NOT_DECLARED" -> HttpStatus.FORBIDDEN;
