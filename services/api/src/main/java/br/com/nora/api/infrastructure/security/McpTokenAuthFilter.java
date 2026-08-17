@@ -29,11 +29,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * to get wrong. Only one of the two ever runs for a given request.
  *
  * <p><b>Origin is validated before anything else.</b> The Streamable HTTP transport requires a
- * server to refuse a request whose {@code Origin} header is present and not one it trusts —
- * defence against a page in a browser driving the server through DNS rebinding. Non-browser
- * clients, which is what MCP clients usually are, send no {@code Origin} and are unaffected; the
- * trusted set is the application's own CORS origins, so there is one list rather than two that can
- * drift.
+ * server to refuse a request whose {@code Origin} header is present and not one it trusts — defence
+ * against a page in a browser driving the server through DNS rebinding. Non-browser clients, which
+ * is what MCP clients usually are, send no {@code Origin} and are unaffected; the trusted set is
+ * the application's own CORS origins, so there is one list rather than two that can drift.
  *
  * <p>An absent, malformed or dead credential leaves the context empty and the request then meets
  * {@code anyRequest().authenticated()}, which answers 401. The refusal is deliberately uniform:

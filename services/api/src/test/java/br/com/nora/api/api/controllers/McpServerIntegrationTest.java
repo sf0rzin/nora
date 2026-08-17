@@ -28,12 +28,12 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * The transport and the credential of ADR 0041: the handshake, the pinned protocol version, and
- * the boundary that keeps an MCP token from becoming a second session credential for the REST API.
+ * The transport and the credential of ADR 0041: the handshake, the pinned protocol version, and the
+ * boundary that keeps an MCP token from becoming a second session credential for the REST API.
  *
- * <p>The authorization invariant is proven separately, in {@code McpIsolationIntegrationTest}.
- * What this file asserts is everything around it — that an incompatible client is refused loudly
- * rather than served a shape it cannot read, that the catalogue is constant text, and that the two
+ * <p>The authorization invariant is proven separately, in {@code McpIsolationIntegrationTest}. What
+ * this file asserts is everything around it — that an incompatible client is refused loudly rather
+ * than served a shape it cannot read, that the catalogue is constant text, and that the two
  * credentials of this system do not substitute for one another in either direction.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -80,9 +80,8 @@ class McpServerIntegrationTest {
     }
 
     /**
-     * The pin, doing its job. An older revision is not silently accepted and then served the
-     * newer shapes: the client gets the specification's own error, naming what it could use
-     * instead.
+     * The pin, doing its job. An older revision is not silently accepted and then served the newer
+     * shapes: the client gets the specification's own error, naming what it could use instead.
      */
     @Test
     void initialize_withAnUnimplementedVersion_failsLoudlyNamingWhatIsSupported() throws Exception {

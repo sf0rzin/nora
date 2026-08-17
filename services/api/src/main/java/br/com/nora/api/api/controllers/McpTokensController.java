@@ -95,8 +95,8 @@ public class McpTokensController {
     }
 
     /**
-     * A null or absent {@code expiresInDays} means no hard expiry, which is what an MCP client in
-     * a configuration file needs; revocation remains the kill switch either way. Values outside
+     * A null or absent {@code expiresInDays} means no hard expiry, which is what an MCP client in a
+     * configuration file needs; revocation remains the kill switch either way. Values outside
      * 1..365 are clamped rather than refused — the field is a convenience, not a security control.
      */
     private static Duration expiry(McpTokenDtos.CreateRequest body) {

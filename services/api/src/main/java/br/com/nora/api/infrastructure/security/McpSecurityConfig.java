@@ -25,8 +25,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  *
  * <p><b>The matcher is exact, and that is load-bearing.</b> It matches the MCP endpoint itself and
  * nothing beneath it, so {@code /mcp/tokens} — where an already-logged-in user mints and revokes
- * these credentials — falls through to the JWT chain. A token cannot mint another token, and an
- * MCP client cannot manage the credentials of the user it acts for.
+ * these credentials — falls through to the JWT chain. A token cannot mint another token, and an MCP
+ * client cannot manage the credentials of the user it acts for.
  *
  * <p>{@code @Order(3)} after the two control-plane chains: they match disjoint paths, so the number
  * only has to sit above the unordered catch-all.

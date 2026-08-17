@@ -45,9 +45,9 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>{@code list_meetings} mirrors {@code GET /meetings}: the {@code meeting:read} pre-gate over
  *       the tenant's meeting wildcard, then a per-item filter carrying each meeting's attributes.
- *   <li>{@code get_meeting} mirrors {@code GET /meetings/{id}}: resolve inside the tenant first
- *       (so a foreign id is not found rather than forbidden), then authorize {@code meeting:read}
- *       on that meeting's own ARN WITH its attributes in the context.
+ *   <li>{@code get_meeting} mirrors {@code GET /meetings/{id}}: resolve inside the tenant first (so
+ *       a foreign id is not found rather than forbidden), then authorize {@code meeting:read} on
+ *       that meeting's own ARN WITH its attributes in the context.
  *   <li>{@code search_meetings} mirrors {@code GET /meetings/search}: the pre-gate runs BEFORE the
  *       embedding call, then the candidates are filtered per item.
  *   <li>{@code list_tasks} mirrors {@code GET /tasks}: the {@code task:read} pre-gate, then a
@@ -64,8 +64,8 @@ import org.springframework.stereotype.Component;
  * <p><b>Why the pre-gate is not redundant.</b> On a listing, the per-item filter alone already
  * yields an empty result for a caller with no Allow — but only after loading the set. On {@code
  * search_meetings} that ordering is the difference between a refusal and an embedding call billed
- * to an external provider plus a scan of the tenant's vectors, which is the regression
- * {@code MeetingsController.search} documents in its own body.
+ * to an external provider plus a scan of the tenant's vectors, which is the regression {@code
+ * MeetingsController.search} documents in its own body.
  *
  * <p><b>Why no repository is reached from here.</b> Every read goes through the application service
  * the controllers use. A handler that queried {@code MeetingRepository} directly "because it is
@@ -77,8 +77,8 @@ import org.springframework.stereotype.Component;
  * {@code uniformDecision} to keep pagination in SQL when no statement can tell two meetings apart.
  * That is a provably equivalent optimisation, and this adapter does not carry it. Duplicating an
  * optimisation whose correctness argument lives in another class is how two copies of an
- * authorization decision start to diverge; the general path is always taken here, and it is the
- * one the REST listing itself falls back to.
+ * authorization decision start to diverge; the general path is always taken here, and it is the one
+ * the REST listing itself falls back to.
  */
 @Component
 public class McpToolInvoker {
