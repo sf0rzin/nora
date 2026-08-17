@@ -921,6 +921,7 @@ export async function POST(req: Request): Promise<Response> {
       headers: { "Content-Type": "application/json" },
     });
   }
+  phase("provider-headers");
   // Headers are in: the deadline has done its job and must not fire during the stream.
   clearTimeout(headerTimer);
 
@@ -935,6 +936,7 @@ export async function POST(req: Request): Promise<Response> {
     });
   }
 
+  phase("stream-build");
   const stream = openAiSseToText(
     upstream.body,
     (usage) => {
@@ -949,6 +951,7 @@ export async function POST(req: Request): Promise<Response> {
     },
   );
 
+  phase("response-returned");
   return new Response(stream, {
     headers: {
       // NDJSON, not text/plain: the body is one frame per line now, and a client that reads it
