@@ -53,6 +53,7 @@ ALLOWED=(
   "apps/web/src/lib/api/client.ts"              # pt-BR error copy surfaced directly in the UI
   "apps/web/src/lib/password-policy.ts"         # pt-BR password-rule copy shown in the UI
   "apps/web/src/lib/report/markdown.ts"         # pt-BR headings of the exported meeting report
+  "apps/web/src/lib/report/tasks-export.ts"     # pt-BR column headers and labels of the exported task list
   "apps/web/src/middleware.ts"                  # pt-BR copy on the auth redirect path
   "apps/admin/src/"                             # operator console UI is pt-BR
   "apps/desktop/src/"                           # desktop product UI is pt-BR
@@ -79,9 +80,10 @@ ALLOWED=(
   "services/api/src/test/"                                                # pt-BR fixture text inside backend tests
   "services/nlp-worker/tests/"                                            # pt-BR sample transcripts and PII fixtures
   # Web unit tests whose ASSERTIONS are the pt-BR the module under test produces. Listed one by
-  # one rather than as an `apps/web/src/**/*.test.ts` prefix: the three modules whose output is
-  # pt-BR are these three, and a broad prefix would exempt every future web test from the check.
+  # one rather than as an `apps/web/src/**/*.test.ts` prefix: the modules whose output is pt-BR
+  # are these four, and a broad prefix would exempt every future web test from the check.
   "apps/web/src/lib/report/markdown.test.ts"                              # asserts on the pt-BR headings of the exported meeting report
+  "apps/web/src/lib/report/tasks-export.test.ts"                          # asserts on the pt-BR columns and labels of the exported task list
   "apps/web/src/lib/pii/redact.test.ts"                                   # pt-BR sample sentences carrying the BR PII under test
   "apps/web/src/lib/api/client.test.ts"                                   # asserts on the pt-BR error copy the client maps API codes to
   "packages/nlp-baseline/tests/"                                          # pt-BR tokenizer/TF-IDF fixtures

@@ -24,7 +24,8 @@
 #   - `.github/workflows/ci.yml`  — `pytest --cov=nora_nlp.services.pii_shield
 #                                   --cov-fail-under=90` over that one module
 #   - `apps/web/vitest.config.mts` — per-module `coverage.thresholds` over redact.ts,
-#                                   markdown.ts and password-policy.ts (ADR 0042)
+#                                   markdown.ts, tasks-export.ts and password-policy.ts
+#                                   (ADR 0042)
 # Turning THIS into a gate would mean picking a global threshold, and ADR 0018 already
 # considered and rejected exactly that (Alternatives Considered, item 1).
 #
@@ -226,6 +227,7 @@ report_web() {
       const gated = [
         "src/lib/pii/redact.ts",
         "src/lib/report/markdown.ts",
+        "src/lib/report/tasks-export.ts",
         "src/lib/password-policy.ts",
         // Reported, deliberately NOT gated: 66 one-line wrappers make a file-level percentage a
         // count of wrappers rather than a statement about the shared request() they all call.

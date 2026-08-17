@@ -134,7 +134,7 @@ done in.
 | US22 | Consolidated task list | M | DONE | `TasksController.list` (`TasksController.java:53`) · `apps/web/src/app/(app)/tasks/page.tsx` | — |
 | US23 | Mark a task as completed | M | DONE | `PATCH /tasks/{id}` accepts `status` (`TasksController.java:85`) | — |
 | US24 | Edit task text | S | DONE | the same handler accepts `title` | — |
-| US25 | Export tasks as CSV/MD | S | MISSING | No endpoint and no client-side exporter — `apps/web/src/lib/report/markdown.ts` covers meetings, not the task list | **Reactivated by ADR 0038 §5.** Its ADR 0014 criterion (">2 tenants asking") is unreachable under ADR 0038 §1 and is replaced by "it is cheap and it demonstrates" |
+| US25 | Export tasks as CSV/MD | S | DONE | `apps/web/src/lib/report/tasks-export.ts` (`tasksToCsv`, `tasksToMarkdown`, `taskExportFileName`) · `apps/web/src/app/(app)/tasks/export-menu.tsx` — generated client-side, downloaded via Blob, no server round-trip, same shape as US60 · `tasks-export.test.ts` (19 cases, including an RFC 4180 round trip of a title carrying a comma, a quote and a newline) | **Reactivated by ADR 0038 §5**, and deliberately client-side: no endpoint, because the list is already in the browser, none of the three conditions that would justify one holds (volume beyond the paginated response, an export that must be audited, a non-browser client), and a non-browser consumer would be served by the MCP server of ADR 0041, not by a file-download route. The CSV carries a UTF-8 BOM so Excel in pt-BR keeps the accents; it does **not** solve that same Excel splits on `;`, nor does it defend against spreadsheet formula injection — both are stated in the module header rather than left to be found |
 | US26 | Due date on a task | C | DONE | `due_date` column in migration V005:82 · `TaskUpdateRequest` carries `dueDate` (`TaskUpdateRequest.java:18`) · `PATCH /tasks/{id}` writes it through `TaskService.updateDueDate` (`TasksController.java:113-115`) · date input in `apps/web/src/app/(app)/tasks/page.tsx` · `TaskDueDateFlowIntegrationTest` · PR #470 | An empty string clears the date and an absent field leaves it alone, which is the documented way to express both. The Flows follow-up scheduler only picks up dates strictly after today (`FollowUpSchedule.java`), and the UI does not warn when a past date is saved. **The previous revision marked this PARTIAL on evidence it admitted it had never inspected; it was then genuinely PARTIAL for a different reason — the write path did not exist — and PR #470 closed it** |
 
 ### E6 — Interoperability: inbound MCP, outbound OAuth
@@ -285,15 +285,15 @@ then ADR 0038's, argued is worth keeping.
 
 ## 4. State Summary (2026-08-17)
 
-Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0044).
+Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0044), US25 and US31.
 
 | MoSCoW | Total | DONE | PARTIAL | MISSING | WONT |
 |---|---|---|---|---|---|
 | **Must Have (M)** | 28 | **28** | 0 | 0 | 0 |
-| **Should Have (S)** | 40 | **31** | **2** (US13, US42) | **7** (US25, US27, US33, US34, US41, US43, US80) | 0 |
+| **Should Have (S)** | 40 | **32** | **2** (US13, US42) | **6** (US27, US33, US34, US41, US43, US80) | 0 |
 | **Could Have (C)** | 12 | **9** | 0 | **3** (US21, US44, US75) | 0 |
 | **Won't Have v1 (W)** | 6 | **1** (US09) | 0 | **1** (US08) | **4** (US05, US47, US50, US51) |
-| **Total** | **86** | **69** | **2** | **11** | **4** |
+| **Total** | **86** | **70** | **2** | **10** | **4** |
 
 **What changed against the 2026-05-14 revision, and why the totals move so much:**
 
@@ -311,15 +311,17 @@ Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0044).
 - **`WONT` is a new status.** ADR 0038 §4 draws a line ADR 0014 collapsed: "deferred" means
   reactivatable under a criterion, and these four are not waiting for anything.
 - **US86 was added after that revision** (ADR 0044), for the same reason the 34 above were: the RAG
-  index had a defect nobody had written down. It is the only row that moves the totals since.
+  index had a defect nobody had written down.
+- **US25 and US31 both went MISSING → DONE** after that revision. They are the only statuses that
+  have moved since, and they moved in the same wave.
 
 **Effective coverage**
 
 - Must Have: **28 of 28** (100%). The v1.0 MVP of §6 is complete.
-- Should Have: **31 of 40** (78%). The gaps are three of the four ADR 0038 reactivations (US25,
-  US43, and US21 in `C` — US31 shipped with migration V028), the MCP server (US27), tenant-facing
-  metrics and export (US33, US34), policy templates (US41), tenant-wide erasure and portability
-  (US80), and two partials (US13, US42).
+- Should Have: **32 of 40** (80%). The gaps are two of the four ADR 0038 reactivations (US43, and
+  US21 in `C` — US25 and US31 both shipped), the MCP server (US27), tenant-facing metrics and
+  export (US33, US34), policy templates (US41), tenant-wide erasure and portability (US80), and
+  two partials (US13, US42).
 
 ## 5. Scope decisions in force
 
@@ -334,8 +336,8 @@ section now points rather than copies: **the ADR decides, the backlog records.**
 | US47 — MCP project state | **WONT** | ADR 0041 §Effect on the backlog |
 | Enterprise DPA and SLA (not user stories) | **Closed** | ADR 0038 §4 |
 | US21 — Trends panel | **Reactivated** | ADR 0038 §5 |
-| US25 — CSV/MD task export | **Reactivated** | ADR 0038 §5 |
-| US31 — Company-context history | **Reactivated** — delivered, V028 | ADR 0038 §5 |
+| US25 — CSV/MD task export | **Reactivated**, and delivered | ADR 0038 §5 |
+| US31 — Company-context history | **Reactivated**, and delivered — migration V028 | ADR 0038 §5 |
 | US43 — Policy simulator | **Reactivated** | ADR 0038 §5 |
 | US27 — NORA as an MCP server | **Reframed and reactivated** | ADR 0041 |
 | US28, US29 — calendar and task managers | **Reframed**: delivered by OAuth, removed from MCP scope | ADR 0041 §Effect on the backlog |

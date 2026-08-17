@@ -88,7 +88,7 @@ status per user story is in [`backlog.md`](backlog.md); this table is chronology
 ### Cumulative metrics
 
 - **334 PRs** merged into `main` (measured 2026-08-17; the most recent merged number is #484). The count includes the "audit follow-up" hardening wave #114–#138 and the 2026-08 realignment wave
-- **ADRs**: 42 numbered, of which five (0038–0042) record the August 2026 realignment and its first builds. `docs/adr/README.md` is the canonical index and the single source for status — several ADRs are partially superseded and the index is where that is tracked
+- **ADRs**: 44 numbered, of which seven (0038–0044) record the August 2026 realignment and its first builds. `docs/adr/README.md` is the canonical index and the single source for status — several ADRs are partially superseded and the index is where that is tracked
 - **Migrations**: 27, ceiling `V027__composite_fk_iam_user_attachments.sql`. `docs/engineering/data-model.md` is the single source for the schema. Recent milestones: V016/V019/V020 RLS, V017 Customer Confidence, V021 `meeting_embeddings`, V022 chat sessions, V023 workflows, V024–V026 integration connections, V027 composite FK on the IAM attachment tables
 - **HTTP surface**: 16 controllers in `services/api`, described in full by `docs/api/openapi.yaml`, whose coverage against the code is checked in CI by `scripts/check-openapi-coverage.sh`
 - **Test coverage**: **not restated here.** The figures this section carried until 2026-08-17 — worker 87%, backend 67% line / 53% branch, web 0% — were measured on **2026-05-13**, carried a "to be re-measured" note that nobody acted on, and were quoted for three months across the pitch material. They are withdrawn rather than hand-refreshed: `docs/engineering/standards.md` §Test coverage targets is the single source, and `scripts/report-coverage.sh` now re-measures on every run in the `api`, `worker` and `web` jobs. Read the last CI run, not this bullet
@@ -149,17 +149,19 @@ this is merged (#478–#484, listed in §1). What is still open:
 
 ### 2.3 The decided builds
 
-Every row here is decided by an accepted ADR. Rows already delivered are struck through and say so — three of the six are, as of 2026-08-17. Per-story status stays in
-[`backlog.md`](backlog.md); this table is what each build is and what decided it.
+Every row here was decided by an accepted ADR. **A row struck through is
+delivered**; the rest are still ahead. Three of the six are done and a fourth is half done — the
+story row carries two of its four. Per-story status stays in [`backlog.md`](backlog.md); this
+table is what each build is and what decided it.
 
 | Build | Decided by | Note |
 |---|---|---|
 | **Cloud STT with an ephemeral session token** | ADR 0039 (supersedes 0035) | The desktop connects to OpenAI's streaming API directly with a short-lived credential minted by the backend; the key never leaves the server and the audio never crosses NORA's infrastructure. The consequence is stated in the ADR and must not be softened: per-tenant attribution happens at session issuance, so the cost telemetry of ADR 0024 is an **estimate**, not a measurement. The tree still carries the on-device engine (`whisper-rs`, `stt_local.rs`, `whisper_model.rs`); it is removed **by that migration**, not before, or the desktop is left with no transcription at all |
 | **NORA as an MCP server (inbound)** | ADR 0041 | An inbound adapter inside `services/api`, every tool call resolving a real IAM principal through `PolicyEvaluator`, a tenant-scoped bearer token stored only as a SHA-256 hash, read-only first cut. The invariant to test against: an MCP client can never see more than the user it acts for sees in the web application. This is the one item the realignment **adds**; ADR 0041 records why, and the case against it |
 | ~~**PII Shield: ADDRESS, and the shapes that still leak**~~ **Delivered** | ADR 0012 (debt), ADR 0040 (scope), ADR 0043 (the work) | ADDRESS is emitted since ADR 0043, as a deterministic street-type recogniser rather than NER. Three of the shapes the corpus catalogued are closed — the genitive and phrase-head leak, a product name between the halves of a name, and an all-caps pair in running prose — and the measured leak rate went 9.60% → 2.12% with the false-redaction rate falling as well, both on a corpus held identical across the two measurements. What remains is named and dated rather than left open: `test_pii_corpus.py` now carries a goal of 1.0% leak and 4.0% false redaction by 2027-06-30, each pointing at the one shape that stands in the way |
-| **A unit-test runner for `apps/web`** | ADR 0018 | The web app has three Playwright e2e specs and no unit runner, so ADR 0018's coverage line has nothing to measure on the largest surface. Vitest closes it |
-| **US21 trends panel · US25 task export · ~~US31 company-context history~~ · US43 policy simulator** | ADR 0038 §5 | Four stories ADR 0014 deferred and ADR 0038 brought back. US21's stated criterion ("after US15 is on") had already been met by #206 and nobody noticed. US43 matters out of proportion to its size: IAM is the Enterprise tier's main artefact, and a simulator is what makes it demonstrable instead of merely present. **US31 is delivered** (migration V028): an immutable `tenant_context_versions` table written inside the upsert transaction, plus the two read endpoints — shipped together deliberately, because `iam_policy_versions` has been write-only since V006 and a trail nobody can read is a backup |
-| ~~**Embeddings backfill**~~ | **Delivered** — ADR 0042 | Meetings analysed before #206, or while the provider was failing, had no embedding and were invisible to semantic search and to the chat's grounding, permanently: indexing is best-effort and nothing ever came back. `GET`/`POST /admin/platform/embeddings/backfill` reindex from the summary already stored on the meeting — no second LLM analysis — bounded per run and billed through the existing cost telemetry. Same mechanism repairs a change of embedding model |
+| ~~**A unit-test runner for `apps/web`**~~ | **Delivered** — ADR 0018, ADR 0042 | The web app had three Playwright e2e specs and no unit runner, so ADR 0018's coverage line had nothing to measure on the largest surface. Vitest closed it; §1 has what that delivery contained, and ADR 0042 has which parts of it are a gate |
+| **US21 trends panel · ~~US25 task export~~ · ~~US31 company-context history~~ · US43 policy simulator** | ADR 0038 §5 | Four stories ADR 0014 deferred and ADR 0038 brought back; **US25 is delivered** and the other three are not. US21's stated criterion ("after US15 is on") had already been met by #206 and nobody noticed. US43 matters out of proportion to its size: IAM is the Enterprise tier's main artefact, and a simulator is what makes it demonstrable instead of merely present. US25 needed no ADR: it added no route and no decision that outlives it — CSV and Markdown built client-side from the list the tasks screen already holds, on the shape US60 set for the meeting report |
+| ~~**Embeddings backfill**~~ | **Delivered** — ADR 0044 | Meetings analysed before #206, or while the provider was failing, had no embedding and were invisible to semantic search and to the chat's grounding, permanently: indexing is best-effort and nothing ever came back. `GET`/`POST /admin/platform/embeddings/backfill` reindex from the summary already stored on the meeting — no second LLM analysis — bounded per run and billed through the existing cost telemetry. Same mechanism repairs a change of embedding model |
 
 ### 2.4 The substrate these land on
 
@@ -230,7 +232,7 @@ For a sub-phase to be considered **closed** (`DONE`):
 | **Desktop finalisation** | Windows capture (WASAPI loopback) works. The client is Windows-only by ADR 0038 §2 — the macOS (BlackHole) and Linux (PulseAudio) paths and the ScreenCaptureKit debt were deleted, having never been exercised — and the local UI went with them. Transcription is being replaced (§2.3, ADR 0039). Real Windows/Teams validation is still pending |
 | **SSO Entra ID / SAML** (US05) | **Closed** by ADR 0038 §4 |
 | **Polish + Demo + Pitch** | The pitch was held on 2026-06-15. The polish landed with the v3 redesign; the demo material is §2.1 |
-| **Trends panel** (US21) | **Reactivated** by ADR 0038 §5 — its prerequisite (US15, semantic search) shipped in #206. The gap that made that prerequisite weaker than it looked — no backfill, so meetings analysed before #206 stayed invisible — is closed by ADR 0042; the index now has to be *run*, not just merged |
+| **Trends panel** (US21) | **Reactivated** by ADR 0038 §5 — its prerequisite (US15, semantic search) shipped in #206. The gap that made that prerequisite weaker than it looked — no backfill, so meetings analysed before #206 stayed invisible — is closed by ADR 0044; the index now has to be *run*, not just merged |
 | **Policy templates + Simulator** (US41 + US43) | US43 **reactivated** by ADR 0038 §5. US41 open with no trigger |
 | **Permission boundaries** (US44) | Open, no trigger. It needs an organisational hierarchy and IAM delegation that nothing else asks for |
 | **Tenant metrics and Export** (US33 + US34) | Open, no trigger. The operator-facing telemetry that exists (`/admin/platform/telemetry/*`) is a different thing behind Cloudflare Access |
@@ -254,7 +256,7 @@ by what one person can carry.
   point — ADR 0041's invariant is that a tool call and a web request go through the same
   `PolicyEvaluator`. It does not depend on the shared contracts package, which was the old note here
 - **The trends panel** depends on the embeddings backfill having been *run* for the tenant on
-  display, not just on US15 being merged. The mechanism exists (ADR 0042); a panel built on a
+  display, not just on US15 being merged. The mechanism exists (ADR 0044); a panel built on a
   half-filled index still has to say so instead of drawing a flat line
 - **Cloud STT** depends on a decision the desktop's own cleanup left open: `http_proxy.rs` signs
   requests with an `access-token` from the keyring, and the login form that was the only writer of
