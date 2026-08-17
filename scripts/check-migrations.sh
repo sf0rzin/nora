@@ -107,9 +107,61 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Destructive DDL has to be acknowledged in the file.
+# 3. A migration this branch adds must be numbered ABOVE everything on the base.
 # ---------------------------------------------------------------------------
-echo "3. destructive statements (in migrations ADDED by this branch)"
+# This rule exists because the first two did not catch the thing they were written to
+# prevent. On 2026-08-17 a reserved-then-released number (V031) was handed to a new story
+# AFTER V032 had already merged. Nothing objected: the version was unique, no applied file
+# was edited, and the DDL was not destructive. What it produced is an OUT-OF-ORDER
+# migration — a database that already ran V032 sees a lower version pending and Flyway
+# refuses to boot with "Detected resolved migration not applied to database: 031".
+#
+# The remedy proposed at the time was `spring.flyway.out-of-order: true`, which trades the
+# ordering guarantee of every future migration for one file rename. Renaming is the fix,
+# and this is the check that asks for it while renaming is still free — before the file has
+# ever been released.
+#
+# There is no escape hatch, on purpose. `out-of-order` IS the escape hatch, it is a
+# repository-wide setting, and the point of this rule is that reaching for it should be a
+# decision with an ADR rather than a quiet flag in `application.yml`.
+echo "3. new migrations are numbered above $BASE_REF"
+if git rev-parse --verify --quiet "$BASE_REF" >/dev/null; then
+  for dir in "$MIGRATIONS" "$PLATFORM"; do
+    [ -d "$dir" ] || continue
+    # `-r` is load-bearing. Without it `ls-tree` lists the DIRECTORY entry rather than the
+    # files inside it, `base_max` comes back empty, and every check below is skipped while
+    # the job still reports green. That is the exact failure this file exists to prevent,
+    # and it happened here first: the sentinel for this rule passed silently until `-r`
+    # was added. An unreadable base is now reported rather than treated as "nothing to do".
+    base_max=$(
+      git ls-tree -r --name-only "$BASE_REF" -- "$dir" 2>/dev/null |
+        sed -n 's|.*/V\([0-9][0-9]*\)__.*|\1|p' | sed 's/^0*//' | sort -n | tail -1
+    )
+    if [ -z "$base_max" ]; then
+      report "cannot read the migration set of $BASE_REF for $dir — refusing to pass silently"
+      continue
+    fi
+    added=$(git diff --name-only --diff-filter=A "$BASE_REF"...HEAD -- "$dir" 2>/dev/null || true)
+    for f in $added; do
+      v=$(basename "$f" | sed -n 's|^V\([0-9][0-9]*\)__.*|\1|p' | sed 's/^0*//')
+      [ -n "$v" ] || continue
+      if [ "$v" -le "$base_max" ]; then
+        report "out of order: $f is V$v, but $BASE_REF already has V$base_max"
+        report "    A database that applied V$base_max sees a LOWER version pending, and Flyway"
+        report "    refuses to boot. Rename this file to the next number above V$base_max — it has"
+        report "    not been released, so renaming is free. Do NOT reach for"
+        report "    spring.flyway.out-of-order: it loosens ordering for every future migration."
+      fi
+    done
+  done
+else
+  echo "  skipped: $BASE_REF is not available in this checkout"
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Destructive DDL has to be acknowledged in the file.
+# ---------------------------------------------------------------------------
+echo "4. destructive statements (in migrations ADDED by this branch)"
 # SCOPED TO NEW FILES, and that scoping is not a softening — it is the only coherent rule.
 # Running this over the whole tree on first write reported three already-applied migrations
 # (V018, V027 and platform V002), and the "fix" it demanded was to edit them and add the
