@@ -86,3 +86,4 @@ Partially superseded decisions: a successor ADR may mark `Partially supersedes X
 | 0039 | Cloud STT: OpenAI transcription reached with an ephemeral session token | accepted (supersedes 0035) |
 | 0040 | The PII non-negotiable is scoped to analysis; transcription becomes a declared subprocessor | accepted (relates to 0012 and 0033; supersedes neither) |
 | 0041 | NORA as an MCP server (the inbound path) | accepted (relates to 0031, the outbound path) |
+| 0042 | Vitest in `apps/web`: which parts of the first unit suite are a gate | accepted (delivers the runner 0018 asked for; does not enforce 0018's web threshold table) |
