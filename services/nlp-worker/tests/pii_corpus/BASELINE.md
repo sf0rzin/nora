@@ -46,19 +46,25 @@ exactly the situation the "corpus grew once" section at the bottom of this file 
 ## After, by shape — only the rows that moved
 
 ```
-shape                          leak   before    false redaction   before
-address                       0/12    was 11/12        0/10       unchanged
-allcaps                       0/400   was 100/400      0/400      unchanged
-allcaps_product_before        0/400   was 100/400      0/400      unchanged
-product_between             100/400   was 300/400      0/400      unchanged
-speaker_label                 0/400   was 7/400        0/400      unchanged
-adv_caps                      1/4     was 1/3          1/1        was 0/0
-adv_lone_after_head           9/15    was 14/15        0/12       unchanged
-adv_false_redaction           0/0     unchanged        1/5        was 2/5
-role_phrase                   0/0     unchanged        0/10       was 3/10
+shape                        leak    was          false redaction   was
+address                      0/12    11/12               0/10       unchanged
+allcaps                      0/400   100/400             0/400      unchanged
+allcaps_product_before       0/400   100/400             0/400      unchanged
+product_between            100/400   300/400             0/400      unchanged
+speaker_label                0/400   7/400               0/400      unchanged
+adv_lone_after_head          9/15    14/15               0/12       unchanged
+adv_caps                     0/3     1/3                 1/1        0/0
+adv_false_redaction          0/0     unchanged           1/5        2/5
+role_phrase                  0/0     unchanged           0/10       3/10
 ```
 
-Every other shape is unchanged. The two largest false-redaction blocks —
+`adv_caps` moves in both columns and for two different reasons: `WANDERLEIA KRANZ aprovou o
+escopo.` is redacted now, and the residual case added with the rule
+(`adv/allcaps_pair/english_role_phrase`) carries no person, so it enters the false-redaction
+denominator and not the leak one.
+
+Every remaining leak in the corpus is either the 100 `product_between` cases named below or one
+of the 20 documented gaps. The two largest false-redaction blocks —
 `title_then_name_then_label` at 400/400 and `company_before` at 100/400 — are untouched by this
 change and are what the false-redaction goal in `test_pii_corpus.py` is aimed at.
 
