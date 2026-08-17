@@ -242,7 +242,7 @@ done in.
 | US83 | See what the AI is costing, per service and per tenant | S | DONE | `POST /internal/platform/usage` (`PlatformInternalController.java:48`, fire-and-forget, always 202) · `GET /admin/platform/telemetry/cost` (`PlatformAdminController.java:150`) · `apps/admin/src/app/telemetry/page.tsx` · ADR 0024 · PR #172 | Cost is computed from the token counts providers report, not from an invoice. ADR 0039 notes that once STT moves to an ephemeral session token the audio path is not measured at all — sessions issued and minutes estimated, not bytes counted |
 | US84 | The operator console is unreachable without operator identity | S | DONE | `apps/admin/` behind Cloudflare Tunnel + Access · ADR 0023, ADR 0025 · `PlatformSecurityIntegrationTest` · **fail-closed by default since PR #471**: with no `CF_ACCESS_*` configured the console answers 403 and renders no data, and the mock path is an explicit opt-in (`NORA_ADMIN_USE_MOCKS`) | `/healthz` stays open on purpose. The app is in the `ci-gate` with lint, typecheck and build since PR #471 |
 | US85 | Platform health and business telemetry | C | DONE | `GET /admin/platform/telemetry/health` (`PlatformAdminController.java:159`) and `/telemetry/business` (line 164) · `GET /admin/platform/flags` (line 115) | Platform-wide, for the operator. The tenant-facing equivalent is US33 and does not exist |
-| US86 | Reindex meetings the RAG index never got | S | DONE | `GET`/`POST /admin/platform/embeddings/backfill` · `EmbeddingBackfillService.java` · platform migration `V002` (retires the dead `service.search-embeddings` flag) · `EmbeddingBackfillIntegrationTest` · ADR 0042 | Indexing at the end of an analysis is best-effort, so a missing credential or a failing provider left a meeting out of `meeting_embeddings` forever — the only remedy was a full reprocess, paying for a whole LLM analysis to obtain one vector. The backfill reindexes from the summary already stored, and the same query covers a change of embedding model. **Operator-triggered on purpose**: it is billed per meeting, so there is no startup catch-up and no scheduled sweep, and a run is one tenant at a time with a ceiling. No console UI yet — it is `curl` behind Cloudflare Access |
+| US86 | Reindex meetings the RAG index never got | S | DONE | `GET`/`POST /admin/platform/embeddings/backfill` · `EmbeddingBackfillService.java` · platform migration `V002` (retires the dead `service.search-embeddings` flag) · `EmbeddingBackfillIntegrationTest` · ADR 0044 | Indexing at the end of an analysis is best-effort, so a missing credential or a failing provider left a meeting out of `meeting_embeddings` forever — the only remedy was a full reprocess, paying for a whole LLM analysis to obtain one vector. The backfill reindexes from the summary already stored, and the same query covers a change of embedding model. **Operator-triggered on purpose**: it is billed per meeting, so there is no startup catch-up and no scheduled sweep, and a run is one tenant at a time with a ceiling. No console UI yet — it is `curl` behind Cloudflare Access |
 
 ## 3. Workstreams implemented beyond the backlog
 
@@ -285,7 +285,7 @@ then ADR 0038's, argued is worth keeping.
 
 ## 4. State Summary (2026-08-17)
 
-Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0042).
+Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0044).
 
 | MoSCoW | Total | DONE | PARTIAL | MISSING | WONT |
 |---|---|---|---|---|---|
@@ -310,7 +310,7 @@ Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0042).
   vector in a `TEXT` column; pgvector is not in use.
 - **`WONT` is a new status.** ADR 0038 §4 draws a line ADR 0014 collapsed: "deferred" means
   reactivatable under a criterion, and these four are not waiting for anything.
-- **US86 was added after that revision** (ADR 0042), for the same reason the 34 above were: the RAG
+- **US86 was added after that revision** (ADR 0044), for the same reason the 34 above were: the RAG
   index had a defect nobody had written down. It is the only row that moves the totals since.
 
 **Effective coverage**

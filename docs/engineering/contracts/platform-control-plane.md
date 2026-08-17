@@ -148,7 +148,7 @@ All of them require the **admin token**; they record an audit entry with `X-Oper
   the resolver reads `service.{service}`. The consumer maps the prefix.
 - The set is exactly the set of services with an `llm_config` binding. A fourth key,
   `service.search-embeddings`, was seeded by V001 and consulted by nothing; platform migration
-  `V002` deletes it (ADR 0042). Embeddings have no binding and no catalog row — their provider,
+  `V002` deletes it (ADR 0044). Embeddings have no binding and no catalog row — their provider,
   model and credential come from `nora.embedding.*` in the environment, and the absence of that
   credential is their real off-switch.
 - v1 is read-only (no toggle PUT yet). `updatedBy`/`updatedAt` are additive (can be ignored).
@@ -184,7 +184,7 @@ operator-only):
   consumer must tolerate it. `analyses`/`tenantsActive` are real. RLS caveat: see the runbook /
   production-readiness-gaps (under RLS enforce, this cross-tenant read requires a BYPASSRLS role).
 
-### RAG index backfill (ADR 0042)
+### RAG index backfill (ADR 0044)
 
 `GET /admin/platform/embeddings/backfill` → **200**, and it costs nothing (SQL only, no provider
 call, no platform database):
