@@ -11,6 +11,22 @@
  * The heuristic PERSON_NAME redaction (name list + negative list) stays
  * in the worker's analysis pipeline — it is deliberately not duplicated here, so as not
  * to over-redact legitimate Title Case terms in the chat (products, projects, etc.).
+ *
+ * ADDRESS IS NOT MIRRORED HERE EITHER, and the decision is recorded rather than left as an
+ * omission (ADR 0043). The worker emits ADDRESS since 2026-08-17, so the enum this file
+ * implements is now a strict subset of the worker's — which is exactly the drift the header
+ * above warns about, and it is deliberate this time. The reason is the sentence two paragraphs
+ * up: every pattern in this file is validated (check digit, Luhn) or structurally unmistakable,
+ * and its false-positive rate is near zero. The worker's ADDRESS recogniser is a heuristic with
+ * a measured cost — `services/nlp-worker/tests/pii_corpus/pools.py` carries thirteen strings
+ * that open on a street type word and are not addresses — and the chat path has no corpus to
+ * price it on. Redacting "a rua principal do projeto" out of a user's chat message is a worse
+ * outcome here than in an analysis, because the user watches it happen.
+ *
+ * What that means concretely: a street address typed into the chat reaches the chat and
+ * embedding providers in the clear. That is a declared residue of the same kind ADR 0033
+ * declares for PERSON_NAME, and it closes the same way — by routing the chat path through the
+ * worker's shield, not by copying a heuristic into this file.
  */
 
 type PiiType = "EMAIL" | "PHONE" | "CPF" | "CNPJ" | "CREDIT_CARD";

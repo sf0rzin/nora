@@ -127,7 +127,7 @@ Internal-only — only the Spring backend talks to it. Hosted in `nora-worker-de
 
 **packages/nlp-baseline** — Local Python package in `packages/nlp-baseline/` with 3 TF-IDF modules (preprocessing, vectorizer, top_terms). Used by the NLP worker **before** the LLM to extract important terms in an interpretable way. ADR 0010.
 
-**PII** — Personally Identifiable Information. Categories covered by NORA's PII Shield: email, CPF, CNPJ, phone, credit card, PERSON_NAME (BR). Not covered in the MVP: ADDRESS (catalogued debt). ADR 0012.
+**PII** — Personally Identifiable Information. Categories covered by NORA's PII Shield: email, CPF, CNPJ, phone, credit card, PERSON_NAME (BR) and ADDRESS (BR street-type recogniser, ADR 0042 — deterministic, not NER). ADR 0012.
 
 **PII Shield** — System in the NLP worker that detects and redacts PII **before** sending text to an external LLM. Replaces it with `[[TIPO_N]]` placeholders (e.g., `[[EMAIL_1]]`, `[[CPF_2]]`). After the LLM, the backend can unredact if authorized. ADR 0012. Implementation in `services/nlp-worker/src/.../pii_shield.py` (95% coverage).
 

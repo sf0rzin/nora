@@ -1,8 +1,15 @@
 """PII Shield baseline: deterministic regex applied before any call to the LLM.
 
-Covers the basic Brazilian types (e-mail, phone, CPF, CNPJ, card) and detects
+Covers the basic Brazilian types (e-mail, phone, CPF, CNPJ, card, address) and detects
 proper names via heuristic regex + hardcoded list of top BR names + negative list
-of technical/product/company terms. ADDRESS is left for a future slice.
+of technical/product/company terms.
+
+ADDRESS is a deterministic recogniser (`_ADDRESS_RE`) that runs in the same stage as the other
+structured types and therefore BEFORE every person-name heuristic. That order is not an
+implementation detail: the words that open a Brazilian address are also on
+`_COMMON_PHRASE_HEADS`, where their job is to stop a place name becoming a person, and the two
+lists only reconcile if the address pattern gets the stretch first. See the block above
+`_ADDRESS_STREET_TYPE_WORDS`.
 
 The PERSON_NAME strategy is detailed in the docstring of `_redact_person_names`.
 """
@@ -34,8 +41,35 @@ def _fold(value: str) -> str:
     ).casefold()
 
 
+# Letters accepted inside a name token.
+#
+# These used to be a hand-written list of the PT-BR accents (`ÁÉÍÓÚÂÊÔÀÃÕÇ` /
+# `áéíóúâêôàãõç`). Brazil is full of surnames that do not fit in it -- German
+# (Schürmann, Müller), Spanish (Núñez, Peña), Nordic (Sjöberg) -- and the effect was
+# not merely missing them: `[a-záéíóúâêôàãõç]+` stopped AT the foreign letter, so
+# "Eng. Schürmann" matched as "Eng. Sch" and the placeholder was spliced into the
+# middle of the surname -> "[[PERSON_NAME_1]]ürmann", which leaks the tail in the clear
+# AND corrupts the text sent to the model. The ranges below are the whole Latin-1
+# letter block; U+00D7 and U+00F7 fall outside them by construction, being the
+# multiplication and division signs and not letters. `_fold` normalizes with NFKD,
+# so `ü` still compares equal to `u`.
+#
+# Declared HERE, above the deterministic patterns, rather than beside the person-name ones it
+# was written for: `_ADDRESS_RE` runs in the deterministic stage and needs `_TITLE_WORD`, and a
+# second copy of the character class is how the two halves of this module would drift apart.
+_UPPER = "A-ZÀ-ÖØ-Þ"
+_LOWER = "a-zß-öø-ÿ"
+
+# A hyphenated compound is ONE token. Without the `(?:-...)*` the match stopped at the hyphen
+# -- `\b` holds between a letter and `-` -- and `_ends_on_a_word_boundary` waved it through
+# because `-` is not `.isalpha()`, so "Ana Paula Silva-Costa" came out as
+# "[[PERSON_NAME_1]]-Costa": a corrupted token for the model and the second half of the
+# surname in the clear.
+_TITLE_WORD = f"[{_UPPER}][{_LOWER}]+(?:-[{_UPPER}][{_LOWER}]+)*"
+
+
 # --------------------------------------------------------------------------- #
-# Deterministic patterns: e-mail, CPF, CNPJ, card, phone
+# Deterministic patterns: e-mail, CPF, CNPJ, card, phone, address
 # --------------------------------------------------------------------------- #
 
 # Email with (?<!\w) anchoring on the left avoids catastrophic backtracking on
@@ -215,6 +249,78 @@ def _validate_cnpj_separated(value: str) -> bool:
     return _validate_cnpj(_strip_separators(value))
 
 
+# --------------------------------------------------------------------------- #
+# ADDRESS
+#
+# THE LIST CONFLICT IS THE WHOLE DESIGN, so it is written here rather than left to be
+# rediscovered. `Rua`, `Avenida`, `Rodovia`, `Alameda`, `Praca`, `Estrada` and `Travessa` are on
+# `_COMMON_PHRASE_HEADS`, and the comment beside that block says what for: roughly a third of
+# `_BR_TOP_SURNAMES` doubles as a place name, so recognising the word that OPENS a place name is
+# what keeps "Bairro SANTA CRUZ" and "Vila Prado" from becoming people. Membership there means
+# the word is STRIPPED, and the only possible effect of that list anywhere is to SUPPRESS a
+# redaction.
+#
+# So implementing ADDRESS by deleting those entries trades one defect for the other: the false
+# positive the list exists to prevent comes straight back. ADDRESS is instead a recogniser of
+# its own, in the deterministic stage, running BEFORE every person-name heuristic and claiming
+# the whole stretch. The head list goes on doing its own job for everything this pattern
+# declines. **The order is the reconciliation**: a street type word is ordinary vocabulary
+# unless this pattern has already taken it, and the two lists only look contradictory to a
+# reader who has not been told which one runs first.
+#
+# What decides is the token AFTER the street type. "Rua das Flores" is an address; "Rua sem
+# saida" is a sentence about a street, and what separates them is that the second continues in
+# lower case. That is the whole admission rule, and it is why `tests/pii_corpus/pools.py`
+# carries `NOT_ADDRESSES`: a recogniser keyed on the street type word alone eats every one of
+# them, and a pool of addresses alone would price the benefit and nothing else.
+#
+# Deliberately NOT street types: `Bairro`, `Vila`, `Jardim`, `Parque`, `Centro`. They open a
+# neighbourhood rather than a street, they are the exact entries the head-list comment cites,
+# and admitting them would let "Vila Prado" -- the string that comment is about -- be claimed
+# here instead of merely being kept from becoming a person.
+_ADDRESS_STREET_TYPE_WORDS: tuple[str, ...] = (
+    "Avenida",
+    "Alameda",
+    "Estrada",
+    "Largo",
+    "Praca",
+    "Praça",
+    "Rodovia",
+    "Rua",
+    "Travessa",
+    # Last, so the longer alternatives are tried first. `Av` alone would otherwise match the
+    # first two letters of "Avenida" and then fail the rest of the pattern.
+    "Av",
+)
+
+# Kept as a set as well, so `test_the_overlap_between_ordinary_and_name_vocabulary_is_recorded`
+# covers it. A street type word that is also a GIVEN name would open an address on the first
+# word of a full name and swallow the person under the wrong type; the overlap being empty
+# today is worth pinning rather than assuming.
+_ADDRESS_STREET_TYPES: frozenset[str] = frozenset(_fold(w) for w in _ADDRESS_STREET_TYPE_WORDS)
+
+# One name part: an optional pt-BR particle plus a capitalised word ("das Flores", "de
+# Setembro", "Paulista"). Every repetition consumes a whole capitalised token and the count is
+# bounded, so there is no nested unbounded quantifier here for a large input to exercise -- the
+# property `test_redaction_stays_linear_in_the_size_of_the_transcript` covers, and the reason
+# `_EMAIL_RE` above carries a bound of its own.
+_ADDRESS_NAME_PART = f"(?:d[aeo]s?\\s+|e\\s+)?{_TITLE_WORD}"
+
+# The number and the complement are both optional: "Largo do Machado" identifies a place with
+# neither. Requiring a number would leave the commonest spoken form of an address uncovered,
+# which is the form a transcript actually carries.
+_ADDRESS_NUMBER = r"(?:\s*,?\s+(?:n[oº°]?\.?\s*)?\d{1,6}\b)?"
+_ADDRESS_COMPLEMENT = (
+    r"(?:\s*[,\-]\s*(?:sala|apto|apt|apartamento|bloco|casa|conjunto|andar|cj)\.?\s*\d{1,5}\b)?"
+)
+
+_ADDRESS_RE = re.compile(
+    f"\\b(?:{'|'.join(_ADDRESS_STREET_TYPE_WORDS)})\\.?\\s+"
+    f"{_ADDRESS_NAME_PART}(?:\\s+{_ADDRESS_NAME_PART}){{0,3}}"
+    f"{_ADDRESS_NUMBER}{_ADDRESS_COMPLEMENT}"
+)
+
+
 # Order matters: masked/cards first (more specific regex), then raw
 # with check-digit check (raw CPF/CNPJ), phone last (most ambiguous). Without that
 # order, PHONE_RE eats 11 digits before CPF_RAW_RE can identify it — wrong type
@@ -225,6 +331,12 @@ def _validate_cnpj_separated(value: str) -> bool:
 # _CARD_RE (16 digits with 4x4). The space-separated patterns (CPF/CNPJ) come
 # together with the masked ones, but are only accepted with a valid check digit.
 _BASIC_PATTERNS: list[tuple[PiiType, re.Pattern[str]]] = [
+    # FIRST, and the position is load-bearing in one narrow way: matches are applied in order of
+    # `start` and a later overlapping one is dropped, so on a tie the entry declared earlier
+    # wins. An address opens on its street type word, which is left of anything a number pattern
+    # could find inside it, so the tie is rare -- but "declared first" is the cheap way to make
+    # the whole stretch win rather than a house number inside it.
+    (PiiType.ADDRESS, _ADDRESS_RE),
     (PiiType.EMAIL, _EMAIL_RE),
     (PiiType.CPF, _CPF_RE),
     (PiiType.CPF, _CPF_PARTIAL_RE),
@@ -644,31 +756,29 @@ _PERSON_NAME_NEGATIVE_LIST: frozenset[str] = frozenset(
         "LGPD",
         "SOC",
         "ISO",
+        # English function names, which pt-BR business transcripts use untranslated. Each is two
+        # off-list Title Case tokens, which is the exact shape of a full name, so the sequence
+        # pattern trusts them and files the hash of a department as a person -- recorded in
+        # `tests/pii_corpus/cases.py` as `_ROLE_PHRASES_STILL_WRONG` since that file was written.
+        #
+        # The note beside that record said adding them here was "the obvious fix and was
+        # rejected while finding 5a was live", because a negative term used to demote every run
+        # in the candidate off the trusted path and could switch off the redaction of a name
+        # beside it. `_split_on_allow_list` closed 5a: a term now covers its own surface form and
+        # nothing else, so the reason for the rejection is gone.
+        #
+        # It is also what keeps the all-caps pair rule honest. "CUSTOMER SUCCESS assumiu o
+        # chamado." is that rule's residual shape, and this is the entry that closes the
+        # commonest instance of it on BOTH paths rather than only on the one that is new.
+        "Customer",
+        "Success",
+        "Machine",
+        "Learning",
+        "Pull",
+        "Request",
     )
 )
 
-
-# Letters accepted inside a name token.
-#
-# These used to be a hand-written list of the PT-BR accents (`ÁÉÍÓÚÂÊÔÀÃÕÇ` /
-# `áéíóúâêôàãõç`). Brazil is full of surnames that do not fit in it -- German
-# (Schürmann, Müller), Spanish (Núñez, Peña), Nordic (Sjöberg) -- and the effect was
-# not merely missing them: `[a-záéíóúâêôàãõç]+` stopped AT the foreign letter, so
-# "Eng. Schürmann" matched as "Eng. Sch" and the placeholder was spliced into the
-# middle of the surname -> "[[PERSON_NAME_1]]ürmann", which leaks the tail in the clear
-# AND corrupts the text sent to the model. The ranges below are the whole Latin-1
-# letter block; U+00D7 and U+00F7 fall outside them by construction, being the
-# multiplication and division signs and not letters. `_fold` normalizes with NFKD,
-# so `ü` still compares equal to `u`.
-_UPPER = "A-ZÀ-ÖØ-Þ"
-_LOWER = "a-zß-öø-ÿ"
-
-# A hyphenated compound is ONE token. Without the `(?:-...)*` the match stopped at the hyphen
-# -- `\b` holds between a letter and `-` -- and `_ends_on_a_word_boundary` waved it through
-# because `-` is not `.isalpha()`, so "Ana Paula Silva-Costa" came out as
-# "[[PERSON_NAME_1]]-Costa": a corrupted token for the model and the second half of the
-# surname in the clear.
-_TITLE_WORD = f"[{_UPPER}][{_LOWER}]+(?:-[{_UPPER}][{_LOWER}]+)*"
 
 # An ALL-CAPS token, for the speaker labels and attendee lists that meeting minutes and
 # diarised transcripts are full of ("CARLOS SILVA: fechamos o escopo").
@@ -1525,18 +1635,65 @@ def _split_on_allow_list(
     Keeping the run whole made "Pesquisa e Desenvolvimento" one PERSON_NAME and made "Osvaldo
     Pinheiro e Marina Alves" stand or fall together.
     """
-    runs: list[list[re.Match[str]]] = []
-    current: list[re.Match[str]] = []
-    for tok in tokens:
-        folded = _fold(tok.group(0))
-        if folded in _PERSON_NAME_NEGATIVE_LIST or folded in tenant_terms or folded in separators:
-            if current:
-                runs.append(current)
-            current = []
-        else:
-            current.append(tok)
-    if current:
-        runs.append(current)
+    return [run for run, _ in _split_with_provenance(tokens, separators, tenant_terms)]
+
+
+def _is_an_allow_listed_term(token: re.Match[str], tenant_terms: frozenset[str]) -> bool:
+    """A term the allow list covers, as opposed to a separator that merely ends a run."""
+    folded = _fold(token.group(0))
+    return folded in _PERSON_NAME_NEGATIVE_LIST or folded in tenant_terms
+
+
+def _split_with_provenance(
+    tokens: list[re.Match[str]],
+    separators: frozenset[str] = frozenset(),
+    tenant_terms: frozenset[str] = frozenset(),
+) -> list[tuple[list[re.Match[str]], bool]]:
+    """`_split_on_allow_list`, plus whether a STATIC allow-listed term abuts each stretch.
+
+    The flag is what `_spans_and_vouched` needs and it cannot be recovered afterwards: by then
+    the term is gone from the token list, and "this stretch is what a product name cut out of a
+    name" reads identically to "this stretch is one side of a conjunction".
+
+    Two things are excluded from it, for two different reasons.
+
+    THE CONJUNCTION, because it is not the same claim. A negative-list term sitting INSIDE a
+    candidate ("Wanderleia Protheus Kranz") is a product name that fell between the halves of one
+    name; the coordinating `e` joins two DIFFERENT things ("Marina Alves e Contabilidade"), so a
+    stretch beside it is not a piece of the stretch on the other side and must not inherit
+    anything from it.
+
+    `tenant_terms`, because they are input. They still SPLIT -- that is the 5c feature and it is
+    unchanged -- but a term the caller supplied may not vouch for anything. This is not a
+    hypothetical narrowing; it was measured. Declaring "Casa das Maquinas" admits `das`, which
+    splits "Nivaldo das Neves" into two lone tokens, and with the tenant term vouching for them
+    the candidate pass came back as `[[PERSON_NAME_1]] das [[PERSON_NAME_2]]` where the baseline
+    had one placeholder over the whole name. No person was freed and the output still DIVERGED
+    from the baseline, which is the property `redact`'s guard is built on: the candidate is kept
+    only when it is the baseline plus declared terms in the clear. A tenant's configuration
+    deciding how a name is carved up is the thing ADR 0012 is not negotiable about, whichever
+    direction the carving goes.
+    """
+    bounds: list[tuple[int, int]] = []
+    start: int | None = None
+    for i, tok in enumerate(tokens):
+        if _is_an_allow_listed_term(tok, tenant_terms) or _fold(tok.group(0)) in separators:
+            if start is not None:
+                bounds.append((start, i - 1))
+                start = None
+        elif start is None:
+            start = i
+    if start is not None:
+        bounds.append((start, len(tokens) - 1))
+
+    def _static(index: int) -> bool:
+        return _fold(tokens[index].group(0)) in _PERSON_NAME_NEGATIVE_LIST
+
+    runs: list[tuple[list[re.Match[str]], bool]] = []
+    for first, last in bounds:
+        before = first > 0 and _static(first - 1)
+        after = last + 1 < len(tokens) and _static(last + 1)
+        runs.append((tokens[first : last + 1], before or after))
     return runs
 
 
@@ -1588,22 +1745,70 @@ def _spans_without_negatives(
     which kept only the longest via `max()`, the first one on a tie -- discarded
     "Carlos Silva" entirely. The surname went out in the clear.
     """
-    runs = _split_on_allow_list(
+    return _spans_and_vouched(value, offset, text, tenant_terms)[0]
+
+
+def _spans_and_vouched(
+    value: str, offset: int, text: str, tenant_terms: frozenset[str] = frozenset()
+) -> tuple[list[tuple[int, int]], set[tuple[int, int]]]:
+    """The spans, and the lone ones a SIBLING stretch of the same candidate vouches for.
+
+    THE SECOND RETURN VALUE IS FINDING 5B, NARROWED. `Wanderleia Protheus Kranz` is one name
+    with a product name dropped into the middle of it: the split leaves two stretches of a
+    single token each, and `_is_a_name_on_its_own` refuses a lone token that is on neither name
+    list -- the backstop that keeps "O Brasil" and "A Nota" from becoming people. Measured, that
+    single shape was 300 of 400 generated cases and the largest block of leak in the corpus.
+
+    The maximum loosening -- every lone token is a name -- closes it and costs 34 false
+    redactions, which is a trade `tests/pii_corpus` was built to refuse. What is claimed here is
+    narrower and its whole content is one sentence: **an allow-listed term that cut a candidate
+    in two cannot leave one half a name and the other half nothing.** So a lone stretch is
+    admitted only when it abuts an allow-listed TERM and some OTHER stretch of the same
+    candidate stands on its own as a name. `Carlos Protheus Kranz` and `Wanderleia Protheus
+    Silva` are closed by it; `Wanderleia Protheus Kranz`, where neither half is recognisable, is
+    not, and stays a documented gap.
+
+    Three things it deliberately does not do:
+
+    - It does not fire on the conjunction, and it does not fire on a term the TENANT declared --
+      see `_split_with_provenance`, which is where both exclusions are argued and where the
+      measurement behind the second one is recorded.
+    - It does not fire without a sibling that stands alone, which is what keeps every
+      `fp_split_flank` case out: `A Central Oracle Cloud entrou na pauta` splits into `Central`
+      and `Cloud`, and neither is on any name list, so nothing vouches for anything. All ten of
+      those cases are the same SHAPE as `product_between` and the only thing separating them is
+      that one half of a name is usually recognisable and neither half of a server name is.
+    - It does not widen the span. A vouched stretch is claimed exactly as it stands.
+
+    The spans are recorded here, where the sibling relationship is still visible, and consulted
+    in `_qualify_and_claim`, which re-derives each span over a slice that no longer contains the
+    term that split it.
+    """
+    runs = _split_with_provenance(
         list(_WORD_RE.finditer(value)),
         separators=frozenset({_CONJUNCTION}),
         tenant_terms=tenant_terms,
     )
     spans: list[tuple[int, int]] = []
-    for run in runs:
+    lone_beside_a_term: list[tuple[int, int]] = []
+    a_sibling_stands_alone = False
+    for run, beside_a_term in runs:
         # Each stretch takes the same two chances an unsplit candidate takes, in the same order.
         # Skipping the first of them for a stretch that merely sat NEXT TO an allow-listed term
         # is what finding 5a was.
         span = _trusted_span(run, offset, text)
         if span is None:
             span = _qualify_run(run, offset, text)
-        if span is not None:
-            spans.append(span)
-    return spans
+        if span is None:
+            continue
+        spans.append(span)
+        if _is_a_name_on_its_own(text[span[0] : span[1]]):
+            a_sibling_stands_alone = True
+        elif beside_a_term and len(_WORD_RE.findall(text[span[0] : span[1]])) == 1:
+            lone_beside_a_term.append(span)
+    if not a_sibling_stands_alone:
+        return spans, set()
+    return spans, set(lone_beside_a_term)
 
 
 def _name_bearing(run: list[re.Match[str]]) -> list[re.Match[str]]:
@@ -1881,12 +2086,13 @@ def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int,
     # drops it: "Contrato de Marlene da Costa" was refused whole -- the genitive gate saw an
     # ordinary head and a preposition -- and published the full name, while "Marlene da Costa"
     # on its own redacted. The label in front cannot be what decides.
-    stripped_a_label = False
+    heads_stripped = 0
     while run and (
         _fold(run[0].group(0)) in _NAME_CONNECTIVES
         or (len(run) > 1 and _fold(run[0].group(0)) in _COMMON_PHRASE_HEADS)
     ):
-        stripped_a_label = stripped_a_label or (_fold(run[0].group(0)) in _COMMON_PHRASE_HEADS)
+        if _fold(run[0].group(0)) in _COMMON_PHRASE_HEADS:
+            heads_stripped += 1
         run = run[1:]
     while run and _fold(run[-1].group(0)) in _NAME_CONNECTIVES:
         run = run[:-1]
@@ -1898,10 +2104,27 @@ def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int,
         # the surname in the clear, because the run around it was one token long. The
         # ordinary-vocabulary list is what keeps a lone "Campos" or "Prazo" out.
         #
-        # ...but only when the token was alone to begin with. What survives the stripping of a
-        # noun phrase is that phrase's own last word, not a name: "Falta o Relatorio de Vendas
-        # do Prado" reduces to "Prado", which is on the surname list and is nobody here.
-        if stripped_a_label:
+        # ...and ONE ordinary word in front does not make it a phrase. This used to refuse the
+        # lookup whenever any head had been stripped, which is where the genitive and
+        # phrase-head leaks lived: "Contato Costa aprovou o escopo." and "Contato do Silva
+        # aprovou o escopo." both reduce to a listed surname and both went to the provider in
+        # the clear. Measured over `_COMMON_PHRASE_HEADS` x six surnames before this changed:
+        # 2,912 of 2,916 leaked, and 15 of 15 genitive forms.
+        #
+        # The refusal is kept for a phrase built out of TWO or more ordinary nouns, because that
+        # is what the note it replaces was actually about: "Falta o Relatorio de Vendas do
+        # Prado" and "O Plano de Acao da Rocha" reduce to `Prado` and `Rocha`, which are on the
+        # surname list and are nobody here -- what survives the stripping of a NOUN PHRASE is
+        # that phrase's own last word. One label plus a name ("Contato Costa", "Prazo Kranz") is
+        # the everyday shape of minutes; two ordinary nouns joined by a particle is the everyday
+        # shape of an artefact, and `test_ordinary_labels_and_institutions_are_not_people` pins
+        # both sides of that line.
+        #
+        # This is NOT the whole of the leak. The lookup below still demands the surviving token
+        # be on a name list, so "Prazo Kranz" -- an off-list surname -- is still refused and
+        # still leaks; `adv/lone_after_head/prazo` stays a documented gap. Closing that means
+        # deciding what a lone off-list Title Case token is worth, which is finding 5b.
+        if heads_stripped > 1:
             return None
         lone = _fold(run[0].group(0))
         if lone in _COMMON_PHRASE_HEADS or (
@@ -2069,7 +2292,79 @@ def _caps_span_for_run(tokens: list[re.Match[str]], base: int, text: str) -> tup
                 start, end = base + head.start(), base + tokens[i + 1].end()
                 if _ends_on_a_word_boundary(end, text):
                     return start, end
-    return None
+    return _caps_pair_in_running_prose(tokens, base, text)
+
+
+# Both tokens have to reach this, and the floor is what keeps a pair of department acronyms out:
+# "TI RH resolveram o chamado." and "CRM ERP integraram os dados." are the shape this rule
+# admits and are not people. Four, not three: every off-list given name and surname the corpus
+# carries is five letters or more, and three-letter all-caps tokens in these transcripts are
+# overwhelmingly acronyms.
+_CAPS_PAIR_MIN_LENGTH = 4
+
+# A lower-case letter within a few characters of the run's end, on the same line. `\n` is
+# excluded on purpose: that is the whole difference between a speaker sitting inside a sentence
+# and a two-word heading sitting on a line of its own.
+_LOWER_CASE_CONTINUATION_RE = re.compile(f"^[^\\w\\n]{{0,3}}[{_LOWER}]")
+
+
+def _caps_pair_in_running_prose(
+    tokens: list[re.Match[str]], base: int, text: str
+) -> tuple[int, int] | None:
+    """An all-caps PAIR no list recognises, inside normally-cased prose.
+
+    THE GAP THIS CLOSES was deliberate and is recorded as such in `tests/pii_corpus/BASELINE.md`:
+    an all-caps run with neither end on a name list was admitted only as a speaker label,
+    because "in running prose it is indistinguishable from an acronym string". Measured, it was
+    200 of the corpus's leaks -- the off-list/off-list quadrant of `allcaps` and of
+    `allcaps_product_before`, 100 each -- plus the seven `speaker_label` cases where the
+    given name's own ending reads as a preterite (`DIRCEU`).
+
+    "Indistinguishable" was true of the run ALONE and not of the run in its context, and this is
+    the context: a two-word all-caps stretch that no list knows, four letters or more on each
+    side, not ending in a preterite, and continuing in LOWER CASE on the same line. A heading
+    does not do the last of those -- "PROTHEUS SEGUE COMO PRIORIDADE DO TRIMESTRE." is upper case
+    to the end of the line, and "NOTA FISCAL chegou com erro." is held by the head list instead.
+
+    The residual is stated rather than hidden: a two-word all-caps phrase whose both words are
+    on every list's outside is claimed as a person. That is the same residual the Title Case path
+    has always had -- `role_phrase` records `Customer Success`, `Machine Learning` and `Pull
+    Request` as exactly this defect one case shorter -- and the three of them are on the negative
+    list now, which closes the commonest instance of it on both paths. What is left is priced by
+    `fp_allcaps_pair` and by `adv/allcaps_pair/english_role_phrase`.
+
+    Only a PAIR, and only when the pair is the whole allow-list-free run. A longer run is a
+    heading or an acronym string far more often than a name, and requiring the whole run is what
+    keeps this out of "TOTALSYS SEGUE COMO PRIORIDADE DO", where the tokens after the product
+    name are four and none of them is a person.
+    """
+    if len(tokens) != 2:
+        return None
+    folded = [_fold(t.group(0)) for t in tokens]
+    if any(len(f) < _CAPS_PAIR_MIN_LENGTH for f in folded):
+        return None
+    if any(
+        f in _COMMON_PHRASE_HEADS
+        or f in _NAME_CONNECTIVES
+        or f in _PERSON_NAME_NEGATIVE_LIST
+        or f in _COMPANY_TAIL_WORDS
+        or f in _NAME_HONORIFICS
+        for f in folded
+    ):
+        return None
+    # The TAIL only. A third-person preterite is what follows a name in minutes, so "WANDERLEIA
+    # APROVOU" must not be claimed whole -- but the same ending occurs inside real given names
+    # (`DIRCEU`, `VALQUIRIA`), and refusing on the head is what left seven `speaker_label` cases
+    # in the clear. No Brazilian surname ends this way, which is what makes the tail the side
+    # worth checking.
+    if _VERB_TAIL_RE.search(folded[-1]):
+        return None
+    start, end = base + tokens[0].start(), base + tokens[1].end()
+    if not _ends_on_a_word_boundary(end, text):
+        return None
+    if not _LOWER_CASE_CONTINUATION_RE.match(text[end : end + 4]):
+        return None
+    return start, end
 
 
 def _is_a_name_on_its_own(value: str) -> bool:
@@ -2165,6 +2460,12 @@ def _redact_person_names(
     # worker thread for over a minute of pure CPU before the LLM call even started.
     covered: list[tuple[int, int]] = []
 
+    # Lone stretches an allow-listed term cut out of a candidate whose OTHER half is a name --
+    # see `_spans_and_vouched`. Filled by the two pattern loops, which are the only place the
+    # sibling relationship is still visible, and read by `_qualify_and_claim`, which re-derives
+    # each span over a slice the splitting term is no longer in.
+    vouched: set[tuple[int, int]] = set()
+
     def _is_covered(start: int, end: int) -> bool:
         # First interval that begins at or after `start`; only it and its predecessor can
         # overlap [start, end), the intervals being disjoint and sorted.
@@ -2210,18 +2511,22 @@ def _redact_person_names(
             s, e = tightened
             if _is_covered(s, e):
                 continue
-            if not _is_a_name_on_its_own(text[s:e]):
+            if not _is_a_name_on_its_own(text[s:e]) and (s, e) not in vouched:
                 continue
             _claim(s, e, text[s:e])
 
     # Pattern 1: prefix (honorific / job title + name)
     for m in _NAME_PREFIX_RE.finditer(text):
-        for start, end in _spans_without_negatives(m.group(0), m.start(), text, tenant_terms):
+        spans, vouched_here = _spans_and_vouched(m.group(0), m.start(), text, tenant_terms)
+        vouched |= vouched_here
+        for start, end in spans:
             _claim_free_parts(start, end)
 
     # Pattern 2: Title Case sequence (2-4 words)
     for m in _NAME_SEQUENCE_RE.finditer(text):
-        for start, end in _spans_without_negatives(m.group(0), m.start(), text, tenant_terms):
+        spans, vouched_here = _spans_and_vouched(m.group(0), m.start(), text, tenant_terms)
+        vouched |= vouched_here
+        for start, end in spans:
             _claim_free_parts(start, end)
 
     # Pattern 3: isolated BR first name (Title Case, against the hardcoded list).

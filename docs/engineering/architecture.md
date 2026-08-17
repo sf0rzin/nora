@@ -354,7 +354,15 @@ A deterministic pipeline that runs before any call to the LLM. Implementation in
 | **CREDIT_CARD** | Regex 4×4 digits | universal |
 | **PERSON_NAME** | 3 heuristics: formal prefixes (Sr./Dr./Profa.) + Title Case sequence + hardcoded list of ~270 BR names + negative list of ~80 terms (TOTVS, NORA, SAP, etc.) | BR (~80% coverage) |
 
-**ADDRESS** is out of scope in the MVP (ADR 0012; known debt — audit §6).
+| **ADDRESS** | Street-type opener (`Rua`, `Avenida`, `Alameda`, `Rodovia`, `Estrada`, `Praca`, `Largo`, `Travessa`, `Av.`) + capitalised street name + optional number and complement | BR |
+
+**ADDRESS was out of scope in the MVP** (ADR 0012; audit §6) and is covered since ADR 0042. It is
+a deterministic recogniser and not NER, so the boundary is worth stating: an address whose name is
+lower-cased (`rua sem saida`) or purely numeric (`Rua 25`) is not claimed, and the street-type word
+on its own is never enough. It runs in the deterministic stage, **before** the PERSON_NAME
+heuristics, because those same street-type words are also on the shield's ordinary-vocabulary list
+— where their job is to stop a place name being read as a person — and the two rules only
+reconcile through that order.
 
 ### Redaction pipeline
 
