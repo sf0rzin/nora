@@ -62,9 +62,9 @@ Two different things get confused whenever this project quotes a coverage number
 | `PolicyEvaluator` — the one gated class | 96.3% instruction · 86.0% branch | idem |
 | NLP worker, whole package | **92.4%** statement (863 tests) | `pytest --cov=nora_nlp` |
 | Worker PII shield — the one gated module | 96.6% statement | idem |
-| `apps/web`, whole app | **7.7%** statement · 6.6% branch · 7.6% line (130 tests) | `npm run test:coverage` → Vitest + v8 |
-| ↳ *why that row is so low* | the unit suite covers seven `src/lib` modules; **no page and no component has a unit test** | the three Playwright e2e specs exercise routing, headers and CSP, and are not counted here |
-| `apps/web` gated modules | `redact.ts` 96.6% · `markdown.ts` 97.7% · `tasks-export.ts` 100% · `usage-report.ts` 98.4% · `password-policy.ts` 100% statement | idem |
+| `apps/web`, whole app | **9.54%** statement · 8.59% branch · 9.27% line (150 tests) | `npm run test:coverage` → Vitest + v8 |
+| ↳ *why that row is so low* | the unit suite covers eight `src/lib` modules; **no page and no component has a unit test** | the three Playwright e2e specs exercise routing, headers and CSP, and are not counted here |
+| `apps/web` gated modules | `redact.ts` 96.6% · `markdown.ts` 97.7% · `tasks-export.ts` 100% · `usage-report.ts` 98.4% · `password-policy.ts` 100% · `iam/policy-document.ts` 89.9% statement | idem |
 | `apps/web/src/lib/api/client.ts` | 30.9% statement — reported, deliberately not gated | one `request()` plus 74 one-line wrappers; the percentage counts wrappers |
 
 **What is gated** — three narrow rules, and only three. A regression anywhere outside them fails nothing:
