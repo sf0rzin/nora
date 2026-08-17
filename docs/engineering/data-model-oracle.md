@@ -3,9 +3,9 @@
 > A mirror of the Postgres schema in **Oracle 19c+ (PL/SQL DDL)** syntax.
 > NORA runs **on Postgres in production** (see `data-model.md`). This document is an academic deliverable for FIAP's Database Design course, which requires Oracle modeling.
 > Each table corresponds 1:1 to the schema documented in `data-model.md`, with the type and syntax adaptations described in §20.
-> It covers migrations **V001–V030** — the whole canonical schema, including soft-delete (V013), refresh token rotation (V014), the two composite FKs (V015, V027), the hashed invitation token (V018), Customer Confidence (V017), semantic search (V021), chat sessions (V022), NORA Flows (V023), the OAuth integration connections (V024–V026), the company-context history (V028), the trends panel's completion timestamp (V030) and Row-Level Security (V016/V017/V019/V020/V021–V024/V028 — Oracle equivalent via VPD/DBMS_RLS in §23). Full inventory in §22.
->
-> **Note (scope of this doc), checked 2026-08-17:** the mirror is **complete up to V030**. Every table documented in `data-model.md` §2 has Oracle DDL here, and every migration V001–V030 has a row in §22. Two things are deliberately **not** mirrored, and both are Postgres-side operational objects rather than schema: the role provisioning in `services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` (the Oracle counterpart is a privilege grant, not a script — see §23.4) and the **separate control-plane database** of ADR 0022 (`services/api/src/main/resources/db/platform/`), which `data-model.md` does not cover either. This file carries **42 tables** (`grep -c '^CREATE TABLE '`) against the **40** `### 2.x` sections of `data-model.md`: the two counts differ by design, because §2.3 (`roles` + `user_roles`) and §2.23 (`iam_user_invitations` + `iam_invitation_groups`) each document two tables. A looser `grep -c 'CREATE TABLE'` returns 45, matching three prose mentions as well.
+> It covers migrations **V001–V030** — the whole canonical schema, including soft-delete (V013), refresh token rotation (V014), the three composite FKs (V015, V027, V029), the hashed invitation token (V018), Customer Confidence (V017), semantic search (V021), chat sessions (V022), NORA Flows (V023), the OAuth integration connections (V024–V026), the company-context history (V028), the inbound MCP credential (V029), the trends panel's completion timestamp (V030) and Row-Level Security (V016/V017/V019/V020/V021–V024/V028 — Oracle equivalent via VPD/DBMS_RLS in §23). Full inventory in §22.
+
+> **Note (scope of this doc), checked 2026-08-17:** the mirror is **complete up to V030**. Every table documented in `data-model.md` §2 has Oracle DDL here, and every migration V001–V030 has a row in §22. Two things are deliberately **not** mirrored, and both are Postgres-side operational objects rather than schema: the role provisioning in `services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` (the Oracle counterpart is a privilege grant, not a script — see §23.4) and the **separate control-plane database** of ADR 0022 (`services/api/src/main/resources/db/platform/`), which `data-model.md` does not cover either. This file carries **43 tables** (`grep -c '^CREATE TABLE '`) against the **41** `### 2.x` sections of `data-model.md`: the two counts differ by design, because §2.3 (`roles` + `user_roles`) and §2.23 (`iam_user_invitations` + `iam_invitation_groups`) each document two tables. A looser `grep -c 'CREATE TABLE'` returns 46, matching three prose mentions as well.
 
 ## 1. `TENANTS`
 
@@ -736,6 +736,50 @@ CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens (token_hash);
 CREATE INDEX idx_refresh_tokens_family ON refresh_tokens (family_id);
 ```
 
+### 13.1 `MCP_TOKENS` (V029) — the inbound MCP credential
+
+> Third table of this section and the same rule as the other two: **only the SHA-256 hex is
+> stored**, never the token. It is the credential an external MCP client presents to `POST /mcp`
+> (ADR 0041 §3), minted by a user already authenticated in the web application. Simpler than
+> `refresh_tokens` on purpose — no rotation family and no reuse detection, because this credential
+> is never exchanged; it sits in a client's configuration file for weeks, and revocation is the
+> only kill switch its lifecycle needs.
+>
+> Two Oracle-specific notes. `expires_at` is **nullable** here, unlike `refresh_tokens` — a NULL
+> means "until revoked", which is the normal state for this credential and not a missing value.
+> And the owner index is partial on the Postgres side, so it takes the same function-based form the
+> `refresh_tokens` index above uses; Oracle indexes skip rows whose key is entirely NULL, which is
+> what reproduces `WHERE revoked_at IS NULL`.
+
+```sql
+CREATE TABLE mcp_tokens (
+    id            VARCHAR2(36) PRIMARY KEY,
+    tenant_id     VARCHAR2(36) NOT NULL,
+    user_id       VARCHAR2(36) NOT NULL,
+    -- Label the user recognises when deciding which credential to revoke. Not a secret.
+    name          VARCHAR2(80) NOT NULL,
+    -- SHA-256 hex of the WHOLE presented string, `nora_mcp_` prefix included.
+    token_hash    VARCHAR2(255) NOT NULL,
+    created_at    TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    -- NULL = no hard expiry; the token lives until it is revoked.
+    expires_at    TIMESTAMP WITH TIME ZONE,
+    revoked_at    TIMESTAMP WITH TIME ZONE,
+    last_used_at  TIMESTAMP WITH TIME ZONE,
+
+    -- Composite FK (the V015/V027 remedy): the pair must describe one real user, so a
+    -- credential cannot be filed under a tenant that does not own its principal.
+    CONSTRAINT mcp_tokens_user_fk FOREIGN KEY (tenant_id, user_id)
+        REFERENCES users (tenant_id, id) ON DELETE CASCADE,
+    CONSTRAINT mcp_tokens_hash_uk UNIQUE (token_hash),
+    CONSTRAINT mcp_tokens_name_chk CHECK (LENGTH(TRIM(name)) BETWEEN 1 AND 80)
+);
+
+-- Postgres: partial index WHERE revoked_at IS NULL. Function-based equivalent, as above.
+CREATE INDEX idx_mcp_tokens_owner
+    ON mcp_tokens (CASE WHEN revoked_at IS NULL THEN tenant_id END,
+                   CASE WHEN revoked_at IS NULL THEN user_id END);
+```
+
 ## 14. Productivity Score
 
 ```sql
@@ -1269,8 +1313,9 @@ against each other line by line.
 | 23 | integration_connections | V024, V025 + V026 (provider CHECK) | §19 |
 | 24 | composite FK iam_user_groups / iam_user_policies .(tenant_id, user_id) → users.(tenant_id, id) | V027 | §12 |
 | 25 | tenant_context_versions + `tenant_contexts.current_version` (company-context history, US31) | V028 | §10 |
-| 26 | `meeting_action_items.completed_at` + its two aggregation indexes (trends panel, US21) | V030 | §11 |
-| 27 | Row-Level Security (RLS → VPD/DBMS_RLS), all waves | V016, V017, V019, V020, V021, V022, V023, V024, V028 | §23 |
+| 26 | mcp_tokens (inbound MCP credential, US27) | V029 | §13.1 |
+| 27 | `meeting_action_items.completed_at` + its two aggregation indexes (trends panel, US21) | V030 | §11 |
+| 28 | Row-Level Security (RLS → VPD/DBMS_RLS), all waves | V016, V017, V019, V020, V021, V022, V023, V024, V028 | §23 |
 
 > **V027 carries a checksum warning on the Postgres side that has no Oracle counterpart.** The
 > migration was edited after it had already been applied, so a database that ran the earlier
@@ -1372,8 +1417,8 @@ The remaining tenant-owned tables covered by V016 follow **exactly the same patt
 ### 23.4 Full coverage: eight waves, and the 13 tables V020 took back out
 
 **35 tables carry a `tenant_isolation` policy**, added over eight migrations. Those 35, plus the
-5 cascade-boundary children that deliberately get none and the 2 legacy tables outside the model,
-account for all 42 tables in this document.
+5 cascade-boundary children that deliberately get none, the 2 legacy tables outside the model and
+`mcp_tokens` (V029, below), account for all 43 tables in this document.
 
 | Wave | Count | Tables |
 |---|---|---|
@@ -1393,6 +1438,14 @@ account for all 42 tables in this document.
 column that does not exist on them.
 
 **Outside the model (2):** `roles` and `user_roles`, the unused V002 RBAC tables (§3).
+
+**No policy, by design (1 more) — `mcp_tokens` (V029, §13.1).** It joins the Identity family V020
+took out of enforcement, and for the sharpest version of that family's reason: the lookup on
+`token_hash` is *how a request learns which tenant it is in*, so the session context the predicate
+would read is necessarily unset when it runs. A policy there would return zero rows for every MCP
+request under enforcement — in Oracle exactly as in Postgres, since `SYS_CONTEXT` would be as empty
+as the GUC. Isolation for that table is the application's `tenant_id` predicate plus the composite
+FK to `users(tenant_id, id)`.
 
 #### V020 disables 13 of the 35 — and it is a scope decision, not a retreat
 

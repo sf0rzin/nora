@@ -150,14 +150,14 @@ this is merged (#478–#484, listed in §1). What is still open:
 ### 2.3 The decided builds
 
 Every row here was decided by an accepted ADR. **A row struck through is
-delivered**; the rest are still ahead. Four of the six are done; a fifth is half done, its story
-row carrying two of its four; only the MCP server has not started. Per-story status stays in [`backlog.md`](backlog.md); this
-table is what each build is and what decided it.
+delivered**; the rest are still ahead. Five of the six are done, including the MCP server; the
+sixth is half done, its story row carrying two of its four. Per-story status stays in
+[`backlog.md`](backlog.md); this table is what each build is and what decided it.
 
 | Build | Decided by | Note |
 |---|---|---|
 | ~~**Cloud STT with an ephemeral session token**~~ **Delivered** | ADR 0039 (supersedes 0035), ADR 0045 (the contract) | The desktop connects to OpenAI's streaming API directly with a short-lived credential from `POST /stt/sessions`; the key never leaves the server and the audio never crosses NORA's infrastructure. The consequence stays stated and must not be softened: per-tenant attribution happens at session issuance, so the cost telemetry of ADR 0024 is an **estimate**, not a measurement — asserted in a test that pins zero tokens and a null cost. The on-device engine went out with the same change, in that order, so the desktop was never left without a transcription path. ADR 0045 also records what ADR 0039 left open: the endpoint's real path, that the credential's expiry gates *opening* a connection so there is no renewal loop, and the move of the capture pipeline to a single 24 kHz constant |
-| **NORA as an MCP server (inbound)** | ADR 0041 | An inbound adapter inside `services/api`, every tool call resolving a real IAM principal through `PolicyEvaluator`, a tenant-scoped bearer token stored only as a SHA-256 hash, read-only first cut. The invariant to test against: an MCP client can never see more than the user it acts for sees in the web application. This is the one item the realignment **adds**; ADR 0041 records why, and the case against it |
+| ~~**NORA as an MCP server (inbound)**~~ **Delivered** | ADR 0041 | An inbound adapter inside `services/api`: `POST /mcp` speaking JSON-RPC 2.0 over Streamable HTTP, five read tools (meetings, meeting detail, semantic search, action items, Customer Confidence), each resolving a real IAM principal and evaluating the same actions the web surface does — no MCP permission vocabulary. The credential is a tenant-scoped bearer token stored only as a SHA-256 hash (migration V029), minted and revoked by the user in settings, and scoped to the MCP endpoint alone so a leaked one cannot act on the REST API. The invariant is now a test rather than an intention: tenant A gets zero of tenant B on all five tools, and a Deny — unconditional or attribute-conditional — hides exactly the meeting it names. This is the one item the realignment **added**; ADR 0041 records why, the case against it, and the two limits shipped on purpose — no OAuth 2.1 authorization server, and no write tools |
 | ~~**PII Shield: ADDRESS, and the shapes that still leak**~~ **Delivered** | ADR 0012 (debt), ADR 0040 (scope), ADR 0043 (the work) | ADDRESS is emitted since ADR 0043, as a deterministic street-type recogniser rather than NER. Three of the shapes the corpus catalogued are closed — the genitive and phrase-head leak, a product name between the halves of a name, and an all-caps pair in running prose — and the measured leak rate went 9.60% → 2.12% with the false-redaction rate falling as well, both on a corpus held identical across the two measurements. What remains is named and dated rather than left open: `test_pii_corpus.py` now carries a goal of 1.0% leak and 4.0% false redaction by 2027-06-30, each pointing at the one shape that stands in the way |
 | ~~**A unit-test runner for `apps/web`**~~ | **Delivered** — ADR 0018, ADR 0042 | The web app had three Playwright e2e specs and no unit runner, so ADR 0018's coverage line had nothing to measure on the largest surface. Vitest closed it; §1 has what that delivery contained, and ADR 0042 has which parts of it are a gate |
 | ~~**US21 trends panel · US25 task export · US31 company-context history · US43 policy simulator**~~ **All four delivered** | ADR 0038 §5 | Four stories ADR 0014 deferred and ADR 0038 brought back; **none is open any more**. US21's stated criterion ("after US15 is on") had already been met by #206 and nobody noticed — and it shipped without touching the embeddings at all, on the `topics` each analysis already persists, which is what makes it independent of a backfill having been run. US43 mattered out of proportion to its size — IAM is the Enterprise tier's main artefact, and a simulator is what makes it demonstrable instead of merely present — and shipped as `POST /iam/simulate`, answering with the statement that decided rather than a boolean, and reporting the Root bypass as a bypass. US25 needed no ADR: it added no route and no decision that outlives it — CSV and Markdown built client-side from the list the tasks screen already holds, on the shape US60 set for the meeting report |
@@ -228,7 +228,7 @@ For a sub-phase to be considered **closed** (`DONE`):
 | **Complete Productivity Score** (US45-US47) | US45 + US46 absorbed by Sub-phase 1.8. US47 was never about productivity — it was about pulling state out of external trackers — and ADR 0041 closed it |
 | **Complete Customer Confidence** (US48-US51) | US48-US49 absorbed by #148 (V017 + worker emit + server-side trend + `CustomerConfidenceCard`). The aggregate on top of them, US50/US51, is **closed scope** by ADR 0038 §4: it aggregates over history that does not exist |
 | **Audio upload** (US08) | Open, no trigger. Its old reactivation criterion mentioned Azure Speech batch becoming cheap; that path died with the subscription (ADR 0034/0036) and no replacement is planned |
-| **MCPs (Calendar, Tasks, CRM)** (US27-US29, US47) | Split by ADR 0041 into two directions that were never one feature. **Outbound** — NORA acting on other tools — shipped as nine OAuth integrations (ADR 0031), which is what US28 and US29 actually asked for. **Inbound** — an external client querying NORA — is US27, the MCP server, and is §2.3 |
+| **MCPs (Calendar, Tasks, CRM)** (US27-US29, US47) | Split by ADR 0041 into two directions that were never one feature. **Outbound** — NORA acting on other tools — shipped as nine OAuth integrations (ADR 0031), which is what US28 and US29 actually asked for. **Inbound** — an external client querying NORA — is US27, the MCP server, delivered read-only; see §2.3 |
 | **Desktop finalisation** | Windows capture (WASAPI loopback) works. The client is Windows-only by ADR 0038 §2 — the macOS (BlackHole) and Linux (PulseAudio) paths and the ScreenCaptureKit debt were deleted, having never been exercised — and the local UI went with them. Transcription is being replaced (§2.3, ADR 0039). Real Windows/Teams validation is still pending |
 | **SSO Entra ID / SAML** (US05) | **Closed** by ADR 0038 §4 |
 | **Polish + Demo + Pitch** | The pitch was held on 2026-06-15. The polish landed with the v3 redesign; the demo material is §2.1 |
@@ -252,9 +252,10 @@ by what one person can carry.
 
 ### Notes on cross-cutting prerequisites
 
-- **The MCP server** depends on the IAM principal resolution being reachable from a non-HTTP entry
-  point — ADR 0041's invariant is that a tool call and a web request go through the same
-  `PolicyEvaluator`. It does not depend on the shared contracts package, which was the old note here
+- **The MCP server** needed the IAM principal resolution to be reachable from an entry point that
+  is not a browser session, and it was: the MCP token is exchanged at the edge for the same
+  `AuthenticatedPrincipal` the JWT filter produces, so a tool call and a web request go through one
+  `PolicyEvaluator`. It never depended on the shared contracts package, which was the old note here
 - **The trends panel** was believed to depend on the embeddings backfill having been *run* for the
   tenant on display, not just on US15 being merged. **It does not, and the note is kept as the
   correction rather than deleted.** The panel reads `meeting_analyses.topics`, which every completed

@@ -24,7 +24,7 @@ Five surfaces are functional: `apps/web`, `apps/admin` (operator console), `apps
 Two corrections to what this section said until 2026-08-17, because both would have sent an agent the wrong way:
 
 - **SSO (US05) is WONT**, closed by ADR 0038 §4 — not "post-MVP".
-- **MCP is active scope with nothing built.** ADR 0041 decided NORA exposes an MCP server as an inbound adapter inside `services/api`, read-only in its first cut. The OAuth integrations that already shipped (ADR 0031) are the **outbound** direction and are not MCP.
+- **MCP is built, inbound and read-only.** ADR 0041's MCP server is an inbound adapter inside `services/api` (`api/mcp/`, `POST /mcp`, credential in migration V029): five read tools, each resolving a real IAM principal and evaluating the same actions the web surface does. The OAuth integrations (ADR 0031) are the **outbound** direction and are not MCP. Write tools are out of scope until somebody decides which IAM actions an agent may exercise unattended.
 
 Still genuinely out of scope: audio/video upload (`POST /meetings` takes a transcript file), and a native Salesforce/HubSpot integration, which was never tracked as a user story.
 

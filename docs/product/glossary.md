@@ -94,6 +94,8 @@
 
 ## M
 
+**MCP (Model Context Protocol)** — The **inbound** interoperability path: an external client (Claude Desktop, an IDE, a coding or research agent) asks NORA questions over JSON-RPC 2.0 at `POST /mcp`. NORA is the **server**, never a client of other people's MCP servers. Read-only in its first cut: five tools over meetings, meeting detail, semantic search, action items and Customer Confidence, each evaluating the same IAM action as the web surface (`meeting:read`, `task:read`) — there is deliberately no MCP-specific permission vocabulary. The credential is a tenant-scoped bearer token stored only as a SHA-256 hash (`mcp_tokens`, V029), minted by the user in settings. **Not to be confused with the outbound direction**, where NORA writes into the tools a user already has: that is OAuth (ADR 0031) and has been mislabelled "MCP" throughout this project's history. ADR 0041; `docs/engineering/architecture.md` §19.
+
 **MeetingGoal** — **Opt-in** user input for computing the Productivity Score. Fields:
 - `purpose` (short string) — the meeting's declared purpose
 - `expectedOutcomes` (list) — what needed to be resolved/decided

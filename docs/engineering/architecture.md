@@ -41,7 +41,7 @@ Each row was read from the file cited beside it, on 2026-08-17, at commit `4017b
 
 Notes:
 
-- The monorepo lives in `apps/`, `services/`, `packages/` and `infra/` (ADR 0001). There is still no `mcp/` folder and no line of MCP code: ADR 0041 decided that NORA will expose an MCP server as an **inbound** adapter inside `services/api` — not a separate process — and that decision has not been built. What did ship is the **outbound** direction, NORA acting on nine external providers through OAuth integrations (§12, ADR 0031). The two are different protocols; conflating them is what made a delivered subsystem look unstarted.
+- The monorepo lives in `apps/`, `services/`, `packages/` and `infra/` (ADR 0001). There is still no `mcp/` folder, and there is not going to be one: ADR 0041 decided that NORA exposes MCP as an **inbound** adapter inside `services/api`, not a separate process, and that adapter is built — `api/mcp/`, `api/controllers/McpController.java`, migration V029 (§19). It is the direction where an external client asks NORA questions. The **outbound** one, NORA acting on nine external providers through OAuth integrations, is §12 (ADR 0031). The two are different protocols pointing opposite ways; conflating them is what made a delivered subsystem look unstarted.
 - Web runs on **raw Tailwind**: the editorial palette and tokens live in `apps/web/src/app/globals.css` and `apps/web/tailwind.config.ts`. There is no dependency on `@shadcn/ui`, MUI, Chakra or similar. React Flow (§13) is the single exception ADR 0032 argued for, and it is a graph-interaction engine, not a component library.
 - The worker has two operating modes: `USE_LLM_STUB=true` (CI / dev without an LLM) and any endpoint compatible with OpenAI's Chat Completions API via `LLM_BASE_URL`, default `https://api.openai.com/v1` with `gpt-4o-mini` (`services/nlp-worker/src/nora_nlp/settings.py:34-40`, ADR 0004). The third mode this note used to list — Azure OpenAI for Enterprise — went with the subscription (ADR 0034, ADR 0036). The runtime override that replaced static provider choice is the control plane's per-service binding (§6), and the worker does **not** read it.
 
@@ -633,7 +633,7 @@ commit and the listener dispatch, that event is lost with no retry; the manual r
 The Flows actions that matter — send this by e-mail from *your* Gmail, put this on *your* calendar,
 post it in *your* Slack — need real OAuth against external accounts, and they run in an
 asynchronous listener where no user is present to re-authenticate. This section is the outbound
-half of the product; MCP (ADR 0041) would be the inbound half, and is not built (§1).
+half of the product; MCP (ADR 0041) is the inbound half, and it is §20.
 
 ### Nine providers, three ways of connecting
 
@@ -1064,6 +1064,119 @@ every query is restricted to those ids, passed as a single `uuid[]` bind rather 
 Finally, the empty state is part of the contract rather than of the screen: `dataState` separates
 "no meetings", "meetings but none analysed" and a real period of zero activity, because a chart of
 zeros that actually means "nothing has been analysed yet" is a claim the reader has no way to check.
+## §20. NORA as an MCP server (ADR 0041) — the inbound adapter
+
+§12 is NORA acting on other systems. This is the opposite arrow: an external MCP client — Claude
+Desktop, an IDE, a coding or research agent — asking NORA questions. It is the promise the vision
+has carried since 2026-05-01 and the one that had never had a line of code.
+
+### Where it lives, and why that is the security design
+
+Inside `services/api`, as an inbound adapter in the sense §2's layering already uses. Not a
+separate service and not a sidecar. The reason is authorization: the tenant filter (ADR 0002),
+`PolicyEvaluator` (§4) and the RLS context propagation (§3) all live on this path already. A
+separate process would have had to either reimplement authorization — duplicating the one thing in
+this system that must never diverge between two copies — or call NORA's own REST API as a client,
+which is a proxy with an extra hop, an extra credential and an extra place to drop the tenant
+scope.
+
+| File | Role |
+|---|---|
+| `api/controllers/McpController.java` | The transport: one path, `POST /mcp`, JSON-RPC 2.0 over Streamable HTTP |
+| `api/mcp/McpProtocol.java` | Which protocol revisions this server implements, and the JSON-RPC error codes |
+| `api/mcp/McpToolCatalog.java` | The five tool definitions — constant text, identical for every caller |
+| `api/mcp/McpToolInvoker.java` | The five reads, each reproducing the authorization of the REST handler it mirrors |
+| `api/controllers/McpTokensController.java` | Mint, list and revoke the credential (`/mcp/tokens`) |
+| `application/mcp/McpTokenService.java` | Credential lifecycle and the edge exchange |
+| `infrastructure/security/McpSecurityConfig.java` | The chain that serves `/mcp`, and nothing else |
+| `infrastructure/security/McpTokenAuthFilter.java` | Bearer token → the same principal the JWT filter produces |
+
+### The request path
+
+```
+MCP client
+   │  POST /mcp   Authorization: Bearer nora_mcp_…
+   ▼
+McpSecurityConfig chain @Order(3)   securityMatcher = /mcp exactly
+   │
+   ├─ McpTokenAuthFilter   Origin check → SHA-256 of the presented token → mcp_tokens (V029)
+   │                       → AuthenticatedPrincipal(userId, tenantId) + TenantContextHolder
+   │  anyRequest().authenticated()  ── no live credential ⇒ 401, before any handler runs
+   ▼
+McpController        JSON-RPC framing · protocol version pinned · tools/list · tools/call
+   ▼
+McpToolInvoker       requireAnyAllow pre-gate  →  application service  →  filterAllowed per item
+   ▼
+MeetingService · AnalysisService · CustomerConfidenceService · TaskService · EmbeddingService
+```
+
+### The five tools, and the authorization each one reproduces
+
+The invariant ADR 0041 §2 fixes, stated so it can be tested: **an MCP client can never see more
+than the user it acts for can see in the web application.** That is a property of these five
+methods, so the controllers' authorization calls were read endpoint by endpoint and reproduced.
+
+| Tool | Mirrors | Authorization |
+|---|---|---|
+| `list_meetings` | `GET /meetings` | `meeting:read` pre-gate over `…:meeting/*`, then `filterAllowed` per item with the meeting's attributes |
+| `get_meeting` | `GET /meetings/{id}` | resolve inside the tenant first (404, not 403), then `require` on the meeting's own ARN **with** its attributes |
+| `search_meetings` | `GET /meetings/search` | pre-gate BEFORE the embedding call, then `filterAllowed` per item |
+| `list_tasks` | `GET /tasks` | `task:read` pre-gate over `…:task/*`, then `filterAllowed` over each task's own ARN |
+| `get_customer_confidence` | the `customerConfidence` block of `GET /meetings/{id}` | `meeting:read` on the meeting — the block has no action of its own, in MCP or in REST |
+
+**No MCP permission vocabulary.** Every action above is one the web surface already evaluates
+against the same policies, so a tenant that wants an agent kept out of a meeting writes the same
+Deny it would write for a person.
+
+**The shortcut that would kill it:** a handler calling `MeetingRepository` directly "because it is
+only a read" loses the per-item filter and returns the whole tenant. Row-level security would not
+catch it — RLS is off by default in the repository (§3), so such a hole passes green locally and
+leaks in production. `McpIsolationIntegrationTest` proves both halves over HTTP against a real
+Postgres: tenant A gets zero of tenant B on all five tools, and a Deny — unconditional on one
+meeting's ARN, and conditional on one of its attributes — hides exactly that meeting.
+
+**Tool descriptions are content read by a model.** They land verbatim in an external agent's
+context, so `McpToolCatalog` carries no operational instruction and no tenant data, and the
+catalogue is byte-identical for every caller. It is also not an authorization statement: listing a
+tool says the server implements it, never that this caller may use it.
+
+### The credential (migration V029)
+
+A user authenticated in the web application mints a tenant-scoped token at `POST /mcp/tokens`
+(settings surface: `apps/web/src/app/(app)/settings/mcp/`). Only the SHA-256 hex is persisted —
+the pattern `refresh_tokens` (V011) and, since V018, the invitation token already follow — and the
+plaintext exists in exactly one response. It is prefixed `nora_mcp_` so the edge can tell it from a
+session JWT without parsing either, and so a secret scanner can recognise it.
+
+Two boundaries are load-bearing:
+
+- **The chain matches `/mcp` and nothing else.** An MCP token presented to `/meetings` or `/tasks`
+  authenticates nothing. That is what makes the read-only first cut a property of the credential
+  rather than of which tools happen to exist today.
+- **`/mcp/tokens` is outside that matcher**, on the ordinary JWT chain. A token cannot mint a
+  successor for itself, nor revoke the one that would stop it.
+
+`mcp_tokens` is deliberately **not** under RLS enforce. It belongs to the identity family V020
+exempted: the lookup that resolves a bearer token is how the request learns its tenant, so at that
+instant `nora.current_tenant_id()` is unset. Enabling RLS there would break every MCP request on
+the deployed stack while passing locally — the migration says so at length.
+
+### Deliberate deviations, named
+
+- **Not an OAuth 2.1 authorization server.** The MCP specification asks one of a remote server;
+  NORA is an OAuth *client* today (§12), not a provider. ADR 0041 §3 records the deviation and its
+  cost: a client that speaks only that flow will not connect without a manually pasted token.
+- **Legacy-era protocol, on purpose.** The server implements the `initialize` handshake of
+  revisions `2025-11-25` and `2025-06-18`. The current revision (`2026-07-28`) drops the handshake
+  for per-request metadata, and by its own compatibility matrix a modern-only server simply fails
+  against the deployed client base this feature exists to reach. A version outside the list is
+  refused with the specification's own error shape, naming what is supported — which is also the
+  signal a newer client uses to fall back.
+- **No SSE stream and no session id.** Every tool is a request/response read and the credential
+  travels on each request, so `GET`/`DELETE` on `/mcp` answer 405. Both are spec-legal.
+- **No `uniformDecision` fast path.** `GET /meetings` uses it to keep pagination in SQL; the
+  adapter does not. Duplicating an optimisation whose correctness argument lives in another class
+  is how two copies of an authorization decision start to diverge.
 
 ## Next architectural refactors
 
@@ -1077,4 +1190,4 @@ Catalogued technical debt, prioritization and planned successor ADRs live in **`
 - **Customer Confidence**: **implemented full-stack** (PR #148, 2026-05-21) — V017 + worker emit + `AnalysisService` wiring (server-side trend) + `GET /meetings/{id}` + `CustomerConfidenceCard`. Narrative debt resolved. **Aggregated** Account Health (US50-51) is closed scope by ADR 0038 §4. See `docs/adr/0015-customer-confidence-minimal-persistence.md`.
 - **Hardening ADRs**: documented retroactively in ADR 0019 (RLS + composite FK), 0020 (refresh-token rotation), 0021 (soft-delete). What remains is evaluating an ADR for JWT RS256/JWKS (candidate).
 - **Cloud STT (ADR 0039, ADR 0045)**: **built** — `POST /stt/sessions` mints the credential, `stt_cloud.rs` streams to the provider, and the on-device engine is out of the tree. §14 describes the path and the privacy consequence (ADR 0040) that arrived with it. What is *not* built is file/batch transcription of uploaded audio (US08), which would put the audio on NORA's own infrastructure and needs its own decision.
-- **MCP server (ADR 0041)**: decided, not built — an inbound adapter in `services/api`, read-only in its first cut, with every tool call going through `PolicyEvaluator` (§4). No code exists.
+- **MCP server (ADR 0041)**: **built** — an inbound adapter in `services/api`, read-only in its first cut, every tool call going through `PolicyEvaluator` (§4, §19), credential in migration V029. What is *not* built is the OAuth 2.1 authorization server the MCP specification asks of a remote server: ADR 0041 §3 deviates from it deliberately, and the cost is that a client that speaks only that flow needs a manually pasted token. Write tools are also out of the first cut and need a decision nobody has made — which IAM actions an agent may exercise unattended, and on whose authority.

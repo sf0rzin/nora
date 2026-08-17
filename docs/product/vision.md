@@ -28,11 +28,13 @@
 deliverable asks for. It is not the inventory of what is built. Two of its clauses need naming here
 so the rest of this document is not read as their proof:
 
-- **MCP** is *declared scope, not a shipped surface.* NORA is decided to become an MCP **server**
-  ([ADR 0041](../adr/0041-nora-as-mcp-server.md)) and no MCP code has ever existed in this
-  repository. What ships today for reaching the tools a user already has is OAuth integrations
+- **MCP** is a shipped surface, in **one direction and read-only**. NORA is an MCP **server**
+  ([ADR 0041](../adr/0041-nora-as-mcp-server.md)): an external client reads meetings, tasks,
+  semantic search and Customer Confidence from it, and can write nothing. What ships for reaching
+  the tools a user already has is OAuth integrations
   ([ADR 0031](../adr/0031-oauth-integrations-token-storage.md)) — a different protocol in the
-  opposite direction. §7 draws that distinction in full.
+  opposite direction, and not MCP. §7 draws that distinction in full, including the two limits
+  ADR 0041 accepted on purpose.
 - **LGPD by design** describes how the system was built, not a certification and not a signed
   contract. Its exact reach — what is redacted, where, and what is deliberately not — is stated in
   §4 and §5 and in [ADR 0040](../adr/0040-pii-scope-analysis-transcription-subprocessor.md). Read
@@ -70,7 +72,7 @@ is a different document.
 │ • Freemium / individual plan     │                                  │
 ├──────────────────────────────────┴──────────────────────────────────┤
 │  SURFACES: Web SaaS · Desktop (Windows) · REST API                  │
-│            MCP server: declared scope, not built (ADR 0041)         │
+│            MCP server, read-only first cut (ADR 0041)               │
 ├─────────────────────────────────────────────────────────────────────┤
 │  GO-TO-MARKET: Product-Led Growth                                   │
 │  An individual adopts Core (freemium) → shows it to the company →   │
@@ -101,7 +103,7 @@ tidy box — the same argument [ADR 0014](../adr/0014-defer-post-mvp-commercial-
 | **Commercial Next Best Action** | **Never built, and never tracked.** No code in the web app, the API or the worker ever produced it, and no user story covers it. It was a box item with nothing behind it — see §5, where it now sits in the *Does Not* column | — (removed here) |
 | **Configurable Competitive Radar** | **Not a feature.** What exists is real but smaller: the tenant lists its competitors in the Company Context, and the analysis marks an objection with the competitor named in it (`competitor` on each objection). There is no radar, no aggregation and no alerting | — (restated at true size) |
 | **Team analytics & dashboards** | **Partially built, and smaller than the phrase suggests.** `/dashboard` is a chronological, filterable meeting list (US16), not team analytics. What exists of analytics is `/trends` (US21, delivered): task load per week or month over the meetings the caller may open, and a ranking of the topics the analyses extracted. There is no per-person productivity view and no cross-team comparison, and the theme ranking is a lexical count, not a clustering | ADR 0038 §5 |
-| **Integration over MCP** (Calendar/Outlook, Linear/Jira, GitHub) | **Delivered by a different protocol.** Nine OAuth integrations ship today (ADR 0031); MCP is the inbound path and is unbuilt (ADR 0041). See §7 | ADR 0031 · ADR 0041 |
+| **Integration over MCP** (Calendar/Outlook, Linear/Jira, GitHub) | **Delivered by a different protocol.** What this row promised is NORA writing into those tools, and that is the nine OAuth integrations (ADR 0031), not MCP. MCP is the opposite direction and is now built as a read-only server (ADR 0041) — it never was going to deliver this row. See §7 | ADR 0031 · ADR 0041 |
 
 ## 3. Where the current state is written down
 
@@ -154,14 +156,14 @@ commitments, and they are the part to keep true.
 
 |  | **Is** | **Is Not** |
 |---|---|---|
-| **Nature** | A **conversational intelligence platform** with two plans (Core and Enterprise) and three surfaces: **Web**, **Desktop (Windows)** and a **REST API**. A fourth — an MCP server — is declared scope and unbuilt (ADR 0041) | A CRM, an ERP or a replacement for any management system. Not, today, an MCP server: nothing external can query NORA over MCP |
+| **Nature** | A **conversational intelligence platform** with two plans (Core and Enterprise) and four surfaces: **Web**, **Desktop (Windows)**, a **REST API** and an **MCP server** (ADR 0041) | A CRM, an ERP or a replacement for any management system. The MCP surface is **read-only**: an external client can query NORA, and can change nothing through it |
 | **Core** | A **personal meeting copilot** for the individual professional — organises projects, creates tasks, records decisions | A notes app, a generic recorder or a replacement for Notion/Linear |
 | **Enterprise** | A **commercial intelligence engine** configured with the company's own context and products — for any sector | A tool exclusive to the TOTVS ecosystem or to any other specific vendor |
 | **Context** | A platform that **learns the customer's vocabulary**: each company configures its products, competitors and terms | A generic AI that uses hardcoded knowledge of a single market |
 | **Desktop** | A **real-time app** (Tauri 2 / Rust) that captures system audio and analyses the meeting while it happens, on **Windows** | A videoconference plugin or a browser extension. Not cross-platform: macOS and Linux left the supported scope (ADR 0038 §2) |
 | **IAM** | A **granular access control** system in the style of **AWS IAM** (Root + Users + Groups + Policies created by the tenant itself) | A system where everyone in the company sees every transcript from every department |
 | **AI** | An **analysis, structuring and recommendation** engine that amplifies the human. Output via strict JSON Schema | An AI that makes commercial decisions autonomously without human review |
-| **Integration** | An **open** platform in two directions, with only one of them built. **Outbound (built):** data *leaves* NORA for the tools the user already uses, over OAuth integrations driven by Flows (ADR 0030/0031). **Inbound (decided, unbuilt):** an external client asks NORA questions over MCP (ADR 0041) | A closed system that requires replacing the existing tools. Not an MCP integration, in either direction, until ADR 0041 is implemented — the protocol on the shipped path is OAuth |
+| **Integration** | An **open** platform in **two** directions, both built. **Outbound:** data *leaves* NORA for the tools the user already uses, over OAuth integrations driven by Flows (ADR 0030/0031). **Inbound:** an external client asks NORA questions over MCP, authenticated by a tenant-scoped token and answering only what the user it acts for could read in the web app (ADR 0041) | A closed system that requires replacing the existing tools. The outbound direction is OAuth and **not** MCP, whatever this document called it for fifteen months. The inbound one is MCP and is **read-only**; it also deliberately falls short of the specification's OAuth 2.1 authorization server, so a client that speaks only that flow needs a pasted token (ADR 0041 §3) |
 | **Data** | An **LGPD-by-design** system: personal data in **text** is detected and redacted before the analysis LLM (ADR 0012), and structured PII is redacted in the BFF on the chat and search paths (ADR 0033) | A platform that stores or shares third-party conversation data. **Not a guarantee that covers audio**: once the cloud transcription of ADR 0039 lands, raw audio reaches a declared external subprocessor before any redaction exists (ADR 0040). The scope of the promise is text, and it is stated in §5 |
 | **Model** | A SaaS with an **individual freemium** (Core) evolving into **paid enterprise** via PLG | A product that requires a corporate purchase as its entry point |
 
@@ -181,7 +183,8 @@ commitments, and they are the part to keep true.
 | **Core — Productivity Score** | **Opt-in per meeting**: the user declares an objective + expected outcomes; NORA measures coverage (`ADDRESSED`/`PARTIAL`/`MISSED`) and assigns a score of 0–100 with a `LOW`/`MEDIUM`/`HIGH` band (ADR 0005) | Does not calculate without opt-in — privacy by design. Does not use external benchmarks — only the answer key declared by the user themselves |
 | **Core — Projects** | **Groups meetings by tag** into projects, client-side, with no manual filling and no separate backend | It is not a project manager. It sends nothing to Jira or Linear by itself — that is the **Integrations** row, and it is Flows that triggers it |
 | **Core — Flows** | **Automations on a canvas** (ADR 0030/0032): a trigger, optional conditions, and actions on connected tools. All three real triggers are offered — `meeting.analysis_completed`, `action_item.created`, `meeting.risk_detected` | Does not schedule. `schedule.cron` exists in the backend enum and is **rejected** at save time rather than accepted and silently never fired |
-| **Core — Integrations** | **Connects nine external tools over OAuth and equivalents** — Google, Microsoft, Slack, GitHub, Notion, Todoist, Linear, Telegram, Trello — with tokens encrypted at rest (AES-GCM, ADR 0031). This is the **outbound** path: data leaves NORA for the tools the user already has | **This is not MCP**, despite fifteen months of this document calling it that. Each integration is optional and independent. The inbound path — an external client querying NORA — is the MCP server of ADR 0041, and it is unbuilt. See §7 |
+| **Core — Integrations** | **Connects nine external tools over OAuth and equivalents** — Google, Microsoft, Slack, GitHub, Notion, Todoist, Linear, Telegram, Trello — with tokens encrypted at rest (AES-GCM, ADR 0031). This is the **outbound** path: data leaves NORA for the tools the user already has | **This is not MCP**, despite fifteen months of this document calling it that. Each integration is optional and independent. The inbound path — an external client querying NORA — is the MCP server of ADR 0041, a separate row below. See §7 |
+| **Core — MCP server** | **Answers an external MCP client** — Claude Desktop, an IDE, a coding or research agent — over `POST /mcp`, with five read tools: list meetings, meeting detail, semantic search, action items and Customer Confidence. Authenticated by a tenant-scoped token the user mints in settings, stored only as a SHA-256 hash and revocable. Every tool call resolves the same IAM principal and evaluates the same actions as the web surface (`meeting:read`, `task:read`), so a client can never see more than the person it acts for (ADR 0041) | **Read-only.** No tool creates, updates or deletes anything; writing is the outbound direction above, through Flows. **Not an OAuth 2.1 authorization server**, which is what the MCP specification asks of a remote server — a client that speaks only that flow needs a token pasted into its configuration (ADR 0041 §3). Speaks the `initialize` handshake revisions (`2025-11-25`, `2025-06-18`) and refuses anything else loudly; it does not implement the handshake-free revision |
 | **Enterprise — Company Context** | **Learns the customer's business**: the admin configures products, ICP, competitors, glossary and objection handling; the context is injected into every analysis and into the chat's answers | Does not use generic or hardcoded knowledge from any vendor — the context is always the tenant's |
 | **Enterprise — Semantic search / RAG** | **Delivered** (US15, PR #206): one embedding per meeting (migration `V021`), `EmbeddingService` + `HttpEmbeddingClient` with provider-agnostic embeddings (Gemini/OpenAI), exposed as `GET /meetings/search` and consumed by the chat as RAG context | **Does not use `pgvector`, despite the container image being `pgvector/pgvector:pg16`.** The extension is never created; the vector is a JSON array in a `TEXT` column and cosine similarity is computed in Java. Adequate for tens or hundreds of meetings per tenant, and it is a scale ceiling, not a feature |
 | **Enterprise — Customer Confidence** | **Delivered full-stack** (ADR 0015, PR #148): the worker emits a 0–100 score + band + buying signals + objections + `accountName`; the backend recomputes the trend per account authoritatively and persists it; `GET /meetings/{id}` returns the block; `CustomerConfidenceCard` UI in the meeting detail. Objections carry the `competitor` named in them, when one is named | Does not score internal meetings — the block is emitted only for conversations with a customer, lead or prospect, and is `null` otherwise. Does not invent signals: every buying signal and objection must carry a literal `quote` from the transcript |
@@ -249,28 +252,41 @@ Meeting analysed in NORA
 
 The user transcribes once, and the Flow distributes the result to the tools they already have.
 
-### Inbound — an external client asks NORA questions. Decided, not built.
+### Inbound — an external client asks NORA questions. Built, read-only.
 
-This is what **MCP** is for, and it is the promise this document has carried since version 0.2
-(2026-05-01) with no line of code ever written behind it.
-[ADR 0041](../adr/0041-nora-as-mcp-server.md) settles the design:
+This is what **MCP** is for. It is the promise this document has carried since version 0.2
+(2026-05-01), it went fifteen months with no line of code behind it, and it now exists.
+[ADR 0041](../adr/0041-nora-as-mcp-server.md) fixed the design and the build follows it:
 
-- **NORA is the MCP *server***, not a client of other servers. External MCP clients — Claude
-  Desktop, IDEs, coding and research agents — read meetings, tasks, semantic search and Customer
-  Confidence from it.
-- It lives **inside `services/api`** as an inbound adapter, so that every tool call goes through the
-  same tenant filter (ADR 0002) and the same `PolicyEvaluator` (ADR 0007) the web surface uses. The
-  invariant, stated so it can be tested: *an MCP client can never see more than the user it acts
-  for can see in the web application.*
-- **Authentication is a tenant-scoped token, stored only as a SHA-256 hash.** This deliberately
-  falls short of the MCP specification's OAuth 2.1 authorization server, with the cost named:
-  clients that speak only that flow will not connect without a manually pasted token.
+```
+Claude Desktop · IDE · coding or research agent
+         │
+         │  POST /mcp   Authorization: Bearer nora_mcp_…   (JSON-RPC 2.0)
+         ▼
+   NORA — inbound adapter inside services/api
+         │
+         │  the SAME IAM principal, the SAME PolicyEvaluator, the SAME tenant filter
+         ▼
+   list meetings · meeting detail · semantic search · action items · Customer Confidence
+```
+
+- **NORA is the MCP *server***, not a client of other servers.
+- It lives **inside `services/api`** as an inbound adapter, so every tool call goes through the
+  same tenant filter (ADR 0002) and the same `PolicyEvaluator` (ADR 0007) the web surface uses.
+  There is no MCP permission vocabulary: a tool that reads meetings evaluates `meeting:read`, the
+  same action against the same policies. The invariant, stated so it can be tested and now tested:
+  *an MCP client can never see more than the user it acts for can see in the web application.*
+- **Authentication is a tenant-scoped token, stored only as a SHA-256 hash**, minted by the user in
+  settings and revocable there. It authenticates the MCP endpoint and nothing else, so a leaked one
+  cannot act on the REST API.
 - **The first cut is read-only.** Writes already have a path — that is the outbound direction above.
 
-> **No MCP server is implemented today.** Nothing in this repository speaks MCP, in either
-> direction. What changed in August 2026 is that it stopped being a vague post-MVP concept and
-> became declared, designed scope with an accepted ADR behind it (ADR 0041). Until that build
-> lands, every use of the word "MCP" in this document refers to a decision, not to a capability.
+> **Two limits, decided rather than discovered.** This is not the OAuth 2.1 authorization server
+> the MCP specification asks of a remote server, so a client that speaks only that flow needs a
+> token pasted into its configuration; ADR 0041 §3 records the deviation, its cost and what would
+> reopen it. And the tools are queries, not mutations: an agent that could file the action item it
+> just read would need a decision about which IAM actions it may exercise unattended, and that
+> decision has not been made.
 
 Why this one promise was kept when the same realignment closed SSO, aggregated Account Health, the
 DPA and the SLA: MCP is in the one-line definition of what NORA *is*, so deleting it would change
@@ -337,10 +353,12 @@ in three places at once:
   is closed (§4), what came back into scope (§5) and what is a declared deferral with a written
   reason (§6). Where the roadmap and the ADR disagree, the ADR is the authority.
 
-The three open builds this document is responsible for naming, because they are the ones it makes
-promises about: the **MCP server** ([ADR 0041](../adr/0041-nora-as-mcp-server.md)), the move of
-transcription to **cloud STT** ([ADR 0039](../adr/0039-cloud-stt-openai-ephemeral-token.md)), and
-**ADDRESS** coverage in the PII Shield. None of the three is built; each is decided.
+The open builds this document is responsible for naming, because they are the ones it makes
+promises about: the move of transcription to **cloud STT**
+([ADR 0039](../adr/0039-cloud-stt-openai-ephemeral-token.md)) and **ADDRESS** coverage in the PII
+Shield. The third that used to be listed here — the **MCP server**
+([ADR 0041](../adr/0041-nora-as-mcp-server.md)) — has been built, read-only, and is described in
+§5 and §7.
 
 ## Document History
 
@@ -354,3 +372,4 @@ transcription to **cloud STT** ([ADR 0039](../adr/0039-cloud-stt-openai-ephemera
 | 1.1 | 2026-06-06 | Doc x code reconciliation + standardisation |
 | **1.2** | **2026-08-17** | **Reconciliation against the August 2026 realignment (ADR 0038–0041).** Plan box rewritten to what each plan has, with a table recording what it used to promise and what closed it: SSO (US05), aggregated Account Health (US50/US51) and the Enterprise SLA/DPA are **WONT** by ADR 0038 §4; "Commercial Next Best Action" is removed as never built and never tracked; "Competitive Radar" and "Team analytics" are restated at their true size. Records that the Core/Enterprise split is commercial framing that the code does not enforce. §3 "Current State" replaced: the dated Azure snapshot is deleted in favour of pointers to the documents that maintain each fact, with the reason written out. §4/§5 reconciled — Desktop is Windows-only, transcription is on-device **today** with ADR 0039 decided and unbuilt, the PII promise is scoped to text and analysis and the transcription provider is a declared subprocessor (ADR 0040), RAG does **not** use pgvector, RLS is enforced on the deployed stack and deferred only as the repository default, retention `0` means OFF. §6: per-department Company Context and attribute-tagged desktop capture removed as never built, and the "Real example" qualified — the condition evaluator is real, but no shipped UI writes the meeting `attributes` it reads. §7 rewritten around the two directions — OAuth outbound shipped (ADR 0031), MCP inbound decided and unbuilt (ADR 0041). §11 replaced by pointers to the roadmap and ADR 0038 |
 | 1.3 | 2026-08-17 | Two time-boxed caveats retired, both written hours earlier and both now expired: §3 said the backlog had not been reconciled against ADR 0038 (it was rewritten against the code the same day), and §11 said the roadmap's §2 still planned against `rg-nora-prod`, Azure Monitor and a missing DR runbook (that section was rewritten). Nothing else changed |
+| 1.4 | 2026-08-17 | **The MCP server was built (US27, ADR 0041)**, so every sentence in this document that described it as decided-and-unbuilt became false and was rewritten: §1's reading note, the surfaces box in §2, the closed-promises table in §3, the Nature and Integration rows of §4, a new *Core — MCP server* row in §5, §7's inbound half, and §11's list of open builds. The claim is stated at the size it actually is — **inbound only and read-only**, with ADR 0041 §3's deviation from the specification's OAuth 2.1 authorization server named in the same breath rather than left for a reader to discover |

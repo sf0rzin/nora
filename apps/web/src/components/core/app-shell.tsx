@@ -175,11 +175,16 @@ const NAV: NavItem[] = [
   { label: "Fluxos", href: "/flows" as Route, icon: <FlowsIcon />, matchPrefixes: ["/flows"] },
 ];
 
+/**
+ * The connector hub. The hint said "MCP" and named the wrong protocol: this page is ADR 0031's
+ * OAuth integrations, the OUTBOUND direction where NORA writes into the user's own tools. MCP is
+ * the inbound one (ADR 0041) and lives under settings/mcp.
+ */
 const CONNECTORS: NavItem = {
   label: "Integrações",
   href: "/integrations" as Route,
   icon: <PlugIcon />,
-  hint: "MCP",
+  hint: "OAuth",
 };
 
 /**

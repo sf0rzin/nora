@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.util.List;
 import org.slf4j.MDC;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -26,6 +27,17 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *
  * <p>Accepting both during the web migration avoids a broken window and does not lower the security
  * bar: the cookie is {@code HttpOnly+SameSite}, and the header still requires possession.
+ *
+ * <p><b>It yields to a request another chain has already authenticated.</b> This filter is a bean,
+ * so Spring Boot registers it in the servlet container as well as in the JWT chain that adds it
+ * explicitly. On the JWT chain the explicit registration wins and the outer one is skipped, which
+ * is why nothing noticed. The MCP endpoint (ADR 0041) runs on its own {@code SecurityFilterChain}
+ * and resolves its own credential, so this filter is NOT part of that chain — and the outer
+ * registration therefore fires DOWNSTREAM of it, on a request whose bearer value is not a JWT.
+ * Parsing fails, and the {@code catch} below used to clear a {@code SecurityContext} this filter
+ * never set: the request had already passed {@code anyRequest().authenticated()} and arrived at the
+ * handler unauthenticated. A filter must not tear down another filter's authentication, so the
+ * guard below is the fix rather than a special case for MCP.
  */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -43,6 +55,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(
             HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
+        if (alreadyAuthenticated()) {
+            chain.doFilter(req, res);
+            return;
+        }
         String token = extractBearer(req);
         if (token == null) {
             token = extractAccessCookie(req);
@@ -90,6 +106,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             MDC.remove("tenantId");
             MDC.remove("userId");
         }
+    }
+
+    /**
+     * Whether some earlier filter already resolved a NORA principal for this request. Narrowed to
+     * {@link AuthenticatedPrincipal} on purpose: the control plane's shared-token chains
+     * authenticate a string, and those paths are not served by this filter anyway.
+     */
+    private static boolean alreadyAuthenticated() {
+        Authentication existing = SecurityContextHolder.getContext().getAuthentication();
+        return existing != null
+                && existing.isAuthenticated()
+                && existing.getPrincipal() instanceof AuthenticatedPrincipal;
     }
 
     private static String extractBearer(HttpServletRequest req) {

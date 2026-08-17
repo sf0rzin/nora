@@ -29,6 +29,7 @@ erDiagram
   USERS ||--o{ REFRESH_TOKENS : has
   USERS ||--o{ EMAIL_VERIFICATION_TOKENS : has
   USERS ||--o{ PASSWORD_RESET_TOKENS : has
+  USERS ||--o{ MCP_TOKENS : "mints (MCP clients)"
 
   MEETINGS ||--|| TRANSCRIPTS : has
   MEETINGS ||--o{ MEETING_PARTICIPANTS : has
@@ -817,9 +818,35 @@ The nine values match the `IntegrationProvider` enum. Neither V025 nor V026 chan
 
 > Tenant-owned: RLS `tenant_isolation` enabled in V028. `tenant_contexts` is one of the tables V020 kept under enforce, so leaving its history unprotected would put the same document one table away from any session.
 
+### 2.41 `mcp_tokens` — V029
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `UUID PRIMARY KEY` | |
+| `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` | the tenant the credential acts in — what the edge trusts once the token resolves |
+| `user_id` | `UUID NOT NULL` | the principal it acts as; composite FK below |
+| `name` | `TEXT NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 80)` | label the user recognises when deciding what to revoke. Not a secret, not unique |
+| `token_hash` | `TEXT NOT NULL UNIQUE` | SHA-256 hex of the **whole** presented string, prefix included |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `expires_at` | `TIMESTAMPTZ NULL` | optional hard expiry. NULL = lives until revoked, which is what a client in a config file needs |
+| `revoked_at` | `TIMESTAMPTZ NULL` | non-null ⇒ dead, permanently |
+| `last_used_at` | `TIMESTAMPTZ NULL` | last successful resolution; NULL identifies a credential no client ever used |
+
+**FK**: `mcp_tokens_user_fk (tenant_id, user_id) → users(tenant_id, id) ON DELETE CASCADE`.
+
+**Indexes**: the `UNIQUE` on `token_hash` is the edge lookup's index; `idx_mcp_tokens_owner(tenant_id, user_id) WHERE revoked_at IS NULL` serves the owner listing.
+
+**Purpose**: the bearer credential of the inbound MCP adapter (US27, ADR 0041 §3). Minted at `POST /mcp/tokens` by a user already authenticated in the web app, presented as `Authorization: Bearer` to `POST /mcp`, revoked at `DELETE /mcp/tokens/{id}`.
+
+> **The raw token is never stored**, the same rule `refresh_tokens` (V011) and — since V018 — the invitation token follow. It exists in exactly one HTTP response and cannot be produced again; a lost token is replaced, not recovered. It carries a `nora_mcp_` prefix so the edge can tell it from a session JWT without parsing either, and so a secret scanner can recognise it. The hash covers the prefix too, so nothing replays with it stripped.
+
+> **NOT under RLS enforce, and that is the design.** This table belongs to the **Identity** family V020 exempted: the lookup that resolves a bearer token is precisely how a request learns which tenant it is in, so at that moment `nora.current_tenant_id()` is unset. Enabling RLS here would not harden anything — it would make every MCP request fail on the deployed stack (`nora_app` is NOBYPASSRLS) while passing locally, where RLS is off by default. Isolation comes from the application's `tenant_id` predicate, the composite FK above, and the fact that the resolved principal carries the tenant the token was minted in.
+
+> **The credential is scoped to one endpoint.** The security chain that accepts it matches `/mcp` and nothing beneath it, so an MCP token presented to `/meetings` authenticates nothing, and `/mcp/tokens` — one segment below — stays on the JWT chain. That is what makes ADR 0041 §4's read-only first cut a property of the credential rather than of the tools that happen to exist today.
+
 ## 3. Tables planned but **not migrated**
 
-Listed in ADR 0006 and/or the old `data-model.md`, but **with no corresponding migration** (V001–V028 do not cover them; inventory in §5).
+Listed in ADR 0006 and/or the old `data-model.md`, but **with no corresponding migration** (V001–V029 do not cover them; inventory in §5).
 
 > **Note (2026-05-21, reconciled post-#148):** ADR 0015 reserved "V013" for `customer_confidence_persistence`, but the **V013 slot was used for `add_soft_delete`** and V014–V016 for rotation / composite FK / RLS. Customer Confidence was delivered in **V017** (`customer_accounts`, `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections` — see §2.29–§2.33) and **fully wired in #148**: the worker emits `customerConfidence` and `AnalysisService` persists it in the pipeline. Only `account_health_snapshots` (US50-51) remains not migrated.
 
@@ -854,7 +881,7 @@ The LLM block for Customer Confidence exists in the schema (`meeting-analysis-v1
 - Affected UNIQUEs (`tenants.slug`, `users(tenant_id,email)`, `tenant_contexts.tenant_id`) became **partial indexes `WHERE deleted_at IS NULL`** — this allows reusing a slug/email after a soft-delete (otherwise a deleted user would block a new signup with the same email forever).
 - **Hard-delete** remains possible via a native query and underpins the **delivered** operational LGPD support (ADR 0029): `DELETE /privacy/meetings/{id}` (right to be forgotten) + the scheduled `RetentionSweeper` (retention), covered by `PrivacyFlowIntegrationTest`.
 
-### RLS — Row-Level Security (V016 → V017 → V019 → V020 → V021 → V022 → V023 → V024 → V028)
+### RLS — Row-Level Security (V016 → V017 → V019 → V020 → V021 → V022 → V023 → V024 → V028; V029 exempt)
 
 ADR 0002 promised RLS in production; **V016 delivered it in the schema**, **V019 completed the coverage** (ADR 0026) and **V020 adjusted the enforce scope to be auth-aware** (ADR 0028). What remains is the operational cutover/enforcement in production (runbook in ADR 0026/0028), not the schema:
 
@@ -867,6 +894,7 @@ ADR 0002 promised RLS in production; **V016 delivered it in the schema**, **V019
   - **V023 (2):** `workflows`, `workflow_executions` (NORA Flows).
   - **V024 (1):** `integration_connections` (OAuth tokens at rest).
   - **V028 (1):** `tenant_context_versions` (company-context history, US31) — its parent `tenant_contexts` is enforced, so the history is too.
+  - **V029 (0):** `mcp_tokens` is deliberately **not** given a policy. It joins the Identity family of (A) below: the token lookup is what tells a request which tenant it belongs to, so the GUC is unset when it runs, and a policy there would fail-close every MCP request in production while passing in a repository where RLS is off by default.
 - **Auth-aware enforce scope (V020, ADR 0028):** the enforce of the `nora_app` role (NOBYPASSRLS) applies to the **business data + PII** tables (touched only by authenticated requests or by the analysis pipeline, which set the GUC). V020 **disables RLS** on two families that cannot be enforced without breaking flows that have no JWT, keeping isolation through the application's `tenant_id` filter: **(A) Identity** (`users`, `tenants`, `email_verification_tokens`, `password_reset_tokens`, `refresh_tokens`, `iam_user_invitations` — login/signup/acceptance are cross-tenant or tenant-less); **(B) IAM Authorization** (`iam_groups`, `iam_policies`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events` — authorization config written during onboarding without a JWT). The `tenant_isolation` policies remain **defined** (inert with RLS off), reversible without recreating them.
 - **Cascade boundaries (no policy, by design):** `iam_invitation_groups`, `meeting_goal_expected_outcomes`, `meeting_outcome_coverage`, `customer_buying_signals`, `customer_objections` — children without their own `tenant_id`, isolated via the FK cascade to the parent. Documented in the V019 header.
 - **Legacy outside RLS:** `roles` (global rows with `tenant_id NULL`) and `user_roles` (deprecated) — to be removed in a future cleanup.
@@ -906,6 +934,7 @@ ADR 0002 promised RLS in production; **V016 delivered it in the schema**, **V019
 | **V026** | integration providers wave 2: provider CHECK → the current nine (+ `microsoft, telegram, trello`). Telegram pairs by code (`access_token` holds the bot's `chat_id`) and Trello uses a user-pasted token; same table and cipher |
 | **V027** | composite FK: `iam_user_groups` and `iam_user_policies` `.(tenant_id, user_id)` → `users(tenant_id, id)` (same remedy as V015 for `meetings`), closing cross-tenant group/policy attachment. Deletes offending pre-existing rows with `RAISE NOTICE` counts. **Edited after being applied** — carries a checksum warning; a database that ran the earlier version needs `flyway repair` (see §2.17) |
 | **V028** | company-context history (US31): `tenant_context_versions` (PK `(context_id, version)`, immutable, shape of `iam_policy_versions` plus the composite FK of V015/V027), `tenant_contexts.current_version` + its `UNIQUE (tenant_id, id)`, backfill of version 1 for every context that already existed (approximate `created_at`, derived from `updated_at`), and RLS `tenant_isolation`. Ships with the two read endpoints, unlike `iam_policy_versions` |
+| **V029** | MCP credentials (US27, ADR 0041 §3): `mcp_tokens` with the composite FK of V015/V027 to `users(tenant_id, id)`, `token_hash TEXT UNIQUE` holding only the SHA-256 of the presented string (same rule as V011/V018), optional `expires_at`, `revoked_at` and `last_used_at`, plus a partial index on the owner. **No RLS policy, on purpose** — Identity family per V020, because the lookup precedes knowing the tenant |
 | **V030** | trends panel (US21): `meeting_action_items.completed_at` — the completion axis the panel counts on, because `updated_at` also moves on a title or due-date edit — plus `idx_meeting_action_items_tenant_created(tenant_id, created_at)` and the partial `idx_meeting_action_items_tenant_completed(tenant_id, completed_at) WHERE completed_at IS NOT NULL`. Rows already `DONE` are seeded from their `updated_at`, an upper bound rather than a measurement; no `CHECK` pairs `status` with `completed_at`, because those seeded rows are exactly what such a constraint could not be created against. No RLS change: `meeting_action_items` has carried `tenant_isolation` since V019 and a policy applies to the row, not to a column set |
 
 ## 6. Academic considerations (Oracle)
