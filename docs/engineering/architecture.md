@@ -81,7 +81,7 @@ Root decision: **ADR 0002 — application-level filter in the MVP, RLS in produc
 
 ### `tenant_id` is a first-class piece of data
 
-Every tenant-bound table carries `tenant_id UUID NOT NULL` (the schema goes up to `V021`; see `docs/engineering/data-model.md` as the canonical source). Verified in the migrations:
+Every tenant-bound table carries `tenant_id UUID NOT NULL` (the schema goes up to `V027`; see `docs/engineering/data-model.md` as the canonical source). Verified in the migrations:
 
 - `tenants` (V001) — source
 - `users.tenant_id` (V002:10)
