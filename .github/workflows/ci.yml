@@ -736,6 +736,30 @@ jobs:
   #
   # No path filter and no checkout of history — it reads one string from the event
   # payload. `if:` guards the push case, where there is no PR title to read.
+  # Gap 2 of production-readiness-gaps.md, the half of it that can be mechanised.
+  #
+  # That gap asks for a "migrations safety strategy" and offers three options, all shaped by
+  # the Azure deployment that no longer exists. On the current substrate Flyway runs at Spring
+  # startup on one host, and the deploy-time half belongs to whoever operates it. This is the
+  # half that catches the mistake before it can reach any database: a duplicate version number
+  # (a Flyway boot failure, and a live risk whenever branches run in parallel), an edit to a
+  # migration that already reached main (a checksum mismatch that refuses to boot — V027
+  # carries a !! CHECKSUM WARNING !! because it happened), and destructive DDL that nobody
+  # wrote down.
+  #
+  # fetch-depth: 0 is REQUIRED and is not caution. The default shallow checkout has no
+  # `origin/main`, and without it two of the three rules silently find nothing — the worst
+  # possible failure for a guard, since the job still goes green.
+  migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Migration versions, checksums and destructive DDL
+        run: bash scripts/check-migrations.sh "origin/${{ github.base_ref || 'main' }}"
+
   pr-title:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -927,7 +951,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, api, worker, web, admin, desktop-rust, supply-chain, docs-link-check, language, openapi-coverage, pr-title, infra]
+    needs: [changes, api, worker, web, admin, desktop-rust, supply-chain, docs-link-check, language, openapi-coverage, pr-title, migrations, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

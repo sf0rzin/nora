@@ -5,10 +5,13 @@
 > single bare-metal host (ADR 0034/0036); Gaps whose premise was Azure-specific (Bicep params, Key
 > Vault, Container Apps scale-to-zero) no longer apply as written: ADR 0034 partially superseded
 > this document's parent decision (ADR 0016), and ADR 0036 removed the Azure premise entirely.
-> What survives is the *shape* of each gap — Gap 2 (migration safety), Gap 6
-> (test coverage) and the underlying "dev ≠ prod" question are still real questions on the current
-> substrate, just answered differently. Kept for the gap-by-gap reasoning, not as an operating
-> runbook — that is `docs/operations/host-deploy.md`.
+> What survives is the *shape* of each gap. **Reconciled 2026-08-17 against the code**, which moved
+> two of them: **Gap 8 is delivered** — the BYPASSRLS telemetry path it asked for exists, with a
+> guard and a test — and **Gap 2 is half delivered**, its mechanical half now a CI job. The banner
+> here used to say the surviving gaps were "Gap 2 (migration safety), Gap 6 (test coverage)". Gap 6
+> is the disaster-recovery scenario; test coverage is not a gap in this document at all, and it is
+> measured on every CI run (see `docs/challenge/fiap-challenge-2026.md`). Kept for the gap-by-gap
+> reasoning, not as an operating runbook — that is `docs/operations/host-deploy.md`.
 >
 > **Audience (as written):** whoever operates NORA when it is promoted from the `rg-nora-dev` environment to `rg-nora-prod`.
 >
@@ -34,7 +37,33 @@
 - Secrets via env vars **from another Service Principal scoped to `rg-nora-prod`** (do not reuse the dev SP)
 - Bicep params validated via `az deployment group what-if` before `create`
 
-## Gap 2 — Migrations safety strategy missing
+## Gap 2 — Migrations safety strategy missing — **half delivered**
+
+> **The mechanical half is now a CI job** (`scripts/check-migrations.sh`, job `migrations` inside
+> `ci-gate`), and the three options below are Azure-shaped and no longer choosable as written:
+> option 1 names `deploy-infra.yml`, option 2 needs Container Apps revisions, and neither exists
+> (ADR 0034/0036). Flyway now runs at Spring startup on one bare-metal host.
+>
+> What the CI job closes is the half that can be caught **before a database ever sees the file** —
+> which is the more valuable half, because the worst case this gap names ("a destructive `ALTER
+> TABLE`, then a failure, data lost") cannot be undone afterwards by any deploy strategy:
+>
+> - **a duplicate version number**, which is a Flyway boot failure and not a merge conflict. A live
+>   risk every time branches run in parallel here;
+> - **an edit to a migration that already reached `main`.** Flyway checksums the body, comments
+>   included, so every database that ran the old version fails `validate` and refuses to boot until
+>   someone runs `flyway repair`. `V027` carries a `!! CHECKSUM WARNING !!` block because this
+>   happened. An `ALLOW_MIGRATION_EDIT` marker inside the file is the deliberate escape hatch;
+> - **destructive DDL with no acknowledgement.** It does not forbid the statement — V027
+>   legitimately deletes rows that cross a tenant boundary — it requires a `DESTRUCTIVE:` comment,
+>   so that destruction is something somebody wrote down rather than a line nobody noticed. Scoped
+>   to migrations the branch **adds**, because demanding the marker on an applied file would be
+>   demanding the checksum break that the previous rule exists to prevent.
+>
+> **What remains open is the deploy-time half**, and it belongs to whoever operates the host: there
+> is no pre-flight that lists pending migrations and pauses for approval before the container
+> starts. `infra/host/scripts/restore-drill.sh` already validates the Flyway history of a restored
+> dump (it fails on any row with `success = false`), so the ingredients exist; the gate does not.
 
 **Current situation:** Flyway runs at the startup of the API Container App. If a migration fails mid-deploy, the state is left inconsistent, with no automated rollback. In dev, just destroy the RG. In prod, **no**.
 
@@ -179,19 +208,34 @@ A dedicated workflow `.github/workflows/rotate-secrets.yml` with a monthly cron 
 | Gap | Effort | Successor ADR? |
 |---|---|---|
 | 1. Bicep prod.bicepparam | M | ADR 0016 |
-| 2. Migrations safety | M (decision between 3 strategies) | ADR 0016 |
+| 2. Migrations safety | **half delivered** — the CI half is `scripts/check-migrations.sh`; the deploy-time pre-flight is open | ADR 0016 |
 | 3. RTO/RPO + restore drill | M (drill + doc) | — |
 | 4. Monitoring + alerting | M (alerts + workbook + SLO) | — |
 | 5. Operational LGPD — **delivered** | — (delivered via ADR 0029) | ADR 0029 |
 | 6. DR runbook | S (doc + dry run) | — |
 | 7. Secrets rotation | M (workflows + rotation scripts) | — |
-| 8. Control plane under RLS enforce | S (BYPASSRLS role for business telemetry) | ADR 0022 |
+| 8. Control plane under RLS enforce | **delivered** — `nora_telemetry` BYPASSRLS + `RlsEnforceTelemetryGuard` | ADR 0022 |
 
 **Total estimate for Sub-phase 1.12 — Production Hardening: ~1-2 agentic weeks.**
 
 Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Customer Confidence (#148), the AUTH_FILTER fix (silent 500 ceiling removed via batched scanning) and PolicyEvaluator (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`). Items (e) seed and (f) demo script were delivered on 2026-08-17 (`scripts/seed-demo.sh`, [`../challenge/demo-script.md`](../challenge/demo-script.md)); they never blocked 1.12 either way.
 
-## Gap 8 — Control plane: business telemetry breaks silently under RLS enforce
+## Gap 8 — Control plane: business telemetry breaks silently under RLS enforce — **DELIVERED**
+
+> **Closed, and it was closed before this note was written.** Everything the plan below asks for
+> exists: the `nora_telemetry` BYPASSRLS role (`infra/host/postgres/init/01-roles-and-db.sql`,
+> provisioned by `db/operational/R001__provision_app_roles.sql`), the dedicated read path in
+> `PrimaryDbBusinessMetricsSource` selected by `nora.security.rls.telemetry.url`, and
+> `RlsEnforceTelemetryGuard` — which refuses a half-applied cutover rather than degrading — with a
+> test beside it. The Javadoc the plan asked for is on the class, spelling out that without the
+> dedicated path the aggregation would read `analyses=0/tenants=0` **silently**.
+>
+> **The line below saying "does not block v1 (enforce=false today)" is the part that was wrong and
+> is the reason to read this carefully.** RLS enforce has been ON on the deployed stack since
+> 2026-08-10 (ADR 0038 §6g). Had the gap still been open, it would not have been a future risk — it
+> would have been silently returning zeros in production for a week. It was not, because the work
+> landed; but the document said otherwise, which is the failure mode this whole repository has spent
+> a month removing: a status that stopped being true and kept being written in the present tense.
 
 **Current situation:** the control plane (ADR 0022/0024) has the **business** telemetry front (cuttable) reading the **primary** database cross-tenant via `PrimaryDbBusinessMetricsSource` (`COUNT(*)` / `COUNT(DISTINCT tenant_id)` on `meeting_analyses`), **without** tenant context — an intentional operator-only aggregation. It works today because the primary datasource runs as the owner role (BYPASSRLS) with `NORA_RLS_ENFORCE=false`.
 
