@@ -25,7 +25,7 @@ mod platform {
         eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator,
         MMDeviceEnumerator, AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED,
         AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, WAVEFORMATEX,
-        WAVEFORMATEXTENSIBLE, WAVE_FORMAT_PCM,
+        WAVEFORMATEXTENSIBLE,
     };
     use windows::Win32::Media::KernelStreaming::WAVE_FORMAT_EXTENSIBLE;
     use windows::Win32::Media::Multimedia::{
@@ -47,6 +47,10 @@ mod platform {
     }
 
     impl SystemAudioCapture {
+        /// `_sample_rate_hint` is ignored: the loopback resamples to
+        /// [`crate::stt::TARGET_SAMPLE_RATE`] like every other capture path, and taking the
+        /// caller's word for the rate would be one more place for the two to drift apart. The
+        /// parameter stays so the call site reads the same as the mic's.
         pub fn start(
             _source: &str,
             _sample_rate_hint: u32,
@@ -116,7 +120,9 @@ mod platform {
         let src_ch = mix_format.nChannels as usize;
         let is_float = is_ieee_float(mix_format);
 
-        let mut resampler = crate::audio_resample::MonoResampler::new(src_sr, 16000).unwrap();
+        let mut resampler =
+            crate::audio_resample::MonoResampler::new(src_sr, crate::stt::TARGET_SAMPLE_RATE)
+                .unwrap();
 
         while flag.load(Ordering::SeqCst) {
             let wait = WaitForSingleObject(event, 100);

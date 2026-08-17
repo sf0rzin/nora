@@ -35,7 +35,7 @@ Each row was read from the file cited beside it, on 2026-08-17, at commit `4017b
 | **Operator console** Next.js | 16.3.0 | `apps/admin`: model catalog + AI cost telemetry (§6) | `apps/admin/package.json:15`, ADR 0023/0024/0025 |
 | **Desktop** Tauri | 2 | Native wrapper + audio capture | `apps/desktop/src-tauri/Cargo.toml:71`, ADR 0008 |
 | Rust | edition 2021 | System-wide audio capture via WASAPI loopback. Windows-only | `apps/desktop/src-tauri/Cargo.toml:6`, ADR 0038 §2 |
-| whisper-rs | =0.16.0 | In-process transcription — **still in the tree, already superseded** (§14) | `apps/desktop/src-tauri/Cargo.toml:68`, ADR 0035 → ADR 0039 |
+| tokio-tungstenite | 0.28 | Realtime STT transport: one WebSocket per track, rustls with bundled roots (§14) | `apps/desktop/src-tauri/Cargo.toml`, ADR 0039 → ADR 0045 |
 | **Infra** Self-hosted | — | Single bare-metal Ubuntu host, no hypervisor, Docker Compose | `infra/host/docker-compose.yml`, ADR 0034/0036 |
 | GitHub Actions | — | CI/CD (ci.yml + build-images.yml + deploy-host.yml) | `.github/workflows/*.yml` |
 
@@ -711,19 +711,23 @@ rediscovered: the **first** trigger in `CATALOG` is the one `/flows/new` drops o
 and the catalog must not drift from what the engine can actually run, because a block the backend
 rejects is a flow the user cannot save.
 
-## §14. Live transcription: cloud STT behind an ephemeral session token (ADR 0039)
+## §14. Live transcription: cloud STT behind an ephemeral session token (ADR 0039, ADR 0045)
 
-This section describes a decision, not a delivered path. It is written here because the decision has
-an architectural consequence — where the audio goes — that belongs beside the rest of the flows and
-not only inside an ADR.
+This is a delivered path. It is written here rather than only in the ADRs because the decision has
+an architectural consequence — where the audio goes — that belongs beside the rest of the flows.
 
 ### What is in the tree today
 
-The desktop transcribes **on the client machine**: `apps/desktop/src-tauri/src/stt_local.rs` runs
-whisper.cpp in-process through `whisper-rs` (pinned `=0.16.0`), behind the backend-selection seam in
-`stt.rs`. `stt-local` is the only backend and the default feature
-(`apps/desktop/src-tauri/Cargo.toml:53,56`). No audio leaves the machine, and no token is involved.
-That is ADR 0035, and ADR 0039 supersedes it.
+The desktop streams to the provider's realtime API. `apps/desktop/src-tauri/src/stt_token.rs`
+fetches a short-lived session credential from `POST /stt/sessions`; `stt_cloud.rs` opens one
+WebSocket per track behind the `SttBackend` trait in `stt.rs`. On the server,
+`SttController` → `SttSessionService` → `RealtimeSttBroker` (port) →
+`OpenAiRealtimeSessionBroker` (adapter) is the only code that reads the provider key.
+
+The on-device engine is gone: `stt_local.rs`, `whisper_model.rs`, `whisper-rs`, `sha2`, the whole
+Cargo `[features]` section, the `NORA_STT_BACKEND` selector and the `plugins.nora.whisperModel`
+key. So are the CMake/`MAX_PATH` workarounds both desktop workflows carried for it. That was
+ADR 0035, and ADR 0039 supersedes it.
 
 > **Historical note.** Before ADR 0035, transcription ran through Azure Speech reached with a
 > short-lived token minted by the backend (ADR 0009). That whole path is gone from both sides of the
@@ -731,13 +735,13 @@ That is ADR 0035, and ADR 0039 supersedes it.
 > limit that protected it, the Python sidecar and its NDJSON protocol — deleted in the 2026-08
 > subtraction pass. This paragraph is the only place it is still described, and only as history.
 
-### What ADR 0039 decides
+### What ADR 0039 decided and ADR 0045 built
 
-Transcription becomes a call to OpenAI's real-time transcription API, and the desktop talks to the
+Transcription is a call to OpenAI's real-time transcription API, and the desktop talks to the
 provider **directly**:
 
 ```
-                       1. POST /stt/realtime-session
+                       1. POST /stt/sessions
                           (authenticated, tenant-scoped)
   ┌──────────────┐  ───────────────────────────────▶  ┌──────────────┐
   │   Desktop    │                                    │  NORA API    │  OpenAI key
@@ -816,9 +820,24 @@ local engine had eliminated; and an OpenAI outage now stops a meeting, where bef
 outage did. In exchange the 190 MB first-run model download and the 4-core/8 GB floor disappear, and
 one heavyweight native dependency leaves the desktop build.
 
-**None of this is implemented.** There is no session-minting endpoint in `services/api`, no
-streaming client in the desktop, and `whisper-rs`, `stt_local.rs` and `whisper_model.rs` are all
-still in the tree.
+### The contract, as built (ADR 0045)
+
+ADR 0039 left four things open, and ADR 0045 closed them:
+
+- **The endpoint is `POST /stt/sessions`**, and the response carries the endpoint, model, audio
+  format and sample rate as well as the credential. The desktop hardcodes none of them, so a
+  provider rename is a server variable rather than a signed release.
+- **There is no renewal loop.** The credential's expiry gates *opening* a connection; a session
+  already open outlives it. A drop mid-meeting asks for a new session — new authorization check,
+  new telemetry row — bounded at five consecutive failures per track. The audio captured during
+  the gap is lost, which is announced on `stt-error` and shown by the overlay.
+- **Attribution is recorded as zeros.** `UsageRecorder.recordExternal` is called with `service =
+  "stt"`, the caller's tenant, zero tokens and a null cost hint, with a test asserting exactly
+  that. It counts sessions issued; it cannot count minutes NORA never carried.
+- **The capture pipeline targets 24 kHz** through the single constant `stt::TARGET_SAMPLE_RATE`,
+  which is what the provider's session takes. It must match `nora.stt.openai.sample-rate` on the
+  API; a mismatch fails nowhere and transcribes as nonsense, so the constant is unit-asserted, the
+  client warns on divergence, and the client declares the rate it actually sends on every connect.
 
 ## §15. End-to-end flow "login → upload → analysis → result"
 
@@ -982,5 +1001,5 @@ Catalogued technical debt, prioritization and planned successor ADRs live in **`
 - **Global `audit_events`** (not just IAM): auth already has its own log (§18); what is missing is consolidating MEETING_UPLOAD, CONTEXT_UPDATE into a single trail.
 - **Customer Confidence**: **implemented full-stack** (PR #148, 2026-05-21) — V017 + worker emit + `AnalysisService` wiring (server-side trend) + `GET /meetings/{id}` + `CustomerConfidenceCard`. Narrative debt resolved. **Aggregated** Account Health (US50-51) is closed scope by ADR 0038 §4. See `docs/adr/0015-customer-confidence-minimal-persistence.md`.
 - **Hardening ADRs**: documented retroactively in ADR 0019 (RLS + composite FK), 0020 (refresh-token rotation), 0021 (soft-delete). What remains is evaluating an ADR for JWT RS256/JWKS (candidate).
-- **Cloud STT (ADR 0039)**: decided, not built — no session-minting endpoint, no streaming client, `whisper-rs` still in the desktop build. §14 describes the design and the privacy consequence (ADR 0040) that arrives with it.
+- **Cloud STT (ADR 0039, ADR 0045)**: **built** — `POST /stt/sessions` mints the credential, `stt_cloud.rs` streams to the provider, and the on-device engine is out of the tree. §14 describes the path and the privacy consequence (ADR 0040) that arrived with it. What is *not* built is file/batch transcription of uploaded audio (US08), which would put the audio on NORA's own infrastructure and needs its own decision.
 - **MCP server (ADR 0041)**: decided, not built — an inbound adapter in `services/api`, read-only in its first cut, with every tool call going through `PolicyEvaluator` (§4). No code exists.

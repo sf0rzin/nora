@@ -49,7 +49,7 @@ One thing to know before reading the code as production-ready: `apps/web` is tes
 ```
 apps/web                   Next.js web application: chat, meetings, flows
 apps/admin                 Operator console: model catalogue and AI telemetry
-apps/desktop               Tauri 2 + Rust: audio capture and on-device Whisper transcription
+apps/desktop               Tauri 2 + Rust: audio capture and streaming cloud transcription
 services/api               Spring Boot backend: domain, IAM, multi-tenancy, Flyway migrations
 services/nlp-worker        FastAPI worker: PII redaction, prompting, schema-validated output
 packages/nlp-baseline      Interpretable pt-BR TF-IDF baseline
@@ -71,7 +71,7 @@ docs/                      Documentation, see below
 | Backend | Java 21 · Spring Boot 3.5 · Spring Security · JPA · Flyway |
 | Database | Postgres 16. Self-hosted runs the `pgvector/pgvector:pg16` image with the extension available but not created; local development runs plain `postgres:16-alpine` |
 | NLP worker | Python 3.12 · FastAPI · Pydantic 2 · provider-agnostic LLM and embeddings client |
-| Desktop | Tauri 2 · Rust · `whisper-rs` for on-device speech-to-text |
+| Desktop | Tauri 2 · Rust · streaming speech-to-text over a WebSocket, on a session credential minted by the API (ADR 0039/0045). The provider key never reaches the client |
 | Hosting | Self-hosted: one bare-metal Ubuntu host, no hypervisor, Docker Compose, Cloudflare Tunnel, Caddy, SOPS + age |
 | Observability | OpenTelemetry Collector · Prometheus · Loki · Alloy · Grafana |
 | CI/CD | GitHub Actions. Deployment is pull-based — nothing pushes to the host. The release pointer is published but has no consumer yet, so rolling forward is a manual `deploy.sh --tag` |

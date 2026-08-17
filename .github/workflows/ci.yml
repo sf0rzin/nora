@@ -397,17 +397,12 @@ jobs:
         with:
           toolchain: stable
 
-      # whisper-rs-sys compiles whisper.cpp with CMake + MSBuild, which generates deep scratch
-      # paths and blows past Windows' 260-char MAX_PATH (fails with `MSB6003: CL.exe
-      # could not be run / DirectoryNotFoundException`). Reproduced locally on 2026-08-07.
-      - name: Long paths + short target dir (whisper.cpp/CMake)
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path C:\t | Out-Null
-          "CARGO_TARGET_DIR=C:\t\nora" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          git config --global core.longpaths true
-          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
-            -Name LongPathsEnabled -Value 1 -Type DWord -Force
+      # There used to be a `Long paths + short target dir` step here, setting CARGO_TARGET_DIR
+      # to C:\t\nora and enabling LongPathsEnabled in the registry. It existed for exactly one
+      # reason: whisper-rs-sys compiled whisper.cpp with CMake + MSBuild, whose scratch paths
+      # (…/CMakeFiles/CMakeScratch/TryCompile-XXXXXXX/) blew past Windows' 260-char MAX_PATH and
+      # failed with `MSB6003: CL.exe could not be run`. There is no C++ build in this crate any
+      # more (ADR 0039/0045), so the workaround has nothing left to work around.
 
       - name: Rust cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -419,28 +414,23 @@ jobs:
       # typecheck. tauri-build resolves `externalBin` in the BUILD SCRIPT, which is why
       # having it in the base config used to make even a `cargo check` fail.
 
-      # One configuration, one check. There used to be two invocations here, on the belief
-      # that omitting `--features stt-local` exercised a second, legacy backend. It never
-      # did: `--features` ADDS to the default set rather than replacing it, so both steps
-      # compiled the identical feature set. Only `--no-default-features` would have made
-      # them differ, and now there is nothing left to differ about.
+      # One configuration, one check. The crate has no `[features]` section at all since the
+      # local Whisper engine was deleted (ADR 0039/0045), so there is nothing to vary.
       - name: cargo check
         working-directory: apps/desktop/src-tauri
         run: cargo check --locked
 
       # RUN the tests, do not merely type-check them. This step used to be a
       # `cargo check --all-targets` with a comment saying executing them "means paying for
-      # whisper.cpp, and that is a separate CI-cost decision". Measured on 2026-08-10: the
-      # whisper.cpp build is a build script, so the `cargo check` step
-      # above already pays for it; `cargo test` adds codegen and a link, and the 21 tests
-      # themselves run in about 1.5 seconds.
+      # whisper.cpp, and that is a separate CI-cost decision". That cost is gone entirely: with
+      # `whisper-rs` out of the graph there is no C++ build script left in the job.
       #
-      # What was going unverified while this was a type-check: `whisper_model.rs` is the gate
-      # that stops a tampered mirror from installing a Whisper model — it hashes the download
-      # and compares against four pinned digests — and its tests had never been executed by any
-      # workflow on any platform. The same is true of the two resampler regressions, which exist
-      # because `rubato::Fft::new` takes every argument as a usize, so a wrong order compiles
-      # and then feeds silence into transcription without failing anything.
+      # What these tests guard, and why running them matters: the two resampler regressions exist
+      # because `rubato::Fft::new` takes every argument as a usize, so a wrong order compiles and
+      # then feeds silence into transcription without failing anything; the `stt_cloud` set covers
+      # PCM16 endianness and provider-event parsing, where a mistake is also silent (noise or an
+      # empty transcript, never an error); and two of them assert that a live session credential
+      # is redacted from `Debug`, which a derived impl would quietly undo.
       #
       # `--all-targets` is kept so a test that stops COMPILING is still caught here rather than
       # in the middle of the run.
@@ -550,8 +540,9 @@ jobs:
   # was ever exercised by anybody. Building all three cost three 60-minute Tauri builds per
   # merge to keep two of them unvalidated.
   #
-  # There is no PyInstaller sidecar to build: the Azure Speech path was deleted, so
-  # transcription is whisper.cpp compiled into the binary and nothing else.
+  # There is no PyInstaller sidecar to build and no C++ engine to compile: the Azure Speech
+  # path was deleted, and the on-device Whisper engine went with ADR 0039/0045. Transcription
+  # is a WebSocket client in pure Rust.
   desktop-bundle:
     needs: changes
     if: ${{ (needs.changes.outputs.desktop_code == 'true' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
@@ -559,9 +550,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # No `args`: `stt-local` is the only feature and it is already the default, so
-          # naming it bought nothing, and there is no `--target` because the build is
-          # native. `label` only names the artifact.
+          # No `args`: the crate has no features to select, and there is no `--target`
+          # because the build is native. `label` only names the artifact.
           - platform: windows-latest
             label: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.platform }}
@@ -582,22 +572,12 @@ jobs:
         with:
           toolchain: stable
 
-      # whisper-rs-sys compiles whisper.cpp with CMake, which generates deep scratch
-      # paths and can blow past Windows' 260-char MAX_PATH.
-      #
-      # Here, unlike the `desktop-rust` job, we do NOT set CARGO_TARGET_DIR: this job
-      # uploads artifacts from `apps/desktop/src-tauri/target/**`, and moving the target
-      # dir would leave the upload finding nothing (silent failure, because
-      # `if-no-files-found: ignore`). We keep only LongPathsEnabled, which suffices because
-      # the runner workspace (`D:\a\nora\nora`) is already much shorter than a typical
-      # local checkout. If it ever blows up anyway, the way out is to set
-      # CARGO_TARGET_DIR **and** derive the upload paths from it — not just the first.
-      - name: Long paths (Windows, whisper.cpp/CMake)
-        shell: pwsh
-        run: |
-          git config --global core.longpaths true
-          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
-            -Name LongPathsEnabled -Value 1 -Type DWord -Force
+      # A `Long paths (Windows, whisper.cpp/CMake)` step used to sit here, enabling
+      # LongPathsEnabled for CMake's deep TryCompile scratch directories. Deleted with the C++
+      # engine (ADR 0039/0045). Note for anyone who ever reintroduces one: this job uploads
+      # artifacts from `apps/desktop/src-tauri/target/**`, so setting CARGO_TARGET_DIR here
+      # without deriving the upload paths from it makes the upload find nothing, silently,
+      # because `if-no-files-found: ignore`.
 
       - name: Rust cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2

@@ -61,9 +61,7 @@
   },
   "plugins": {
     "nora": {
-      "apiBaseUrl": "http://localhost:8080",
-      "sttBackend": "local",
-      "whisperModel": "small"
+      "apiBaseUrl": "http://localhost:8080"
     },
     "updater": {
       "endpoints": [

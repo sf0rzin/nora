@@ -1,5 +1,5 @@
 use crate::audio_capture::{AudioCapture, CaptureSinks, RecordingStatus};
-use crate::stt::{SttBackend, SttBackendKind};
+use crate::stt::SttBackend;
 use crate::SidecarState;
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
@@ -7,42 +7,28 @@ use tauri::{AppHandle, Manager, State};
 
 pub type CaptureState = Arc<Mutex<AudioCapture>>;
 
-/// Brings up ONE STT backend for a track, already resolved by config.
+/// Brings up ONE STT backend for a track.
 ///
 /// The event contract for the front end is `transcript` with a `TranscriptEvent`
-/// payload, and it is what any backend has to keep emitting. Two exist during the
-/// migration of ADR 0039: the in-process whisper.cpp path, which needs no token of
-/// any kind, and the cloud path, which fetches one short-lived session credential
-/// per track from the backend before it can start.
+/// payload, and it is what any backend has to keep emitting. There is one: the
+/// cloud client, which fetches a short-lived session credential from the NORA API
+/// and then streams straight to the provider (ADR 0039/0045). The `match` over
+/// `SttBackendKind` that used to live here went with the enum — see `stt.rs`.
+///
+/// Failing here fails `start_recording`, on purpose: a recording that turns out
+/// to have no transcript is worse than a record button that refuses.
 async fn start_stt_backend(
     app_handle: &AppHandle,
-    backend: SttBackendKind,
     language: &str,
     track_label: &str,
 ) -> Result<Box<dyn SttBackend>, String> {
-    match backend {
-        #[cfg(feature = "stt-local")]
-        SttBackendKind::Local => {
-            let h = crate::stt_local::LocalSttHandle::start(
-                app_handle.clone(),
-                language.to_string(),
-                track_label.to_string(),
-            )
-            .await?;
-            Ok(Box::new(h))
-        }
-        #[cfg(not(feature = "stt-local"))]
-        SttBackendKind::Local => Err("binary compiled without the stt-local feature".to_string()),
-        SttBackendKind::Cloud => {
-            let h = crate::stt_cloud::CloudSttHandle::start(
-                app_handle.clone(),
-                language.to_string(),
-                track_label.to_string(),
-            )
-            .await?;
-            Ok(Box::new(h))
-        }
-    }
+    let handle = crate::stt_cloud::CloudSttHandle::start(
+        app_handle.clone(),
+        language.to_string(),
+        track_label.to_string(),
+    )
+    .await?;
+    Ok(Box::new(handle))
 }
 
 /// Best-effort file logger for the recording flow.
@@ -125,21 +111,16 @@ pub async fn start_recording(
     // not carried into the recording, because `upload_meeting` resolves its own token
     // and base URL at the moment it needs them.
     //
-    // This used to bind the token and the base URL for the Azure path, which fetched
-    // `/speech/token` before recording could begin. Transcription is now in-process,
-    // so there is no round-trip and starting a recording no longer depends on the API
-    // being reachable at all — only on the user being logged in.
+    // Since ADR 0039 this is no longer the only network dependency of starting a
+    // recording: `start_stt_backend` below mints a transcription session per track,
+    // so the API has to be reachable, not merely logged into. This check stays anyway
+    // because it fails with a message about logging in, which is the common case and
+    // the one the user can act on.
     if let Err(e) = crate::auth_bridge::web_session_jwt(&app_handle) {
         log_line(&app_handle, &format!("start_recording: auth ERROR: {}", e));
         return Err(e);
     }
     log_line(&app_handle, "start_recording: auth ok");
-
-    let backend = crate::stt::configured_backend();
-    log_line(
-        &app_handle,
-        &format!("start_recording: backend stt = {}", backend.as_str()),
-    );
 
     let language = request.language.unwrap_or_else(|| "pt-BR".to_string());
     let capture_system = request.capture_system_audio.unwrap_or(false);
@@ -160,7 +141,7 @@ pub async fn start_recording(
     // One backend per track. The `mic` track is the local user; the `system` track is
     // the loopback audio (remote participants). Speaker attribution is PER
     // TRACK — see crate::stt::SYSTEM_SPEAKER_ID.
-    let mic_sidecar = match start_stt_backend(&app_handle, backend, &language, "mic").await {
+    let mic_sidecar = match start_stt_backend(&app_handle, &language, "mic").await {
         Ok(s) => {
             log_line(&app_handle, "start_recording: stt mic ok");
             s
@@ -172,7 +153,7 @@ pub async fn start_recording(
     };
 
     let system_sidecar = if capture_system {
-        match start_stt_backend(&app_handle, backend, &language, "system").await {
+        match start_stt_backend(&app_handle, &language, "system").await {
             Ok(s) => {
                 log_line(&app_handle, "start_recording: stt system ok");
                 Some(s)
@@ -310,9 +291,9 @@ pub fn stop_recording(
     for sidecar in sidecars.drain(..) {
         #[cfg(debug_assertions)]
         eprintln!("[commands] stopping stt session_id={}", sidecar.session_id());
-        // Both backends flush before shutting down, so one last `transcript`
-        // event can arrive after this point (behavior identical to the Azure
-        // SDK's `stop_continuous_recognition`).
+        // The backend closes its socket after this signal, so one last `transcript`
+        // event can still arrive — the provider may already have a completed
+        // utterance in flight.
         sidecar.stop();
     }
 

@@ -58,9 +58,10 @@ jobs:
           # dropped rather than kept as a promise.
           #
           # No `args` either. There used to be a `--features stt-local` here, believed to
-          # exclude an Azure Speech path; it never did, and that path is gone. The embedded
-          # STT (whisper.cpp via whisper-rs, ADR 0035) is the only backend and is already
-          # the default feature, so `tauri build` takes no flags at all.
+          # exclude an Azure Speech path; it never did, and both that path and the embedded
+          # engine it named are gone (ADR 0039/0045 moved transcription to the provider's
+          # realtime API). The crate has no `[features]` section at all, so `tauri build`
+          # takes no flags.
           - platform: windows-latest
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
@@ -143,22 +144,14 @@ jobs:
         with:
           toolchain: stable
 
-      # whisper-rs-sys compiles whisper.cpp with CMake + MSBuild. CMake generates deep
-      # scratch paths (…/out/build/CMakeFiles/CMakeScratch/TryCompile-XXXXXXX/
-      # cmTC_XXXXX.dir/Debug/cmTC_XXXXX.tlog) that blow past Windows' 260-char MAX_PATH,
-      # and MSBuild fails with `MSB6003: CL.exe could not be run /
-      # DirectoryNotFoundException`. Reproduced locally on 2026-08-07.
+      # A `Windows — long paths (whisper.cpp/CMake)` step used to sit here. It existed because
+      # whisper-rs-sys compiled whisper.cpp with CMake + MSBuild, whose TryCompile scratch paths
+      # blew past Windows' 260-char MAX_PATH and failed with `MSB6003: CL.exe could not be run`.
+      # There is no C++ build in this crate any more (ADR 0039/0045).
       #
-      # We do NOT set CARGO_TARGET_DIR here: tauri-action locates the bundles on its own
-      # by cargo's default layout, and moving the target dir would risk the SIGNED release
-      # not finding what to package. The runner workspace is already short; LongPathsEnabled
-      # covers the rest. (In ci.yml's desktop-rust job, which uploads no artifact, we set it.)
-      - name: Windows — long paths (whisper.cpp/CMake)
-        shell: pwsh
-        run: |
-          git config --global core.longpaths true
-          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
-            -Name LongPathsEnabled -Value 1 -Type DWord -Force
+      # If a future dependency ever needs it back: do NOT also set CARGO_TARGET_DIR here.
+      # tauri-action locates the bundles by cargo's default layout, and moving the target dir
+      # would risk the SIGNED release not finding what to package.
 
       - name: Rust cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2

@@ -10,11 +10,7 @@ mod live_analysis;
 mod secrets;
 mod stt;
 mod stt_cloud;
-#[cfg(feature = "stt-local")]
-mod stt_local;
 mod stt_token;
-#[cfg(feature = "stt-local")]
-mod whisper_model;
 mod stealth_mode;
 mod system_audio;
 mod windows;
@@ -25,26 +21,17 @@ use stealth_mode::StealthModeState;
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::Manager;
 
-/// Live STT backends (one per track). `Box<dyn SttBackend>` because the backend
-/// is chosen at runtime — see `stt::configured_backend`. The name stayed
-/// `SidecarState` to avoid spreading a rename everywhere; not every backend here is
-/// a sidecar (the local one runs in-process).
+/// Live STT backends (one per track). Still `Box<dyn SttBackend>` with one
+/// implementation: the box is what lets `commands.rs` keep mic and system in one
+/// `Vec` and stop them uniformly. The name stayed `SidecarState` to avoid spreading
+/// a rename everywhere; nothing here has been a sidecar since the Python one went.
 pub type SidecarState = Arc<Mutex<Vec<Box<dyn stt::SttBackend>>>>;
 
-/// Reads a `plugins.nora` key from the `tauri.conf.json` embedded at build-time.
-///
-/// Exists because a runtime env var does not reach an app opened from Finder/Explorer:
-/// product config (STT backend, model size) has to come from the bundle.
-pub fn nora_config_str(key: &str) -> Option<String> {
-    const CONFIG_JSON: &str = include_str!("../tauri.conf.json");
-    let config: serde_json::Value = serde_json::from_str(CONFIG_JSON).ok()?;
-    config
-        .get("plugins")?
-        .get("nora")?
-        .get(key)?
-        .as_str()
-        .map(str::to_string)
-}
+// `nora_config_str` used to live here, reading arbitrary `plugins.nora` keys out of the
+// bundled `tauri.conf.json`. Its two callers were the STT backend selector and the Whisper
+// model size, and both questions went with ADR 0039 — one backend, and the model is chosen
+// by the server that pays for it. `api_base_url` below parses the same file directly, for
+// the one key that is still a build-time decision.
 
 /// Resolves the API base URL once (memoized). Priority:
 /// 1) env `NORA_API_BASE_URL` injected at build-time by build.rs (CI/production);

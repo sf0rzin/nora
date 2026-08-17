@@ -6,17 +6,13 @@ fn main() {
     }
     println!("cargo:rerun-if-env-changed=NORA_API_BASE_URL");
 
-    // STT config injected at build-time. Needed because an app opened from
-    // Finder/Explorer does NOT inherit env from the user's shell — without this you could only
-    // switch backend/model in dev.
-    //   NORA_STT_BACKEND  = local | azure
-    //   NORA_WHISPER_MODEL = tiny | base | small | medium
-    for key in ["NORA_STT_BACKEND", "NORA_WHISPER_MODEL"] {
-        if let Ok(v) = std::env::var(key) {
-            println!("cargo:rustc-env={key}={v}");
-        }
-        println!("cargo:rerun-if-env-changed={key}");
-    }
+    // There used to be a second block here baking `NORA_STT_BACKEND` and `NORA_WHISPER_MODEL`
+    // into the binary, because an app opened from Explorer does not inherit the shell's env and
+    // those two were the only way to pick an engine and a model size. Both questions are gone:
+    // transcription is the provider's realtime API (ADR 0039/0045), there is one backend, and the
+    // model is chosen by the server when it mints the session — which is where a cost decision
+    // belongs. `NORA_API_BASE_URL` is the one thing left that has to be decided at build time,
+    // because it says which NORA to talk to.
 
     tauri_build::build()
 }

@@ -276,11 +276,17 @@ mod tests {
 
     /// Truncation is by character. Cutting this by byte panics — and it would panic while
     /// building the message that explains why the request failed.
+    ///
+    /// Written as `\u{e3}` rather than the literal letter so this file stays out of
+    /// `check-language.sh`'s allowlist: the guard looks for accented characters, it cannot tell a
+    /// two-byte test fixture from pt-BR prose, and an allowlist entry here would exempt the whole
+    /// module from a check it should keep passing.
     #[test]
     fn first_line_does_not_split_a_multibyte_character() {
-        let accented = "ã".repeat(400);
+        const A_TILDE: char = '\u{e3}';
+        let accented: String = std::iter::repeat(A_TILDE).take(400).collect();
         let out = first_line(&accented);
         assert_eq!(out.chars().count(), 201);
-        assert!(out.starts_with('ã'));
+        assert!(out.starts_with(A_TILDE));
     }
 }

@@ -1,19 +1,26 @@
 //! Common contract of the desktop speech-to-text backend.
 //!
-//! There is one — `local`, whisper.cpp in-process, see `stt_local.rs`. It uses no
-//! network, no `/speech/token`, and spawns no subprocess. The Azure Speech sidecar
-//! that used to sit beside it was deleted; `NORA_STT_BACKEND` is still read, but
-//! every value other than `local`/`whisper` now falls back with a warning.
+//! There is one — `stt_cloud.rs`, streaming to the provider's realtime API over a
+//! WebSocket with a short-lived credential minted by the NORA backend (ADR 0039,
+//! ADR 0045). The in-process whisper.cpp engine that used to sit here went with
+//! that migration, and the Azure Speech sidecar before it.
 //!
-//! The runtime-selection machinery is kept deliberately: cloud transcription comes
-//! back as a second backend, so the seam is worth more than the few lines it costs.
+//! ## The selection machinery is gone, and that was the point of keeping it
+//!
+//! `SttBackendKind`, `configured_backend()` and `NORA_STT_BACKEND` existed so that
+//! cloud transcription could arrive as a second backend without disturbing
+//! `commands.rs`. It has arrived, the local one has left, and a one-variant enum
+//! resolved from three configuration sources is a mechanism that decides nothing.
+//! What survives is the part that was actually load-bearing: the `SttBackend` trait
+//! below, which is why `commands.rs` can hold one handle per track without knowing
+//! what is behind them.
 //!
 //! THE CONTRACT WITH THE FRONT DOES NOT CHANGE. It emits:
 //!   * `transcript` — `TranscriptEvent` payload (camelCase), consumed by
 //!     `use-live-transcript.tsx`, `use-recording.ts` and `overlay.tsx`;
 //!   * `stt-error`  — opaque JSON object with `code` and `message`.
 //!
-//! No file under `apps/desktop/src/` had to change because of this swap.
+//! No file under `apps/desktop/src/` had to change because of this swap either.
 
 use tokio::sync::mpsc;
 
@@ -28,7 +35,12 @@ use tokio::sync::mpsc;
 /// wrong speed, and the transcript comes back as confident nonsense. `stt_cloud` therefore warns on
 /// the mismatch and declares THIS number to the provider on connect, so what we send and what we
 /// say we send can never diverge.
-pub const TARGET_SAMPLE_RATE: u32 = 16_000;
+///
+/// 24 kHz, not the 16 kHz the local Whisper engine wanted: that is the rate the provider's realtime
+/// transcription session takes. Retargeting the capture is one resample from the device's rate,
+/// where keeping 16 kHz would have meant two — device to 16 k, then 16 k up to 24 k — and the
+/// second one would invent nothing while throwing away the 8-12 kHz band on the way.
+pub const TARGET_SAMPLE_RATE: u32 = 24_000;
 
 /// Event emitted to the front on every partial/final of transcription.
 ///
@@ -47,9 +59,12 @@ pub struct TranscriptEvent {
     pub is_final: bool,
     /// ABSOLUTE offset in ms since the start of that track's recording.
     ///
-    /// INVARIANT: monotonic non-decreasing per track. See the re-decode
-    /// discussion in `stt_local.rs` — the trap of streaming mode is reprocessing
-    /// the same window and emitting an offset smaller than the previous final's.
+    /// INVARIANT: monotonic non-decreasing per track. The deleted local engine
+    /// broke it by re-decoding a sliding window; the cloud client breaks it by
+    /// deriving the position from audio it managed to SEND rather than audio it
+    /// received. Both end the same way — the UI sorts and groups by time, so a
+    /// regressed offset scrambles the conversation. See the clock discussion in
+    /// `stt_cloud.rs`.
     pub offset_ms: u64,
     pub duration_ms: Option<u64>,
     pub confidence: Option<f32>,
@@ -112,14 +127,15 @@ pub fn speaker_id_for_track(track: &str) -> Option<String> {
 /// Live handle of a transcription session of ONE track.
 ///
 /// Object-safe on purpose: `commands.rs` keeps `Vec<Box<dyn SttBackend>>` in the
-/// Tauri state, mixing backends if needed. Synchronous methods so as not to
-/// drag in `async-trait` (the only async point is `start`, which lives in the
-/// concrete factories).
+/// Tauri state, one entry per track. Synchronous methods so as not to drag in
+/// `async-trait` (the only async point is `start`, which lives in the concrete
+/// factory).
 pub trait SttBackend: Send {
     /// Id of that track's session. Used only in log/diagnostics.
     fn session_id(&self) -> &str;
 
-    /// Channel through which `audio_capture` pushes PCM 16 kHz / mono / i16.
+    /// Channel through which `audio_capture` pushes mono i16 PCM at
+    /// [`TARGET_SAMPLE_RATE`].
     ///
     /// The caller uses `try_send` and DROPS the sample when full: real time is
     /// worth more than completeness. See `commands.rs`.
@@ -129,83 +145,6 @@ pub trait SttBackend: Send {
     /// the stop. The backend does a final flush before dying, so there MAY be
     /// one last `transcript` event after this call.
     fn stop(self: Box<Self>);
-}
-
-/// Which implementation is active.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SttBackendKind {
-    Local,
-    /// Streaming to the provider over a WebSocket, with a credential minted by the backend
-    /// (ADR 0039). See `stt_cloud.rs`.
-    Cloud,
-}
-
-impl SttBackendKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            SttBackendKind::Local => "local",
-            SttBackendKind::Cloud => "cloud",
-        }
-    }
-}
-
-/// Effective backend, memoized. Priority:
-///
-/// 1. env `NORA_STT_BACKEND` at runtime — only works when the app is launched
-///    from a shell (dev). App opened from Finder/Explorer does NOT inherit the user env.
-/// 2. `NORA_STT_BACKEND` injected at build-time by `build.rs` (CI/release).
-/// 3. `plugins.nora.sttBackend` in `tauri.conf.json`.
-/// 4. Default: `local`, the only backend there is.
-///
-/// Unknown value falls back to the default with a warning — never kills the app.
-/// Since the Azure sidecar was removed, `azure` and `sidecar` are unknown values
-/// like any other, so an old config or a stale env var degrades instead of failing.
-pub fn configured_backend() -> SttBackendKind {
-    static KIND: std::sync::OnceLock<SttBackendKind> = std::sync::OnceLock::new();
-    *KIND.get_or_init(|| {
-        let raw = std::env::var("NORA_STT_BACKEND")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .or_else(|| option_env!("NORA_STT_BACKEND").map(str::to_string))
-            .or_else(|| crate::nora_config_str("sttBackend"))
-            .unwrap_or_default();
-
-        let resolved = match raw.trim().to_ascii_lowercase().as_str() {
-            "" => default_backend(),
-            "local" | "whisper" => SttBackendKind::Local,
-            "cloud" | "openai" => SttBackendKind::Cloud,
-            other => {
-                eprintln!(
-                    "[stt] NORA_STT_BACKEND unknown: {:?} — using {}",
-                    other,
-                    default_backend().as_str()
-                );
-                default_backend()
-            }
-        };
-
-        // Asked for a backend that was not compiled into this binary: degrade to
-        // the one that exists instead of blowing up mid-recording.
-        let available = match resolved {
-            SttBackendKind::Local => cfg!(feature = "stt-local"),
-            // Always compiled in: the cloud client has no optional native dependency.
-            SttBackendKind::Cloud => true,
-        };
-        if !available {
-            eprintln!(
-                "[stt] backend {:?} was not compiled into this binary — falling back to default",
-                resolved.as_str()
-            );
-            return default_backend();
-        }
-
-        eprintln!("[stt] active backend: {}", resolved.as_str());
-        resolved
-    })
-}
-
-const fn default_backend() -> SttBackendKind {
-    SttBackendKind::Local
 }
 
 #[cfg(test)]
@@ -228,9 +167,14 @@ mod tests {
         assert!(!SYSTEM_SPEAKER_ID.is_empty(), "empty id is falsy in JS and disappears from detectedSpeakers");
     }
 
+    /// The number the whole pipeline agrees on. It is asserted rather than merely declared
+    /// because a change here is silent everywhere else: the capture path would resample to the
+    /// new rate, `stt_cloud` would declare the new rate to the provider, everything would keep
+    /// working — and the provider would be receiving audio at a rate the backend was not
+    /// configured to mint sessions for. Changing this line means changing
+    /// `nora.stt.openai.sample-rate` in the same PR.
     #[test]
-    fn backend_kind_round_trip() {
-        assert_eq!(SttBackendKind::Local.as_str(), "local");
-        assert_eq!(SttBackendKind::Cloud.as_str(), "cloud");
+    fn the_pipeline_targets_the_rate_the_provider_takes() {
+        assert_eq!(TARGET_SAMPLE_RATE, 24_000);
     }
 }

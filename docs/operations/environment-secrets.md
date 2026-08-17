@@ -102,7 +102,7 @@ Files: `.env.example` (root), `infra/docker/docker-compose.yml`.
 
 ### 2.6 Desktop — `apps/desktop` (OUT OF SCOPE)
 
-For reference only (not audited). It does not share server secrets. Local variables: `NORA_API_BASE_URL` and the `NORA_WHISPER_*` set (see `apps/desktop/.env.example`). `NORA_SIDECAR_PATH` went with the Azure Speech sidecar, and `GDK_BACKEND`/`WEBKIT_DISABLE_DMABUF_RENDERER` with Linux support. In prod the Tauri bundle uses `vars.NORA_API_BASE_URL` (GitHub Variable) baked in at build-time by `ci.yml`. **This Variable also does not exist today** (it falls back to the hardcoded Azure dev value) — not critical.
+For reference only (not audited). It does not share server secrets. Local variables: `NORA_API_BASE_URL`, and that is now the whole list (see `apps/desktop/.env.example`). The `NORA_WHISPER_*` set and `NORA_STT_BACKEND` went with the on-device engine (ADR 0039/0045) — model, format and session lifetime are resolved by the API that pays for them, and **the provider key must never appear in this app’s environment**. `NORA_SIDECAR_PATH` went with the Azure Speech sidecar, and `GDK_BACKEND`/`WEBKIT_DISABLE_DMABUF_RENDERER` with Linux support. In prod the Tauri bundle uses `vars.NORA_API_BASE_URL` (GitHub Variable) baked in at build-time by `ci.yml`. **This Variable also does not exist today** (it falls back to the hardcoded Azure dev value) — not critical.
 
 ## 3. Current state on GitHub (cross-check)
 

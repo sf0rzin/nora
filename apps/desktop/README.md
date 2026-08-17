@@ -1,43 +1,37 @@
 # NORA Desktop
 
 Desktop application for real-time audio capture and meeting transcription.
-Transcription runs **locally on the user's machine** (embedded Whisper). There is
-no cloud STT backend and no subprocess: audio does not leave the machine.
+Transcription is the **transcription provider's realtime API**, reached over a WebSocket
+with a short-lived credential minted by the NORA backend (ADR 0039, ADR 0045). The
+provider account key never reaches this application, and the audio goes from here
+straight to the provider — it does not pass through NORA's infrastructure.
+
+> **The audio does leave the machine.** This replaced an on-device engine that kept it
+> local (ADR 0035), and that reversal was deliberate; ADR 0040 is where the privacy
+> consequence is recorded rather than glossed. Do not describe this client as offline.
 
 > **Windows only.** macOS and Linux were dropped: the macOS path required the user to
 > install the BlackHole virtual driver and the Linux path shelled out to PulseAudio's
 > `parecord`, and neither had ever been exercised by anyone. ADR 0008 and ADR 0035 describe
-> a three-platform client — they are accepted records of what was decided at the time, and
-> this is what the client does now.
+> a three-platform client with on-device Whisper — they are accepted records of what was
+> decided at the time, and this is what the client does now.
 
 ## Stack
 
 - **Frontend**: React 18 + TypeScript + Tailwind CSS
 - **Backend**: Tauri 2 (Rust)
-- **STT**: `whisper.cpp` in-process via the [`whisper-rs`](https://crates.io/crates/whisper-rs) crate — offline, no network
+- **STT**: the provider's realtime streaming API over a WebSocket (`tokio-tungstenite`, rustls)
 - **Build**: Vite + Tauri CLI
 
 ## Prerequisites
 
-> `whisper.cpp` is compiled from C++ source by the `whisper-rs-sys` build
-> script. That puts **CMake + a C++ compiler** on the list of prerequisites.
-
-### Windows
-
-- [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with the **"Desktop development with C++"** workload
-- [CMake](https://cmake.org/download/) on the `PATH`
 - [Node.js 20](https://nodejs.org/)
 - [Rust](https://rustup.rs/)
 
-> **Long path (MAX_PATH):** the MSBuild that CMake uses underneath still has
-> parts limited to 260 characters. If the repository is in a deep
-> directory (`C:\Users\<you>\OneDrive\Desktop\...`), the `whisper-rs-sys` build
-> fails with `error MSB6003 ... cmTC_xxxx.tlog` / `DirectoryNotFoundException`.
-> It is not a code error. Work around it with a short target dir:
->
-> ```powershell
-> $env:CARGO_TARGET_DIR = "C:\nrt"
-> ```
+> There is **no C++ toolchain requirement** any more. The old on-device engine vendored
+> whisper.cpp and built it from source, which put CMake, the MSVC C++ workload and a
+> `MAX_PATH` workaround on this list, and made `cargo check` need `libclang` for bindgen.
+> All of it went with ADR 0039/0045.
 
 ## Development
 
@@ -48,16 +42,15 @@ cd apps/desktop
 # Install dependencies
 npm install
 
-# Run in dev mode. The first `start_recording` downloads the Whisper
-# model (~488 MB on `small`).
+# Run in dev mode.
 npx tauri dev
 ```
 
-To iterate quickly without waiting for the large model:
-
-```bash
-NORA_WHISPER_MODEL=tiny npx tauri dev
-```
+Recording needs a reachable NORA API with a transcription credential configured
+(`NORA_STT_OPENAI_API_KEY` — see `services/api/.env.example`), and a logged-in session in
+the `main` window. **Do not put a provider key in this app's `.env`**: a key in a
+distributed desktop binary is a published key, which is the whole reason the backend mints
+session credentials.
 
 ## Production Build
 
@@ -89,9 +82,9 @@ apps/desktop/
     ├── src/
     │   ├── audio_capture.rs      # Audio capture (cpal)
     │   ├── audio_resample.rs     # Resampling (rubato)
-    │   ├── stt.rs                # SttBackend trait + backend selection
-    │   ├── stt_local.rs          # STT: whisper.cpp in-process
-    │   ├── whisper_model.rs      # Download/cache/checksum of the GGML model
+    │   ├── stt.rs                # SttBackend trait, TranscriptEvent, TARGET_SAMPLE_RATE
+    │   ├── stt_token.rs          # Fetches the ephemeral session from POST /stt/sessions
+    │   ├── stt_cloud.rs          # STT: streaming WebSocket client, one per track
     │   ├── system_audio.rs       # System audio (WASAPI loopback)
     │   ├── live_analysis.rs      # Live highlights + overlay toggle
     │   ├── stealth_mode.rs       # Hide the windows from screen capture (Windows only)
@@ -115,57 +108,91 @@ apps/desktop/
 │   │  (React)    │  "transcript"  │    (Tauri)     │   │
 │   └─────────────┘     event      └──┬─────────────┘   │
 │                                     │                 │
-│      backend selected at runtime    │                 │
 │                                     ▼                 │
 │                        ┌────────────────────────┐     │
-│                        │ stt_local.rs           │     │
-│                        │ whisper.cpp in-process │     │
-│                        │ offline, no network    │     │
-│                        └────────────────────────┘     │
-└───────────────────────────────────────────────────────┘
+│                        │ stt_cloud.rs           │     │
+│                        │ one WebSocket per track│     │
+│                        └────────┬───────────────┘     │
+└─────────────────────────────────┼─────────────────────┘
+                                  │
+      POST /stt/sessions          │  PCM16 + transcript events
+      (session credential)        │
+              │                   │
+              ▼                   ▼
+      ┌───────────────┐   ┌──────────────────────┐
+      │   NORA API    │   │ Transcription        │
+      │ holds the key │   │ provider (realtime)  │
+      └───────────────┘   └──────────────────────┘
 ```
 
 ### Data Flow
 
 1. **Capture**: Rust (cpal) captures audio from the microphone and from the system
-2. **Resampling**: converts to PCM 16 kHz / 16-bit / mono
-3. **Routing**: one STT session per track (`mic` and `system`), both behind the `SttBackend` trait
-4. **Transcription**: `whisper.cpp` in-process, one re-decode loop per track
+2. **Resampling**: converts to mono PCM16 at `stt::TARGET_SAMPLE_RATE`
+3. **Session**: one credential per track from `POST /stt/sessions`, minted by the backend
+4. **Streaming**: one WebSocket per track (`mic` and `system`), both behind the `SttBackend` trait
 5. **UI**: both tracks emit the **same** Tauri `transcript` event — the frontend does not distinguish them
 
 ## Speech-to-Text (STT)
 
-### Backend selection
+### There is one backend, and no selection machinery
 
-There is **one** backend, `local`. It is still resolved at **runtime**, in this
-priority order (`src/stt.rs`):
+`SttBackendKind`, `configured_backend()` and `NORA_STT_BACKEND` are gone. They existed so
+cloud transcription could arrive as a second backend without disturbing `commands.rs`; it
+arrived, the local one left, and a one-variant enum resolved from three configuration
+sources decides nothing. The `SttBackend` trait stays — it is what lets `commands.rs` hold
+one handle per track and stop them uniformly.
 
-1. env `NORA_STT_BACKEND` (only works when launching the app from a terminal)
-2. env injected at build time by `build.rs` (CI/release)
-3. `plugins.nora.sttBackend` in `tauri.conf.json`
-4. default: `local`
+The Cargo manifest has no `[features]` section at all, so a plain `cargo build` is the
+whole product.
 
-The only accepted values are `local` and `whisper`. Anything else — including a
-stale `azure` left in an old config or in a shell — falls back to the default
-with a warning on stderr instead of failing; it never takes the app down.
+### The session credential
 
-The selection machinery is kept on purpose even with a single implementation:
-cloud transcription is planned to come back as a second backend, and the seam is
-worth more than the few lines it costs.
+`stt_token.rs` calls `POST /stt/sessions` with the web session JWT
+(`auth_bridge::web_session_jwt`, the cookie from the `main` window). The response carries a
+short-lived client secret plus the endpoint, model, audio format and sample rate the server
+chose — the client hardcodes none of them, so a provider rename is a server variable rather
+than a desktop release.
 
-`stt-local` is the only default feature, so a plain build is the local backend:
+**There is no renewal loop, and that is deliberate.** The credential's expiry governs how
+long it can *open* a connection; a session already open outlives it. What the client keeps
+from the deleted Azure broker is the 60-second slack, used for a narrower job: refusing a
+credential that would be rejected between here and the handshake.
 
-```bash
-cargo build                                # stt-local, CPU
-cargo build --features whisper-vulkan      # opt-in GPU, needs the Vulkan SDK
-```
+A dropped connection asks for a **new** session — the credential is not renewable — which
+means a fresh authorization check and a fresh telemetry row on the backend each time.
+
+### Reconnection leaves a hole, and says so
+
+While the socket is down, captured audio is discarded. That follows the rule the pipeline
+has always had (real time beats completeness) but the result is a gap in the transcript
+rather than a dropped sample, so it goes out on `stt-error` with code `STT_SESSION_LOST`
+and the overlay renders it as a toast. Reconnection is bounded at five consecutive
+failures, after which the track emits `STT_SESSION_ENDED` and stops; the recording itself
+continues.
+
+The offset clock survives the gap. It counts audio **received from capture**, not audio
+successfully sent, so it advances through the outage and the transcript resumes at the
+right position instead of the length of the outage behind.
+
+### Error codes on `stt-error`
+
+| Code | Means |
+| --- | --- |
+| `STT_AUTH_REJECTED` | the NORA API refused the caller (401/403), or there is no web session |
+| `STT_QUOTA_EXCEEDED` | the per-user session budget is spent (429) |
+| `STT_NOT_CONFIGURED` | the deployment has no provider credential (503) |
+| `STT_SERVICE_UNAVAILABLE` | the API could not reach the provider (502/504) |
+| `STT_TRANSPORT_FAILED` | the NORA API itself was unreachable |
+| `STT_SESSION_LOST` | the stream dropped and is reconnecting; audio in the gap is lost |
+| `STT_SESSION_ENDED` | reconnection gave up; no more text for this track |
+| `STT_PROVIDER_ERROR` | the provider sent an error frame on an open session |
 
 ### Speaker attribution: PER TRACK (there is no online diarization)
 
-A deliberate product decision. Whisper **does not do diarization**, and
-WhisperX/pyannote are batch by construction — there is no honest streaming
-version of that. Instead of inventing unstable labels that would corrupt the
-recorded transcript with name *churn*:
+A deliberate product decision, carried forward unchanged from ADR 0035 §Decision 4. The
+provider's realtime transcription is per stream and carries no notion of a speaker, so
+nothing is recovered by the vendor change and nothing is promised.
 
 | Track    | Who it is                  | `speakerId` emitted |
 | -------- | -------------------------- | ------------------- |
@@ -182,69 +209,36 @@ filled in on upload. Renaming in the overlay keeps working normally.
 grouped under a single label. That is intentional — it is the price of having no
 online diarization, not a bug.
 
-### Model
-
-Downloaded **on demand on first use** into `<app_data_dir>/models/`, with
-`sha256` verification. No model is embedded in the installer.
-
-| Size     | Download | Approx. RAM | Note                                          |
-| -------- | -------- | ----------- | --------------------------------------------- |
-| `tiny`   | ~78 MB   | ~0.4 GB     | smoke test/CI only; poor quality in pt-BR     |
-| `base`   | ~148 MB  | ~0.6 GB     | acceptable in pt-BR, runs on a weak CPU       |
-| `small`  | ~488 MB  | ~1.2 GB     | **default** — best trade-off in pt-BR         |
-| `medium` | ~1.5 GB  | ~3 GB       | best quality; requires a strong CPU or a GPU  |
-
-The two tracks **share** a single `WhisperContext` (the weights); only the KV
-cache is per track. Without that, `small` would cost ~930 MB in weights alone.
-
-Download progress goes to the Tauri `stt-model-progress` event
-(`checking` → `downloading` → `verifying` → `ready` | `error`). The frontend does not
-listen to that event yet — the hook is ready, the progress bar UI is not.
-
-### Machine requirements
-
-- **CPU**: 4 cores is the realistic floor for `small` with two simultaneous tracks.
-  Inference uses half the cores per track (capped at 4) precisely because there are two
-  decoding at the same time; giving `min(4, cores)` to each causes
-  *oversubscription* and worsens latency.
-- **RAM**: model + KV cache + the Tauri webview.
-- **Disk**: the size of the model, once, in the app data dir.
-- **GPU**: none by default — whisper.cpp runs on CPU. Vulkan/CUDA are explicit opt-in
-  (`--features whisper-vulkan` / `whisper-cuda`) because they require the vendor SDK
-  on the **build** machine, not just the runtime one. (Metal used to be on by default,
-  automatically, on macOS. It went with macOS support.)
-
 ### What this means for the user
 
 | | |
 | --- | --- |
-| Network | **not used** for transcription |
-| Audio leaving the machine | **never** |
-| Cost per minute | zero |
-| First use | downloads the model (~488 MB on `small`) |
+| Network | **required** — no network, no transcription |
+| Audio leaving the machine | **yes**, straight to the provider (not through NORA) |
+| Cost per minute | real, billed to NORA; small at demonstration volume |
+| First use | nothing to download, no hardware floor |
 | Diarization | per track (see above) |
-| Latency | pseudo-real-time, ~1 s per partial |
-| `confidence` | **not calibrated** (see below) |
+| Latency | real streaming; partials are incremental |
+| `confidence` | always `null` (see below) |
 
 ### Note on `confidence`
 
-The emitted value is `exp(mean of the tokens' ln(p))` — Whisper's `avg_logprob`
-normalized. It is **not comparable** with the `NBest[0].Confidence` of the Azure
-Speech backend this replaced, which was a trained score. A fluent hallucination
-scores **high**, and the scale changes with the model size. It is good for ordering
-segments within the same session and the same model, and nothing else. Any threshold
-carried over from the old scale needs to be recalibrated.
+Always `null`, and it stays that way. ADR 0035 refused to publish an uncalibrated logprob
+average in a field that used to carry a trained score, and ADR 0039 carried that refusal
+forward: token logprobs are obtainable from this provider too and are still not calibrated.
+Re-populating the field would silently give every downstream threshold a new meaning.
 
-### Streaming: how it works
+### Sample rate
 
-Whisper has a fixed 30 s window and **has no incremental state**. Streaming
-here is a re-decode loop over a sliding window with energy-based VAD: roughly every
-900 ms the window is re-decoded and a `partial` comes out; when the VAD sees ~700 ms of
-silence (or the window reaches 22 s), the `final` comes out and the clock advances.
+One constant, `stt::TARGET_SAMPLE_RATE`, is the rate every capture path resamples to and
+the rate the client declares to the provider on connect. It must agree with
+`nora.stt.openai.sample-rate` on the backend, which is what sessions are minted with.
 
-The trap is the **offset regressing** between re-decodes. The `committed_ms` counter is
-monotonic and is the base offset of every event; the `final`s go through a
-`last_final_end_ms.max(...)` clamp. Details in `src/stt_local.rs`.
+A disagreement fails nowhere: it plays the audio to the provider at the wrong speed and
+comes back as confident nonsense. The client therefore warns when the two differ and always
+declares the rate it actually sends, so what is streamed and what is claimed cannot
+diverge. `stt.rs` carries a unit test asserting the number, so changing it is a decision
+rather than an edit.
 
 ## Environment Variables
 
@@ -253,72 +247,50 @@ See `.env.example` for the full, commented list.
 ```bash
 # NORA API URL (default: http://localhost:8080)
 NORA_API_BASE_URL=http://localhost:8080
-
-# STT
-NORA_STT_BACKEND=local        # local | whisper — anything else falls back to local
-NORA_WHISPER_MODEL=small      # tiny | base | small | medium
 ```
 
-> An app opened from Explorer/Finder **does not inherit env from the shell**. In production the
-> effective value comes from `tauri.conf.json` or from the env injected at build time.
+That is the whole list on this side. Everything about transcription — provider, model,
+audio format, VAD, session lifetime — is resolved by the backend that pays for it.
+
+> An app opened from Explorer **does not inherit env from the shell**. In production the
+> effective value comes from `tauri.conf.json` or from the env injected at build time by
+> `build.rs`.
 
 ## CI/CD
 
 The `desktop-bundle` job builds one artifact, Windows (x86_64) `.msi`, and it runs only on
 a push to `main` — not on pull requests. See `.github/workflows/ci.yml` for details.
 
-> **Known pending item.** Compiling `whisper.cpp` from source changes the CI requirements
-> and that **has not been validated on a runner**:
->
-> - The current `timeout-minutes: 60` may not be enough on a cold *cache miss*: the
->   ggml/whisper C++ build lands on the critical path.
-> - `swatinem/rust-cache` caches `target/`, which includes the C++ artifacts —
->   but the key is invalidated on every `Cargo.lock` change.
-> - The updater-signature verification moved from the Ubuntu runner (where `minisign` was
->   an apt package) to the Windows one, where it installs through Chocolatey. Because the
->   job does not run on pull requests, the first push to `main` is what proves that port.
+> The `desktop-rust` job used to take about ten minutes per merge, almost all of it
+> compiling whisper.cpp through a build script, and both workflows carried a `MAX_PATH`
+> workaround for CMake's scratch directories. Both are gone (ADR 0039/0045).
 
 ## Troubleshooting
 
-### Windows: `error MSB6003` / `DirectoryNotFoundException` when compiling whisper.cpp
+### "Session not found — please log in in the Nora main window"
 
-MSBuild's 260-character limit, not a code error. Use a short target dir:
+The desktop authenticates with the web session cookie of the `main` window. Open it and log
+in; there is no separate desktop login, and the keyring is not a source of credentials for
+these paths.
 
-```powershell
-$env:CARGO_TARGET_DIR = "C:\nrt"
-```
+### Recording refuses to start with `STT_NOT_CONFIGURED`
 
-### Model download fails or hangs
+The API you are pointing at has no transcription credential. Set
+`NORA_STT_OPENAI_API_KEY` (or `OPENAI_API_KEY`) on the **API**, never here.
 
-The model comes from HuggingFace. On a network that blocks HF, point at a mirror
-(the checksum is still verified):
+### The transcript has a gap and a "reconnecting" toast appeared
 
-```bash
-NORA_WHISPER_MODEL_BASE_URL=https://mirror.interno/whisper.cpp
-```
+Expected behaviour on a dropped connection, not a bug: audio captured while the socket was
+down is not transcribed. The offsets after the gap are still correct. Repeated drops that
+end in `STT_SESSION_ENDED` mean five consecutive reconnection attempts failed — check the
+network and the API.
 
-To use a local file (skips the download **and** the checksum):
+### Transcription is out of sync or reads as nonsense
 
-```bash
-NORA_WHISPER_MODEL_PATH=/path/ggml-small.bin
-```
-
-A `.bin` that fails verification is deleted and re-downloaded from scratch — there is no resume.
-Cache in `<app_data_dir>/models/`; deleting that folder forces a fresh download.
-
-### Local transcription too slow
-
-In this order:
-
-1. Downgrade the model: `NORA_WHISPER_MODEL=base` (or `tiny` for testing).
-2. Reduce the encoder: `NORA_WHISPER_AUDIO_CTX=768` (loses quality).
-3. Tune threads: `NORA_WHISPER_THREADS=N` — remember that **there are two tracks**
-   decoding at the same time; raising it too much makes things worse.
-4. Turn off system audio capture if you only need your microphone —
-   it cuts half the inference load.
-
-If `GAP of Nms in the audio (inference lagging)` shows up in the log, the machine is not
-keeping up with real time and audio is being dropped.
+Check that `stt::TARGET_SAMPLE_RATE` and the API's `nora.stt.openai.sample-rate` are the
+same number. A mismatch is the one failure mode in this path that produces confident
+garbage instead of an error, and the desktop log carries a `[stt_cloud]` warning naming
+both values.
 
 ## License
 
