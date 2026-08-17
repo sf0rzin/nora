@@ -185,6 +185,9 @@ class AuthorizationCoverageIntegrationTest {
         calls.post(
                 "/iam/simulate",
                 json(Map.of("userId", id, "action", "meeting:read", "resource", "arn")));
+        // US41: a constant catalogue, so it rides on iam:policy:read instead of its own action.
+        // Constant is not the same as public — without that grant it is refused like the rest.
+        calls.get("/iam/policy-templates");
 
         // invitations
         calls.post("/iam/users/invite", json(Map.of("email", "convidado@nora.dev")));

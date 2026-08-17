@@ -202,13 +202,15 @@ is the authority, and this roadmap does not schedule what that document plans.
 - **Closed scope (`WONT`)** — corporate SSO (US05), aggregated Account Health (US50) and its band
   alert (US51), and the Enterprise DPA and SLA. These are not waiting for a criterion (ADR 0038 §4).
   US47 — pulling project state out of external trackers — is closed by ADR 0041.
-- **Open, with no scheduled trigger** — US08 (audio upload), US41 (policy templates), US44
-  (permission boundaries). ADR 0038 neither kills nor reactivates them; each of their ADR 0014
-  criteria was commercial, and ADR 0038 §1 says none of those conditions will occur. "Open with no
-  trigger" is a weaker statement than "deferred until X", and it is the true one. **US33 and US34
-  left this category**: ADR 0046 §1 reactivated them and both are delivered — `GET /usage` and the
-  client-side period export. ADR 0046 also decides the other three, and where this bullet and that
-  ADR disagree the ADR is the authority.
+- ~~**Open, with no scheduled trigger**~~ — **this category is empty, and emptying it is what ADR
+  0046 was written to do.** It held US08, US33, US34, US41 and US44: stories ADR 0038 neither
+  killed (§4) nor reactivated (§5), each carrying an ADR 0014 criterion that was commercial and
+  therefore unreachable under ADR 0038 §1. "Open with no trigger" was a weaker statement than
+  "deferred until X" and it was the true one — which is exactly why it could not be left standing.
+  ADR 0046 §1 reactivated US33, US34, US41 and US44 (US33 and US34 delivered as `GET /usage` plus
+  a client-side period export; US41 and US42 as a code-shipped template catalogue and a form
+  beside the JSON editor), and ADR 0046 §2 moved US08 to **WONT** with a reason that can be
+  checked, replacing one that never could.
 - **The operations block** — one reactivation trigger for all of it: **NORA acquires a user who is
   not the maintainer** (ADR 0038 §6).
 
@@ -240,7 +242,7 @@ For a sub-phase to be considered **closed** (`DONE`):
 | **SSO Entra ID / SAML** (US05) | **Closed** by ADR 0038 §4 |
 | **Polish + Demo + Pitch** | The pitch was held on 2026-06-15. The polish landed with the v3 redesign; the demo material is §2.1 |
 | **Trends panel** (US21) | **Reactivated** by ADR 0038 §5 and **delivered**: `GET /trends`, task load from SQL over `meeting_action_items` (with `completed_at` added by V030, because `updated_at` moves on any edit and would have dated completions wrong) and themes from `meeting_analyses.topics`. The prerequisite everyone assumed — a backfilled embedding index — turned out not to be one: the panel reads topics, not vectors, so ADR 0044's "the index has to be *run*, not just merged" does not gate it |
-| **Policy templates + Simulator** (US41 + US43) | US43 **reactivated** by ADR 0038 §5 and **delivered** — `POST /iam/simulate`. US41 open with no trigger |
+| **Policy templates + Simulator + form editor** (US41 + US42 + US43) | All three **delivered**. US43 was reactivated by ADR 0038 §5 — `POST /iam/simulate`; US41 and US42 by ADR 0046 §1, as `GET /iam/policy-templates` and a form beside the Monaco editor. US41 took **no migration**: the templates are a catalogue shipped in code, because a flagged row in `iam_policies` would still be an attachable policy id |
 | **Permission boundaries** (US44) | Open, no trigger. It needs an organisational hierarchy and IAM delegation that nothing else asks for |
 | **Tenant metrics and Export** (US33 + US34) | **Reactivated** by ADR 0046 §1 and **delivered**: `GET /usage` answers the tenant's own consumption, and the consolidated period report is generated client-side like US25/US60. The operator-facing telemetry (`/admin/platform/telemetry/*`) stays a different thing behind Cloudflare Access — its cross-tenant query was deliberately not reused, because it has no tenant predicate to forget |
 

@@ -44,7 +44,7 @@ NORA delivers elements that go beyond the typical academic rubric:
 - **Opt-in Productivity Score** (ADR 0005) — analysis of the meeting's productivity against the declared goal, with the mandatory disclaimer "an indicator of the meeting, not of the participants"
 - **Customer Confidence** (ADR 0006) — score per meeting with buying signals + objections, delivered full-stack with an authoritative per-account trend (PR #148)
 - **Production-grade self-hosted deploy** (ADR 0034/0036) — pull-based rollout whose deploy path opens no inbound port (the machine's own sshd is a separate matter, and is open), secrets encrypted with SOPS + age, self-hosting pitfalls catalogued in `docs/operations/host-deploy.md`. Rolling forward is still a manual `deploy.sh --tag` — the release pointer is published but nothing on the host consumes it. The earlier Azure deployment (8 Azure for Students pitfalls, OIDC workflow, 14 resources via Bicep IaC) is gone — no subscription, no export
-- **Test coverage on the three areas CI actually gates** (ADR 0018, ADR 0042) — a JaCoCo rule over `PolicyEvaluator` (instruction >= 90%, branch >= 75%), `--cov-fail-under=90` over the PII shield, and per-module coverage floors on four `apps/web/src/lib` modules. ADR 0018's ">85% across IAM, Auth and PII" is the aspiration; those three gates are what blocks a merge. See "Measured coverage" below for what the rest of the code actually measures
+- **Test coverage on the three areas CI actually gates** (ADR 0018, ADR 0042) — a JaCoCo rule over `PolicyEvaluator` (instruction >= 90%, branch >= 75%), `--cov-fail-under=90` over the PII shield, and per-module coverage floors on five `apps/web/src/lib` modules. ADR 0018's ">85% across IAM, Auth and PII" is the aspiration; those three gates are what blocks a merge. See "Measured coverage" below for what the rest of the code actually measures
 - **AGPL-3.0 License** (ADR 0017) — protection against clone-and-compete
 
 ### Measured coverage
@@ -62,9 +62,9 @@ Two different things get confused whenever this project quotes a coverage number
 | `PolicyEvaluator` — the one gated class | 96.3% instruction · 86.0% branch | idem |
 | NLP worker, whole package | **92.4%** statement (863 tests) | `pytest --cov=nora_nlp` |
 | Worker PII shield — the one gated module | 96.6% statement | idem |
-| `apps/web`, whole app | **7.7%** statement · 6.6% branch · 7.6% line (130 tests) | `npm run test:coverage` → Vitest + v8 |
-| ↳ *why that row is so low* | the unit suite covers seven `src/lib` modules; **no page and no component has a unit test** | the three Playwright e2e specs exercise routing, headers and CSP, and are not counted here |
-| `apps/web` gated modules | `redact.ts` 96.6% · `markdown.ts` 97.7% · `tasks-export.ts` 100% · `usage-report.ts` 98.4% · `password-policy.ts` 100% statement | idem |
+| `apps/web`, whole app | **9.54%** statement · 8.59% branch · 9.27% line (150 tests) | `npm run test:coverage` → Vitest + v8 |
+| ↳ *why that row is so low* | the unit suite covers eight `src/lib` modules; **no page and no component has a unit test** | the three Playwright e2e specs exercise routing, headers and CSP, and are not counted here |
+| `apps/web` gated modules | `redact.ts` 96.6% · `markdown.ts` 97.7% · `tasks-export.ts` 100% · `usage-report.ts` 98.4% · `password-policy.ts` 100% · `iam/policy-document.ts` 89.9% statement | idem |
 | `apps/web/src/lib/api/client.ts` | 30.9% statement — reported, deliberately not gated | one `request()` plus 74 one-line wrappers; the percentage counts wrappers |
 
 **What is gated** — three narrow rules, and only three. A regression anywhere outside them fails nothing:

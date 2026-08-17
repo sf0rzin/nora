@@ -5,7 +5,7 @@ info:
   description: |
     REST API for the NORA backend (Spring Boot 3 / Java 21). Covers authentication and session
     management with httpOnly cookies, self-service account operations, AWS-style IAM (groups +
-    policies + attachments + audit), email invitations, workspace settings and commercial context,
+    policies + templates + attachments + audit), email invitations, workspace settings and context,
     meeting upload/listing/detail/semantic search, extracted task management, the trends panel's
     temporal aggregation, the tenant's own usage figures, live analysis, chat sessions, NORA Flows
     (workflow CRUD, manual run and execution history), the OAuth integration hub, the LGPD erasure
@@ -597,6 +597,38 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /iam/policy-templates:
+    get:
+      tags: [IAM]
+      summary: Lists the built-in policy templates
+      description: |
+        IAM action: `iam:policy:read` (US41). The built-in starting points, with every ARN already
+        bound to the caller's tenant.
+
+        Templates are shipped in code, not stored: there is no `is_template` row and no per-tenant
+        template table. And there is **no instantiate endpoint** — the client posts the returned
+        `document` to `POST /iam/policies`, so a policy grown from a template is created, versioned
+        and evaluated by exactly the same code as one typed by hand. A second creation path is what
+        would let the two drift.
+
+        It rides on `iam:policy:read` rather than an action of its own, which is the mirror image
+        of the `iam:policy:simulate` argument: the catalogue is a constant, identical for every
+        caller apart from the tenant id in the ARNs, and it exposes nothing about this tenant.
+
+        One template ships a placeholder condition value (`CHANGE-ME`). Until it is replaced the
+        condition is unsatisfied, and an unsatisfied condition denies — the template grants nothing
+        rather than granting too much.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/IamPolicyTemplate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   # ----------------------------------------------------------------------------
   # IAM — attachments
@@ -2757,25 +2789,52 @@ components:
       required: [document]
       properties:
         document: { $ref: '#/components/schemas/PolicyDocument' }
+    IamPolicyTemplate:
+      type: object
+      required: [id, description, document]
+      properties:
+        id:
+          type: string
+          example: read-only-access
+          description: |
+            Stable kebab-case identifier, which doubles as the suggested policy name. The UI keys
+            its pt-BR label off it and falls back to `description` for an id it does not know.
+        description: { type: string, example: 'Read access to meetings, tasks and settings.' }
+        document:
+          $ref: '#/components/schemas/PolicyDocument'
     PolicyDocument:
       type: object
       description: |
         AWS-style policy document. A list of statements evaluated by `(action, resource)`.
-        Accepted/returned as free-form JSON; the canonical shape below is illustrative.
+
+        **Requests and responses use the same shape**, which is what makes a document read from
+        `GET /iam/policies` writable back to `PUT /iam/policies/{id}`: `action` and `resource`
+        singular, `effect` as `Allow`/`Deny`, `condition` present only when the statement has one.
+        On the way IN, `effect` is read case-insensitively and a bare string is accepted where an
+        array is documented; on the way OUT the canonical form above is what is emitted.
+
+        `condition` maps an operator to `{ attribute: expected }`. Only the five operators the
+        evaluator implements are meaningful — `StringEquals`, `StringIn`, `StringLike`,
+        `DateGreaterThan`, `DateLessThan`. Any other operator is fail-closed: the statement does
+        not match, so an `Allow` carrying one grants nothing.
       properties:
-        version: { type: string, example: '2025-01-01' }
+        version: { type: string, example: '2026-05-07' }
         statements:
           type: array
           items:
             type: object
             properties:
-              effect: { type: string, enum: [ALLOW, DENY] }
+              effect: { type: string, enum: [Allow, Deny] }
               action:
                 type: array
                 items: { type: string, example: 'meeting:read' }
               resource:
                 type: array
                 items: { type: string, example: 'nora:tenant/{tenantId}:meeting/*' }
+              condition:
+                type: object
+                example: { StringEquals: { department: Vendas } }
+                additionalProperties: true
       additionalProperties: true
     AuditEvent:
       type: object

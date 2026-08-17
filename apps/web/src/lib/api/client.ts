@@ -730,6 +730,25 @@ export async function deletePolicy(id: string): Promise<void> {
   return request<void>(`/iam/policies/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+/**
+ * A built-in policy template (US41), with its ARNs already bound to the caller's tenant.
+ *
+ * `document` is in the shape `createPolicy` accepts, because instantiating a template IS calling
+ * `createPolicy` with it. There is no instantiate endpoint: a policy grown from a template has to
+ * be the same object as one typed by hand, and both travelling the same handler is what keeps it
+ * so. `id` doubles as the suggested policy name.
+ */
+export interface PolicyTemplateDto {
+  id: string;
+  description: string;
+  document: unknown;
+}
+
+/** Requires IAM `iam:policy:read` — the catalogue is a constant and exposes no tenant data. */
+export async function listPolicyTemplates(): Promise<PolicyTemplateDto[]> {
+  return request<PolicyTemplateDto[]>(`/iam/policy-templates`);
+}
+
 export async function attachPolicyToGroup(policyId: string, groupId: string): Promise<void> {
   return request<void>(
     `/iam/groups/${encodeURIComponent(groupId)}/policies/${encodeURIComponent(policyId)}`,

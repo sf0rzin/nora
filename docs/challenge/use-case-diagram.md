@@ -223,10 +223,10 @@ graph TD
 **Pre-condition:** Active tenant
 **Main flow:**
 1. The root goes to "Configurações > IAM > Políticas"
-2. Creates a policy by submitting a JSON document with `version` and `statements[]` (each with `effect`, `action[]`, `resource[]` and an optional `condition`)
+2. Creates a policy by submitting a document with `version` and `statements[]` (each with `effect`, `action[]`, `resource[]` and an optional `condition`), written either in the **form** or in the **JSON editor** — both produce the same document and the same `POST /iam/policies` (US42)
 3. The system validates it against the official schema and creates version 1
 4. Each change creates a new version (immutable history)
-**Extension:** The root may start from optional **templates** ("ReadOnlyAccess", "MeetingAnalystAccess") as a starting point.
+**Extension:** The root may start from a built-in **template** — `read-only-access`, `meeting-analyst`, `iam-administrator`, `department-scoped-meeting-reader` — loaded from `GET /iam/policy-templates` into the editor (US41). The template is only a starting document: nothing is created until step 2, by the same handler.
 
 ### UC18B — Attach policies to groups/users
 **Primary actor:** Tenant root

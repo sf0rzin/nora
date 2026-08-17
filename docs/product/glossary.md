@@ -74,7 +74,7 @@
 
 **IAM AWS-style** — NORA's IAM model inspired by AWS IAM: **Root** + **Users** + **Groups** + **Policies** with Effect/Action/Resource[/Condition]. **No hardcoded role hierarchy** — the tenant creates its own groups. ADR 0007.
 
-**iam_policy_versions** — Table (migration V006) that keeps **immutable versioning** of policies. Every policy change creates a new version; the old version remains as history. It has `is_template` planned but not yet in V006 (US41 MISSING).
+**iam_policy_versions** — Table (migration V006) that keeps **immutable versioning** of policies. Every policy change creates a new version; the old version remains as history. There is no `is_template` column and there will not be one: US41 shipped as a **Policy template** catalogue in code, not as rows.
 
 ## J
 
@@ -134,6 +134,8 @@ Internal-only — only the Spring backend talks to it. Hosted in `nora-worker-de
 **PII Shield** — System in the NLP worker that detects and redacts PII **before** sending text to an external LLM. Replaces it with `[[TIPO_N]]` placeholders (e.g., `[[EMAIL_1]]`, `[[CPF_2]]`). After the LLM, the backend can unredact if authorized. ADR 0012. Implementation in `services/nlp-worker/src/.../pii_shield.py` (95% coverage).
 
 **PolicyEvaluator** — Spring component in `services/api/src/main/java/.../PolicyEvaluator.java` that receives a set of policies + context (user, action, resource, attributes) and returns `Allow` / `Deny`. Implements Deny-first eval. Supported operators: `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (unsupported operators result in `false`, fail-closed). Coverage 96.3% instruction / 86.0% branch (measured 2026-08-17) — the one class in the backend with a JaCoCo gate of its own (`services/api/pom.xml`: instruction >= 90%, branch >= 75%).
+
+**Policy template** — A built-in policy document offered as a starting point (US41), served by `GET /iam/policy-templates` with this tenant's ARNs already filled in. It is **not** a stored policy: `PolicyTemplateCatalog` ships four of them in code, and instantiating one means posting its document to `POST /iam/policies` exactly as a hand-written one is posted. That is the point rather than a shortcut — with one creation path and one evaluator, nothing downstream can tell the two apart. ADR 0046 §1; architecture.md §22.
 
 **Productivity Score** — Score 0-100 of the **meeting against the objective declared** by the user themselves (not an external benchmark). **Opt-in** per meeting — without a `MeetingGoal` it is not computed. Band `LOW`/`MEDIUM`/`HIGH`. ADR 0005. Full-stack implementation: dedicated migration (see `docs/engineering/data-model.md`) + worker (model + stub + LLM) + Spring backend + web (`MeetingGoalForm`, `MeetingProductivitySection`, `ProductivityScoreCard`).
 

@@ -117,6 +117,16 @@ export default defineConfig({
           functions: 100,
           lines: 100,
         },
+        // Measured 89.9/83.5/100/97.7 when US42 shipped it. What the floor defends is the
+        // refusal path: the module's job is to REJECT a document the form cannot represent
+        // exactly, and every one of those branches is a test. Dropping the branch number is how
+        // a refusal quietly becomes a silent rewrite of somebody's policy.
+        'src/lib/iam/policy-document.ts': {
+          statements: 85,
+          branches: 75,
+          functions: 100,
+          lines: 90,
+        },
       },
     },
   },

@@ -5,6 +5,11 @@
  * -------------------------------------------------------------------------
  * Specialized editor for AWS-style IAM policy documents (ADR 0007).
  *
+ * Since US42 it is one of TWO ways into the same document: `policy-form-editor.tsx`
+ * is the form, this is the JSON. Neither replaces the other — the form refuses to
+ * open anything it cannot represent exactly, and this is where those documents
+ * are written.
+ *
  * Features:
  * - Monaco Editor with native JSON syntax highlighting.
  * - NORA JSON Schema registered (Effect / Action / Resource [/ Condition]).
@@ -85,7 +90,21 @@ const POLICY_SCHEMA = {
           },
           condition: {
             type: "object",
-            description: "Conditions estilo AWS (ex: stringEquals). Opcional.",
+            description:
+              "Conditions estilo AWS. Opcional. Apenas os cinco operadores que o avaliador " +
+              "implementa: outro qualquer nao e avaliado e a policy nega.",
+            // The five in `SUPPORTED_CONDITION_OPERATORS` (PolicyEvaluator.java). Restricted here
+            // for the same reason the form offers no other (US42): an unsupported operator makes
+            // the statement not match, so an Allow carrying one silently grants nothing.
+            propertyNames: {
+              enum: [
+                "StringEquals",
+                "StringIn",
+                "StringLike",
+                "DateGreaterThan",
+                "DateLessThan",
+              ],
+            },
           },
         },
       },
