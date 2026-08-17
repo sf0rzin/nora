@@ -158,7 +158,7 @@ public class IamService {
     /**
      * Deletes a policy — unless it is somebody's permission boundary (US44).
      *
-     * <p>The refusal is the database's, not a check written here: V031 points the boundary at
+     * <p>The refusal is the database's, not a check written here: V033 points the boundary at
      * {@code iam_policies} with {@code ON DELETE NO ACTION}, so the {@code DELETE} fails and this
      * translates it. Written as a pre-check instead, it would be a race — the boundary can be
      * attached between the check and the delete — and, worse, it would be one more rule that has to

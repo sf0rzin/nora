@@ -5,8 +5,8 @@
 - Related: ADR 0007 (AWS-style IAM — this extends its model with one concept and is its successor
   record for the boundary; ADR 0007 is accepted and unedited), ADR 0046 §1 (which reactivated US44,
   and did so on the thinnest argument of the seven), ADR 0028 (why the IAM authorization tables are
-  exempt from RLS enforce, which V031 follows), ADR 0019 (composite FKs as the tenant floor, the
-  shape V015/V027 established and V031 reuses)
+  exempt from RLS enforce, which V033 follows), ADR 0019 (composite FKs as the tenant floor, the
+  shape V015/V027 established and V033 reuses)
 
 ## Context
 
@@ -33,7 +33,7 @@ asked `PolicyEvaluator` for a yes or no; every statement in that set could only 
 ## Decision
 
 **A user may carry at most one permission boundary: a policy of the same tenant, attached through
-`iam_permission_boundaries` (migration V031), intersected with the user's own statements inside the
+`iam_permission_boundaries` (migration V033), intersected with the user's own statements inside the
 single traversal `PolicyEvaluator.explain` already was.**
 
 ### 1. It attaches to a user, and to nothing else
@@ -47,7 +47,7 @@ this feature exists to make impossible. The **intersection** makes joining a gro
 permissions, which inverts what every other row in this schema does and would make group membership
 unreadable at a glance.
 
-`PRIMARY KEY (user_id)` in V031 is that decision expressed where it cannot be forgotten: the schema
+`PRIMARY KEY (user_id)` in V033 is that decision expressed where it cannot be forgotten: the schema
 cannot hold a second boundary for a user, so no code has to decide what two would mean.
 
 The cost is named: **there is no way to bound a whole department in one action.** Bounding twelve
@@ -149,7 +149,7 @@ it, that admin's first move could be to widen themselves.
 ### 5. No boundary means unrestricted, never deny-all
 
 A user with no row in `iam_permission_boundaries` is unrestricted, and that is the state of every
-user of every tenant the day V031 ships. The migration backfills nothing, because there is nothing
+user of every tenant the day V033 ships. The migration backfills nothing, because there is nothing
 to backfill.
 
 The opposite reading would turn deploying this migration into a tenant-wide outage, so the code is
@@ -188,18 +188,23 @@ does not depend on that check being remembered by the next person.
 
 **RLS follows the family.** V020 (ADR 0028) disabled RLS on the IAM authorization tables because
 onboarding flows without a JWT write to them, leaving the `tenant_isolation` policies defined and
-inert. V031 does exactly that — policy created, RLS not enabled — so this table matches the end
+inert. V033 does exactly that — policy created, RLS not enabled — so this table matches the end
 state of its family instead of being the one member that behaves differently.
 
-**The migration is out of order, and that costs one configuration flag.** V031 was reserved by US41,
-released when policy templates shipped as a code catalogue, and V032 took the next number while it
-sat empty. This story filled the gap instead of renumbering, because renumbering V032 would change
-the checksum of a migration that may already have run. The consequence is that a database holding
-V032 sees a *lower* pending version, which Flyway refuses by default: `validate` fails on boot with
-"Detected resolved migration not applied to database: 031" and the API does not start. So
-`spring.flyway.out-of-order` becomes `true`. Nothing already applied is re-run and no checksum
-moves. The named cost is that a genuinely accidental out-of-order file would now boot silently too
-— the check for that is the per-migration inventory in `data-model.md` §5, not the runtime.
+**The migration takes the next free number, and the gap at V031 stays a gap.** V031 was reserved by
+US41, released when policy templates shipped as a code catalogue, and V032 took the next number
+while it sat empty. The first version of this story FILLED V031, which produces an **out-of-order**
+migration: a database holding V032 sees a lower pending version and Flyway refuses it by default —
+`validate` fails on boot with "Detected resolved migration not applied to database: 031" and the
+API does not start. The proposed remedy was `spring.flyway.out-of-order: true`.
+
+That remedy was rejected, and the reason generalises: it is a **repository-wide loosening of the
+ordering guarantee, bought to avoid renaming one file that had never been released.** From then on
+a genuinely accidental out-of-order migration would boot silently instead of failing loudly, for
+every future story. The argument for it contained its own refutation — it said renumbering an
+unreleased file is free, and then declined to do it. This migration is therefore **V033**, the next
+free number. **A reserved number that goes unused stays unused**, and `V031` is now a permanent gap
+recorded in `docs/engineering/data-model.md` §5 and in `standards.md` §Migrations.
 
 ### 7. What is deliberately not built
 
@@ -240,9 +245,10 @@ moves. The named cost is that a genuinely accidental out-of-order file would now
 - **A delegated admin can still create unbounded users**, §7. The AWS mechanism that closes it is
   not in this codebase and inventing it here would be the "build it because AWS has it" trap ADR
   0046 §1 warned against.
-- **`spring.flyway.out-of-order` is now `true`** for the whole application, to let V031 land after
-  V032 (§6). It is a repository-wide loosening bought for one migration, and from here on an
-  accidental out-of-order file boots instead of failing loudly.
+- **`V031` is a permanent gap in the migration sequence** (§6), recorded in `data-model.md` §5 and
+  in `standards.md` §Migrations. The alternative — `spring.flyway.out-of-order: true` — was
+  rejected: it loosens the ordering guarantee for every future migration in order to avoid renaming
+  one file that had never been released.
 - **A pre-existing defect was found while adding that flag and is left in place, named.** The three
   Flyway keys in `application.yml` — `enabled`, `baseline-on-migrate`, `locations` — are indented
   under `spring.jpa` rather than `spring.flyway`, so Spring binds them into `JpaProperties`, which
@@ -283,4 +289,4 @@ moves. The named cost is that a genuinely accidental out-of-order file would now
 
 | Date | Decider | Change |
 |---|---|---|
-| 2026-08-17 | sys0xFF | Created and accepted. Adds the permission boundary to the IAM of ADR 0007 — one policy per user, migration V031 — and decides the five questions that would otherwise have stayed implicit in code: it attaches to users only and never to groups; the tenant Root is **not** capped and a boundary aimed at it is refused rather than stored; the intersection happens inside `PolicyEvaluator.explain`, the same traversal the gate uses, with two reasons of its own so the simulator reports the cap instead of a misleading "no statement matched"; setting or removing one's own boundary is refused, on top of the cap applying to `iam:boundary:*` like any other action; and an absent boundary means unrestricted, never deny-all. Records what is deliberately not built, including the `iam:PermissionsBoundary` condition key and the consequence of its absence. Successor record to ADR 0007, which is accepted and unedited |
+| 2026-08-17 | sys0xFF | Created and accepted. Adds the permission boundary to the IAM of ADR 0007 — one policy per user, migration V033 — and decides the five questions that would otherwise have stayed implicit in code: it attaches to users only and never to groups; the tenant Root is **not** capped and a boundary aimed at it is refused rather than stored; the intersection happens inside `PolicyEvaluator.explain`, the same traversal the gate uses, with two reasons of its own so the simulator reports the cap instead of a misleading "no statement matched"; setting or removing one's own boundary is refused, on top of the cap applying to `iam:boundary:*` like any other action; and an absent boundary means unrestricted, never deny-all. Records what is deliberately not built, including the `iam:PermissionsBoundary` condition key and the consequence of its absence. Successor record to ADR 0007, which is accepted and unedited |

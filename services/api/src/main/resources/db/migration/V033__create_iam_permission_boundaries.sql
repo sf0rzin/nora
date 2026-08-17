@@ -1,16 +1,19 @@
--- V031 — `iam_permission_boundaries`: the policy that CAPS a user's effective permissions
+-- V033 — `iam_permission_boundaries`: the policy that CAPS a user's effective permissions
 -- (US44, ADR 0049).
 --
 -- !! THIS FILE IS OUT OF ORDER, AND THAT IS DELIBERATE !!
--- V031 was reserved by US41 and released when policy templates shipped as a catalogue in code, so
--- V032 took the next number while this one sat empty. US44 filled the gap instead of renumbering:
--- renumbering an unreleased file is free, renumbering V032 is not — it may already have run, and
--- moving it would change its checksum.
+-- This is V033 and not V031, and the gap at V031 is permanent. US41 reserved that number, then
+-- shipped policy templates as a catalogue in code with no table, and V032 took the next number
+-- while V031 sat empty.
 --
--- The price is paid in configuration, not here: `spring.flyway.out-of-order` is now `true`
--- (`application.yml`, with the reasoning beside it). Without it, any database that already applied
--- V032 fails `validate` on boot with "Detected resolved migration not applied to database: 031"
--- and the API does not start. Nothing already applied is re-run and no checksum moves.
+-- The first version of this migration filled V031, which makes it OUT OF ORDER: a database that
+-- has already applied V032 sees a lower version pending, and Flyway refuses it — `validate` fails
+-- on boot with "Detected resolved migration not applied to database: 031" and the API does not
+-- start. The remedy considered was `spring.flyway.out-of-order: true`, and it was rejected: that
+-- loosens the ordering guarantee for every future migration in order to avoid renaming one file
+-- that had never been released. Renaming was free; the flag was not.
+--
+-- A reserved number that goes unused stays unused. See ADR 0049 §6.
 --
 -- WHAT A BOUNDARY IS
 -- ------------------

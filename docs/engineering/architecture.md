@@ -1485,7 +1485,7 @@ An action passes only if the user's own policies allow it **and** the boundary a
 
 The code is `domain/iam/PermissionBoundary`, the five-argument overloads of
 `PolicyEvaluator.explain` / `isAllowed` / `hasAnyAllow` / `uniformDecision`, the boundary resolution
-in `AuthorizationService`, and migration **V031** (`iam_permission_boundaries`).
+in `AuthorizationService`, and migration **V033** (`iam_permission_boundaries`).
 
 ### A boundary never grants, and that is a test rather than an intention
 
@@ -1556,13 +1556,13 @@ the admin cannot escalate *themselves*.
 
 ### Absence is unrestricted
 
-No row means no cap. That is the state of every user of every tenant the day V031 ships, which is
+No row means no cap. That is the state of every user of every tenant the day V033 ships, which is
 why the migration backfills nothing. An **empty** statement list is a different thing and denies —
 unreachable through the API, and defined that way because between two unreachable readings the one
 that costs access is the safe one. Both are unit-tested rather than left to control flow.
 
 Deleting the policy behind a cap is refused (**409 `IAM_POLICY_IN_USE_AS_BOUNDARY`**, enforced by
-V031's `ON DELETE NO ACTION`): under a cascade, the ordinary policy-delete endpoint would remove a
+V033's `ON DELETE NO ACTION`): under a cascade, the ordinary policy-delete endpoint would remove a
 cap while the audit trail recorded only "policy deleted".
 
 ## Next architectural refactors

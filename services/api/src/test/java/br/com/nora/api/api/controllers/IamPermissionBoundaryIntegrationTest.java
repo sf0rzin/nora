@@ -282,7 +282,7 @@ class IamPermissionBoundaryIntegrationTest {
 
     /**
      * Deleting a policy that is somebody's cap would remove the cap through an endpoint whose audit
-     * entry says only "policy deleted". V031 refuses it at the FK and the API says why.
+     * entry says only "policy deleted". V033 refuses it at the FK and the API says why.
      */
     @Test
     void aPolicyInUseAsABoundaryCannotBeDeleted() throws Exception {
