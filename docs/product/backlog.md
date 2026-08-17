@@ -177,8 +177,8 @@ done in.
 | US39 | Clear HTTP 403 when out of scope | M | DONE | `GlobalExceptionHandler` · `AuthorizationCoverageIntegrationTest` asserts every endpoint is gated | Stability of the error-message detail is not asserted |
 | US40 | IAM audit log | M | DONE | `IamController.listAudit` (line 207) · `iam_audit_events` table in V006 | The auth audit log (login/refresh/logout) exists separately since PR #118; there is still no single global `audit_events` table |
 | US41 | Policy templates | S | MISSING | No endpoint. The `is_template` column is not in V006 — `docs/engineering/data-model.md:360` records that the old design foresaw it and the migration never carried it | Still deferred. ADR 0038 neither kills nor reactivates it |
-| US42 | Visual policy editor (form-based) | S | **PARTIAL** | Monaco JSON editor in `apps/web/src/components/policy-editor.tsx` · `apps/web/src/app/(app)/settings/iam/page.tsx`, reachable from the sidebar since PR #467 · PR #55 | It is JSON with syntax highlighting and schema validation, not a form. The form-based version pairs with US43 — usability increases together |
-| US43 | Policy simulator ("can user X do Y on Z?") | S | MISSING | No endpoint. Debugging a policy today means reading `PolicyEvaluator.java` by hand | **Reactivated by ADR 0038 §5**: IAM is the Enterprise tier's main artefact under ADR 0038 §3, and a simulator is what makes the model demonstrable instead of merely present |
+| US42 | Visual policy editor (form-based) | S | **PARTIAL** | Monaco JSON editor in `apps/web/src/components/policy-editor.tsx` · `apps/web/src/app/(app)/settings/iam/page.tsx`, reachable from the sidebar since PR #467 · PR #55 | It is JSON with syntax highlighting and schema validation, not a form. The form-based version paired with US43, and US43 has shipped: the simulator now runs on this same screen, so the form is the half still missing |
+| US43 | Policy simulator ("can user X do Y on Z?") | S | DONE | `POST /iam/simulate` (`IamController.java`), gated by its own `iam:policy:simulate` action · `PolicyEvaluator.explain` · simulator section in `apps/web/src/app/(app)/settings/iam/page.tsx` · `IamSimulationIntegrationTest` | The answer carries the reason and the deciding statement, and the Root case is reported as `ROOT_BYPASS` instead of a mute `true`. `isAllowed` is `explain(...).allowed()`, so the explanation cannot drift from the decision. No user picker: no endpoint lists the tenant's users, so the field takes a user id like the rest of the screen |
 | US44 | Permission boundaries | C | MISSING | No code | Still deferred. ADR 0038 neither kills nor reactivates it; it needs an organizational hierarchy and IAM delegation that nothing else asks for |
 
 ### E9 — Meeting Productivity
@@ -290,10 +290,10 @@ Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0044), US25 and 
 | MoSCoW | Total | DONE | PARTIAL | MISSING | WONT |
 |---|---|---|---|---|---|
 | **Must Have (M)** | 28 | **28** | 0 | 0 | 0 |
-| **Should Have (S)** | 40 | **32** | **2** (US13, US42) | **6** (US27, US33, US34, US41, US43, US80) | 0 |
+| **Should Have (S)** | 40 | **33** | **2** (US13, US42) | **5** (US27, US33, US34, US41, US80) | 0 |
 | **Could Have (C)** | 12 | **9** | 0 | **3** (US21, US44, US75) | 0 |
 | **Won't Have v1 (W)** | 6 | **1** (US09) | 0 | **1** (US08) | **4** (US05, US47, US50, US51) |
-| **Total** | **86** | **70** | **2** | **10** | **4** |
+| **Total** | **86** | **71** | **2** | **9** | **4** |
 
 **What changed against the 2026-05-14 revision, and why the totals move so much:**
 
@@ -312,16 +312,16 @@ Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0044), US25 and 
   reactivatable under a criterion, and these four are not waiting for anything.
 - **US86 was added after that revision** (ADR 0044), for the same reason the 34 above were: the RAG
   index had a defect nobody had written down.
-- **US25 and US31 both went MISSING → DONE** after that revision. They are the only statuses that
-  have moved since, and they moved in the same wave.
+- **US25, US31 and US43 all went MISSING → DONE** after that revision, in the same wave. They are
+  three of the four stories ADR 0038 §5 reactivated; only US21 is still open.
 
 **Effective coverage**
 
 - Must Have: **28 of 28** (100%). The v1.0 MVP of §6 is complete.
-- Should Have: **32 of 40** (80%). The gaps are two of the four ADR 0038 reactivations (US43, and
-  US21 in `C` — US25 and US31 both shipped), the MCP server (US27), tenant-facing metrics and
-  export (US33, US34), policy templates (US41), tenant-wide erasure and portability (US80), and
-  two partials (US13, US42).
+- Should Have: **33 of 40** (83%). The remaining gaps are the MCP server (US27), tenant-facing
+  metrics and export (US33, US34), policy templates (US41), tenant-wide erasure and portability
+  (US80), and two partials (US13, US42). Of the four ADR 0038 reactivations only US21 is still
+  open, and it lives in `C`.
 
 ## 5. Scope decisions in force
 
@@ -338,7 +338,7 @@ section now points rather than copies: **the ADR decides, the backlog records.**
 | US21 — Trends panel | **Reactivated** | ADR 0038 §5 |
 | US25 — CSV/MD task export | **Reactivated**, and delivered | ADR 0038 §5 |
 | US31 — Company-context history | **Reactivated**, and delivered — migration V028 | ADR 0038 §5 |
-| US43 — Policy simulator | **Reactivated** | ADR 0038 §5 |
+| US43 — Policy simulator | **Reactivated**, and delivered — `POST /iam/simulate` | ADR 0038 §5 |
 | US27 — NORA as an MCP server | **Reframed and reactivated** | ADR 0041 |
 | US28, US29 — calendar and task managers | **Reframed**: delivered by OAuth, removed from MCP scope | ADR 0041 §Effect on the backlog |
 | US80 — tenant deletion and LGPD export | **Declared deferral** | ADR 0038 §6h |

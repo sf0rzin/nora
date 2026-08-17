@@ -45,6 +45,14 @@ public class IamException extends RuntimeException {
     }
 
     /**
+     * The user named in the request is not a user of the caller's tenant. 404 and not 403 on
+     * purpose: a 403 would confirm that the id belongs to somebody, somewhere.
+     */
+    public static IamException userNotFound() {
+        return new IamException("IAM_USER_NOT_FOUND", "IAM user not found.");
+    }
+
+    /**
      * Target user of the binding does not belong to the caller's tenant. Raised when translating
      * the composite FK violation from V027 -- there is no legitimate path that produces it.
      */

@@ -8,6 +8,11 @@ import org.junit.jupiter.api.Test;
 
 class PolicyEvaluatorTest {
 
+    private static final String READ = "meeting:read";
+    private static final String MEETINGS = "nora:tenant/t1:meeting/*";
+    private static final String ONE_MEETING = "nora:tenant/t1:meeting/abc";
+    private static final String TASKS = "nora:tenant/t1:task/*";
+
     private static PolicyStatement allow(String action, String resource) {
         return new PolicyStatement(Effect.ALLOW, List.of(action), List.of(resource), null);
     }
@@ -400,5 +405,111 @@ class PolicyEvaluatorTest {
         var stmts = List.of(allow("meeting:read", "nora:tenant/t1:meeting/*"), conditionalDeny);
         assertThat(PolicyEvaluator.hasAnyAllow(stmts, "meeting:read", "nora:tenant/t1:meeting/*"))
                 .isTrue();
+    }
+
+    /* ========================== explain (US43) ========================= */
+
+    private static PolicyDecision explain(List<PolicyStatement> stmts, Map<String, String> ctx) {
+        return PolicyEvaluator.explain(stmts, READ, ONE_MEETING, ctx);
+    }
+
+    private static boolean allowed(List<PolicyStatement> stmts, Map<String, String> ctx) {
+        return PolicyEvaluator.isAllowed(stmts, READ, ONE_MEETING, ctx);
+    }
+
+    /**
+     * The property the simulator rests on: the explanation is not a second opinion. Whatever {@link
+     * PolicyEvaluator#explain} reports, {@link PolicyEvaluator#isAllowed} answers, because one is
+     * literally the other's {@code allowed()}.
+     */
+    @Test
+    void explainAndIsAllowedNeverDisagree() {
+        List<List<PolicyStatement>> shapes =
+                List.of(
+                        List.of(),
+                        List.of(allow(READ, MEETINGS)),
+                        List.of(allow("task:read", TASKS)),
+                        List.of(allow(READ, MEETINGS), deny(READ, ONE_MEETING)));
+
+        for (List<PolicyStatement> stmts : shapes) {
+            assertThat(explain(stmts, Map.of()).allowed()).isEqualTo(allowed(stmts, Map.of()));
+        }
+    }
+
+    @Test
+    void explainNamesTheAllowThatDecided() {
+        var stmts = List.of(allow("task:read", TASKS), allow(READ, MEETINGS));
+
+        var decision = explain(stmts, Map.of());
+
+        assertThat(decision.allowed()).isTrue();
+        assertThat(decision.reason()).isEqualTo(PolicyDecision.Reason.ALLOW);
+        assertThat(decision.statementIndex()).isEqualTo(1);
+        assertThat(decision.statement()).isSameAs(stmts.get(1));
+    }
+
+    @Test
+    void explainNamesTheDenyThatOverrodeTheAllow() {
+        var stmts = List.of(allow(READ, MEETINGS), deny(READ, ONE_MEETING));
+
+        var decision = explain(stmts, Map.of());
+
+        assertThat(decision.allowed()).isFalse();
+        assertThat(decision.reason()).isEqualTo(PolicyDecision.Reason.EXPLICIT_DENY);
+        assertThat(decision.statement()).isSameAs(stmts.get(1));
+    }
+
+    /** Order among matching Allows carries no meaning, so the first one explains it as well. */
+    @Test
+    void explainReportsTheFirstMatchingAllow() {
+        var stmts = List.of(allow(READ, MEETINGS), allow("meeting:*", MEETINGS));
+
+        assertThat(explain(stmts, Map.of()).statementIndex()).isZero();
+    }
+
+    /**
+     * Two denials a bare {@code false} cannot tell apart: nothing attached to the user at all,
+     * versus statements that were evaluated and did not match. The first sends whoever is debugging
+     * to the attachments, the second to the policy text.
+     */
+    @Test
+    void explainSeparatesAnEmptyPolicySetFromAMissedMatch() {
+        assertThat(explain(List.of(), Map.of()).reason())
+                .isEqualTo(PolicyDecision.Reason.NO_STATEMENTS);
+
+        var elsewhere = List.of(allow("task:read", TASKS));
+        assertThat(explain(elsewhere, Map.of()).reason())
+                .isEqualTo(PolicyDecision.Reason.NO_MATCHING_STATEMENT);
+    }
+
+    @Test
+    void explainDistinguishesASatisfiedConditionFromAnUnsatisfiedOne() {
+        var stmts = List.of(allowIfStringEquals(READ, MEETINGS, "department", "Vendas"));
+
+        var satisfied = explain(stmts, Map.of("department", "Vendas"));
+        assertThat(satisfied.reason()).isEqualTo(PolicyDecision.Reason.ALLOW);
+        assertThat(satisfied.statement()).isSameAs(stmts.get(0));
+
+        var unsatisfied = explain(stmts, Map.of("department", "Suporte"));
+        assertThat(unsatisfied.reason()).isEqualTo(PolicyDecision.Reason.NO_MATCHING_STATEMENT);
+        assertThat(unsatisfied.statement()).isNull();
+    }
+
+    @Test
+    void explainIsFailClosedOnAnUnsupportedOperator() {
+        // Same fail-closed as isAllowed: the Allow is ignored, and the explanation says the
+        // statement did not match instead of inventing a reason of its own.
+        var stmt =
+                new PolicyStatement(
+                        Effect.ALLOW,
+                        List.of(READ),
+                        List.of(MEETINGS),
+                        Map.of("StringNotEquals", Map.of("department", "Suporte")));
+
+        var decision = explain(List.of(stmt), Map.of("department", "Vendas"));
+
+        assertThat(decision.allowed()).isFalse();
+        assertThat(decision.reason()).isEqualTo(PolicyDecision.Reason.NO_MATCHING_STATEMENT);
+        assertThat(decision.statement()).isNull();
     }
 }

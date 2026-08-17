@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import br.com.nora.api.application.ports.Clock;
 import br.com.nora.api.application.ports.IamRepository;
 import br.com.nora.api.application.ports.TenantRepository;
+import br.com.nora.api.domain.iam.AttachedPolicy;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
@@ -328,6 +329,11 @@ class TenantServiceTest {
 
         @Override
         public List<PolicyStatement> collectStatementsForUser(UUID userId, UUID tenantId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<AttachedPolicy> collectAttachedPoliciesForUser(UUID userId, UUID tenantId) {
             throw new UnsupportedOperationException();
         }
 

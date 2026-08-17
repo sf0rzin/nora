@@ -17,6 +17,7 @@ import br.com.nora.api.application.ports.SecureTokenGenerator;
 import br.com.nora.api.application.ports.TenantRepository;
 import br.com.nora.api.application.ports.UserRepository;
 import br.com.nora.api.application.tenant.TenantException;
+import br.com.nora.api.domain.iam.AttachedPolicy;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamInvitation;
@@ -882,6 +883,11 @@ class InvitationServiceTest {
 
         @Override
         public List<PolicyStatement> collectStatementsForUser(UUID userId, UUID tenantId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<AttachedPolicy> collectAttachedPoliciesForUser(UUID userId, UUID tenantId) {
             throw new UnsupportedOperationException();
         }
 

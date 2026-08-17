@@ -1,5 +1,6 @@
 package br.com.nora.api.application.ports;
 
+import br.com.nora.api.domain.iam.AttachedPolicy;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
@@ -60,6 +61,13 @@ public interface IamRepository {
 
     /** Returns all statements applicable to the user (direct + via groups), already parsed. */
     List<PolicyStatement> collectStatementsForUser(UUID userId, UUID tenantId);
+
+    /**
+     * The same statements as {@link #collectStatementsForUser}, still grouped by the policy each
+     * one came from. The authorization path does not need the provenance and keeps using the flat
+     * overload; the simulator (US43) needs it in order to name the policy that decided.
+     */
+    List<AttachedPolicy> collectAttachedPoliciesForUser(UUID userId, UUID tenantId);
 
     // ----- audit -----
     void recordAudit(

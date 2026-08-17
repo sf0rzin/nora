@@ -160,6 +160,19 @@ Supported operators: `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`
 
 For `GET /meetings`, making one `isAllowed` call per item would be expensive. `requireAnyAllow` in `AuthorizationService:70` does a pre-check: is there at least one `Allow` for `meeting:read` ignoring conditions? If yes, it proceeds to fine-grained per-item filtering. If not, immediate 403.
 
+### Asking the evaluator a question (`PolicyEvaluator.explain`, US43)
+
+`POST /iam/simulate` answers "can user X do Y on Z?" without performing the operation, and names the statement that decided. Before it, debugging a policy meant attempting the real call and reading the 403 back.
+
+The explanation is **not a second code path**. `PolicyEvaluator.explain` is the only traversal of the statements, and `isAllowed` is literally `explain(...).allowed()` — an explanation computed separately would drift from the decision the first time either side changed, and a simulator that lies is worse than no simulator. `IamRepository` collects the same statements for both, grouped by their source policy in `collectAttachedPoliciesForUser` and flattened for the decision, so the answer can name the policy and the position of the statement inside its document.
+
+Two things the endpoint does not delegate to `AuthorizationService.isAllowed`:
+
+- **The Root bypass is reported, not applied.** `isAllowed` answers `true` on its first line for a Root, which is correct and useless as an explanation, because no statement was consulted. The simulation answers `reason = ROOT_BYPASS` instead.
+- **The subject is resolved inside the caller's tenant.** The `userId` arrives in the request body, so a user of another tenant answers `404 IAM_USER_NOT_FOUND`. Answering "deny, no statements" would be true and would still confirm the id exists.
+
+The reasons are exhaustive: `ROOT_BYPASS`, `ALLOW`, `EXPLICIT_DENY`, `NO_MATCHING_STATEMENT` (statements were evaluated, none matched) and `NO_STATEMENTS` (nothing is attached to the user). The last two are the distinction a bare `false` cannot make — one sends you to the attachments, the other to the policy text.
+
 ### Deny-by-default for authorization (#51)
 
 Authentication was already deny-by-default (`anyRequest().authenticated()` in `SecurityConfig`); authorization was not. An authenticated principal reached any handler that did not happen to check by hand, so a new controller method shipped ungated and nothing noticed.
@@ -177,7 +190,7 @@ Exhaustive map extracted from the controllers (Grep in `services/api/src/main/ja
 | Resource | Actions |
 |---|---|
 | **meeting** | `meeting:upload`, `meeting:read`, `meeting:update`, `meeting:reprocess`, `meeting:analyze:live` |
-| **iam (groups/policies/audit)** | `iam:group:read`, `iam:group:create`, `iam:group:delete`, `iam:group:add-member`, `iam:group:remove-member`, `iam:policy:read`, `iam:policy:create`, `iam:policy:update`, `iam:policy:delete`, `iam:attachment:create`, `iam:attachment:delete`, `iam:audit:read` |
+| **iam (groups/policies/audit)** | `iam:group:read`, `iam:group:create`, `iam:group:delete`, `iam:group:add-member`, `iam:group:remove-member`, `iam:policy:read`, `iam:policy:create`, `iam:policy:update`, `iam:policy:delete`, `iam:policy:simulate`, `iam:attachment:create`, `iam:attachment:delete`, `iam:audit:read` |
 | **iam (invitations)** | `iam:user:invite`, `iam:invite:read`, `iam:invite:revoke` |
 | **tenant** | `tenant:read`, `tenant:name:write`, `tenant:domain:read`, `tenant:domain:write`, `tenant:context:read`, `tenant:context:write` |
 | **task** | `task:read`, `task:write` |
@@ -185,6 +198,8 @@ Exhaustive map extracted from the controllers (Grep in `services/api/src/main/ja
 | **integration** (#51) | `integration:read`, `integration:write` |
 
 `workflow:test` is deliberately separate from read and write: it executes the wired actions for real (e-mail, Slack, issue creation) against the tenant's integrations.
+
+`iam:policy:simulate` (US43, `POST /iam/simulate`) is separate from `iam:policy:read` for the mirror-image reason: it reveals more, not less. The simulator answers from which policies are **attached** to which user, and no endpoint of this API exposes that graph, so folding it into the policy-read grant would silently widen what its holders can learn. Being its own action it is deny-by-default — an existing grant of `iam:policy:read` does not acquire it, while the `iam:*` shape admin policies use picks it up on its own.
 
 Canonical resource: `nora:tenant/{tenantId}:{recurso}/{instanceId|*}`. Examples:
 

@@ -2,6 +2,8 @@ package br.com.nora.api.application.iam;
 
 import br.com.nora.api.application.ports.IamRepository;
 import br.com.nora.api.application.ports.UserRepository;
+import br.com.nora.api.domain.iam.AttachedPolicy;
+import br.com.nora.api.domain.iam.PolicyDecision;
 import br.com.nora.api.domain.iam.PolicyEvaluator;
 import br.com.nora.api.domain.iam.PolicyStatement;
 import java.util.List;
@@ -44,6 +46,56 @@ public class AuthorizationService {
         }
         List<PolicyStatement> stmts = iam.collectStatementsForUser(userId, tenantId);
         return PolicyEvaluator.isAllowed(stmts, action, resource, requestContext);
+    }
+
+    /**
+     * The same decision {@link #isAllowed} takes, with its reason and the statement that took it
+     * (US43). It exists so a policy can be debugged without attempting the real operation and
+     * reading the 403 back.
+     *
+     * <p>The Root bypass is REPORTED here, not applied silently. {@code isAllowed} answers {@code
+     * true} on its first line for a Root, which is correct and useless as an explanation, because
+     * no statement was ever consulted; a simulation has to say exactly that instead.
+     *
+     * <p>Nothing is re-evaluated: {@link PolicyEvaluator#isAllowed} delegates to {@link
+     * PolicyEvaluator#explain}, and both collectors read one query, so decision and explanation
+     * come from a single traversal of a single set of statements.
+     */
+    public PolicyExplanation explain(
+            UUID userId,
+            UUID tenantId,
+            String action,
+            String resource,
+            Map<String, String> requestContext) {
+        if (users.isRoot(userId, tenantId)) {
+            return new PolicyExplanation(PolicyDecision.rootBypass(), null, null, null, 0);
+        }
+        List<AttachedPolicy> attached = iam.collectAttachedPoliciesForUser(userId, tenantId);
+        List<PolicyStatement> stmts = flatten(attached);
+        PolicyDecision decision = PolicyEvaluator.explain(stmts, action, resource, requestContext);
+        return locate(attached, decision, stmts.size());
+    }
+
+    /** The applicable statements in the very order {@code explain} indexes into. */
+    private static List<PolicyStatement> flatten(List<AttachedPolicy> attached) {
+        return attached.stream().flatMap(p -> p.statements().stream()).toList();
+    }
+
+    /** Maps the index of the deciding statement back to the policy document it came from. */
+    private static PolicyExplanation locate(
+            List<AttachedPolicy> attached, PolicyDecision decision, int total) {
+        Integer index = decision.statementIndex();
+        if (index != null) {
+            int seen = 0;
+            for (AttachedPolicy p : attached) {
+                if (index < seen + p.statements().size()) {
+                    return new PolicyExplanation(
+                            decision, p.policyId(), p.name(), index - seen, total);
+                }
+                seen += p.statements().size();
+            }
+        }
+        return new PolicyExplanation(decision, null, null, null, total);
     }
 
     /** Convenience: throws {@link IamException#forbidden} if authorization fails. */

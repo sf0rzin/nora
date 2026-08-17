@@ -6,6 +6,7 @@ import {
   type AuditEventDto,
   type GroupDto,
   type PolicyDto,
+  type SimulationDto,
   addGroupMember,
   attachPolicyToGroup,
   attachPolicyToUser,
@@ -19,6 +20,7 @@ import {
   listGroups,
   listPolicies,
   removeGroupMember,
+  simulatePolicy,
   updatePolicyDocument,
 } from "@/lib/api/client";
 import PolicyEditor from "@/components/policy-editor";
@@ -35,6 +37,20 @@ const POLICY_PLACEHOLDER = `{
     }
   ]
 }`;
+
+// One line per decision reason. The simulator answers a boolean plus one of these; showing only
+// the boolean is what made policy debugging blind in the first place (US43).
+const REASON_COPY: Record<SimulationDto["reason"], string> = {
+  ROOT_BYPASS:
+    "Este usuário é Root do tenant: permitido por bypass, sem consultar nenhum statement.",
+  ALLOW: "Um statement Allow correspondeu e nenhum Deny correspondeu.",
+  EXPLICIT_DENY: "Um statement Deny correspondeu — Deny vence qualquer Allow.",
+  NO_MATCHING_STATEMENT:
+    "Nenhum statement aplicável correspondeu à ação, ao recurso ou à condição. Negado por padrão.",
+  NO_STATEMENTS: "O usuário não tem nenhuma policy anexada. Negado por padrão.",
+};
+
+type ContextPair = { key: string; value: string };
 
 export default function IamPage() {
   const [groups, setGroups] = useState<GroupDto[]>([]);
@@ -58,6 +74,15 @@ export default function IamPage() {
   const [editPolicyId, setEditPolicyId] = useState<string | null>(null);
   const [editPolicyDoc, setEditPolicyDoc] = useState("");
   const [editPolicyValid, setEditPolicyValid] = useState(true);
+  // simulator (US43) — kept out of `handle` on purpose: it is a read, and refreshing the whole
+  // page after it would wipe the very answer the user asked for.
+  const [simUserId, setSimUserId] = useState("");
+  const [simAction, setSimAction] = useState("");
+  const [simResource, setSimResource] = useState("");
+  const [simContext, setSimContext] = useState<ContextPair[]>([{ key: "", value: "" }]);
+  const [simResult, setSimResult] = useState<SimulationDto | null>(null);
+  const [simError, setSimError] = useState<string | null>(null);
+  const [simRunning, setSimRunning] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -87,6 +112,36 @@ export default function IamPage() {
       setError(toMessage(err));
     }
   }
+
+  async function runSimulation() {
+    setSimError(null);
+    setSimResult(null);
+    setSimRunning(true);
+    try {
+      const context: Record<string, string> = {};
+      for (const pair of simContext) {
+        if (pair.key.trim()) context[pair.key.trim()] = pair.value;
+      }
+      setSimResult(
+        await simulatePolicy({
+          userId: simUserId.trim(),
+          action: simAction.trim(),
+          resource: simResource.trim(),
+          context,
+        }),
+      );
+    } catch (err) {
+      setSimError(toMessage(err));
+    } finally {
+      setSimRunning(false);
+    }
+  }
+
+  function updateContextPair(index: number, patch: Partial<ContextPair>) {
+    setSimContext((pairs) => pairs.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+  }
+
+  const simReady = Boolean(simUserId.trim() && simAction.trim() && simResource.trim());
 
   if (loading) {
     return <p className="text-sm text-slate-500">Carregando IAM…</p>;
@@ -441,6 +496,124 @@ export default function IamPage() {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* ===== Policy simulator (US43) ===== */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Simulador de policy</h2>
+        <p className="text-sm text-slate-500">
+          Pergunta ao avaliador o que ele decidiria — sem executar a operação — e mostra qual
+          statement decidiu. O usuário precisa pertencer a este tenant.
+        </p>
+
+        <form
+          className="space-y-3 text-sm"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!simReady) return;
+            void runSimulation();
+          }}
+        >
+          <div className="grid gap-2 md:grid-cols-3">
+            <input
+              value={simUserId}
+              onChange={(e) => setSimUserId(e.target.value)}
+              placeholder="user id"
+              className="rounded-md border border-slate-300 px-3 py-1.5"
+            />
+            <input
+              value={simAction}
+              onChange={(e) => setSimAction(e.target.value)}
+              placeholder="ação (ex: meeting:read)"
+              className="rounded-md border border-slate-300 px-3 py-1.5"
+            />
+            <input
+              value={simResource}
+              onChange={(e) => setSimResource(e.target.value)}
+              placeholder="recurso (ex: nora:tenant/…:meeting/…)"
+              className="rounded-md border border-slate-300 px-3 py-1.5"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs text-slate-500">
+              Contexto — os atributos que as condições da policy leem (StringEquals, StringIn,
+              StringLike, DateGreaterThan, DateLessThan). Chave vazia é ignorada.
+            </p>
+            {simContext.map((pair, index) => (
+              <div key={index} className="flex flex-wrap gap-2">
+                <input
+                  value={pair.key}
+                  onChange={(e) => updateContextPair(index, { key: e.target.value })}
+                  placeholder="chave (ex: department)"
+                  className="rounded-md border border-slate-300 px-3 py-1.5"
+                />
+                <input
+                  value={pair.value}
+                  onChange={(e) => updateContextPair(index, { value: e.target.value })}
+                  placeholder="valor (ex: Vendas)"
+                  className="rounded-md border border-slate-300 px-3 py-1.5"
+                />
+              </div>
+            ))}
+            <button
+              type="button"
+              className="text-xs text-slate-600 hover:underline"
+              onClick={() => setSimContext((pairs) => [...pairs, { key: "", value: "" }])}
+            >
+              adicionar atributo
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            disabled={!simReady || simRunning}
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+          >
+            {simRunning ? "Simulando…" : "Simular"}
+          </button>
+        </form>
+
+        {simError && (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {simError}
+          </p>
+        )}
+
+        {simResult && (
+          <div className="space-y-2 rounded-md border border-slate-200 p-3 text-sm">
+            <div className="flex items-center gap-2">
+              <span
+                className={`rounded-md px-2 py-0.5 text-xs font-medium ${
+                  simResult.allowed ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"
+                }`}
+              >
+                {simResult.allowed ? "Allow" : "Deny"}
+              </span>
+              <span className="font-mono text-xs text-slate-400">{simResult.reason}</span>
+            </div>
+
+            <p className="text-slate-600">{REASON_COPY[simResult.reason]}</p>
+
+            {simResult.policyName ? (
+              <p className="text-xs text-slate-500">
+                Decidido pelo statement {(simResult.statementIndex ?? 0) + 1} da policy{" "}
+                <span className="font-medium text-slate-700">{simResult.policyName}</span>{" "}
+                <span className="text-slate-400">({simResult.policyId})</span>
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Nenhum statement decidiu. Statements avaliados: {simResult.statementsEvaluated}.
+              </p>
+            )}
+
+            {simResult.statement && (
+              <pre className="overflow-x-auto rounded-md bg-slate-50 p-2 text-xs">
+                {JSON.stringify(simResult.statement, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
       </section>
 
       {/* ===== Audit ===== */}

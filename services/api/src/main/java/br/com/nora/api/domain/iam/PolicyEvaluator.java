@@ -307,12 +307,36 @@ public final class PolicyEvaluator {
             String action,
             String resource,
             Map<String, String> requestContext) {
+        return explain(statements, action, resource, requestContext).allowed();
+    }
+
+    /**
+     * The same evaluation as {@link #isAllowed}, keeping the statement that decided (US43).
+     *
+     * <p>This is the ONE traversal. {@code isAllowed} is this method's {@code allowed()} and
+     * nothing else, so the explanation a simulation displays cannot disagree with the decision the
+     * request pipeline takes. An explanation produced by a second pass over the statements would
+     * drift the first time either side changed, and a simulator that lies is worse than none.
+     *
+     * <p>Which statement gets reported: the Deny that short-circuited or, when the answer is allow,
+     * the FIRST matching Allow. Order among several matching Allows carries no meaning for the
+     * decision, so any one of them explains it equally well.
+     *
+     * <p>The Root bypass is NOT here. It is decided one layer up, and {@link
+     * PolicyDecision.Reason#ROOT_BYPASS} is the value this evaluator never returns.
+     */
+    public static PolicyDecision explain(
+            List<PolicyStatement> statements,
+            String action,
+            String resource,
+            Map<String, String> requestContext) {
         if (statements == null || statements.isEmpty()) {
-            return false;
+            return PolicyDecision.noStatements();
         }
         Map<String, String> ctx = requestContext == null ? Collections.emptyMap() : requestContext;
-        boolean anyAllow = false;
-        for (PolicyStatement s : statements) {
+        int firstAllow = -1;
+        for (int i = 0; i < statements.size(); i++) {
+            PolicyStatement s = statements.get(i);
             if (!matchesAction(s, action) || !matchesResource(s, resource)) {
                 continue;
             }
@@ -320,11 +344,16 @@ public final class PolicyEvaluator {
                 continue;
             }
             if (s.effect() == Effect.DENY) {
-                return false;
+                return PolicyDecision.explicitDeny(i, s);
             }
-            anyAllow = true;
+            if (firstAllow < 0) {
+                firstAllow = i;
+            }
         }
-        return anyAllow;
+        if (firstAllow < 0) {
+            return PolicyDecision.noMatchingStatement();
+        }
+        return PolicyDecision.allow(firstAllow, statements.get(firstAllow));
     }
 
     private static boolean matchesAction(PolicyStatement s, String action) {

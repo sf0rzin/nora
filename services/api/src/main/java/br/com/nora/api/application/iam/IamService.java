@@ -1,6 +1,7 @@
 package br.com.nora.api.application.iam;
 
 import br.com.nora.api.application.ports.IamRepository;
+import br.com.nora.api.application.ports.UserRepository;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
@@ -16,15 +17,21 @@ import org.springframework.transaction.annotation.Transactional;
  * Use case of the IAM subdomain. Every mutating operation records an audit event.
  *
  * <p>The authorization itself (checking whether the caller may invoke each method) is the
- * IamController's responsibility via {@link AuthorizationService}.
+ * IamController's responsibility via {@link AuthorizationService}. {@link #simulate} is the one
+ * method that reaches for that service with a different purpose: to ask what it WOULD decide for
+ * another user, without acting on the answer.
  */
 @Service
 public class IamService {
 
     private final IamRepository iam;
+    private final UserRepository users;
+    private final AuthorizationService authz;
 
-    public IamService(IamRepository iam) {
+    public IamService(IamRepository iam, UserRepository users, AuthorizationService authz) {
         this.iam = iam;
+        this.users = users;
+        this.authz = authz;
     }
 
     // ========== groups ==========
@@ -208,6 +215,34 @@ public class IamService {
                 "ATTACHMENT",
                 userId,
                 Map.of("policyId", policyId.toString()));
+    }
+
+    // ========== simulation ==========
+
+    /**
+     * US43 — "can this user do this action on this resource?", answered with the reason and without
+     * performing the action. Debugging a policy used to mean attempting the real operation and
+     * reading the 403 back.
+     *
+     * <p>The subject is resolved inside the CALLER'S tenant before anything is evaluated, and a
+     * user from elsewhere is a 404. Skipping that check would not throw an error: it would answer a
+     * perfectly formed "deny, no statements", which is a true sentence about a user the caller must
+     * not learn exists.
+     *
+     * <p>Read-only, and deliberately not audited: the IAM trail records mutations, and a simulation
+     * changes nothing.
+     */
+    @Transactional(readOnly = true)
+    public PolicyExplanation simulate(
+            UUID tenantId,
+            UUID userId,
+            String action,
+            String resource,
+            Map<String, String> context) {
+        users.findById(userId)
+                .filter(u -> u.tenantId().equals(tenantId))
+                .orElseThrow(IamException::userNotFound);
+        return authz.explain(userId, tenantId, action, resource, context);
     }
 
     // ========== audit ==========

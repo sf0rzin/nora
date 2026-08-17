@@ -701,6 +701,49 @@ export async function listAuditEvents(limit = 50): Promise<AuditEventDto[]> {
   return request<AuditEventDto[]>(`/iam/audit?limit=${limit}`);
 }
 
+// ---------- IAM policy simulator (US43) ----------
+
+/** The deciding statement, with the field names the policy document itself uses. */
+export interface SimulatedStatementDto {
+  effect: string;
+  action: string[];
+  resource: string[];
+  condition?: Record<string, unknown> | null;
+}
+
+/**
+ * Answer of POST /iam/simulate. Everything after `allowed` is the explanation: `reason` says how
+ * the decision was reached, and the remaining fields point at the statement that reached it. They
+ * are null when no statement decided — a Root bypass, an empty policy set, or nothing matching.
+ */
+export interface SimulationDto {
+  userId: string;
+  action: string;
+  resource: string;
+  allowed: boolean;
+  reason: 'NO_STATEMENTS' | 'NO_MATCHING_STATEMENT' | 'EXPLICIT_DENY' | 'ALLOW' | 'ROOT_BYPASS';
+  policyId?: string | null;
+  policyName?: string | null;
+  statementIndex?: number | null;
+  statement?: SimulatedStatementDto | null;
+  statementsEvaluated: number;
+}
+
+export interface SimulationRequest {
+  userId: string;
+  action: string;
+  resource: string;
+  context?: Record<string, string>;
+}
+
+/** Asks the evaluator what it WOULD decide, without performing the operation. */
+export async function simulatePolicy(req: SimulationRequest): Promise<SimulationDto> {
+  return request<SimulationDto>(`/iam/simulate`, {
+    method: 'POST',
+    body: JSON.stringify(req),
+  });
+}
+
 // ---------- IAM Invitations (US06, ADR 0011) ----------
 
 /** Creates an invite. Requires IAM `iam:user:invite`. */
