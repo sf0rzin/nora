@@ -249,11 +249,11 @@ class ProductivityFlowIntegrationTest {
     /**
      * Re-analysing a meeting that already produced action items must succeed.
      *
-     * <p>Regression test for the defect that made the whole Productivity Score feature
-     * unreachable in production. The analysis collections are unidirectional {@code @OneToMany}
-     * with {@code @JoinColumn}, so deleting the previous analysis made Hibernate DISSOCIATE its
-     * children first — {@code update meeting_action_items set analysis_id=null where
-     * analysis_id=?} — and that column is {@code NOT NULL}:
+     * <p>Regression test for the defect that made the whole Productivity Score feature unreachable
+     * in production. The analysis collections are unidirectional {@code @OneToMany} with
+     * {@code @JoinColumn}, so deleting the previous analysis made Hibernate DISSOCIATE its children
+     * first — {@code update meeting_action_items set analysis_id=null where analysis_id=?} — and
+     * that column is {@code NOT NULL}:
      *
      * <pre>
      * Analysis pipeline failed meetingId=fde9f04b... cause=could not execute statement
@@ -261,15 +261,15 @@ class ProductivityFlowIntegrationTest {
      *  violates not-null constraint]
      * </pre>
      *
-     * <p>{@code MeetingAnalysisRepositoryAdapter.save} deletes any existing analysis before
-     * writing the new one, so this fired on every re-analysis of a meeting that had action items
-     * — and since a goal edit re-queues the analysis, a productivity score could never be
-     * produced for a meeting whose first pass extracted anything.
+     * <p>{@code MeetingAnalysisRepositoryAdapter.save} deletes any existing analysis before writing
+     * the new one, so this fired on every re-analysis of a meeting that had action items — and
+     * since a goal edit re-queues the analysis, a productivity score could never be produced for a
+     * meeting whose first pass extracted anything.
      *
      * <p>Every existing reprocess test in this class passed throughout, because the stub returned
      * empty collections and there were no children to dissociate. That is why this one asserts on
-     * the CHILD ROWS: the status flipping back to COMPLETED is not enough, the second analysis
-     * has to own its items and the first analysis's rows have to be gone.
+     * the CHILD ROWS: the status flipping back to COMPLETED is not enough, the second analysis has
+     * to own its items and the first analysis's rows have to be gone.
      */
     @Test
     void reanalysisOfAMeetingThatHasActionItemsSucceeds() throws Exception {
