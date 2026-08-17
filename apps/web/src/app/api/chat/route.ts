@@ -23,6 +23,7 @@
  */
 import { cookies } from "next/headers";
 
+import { resolveProviderKey } from "@/lib/llm/provider-key";
 import { redactPii } from "@/lib/pii/redact";
 
 export const runtime = "nodejs";
@@ -183,10 +184,15 @@ async function resolveChatModel(): Promise<ModelConfig> {
   }
 }
 
-/** Key per provider (LLM_KEY_<PROVIDER>), with fallback to the legacy single key. */
+/**
+ * Key for a provider. See `@/lib/llm/provider-key` — the rule it enforces is that
+ * `LLM_API_KEY` belongs to `LLM_PROVIDER` and is never handed to a different one.
+ */
 function resolveKey(provider: string): string {
-  const byProvider = process.env[`LLM_KEY_${provider.toUpperCase()}`];
-  return (byProvider && byProvider.trim()) || LLM_API_KEY;
+  return resolveProviderKey(provider, {
+    defaultProvider: LLM_PROVIDER,
+    defaultKey: LLM_API_KEY,
+  });
 }
 
 /**

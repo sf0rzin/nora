@@ -25,7 +25,14 @@ public record SttProperties(String defaultLanguage, OpenAi openai, RateLimit rat
     static final String DEFAULT_MODEL = "gpt-live-transcribe";
     static final String DEFAULT_AUDIO_FORMAT = "audio/pcm";
     static final int DEFAULT_SAMPLE_RATE = 24_000;
-    static final String DEFAULT_TURN_DETECTION = "server_vad";
+
+    /**
+     * None, because {@link #DEFAULT_MODEL} refuses turn detection: the provider answers {@code 400
+     * Turn detection is not supported for this transcription model} and no session is ever minted.
+     * The two defaults have to agree, and the model is the half ADR 0045 fixes.
+     */
+    static final String DEFAULT_TURN_DETECTION = "";
+
     static final int DEFAULT_TTL_SECONDS = 600;
     static final int DEFAULT_TIMEOUT_MS = 5_000;
     static final int DEFAULT_SESSIONS_PER_MINUTE = 12;
@@ -56,8 +63,10 @@ public record SttProperties(String defaultLanguage, OpenAi openai, RateLimit rat
      * @param sampleRate input sample rate in Hz. The desktop capture pipeline targets the same
      *     number ({@code stt::TARGET_SAMPLE_RATE}); changing one without the other feeds the
      *     provider audio at the wrong speed, which transcribes as gibberish rather than failing
-     * @param turnDetection provider VAD mode that segments the stream into utterances. Empty
-     *     disables it, which also means the client would have to commit turns itself
+     * @param turnDetection provider VAD mode that segments the stream into utterances. Empty sends
+     *     no turn detection at all, which is the DEFAULT and the only value {@link #DEFAULT_MODEL}
+     *     accepts — that model transcribes continuously and emits its own transcription
+     *     delta/completed events, so nothing is left waiting for a commit
      * @param sessionTtlSeconds requested credential lifetime. The provider clamps it (10..7200 at
      *     the time of writing) and the value governs how long the secret can OPEN a connection, not
      *     how long an open session lives (ADR 0045 §3)

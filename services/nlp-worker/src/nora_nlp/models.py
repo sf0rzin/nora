@@ -9,7 +9,7 @@ from datetime import date
 from enum import Enum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ---------- Enums aligned to the v1 schemas ----------
 
@@ -114,6 +114,41 @@ class ActionItem(BaseModel):
     due_date: date | None = Field(default=None, alias="dueDate")
     priority: Priority
     source_quote: Annotated[str, Field(min_length=5, max_length=500, alias="sourceQuote")]
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def _tolerate_relative_dates(cls, value: object) -> object:
+        """An unparseable due date becomes None instead of destroying the analysis.
+
+        People do not speak in ISO. A meeting says "by Friday" and "I will get back to
+        you tomorrow", and the model repeats the phrase it heard rather than a date:
+        production returned the Portuguese for both, in this field. Pydantic raised, the
+        router turned that into a 503, and the API marked the whole meeting FAILED — so
+        the summary, the decisions, the risks and the opportunities were all thrown away
+        because one OPTIONAL convenience field could not be parsed.
+
+        The date is a nice-to-have on an action item; the analysis is the product.
+        The prompt and the JSON Schema both now ask for `YYYY-MM-DD` or null (see
+        `prompts/meeting-analysis-v1.md` rule 15 and `build_json_schema_for_analysis`),
+        and this validator is the backstop for when a model answers in prose anyway —
+        which no instruction can rule out.
+
+        Note this deliberately does NOT try to resolve the phrase. Doing that needs the
+        meeting's own date as an anchor, and that is not part of the worker's request
+        contract; resolving "tomorrow" against the SERVER's today would silently invent a
+        deadline nobody agreed to.
+        """
+        if value is None or isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            try:
+                date.fromisoformat(text[:10])
+            except ValueError:
+                return None
+        return value
 
 
 class Risk(BaseModel):

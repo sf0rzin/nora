@@ -176,9 +176,24 @@ nora:
       # fail anywhere — it plays the audio to the provider at the wrong speed and transcribes as
       # gibberish.
       sample-rate: ${NORA_STT_SAMPLE_RATE:24000}
-      # Provider-side VAD segments the stream into utterances. Empty would make the client
-      # responsible for committing turns, which is the local-VAD job this migration deletes.
-      turn-detection: ${NORA_STT_TURN_DETECTION:server_vad}
+      # EMPTY, and that is the working value — not a disabled feature.
+      #
+      # This defaulted to `server_vad` on the reasoning that provider-side VAD segments the stream
+      # into utterances, so the client would not have to. The model above refuses it: every mint
+      # came back `400 Turn detection is not supported for this transcription model.`, so
+      # POST /stt/sessions answered 502 for every caller and live transcription could not start at
+      # all. Measured against the provider on 2026-08-17: `gpt-live-transcribe` + `server_vad` ->
+      # 400; `gpt-live-transcribe` + null -> 200. `gpt-4o-transcribe` accepts `server_vad`, but the
+      # model is what ADR 0045 fixes in the session contract, so the VAD default is what gives way.
+      #
+      # Nothing is lost by it: `gpt-live-transcribe` transcribes CONTINUOUSLY, which is why it has
+      # no use for turn detection, and the desktop consumes
+      # `conversation.item.input_audio_transcription.delta`/`.completed` (stt_cloud.rs) — events
+      # this model emits on its own. It already ignores `input_audio_buffer.speech_started`, the
+      # VAD event, so no commit signal is being waited on.
+      #
+      # Set it back to `server_vad` ONLY together with a model that accepts it.
+      turn-detection: ${NORA_STT_TURN_DETECTION:}
       # How long the secret may be used to OPEN a connection (provider range 10..7200). An
       # already-open session is NOT killed when it lapses, so there is no renewal loop; a dropped
       # connection asks for a new session instead.

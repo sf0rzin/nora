@@ -492,3 +492,87 @@ def test_the_prompt_does_not_contradict_itself_about_the_tenants_own_name(MockCl
         "a person pasted into the tenant context reached the provider -- the terms are not "
         "supposed to weaken the shield, only to stop it eating the trade name"
     )
+
+
+@patch("nora_nlp.services.llm_analyzer.LlmClient")
+def test_a_relative_due_date_does_not_destroy_the_analysis(MockClient):
+    """Regression: production lost every analysis of a Portuguese meeting.
+
+    The model was never told what shape `dueDate` takes -- the copy of the schema sent to
+    the provider had dropped the `format: date` that the canonical schema carries -- so it
+    answered with the words it heard: `'sexta-feira'` and `'amanha'`. Pydantic raised,
+    the router returned 503, and the API marked the meeting FAILED. The summary, the
+    decisions, the risks and the opportunities were all discarded because one OPTIONAL
+    field could not be parsed.
+
+    The instruction is now in the prompt and in the schema, but no instruction is a
+    guarantee, so the parser has to survive being disobeyed.
+    """
+    payload = json.loads(json.dumps(_FAKE_LLM_RESPONSE))
+    payload["actionItems"] = [
+        {
+            "title": "Enviar o business case consolidado",
+            "assignee": "Ana",
+            "dueDate": "sexta-feira",
+            "priority": "HIGH",
+            "sourceQuote": "Eu vou enviar o business case consolidado ate sexta-feira.",
+        },
+        {
+            "title": "Confirmar a disponibilidade do time de implantacao",
+            "assignee": "Bruno",
+            "dueDate": "amanha",
+            "priority": "MEDIUM",
+            "sourceQuote": "Vou confirmar com o time de implantacao e retorno amanha.",
+        },
+        {
+            "title": "Levar a proposta ao comite financeiro",
+            "assignee": "Carla",
+            "dueDate": "2026-09-01",
+            "priority": "HIGH",
+            "sourceQuote": "Preciso levar ao comite financeiro na proxima terca.",
+        },
+    ]
+    mock_instance = MagicMock()
+    mock_instance.chat_structured.return_value = (json.dumps(payload), 1500, 800)
+    MockClient.return_value = mock_instance
+
+    response = analyze(_make_request(), _make_settings())
+
+    # The analysis survived, which is the whole point.
+    assert response.summary.startswith("## Objetivo")
+    assert len(response.decisions) == 1
+    assert len(response.risks) == 1
+    assert len(response.opportunities) == 1
+
+    # Every action item survived too, titles and quotes intact -- the commitment is still
+    # recorded even where the date could not be.
+    assert len(response.action_items) == 3
+    assert response.action_items[0].due_date is None
+    assert response.action_items[1].due_date is None
+    assert "business case" in response.action_items[0].title
+    assert "amanha" in response.action_items[1].source_quote
+
+    # An absolute date is still parsed. Dropping the field wholesale would have been the
+    # other way to make this stop failing, and it would have been the wrong one.
+    assert response.action_items[2].due_date is not None
+    assert response.action_items[2].due_date.isoformat() == "2026-09-01"
+
+
+def test_the_schema_sent_to_the_provider_states_the_date_format():
+    """The two copies of the analysis schema must not drift on `dueDate` again.
+
+    `docs/api/llm-schemas/meeting-analysis-v1.schema.json` constrains it with
+    `"format": "date"`; `build_json_schema_for_analysis` is a hand-maintained duplicate that
+    had silently lost the constraint. `format` is outside the strict structured-output
+    subset, so the constraint travels as a description -- but it has to travel.
+    """
+    from nora_nlp.clients.llm import build_json_schema_for_analysis
+
+    due = build_json_schema_for_analysis()["properties"]["actionItems"]["items"]["properties"][
+        "dueDate"
+    ]
+    described = due.get("description", "")
+    assert "YYYY-MM-DD" in described, (
+        f"the schema handed to the model does not say what a dueDate looks like; got {due!r}"
+    )
+    assert "null" in described, "the schema does not tell the model when to give up and use null"
