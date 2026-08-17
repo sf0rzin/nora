@@ -61,8 +61,17 @@ tokio-tungstenite = { version = "0.28", default-features = false, features = ["c
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 base64 = "0.23"
 uuid = { version = "1", features = ["v4"] }
+# These two are ONE upgrade, not two. `rubato` takes its input and output through the
+# `Adapter`/`AdapterMut` traits of `audioadapter`, and `InterleavedOwned` below comes from
+# `audioadapter-buffers` — so the buffer crate has to be the major version the resampler was built
+# against, or the traits it implements are a different set of traits with the same names.
+#
+# Dependabot bumped only `rubato` (PR #462) and the build failed with two `error[E0277]` saying
+# `InterleavedOwned<f32>` does not implement `Adapter`. It was not a code break: `cargo tree`
+# showed audioadapter 4.0.0 AND 5.0.0 both resolved, which is Cargo doing exactly what it should
+# with two incompatible majors. Keep these version numbers in step.
 rubato = "5.0.0"
-audioadapter-buffers = "4.0.0"
+audioadapter-buffers = "5.1.0"
 url = "2.5.8"
 urlencoding = "2"
 chrono = { version = "0.4", features = ["serde"] }

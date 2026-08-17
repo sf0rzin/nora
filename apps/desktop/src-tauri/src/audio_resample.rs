@@ -21,9 +21,16 @@ impl MonoResampler {
             });
         }
         let chunk_in = (src_sr as usize / 50).max(64); // ~20ms
-        // Argument order under rubato 4 is (input rate, output rate, chunk_size, nbr_channels,
-        // fixed) — `sub_chunks` is gone, chosen automatically as `(chunk_size / 256).max(1)` to
-        // target roughly 256 frames per sub-chunk. `new_custom` takes it back if needed.
+        // Argument order is (input rate, output rate, chunk_size, nbr_channels, fixed), and
+        // `sub_chunks` is chosen automatically as `(chunk_size / 256).max(1)` to target roughly
+        // 256 frames per sub-chunk. `new_custom` takes it back if needed.
+        //
+        // Verified unchanged from rubato 4 to 5 by reading `synchro.rs` at 5.0.0 rather than by
+        // assuming it: the signature and that expression are identical. The 5.0.0 upgrade broke
+        // the build without touching this call — `rubato` moved to `audioadapter` 5 while
+        // `Cargo.toml` still pinned `audioadapter-buffers` 4, so the buffers below implemented a
+        // different crate's traits of the same name. The manifest comment explains why those two
+        // version numbers move together.
         //
         // This is a BEHAVIOUR change at 48 kHz, not just an API one, and it is the reason the
         // two tests below were run rather than merely compiled. `chunk_in` is 960 there, so
