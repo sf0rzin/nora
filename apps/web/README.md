@@ -89,10 +89,11 @@ keeps them apart.
 
 **What each one covers, and what neither does.** The Playwright suite checks routing, response
 headers and CSP violations against a real `next start` — no product behaviour, by design (see the
-note at the top of `e2e/fixtures.ts`). The Vitest suite covers four `src/lib` modules: the
+note at the top of `e2e/fixtures.ts`). The Vitest suite covers five `src/lib` modules: the
 `request()` function that all 66 exported wrappers in `src/lib/api/client.ts` go through, the
-Markdown report builder, the BFF's PII redaction and the password policy. **No page and no
-component has a unit test**, which is why whole-app coverage is around 5%.
+Markdown report builder, the task-list CSV/Markdown exporter, the BFF's PII redaction and the
+password policy. **No page and no component has a unit test**, which is why whole-app coverage is
+around 6%.
 
 Two of those tests are mirrors and read files from other services: `src/lib/pii/redact.test.ts`
 compares its pattern literals with the worker's PII Shield, and `src/lib/password-policy.test.ts`
@@ -100,9 +101,9 @@ compares its constants with the backend's `PasswordPolicy` and DTO bounds. They 
 those files move — do not turn that into a skip.
 
 `npm run test:coverage` is also the gate: `vitest.config.mts` declares per-module coverage floors
-on `redact.ts`, `markdown.ts` and `password-policy.ts`, each set below the measured rate so it
-fires on a regression. There is no whole-app threshold, and none on `client.ts`. ADR 0042 has the
-reasoning; `scripts/report-coverage.sh web` prints both scopes.
+on `redact.ts`, `markdown.ts`, `tasks-export.ts` and `password-policy.ts`, each set below the
+measured rate so it fires on a regression. There is no whole-app threshold, and none on
+`client.ts`. ADR 0042 has the reasoning; `scripts/report-coverage.sh web` prints both scopes.
 
 ## CSS strategy (ADR 0013)
 
