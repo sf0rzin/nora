@@ -6,6 +6,7 @@ import br.com.nora.api.application.chat.ChatException;
 import br.com.nora.api.application.iam.IamException;
 import br.com.nora.api.application.iam.InvitationException;
 import br.com.nora.api.application.identity.AuthException;
+import br.com.nora.api.application.mcp.McpException;
 import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.stt.SttException;
 import br.com.nora.api.application.task.TaskException;
@@ -253,6 +254,20 @@ public class GlobalExceptionHandler {
                     case "IAM_NAME_TAKEN" -> HttpStatus.CONFLICT;
                     case "IAM_FORBIDDEN" -> HttpStatus.FORBIDDEN;
                     case "IAM_AUTHORIZATION_NOT_DECLARED" -> HttpStatus.FORBIDDEN;
+                    default -> HttpStatus.BAD_REQUEST;
+                };
+        return ResponseEntity.status(status)
+                .body(
+                        new ErrorResponse(
+                                ex.code(), ex.getMessage(), traceId(), Instant.now(), List.of()));
+    }
+
+    @ExceptionHandler(McpException.class)
+    public ResponseEntity<ErrorResponse> handleMcp(McpException ex) {
+        HttpStatus status =
+                switch (ex.code()) {
+                    case "MCP_TOKEN_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+                    case "MCP_TOKEN_LIMIT_REACHED" -> HttpStatus.CONFLICT;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)

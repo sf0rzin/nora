@@ -8,11 +8,11 @@ info:
     policies + attachments + audit), email invitations, workspace settings and commercial context,
     meeting upload/listing/detail/semantic search, extracted task management, the trends panel's
     temporal aggregation, live analysis, chat sessions, NORA Flows (workflow CRUD, manual run and
-    execution history), the OAuth integration hub, the LGPD erasure endpoint, and the operator
-    control plane.
+    execution history), the OAuth integration hub, the LGPD erasure endpoint, the inbound MCP server
+    and its tokens, and the operator control plane.
 
     ## Scope of this document
-    Every route the 18 controllers under
+    Every route the 20 controllers under
     `services/api/src/main/java/br/com/nora/api/api/controllers/` expose is described here, and
     nothing else is. `scripts/check-openapi-coverage.sh` enforces that in both directions in CI:
     a route added to a controller and not to this file fails the build, and so does an operation
@@ -99,6 +99,14 @@ tags:
       the desktop uses to stream audio straight to the transcription provider. The provider account
       key stays on the server, and the audio never crosses NORA's infrastructure — which is why
       per-tenant usage here counts sessions issued, not minutes transcribed.
+  - name: MCP
+    description: |
+      NORA as a Model Context Protocol server (ADR 0041, migration V029) — the **inbound**
+      direction, where an external MCP client reads meetings, tasks, semantic search and Customer
+      Confidence. `POST /mcp` is the protocol endpoint and does not follow the conventions of the
+      rest of this document: it speaks JSON-RPC 2.0 over the Streamable HTTP transport, and it
+      authenticates with a tenant-scoped MCP token rather than the session JWT. The three
+      `/mcp/tokens` routes are ordinary REST and are where a logged-in user mints one.
   - name: Platform Admin
     description: |
       Operator control plane, NOT tenant-facing API (ADR 0022, ADR 0024, ADR 0025). Served on a
@@ -1811,6 +1819,138 @@ paths:
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
 
   # ----------------------------------------------------------------------------
+  # MCP — the inbound adapter (ADR 0041, migration V029)
+  #
+  # `POST /mcp` is not a REST operation and is documented as what it is: one path
+  # carrying JSON-RPC 2.0. `security: []` on it means "neither of the two schemes
+  # this document defines" — it takes an MCP token, not the session JWT.
+  # ----------------------------------------------------------------------------
+  /mcp:
+    post:
+      tags: [MCP]
+      security: []
+      summary: MCP endpoint (JSON-RPC 2.0 over the Streamable HTTP transport)
+      description: |
+        The single MCP endpoint. Authenticated by `Authorization: Bearer <mcp-token>`, minted at
+        `POST /mcp/tokens`; the session JWT is **not** accepted here, and an MCP token is not
+        accepted anywhere else. A request without a live credential returns `401`.
+
+        **Protocol versions.** This server implements `2025-11-25` and `2025-06-18` — the
+        revisions that open a connection with an `initialize` handshake, which is what deployed
+        MCP clients speak. An `initialize` naming any other version is refused with JSON-RPC error
+        `-32602` whose `data.supported` lists what is implemented; the server never echoes a
+        version it does not serve. The transport's `MCP-Protocol-Version` header is optional, and
+        a value outside that list is answered `400` with the same `data.supported` payload — which
+        is also the signal a client of the newer, handshake-free revision uses to fall back.
+
+        **Methods.** `initialize`, `ping`, `tools/list`, `tools/call`. Anything else is JSON-RPC
+        error `-32601`. A message with no `id` is a notification and is answered `202` with no
+        body. `GET` and `DELETE` on this path return `405`: there is no server-initiated SSE
+        stream and no session to terminate, because every tool is a request/response read and the
+        credential travels on each request.
+
+        **Tools (read-only first cut, ADR 0041 §4).** `list_meetings`, `get_meeting`,
+        `search_meetings`, `list_tasks`, `get_customer_confidence`. Each one resolves the same IAM
+        principal the web surface resolves and evaluates the same action against the same policies
+        — `meeting:read` for the four meeting-shaped tools, `task:read` for the task listing. There
+        is no MCP-specific permission vocabulary, and the testable invariant is that an MCP client
+        can never see more than the user it acts for can see in the web application. A denial or an
+        unreadable resource comes back as a tool result with `isError: true`, not as a JSON-RPC
+        error, which is the channel the specification reserves for failures a model can act on.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/McpJsonRpcRequest' }
+      responses:
+        '200':
+          description: JSON-RPC response (result or error)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/McpJsonRpcResponse' }
+        '202':
+          description: Notification accepted; no body
+        '400':
+          description: |
+            Not a JSON-RPC 2.0 message, or an `MCP-Protocol-Version` header this server does not
+            implement. The body is a JSON-RPC error object with a null `id`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/McpJsonRpcResponse' }
+        '401':
+          description: Missing, unknown, revoked or expired MCP token
+        '403':
+          description: |
+            `Origin` header present and not one of the configured trusted origins. Required by the
+            Streamable HTTP transport as a defence against DNS rebinding; non-browser clients send
+            no `Origin` and never meet it.
+        '405':
+          description: Method not allowed on the MCP endpoint (`GET`, `DELETE`)
+
+  /mcp/tokens:
+    post:
+      tags: [MCP]
+      summary: Mints an MCP token for the caller
+      description: |
+        Self-service: acts only on the caller's own credentials, so it requires no IAM action. The
+        minted token grants strictly what the caller already holds — every tool call re-evaluates
+        the same policies against the same principal — which is why there is no separate permission
+        to gate it with.
+
+        **The plaintext is in this response and nowhere else.** Only its SHA-256 hash is persisted
+        (the pattern of `refresh_tokens` and, since V018, of the invitation token), so a token that
+        is not copied out of this response has to be revoked and replaced. It is prefixed
+        `nora_mcp_` so it is recognisable to a secret scanner and to the edge that resolves it.
+
+        `expiresInDays` is optional; absent means the token lives until it is revoked, which is
+        what an MCP client sitting in a configuration file needs. Values outside 1..365 are
+        clamped. A user may hold 20 active tokens; the 21st returns `409 MCP_TOKEN_LIMIT_REACHED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/McpTokenCreateRequest' }
+      responses:
+        '201':
+          description: Created — the only response that ever carries the plaintext
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/McpTokenCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      tags: [MCP]
+      summary: Lists the caller's MCP tokens
+      description: |
+        Self-service, newest first. Carries no secret material: a revoked token stays in the list
+        with `active: false`, because a credential that vanished from the UI is one nobody can
+        confirm is dead. `lastUsedAt` is what identifies a token no client is using any more.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/McpTokenListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /mcp/tokens/{id}:
+    delete:
+      tags: [MCP]
+      summary: Revokes one of the caller's MCP tokens
+      description: |
+        Self-service and idempotent: revoking an already revoked token answers `204` rather than
+        failing for having succeeded. A token belonging to anyone else is `404`, never `403`, so an
+        id cannot be probed for existence. Revocation takes effect on the next request the token
+        makes — there is no cache in front of the lookup.
+      parameters: [{ $ref: '#/components/parameters/McpTokenId' }]
+      responses:
+        '204':
+          description: Revoked
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ----------------------------------------------------------------------------
   # Platform Admin — operator control plane (ADR 0022 / 0024 / 0025)
   #
   # NOT tenant API. Admin-token security chain, operator email in X-Operator-Email,
@@ -2274,6 +2414,11 @@ components:
       description: |
         Exclusive upper bound of the window. ISO-8601 date or date-time. Defaults to now (UTC).
       schema: { type: string }
+    McpTokenId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
 
   responses:
     BadRequest:
@@ -3092,6 +3237,131 @@ components:
             target (`TARGET_SAMPLE_RATE`); a mismatch does not fail anywhere, it just transcribes
             as gibberish.
           example: 24000
+    McpJsonRpcRequest:
+      type: object
+      description: |
+        A single JSON-RPC 2.0 message. `id` absent makes it a notification, which is answered
+        `202` with no body. Batches are not accepted: the Streamable HTTP transport carries one
+        message per POST.
+      required: [jsonrpc, method]
+      properties:
+        jsonrpc: { type: string, const: '2.0' }
+        id:
+          description: |
+            Request identifier, echoed verbatim in the response. Absent on a notification.
+          oneOf:
+            - { type: string }
+            - { type: integer }
+        method:
+          type: string
+          enum: [initialize, ping, tools/list, tools/call, notifications/initialized]
+        params:
+          type: object
+          additionalProperties: true
+          description: |
+            Method-dependent. `initialize` takes `protocolVersion`, `capabilities` and
+            `clientInfo`; `tools/call` takes `name` and `arguments`.
+    McpJsonRpcResponse:
+      type: object
+      description: |
+        Exactly one of `result` or `error` is present. A tool that fails for a reason the caller
+        can act on — a bad argument, a meeting it may not read — is a SUCCESS at this level, with
+        `isError: true` inside `result`.
+      required: [jsonrpc, id]
+      properties:
+        jsonrpc: { type: string, const: '2.0' }
+        id:
+          oneOf:
+            - { type: string }
+            - { type: integer }
+            - { type: 'null' }
+        result:
+          type: object
+          additionalProperties: true
+          description: |
+            For `tools/call`: `content` (a text block carrying the serialized payload),
+            `structuredContent` (the same payload as JSON) and `isError`.
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: integer
+              description: |
+                JSON-RPC reserved codes. `-32600` malformed message or unimplemented protocol
+                version header, `-32601` unknown method, `-32602` unimplemented protocol version
+                on `initialize` or unknown tool.
+            message: { type: string }
+            data:
+              type: object
+              additionalProperties: true
+              description: |
+                On a protocol-version refusal: `supported` (the revisions this server implements)
+                and `requested`.
+    McpTokenCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: Label the user recognises when deciding which token to revoke.
+          example: Claude Desktop
+        expiresInDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+          description: |
+            Optional hard expiry. Absent means the token lives until it is revoked. Values outside
+            the range are clamped rather than refused — this is a convenience, not a control.
+    McpTokenCreated:
+      type: object
+      required: [id, name, token, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        token:
+          type: string
+          description: |
+            The plaintext, readable here and nowhere else — only its SHA-256 hash is stored.
+            Prefixed `nora_mcp_`.
+          example: nora_mcp_0S3Xk1u2h9Tq0vP4nZ7mFbA6cJ8eR5yWq1tL3dK0gYs
+        createdAt: { type: string, format: date-time }
+        expiresAt:
+          oneOf:
+            - { type: string, format: date-time }
+            - { type: 'null' }
+    McpToken:
+      type: object
+      required: [id, name, createdAt, active]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+        expiresAt:
+          oneOf:
+            - { type: string, format: date-time }
+            - { type: 'null' }
+        revokedAt:
+          oneOf:
+            - { type: string, format: date-time }
+            - { type: 'null' }
+        lastUsedAt:
+          description: Last successful resolution. Null on a token no client has ever used.
+          oneOf:
+            - { type: string, format: date-time }
+            - { type: 'null' }
+        active:
+          type: boolean
+          description: Neither revoked nor past its expiry.
+    McpTokenListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/McpToken' }
     LiveAnalyzeRequest:
       type: object
       required: [transcriptChunk]

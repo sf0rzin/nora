@@ -1009,3 +1009,56 @@ export async function saveTrelloToken(token: string): Promise<IntegrationStatus>
   });
 }
 
+// ---------- MCP tokens (US27, ADR 0041) ----------
+//
+// The credential an external MCP client presents to `POST /mcp`. Minted by an authenticated
+// user, scoped to their tenant and principal, stored only as a SHA-256 hash. `createMcpToken`
+// is the ONLY call that ever returns the plaintext — the listing never does, because the server
+// cannot produce it again. A token the user does not copy out of that response is one they have
+// to revoke and mint anew.
+
+/** A token as the listing shows it. Carries no secret material. */
+export interface McpTokenSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  active: boolean;
+}
+
+/** The mint response — the one and only moment `token` exists outside the client's config. */
+export interface McpTokenCreated {
+  id: string;
+  name: string;
+  token: string;
+  createdAt: string;
+  expiresAt: string | null;
+}
+
+/** The caller's own tokens, newest first, revoked ones included and flagged. */
+export async function listMcpTokens(): Promise<McpTokenSummary[]> {
+  const response = await request<{ items: McpTokenSummary[] }>(`/mcp/tokens`);
+  return response.items ?? [];
+}
+
+/**
+ * Mints a token. `expiresInDays` omitted means "until revoked", which is what an MCP client
+ * sitting in a configuration file needs. 409 `MCP_TOKEN_LIMIT_REACHED` when 20 are already live.
+ */
+export async function createMcpToken(input: {
+  name: string;
+  expiresInDays?: number;
+}): Promise<McpTokenCreated> {
+  return request<McpTokenCreated>(`/mcp/tokens`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Revokes a token (204). Idempotent; a token of another user answers 404. */
+export async function revokeMcpToken(id: string): Promise<void> {
+  return request<void>(`/mcp/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+

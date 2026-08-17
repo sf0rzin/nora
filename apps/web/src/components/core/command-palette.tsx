@@ -34,6 +34,7 @@ const COMMANDS: CommandItem[] = [
   { kind: "cmd", label: "Fluxos", icon: "flow", href: "/flows" as Route },
   { kind: "cmd", label: "Abrir configurações", icon: "gear", href: "/settings" as Route },
   { kind: "cmd", label: "IAM — usuários, grupos e policies", icon: "shield", href: "/settings/iam" as Route },
+  { kind: "cmd", label: "Credenciais MCP", sub: "clientes externos", icon: "shield", href: "/settings/mcp" as Route },
 ];
 
 function CmdIcon({ name }: { name: CommandItem["icon"] | "doc" | "search" }) {

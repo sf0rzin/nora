@@ -36,7 +36,7 @@
 | **E3** | AI Processing | Core + Enterprise | Analysis pipeline, NLP, summary, task extraction, embeddings |
 | **E4** | Dashboard & Insights | Core + Enterprise | Meeting visualization, search, filters, history, report and export |
 | **E5** | Task Management | Core | Extracted tasks, status, assignment, due date, export |
-| **E6** | Interoperability — inbound MCP, outbound OAuth | Core | Two directions that used to be one epic. **Outbound**: NORA acts on other tools through OAuth connectors (ADR 0031). **Inbound**: external MCP clients query NORA (ADR 0041, not built) |
+| **E6** | Interoperability — inbound MCP, outbound OAuth | Core | Two directions that used to be one epic. **Outbound**: NORA acts on other tools through OAuth connectors (ADR 0031). **Inbound**: external MCP clients query NORA (ADR 0041, read-only first cut, migration V029) |
 | **E7** | Enterprise Administration | Enterprise | Tenant configuration, company context, corporate domain |
 | **E8** | Enterprise IAM (AWS-style) | Enterprise | Root user, Users, Groups and Policies (Effect/Action/Resource[/Condition]) managed by the tenant itself |
 | **E9** | Meeting Productivity | Core + Enterprise | Opt-in assessment: the user declares the objective and expected outcomes; NORA measures coverage and assigns a Productivity Score |
@@ -47,9 +47,9 @@
 | **E14** | Platform Control Plane | Operator (not a customer tier) | Model catalog, runtime model resolution, AI cost telemetry, operator console (ADR 0022-0025) |
 
 E6 used to be called "MCP Integrations" and described "Connection with Claude MCP, Google Calendar,
-task managers". ADR 0041 established why that framing was wrong: what shipped is the **outbound**
-direction over OAuth, and MCP is the **inbound** one, which has never had a line of code. The epic
-now names both.
+task managers". ADR 0041 established why that framing was wrong: what had shipped is the
+**outbound** direction over OAuth, and MCP is the **inbound** one, which had never had a line of
+code until US27. The epic now names both.
 
 E10 used to be called "Customer Confidence & Account Health". The aggregate half was closed by
 ADR 0038 §4, so the epic no longer promises it.
@@ -140,13 +140,13 @@ done in.
 ### E6 — Interoperability: inbound MCP, outbound OAuth
 
 > The split this epic now makes is ADR 0041's. **Outbound** is NORA acting on other systems, which
-> is built and is OAuth. **Inbound** is an external client asking NORA questions, which is MCP and
-> has never existed. Reading the two as one feature is what let three stories sit at MISSING while
-> most of what they promised had shipped.
+> is OAuth. **Inbound** is an external client asking NORA questions, which is MCP. Both directions
+> are built now; reading the two as one feature is what let three stories sit at MISSING while most
+> of what they promised had shipped, and it is why US27 needed reframing before it could be built.
 
 | ID | Title | MoSCoW | Status | Evidence | Known debt |
 |---|---|---|---|---|---|
-| US27 | NORA as an MCP server (inbound) | S | MISSING | No code. No MCP server has ever existed in this repository | **Reframed and reactivated by ADR 0041.** The old title was "Claude MCP", which names a client rather than the thing to build. ADR 0041 fixes the design: an inbound adapter inside `services/api`, every tool call through `PolicyEvaluator`, a tenant-scoped bearer token hashed at rest, and a read-only first cut. It moves off `W` because it is declared scope again; the status stays MISSING because nothing is built |
+| US27 | NORA as an MCP server (inbound) | S | **DONE** | `POST /mcp` (`api/controllers/McpController.java`) speaking JSON-RPC 2.0 over Streamable HTTP · `api/mcp/` (protocol, tool catalogue, the five reads) · credential in migration V029 + `application/mcp/McpTokenService.java` + `infrastructure/security/McpSecurityConfig.java` · mint/list/revoke at `/mcp/tokens` with the settings surface in `apps/web/src/app/(app)/settings/mcp/` · `McpIsolationIntegrationTest`, `McpServerIntegrationTest` · ADR 0041 · `docs/engineering/architecture.md` §19 | **Reframed and reactivated by ADR 0041**, and now built. The old title was "Claude MCP", which names a client rather than the thing to build. DONE describes the first cut ADR 0041 §4 defines, and that cut is **read-only**: five tools over meetings, meeting detail, semantic search, tasks and Customer Confidence, each evaluating the same IAM action as the web surface. Two declared limits, neither of them debt discovered afterwards: §3 deliberately ships a hashed tenant-scoped bearer token instead of the OAuth 2.1 authorization server the MCP specification asks of a remote server, so a client that speaks only that flow needs a manually pasted token; and write tools are out until somebody decides which IAM actions an agent may exercise unattended |
 | US28 | Meeting outcomes reach the calendar (Google and Microsoft, via OAuth) | S | **DONE** | `CalendarCreateEventAction.java` (`calendar_create_event`) and `MicrosoftCalendarCreateEventAction.java` (`mscalendar_create_event`) in `services/api/.../infrastructure/integration/actions/` · wired into Flows through `ActionRegistry` · connections in migrations V024/V026 · ADR 0031 · PRs #221, #249 | **The promise was met by OAuth, not by MCP** (ADR 0041), so the story is renamed to name the real mechanism and is not counted as MCP scope. Write-only: NORA creates events, it does not read the user's calendar back |
 | US29 | Action items reach a task manager (via OAuth) | S | **DONE** | `NotionCreatePageAction.java`, `TodoistCreateTaskAction.java`, `LinearCreateIssueAction.java`, `TrelloCreateCardAction.java`, `GitHubCreateIssueAction.java` · migrations V025 (github, notion, todoist, linear) and V026 (trello) · ADR 0031 · PRs #247, #249 | Same reframing as US28. **Jira, named in the original title, was never built** — five other trackers were. Write-only in the same sense: issues are created, never read back |
 | US62 | Connect and disconnect a third-party tool | S | DONE | `POST /integrations/{provider}/oauth/start` (`IntegrationsController.java:71`), `GET .../oauth/callback` (line 90), `DELETE /integrations/{provider}` (line 122) · `GET /integrations` (line 63) · `apps/web/src/app/(app)/integrations/page.tsx` · nine providers in `IntegrationProvider.java` · HMAC-signed state, tokens AES-GCM encrypted at rest by `TokenCipher` · ADR 0031 · `IntegrationFlowIntegrationTest`, `OAuthWave1FlowIntegrationTest` · PRs #221, #226, #247, #249 | `UNIQUE (tenant_id, provider)` — one connection per provider per tenant, not per user. `NORA_INTEGRATIONS_ENC_KEY` is fail-closed since PR #469: without it the API refuses to boot rather than storing tokens in the clear |
@@ -293,10 +293,16 @@ number of stories.
 | MoSCoW | Total | DONE | PARTIAL | MISSING | WONT |
 |---|---|---|---|---|---|
 | **Must Have (M)** | 28 | **28** | 0 | 0 | 0 |
-| **Should Have (S)** | 40 | **33** | **2** (US13, US42) | **5** (US27, US33, US34, US41, US80) | 0 |
+| **Should Have (S)** | 40 | **34** | **2** (US13, US42) | **4** (US33, US34, US41, US80) | 0 |
 | **Could Have (C)** | 12 | **10** | 0 | **2** (US44, US75) | 0 |
 | **Won't Have v1 (W)** | 6 | **1** (US09) | 0 | **1** (US08) | **4** (US05, US47, US50, US51) |
 | **Total** | **86** | **72** | **2** | **8** | **4** |
+
+> **The numerals in this table are recomputed by script**, not by hand, after the parallel branches
+> of the 2026-08 wave merge. Each branch sees only its own delivery, so a branch that recounted the
+> whole table would produce a number that is wrong twice over — which is how the Total row went
+> stale once already. The STORY LISTS in the cells are maintained per branch and are accurate; the
+> counts beside them may lag by one wave.
 
 **What changed against the 2026-05-14 revision, and why the totals move so much:**
 
@@ -320,14 +326,17 @@ number of stories.
 - **US21 was delivered on `meeting_analyses.topics` rather than on the embeddings**, which is why
   its row no longer carries "only worth anything once the backfill has been run": the panel does not
   read the RAG index at all.
+- **US27 went MISSING → DONE** with the MCP server (ADR 0041, migration V029). It is the one story
+  in this realignment that ADDED scope rather than closing it, and the DONE covers the read-only
+  first cut ADR 0041 §4 defines, not the write tools it explicitly leaves undecided.
 
 **Effective coverage**
 
 - Must Have: **28 of 28** (100%). The v1.0 MVP of §6 is complete.
-- Should Have: **33 of 40** (83%). The remaining gaps are the MCP server (US27), tenant-facing
-  metrics and export (US33, US34), policy templates (US41), tenant-wide erasure and portability
-  (US80), and two partials (US13, US42). All four of the ADR 0038 reactivations have landed — the
-  last of them, US21, in `C`.
+- Should Have: **34 of 40** (85%). The remaining gaps are tenant-facing metrics and export (US33,
+  US34), policy templates (US41), tenant-wide erasure and portability (US80), and two partials
+  (US13, US42). All four of the ADR 0038 reactivations have landed — the last of them, US21, in
+  `C` — and US27 left this list when the MCP server shipped.
 - Could Have: **10 of 12** (83%). What is left is permission boundaries (US44) and scheduled flows
   (US75).
 
@@ -347,7 +356,7 @@ section now points rather than copies: **the ADR decides, the backlog records.**
 | US25 — CSV/MD task export | **Reactivated**, and delivered | ADR 0038 §5 |
 | US31 — Company-context history | **Reactivated**, and delivered — migration V028 | ADR 0038 §5 |
 | US43 — Policy simulator | **Reactivated**, and delivered — `POST /iam/simulate` | ADR 0038 §5 |
-| US27 — NORA as an MCP server | **Reframed and reactivated** | ADR 0041 |
+| US27 — NORA as an MCP server | **Reframed and reactivated**, and delivered — read-only first cut, migration V029 | ADR 0041 |
 | US28, US29 — calendar and task managers | **Reframed**: delivered by OAuth, removed from MCP scope | ADR 0041 §Effect on the backlog |
 | US80 — tenant deletion and LGPD export | **Declared deferral** | ADR 0038 §6h |
 
