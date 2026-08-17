@@ -45,8 +45,13 @@ public class ProductivityAssessmentJpaEntity {
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
+    // Read-only for the same reason as MeetingAnalysisJpaEntity's collections, which carry the
+    // full explanation. In short: the child owns `assessment_id` and the adapter writes it, so a
+    // writable association here only gave Hibernate a way to null a NOT NULL column (V012) while
+    // dissociating on delete. This one is on the same code path — a re-analysis rewrites the
+    // assessment too.
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "assessment_id")
+    @JoinColumn(name = "assessment_id", insertable = false, updatable = false)
     @OrderBy("position ASC")
     private List<OutcomeCoverageJpaEntity> coverage = new ArrayList<>();
 

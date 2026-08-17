@@ -74,7 +74,7 @@ public class MeetingJpaEntity {
     private List<MeetingParticipantJpaEntity> participants = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    @JoinColumn(name = "meeting_id")
+    @JoinColumn(name = "meeting_id", insertable = false, updatable = false)
     @BatchSize(size = 32)
     private List<MeetingTagJpaEntity> tags = new ArrayList<>();
 

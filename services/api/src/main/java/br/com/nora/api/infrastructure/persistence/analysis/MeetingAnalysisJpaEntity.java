@@ -62,23 +62,52 @@ public class MeetingAnalysisJpaEntity {
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
+    // `insertable = false, updatable = false` on all four is what makes REPROCESSING work, and it
+    // is not cosmetic.
+    //
+    // These are UNIDIRECTIONAL @OneToMany with @JoinColumn, and the CHILD already maps the same
+    // column itself (`DecisionJpaEntity.analysisId` and friends), which the adapter sets on every
+    // row. Hibernate therefore had a writable association column that nothing needed it to write —
+    // and on delete it used that write access to DISSOCIATE the children first:
+    //
+    //   update meeting_action_items set analysis_id=null where analysis_id=?
+    //
+    // Every one of these columns is `NOT NULL REFERENCES ... ON DELETE CASCADE` (V005, V012), so
+    // that UPDATE cannot succeed:
+    //
+    //   ERROR: null value in column "analysis_id" of relation "meeting_action_items"
+    //          violates not-null constraint
+    //
+    // `MeetingAnalysisRepositoryAdapter.save` deletes any existing analysis before writing the new
+    // one, so this fired on EVERY re-analysis of a meeting that already had action items — which
+    // is every analysed meeting. Reprocess failed, and so did setting a goal on an analysed
+    // meeting, because `MeetingGoalService` re-queues the analysis to compute the Productivity
+    // Score. ADR 0005's whole feature was unreachable in production as a result.
+    //
+    // Making the association read-only removes the dissociation entirely: Hibernate cannot null a
+    // column it may not write, so orphan removal deletes the rows, which is what the database's
+    // own ON DELETE CASCADE would have done. The FK still gets written on insert — by the child,
+    // which owns it.
+    //
+    // NOT `nullable = false`: that leaves the column writable, and because the child maps it too
+    // Hibernate rejects the entity outright with "Column 'analysis_id' is duplicated in mapping".
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "analysis_id")
+    @JoinColumn(name = "analysis_id", insertable = false, updatable = false)
     @OrderBy("position ASC")
     private List<DecisionJpaEntity> decisions = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "analysis_id")
+    @JoinColumn(name = "analysis_id", insertable = false, updatable = false)
     @OrderBy("position ASC")
     private List<ActionItemJpaEntity> actionItems = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "analysis_id")
+    @JoinColumn(name = "analysis_id", insertable = false, updatable = false)
     @OrderBy("position ASC")
     private List<RiskJpaEntity> risks = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "analysis_id")
+    @JoinColumn(name = "analysis_id", insertable = false, updatable = false)
     @OrderBy("position ASC")
     private List<OpportunityJpaEntity> opportunities = new ArrayList<>();
 
