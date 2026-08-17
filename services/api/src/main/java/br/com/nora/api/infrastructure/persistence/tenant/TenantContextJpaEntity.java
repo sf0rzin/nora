@@ -30,6 +30,15 @@ public class TenantContextJpaEntity {
     @Column(name = "updated_by")
     private UUID updatedBy;
 
+    /**
+     * Number of the newest row in {@code tenant_context_versions} for this context (V028, US31).
+     *
+     * <p>Denormalized the way {@code iam_policies.current_version} is, so the next version number
+     * is a field read instead of a {@code MAX()} over the history.
+     */
+    @Column(name = "current_version", nullable = false)
+    private int currentVersion;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -66,6 +75,14 @@ public class TenantContextJpaEntity {
 
     public void setUpdatedBy(UUID updatedBy) {
         this.updatedBy = updatedBy;
+    }
+
+    public int getCurrentVersion() {
+        return currentVersion;
+    }
+
+    public void setCurrentVersion(int currentVersion) {
+        this.currentVersion = currentVersion;
     }
 
     public OffsetDateTime getCreatedAt() {

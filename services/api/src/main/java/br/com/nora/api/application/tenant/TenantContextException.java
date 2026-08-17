@@ -27,4 +27,19 @@ public sealed class TenantContextException extends RuntimeException {
             super("TENANT_CONTEXT_INVALID", detail);
         }
     }
+
+    /**
+     * No such version in the caller tenant's context history (US31).
+     *
+     * <p>The message carries the number and never the tenant: a version number that belongs to
+     * another tenant has to be indistinguishable from one that does not exist at all, or the
+     * response confirms the existence of the other tenant's history.
+     */
+    public static final class VersionNotFound extends TenantContextException {
+        public VersionNotFound(int version) {
+            super(
+                    "TENANT_CONTEXT_VERSION_NOT_FOUND",
+                    "tenant context version " + version + " not found");
+        }
+    }
 }

@@ -138,7 +138,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleTenantContext(TenantContextException ex) {
         HttpStatus status =
                 switch (ex.code()) {
-                    case "TENANT_CONTEXT_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+                    case "TENANT_CONTEXT_NOT_FOUND", "TENANT_CONTEXT_VERSION_NOT_FOUND" ->
+                            HttpStatus.NOT_FOUND;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)
