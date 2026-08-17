@@ -39,7 +39,7 @@ public class MeetingGoalJpaEntity {
     private OffsetDateTime updatedAt;
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "meeting_goal_id", nullable = false)
+    @JoinColumn(name = "meeting_goal_id", insertable = false, updatable = false)
     @OrderBy("position ASC")
     private List<ExpectedOutcomeJpaEntity> expectedOutcomes = new ArrayList<>();
 

@@ -45,12 +45,13 @@ public class ProductivityAssessmentJpaEntity {
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
-    // Same unidirectional @OneToMany shape, same reason: `meeting_outcome_coverage.assessment_id`
-    // is NOT NULL (V012), so without this Hibernate's dissociation UPDATE fails when an
-    // assessment is replaced. See the note on MeetingAnalysisJpaEntity's collections — this one
-    // is on the same code path, because a re-analysis rewrites the assessment too.
+    // Read-only for the same reason as MeetingAnalysisJpaEntity's collections, which carry the
+    // full explanation. In short: the child owns `assessment_id` and the adapter writes it, so a
+    // writable association here only gave Hibernate a way to null a NOT NULL column (V012) while
+    // dissociating on delete. This one is on the same code path — a re-analysis rewrites the
+    // assessment too.
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "assessment_id", nullable = false)
+    @JoinColumn(name = "assessment_id", insertable = false, updatable = false)
     @OrderBy("position ASC")
     private List<OutcomeCoverageJpaEntity> coverage = new ArrayList<>();
 
