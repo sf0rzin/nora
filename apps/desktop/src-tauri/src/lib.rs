@@ -9,8 +9,10 @@ mod http_proxy;
 mod live_analysis;
 mod secrets;
 mod stt;
+mod stt_cloud;
 #[cfg(feature = "stt-local")]
 mod stt_local;
+mod stt_token;
 #[cfg(feature = "stt-local")]
 mod whisper_model;
 mod stealth_mode;

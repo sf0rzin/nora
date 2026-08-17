@@ -10,8 +10,10 @@ pub type CaptureState = Arc<Mutex<AudioCapture>>;
 /// Brings up ONE STT backend for a track, already resolved by config.
 ///
 /// The event contract for the front end is `transcript` with a `TranscriptEvent`
-/// payload, and it is what any future backend has to keep emitting. Only the local
-/// whisper.cpp path exists today, and it needs no token of any kind.
+/// payload, and it is what any backend has to keep emitting. Two exist during the
+/// migration of ADR 0039: the in-process whisper.cpp path, which needs no token of
+/// any kind, and the cloud path, which fetches one short-lived session credential
+/// per track from the backend before it can start.
 async fn start_stt_backend(
     app_handle: &AppHandle,
     backend: SttBackendKind,
@@ -31,6 +33,15 @@ async fn start_stt_backend(
         }
         #[cfg(not(feature = "stt-local"))]
         SttBackendKind::Local => Err("binary compiled without the stt-local feature".to_string()),
+        SttBackendKind::Cloud => {
+            let h = crate::stt_cloud::CloudSttHandle::start(
+                app_handle.clone(),
+                language.to_string(),
+                track_label.to_string(),
+            )
+            .await?;
+            Ok(Box::new(h))
+        }
     }
 }
 

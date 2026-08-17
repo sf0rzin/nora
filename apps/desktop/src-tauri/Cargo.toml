@@ -75,6 +75,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 cpal = "0.15"
 tokio = { version = "1", features = ["full"] }
+# Realtime STT transport (ADR 0039/0045). rustls with the bundled webpki roots, NOT native-tls:
+# `reqwest` above is already built with `rustls-tls` and `default-features = false`, so pulling
+# OpenSSL in here would add a C toolchain requirement to a build that has none.
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+# `StreamExt`/`SinkExt` for the split halves of the socket. Already in the lock as a transitive
+# dependency; declared because this crate now uses it directly.
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 base64 = "0.23"
 uuid = { version = "1", features = ["v4"] }
 rubato = "4.0.0"

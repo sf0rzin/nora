@@ -17,6 +17,19 @@
 
 use tokio::sync::mpsc;
 
+/// Sample rate, in Hz, that every capture path resamples to and every backend receives.
+///
+/// ONE number, in one place, because it used to be the literal `16000` written out at seven
+/// separate call sites in `audio_capture.rs` and `system_audio.rs` — a shape in which changing the
+/// pipeline's target means finding all seven and getting none of them wrong.
+///
+/// It has to agree with `nora.stt.openai.sample-rate` on the backend, which is what the session is
+/// minted with. A disagreement does not fail anywhere: it plays the audio to the provider at the
+/// wrong speed, and the transcript comes back as confident nonsense. `stt_cloud` therefore warns on
+/// the mismatch and declares THIS number to the provider on connect, so what we send and what we
+/// say we send can never diverge.
+pub const TARGET_SAMPLE_RATE: u32 = 16_000;
+
 /// Event emitted to the front on every partial/final of transcription.
 ///
 /// Serialized in camelCase: `sessionId`, `speakerId`, `isFinal`, `offsetMs`,
@@ -122,12 +135,16 @@ pub trait SttBackend: Send {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SttBackendKind {
     Local,
+    /// Streaming to the provider over a WebSocket, with a credential minted by the backend
+    /// (ADR 0039). See `stt_cloud.rs`.
+    Cloud,
 }
 
 impl SttBackendKind {
     pub fn as_str(self) -> &'static str {
         match self {
             SttBackendKind::Local => "local",
+            SttBackendKind::Cloud => "cloud",
         }
     }
 }
@@ -156,6 +173,7 @@ pub fn configured_backend() -> SttBackendKind {
         let resolved = match raw.trim().to_ascii_lowercase().as_str() {
             "" => default_backend(),
             "local" | "whisper" => SttBackendKind::Local,
+            "cloud" | "openai" => SttBackendKind::Cloud,
             other => {
                 eprintln!(
                     "[stt] NORA_STT_BACKEND unknown: {:?} — using {}",
@@ -170,6 +188,8 @@ pub fn configured_backend() -> SttBackendKind {
         // the one that exists instead of blowing up mid-recording.
         let available = match resolved {
             SttBackendKind::Local => cfg!(feature = "stt-local"),
+            // Always compiled in: the cloud client has no optional native dependency.
+            SttBackendKind::Cloud => true,
         };
         if !available {
             eprintln!(
@@ -211,5 +231,6 @@ mod tests {
     #[test]
     fn backend_kind_round_trip() {
         assert_eq!(SttBackendKind::Local.as_str(), "local");
+        assert_eq!(SttBackendKind::Cloud.as_str(), "cloud");
     }
 }
