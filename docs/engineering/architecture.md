@@ -201,6 +201,8 @@ Exhaustive map extracted from the controllers (Grep in `services/api/src/main/ja
 
 `iam:policy:simulate` (US43, `POST /iam/simulate`) is separate from `iam:policy:read` for the mirror-image reason: it reveals more, not less. The simulator answers from which policies are **attached** to which user, and no endpoint of this API exposes that graph, so folding it into the policy-read grant would silently widen what its holders can learn. Being its own action it is deny-by-default — an existing grant of `iam:policy:read` does not acquire it, while the `iam:*` shape admin policies use picks it up on its own.
 
+`GET /iam/policy-templates` (US41) runs the same argument the other way and lands on the opposite answer, which is why **the table above does not grow a row for it**. The catalogue is a constant of the build: identical for every caller of every tenant apart from the tenant id substituted into the ARNs, which the caller's own token already carries. A new action would gate no knowledge the holder of `iam:policy:read` does not already have, and would make every existing admin policy stop working the day it shipped. See §22.
+
 Canonical resource: `nora:tenant/{tenantId}:{recurso}/{instanceId|*}`. Examples:
 
 - `nora:tenant/abc-123:meeting/xyz-987`
@@ -1262,6 +1264,34 @@ The one thing it does that the other two exports did not have to: **an AI column
 measure is written as an empty CSV field, not as `0`.** A spreadsheet sums a zero, averages it and
 plots it, and nothing downstream ever learns it was invented. The Markdown twin says in words which
 of the three `ai.state` values produced the file.
+## §22. Policy templates and the form editor (US41, US42, ADR 0046 §1)
+
+Two halves of one screen, and one argument: IAM is the Enterprise tier's main artefact (ADR 0038 §3), and a simulator that explains a decision paired with an editor that still needs hand-written JSON is half of it.
+
+### Templates are shipped in code, not stored
+
+`GET /iam/policy-templates` returns a fixed catalogue — `PolicyTemplateCatalog` in `domain/iam/`, four entries — with every ARN already bound to the caller's tenant. **There is no `is_template` column, no template table and no migration.** The old design foresaw the flag and V006 never carried it; it is not added now, for two reasons that outlive the convenience:
+
+- A template's job is the **first** policy of a tenant that has none, so a per-tenant table is empty exactly when the feature is needed. It would still have to be seeded from a catalogue written in code — two copies of one list, drifting on the next edit.
+- **A flagged row is still a policy id.** `POST /iam/users/{userId}/policies/{policyId}` attaches whatever id it is handed, so a template row would be attachable as a live grant unless the attach path learned to read the flag. That is a new branch in the authorization write path, which is the one place in this system that must not grow branches.
+
+The cost is stated rather than hidden: a code-shipped catalogue **cannot be customised per tenant**, and there is no "save as template". What a tenant gets instead is that instantiating produces an ordinary policy — editable, versioned and audited through the endpoints that already exist — so a house starting point is a policy they copy, not a second concept.
+
+### There is no instantiate endpoint, on purpose
+
+The client posts the returned `document` to `POST /iam/policies`. A policy grown from a template is therefore created by the same handler, written to the same table, versioned by the same `iam_policy_versions` row and evaluated by the same `PolicyEvaluator` as one typed by hand — not by contract, but because it is literally the same call. `IamPolicyTemplatesIntegrationTest` asserts the round trip for every template in the catalogue and then asks `POST /iam/simulate` what the resulting policy decides.
+
+One template (`department-scoped-meeting-reader`) ships the placeholder value `CHANGE-ME` in its condition. Until it is replaced the condition is unsatisfied, and an unsatisfied condition denies: the template grants **nothing** rather than granting too much, which is the only safe direction for a shipped default.
+
+### The response shape had to be fixed first (found while building US42)
+
+`GET /iam/policies` serialized the domain record's own component names — `actions`, `resources`, `"effect": "ALLOW"` — while the parser on the write side reads `action` and `resource` and refuses a statement without them. **The document the API returned could not be sent back to it.** On the IAM page that showed up as the per-policy edit action loading a document that the editor's own JSON schema marked invalid, which disabled Save; had it been sent, it would have answered `400`. `IamController.documentToJson` now emits the canonical shape both sides use. A form editor reads a policy and writes it back, so this was not an adjacent tidy-up — the form could not exist on top of an asymmetric contract.
+
+### The form offers five operators and refuses what it cannot represent
+
+`policy-form-editor.tsx` edits Effect / Action / Resource / Condition as fields. The condition operator is a `<select>` over exactly `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan` and `DateLessThan` — the five `PolicyEvaluator` implements. Offering a sixth would not produce an error, it would produce an `Allow` that never allows, because fail-closed denies what it cannot evaluate (§4). The JSON editor's schema was tightened the same way.
+
+The conversion lives in `apps/web/src/lib/iam/policy-document.ts` and is unit-tested (Vitest, ADR 0042), including the round trip. **The form refuses to open a document it cannot represent exactly** — an unknown field, an unsupported operator, a value shape the evaluator would stringify into something else — and names why. Silently dropping what it cannot render would let a user save a policy that no longer says what it said; the refusal costs one click to the JSON tab, which is still there and is still where anything unusual is written.
 
 ## Next architectural refactors
 

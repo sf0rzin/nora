@@ -188,10 +188,12 @@ Sign in as Camila (root of the Enterprise workspace) and open `/settings/iam`.
 Show, in this order:
 
 1. The group `Comercial Sul`.
-2. The policy `meetings-read-region-sul` in the JSON editor. Read the condition out loud:
-   `StringEquals` on `region = sul`. Explain that the key is not reserved — it is an attribute the
-   uploader attached to the meeting, and the evaluator resolves conditions against those
-   attributes.
+2. The policy `meetings-read-region-sul` in the editor. Since US42 the edit action opens the **form** tab,
+   with the JSON tab one click away on the same document — the condition row is the thing to point
+   at, and its operator dropdown offers only the five the evaluator implements. Read the condition
+   out loud: `StringEquals` on `region = sul`. Explain that the key is not reserved — it is an
+   attribute the uploader attached to the meeting, and the evaluator resolves conditions against
+   those attributes.
 3. The pending invitation for Rafael, carrying that group.
 
 Then show the effect. Camila, as root, sees all five meetings — root bypasses policy evaluation

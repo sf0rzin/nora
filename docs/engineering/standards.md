@@ -322,9 +322,12 @@ apps/web/src/
 │   │                      #   desktop-update-button
 │   ├── landing/           # public landing sections
 │   └── *.tsx              # meeting-*, productivity-*, customer-confidence-card,
-│                          #   policy-editor (Monaco), invitation-card, markdown-content
+│                          #   policy-editor (Monaco) + policy-form-editor (the form
+│                          #   half of the same document), invitation-card,
+│                          #   markdown-content
 ├── lib/
 │   ├── api/               # client.ts + types.ts (typed fetch)
+│   ├── iam/policy-document.ts # policy document <-> form model, both ways (US42)
 │   ├── pii/redact.ts      # structured PII redaction in the BFF (ADR 0033)
 │   ├── report/markdown.ts # printable meeting report
 │   ├── auth.ts, chat-sessions-sync.ts, password-policy.ts, strings.ts, utils.ts
@@ -360,7 +363,7 @@ Two paths in the previous revision of this tree did not exist: `components/ui-pr
 |---|---|
 | **Backend** | Pure domain unit tests, integration with Postgres via Testcontainers, integration tests for tenant/scope authorization (`IamScopingIntegrationTest`), WireMock to stub the worker |
 | **Worker** | Pipeline unit tests, schema validation (jsonschema), synthetic transcript fixtures in `data/synthetic/` |
-| **Frontend** | Two suites, both run by the `web` job. Vitest unit tests (`apps/web/src/**/*.test.ts`) over five `src/lib` modules — the shared `request()` in `client.ts`, the Markdown report builder, the task-list CSV/Markdown exporter, the BFF PII redaction and the password policy; **no page or component test** (ADR 0042). Playwright e2e (`apps/web/e2e/`) against `next start`: security headers, route protection, CSP violations |
+| **Frontend** | Two suites, both run by the `web` job. Vitest unit tests (`apps/web/src/**/*.test.ts`) over seven `src/lib` modules — the shared `request()` in `client.ts`, the Markdown report builder, the task-list CSV/Markdown exporter, the BFF PII redaction, the password policy, the trends date/axis helpers and the IAM policy-document conversion; **no page or component test** (ADR 0042). Playwright e2e (`apps/web/e2e/`) against `next start`: security headers, route protection, CSP violations |
 | **Operator console** (`apps/admin`) | Lint, typecheck and build in CI. **No tests at all** |
 | **Desktop** | `cargo test --locked --all-targets` plus the doc-tests, run by the `desktop-rust` job on `windows-latest`. Owned via CODEOWNERS by `@pollotherunner` (ADR 0027) |
 | **Contracts** | Valid JSON examples in `docs/api/examples/` for worker↔API payloads |
@@ -375,7 +378,7 @@ ADR 0018 is accepted and immutable; the targets below are its, unchanged. The **
 | Other backend areas | > 60% | overall backend 77.1-77.3% instruction / 78.0-78.1% line (see the repeatability note below) |
 | NLP Worker | > 85% | **92.4%** statement over `nora_nlp` |
 | **Backend branch coverage** | > 70% | **61.5-61.6%** — still short of the target, by about 8.5 points |
-| Web Next.js | ADR 0018's per-page table (auth pages > 50%, dashboard/meeting-detail/tasks > 40%, shared components > 60%) — **not enforced, not met** | **7.7%** statement whole-app; the five gated `src/lib` modules at 96.6% (`redact.ts`), 97.7% (`markdown.ts`), 100% (`tasks-export.ts`), 98.4% (`usage-report.ts`) and 100% (`password-policy.ts`); `client.ts` 30.9%, reported and not gated |
+| Web Next.js | ADR 0018's per-page table (auth pages > 50%, dashboard/meeting-detail/tasks > 40%, shared components > 60%) — **not enforced, not met** | **8.5%** statement whole-app; the five gated `src/lib` modules at 96.6% (`redact.ts`), 97.7% (`markdown.ts`), 100% (`tasks-export.ts`), 100% (`password-policy.ts`) and 89.9% (`iam/policy-document.ts`); `client.ts` 32.5%, reported and not gated — it drops every time a wrapper is added, which is why it is not |
 | Desktop client | out of scope here (maintained by @pollotherunner) | not measured |
 
 **Where these come from.** `scripts/report-coverage.sh` runs in the `api`, `worker` and `web` CI jobs and prints the figures to the job log and to the run summary page. It reads the report the test run just wrote (`target/site/jacoco/jacoco.csv`, `.coverage`, `apps/web/coverage/coverage-summary.json`) rather than measuring anything itself, so the same command on a workstation gives the same number. Read the current figures there; the date above is when this table was last copied from a run, not a promise about today.

@@ -6,6 +6,7 @@ import {
   type AuditEventDto,
   type GroupDto,
   type PolicyDto,
+  type PolicyTemplateDto,
   type SimulationDto,
   addGroupMember,
   attachPolicyToGroup,
@@ -19,11 +20,13 @@ import {
   listAuditEvents,
   listGroups,
   listPolicies,
+  listPolicyTemplates,
   removeGroupMember,
   simulatePolicy,
   updatePolicyDocument,
 } from "@/lib/api/client";
 import PolicyEditor from "@/components/policy-editor";
+import PolicyFormEditor from "@/components/policy-form-editor";
 import CorporateDomainCard from "@/components/corporate-domain-card";
 import InvitationCard from "@/components/invitation-card";
 
@@ -52,9 +55,40 @@ const REASON_COPY: Record<SimulationDto["reason"], string> = {
 
 type ContextPair = { key: string; value: string };
 
+/** Which of the two editors is on screen. Both write the same JSON string (US42). */
+type EditorMode = "form" | "json";
+
+/**
+ * pt-BR copy for the built-in templates (US41), keyed by the id the API returns. The API ships
+ * English identifiers and an English one-line summary, as everything in `services/api` does; the
+ * user-facing wording lives here with the rest of the UI. An id this map does not know still
+ * renders — with the API's own description — so a template added on the server is never invisible.
+ */
+const TEMPLATE_COPY: Record<string, { title: string; hint: string }> = {
+  "read-only-access": {
+    title: "Somente leitura",
+    hint: "Lê reuniões, tarefas, configurações, flows e integrações. Nenhuma ação de IAM.",
+  },
+  "meeting-analyst": {
+    title: "Analista de reuniões",
+    hint: "Envia, lê, atualiza e reprocessa reuniões, e escreve as tarefas delas.",
+  },
+  "iam-administrator": {
+    title: "Administrador de IAM",
+    hint: "Todas as operações de IAM: grupos, policies, anexos, convites e auditoria.",
+  },
+  "department-scoped-meeting-reader": {
+    title: "Leitura por departamento",
+    hint:
+      "Lê apenas as reuniões cujo atributo department satisfaz a condição. Troque CHANGE-ME antes" +
+      " de salvar: enquanto ele estiver lá, a policy não libera nada.",
+  },
+};
+
 export default function IamPage() {
   const [groups, setGroups] = useState<GroupDto[]>([]);
   const [policies, setPolicies] = useState<PolicyDto[]>([]);
+  const [templates, setTemplates] = useState<PolicyTemplateDto[]>([]);
   const [audit, setAudit] = useState<AuditEventDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +99,7 @@ export default function IamPage() {
   const [policyName, setPolicyName] = useState("");
   const [policyDoc, setPolicyDoc] = useState(POLICY_PLACEHOLDER);
   const [policyDocValid, setPolicyDocValid] = useState(true);
+  const [policyMode, setPolicyMode] = useState<EditorMode>("form");
   const [attachPolicyId, setAttachPolicyId] = useState("");
   const [attachGroupId, setAttachGroupId] = useState("");
   const [attachUserId, setAttachUserId] = useState("");
@@ -74,6 +109,7 @@ export default function IamPage() {
   const [editPolicyId, setEditPolicyId] = useState<string | null>(null);
   const [editPolicyDoc, setEditPolicyDoc] = useState("");
   const [editPolicyValid, setEditPolicyValid] = useState(true);
+  const [editPolicyMode, setEditPolicyMode] = useState<EditorMode>("form");
   // simulator (US43) — kept out of `handle` on purpose: it is a read, and refreshing the whole
   // page after it would wipe the very answer the user asked for.
   const [simUserId, setSimUserId] = useState("");
@@ -88,9 +124,15 @@ export default function IamPage() {
     setLoading(true);
     setError(null);
     try {
-      const [g, p, a] = await Promise.all([listGroups(), listPolicies(), listAuditEvents(50)]);
+      const [g, p, t, a] = await Promise.all([
+        listGroups(),
+        listPolicies(),
+        listPolicyTemplates(),
+        listAuditEvents(50),
+      ]);
       setGroups(g);
       setPolicies(p);
+      setTemplates(t);
       setAudit(a);
     } catch (err) {
       setError(toMessage(err));
@@ -135,6 +177,19 @@ export default function IamPage() {
     } finally {
       setSimRunning(false);
     }
+  }
+
+  /**
+   * US41 — loads a template into the create form. Nothing is created here: it is a starting
+   * document, and "Criar policy" sends it through the same `POST /iam/policies` a hand-written one
+   * goes through. The name is only pre-filled when the field is still empty, so a name already
+   * typed is never overwritten.
+   */
+  function applyTemplate(template: PolicyTemplateDto) {
+    setPolicyDoc(JSON.stringify(template.document, null, 2));
+    setPolicyDocValid(true);
+    setPolicyMode("form");
+    setPolicyName((current) => (current.trim() ? current : template.id));
   }
 
   function updateContextPair(index: number, patch: Partial<ContextPair>) {
@@ -274,6 +329,44 @@ export default function IamPage() {
         </details>
       </section>
 
+      {/* ===== Policy templates (US41) ===== */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Modelos de policy</h2>
+        <p className="text-sm text-slate-500">
+          Pontos de partida embutidos, já com os ARNs deste tenant. Carregar um modelo apenas
+          preenche o editor abaixo — a policy só passa a existir quando você a cria, pelo mesmo
+          caminho de uma escrita à mão.
+        </p>
+        {templates.length === 0 ? (
+          <p className="text-sm text-slate-500">Nenhum modelo disponível.</p>
+        ) : (
+          <ul className="grid gap-2 text-sm md:grid-cols-2">
+            {templates.map((t) => {
+              const copy = TEMPLATE_COPY[t.id] ?? { title: t.id, hint: t.description };
+              return (
+                <li
+                  key={t.id}
+                  className="flex items-start justify-between gap-3 rounded-md border border-slate-200 p-3"
+                >
+                  <div>
+                    <div className="font-medium">{copy.title}</div>
+                    <div className="text-xs text-slate-500">{copy.hint}</div>
+                    <div className="font-mono text-xs text-slate-400">{t.id}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50"
+                    onClick={() => applyTemplate(t)}
+                  >
+                    Usar modelo
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
       {/* ===== Policies ===== */}
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Policies</h2>
@@ -305,7 +398,9 @@ export default function IamPage() {
             placeholder="nome da policy (ex: meeting-readonly)"
             className="w-full rounded-md border border-slate-300 px-3 py-1.5"
           />
-          <PolicyEditor
+          <EditorModeToggle mode={policyMode} onChange={setPolicyMode} />
+          <PolicyDocumentEditor
+            mode={policyMode}
             value={policyDoc}
             onChange={(next, isValid) => {
               setPolicyDoc(next);
@@ -350,6 +445,7 @@ export default function IamPage() {
                           setEditPolicyId(p.id);
                           setEditPolicyDoc(JSON.stringify(p.document, null, 2));
                           setEditPolicyValid(true);
+                          setEditPolicyMode("form");
                         }
                       }}
                     >
@@ -368,7 +464,9 @@ export default function IamPage() {
                 </div>
                 {editPolicyId === p.id ? (
                   <div className="mt-2 space-y-2">
-                    <PolicyEditor
+                    <EditorModeToggle mode={editPolicyMode} onChange={setEditPolicyMode} />
+                    <PolicyDocumentEditor
+                      mode={editPolicyMode}
                       value={editPolicyDoc}
                       onChange={(next, isValid) => {
                         setEditPolicyDoc(next);
@@ -647,6 +745,62 @@ export default function IamPage() {
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+/**
+ * US42 — the two editors, over one piece of state.
+ *
+ * The JSON editor is not replaced by the form and never will be: the form refuses to open a
+ * document it cannot represent exactly, and the way out of that refusal is this toggle. Both write
+ * the same JSON string, so switching tabs mid-edit carries the work across.
+ */
+function PolicyDocumentEditor({
+  mode,
+  value,
+  onChange,
+  height,
+}: {
+  mode: EditorMode;
+  value: string;
+  onChange: (value: string, isValid: boolean) => void;
+  height: number;
+}) {
+  if (mode === "form") {
+    return <PolicyFormEditor value={value} onChange={onChange} />;
+  }
+  return <PolicyEditor value={value} onChange={onChange} height={height} />;
+}
+
+function EditorModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: EditorMode;
+  onChange: (mode: EditorMode) => void;
+}) {
+  const options: { mode: EditorMode; label: string }[] = [
+    { mode: "form", label: "Formulário" },
+    { mode: "json", label: "JSON" },
+  ];
+  return (
+    <div className="flex gap-1" role="group" aria-label="Modo do editor de policy">
+      {options.map((option) => (
+        <button
+          key={option.mode}
+          type="button"
+          aria-pressed={mode === option.mode}
+          onClick={() => onChange(option.mode)}
+          className={
+            mode === option.mode
+              ? "rounded-md bg-slate-900 px-2 py-1 text-xs text-white"
+              : "rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+          }
+        >
+          {option.label}
+        </button>
+      ))}
     </div>
   );
 }

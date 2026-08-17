@@ -381,7 +381,7 @@ Status: **orphaned**. A comment in `V006:7-9` indicates "removal in a future mig
 
 **Indexes**: `idx_iam_policies_tenant(tenant_id)`.
 
-> **Drift removed**: the old doc foresaw `is_template BOOLEAN NOT NULL DEFAULT FALSE`. **It does not exist** in the real migration (V006:69-82). Official templates (US41) are a pending feature.
+> **Drift removed**: the old doc foresaw `is_template BOOLEAN NOT NULL DEFAULT FALSE`. **It does not exist** in the real migration (V006:69-82), and US41 shipped without adding it. The built-in templates are a **code-shipped catalogue** (`PolicyTemplateCatalog` in `domain/iam/`) served by `GET /iam/policy-templates`; instantiating one is an ordinary `POST /iam/policies`, so the row it creates is a policy like any other. The flag was rejected rather than postponed: a flagged row would still be an attachable policy id, and refusing it would mean a new branch in the authorization write path. See `docs/engineering/architecture.md` §22.
 
 Expected format of `document`:
 

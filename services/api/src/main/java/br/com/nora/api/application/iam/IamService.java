@@ -5,6 +5,8 @@ import br.com.nora.api.application.ports.UserRepository;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
+import br.com.nora.api.domain.iam.PolicyTemplate;
+import br.com.nora.api.domain.iam.PolicyTemplateCatalog;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -157,6 +159,21 @@ public class IamService {
         iam.deletePolicy(policyId, tenantId);
         iam.recordAudit(
                 tenantId, actor, "iam:policy:delete", "POLICY", policyId, Map.of("name", p.name()));
+    }
+
+    // ========== templates ==========
+
+    /**
+     * US41 — the built-in templates, with their ARNs bound to {@code tenantId}. No query and no
+     * audit event: the catalogue is a constant of the build, reading it changes nothing, and it
+     * says nothing about this tenant that the caller's own token does not already say.
+     *
+     * <p>The result is a starting document, not a policy. It becomes one only when the caller posts
+     * it to {@code POST /iam/policies}, through {@link #createPolicy} — the same method a
+     * hand-written document goes through, so nothing downstream can tell the two apart.
+     */
+    public List<PolicyTemplate> listPolicyTemplates(UUID tenantId) {
+        return PolicyTemplateCatalog.forTenant(tenantId);
     }
 
     // ========== attachments ==========

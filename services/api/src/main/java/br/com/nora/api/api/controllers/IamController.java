@@ -5,6 +5,7 @@ import br.com.nora.api.api.dto.iam.CreateGroupRequest;
 import br.com.nora.api.api.dto.iam.CreatePolicyRequest;
 import br.com.nora.api.api.dto.iam.GroupDto;
 import br.com.nora.api.api.dto.iam.PolicyDto;
+import br.com.nora.api.api.dto.iam.PolicyTemplateDto;
 import br.com.nora.api.api.dto.iam.SimulatePolicyRequest;
 import br.com.nora.api.api.dto.iam.SimulatePolicyResponse;
 import br.com.nora.api.api.dto.iam.UpdatePolicyRequest;
@@ -14,14 +15,19 @@ import br.com.nora.api.api.security.RequiresPermission.ResourceType;
 import br.com.nora.api.application.iam.IamException;
 import br.com.nora.api.application.iam.IamService;
 import br.com.nora.api.application.iam.PolicyExplanation;
+import br.com.nora.api.domain.iam.Effect;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
 import br.com.nora.api.domain.iam.PolicyDecision;
+import br.com.nora.api.domain.iam.PolicyDocument;
 import br.com.nora.api.domain.iam.PolicyStatement;
+import br.com.nora.api.domain.iam.PolicyTemplate;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -170,6 +176,29 @@ public class IamController {
         iam.deletePolicy(p.tenantId(), p.userId(), id);
     }
 
+    // ---------- templates ----------
+
+    /**
+     * US41 — the built-in policy templates, with every ARN already bound to the caller's tenant.
+     *
+     * <p>Read-only, and there is deliberately no instantiate endpoint. The client submits the
+     * returned {@code document} to {@code POST /iam/policies}, so a policy grown from a template is
+     * created by the same handler, versioned by the same table and evaluated by the same evaluator
+     * as one typed by hand. A second creation path is exactly what would let the two drift.
+     *
+     * <p>Gated by {@code iam:policy:read} rather than an action of its own — the mirror image of
+     * the {@code iam:policy:simulate} argument. The catalogue is a constant: byte-identical for
+     * every caller of every tenant apart from the tenant id in the ARNs, which the caller's own
+     * token already carries. It exposes nothing about this tenant, so a separate action would gate
+     * no additional knowledge and would only make an existing admin policy stop working.
+     */
+    @GetMapping("/policy-templates")
+    @RequiresPermission(action = "iam:policy:read", resource = ResourceType.IAM)
+    public List<PolicyTemplateDto> listPolicyTemplates() {
+        AuthenticatedPrincipal p = CurrentUser.require();
+        return iam.listPolicyTemplates(p.tenantId()).stream().map(this::toTemplateDto).toList();
+    }
+
     // ---------- attachments ----------
 
     @PostMapping("/groups/{groupId}/policies/{policyId}")
@@ -288,9 +317,49 @@ public class IamController {
                 g.id(), g.name(), g.description(), g.createdBy(), g.createdAt(), g.updatedAt());
     }
 
+    private PolicyTemplateDto toTemplateDto(PolicyTemplate t) {
+        return new PolicyTemplateDto(t.id(), t.description(), documentToJson(t.document()));
+    }
+
+    /**
+     * Serializes a policy document in the SAME shape the write endpoints accept: {@code action} and
+     * {@code resource} singular, {@code effect} as {@code Allow} or {@code Deny}, and {@code
+     * condition} present only when the statement has one.
+     *
+     * <p>This was {@code valueToTree(document)}, which emitted the record's own component names —
+     * {@code actions}, {@code resources}, {@code "effect": "ALLOW"}. The parser that reads an
+     * incoming document looks for {@code action} and {@code resource} and refuses a statement
+     * without them, so what {@code GET /iam/policies} returned could not be sent back to {@code PUT
+     * /iam/policies/{id}}: the IAM page's "editar" button loaded a document that its own JSON
+     * schema marked invalid, which disabled Save, and a document that would have answered 400 had
+     * it been sent. A form editor (US42) reads a policy and writes it back, so the asymmetry had to
+     * go before the form could exist.
+     */
+    private JsonNode documentToJson(PolicyDocument doc) {
+        ObjectNode root = json.createObjectNode();
+        root.put("version", doc.version());
+        ArrayNode statements = root.putArray("statements");
+        for (PolicyStatement s : doc.statements()) {
+            ObjectNode node = statements.addObject();
+            node.put("effect", s.effect() == Effect.ALLOW ? "Allow" : "Deny");
+            ArrayNode actions = node.putArray("action");
+            for (String action : s.actions()) {
+                actions.add(action);
+            }
+            ArrayNode resources = node.putArray("resource");
+            for (String resource : s.resources()) {
+                resources.add(resource);
+            }
+            if (!s.condition().isEmpty()) {
+                node.set("condition", json.valueToTree(s.condition()));
+            }
+        }
+        return root;
+    }
+
     private PolicyDto toPolicyDto(IamPolicy p) {
         try {
-            JsonNode node = json.valueToTree(p.document());
+            JsonNode node = documentToJson(p.document());
             return new PolicyDto(
                     p.id(),
                     p.name(),
