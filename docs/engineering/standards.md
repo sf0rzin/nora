@@ -317,7 +317,7 @@ ADR 0018 is accepted and immutable; the targets below are its, unchanged. The **
 | Area | Sustained target (ADR 0018) | Measured 2026-08-17 |
 |---|---|---|
 | **Critical areas** (IAM, Auth, PII, LLM analyzer) | **> 85%** | IAM packages 90.9% instr · Auth/identity packages 93.8% instr · PII shield 96.6% stmt · `llm_analyzer.py` 84.7% stmt |
-| Other backend areas | > 60% | overall backend 77.2% instruction / 78.1% line |
+| Other backend areas | > 60% | overall backend 77.3% instruction / 78.1% line |
 | NLP Worker | > 85% | **92.4%** statement over `nora_nlp` |
 | **Backend branch coverage** | > 70% | **61.6%** — still short of the target, by 8.4 points |
 | Web Next.js | TBD | unmeasured — Playwright e2e exists, coverage instrumentation does not |
@@ -326,6 +326,8 @@ ADR 0018 is accepted and immutable; the targets below are its, unchanged. The **
 **Where these come from.** `scripts/report-coverage.sh` runs in the `api` and `worker` CI jobs and prints the figures to the job log and to the run summary page. It reads the report the test run just wrote (`target/site/jacoco/jacoco.csv`, `.coverage`) rather than measuring anything itself, so the same command on a workstation gives the same number. Read the current figures there; the date above is when this table was last copied from a run, not a promise about today.
 
 **Two of these are gates. The rest are reports.** `mvn verify` fails on the JaCoCo rule over `PolicyEvaluator` (instruction >= 90%, branch >= 75%) and the worker job fails on `--cov-fail-under=90` over `pii_shield`. Nothing fails on any other row, including the branch-coverage row that misses its target.
+
+**The overall backend figure is not exactly repeatable.** Two consecutive CI runs of the same commit reported 77.2% and 77.3% instruction — ten instructions out of 41,596 — while every other row above was byte-identical. Something in the integration suite takes a slightly different path between runs. The point is not the tenth of a percent; it is that a backend figure quoted to two decimal places is quoting noise, and the honest precision here is one decimal at best.
 
 **Counters are not interchangeable.** JaCoCo's *instruction* coverage is what the backend gate counts and what the backend figures above use; coverage.py reports *statement* coverage for the worker. A line percentage and an instruction percentage are different numbers for the same code — quoting one under the other's name is how "67%" survived three months without anyone being able to say what it measured.
 

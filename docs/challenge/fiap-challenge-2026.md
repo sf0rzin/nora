@@ -27,7 +27,7 @@ This page documents:
 | **Oracle data model (DB deliverable)** | [`../engineering/data-model-oracle.md`](../engineering/data-model-oracle.md) — Oracle 19c+ DDL equivalent to the Postgres schema |
 | **Technical architecture (diagrams, flows)** | [`../engineering/architecture.md`](../engineering/architecture.md) — DDD layers, IAM flow, RAG pipeline, multi-tenancy |
 | **Documented architectural decisions** | [`../adr/README.md`](../adr/README.md) — canonical ADR index (durable decisions with context + alternatives) |
-| **Technical validation (tests)** | Coverage measured by CI on every run, not quoted from a snapshot: worker **92.4%** over `nora_nlp` (863 tests), backend **77.2%** instruction / **61.6%** branch (578 tests), `apps/web` unmeasured (Playwright e2e, no coverage instrumentation) — measured 2026-08-17, see the "Measured coverage" section below |
+| **Technical validation (tests)** | Coverage measured by CI on every run, not quoted from a snapshot: worker **92.4%** over `nora_nlp` (863 tests), backend **77.3%** instruction / **61.6%** branch (578 tests), `apps/web` unmeasured (Playwright e2e, no coverage instrumentation) — measured 2026-08-17, see the "Measured coverage" section below |
 | **Functional demonstration (deploy)** | NORA runs self-hosted on a single bare-metal host (ADR 0034/0036), behind Cloudflare Tunnel at `nora.systems`. The Azure deployment this rubric item originally pointed at is gone — no subscription, no export (ADR 0036) |
 | **Pitch / final presentation** | Sub-phase 1.11 creates a 15-20 min demo script |
 
@@ -54,7 +54,8 @@ Two different things get confused whenever this project quotes a coverage number
 
 | Scope | Measured 2026-08-17 | How |
 |---|---|---|
-| Spring backend, overall | **77.2%** instruction · 61.6% branch · 78.1% line (578 tests) | `mvn -B verify` → JaCoCo |
+| Spring backend, overall | **77.3%** instruction · 61.6% branch · 78.1% line (578 tests) | `mvn -B verify` → JaCoCo |
+| ↳ *repeatability of that row* | two runs of the same commit gave 77.2% and 77.3% — ten instructions of 41,596 | quote one decimal, not two |
 | Backend IAM packages (`*.iam`) | 90.9% instruction · 80.4% branch | idem |
 | Backend Auth packages (`*.identity`, `*.security`) | 93.8% instruction · 72.8% branch | idem |
 | `PolicyEvaluator` — the one gated class | 96.3% instruction · 86.0% branch | idem |
