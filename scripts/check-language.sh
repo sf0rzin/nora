@@ -138,6 +138,18 @@ ALLOWED=(
   # sentence mandatory, and `apps/web/src/components/productivity-score-card.tsx` is what prints
   # it. Translating the quotation would misdescribe the product.
   "docs/engineering/architecture.md"
+
+  # --- 8. A Portuguese detector has to contain Portuguese ---
+  # `check-pr-title.sh` is this script's counterpart for the one text it cannot reach: a PR
+  # title, which becomes the squash commit subject. Its word lists ARE the detection, so
+  # translating them would delete the check. Same shape of exemption as the negative brand list
+  # in `services/nlp-worker/.../pii_shield.py`: content the tool needs, not prose to improve.
+  #
+  # Worth knowing when adding to it: this exemption was earned the awkward way. The file passed
+  # locally while it was still UNTRACKED — line 186 reads `git ls-files`, so a new file is
+  # invisible to this check until it is staged. A green run before the first `git add` proves
+  # nothing about a new file.
+  "scripts/check-pr-title.sh"
 )
 
 # ---------------------------------------------------------------------------
